@@ -1,24 +1,25 @@
 //! Resident mode: main window toggling, tray icon and the global hotkey; the
 //! window backdrop.
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use webview2_com::Microsoft::Web::WebView2::Win32::{
-    COREWEBVIEW2_COLOR, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
-    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL, ICoreWebView2_19, ICoreWebView2Controller,
-    ICoreWebView2Controller2,
+    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+    ICoreWebView2_19,
 };
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    CombineRgn, CreateRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
+};
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    HTBOTTOMRIGHT, HTLEFT, WM_EXITSIZEMOVE, WM_NCLBUTTONDOWN, WM_SIZING,
+    GetWindowRect, KillTimer, SWP_NOSIZE, SetTimer, WINDOWPOS, WM_WINDOWPOSCHANGING,
 };
-use windows::core::{Interface, w};
+use windows::core::Interface;
 
 use crate::settings::SettingsStore;
 
@@ -85,34 +86,45 @@ pub fn extend_backdrop<R: Runtime>(w: &WebviewWindow<R>) {
 }
 
 thread_local! {
-    /// The main window's WebView2 controller, for `resize_proc` (both live on the UI thread).
-    static CONTROLLER: RefCell<Option<ICoreWebView2Controller>> = const { RefCell::new(None) };
-    static OPAQUE: Cell<bool> = const { Cell::new(false) };
+    /// The main window's WebView container (UI thread only, like the window).
+    static CONTAINER: Cell<isize> = const { Cell::new(0) };
+    static CUT: Cell<bool> = const { Cell::new(false) };
 }
+
+const SEAM_SUBCLASS: usize = 1;
+const SEAM_TIMER: usize = 0x5EA7;
+/// How long the cut stays after the last size change: the WebView catches up
+/// with a new size within a few frames.
+const SEAM_SETTLE_MS: u32 = 300;
 
 /// Keeps a light diagonal line from flickering across the window while it is
-/// being resized.
+/// being resized, without changing how anything looks.
 ///
-/// Until WebView2 has a frame of the new size, Windows shows its last frame
-/// stretched to fit, drawn as two triangles; on translucent pixels the shared
-/// diagonal is blended twice and shows as a light line. It happens with any
-/// translucent page (reproduced with Windows.Graphics.Capture), and opaque
-/// pixels look the same however often they are blended. So for the length of a
-/// resize the WebView gets an opaque background, the solid color Windows itself
-/// shows for Mica on an inactive window, and Mica returns when the resize ends.
+/// Windows 11 clips the window to rounded corners. WebView2 draws into a
+/// translucent child surface (Chromium's layered output window) that reaches
+/// into the bottom corners, and while the window changes size DWM's fast path
+/// for that clip sometimes blends such a surface twice along the client
+/// diagonal. The fast path only takes children whose visible area is a plain
+/// rectangle: in a bare WebView2 window, square corners, a WebView kept out of
+/// the bottom corners and a non-rectangular visible area each removed the line.
+/// So from the first size change until shortly after the last, the WebView's
+/// container gets a region without its top-left pixel, which is page
+/// background (Mica shows through it either way). DWM's general path differs
+/// only in the corner anti-aliasing, by a few levels on a few pixels, but costs
+/// it a little more per frame, so the region is not kept on.
 pub fn guard_resize_seam<R: Runtime>(w: &WebviewWindow<R>) {
-    let _ = w.with_webview(|wv| {
-        let controller = wv.controller();
-        CONTROLLER.with(|c| *c.borrow_mut() = Some(controller));
-    });
-    if let Ok(hwnd) = w.hwnd() {
-        unsafe {
-            let _ = SetWindowSubclass(HWND(hwnd.0), Some(resize_proc), 1, 0);
+    let Ok(hwnd) = w.hwnd() else { return };
+    let hwnd = hwnd.0 as isize;
+    let _ = w.with_webview(move |wv| unsafe {
+        let mut container = HWND::default();
+        if wv.controller().ParentWindow(&mut container).is_ok() {
+            CONTAINER.set(container.0 as isize);
+            let _ = SetWindowSubclass(HWND(hwnd as _), Some(seam_proc), SEAM_SUBCLASS, 0);
         }
-    }
+    });
 }
 
-unsafe extern "system" fn resize_proc(
+unsafe extern "system" fn seam_proc(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
@@ -120,72 +132,48 @@ unsafe extern "system" fn resize_proc(
     _id: usize,
     _data: usize,
 ) -> LRESULT {
-    match msg {
-        // Pressing a sizing border arrives before the first size change (the
-        // sizing loop runs inside DefSubclassProc), so the WebView can repaint
-        // opaque before anything is stretched. WM_SIZING covers keyboard sizing.
-        WM_NCLBUTTONDOWN if (HTLEFT..=HTBOTTOMRIGHT).contains(&(wparam.0 as u32)) => {
-            set_opaque(true)
+    // Before the new size is applied, so the region is in place for the first
+    // frame at that size. Covers dragging, snapping, maximizing and DPI changes.
+    if msg == WM_WINDOWPOSCHANGING {
+        let pos = unsafe { &*(lparam.0 as *const WINDOWPOS) };
+        let mut rect = RECT::default();
+        if !pos.flags.contains(SWP_NOSIZE)
+            && unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok()
+            && (pos.cx, pos.cy) != (rect.right - rect.left, rect.bottom - rect.top)
+        {
+            set_corner_cut(true);
+            unsafe { SetTimer(Some(hwnd), SEAM_TIMER, SEAM_SETTLE_MS, Some(seam_settled)) };
         }
-        WM_SIZING => set_opaque(true),
-        WM_EXITSIZEMOVE => set_opaque(false),
-        _ => {}
     }
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
-fn set_opaque(on: bool) {
-    if OPAQUE.replace(on) == on {
-        return;
-    }
-    let color = match (on, apps_use_dark_theme()) {
-        (false, _) => COREWEBVIEW2_COLOR {
-            A: 0,
-            R: 0,
-            G: 0,
-            B: 0,
-        },
-        // SolidBackgroundFillColorBase: what Mica falls back to when inactive.
-        (true, true) => COREWEBVIEW2_COLOR {
-            A: 255,
-            R: 0x20,
-            G: 0x20,
-            B: 0x20,
-        },
-        (true, false) => COREWEBVIEW2_COLOR {
-            A: 255,
-            R: 0xF3,
-            G: 0xF3,
-            B: 0xF3,
-        },
-    };
-    CONTROLLER.with(|c| {
-        if let Some(controller) = c.borrow().as_ref()
-            && let Ok(controller) = controller.cast::<ICoreWebView2Controller2>()
-        {
-            unsafe {
-                let _ = controller.SetDefaultBackgroundColor(color);
-            }
-        }
-    });
+unsafe extern "system" fn seam_settled(hwnd: HWND, _msg: u32, id: usize, _time: u32) {
+    let _ = unsafe { KillTimer(Some(hwnd), id) };
+    set_corner_cut(false);
 }
 
-/// The app theme Windows uses (and WebView2's prefers-color-scheme follows).
-fn apps_use_dark_theme() -> bool {
-    let mut light = 1u32;
-    let mut size = size_of::<u32>() as u32;
-    unsafe {
-        let _ = RegGetValueW(
-            HKEY_CURRENT_USER,
-            w!(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"),
-            w!("AppsUseLightTheme"),
-            RRF_RT_REG_DWORD,
-            None,
-            Some((&mut light as *mut u32).cast()),
-            Some(&mut size),
-        );
+fn set_corner_cut(on: bool) {
+    if CUT.replace(on) == on {
+        return;
     }
-    light == 0
+    let container = HWND(CONTAINER.get() as _);
+    unsafe {
+        if !on {
+            SetWindowRgn(container, None, true);
+            return;
+        }
+        // Far past any window size, so it needs no update while the size changes.
+        const FAR: i32 = 1 << 20;
+        let region = CreateRectRgn(0, 1, FAR, FAR);
+        let top = CreateRectRgn(1, 0, FAR, 1);
+        CombineRgn(Some(region), Some(region), Some(top), RGN_OR);
+        let _ = DeleteObject(top.into());
+        // On success the window owns the region.
+        if SetWindowRgn(container, Some(region), true) == 0 {
+            let _ = DeleteObject(region.into());
+        }
+    }
 }
 
 /// Tells WebView2 whether anyone can see it. Hiding the window alone keeps the
