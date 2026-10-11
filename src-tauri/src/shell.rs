@@ -1,7 +1,7 @@
 //! Resident mode: main window toggling, tray icon and the global hotkey; the
 //! window backdrop.
 
-use std::cell::Cell;
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -85,11 +85,9 @@ pub fn extend_backdrop<R: Runtime>(w: &WebviewWindow<R>) {
     }
 }
 
-thread_local! {
-    /// The main window's WebView container (UI thread only, like the window).
-    static CONTAINER: Cell<isize> = const { Cell::new(0) };
-    static CUT: Cell<bool> = const { Cell::new(false) };
-}
+/// The main window's WebView container; only the UI thread uses these.
+static CONTAINER: AtomicIsize = AtomicIsize::new(0);
+static CUT: AtomicBool = AtomicBool::new(false);
 
 const SEAM_SUBCLASS: usize = 1;
 const SEAM_TIMER: usize = 0x5EA7;
@@ -118,7 +116,7 @@ pub fn guard_resize_seam<R: Runtime>(w: &WebviewWindow<R>) {
     let _ = w.with_webview(move |wv| unsafe {
         let mut container = HWND::default();
         if wv.controller().ParentWindow(&mut container).is_ok() {
-            CONTAINER.set(container.0 as isize);
+            CONTAINER.store(container.0 as isize, Ordering::Relaxed);
             let _ = SetWindowSubclass(HWND(hwnd as _), Some(seam_proc), SEAM_SUBCLASS, 0);
         }
     });
@@ -154,10 +152,10 @@ unsafe extern "system" fn seam_settled(hwnd: HWND, _msg: u32, id: usize, _time: 
 }
 
 fn set_corner_cut(on: bool) {
-    if CUT.replace(on) == on {
+    if CUT.swap(on, Ordering::Relaxed) == on {
         return;
     }
-    let container = HWND(CONTAINER.get() as _);
+    let container = HWND(CONTAINER.load(Ordering::Relaxed) as _);
     unsafe {
         if !on {
             SetWindowRgn(container, None, true);
