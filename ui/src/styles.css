@@ -1,0 +1,1386 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-display:
+    "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui,
+    sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+}
+
+/* ---- Tokens ---------------------------------------------------------------
+   Every hue encodes data: cpu = cyan (efficiency cores: periwinkle), memory =
+   violet, io/load = amber, network = green, gpu = rose, battery = lime,
+   destructive = coral. The accent is replaced at runtime by the Windows one. */
+
+:root {
+  color-scheme: light dark;
+  --accent: #0067c0;
+  --on-accent: #ffffff;
+  --ink: #1b1c22;
+  --ink-2: #5b5f6d;
+  --ink-3: #8e92a0;
+  --layer: rgb(255 255 255 / 0.5);
+  --layer-strong: rgb(255 255 255 / 0.78);
+  --hover: rgb(0 0 0 / 0.04);
+  --press: rgb(0 0 0 / 0.07);
+  --stroke: rgb(0 0 0 / 0.075);
+  --stroke-strong: rgb(0 0 0 / 0.14);
+  --control: rgb(255 255 255 / 0.72);
+  --control-hover: rgb(250 250 250 / 0.55);
+  --control-checked: #ffffff;
+  --flyout: rgb(250 250 252 / 0.9);
+  --scrim: rgb(0 0 0 / 0.28);
+  --cpu: #0a8bbd;
+  --cpu-e: #3a6fd6;
+  --mem: #6a52ec;
+  --io: #c27a00;
+  --net: #1f9d55;
+  --gpu: #d6336c;
+  --bat: #6b8e00;
+  --heat-rgb: 240 160 30;
+  --danger: #c42b1c;
+  --on-danger: #ffffff;
+  --glyph-bg: rgb(0 0 0 / 0.04);
+  --glyph-stroke: rgb(0 0 0 / 0.38);
+  --scroll-thumb: rgb(0 0 0 / 0.22);
+  --shadow-flyout: 0 8px 28px rgb(0 0 0 / 0.14), 0 2px 6px rgb(0 0 0 / 0.06);
+  --fallback-bg: radial-gradient(1200px 600px at 15% -10%, #dfe6f5, transparent 70%), #eceff4;
+  --tip: rgb(252 252 253 / 0.96);
+  --fresh: color-mix(in srgb, var(--net) 16%, transparent);
+
+  /* Motion: Fluent's curves and the app's three speeds. */
+  --ease-out: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --ease-in: cubic-bezier(0.7, 0, 1, 0.5);
+  --ease-move: cubic-bezier(0.33, 0, 0.1, 1);
+  --t-fast: 83ms;
+  --t-med: 167ms;
+  --t-slow: 250ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #4cc2ff;
+    --on-accent: #00213b;
+    --ink: #f1f2f6;
+    --ink-2: #a9adbb;
+    --ink-3: #6f7384;
+    --layer: rgb(255 255 255 / 0.035);
+    --layer-strong: rgb(255 255 255 / 0.06);
+    --hover: rgb(255 255 255 / 0.045);
+    --press: rgb(255 255 255 / 0.03);
+    --stroke: rgb(255 255 255 / 0.07);
+    --stroke-strong: rgb(255 255 255 / 0.12);
+    --control: rgb(255 255 255 / 0.06);
+    --control-hover: rgb(255 255 255 / 0.085);
+    --control-checked: rgb(255 255 255 / 0.12);
+    --flyout: rgb(40 41 48 / 0.92);
+    --scrim: rgb(0 0 0 / 0.45);
+    --cpu: #46cff4;
+    --cpu-e: #8eb2ff;
+    --mem: #9b8cff;
+    --io: #f4b446;
+    --net: #4fd18b;
+    --gpu: #ff7aa8;
+    --bat: #b6dc4b;
+    --heat-rgb: 244 170 60;
+    --danger: #ff6a5c;
+    --on-danger: #2a0400;
+    --glyph-bg: rgb(255 255 255 / 0.05);
+    --glyph-stroke: rgb(255 255 255 / 0.42);
+    --scroll-thumb: rgb(255 255 255 / 0.2);
+    --shadow-flyout: 0 12px 32px rgb(0 0 0 / 0.42), 0 2px 8px rgb(0 0 0 / 0.25);
+    --fallback-bg: radial-gradient(1200px 600px at 15% -10%, #2b2742, transparent 70%), #1c1d24;
+    --tip: rgb(44 45 52 / 0.96);
+    --fresh: color-mix(in srgb, var(--net) 14%, transparent);
+  }
+}
+
+/* ---- Base ------------------------------------------------------------------ */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--fallback-bg);
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Inside Tauri the window itself paints Mica. */
+html.tauri body {
+  background: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+.selectable {
+  user-select: text;
+  cursor: text;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Shell ----------------------------------------------------------------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-top: 4px;
+}
+
+.app > .page {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- Vitals band: the one loud element ------------------------------------- */
+
+.vitals {
+  display: grid;
+  grid-template-columns: 1.3fr repeat(4, 1fr);
+  flex: none;
+  height: 128px;
+  margin: 0 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--layer);
+}
+
+.vitals.no-gpu {
+  grid-template-columns: 1.3fr repeat(3, 1fr);
+}
+
+/* No overflow clip on the band (nor on any rounded box around a chart):
+   clipping moving traces to rounded corners costs the compositor a masked pass
+   per trace on every frame (measured: two thirds of the cost of animating the
+   logical processor grid). The end segments round their own corners and keep
+   their traces clear of the curve instead. */
+.vital:first-child {
+  border-radius: 7px 0 0 7px;
+}
+
+.vital:last-child {
+  border-radius: 0 7px 7px 0;
+}
+
+.vital:first-child .vital-trace {
+  left: 4px;
+}
+
+.vital:last-child .vital-trace {
+  right: 4px;
+}
+
+.vital {
+  position: relative;
+  min-width: 0;
+  padding: 11px 16px 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  transition: background-color var(--t-fast) linear;
+}
+
+.vital:hover {
+  background: var(--hover);
+}
+
+.vital:active {
+  background: var(--press);
+}
+
+.vital:focus-visible {
+  outline-offset: -2px;
+}
+
+.vital + .vital {
+  border-left: 1px solid var(--stroke);
+}
+
+.vital-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vital-label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.vital-figure {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: -2px;
+  white-space: nowrap;
+}
+
+.vital-value {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 330;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.vital-unit {
+  margin-left: 2px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.vital-sub {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+
+.vital-sub b {
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.vital-trace {
+  position: absolute;
+  inset: 62px 0 0;
+}
+
+/* Per-core load, one bar per logical processor. */
+.comb {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 26px;
+}
+
+.comb span {
+  position: relative;
+  width: 4px;
+  height: 100%;
+  border-radius: 1.5px;
+  background: color-mix(in srgb, var(--cpu) 14%, transparent);
+}
+
+/* The fill is a real element (not ::after) so its animation runs on the
+   compositor, and it rounds its own corners: a rounded overflow clip on the
+   bar would cost a masked pass per bar on every frame. */
+.comb i {
+  position: absolute;
+  inset: 0;
+  border-radius: 1.5px;
+  background: var(--cpu);
+  transform: scaleY(0);
+  transform-origin: bottom;
+  will-change: transform;
+}
+
+/* ---- Toolbar --------------------------------------------------------------- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.search {
+  position: relative;
+  flex: 0 1 360px;
+}
+
+.search > svg {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+.search input {
+  width: 100%;
+  height: 32px;
+  padding: 0 34px 0 34px;
+  border: 1px solid var(--stroke);
+  border-bottom-color: var(--stroke-strong);
+  border-radius: 4px;
+  outline: none;
+  background: var(--control);
+  font: inherit;
+  color: var(--ink);
+}
+
+.search input::placeholder {
+  color: var(--ink-3);
+}
+
+.search input:hover {
+  background: var(--control-hover);
+}
+
+.search input:focus {
+  border-bottom: 2px solid var(--accent);
+  background: var(--layer-strong);
+}
+
+.search .clear {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.segmented {
+  position: relative;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer);
+}
+
+.segmented button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-2);
+  transition:
+    background-color var(--t-fast) linear,
+    color var(--t-fast) linear;
+}
+
+.segmented button:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: transparent;
+  color: var(--ink);
+}
+
+/* The pressed option's surface slides between options (see Indicator.tsx). */
+.seg-thumb {
+  border-radius: 4px;
+  background: var(--control-checked);
+  box-shadow:
+    0 0 0 1px var(--stroke),
+    0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--stroke);
+  border-bottom-color: var(--stroke-strong);
+  border-radius: 4px;
+  background: var(--control);
+  white-space: nowrap;
+  transition:
+    background-color var(--t-fast) linear,
+    color var(--t-fast) linear,
+    filter var(--t-fast) linear;
+}
+
+.btn:hover {
+  background: var(--control-hover);
+}
+
+.btn:active {
+  background: var(--press);
+  color: var(--ink-2);
+}
+
+.btn[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.btn.icon {
+  width: 32px;
+  padding: 0;
+}
+
+.btn.ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn.ghost:hover {
+  background: var(--hover);
+}
+
+.btn.small {
+  height: 24px;
+  padding: 0 8px;
+}
+
+.btn.small.icon {
+  width: 24px;
+  padding: 0;
+}
+
+.btn.accent {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn.danger {
+  border-color: transparent;
+  background: var(--danger);
+  color: var(--on-danger);
+}
+
+.btn.accent:hover,
+.btn.danger:hover {
+  filter: brightness(1.08);
+}
+
+.select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--stroke);
+  border-bottom-color: var(--stroke-strong);
+  border-radius: 4px;
+  background: var(--control);
+  font: inherit;
+  color: var(--ink);
+}
+
+.select option {
+  background: Canvas;
+  color: CanvasText;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.badge.elevated {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+
+/* ---- Process table --------------------------------------------------------- */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 0;
+  margin: 0 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--layer);
+}
+
+.table {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 72px 70px 96px 92px 62px 76px;
+}
+
+.thead {
+  padding: 4px 14px 4px 4px; /* right side matches the scrollbar gutter */
+  border-bottom: 1px solid var(--stroke);
+}
+
+.th {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  min-width: 0;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: right;
+  transition: background-color var(--t-fast) linear;
+}
+
+.th:hover {
+  background: var(--hover);
+}
+
+.th:active {
+  background: var(--press);
+}
+
+.th.left {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.th-total {
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1.25;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.th-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.th.sorted .th-label {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tbody {
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  outline: none;
+}
+
+.tbody::-webkit-scrollbar {
+  width: 10px;
+}
+
+.tbody::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background: var(--scroll-thumb);
+  background-clip: padding-box;
+}
+
+.tbody::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+}
+
+.row {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  right: 4px;
+  height: 30px;
+  align-items: center;
+  border-radius: 4px;
+  contain: layout style;
+  transition:
+    background-color var(--t-fast) linear,
+    opacity var(--t-med) linear;
+}
+
+.row:hover {
+  background: var(--hover);
+}
+
+/* A process that just started: tinted for a few samples, then fading out in
+   six steps (the transition repaints the row, so it stays short and coarse). */
+.row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: -1;
+  background: var(--fresh);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.row::after {
+  transition: opacity 400ms steps(6, end);
+}
+
+.row.fresh::after {
+  opacity: 1;
+  transition: none;
+}
+
+/* Ending: the click shows at once, the row leaves with the next sample. */
+.row.ending {
+  opacity: 0.4;
+}
+
+.row.selected {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.row.selected::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.table:focus-visible {
+  outline-offset: -2px;
+}
+
+.table:focus-visible .row.selected {
+  outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cell.dim {
+  color: var(--ink-3);
+}
+
+/* Load heat: only appears when there is real load, so idle rows stay calm. */
+.cell.heat {
+  background: rgb(var(--heat-rgb) / calc(var(--h, 0) * 0.34));
+}
+
+.cell.name {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.row.suspended .cell.name .label {
+  color: var(--ink-2);
+}
+
+.twisty {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: -4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-2);
+}
+
+.twisty:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.twisty svg {
+  transition: transform var(--t-med) var(--ease-move);
+}
+
+.twisty[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.twisty-spacer {
+  flex: none;
+  width: 14px;
+}
+
+.picon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row.group .label {
+  font-weight: 600;
+}
+
+.detail {
+  overflow: hidden;
+  color: var(--ink-3);
+  text-overflow: ellipsis;
+}
+
+.count {
+  flex: none;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 17px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.tag {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  color: var(--ink-2);
+}
+
+/* ---- Details panel --------------------------------------------------------- */
+
+.details {
+  display: flex;
+  flex-direction: column;
+  width: 348px;
+  min-height: 0;
+  border-left: 1px solid var(--stroke);
+  /* The workspace does not clip (see .vitals), so the panel rounds its own corners. */
+  border-radius: 0 7px 7px 0;
+  background: var(--layer);
+  animation: panel-in var(--t-slow) var(--ease-out);
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.details-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  overflow-y: auto;
+}
+
+.details-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.details-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--scroll-thumb);
+  background-clip: padding-box;
+}
+
+.details-head {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.details-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.details-subtitle {
+  margin-top: 2px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.mini-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.mini-chart {
+  position: relative;
+  height: 74px;
+  padding: 8px 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+}
+
+.mini-chart .vital-label,
+.mini-chart .mini-value {
+  position: relative;
+  z-index: 1;
+}
+
+.mini-value {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-chart .trace {
+  position: absolute;
+  inset: 34px 2px 2px; /* clear of the rounded corners */
+}
+
+.section-title {
+  margin: 20px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--ink-2);
+}
+
+.facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-align: left;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.code {
+  padding: 8px 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.path-row {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.path-row .code {
+  flex: 1;
+  min-width: 0;
+}
+
+.note {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--hover);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.note svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.details-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--stroke);
+}
+
+.details-actions .btn {
+  flex: 1;
+}
+
+/* ---- Status bar ------------------------------------------------------------ */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 6px 16px 8px;
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.statusbar b {
+  font-weight: 400;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.statusbar .spacer {
+  flex: 1;
+}
+
+.live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--cpu);
+  vertical-align: 1px;
+}
+
+.live-dot.paused {
+  background: var(--ink-3);
+}
+
+/* ---- Flyouts: menu, dialog, toasts ----------------------------------------- */
+
+.menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 8px;
+  background: var(--flyout);
+  box-shadow: var(--shadow-flyout);
+  backdrop-filter: blur(30px) saturate(1.3);
+  transform-origin: var(--origin, top left);
+  animation: flyout-in var(--t-med) var(--ease-out);
+}
+
+@keyframes flyout-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+.menu.leaving {
+  pointer-events: none;
+  animation: fade-out var(--t-fast) linear forwards;
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  transition: background-color var(--t-fast) linear;
+}
+
+.menu-item:active {
+  background: var(--press);
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  outline: none;
+  background: var(--hover);
+}
+
+.menu-item:disabled {
+  color: var(--ink-3);
+}
+
+.menu-item.danger {
+  color: var(--danger);
+}
+
+.menu-item .hint {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--stroke);
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: var(--scrim);
+  animation: fade-in var(--t-med) linear;
+}
+
+.scrim.leaving {
+  pointer-events: none;
+  animation: fade-out var(--t-med) var(--ease-in) forwards;
+}
+
+.scrim.leaving .dialog {
+  animation: dialog-out var(--t-med) var(--ease-in) forwards;
+}
+
+@keyframes dialog-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 8px;
+  background: var(--flyout);
+  box-shadow: var(--shadow-flyout);
+  backdrop-filter: blur(30px);
+  animation: dialog-in var(--t-slow) var(--ease-out);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+
+.dialog-body {
+  padding: 22px 24px 20px;
+}
+
+.dialog-title {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.dialog-text {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--stroke);
+  background: var(--layer);
+}
+
+.dialog-footer .btn {
+  min-width: 96px;
+}
+
+.toasts {
+  position: fixed;
+  right: 20px;
+  bottom: 40px;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(380px, calc(100vw - 40px));
+}
+
+.toast {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 8px 10px 12px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 8px;
+  background: var(--flyout);
+  box-shadow: var(--shadow-flyout);
+  backdrop-filter: blur(30px);
+  animation: toast-in var(--t-slow) var(--ease-out);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.toast.leaving {
+  pointer-events: none;
+  animation: toast-out var(--t-med) var(--ease-in) forwards;
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+.toast > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.toast.error > svg {
+  color: var(--danger);
+}
+
+.toast.success > svg {
+  color: var(--accent);
+}
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Interface motion off (Settings, or Windows' "Animation effects" off). */
+html.still *,
+html.still *::before,
+html.still *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+/* ---- Charts ---------------------------------------------------------------- */
+
+.chart {
+  overflow: hidden;
+  contain: strict;
+}
+
+/* The canvas and hover markers move together, as one compositor layer. */
+.chart-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  will-change: transform;
+}
+
+.chart-track > canvas {
+  display: block;
+}
+
+.chart-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--ink) 30%, transparent);
+  pointer-events: none;
+}
+
+.chart-dot {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--tip);
+  border-radius: 50%;
+  background: var(--dot);
+  pointer-events: none;
+}
+
+.chart-tip {
+  position: absolute;
+  top: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 6px;
+  background: var(--tip);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.chart-tip-time {
+  color: var(--ink-2);
+}
+
+.chart-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-tip-row i {
+  width: 12px;
+  border-top: 2px solid var(--dot);
+}
+
+.chart-tip-row i.dashed {
+  border-top-style: dashed;
+}
+
+.chart-tip-row b {
+  margin-left: auto;
+  padding-left: 8px;
+  font-weight: 600;
+}
+
+/* ---- Progress -------------------------------------------------------------- */
+
+.spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* Fluent's indeterminate bar: a short segment sweeping across a hairline track. */
+.progress {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.progress::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: sweep 1.4s var(--ease-move) infinite;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}

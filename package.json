@@ -1,0 +1,31 @@
+{
+  "name": "argus",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "app": "tauri dev --config src-tauri/tauri.dev.conf.json --additional-watch-folders crates",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ui",
+    "format": "biome format --write ui",
+    "check": "pnpm typecheck && pnpm lint && cargo fmt --all --check && cargo clippy --workspace --all-targets --target-dir target/rust-analyzer -- -D warnings",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tanstack/solid-virtual": "^3.13.40",
+    "@tauri-apps/api": "^2.12.2",
+    "solid-js": "^1.9.17"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.12.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-solid": "^2.11.14"
+  }
+}

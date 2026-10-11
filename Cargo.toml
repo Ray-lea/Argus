@@ -1,0 +1,86 @@
+[workspace]
+resolver = "3"
+members = ["crates/argus-core", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Argus contributors"]
+
+[workspace.dependencies]
+# One feature set for every build. Cargo unifies features only across the
+# packages selected for a build, so `cargo run -p argus-core --example ...`
+# used to compile a second ~250 MB copy of `windows` without the features
+# tauri/tao/wry/webview2-com enable. This list is the union of ours and theirs;
+# check it with `cargo tree -p argus -i windows -e features` after upgrading Tauri.
+windows = { version = "0.62.2", features = [
+  # argus-core and the host
+  "UI_ViewManagement",
+  "Wdk_Graphics_Direct3D",
+  "Wdk_System_SystemInformation",
+  "Wdk_System_Threading",
+  "Win32_Devices_DeviceAndDriverInstallation",
+  "Win32_Devices_Display",
+  "Win32_Graphics_Gdi",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Environment",
+  "Win32_System_IO",
+  "Win32_System_Ioctl",
+  "Win32_System_Performance",
+  "Win32_System_Power",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Registry",
+  "Win32_System_RestartManager",
+  "Win32_System_Services",
+  "Win32_System_SystemInformation",
+  "Win32_System_SystemServices",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+  # enabled by tauri, tao, wry and webview2-com
+  "Win32_Devices_HumanInterfaceDevice",
+  "Win32_Globalization",
+  "Win32_Graphics_Dwm",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_DataExchange",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_System_Variant",
+  "Win32_System_WinRT",
+  "Win32_System_WindowsProgramming",
+  "Win32_UI_Accessibility",
+  "Win32_UI_Controls",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_Ime",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Input_Pointer",
+  "Win32_UI_Input_Touch",
+  "Win32_UI_TextServices",
+] }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
+panic = "abort"
+strip = true
+
+# Debug builds: keep backtraces readable but skip full debuginfo, which made
+# the dev exe ~250 MB and dominated target/ size and link time. For stepping
+# through code in a debugger, build with CARGO_PROFILE_DEV_DEBUG=full.
+[profile.dev]
+debug = "line-tables-only"
+
+# Dependencies are compiled once and cached: optimize them so the dev app is
+# responsive, and drop their debuginfo entirely.
+[profile.dev.package."*"]
+opt-level = 2
+debug = false

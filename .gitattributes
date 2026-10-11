@@ -1,0 +1,7 @@
+# Biome formats to LF and `pnpm check` fails on CRLF files, so text files stay
+# LF in the working tree whatever core.autocrlf says.
+* text=auto eol=lf
+
+# cmd.exe mis-parses labels in LF-only batch files.
+*.bat text eol=crlf
+*.cmd text eol=crlf

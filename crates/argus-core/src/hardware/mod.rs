@@ -1,0 +1,89 @@
+//! Device-level telemetry for the performance view: CPU identity, clocks,
+//! temperature and power, memory modules, physical disks, network adapters,
+//! GPUs and batteries.
+
+mod battery;
+mod cpu;
+mod disk;
+mod gpu;
+mod memory;
+mod net;
+mod registry;
+mod sensors;
+
+use std::sync::Arc;
+
+use serde::Serialize;
+
+pub use battery::{BatteryInfo, BatteryStats};
+pub use cpu::{CpuInfo, CpuThread};
+pub use disk::{DiskInfo, DiskStats};
+pub use gpu::{GpuInfo, GpuStats};
+pub use memory::MemoryInfo;
+pub use net::{NicInfo, NicStats};
+pub use sensors::{CpuPower, ThermalZone};
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Hardware {
+    pub cpu: Arc<CpuInfo>,
+    /// Effective clock in MHz (base clock scaled by current performance).
+    pub cpu_mhz: Option<u32>,
+    /// Per logical processor, MHz; empty when Windows does not publish it.
+    pub core_mhz: Vec<u32>,
+    /// ACPI thermal zones; on most laptops one of them tracks the CPU package.
+    pub thermal: Vec<ThermalZone>,
+    pub power: CpuPower,
+    pub memory: Arc<MemoryInfo>,
+    pub disks: Vec<DiskStats>,
+    pub nics: Vec<NicStats>,
+    pub gpus: Vec<GpuStats>,
+    pub batteries: Vec<BatteryStats>,
+}
+
+pub(crate) struct HardwareTracker {
+    cpu: Arc<CpuInfo>,
+    sensors: Option<sensors::Sensors>,
+    memory: Arc<MemoryInfo>,
+    disks: disk::DiskTracker,
+    nics: net::NicTracker,
+    gpus: gpu::GpuTracker,
+    batteries: battery::BatteryTracker,
+}
+
+impl HardwareTracker {
+    pub fn new() -> Self {
+        let cpu = cpu::cpu_info();
+        let mut t = Self {
+            sensors: sensors::Sensors::new(cpu.base_mhz),
+            cpu: Arc::new(cpu),
+            memory: Arc::new(memory::memory_info()),
+            disks: disk::DiskTracker::new(),
+            nics: net::NicTracker::new(),
+            gpus: gpu::GpuTracker::new(),
+            batteries: battery::BatteryTracker::new(),
+        };
+        t.sample(); // establish baselines for rates
+        t
+    }
+
+    pub fn sample(&mut self) -> Hardware {
+        let sensed = self
+            .sensors
+            .as_mut()
+            .map(|s| s.sample())
+            .unwrap_or_default();
+        Hardware {
+            cpu: self.cpu.clone(),
+            cpu_mhz: sensed.cpu_mhz,
+            core_mhz: sensed.core_mhz,
+            thermal: sensed.thermal,
+            power: sensed.power,
+            memory: self.memory.clone(),
+            disks: self.disks.sample(),
+            nics: self.nics.sample(),
+            gpus: self.gpus.sample(),
+            batteries: self.batteries.sample(),
+        }
+    }
+}

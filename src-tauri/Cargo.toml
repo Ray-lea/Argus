@@ -1,0 +1,25 @@
+[package]
+name = "argus"
+description = "Argus — a fast, modern task manager for Windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "argus_lib"
+
+[dependencies]
+argus-core = { path = "../crates/argus-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+webview2-com = "0.39"
+windows = { workspace = true }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

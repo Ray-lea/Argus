@@ -1,0 +1,29 @@
+//! Argus core: system data collection and process control for Windows.
+//!
+//! This crate is deliberately UI-agnostic. Everything here can later move into
+//! a privileged service process and be driven over IPC without changes to the
+//! data model.
+
+#![cfg(windows)]
+
+pub mod actions;
+pub mod collector;
+pub mod connections;
+pub mod details;
+pub mod filelock;
+pub mod hardware;
+pub mod meta;
+mod nt;
+mod paths;
+pub mod privilege;
+pub mod process;
+pub mod services;
+pub mod startup;
+pub mod system;
+pub mod theme;
+mod util;
+
+pub use collector::{Collector, Snapshot};
+pub use meta::MetaStore;
+pub use process::ProcessRow;
+pub use system::SystemStats;

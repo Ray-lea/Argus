@@ -1,0 +1,613 @@
+/* Page tabs, performance page and settings page. Tokens live in styles.css. */
+
+/* ---- Page tabs ------------------------------------------------------------- */
+
+.tabs {
+  position: relative;
+  display: flex;
+  gap: 2px;
+}
+
+.tabs button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-2);
+  transition:
+    background-color var(--t-fast) linear,
+    color var(--t-fast) linear;
+}
+
+.tabs button:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.tabs button:active {
+  background: var(--press);
+}
+
+.tabs button[aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Reserve the semibold width so selecting a tab never shifts its neighbours. */
+.tab-text {
+  display: inline-grid;
+}
+
+.tab-text::after {
+  content: attr(data-text);
+  height: 0;
+  overflow: hidden;
+  font-weight: 600;
+  visibility: hidden;
+}
+
+/* The selection mark slides to the chosen tab (see Indicator.tsx). */
+.tab-mark {
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--stroke-strong);
+}
+
+/* Each page's own controls; they fade in as the page arrives. */
+.page-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: fade-in var(--t-slow) linear;
+}
+
+/* The processes page: vitals band above the table. */
+.proc-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.proc-page > .workspace {
+  flex: 1;
+}
+
+/* ---- Performance page ------------------------------------------------------ */
+
+.perf {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 12px;
+  margin: 0 12px;
+}
+
+.dev-list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.dev {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  transition: background-color var(--t-fast) linear;
+}
+
+.dev:hover {
+  background: var(--hover);
+}
+
+.dev[aria-current="true"]:hover {
+  background: transparent;
+}
+
+/* The selected device: a raised surface with an accent pill, sliding between items. */
+.dev-mark {
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer-strong);
+}
+
+.dev-mark::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 18px;
+  margin-top: -9px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.dev-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-sub {
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-trace {
+  position: relative;
+  height: 40px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  border-radius: 3px;
+}
+
+.dev-trace > div {
+  position: absolute;
+  inset: 0;
+}
+
+.perf-detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--layer);
+}
+
+/* Scrolls inside the rounded card rather than being it: a rounded scroll
+   container would clip every moving chart through a mask (see .vitals). */
+.perf-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+
+.perf-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.perf-scroll::-webkit-scrollbar-track {
+  margin: 8px 0;
+}
+
+.perf-scroll::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background: var(--scroll-thumb);
+  background-clip: padding-box;
+}
+
+.perf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.perf-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.perf-model {
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: 15px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perf-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: -6px 0 8px;
+}
+
+.chart-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 2px 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Grid lines are a static CSS background; only the trace repaints per tick. */
+.chart-frame {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  border-radius: 4px;
+  background-image:
+    linear-gradient(to bottom, color-mix(in srgb, var(--c) 13%, transparent) 1px, transparent 1px),
+    linear-gradient(to right, color-mix(in srgb, var(--c) 13%, transparent) 1px, transparent 1px);
+  background-size:
+    100% 25%,
+    calc(100% / 6) 100%;
+}
+
+.chart-frame > div {
+  position: absolute;
+  inset: 0;
+}
+
+/* Chart heights follow the window so the performance page uses its space. */
+.chart-frame.main {
+  height: clamp(260px, 44vh, 640px);
+}
+
+.chart-frame.half {
+  height: clamp(150px, 24vh, 340px);
+}
+
+.chart-frame.small {
+  height: clamp(110px, 16vh, 220px);
+}
+
+.chart-frame.core-cell {
+  height: clamp(80px, 12vh, 150px);
+}
+
+.chart-frame.engine-cell {
+  height: clamp(100px, 15vh, 190px);
+}
+
+.chart-cell-label {
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  z-index: 1;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-cell-label b {
+  margin-left: 4px;
+  color: var(--ink);
+  font-weight: 400;
+}
+
+/* P / E tag on a logical processor. */
+.core-kind {
+  display: inline-block;
+  min-width: 14px;
+  margin-right: 5px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--c) 22%, transparent);
+  color: var(--ink);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
+
+.chart-cell-note {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  z-index: 1;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-grid.cores {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.perf-note {
+  max-width: 72ch;
+  margin: 18px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+}
+
+.chart-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.legend span::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  margin-right: 6px;
+  border-top: 2px solid var(--c);
+  vertical-align: 3px;
+}
+
+.legend .dashed::before {
+  border-top-style: dashed;
+}
+
+.perf-stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 28px;
+  margin-top: 20px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 14px 20px;
+  align-content: start;
+}
+
+.stat-label {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stat-value small {
+  margin-left: 2px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.info-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 20px;
+  align-content: start;
+  margin: 0;
+}
+
+.info-list dt {
+  color: var(--ink-2);
+}
+
+.info-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.mem-bar {
+  position: relative;
+  height: 28px;
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--mem) 45%, transparent);
+  border-radius: 4px;
+}
+
+/* Each fill is a full-width layer scaled (and for "cached", moved past
+   "used"), so an update costs no layout. */
+.mem-bar > span {
+  position: absolute;
+  inset: 0;
+  transform: translateX(calc(var(--u, 0) * 100%)) scaleX(var(--f, 0));
+  transform-origin: left;
+}
+
+.mem-bar .used {
+  background: color-mix(in srgb, var(--mem) 55%, transparent);
+}
+
+.mem-bar .cached {
+  background: color-mix(in srgb, var(--mem) 20%, transparent);
+}
+
+.mem-legend {
+  display: flex;
+  gap: 18px;
+  margin-top: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.mem-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.section-gap {
+  margin-top: 18px;
+}
+
+/* ---- Settings page --------------------------------------------------------- */
+
+.settings {
+  margin: 0 12px;
+  overflow-y: auto;
+}
+
+.settings-inner {
+  max-width: 760px;
+  padding: 8px 4px 24px;
+}
+
+.settings h2 {
+  margin: 20px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings h2:first-child {
+  margin-top: 4px;
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 64px;
+  padding: 12px 16px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer);
+}
+
+.setting + .setting {
+  margin-top: 4px;
+}
+
+.setting-text {
+  min-width: 0;
+}
+
+.setting-desc {
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.setting-error {
+  margin-top: 4px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.setting-control {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.keycaps {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.keycaps kbd,
+.keycaps .pending {
+  padding: 2px 8px;
+  border: 1px solid var(--stroke-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--control);
+  font: inherit;
+  font-size: 12px;
+}
+
+.keycaps .pending {
+  border-style: dashed;
+  color: var(--ink-2);
+}
+
+/* Win11-style toggle switch. */
+.switch {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  border: 1px solid var(--ink-2);
+  border-radius: 10px;
+  background: transparent;
+  transition:
+    background-color var(--t-fast) linear,
+    border-color var(--t-fast) linear;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  transition:
+    transform var(--t-med) var(--ease-move),
+    width var(--t-fast) var(--ease-move),
+    height var(--t-fast) var(--ease-move),
+    top var(--t-fast) var(--ease-move),
+    left var(--t-fast) var(--ease-move);
+}
+
+.switch:hover::after {
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+}
+
+.switch:active::after {
+  width: 17px;
+}
+
+.switch[aria-checked="true"]:active::after {
+  transform: translateX(17px);
+}
+
+.switch[aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.switch[aria-checked="true"]::after {
+  background: var(--on-accent);
+  transform: translateX(20px);
+}
+
+.switch-label {
+  min-width: 2.5em;
+  color: var(--ink-2);
+  text-align: right;
+}

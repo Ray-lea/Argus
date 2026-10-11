@@ -1,0 +1,18 @@
+# Rust
+/target/
+
+# Node / Vite
+node_modules/
+/dist/
+*.local
+
+# Tauri
+/src-tauri/gen/schemas/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db

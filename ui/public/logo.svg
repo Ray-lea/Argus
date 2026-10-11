@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="t">
+  <title id="t">Argus</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#232a52"/>
+      <stop offset="1" stop-color="#0a0d1a"/>
+    </linearGradient>
+    <linearGradient id="lid" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#62e6ff"/>
+      <stop offset="1" stop-color="#8a72ff"/>
+    </linearGradient>
+    <radialGradient id="iris" cx="0.42" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#a8f3ff"/>
+      <stop offset="0.55" stop-color="#3f9bff"/>
+      <stop offset="1" stop-color="#5a46e0"/>
+    </radialGradient>
+    <clipPath id="eye">
+      <path d="M176 512C296 330 728 330 848 512C728 694 296 694 176 512Z"/>
+    </clipPath>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="216" fill="url(#bg)"/>
+  <g clip-path="url(#eye)">
+    <circle cx="512" cy="512" r="150" fill="url(#iris)"/>
+    <circle cx="512" cy="512" r="150" fill="none" stroke="#0a0d1a" stroke-opacity=".35" stroke-width="18" stroke-dasharray="22 14"/>
+    <circle cx="512" cy="512" r="62" fill="#0a0d1a"/>
+    <circle cx="556" cy="468" r="24" fill="#fff" fill-opacity=".92"/>
+  </g>
+  <path d="M176 512C296 330 728 330 848 512C728 694 296 694 176 512Z" fill="none" stroke="url(#lid)" stroke-width="52" stroke-linejoin="round"/>
+</svg>

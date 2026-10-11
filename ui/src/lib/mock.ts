@@ -1,0 +1,697 @@
+// Synthetic data for running the UI in a plain browser (`pnpm dev`).
+// Never bundled into the Tauri build's hot path: ipc.ts only imports it outside Tauri.
+
+import type {
+  AppInfo,
+  Connection,
+  CpuInfo,
+  DiskInfo,
+  GpuInfo,
+  Hardware,
+  LockReport,
+  NicInfo,
+  ProcessDetails,
+  ProcessRow,
+  ServiceInfo,
+  SettingsView,
+  Snapshot,
+  StartupItem,
+  TreeKillReport,
+} from "./types";
+
+const MB = 1024 * 1024;
+const GB = 1024 * MB;
+const CORES = 16;
+const BOOT = Date.now() - (5 * 86400 + 14 * 3600) * 1000;
+
+interface MockProc extends ProcessRow {
+  load: number;
+  baseMem: number;
+  ioLevel: number;
+}
+
+const procs: MockProc[] = [];
+let nextPid = 600;
+
+function add(
+  name: string,
+  description: string | null,
+  company: string | null,
+  o: { ppid?: number; mem?: number; load?: number; io?: number; pid?: number; dir?: string } = {},
+): MockProc {
+  if (o.pid === undefined) nextPid += 4 + Math.floor(Math.random() * 300);
+  const pid = o.pid ?? nextPid;
+  const p: MockProc = {
+    pid,
+    ppid: o.ppid ?? 0,
+    createTime: BOOT + procs.length * 900 + Math.floor(Math.random() * 600),
+    name,
+    path: description === null ? null : `${o.dir ?? "C:\\Program Files\\App"}\\${name}`,
+    description,
+    company,
+    icon: null,
+    cpu: 0,
+    cpuTime: Math.floor(Math.random() * 3_600_000),
+    privateWs: 0,
+    workingSet: 0,
+    commit: 0,
+    ioRead: 0,
+    ioWrite: 0,
+    ioOther: 0,
+    threads: 4 + Math.floor(Math.random() * 40),
+    handles: 120 + Math.floor(Math.random() * 1500),
+    sessionId: 1,
+    basePriority: 8,
+    suspended: false,
+    load: o.load ?? 0,
+    baseMem: (o.mem ?? 8) * MB,
+    ioLevel: o.io ?? 0,
+  };
+  procs.push(p);
+  return p;
+}
+
+function seed() {
+  const sys32 = "C:\\Windows\\System32";
+  const ms = "Microsoft Corporation";
+  const system = add("System", null, null, { pid: 4, mem: 0.1, load: 0.4, io: 2 });
+  add("Registry", null, null, { ppid: system.pid, mem: 60 });
+  add("Memory Compression", null, null, { ppid: system.pid, mem: 780 });
+  add("smss.exe", "Windows 会话管理器", ms, { ppid: system.pid, mem: 1, dir: sys32 });
+  add("csrss.exe", "客户端服务器运行时进程", ms, { mem: 2, dir: sys32 });
+  const wininit = add("wininit.exe", "Windows 启动应用程序", ms, { mem: 1.5, dir: sys32 });
+  const services = add("services.exe", "服务和控制器应用", ms, { ppid: wininit.pid, mem: 9, dir: sys32 });
+  add("lsass.exe", "Local Security Authority Process", ms, { ppid: wininit.pid, mem: 14, dir: sys32 });
+  for (let i = 0; i < 46; i++) {
+    add("svchost.exe", "Windows 服务主进程", ms, {
+      ppid: services.pid,
+      mem: 2 + Math.random() * 40,
+      load: Math.random() < 0.1 ? 0.3 : 0,
+      io: Math.random() < 0.1 ? 1 : 0,
+      dir: sys32,
+    });
+  }
+  add("dwm.exe", "桌面窗口管理器", ms, { mem: 140, load: 1.4, dir: sys32 });
+  const explorer = add("explorer.exe", "Windows 资源管理器", ms, { mem: 320, load: 0.4, dir: "C:\\Windows" });
+  add("SearchHost.exe", "搜索", ms, { mem: 110, dir: "C:\\Windows\\SystemApps" });
+
+  const chrome = add("chrome.exe", "Google Chrome", "Google LLC", {
+    ppid: explorer.pid,
+    mem: 420,
+    load: 1.2,
+    io: 3,
+    dir: "C:\\Program Files\\Google\\Chrome\\Application",
+  });
+  for (let i = 0; i < 21; i++) {
+    add("chrome.exe", "Google Chrome", "Google LLC", {
+      ppid: chrome.pid,
+      mem: 30 + Math.random() * 380,
+      load: Math.random() < 0.25 ? 1.5 + Math.random() * 3 : 0.05,
+      io: Math.random() < 0.2 ? 2 : 0,
+      dir: "C:\\Program Files\\Google\\Chrome\\Application",
+    });
+  }
+  const code = add("Code.exe", "Visual Studio Code", ms, {
+    ppid: explorer.pid,
+    mem: 380,
+    load: 0.8,
+    dir: "C:\\Users\\me\\AppData\\Local\\Programs\\Microsoft VS Code",
+  });
+  for (let i = 0; i < 9; i++)
+    add("Code.exe", "Visual Studio Code", ms, { ppid: code.pid, mem: 40 + Math.random() * 300, load: 0.2 });
+  add("rust-analyzer.exe", "rust-analyzer", null, { ppid: code.pid, mem: 1900, load: 4, io: 4 });
+  add("node.exe", "Node.js JavaScript Runtime", "Node.js", { ppid: code.pid, mem: 160, load: 0.6 });
+  const cargo = add("cargo.exe", "cargo", null, { ppid: code.pid, mem: 60, load: 0.4, io: 2 });
+  add("rustc.exe", "rustc", null, { ppid: cargo.pid, mem: 1100, load: 22, io: 30 });
+  add("rustc.exe", "rustc", null, { ppid: cargo.pid, mem: 760, load: 14, io: 18 });
+
+  const qq = add("QQ.exe", "QQ", "Tencent", { ppid: explorer.pid, mem: 470, load: 0.3 });
+  for (let i = 0; i < 3; i++) add("QQ.exe", "QQ", "Tencent", { ppid: qq.pid, mem: 60 + Math.random() * 200 });
+  const wx = add("Weixin.exe", "微信", "Tencent", { ppid: explorer.pid, mem: 260, load: 0.2 });
+  for (let i = 0; i < 4; i++)
+    add("WeChatAppEx.exe", "WeChatAppEx", "Tencent", { ppid: wx.pid, mem: 50 + Math.random() * 120 });
+  const steam = add("steam.exe", "Steam", "Valve Corporation", {
+    ppid: explorer.pid,
+    mem: 180,
+    load: 0.2,
+    io: 1,
+  });
+  for (let i = 0; i < 5; i++)
+    add("steamwebhelper.exe", "Steam Client WebHelper", "Valve Corporation", {
+      ppid: steam.pid,
+      mem: 40 + Math.random() * 160,
+    });
+  const argus = add("argus.exe", "Argus", null, { ppid: explorer.pid, mem: 34, load: 0.3 });
+  for (let i = 0; i < 5; i++)
+    add("msedgewebview2.exe", "Microsoft Edge WebView2", ms, {
+      ppid: argus.pid,
+      mem: 20 + Math.random() * 60,
+      load: i === 0 ? 0.6 : 0,
+    });
+  add("Spotify.exe", "Spotify", "Spotify Ltd", { ppid: explorer.pid, mem: 210, load: 0.5, io: 1 });
+  add("Everything.exe", "Everything", "voidtools", { ppid: explorer.pid, mem: 350 });
+  const paused = add("Calculator.exe", "计算器", ms, { ppid: explorer.pid, mem: 38 });
+  paused.suspended = true;
+}
+
+let elapsed = 1;
+function tick(): Snapshot {
+  // Occasional short-lived processes, so arrivals and exits show up.
+  if (Math.random() < 0.15)
+    add("conhost.exe", "控制台窗口主进程", "Microsoft Corporation", { mem: 6, load: 0.5 });
+  if (Math.random() < 0.12) {
+    const i = procs.findIndex((p) => p.name === "conhost.exe");
+    if (i >= 0) procs.splice(i, 1);
+  }
+
+  let cpu = 0;
+  let mem = 0;
+  let io = 0;
+  for (const p of procs) {
+    const spike = Math.random() < 0.01 ? Math.random() * 6 : 0;
+    p.cpu = p.suspended ? 0 : Math.max(0, p.load * (0.5 + Math.random()) + spike);
+    p.cpuTime += p.cpu * elapsed * 10 * CORES;
+    p.privateWs = Math.max(0.1 * MB, p.baseMem * (0.97 + Math.random() * 0.06));
+    p.workingSet = p.privateWs * 1.4;
+    p.commit = p.privateWs * 1.2;
+    const level = p.ioLevel * MB * (Math.random() < 0.6 ? Math.random() : 0);
+    p.ioRead = level * 0.7;
+    p.ioWrite = level * 0.3;
+    p.ioOther = level > 0 ? 2048 : 0;
+    cpu += p.cpu;
+    mem += p.privateWs;
+    io += p.ioRead + p.ioWrite + p.ioOther;
+  }
+  cpu = Math.min(100, cpu);
+  const memTotal = 32 * GB;
+  const memUsed = Math.min(memTotal * 0.95, mem + 6 * GB);
+  return {
+    seq: Math.floor(elapsed++),
+    timestamp: Date.now(),
+    hardware: mockHardware(cpu, io),
+    system: {
+      cpu,
+      cpuKernel: cpu * (0.25 + Math.random() * 0.1),
+      cores: Array.from({ length: CORES }, () =>
+        Math.min(100, Math.max(0, cpu * (0.3 + Math.random() * 1.6))),
+      ),
+      logicalCpus: CORES,
+      memTotal,
+      memUsed,
+      memAvailable: memTotal - memUsed,
+      commitUsed: memUsed * 1.25,
+      commitLimit: memTotal * 1.5,
+      cached: 7.4 * GB,
+      kernelPaged: 640 * MB,
+      kernelNonpaged: 310 * MB,
+      processCount: procs.length,
+      threadCount: procs.reduce((a, p) => a + p.threads, 0),
+      handleCount: procs.reduce((a, p) => a + p.handles, 0),
+      uptimeMs: Date.now() - BOOT,
+      ioRead: io * 0.7,
+      ioWrite: io * 0.3,
+      ioOther: 0,
+    },
+    processes: procs.map(({ load: _l, baseMem: _b, ioLevel: _i, ...row }) => ({ ...row })),
+  };
+}
+
+const wave = (base: number, amp: number) => Math.max(0, base + (Math.random() - 0.5) * 2 * amp);
+const CPU_INFO: CpuInfo = {
+  name: "Mock Core i7-13700H",
+  baseMhz: 2400,
+  sockets: 1,
+  cores: 14,
+  performanceCores: 6,
+  efficiencyCores: 8,
+  logical: CORES,
+  l1: 1_228_800,
+  l2: 11_534_336,
+  l3: 25_165_824,
+  virtualization: true,
+  // 6 hyper-threaded P-cores, then 8 E-cores.
+  threads: Array.from({ length: CORES }, (_, i) =>
+    i < 12 ? { core: i >> 1, efficient: false } : { core: i - 6, efficient: true },
+  ),
+};
+const BATTERY_INFO = {
+  id: "0",
+  name: "CT-4410",
+  manufacturer: "Contoso",
+  serial: "0001",
+  chemistry: "LION",
+  designedCapacity: 80_000,
+  fullCapacity: 72_000,
+  cycleCount: 120,
+  manufactured: null,
+};
+let batteryPct = 84;
+const DISKS: DiskInfo[] = [
+  {
+    index: 0,
+    model: "Samsung SSD 990 PRO 2TB",
+    size: 2e12,
+    bus: "nvme",
+    ssd: true,
+    removable: false,
+    volumes: ["C:"],
+  },
+  {
+    index: 1,
+    model: "WDC WD40EZAZ-00SF3B0",
+    size: 4e12,
+    bus: "sata",
+    ssd: false,
+    removable: false,
+    volumes: ["D:", "E:"],
+  },
+];
+const NICS: NicInfo[] = [
+  {
+    id: "1",
+    name: "WLAN",
+    description: "Intel(R) Wi-Fi 6E AX211 160MHz",
+    kind: "wifi",
+    linkSpeed: 1_201_000_000,
+    // Locally administered MAC and documentation prefixes (RFC 3849): nothing real.
+    mac: "02-00-00-00-00-01",
+    ipv4: ["192.168.1.23"],
+    ipv6: ["2001:db8::a14", "fd00::51"],
+  },
+  {
+    id: "2",
+    name: "vEthernet (WSL)",
+    description: "Hyper-V Virtual Ethernet Adapter",
+    kind: "virtual",
+    linkSpeed: 10_000_000_000,
+    mac: null,
+    ipv4: ["172.25.80.1"],
+    ipv6: [],
+  },
+];
+const GPU_INFO: GpuInfo = {
+  id: "7001",
+  name: "NVIDIA GeForce RTX 4060 Laptop GPU",
+  dedicatedTotal: 8 * GB,
+  sharedTotal: 16 * GB,
+  engines: ["3D", "Copy", "Video Encode", "Video Decode", "Compute_0", "Security"],
+  temperatureMax: 105,
+};
+
+function mockHardware(cpu: number, io: number): Hardware {
+  const g3d = wave(28, 14);
+  batteryPct = Math.max(5, batteryPct - 0.02);
+  return {
+    cpu: CPU_INFO,
+    cpuMhz: Math.round(2400 * (1 + cpu / 120) + Math.random() * 300),
+    coreMhz: CPU_INFO.threads.map((t) => Math.round((t.efficient ? 2800 : 3500) + wave(0, 120))),
+    thermal: [{ name: "TZ01", celsius: wave(55 + cpu / 4, 1.5) }],
+    power: { package: wave(30 + cpu * 0.8, 3), cores: wave(22 + cpu * 0.7, 3), graphics: null, memory: null },
+    memory: {
+      installed: 32 * GB,
+      speed: 5600,
+      slotsUsed: 2,
+      slotsTotal: 2,
+      formFactor: "SODIMM",
+      kind: "DDR5",
+    },
+    disks: DISKS.map((info, i) => ({
+      info,
+      active: i === 0 ? Math.min(100, (io / (60 * MB)) * 100 + wave(2, 2)) : wave(1, 1),
+      read: i === 0 ? io * 0.7 : wave(20_000, 20_000),
+      write: i === 0 ? io * 0.3 : 0,
+      responseMs: i === 0 ? wave(0.3, 0.2) : wave(6, 3),
+      temperature: i === 0 ? wave(48, 1) : null,
+      temperatureWarning: i === 0 ? 90 : null,
+    })),
+    nics: NICS.map((info, i) => ({
+      info,
+      rx: i === 0 ? wave(2.4 * MB, 1.5 * MB) : wave(4_000, 4_000),
+      tx: i === 0 ? wave(320_000, 200_000) : wave(2_000, 2_000),
+    })),
+    gpus: [
+      {
+        info: GPU_INFO,
+        util: g3d,
+        engines: [g3d, wave(2, 2), wave(18, 6), 0, wave(4, 4), 0],
+        dedicatedUsed: wave(3.4 * GB, 0.05 * GB),
+        sharedUsed: wave(280 * MB, 10 * MB),
+        temperature: wave(52, 1.5),
+        fanRpm: null,
+        power: null,
+        clockMhz: Math.round(1800 + g3d * 12),
+        clockMaxMhz: 3105,
+        voltageMv: null,
+        memoryClockMhz: 7001,
+      },
+    ],
+    batteries: [
+      {
+        info: BATTERY_INFO,
+        percent: batteryPct,
+        capacity: Math.round((BATTERY_INFO.fullCapacity * batteryPct) / 100),
+        rate: -Math.round(wave(18_000, 4_000)),
+        voltage: Math.round(15_200 + batteryPct * 12),
+        state: "discharging",
+        pluggedIn: false,
+        critical: false,
+        remaining: Math.round((batteryPct / 100) * 3 * 3600),
+        temperature: null,
+      },
+    ],
+  };
+}
+
+const mockSettings: SettingsView = {
+  closeToTray: true,
+  hotkey: "Ctrl+Alt+Escape",
+  autostart: false,
+  hotkeyError: null,
+};
+
+export const settings = {
+  get: async (): Promise<SettingsView> => ({ ...mockSettings }),
+  update: async (patch: Partial<SettingsView>): Promise<SettingsView> => {
+    Object.assign(mockSettings, patch);
+    return { ...mockSettings };
+  },
+};
+
+let timer: ReturnType<typeof setInterval> | undefined;
+let interval = 1000;
+let isPaused = false;
+let listener: ((s: Snapshot) => void) | null = null;
+
+function restart() {
+  clearInterval(timer);
+  timer = setInterval(() => {
+    if (!isPaused && listener) listener(tick());
+  }, interval);
+}
+
+export async function subscribe(cb: (s: Snapshot) => void) {
+  if (procs.length === 0) seed();
+  listener = cb;
+  cb(tick());
+  restart();
+}
+
+export const appInfo = async (): Promise<AppInfo> => ({
+  version: "0.1.0-mock",
+  elevated: false,
+  accent: null,
+});
+
+export async function setInterval_(ms: number) {
+  interval = ms;
+  restart();
+}
+export { setInterval_ as setInterval };
+
+export async function setPaused(p: boolean) {
+  isPaused = p;
+}
+
+export async function refresh() {
+  listener?.(tick());
+}
+
+export async function details(pid: number, path: string | null): Promise<ProcessDetails> {
+  const p = procs.find((x) => x.pid === pid);
+  await new Promise((r) => setTimeout(r, 60));
+  return {
+    pid,
+    accessible: pid > 1000,
+    commandLine: path ? `"${path}" --type=renderer --lang=zh-CN --enable-features=Mock` : null,
+    user: pid > 1000 ? "DESKTOP\\me" : "NT AUTHORITY\\SYSTEM",
+    integrity: pid > 1000 ? "medium" : "system",
+    elevated: pid <= 1000,
+    architecture: "x64",
+    priorityClass: "normal",
+    version: {
+      description: p?.description ?? null,
+      company: p?.company ?? null,
+      productName: p?.description ?? null,
+      fileVersion: "1.2.3.4",
+    },
+  };
+}
+
+export async function kill(pid: number) {
+  const i = procs.findIndex((p) => p.pid === pid);
+  if (i < 0) throw { kind: "notFound" };
+  if (pid < 1000) throw { kind: "accessDenied" };
+  procs.splice(i, 1);
+  listener?.(tick());
+}
+
+export async function killTree(pid: number): Promise<TreeKillReport> {
+  const doomed = new Set([pid]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const p of procs) {
+      if (doomed.has(p.ppid) && !doomed.has(p.pid)) {
+        doomed.add(p.pid);
+        grew = true;
+      }
+    }
+  }
+  const before = procs.length;
+  for (let i = procs.length - 1; i >= 0; i--) if (doomed.has(procs[i].pid)) procs.splice(i, 1);
+  listener?.(tick());
+  return { terminated: before - procs.length, failed: 0 };
+}
+
+// ---- M3: services, startup, connections, file locks -----------------------------
+
+const SERVICE_NAMES: [string, string, string][] = [
+  ["Dnscache", "DNS Client", "缓存 DNS 查询结果，并注册此计算机的完整名称。"],
+  ["Dhcp", "DHCP Client", "为此计算机注册并更新 IP 地址和 DNS 记录。"],
+  ["EventLog", "Windows Event Log", "管理事件和事件日志。"],
+  ["Schedule", "Task Scheduler", "按计划自动执行任务。"],
+  ["Themes", "Themes", "为用户体验主题提供管理。"],
+  ["AudioSrv", "Windows Audio", "管理基于 Windows 的程序的音频。"],
+  ["BITS", "Background Intelligent Transfer Service", "利用空闲网络带宽在后台传输文件。"],
+  ["wuauserv", "Windows Update", "启用检测、下载和安装 Windows 更新。"],
+  ["Spooler", "Print Spooler", "将打印作业排入队列并处理与打印机的交互。"],
+  ["WSearch", "Windows Search", "为文件、电子邮件和其他内容提供索引。"],
+  ["SysMain", "SysMain", "维护和提高一段时间内的系统性能。"],
+  ["WinDefend", "Microsoft Defender Antivirus Service", "帮助用户防止恶意软件及其他潜在的垃圾软件。"],
+  ["LanmanServer", "Server", "支持此计算机通过网络的文件、打印和命名管道共享。"],
+  ["Netlogon", "Netlogon", "为用户和服务身份验证维护安全通道。"],
+  ["RemoteRegistry", "Remote Registry", "使远程用户能修改此计算机上的注册表设置。"],
+];
+
+let mockServices: ServiceInfo[] | null = null;
+
+function buildServices(): ServiceInfo[] {
+  const hosts = procs.filter((p) => p.name === "svchost.exe");
+  return SERVICE_NAMES.map(([name, displayName, description], i) => {
+    const running = i % 5 !== 3;
+    const host = hosts[i % Math.max(1, hosts.length)];
+    return {
+      name,
+      displayName,
+      description,
+      state: running ? "running" : "stopped",
+      startType: i % 7 === 6 ? "disabled" : i % 3 === 0 ? "manual" : i % 4 === 1 ? "autoDelayed" : "auto",
+      pid: running && host ? host.pid : 0,
+      path: `C:\\WINDOWS\\system32\\svchost.exe -k netsvcs -p`,
+      account: "LocalSystem",
+      canStop: running && i % 2 === 0,
+      shared: i % 3 === 0,
+    } satisfies ServiceInfo;
+  });
+}
+
+const mockStartup: StartupItem[] = [
+  {
+    id: "hkcuRun|OneDrive",
+    name: "OneDrive",
+    command: '"C:\\Users\\me\\AppData\\Local\\Microsoft\\OneDrive\\OneDrive.exe" /background',
+    path: "C:\\Users\\me\\AppData\\Local\\Microsoft\\OneDrive\\OneDrive.exe",
+    location: "hkcuRun",
+    machine: false,
+    enabled: false,
+    exists: true,
+    publisher: "Microsoft Corporation",
+    description: "Microsoft OneDrive",
+    icon: null,
+  },
+  {
+    id: "hkcuRun|Steam",
+    name: "Steam",
+    command: '"C:\\Program Files (x86)\\Steam\\steam.exe" -silent',
+    path: "C:\\Program Files (x86)\\Steam\\steam.exe",
+    location: "hkcuRun",
+    machine: false,
+    enabled: true,
+    exists: true,
+    publisher: "Valve Corporation",
+    description: "Steam",
+    icon: null,
+  },
+  {
+    id: "hklmRun|SecurityHealth",
+    name: "SecurityHealth",
+    command: "C:\\WINDOWS\\system32\\SecurityHealthSystray.exe",
+    path: "C:\\WINDOWS\\system32\\SecurityHealthSystray.exe",
+    location: "hklmRun",
+    machine: true,
+    enabled: true,
+    exists: true,
+    publisher: "Microsoft Corporation",
+    description: "Windows Security notification icon",
+    icon: null,
+  },
+  {
+    id: "hklmRun32|OldUpdater",
+    name: "OldUpdater",
+    command: '"C:\\Program Files (x86)\\Gone\\updater.exe" /silent',
+    path: "C:\\Program Files (x86)\\Gone\\updater.exe",
+    location: "hklmRun32",
+    machine: true,
+    enabled: true,
+    exists: false,
+    publisher: null,
+    description: null,
+    icon: null,
+  },
+  {
+    id: "userFolder|Snipaste.lnk",
+    name: "Snipaste",
+    command: '"C:\\Program Files\\Snipaste\\Snipaste.exe"',
+    path: "C:\\Program Files\\Snipaste\\Snipaste.exe",
+    location: "userFolder",
+    machine: false,
+    enabled: true,
+    exists: true,
+    publisher: "Le Liu",
+    description: "Snipaste",
+    icon: null,
+  },
+];
+
+function buildConnections(): Connection[] {
+  const pick = (name: string) => procs.find((p) => p.name === name)?.pid ?? 4;
+  const out: Connection[] = [
+    {
+      protocol: "tcp",
+      ipv6: false,
+      localAddress: "0.0.0.0",
+      localPort: 135,
+      remoteAddress: null,
+      remotePort: null,
+      state: "listen",
+      pid: pick("svchost.exe"),
+    },
+    {
+      protocol: "tcp",
+      ipv6: false,
+      localAddress: "0.0.0.0",
+      localPort: 445,
+      remoteAddress: null,
+      remotePort: null,
+      state: "listen",
+      pid: 4,
+    },
+    {
+      protocol: "tcp",
+      ipv6: false,
+      localAddress: "127.0.0.1",
+      localPort: 5173,
+      remoteAddress: null,
+      remotePort: null,
+      state: "listen",
+      pid: pick("node.exe"),
+    },
+    {
+      protocol: "tcp",
+      ipv6: true,
+      localAddress: "::",
+      localPort: 135,
+      remoteAddress: null,
+      remotePort: null,
+      state: "listen",
+      pid: pick("svchost.exe"),
+    },
+    {
+      protocol: "udp",
+      ipv6: false,
+      localAddress: "0.0.0.0",
+      localPort: 5353,
+      remoteAddress: null,
+      remotePort: null,
+      state: null,
+      pid: pick("chrome.exe"),
+    },
+    {
+      protocol: "udp",
+      ipv6: true,
+      localAddress: "::",
+      localPort: 5355,
+      remoteAddress: null,
+      remotePort: null,
+      state: null,
+      pid: pick("svchost.exe"),
+    },
+  ];
+  // Documentation ranges (RFC 5737).
+  const remotes = ["203.0.113.14", "198.51.100.92", "192.0.2.7", "203.0.113.42", "198.51.100.69"];
+  for (let i = 0; i < 24; i++) {
+    out.push({
+      protocol: "tcp",
+      ipv6: false,
+      localAddress: "192.168.1.23",
+      localPort: 50000 + i * 37,
+      remoteAddress: remotes[i % remotes.length],
+      remotePort: i % 4 === 0 ? 80 : 443,
+      state: i % 9 === 8 ? "timeWait" : "established",
+      pid: pick(i % 3 === 0 ? "Code.exe" : i % 3 === 1 ? "chrome.exe" : "QQ.exe"),
+    });
+  }
+  return out;
+}
+
+export const m3 = {
+  services: async (): Promise<ServiceInfo[]> => {
+    if (procs.length === 0) seed();
+    mockServices ??= buildServices();
+    return mockServices.map((s) => ({ ...s }));
+  },
+  controlService: async (name: string, action: "start" | "stop" | "restart") => {
+    const s = mockServices?.find((x) => x.name === name);
+    if (!s) throw { kind: "notFound" };
+    if (name === "WinDefend") throw { kind: "accessDenied" };
+    s.state = action === "stop" ? "stopped" : "running";
+    s.pid = action === "stop" ? 0 : (procs.find((p) => p.name === "svchost.exe")?.pid ?? 0);
+  },
+  setStartType: async (name: string, startType: ServiceInfo["startType"]) => {
+    const s = mockServices?.find((x) => x.name === name);
+    if (s) s.startType = startType;
+  },
+  startup: async (): Promise<StartupItem[]> => mockStartup.map((s) => ({ ...s })),
+  setStartupEnabled: async (id: string, enabled: boolean) => {
+    const item = mockStartup.find((s) => s.id === id);
+    if (item?.machine) throw { kind: "accessDenied" };
+    if (item) item.enabled = enabled;
+  },
+  connections: async (): Promise<Connection[]> => buildConnections(),
+  findLockers: async (paths: string[]): Promise<LockReport> => {
+    await new Promise((r) => setTimeout(r, 400));
+    const take = (name: string) => procs.find((p) => p.name === name);
+    const hits = [take("Code.exe"), take("explorer.exe")].filter((p): p is MockProc => !!p);
+    return {
+      lockers: hits.map((p) => ({
+        pid: p.pid,
+        createTime: p.createTime,
+        appName: p.description ?? p.name,
+        service: null,
+        kind: p.name === "explorer.exe" ? "explorer" : "window",
+      })),
+      filesChecked: paths.length * 12,
+      unchecked: 0,
+      truncated: false,
+    };
+  },
+};

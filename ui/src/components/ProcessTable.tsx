@@ -1,0 +1,322 @@
+import { createVirtualizer } from "@tanstack/solid-virtual";
+import { For, onMount, Show } from "solid-js";
+import { endRow } from "../lib/actions";
+import { fmtCount, fmtCpu, fmtMem, fmtRate } from "../lib/format";
+import { type DisplayRow, procKey, type SortKey } from "../lib/rows";
+import {
+  ending,
+  isFresh,
+  query,
+  rows,
+  selectedKey,
+  setDetailsOpen,
+  setPointerInTable,
+  setQuery,
+  setSelectedKey,
+  setSort,
+  snapshot,
+  sort,
+  toggleRow,
+  viewMode,
+} from "../lib/store";
+import { openMenu } from "../lib/ui";
+import { ChevronDown, ChevronRight, ChevronUp } from "./icons";
+import { processMenu } from "./menus";
+import ProcIcon from "./ProcIcon";
+
+const ROW_HEIGHT = 30;
+const MB = 1024 * 1024;
+
+/** Scroll position kept while another page is open. */
+let savedScroll = 0;
+
+interface Column {
+  key: SortKey;
+  label: string;
+  title: string;
+  /** Sorting this column starts descending (largest first). */
+  descFirst: boolean;
+}
+
+const COLUMNS: Column[] = [
+  { key: "name", label: "名称", title: "按名称排序", descFirst: false },
+  { key: "pid", label: "PID", title: "进程 ID", descFirst: false },
+  { key: "cpu", label: "CPU", title: "占全部处理器能力的百分比", descFirst: true },
+  { key: "mem", label: "内存", title: "专用工作集：进程独占的物理内存", descFirst: true },
+  { key: "io", label: "I/O", title: "每秒读、写及其他 I/O 字节数", descFirst: true },
+  { key: "threads", label: "线程", title: "线程数", descFirst: true },
+  { key: "handles", label: "句柄", title: "句柄数", descFirst: true },
+];
+
+// Heat ramps: 0 below a threshold, so only rows with real load are tinted.
+const heatCpu = (v: number) => (v < 1 ? 0 : Math.min(1, v / 40));
+const heatMem = (b: number) => (b < 200 * MB ? 0 : Math.min(1, b / (2048 * MB)));
+const heatIo = (b: number) => (b < MB ? 0 : Math.min(1, Math.log10(b / MB + 1) / 2));
+
+export default function ProcessTable() {
+  let scrollEl!: HTMLDivElement;
+
+  const virtualizer = createVirtualizer({
+    get count() {
+      return rows().length;
+    },
+    getScrollElement: () => scrollEl,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 12,
+  });
+
+  onMount(() => {
+    scrollEl.scrollTop = savedScroll;
+  });
+
+  const totals = (key: SortKey): string => {
+    const s = snapshot()?.system;
+    if (!s) return "";
+    switch (key) {
+      case "name":
+        return `${fmtCount(s.processCount)} 个进程`;
+      case "cpu":
+        return `${Math.round(s.cpu)}%`;
+      case "mem":
+        return `${s.memTotal ? Math.round((s.memUsed / s.memTotal) * 100) : 0}%`;
+      case "io":
+        return fmtRate(s.ioRead + s.ioWrite + s.ioOther);
+      case "threads":
+        return fmtCount(s.threadCount);
+      case "handles":
+        return fmtCount(s.handleCount);
+      default:
+        return "";
+    }
+  };
+
+  const onSort = (col: Column) => {
+    const cur = sort();
+    setSort(cur.key === col.key ? { key: col.key, desc: !cur.desc } : { key: col.key, desc: col.descFirst });
+  };
+
+  const select = (index: number) => {
+    const list = rows();
+    if (list.length === 0) return;
+    const i = Math.max(0, Math.min(list.length - 1, index));
+    setSelectedKey(list[i].key);
+    virtualizer.scrollToIndex(i, { align: "auto" });
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return; // keys on header buttons keep their own meaning
+    const list = rows();
+    const i = list.findIndex((r) => r.key === selectedKey());
+    const row = i >= 0 ? list[i] : undefined;
+    const page = Math.max(1, Math.floor(scrollEl.clientHeight / ROW_HEIGHT) - 1);
+    switch (e.key) {
+      case "ArrowDown":
+        select(i + 1);
+        break;
+      case "ArrowUp":
+        select(i < 0 ? 0 : i - 1);
+        break;
+      case "PageDown":
+        select(i + page);
+        break;
+      case "PageUp":
+        select(i - page);
+        break;
+      case "Home":
+        select(0);
+        break;
+      case "End":
+        select(list.length - 1);
+        break;
+      case "ArrowRight":
+        if (row?.expandable && !row.expanded) toggleRow(row);
+        else if (row?.expanded) select(i + 1);
+        break;
+      case "ArrowLeft":
+        if (row?.expanded) toggleRow(row);
+        else if (row && row.depth > 0) {
+          for (let j = i - 1; j >= 0; j--) {
+            if (list[j].depth < row.depth) {
+              select(j);
+              break;
+            }
+          }
+        }
+        break;
+      case "Enter":
+        if (row) setDetailsOpen(true);
+        break;
+      case "Delete":
+        if (row) void endRow(row, e.shiftKey);
+        break;
+      case "Escape":
+        if (query()) setQuery("");
+        else setSelectedKey(null);
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+  };
+
+  return (
+    <div
+      class="table"
+      role="grid"
+      tabIndex={0}
+      aria-rowcount={rows().length}
+      aria-label="进程"
+      aria-activedescendant={selectedKey() ? rowId(selectedKey() as string) : undefined}
+      onKeyDown={onKeyDown}
+    >
+      <div class="thead cols" role="row">
+        <For each={COLUMNS}>
+          {(col) => (
+            <button
+              type="button"
+              role="columnheader"
+              class="th"
+              classList={{ left: col.key === "name", sorted: sort().key === col.key }}
+              title={col.title}
+              aria-sort={sort().key === col.key ? (sort().desc ? "descending" : "ascending") : "none"}
+              onClick={() => onSort(col)}
+            >
+              <span class="th-total">{totals(col.key) || " "}</span>
+              <span class="th-label">
+                {col.label}
+                <Show when={sort().key === col.key}>
+                  <Show when={sort().desc} fallback={<ChevronUp size={12} />}>
+                    <ChevronDown size={12} />
+                  </Show>
+                </Show>
+              </span>
+            </button>
+          )}
+        </For>
+      </div>
+
+      <div
+        ref={scrollEl}
+        class="tbody"
+        role="rowgroup"
+        onScroll={() => {
+          savedScroll = scrollEl.scrollTop;
+        }}
+        onPointerEnter={() => setPointerInTable(true)}
+        onPointerLeave={() => setPointerInTable(false)}
+      >
+        <Show
+          when={rows().length > 0 || !snapshot()}
+          fallback={
+            <div class="empty">
+              <span>没有与“{query()}”匹配的进程</span>
+              <button type="button" class="btn" onClick={() => setQuery("")}>
+                清除搜索
+              </button>
+            </div>
+          }
+        >
+          <div
+            role="presentation"
+            style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}
+          >
+            <For each={virtualizer.getVirtualItems()}>
+              {(item) => (
+                <Show when={rows()[item.index]}>{(row) => <Row row={row()} start={item.start} />}</Show>
+              )}
+            </For>
+          </div>
+        </Show>
+      </div>
+    </div>
+  );
+}
+
+const rowId = (key: string) => `row-${key.replace(/[^\w-]/g, "_")}`;
+
+function Row(props: { row: DisplayRow; start: number }) {
+  const r = () => props.row;
+  const selected = () => selectedKey() === r().key;
+  const isGroup = () => r().kind === "group";
+
+  return (
+    <div
+      id={rowId(r().key)}
+      role="row"
+      aria-selected={selected()}
+      aria-level={viewMode() === "list" ? undefined : r().depth + 1}
+      aria-expanded={r().expandable ? r().expanded : undefined}
+      class="row cols"
+      classList={{
+        selected: selected(),
+        group: isGroup(),
+        suspended: r().suspended,
+        fresh: isFresh(procKey(r().proc)),
+        ending: ending().has(r().key),
+      }}
+      style={{ transform: `translateY(${props.start}px)` }}
+      onMouseDown={(e) => {
+        if (e.button === 0 || e.button === 2) setSelectedKey(r().key);
+      }}
+      onDblClick={() => (r().expandable ? toggleRow(r()) : setDetailsOpen(true))}
+      onContextMenu={(e) => openMenu(e, processMenu(r()))}
+    >
+      <div class="cell name" role="gridcell" style={{ "padding-left": `${6 + r().depth * 20}px` }}>
+        <Show when={r().expandable} fallback={<span class="twisty-spacer" />}>
+          <button
+            type="button"
+            class="twisty"
+            tabindex="-1"
+            aria-expanded={r().expanded}
+            aria-label={r().expanded ? "折叠" : "展开"}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => toggleRow(r())}
+          >
+            <ChevronRight size={12} />
+          </button>
+        </Show>
+        <ProcIcon proc={r().proc} />
+        <span class="label" title={r().proc.path ?? r().proc.name}>
+          {r().label}
+        </span>
+        <Show when={isGroup()}>
+          <span class="count">{r().count}</span>
+        </Show>
+        <Show when={r().detail}>
+          <span class="detail">{r().detail}</span>
+        </Show>
+        <Show when={r().suspended}>
+          <span class="tag">已暂停</span>
+        </Show>
+      </div>
+      <div class="cell dim" role="gridcell">
+        {isGroup() ? "" : r().proc.pid}
+      </div>
+      <div
+        class="cell heat"
+        role="gridcell"
+        classList={{ dim: r().cpu < 0.05 }}
+        style={{ "--h": heatCpu(r().cpu) }}
+      >
+        {fmtCpu(r().cpu)}
+      </div>
+      <div class="cell heat" role="gridcell" style={{ "--h": heatMem(r().mem) }}>
+        {fmtMem(r().mem)}
+      </div>
+      <div
+        class="cell heat"
+        role="gridcell"
+        classList={{ dim: r().io < 1 }}
+        style={{ "--h": heatIo(r().io) }}
+      >
+        {fmtRate(r().io)}
+      </div>
+      <div class="cell" role="gridcell">
+        {fmtCount(r().threads)}
+      </div>
+      <div class="cell" role="gridcell">
+        {fmtCount(r().handles)}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,12 @@
+[package]
+name = "argus-core"
+description = "Argus system data collection and process control layer (UI independent)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+png = "0.18.1"
+serde = { version = "1.0.229", features = ["derive", "rc"] }
+windows = { workspace = true }
