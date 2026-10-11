@@ -1,6 +1,6 @@
 // Live charts on <canvas>, scrolling continuously.
 //
-// Points sit on a time axis: the right edge shows "now minus one interval",
+// Points sit on a time axis: the right edge shows "now minus two intervals",
 // so the newest sample is always already drawn just past the edge and the
 // trace drifts left at a constant speed, without stopping between samples.
 // Each sample is drawn once into a canvas a little wider than the box; then

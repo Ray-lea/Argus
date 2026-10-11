@@ -1,0 +1,40 @@
+# 采集层 argus-core
+
+`crates/argus-core` 负责采集系统数据和执行操作，不依赖任何 UI，所有数据结构都可以序列化。
+
+## 模块
+
+| 模块 | 职责 |
+|---|---|
+| `collector.rs` | 把系统与进程采样合成一份快照 |
+| `process.rs` | 一次 `NtQuerySystemInformation(SystemProcessInformation)` 拿到全部进程与线程，按与上一次采样的差量计算 CPU 与 I/O 速率 |
+| `paths.rs` | 用 `SystemProcessIdInformation` 取映像路径：不需要打开进程、没有访问检查，非管理员也能拿到受保护进程和其他用户进程的路径，再把 NT 路径映射回 DOS 路径 |
+| `meta.rs` | 在后台线程解析文件描述、公司名和图标（PNG），按路径缓存 |
+| `system.rs` | 总 CPU（含内核时间）、每个逻辑处理器的 CPU、内存、提交、缓存 |
+| `details.rs` | 按需查询单个进程：命令行、用户、完整性级别、架构、优先级、版本 |
+| `services.rs` | 通过服务控制管理器（SCM）：一次 `EnumServicesStatusExW` 取得全部服务状态；启动类型、路径、描述每个服务要三次 RPC，所以缓存起来偶尔刷新；名称与描述按界面语言从 MUI 读取；启停服务、修改启动类型 |
+| `startup.rs` | 注册表 Run 键与启动文件夹（解析 .lnk）；启用 / 禁用写 `StartupApproved`，与系统任务管理器用同一个开关，可以还原 |
+| `connections.rs` | TCP / UDP（IPv4 / IPv6）端点与所属进程（`netstat -ano` 显示的内容）；断开 IPv4 TCP 连接 |
+| `filelock.rs` | 文件占用：通过 Restart Manager 找出打开文件或加载 DLL 的进程，不需要管理员；整批查询被拒时二分重试，隔离出无法检查的文件 |
+| `actions.rs` | 结束进程 / 进程树：校验 PID 与启动时间，防止 PID 被复用；拦截关键系统进程 |
+| `privilege.rs` | Argus 自身的提权状态、启用 SeDebugPrivilege、提高自身优先级 |
+| `theme.rs` | 系统个性化颜色（强调色） |
+| `nt.rs` | `windows` crate 没有（完整）提供的原生结构，布局按 phnt 头文件的 x64 版本 |
+
+## hardware/
+
+性能页的设备数据。数据来源与限制的用户向说明见[硬件数据的来源与限制](../guide/hardware-data.md)。
+
+| 模块 | 职责 |
+|---|---|
+| `cpu.rs` | 型号、拓扑（每个逻辑处理器属于哪个核心、是性能核还是能效核）、缓存、虚拟化 |
+| `sensors.rs` | 每次采样一个 PDH 查询：整体与每个逻辑处理器的实际频率、ACPI 热区温度、RAPL 功耗（封装 / 核心 / 核显）。都不需要驱动或管理员；机器上没有的计数器直接缺省 |
+| `battery.rs` | 电池类驱动 IOCTL：电量、充放电功率、电压、设计 / 完全充电容量、循环次数。标准用户可以只读打开电池设备 |
+| `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
+| `disk.rs` | 物理磁盘：存储 IOCTL 取型号、容量、SSD、所含的卷和温度，`IOCTL_DISK_PERFORMANCE` 取活动时间、速率、响应时间。用到的 IOCTL 都是 `FILE_ANY_ACCESS`，不需要提权 |
+| `net.rs` | 网络适配器：接口表（`GetIfTable2`）取吞吐量，`GetAdaptersAddresses` 取地址 |
+| `gpu.rs` | D3DKMT（与系统任务管理器同源，无需驱动）：按节点运行时间算各引擎利用率，按段驻留算显存，WDDM 2.4+ 的适配器性能数据给出温度与显存频率，3D 引擎节点的性能数据给出核心频率 |
+
+## 示例
+
+`examples/` 下的示例直接打印采集结果（`dump`、`hardware`、`m3`、`lockers`），用法见[环境与命令](../development/README.md#验证采集数据)。

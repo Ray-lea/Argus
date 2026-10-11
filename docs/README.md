@@ -1,0 +1,42 @@
+# Argus 文档
+
+```
+docs/
+├── guide/            使用指南：界面与操作、常驻与快捷键、设置、硬件数据
+├── development/      开发指南：环境与命令、构建与缓存、性能基线与测量
+├── architecture/     架构：分层与数据流、采集层、Tauri 宿主、前端
+├── design/           设计：设计原则、曲线动画、窗口外观
+├── roadmap.md        路线图
+└── known-issues.md   已知问题
+```
+
+## 使用指南
+
+- [界面与操作](guide/README.md)：页面、概况带、文件占用、键盘操作、权限
+- [常驻、托盘与快捷键](guide/resident-mode.md)
+- [设置](guide/settings.md)
+- [硬件数据的来源与限制](guide/hardware-data.md)
+
+## 开发指南
+
+- [环境与命令](development/README.md)：环境要求、`start.bat`、开发版隔离、验证采集数据、代码规范
+- [构建与缓存](development/build.md)：缓存优化、链接器与工具链
+- [性能基线与测量](development/performance.md)
+
+## 架构
+
+- [总览](architecture/README.md)：分层、数据流、设计取向
+- [采集层 argus-core](architecture/core.md)
+- [Tauri 宿主](architecture/host.md)
+- [前端](architecture/frontend.md)
+
+## 设计
+
+- [设计原则](design/README.md)
+- [曲线动画](design/charts.md)：时间轴、四档模式与开销、实现要点
+- [窗口外观](design/window.md)：Mica 背景、调整大小时的斜线
+
+## 其他
+
+- [路线图](roadmap.md)
+- [已知问题](known-issues.md)
