@@ -28,3 +28,4 @@
 - 发布版标识 `dev.argus.taskmanager`；开发版由 `tauri.dev.conf.json` 改为 `dev.argus.taskmanager.devbuild`，单实例锁、设置、WebView2 数据目录、开机启动项都分开。
 - 主窗口以 `visible: false` 创建，在 setup 里显示；带 `--hidden` 启动（开机启动）时保持隐藏。
 - 原生设置存于应用配置目录的 `settings.json`；前端偏好在 WebView 的 localStorage 里，两个标识各一份。
+- `icons/` 下的 PNG 和 `icon.ico` 由 `node scripts/icons.mjs` 生成，不要手改：改 `ui/public/logo.svg`（48 px 及以上）或 `icons/logo-small.svg`（16–32 px）后重新运行。看效果时把各尺寸按真实像素画到 canvas 再放大，SVG 直接缩放看不出小尺寸的问题。

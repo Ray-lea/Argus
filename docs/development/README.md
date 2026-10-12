@@ -49,6 +49,16 @@ cargo run -p argus-core --example app_windows --release     # 归入“应用”
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 ```
 
+## 应用图标
+
+应用图标由两个 SVG 生成：`ui/public/logo.svg` 用于 48 px 及以上的尺寸，也是关于页和 README 中的标志；`src-tauri/icons/logo-small.svg` 用于 16–32 px，眼睛更大、线条更粗，在任务栏和托盘中仍可辨认。修改其中任一文件后运行：
+
+```bash
+node scripts/icons.mjs
+```
+
+脚本用 Microsoft Edge 的无界面模式按实际像素尺寸渲染，重新生成 `src-tauri/icons` 下的 PNG 与 `icon.ico`（16、24、32、48、64、256 px）。
+
 ## 代码规范
 
 - `start.bat check` 必须通过：TypeScript 类型检查、Biome（格式与 lint）、rustfmt、Clippy（`-D warnings`）。

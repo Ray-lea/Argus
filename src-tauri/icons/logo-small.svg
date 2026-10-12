@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2c376e"/>
+      <stop offset="1" stop-color="#0b0e20"/>
+    </linearGradient>
+    <linearGradient id="lid" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#62e6ff"/>
+      <stop offset="1" stop-color="#8a72ff"/>
+    </linearGradient>
+    <radialGradient id="iris" cx="0.42" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#a8f3ff"/>
+      <stop offset="0.55" stop-color="#3f9bff"/>
+      <stop offset="1" stop-color="#5a46e0"/>
+    </radialGradient>
+    <clipPath id="eye">
+      <path d="M100 512C250 270 774 270 924 512C774 754 250 754 100 512Z"/>
+    </clipPath>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="208" fill="url(#bg)"/>
+  <g clip-path="url(#eye)">
+    <circle cx="512" cy="512" r="196" fill="url(#iris)"/>
+    <circle cx="512" cy="512" r="88" fill="#0a0d1a"/>
+    <circle cx="572" cy="452" r="38" fill="#fff"/>
+  </g>
+  <path d="M100 512C250 270 774 270 924 512C774 754 250 754 100 512Z" fill="none" stroke="url(#lid)" stroke-width="96" stroke-linejoin="round"/>
+</svg>

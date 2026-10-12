@@ -2,9 +2,13 @@
   <title id="t">Argus</title>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#232a52"/>
-      <stop offset="1" stop-color="#0a0d1a"/>
+      <stop offset="0" stop-color="#2c376e"/>
+      <stop offset="1" stop-color="#0b0e20"/>
     </linearGradient>
+    <radialGradient id="sheen" cx="0.3" cy="0.12" r="0.75">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".10"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
     <linearGradient id="lid" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#62e6ff"/>
       <stop offset="1" stop-color="#8a72ff"/>
@@ -15,15 +19,17 @@
       <stop offset="1" stop-color="#5a46e0"/>
     </radialGradient>
     <clipPath id="eye">
-      <path d="M176 512C296 330 728 330 848 512C728 694 296 694 176 512Z"/>
+      <path d="M132 512C268 300 756 300 892 512C756 724 268 724 132 512Z"/>
     </clipPath>
   </defs>
   <rect x="48" y="48" width="928" height="928" rx="216" fill="url(#bg)"/>
+  <rect x="48" y="48" width="928" height="928" rx="216" fill="url(#sheen)"/>
+  <rect x="58" y="58" width="908" height="908" rx="206" fill="none" stroke="#fff" stroke-opacity=".10" stroke-width="10"/>
   <g clip-path="url(#eye)">
-    <circle cx="512" cy="512" r="150" fill="url(#iris)"/>
-    <circle cx="512" cy="512" r="150" fill="none" stroke="#0a0d1a" stroke-opacity=".35" stroke-width="18" stroke-dasharray="22 14"/>
-    <circle cx="512" cy="512" r="62" fill="#0a0d1a"/>
-    <circle cx="556" cy="468" r="24" fill="#fff" fill-opacity=".92"/>
+    <circle cx="512" cy="512" r="172" fill="url(#iris)"/>
+    <circle cx="512" cy="512" r="172" fill="none" stroke="#0a0d1a" stroke-opacity=".3" stroke-width="16"/>
+    <circle cx="512" cy="512" r="72" fill="#0a0d1a"/>
+    <circle cx="562" cy="462" r="28" fill="#fff" fill-opacity=".92"/>
   </g>
-  <path d="M176 512C296 330 728 330 848 512C728 694 296 694 176 512Z" fill="none" stroke="url(#lid)" stroke-width="52" stroke-linejoin="round"/>
+  <path d="M132 512C268 300 756 300 892 512C756 724 268 724 132 512Z" fill="none" stroke="url(#lid)" stroke-width="64" stroke-linejoin="round"/>
 </svg>
