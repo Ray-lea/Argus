@@ -95,4 +95,4 @@ Argus 从 GitHub Releases 获取新版本。发现新版本后在后台下载，
 
 ## 关于
 
-显示版本号、当前权限（标准权限或管理员）和版权声明，并提供“退出 Argus”。“许可证”一项说明 Argus 以 GNU Affero General Public License 第 3 版或更高版本发布、不提供任何担保，单击“查看许可证”可以阅读全文。
+显示版本号、当前权限（标准权限或管理员）和版权声明，并提供“退出 Argus”。“许可证”一项说明 Argus 以 GNU Affero General Public License 第 3 版或更高版本发布、不提供任何担保，单击“查看许可证”可以阅读全文。“第三方组件”列出 Argus 包含的开源组件及其许可证与版权声明。“日志”记录启动信息以及更新、特权服务与任务管理器替换操作中的错误，仅保存在本机（`%LOCALAPPDATA%\dev.argus.taskmanager\logs`），超过 1 MB 时轮换并保留一份旧文件；提交缺陷报告时可单击“打开日志文件夹”附上日志。

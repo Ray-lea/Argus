@@ -34,6 +34,34 @@ pub(crate) fn stop_network_session() {
     argus_core::net_process::stop_session(NETWORK_SESSION);
 }
 
+/// Logs to `%LOCALAPPDATA%\<identifier>\logs\argus.log` for bug reports:
+/// info and above from Argus and the plugins, one rotated file kept.
+fn logger() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
+    let mut builder = tauri_plugin_log::Builder::new()
+        .clear_targets()
+        .target(Target::new(TargetKind::LogDir {
+            file_name: Some("argus".into()),
+        }))
+        .max_file_size(1024 * 1024)
+        .rotation_strategy(RotationStrategy::KeepOne)
+        .timezone_strategy(TimezoneStrategy::UseLocal)
+        .level(log::LevelFilter::Info);
+    if cfg!(debug_assertions) {
+        builder = builder.target(Target::new(TargetKind::Stdout));
+    }
+    builder.build()
+}
+
+/// Release builds abort on panic; the log is the only trace one leaves.
+fn log_panics() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!("{info}");
+        default(info);
+    }));
+}
+
 /// Where history is recorded (set once the app's data folder is known).
 pub struct HistoryDir(pub std::path::PathBuf);
 
@@ -97,6 +125,7 @@ pub fn run() {
                 shell::show_main(app)
             }
         }))
+        .plugin(logger())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -113,6 +142,23 @@ pub fn run() {
         })
         .register_uri_scheme_protocol("argus", icon_protocol(meta))
         .setup(move |app| {
+            log_panics();
+            log::info!(
+                "Argus {} started ({}{}{}{})",
+                env!("CARGO_PKG_VERSION"),
+                if elevated {
+                    "administrator"
+                } else {
+                    "standard user"
+                },
+                if start_hidden { ", hidden" } else { "" },
+                if updated { ", after an update" } else { "" },
+                if taskmgr_start {
+                    ", as the task manager"
+                } else {
+                    ""
+                },
+            );
             let config = app.path().app_config_dir()?.join("settings.json");
             let settings = SettingsStore::load(config);
             app.state::<AppState>()
@@ -250,6 +296,7 @@ pub fn run() {
             commands::install_update,
             commands::set_update_settings,
             commands::open_release_page,
+            commands::open_log_dir,
             commands::list_services,
             commands::control_service,
             commands::set_service_start_type,

@@ -549,21 +549,43 @@ function RulesSection(props: { rules: ProcessRule[]; onChange: (rules: ProcessRu
   );
 }
 
-const [licenseOpen, setLicenseOpen] = createSignal(false);
+/** Long texts shown in a dialog, loaded when first opened. */
+const DOCUMENTS = {
+  license: {
+    title: "GNU Affero General Public License",
+    load: () => import("../../../LICENSE?raw").then((m) => m.default),
+  },
+  notices: {
+    title: "第三方组件许可声明",
+    load: () => import("../../../THIRD-PARTY-NOTICES.txt?raw").then((m) => m.default),
+  },
+} as const;
+type DocumentId = keyof typeof DOCUMENTS;
 
-/** The license text, loaded when first opened. */
-function LicenseDialog() {
-  const shown = presence(licenseOpen, 170);
+const [openDocument, setOpenDocument] = createSignal<DocumentId | null>(null);
+
+function DocumentDialog() {
+  // Keeps the last document while the dialog fades out.
+  let last: DocumentId = "license";
+  const shown = presence(() => openDocument() !== null, 170);
+  const id = () => {
+    const current = openDocument();
+    if (current) last = current;
+    return last;
+  };
   return (
     <Show when={shown.value()}>
-      <LicenseBody leaving={shown.leaving()} />
+      <DocumentBody id={id()} leaving={shown.leaving()} />
     </Show>
   );
 }
 
-function LicenseBody(props: { leaving: boolean }) {
-  const [text] = createResource(() => import("../../../LICENSE?raw").then((m) => m.default));
-  const close = () => setLicenseOpen(false);
+function DocumentBody(props: { id: DocumentId; leaving: boolean }) {
+  const [text] = createResource(
+    () => props.id,
+    (id) => DOCUMENTS[id].load(),
+  );
+  const close = () => setOpenDocument(null);
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") close();
   };
@@ -578,7 +600,7 @@ function LicenseBody(props: { leaving: boolean }) {
       <div class="dialog license-dialog" role="dialog" aria-modal="true" aria-labelledby="license-title">
         <div class="dialog-body">
           <h2 id="license-title" class="dialog-title">
-            GNU Affero General Public License
+            {DOCUMENTS[props.id].title}
           </h2>
           <pre class="license-text">{text() ?? ""}</pre>
         </div>
@@ -1216,8 +1238,26 @@ export default function SettingsPage() {
                     title="许可证"
                     desc="Argus 是自由软件，依据 GNU Affero General Public License 第 3 版或任何更高版本（AGPL-3.0-or-later）发布，可按该许可证的条款再分发和修改。Argus 不提供任何担保。"
                   >
-                    <button type="button" class="btn" onClick={() => setLicenseOpen(true)}>
+                    <button type="button" class="btn" onClick={() => setOpenDocument("license")}>
                       查看许可证
+                    </button>
+                  </Setting>
+                  <Setting
+                    icon={<DocumentIcon size={20} />}
+                    title="第三方组件"
+                    desc="Argus 包含的开源组件及其许可证与版权声明。"
+                  >
+                    <button type="button" class="btn" onClick={() => setOpenDocument("notices")}>
+                      查看许可声明
+                    </button>
+                  </Setting>
+                  <Setting
+                    icon={<StorageIcon size={20} />}
+                    title="日志"
+                    desc="记录启动信息、更新与特权服务操作中的错误，便于排查问题。仅保存在本机，超过 1 MB 时轮换。"
+                  >
+                    <button type="button" class="btn" onClick={() => void api.openLogDir()}>
+                      打开日志文件夹
                     </button>
                   </Setting>
                 </section>
@@ -1227,7 +1267,7 @@ export default function SettingsPage() {
         </div>
       </div>
       <Portal>
-        <LicenseDialog />
+        <DocumentDialog />
       </Portal>
     </div>
   );

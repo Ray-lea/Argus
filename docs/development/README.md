@@ -59,6 +59,16 @@ node scripts/icons.mjs
 
 脚本用 Microsoft Edge 的无界面模式按实际像素尺寸渲染，重新生成 `src-tauri/icons` 下的 PNG 与 `icon.ico`（16、24、32、48、64、256 px）。
 
+## 第三方许可声明
+
+`THIRD-PARTY-NOTICES.txt` 收录发布版包含的第三方组件（链接进 `argus.exe` 的 Rust crate 与打包进界面的 npm 包）的许可证文本与版权声明，在“设置 → 关于 → 第三方组件”中显示。增删或升级依赖后运行：
+
+```bash
+node scripts/notices.mjs
+```
+
+脚本读取本地已下载的依赖源码；GitHub Actions 的检查会运行 `node scripts/notices.mjs --check`，文件与依赖不一致时失败。
+
 ## 代码规范
 
 - `start.bat check` 必须通过：TypeScript 类型检查、Biome（格式与 lint）、rustfmt、Clippy（`-D warnings`）。

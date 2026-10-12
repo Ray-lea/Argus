@@ -312,6 +312,7 @@ pub async fn check(app: &AppHandle) {
 
     let now = now_ms();
     let Some((index, update)) = found else {
+        log::warn!("update check failed: {}", failures.join("; "));
         update_status(app, |inner| {
             inner.next_check = now + RETRY_AFTER_MS;
             inner.status.state = "error";
@@ -332,6 +333,7 @@ pub async fn check(app: &AppHandle) {
         return;
     };
 
+    log::info!("update {} available via {source}", update.version);
     let mut already = false;
     update_status(app, |inner| {
         inner.next_check = now + CHECK_EVERY_MS;
@@ -402,6 +404,7 @@ pub async fn check(app: &AppHandle) {
         match result {
             Ok(bytes) => {
                 let host = label(source.as_deref());
+                log::info!("update {} downloaded via {host}", update.version);
                 update_status(app, |inner| {
                     inner.status.state = "ready";
                     inner.status.received = bytes.len() as u64;
@@ -420,6 +423,7 @@ pub async fn check(app: &AppHandle) {
             }
         }
     }
+    log::warn!("update download failed: {}", failures.join("; "));
     update_status(app, |inner| {
         inner.next_check = now + RETRY_AFTER_MS;
         inner.status.state = "error";
@@ -459,10 +463,12 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
         let _ = std::fs::write(marker, b"");
     }
 
+    log::info!("installing update {}", update.version);
     let error = match update.install(&bytes) {
         Ok(()) => return Ok(()),
         Err(e) => describe(&e),
     };
+    log::error!("could not start the update installer: {error}");
     if let Ok(marker) = &marker {
         let _ = std::fs::remove_file(marker);
     }

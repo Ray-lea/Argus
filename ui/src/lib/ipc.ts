@@ -103,6 +103,7 @@ export const api = {
       : invoke("set_update_settings", s),
   openReleasePage: (version: string): Promise<void> =>
     mock ? Promise.resolve() : invoke("open_release_page", { version }),
+  openLogDir: (): Promise<void> => (mock ? Promise.resolve() : invoke("open_log_dir")),
 
   services: (): Promise<ServiceInfo[]> => (mock ? mock.m3.services() : invoke("list_services")),
   controlService: (name: string, action: "start" | "stop" | "restart"): Promise<void> =>

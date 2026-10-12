@@ -30,6 +30,7 @@ pub fn task_manager_status() -> Result<argus_service::taskmgr::Status, String> {
 #[tauri::command(async)]
 pub fn manage_task_manager(action: String) -> Result<argus_service::taskmgr::Status, String> {
     argus_service::taskmgr::manage(&action)
+        .inspect_err(|e| log::warn!("task manager {action} failed: {e}"))
 }
 
 #[tauri::command(async)]
@@ -235,7 +236,8 @@ pub fn manage_privileged_service(
     state: State<'_, AppState>,
     action: String,
 ) -> Result<ServiceStatus, String> {
-    let status = argus_service::manage(&action)?;
+    let status = argus_service::manage(&action)
+        .inspect_err(|e| log::warn!("privileged service {action} failed: {e}"))?;
     state.sampler.send(Control::Refresh);
     Ok(status)
 }
@@ -411,6 +413,18 @@ pub fn set_update_settings(
 #[tauri::command]
 pub fn open_release_page(version: String) -> Result<(), String> {
     updater::open_release_page(&version)
+}
+
+/// Opens the folder with `argus.log`, for attaching to bug reports.
+#[tauri::command]
+pub fn open_log_dir(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::process::Command::new("explorer.exe")
+        .arg(&dir)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 // ---- Services -----------------------------------------------------------------
