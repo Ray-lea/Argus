@@ -35,6 +35,6 @@
 
 进入 `lib.rs::run` 后先检查特权服务与安装助手模式，命中时直接运行并退出，不初始化 Tauri、单实例插件、采样器或 WebView。安装和协议边界见[特权服务](privileged-service.md)。这些操作在后台命令线程执行，不阻塞采样线程。
 
-- `tauri.conf.json`：标识 `dev.argus.taskmanager`；主窗口 1240×800（最小 860×540），启动时隐藏、由 setup 显示（带 `--hidden` 启动时保持隐藏），Mica 效果，WebView 背景透明（`#00000000`）；打包目标为当前用户安装的 NSIS，简体中文界面，不允许降级安装；卸载钩子在 `installer-hooks.nsh`。`plugins.updater` 保存更新签名公钥并开启 `requireSignedVersion`，更新以 passive 模式安装。
+- `tauri.conf.json`：标识 `dev.argus.taskmanager`；主窗口 1240×800（最小 860×540），启动时隐藏、由 setup 显示（带 `--hidden` 启动时保持隐藏），Mica 效果，WebView 背景透明（`#00000000`）；打包目标为 NSIS，为所有用户安装到 Program Files：提权助手和复制成特权服务的程序都取自安装目录，这个目录只有管理员能写入，标准权限的程序无法替换其中的文件；简体中文界面，不允许降级安装；卸载钩子在 `installer-hooks.nsh`。`plugins.updater` 保存更新签名公钥并开启 `requireSignedVersion`，更新以 passive 模式安装。
 - 更新安装程序重新打开 Argus 时只传 `--updated`，不沿用原来的启动参数（其中可能带有一次性的任务管理器握手参数）。从隐藏状态开始的更新在应用数据目录留下 `relaunch-hidden` 标记，重新打开时据此留在托盘。
 - `tauri.dev.conf.json`：开发版覆盖产品名与标识（`dev.argus.taskmanager.devbuild`），见[开发版与已安装版互不干扰](../development/README.md#开发版与已安装版互不干扰)。

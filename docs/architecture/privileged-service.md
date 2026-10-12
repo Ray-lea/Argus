@@ -21,7 +21,9 @@
 
 服务名称为 `ArgusPrivileged`，开发版为 `ArgusPrivilegedDev`。宿主仅在设置页的明确操作后通过 `ShellExecuteExW` 的 `runas` 请求管理员授权；取消 UAC 时不退出界面，也不更改服务。助手在 Tauri 和单实例插件之前处理参数，避免被已运行的界面吞掉。
 
-助手把自身程序复制到系统已知文件夹 Program Files 下的 `Argus Privileged`（开发版为 `Argus Privileged Dev`），以带引号的绝对路径注册自动启动的 LocalSystem 服务。目录、可执行文件和 `owner.sid` 的所有者为 Administrators，只有 Administrators 与 SYSTEM 可写；拒绝目录重解析点、不可信所有者和其他账户的写入权限。不依赖原免安装版或当前用户安装目录，复制操作不覆盖已有文件。
+助手把自身程序复制到系统已知文件夹 Program Files 下的 `Argus Privileged`（开发版为 `Argus Privileged Dev`），以带引号的绝对路径注册自动启动的 LocalSystem 服务。目录、可执行文件和 `owner.sid` 的所有者为 Administrators，只有 Administrators 与 SYSTEM 可写；拒绝目录重解析点、不可信所有者和其他账户的写入权限。不依赖安装目录或免安装版所在的位置，复制操作不覆盖已有文件。
+
+复制的来源是正在提权运行的 `argus.exe` 本身，受保护目录只能保证复制之后的副本不被篡改。安装版位于 Program Files，只有管理员能写入，来源可信；免安装版若放在标准用户可写的文件夹，本机的恶意程序可以在授权前替换它，被替换的程序会以管理员身份运行并被注册为 SYSTEM 服务。这是已知且接受的风险（免安装版不校验来源），用户文档提示使用安装版或把免安装版放在仅管理员可写的位置。
 
 `owner.sid` 记录安装时界面进程的 Windows 账户，即使 UAC 输入了另一个管理员的凭据也不改变授权对象。这是对账户的持续授权：同一账户的其他中等及以上完整性级别的本机程序可以调用固定的管理操作，并不把可执行文件名当作身份凭证。不能借此执行任意程序、写入任意文件、更改服务可执行路径或加载驱动。其他账户与低完整性进程被拒绝。
 

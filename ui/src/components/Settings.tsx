@@ -697,7 +697,7 @@ function UpdateSettings(props: {
       case "disabled":
         return s.error;
       case "ready":
-        return "安装期间 Argus 将退出，安装程序仅显示进度，完成后自动重新启动 Argus。";
+        return "安装需要管理员授权。安装期间 Argus 将退出，安装程序仅显示进度，完成后自动重新启动 Argus。";
       case "available":
         return "免安装版不支持自动更新，请从发布页下载新版本。";
       case "downloading":

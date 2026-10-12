@@ -90,7 +90,8 @@ jobs:
           $ErrorActionPreference = "Stop"
           $setup = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
           $dir = Join-Path $env:RUNNER_TEMP "argus-smoke"
-          $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Argus"
+          # Installed for all users (the runner is an administrator), so the entry is under HKLM.
+          $key = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Argus"
           $p = Start-Process $setup -ArgumentList "/S", "/D=$dir" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "安装程序退出码 $($p.ExitCode)" }
           foreach ($file in "argus.exe", "uninstall.exe") {

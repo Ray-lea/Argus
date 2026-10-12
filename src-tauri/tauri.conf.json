@@ -49,7 +49,7 @@
     "windows": {
       "allowDowngrades": false,
       "nsis": {
-        "installMode": "currentUser",
+        "installMode": "perMachine",
         "languages": [
           "SimpChinese"
         ],
