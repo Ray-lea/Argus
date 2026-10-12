@@ -260,6 +260,10 @@ export interface HistoryMoment {
   processes: HistoryProcess[];
 }
 
+export type UpdateChannel = "stable" | "beta";
+/** `auto`: GitHub first, then the proxies; `proxy`: only the chosen proxy. */
+export type UpdateRoute = "auto" | "direct" | "proxy";
+
 export interface SettingsView {
   closeToTray: boolean;
   /** Accelerator such as `Ctrl+Alt+Escape`; empty when disabled. */
@@ -267,8 +271,40 @@ export interface SettingsView {
   rules: ProcessRule[];
   /** Record history for the history page. */
   history: boolean;
+  updateCheck: boolean;
+  updateChannel: UpdateChannel;
+  updateRoute: UpdateRoute;
+  /** GitHub proxy prefix, e.g. `https://gh-proxy.com/`. */
+  updateProxy: string;
   autostart: boolean;
   hotkeyError: string | null;
+}
+
+export interface UpdateStatus {
+  /** `available` only for the standalone exe, which updates by hand. */
+  state:
+    | "disabled"
+    | "idle"
+    | "checking"
+    | "upToDate"
+    | "available"
+    | "downloading"
+    | "ready"
+    | "installing"
+    | "error";
+  version: string | null;
+  /** Plain text; unlike the installer, not signed. */
+  notes: string | null;
+  /** Unix ms. */
+  date: number | null;
+  received: number;
+  total: number | null;
+  /** Why the last check failed, or why updates are disabled. */
+  error: string | null;
+  checkedAt: number | null;
+  /** "GitHub" or the proxy's host. */
+  source: string | null;
+  portable: boolean;
 }
 
 /** What the recorded history takes on disk. */
@@ -310,6 +346,8 @@ export interface AppInfo {
   version: string;
   elevated: boolean;
   accent: AccentColors | null;
+  /** Relaunched by the installer of an update. */
+  updated: boolean;
 }
 
 export interface PrivilegedServiceStatus {

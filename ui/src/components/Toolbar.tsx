@@ -17,6 +17,7 @@ import {
   setViewMode,
   viewMode,
 } from "../lib/store";
+import { updatePending } from "../lib/updates";
 import { ConnectionControls } from "./ConnectionsPage";
 import { openFileLock } from "./FileLockDialog";
 import { HistoryControls } from "./HistoryPage";
@@ -80,6 +81,9 @@ export default function Toolbar() {
               <span class="tab-text" data-text={p.label}>
                 {p.label}
               </span>
+              <Show when={p.page === "settings" && updatePending()}>
+                <span class="tab-dot" role="img" aria-label="有新版本" />
+              </Show>
             </button>
           )}
         </For>

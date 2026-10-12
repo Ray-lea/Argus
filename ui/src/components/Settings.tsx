@@ -35,13 +35,18 @@ import type {
   ProcessRule,
   RuleStats,
   SettingsView,
+  UpdateChannel,
+  UpdateRoute,
 } from "../lib/types";
 import { confirm, toast } from "../lib/ui";
+import { updatePending, updateStatus } from "../lib/updates";
 import Indicator from "./Indicator";
 import {
   BoltIcon,
   DismissIcon,
   DocumentIcon,
+  ExternalIcon,
+  GlobeIcon,
   HistoryIcon,
   InfoIcon,
   KeyboardIcon,
@@ -54,6 +59,7 @@ import {
   TransferIcon,
   TrashIcon,
   TrayIcon,
+  UpdateIcon,
 } from "./icons";
 import ProcIcon from "./ProcIcon";
 
@@ -64,6 +70,7 @@ const SECTIONS = [
   { id: "motion", label: "动画", icon: SparkleIcon },
   { id: "data", label: "数据与历史", icon: HistoryIcon },
   { id: "rules", label: "规则", icon: BoltIcon },
+  { id: "update", label: "更新", icon: UpdateIcon },
   { id: "about", label: "关于", icon: InfoIcon },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -229,6 +236,13 @@ function PrivilegedServiceSettings() {
     if (s.state === "stopPending") return "正在停止";
     return "暂不可用";
   };
+  // Updating Argus does not update the service, which needs administrator rights.
+  const outdated = () => {
+    const s = status();
+    const app = appInfo()?.version;
+    if (!s?.version || !app || s.version === app) return null;
+    return `服务版本 ${s.version} 与 Argus ${app} 不一致，请单击“更新服务”。`;
+  };
   return (
     <>
       <Setting
@@ -240,7 +254,7 @@ function PrivilegedServiceSettings() {
         icon={<PulseIcon size={20} />}
         title={<span aria-live="polite">{label()}</span>}
         desc="Argus 运行时会自动连接。网络采集不可用时隐藏网络列；规则下方显示应用结果。"
-        error={error() ?? status()?.error}
+        error={error() ?? status()?.error ?? outdated()}
       >
         <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
           刷新状态
@@ -583,6 +597,247 @@ function LicenseBody(props: { leaving: boolean }) {
   );
 }
 
+/** Offered by default; the same list as `PROXY_PRESETS` in updater.rs. */
+const PROXY_PRESETS = ["https://gh-proxy.com/", "https://gh-proxy.org/", "https://ghfast.top/"];
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
+
+type UpdatePrefs = { check: boolean; channel: UpdateChannel; route: UpdateRoute; proxy: string };
+
+/** The update status and what to do about it, then channel and route. */
+function UpdateSettings(props: {
+  settings: SettingsView;
+  onChange: (change: Promise<SettingsView>) => Promise<boolean>;
+}) {
+  const [installing, setInstalling] = createSignal(false);
+  // The custom proxy being typed; null while a preset is chosen.
+  const [draft, setDraft] = createSignal<string | null>(
+    PROXY_PRESETS.includes(props.settings.updateProxy) ? null : props.settings.updateProxy,
+  );
+  const status = () => updateStatus();
+  const state = () => status()?.state;
+  const busy = () => state() === "checking" || state() === "downloading" || state() === "installing";
+  const save = (patch: Partial<UpdatePrefs>) =>
+    props.onChange(
+      api.setUpdateSettings({
+        check: props.settings.updateCheck,
+        channel: props.settings.updateChannel,
+        route: props.settings.updateRoute,
+        proxy: props.settings.updateProxy,
+        ...patch,
+      }),
+    );
+  const install = async () => {
+    setInstalling(true);
+    try {
+      await api.installUpdate();
+    } catch (e) {
+      toast("error", `无法安装更新：${String(e)}`);
+    } finally {
+      setInstalling(false);
+    }
+  };
+
+  const title = () => {
+    const s = status();
+    if (!s) return "正在读取更新状态…";
+    switch (s.state) {
+      case "disabled":
+        return "不检查更新";
+      case "idle":
+        return "尚未检查更新";
+      case "checking":
+        return "正在检查更新…";
+      case "upToDate":
+        return "已是最新版本";
+      case "available":
+        return `发现新版本 ${s.version}`;
+      case "downloading":
+        return `正在下载 ${s.version}${s.total ? ` · ${Math.floor((s.received / s.total) * 100)}%` : ""}`;
+      case "ready":
+        return `${s.version} 已下载，可以安装`;
+      case "installing":
+        return `正在启动 ${s.version} 的安装程序…`;
+      case "error":
+        return "更新失败";
+    }
+  };
+  const desc = () => {
+    const s = status();
+    if (!s) return "";
+    switch (s.state) {
+      case "disabled":
+        return s.error;
+      case "ready":
+        return "安装时 Argus 会退出，安装程序只显示进度，完成后自动重新打开 Argus。";
+      case "available":
+        return "免安装版不能自动更新，请从发布页下载新版本。";
+      case "downloading":
+        return `已下载 ${fmtCache(s.received)}${s.total ? ` / ${fmtCache(s.total)}` : ""}，来自 ${s.source ?? "GitHub"}。`;
+    }
+    if (s.checkedAt)
+      return `上次检查：${dateFmt.format(s.checkedAt)}${s.source ? `，来自 ${s.source}` : ""}。`;
+    return "从 GitHub Releases 获取更新；安装包带有签名，校验通过才会安装。";
+  };
+  const showNotes = () =>
+    Boolean(status()?.notes) && (state() === "available" || state() === "downloading" || state() === "ready");
+  const proxyChoice = () => (draft() !== null ? "custom" : props.settings.updateProxy);
+
+  return (
+    <>
+      <Setting
+        icon={<UpdateIcon size={20} />}
+        title={<span aria-live="polite">{title()}</span>}
+        desc={desc()}
+        error={state() === "error" || state() === "ready" ? status()?.error : null}
+      >
+        <Show when={state() === "ready"}>
+          <button type="button" class="btn accent" disabled={installing()} onClick={install}>
+            重启并更新
+          </button>
+        </Show>
+        <Show when={state() === "available" && status()?.version}>
+          {(version) => (
+            <button type="button" class="btn" onClick={() => void api.openReleasePage(version())}>
+              <ExternalIcon />
+              前往下载
+            </button>
+          )}
+        </Show>
+        <Show when={state() !== "disabled" && state() !== "ready"}>
+          <button
+            type="button"
+            class="btn"
+            disabled={!status() || busy()}
+            onClick={() => void api.checkUpdate()}
+          >
+            检查更新
+          </button>
+        </Show>
+      </Setting>
+      <Show when={showNotes()}>
+        <Setting
+          icon={<DocumentIcon size={20} />}
+          title={`${status()?.version} 的更新内容`}
+          desc={<pre class="update-notes">{status()?.notes}</pre>}
+        />
+      </Show>
+      <Setting
+        icon={<TimerIcon size={20} />}
+        title="自动检查更新"
+        desc="启动约 1 分钟后检查一次，之后每天一次。新版本在后台下载，由你决定何时安装。"
+      >
+        <ToggleSwitch
+          label="自动检查更新"
+          checked={props.settings.updateCheck}
+          onChange={(check) => void save({ check })}
+        />
+      </Setting>
+      <Setting
+        icon={<SparkleIcon size={20} />}
+        title="更新通道"
+        desc="测试版会更早收到新功能，也可能不稳定。从测试版切回稳定版后，要等稳定版的版本号超过当前版本才会更新。"
+      >
+        <select
+          class="select"
+          aria-label="更新通道"
+          value={props.settings.updateChannel}
+          onChange={(e) => void save({ channel: e.currentTarget.value as UpdateChannel })}
+        >
+          <option value="stable">稳定版</option>
+          <option value="beta">测试版</option>
+        </select>
+      </Setting>
+      <Setting
+        icon={<GlobeIcon size={20} />}
+        title="下载线路"
+        desc="加速代理由第三方提供，能看到你的 IP 地址和下载的文件。安装包的签名同时覆盖版本号，代理既不能篡改更新，也不能用旧版本冒充新版本。"
+      >
+        <select
+          class="select"
+          aria-label="下载线路"
+          value={props.settings.updateRoute}
+          onChange={(e) => void save({ route: e.currentTarget.value as UpdateRoute })}
+        >
+          <option value="auto">自动：先连 GitHub，失败时用加速代理</option>
+          <option value="direct">只连 GitHub</option>
+          <option value="proxy">只用加速代理</option>
+        </select>
+      </Setting>
+      <Show when={props.settings.updateRoute !== "direct"}>
+        <Setting
+          icon={<TransferIcon size={20} />}
+          title="加速代理"
+          desc={
+            props.settings.updateRoute === "auto"
+              ? "GitHub 连不上时先试这个代理，再试其他内置代理。"
+              : "所有更新请求都经过这个代理。"
+          }
+        >
+          <select
+            class="select"
+            aria-label="加速代理"
+            value={proxyChoice()}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              if (value === "custom") {
+                setDraft(
+                  PROXY_PRESETS.includes(props.settings.updateProxy)
+                    ? "https://"
+                    : props.settings.updateProxy,
+                );
+              } else {
+                setDraft(null);
+                void save({ proxy: value });
+              }
+            }}
+          >
+            <For each={PROXY_PRESETS}>{(p) => <option value={p}>{hostOf(p)}</option>}</For>
+            <option value="custom">自定义…</option>
+          </select>
+        </Setting>
+        <Show when={draft() !== null}>
+          <Setting
+            icon={<GlobeIcon size={20} />}
+            title="自定义代理"
+            desc="加在 GitHub 地址前面的前缀，例如 https://example.com/，必须使用 https。"
+          >
+            <form
+              class="rule-add"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const proxy = draft()?.trim() ?? "";
+                if (await save({ proxy })) setDraft(PROXY_PRESETS.includes(proxy) ? null : proxy);
+              }}
+            >
+              <input
+                class="input"
+                aria-label="自定义代理地址"
+                spellcheck={false}
+                value={draft() ?? ""}
+                onInput={(e) => setDraft(e.currentTarget.value)}
+              />
+              <button
+                type="submit"
+                class="btn"
+                disabled={!draft()?.trim() || draft()?.trim() === props.settings.updateProxy}
+              >
+                保存
+              </button>
+            </form>
+          </Setting>
+        </Show>
+      </Show>
+    </>
+  );
+}
+
 /** Recording history, what it takes on disk, and clearing it. */
 function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => void }) {
   const [usage, { refetch }] = createResource(() => api.historyUsage());
@@ -711,8 +966,10 @@ export default function SettingsPage() {
   const apply = async (change: Promise<SettingsView>, failure: string) => {
     try {
       mutate(await change);
+      return true;
     } catch (e) {
       toast("error", `${failure}：${String(e)}`);
+      return false;
     }
   };
 
@@ -775,6 +1032,9 @@ export default function SettingsPage() {
               >
                 <s.icon />
                 <span>{s.label}</span>
+                <Show when={s.id === "update" && updatePending()}>
+                  <span class="nav-dot" role="img" aria-label="有新版本" />
+                </Show>
               </button>
             )}
           </For>
@@ -922,6 +1182,11 @@ export default function SettingsPage() {
                     rules={s().rules}
                     onChange={(rules) => apply(api.setRules(rules), "无法保存规则")}
                   />
+                </section>
+
+                <section id="settings-update" class="settings-section">
+                  <h2>更新</h2>
+                  <UpdateSettings settings={s()} onChange={(change) => apply(change, "无法保存更新设置")} />
                 </section>
 
                 <section id="settings-about" class="settings-section">

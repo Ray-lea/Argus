@@ -16,6 +16,13 @@
 - 换不透明底色、页面底部留边 9 像素都能消除斜线，但用户明确拒绝了（有外观影响），不要退回这些做法。
 - 验证：用 Windows.Graphics.Capture 录 Argus 窗口（被挡住也能录），通过 CDP 注入一个全窗口半透明层的页面，逐帧检查客户区对角线：不加防护时每次录制有几十帧。CDP 截屏和 `PrintWindow` 看不到这个瑕疵；不要用桌面复制。改动窗口、WebView 宿主或 DWM 相关代码后要复测。
 
+## 应用内更新（`updater.rs`）
+
+- `updater::install` 会阻塞并查询窗口状态，不要在主线程（托盘菜单回调、非 async 命令）里直接调用。
+- 重新打开 Argus 的参数固定为 `/R /ARGS --updated`，并对下载好的更新设置 `restart_after_install(false)`。不要改回插件默认的“沿用当前启动参数”：通过任务管理器替换启动的 Argus 带着一次性的握手参数，原样重启后会在 15 秒后退出。
+- 插件安装更新时用 `std::process::exit` 退出，不经过 `RunEvent::Exit`；需要在退出前做的事放进 `on_before_exit`（现在是停止 ETW 会话）。
+- 开发版和缺少公钥的构建不检查更新。完整的检查、下载、安装只能在两个已发布的版本之间验证；本地只能测签名与清单（见 `docs/development/release.md`）。
+
 ## 配置
 
 - 发布版标识 `dev.argus.taskmanager`；开发版由 `tauri.dev.conf.json` 改为 `dev.argus.taskmanager.devbuild`，单实例锁、设置、WebView2 数据目录、开机启动项都分开。

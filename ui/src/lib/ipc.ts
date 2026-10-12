@@ -18,6 +18,9 @@ import type {
   StartupItem,
   TaskManagerStatus,
   TreeKillReport,
+  UpdateChannel,
+  UpdateRoute,
+  UpdateStatus,
 } from "./types";
 
 /** False when the UI runs in a plain browser (`pnpm dev`), where mock data stands in. */
@@ -80,6 +83,26 @@ export const api = {
     mock ? mock.settings.update({ history: enabled }) : invoke("set_history_enabled", { enabled }),
   clearHistory: (): Promise<void> => (mock ? mock.history.clear() : invoke("clear_history")),
   quit: (): Promise<void> => (mock ? Promise.resolve() : invoke("quit")),
+
+  updateStatus: (): Promise<UpdateStatus> => (mock ? mock.updates.status() : invoke("update_status")),
+  checkUpdate: (): Promise<UpdateStatus> => (mock ? mock.updates.check() : invoke("check_update")),
+  installUpdate: (): Promise<void> => (mock ? mock.updates.install() : invoke("install_update")),
+  setUpdateSettings: (s: {
+    check: boolean;
+    channel: UpdateChannel;
+    route: UpdateRoute;
+    proxy: string;
+  }): Promise<SettingsView> =>
+    mock
+      ? mock.settings.update({
+          updateCheck: s.check,
+          updateChannel: s.channel,
+          updateRoute: s.route,
+          updateProxy: s.proxy,
+        })
+      : invoke("set_update_settings", s),
+  openReleasePage: (version: string): Promise<void> =>
+    mock ? Promise.resolve() : invoke("open_release_page", { version }),
 
   services: (): Promise<ServiceInfo[]> => (mock ? mock.m3.services() : invoke("list_services")),
   controlService: (name: string, action: "start" | "stop" | "restart"): Promise<void> =>

@@ -21,6 +21,7 @@ import type {
   Snapshot,
   StartupItem,
   TreeKillReport,
+  UpdateStatus,
 } from "./types";
 
 const MB = 1024 * 1024;
@@ -411,6 +412,10 @@ const mockSettings: SettingsView = {
   hotkey: "Ctrl+Alt+Escape",
   rules: [],
   history: true,
+  updateCheck: true,
+  updateChannel: "stable",
+  updateRoute: "auto",
+  updateProxy: "https://gh-proxy.com/",
   autostart: false,
   hotkeyError: null,
 };
@@ -446,7 +451,62 @@ export const appInfo = async (): Promise<AppInfo> => ({
   version: "0.1.0-mock",
   elevated: false,
   accent: null,
+  updated: false,
 });
+
+// Starts idle; "检查更新" plays a check and a download, then offers the update.
+let updateStatus: UpdateStatus = {
+  state: "idle",
+  version: null,
+  notes: null,
+  date: null,
+  received: 0,
+  total: null,
+  error: null,
+  checkedAt: null,
+  source: null,
+  portable: false,
+};
+let updateListener: ((s: UpdateStatus) => void) | null = null;
+const setUpdate = (patch: Partial<UpdateStatus>) => {
+  updateStatus = { ...updateStatus, ...patch };
+  updateListener?.({ ...updateStatus });
+};
+
+export const updates = {
+  status: async (): Promise<UpdateStatus> => ({ ...updateStatus }),
+  subscribe: (cb: (s: UpdateStatus) => void) => {
+    updateListener = cb;
+  },
+  check: async (): Promise<UpdateStatus> => {
+    setUpdate({ state: "checking", error: null });
+    setTimeout(() => {
+      const total = 2_150_000;
+      setUpdate({
+        state: "downloading",
+        version: "0.2.0",
+        notes:
+          "新功能\n· ui：进程页支持按列筛选\n· core：采集每个磁盘的队列长度\n\n修复\n· host：托盘菜单偶尔不响应",
+        date: Date.now() - 86_400_000,
+        received: 0,
+        total,
+        checkedAt: Date.now(),
+        source: "GitHub",
+      });
+      let received = 0;
+      const step = setInterval(() => {
+        received = Math.min(total, received + 430_000);
+        setUpdate({ received });
+        if (received >= total) {
+          clearInterval(step);
+          setUpdate({ state: "ready" });
+        }
+      }, 250);
+    }, 700);
+    return { ...updateStatus };
+  },
+  install: async () => setUpdate({ state: "installing" }),
+};
 
 let serviceInstalled = false;
 export const privilegedService = {

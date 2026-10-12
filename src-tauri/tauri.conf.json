@@ -57,5 +57,15 @@
         "installerHooks": "installer-hooks.nsh"
       }
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM2N0Q4MkYyQjFFRDQyMEUKUldRT1F1Mng4b0o5TmdmeHV5eWRHdGV6ek1UUXVuY0xRcmlxcDhTejlaODNRWGsvQi8zK2JHWDYK",
+      "endpoints": [],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

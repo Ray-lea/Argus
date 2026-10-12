@@ -320,3 +320,20 @@ export const TransferIcon = (p: IconProps) => (
     <path d="M11 2.5v11M8.5 11l2.5 2.5 2.5-2.5" />
   </Svg>
 );
+
+/** Updates: a download into the tray. */
+export const UpdateIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 2.5v7.5M4.75 6.75 8 10l3.25-3.25" />
+    <path d="M2.5 10.5v1.5c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-1.5" />
+  </Svg>
+);
+
+/** Where requests go: GitHub or a proxy. */
+export const GlobeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="8" cy="8" r="5.5" />
+    <path d="M2.5 8h11" />
+    <path d="M8 2.5c1.5 1.6 2.25 3.4 2.25 5.5S9.5 11.9 8 13.5C6.5 11.9 5.75 10.1 5.75 8S6.5 4.1 8 2.5Z" />
+  </Svg>
+);

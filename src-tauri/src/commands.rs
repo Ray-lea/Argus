@@ -18,9 +18,9 @@ use tauri::ipc::Channel;
 use tauri::{Manager, State};
 
 use crate::sampler::Control;
-use crate::settings::{SettingsStore, SettingsView};
-use crate::shell;
-use crate::{AppState, HistoryDir};
+use crate::settings::{SettingsStore, SettingsView, UpdateChannel, UpdateRoute};
+use crate::updater::{self, UpdateStatus};
+use crate::{AppState, HistoryDir, shell};
 
 #[tauri::command(async)]
 pub fn task_manager_status() -> Result<argus_service::taskmgr::Status, String> {
@@ -49,6 +49,8 @@ pub struct AppInfo {
     version: &'static str,
     elevated: bool,
     accent: Option<AccentColors>,
+    /// Relaunched by the installer of an update.
+    updated: bool,
 }
 
 #[tauri::command]
@@ -57,6 +59,7 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         elevated: state.elevated,
         accent: theme::accent_colors(),
+        updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
     }
 }
 
@@ -354,6 +357,60 @@ pub fn clear_history(state: State<'_, AppState>, dir: State<'_, HistoryDir>) -> 
 #[tauri::command]
 pub fn quit(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+// ---- Updates --------------------------------------------------------------------
+
+#[tauri::command]
+pub fn update_status(app: tauri::AppHandle) -> UpdateStatus {
+    updater::status(&app)
+}
+
+/// Starts a check; progress arrives as `update-status` events.
+#[tauri::command]
+pub fn check_update(app: tauri::AppHandle) -> UpdateStatus {
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move { updater::check(&handle).await });
+    updater::status(&app)
+}
+
+/// Runs the downloaded installer; Argus exits and the installer relaunches it.
+#[tauri::command(async)]
+pub fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    updater::install(&app)
+}
+
+#[tauri::command]
+pub fn set_update_settings(
+    app: tauri::AppHandle,
+    check: bool,
+    channel: UpdateChannel,
+    route: UpdateRoute,
+    proxy: String,
+) -> Result<SettingsView, String> {
+    let proxy = updater::normalize_proxy(&proxy)?;
+    let store = app.state::<SettingsStore>();
+    let previous = store.get().update_channel;
+    store
+        .update(|s| {
+            s.update_check = check;
+            s.update_channel = channel;
+            s.update_route = route;
+            s.update_proxy = proxy;
+        })
+        .map_err(|e| e.to_string())?;
+    // A downloaded update belongs to the old channel; look at the new one now.
+    if previous != channel {
+        updater::reset(&app);
+        let handle = app.clone();
+        tauri::async_runtime::spawn(async move { updater::check(&handle).await });
+    }
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
+pub fn open_release_page(version: String) -> Result<(), String> {
+    updater::open_release_page(&version)
 }
 
 // ---- Services -----------------------------------------------------------------

@@ -7,7 +7,7 @@ import { ConfirmDialog, ContextMenu, Toasts } from "./components/Overlays";
 import Performance from "./components/Performance";
 import ProcessTable from "./components/ProcessTable";
 import ServicesPage from "./components/ServicesPage";
-import SettingsPage from "./components/Settings";
+import SettingsPage, { openSettings } from "./components/Settings";
 import StartupPage from "./components/StartupPage";
 import StatusBar from "./components/StatusBar";
 import Toolbar, { focusSearch, PAGES } from "./components/Toolbar";
@@ -27,6 +27,7 @@ import {
   snapshot,
 } from "./lib/store";
 import type { AccentColors } from "./lib/types";
+import { afterUpdate, watchUpdates } from "./lib/updates";
 
 function applyAccent(accent: AccentColors | null) {
   if (!accent) return;
@@ -91,6 +92,12 @@ export default function App() {
       void import("@tauri-apps/api/event").then(async ({ listen }) => {
         const unlisten = await listen("argus-taskmgr-ready", () => void api.taskManagerReady());
         onCleanup(unlisten);
+        // The tray could not start an update: show what went wrong.
+        const unlistenSettings = await listen<Parameters<typeof openSettings>[0]>(
+          "argus-open-settings",
+          (e) => openSettings(e.payload),
+        );
+        onCleanup(unlistenSettings);
         await api.taskManagerReady();
       });
       void import("@tauri-apps/api/webview").then(async ({ getCurrentWebview }) => {
@@ -111,7 +118,9 @@ export default function App() {
     void api.appInfo().then((info) => {
       setAppInfo(info);
       applyAccent(info.accent);
+      if (info.updated) void afterUpdate(info.version);
     });
+    void watchUpdates().then((stop) => onCleanup(stop));
   });
 
   return (

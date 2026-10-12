@@ -51,6 +51,17 @@
   visibility: hidden;
 }
 
+/* An update waits on the settings page. */
+.tab-dot {
+  position: absolute;
+  top: 7px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 /* The selection mark slides to the chosen tab (see Indicator.tsx). */
 .tab-mark {
   border-radius: 2px;
@@ -773,6 +784,14 @@
   background: transparent;
 }
 
+.nav-dot {
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 /* Too narrow for both: the cards take the width. */
 @container (max-width: 900px) {
   .settings-layout {
@@ -863,6 +882,15 @@
 
 .rule-add .input {
   width: 220px;
+}
+
+/* Release notes arrive as plain text with line breaks. */
+.update-notes {
+  max-height: 220px;
+  margin: 4px 0 0;
+  overflow: auto;
+  font: inherit;
+  white-space: pre-wrap;
 }
 
 /* About: the app's mark, the one picture on the page. */

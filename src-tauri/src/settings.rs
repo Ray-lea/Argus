@@ -1,6 +1,6 @@
 //! User settings that the native side needs before the UI loads (hotkey,
-//! close behavior, autostart, process rules, history recording), persisted as
-//! JSON in the app config dir.
+//! close behavior, autostart, process rules, history recording, updates),
+//! persisted as JSON in the app config dir.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -9,6 +9,28 @@ use argus_core::rules::ProcessRule;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_HOTKEY: &str = "Ctrl+Alt+Escape";
+
+/// Which releases count as updates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UpdateChannel {
+    #[default]
+    Stable,
+    /// Prereleases as well as stable releases.
+    Beta,
+}
+
+/// How update requests reach GitHub.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UpdateRoute {
+    /// GitHub first, then the proxies.
+    #[default]
+    Auto,
+    Direct,
+    /// Only the chosen proxy.
+    Proxy,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -21,6 +43,12 @@ pub struct Settings {
     pub rules: Vec<ProcessRule>,
     /// Record history for the history page.
     pub history: bool,
+    /// Check for updates in the background.
+    pub update_check: bool,
+    pub update_channel: UpdateChannel,
+    pub update_route: UpdateRoute,
+    /// GitHub proxy prefix, e.g. `https://gh-proxy.com/`.
+    pub update_proxy: String,
 }
 
 impl Default for Settings {
@@ -30,6 +58,10 @@ impl Default for Settings {
             hotkey: DEFAULT_HOTKEY.into(),
             rules: Vec::new(),
             history: true,
+            update_check: true,
+            update_channel: UpdateChannel::default(),
+            update_route: UpdateRoute::default(),
+            update_proxy: crate::updater::PROXY_PRESETS[0].into(),
         }
     }
 }

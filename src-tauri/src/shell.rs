@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, Runtime, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
@@ -195,17 +195,53 @@ pub fn set_webview_active<R: Runtime>(w: &WebviewWindow<R>, active: bool) {
     });
 }
 
-pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+/// The tray menu, with "restart to update" while an update is ready.
+fn tray_menu<R: Runtime>(app: &AppHandle<R>, update: Option<&str>) -> tauri::Result<Menu<R>> {
     let show = MenuItem::with_id(app, "show", "显示 Argus", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &PredefinedMenuItem::separator(app)?, &quit])?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    match update {
+        Some(version) => {
+            let text = format!("重启并更新到 {version}");
+            let update = MenuItem::with_id(app, "update", text, true, None::<&str>)?;
+            Menu::with_items(app, &[&show, &update, &separator, &quit])
+        }
+        None => Menu::with_items(app, &[&show, &separator, &quit]),
+    }
+}
 
+/// The version the tray menu currently offers to install.
+static TRAY_UPDATE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn set_tray_update<R: Runtime>(app: &AppHandle<R>, version: Option<&str>) {
+    let mut current = TRAY_UPDATE.lock().unwrap();
+    if current.as_deref() == version {
+        return;
+    }
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id(TRAY_ID), tray_menu(app, version)) {
+        let _ = tray.set_menu(Some(menu));
+        *current = version.map(str::to_string);
+    }
+}
+
+pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip(APP_TITLE)
-        .menu(&menu)
+        .menu(&tray_menu(app, None)?)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main(app),
+            "update" => {
+                // install() blocks while it starts the installer and queries the
+                // window; keep it off the event loop thread.
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    if crate::updater::install(&app).is_err() {
+                        show_main(&app);
+                        let _ = app.emit("argus-open-settings", "update");
+                    }
+                });
+            }
             "quit" => app.exit(0),
             _ => {}
         })

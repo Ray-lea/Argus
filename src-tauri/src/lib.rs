@@ -2,6 +2,7 @@ mod commands;
 mod sampler;
 mod settings;
 mod shell;
+mod updater;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -27,6 +28,11 @@ const NETWORK_SESSION: &str = if cfg!(debug_assertions) {
 } else {
     "Argus Network"
 };
+
+/// Stops this build's trace session; nothing else stops it when Argus exits.
+pub(crate) fn stop_network_session() {
+    argus_core::net_process::stop_session(NETWORK_SESSION);
+}
 
 /// Where history is recorded (set once the app's data folder is known).
 pub struct HistoryDir(pub std::path::PathBuf);
@@ -79,6 +85,7 @@ pub fn run() {
     // Autostart launches with --hidden: stay in the tray until summoned.
     let taskmgr_start = argus_service::taskmgr::ready::queue(&std::env::args().collect::<Vec<_>>());
     let start_hidden = taskmgr_start || std::env::args().any(|a| a == "--hidden");
+    let updated = std::env::args().any(|a| a == updater::UPDATED_ARG);
 
     tauri::Builder::default()
         // Must come first: a second launch just brings the running one forward.
@@ -96,6 +103,7 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             sampler,
             elevated,
@@ -118,6 +126,10 @@ pub fn run() {
             ));
             app.manage(settings);
             app.manage(HistoryDir(history));
+            updater::init(app.handle());
+            // An update started while Argus was in the tray relaunches it there.
+            let relaunch_hidden = updater::take_relaunch_hidden(app.handle());
+            let start_hidden = start_hidden || (updated && relaunch_hidden);
             shell::build_tray(app.handle())?;
             shell::register_saved_hotkey(app.handle());
 
@@ -233,6 +245,11 @@ pub fn run() {
             commands::set_history_enabled,
             commands::clear_history,
             commands::quit,
+            commands::update_status,
+            commands::check_update,
+            commands::install_update,
+            commands::set_update_settings,
+            commands::open_release_page,
             commands::list_services,
             commands::control_service,
             commands::set_service_start_type,
@@ -250,7 +267,7 @@ pub fn run() {
             // Trace sessions outlive their process, and threads get no chance
             // to clean up on exit, so stop it here.
             if let tauri::RunEvent::Exit = event {
-                argus_core::net_process::stop_session(NETWORK_SESSION);
+                stop_network_session();
             }
         });
 }
