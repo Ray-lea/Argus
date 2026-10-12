@@ -435,7 +435,11 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
     if !matches!(action, "install" | "update" | "start" | "uninstall") {
         return Err(87);
     }
-    security::validate_sid(sid)?;
+    // Uninstalling authorizes nobody, and an uninstaller may run as SYSTEM
+    // (deployment tools do), whose SID is not a user account's.
+    if action != "uninstall" {
+        security::validate_sid(sid)?;
+    }
     if !argus_core::privilege::is_elevated() {
         return Err(5);
     }

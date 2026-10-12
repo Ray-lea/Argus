@@ -12,8 +12,9 @@ use windows::Win32::Security::Authorization::{
 use windows::Win32::Security::{
     ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, DACL_SECURITY_INFORMATION, GetAce,
     GetSecurityDescriptorDacl, GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation,
-    OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, RevertToSelf, SECURITY_ATTRIBUTES,
-    TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TOKEN_USER, TokenIntegrityLevel, TokenUser,
+    IsTokenRestricted, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, RevertToSelf,
+    SECURITY_ATTRIBUTES, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TOKEN_USER, TokenIntegrityLevel,
+    TokenIsAppContainer, TokenUser,
 };
 use windows::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, CreateFileW, FILE_ATTRIBUTE_REPARSE_POINT,
@@ -84,6 +85,12 @@ pub fn validate_sid(sid: &str) -> Result<()> {
     if canonical? != sid {
         return Err(87);
     }
+    // Only a person's account may be authorized: local and domain accounts
+    // (S-1-5-21-…) and Microsoft Entra accounts (S-1-12-1-…). Never a group
+    // or well-known SID such as Everyone, Anonymous or SYSTEM.
+    if !(sid.starts_with("S-1-5-21-") || sid.starts_with("S-1-12-1-")) {
+        return Err(87);
+    }
     Ok(())
 }
 
@@ -115,6 +122,28 @@ pub fn current_sid() -> Result<String> {
     token_user(Handle(token).0)
 }
 
+/// A sandboxed process of the owner (restricted or AppContainer token) runs
+/// with less than the owner's rights and must not borrow them from the service.
+fn sandboxed(token: HANDLE) -> Result<bool> {
+    // The bindings map the BOOL to a Result: Ok means restricted.
+    if unsafe { IsTokenRestricted(token) }.is_ok() {
+        return Ok(true);
+    }
+    let mut app_container = 0u32;
+    let mut size = 0;
+    unsafe {
+        GetTokenInformation(
+            token,
+            TokenIsAppContainer,
+            Some((&raw mut app_container).cast()),
+            size_of::<u32>() as u32,
+            &mut size,
+        )
+    }
+    .map_err(win)?;
+    Ok(app_container != 0)
+}
+
 /// Identification-only impersonation is enough to read the token. Always
 /// revert before executing an operation, including every error path.
 pub fn authenticate(pipe: HANDLE, owner: &str) -> Result<u32> {
@@ -124,7 +153,7 @@ pub fn authenticate(pipe: HANDLE, owner: &str) -> Result<u32> {
         unsafe { OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut token) }
             .map_err(win)?;
         let token = Handle(token);
-        if token_user(token.0)? != owner {
+        if token_user(token.0)? != owner || sandboxed(token.0)? {
             return Err(5);
         }
         let mut data = [0u64; 64];
@@ -305,6 +334,71 @@ mod tests {
         let sid = current_sid().unwrap();
         assert!(pipe_descriptor(&sid).is_ok());
         assert!(pipe_descriptor("S-1-1-0)(A;;GA;;;WD)").is_err());
+    }
+
+    #[test]
+    fn only_user_accounts_can_be_authorized() {
+        assert!(validate_sid("S-1-5-21-1004336348-1177238915-682003330-1001").is_ok());
+        assert!(validate_sid("S-1-12-1-1234567890-1234567890-1234567890-1234567890").is_ok());
+        // Everyone, Anonymous, SYSTEM, Administrators, Authenticated Users.
+        for sid in ["S-1-1-0", "S-1-5-7", "S-1-5-18", "S-1-5-32-544", "S-1-5-11"] {
+            assert!(validate_sid(sid).is_err(), "{sid}");
+        }
+    }
+
+    #[test]
+    fn restricted_tokens_count_as_sandboxed() {
+        use windows::Win32::Security::{
+            CreateRestrictedToken, DISABLE_MAX_PRIVILEGE, SID_AND_ATTRIBUTES, TOKEN_ASSIGN_PRIMARY,
+            TOKEN_DUPLICATE,
+        };
+        let mut own = HANDLE::default();
+        unsafe {
+            OpenProcessToken(
+                GetCurrentProcess(),
+                TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY,
+                &mut own,
+            )
+        }
+        .unwrap();
+        let own = Handle(own);
+        assert!(!sandboxed(own.0).unwrap());
+
+        // Restricted to the user's own SID, as a sandboxing broker would do.
+        let mut size = 0;
+        unsafe {
+            let _ = GetTokenInformation(own.0, TokenUser, None, 0, &mut size);
+        }
+        let mut data = vec![0u64; (size as usize).div_ceil(8)];
+        unsafe {
+            GetTokenInformation(
+                own.0,
+                TokenUser,
+                Some(data.as_mut_ptr().cast()),
+                size,
+                &mut size,
+            )
+        }
+        .unwrap();
+        let user = unsafe { (*data.as_ptr().cast::<TOKEN_USER>()).User };
+        let restrict = [SID_AND_ATTRIBUTES {
+            Sid: user.Sid,
+            Attributes: 0,
+        }];
+        let mut restricted = HANDLE::default();
+        unsafe {
+            CreateRestrictedToken(
+                own.0,
+                DISABLE_MAX_PRIVILEGE,
+                None,
+                None,
+                Some(&restrict),
+                &mut restricted,
+            )
+        }
+        .unwrap();
+        let restricted = Handle(restricted);
+        assert!(sandboxed(restricted.0).unwrap());
     }
     #[test]
     fn refuses_user_writable_service_directory() {
