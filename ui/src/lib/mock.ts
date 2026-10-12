@@ -42,6 +42,47 @@ interface MockProc extends ProcessRow {
 const procs: MockProc[] = [];
 let nextPid = 600;
 
+// What an English Windows reports for the descriptions above, for `?lang=en-US`.
+const ENGLISH_TEXT: Record<string, string> = {
+  "Windows 会话管理器": "Windows Session Manager",
+  客户端服务器运行时进程: "Client Server Runtime Process",
+  "Windows 启动应用程序": "Windows Start-Up Application",
+  服务和控制器应用: "Services and Controller app",
+  "Windows 服务主进程": "Host Process for Windows Services",
+  桌面窗口管理器: "Desktop Window Manager",
+  "Windows 资源管理器": "Windows Explorer",
+  搜索: "Search",
+  微信: "WeChat",
+  计算器: "Calculator",
+  控制台窗口主进程: "Console Window Host",
+  "缓存 DNS 查询结果，并注册此计算机的完整名称。":
+    "The DNS Client service caches Domain Name System (DNS) names and registers the full computer name.",
+  "为此计算机注册并更新 IP 地址和 DNS 记录。":
+    "Registers and updates IP addresses and DNS records for this computer.",
+  "管理事件和事件日志。": "This service manages events and event logs.",
+  "按计划自动执行任务。": "Enables a user to configure and schedule automated tasks on this computer.",
+  "为用户体验主题提供管理。": "Provides user experience theme management.",
+  "管理基于 Windows 的程序的音频。": "Manages audio for Windows-based programs.",
+  "利用空闲网络带宽在后台传输文件。": "Transfers files in the background using idle network bandwidth.",
+  "启用检测、下载和安装 Windows 更新。":
+    "Enables the detection, download, and installation of updates for Windows.",
+  "将打印作业排入队列并处理与打印机的交互。": "Spools print jobs and handles interaction with the printer.",
+  "为文件、电子邮件和其他内容提供索引。":
+    "Provides content indexing, property caching, and search results for files, e-mail, and other content.",
+  "维护和提高一段时间内的系统性能。": "Maintains and improves system performance over time.",
+  "帮助用户防止恶意软件及其他潜在的垃圾软件。":
+    "Helps protect users from malware and other potentially unwanted software.",
+  "支持此计算机通过网络的文件、打印和命名管道共享。":
+    "Supports file, print, and named-pipe sharing over the network for this computer.",
+  "为用户和服务身份验证维护安全通道。":
+    "Maintains a secure channel between this computer and the domain controller.",
+  "使远程用户能修改此计算机上的注册表设置。":
+    "Enables remote users to modify registry settings on this computer.",
+};
+/** Text from Windows (file and service descriptions) in the previewed language. */
+const fromWindows = <T extends string | null>(text: T): T =>
+  text !== null && mockSettings.locale === "en-US" ? ((ENGLISH_TEXT[text] ?? text) as T) : text;
+
 function add(
   name: string,
   description: string | null,
@@ -65,7 +106,7 @@ function add(
     createTime: BOOT + procs.length * 900 + Math.floor(Math.random() * 600),
     name,
     path: description === null ? null : `${o.dir ?? "C:\\Program Files\\App"}\\${name}`,
-    description,
+    description: fromWindows(description),
     company,
     icon: null,
     cpu: 0,
@@ -746,7 +787,7 @@ function buildServices(): ServiceInfo[] {
     return {
       name,
       displayName,
-      description,
+      description: fromWindows(description),
       state: running ? "running" : "stopped",
       startType: i % 7 === 6 ? "disabled" : i % 3 === 0 ? "manual" : i % 4 === 1 ? "autoDelayed" : "auto",
       pid: running && host ? host.pid : 0,
