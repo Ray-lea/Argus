@@ -6,6 +6,8 @@
 
 **快速、现代、信息丰富的 Windows 任务管理器**
 
+**简体中文** · [English](README.en.md)
+
 [![最新版本](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases&sort=semver&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![下载量](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
 [![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%2011%20x64-0078D4)](#-系统要求)
@@ -30,9 +32,6 @@
 <br>
 
 Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS 构建界面。进程、性能、服务、启动项、网络连接以及最近 7 天的历史记录集中在同一窗口中，曲线随屏幕刷新率连续流动；常驻托盘时约占用单个 CPU 核心的 1%。名称取自希腊神话中的百眼巨人阿尔戈斯（Argus Panoptes）。
-
-> [!IMPORTANT]
-> 项目处于早期开发阶段，尚未发布正式版本。在首个版本发布之前，请[从源码构建](#-从源码构建)。
 
 ## ✨ 特性
 
