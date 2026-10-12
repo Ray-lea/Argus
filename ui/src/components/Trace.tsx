@@ -20,6 +20,7 @@ import {
   Show,
   untrack,
 } from "solid-js";
+import { t } from "../lib/i18n";
 import { balancedFrameMs, type ChartMode, chartMode } from "../lib/motion";
 import { HISTORY, intervalMs, paused, sampleSeq, sampleTimes } from "../lib/store";
 
@@ -81,12 +82,12 @@ function wake() {
   // Pixel-mode charts move on the fastest one's ticks, so slower ones share its frames.
   let lead: Ticked | null = null;
   let wait = Number.POSITIVE_INFINITY;
-  for (const t of ticked) {
-    t.tick(now);
-    if (t.pixelSpeed() > (lead?.pixelSpeed() ?? 0)) lead = t;
+  for (const c of ticked) {
+    c.tick(now);
+    if (c.pixelSpeed() > (lead?.pixelSpeed() ?? 0)) lead = c;
   }
-  for (const t of ticked) {
-    if (t.pixelSpeed() === 0 || t === lead) wait = Math.min(wait, t.next(now));
+  for (const c of ticked) {
+    if (c.pixelSpeed() === 0 || c === lead) wait = Math.min(wait, c.next(now));
   }
   if (Number.isFinite(wait)) timer = setTimeout(wake, Math.min(500, Math.max(8, wait)));
 }
@@ -464,11 +465,11 @@ export function Chart(props: ChartProps) {
     const times = sampleTimes();
     const cssSpeed = speed / dpr;
     const offset = shift(now) / dpr;
-    const t = left + (hoverX + offset) / cssSpeed;
+    const at = left + (hoverX + offset) / cssSpeed;
     let best = -1;
     for (let i = times.length - 1; i >= 0; i--) {
-      if (best < 0 || Math.abs(times[i] - t) < Math.abs(times[best] - t)) best = i;
-      if (times[i] < t) break;
+      if (best < 0 || Math.abs(times[i] - at) < Math.abs(times[best] - at)) best = i;
+      if (times[i] < at) break;
     }
     if (best < 0) return setReadout(null);
     const k = times.length - 1 - best;
@@ -589,7 +590,11 @@ export function Chart(props: ChartProps) {
                 class="chart-tip"
                 style={r().flip ? { right: `${box().track - r().x + 10}px` } : { left: `${r().x + 10}px` }}
               >
-                <div class="chart-tip-time">{r().ago === 0 ? "最新" : `${fmtAgo(r().ago)} 秒前`}</div>
+                <div class="chart-tip-time">
+                  {r().ago === 0
+                    ? t("performance.chart.latest")
+                    : t("performance.chart.ago", { seconds: fmtAgo(r().ago) })}
+                </div>
                 <Index each={r().points}>
                   {(p) => (
                     <div class="chart-tip-row">
@@ -628,10 +633,10 @@ export default function Trace(props: {
 export function easedMax(target: () => number, identity?: () => unknown): () => number {
   let last: unknown;
   return createMemo((prev: number | undefined): number => {
-    const t = target();
+    const next = target();
     const id = identity?.();
     const reset = id !== last;
     last = id;
-    return prev === undefined || reset || t >= prev ? t : prev + (t - prev) * 0.3;
+    return prev === undefined || reset || next >= prev ? next : prev + (next - prev) * 0.3;
   }, undefined);
 }

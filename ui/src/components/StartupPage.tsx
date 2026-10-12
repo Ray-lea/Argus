@@ -1,5 +1,6 @@
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { copyText, revealInExplorer, toastActionError } from "../lib/actions";
+import { rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import type { StartupItem } from "../lib/types";
 import { type MenuEntry, openMenu, toast } from "../lib/ui";
@@ -13,48 +14,47 @@ const [query, setQuery] = createSignal("");
 const [selected, setSelected] = createSignal<string | null>(null);
 const [items, setItems] = createSignal<StartupItem[] | null>(null);
 
-const LOCATION_LABEL: Record<StartupItem["location"], string> = {
-  hkcuRun: "注册表（当前用户）",
-  hklmRun: "注册表（所有用户）",
-  hklmRun32: "注册表（所有用户，32 位）",
-  userFolder: "启动文件夹（当前用户）",
-  commonFolder: "启动文件夹（所有用户）",
-};
-
 async function load() {
   try {
     setItems(await api.startup());
   } catch (e) {
-    toastActionError(e, "无法读取启动项");
+    toastActionError(e, t("startup.loadFailed"));
   }
 }
 
 async function setEnabled(item: StartupItem, enabled: boolean) {
   try {
     await api.setStartupEnabled(item.id, enabled);
-    toast("success", `已${enabled ? "启用" : "禁用"}“${item.name}”，下次登录时生效。`, 2500);
+    toast("success", t(enabled ? "startup.done.enable" : "startup.done.disable", { name: item.name }), 2500);
   } catch (e) {
-    toastActionError(e, `无法${enabled ? "启用" : "禁用"}“${item.name}”`);
+    toastActionError(e, t(enabled ? "startup.failed.enable" : "startup.failed.disable", { name: item.name }));
   }
   await load();
 }
 
 function startupMenu(item: StartupItem): MenuEntry[] {
   return [
-    { label: item.enabled ? "禁用" : "启用", run: () => setEnabled(item, !item.enabled) },
+    {
+      label: t(item.enabled ? "common.disable" : "common.enable"),
+      run: () => setEnabled(item, !item.enabled),
+    },
     "separator",
     {
-      label: "打开文件位置",
+      label: t("common.openFileLocation"),
       icon: () => <FolderIcon />,
       disabled: !item.exists || !item.path,
       run: () => item.path && revealInExplorer(item.path),
     },
-    { label: "复制命令", icon: () => <CopyIcon />, run: () => copyText(item.command, "命令") },
+    {
+      label: t("startup.menu.copyCommand"),
+      icon: () => <CopyIcon />,
+      run: () => copyText(item.command, t("startup.copied.command")),
+    },
   ];
 }
 
 export function StartupControls() {
-  return <SearchBox value={query()} onInput={setQuery} placeholder="搜索名称、发布者或命令" />;
+  return <SearchBox value={query()} onInput={setQuery} placeholder={t("startup.search")} />;
 }
 
 export default function StartupPage() {
@@ -86,7 +86,9 @@ export default function StartupPage() {
   const columns: Column<StartupItem>[] = [
     {
       id: "name",
-      label: "名称",
+      get label() {
+        return t("common.name");
+      },
       width: "minmax(200px, 1.2fr)",
       sortValue: (i) => i.name,
       cell: (i) => (
@@ -96,8 +98,8 @@ export default function StartupPage() {
             {i.name}
           </span>
           <Show when={!i.exists}>
-            <span class="tag warn" title="命令指向的程序已不存在，可禁用此项">
-              文件不存在
+            <span class="tag warn" title={t("startup.missing.title")}>
+              {t("startup.missing.label")}
             </span>
           </Show>
         </>
@@ -105,14 +107,18 @@ export default function StartupPage() {
     },
     {
       id: "publisher",
-      label: "发布者",
+      get label() {
+        return t("startup.column.publisher");
+      },
       width: "minmax(140px, 0.8fr)",
       sortValue: (i) => i.publisher ?? "",
       cell: (i) => <span class="label dim">{i.publisher ?? "—"}</span>,
     },
     {
       id: "state",
-      label: "状态",
+      get label() {
+        return t("common.status");
+      },
       width: "116px",
       sortValue: (i) => (i.enabled ? 1 : 0),
       cell: (i) => (
@@ -122,24 +128,28 @@ export default function StartupPage() {
             role="switch"
             class="switch small"
             aria-checked={i.enabled}
-            aria-label={`${i.enabled ? "禁用" : "启用"} ${i.name}`}
+            aria-label={t(i.enabled ? "startup.toggle.disable" : "startup.toggle.enable", { name: i.name })}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setEnabled(i, !i.enabled)}
           />
-          <span classList={{ dim: !i.enabled }}>{i.enabled ? "已启用" : "已禁用"}</span>
+          <span classList={{ dim: !i.enabled }}>{t(i.enabled ? "common.enabled" : "common.disabled")}</span>
         </span>
       ),
     },
     {
       id: "location",
-      label: "位置",
+      get label() {
+        return t("startup.column.location");
+      },
       width: "minmax(150px, 0.8fr)",
       sortValue: (i) => i.location,
-      cell: (i) => <span class="label dim">{LOCATION_LABEL[i.location]}</span>,
+      cell: (i) => <span class="label dim">{t(`startup.location.${i.location}`)}</span>,
     },
     {
       id: "command",
-      label: "命令",
+      get label() {
+        return t("common.command");
+      },
       width: "minmax(220px, 1.6fr)",
       cell: (i) => (
         <span class="label dim mono" title={i.command}>
@@ -152,7 +162,8 @@ export default function StartupPage() {
   return (
     <main class="workspace page single">
       <DataTable
-        label="启动项"
+        id="startup"
+        label={t("startup.title")}
         rows={rows()}
         columns={columns}
         rowKey={(i) => i.id}
@@ -162,13 +173,16 @@ export default function StartupPage() {
         onContextMenu={(i, e) => openMenu(e, startupMenu(i))}
         onActivate={(i) => setEnabled(i, !i.enabled)}
         rowClass={(i) => ({ off: !i.enabled })}
-        empty={items() === null ? <Loading text="正在读取启动项…" /> : "没有匹配的启动项"}
+        empty={items() === null ? <Loading text={t("startup.loading")} /> : t("startup.noMatch")}
       />
       <footer class="page-foot">
         <span>
-          已启用 <b>{enabledCount()}</b> / 共 <b>{items()?.length ?? 0}</b> 项
+          {rich("startup.summary", {
+            enabled: <b>{enabledCount()}</b>,
+            total: <b>{items()?.length ?? 0}</b>,
+          })}
         </span>
-        <span>禁用操作与任务管理器的“启动应用”使用同一开关，可重新启用；“所有用户”的项需要管理员权限。</span>
+        <span>{t("startup.note")}</span>
       </footer>
     </main>
   );

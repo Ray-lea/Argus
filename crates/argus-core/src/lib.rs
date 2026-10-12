@@ -16,6 +16,7 @@ pub mod gpu_process;
 pub mod handles;
 pub mod hardware;
 pub mod history;
+pub mod i18n;
 pub mod meta;
 pub mod net_process;
 mod nt;

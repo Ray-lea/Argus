@@ -14,6 +14,7 @@ import {
 } from "solid-js";
 import { copyText } from "../lib/actions";
 import { fmtCpu, fmtGB, fmtMem, fmtNet, fmtRate, netUnit } from "../lib/format";
+import { localized, rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { persisted } from "../lib/prefs";
 import { revealProcess, snapshot } from "../lib/store";
@@ -39,10 +40,10 @@ const TOP_PAD = 3;
 const BORDER = 1;
 
 const RANGES = [
-  { id: "1h", label: "1 小时", ms: HOUR, tick: 10 * MINUTE },
-  { id: "6h", label: "6 小时", ms: 6 * HOUR, tick: HOUR },
-  { id: "24h", label: "24 小时", ms: DAY, tick: 3 * HOUR },
-  { id: "7d", label: "7 天", ms: 7 * DAY, tick: DAY },
+  { id: "1h", count: 1, unit: "hours", ms: HOUR, tick: 10 * MINUTE },
+  { id: "6h", count: 6, unit: "hours", ms: 6 * HOUR, tick: HOUR },
+  { id: "24h", count: 24, unit: "hours", ms: DAY, tick: 3 * HOUR },
+  { id: "7d", count: 7, unit: "days", ms: 7 * DAY, tick: DAY },
 ] as const;
 type RangeId = (typeof RANGES)[number]["id"];
 
@@ -74,19 +75,19 @@ function backToLatest() {
 export function HistoryControls() {
   return (
     <>
-      <div class="segmented" role="group" aria-label="时间范围">
+      <div class="segmented" role="group" aria-label={t("history.range.label")}>
         <Indicator selector="[aria-pressed='true']" track={rangeId} class="seg-thumb" />
         <For each={RANGES}>
           {(r) => (
             <button type="button" aria-pressed={rangeId() === r.id} onClick={() => chooseRange(r.id)}>
-              {r.label}
+              {t(`history.range.${r.unit}`, { count: r.count })}
             </button>
           )}
         </For>
       </div>
       <Show when={pinned() !== null || anchor() !== null}>
-        <button type="button" class="btn" title="取消选中的时刻，显示最新数据" onClick={backToLatest}>
-          回到最新
+        <button type="button" class="btn" title={t("history.latest.title")} onClick={backToLatest}>
+          {t("history.latest.label")}
         </button>
       </Show>
     </>
@@ -103,7 +104,7 @@ function niceCeil(v: number): number {
 }
 
 interface Metric {
-  label: string;
+  resource: "cpu" | "memory" | "disk" | "network" | "gpu";
   colorVar: string;
   value: (p: HistoryPoint) => number;
   /** Drawn faintly above the value: CPU's highest one-second sample. */
@@ -126,16 +127,16 @@ const highest = (points: HistoryPoint[], value: (p: HistoryPoint) => number) =>
 
 const METRICS: Metric[] = [
   {
-    label: "CPU",
+    resource: "cpu",
     colorVar: "--cpu",
     value: (p) => p.cpu,
     peak: (p) => p.cpuPeak,
     max: () => 100,
     format: (p) => `${fmtCpu(p.cpu)}%`,
-    detail: (p) => `最高 ${fmtCpu(p.cpuPeak)}%`,
+    detail: (p) => t("history.metric.peak", { value: fmtCpu(p.cpuPeak) }),
   },
   {
-    label: "内存",
+    resource: "memory",
     colorVar: "--mem",
     value: (p) => p.memUsed,
     max: (points) =>
@@ -144,10 +145,10 @@ const METRICS: Metric[] = [
         highest(points, (p) => p.memTotal),
       ),
     format: (p) => `${fmtGB(p.memUsed)} GB`,
-    detail: (p) => `共 ${fmtGB(p.memTotal)} GB`,
+    detail: (p) => t("history.metric.total", { value: fmtGB(p.memTotal) }),
   },
   {
-    label: "磁盘",
+    resource: "disk",
     colorVar: "--io",
     value: (p) => p.disk,
     max: (points) =>
@@ -161,7 +162,7 @@ const METRICS: Metric[] = [
     format: (p) => fmtRate(p.disk, false),
   },
   {
-    label: "网络",
+    resource: "network",
     colorVar: "--net",
     value: (p) => p.net,
     // Round in the unit shown; at least 1 Mbps or 100 KB/s.
@@ -175,7 +176,7 @@ const METRICS: Metric[] = [
     format: (p) => fmtNet(p.net),
   },
   {
-    label: "GPU",
+    resource: "gpu",
     colorVar: "--gpu",
     value: (p) => p.gpu,
     max: () => 100,
@@ -183,27 +184,32 @@ const METRICS: Metric[] = [
   },
 ];
 
-const timeFmt = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-const secFmt = new Intl.DateTimeFormat("zh-CN", {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-});
+const timeFmt = localized(
+  (l) => new Intl.DateTimeFormat(l, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }),
+);
+const secFmt = localized(
+  (l) =>
+    new Intl.DateTimeFormat(l, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }),
+);
 // "short" months read "10月11日" in Chinese; "numeric" gives "10/11".
-const dayFmt = new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" });
+const dayFmt = localized((l) => new Intl.DateTimeFormat(l, { month: "short", day: "numeric" }));
 
 const isToday = (ts: number) => new Date(ts).toDateString() === new Date().toDateString();
 /** A moment, with its date unless it is today. */
 const fmtMoment = (ts: number) =>
-  isToday(ts) ? secFmt.format(ts) : `${dayFmt.format(ts)} ${secFmt.format(ts)}`;
+  isToday(ts) ? secFmt().format(ts) : `${dayFmt().format(ts)} ${secFmt().format(ts)}`;
 /** The cursor's time, as precise as the points under it. */
 const fmtCursor = (ts: number, span: number) =>
   span > DAY
-    ? `${dayFmt.format(ts)} ${timeFmt.format(ts)}`
+    ? `${dayFmt().format(ts)} ${timeFmt().format(ts)}`
     : span > 6 * HOUR
-      ? timeFmt.format(ts)
-      : secFmt.format(ts);
+      ? timeFmt().format(ts)
+      : secFmt().format(ts);
 
 /** Axis ticks on local clock boundaries (every so many minutes past midnight, or midnights). */
 function ticks(from: number, to: number, step: number): number[] {
@@ -211,16 +217,18 @@ function ticks(from: number, to: number, step: number): number[] {
   const d = new Date(from);
   const [y, m, day] = [d.getFullYear(), d.getMonth(), d.getDate()];
   for (let k = 0; ; k++) {
-    const t = (step >= DAY ? new Date(y, m, day + k) : new Date(y, m, day, 0, (k * step) / MINUTE)).getTime();
-    if (t > to) break;
-    if (t >= from) out.push(t);
+    const at = (
+      step >= DAY ? new Date(y, m, day + k) : new Date(y, m, day, 0, (k * step) / MINUTE)
+    ).getTime();
+    if (at > to) break;
+    if (at >= from) out.push(at);
   }
   return out;
 }
 
-const tickLabel = (t: number) => {
-  const d = new Date(t);
-  return d.getHours() === 0 && d.getMinutes() === 0 ? dayFmt.format(d) : timeFmt.format(d);
+const tickLabel = (ts: number) => {
+  const d = new Date(ts);
+  return d.getHours() === 0 && d.getMinutes() === 0 ? dayFmt().format(d) : timeFmt().format(d);
 };
 
 /** Index of the point closest to `ts` (points are in time order); -1 when there are none. */
@@ -291,8 +299,8 @@ function HistoryChart(props: {
       grid.moveTo(0, gy);
       grid.lineTo(W, gy);
     }
-    for (const t of ticks) {
-      const gx = Math.round(x(t)) + 0.5;
+    for (const tick of ticks) {
+      const gx = Math.round(x(tick)) + 0.5;
       grid.moveTo(gx, 0);
       grid.lineTo(gx, H);
     }
@@ -523,12 +531,21 @@ export default function HistoryPage() {
   const running = (p: HistoryProcess) => live().byPid.get(p.pid)?.name === p.name;
   const openLive = (p: HistoryProcess) => {
     if (running(p)) revealProcess(p.pid);
-    else toast("error", `${p.name}（PID ${p.pid}）已经退出。`);
+    else toast("error", t("history.exited", { name: p.name, pid: p.pid }));
   };
   const rowMenu = (p: HistoryProcess): MenuEntry[] => [
-    { label: "转到进程", icon: () => <GoToIcon />, disabled: !running(p), run: () => revealProcess(p.pid) },
+    {
+      label: t("common.goToProcess"),
+      icon: () => <GoToIcon />,
+      disabled: !running(p),
+      run: () => revealProcess(p.pid),
+    },
     "separator",
-    { label: "复制名称", icon: () => <CopyIcon />, run: () => copyText(p.name, "名称") },
+    {
+      label: t("common.copyName"),
+      icon: () => <CopyIcon />,
+      run: () => copyText(p.name, t("history.copied.name")),
+    },
   ];
 
   // Per-process network needs administrator rights; without it the column would be all zeros.
@@ -537,7 +554,7 @@ export default function HistoryPage() {
     const cols: Column<HistoryProcess>[] = [
       {
         id: "name",
-        label: "名称",
+        label: t("common.name"),
         width: "minmax(200px, 1fr)",
         sortValue: (p) => p.name,
         cell: (p) => {
@@ -566,16 +583,16 @@ export default function HistoryPage() {
         label: "CPU",
         width: "70px",
         align: "end",
-        title: "该 5 秒内的平均值",
+        title: t("history.column.cpuTitle"),
         sortValue: (p) => p.cpu,
         cell: (p) => fmtCpu(p.cpu),
       },
       {
         id: "mem",
-        label: "内存",
+        label: t("common.resource.memory"),
         width: "96px",
         align: "end",
-        title: "专用工作集",
+        title: t("history.column.memTitle"),
         sortValue: (p) => p.mem,
         cell: (p) => fmtMem(p.mem),
       },
@@ -591,7 +608,7 @@ export default function HistoryPage() {
     if (hasNet()) {
       cols.push({
         id: "net",
-        label: "网络",
+        label: t("common.resource.network"),
         width: "92px",
         align: "end",
         sortValue: (p) => p.net,
@@ -613,13 +630,16 @@ export default function HistoryPage() {
 
   return (
     <div class="page history">
-      <section class="history-graphs" aria-label="系统历史">
+      <section class="history-graphs" aria-label={t("history.systemHistory")}>
         <div class="history-labels">
           <For each={METRICS}>
             {(m) => (
               <div class="history-label" style={{ "--c": `var(${m.colorVar})` }}>
-                <span>{m.label}</span>
-                <Show when={readout()} fallback={<b class="dim">{readTs() === null ? "—" : "无记录"}</b>}>
+                <span>{t(`common.resource.${m.resource}`)}</span>
+                <Show
+                  when={readout()}
+                  fallback={<b class="dim">{readTs() === null ? "—" : t("history.noData")}</b>}
+                >
                   {(p) => (
                     <>
                       <b>{m.format(p())}</b>
@@ -638,11 +658,11 @@ export default function HistoryPage() {
           </For>
           <div class="history-axis" aria-hidden="true">
             <For each={tickList()}>
-              {(t) => {
-                const f = () => (t - view().from) / (view().to - view().from);
+              {(tick) => {
+                const f = () => (tick - view().from) / (view().to - view().from);
                 return (
                   <Show when={f() > 0.03 && f() < 0.97}>
-                    <span style={{ left: `${f() * 100}%` }}>{tickLabel(t)}</span>
+                    <span style={{ left: `${f() * 100}%` }}>{tickLabel(tick)}</span>
                   </Show>
                 );
               }}
@@ -650,19 +670,15 @@ export default function HistoryPage() {
           </div>
           <Show when={empty()}>
             <div class="history-empty">
-              <span>{recordingOff() ? "历史记录已关闭" : "此时间段内无记录"}</span>
-              <small>
-                {recordingOff()
-                  ? "在设置中开启后，Argus 每 5 秒记录一次。"
-                  : "Argus 运行时每 5 秒记录一次，保留 7 天。"}
-              </small>
+              <span>{recordingOff() ? t("history.empty.off") : t("history.empty.none")}</span>
+              <small>{recordingOff() ? t("history.empty.offHint") : t("history.empty.hint")}</small>
             </div>
           </Show>
           <div
             class="history-overlay"
             role="slider"
             tabIndex={0}
-            aria-label="时间"
+            aria-label={t("history.time")}
             aria-valuemin={view().from}
             aria-valuemax={view().to}
             aria-valuenow={pinned() ?? view().points.at(-1)?.ts ?? view().to}
@@ -700,18 +716,15 @@ export default function HistoryPage() {
       <section class="history-moment">
         <header class="history-moment-head">
           <h2>
-            <Show when={moment.latest} fallback="最忙的进程">
-              {(m) => <>{fmtMoment(m().system.ts)} 最忙的进程</>}
+            <Show when={moment.latest} fallback={t("history.busiest")}>
+              {(m) => <>{t("history.busiestAt", { time: fmtMoment(m().system.ts) })}</>}
             </Show>
           </h2>
-          <span>
-            {pinned() === null
-              ? "单击图表上的任意时刻，查看当时的进程"
-              : "在图表上按 ← → 前后移动，按 Esc 返回最新"}
-          </span>
+          <span>{pinned() === null ? t("history.hint.pick") : t("history.hint.move")}</span>
         </header>
         <DataTable
-          label="历史进程"
+          id="history"
+          label={t("history.tableLabel")}
           rows={moment.latest?.processes ?? []}
           columns={columns()}
           rowKey={(p) => `${p.name}:${p.pid}`}
@@ -720,25 +733,25 @@ export default function HistoryPage() {
           onSelect={setSelected}
           onContextMenu={(p, e) => openMenu(e, rowMenu(p))}
           onActivate={openLive}
-          empty={<span>{moment.loading ? "" : "该时刻无记录"}</span>}
+          empty={<span>{moment.loading ? "" : t("history.noRecordAt")}</span>}
         />
         <footer class="page-foot">
           <Show when={first.latest}>
             {(r) => (
               <span>
-                最早的记录 <b>{fmtMoment(r()[0])}</b>
+                {t("history.earliest")} <b>{fmtMoment(r()[0])}</b>
               </span>
             )}
           </Show>
-          <Show
-            when={recordingOff()}
-            fallback={<span>每 5 秒记录 CPU、内存、I/O、GPU 和网络占用最高的进程，保留 7 天。</span>}
-          >
+          <Show when={recordingOff()} fallback={<span>{t("history.note")}</span>}>
             <span>
-              历史记录已关闭，不再记录新的数据。
-              <button type="button" class="link" onClick={() => openSettings("data")}>
-                打开设置
-              </button>
+              {rich("history.off", {
+                link: (text) => (
+                  <button type="button" class="link" onClick={() => openSettings("data")}>
+                    {text}
+                  </button>
+                ),
+              })}
             </span>
           </Show>
         </footer>

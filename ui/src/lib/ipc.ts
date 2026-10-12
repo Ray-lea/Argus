@@ -1,4 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import type { Language } from "./i18n";
 import type {
   AppInfo,
   Connection,
@@ -54,6 +55,10 @@ export const api = {
   reveal: (path: string): Promise<void> =>
     mock ? Promise.resolve() : invoke("reveal_in_explorer", { path }),
   settings: (): Promise<SettingsView> => (mock ? mock.settings.get() : invoke("get_settings")),
+  setLanguage: (language: Language): Promise<SettingsView> =>
+    mock ? mock.settings.update({ language }) : invoke("set_language", { language }),
+  completeOnboarding: (version: number): Promise<SettingsView> =>
+    mock ? mock.settings.update({ onboarding: version }) : invoke("complete_onboarding", { version }),
   privilegedServiceStatus: (): Promise<PrivilegedServiceStatus> =>
     mock ? mock.privilegedService.status() : invoke("privileged_service_status"),
   managePrivilegedService: (action: PrivilegedServiceAction): Promise<PrivilegedServiceStatus> =>

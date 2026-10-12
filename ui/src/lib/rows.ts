@@ -1,5 +1,6 @@
 // Turns a flat process snapshot into the rows the table renders, for each view mode.
 
+import { localized, t } from "./i18n";
 import type { ProcessRow } from "./types";
 
 export type ViewMode = "apps" | "tree" | "list";
@@ -94,7 +95,7 @@ function procRow(p: ProcessRow, depth: number, label: string, detail: string | n
   };
 }
 
-const collator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
+const collator = localized((l) => new Intl.Collator(l, { numeric: true, sensitivity: "base" }));
 
 // Sort on displayed precision, so rows whose values only differ in invisible
 // digits do not trade places on every refresh.
@@ -113,8 +114,8 @@ const quantize: Record<
 
 function comparator(sort: SortState): (a: DisplayRow, b: DisplayRow) => number {
   const dir = sort.desc ? -1 : 1;
-  const byName = (a: DisplayRow, b: DisplayRow) =>
-    collator.compare(a.label, b.label) || a.proc.pid - b.proc.pid;
+  const text = collator();
+  const byName = (a: DisplayRow, b: DisplayRow) => text.compare(a.label, b.label) || a.proc.pid - b.proc.pid;
   switch (sort.key) {
     case "name":
       return (a, b) => dir * byName(a, b);
@@ -145,8 +146,9 @@ function matcher(
 
 /** "DNS Client、DHCP Client 等 5 个服务" */
 export function summarizeServices(names: readonly string[]): string {
-  if (names.length <= 2) return names.join("、");
-  return `${names.slice(0, 2).join("、")} 等 ${names.length} 个服务`;
+  const separator = t("common.listSeparator");
+  if (names.length <= 2) return names.join(separator);
+  return t("processes.servicesSummary", { names: names.slice(0, 2).join(separator), count: names.length });
 }
 
 export function buildRows(procs: readonly ProcessRow[], opts: BuildOptions): TableRow[] {
@@ -194,10 +196,18 @@ function sections(rows: DisplayRow[]): TableRow[] {
     into.push(row);
   }
   const out: TableRow[] = [];
-  if (apps.length) out.push({ key: "s:apps", kind: "section", label: "应用", count: appCount }, ...apps);
+  if (apps.length) {
+    out.push(
+      { key: "s:apps", kind: "section", label: t("processes.section.apps"), count: appCount },
+      ...apps,
+    );
+  }
   if (background.length) {
     const count = rows.filter((r) => r.depth === 0).length - appCount;
-    out.push({ key: "s:background", kind: "section", label: "后台进程", count }, ...background);
+    out.push(
+      { key: "s:background", kind: "section", label: t("processes.section.background"), count },
+      ...background,
+    );
   }
   return out;
 }

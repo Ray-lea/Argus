@@ -1,0 +1,54 @@
+{
+  "label": "进程详细信息",
+  "close": "关闭详细信息",
+  "exited": {
+    "title": "进程已退出",
+    "hint": "选择列表中的其他进程查看详细信息。"
+  },
+  "groupNote": "此应用共有 {count} 个进程，合计 CPU {cpu}%，内存 {memory}。下方显示最早启动的主进程。",
+  "services": "运行的服务（{count}）",
+  "section": {
+    "process": "进程",
+    "resources": "资源",
+    "location": "文件位置",
+    "commandLine": "命令行",
+    "version": "文件版本"
+  },
+  "parent": "父进程",
+  "parentLink": "{name}（{pid}）",
+  "noParent": "无（PID {pid}）",
+  "started": "启动时间",
+  "cpuTime": "CPU 时间",
+  "user": "用户",
+  "integrity": "完整性",
+  "integrityLevel": {
+    "untrusted": "不受信任",
+    "low": "低",
+    "medium": "中",
+    "mediumPlus": "中高",
+    "high": "高（已提升）",
+    "system": "系统",
+    "protected": "受保护"
+  },
+  "architecture": "架构",
+  "arch": {
+    "x64": "64 位 (x64)",
+    "x86": "32 位 (x86)",
+    "arm64": "ARM64",
+    "arm": "ARM"
+  },
+  "priority": "优先级",
+  "session": "会话",
+  "privateWs": "专用工作集",
+  "workingSet": "工作集",
+  "commit": "提交大小",
+  "gpuEngine": "（{engine}）",
+  "gpuDedicated": "专用 GPU 内存",
+  "gpuShared": "共享 GPU 内存",
+  "netNeedsAdmin": "以管理员身份运行后可查看",
+  "threads": "线程",
+  "handles": "句柄",
+  "noAccess": "无法打开此进程以读取命令行和用户信息。以管理员身份运行 Argus 后可查看。",
+  "product": "产品",
+  "version": "版本"
+}

@@ -12,6 +12,7 @@ use windows::Win32::NetworkManagement::IpHelper::{
 use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 
 use crate::actions::ActionError;
+use crate::tr;
 use crate::util::AlignedBuf;
 
 #[derive(Debug, Clone, Serialize)]
@@ -185,7 +186,7 @@ pub fn close_tcp(
 ) -> Result<(), ActionError> {
     let parse = |s: &str| {
         s.parse::<Ipv4Addr>()
-            .map_err(|_| ActionError::Os("只能关闭 IPv4 TCP 连接".into()))
+            .map_err(|_| ActionError::Os(tr!("core.connections.ipv4Only")))
     };
     let row = MIB_TCPROW_LH {
         Anonymous: MIB_TCPROW_LH_0 {

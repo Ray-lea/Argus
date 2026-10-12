@@ -3,6 +3,7 @@ use crate::{
     security,
     util::{Handle, wide},
 };
+use argus_core::tr;
 use std::sync::Mutex;
 use std::time::Duration;
 use windows::Win32::Foundation::WAIT_OBJECT_0;
@@ -141,7 +142,7 @@ fn complete_with(request: Request, expected: &std::path::Path) -> Result<Complet
 
 pub fn activate(image: &std::path::Path, owner: &str, probe: bool) -> Result<()> {
     if security::current_sid().map_err(crate::util::message)? != owner {
-        return Err("当前账户或权限不适合启动标准权限界面".into());
+        return Err(tr!("taskManager.wrongAccount"));
     }
     let id = super::id()?;
     let sd = security::pipe_descriptor(owner).map_err(crate::util::message)?;
@@ -173,11 +174,11 @@ pub fn activate(image: &std::path::Path, owner: &str, probe: bool) -> Result<()>
         ],
     )?;
     if unsafe { WaitForSingleObject(ready.0, 10000) } != WAIT_OBJECT_0 {
-        return Err("Argus 界面未在 10 秒内就绪".into());
+        return Err(tr!("taskManager.uiTimeout"));
     }
     unsafe { SetEvent(commit.0) }.map_err(|e| e.to_string())?;
     if unsafe { WaitForSingleObject(done.0, 2000) } != WAIT_OBJECT_0 {
-        return Err("Argus 界面未响应显示请求".into());
+        return Err(tr!("taskManager.uiNoResponse"));
     }
     Ok(())
 }

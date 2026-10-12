@@ -14,6 +14,7 @@ import {
   netParts,
   rateParts,
 } from "../lib/format";
+import { t } from "../lib/i18n";
 import { EASE_OUT, play } from "../lib/motion";
 import { persisted } from "../lib/prefs";
 import {
@@ -26,7 +27,7 @@ import {
   setPerfDevice,
   snapshot,
 } from "../lib/store";
-import type { BatteryStats, DiskStats, Hardware, NicStats, Snapshot, SystemStats } from "../lib/types";
+import type { BatteryStats, DiskStats, Hardware, Snapshot, SystemStats } from "../lib/types";
 import Indicator from "./Indicator";
 import { Chart, easedMax, type Series } from "./Trace";
 
@@ -49,7 +50,9 @@ const gb = (v: number) => `${fmtGB(v)} GB`;
 /** Time a chart spans at the current refresh rate. */
 function spanLabel() {
   const secs = (HISTORY * intervalMs()) / 1000;
-  return secs >= 120 ? `${secs / 60} 分钟` : `${secs} 秒`;
+  return secs >= 120
+    ? t("performance.span.minutes", { count: secs / 60 })
+    : t("performance.span.seconds", { count: secs });
 }
 
 function ChartBox(props: {
@@ -127,12 +130,21 @@ interface Device {
 }
 
 const diskTitle = (d: DiskStats) =>
-  `磁盘 ${d.info.index}${d.info.volumes.length ? ` (${d.info.volumes.join(" ")})` : ""}`;
+  d.info.volumes.length
+    ? t("performance.disk.titleVolumes", { index: d.info.index, volumes: d.info.volumes.join(" ") })
+    : t("performance.disk.title", { index: d.info.index });
 
 const diskKind = (d: DiskStats) => {
   const bus =
     d.info.bus === "nvme" ? "NVMe" : d.info.bus === "usb" ? "USB" : d.info.bus === "sata" ? "SATA" : "";
-  const media = d.info.ssd === true ? "SSD" : d.info.ssd === false ? "HDD" : d.info.removable ? "可移动" : "";
+  const media =
+    d.info.ssd === true
+      ? "SSD"
+      : d.info.ssd === false
+        ? "HDD"
+        : d.info.removable
+          ? t("performance.disk.removableMedia")
+          : "";
   return [media, bus && `(${bus})`].filter(Boolean).join(" ");
 };
 
@@ -148,8 +160,12 @@ function devices(sys: SystemStats, hw: Hardware): Device[] {
     },
     {
       key: "memory",
-      title: "内存",
-      sub: `${fmtGB(sys.memUsed)} / ${fmtGB(sys.memTotal)} GB（${Math.round((sys.memUsed / sys.memTotal) * 100)}%）`,
+      title: t("common.resource.memory"),
+      sub: t("performance.memory.sub", {
+        used: fmtGB(sys.memUsed),
+        total: fmtGB(sys.memTotal),
+        percent: Math.round((sys.memUsed / sys.memTotal) * 100),
+      }),
       colorVar: "--mem",
       series: [{ data: () => series("mem"), colorVar: "--mem" }],
       max: () => sys.memTotal,
@@ -171,7 +187,7 @@ function devices(sys: SystemStats, hw: Hardware): Device[] {
     list.push({
       key: `nic:${n.info.id}`,
       title: n.info.name,
-      sub: `收 ${fmtNet(n.rx)}  发 ${fmtNet(n.tx)}`,
+      sub: t("performance.network.sub", { rx: fmtNet(n.rx), tx: fmtNet(n.tx) }),
       colorVar: "--net",
       series: [
         { data: () => series(`${k}.rx`), colorVar: "--net" },
@@ -193,7 +209,10 @@ function devices(sys: SystemStats, hw: Hardware): Device[] {
   for (const b of hw.batteries) {
     list.push({
       key: `bat:${b.info.id}`,
-      title: hw.batteries.length > 1 ? `电池 ${b.info.id}` : "电池",
+      title:
+        hw.batteries.length > 1
+          ? t("performance.battery.titleNumbered", { id: b.info.id })
+          : t("performance.battery.title"),
       sub: batterySub(b),
       colorVar: "--bat",
       series: [{ data: () => series(`bat.${b.info.id}.pct`), colorVar: "--bat" }],
@@ -243,7 +262,7 @@ export default function Performance() {
 
   return (
     <div class="perf page">
-      <nav class="dev-list" aria-label="设备">
+      <nav class="dev-list" aria-label={t("performance.devices")}>
         <Indicator selector="[aria-current='true']" track={current} class="dev-mark" />
         <For each={keys()}>
           {(key) => {
@@ -315,11 +334,7 @@ export default function Performance() {
 
 type CoreFilter = "all" | "p" | "e";
 const [coreFilter, setCoreFilter] = persisted<CoreFilter>("coreFilter", "all");
-const CORE_FILTERS: { id: CoreFilter; label: string; title: string }[] = [
-  { id: "all", label: "全部", title: "显示所有逻辑处理器" },
-  { id: "p", label: "性能核", title: "只显示性能核（P 核）" },
-  { id: "e", label: "能效核", title: "只显示能效核（E 核）" },
-];
+const CORE_FILTERS: CoreFilter[] = ["all", "p", "e"];
 
 /** Watts with sensible precision: 7.4, 78. */
 const fmtW = (v: number) => (v < 10 ? v.toFixed(1) : String(Math.round(v)));
@@ -347,7 +362,7 @@ function CpuView() {
   /** Mean clock of the P or E cores, MHz. */
   const meanMhz = (eff: boolean) => {
     const list = cpu()
-      .threads.map((t, i) => (t.efficient === eff ? (hw().coreMhz[i] ?? 0) : 0))
+      .threads.map((th, i) => (th.efficient === eff ? (hw().coreMhz[i] ?? 0) : 0))
       .filter((m) => m > 0);
     return list.length ? list.reduce((a, b) => a + b, 0) / list.length : null;
   };
@@ -368,7 +383,11 @@ function CpuView() {
   const coresText = () => {
     const c = cpu();
     return c.performanceCores
-      ? `${c.cores}（${c.performanceCores} 性能核 + ${c.efficiencyCores} 能效核）`
+      ? t("performance.cpu.coresHybrid", {
+          cores: c.cores,
+          performance: c.performanceCores,
+          efficiency: c.efficiencyCores,
+        })
       : String(c.cores);
   };
 
@@ -377,29 +396,29 @@ function CpuView() {
       <Head title="CPU" model={cpu().name} />
       <div class="perf-toolbar">
         <Show when={hybrid() && cpuMode() === "logical"}>
-          <div class="segmented" role="group" aria-label="核心类型">
+          <div class="segmented" role="group" aria-label={t("performance.cpu.coreType")}>
             <Indicator selector="[aria-pressed='true']" track={coreFilter} class="seg-thumb" />
             <For each={CORE_FILTERS}>
               {(f) => (
                 <button
                   type="button"
-                  title={f.title}
-                  aria-pressed={coreFilter() === f.id}
-                  onClick={() => setCoreFilter(f.id)}
+                  title={t(`performance.cpu.filterTitle.${f}`)}
+                  aria-pressed={coreFilter() === f}
+                  onClick={() => setCoreFilter(f)}
                 >
-                  {f.label}
+                  {f === "all" ? t("performance.cpu.filterAll") : t(`performance.cpu.coreKind.${f}`)}
                 </button>
               )}
             </For>
           </div>
         </Show>
-        <div class="segmented" role="group" aria-label="CPU 图表">
+        <div class="segmented" role="group" aria-label={t("performance.cpu.graph")}>
           <Indicator selector="[aria-pressed='true']" track={cpuMode} class="seg-thumb" />
           <button type="button" aria-pressed={cpuMode() === "overall"} onClick={() => setCpuMode("overall")}>
-            整体
+            {t("performance.cpu.overall")}
           </button>
           <button type="button" aria-pressed={cpuMode() === "logical"} onClick={() => setCpuMode("logical")}>
-            逻辑处理器
+            {t("performance.cpu.logical")}
           </button>
         </div>
       </div>
@@ -410,26 +429,34 @@ function CpuView() {
           fallback={
             <div>
               <ChartBox
-                label="利用率 %"
+                label={t("performance.cpu.utilizationChart")}
                 max="100%"
                 colorVar="--cpu"
                 size="main"
                 scale={() => 100}
                 format={pct}
                 series={[
-                  { data: () => series("cpu"), colorVar: "--cpu", label: "总计" },
+                  {
+                    data: () => series("cpu"),
+                    colorVar: "--cpu",
+                    get label() {
+                      return t("performance.cpu.total");
+                    },
+                  },
                   {
                     data: () => series("cpu.kernel"),
                     colorVar: "--cpu",
                     dashed: true,
                     fill: 0.18,
-                    label: "内核",
+                    get label() {
+                      return t("performance.cpu.kernel");
+                    },
                   },
                 ]}
               />
               <div class="legend" style={{ "--c": "var(--cpu)" }}>
-                <span>总计</span>
-                <span class="dashed">内核时间</span>
+                <span>{t("performance.cpu.total")}</span>
+                <span class="dashed">{t("performance.cpu.kernelTime")}</span>
               </div>
             </div>
           }
@@ -445,9 +472,14 @@ function CpuView() {
                     <div
                       class="chart-frame core-cell"
                       style={{ "--c": `var(${color()})` }}
-                      title={`逻辑处理器 ${i}，物理核心 ${cpu().threads[i]?.core ?? "?"}${
-                        hybrid() ? (eff() ? "（能效核）" : "（性能核）") : ""
-                      }`}
+                      title={t(
+                        hybrid()
+                          ? eff()
+                            ? "performance.cpu.coreTipE"
+                            : "performance.cpu.coreTipP"
+                          : "performance.cpu.coreTip",
+                        { index: i, core: cpu().threads[i]?.core ?? "?" },
+                      )}
                     >
                       <span class="chart-cell-label">
                         <Show when={hybrid()}>
@@ -469,8 +501,8 @@ function CpuView() {
             </div>
             <Show when={hybrid()}>
               <div class="legend">
-                <span style={{ "--c": "var(--cpu)" }}>性能核</span>
-                <span style={{ "--c": "var(--cpu-e)" }}>能效核</span>
+                <span style={{ "--c": "var(--cpu)" }}>{t("performance.cpu.coreKind.p")}</span>
+                <span style={{ "--c": "var(--cpu-e)" }}>{t("performance.cpu.coreKind.e")}</span>
               </div>
             </Show>
           </div>
@@ -481,7 +513,7 @@ function CpuView() {
         <div class="chart-pair section-gap">
           <Show when={temp() !== null}>
             <ChartBox
-              label="温度"
+              label={t("common.resource.temperature")}
               max="100 °C"
               colorVar="--cpu"
               size="small"
@@ -492,15 +524,29 @@ function CpuView() {
           </Show>
           <Show when={hw().power.package !== null}>
             <ChartBox
-              label="功耗"
+              label={t("performance.cpu.power")}
               max={watts(powerMax())}
               colorVar="--cpu"
               size="small"
               scale={powerMax}
               format={watts}
               series={[
-                { data: () => series("cpu.pkgW"), colorVar: "--cpu", label: "封装" },
-                { data: () => series("cpu.coresW"), colorVar: "--cpu", dashed: true, fill: 0, label: "核心" },
+                {
+                  data: () => series("cpu.pkgW"),
+                  colorVar: "--cpu",
+                  get label() {
+                    return t("performance.cpu.powerSeries.package");
+                  },
+                },
+                {
+                  data: () => series("cpu.coresW"),
+                  colorVar: "--cpu",
+                  dashed: true,
+                  fill: 0,
+                  get label() {
+                    return t("performance.cpu.powerSeries.cores");
+                  },
+                },
               ]}
             />
           </Show>
@@ -509,58 +555,70 @@ function CpuView() {
 
       <div class="perf-stats">
         <div class="stat-grid">
-          <Stat label="利用率" value={Math.round(sys().cpu)} unit="%" />
-          <Stat label="速度" value={((hw().cpuMhz ?? 0) / 1000).toFixed(2)} unit="GHz" />
+          <Stat label={t("performance.cpu.utilization")} value={Math.round(sys().cpu)} unit="%" />
+          <Stat
+            label={t("performance.cpu.speed")}
+            value={((hw().cpuMhz ?? 0) / 1000).toFixed(2)}
+            unit="GHz"
+          />
           <Show when={hybrid() && meanMhz(false)}>
-            {(m) => <Stat label="性能核频率" value={(m() / 1000).toFixed(2)} unit="GHz" />}
+            {(m) => (
+              <Stat label={t("performance.cpu.pCoreSpeed")} value={(m() / 1000).toFixed(2)} unit="GHz" />
+            )}
           </Show>
           <Show when={hybrid() && meanMhz(true)}>
-            {(m) => <Stat label="能效核频率" value={(m() / 1000).toFixed(2)} unit="GHz" />}
+            {(m) => (
+              <Stat label={t("performance.cpu.eCoreSpeed")} value={(m() / 1000).toFixed(2)} unit="GHz" />
+            )}
           </Show>
-          <Show when={temp()}>{(t) => <Stat label="温度" value={Math.round(t())} unit="°C" />}</Show>
-          <Show when={hw().power.package}>{(w) => <Stat label="封装功耗" value={fmtW(w())} unit="W" />}</Show>
-          <Show when={hw().power.cores}>{(w) => <Stat label="核心功耗" value={fmtW(w())} unit="W" />}</Show>
+          <Show when={temp()}>
+            {(c) => <Stat label={t("common.resource.temperature")} value={Math.round(c())} unit="°C" />}
+          </Show>
+          <Show when={hw().power.package}>
+            {(w) => <Stat label={t("performance.cpu.packagePower")} value={fmtW(w())} unit="W" />}
+          </Show>
+          <Show when={hw().power.cores}>
+            {(w) => <Stat label={t("performance.cpu.corePower")} value={fmtW(w())} unit="W" />}
+          </Show>
           <Show when={hw().power.graphics}>
-            {(w) => <Stat label="核显功耗" value={fmtW(w())} unit="W" />}
+            {(w) => <Stat label={t("performance.cpu.graphicsPower")} value={fmtW(w())} unit="W" />}
           </Show>
-          <Stat label="进程" value={fmtCount(sys().processCount)} />
-          <Stat label="线程" value={fmtCount(sys().threadCount)} />
-          <Stat label="句柄" value={fmtCount(sys().handleCount)} />
-          <Stat label="正常运行时间" value={fmtUptime(sys().uptimeMs)} />
+          <Stat label={t("performance.cpu.processes")} value={fmtCount(sys().processCount)} />
+          <Stat label={t("performance.cpu.threads")} value={fmtCount(sys().threadCount)} />
+          <Stat label={t("performance.cpu.handles")} value={fmtCount(sys().handleCount)} />
+          <Stat label={t("performance.cpu.uptime")} value={fmtUptime(sys().uptimeMs)} />
         </div>
         <dl class="info-list">
-          <dt>基准速度</dt>
+          <dt>{t("performance.cpu.baseSpeed")}</dt>
           <dd>{cpu().baseMhz ? fmtGHz(cpu().baseMhz) : "—"}</dd>
-          <dt>插槽</dt>
+          <dt>{t("performance.cpu.sockets")}</dt>
           <dd>{cpu().sockets}</dd>
-          <dt>内核</dt>
+          <dt>{t("performance.cpu.cores")}</dt>
           <dd>{coresText()}</dd>
-          <dt>逻辑处理器</dt>
+          <dt>{t("performance.cpu.logicalProcessors")}</dt>
           <dd>{cpu().logical}</dd>
-          <dt>虚拟化</dt>
-          <dd>{cpu().virtualization ? "已启用" : "未启用"}</dd>
-          <dt>L1 缓存</dt>
+          <dt>{t("performance.cpu.virtualization")}</dt>
+          <dd>{cpu().virtualization ? t("common.enabled") : t("performance.cpu.notEnabled")}</dd>
+          <dt>{t("performance.cpu.cache", { level: 1 })}</dt>
           <dd>{fmtCache(cpu().l1)}</dd>
-          <dt>L2 缓存</dt>
+          <dt>{t("performance.cpu.cache", { level: 2 })}</dt>
           <dd>{fmtCache(cpu().l2)}</dd>
-          <dt>L3 缓存</dt>
+          <dt>{t("performance.cpu.cache", { level: 3 })}</dt>
           <dd>{fmtCache(cpu().l3)}</dd>
           <Show when={hw().thermal.length > 0}>
-            <dt>温度来源</dt>
+            <dt>{t("performance.cpu.thermalSource")}</dt>
             <dd>
-              ACPI 热区{" "}
-              {hw()
-                .thermal.map((z) => z.name)
-                .join("、")}
+              {t("performance.cpu.thermalZones", {
+                zones: hw()
+                  .thermal.map((z) => z.name)
+                  .join(t("common.listSeparator")),
+              })}
             </dd>
           </Show>
         </dl>
       </div>
       <Show when={hw().thermal.length > 0}>
-        <p class="perf-note">
-          温度来自主板的 ACPI 热区，通常反映 CPU 封装附近的温度。每个核心的温度需读取处理器内部寄存器，Windows
-          仅允许内核驱动读取，目前不提供。
-        </p>
+        <p class="perf-note">{t("performance.cpu.thermalNote")}</p>
       </Show>
     </>
   );
@@ -578,11 +636,11 @@ function MemoryView() {
   return (
     <>
       <Head
-        title="内存"
+        title={t("common.resource.memory")}
         model={`${fmtGB(mem().installed || sys().memTotal, 0)} GB${mem().kind ? ` ${mem().kind}` : ""}`}
       />
       <ChartBox
-        label="内存使用量"
+        label={t("performance.memory.usage")}
         max={`${fmtGB(sys().memTotal)} GB`}
         colorVar="--mem"
         size="main"
@@ -591,45 +649,53 @@ function MemoryView() {
         series={[{ data: () => series("mem"), colorVar: "--mem" }]}
       />
 
-      <div class="mem-bar" role="img" aria-label="内存组成">
+      <div class="mem-bar" role="img" aria-label={t("performance.memory.composition")}>
         <span class="used" style={{ "--f": frac(sys().memUsed) }} />
         <span class="cached" style={{ "--u": frac(sys().memUsed), "--f": frac(cachedShown()) }} />
       </div>
       <div class="mem-legend">
         <span>
           <i style={{ background: "color-mix(in srgb, var(--mem) 55%, transparent)" }} />
-          使用中 {fmtGB(sys().memUsed)} GB
+          {t("performance.memory.legendInUse", { value: fmtGB(sys().memUsed) })}
         </span>
         <span>
           <i style={{ background: "color-mix(in srgb, var(--mem) 20%, transparent)" }} />
-          缓存 {fmtGB(cachedShown())} GB
+          {t("performance.memory.legendCached", { value: fmtGB(cachedShown()) })}
         </span>
         <span>
           <i style={{ border: "1px solid var(--stroke-strong)" }} />
-          空闲 {fmtGB(Math.max(0, sys().memAvailable - cachedShown()))} GB
+          {t("performance.memory.legendFree", {
+            value: fmtGB(Math.max(0, sys().memAvailable - cachedShown())),
+          })}
         </span>
       </div>
 
       <div class="perf-stats">
         <div class="stat-grid">
-          <Stat label="使用中" value={fmtGB(sys().memUsed)} unit="GB" />
-          <Stat label="可用" value={fmtGB(sys().memAvailable)} unit="GB" />
-          <Stat label="已提交" value={`${fmtGB(sys().commitUsed)} / ${fmtGB(sys().commitLimit)}`} unit="GB" />
-          <Stat label="已缓存" value={fmtGB(sys().cached)} unit="GB" />
-          <Stat label="分页缓冲池" {...parts(fmtMem(sys().kernelPaged))} />
-          <Stat label="非分页缓冲池" {...parts(fmtMem(sys().kernelNonpaged))} />
+          <Stat label={t("performance.memory.inUse")} value={fmtGB(sys().memUsed)} unit="GB" />
+          <Stat label={t("performance.memory.available")} value={fmtGB(sys().memAvailable)} unit="GB" />
+          <Stat
+            label={t("performance.memory.committed")}
+            value={`${fmtGB(sys().commitUsed)} / ${fmtGB(sys().commitLimit)}`}
+            unit="GB"
+          />
+          <Stat label={t("performance.memory.cached")} value={fmtGB(sys().cached)} unit="GB" />
+          <Stat label={t("performance.memory.pagedPool")} {...parts(fmtMem(sys().kernelPaged))} />
+          <Stat label={t("performance.memory.nonPagedPool")} {...parts(fmtMem(sys().kernelNonpaged))} />
         </div>
         <dl class="info-list">
-          <dt>速度</dt>
+          <dt>{t("performance.memory.speed")}</dt>
           <dd>{mem().speed ? `${mem().speed} MT/s` : "—"}</dd>
-          <dt>已使用的插槽</dt>
+          <dt>{t("performance.memory.slotsUsed")}</dt>
           <dd>{mem().slotsTotal ? `${mem().slotsUsed} / ${mem().slotsTotal}` : "—"}</dd>
-          <dt>外形规格</dt>
-          <dd>{mem().formFactor ?? "—"}</dd>
-          <dt>类型</dt>
+          <dt>{t("performance.memory.formFactor")}</dt>
+          <dd>
+            {mem().formFactor === "onboard" ? t("performance.memory.onboard") : (mem().formFactor ?? "—")}
+          </dd>
+          <dt>{t("performance.memory.type")}</dt>
           <dd>{mem().kind ?? "—"}</dd>
           <Show when={reserved() > 0}>
-            <dt>为硬件保留</dt>
+            <dt>{t("performance.memory.reserved")}</dt>
             <dd>{(reserved() / MB).toFixed(0)} MB</dd>
           </Show>
         </dl>
@@ -645,12 +711,12 @@ function DiskView(props: { index: number }) {
   const k = () => `disk.${props.index}`;
   const rateMax = autoMax(MB, `${k()}.read`, `${k()}.write`);
   return (
-    <Show when={disk()} fallback={<p class="empty">该磁盘已移除。</p>}>
+    <Show when={disk()} fallback={<p class="empty">{t("performance.disk.removed")}</p>}>
       {(d) => (
         <>
           <Head title={diskTitle(d())} model={d().info.model} />
           <ChartBox
-            label="活动时间"
+            label={t("performance.disk.activeTime")}
             max="100%"
             colorVar="--io"
             size="half"
@@ -660,51 +726,71 @@ function DiskView(props: { index: number }) {
           />
           <div class="section-gap">
             <ChartBox
-              label="磁盘传输速率"
+              label={t("performance.disk.transferRate")}
               max={fmtRate(rateMax())}
               colorVar="--io"
               size="half"
               scale={rateMax}
               format={(v) => fmtRate(v, false)}
               series={[
-                { data: () => series(`${k()}.read`), colorVar: "--io", label: "读取" },
+                {
+                  data: () => series(`${k()}.read`),
+                  colorVar: "--io",
+                  get label() {
+                    return t("performance.disk.read");
+                  },
+                },
                 {
                   data: () => series(`${k()}.write`),
                   colorVar: "--io",
                   dashed: true,
                   fill: 0,
-                  label: "写入",
+                  get label() {
+                    return t("performance.disk.write");
+                  },
                 },
               ]}
             />
             <div class="legend" style={{ "--c": "var(--io)" }}>
-              <span>读取</span>
-              <span class="dashed">写入</span>
+              <span>{t("performance.disk.read")}</span>
+              <span class="dashed">{t("performance.disk.write")}</span>
             </div>
           </div>
           <div class="perf-stats">
             <div class="stat-grid">
-              <Stat label="活动时间" value={Math.round(d().active)} unit="%" />
-              <Stat label="平均响应时间" value={d().responseMs.toFixed(1)} unit="毫秒" />
-              <Stat label="读取速度" value={rateParts(d().read)[0]} unit={rateParts(d().read)[1]} />
-              <Stat label="写入速度" value={rateParts(d().write)[0]} unit={rateParts(d().write)[1]} />
+              <Stat label={t("performance.disk.activeTime")} value={Math.round(d().active)} unit="%" />
+              <Stat
+                label={t("performance.disk.responseTime")}
+                value={d().responseMs.toFixed(1)}
+                unit={t("performance.disk.ms")}
+              />
+              <Stat
+                label={t("performance.disk.readSpeed")}
+                value={rateParts(d().read)[0]}
+                unit={rateParts(d().read)[1]}
+              />
+              <Stat
+                label={t("performance.disk.writeSpeed")}
+                value={rateParts(d().write)[0]}
+                unit={rateParts(d().write)[1]}
+              />
               <Show when={d().temperature}>
-                {(t) => <Stat label="温度" value={Math.round(t())} unit="°C" />}
+                {(c) => <Stat label={t("common.resource.temperature")} value={Math.round(c())} unit="°C" />}
               </Show>
             </div>
             <dl class="info-list">
-              <dt>容量</dt>
+              <dt>{t("performance.disk.capacity")}</dt>
               <dd>{d().info.size ? fmtCapacity(d().info.size) : "—"}</dd>
-              <dt>类型</dt>
+              <dt>{t("performance.disk.type")}</dt>
               <dd>{diskKind(d()) || "—"}</dd>
-              <dt>卷</dt>
-              <dd>{d().info.volumes.join("  ") || "无"}</dd>
+              <dt>{t("performance.disk.volumes")}</dt>
+              <dd>{d().info.volumes.join("  ") || t("common.none")}</dd>
               <Show when={d().info.removable}>
-                <dt>可移动</dt>
-                <dd>是</dd>
+                <dt>{t("performance.disk.removable")}</dt>
+                <dd>{t("performance.disk.yes")}</dd>
               </Show>
               <Show when={d().temperatureWarning}>
-                <dt>警告温度</dt>
+                <dt>{t("performance.disk.warningTemperature")}</dt>
                 <dd>{d().temperatureWarning} °C</dd>
               </Show>
             </dl>
@@ -717,70 +803,82 @@ function DiskView(props: { index: number }) {
 
 // ---- Network -----------------------------------------------------------------
 
-const NIC_KIND: Record<NicStats["info"]["kind"], string> = {
-  ethernet: "以太网",
-  wifi: "Wi-Fi",
-  virtual: "虚拟适配器",
-  other: "其他",
-};
-
 function NicView(props: { id: string }) {
   const nic = () => now().hardware.nics.find((n) => n.info.id === props.id);
   const k = () => `nic.${props.id}`;
   const scale = autoMax(64 * 1024, `${k()}.rx`, `${k()}.tx`);
   const listAddrs = (list: string[]) =>
-    list.length > 3 ? `${list.slice(0, 3).join("\n")}\n等 ${list.length} 个` : list.join("\n") || "—";
+    list.length > 3
+      ? `${list.slice(0, 3).join("\n")}\n${t("performance.network.more", { count: list.length })}`
+      : list.join("\n") || "—";
 
   return (
-    <Show when={nic()} fallback={<p class="empty">该网络连接已断开。</p>}>
+    <Show when={nic()} fallback={<p class="empty">{t("performance.network.disconnected")}</p>}>
       {(n) => (
         <>
           <Head title={n().info.name} model={n().info.description} />
           <ChartBox
-            label="吞吐量"
+            label={t("performance.network.throughput")}
             max={fmtNet(scale())}
             colorVar="--net"
             size="main"
             scale={scale}
-            format={(v) => `${fmtNet(v)}（${fmtNetAlt(v)}）`}
+            format={(v) => t("performance.withAlt", { value: fmtNet(v), alt: fmtNetAlt(v) })}
             series={[
-              { data: () => series(`${k()}.rx`), colorVar: "--net", label: "接收" },
-              { data: () => series(`${k()}.tx`), colorVar: "--net", dashed: true, fill: 0, label: "发送" },
+              {
+                data: () => series(`${k()}.rx`),
+                colorVar: "--net",
+                get label() {
+                  return t("performance.network.receive");
+                },
+              },
+              {
+                data: () => series(`${k()}.tx`),
+                colorVar: "--net",
+                dashed: true,
+                fill: 0,
+                get label() {
+                  return t("performance.network.send");
+                },
+              },
             ]}
           />
           <div class="legend" style={{ "--c": "var(--net)" }}>
-            <span>接收</span>
-            <span class="dashed">发送</span>
+            <span>{t("performance.network.receive")}</span>
+            <span class="dashed">{t("performance.network.send")}</span>
           </div>
           <div class="perf-stats">
             <div class="stat-grid">
               <Stat
-                label="接收"
+                label={t("performance.network.receive")}
                 value={netParts(n().rx)[0]}
                 unit={netParts(n().rx)[1]}
                 note={fmtNetAlt(n().rx)}
               />
               <Stat
-                label="发送"
+                label={t("performance.network.send")}
                 value={netParts(n().tx)[0]}
                 unit={netParts(n().tx)[1]}
                 note={fmtNetAlt(n().tx)}
               />
             </div>
             <dl class="info-list selectable">
-              <dt>连接类型</dt>
-              <dd>{NIC_KIND[n().info.kind]}</dd>
-              <dt>链路速度</dt>
+              <dt>{t("performance.network.connectionType")}</dt>
+              <dd>{t(`performance.network.kind.${n().info.kind}`)}</dd>
+              <dt>{t("performance.network.linkSpeed")}</dt>
               <dd>
                 {n().info.linkSpeed
-                  ? `${fmtLinkSpeed(n().info.linkSpeed)}（${fmtRate(n().info.linkSpeed / 8, false)}）`
+                  ? t("performance.withAlt", {
+                      value: fmtLinkSpeed(n().info.linkSpeed),
+                      alt: fmtRate(n().info.linkSpeed / 8, false),
+                    })
                   : "—"}
               </dd>
-              <dt>IPv4 地址</dt>
+              <dt>{t("performance.network.ipv4")}</dt>
               <dd style={{ "white-space": "pre-line" }}>{listAddrs(n().info.ipv4)}</dd>
-              <dt>IPv6 地址</dt>
+              <dt>{t("performance.network.ipv6")}</dt>
               <dd style={{ "white-space": "pre-line" }}>{listAddrs(n().info.ipv6)}</dd>
-              <dt>物理地址</dt>
+              <dt>{t("performance.network.mac")}</dt>
               <dd>{n().info.mac ?? "—"}</dd>
             </dl>
           </div>
@@ -799,12 +897,12 @@ function GpuView(props: { id: string }) {
   const k = () => `gpu.${props.id}`;
 
   return (
-    <Show when={gpu()} fallback={<p class="empty">找不到该 GPU。</p>}>
+    <Show when={gpu()} fallback={<p class="empty">{t("performance.gpu.notFound")}</p>}>
       {(g) => (
         <>
           <Head title={`GPU ${index()}`} model={g().info.name} />
           <div class="chart-labels">
-            <span>引擎利用率</span>
+            <span>{t("performance.gpu.engineUtilization")}</span>
             <span>100%</span>
           </div>
           <div class="chart-grid">
@@ -825,7 +923,7 @@ function GpuView(props: { id: string }) {
 
           <div class="chart-pair section-gap">
             <ChartBox
-              label="专用 GPU 内存"
+              label={t("performance.gpu.dedicatedMemory")}
               max={`${fmtGB(g().info.dedicatedTotal)} GB`}
               colorVar="--gpu"
               size="small"
@@ -834,7 +932,7 @@ function GpuView(props: { id: string }) {
               series={[{ data: () => series(`${k()}.ded`), colorVar: "--gpu" }]}
             />
             <ChartBox
-              label="共享 GPU 内存"
+              label={t("performance.gpu.sharedMemory")}
               max={`${fmtGB(g().info.sharedTotal)} GB`}
               colorVar="--gpu"
               size="small"
@@ -846,49 +944,55 @@ function GpuView(props: { id: string }) {
 
           <div class="perf-stats">
             <div class="stat-grid">
-              <Stat label="利用率" value={Math.round(g().util)} unit="%" />
+              <Stat label={t("performance.gpu.utilization")} value={Math.round(g().util)} unit="%" />
               <Stat
-                label="专用 GPU 内存"
+                label={t("performance.gpu.dedicatedMemory")}
                 value={`${fmtGB(g().dedicatedUsed)} / ${fmtGB(g().info.dedicatedTotal)}`}
                 unit="GB"
               />
               <Stat
-                label="共享 GPU 内存"
+                label={t("performance.gpu.sharedMemory")}
                 value={`${fmtGB(g().sharedUsed)} / ${fmtGB(g().info.sharedTotal)}`}
                 unit="GB"
               />
               <Show when={g().temperature !== null}>
-                <Stat label="GPU 温度" value={Math.round(g().temperature ?? 0)} unit="°C" />
+                <Stat
+                  label={t("performance.gpu.temperature")}
+                  value={Math.round(g().temperature ?? 0)}
+                  unit="°C"
+                />
               </Show>
               <Show when={g().fanRpm !== null}>
-                <Stat label="风扇" value={fmtCount(g().fanRpm ?? 0)} unit="RPM" />
+                <Stat label={t("performance.gpu.fan")} value={fmtCount(g().fanRpm ?? 0)} unit="RPM" />
               </Show>
               <Show when={g().clockMhz}>
-                {(m) => <Stat label="核心频率" value={fmtCount(m())} unit="MHz" />}
+                {(m) => <Stat label={t("performance.gpu.coreClock")} value={fmtCount(m())} unit="MHz" />}
               </Show>
               <Show when={g().memoryClockMhz}>
-                {(m) => <Stat label="显存频率" value={fmtCount(m())} unit="MHz" />}
+                {(m) => <Stat label={t("performance.gpu.memoryClock")} value={fmtCount(m())} unit="MHz" />}
               </Show>
               <Show when={g().voltageMv}>
-                {(v) => <Stat label="核心电压" value={(v() / 1000).toFixed(3)} unit="V" />}
+                {(v) => (
+                  <Stat label={t("performance.gpu.coreVoltage")} value={(v() / 1000).toFixed(3)} unit="V" />
+                )}
               </Show>
               <Show when={g().power}>
-                {(p) => <Stat label="功耗" value={Math.round(p())} unit="% TDP" />}
+                {(p) => <Stat label={t("performance.gpu.power")} value={Math.round(p())} unit="% TDP" />}
               </Show>
             </div>
             <dl class="info-list">
-              <dt>专用 GPU 内存</dt>
+              <dt>{t("performance.gpu.dedicatedMemory")}</dt>
               <dd>{fmtGB(g().info.dedicatedTotal)} GB</dd>
-              <dt>共享 GPU 内存</dt>
+              <dt>{t("performance.gpu.sharedMemory")}</dt>
               <dd>{fmtGB(g().info.sharedTotal)} GB</dd>
               <Show when={g().info.temperatureMax}>
-                <dt>最高温度</dt>
+                <dt>{t("performance.gpu.maxTemperature")}</dt>
                 <dd>{Math.round(g().info.temperatureMax ?? 0)} °C</dd>
               </Show>
-              <dt>引擎</dt>
+              <dt>{t("performance.gpu.engines")}</dt>
               <dd>{g().info.engines.length}</dd>
               <Show when={g().clockMaxMhz}>
-                <dt>最高核心频率</dt>
+                <dt>{t("performance.gpu.maxCoreClock")}</dt>
                 <dd>{fmtCount(g().clockMaxMhz ?? 0)} MHz</dd>
               </Show>
             </dl>
@@ -901,37 +1005,42 @@ function GpuView(props: { id: string }) {
 
 // ---- Battery -----------------------------------------------------------------
 
-const BATTERY_STATE: Record<BatteryStats["state"], string> = {
-  charging: "正在充电",
-  discharging: "正在使用电池",
-  full: "已充满",
-  idle: "已接通电源",
+const batteryState = (state: BatteryStats["state"]) => t(`performance.battery.state.${state}`);
+
+type Chemistry = "liIon" | "liPoly" | "leadAcid" | "niCd" | "niMh" | "alkaline";
+const CHEMISTRY: Record<string, Chemistry> = {
+  LION: "liIon",
+  "LI-I": "liIon",
+  LIP: "liPoly",
+  LIPO: "liPoly",
+  PBAC: "leadAcid",
+  NICD: "niCd",
+  NIMH: "niMh",
+  RAM: "alkaline",
 };
 
-const CHEMISTRY: Record<string, string> = {
-  LION: "锂离子",
-  "LI-I": "锂离子",
-  LIP: "锂聚合物",
-  LIPO: "锂聚合物",
-  PBAC: "铅酸",
-  NICD: "镍镉",
-  NIMH: "镍氢",
-  RAM: "可充电碱性",
+const chemistryName = (code: string) => {
+  const id = CHEMISTRY[code.toUpperCase()];
+  return id ? t(`performance.battery.chemistries.${id}`) : code || "—";
 };
 
 const fmtDuration = (secs: number) => {
   const h = Math.floor(secs / 3600);
   const m = Math.round((secs % 3600) / 60);
-  return h > 0 ? `${h} 小时 ${m} 分钟` : `${m} 分钟`;
+  return h > 0
+    ? t("performance.battery.hoursMinutes", { hours: h, minutes: m })
+    : t("performance.battery.minutes", { minutes: m });
 };
 const wh = (mwh: number | null) => (mwh ? `${(mwh / 1000).toFixed(1)} Wh` : "—");
 
 function batterySub(b: BatteryStats): string {
   const pct = `${Math.round(b.percent)}%`;
   if (b.state === "discharging") {
-    return b.remaining ? `${pct}  剩余 ${fmtDuration(b.remaining)}` : `${pct}  使用电池`;
+    return b.remaining
+      ? `${pct}  ${t("performance.battery.timeLeft", { time: fmtDuration(b.remaining) })}`
+      : `${pct}  ${t("performance.battery.onBattery")}`;
   }
-  return `${pct}  ${BATTERY_STATE[b.state]}`;
+  return `${pct}  ${batteryState(b.state)}`;
 }
 
 function BatteryView(props: { id: string }) {
@@ -940,18 +1049,24 @@ function BatteryView(props: { id: string }) {
   const powerMax = autoMax(5, `${k}.w`);
 
   return (
-    <Show when={bat()} fallback={<p class="empty">电池已移除。</p>}>
+    <Show when={bat()} fallback={<p class="empty">{t("performance.battery.removed")}</p>}>
       {(b) => {
         const health = () => {
           const { fullCapacity: full, designedCapacity: design } = b().info;
           return full && design ? (full / design) * 100 : null;
         };
-        const flow = () => (b().state === "charging" ? "充电功率" : "放电功率");
+        const flow = () =>
+          b().state === "charging"
+            ? t("performance.battery.chargeRate")
+            : t("performance.battery.dischargeRate");
         return (
           <>
-            <Head title="电池" model={[b().info.manufacturer, b().info.name].filter(Boolean).join(" ")} />
+            <Head
+              title={t("performance.battery.title")}
+              model={[b().info.manufacturer, b().info.name].filter(Boolean).join(" ")}
+            />
             <ChartBox
-              label="电量"
+              label={t("performance.battery.level")}
               max="100%"
               colorVar="--bat"
               size="half"
@@ -975,45 +1090,53 @@ function BatteryView(props: { id: string }) {
 
             <div class="perf-stats">
               <div class="stat-grid">
-                <Stat label="电量" value={Math.round(b().percent)} unit="%" />
-                <Stat label="状态" value={BATTERY_STATE[b().state]} />
+                <Stat label={t("performance.battery.level")} value={Math.round(b().percent)} unit="%" />
+                <Stat label={t("common.status")} value={batteryState(b().state)} />
                 <Show when={b().rate !== null}>
                   <Stat label={flow()} value={fmtW(Math.abs(b().rate ?? 0) / 1000)} unit="W" />
                 </Show>
                 <Show when={b().voltage}>
-                  {(v) => <Stat label="电压" value={(v() / 1000).toFixed(2)} unit="V" />}
+                  {(v) => (
+                    <Stat label={t("performance.battery.voltage")} value={(v() / 1000).toFixed(2)} unit="V" />
+                  )}
                 </Show>
-                <Show when={b().remaining}>{(s) => <Stat label="剩余时间" value={fmtDuration(s())} />}</Show>
-                <Show when={health()}>{(h) => <Stat label="健康度" value={Math.round(h())} unit="%" />}</Show>
-                <Show when={b().info.cycleCount}>{(c) => <Stat label="循环次数" value={c()} />}</Show>
+                <Show when={b().remaining}>
+                  {(s) => <Stat label={t("performance.battery.remaining")} value={fmtDuration(s())} />}
+                </Show>
+                <Show when={health()}>
+                  {(h) => <Stat label={t("performance.battery.health")} value={Math.round(h())} unit="%" />}
+                </Show>
+                <Show when={b().info.cycleCount}>
+                  {(c) => <Stat label={t("performance.battery.cycles")} value={c()} />}
+                </Show>
                 <Show when={b().temperature}>
-                  {(t) => <Stat label="温度" value={Math.round(t())} unit="°C" />}
+                  {(c) => <Stat label={t("common.resource.temperature")} value={Math.round(c())} unit="°C" />}
                 </Show>
               </div>
               <dl class="info-list">
-                <dt>当前容量</dt>
+                <dt>{t("performance.battery.capacity")}</dt>
                 <dd>{wh(b().capacity)}</dd>
-                <dt>完全充电容量</dt>
+                <dt>{t("performance.battery.fullCapacity")}</dt>
                 <dd>{wh(b().info.fullCapacity)}</dd>
-                <dt>设计容量</dt>
+                <dt>{t("performance.battery.designCapacity")}</dt>
                 <dd>{wh(b().info.designedCapacity)}</dd>
-                <dt>化学成分</dt>
-                <dd>{CHEMISTRY[b().info.chemistry.toUpperCase()] ?? (b().info.chemistry || "—")}</dd>
-                <dt>制造商</dt>
+                <dt>{t("performance.battery.chemistry")}</dt>
+                <dd>{chemistryName(b().info.chemistry)}</dd>
+                <dt>{t("performance.battery.manufacturer")}</dt>
                 <dd>{b().info.manufacturer || "—"}</dd>
-                <dt>型号</dt>
+                <dt>{t("performance.battery.model")}</dt>
                 <dd>{b().info.name || "—"}</dd>
-                <dt>序列号</dt>
+                <dt>{t("performance.battery.serial")}</dt>
                 <dd>{b().info.serial || "—"}</dd>
                 <Show when={b().info.manufactured}>
-                  <dt>制造日期</dt>
+                  <dt>{t("performance.battery.manufactured")}</dt>
                   <dd>{b().info.manufactured}</dd>
                 </Show>
               </dl>
             </div>
             <Show when={health() !== null && (health() ?? 100) < 80}>
               <p class="perf-note">
-                完全充电容量已降到设计容量的 {Math.round(health() ?? 0)}%，充满后的续航时间将短于新电池。
+                {t("performance.battery.wornNote", { percent: Math.round(health() ?? 0) })}
               </p>
             </Show>
           </>

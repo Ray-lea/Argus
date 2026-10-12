@@ -1,14 +1,49 @@
-//! User settings that the native side needs before the UI loads (hotkey,
-//! close behavior, autostart, process rules, history recording, updates),
-//! persisted as JSON in the app config dir.
+//! User settings that the native side needs before the UI loads (language,
+//! hotkey, close behavior, autostart, process rules, history recording,
+//! updates, onboarding), persisted as JSON in the app config dir.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use argus_core::i18n::Locale;
 use argus_core::rules::ProcessRule;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_HOTKEY: &str = "Ctrl+Alt+Escape";
+
+/// The UI language: a locale, or the Windows display language. Stored as the
+/// tag; one this version does not know (from a newer Argus) reads as `System`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum Language {
+    #[default]
+    System,
+    Locale(Locale),
+}
+
+impl Language {
+    pub fn resolve(self) -> Locale {
+        match self {
+            Language::System => Locale::system(),
+            Language::Locale(locale) => locale,
+        }
+    }
+}
+
+impl From<String> for Language {
+    fn from(tag: String) -> Self {
+        Locale::from_tag(&tag).map_or(Language::System, Language::Locale)
+    }
+}
+
+impl From<Language> for String {
+    fn from(language: Language) -> Self {
+        match language {
+            Language::System => "system".into(),
+            Language::Locale(locale) => locale.tag().into(),
+        }
+    }
+}
 
 /// Which releases count as updates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -35,6 +70,10 @@ pub enum UpdateRoute {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
+    pub language: Language,
+    /// The onboarding version last completed or skipped; 0 before the first.
+    /// The UI owns the numbering (`ONBOARDING_VERSION` in Onboarding.tsx).
+    pub onboarding: u32,
     /// Closing the window keeps Argus running in the tray.
     pub close_to_tray: bool,
     /// Global shortcut that shows/hides the window; empty disables it.
@@ -54,6 +93,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            language: Language::default(),
+            onboarding: 0,
             close_to_tray: true,
             hotkey: DEFAULT_HOTKEY.into(),
             rules: Vec::new(),
@@ -73,6 +114,8 @@ pub struct SettingsView {
     #[serde(flatten)]
     pub settings: Settings,
     pub autostart: bool,
+    /// The language in effect (`language` resolved).
+    pub locale: Locale,
     /// Why the hotkey is not active (e.g. taken by another app).
     pub hotkey_error: Option<String>,
 }

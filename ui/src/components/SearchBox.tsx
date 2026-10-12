@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import { t } from "../lib/i18n";
 import { DismissIcon, SearchIcon } from "./icons";
 
 export default function SearchBox(props: {
@@ -29,7 +30,7 @@ export default function SearchBox(props: {
         <button
           type="button"
           class="btn ghost small icon clear"
-          title="清除搜索"
+          title={t("shell.search.clear")}
           onClick={() => props.onInput("")}
         >
           <DismissIcon size={14} />

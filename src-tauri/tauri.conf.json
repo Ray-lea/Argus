@@ -51,6 +51,7 @@
       "nsis": {
         "installMode": "perMachine",
         "languages": [
+          "English",
           "SimpChinese"
         ],
         "installerIcon": "icons/icon.ico",

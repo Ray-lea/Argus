@@ -1,5 +1,6 @@
 use super::state::Result;
 use crate::util::{Handle, wide};
+use argus_core::tr;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
@@ -42,7 +43,7 @@ pub fn system_directory() -> Result<std::path::PathBuf> {
     let mut buffer = [0u16; 1024];
     let n = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
     if n == 0 || n >= buffer.len() {
-        return Err("无法定位 Windows 系统目录".into());
+        return Err(tr!("taskManager.noSystemDirectory"));
     }
     Ok(String::from_utf16_lossy(&buffer[..n]).into())
 }
@@ -77,14 +78,14 @@ pub fn probe_as_caller(
     if identity(process.0)? != created
         || unsafe { WaitForSingleObject(process.0, 0) } == WAIT_OBJECT_0
     {
-        return Err("发起操作的界面已退出".into());
+        return Err(tr!("taskManager.callerExited"));
     }
     let mut token = HANDLE::default();
     unsafe { OpenProcessToken(process.0, TOKEN_QUERY | TOKEN_DUPLICATE, &mut token) }
         .map_err(|e| e.to_string())?;
     let token = Handle(token);
     if crate::security::token_user(token.0).map_err(crate::util::message)? != owner {
-        return Err("发起操作的账户不匹配".into());
+        return Err(tr!("taskManager.callerAccount"));
     }
     let mut caller_session = 0;
     let mut session = 0;
@@ -94,7 +95,7 @@ pub fn probe_as_caller(
         return Err(windows::core::Error::from_thread().to_string());
     }
     if caller_session != session {
-        return Err("发起操作的会话不匹配".into());
+        return Err(tr!("taskManager.callerSession"));
     }
     let limited = limited_token(token)?;
     spawn_impl(exe, args, false, false, Some(limited.0))
@@ -134,7 +135,7 @@ fn limited_token(token: Handle) -> Result<Handle> {
     .map_err(|e| e.to_string())?;
     let linked = Handle(linked.LinkedToken);
     if is_high(linked.0)? {
-        return Err("无法获得当前账户的标准权限令牌".into());
+        return Err(tr!("taskManager.noStandardToken"));
     }
     primary(linked.0)
 }
@@ -246,7 +247,7 @@ fn spawn_impl(
                 let _ = TerminateProcess(process.0, 1);
                 WaitForSingleObject(process.0, 1000);
             }
-            return Err(format!("原生启动脱离调试失败：{error}"));
+            return Err(tr!("taskManager.detachFailed", error = error));
         }
     }
     Ok(process)
@@ -260,7 +261,7 @@ pub fn exit_code(process: &Handle, timeout: Duration) -> Result<u32> {
             let _ = TerminateProcess(process.0, 1);
             WaitForSingleObject(process.0, 1000);
         }
-        return Err("启动自检超时".into());
+        return Err(tr!("taskManager.probeTimeout"));
     }
     let mut code = 0;
     unsafe { GetExitCodeProcess(process.0, &mut code) }.map_err(|e| e.to_string())?;

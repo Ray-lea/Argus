@@ -9,6 +9,8 @@ use crate::{
     security,
     util::{self, Handle, wide},
 };
+use argus_core::i18n::{Locale, text_in};
+use argus_core::tr;
 use serde::Serialize;
 use state::{Phase, Result, Store, Value};
 use std::fs::{self, OpenOptions};
@@ -53,6 +55,10 @@ fn machine() -> Result<registry::Machine> {
         dir: crate::install::directory().map_err(util::message)?,
     })
 }
+fn parent(dir: &Path) -> Result<&Path> {
+    dir.parent()
+        .ok_or_else(|| tr!("taskManager.invalidDirectory"))
+}
 fn lock(dir: &Path) -> Result<fs::File> {
     OpenOptions::new()
         .write(true)
@@ -81,18 +87,17 @@ pub fn status() -> Result<Status> {
         can_enable: false,
         can_restore: false,
         recovery_path: machine.dir.join(RECOVER).to_string_lossy().into_owned(),
-        detail: "当前使用 Windows 任务管理器。".into(),
+        detail: tr!("taskManager.status.native"),
     };
     if !machine.dir.exists() {
-        status.detail = "先安装特权服务，再启用任务管理器替换。".into();
+        status.detail = tr!("taskManager.status.needsService");
         if live.debugger.is_some() || live.filtered {
             status.state = "conflict";
-            status.detail = "已有其他替换或路径过滤配置，Argus 不会覆盖。".into();
+            status.detail = tr!("taskManager.status.conflict");
         }
         return Ok(status);
     }
-    let _parent = security::protect_directory(machine.dir.parent().ok_or("无效目录")?)
-        .map_err(util::message)?;
+    let _parent = security::protect_directory(parent(&machine.dir)?).map_err(util::message)?;
     let _dir = security::protect_directory(&machine.dir).map_err(util::message)?;
     let installed = machine.dir.join("owner.sid").exists();
     let authorized = installed
@@ -107,32 +112,31 @@ pub fn status() -> Result<Status> {
             };
             status.can_restore = authorized;
             status.detail = if status.state == "enabled" {
-                "任务管理器入口已交给 Argus；启动失败时尝试打开原生任务管理器。"
+                tr!("taskManager.status.enabled")
             } else {
-                "上次操作未完成，请先恢复 Windows 任务管理器。"
-            }
-            .into();
+                tr!("taskManager.status.interrupted")
+            };
             return Ok(status);
         }
         if live != journal.before {
             status.state = "conflict";
-            status.detail = "配置已被其他程序修改，Argus 不会覆盖；恢复记录仍保留。".into();
+            status.detail = tr!("taskManager.status.modified");
             return Ok(status);
         }
     } else if live.debugger.as_ref() == Some(&replacement(&machine.dir)) {
         status.state = "recoveryNeeded";
-        status.detail = "发现 Argus 替换但恢复记录缺失，请按应急恢复说明处理。".into();
+        status.detail = tr!("taskManager.status.recordMissing");
         return Ok(status);
     }
     if live.debugger.is_some() || live.filtered {
         status.state = "conflict";
-        status.detail = "已有其他替换或路径过滤配置，Argus 不会覆盖。".into();
+        status.detail = tr!("taskManager.status.conflict");
     } else if !installed {
-        status.detail = "特权服务已卸载，恢复程序和备份仍保留。".into();
+        status.detail = tr!("taskManager.status.serviceRemoved");
     } else if cfg!(debug_assertions) {
-        status.detail = "开发版不提供系统任务管理器替换，请使用发布版。".into();
+        status.detail = tr!("taskManager.status.devBuild");
     } else if !authorized {
-        status.detail = "特权服务授权给另一个 Windows 账户。".into();
+        status.detail = tr!("taskManager.status.otherAccount");
     } else {
         status.can_enable = true;
     }
@@ -145,7 +149,7 @@ pub(crate) fn restore_for_maintenance(dir: &Path) -> Result<()> {
     match machine.load()? {
         Some(mut journal) => state::restore(&mut machine, &mut journal),
         None if machine.observe()?.debugger.as_ref() == Some(&replacement(dir)) => {
-            Err("Argus 替换的恢复记录缺失，已阻止删除启动器".into())
+            Err(tr!("taskManager.launcherKept"))
         }
         None => Ok(()),
     }
@@ -153,17 +157,16 @@ pub(crate) fn restore_for_maintenance(dir: &Path) -> Result<()> {
 
 pub fn restore() -> Result<()> {
     if !argus_core::privilege::is_elevated() {
-        return Err("恢复需要管理员权限".into());
+        return Err(tr!("taskManager.restoreNeedsAdmin"));
     }
     let machine = machine()?;
     if !machine.dir.exists() {
         if registry::observe(registry::KEY)?.debugger.as_ref() == Some(&replacement(&machine.dir)) {
-            return Err("恢复记录和启动器目录缺失，请使用应急恢复说明".into());
+            return Err(tr!("taskManager.everythingMissing"));
         }
         return Ok(());
     }
-    let _parent = security::protect_directory(machine.dir.parent().ok_or("无效目录")?)
-        .map_err(util::message)?;
+    let _parent = security::protect_directory(parent(&machine.dir)?).map_err(util::message)?;
     let _dir = security::protect_directory(&machine.dir).map_err(util::message)?;
     let _lock = lock(&machine.dir)?;
     cleanup_probe(&machine.dir)?;
@@ -187,24 +190,23 @@ pub(crate) fn reconcile(dir: &Path) -> Result<()> {
 
 fn enable(owner: &str, caller: u32, created: u64, assets: Assets) -> Result<()> {
     if cfg!(debug_assertions) {
-        return Err("开发版不允许启用替换".into());
+        return Err(tr!("taskManager.devBuild"));
     }
     if !argus_core::privilege::is_elevated() {
-        return Err("启用需要管理员权限".into());
+        return Err(tr!("taskManager.enableNeedsAdmin"));
     }
     security::validate_sid(owner).map_err(util::message)?;
     let mut machine = machine()?;
-    let _parent = security::protect_directory(machine.dir.parent().ok_or("无效目录")?)
-        .map_err(util::message)?;
+    let _parent = security::protect_directory(parent(&machine.dir)?).map_err(util::message)?;
     let _dir = security::protect_directory(&machine.dir).map_err(util::message)?;
     if crate::install::owner(&machine.dir).map_err(util::message)? != owner {
-        return Err("服务授权账户不匹配".into());
+        return Err(tr!("taskManager.ownerMismatch"));
     }
     let _lock = lock(&machine.dir)?;
     restore_for_maintenance(&machine.dir)?;
     let live = machine.observe()?;
     if live.debugger.is_some() || live.filtered {
-        return Err("已有其他替换或路径过滤配置，已停止启用".into());
+        return Err(tr!("taskManager.conflict"));
     }
     registry::atomic_file(&machine.dir, LAUNCHER, assets.0)?;
     registry::atomic_file(&machine.dir, RECOVER, assets.1)?;
@@ -214,7 +216,11 @@ fn enable(owner: &str, caller: u32, created: u64, assets: Assets) -> Result<()> 
     let source =
         fs::read(std::env::current_exe().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     registry::atomic_file(&machine.dir, &image, &source)?;
-    registry::atomic_file(&machine.dir, "taskmgr-recovery.txt", RECOVERY.as_bytes())?;
+    registry::atomic_file(
+        &machine.dir,
+        "taskmgr-recovery.txt",
+        recovery_text().as_bytes(),
+    )?;
     preflight(&machine.dir)?;
     let probe = launch::probe_as_caller(
         &machine.dir.join(LAUNCHER),
@@ -224,7 +230,7 @@ fn enable(owner: &str, caller: u32, created: u64, assets: Assets) -> Result<()> 
         owner,
     )?;
     if launch::exit_code(&probe, Duration::from_secs(15))? != 0 {
-        return Err("标准权限界面的就绪检查失败，未启用替换".into());
+        return Err(tr!("taskManager.uiNotReady"));
     }
     let value = replacement(&machine.dir);
     state::enable(&mut machine, owner.into(), image, value)?;
@@ -243,7 +249,7 @@ fn preflight(dir: &Path) -> Result<()> {
         launch::quote(&dir.join(LAUNCHER).to_string_lossy())
     ));
     if registry::open(&key, false)?.is_some() {
-        return Err("启动自检名称冲突".into());
+        return Err(tr!("taskManager.probeNameTaken"));
     }
     registry::atomic_file(dir, "taskmgr-probe.txt", name.as_bytes())?;
     registry::atomic_file(
@@ -255,11 +261,11 @@ fn preflight(dir: &Path) -> Result<()> {
         registry::write(&key, Some(&debugger))?;
         let normal = launch::spawn(&path, &["--probe-child".into()], false)?;
         if launch::exit_code(&normal, Duration::from_secs(5))? != 86 {
-            return Err("IFEO 自检未发生预期重定向".into());
+            return Err(tr!("taskManager.probeNotRedirected"));
         }
         let bypass = launch::spawn(&path, &["--probe-child".into()], true)?;
         if launch::exit_code(&bypass, Duration::from_secs(5))? != 0 {
-            return Err("原生回退自检失败".into());
+            return Err(tr!("taskManager.probeFallbackFailed"));
         }
         Ok(())
     })();
@@ -274,7 +280,7 @@ fn cleanup_probe(dir: &Path) -> Result<()> {
     }
     let file = security::protect_directory(&record).map_err(util::message)?;
     if fs::metadata(&record).map_err(|e| e.to_string())?.len() > 128 {
-        return Err("启动自检恢复记录异常".into());
+        return Err(tr!("taskManager.probeRecordInvalid"));
     }
     let name = fs::read_to_string(&record).map_err(|e| e.to_string())?;
     if !name
@@ -282,7 +288,7 @@ fn cleanup_probe(dir: &Path) -> Result<()> {
         .and_then(|s| s.strip_suffix(".exe"))
         .is_some_and(|s| s.len() == 36 && s.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
     {
-        return Err("启动自检恢复记录异常".into());
+        return Err(tr!("taskManager.probeRecordInvalid"));
     }
     let path = dir.join(&name);
     let key = format!("{}\\{name}", registry::IFEO);
@@ -293,7 +299,7 @@ fn cleanup_probe(dir: &Path) -> Result<()> {
     let actual = registry::observe(&key)?;
     if actual.filtered || (actual.debugger.is_some() && actual.debugger.as_ref() != Some(&debugger))
     {
-        return Err("自检配置被外部修改，已保留条目供检查".into());
+        return Err(tr!("taskManager.probeModified"));
     }
     registry::write(&key, None)?;
     use windows::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RegDeleteKeyW};
@@ -341,7 +347,7 @@ pub fn manage(action: &str) -> Result<Status> {
                 ],
             )?;
         }
-        _ => return Err("当前状态不允许此操作，请刷新后重试".into()),
+        _ => return Err(tr!("taskManager.notAllowed")),
     }
     status()
 }
@@ -369,18 +375,18 @@ fn elevate(exe: &Path, args: &[String]) -> Result<()> {
     };
     unsafe { ShellExecuteExW(&mut info) }.map_err(|e| e.to_string())?;
     if info.hProcess == HANDLE::default() {
-        return Err("未能启动管理员维护助手".into());
+        return Err(tr!("taskManager.helperNotStarted"));
     }
     let process = Handle(info.hProcess);
     if unsafe { WaitForSingleObject(process.0, 120_000) } != WAIT_OBJECT_0 {
-        return Err("维护助手仍在处理，请刷新状态；不要重复操作".into());
+        return Err(tr!("taskManager.helperBusy"));
     }
     let mut code = 0;
     unsafe { GetExitCodeProcess(process.0, &mut code) }.map_err(|e| e.to_string())?;
     if code == 0 {
         Ok(())
     } else {
-        Err("任务管理器设置未完成，请查看维护助手提示并刷新状态".into())
+        Err(tr!("taskManager.helperFailed"))
     }
 }
 
@@ -389,7 +395,7 @@ fn alert(error: &str) {
         MessageBoxW(
             None,
             PCWSTR(wide(error).as_ptr()),
-            PCWSTR(wide("Argus 任务管理器恢复").as_ptr()),
+            PCWSTR(wide(&tr!("taskManager.alertTitle")).as_ptr()),
             MB_OK | MB_ICONERROR,
         );
     }
@@ -409,10 +415,12 @@ pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
     match args.as_slice() {
         [mode, action, owner, pid, created] if mode == MANAGE && action == "enable" => {
             Some(code((|| {
-                let pid = pid.parse().map_err(|_| "无效界面进程".to_string())?;
-                let created = created.parse().map_err(|_| "无效进程实例".to_string())?;
+                let pid = pid.parse().map_err(|_| tr!("taskManager.invalidCaller"))?;
+                let created = created
+                    .parse()
+                    .map_err(|_| tr!("taskManager.invalidInstance"))?;
                 assets
-                    .ok_or_else(|| "此版本未包含独立启动器".into())
+                    .ok_or_else(|| tr!("taskManager.noLauncher"))
                     .and_then(|a| enable(owner, pid, created, a))
             })()))
         }
@@ -451,9 +459,11 @@ pub fn launcher_main() -> i32 {
             let result = (|| {
                 let machine = machine()?;
                 let _dir = security::protect_directory(&machine.dir).map_err(util::message)?;
-                let journal = machine.load()?.ok_or("恢复记录缺失")?;
+                let journal = machine
+                    .load()?
+                    .ok_or_else(|| tr!("taskManager.recordMissing"))?;
                 if journal.phase != Phase::Active {
-                    return Err("替换尚未完成启用".into());
+                    return Err(tr!("taskManager.notActive"));
                 }
                 let image = machine.dir.join(journal.image);
                 let _image = security::protect_directory(&image).map_err(util::message)?;
@@ -503,4 +513,32 @@ pub fn recover_main() -> i32 {
     87
 }
 
-const RECOVERY: &str = "Argus 任务管理器应急恢复\r\n\r\n先运行本目录的 argus-taskmgr-recover.exe，并允许管理员授权。它不依赖 Argus 界面或后台服务。\r\n如果程序也已损坏：Win+R 输入 regedit，以管理员身份打开，定位 HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe。核对 Debugger 确实指向本目录的 argus-taskmgr-launcher.exe --task-manager，且 taskmgr-recovery.json 中 before.debugger 为 null，再只删除 Debugger 值。不要删除整个 taskmgr.exe 键，不要删除其他工具的设置。\r\n恢复程序会保留第三方更改和恢复记录；缺少可信备份时停止自动恢复。\r\n";
+/// Emergency instructions left beside the launcher for whoever administers the
+/// machine, in every language: the one who enabled the replacement may not be
+/// the one who reads them.
+fn recovery_text() -> String {
+    Locale::ALL
+        .iter()
+        .map(|&locale| text_in(locale, "taskManager.recoveryFile"))
+        .collect::<Vec<_>>()
+        .join("\r\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recovery_text_has_every_locale_and_the_exact_names() {
+        let text = recovery_text();
+        let key = format!(r"HKLM\{}", registry::KEY);
+        for locale in Locale::ALL {
+            let part = text_in(locale, "taskManager.recoveryFile");
+            assert!(text.contains(&part), "{}", locale.tag());
+            for name in [key.as_str(), RECOVER, LAUNCHER, registry::JOURNAL] {
+                assert!(part.contains(name), "{}: {name}", locale.tag());
+            }
+        }
+        assert!(!text.replace("\r\n", "").contains('\n'));
+    }
+}

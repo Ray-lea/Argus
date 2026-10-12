@@ -1,27 +1,21 @@
 import { createEffect, createMemo, createResource, For, on, Show } from "solid-js";
 import { copyText, endRow, endTree, PRIORITY_LABEL, priorityOf, revealInExplorer } from "../lib/actions";
 import { fmtCount, fmtCpu, fmtCpuTime, fmtDateTime, fmtMem, fmtNet } from "../lib/format";
+import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { EASE_OUT, play } from "../lib/motion";
 import { type DisplayRow, groupKey, procKey } from "../lib/rows";
 import { procHistoryOf, type Selection, selection, services, setSelectedKey, snapshot } from "../lib/store";
-import type { Integrity, PriorityClass, ProcessRow } from "../lib/types";
+import type { PriorityClass, ProcessDetails, ProcessRow } from "../lib/types";
 import { CopyIcon, DismissIcon, FolderIcon, InfoIcon } from "./icons";
 import ProcIcon from "./ProcIcon";
 import { showService } from "./ServicesPage";
 import Trace, { easedMax } from "./Trace";
 
-const INTEGRITY: Record<Integrity, string> = {
-  untrusted: "不受信任",
-  low: "低",
-  medium: "中",
-  mediumPlus: "中高",
-  high: "高（已提升）",
-  system: "系统",
-  protected: "受保护",
-};
-
-const ARCH = { x64: "64 位 (x64)", x86: "32 位 (x86)", arm64: "ARM64", arm: "ARM" } as const;
+const integrityName = (level: ProcessDetails["integrity"] | undefined) =>
+  level ? t(`details.integrityLevel.${level}`) : "—";
+const archName = (arch: ProcessDetails["architecture"] | undefined) =>
+  arch ? t(`details.arch.${arch}`) : "—";
 
 /** Rebuilds a DisplayRow for actions shared with the table and context menu. */
 function asRow(sel: Selection, proc: ProcessRow): DisplayRow {
@@ -103,7 +97,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
   );
 
   return (
-    <aside ref={panel} class="details" aria-label="进程详细信息">
+    <aside ref={panel} class="details" aria-label={t("details.label")}>
       <Show
         when={props.sel.proc}
         fallback={
@@ -111,13 +105,13 @@ export default function DetailsPanel(props: { sel: Selection }) {
             <div class="details-head">
               <InfoIcon size={32} />
               <div>
-                <div class="details-title">进程已退出</div>
-                <div class="details-subtitle">选择列表中的其他进程查看详细信息。</div>
+                <div class="details-title">{t("details.exited.title")}</div>
+                <div class="details-subtitle">{t("details.exited.hint")}</div>
               </div>
               <button
                 type="button"
                 class="btn ghost small icon"
-                title="关闭"
+                title={t("common.close")}
                 onClick={() => setSelectedKey(null)}
               >
                 <DismissIcon size={14} />
@@ -144,8 +138,8 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 <button
                   type="button"
                   class="btn ghost small icon"
-                  title="关闭详细信息"
-                  aria-label="关闭详细信息"
+                  title={t("details.close")}
+                  aria-label={t("details.close")}
                   onClick={() => setSelectedKey(null)}
                 >
                   <DismissIcon size={14} />
@@ -156,8 +150,11 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 <div class="note">
                   <InfoIcon />
                   <span>
-                    此应用共有 {props.sel.members.length} 个进程，合计 CPU {fmtCpu(groupSum((p) => p.cpu))}
-                    %，内存 {fmtMem(groupSum((p) => p.privateWs))}。下方显示最早启动的主进程。
+                    {t("details.groupNote", {
+                      count: props.sel.members.length,
+                      cpu: fmtCpu(groupSum((p) => p.cpu)),
+                      memory: fmtMem(groupSum((p) => p.privateWs)),
+                    })}
                   </span>
                 </div>
               </Show>
@@ -169,7 +166,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
                   <Trace class="trace" data={() => history()?.cpu ?? []} max={() => 100} colorVar="--cpu" />
                 </div>
                 <div class="mini-chart">
-                  <div class="vital-label">内存</div>
+                  <div class="vital-label">{t("common.resource.memory")}</div>
                   <div class="mini-value">{fmtMem(proc().privateWs)}</div>
                   <Trace class="trace" data={() => history()?.mem ?? []} max={memMax} colorVar="--mem" />
                 </div>
@@ -178,7 +175,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
               <Show when={services().filter((sv) => sv.pid === proc().pid)}>
                 {(hosted) => (
                   <Show when={hosted().length > 0}>
-                    <div class="section-title">运行的服务（{hosted().length}）</div>
+                    <div class="section-title">{t("details.services", { count: hosted().length })}</div>
                     <div class="svc-list">
                       <For each={hosted()}>
                         {(sv) => (
@@ -198,89 +195,94 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 )}
               </Show>
 
-              <div class="section-title">进程</div>
+              <div class="section-title">{t("details.section.process")}</div>
               <dl class="facts selectable">
                 <dt>PID</dt>
                 <dd>{proc().pid}</dd>
-                <dt>父进程</dt>
+                <dt>{t("details.parent")}</dt>
                 <dd>
                   <Show
                     when={parent()}
-                    fallback={<span class="text-[var(--ink-3)]">无（PID {proc().ppid}）</span>}
+                    fallback={
+                      <span class="text-[var(--ink-3)]">{t("details.noParent", { pid: proc().ppid })}</span>
+                    }
                   >
                     {(pp) => (
                       <button type="button" class="link" onClick={() => setSelectedKey(procKey(pp()))}>
-                        {pp().name}（{pp().pid}）
+                        {t("details.parentLink", { name: pp().name, pid: pp().pid })}
                       </button>
                     )}
                   </Show>
                 </dd>
-                <dt>启动时间</dt>
+                <dt>{t("details.started")}</dt>
                 <dd>{fmtDateTime(proc().createTime)}</dd>
-                <dt>CPU 时间</dt>
+                <dt>{t("details.cpuTime")}</dt>
                 <dd>{fmtCpuTime(proc().cpuTime)}</dd>
-                <dt>用户</dt>
+                <dt>{t("details.user")}</dt>
                 <dd>{info()?.user ?? "—"}</dd>
-                <dt>完整性</dt>
-                <dd>{info()?.integrity ? INTEGRITY[info()?.integrity as Integrity] : "—"}</dd>
-                <dt>架构</dt>
-                <dd>{info()?.architecture ? ARCH[info()?.architecture as keyof typeof ARCH] : "—"}</dd>
-                <dt>优先级</dt>
+                <dt>{t("details.integrity")}</dt>
+                <dd>{integrityName(info()?.integrity)}</dd>
+                <dt>{t("details.architecture")}</dt>
+                <dd>{archName(info()?.architecture)}</dd>
+                <dt>{t("details.priority")}</dt>
                 <dd>{PRIORITY_LABEL[priorityOf(proc().basePriority) as PriorityClass] ?? "—"}</dd>
-                <dt>效率模式</dt>
-                <dd>{proc().efficiency ? "开启" : "关闭"}</dd>
-                <dt>会话</dt>
+                <dt>{t("common.efficiencyMode")}</dt>
+                <dd>{proc().efficiency ? t("common.on") : t("common.off")}</dd>
+                <dt>{t("details.session")}</dt>
                 <dd>{proc().sessionId}</dd>
               </dl>
 
-              <div class="section-title">资源</div>
+              <div class="section-title">{t("details.section.resources")}</div>
               <dl class="facts">
-                <dt>专用工作集</dt>
+                <dt>{t("details.privateWs")}</dt>
                 <dd>{fmtMem(proc().privateWs)}</dd>
-                <dt>工作集</dt>
+                <dt>{t("details.workingSet")}</dt>
                 <dd>{fmtMem(proc().workingSet)}</dd>
-                <dt>提交大小</dt>
+                <dt>{t("details.commit")}</dt>
                 <dd>{fmtMem(proc().commit)}</dd>
                 <Show when={(snapshot()?.hardware.gpus.length ?? 0) > 0}>
                   <dt>GPU</dt>
                   <dd>
                     {fmtCpu(proc().gpu)}%
                     <Show when={proc().gpuEngine}>
-                      <span class="dim">（{proc().gpuEngine}）</span>
+                      <span class="dim">{t("details.gpuEngine", { engine: proc().gpuEngine ?? "" })}</span>
                     </Show>
                   </dd>
-                  <dt>专用 GPU 内存</dt>
+                  <dt>{t("details.gpuDedicated")}</dt>
                   <dd>{fmtMem(proc().gpuDedicated)}</dd>
-                  <dt>共享 GPU 内存</dt>
+                  <dt>{t("details.gpuShared")}</dt>
                   <dd>{fmtMem(proc().gpuShared)}</dd>
                 </Show>
-                <dt>网络</dt>
+                <dt>{t("common.resource.network")}</dt>
                 <dd>
                   <Show
                     when={snapshot()?.processNetwork}
-                    fallback={<span class="dim">以管理员身份运行后可查看</span>}
+                    fallback={<span class="dim">{t("details.netNeedsAdmin")}</span>}
                   >
-                    发送 {fmtNet(proc().netSent)}，接收 {fmtNet(proc().netReceived)}
+                    {t("processes.netRates", {
+                      sent: fmtNet(proc().netSent),
+                      received: fmtNet(proc().netReceived),
+                    })}
                   </Show>
                 </dd>
-                <dt>线程</dt>
+                <dt>{t("details.threads")}</dt>
                 <dd>{fmtCount(proc().threads)}</dd>
-                <dt>句柄</dt>
+                <dt>{t("details.handles")}</dt>
                 <dd>{fmtCount(proc().handles)}</dd>
               </dl>
 
               <Show when={proc().path}>
                 {(path) => (
                   <>
-                    <div class="section-title">文件位置</div>
+                    <div class="section-title">{t("details.section.location")}</div>
                     <div class="path-row">
                       <div class="code selectable">{path()}</div>
                       <div class="flex flex-col gap-1">
                         <button
                           type="button"
                           class="btn ghost small icon"
-                          title="打开文件位置"
-                          aria-label="打开文件位置"
+                          title={t("common.openFileLocation")}
+                          aria-label={t("common.openFileLocation")}
                           onClick={() => revealInExplorer(path())}
                         >
                           <FolderIcon size={14} />
@@ -288,9 +290,9 @@ export default function DetailsPanel(props: { sel: Selection }) {
                         <button
                           type="button"
                           class="btn ghost small icon"
-                          title="复制路径"
-                          aria-label="复制路径"
-                          onClick={() => copyText(path(), "路径")}
+                          title={t("common.copyPath")}
+                          aria-label={t("common.copyPath")}
+                          onClick={() => copyText(path(), t("actions.copyWhat.path"))}
                         >
                           <CopyIcon size={14} />
                         </button>
@@ -303,7 +305,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
               <Show when={info()?.commandLine}>
                 {(cmd) => (
                   <>
-                    <div class="section-title">命令行</div>
+                    <div class="section-title">{t("details.section.commandLine")}</div>
                     <div class="code selectable">{cmd()}</div>
                   </>
                 )}
@@ -312,19 +314,19 @@ export default function DetailsPanel(props: { sel: Selection }) {
               <Show when={info() && !info()?.accessible}>
                 <div class="note">
                   <InfoIcon />
-                  <span>无法打开此进程以读取命令行和用户信息。以管理员身份运行 Argus 后可查看。</span>
+                  <span>{t("details.noAccess")}</span>
                 </div>
               </Show>
 
               <Show when={info()?.version.fileVersion || info()?.version.productName}>
-                <div class="section-title">文件版本</div>
+                <div class="section-title">{t("details.section.version")}</div>
                 <dl class="facts selectable">
                   <Show when={info()?.version.productName}>
-                    <dt>产品</dt>
+                    <dt>{t("details.product")}</dt>
                     <dd>{info()?.version.productName}</dd>
                   </Show>
                   <Show when={info()?.version.fileVersion}>
-                    <dt>版本</dt>
+                    <dt>{t("details.version")}</dt>
                     <dd>{info()?.version.fileVersion}</dd>
                   </Show>
                 </dl>
@@ -333,11 +335,11 @@ export default function DetailsPanel(props: { sel: Selection }) {
 
             <div class="details-actions">
               <button type="button" class="btn danger" onClick={() => endRow(asRow(props.sel, proc()))}>
-                {props.sel.isGroup ? "全部结束" : "结束进程"}
+                {props.sel.isGroup ? t("actions.endAll") : t("common.endProcess")}
               </button>
               <Show when={!props.sel.isGroup}>
                 <button type="button" class="btn" onClick={() => endTree(asRow(props.sel, proc()))}>
-                  结束进程树
+                  {t("common.endProcessTree")}
                 </button>
               </Show>
             </div>

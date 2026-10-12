@@ -9,6 +9,7 @@ import {
   createSignal,
   For,
   type JSX,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -16,7 +17,10 @@ import {
 import { Portal } from "solid-js/web";
 import { PRIORITY_LABEL } from "../lib/actions";
 import { fmtCache, netUnit, setNetUnit } from "../lib/format";
+import { type Language, LOCALES, localized, type MessageKey, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
+import { keyLabel } from "../lib/keys";
+import { changeLanguage } from "../lib/language";
 import {
   balancedFrameMs,
   type ChartMode,
@@ -29,6 +33,7 @@ import {
 } from "../lib/motion";
 import { appInfo, focusRule, intervalMs, setFocusRule, setIntervalMs, setPage, snapshot } from "../lib/store";
 import type {
+  HistoryUsage,
   PriorityClass,
   PrivilegedServiceAction,
   ProcessRow,
@@ -61,17 +66,19 @@ import {
   TrayIcon,
   UpdateIcon,
 } from "./icons";
+import { onboardingOpen, openOnboarding } from "./Onboarding";
 import ProcIcon from "./ProcIcon";
 
 const SECTIONS = [
-  { id: "startup", label: "启动与后台", icon: PowerIcon },
-  { id: "hotkey", label: "快捷键", icon: KeyboardIcon },
-  { id: "privilege", label: "权限", icon: ShieldIcon },
-  { id: "motion", label: "动画", icon: SparkleIcon },
-  { id: "data", label: "数据与历史", icon: HistoryIcon },
-  { id: "rules", label: "规则", icon: BoltIcon },
-  { id: "update", label: "更新", icon: UpdateIcon },
-  { id: "about", label: "关于", icon: InfoIcon },
+  { id: "language", icon: GlobeIcon },
+  { id: "startup", icon: PowerIcon },
+  { id: "hotkey", icon: KeyboardIcon },
+  { id: "privilege", icon: ShieldIcon },
+  { id: "motion", icon: SparkleIcon },
+  { id: "data", icon: HistoryIcon },
+  { id: "rules", icon: BoltIcon },
+  { id: "update", icon: UpdateIcon },
+  { id: "about", icon: InfoIcon },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -97,34 +104,16 @@ function accelerator(e: KeyboardEvent): string | null {
   return [...mods, e.code].join("+");
 }
 
-const KEY_LABELS: Record<string, string> = {
-  Super: "Win",
-  Escape: "Esc",
-  Space: "空格",
-  ArrowUp: "↑",
-  ArrowDown: "↓",
-  ArrowLeft: "←",
-  ArrowRight: "→",
-  Backquote: "`",
-  Minus: "-",
-  Equal: "=",
-};
-
-function keyLabel(part: string): string {
-  if (KEY_LABELS[part]) return KEY_LABELS[part];
-  if (/^Key[A-Z]$/.test(part)) return part.slice(3);
-  if (/^Digit\d$/.test(part)) return part.slice(5);
-  if (/^Numpad\d$/.test(part)) return `Num ${part.slice(6)}`;
-  return part;
-}
-
-const dateFmt = new Intl.DateTimeFormat("zh-CN", {
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
+const dateFmt = localized(
+  (l) =>
+    new Intl.DateTimeFormat(l, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }),
+);
 
 /** One setting: icon, what it is, and its control on the right. */
 function Setting(props: {
@@ -158,7 +147,7 @@ function Setting(props: {
 function ToggleSwitch(props: { checked: boolean; label: string; onChange: (v: boolean) => void }) {
   return (
     <>
-      <span class="switch-label">{props.checked ? "开" : "关"}</span>
+      <span class="switch-label">{props.checked ? t("settings.toggle.on") : t("settings.toggle.off")}</span>
       <button
         type="button"
         role="switch"
@@ -201,11 +190,11 @@ function PrivilegedServiceSettings() {
     if (
       (installing || action === "uninstall") &&
       !(await confirm({
-        title: installing ? "启用特权服务？" : "卸载特权服务？",
-        body: installing
-          ? "安装后，当前 Windows 账户无需再次授权即可通过后台服务：\n· 结束任意用户的进程（系统关键进程除外），设置优先级与效率模式；\n· 启动、停止任意 Windows 服务并修改启动类型，包括安全软件和 Windows 更新相关的服务；\n· 断开任意 IPv4 TCP 连接，查询所有进程的文件占用与网络流量。\n\n此账户下以标准权限运行的其他程序同样可以调用这些操作，相当于该账户获得了部分管理员权限。请只在自己使用的账户上安装。服务随 Windows 启动；安装需要管理员授权，之后可在设置中卸载。"
-          : "先恢复 Windows 任务管理器，再停止并移除后台服务。恢复失败时停止卸载。Argus 继续运行，系统进程和服务的操作将重新受当前权限限制。卸载需要管理员授权。",
-        confirmLabel: installing ? "安装并启用" : "卸载服务",
+        title: installing ? t("settings.privilege.install.title") : t("settings.privilege.uninstall.title"),
+        body: installing ? t("settings.privilege.install.body") : t("settings.privilege.uninstall.body"),
+        confirmLabel: installing
+          ? t("settings.privilege.install.action")
+          : t("settings.privilege.uninstall.confirm"),
         danger: !installing,
       }))
     )
@@ -214,7 +203,10 @@ function PrivilegedServiceSettings() {
     setError(null);
     try {
       mutate(await api.managePrivilegedService(action));
-      toast("success", action === "uninstall" ? "特权服务已卸载。" : "特权服务已就绪。");
+      toast(
+        "success",
+        action === "uninstall" ? t("settings.privilege.uninstalled") : t("settings.privilege.ready"),
+      );
     } catch (e) {
       await refetch();
       setError(String(e));
@@ -224,40 +216,42 @@ function PrivilegedServiceSettings() {
     }
   };
   const label = () => {
-    if (busy()) return "正在等待管理员授权或处理服务…";
-    if (status.loading) return "正在检查服务状态…";
+    if (busy()) return t("settings.privilege.state.busy");
+    if (status.loading) return t("settings.privilege.state.checking");
     const s = status();
-    if (!s) return "暂时无法读取状态";
-    if (s.state === "notInstalled") return "未安装";
+    if (!s) return t("settings.privilege.state.unknown");
+    if (s.state === "notInstalled") return t("settings.privilege.state.notInstalled");
     if (s.state === "running")
-      return s.authorized && !s.error ? `已连接 · ${s.version}` : "正在运行，暂时无法连接";
-    if (s.state === "stopped") return "已停止";
-    if (s.state === "startPending") return "正在启动";
-    if (s.state === "stopPending") return "正在停止";
-    return "暂不可用";
+      return s.authorized && !s.error
+        ? t("settings.privilege.state.connected", { version: s.version ?? "" })
+        : t("settings.privilege.state.unreachable");
+    if (s.state === "stopped") return t("settings.privilege.state.stopped");
+    if (s.state === "startPending") return t("settings.privilege.state.startPending");
+    if (s.state === "stopPending") return t("settings.privilege.state.stopPending");
+    return t("settings.privilege.state.unavailable");
   };
   // Updating Argus does not update the service, which needs administrator rights.
   const outdated = () => {
     const s = status();
     const app = appInfo()?.version;
     if (!s?.version || !app || s.version === app) return null;
-    return `服务版本 ${s.version} 与 Argus ${app} 不一致，请单击“更新服务”。`;
+    return t("settings.privilege.outdated", { service: s.version, app });
   };
   return (
     <>
       <Setting
         icon={<ShieldIcon size={20} />}
-        title="特权服务"
-        desc="使以标准权限运行的 Argus 能够管理系统进程、自动应用规则、采集每进程网络流量、查询文件占用，以及控制服务和断开 IPv4 TCP 连接。安装和卸载均需要管理员授权。"
+        title={t("common.privilegedService")}
+        desc={t("settings.privilege.desc")}
       />
       <Setting
         icon={<PulseIcon size={20} />}
         title={<span aria-live="polite">{label()}</span>}
-        desc="Argus 运行时自动连接服务。网络采集不可用时隐藏网络列；各规则下方显示应用结果。"
+        desc={t("settings.privilege.statusDesc")}
         error={error() ?? status()?.error ?? outdated()}
       >
         <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
-          刷新状态
+          {t("settings.refreshStatus")}
         </button>
         <Show when={status()}>
           {(s) => (
@@ -265,7 +259,7 @@ function PrivilegedServiceSettings() {
               when={s().state !== "notInstalled"}
               fallback={
                 <button type="button" class="btn" disabled={busy()} onClick={() => void manage("install")}>
-                  安装并启用
+                  {t("settings.privilege.install.action")}
                 </button>
               }
             >
@@ -276,7 +270,7 @@ function PrivilegedServiceSettings() {
                   disabled={busy() || status.loading}
                   onClick={() => void manage("start")}
                 >
-                  启动服务
+                  {t("settings.privilege.start")}
                 </button>
               </Show>
               <Show when={s().authorized}>
@@ -286,7 +280,7 @@ function PrivilegedServiceSettings() {
                   disabled={busy() || status.loading}
                   onClick={() => void manage("update")}
                 >
-                  更新服务
+                  {t("settings.privilege.update")}
                 </button>
               </Show>
               <button
@@ -295,7 +289,7 @@ function PrivilegedServiceSettings() {
                 disabled={busy() || status.loading}
                 onClick={() => void manage("uninstall")}
               >
-                卸载
+                {t("settings.privilege.uninstall.action")}
               </button>
             </Show>
           )}
@@ -323,9 +317,9 @@ function TaskManagerSettings() {
     if (
       action === "enable" &&
       !(await confirm({
-        title: "替换系统任务管理器？",
-        body: "Ctrl+Shift+Esc 等任务管理器入口将打开 Argus。此更改作用于整台电脑，其他账户仍打开 Windows 任务管理器。开启需要管理员授权；程序启动失败时尝试打开原生任务管理器。请保留独立恢复程序，以便界面或服务无法运行时恢复。",
-        confirmLabel: "启用替换",
+        title: t("settings.taskManager.confirm.title"),
+        body: t("settings.taskManager.confirm.body"),
+        confirmLabel: t("settings.taskManager.enable"),
       }))
     )
       return;
@@ -333,7 +327,10 @@ function TaskManagerSettings() {
     setError(null);
     try {
       mutate(await api.manageTaskManager(action));
-      toast("success", action === "restore" ? "已恢复 Windows 任务管理器。" : "任务管理器替换已启用。");
+      toast(
+        "success",
+        action === "restore" ? t("settings.taskManager.restored") : t("settings.taskManager.enabled"),
+      );
     } catch (e) {
       await refetch();
       setError(String(e));
@@ -342,32 +339,27 @@ function TaskManagerSettings() {
     }
   };
   const label = () => {
-    if (busy()) return "正在处理任务管理器设置…";
-    if (status.loading) return "正在检查任务管理器设置…";
+    if (busy()) return t("settings.taskManager.busy");
+    if (status.loading) return t("settings.taskManager.checking");
     const s = status();
-    if (!s) return "无法读取替换状态";
-    return {
-      disabled: "使用 Windows 任务管理器",
-      enabled: "已替换为 Argus",
-      recoveryNeeded: "需要恢复",
-      conflict: "已有其他配置",
-    }[s.state];
+    if (!s) return t("settings.taskManager.unknown");
+    return t(`settings.taskManager.state.${s.state}`);
   };
   return (
     <>
       <Setting
         icon={<KeyboardIcon size={20} />}
-        title="替换系统任务管理器"
-        desc="使 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。更新或卸载特权服务前会先关闭替换。"
+        title={t("settings.taskManager.title")}
+        desc={t("settings.taskManager.desc")}
       />
       <Setting
         icon={<ShieldIcon size={20} />}
         title={<span aria-live="polite">{label()}</span>}
-        desc={status()?.detail ?? "请刷新状态后重试。"}
+        desc={status()?.detail ?? t("settings.taskManager.retry")}
         error={error()}
       >
         <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
-          刷新状态
+          {t("settings.refreshStatus")}
         </button>
         <Show when={status()?.canEnable}>
           <button
@@ -376,7 +368,7 @@ function TaskManagerSettings() {
             disabled={busy() || status.loading}
             onClick={() => void manage("enable")}
           >
-            启用替换
+            {t("settings.taskManager.enable")}
           </button>
         </Show>
         <Show when={status()?.canRestore}>
@@ -386,27 +378,27 @@ function TaskManagerSettings() {
             disabled={busy() || status.loading}
             onClick={() => void manage("restore")}
           >
-            恢复 Windows 任务管理器
+            {t("settings.taskManager.restore")}
           </button>
         </Show>
       </Setting>
       <Show when={status()?.canRestore}>
-        <p class="note">界面无法打开时，可运行独立恢复程序：{status()?.recoveryPath}</p>
+        <p class="note">{t("settings.taskManager.recovery", { path: status()?.recoveryPath ?? "" })}</p>
       </Show>
     </>
   );
 }
 
 function ruleSummary(rule: ProcessRule, stats: RuleStats | undefined): string {
-  if (rule.priority === null && rule.efficiency === null) return "选择要应用的优先级或效率模式。";
-  if (!rule.enabled) return "已停用。";
+  if (rule.priority === null && rule.efficiency === null) return t("settings.rules.summary.noAction");
+  if (!rule.enabled) return t("settings.rules.summary.disabled");
   if (!stats || (stats.applied === 0 && stats.denied === 0 && stats.failed === 0))
-    return "尚未检测到该程序。";
+    return t("settings.rules.summary.notSeen");
   const parts = [];
-  if (stats.applied > 0) parts.push(`已应用于 ${stats.applied} 个进程`);
-  if (stats.denied > 0) parts.push(`${stats.denied} 个权限不足，可启用特权服务；受保护的进程仍可能受限`);
-  if (stats.failed > 0) parts.push(`${stats.failed} 个未能应用，请检查特权服务状态后重新保存规则`);
-  return `${parts.join("，")}。`;
+  if (stats.applied > 0) parts.push(t("settings.rules.summary.applied", { count: stats.applied }));
+  if (stats.denied > 0) parts.push(t("settings.rules.summary.denied", { count: stats.denied }));
+  if (stats.failed > 0) parts.push(t("settings.rules.summary.failed", { count: stats.failed }));
+  return t("settings.rules.summary.sentence", { parts: parts.join(t("settings.rules.summary.separator")) });
 }
 
 /** Process rules: priority and efficiency mode applied whenever a program starts. */
@@ -434,7 +426,7 @@ function RulesSection(props: { rules: ProcessRule[]; onChange: (rules: ProcessRu
     const name = draft().trim();
     if (!name) return;
     if (props.rules.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
-      setDraftError(`${name} 的规则已存在。`);
+      setDraftError(t("settings.rules.exists", { name }));
       return;
     }
     const rule: ProcessRule = {
@@ -466,15 +458,15 @@ function RulesSection(props: { rules: ProcessRule[]; onChange: (rules: ProcessRu
     <>
       <Setting
         icon={<BoltIcon size={20} />}
-        title="程序启动时自动设置优先级或效率模式"
-        desc="保存后对正在运行的进程立即生效。也可在进程列表中右键单击进程，选择“添加规则”。"
+        title={t("settings.rules.title")}
+        desc={t("settings.rules.desc")}
         error={draftError()}
       >
         <form class="rule-add" onSubmit={add}>
           <input
             class="input"
-            placeholder="程序名，例如 chrome.exe"
-            aria-label="新规则的程序名"
+            placeholder={t("settings.rules.placeholder")}
+            aria-label={t("settings.rules.newName")}
             value={draft()}
             onInput={(e) => {
               setDraft(e.currentTarget.value);
@@ -482,7 +474,7 @@ function RulesSection(props: { rules: ProcessRule[]; onChange: (rules: ProcessRu
             }}
           />
           <button type="submit" class="btn" disabled={!draft().trim()}>
-            添加
+            {t("settings.rules.add")}
           </button>
         </form>
       </Setting>
@@ -499,44 +491,48 @@ function RulesSection(props: { rules: ProcessRule[]; onChange: (rules: ProcessRu
             >
               <select
                 class="select"
-                aria-label={`${rule.name} 的优先级`}
+                aria-label={t("settings.rules.priority.label", { name: rule.name })}
                 value={rule.priority ?? ""}
                 onChange={(e) =>
                   update(rule.id, { priority: (e.currentTarget.value || null) as PriorityClass | null })
                 }
               >
-                <option value="">不改变优先级</option>
+                <option value="">{t("settings.rules.priority.keep")}</option>
                 <For each={PRIORITY_CHOICES}>
-                  {(p) => <option value={p}>优先级：{PRIORITY_LABEL[p]}</option>}
+                  {(p) => (
+                    <option value={p}>
+                      {t("settings.rules.priority.option", { priority: PRIORITY_LABEL[p] })}
+                    </option>
+                  )}
                 </For>
               </select>
               <select
                 class="select"
-                aria-label={`${rule.name} 的效率模式`}
+                aria-label={t("settings.rules.efficiency.label", { name: rule.name })}
                 value={rule.efficiency === null ? "" : rule.efficiency ? "on" : "off"}
                 onChange={(e) => {
                   const v = e.currentTarget.value;
                   update(rule.id, { efficiency: v === "" ? null : v === "on" });
                 }}
               >
-                <option value="">不改变效率模式</option>
-                <option value="on">开启效率模式</option>
-                <option value="off">关闭效率模式</option>
+                <option value="">{t("settings.rules.efficiency.keep")}</option>
+                <option value="on">{t("settings.rules.efficiency.on")}</option>
+                <option value="off">{t("settings.rules.efficiency.off")}</option>
               </select>
               <button
                 type="button"
                 role="switch"
                 class="switch"
                 aria-checked={rule.enabled}
-                aria-label={`启用 ${rule.name} 的规则`}
-                title={rule.enabled ? "停用规则" : "启用规则"}
+                aria-label={t("settings.rules.toggle", { name: rule.name })}
+                title={rule.enabled ? t("settings.rules.disable") : t("settings.rules.enable")}
                 onClick={() => update(rule.id, { enabled: !rule.enabled })}
               />
               <button
                 type="button"
                 class="btn ghost small icon"
-                title="删除规则"
-                aria-label={`删除 ${rule.name} 的规则`}
+                title={t("settings.rules.delete")}
+                aria-label={t("settings.rules.deleteLabel", { name: rule.name })}
                 onClick={() => props.onChange(props.rules.filter((r) => r.id !== rule.id))}
               >
                 <DismissIcon size={14} />
@@ -556,7 +552,9 @@ const DOCUMENTS = {
     load: () => import("../../../LICENSE?raw").then((m) => m.default),
   },
   notices: {
-    title: "第三方组件许可声明",
+    get title() {
+      return t("settings.about.notices.dialog");
+    },
     load: () => import("../../../THIRD-PARTY-NOTICES.txt?raw").then((m) => m.default),
   },
 } as const;
@@ -611,7 +609,7 @@ function DocumentBody(props: { id: DocumentId; leaving: boolean }) {
             ref={(b) => queueMicrotask(() => b.focus())}
             onClick={close}
           >
-            关闭
+            {t("common.close")}
           </button>
         </div>
       </div>
@@ -660,7 +658,7 @@ function UpdateSettings(props: {
     try {
       await api.installUpdate();
     } catch (e) {
-      toast("error", `无法安装更新：${String(e)}`);
+      toast("error", t("settings.update.installError", { error: String(e) }));
     } finally {
       setInstalling(false);
     }
@@ -668,26 +666,32 @@ function UpdateSettings(props: {
 
   const title = () => {
     const s = status();
-    if (!s) return "正在读取更新状态…";
+    if (!s) return t("settings.update.status.loading");
+    const version = s.version ?? "";
     switch (s.state) {
       case "disabled":
-        return "不检查更新";
+        return t("settings.update.status.disabled");
       case "idle":
-        return "尚未检查更新";
+        return t("settings.update.status.idle");
       case "checking":
-        return "正在检查更新…";
+        return t("settings.update.status.checking");
       case "upToDate":
-        return "已是最新版本";
+        return t("settings.update.status.upToDate");
       case "available":
-        return `发现新版本 ${s.version}`;
+        return t("settings.update.status.available", { version });
       case "downloading":
-        return `正在下载 ${s.version}${s.total ? ` · ${Math.floor((s.received / s.total) * 100)}%` : ""}`;
+        return s.total
+          ? t("settings.update.status.downloadingPercent", {
+              version,
+              percent: Math.floor((s.received / s.total) * 100),
+            })
+          : t("settings.update.status.downloading", { version });
       case "ready":
-        return `${s.version} 已下载完成`;
+        return t("settings.update.status.ready", { version });
       case "installing":
-        return `正在启动 ${s.version} 的安装程序…`;
+        return t("settings.update.status.installing", { version });
       case "error":
-        return "更新失败";
+        return t("settings.update.status.error");
     }
   };
   const desc = () => {
@@ -697,15 +701,24 @@ function UpdateSettings(props: {
       case "disabled":
         return s.error;
       case "ready":
-        return "安装需要管理员授权。安装期间 Argus 将退出，安装程序仅显示进度，完成后自动重新启动 Argus。";
+        return t("settings.update.detail.ready");
       case "available":
-        return "免安装版不支持自动更新，请从发布页下载新版本。";
-      case "downloading":
-        return `已下载 ${fmtCache(s.received)}${s.total ? ` / ${fmtCache(s.total)}` : ""}，来自 ${s.source ?? "GitHub"}。`;
+        return t("settings.update.detail.portable");
+      case "downloading": {
+        const received = fmtCache(s.received);
+        const source = s.source ?? "GitHub";
+        return s.total
+          ? t("settings.update.detail.downloadedOf", { received, total: fmtCache(s.total), source })
+          : t("settings.update.detail.downloaded", { received, source });
+      }
     }
-    if (s.checkedAt)
-      return `上次检查：${dateFmt.format(s.checkedAt)}${s.source ? `，来自 ${s.source}` : ""}。`;
-    return "更新来自 GitHub Releases，安装包通过签名校验后才会安装。";
+    if (s.checkedAt) {
+      const time = dateFmt().format(s.checkedAt);
+      return s.source
+        ? t("settings.update.detail.checkedFrom", { time, source: s.source })
+        : t("settings.update.detail.checked", { time });
+    }
+    return t("settings.update.detail.source");
   };
   const showNotes = () =>
     Boolean(status()?.notes) && (state() === "available" || state() === "downloading" || state() === "ready");
@@ -721,14 +734,14 @@ function UpdateSettings(props: {
       >
         <Show when={state() === "ready"}>
           <button type="button" class="btn accent" disabled={installing()} onClick={install}>
-            重启并更新
+            {t("settings.update.restart")}
           </button>
         </Show>
         <Show when={state() === "available" && status()?.version}>
           {(version) => (
             <button type="button" class="btn" onClick={() => void api.openReleasePage(version())}>
               <ExternalIcon />
-              前往下载
+              {t("settings.update.download")}
             </button>
           )}
         </Show>
@@ -739,72 +752,72 @@ function UpdateSettings(props: {
             disabled={!status() || busy()}
             onClick={() => void api.checkUpdate()}
           >
-            检查更新
+            {t("settings.update.check")}
           </button>
         </Show>
       </Setting>
       <Show when={showNotes()}>
         <Setting
           icon={<DocumentIcon size={20} />}
-          title={`${status()?.version} 的更新内容`}
+          title={t("settings.update.notes", { version: status()?.version ?? "" })}
           desc={<pre class="update-notes">{status()?.notes}</pre>}
         />
       </Show>
       <Setting
         icon={<TimerIcon size={20} />}
-        title="自动检查更新"
-        desc="启动约 1 分钟后检查一次，此后每天检查一次。新版本在后台下载，安装需手动确认。"
+        title={t("settings.update.auto.title")}
+        desc={t("settings.update.auto.desc")}
       >
         <ToggleSwitch
-          label="自动检查更新"
+          label={t("settings.update.auto.title")}
           checked={props.settings.updateCheck}
           onChange={(check) => void save({ check })}
         />
       </Setting>
       <Setting
         icon={<SparkleIcon size={20} />}
-        title="更新通道"
-        desc="测试版提前提供新功能，稳定性可能不及稳定版。由测试版切换到稳定版后，需等到稳定版的版本号高于当前版本时才会更新。"
+        title={t("settings.update.channel.label")}
+        desc={t("settings.update.channel.desc")}
       >
         <select
           class="select"
-          aria-label="更新通道"
+          aria-label={t("settings.update.channel.label")}
           value={props.settings.updateChannel}
           onChange={(e) => void save({ channel: e.currentTarget.value as UpdateChannel })}
         >
-          <option value="stable">稳定版</option>
-          <option value="beta">测试版</option>
+          <option value="stable">{t("settings.update.channel.stable")}</option>
+          <option value="beta">{t("settings.update.channel.beta")}</option>
         </select>
       </Setting>
       <Setting
         icon={<GlobeIcon size={20} />}
-        title="下载线路"
-        desc="加速代理由第三方提供，可获知本机的 IP 地址及所下载的文件。安装包签名同时覆盖版本号，代理无法篡改更新，也无法以旧版本冒充新版本。"
+        title={t("settings.update.route.label")}
+        desc={t("settings.update.route.desc")}
       >
         <select
           class="select"
-          aria-label="下载线路"
+          aria-label={t("settings.update.route.label")}
           value={props.settings.updateRoute}
           onChange={(e) => void save({ route: e.currentTarget.value as UpdateRoute })}
         >
-          <option value="auto">自动（优先连接 GitHub，失败时使用加速代理）</option>
-          <option value="direct">仅连接 GitHub</option>
-          <option value="proxy">仅使用加速代理</option>
+          <option value="auto">{t("settings.update.route.auto")}</option>
+          <option value="direct">{t("settings.update.route.direct")}</option>
+          <option value="proxy">{t("settings.update.route.proxy")}</option>
         </select>
       </Setting>
       <Show when={props.settings.updateRoute !== "direct"}>
         <Setting
           icon={<TransferIcon size={20} />}
-          title="加速代理"
+          title={t("settings.update.proxy.label")}
           desc={
             props.settings.updateRoute === "auto"
-              ? "无法连接 GitHub 时，依次尝试此代理和其他内置代理。"
-              : "所有更新请求均经由此代理。"
+              ? t("settings.update.proxy.fallback")
+              : t("settings.update.proxy.only")
           }
         >
           <select
             class="select"
-            aria-label="加速代理"
+            aria-label={t("settings.update.proxy.label")}
             value={proxyChoice()}
             onChange={(e) => {
               const value = e.currentTarget.value;
@@ -821,14 +834,14 @@ function UpdateSettings(props: {
             }}
           >
             <For each={PROXY_PRESETS}>{(p) => <option value={p}>{hostOf(p)}</option>}</For>
-            <option value="custom">自定义…</option>
+            <option value="custom">{t("settings.update.proxy.custom")}</option>
           </select>
         </Setting>
         <Show when={draft() !== null}>
           <Setting
             icon={<GlobeIcon size={20} />}
-            title="自定义代理"
-            desc="添加在 GitHub 地址之前的前缀，须使用 https，例如 https://example.com/。"
+            title={t("settings.update.custom.title")}
+            desc={t("settings.update.custom.desc")}
           >
             <form
               class="rule-add"
@@ -840,7 +853,7 @@ function UpdateSettings(props: {
             >
               <input
                 class="input"
-                aria-label="自定义代理地址"
+                aria-label={t("settings.update.custom.label")}
                 spellcheck={false}
                 value={draft() ?? ""}
                 onInput={(e) => setDraft(e.currentTarget.value)}
@@ -850,7 +863,7 @@ function UpdateSettings(props: {
                 class="btn"
                 disabled={!draft()?.trim() || draft()?.trim() === props.settings.updateProxy}
               >
-                保存
+                {t("settings.update.custom.save")}
               </button>
             </form>
           </Setting>
@@ -858,6 +871,16 @@ function UpdateSettings(props: {
       </Show>
     </>
   );
+}
+
+/** The size of the saved history and its oldest record, once counted. */
+function usageText(usage: HistoryUsage | undefined): string {
+  if (!usage) return t("settings.data.history.counting");
+  if (usage.bytes <= 0) return t("settings.data.history.empty");
+  const size = fmtCache(usage.bytes);
+  return usage.first
+    ? t("settings.data.history.sizeSince", { size, date: dateFmt().format(usage.first) })
+    : t("settings.data.history.size", { size });
 }
 
 /** Recording history, what it takes on disk, and clearing it. */
@@ -868,18 +891,18 @@ function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => v
   const clear = async () => {
     const size = usage()?.bytes ?? 0;
     const ok = await confirm({
-      title: "清除历史记录？",
-      body: `将删除全部历史记录（${fmtCache(size)}），无法恢复。`,
-      confirmLabel: "清除",
+      title: t("settings.data.history.confirm.title"),
+      body: t("settings.data.history.confirm.body", { size: fmtCache(size) }),
+      confirmLabel: t("settings.data.history.clear"),
       danger: true,
     });
     if (!ok) return;
     setClearing(true);
     try {
       await api.clearHistory();
-      toast("success", "已清除历史记录。", 2500);
+      toast("success", t("settings.data.history.cleared"), 2500);
     } catch (e) {
-      toast("error", `无法清除历史记录：${String(e)}`);
+      toast("error", t("settings.data.history.clearError", { error: String(e) }));
     } finally {
       setClearing(false);
       void refetch();
@@ -890,36 +913,23 @@ function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => v
     <>
       <Setting
         icon={<HistoryIcon size={20} />}
-        title="记录历史"
-        desc={
-          props.enabled
-            ? "每 5 秒记录一次资源占用及占用最高的进程。数据仅保存在本机，保留 7 天，可在“历史”页查看。"
-            : "已关闭。现有记录将在 7 天后过期，也可立即清除。"
-        }
+        title={t("settings.data.history.title")}
+        desc={props.enabled ? t("settings.data.history.on") : t("settings.data.history.off")}
       >
-        <ToggleSwitch label="记录历史" checked={props.enabled} onChange={props.onToggle} />
+        <ToggleSwitch
+          label={t("settings.data.history.title")}
+          checked={props.enabled}
+          onChange={props.onToggle}
+        />
       </Setting>
       <Setting
         icon={<StorageIcon size={20} />}
-        title="已保存的历史"
-        desc={
-          <Show when={usage()} fallback="正在统计…">
-            {(u) =>
-              u().bytes > 0 ? (
-                <>
-                  占用 {fmtCache(u().bytes)}
-                  <Show when={u().first}>{(first) => <>，最早记录于 {dateFmt.format(first())}</>}</Show>。
-                </>
-              ) : (
-                "暂无记录。"
-              )
-            }
-          </Show>
-        }
+        title={t("settings.data.history.saved")}
+        desc={usageText(usage())}
       >
         <button type="button" class="btn" disabled={clearing() || !usage()?.bytes} onClick={clear}>
           <TrashIcon />
-          清除
+          {t("settings.data.history.clear")}
         </button>
       </Setting>
     </>
@@ -927,7 +937,9 @@ function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => v
 }
 
 export default function SettingsPage() {
-  const [settings, { mutate }] = createResource(() => api.settings());
+  const [settings, { mutate, refetch }] = createResource(() => api.settings());
+  // The onboarding (opened from the about section) changes settings too.
+  createEffect(on(onboardingOpen, (open, wasOpen) => wasOpen && !open && void refetch()));
   const [hotkeyError, setHotkeyError] = createSignal<string | null>(null);
   const [recording, setRecording] = createSignal(false);
   let stopRecording: (() => void) | null = null;
@@ -985,12 +997,13 @@ export default function SettingsPage() {
     queueMicrotask(() => jump(id, false));
   });
 
-  const apply = async (change: Promise<SettingsView>, failure: string) => {
+  /** Shows the new settings, or on failure the `failure` message with the error. */
+  const apply = async (change: Promise<SettingsView>, failure: MessageKey) => {
     try {
       mutate(await change);
       return true;
     } catch (e) {
-      toast("error", `${failure}：${String(e)}`);
+      toast("error", t(failure, { error: String(e) }));
       return false;
     }
   };
@@ -1042,7 +1055,7 @@ export default function SettingsPage() {
       }}
     >
       <div class="settings-layout">
-        <nav class="settings-nav" aria-label="设置分组">
+        <nav class="settings-nav" aria-label={t("settings.nav")}>
           <Indicator selector="[aria-current='true']" track={active} class="settings-nav-mark" />
           <For each={SECTIONS}>
             {(s) => (
@@ -1053,9 +1066,9 @@ export default function SettingsPage() {
                 onClick={() => jump(s.id)}
               >
                 <s.icon />
-                <span>{s.label}</span>
+                <span>{t(`settings.sections.${s.id}`)}</span>
                 <Show when={s.id === "update" && updatePending()}>
-                  <span class="nav-dot" role="img" aria-label="有新版本" />
+                  <span class="nav-dot" role="img" aria-label={t("shell.updateAvailable")} />
                 </Show>
               </button>
             )}
@@ -1066,97 +1079,130 @@ export default function SettingsPage() {
           <Show when={settings()}>
             {(s) => (
               <>
+                <section id="settings-language" class="settings-section">
+                  <h2>{t("settings.sections.language")}</h2>
+                  <Setting
+                    icon={<GlobeIcon size={20} />}
+                    title={t("settings.language.title")}
+                    desc={t("settings.language.desc")}
+                  >
+                    <select
+                      class="select"
+                      aria-label={t("settings.language.title")}
+                      value={s().language}
+                      onChange={(e) =>
+                        apply(changeLanguage(e.currentTarget.value as Language), "settings.language.error")
+                      }
+                    >
+                      <option value="system">{t("common.languageSystem")}</option>
+                      <For each={LOCALES}>{(l) => <option value={l.locale}>{l.name}</option>}</For>
+                    </select>
+                  </Setting>
+                </section>
+
                 <section id="settings-startup" class="settings-section">
-                  <h2>启动与后台</h2>
+                  <h2>{t("settings.sections.startup")}</h2>
                   <Setting
                     icon={<PowerIcon size={20} />}
-                    title="登录 Windows 时启动"
-                    desc="以托盘方式静默启动，可通过快捷键或单击托盘图标打开窗口。"
+                    title={t("settings.startup.autostart.title")}
+                    desc={t("settings.startup.autostart.desc")}
                   >
                     <ToggleSwitch
-                      label="登录 Windows 时启动"
+                      label={t("settings.startup.autostart.title")}
                       checked={s().autostart}
-                      onChange={(v) => apply(api.setAutostart(v), "无法更改开机启动")}
+                      onChange={(v) => apply(api.setAutostart(v), "settings.startup.autostart.error")}
                     />
                   </Setting>
                   <Setting
                     icon={<TrayIcon size={20} />}
-                    title="关闭窗口时保留在托盘"
-                    desc="保持常驻，可快速重新打开。隐藏期间每 5 秒采样一次，历史记录与规则照常运行。"
+                    title={t("settings.startup.closeToTray.title")}
+                    desc={t("settings.startup.closeToTray.desc")}
                   >
                     <ToggleSwitch
-                      label="关闭窗口时保留在托盘"
+                      label={t("settings.startup.closeToTray.title")}
                       checked={s().closeToTray}
-                      onChange={(v) => apply(api.setCloseToTray(v), "无法保存设置")}
+                      onChange={(v) => apply(api.setCloseToTray(v), "settings.startup.closeToTray.error")}
                     />
                   </Setting>
                 </section>
 
                 <section id="settings-hotkey" class="settings-section">
-                  <h2>快捷键</h2>
+                  <h2>{t("settings.sections.hotkey")}</h2>
                   <Setting
                     icon={<KeyboardIcon size={20} />}
-                    title="显示或隐藏 Argus"
-                    desc="在任意程序中均可使用。录制时按 Esc 取消，按 Backspace 停用快捷键。"
+                    title={t("settings.hotkey.title")}
+                    desc={t("settings.hotkey.desc")}
                     error={hotkeyError() ?? s().hotkeyError}
                   >
                     <span class="keycaps" aria-live="polite">
-                      <Show when={!recording()} fallback={<span class="pending">按下新的组合键…</span>}>
-                        <Show when={s().hotkey} fallback={<span class="pending">未设置</span>}>
+                      <Show
+                        when={!recording()}
+                        fallback={<span class="pending">{t("settings.hotkey.recording")}</span>}
+                      >
+                        <Show
+                          when={s().hotkey}
+                          fallback={<span class="pending">{t("settings.hotkey.unset")}</span>}
+                        >
                           <For each={s().hotkey.split("+")}>{(part) => <kbd>{keyLabel(part)}</kbd>}</For>
                         </Show>
                       </Show>
                     </span>
                     <button type="button" class="btn" disabled={recording()} onClick={startRecording}>
-                      更改
+                      {t("settings.hotkey.change")}
                     </button>
                   </Setting>
                 </section>
 
                 <section id="settings-privilege" class="settings-section">
-                  <h2>权限</h2>
+                  <h2>{t("settings.sections.privilege")}</h2>
                   <PrivilegedServiceSettings />
                   <TaskManagerSettings />
                 </section>
 
                 <section id="settings-motion" class="settings-section">
-                  <h2>动画</h2>
+                  <h2>{t("settings.sections.motion")}</h2>
                   <Setting
                     icon={<SparkleIcon size={20} />}
-                    title="界面动画"
-                    desc="切换页面、打开菜单和对话框时的过渡，以及滑动的选中标记。默认跟随 Windows 的“动画效果”设置。"
+                    title={t("settings.motion.ui.title")}
+                    desc={t("settings.motion.ui.desc")}
                   >
-                    <ToggleSwitch label="界面动画" checked={uiMotion()} onChange={setUiMotion} />
+                    <ToggleSwitch
+                      label={t("settings.motion.ui.title")}
+                      checked={uiMotion()}
+                      onChange={setUiMotion}
+                    />
                   </Setting>
                   <Setting
                     icon={<PulseIcon size={20} />}
-                    title="曲线动画"
-                    desc="帧率越高，曲线越流畅，资源占用也越高：流畅模式约占单核 10%–15%，均衡模式约为其一半；省电模式每次移动一个整像素，较小图表的移动不连续。"
+                    title={t("settings.motion.chart.title")}
+                    desc={t("settings.motion.chart.desc")}
                   >
                     <select
                       class="select"
-                      aria-label="曲线动画"
+                      aria-label={t("settings.motion.chart.title")}
                       value={chartMode()}
                       onChange={(e) => setChartMode(e.currentTarget.value as ChartMode)}
                     >
-                      <option value="fluid">流畅（{refreshHz()} 帧/秒）</option>
-                      <option value="balanced">均衡（{Math.round(1000 / balancedFrameMs())} 帧/秒）</option>
-                      <option value="pixel">省电（逐像素移动）</option>
-                      <option value="off">关闭（每次采样跳一格）</option>
+                      <option value="fluid">{t("settings.motion.chart.fluid", { fps: refreshHz() })}</option>
+                      <option value="balanced">
+                        {t("settings.motion.chart.balanced", { fps: Math.round(1000 / balancedFrameMs()) })}
+                      </option>
+                      <option value="pixel">{t("settings.motion.chart.pixel")}</option>
+                      <option value="off">{t("settings.motion.chart.off")}</option>
                     </select>
                   </Setting>
                 </section>
 
                 <section id="settings-data" class="settings-section">
-                  <h2>数据与历史</h2>
+                  <h2>{t("settings.sections.data")}</h2>
                   <Setting
                     icon={<TimerIcon size={20} />}
-                    title="刷新频率"
-                    desc="间隔越短，曲线越精细，Argus 自身的资源开销也越高。"
+                    title={t("shell.interval.label")}
+                    desc={t("settings.data.intervalDesc")}
                   >
                     <select
                       class="select"
-                      aria-label="刷新频率"
+                      aria-label={t("shell.interval.label")}
                       value={intervalMs()}
                       onChange={(e) => {
                         const ms = Number(e.currentTarget.value);
@@ -1164,19 +1210,23 @@ export default function SettingsPage() {
                         void api.setInterval(ms);
                       }}
                     >
-                      <For each={INTERVALS}>{(ms) => <option value={ms}>每 {ms / 1000} 秒</option>}</For>
+                      <For each={INTERVALS}>
+                        {(ms) => (
+                          <option value={ms}>{t("shell.interval.option", { seconds: ms / 1000 })}</option>
+                        )}
+                      </For>
                     </select>
                   </Setting>
                   <Setting
                     icon={<TransferIcon size={20} />}
-                    title="网络速率单位"
-                    desc="字节与磁盘速率的单位一致，比特与网卡链路速率、宽带带宽的单位一致。性能页的网络视图同时显示两种单位。"
+                    title={t("settings.data.netUnit.title")}
+                    desc={t("settings.data.netUnit.desc")}
                   >
-                    <div class="segmented" role="group" aria-label="网络速率单位">
+                    <div class="segmented" role="group" aria-label={t("settings.data.netUnit.title")}>
                       <Indicator selector="[aria-pressed='true']" track={netUnit} class="seg-thumb" />
                       <button
                         type="button"
-                        title="字节每秒"
+                        title={t("settings.data.netUnit.bytes")}
                         aria-pressed={netUnit() === "bytes"}
                         onClick={() => setNetUnit("bytes")}
                       >
@@ -1184,7 +1234,7 @@ export default function SettingsPage() {
                       </button>
                       <button
                         type="button"
-                        title="比特每秒"
+                        title={t("settings.data.netUnit.bits")}
                         aria-pressed={netUnit() === "bits"}
                         onClick={() => setNetUnit("bits")}
                       >
@@ -1194,70 +1244,80 @@ export default function SettingsPage() {
                   </Setting>
                   <HistorySettings
                     enabled={s().history}
-                    onToggle={(on) => apply(api.setHistoryEnabled(on), "无法更改历史记录设置")}
+                    onToggle={(on) => apply(api.setHistoryEnabled(on), "settings.data.history.error")}
                   />
                 </section>
 
                 <section id="settings-rules" class="settings-section">
-                  <h2>规则</h2>
+                  <h2>{t("settings.sections.rules")}</h2>
                   <RulesSection
                     rules={s().rules}
-                    onChange={(rules) => apply(api.setRules(rules), "无法保存规则")}
+                    onChange={(rules) => apply(api.setRules(rules), "settings.rules.error")}
                   />
                 </section>
 
                 <section id="settings-update" class="settings-section">
-                  <h2>更新</h2>
-                  <UpdateSettings settings={s()} onChange={(change) => apply(change, "无法保存更新设置")} />
+                  <h2>{t("settings.sections.update")}</h2>
+                  <UpdateSettings
+                    settings={s()}
+                    onChange={(change) => apply(change, "settings.update.error")}
+                  />
                 </section>
 
                 <section id="settings-about" class="settings-section">
-                  <h2>关于</h2>
+                  <h2>{t("settings.sections.about")}</h2>
                   <div class="setting about">
                     <img class="about-logo" src="/logo.svg" alt="" width="48" height="48" />
                     <div class="setting-text">
                       <div class="about-name">
                         Argus<span class="about-version">{appInfo()?.version}</span>
                       </div>
-                      <div class="setting-desc">快速、现代、信息丰富的 Windows 任务管理器。</div>
+                      <div class="setting-desc">{t("settings.about.tagline")}</div>
                       <div class="setting-desc">
-                        {appInfo()?.elevated
-                          ? "正在以管理员身份运行。"
-                          : "正在以标准权限运行，部分系统进程的信息与操作受限。"}
+                        {appInfo()?.elevated ? t("settings.about.admin") : t("settings.about.standard")}
                       </div>
                       <div class="setting-desc">© 2026 Argus contributors</div>
                     </div>
                     <div class="setting-control">
                       <button type="button" class="btn" onClick={() => api.quit()}>
-                        退出 Argus
+                        {t("settings.about.quit")}
                       </button>
                     </div>
                   </div>
                   <Setting
-                    icon={<DocumentIcon size={20} />}
-                    title="许可证"
-                    desc="Argus 是自由软件，依据 GNU Affero General Public License 第 3 版或任何更高版本（AGPL-3.0-or-later）发布，可按该许可证的条款再分发和修改。Argus 不提供任何担保。"
+                    icon={<SparkleIcon size={20} />}
+                    title={t("settings.about.onboarding.title")}
+                    desc={t("settings.about.onboarding.desc")}
                   >
-                    <button type="button" class="btn" onClick={() => setOpenDocument("license")}>
-                      查看许可证
+                    <button type="button" class="btn" onClick={openOnboarding}>
+                      {t("settings.about.onboarding.open")}
                     </button>
                   </Setting>
                   <Setting
                     icon={<DocumentIcon size={20} />}
-                    title="第三方组件"
-                    desc="Argus 包含的开源组件及其许可证与版权声明。"
+                    title={t("settings.about.license.title")}
+                    desc={t("settings.about.license.desc")}
+                  >
+                    <button type="button" class="btn" onClick={() => setOpenDocument("license")}>
+                      {t("settings.about.license.view")}
+                    </button>
+                  </Setting>
+                  <Setting
+                    icon={<DocumentIcon size={20} />}
+                    title={t("settings.about.notices.title")}
+                    desc={t("settings.about.notices.desc")}
                   >
                     <button type="button" class="btn" onClick={() => setOpenDocument("notices")}>
-                      查看许可声明
+                      {t("settings.about.notices.view")}
                     </button>
                   </Setting>
                   <Setting
                     icon={<StorageIcon size={20} />}
-                    title="日志"
-                    desc="记录启动信息、更新与特权服务操作中的错误，便于排查问题。仅保存在本机，超过 1 MB 时轮换。"
+                    title={t("settings.about.log.title")}
+                    desc={t("settings.about.log.desc")}
                   >
                     <button type="button" class="btn" onClick={() => void api.openLogDir()}>
-                      打开日志文件夹
+                      {t("settings.about.log.open")}
                     </button>
                   </Setting>
                 </section>

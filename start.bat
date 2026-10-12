@@ -90,7 +90,7 @@ echo 用法：start.bat [命令]
 echo.
 echo   dev              默认。启动应用，前端与 Rust 均自动热重载
 echo   ui               只在浏览器里运行界面，使用模拟数据，适合调样式
-echo   check            类型检查、Biome、rustfmt、Clippy
+echo   check            类型检查、Biome、文案检查、rustfmt、Clippy
 echo   build            发布构建，生成 target\release\argus.exe
 echo   build installer  发布构建并打包 NSIS 安装程序
 echo   clean            清理增量编译缓存与发布构建产物，保留调试依赖缓存

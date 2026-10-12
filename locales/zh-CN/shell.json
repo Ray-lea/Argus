@@ -1,0 +1,67 @@
+{
+  "loadingProcesses": "正在读取进程…",
+  "toolbar": "工具栏",
+  "pages": "页面",
+  "page": {
+    "processes": "进程",
+    "performance": "性能",
+    "services": "服务",
+    "startup": "启动",
+    "network": "连接",
+    "history": "历史",
+    "settings": "设置"
+  },
+  "pageTitle": "{page}（Ctrl+{key}）",
+  "updateAvailable": "有新版本",
+  "elevation": {
+    "admin": "管理员",
+    "adminHint": "Argus 正以管理员身份运行，可查看和结束绝大多数进程",
+    "standard": "标准权限",
+    "standardHint": "部分系统进程的信息需要管理员权限才能读取或结束"
+  },
+  "interval": {
+    "label": "刷新频率",
+    "option": "每 {seconds} 秒"
+  },
+  "pause": "暂停刷新",
+  "resume": "继续刷新",
+  "fileLock": {
+    "title": "查找文件占用（也可将文件拖放到窗口）",
+    "label": "查找占用文件的进程"
+  },
+  "details": {
+    "label": "详细信息面板",
+    "show": "显示详细信息",
+    "hide": "隐藏详细信息"
+  },
+  "search": {
+    "processes": "搜索名称、PID、路径或服务",
+    "clear": "清除搜索"
+  },
+  "view": "视图",
+  "viewMode": {
+    "apps": {
+      "label": "按应用",
+      "title": "按应用：同一程序的多个进程合并为一行"
+    },
+    "tree": {
+      "label": "进程树",
+      "title": "进程树：按父子关系显示"
+    },
+    "list": {
+      "label": "列表",
+      "title": "列表：所有进程平铺显示"
+    }
+  },
+  "status": {
+    "threads": "线程",
+    "handles": "句柄",
+    "cached": "缓存",
+    "pagedPool": "分页缓冲池",
+    "uptime": "已运行",
+    "orderHeld": "指针位于列表上，暂停重新排序",
+    "orderHeldHint": "鼠标移出列表后按当前排序重新排列",
+    "paused": "已暂停刷新",
+    "interval": "每 {seconds} 秒刷新"
+  }
+}

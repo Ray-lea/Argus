@@ -1,5 +1,7 @@
 // Mirrors the serde types in argus-core. Keep in sync.
 
+import type { Language, Locale } from "./i18n";
+
 export interface ProcessRow {
   pid: number;
   ppid: number;
@@ -139,6 +141,7 @@ export interface MemoryInfo {
   speed: number | null;
   slotsUsed: number;
   slotsTotal: number;
+  /** e.g. `DIMM`; `onboard` for memory soldered to the board. */
   formFactor: string | null;
   kind: string | null;
 }
@@ -267,6 +270,9 @@ export type UpdateChannel = "stable" | "beta";
 export type UpdateRoute = "auto" | "direct" | "proxy";
 
 export interface SettingsView {
+  language: Language;
+  /** The onboarding version last completed or skipped; 0 before the first. */
+  onboarding: number;
   closeToTray: boolean;
   /** Accelerator such as `Ctrl+Alt+Escape`; empty when disabled. */
   hotkey: string;
@@ -279,6 +285,8 @@ export interface SettingsView {
   /** GitHub proxy prefix, e.g. `https://gh-proxy.com/`. */
   updateProxy: string;
   autostart: boolean;
+  /** The language in effect (`language` resolved). */
+  locale: Locale;
   hotkeyError: string | null;
 }
 
@@ -350,6 +358,8 @@ export interface AppInfo {
   accent: AccentColors | null;
   /** Relaunched by the installer of an update. */
   updated: boolean;
+  /** The UI language, resolved. */
+  locale: Locale;
 }
 
 export interface PrivilegedServiceStatus {

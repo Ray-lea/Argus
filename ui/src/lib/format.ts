@@ -1,3 +1,4 @@
+import { localized, t } from "./i18n";
 import { persisted } from "./prefs";
 
 const KB = 1024;
@@ -35,17 +36,17 @@ export function fmtCpu(pct: number): string {
   return pct.toFixed(0);
 }
 
-const nf = new Intl.NumberFormat("zh-CN");
-export const fmtCount = (n: number) => nf.format(n);
+const numbers = localized((l) => new Intl.NumberFormat(l));
+export const fmtCount = (n: number) => numbers().format(n);
 
 export function fmtUptime(ms: number): string {
   const s = Math.floor(ms / 1000);
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (d > 0) return `${d} 天 ${h} 小时`;
-  if (h > 0) return `${h} 小时 ${m} 分`;
-  return `${m} 分 ${s % 60} 秒`;
+  if (d > 0) return t("format.uptime.days", { days: d, hours: h });
+  if (h > 0) return t("format.uptime.hours", { hours: h, minutes: m });
+  return t("format.uptime.minutes", { minutes: m, seconds: s % 60 });
 }
 
 /** CPU time as h:mm:ss. */
@@ -56,14 +57,18 @@ export function fmtCpuTime(ms: number): string {
   return `${h}:${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-const dtf = new Intl.DateTimeFormat("zh-CN", {
-  month: "numeric",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-export const fmtDateTime = (unixMs: number) => (unixMs > 0 ? dtf.format(unixMs) : "系统启动时");
+const dateTimes = localized(
+  (l) =>
+    new Intl.DateTimeFormat(l, {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+);
+export const fmtDateTime = (unixMs: number) =>
+  unixMs > 0 ? dateTimes().format(unixMs) : t("format.sinceBoot");
 
 /** Rate in bits per second, the unit adapters and broadband plans are sold in. */
 export function fmtBits(bytesPerSec: number): string {

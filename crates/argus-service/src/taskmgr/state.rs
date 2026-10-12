@@ -1,6 +1,7 @@
 //! The registry adapter is deliberately separate: crash/conflict tests never
 //! touch IFEO. A journal is durable before the first registry write.
 
+use argus_core::tr;
 use serde::{Deserialize, Serialize};
 
 pub type Result<T> = std::result::Result<T, String>;
@@ -66,9 +67,7 @@ pub fn enable(
 ) -> Result<Journal> {
     let before = store.observe()?;
     if before.debugger.is_some() || before.filtered {
-        return Err(
-            "已有任务管理器替换或路径过滤配置，请先在原工具中关闭；Argus 不会覆盖它".into(),
-        );
+        return Err(tr!("taskManager.alreadyReplaced"));
     }
     let mut journal = Journal {
         version: 1,
@@ -80,25 +79,32 @@ pub fn enable(
     };
     store.save(&journal)?;
     if store.observe()? != journal.before {
-        return Err("启用前配置已被其他程序修改，已停止操作".into());
+        return Err(tr!("taskManager.changedBeforeEnable"));
     }
     if let Err(error) = store.write_debugger(Some(&journal.replacement)) {
         return match restore(store, &mut journal) {
             Ok(()) => Err(error),
-            Err(recovery) => Err(format!("{error}；恢复未完成：{recovery}")),
+            Err(recovery) => Err(tr!(
+                "taskManager.restoreIncomplete",
+                error = error,
+                recovery = recovery
+            )),
         };
     }
     let actual = store.observe()?;
     if actual.filtered || actual.debugger.as_ref() != Some(&journal.replacement) {
-        return Err("写入后配置发生变化，已保留恢复记录；请检查替换状态".into());
+        return Err(tr!("taskManager.changedAfterWrite"));
     }
     journal.phase = Phase::Active;
     // A failed commit leaves Prepared on disk; reconciliation restores it.
     if let Err(error) = store.save(&journal) {
-        let recovery = restore(store, &mut journal);
-        return Err(format!(
-            "无法完成启用记录：{error}；{}",
-            recovery.err().unwrap_or_else(|| "已恢复原设置".into())
+        let recovery = restore(store, &mut journal)
+            .err()
+            .unwrap_or_else(|| tr!("taskManager.restoredOriginal"));
+        return Err(tr!(
+            "taskManager.commitFailed",
+            error = error,
+            recovery = recovery
         ));
     }
     Ok(journal)
@@ -111,16 +117,16 @@ pub fn restore(store: &mut impl Store, journal: &mut Journal) -> Result<()> {
         return store.save(journal);
     }
     if actual.filtered || actual.debugger.as_ref() != Some(&journal.replacement) {
-        return Err("配置已被其他程序修改，Argus 不会覆盖；恢复记录已保留".into());
+        return Err(tr!("taskManager.modified"));
     }
     journal.phase = Phase::Restoring;
     store.save(journal)?;
     if store.observe()? != actual {
-        return Err("恢复前配置再次变化，已停止操作".into());
+        return Err(tr!("taskManager.changedBeforeRestore"));
     }
     store.write_debugger(journal.before.debugger.as_ref())?;
     if store.observe()? != journal.before {
-        return Err("恢复后核验失败，未删除任何恢复文件".into());
+        return Err(tr!("taskManager.verifyFailed"));
     }
     journal.phase = Phase::Restored;
     store.save(journal)

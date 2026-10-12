@@ -1,0 +1,13 @@
+{
+  "updated": "Argus 已更新到 {version}。",
+  "service": {
+    "title": "更新特权服务？",
+    "body": "特权服务的版本为 {serviceVersion}，与 Argus {version} 不一致，部分功能可能无法使用。更新需要管理员授权。",
+    "bodyOlder": "特权服务的版本较旧，与 Argus {version} 不一致，部分功能可能无法使用。更新需要管理员授权。",
+    "restoresTaskManager": "更新会先恢复 Windows 任务管理器，之后可在设置中重新启用替换。",
+    "withNote": "{body}{note}",
+    "confirm": "更新服务",
+    "done": "特权服务已更新。",
+    "failed": "无法更新特权服务：{error}"
+  }
+}

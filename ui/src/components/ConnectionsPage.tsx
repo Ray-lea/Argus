@@ -1,8 +1,9 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { copyText, endProcessByPid, toastActionError } from "../lib/actions";
+import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { revealProcess, snapshot } from "../lib/store";
-import type { Connection, ProcessRow, TcpState } from "../lib/types";
+import type { Connection, ProcessRow } from "../lib/types";
 import { type MenuEntry, openMenu, toast } from "../lib/ui";
 import DataTable, { type Column } from "./DataTable";
 import Indicator from "./Indicator";
@@ -18,26 +19,7 @@ const [filter, setFilter] = createSignal<Filter>("all");
 const [selected, setSelected] = createSignal<string | null>(null);
 const [conns, setConns] = createSignal<Connection[] | null>(null);
 
-const FILTERS: { id: Filter; label: string; title: string }[] = [
-  { id: "all", label: "全部", title: "所有 TCP 和 UDP 端点" },
-  { id: "listen", label: "监听", title: "正在等待连接的 TCP 端口" },
-  { id: "established", label: "已连接", title: "已建立的 TCP 连接" },
-  { id: "udp", label: "UDP", title: "UDP 端点" },
-];
-
-const STATE_LABEL: Record<TcpState, string> = {
-  listen: "监听",
-  established: "已连接",
-  synSent: "正在连接",
-  synReceived: "正在接受",
-  finWait1: "正在关闭",
-  finWait2: "正在关闭",
-  closeWait: "等待关闭",
-  closing: "正在关闭",
-  lastAck: "正在关闭",
-  timeWait: "等待超时",
-  closed: "已关闭",
-};
+const FILTERS: Filter[] = ["all", "listen", "established", "udp"];
 
 const connKey = (c: Connection) =>
   `${c.protocol}|${c.localAddress}|${c.localPort}|${c.remoteAddress ?? ""}|${c.remotePort ?? ""}|${c.pid}`;
@@ -50,7 +32,7 @@ async function load() {
   try {
     setConns(await api.connections());
   } catch (e) {
-    toastActionError(e, "无法读取网络连接");
+    toastActionError(e, t("connections.loadFailed"));
   }
 }
 
@@ -58,9 +40,14 @@ function connectionMenu(c: Connection, proc: ProcessRow | undefined): MenuEntry[
   const name = proc?.name ?? `PID ${c.pid}`;
   const closable = c.protocol === "tcp" && !c.ipv6 && c.state === "established";
   return [
-    { label: "转到进程", icon: () => <GoToIcon />, disabled: !proc, run: () => revealProcess(c.pid) },
     {
-      label: `结束 ${name}`,
+      label: t("common.goToProcess"),
+      icon: () => <GoToIcon />,
+      disabled: !proc,
+      run: () => revealProcess(c.pid),
+    },
+    {
+      label: t("connections.menu.end", { name }),
       icon: () => <EndIcon />,
       danger: true,
       disabled: c.pid <= 4,
@@ -69,29 +56,31 @@ function connectionMenu(c: Connection, proc: ProcessRow | undefined): MenuEntry[
       },
     },
     {
-      label: "断开此连接",
+      label: t("connections.menu.close"),
       icon: () => <DismissIcon />,
       disabled: !closable,
       run: async () => {
         try {
           await api.closeConnection(c);
-          toast("success", "已断开连接。", 2000);
+          toast("success", t("connections.closed"), 2000);
         } catch (e) {
-          toastActionError(e, "无法断开连接");
+          toastActionError(e, t("connections.closeFailed"));
         }
         await load();
       },
     },
     "separator",
     {
-      label: "复制本地地址",
+      label: t("connections.menu.copyLocal"),
       icon: () => <CopyIcon />,
-      run: () => copyText(endpoint(c.localAddress, c.localPort, c.ipv6), "本地地址"),
+      run: () => copyText(endpoint(c.localAddress, c.localPort, c.ipv6), t("connections.copied.local")),
     },
     {
-      label: "复制远程地址",
+      label: t("connections.menu.copyRemote"),
       disabled: !c.remoteAddress,
-      run: () => c.remoteAddress && copyText(endpoint(c.remoteAddress, c.remotePort, c.ipv6), "远程地址"),
+      run: () =>
+        c.remoteAddress &&
+        copyText(endpoint(c.remoteAddress, c.remotePort, c.ipv6), t("connections.copied.remote")),
     },
   ];
 }
@@ -99,18 +88,18 @@ function connectionMenu(c: Connection, proc: ProcessRow | undefined): MenuEntry[
 export function ConnectionControls() {
   return (
     <>
-      <SearchBox value={query()} onInput={setQuery} placeholder="端口、地址或进程，例如 8080" />
-      <div class="segmented" role="group" aria-label="筛选">
+      <SearchBox value={query()} onInput={setQuery} placeholder={t("connections.search")} />
+      <div class="segmented" role="group" aria-label={t("common.filter")}>
         <Indicator selector="[aria-pressed='true']" track={filter} class="seg-thumb" />
         <For each={FILTERS}>
           {(f) => (
             <button
               type="button"
-              aria-pressed={filter() === f.id}
-              title={f.title}
-              onClick={() => setFilter(f.id)}
+              aria-pressed={filter() === f}
+              title={t(`connections.filter.${f}.title`)}
+              onClick={() => setFilter(f)}
             >
-              {f.label}
+              {t(`connections.filter.${f}.label`)}
             </button>
           )}
         </For>
@@ -162,7 +151,9 @@ export default function ConnectionsPage() {
   const columns: Column<Connection>[] = [
     {
       id: "process",
-      label: "进程",
+      get label() {
+        return t("connections.column.process");
+      },
       width: "minmax(180px, 1.1fr)",
       sortValue: (c) => procs().get(c.pid)?.name ?? "",
       cell: (c) => {
@@ -171,7 +162,7 @@ export default function ConnectionsPage() {
           <>
             <ProcIcon proc={{ icon: p?.icon ?? null, path: p?.path ?? null }} />
             <span class="label" title={p?.path ?? undefined}>
-              {p ? (p.description ?? p.name) : c.pid === 0 ? "System Idle Process" : "已退出"}
+              {p ? (p.description ?? p.name) : c.pid === 0 ? "System Idle Process" : t("connections.exited")}
             </span>
           </>
         );
@@ -187,7 +178,9 @@ export default function ConnectionsPage() {
     },
     {
       id: "proto",
-      label: "协议",
+      get label() {
+        return t("connections.column.protocol");
+      },
       width: "84px",
       sortValue: (c) => `${c.protocol}${c.ipv6 ? 6 : 4}`,
       cell: (c) => (
@@ -201,14 +194,18 @@ export default function ConnectionsPage() {
     },
     {
       id: "local",
-      label: "本地地址",
+      get label() {
+        return t("connections.column.localAddress");
+      },
       width: "minmax(130px, 0.9fr)",
       sortValue: (c) => c.localAddress,
       cell: (c) => <span class="label mono">{c.localAddress}</span>,
     },
     {
       id: "lport",
-      label: "本地端口",
+      get label() {
+        return t("connections.column.localPort");
+      },
       width: "88px",
       align: "end",
       sortValue: (c) => c.localPort,
@@ -216,14 +213,18 @@ export default function ConnectionsPage() {
     },
     {
       id: "remote",
-      label: "远程地址",
+      get label() {
+        return t("connections.column.remoteAddress");
+      },
       width: "minmax(130px, 0.9fr)",
       sortValue: (c) => c.remoteAddress ?? "",
       cell: (c) => <span class="label mono dim">{c.remoteAddress ?? ""}</span>,
     },
     {
       id: "rport",
-      label: "远程端口",
+      get label() {
+        return t("connections.column.remotePort");
+      },
       width: "88px",
       align: "end",
       sortValue: (c) => c.remotePort ?? 0,
@@ -231,12 +232,14 @@ export default function ConnectionsPage() {
     },
     {
       id: "state",
-      label: "状态",
+      get label() {
+        return t("common.status");
+      },
       width: "96px",
       sortValue: (c) => c.state ?? "",
       cell: (c) => (
         <span class="status" classList={{ on: c.state === "established", listen: c.state === "listen" }}>
-          {c.state ? STATE_LABEL[c.state] : ""}
+          {c.state ? t(`connections.state.${c.state}`) : ""}
         </span>
       ),
     },
@@ -245,7 +248,8 @@ export default function ConnectionsPage() {
   return (
     <main class="workspace page single">
       <DataTable
-        label="连接"
+        id="connections"
+        label={t("shell.page.network")}
         rows={rows()}
         columns={columns}
         rowKey={connKey}
@@ -256,11 +260,13 @@ export default function ConnectionsPage() {
         onActivate={(c) => revealProcess(c.pid)}
         empty={
           conns() === null ? (
-            <Loading text="正在读取连接…" />
+            <Loading text={t("connections.loading")} />
           ) : (
             <>
               <span>
-                没有匹配的连接{/^\d+$/.test(query().trim()) ? `：没有程序在使用端口 ${query().trim()}` : ""}
+                {/^\d+$/.test(query().trim())
+                  ? t("connections.noMatchPort", { port: query().trim() })
+                  : t("connections.noMatch")}
               </span>
               <button
                 type="button"
@@ -270,7 +276,7 @@ export default function ConnectionsPage() {
                   setFilter("all");
                 }}
               >
-                清除筛选
+                {t("connections.clearFilter")}
               </button>
             </>
           )
@@ -278,15 +284,15 @@ export default function ConnectionsPage() {
       />
       <footer class="page-foot">
         <span>
-          监听 <b>{summary().listen}</b>
+          {t("connections.state.listen")} <b>{summary().listen}</b>
         </span>
         <span>
-          已连接 <b>{summary().established}</b>
+          {t("connections.state.established")} <b>{summary().established}</b>
         </span>
         <span>
           UDP <b>{summary().udp}</b>
         </span>
-        <span>每 2 秒刷新一次。双击某行可转到对应进程。</span>
+        <span>{t("connections.note")}</span>
       </footer>
     </main>
   );

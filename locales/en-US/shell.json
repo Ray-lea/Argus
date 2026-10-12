@@ -1,0 +1,67 @@
+{
+  "loadingProcesses": "Reading processes…",
+  "toolbar": "Toolbar",
+  "pages": "Pages",
+  "page": {
+    "processes": "Processes",
+    "performance": "Performance",
+    "services": "Services",
+    "startup": "Startup",
+    "network": "Connections",
+    "history": "History",
+    "settings": "Settings"
+  },
+  "pageTitle": "{page} (Ctrl+{key})",
+  "updateAvailable": "Update available",
+  "elevation": {
+    "admin": "Administrator",
+    "adminHint": "Argus is running as administrator and can view and end almost every process",
+    "standard": "Standard user",
+    "standardHint": "Some system processes need administrator rights to read or end"
+  },
+  "interval": {
+    "label": "Refresh rate",
+    "option": "Every {seconds} s"
+  },
+  "pause": "Pause updates",
+  "resume": "Resume updates",
+  "fileLock": {
+    "title": "Find what's using a file (or drop files onto the window)",
+    "label": "Find processes using a file"
+  },
+  "details": {
+    "label": "Details pane",
+    "show": "Show details",
+    "hide": "Hide details"
+  },
+  "search": {
+    "processes": "Search name, PID, path or service",
+    "clear": "Clear search"
+  },
+  "view": "View",
+  "viewMode": {
+    "apps": {
+      "label": "Apps",
+      "title": "Apps: an app's processes on one row"
+    },
+    "tree": {
+      "label": "Tree",
+      "title": "Tree: processes under their parents"
+    },
+    "list": {
+      "label": "List",
+      "title": "List: every process on its own row"
+    }
+  },
+  "status": {
+    "threads": "Threads",
+    "handles": "Handles",
+    "cached": "Cached",
+    "pagedPool": "Paged pool",
+    "uptime": "Up time",
+    "orderHeld": "Sorting paused while the pointer is over the list",
+    "orderHeldHint": "Rows re-sort once the pointer leaves the list",
+    "paused": "Updates paused",
+    "interval": "Updates every {seconds} s"
+  }
+}

@@ -11,6 +11,7 @@ import {
   setRowEfficiency,
   setRowPriority,
 } from "../lib/actions";
+import { t } from "../lib/i18n";
 import type { DisplayRow } from "../lib/rows";
 import { setDetailsOpen, snapshot, toggleRow } from "../lib/store";
 import type { PriorityClass } from "../lib/types";
@@ -37,18 +38,19 @@ export function processMenu(row: DisplayRow): MenuEntry[] {
   const efficient = row.efficiency > 0 && row.efficiency === row.count;
   const items: MenuEntry[] = [
     {
-      label: isGroup ? `结束全部 ${row.count} 个进程` : "结束进程",
+      label: isGroup ? t("processes.menu.endAll", { count: row.count }) : t("common.endProcess"),
       icon: () => <EndIcon />,
       hint: "Del",
       danger: true,
       run: () => endRow(row),
     },
   ];
-  if (!isGroup) items.push({ label: "结束进程树", icon: () => <BranchEndIcon />, run: () => endTree(row) });
+  if (!isGroup)
+    items.push({ label: t("common.endProcessTree"), icon: () => <BranchEndIcon />, run: () => endTree(row) });
   items.push(
     "separator",
     {
-      label: "设置优先级",
+      label: t("processes.menu.setPriority"),
       icon: () => <GaugeIcon />,
       children: PRIORITIES.map((p) => ({
         label: PRIORITY_LABEL[p],
@@ -57,33 +59,45 @@ export function processMenu(row: DisplayRow): MenuEntry[] {
       })),
     },
     {
-      label: "效率模式",
+      label: t("common.efficiencyMode"),
       icon: () => <LeafIcon />,
       checked: efficient,
       run: () => setRowEfficiency(row, !efficient),
     },
-    { label: "添加规则", run: () => addRuleFor(row) },
+    { label: t("processes.menu.addRule"), run: () => addRuleFor(row) },
     "separator",
   );
-  if (row.expandable) items.push({ label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) });
+  if (row.expandable)
+    items.push({
+      label: row.expanded ? t("common.collapse") : t("common.expand"),
+      run: () => toggleRow(row),
+    });
   items.push(
     {
-      label: "打开文件位置",
+      label: t("common.openFileLocation"),
       icon: () => <FolderIcon />,
       disabled: !path,
       run: () => path && revealInExplorer(path),
     },
     {
-      label: "复制路径",
+      label: t("common.copyPath"),
       icon: () => <CopyIcon />,
       disabled: !path,
-      run: () => path && copyText(path, "路径"),
+      run: () => path && copyText(path, t("actions.copyWhat.path")),
     },
     isGroup
-      ? { label: "复制名称", run: () => copyText(row.proc.name, "名称") }
-      : { label: "复制 PID", run: () => copyText(String(row.proc.pid), " PID") },
+      ? { label: t("common.copyName"), run: () => copyText(row.proc.name, t("actions.copyWhat.name")) }
+      : {
+          label: t("processes.menu.copyPid"),
+          run: () => copyText(String(row.proc.pid), t("processes.menu.copyPidWhat")),
+        },
     "separator",
-    { label: "详细信息", icon: () => <InfoIcon />, hint: "Enter", run: () => setDetailsOpen(true) },
+    {
+      label: t("processes.menu.details"),
+      icon: () => <InfoIcon />,
+      hint: "Enter",
+      run: () => setDetailsOpen(true),
+    },
   );
   return items;
 }

@@ -3,6 +3,8 @@
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
+use argus_core::tr;
+
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewWindow};
@@ -27,11 +29,13 @@ pub const TRAY_ID: &str = "argus";
 
 /// Window and tray label; dev builds say so, since they can run beside an
 /// installed Argus (see tauri.dev.conf.json).
-pub const APP_TITLE: &str = if cfg!(debug_assertions) {
-    "Argus 开发版"
-} else {
-    "Argus"
-};
+pub fn app_title() -> String {
+    if cfg!(debug_assertions) {
+        tr!("app.devTitle")
+    } else {
+        "Argus".into()
+    }
+}
 
 pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
@@ -197,12 +201,12 @@ pub fn set_webview_active<R: Runtime>(w: &WebviewWindow<R>, active: bool) {
 
 /// The tray menu, with "restart to update" while an update is ready.
 fn tray_menu<R: Runtime>(app: &AppHandle<R>, update: Option<&str>) -> tauri::Result<Menu<R>> {
-    let show = MenuItem::with_id(app, "show", "显示 Argus", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", tr!("tray.show"), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", tr!("tray.quit"), true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     match update {
         Some(version) => {
-            let text = format!("重启并更新到 {version}");
+            let text = tr!("tray.update", version = version);
             let update = MenuItem::with_id(app, "update", text, true, None::<&str>)?;
             Menu::with_items(app, &[&show, &update, &separator, &quit])
         }
@@ -224,9 +228,28 @@ pub fn set_tray_update<R: Runtime>(app: &AppHandle<R>, version: Option<&str>) {
     }
 }
 
+/// Redoes the native text after a language change: tray menu, window title
+/// and the hotkey's error. The tray tooltip follows with the next sample.
+pub fn apply_language<R: Runtime>(app: &AppHandle<R>) {
+    let update = TRAY_UPDATE.lock().unwrap().clone();
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id(TRAY_ID), tray_menu(app, update.as_deref())) {
+        let _ = tray.set_menu(Some(menu));
+        let _ = tray.set_tooltip(Some(app_title()));
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_title(&app_title());
+    }
+    let store = app.state::<SettingsStore>();
+    if store.hotkey_error.lock().unwrap().is_some() {
+        let hotkey = store.get().hotkey;
+        let err = apply_hotkey(app, Some(&hotkey), &hotkey).err();
+        *store.hotkey_error.lock().unwrap() = err;
+    }
+}
+
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
-        .tooltip(APP_TITLE)
+        .tooltip(app_title())
         .menu(&tray_menu(app, None)?)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -282,7 +305,7 @@ pub fn apply_hotkey<R: Runtime>(
         return Ok(());
     }
     if !accelerator.contains('+') {
-        return Err("快捷键至少需要一个修饰键（Ctrl、Alt、Shift 或 Win）".into());
+        return Err(tr!("hotkey.needsModifier"));
     }
     gs.on_shortcut(accelerator, |app, _shortcut, event| {
         if event.state == ShortcutState::Pressed {
@@ -292,9 +315,9 @@ pub fn apply_hotkey<R: Runtime>(
     .map_err(|e| {
         let label = shortcut_label(accelerator);
         if e.to_string().contains("already registered") {
-            format!("{label} 已被其他程序占用，请选择其他组合键。")
+            tr!("hotkey.taken", shortcut = label)
         } else {
-            format!("无法注册 {label}：{e}")
+            tr!("hotkey.failed", shortcut = label, error = e)
         }
     })
 }

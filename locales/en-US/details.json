@@ -1,0 +1,57 @@
+{
+  "label": "Process details",
+  "close": "Close details",
+  "exited": {
+    "title": "Process has exited",
+    "hint": "Select another process in the list to see its details."
+  },
+  "groupNote": {
+    "one": "This app has {count} process, using {cpu}% CPU and {memory} of memory. The earliest-started main process is shown below.",
+    "other": "This app has {count} processes, using {cpu}% CPU and {memory} of memory in total. The earliest-started main process is shown below."
+  },
+  "services": "Running services ({count})",
+  "section": {
+    "process": "Process",
+    "resources": "Resources",
+    "location": "File location",
+    "commandLine": "Command line",
+    "version": "File version"
+  },
+  "parent": "Parent process",
+  "parentLink": "{name} ({pid})",
+  "noParent": "None (PID {pid})",
+  "started": "Started",
+  "cpuTime": "CPU time",
+  "user": "User name",
+  "integrity": "Integrity",
+  "integrityLevel": {
+    "untrusted": "Untrusted",
+    "low": "Low",
+    "medium": "Medium",
+    "mediumPlus": "Medium plus",
+    "high": "High (elevated)",
+    "system": "System",
+    "protected": "Protected"
+  },
+  "architecture": "Architecture",
+  "arch": {
+    "x64": "64-bit (x64)",
+    "x86": "32-bit (x86)",
+    "arm64": "ARM64",
+    "arm": "ARM"
+  },
+  "priority": "Priority",
+  "session": "Session",
+  "privateWs": "Private working set",
+  "workingSet": "Working set",
+  "commit": "Commit size",
+  "gpuEngine": " ({engine})",
+  "gpuDedicated": "Dedicated GPU memory",
+  "gpuShared": "Shared GPU memory",
+  "netNeedsAdmin": "Run Argus as administrator to view",
+  "threads": "Threads",
+  "handles": "Handles",
+  "noAccess": "Couldn't open this process to read its command line and user name. Run Argus as administrator to view them.",
+  "product": "Product",
+  "version": "Version"
+}

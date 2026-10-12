@@ -65,8 +65,12 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 ## 约定
 
-- 界面文案用中文；代码注释用英文，密度和风格与周围代码一致。
-- 界面文案、README 和使用指南用书面语：不用“你”等第二人称，不用口语（“由你决定”“几乎瞬间”“连不上”“这个”），用“单击”“可”“仅”“暂无”这类说法；同一概念的措辞与设置页保持一致。
+- 代码注释用英文，密度和风格与周围代码一致。
+- 用户可见的文字（界面、托盘、返回给界面的错误、SCM 显示名称）不写进代码，写进 `locales/`：先写简体中文源文案，再在 `en-US` 同一位置写译文；界面用 `t`/`rich`，Rust 用 `argus_core::tr!`。用法、复数、术语表见 `docs/development/i18n.md`。日志、panic 和注释不翻译。
+- `pnpm i18n`（`scripts/i18n.mjs`，`pnpm check` 包含）检查两种语言的键与占位符一致、英文里没有中文、`tr!` 的键与参数，以及代码中残留的中文文案；确需例外时在该行注释写 `i18n-ignore`。
+- Rust 测试不要断言具体文案，也不要调用 `set_locale`（测试并行、语言是进程级的）。CI 在英文 Windows 上运行，本地用 `ARGUS_LOCALE=en-US cargo test --workspace` 模拟。
+- 安装程序钩子（`installer-hooks.nsh`）读不到 JSON 目录，提示文字用 `ARGUS_TEXT` 宏按 `$LANGUAGE` 写两种语言。
+- 中文界面文案、README 和使用指南用书面语：不用“你”等第二人称，不用口语（“由你决定”“几乎瞬间”“连不上”“这个”），用“单击”“可”“仅”“暂无”这类说法；同一概念的措辞与设置页保持一致。
 - 文档分三层：`README.md` 是对外介绍，`docs/` 放详细信息，给 AI 的内容只放 AGENTS.md。改了行为（快捷键、设置项、默认值、模块职责）要同步对应文档，规则见 `docs/AGENTS.md`。
 - 文本文件用 LF（`.gitattributes` 强制），`.bat` 用 CRLF。
 

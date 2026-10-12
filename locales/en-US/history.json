@@ -1,0 +1,49 @@
+{
+  "range": {
+    "label": "Time range",
+    "hours": {
+      "one": "{count} hour",
+      "other": "{count} hours"
+    },
+    "days": {
+      "one": "{count} day",
+      "other": "{count} days"
+    }
+  },
+  "latest": {
+    "label": "Back to latest",
+    "title": "Clear the selected moment and show the latest data"
+  },
+  "metric": {
+    "peak": "Peak {value}%",
+    "total": "of {value} GB"
+  },
+  "exited": "{name} (PID {pid}) has exited.",
+  "copied": {
+    "name": "name"
+  },
+  "column": {
+    "cpuTitle": "Average over these 5 seconds",
+    "memTitle": "Private working set"
+  },
+  "systemHistory": "System history",
+  "noData": "No data",
+  "empty": {
+    "off": "History recording is off",
+    "none": "No records in this period",
+    "offHint": "Once turned on in Settings, Argus records every 5 seconds.",
+    "hint": "Argus records every 5 seconds while running and keeps 7 days."
+  },
+  "time": "Time",
+  "busiest": "Busiest processes",
+  "busiestAt": "Busiest processes at {time}",
+  "hint": {
+    "pick": "Click any moment on the charts to see the processes at that time",
+    "move": "Press ← → on the charts to step through time, Esc to return to the latest"
+  },
+  "tableLabel": "Recorded processes",
+  "noRecordAt": "No records at this moment",
+  "earliest": "Earliest record",
+  "note": "Records the top processes by CPU, memory, I/O, GPU and network every 5 seconds and keeps them for 7 days.",
+  "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>"
+}

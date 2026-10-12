@@ -1,0 +1,42 @@
+{
+  "cancel": "Cancel",
+  "close": "Close",
+  "enable": "Enable",
+  "disable": "Disable",
+  "enabled": "Enabled",
+  "disabled": "Disabled",
+  "on": "On",
+  "off": "Off",
+  "start": "Start",
+  "stop": "Stop",
+  "restart": "Restart",
+  "expand": "Expand",
+  "collapse": "Collapse",
+  "none": "None",
+  "name": "Name",
+  "status": "Status",
+  "path": "Path",
+  "command": "Command",
+  "copyName": "Copy name",
+  "copyPath": "Copy path",
+  "openFileLocation": "Open file location",
+  "goToProcess": "Go to process",
+  "endProcess": "End task",
+  "endProcessTree": "End process tree",
+  "efficiencyMode": "Efficiency mode",
+  "privilegedService": "Privileged service",
+  "filter": "Filter",
+  "listSeparator": ", ",
+  "resource": {
+    "cpu": "CPU",
+    "memory": "Memory",
+    "disk": "Disk",
+    "network": "Network",
+    "gpu": "GPU",
+    "temperature": "Temperature"
+  },
+  "languageSystem": "Same as Windows",
+  "keys": {
+    "space": "Space"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "endAll": "End all",
+  "end": {
+    "title": "End {name}?",
+    "body": "PID {pid}. Unsaved data will be lost.",
+    "done": "Ended {name}."
+  },
+  "endGroup": {
+    "body": {
+      "one": "{count} process of {name} will be ended. Unsaved data will be lost.",
+      "other": "All {count} processes of {name} will be ended. Unsaved data will be lost."
+    },
+    "done": {
+      "one": "Ended {count} process of {name}.",
+      "other": "Ended {count} processes of {name}."
+    },
+    "partial": "{error} ({count} not ended)"
+  },
+  "endTree": {
+    "title": "End the process tree of {name}?",
+    "body": {
+      "one": "PID {pid} and its child process will be ended. Unsaved data will be lost.",
+      "other": "PID {pid} and its {count} child processes will be ended. Unsaved data will be lost."
+    },
+    "bodyAlone": "PID {pid} has no child processes. Only this process will be ended.",
+    "done": {
+      "one": "Ended {count} process.",
+      "other": "Ended {count} processes."
+    },
+    "partial": {
+      "one": "Ended {count} process; {failed} couldn't be ended (access denied or already exited).",
+      "other": "Ended {count} processes; {failed} couldn't be ended (access denied or already exited)."
+    }
+  },
+  "error": {
+    "accessDenied": "Couldn't end {name}: access denied. Turn on the privileged service in Settings, or run Argus as administrator. Protected processes may still not end.",
+    "notFound": "{name} has already exited.",
+    "critical": "{name} is a critical system process. Ending it would crash Windows, so the action was blocked.",
+    "refused": "{name} can't be ended.",
+    "generic": "Couldn't end {name}: {error}"
+  },
+  "priority": {
+    "confirmTitle": "Set {name} to Realtime priority?",
+    "confirmBody": "Realtime processes run ahead of system tasks. If one uses all processor time, the mouse and keyboard may stop responding.",
+    "confirm": "Set to Realtime",
+    "failed": "Couldn't change the priority of {name}",
+    "downgraded": "Realtime priority needs administrator rights, so High was set instead.",
+    "partial": {
+      "one": "Changed the priority of {count} process; {failed} couldn't be changed (access denied or already exited).",
+      "other": "Changed the priority of {count} processes; {failed} couldn't be changed (access denied or already exited)."
+    },
+    "done": "Set the priority of {name} to {priority}."
+  },
+  "efficiency": {
+    "on": {
+      "failed": "Couldn't turn on Efficiency mode for {name}",
+      "partial": {
+        "one": "Turned on Efficiency mode for {count} process; {failed} couldn't be changed (access denied or already exited).",
+        "other": "Turned on Efficiency mode for {count} processes; {failed} couldn't be changed (access denied or already exited)."
+      },
+      "done": "Turned on Efficiency mode for {name}."
+    },
+    "off": {
+      "failed": "Couldn't turn off Efficiency mode for {name}",
+      "partial": {
+        "one": "Turned off Efficiency mode for {count} process; {failed} couldn't be changed (access denied or already exited).",
+        "other": "Turned off Efficiency mode for {count} processes; {failed} couldn't be changed (access denied or already exited)."
+      },
+      "done": "Turned off Efficiency mode for {name}."
+    }
+  },
+  "addRuleFailed": "Couldn't add a rule: {error}",
+  "copied": "Copied {what}.",
+  "copyFailed": "Couldn't access the clipboard, so the {what} wasn't copied.",
+  "revealFailed": "Couldn't open the file location: {error}",
+  "failed": {
+    "accessDenied": "{what}: administrator rights are required. Run Argus as administrator and try again.",
+    "notFound": "{what}: the target no longer exists.",
+    "generic": "{what}: {error}"
+  },
+  "staleProcess": "The process information is out of date. Refresh and try again.",
+  "copyWhat": {
+    "path": "path",
+    "name": "name"
+  }
+}

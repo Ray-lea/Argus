@@ -1,0 +1,61 @@
+{
+  "filter": {
+    "all": {
+      "label": "All",
+      "title": "All TCP and UDP endpoints"
+    },
+    "listen": {
+      "label": "Listening",
+      "title": "TCP ports waiting for connections"
+    },
+    "established": {
+      "label": "Established",
+      "title": "Established TCP connections"
+    },
+    "udp": {
+      "label": "UDP",
+      "title": "UDP endpoints"
+    }
+  },
+  "state": {
+    "listen": "Listening",
+    "established": "Established",
+    "synSent": "SYN sent",
+    "synReceived": "SYN received",
+    "finWait1": "Closing",
+    "finWait2": "Closing",
+    "closeWait": "Close wait",
+    "closing": "Closing",
+    "lastAck": "Closing",
+    "timeWait": "Time wait",
+    "closed": "Closed"
+  },
+  "loadFailed": "Couldn't read network connections",
+  "menu": {
+    "end": "End {name}",
+    "close": "Close this connection",
+    "copyLocal": "Copy local address",
+    "copyRemote": "Copy remote address"
+  },
+  "closed": "Connection closed.",
+  "closeFailed": "Couldn't close the connection",
+  "copied": {
+    "local": "local address",
+    "remote": "remote address"
+  },
+  "search": "Port, address or process, e.g. 8080",
+  "column": {
+    "process": "Process",
+    "protocol": "Protocol",
+    "localAddress": "Local address",
+    "localPort": "Local port",
+    "remoteAddress": "Remote address",
+    "remotePort": "Remote port"
+  },
+  "exited": "Exited",
+  "loading": "Reading connections…",
+  "noMatch": "No matching connections",
+  "noMatchPort": "No matching connections: no program is using port {port}",
+  "clearFilter": "Clear filters",
+  "note": "Updates every 2 seconds. Double-click a row to go to its process."
+}

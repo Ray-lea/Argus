@@ -1,0 +1,42 @@
+{
+  "location": {
+    "hkcuRun": "注册表（当前用户）",
+    "hklmRun": "注册表（所有用户）",
+    "hklmRun32": "注册表（所有用户，32 位）",
+    "userFolder": "启动文件夹（当前用户）",
+    "commonFolder": "启动文件夹（所有用户）"
+  },
+  "loadFailed": "无法读取启动项",
+  "done": {
+    "enable": "已启用“{name}”，下次登录时生效。",
+    "disable": "已禁用“{name}”，下次登录时生效。"
+  },
+  "failed": {
+    "enable": "无法启用“{name}”",
+    "disable": "无法禁用“{name}”"
+  },
+  "menu": {
+    "copyCommand": "复制命令"
+  },
+  "copied": {
+    "command": "命令"
+  },
+  "search": "搜索名称、发布者或命令",
+  "column": {
+    "publisher": "发布者",
+    "location": "位置"
+  },
+  "missing": {
+    "label": "文件不存在",
+    "title": "命令指向的程序已不存在，可禁用此项"
+  },
+  "toggle": {
+    "enable": "启用 {name}",
+    "disable": "禁用 {name}"
+  },
+  "title": "启动项",
+  "loading": "正在读取启动项…",
+  "noMatch": "没有匹配的启动项",
+  "summary": "已启用 {enabled} / 共 {total} 项",
+  "note": "禁用操作与任务管理器的“启动应用”使用同一开关，可重新启用；“所有用户”的项需要管理员权限。"
+}

@@ -1,0 +1,152 @@
+{
+  "app": {
+    "devTitle": "Argus Dev",
+    "join": "{first}; {second}"
+  },
+  "tray": {
+    "show": "Show Argus",
+    "quit": "Exit",
+    "update": "Restart to update to {version}",
+    "tooltip": "CPU {cpu}%  Memory {memory}%"
+  },
+  "hotkey": {
+    "needsModifier": "A shortcut needs at least one modifier key (Ctrl, Alt, Shift or Win)",
+    "taken": "{shortcut} is in use by another app. Choose a different combination.",
+    "failed": "Couldn't register {shortcut}: {error}"
+  },
+  "host": {
+    "serviceReply": "The privileged service returned an unrecognized result; update the service",
+    "fileMissing": "The file doesn't exist",
+    "samplerStalled": "The sampling thread isn't responding",
+    "pickFolder": "Select a folder to check",
+    "pickFile": "Select a file to check"
+  },
+  "updater": {
+    "devBuild": "Dev builds don't check for updates.",
+    "noPublicKey": "This build has no update signing key configured, so updates can't be verified.",
+    "proxyInvalid": "Invalid proxy address",
+    "proxyNotHttps": "The proxy address must start with https://",
+    "proxyQuery": "The proxy address can't contain ? or #",
+    "signatureFailed": "The update failed signature verification and was discarded",
+    "notFound": "No update information found",
+    "timeout": "Connection timed out",
+    "connectFailed": "Couldn't connect",
+    "sourceFailed": "{source}: {error}",
+    "downloadFailed": "Couldn't download the update: {error}",
+    "nothingReady": "No update is ready to install",
+    "installerFailed": "Couldn't start the installer: {error}",
+    "invalidVersion": "Invalid version number"
+  },
+  "core": {
+    "connections": {
+      "ipv4Only": "Only IPv4 TCP connections can be closed"
+    },
+    "fileLock": {
+      "restartManagerFailed": "Restart Manager couldn't check the target; the results below come from a handle search"
+    },
+    "handles": {
+      "tooMany": "Up to 32 paths can be checked at a time, with a total length of at most 8 KiB",
+      "localPathsOnly": "Handle scans support only absolute paths on local disks, not network paths, device paths or data streams",
+      "reparsePoint": "Handle scans don't follow symbolic links or junctions; select the link's actual target",
+      "ntStatus": "Couldn't query handles (NTSTATUS {status})",
+      "localDisksOnly": "Handle scans support only local disks, not mapped network drives or SUBST drives",
+      "unresolvedName": "Couldn't resolve the target's file name",
+      "unknownTable": "Unrecognized system handle table format",
+      "unknownFileType": "Couldn't identify the system's file handle type"
+    },
+    "services": {
+      "stopTimeout": "The service didn't stop within 20 seconds"
+    }
+  },
+  "service": {
+    "displayName": "Argus Privileged Service",
+    "displayNameDev": "Argus Privileged Service (Dev)",
+    "description": "Provides Argus process and service management operations to an authorized local account.",
+    "busy": "Another service operation is in progress",
+    "unsafePath": "The owner, permissions or links of the service folder are unsafe; the operation was stopped",
+    "otherOwner": "The privileged service is authorized for another Windows account; uninstall it before installing",
+    "incompatible": "The privileged service version is incompatible; update the service in Settings",
+    "foreignService": "A service with the same name isn't configured by Argus; the operation was stopped",
+    "taskManagerActive": "The Task Manager replacement hasn't been reliably undone, so the service update or uninstall was stopped; restore Windows Task Manager in Settings first",
+    "canceled": "Administrator permission was canceled; the service wasn't changed",
+    "timeout": "The privileged service didn't respond in time; refresh the status to confirm the result",
+    "osError": "{error} ({code})",
+    "handles": {
+      "accessDenied": "No permission to check system handles; enable the privileged service or run as administrator",
+      "targetGone": "The target no longer exists or was moved during the search",
+      "failed": "Couldn't complete the handle search",
+      "busy": "Another handle search is still running; check again later",
+      "noHelper": "Couldn't locate the handle search helper",
+      "startFailed": "Couldn't start the handle search: {error}",
+      "timeLimit": "The handle search reached its time limit; only completed results are shown",
+      "helperExited": "The handle search helper exited early; only completed results are shown",
+      "serviceIncomplete": "The privileged service didn't complete this search, so local results are shown: {error}",
+      "serviceIncompleteLocal": "The privileged service didn't complete this search; local search results are shown",
+      "unavailable": "Search is temporarily unavailable",
+      "serviceOutdated": "The privileged service doesn't support handle searches, so update the service; local search results are shown",
+      "serviceUnavailable": "The privileged service is unavailable, so local search results are shown: {error}"
+    }
+  },
+  "taskManager": {
+    "alertTitle": "Argus Task Manager Recovery",
+    "recoveryFile": "Argus Task Manager emergency recovery\r\n\r\nFirst run argus-taskmgr-recover.exe in this folder and allow administrator permission. It doesn't depend on the Argus window or the background service.\r\nIf that program is damaged too: press Win+R, enter regedit, open it as administrator and go to HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Check that Debugger really points to argus-taskmgr-launcher.exe --task-manager in this folder and that before.debugger in taskmgr-recovery.json is null, then delete only the Debugger value. Don't delete the whole taskmgr.exe key, and don't delete settings of other tools.\r\nThe recovery program keeps third-party changes and the recovery record; it stops automatic recovery when no trusted backup exists.\r\n",
+    "status": {
+      "native": "Windows Task Manager is in use.",
+      "needsService": "Install the privileged service before enabling the Task Manager replacement.",
+      "conflict": "Another replacement or path filter is configured. Argus won't overwrite it.",
+      "enabled": "Task Manager entry points now open Argus. If Argus fails to start, Windows Task Manager is tried instead.",
+      "interrupted": "The last operation didn't finish. Restore Windows Task Manager first.",
+      "modified": "Another program changed the configuration. Argus won't overwrite it; the recovery record is kept.",
+      "recordMissing": "An Argus replacement was found but its recovery record is missing. Follow the emergency recovery instructions.",
+      "serviceRemoved": "The privileged service was uninstalled; the recovery program and backup are kept.",
+      "devBuild": "Dev builds don't offer Task Manager replacement. Use a release build.",
+      "otherAccount": "The privileged service is authorized for another Windows account."
+    },
+    "invalidDirectory": "Invalid folder",
+    "launcherKept": "The recovery record of the Argus replacement is missing; the launcher wasn't deleted",
+    "restoreNeedsAdmin": "Restoring requires administrator rights",
+    "everythingMissing": "The recovery record and launcher folder are missing; use the emergency recovery instructions",
+    "devBuild": "Dev builds can't enable the replacement",
+    "enableNeedsAdmin": "Enabling requires administrator rights",
+    "ownerMismatch": "The service is authorized for a different account",
+    "conflict": "Another replacement or path filter is configured; enabling was stopped",
+    "uiNotReady": "The standard-user Argus window failed its readiness check; the replacement wasn't enabled",
+    "probeNameTaken": "The startup self-test name is already in use",
+    "probeNotRedirected": "The IFEO self-test wasn't redirected as expected",
+    "probeFallbackFailed": "The native fallback self-test failed",
+    "probeRecordInvalid": "The startup self-test's recovery record is invalid",
+    "probeModified": "The self-test configuration was changed externally; the entry was kept for inspection",
+    "probeTimeout": "The startup self-test timed out",
+    "notAllowed": "This operation isn't allowed in the current state; refresh and try again",
+    "helperNotStarted": "Couldn't start the administrator maintenance helper",
+    "helperBusy": "The maintenance helper is still working; refresh the status and don't repeat the operation",
+    "helperFailed": "The Task Manager setup didn't finish; check the maintenance helper's message and refresh the status",
+    "invalidCaller": "Invalid UI process",
+    "invalidInstance": "Invalid process instance",
+    "noLauncher": "This build doesn't include the standalone launcher",
+    "recordMissing": "The recovery record is missing",
+    "notActive": "The replacement hasn't finished enabling",
+    "noSystemDirectory": "Couldn't locate the Windows system folder",
+    "callerExited": "The window that started the operation has closed",
+    "callerAccount": "The account that started the operation doesn't match",
+    "callerSession": "The session that started the operation doesn't match",
+    "noStandardToken": "Couldn't get a standard user token for the current account",
+    "detachFailed": "Couldn't detach the debugger from the native launch: {error}",
+    "wrongAccount": "The current account or permissions can't start the standard-user Argus window",
+    "uiTimeout": "The Argus window wasn't ready within 10 seconds",
+    "uiNoResponse": "The Argus window didn't respond to the show request",
+    "valueTooLong": "The registry value is too long; the operation was stopped",
+    "recordTooLong": "The recovery record is too long",
+    "recordCorrupt": "The recovery record is corrupt; use the emergency recovery instructions",
+    "recordMismatch": "The recovery record doesn't match this installation; the operation was stopped",
+    "alreadyReplaced": "A Task Manager replacement or path filter is already configured; turn it off in the tool that set it first, as Argus won't overwrite it",
+    "changedBeforeEnable": "Another program changed the configuration before enabling; the operation was stopped",
+    "restoreIncomplete": "{error}; restoring didn't finish: {recovery}",
+    "changedAfterWrite": "The configuration changed after writing and the recovery record was kept; check the replacement status",
+    "commitFailed": "Couldn't complete the enable record: {error}; {recovery}",
+    "restoredOriginal": "The original settings were restored",
+    "modified": "Another program changed the configuration; Argus won't overwrite it, and the recovery record was kept",
+    "changedBeforeRestore": "The configuration changed again before restoring; the operation was stopped",
+    "verifyFailed": "Verification after restoring failed; no recovery files were deleted"
+  }
+}

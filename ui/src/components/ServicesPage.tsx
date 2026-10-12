@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { copyText, revealInExplorer, toastActionError } from "../lib/actions";
+import { rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { appInfo, refreshServices, revealProcess, services, setPage, snapshot } from "../lib/store";
 import type { ServiceInfo, ServiceStartType } from "../lib/types";
@@ -18,43 +19,21 @@ const [selected, setSelected] = createSignal<string | null>(null);
 /** Services with an action in flight; their buttons wait for it. */
 const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
 
-export const STATE_LABEL: Record<ServiceInfo["state"], string> = {
-  running: "正在运行",
-  stopped: "已停止",
-  startPending: "正在启动",
-  stopPending: "正在停止",
-  paused: "已暂停",
-  pausePending: "正在暂停",
-  continuePending: "正在继续",
-};
+const startLabel = (type: ServiceStartType) => t(`services.startType.${type}`);
 
-const START_LABEL: Record<ServiceStartType, string> = {
-  auto: "自动",
-  autoDelayed: "自动（延迟启动）",
-  manual: "手动",
-  disabled: "禁用",
-  boot: "引导",
-  system: "系统",
-};
-
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: "all", label: "全部" },
-  { id: "running", label: "正在运行" },
-  { id: "stopped", label: "已停止" },
-];
+const FILTERS: Filter[] = ["all", "running", "stopped"];
 
 function selectedService() {
   return services().find((s) => s.name === selected()) ?? null;
 }
 
 async function control(s: ServiceInfo, action: "start" | "stop" | "restart") {
-  const verb = { start: "启动", stop: "停止", restart: "重新启动" }[action];
   setBusy((b) => new Set(b).add(s.name));
   try {
     await api.controlService(s.name, action);
-    toast("success", `已${verb}“${s.displayName}”。`, 2500);
+    toast("success", t(`services.done.${action}`, { name: s.displayName }), 2500);
   } catch (e) {
-    toastActionError(e, `无法${verb}“${s.displayName}”`);
+    toastActionError(e, t(`services.failed.${action}`, { name: s.displayName }));
   } finally {
     setBusy((b) => {
       const next = new Set(b);
@@ -68,9 +47,9 @@ async function control(s: ServiceInfo, action: "start" | "stop" | "restart") {
 async function setStartType(s: ServiceInfo, type: "auto" | "autoDelayed" | "manual" | "disabled") {
   try {
     await api.setServiceStartType(s.name, type);
-    toast("success", `“${s.displayName}”的启动类型已改为${START_LABEL[type]}。`, 2500);
+    toast("success", t("services.startTypeChanged", { name: s.displayName, type: startLabel(type) }), 2500);
   } catch (e) {
-    toastActionError(e, `无法更改“${s.displayName}”的启动类型`);
+    toastActionError(e, t("services.startTypeFailed", { name: s.displayName }));
   }
   await refreshServices();
 }
@@ -81,36 +60,50 @@ function serviceMenu(s: ServiceInfo): MenuEntry[] {
   const exe = s.path?.match(/^"([^"]+)"|^(\S+)/);
   const binary = exe ? (exe[1] ?? exe[2]) : null;
   return [
-    { label: "启动", icon: () => <PlayIcon />, disabled: running || pending, run: () => control(s, "start") },
     {
-      label: "停止",
+      label: t("common.start"),
+      icon: () => <PlayIcon />,
+      disabled: running || pending,
+      run: () => control(s, "start"),
+    },
+    {
+      label: t("common.stop"),
       icon: () => <StopIcon />,
       disabled: !s.canStop || pending,
       run: () => control(s, "stop"),
     },
     {
-      label: "重新启动",
+      label: t("common.restart"),
       icon: () => <RestartIcon />,
       disabled: !s.canStop || pending,
       run: () => control(s, "restart"),
     },
     "separator",
     ...(["auto", "autoDelayed", "manual", "disabled"] as const).map(
-      (t): MenuEntry => ({
-        label: `启动类型：${START_LABEL[t]}`,
-        checked: s.startType === t,
-        run: () => setStartType(s, t),
+      (type): MenuEntry => ({
+        label: t("services.menu.startType", { type: startLabel(type) }),
+        checked: s.startType === type,
+        run: () => setStartType(s, type),
       }),
     ),
     "separator",
-    { label: "转到进程", icon: () => <GoToIcon />, disabled: s.pid === 0, run: () => revealProcess(s.pid) },
     {
-      label: "打开文件位置",
+      label: t("common.goToProcess"),
+      icon: () => <GoToIcon />,
+      disabled: s.pid === 0,
+      run: () => revealProcess(s.pid),
+    },
+    {
+      label: t("common.openFileLocation"),
       icon: () => <FolderIcon />,
       disabled: !binary,
       run: () => binary && revealInExplorer(binary),
     },
-    { label: "复制服务名称", icon: () => <CopyIcon />, run: () => copyText(s.name, "服务名称") },
+    {
+      label: t("services.menu.copyName"),
+      icon: () => <CopyIcon />,
+      run: () => copyText(s.name, t("services.copied.name")),
+    },
   ];
 }
 
@@ -122,13 +115,13 @@ export function ServiceControls() {
   };
   return (
     <>
-      <SearchBox value={query()} onInput={setQuery} placeholder="搜索服务名称、描述或 PID" />
-      <div class="segmented" role="group" aria-label="筛选">
+      <SearchBox value={query()} onInput={setQuery} placeholder={t("services.search")} />
+      <div class="segmented" role="group" aria-label={t("common.filter")}>
         <Indicator selector="[aria-pressed='true']" track={filter} class="seg-thumb" />
         <For each={FILTERS}>
           {(f) => (
-            <button type="button" aria-pressed={filter() === f.id} onClick={() => setFilter(f.id)}>
-              {f.label}
+            <button type="button" aria-pressed={filter() === f} onClick={() => setFilter(f)}>
+              {t(`services.filter.${f}`)}
             </button>
           )}
         </For>
@@ -137,8 +130,8 @@ export function ServiceControls() {
       <button
         type="button"
         class="btn icon"
-        title="启动"
-        aria-label="启动服务"
+        title={t("common.start")}
+        aria-label={t("services.control.start")}
         disabled={pending() || s()?.state === "running"}
         onClick={() => s() && control(s() as ServiceInfo, "start")}
       >
@@ -147,8 +140,8 @@ export function ServiceControls() {
       <button
         type="button"
         class="btn icon"
-        title="停止"
-        aria-label="停止服务"
+        title={t("common.stop")}
+        aria-label={t("services.control.stop")}
         disabled={pending() || !s()?.canStop}
         onClick={() => s() && control(s() as ServiceInfo, "stop")}
       >
@@ -157,8 +150,8 @@ export function ServiceControls() {
       <button
         type="button"
         class="btn icon"
-        title="重新启动"
-        aria-label="重新启动服务"
+        title={t("common.restart")}
+        aria-label={t("services.control.restart")}
         disabled={pending() || !s()?.canStop}
         onClick={() => s() && control(s() as ServiceInfo, "restart")}
       >
@@ -167,11 +160,11 @@ export function ServiceControls() {
       <button
         type="button"
         class="btn ghost"
-        title="打开 Windows 服务管理器"
+        title={t("services.control.openConsoleTitle")}
         onClick={() => api.openServicesConsole()}
       >
         <ExternalIcon />
-        服务管理器
+        {t("services.control.openConsole")}
       </button>
     </>
   );
@@ -210,7 +203,9 @@ export default function ServicesPage() {
   const columns: Column<ServiceInfo>[] = [
     {
       id: "display",
-      label: "服务",
+      get label() {
+        return t("services.column.display");
+      },
       width: "minmax(220px, 1.3fr)",
       sortValue: (s) => s.displayName,
       cell: (s) => (
@@ -221,7 +216,9 @@ export default function ServicesPage() {
     },
     {
       id: "name",
-      label: "名称",
+      get label() {
+        return t("common.name");
+      },
       width: "minmax(110px, 0.6fr)",
       sortValue: (s) => s.name,
       cell: (s) => <span class="label dim">{s.name}</span>,
@@ -240,29 +237,35 @@ export default function ServicesPage() {
     },
     {
       id: "state",
-      label: "状态",
+      get label() {
+        return t("common.status");
+      },
       width: "104px",
       sortValue: (s) => s.state,
       cell: (s) => (
         <span class="status" classList={{ on: s.state === "running", pending: s.state.endsWith("Pending") }}>
-          {STATE_LABEL[s.state]}
+          {t(`services.state.${s.state}`)}
         </span>
       ),
     },
     {
       id: "start",
-      label: "启动类型",
-      width: "132px",
+      get label() {
+        return t("services.column.startType");
+      },
+      width: "160px",
       sortValue: (s) => s.startType ?? "",
       cell: (s) => (
         <span classList={{ dim: s.startType === "manual", warn: s.startType === "disabled" }}>
-          {s.startType ? START_LABEL[s.startType] : "—"}
+          {s.startType ? startLabel(s.startType) : "—"}
         </span>
       ),
     },
     {
       id: "desc",
-      label: "描述",
+      get label() {
+        return t("services.column.description");
+      },
       width: "minmax(200px, 1.6fr)",
       cell: (s) => (
         <span class="label dim" title={s.description ?? ""}>
@@ -275,7 +278,8 @@ export default function ServicesPage() {
   return (
     <main class="workspace page single">
       <DataTable
-        label="服务"
+        id="services"
+        label={t("shell.page.services")}
         rows={rows()}
         columns={columns}
         rowKey={(s) => s.name}
@@ -286,10 +290,10 @@ export default function ServicesPage() {
         onActivate={(s) => s.pid && revealProcess(s.pid)}
         empty={
           services().length === 0 ? (
-            <Loading text="正在读取服务…" />
+            <Loading text={t("services.loading")} />
           ) : (
             <>
-              <span>没有匹配的服务</span>
+              <span>{t("services.noMatch")}</span>
               <button
                 type="button"
                 class="btn"
@@ -298,7 +302,7 @@ export default function ServicesPage() {
                   setFilter("all");
                 }}
               >
-                清除筛选
+                {t("services.clearFilter")}
               </button>
             </>
           )
@@ -306,10 +310,13 @@ export default function ServicesPage() {
       />
       <footer class="page-foot">
         <span>
-          正在运行 <b>{counts().running}</b> / 共 <b>{counts().total}</b> 个服务
+          {rich("services.summary", {
+            running: <b>{counts().running}</b>,
+            total: <b>{counts().total}</b>,
+          })}
         </span>
         <Show when={appInfo() && !appInfo()?.elevated}>
-          <span>多数服务需要启用特权服务或以管理员身份运行 Argus 才能管理。</span>
+          <span>{t("services.manageHint")}</span>
         </Show>
       </footer>
     </main>

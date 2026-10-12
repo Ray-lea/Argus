@@ -14,7 +14,7 @@ pub struct MemoryInfo {
     pub speed: Option<u32>,
     pub slots_used: u32,
     pub slots_total: u32,
-    /// e.g. `DIMM`, `SODIMM`.
+    /// e.g. `DIMM`, `SODIMM`; `onboard` for memory soldered to the board.
     pub form_factor: Option<String>,
     /// e.g. `DDR5`.
     pub kind: Option<String>,
@@ -86,7 +86,8 @@ fn read_memory_device(d: &[u8], info: &mut MemoryInfo) {
             0x09 => Some("DIMM".into()),
             0x0D => Some("SODIMM".into()),
             0x0F => Some("FB-DIMM".into()),
-            0x0B => Some("板载".into()),
+            // Soldered to the board; the UI names it.
+            0x0B => Some("onboard".into()),
             _ => None,
         };
     }

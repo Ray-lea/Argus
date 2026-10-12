@@ -1,0 +1,62 @@
+{
+  "endAll": "全部结束",
+  "end": {
+    "title": "结束 {name}？",
+    "body": "PID {pid}。未保存的数据会丢失。",
+    "done": "已结束 {name}。"
+  },
+  "endGroup": {
+    "body": "将结束 {name} 的全部 {count} 个进程，未保存的数据会丢失。",
+    "done": "已结束 {name} 的 {count} 个进程。",
+    "partial": "{error}（{count} 个未结束）"
+  },
+  "endTree": {
+    "title": "结束 {name} 的进程树？",
+    "body": "将结束 PID {pid} 及其 {count} 个子进程，未保存的数据会丢失。",
+    "bodyAlone": "PID {pid} 没有子进程，仅结束该进程。",
+    "done": "已结束 {count} 个进程。",
+    "partial": "已结束 {count} 个进程，{failed} 个没有权限或已退出。"
+  },
+  "error": {
+    "accessDenied": "没有权限结束 {name}。可在设置中启用特权服务，或以管理员身份运行 Argus；受保护的进程仍可能无法结束。",
+    "notFound": "{name} 已经退出。",
+    "critical": "{name} 是系统关键进程，结束该进程会导致系统崩溃，操作已阻止。",
+    "refused": "不能结束 {name}。",
+    "generic": "无法结束 {name}：{error}"
+  },
+  "priority": {
+    "confirmTitle": "将 {name} 设为实时优先级？",
+    "confirmBody": "实时优先级的进程优先于系统任务运行，占满处理器时鼠标和键盘可能失去响应。",
+    "confirm": "设为实时",
+    "failed": "无法更改 {name} 的优先级",
+    "downgraded": "实时优先级需要管理员权限，已改为“高”。",
+    "partial": "已更改 {count} 个进程的优先级，{failed} 个没有权限或已退出。",
+    "done": "{name} 的优先级已设为“{priority}”。"
+  },
+  "efficiency": {
+    "on": {
+      "failed": "无法为 {name} 开启效率模式",
+      "partial": "已为 {count} 个进程开启效率模式，{failed} 个没有权限或已退出。",
+      "done": "已为 {name} 开启效率模式。"
+    },
+    "off": {
+      "failed": "无法为 {name} 关闭效率模式",
+      "partial": "已为 {count} 个进程关闭效率模式，{failed} 个没有权限或已退出。",
+      "done": "已为 {name} 关闭效率模式。"
+    }
+  },
+  "addRuleFailed": "无法添加规则：{error}",
+  "copied": "已复制{what}。",
+  "copyFailed": "无法访问剪贴板，{what}未复制。",
+  "revealFailed": "无法打开文件位置：{error}",
+  "failed": {
+    "accessDenied": "{what}：需要管理员权限。请以管理员身份运行 Argus 后重试。",
+    "notFound": "{what}：目标已不存在。",
+    "generic": "{what}：{error}"
+  },
+  "staleProcess": "进程实例信息已失效，请刷新后重试。",
+  "copyWhat": {
+    "path": "路径",
+    "name": "名称"
+  }
+}

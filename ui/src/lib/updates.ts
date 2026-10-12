@@ -2,6 +2,7 @@
 // start after an update.
 
 import { createSignal } from "solid-js";
+import { t } from "./i18n";
 import { api, inTauri } from "./ipc";
 import type { UpdateStatus } from "./types";
 import { confirm, toast } from "./ui";
@@ -33,23 +34,27 @@ export async function watchUpdates(): Promise<() => void> {
  * administrator rights; offer to update it while the mismatch is fresh.
  */
 export async function afterUpdate(version: string) {
-  toast("success", `Argus 已更新到 ${version}。`);
+  toast("success", t("updates.updated", { version }));
   const service = await api.privilegedServiceStatus().catch(() => null);
   // A running service that does not report this version is older (or too old to answer).
   if (service?.state !== "running" || !service.authorized || service.version === version) return;
   const taskManager = await api.taskManagerStatus().catch(() => null);
+  const body = service.version
+    ? t("updates.service.body", { serviceVersion: service.version, version })
+    : t("updates.service.bodyOlder", { version });
   const ok = await confirm({
-    title: "更新特权服务？",
-    body: `特权服务的版本${service.version ? `为 ${service.version}` : "较旧"}，与 Argus ${version} 不一致，部分功能可能无法使用。更新需要管理员授权。${
-      taskManager?.state === "enabled" ? "更新会先恢复 Windows 任务管理器，之后可在设置中重新启用替换。" : ""
-    }`,
-    confirmLabel: "更新服务",
+    title: t("updates.service.title"),
+    body:
+      taskManager?.state === "enabled"
+        ? t("updates.service.withNote", { body, note: t("updates.service.restoresTaskManager") })
+        : body,
+    confirmLabel: t("updates.service.confirm"),
   });
   if (!ok) return;
   try {
     await api.managePrivilegedService("update");
-    toast("success", "特权服务已更新。");
+    toast("success", t("updates.service.done"));
   } catch (e) {
-    toast("error", `无法更新特权服务：${String(e)}`);
+    toast("error", t("updates.service.failed", { error: String(e) }));
   }
 }

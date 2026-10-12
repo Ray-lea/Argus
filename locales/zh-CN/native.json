@@ -1,0 +1,152 @@
+{
+  "app": {
+    "devTitle": "Argus 开发版",
+    "join": "{first}；{second}"
+  },
+  "tray": {
+    "show": "显示 Argus",
+    "quit": "退出",
+    "update": "重启并更新到 {version}",
+    "tooltip": "CPU {cpu}%  内存 {memory}%"
+  },
+  "hotkey": {
+    "needsModifier": "快捷键至少需要一个修饰键（Ctrl、Alt、Shift 或 Win）",
+    "taken": "{shortcut} 已被其他程序占用，请选择其他组合键。",
+    "failed": "无法注册 {shortcut}：{error}"
+  },
+  "host": {
+    "serviceReply": "特权服务返回了无法识别的结果，请更新服务",
+    "fileMissing": "文件不存在",
+    "samplerStalled": "采样线程没有响应",
+    "pickFolder": "选择要检查的文件夹",
+    "pickFile": "选择要检查的文件"
+  },
+  "updater": {
+    "devBuild": "开发版不检查更新。",
+    "noPublicKey": "此版本没有配置更新签名公钥，无法验证更新。",
+    "proxyInvalid": "代理地址无效",
+    "proxyNotHttps": "代理地址必须以 https:// 开头",
+    "proxyQuery": "代理地址不能包含 ? 或 #",
+    "signatureFailed": "更新包签名校验失败，已丢弃",
+    "notFound": "未找到更新信息",
+    "timeout": "连接超时",
+    "connectFailed": "无法连接",
+    "sourceFailed": "{source}：{error}",
+    "downloadFailed": "下载失败：{error}",
+    "nothingReady": "没有可安装的更新",
+    "installerFailed": "无法启动安装程序：{error}",
+    "invalidVersion": "版本号无效"
+  },
+  "core": {
+    "connections": {
+      "ipv4Only": "只能关闭 IPv4 TCP 连接"
+    },
+    "fileLock": {
+      "restartManagerFailed": "Restart Manager 无法检查目标，以下为句柄查询结果"
+    },
+    "handles": {
+      "tooMany": "一次最多查询 32 个路径，路径总长度不能超过 8 KiB",
+      "localPathsOnly": "句柄扫描仅支持本地磁盘的绝对路径，不支持网络路径、设备路径或数据流",
+      "reparsePoint": "句柄扫描不跟随符号链接或目录联接，请选择链接的实际目标",
+      "ntStatus": "句柄查询失败（NTSTATUS {status}）",
+      "localDisksOnly": "句柄扫描仅支持本地磁盘，不支持映射网络驱动器或 SUBST 驱动器",
+      "unresolvedName": "无法解析目标的文件名称",
+      "unknownTable": "系统句柄表的格式无法识别",
+      "unknownFileType": "无法识别系统的文件句柄类型"
+    },
+    "services": {
+      "stopTimeout": "服务没有在 20 秒内停止"
+    }
+  },
+  "service": {
+    "displayName": "Argus 特权服务",
+    "displayNameDev": "Argus 特权服务（开发版）",
+    "description": "为授权的本机账户提供 Argus 进程和服务管理操作。",
+    "busy": "已有服务操作正在进行",
+    "unsafePath": "服务目录的所有者、权限或链接不安全，已停止操作",
+    "otherOwner": "特权服务已授权给另一个 Windows 账户，请先卸载再安装",
+    "incompatible": "特权服务版本不兼容，请在设置中更新服务",
+    "foreignService": "同名服务的配置不属于 Argus，已停止操作",
+    "taskManagerActive": "任务管理器替换尚未可靠恢复，已停止服务更新或卸载；请先在设置中恢复 Windows 任务管理器",
+    "canceled": "已取消管理员授权，未更改服务",
+    "timeout": "特权服务响应超时，请刷新状态后确认操作结果",
+    "osError": "{error}（{code}）",
+    "handles": {
+      "accessDenied": "没有权限检查系统句柄，请启用特权服务或以管理员身份运行",
+      "targetGone": "目标已不存在，或查询期间已经被移动",
+      "failed": "无法完成句柄查询",
+      "busy": "另一个句柄查询仍在进行，请稍后重新检查",
+      "noHelper": "无法定位句柄查询辅助程序",
+      "startFailed": "无法启动句柄查询：{error}",
+      "timeLimit": "句柄查询已达到时间限制，以下仅为已完成的结果",
+      "helperExited": "句柄查询辅助进程提前退出，以下仅为已完成的结果",
+      "serviceIncomplete": "特权服务未完成此次查询，以下为本地结果：{error}",
+      "serviceIncompleteLocal": "特权服务未完成此次查询，以下为本地查询结果",
+      "unavailable": "查询暂不可用",
+      "serviceOutdated": "特权服务未提供句柄查询，请更新服务；以下为本地查询结果",
+      "serviceUnavailable": "特权服务不可用，以下为本地查询结果：{error}"
+    }
+  },
+  "taskManager": {
+    "alertTitle": "Argus 任务管理器恢复",
+    "recoveryFile": "Argus 任务管理器应急恢复\r\n\r\n先运行本目录的 argus-taskmgr-recover.exe，并允许管理员授权。它不依赖 Argus 界面或后台服务。\r\n如果程序也已损坏：Win+R 输入 regedit，以管理员身份打开，定位 HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe。核对 Debugger 确实指向本目录的 argus-taskmgr-launcher.exe --task-manager，且 taskmgr-recovery.json 中 before.debugger 为 null，再只删除 Debugger 值。不要删除整个 taskmgr.exe 键，不要删除其他工具的设置。\r\n恢复程序会保留第三方更改和恢复记录；缺少可信备份时停止自动恢复。\r\n",
+    "status": {
+      "native": "当前使用 Windows 任务管理器。",
+      "needsService": "先安装特权服务，再启用任务管理器替换。",
+      "conflict": "已有其他替换或路径过滤配置，Argus 不会覆盖。",
+      "enabled": "任务管理器入口已交给 Argus；启动失败时尝试打开原生任务管理器。",
+      "interrupted": "上次操作未完成，请先恢复 Windows 任务管理器。",
+      "modified": "配置已被其他程序修改，Argus 不会覆盖；恢复记录仍保留。",
+      "recordMissing": "发现 Argus 替换但恢复记录缺失，请按应急恢复说明处理。",
+      "serviceRemoved": "特权服务已卸载，恢复程序和备份仍保留。",
+      "devBuild": "开发版不提供系统任务管理器替换，请使用发布版。",
+      "otherAccount": "特权服务授权给另一个 Windows 账户。"
+    },
+    "invalidDirectory": "无效目录",
+    "launcherKept": "Argus 替换的恢复记录缺失，已阻止删除启动器",
+    "restoreNeedsAdmin": "恢复需要管理员权限",
+    "everythingMissing": "恢复记录和启动器目录缺失，请使用应急恢复说明",
+    "devBuild": "开发版不允许启用替换",
+    "enableNeedsAdmin": "启用需要管理员权限",
+    "ownerMismatch": "服务授权账户不匹配",
+    "conflict": "已有其他替换或路径过滤配置，已停止启用",
+    "uiNotReady": "标准权限界面的就绪检查失败，未启用替换",
+    "probeNameTaken": "启动自检名称冲突",
+    "probeNotRedirected": "IFEO 自检未发生预期重定向",
+    "probeFallbackFailed": "原生回退自检失败",
+    "probeRecordInvalid": "启动自检恢复记录异常",
+    "probeModified": "自检配置被外部修改，已保留条目供检查",
+    "probeTimeout": "启动自检超时",
+    "notAllowed": "当前状态不允许此操作，请刷新后重试",
+    "helperNotStarted": "未能启动管理员维护助手",
+    "helperBusy": "维护助手仍在处理，请刷新状态；不要重复操作",
+    "helperFailed": "任务管理器设置未完成，请查看维护助手提示并刷新状态",
+    "invalidCaller": "无效界面进程",
+    "invalidInstance": "无效进程实例",
+    "noLauncher": "此版本未包含独立启动器",
+    "recordMissing": "恢复记录缺失",
+    "notActive": "替换尚未完成启用",
+    "noSystemDirectory": "无法定位 Windows 系统目录",
+    "callerExited": "发起操作的界面已退出",
+    "callerAccount": "发起操作的账户不匹配",
+    "callerSession": "发起操作的会话不匹配",
+    "noStandardToken": "无法获得当前账户的标准权限令牌",
+    "detachFailed": "原生启动脱离调试失败：{error}",
+    "wrongAccount": "当前账户或权限不适合启动标准权限界面",
+    "uiTimeout": "Argus 界面未在 10 秒内就绪",
+    "uiNoResponse": "Argus 界面未响应显示请求",
+    "valueTooLong": "注册表值过长，已停止操作",
+    "recordTooLong": "恢复记录过长",
+    "recordCorrupt": "恢复记录损坏，请使用应急恢复说明",
+    "recordMismatch": "恢复记录与此安装不符，已停止操作",
+    "alreadyReplaced": "已有任务管理器替换或路径过滤配置，请先在原工具中关闭；Argus 不会覆盖它",
+    "changedBeforeEnable": "启用前配置已被其他程序修改，已停止操作",
+    "restoreIncomplete": "{error}；恢复未完成：{recovery}",
+    "changedAfterWrite": "写入后配置发生变化，已保留恢复记录；请检查替换状态",
+    "commitFailed": "无法完成启用记录：{error}；{recovery}",
+    "restoredOriginal": "已恢复原设置",
+    "modified": "配置已被其他程序修改，Argus 不会覆盖；恢复记录已保留",
+    "changedBeforeRestore": "恢复前配置再次变化，已停止操作",
+    "verifyFailed": "恢复后核验失败，未删除任何恢复文件"
+  }
+}

@@ -28,6 +28,7 @@ use windows::Win32::System::Services::{
 use windows::core::{PCWSTR, PWSTR};
 
 use crate::actions::ActionError;
+use crate::tr;
 use crate::util::{AlignedBuf, from_wide, wide};
 
 const CONFIG_TTL: Duration = Duration::from_secs(60);
@@ -311,7 +312,7 @@ fn stop(scm: &Handle, name: &str, wait: bool) -> Result<(), ActionError> {
         }
         std::thread::sleep(Duration::from_millis(200));
     }
-    Err(ActionError::Os("服务没有在 20 秒内停止".into()))
+    Err(ActionError::Os(tr!("core.services.stopTimeout")))
 }
 
 fn query_config(scm: &Handle, name: &str) -> Option<Config> {

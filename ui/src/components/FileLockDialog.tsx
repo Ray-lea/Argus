@@ -2,6 +2,7 @@
 
 import { createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import { endProcessByPid } from "../lib/actions";
+import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { presence } from "../lib/motion";
 import { revealProcess, snapshot } from "../lib/store";
@@ -13,19 +14,18 @@ type State =
   | { kind: "idle" }
   | { kind: "searching" }
   | { kind: "done"; report: LockReport }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: () => string };
 
 const [open, setOpen] = createSignal(false);
 const [paths, setPaths] = createSignal<string[]>([]);
 const [state, setState] = createSignal<State>({ kind: "idle" });
 let searchVersion = 0;
 
-const KIND_LABEL: Partial<Record<Locker["kind"], string>> = {
-  service: "服务",
-  explorer: "资源管理器",
-  console: "控制台",
-  critical: "系统关键",
-};
+/** Kinds worth a tag; windowed apps and the rest go without. */
+const TAGGED = ["service", "explorer", "console", "critical"] as const;
+type TaggedKind = (typeof TAGGED)[number];
+const isTagged = (kind: Locker["kind"]): kind is TaggedKind => (TAGGED as readonly string[]).includes(kind);
+const kindLabel = (kind: Locker["kind"]) => (isTagged(kind) ? t(`fileLock.kind.${kind}`) : undefined);
 
 async function search() {
   if (paths().length === 0) return;
@@ -42,10 +42,10 @@ async function search() {
       kind: "error",
       message:
         err?.kind === "notFound"
-          ? "找不到该文件或文件夹。"
+          ? () => t("fileLock.error.notFound")
           : err?.kind === "os"
-            ? err.message
-            : `检查失败：${String(e)}`,
+            ? () => err.message
+            : () => t("fileLock.error.failed", { error: String(e) }),
     });
   }
 }
@@ -94,11 +94,9 @@ function LockDialogBody(props: { leaving: boolean }) {
       <div class="dialog wide lock-dialog" role="dialog" aria-modal="true" aria-labelledby="lock-title">
         <div class="dialog-body">
           <h2 id="lock-title" class="dialog-title">
-            谁在占用文件
+            {t("fileLock.title")}
           </h2>
-          <p class="dialog-text">
-            删除或移动文件时提示“文件正在使用”，可在此查找占用该文件的进程，也可将文件直接拖放到 Argus 窗口。
-          </p>
+          <p class="dialog-text">{t("fileLock.intro")}</p>
 
           <div class="lock-paths">
             <Show
@@ -106,7 +104,7 @@ function LockDialogBody(props: { leaving: boolean }) {
               fallback={
                 <div class="drop-zone">
                   <LockIcon size={20} />
-                  <span>将文件或文件夹拖放到窗口，或</span>
+                  <span>{t("fileLock.dropZone")}</span>
                 </div>
               }
             >
@@ -121,11 +119,11 @@ function LockDialogBody(props: { leaving: boolean }) {
             </Show>
             <div class="lock-pick">
               <button type="button" class="btn" onClick={() => pick(false)}>
-                选择文件
+                {t("fileLock.pickFile")}
               </button>
               <button type="button" class="btn" onClick={() => pick(true)}>
                 <FolderIcon />
-                选择文件夹
+                {t("fileLock.pickFolder")}
               </button>
               <Show when={paths().length > 0}>
                 <button
@@ -134,7 +132,7 @@ function LockDialogBody(props: { leaving: boolean }) {
                   disabled={state().kind === "searching"}
                   onClick={() => void search()}
                 >
-                  重新检查
+                  {t("fileLock.recheck")}
                 </button>
               </Show>
             </div>
@@ -143,22 +141,20 @@ function LockDialogBody(props: { leaving: boolean }) {
           <div class="lock-result" aria-live="polite">
             <Switch>
               <Match when={state().kind === "searching"}>
-                <p class="dialog-text">正在检查…</p>
+                <p class="dialog-text">{t("fileLock.checking")}</p>
                 <div class="progress lock-progress" />
               </Match>
-              <Match when={state().kind === "error" && (state() as { message: string }).message}>
-                {(msg) => <p class="setting-error">{msg()}</p>}
+              <Match when={state().kind === "error" && (state() as { message: () => string }).message}>
+                {(msg) => <p class="setting-error">{msg()()}</p>}
               </Match>
               <Match when={state().kind === "done" && (state() as { report: LockReport }).report}>
                 {(report) => (
                   <div class="lock-report">
                     <Show
                       when={report().lockers.length > 0}
-                      fallback={<p class="dialog-text">本次查询未发现可访问的占用进程。</p>}
+                      fallback={<p class="dialog-text">{t("fileLock.none")}</p>}
                     >
-                      <p class="dialog-text">
-                        找到 {report().lockers.length} 个进程正在使用这些文件或文件夹。
-                      </p>
+                      <p class="dialog-text">{t("fileLock.found", { count: report().lockers.length })}</p>
                       <div class="locker-list">
                         <For each={report().lockers}>
                           {(l) => {
@@ -170,7 +166,10 @@ function LockDialogBody(props: { leaving: boolean }) {
                                   <div class="label">{proc()?.description ?? l.appName}</div>
                                   <div class="dim">
                                     {proc()?.name ?? l.appName}　PID {l.pid}
-                                    <Show when={l.service}>　服务 {l.service}</Show>
+                                    <Show when={l.service}>
+                                      {" "}
+                                      {t("fileLock.service", { name: l.service ?? "" })}
+                                    </Show>
                                   </div>
                                   <Show when={l.handlePath}>
                                     {(path) => (
@@ -180,16 +179,18 @@ function LockDialogBody(props: { leaving: boolean }) {
                                     )}
                                   </Show>
                                 </div>
-                                <Show when={KIND_LABEL[l.kind]}>
-                                  <span class="tag">{KIND_LABEL[l.kind]}</span>
+                                <Show when={kindLabel(l.kind)}>
+                                  {(label) => <span class="tag">{label()}</span>}
                                 </Show>
                                 <Show when={l.handleCount > 0}>
-                                  <span class="tag">{l.handleCount} 个句柄</span>
+                                  <span class="tag">
+                                    {t("fileLock.handleCount", { count: l.handleCount })}
+                                  </span>
                                 </Show>
                                 <button
                                   type="button"
                                   class="btn small ghost"
-                                  title="在进程列表中查看"
+                                  title={t("fileLock.showProcess")}
                                   disabled={!proc()}
                                   onClick={() => {
                                     close();
@@ -207,7 +208,7 @@ function LockDialogBody(props: { leaving: boolean }) {
                                   }}
                                 >
                                   <EndIcon size={14} />
-                                  结束
+                                  {t("fileLock.end")}
                                 </button>
                               </div>
                             );
@@ -219,10 +220,19 @@ function LockDialogBody(props: { leaving: boolean }) {
                       {(handles) => (
                         <>
                           <p class="note">
-                            Restart Manager 检查了 {report().filesChecked} 个文件。
-                            {handles().available
-                              ? `${handles().viaService ? "特权服务" : "本地"}已检查 ${handles().checked} 个文件句柄，包括目录句柄。`
-                              : "句柄查询未完成。"}
+                            {t("fileLock.checked", {
+                              count: report().filesChecked,
+                              handles: handles().available
+                                ? t(
+                                    handles().viaService
+                                      ? "fileLock.handles.service"
+                                      : "fileLock.handles.local",
+                                    {
+                                      count: handles().checked,
+                                    },
+                                  )
+                                : t("fileLock.handles.unfinished"),
+                            })}
                           </p>
                           <Show
                             when={
@@ -233,13 +243,16 @@ function LockDialogBody(props: { leaving: boolean }) {
                             }
                           >
                             <p class="note">
-                              结果不完整：{handles().deniedProcesses} 个进程无法访问，{handles().skipped}{" "}
-                              个句柄无法读取，{handles().timeouts} 次查询超时。
-                              <Show when={handles().truncated}>已达到查询限制。</Show>
+                              {t("fileLock.incomplete", {
+                                denied: handles().deniedProcesses,
+                                skipped: handles().skipped,
+                                timeouts: handles().timeouts,
+                                limit: handles().truncated ? t("fileLock.limitReached") : "",
+                              })}
                             </p>
                           </Show>
                           <Show when={!handles().viaService && !handles().elevated}>
-                            <p class="note">可在设置中启用特权服务，以检查更多系统进程。</p>
+                            <p class="note">{t("fileLock.serviceHint")}</p>
                           </Show>
                           <Show when={handles().error}>{(error) => <p class="note">{error()}</p>}</Show>
                         </>
@@ -247,14 +260,11 @@ function LockDialogBody(props: { leaving: boolean }) {
                     </Show>
                     <Show when={report().restartError}>{(error) => <p class="note">{error()}</p>}</Show>
                     <Show when={report().unchecked > 0}>
-                      <p class="note">
-                        另有 {report().unchecked} 个文件 Restart Manager
-                        未能检查，可能与权限或文件状态变化有关。
-                      </p>
+                      <p class="note">{t("fileLock.unchecked", { count: report().unchecked })}</p>
                     </Show>
                     <Show when={report().truncated}>
                       <p class="note">
-                        文件夹中的文件过多，仅检查了前 {report().filesChecked + report().unchecked} 个。
+                        {t("fileLock.truncated", { count: report().filesChecked + report().unchecked })}
                       </p>
                     </Show>
                   </div>
@@ -264,9 +274,9 @@ function LockDialogBody(props: { leaving: boolean }) {
           </div>
         </div>
         <div class="dialog-footer">
-          <span class="dialog-hint">句柄查询可发现当前目录占用；受保护进程仍可能无法检查。</span>
+          <span class="dialog-hint">{t("fileLock.footerHint")}</span>
           <button type="button" class="btn" onClick={close}>
-            关闭
+            {t("common.close")}
           </button>
         </div>
       </div>
@@ -282,7 +292,7 @@ export function DropOverlay(props: { visible: boolean }) {
       <div class="drop-overlay" classList={{ leaving: shown.leaving() }} aria-hidden="true">
         <div>
           <LockIcon size={28} />
-          <p>释放鼠标以查找占用这些文件的进程</p>
+          <p>{t("fileLock.drop")}</p>
         </div>
       </div>
     </Show>

@@ -1,0 +1,63 @@
+{
+  "step": "Step {current} of {total}",
+  "skip": "Skip",
+  "back": "Back",
+  "next": "Next",
+  "finish": "Get started",
+  "saveFailed": "Couldn't save the setting: {error}",
+  "welcome": {
+    "title": "Welcome to Argus",
+    "body": "Argus is a modern task manager for Windows. It shows processes, performance, services, startup apps and network connections, and keeps a history of resource usage. The next few steps set up the essentials. Every step can be skipped, and everything can be changed later in Settings.",
+    "language": "Language"
+  },
+  "background": {
+    "title": "Stay in the background",
+    "body": "Argus can keep running in the system tray, recording history and applying rules, ready to open whenever it's needed.",
+    "autostart": "Start when signing in to Windows",
+    "autostartHint": "Starts silently in the system tray, without a window.",
+    "closeToTray": "Keep in the system tray when closed",
+    "closeToTrayHint": "When this is off, closing the window exits Argus.",
+    "hotkey": "Press {hotkey} anytime to show or hide Argus. The shortcut can be changed in Settings.",
+    "hotkeyOff": "The shortcut for showing or hiding Argus is off. It can be turned on in Settings."
+  },
+  "update": {
+    "title": "Stay up to date",
+    "body": "Argus gets new versions from GitHub Releases. Installers must pass a signature check, and nothing is installed without confirmation.",
+    "check": "Check for updates automatically",
+    "checkHint": "About a minute after start, then once a day.",
+    "channel": "Update channel",
+    "stable": "Stable",
+    "beta": "Beta",
+    "betaHint": "Beta also receives pre-releases: new features sooner, but possibly less stable.",
+    "route": "Download source",
+    "routeAuto": "Automatic",
+    "routeDirect": "GitHub only",
+    "routeProxy": "GitHub proxy only",
+    "proxyNotice": "GitHub proxies are run by third parties and can see this PC's IP address and the files it downloads. The signature check keeps them from tampering with updates.",
+    "unavailable": "This version can't update itself."
+  },
+  "privilege": {
+    "title": "Privileged service (optional)",
+    "body": "Argus runs as a standard user, so some system processes can't be read, ended or adjusted. The optional privileged service runs in the background as SYSTEM. Once it's installed, Argus can:",
+    "features": {
+      "end": "End other users' processes (except critical system processes)",
+      "tune": "Set priority and efficiency mode, also automatically through rules",
+      "inspect": "Find file locks in every process and measure per-process network traffic",
+      "control": "Control Windows services and close network connections"
+    },
+    "risk": "The permission belongs to the current Windows account: any program running under it can use these functions, which amounts to partial administrator rights. Only install it on an account you use yourself.",
+    "later": "Installing requires administrator permission. The service can be installed or uninstalled anytime in Settings → Permissions.",
+    "open": "Open Settings",
+    "installed": "The privileged service is installed and connected.",
+    "elevated": "Argus is running as administrator, so these actions don't need the privileged service."
+  },
+  "tips": {
+    "title": "You're all set",
+    "body": "A few ways to get around faster:",
+    "pages": "{keys} switches pages, {search} searches processes",
+    "menu": "Right-click a process to end it, change its priority, turn on efficiency mode or add a rule",
+    "drop": "Drop a file or folder onto the window to find the processes using it",
+    "history": "The History page keeps the last 7 days of resource usage and the busiest processes at each moment",
+    "reopen": "This guide can be reopened anytime from Settings → About."
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "uptime": {
+    "days": "{days} 天 {hours} 小时",
+    "hours": "{hours} 小时 {minutes} 分",
+    "minutes": "{minutes} 分 {seconds} 秒"
+  },
+  "sinceBoot": "系统启动时"
+}

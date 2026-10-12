@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js";
+import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import type { ViewMode } from "../lib/rows";
 import {
@@ -27,22 +28,22 @@ import SearchBox from "./SearchBox";
 import { ServiceControls } from "./ServicesPage";
 import { StartupControls } from "./StartupPage";
 
-const MODES: { mode: ViewMode; label: string; icon: typeof AppsIcon; title: string }[] = [
-  { mode: "apps", label: "按应用", icon: AppsIcon, title: "按应用：同一程序的多个进程合并为一行" },
-  { mode: "tree", label: "进程树", icon: TreeIcon, title: "进程树：按父子关系显示" },
-  { mode: "list", label: "列表", icon: ListIcon, title: "列表：所有进程平铺显示" },
+const MODES: { mode: ViewMode; icon: typeof AppsIcon }[] = [
+  { mode: "apps", icon: AppsIcon },
+  { mode: "tree", icon: TreeIcon },
+  { mode: "list", icon: ListIcon },
 ];
 
 const INTERVALS = [500, 1000, 2000, 5000];
 
-export const PAGES: { page: Page; label: string; key: string }[] = [
-  { page: "processes", label: "进程", key: "1" },
-  { page: "performance", label: "性能", key: "2" },
-  { page: "services", label: "服务", key: "3" },
-  { page: "startup", label: "启动", key: "4" },
-  { page: "network", label: "连接", key: "5" },
-  { page: "history", label: "历史", key: "6" },
-  { page: "settings", label: "设置", key: "7" },
+export const PAGES: { page: Page; key: string }[] = [
+  { page: "processes", key: "1" },
+  { page: "performance", key: "2" },
+  { page: "services", key: "3" },
+  { page: "startup", key: "4" },
+  { page: "network", key: "5" },
+  { page: "history", key: "6" },
+  { page: "settings", key: "7" },
 ];
 
 let searchInput: HTMLInputElement | undefined;
@@ -66,26 +67,29 @@ export default function Toolbar() {
   const sampled = () => page() === "processes" || page() === "performance";
 
   return (
-    <div class="toolbar" role="toolbar" aria-label="工具栏">
-      <div class="tabs" role="tablist" aria-label="页面">
+    <div class="toolbar" role="toolbar" aria-label={t("shell.toolbar")}>
+      <div class="tabs" role="tablist" aria-label={t("shell.pages")}>
         <Indicator selector="[aria-selected='true']" track={page} class="tab-mark" shape="underline" />
         <For each={PAGES}>
-          {(p) => (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={page() === p.page}
-              title={`${p.label}（Ctrl+${p.key}）`}
-              onClick={() => setPage(p.page)}
-            >
-              <span class="tab-text" data-text={p.label}>
-                {p.label}
-              </span>
-              <Show when={p.page === "settings" && updatePending()}>
-                <span class="tab-dot" role="img" aria-label="有新版本" />
-              </Show>
-            </button>
-          )}
+          {(p) => {
+            const label = () => t(`shell.page.${p.page}`);
+            return (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={page() === p.page}
+                title={t("shell.pageTitle", { page: label(), key: p.key })}
+                onClick={() => setPage(p.page)}
+              >
+                <span class="tab-text" data-text={label()}>
+                  {label()}
+                </span>
+                <Show when={p.page === "settings" && updatePending()}>
+                  <span class="tab-dot" role="img" aria-label={t("shell.updateAvailable")} />
+                </Show>
+              </button>
+            );
+          }}
         </For>
       </div>
 
@@ -125,14 +129,10 @@ export default function Toolbar() {
           <span
             class="badge"
             classList={{ elevated: info().elevated }}
-            title={
-              info().elevated
-                ? "Argus 正以管理员身份运行，可查看和结束绝大多数进程"
-                : "部分系统进程的信息需要管理员权限才能读取或结束"
-            }
+            title={info().elevated ? t("shell.elevation.adminHint") : t("shell.elevation.standardHint")}
           >
             <ShieldIcon size={14} />
-            {info().elevated ? "管理员" : "标准权限"}
+            {info().elevated ? t("shell.elevation.admin") : t("shell.elevation.standard")}
           </span>
         )}
       </Show>
@@ -140,20 +140,22 @@ export default function Toolbar() {
       <Show when={sampled()}>
         <select
           class="select tnum"
-          aria-label="刷新频率"
-          title="刷新频率"
+          aria-label={t("shell.interval.label")}
+          title={t("shell.interval.label")}
           value={intervalMs()}
           onChange={(e) => changeInterval(Number(e.currentTarget.value))}
         >
-          <For each={INTERVALS}>{(ms) => <option value={ms}>每 {ms / 1000} 秒</option>}</For>
+          <For each={INTERVALS}>
+            {(ms) => <option value={ms}>{t("shell.interval.option", { seconds: ms / 1000 })}</option>}
+          </For>
         </select>
 
         <button
           type="button"
           class="btn icon"
           aria-pressed={paused()}
-          title={paused() ? "继续刷新" : "暂停刷新"}
-          aria-label={paused() ? "继续刷新" : "暂停刷新"}
+          title={paused() ? t("shell.resume") : t("shell.pause")}
+          aria-label={paused() ? t("shell.resume") : t("shell.pause")}
           onClick={togglePause}
         >
           <Show when={paused()} fallback={<PauseIcon />}>
@@ -165,8 +167,8 @@ export default function Toolbar() {
       <button
         type="button"
         class="btn icon"
-        title="查找文件占用（也可将文件拖放到窗口）"
-        aria-label="查找占用文件的进程"
+        title={t("shell.fileLock.title")}
+        aria-label={t("shell.fileLock.label")}
         onClick={() => openFileLock()}
       >
         <LockIcon />
@@ -177,8 +179,8 @@ export default function Toolbar() {
           type="button"
           class="btn icon"
           aria-pressed={detailsOpen()}
-          title={detailsOpen() ? "隐藏详细信息" : "显示详细信息"}
-          aria-label="详细信息面板"
+          title={detailsOpen() ? t("shell.details.hide") : t("shell.details.show")}
+          aria-label={t("shell.details.label")}
           onClick={() => setDetailsOpen(!detailsOpen())}
         >
           <PanelIcon />
@@ -197,20 +199,20 @@ function ProcessControls() {
         }}
         value={query()}
         onInput={setQuery}
-        placeholder="搜索名称、PID、路径或服务"
+        placeholder={t("shell.search.processes")}
       />
-      <div class="segmented" role="group" aria-label="视图">
+      <div class="segmented" role="group" aria-label={t("shell.view")}>
         <Indicator selector="[aria-pressed='true']" track={viewMode} class="seg-thumb" />
         <For each={MODES}>
           {(m) => (
             <button
               type="button"
               aria-pressed={viewMode() === m.mode}
-              title={m.title}
+              title={t(`shell.viewMode.${m.mode}.title`)}
               onClick={() => setViewMode(m.mode)}
             >
               <m.icon />
-              <span class="seg-label">{m.label}</span>
+              <span class="seg-label">{t(`shell.viewMode.${m.mode}.label`)}</span>
             </button>
           )}
         </For>

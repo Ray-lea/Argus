@@ -1,0 +1,269 @@
+{
+  "nav": "Settings sections",
+  "sections": {
+    "language": "Language",
+    "startup": "Startup and tray",
+    "hotkey": "Keyboard shortcut",
+    "privilege": "Permissions",
+    "motion": "Animations",
+    "data": "Data and history",
+    "rules": "Rules",
+    "update": "Updates",
+    "about": "About"
+  },
+  "toggle": {
+    "on": "On",
+    "off": "Off"
+  },
+  "refreshStatus": "Refresh status",
+  "language": {
+    "title": "Display language",
+    "desc": "Takes effect at once, including the tray menu and messages. “Same as Windows” follows the Windows display language.",
+    "error": "Couldn't change the language: {error}"
+  },
+  "startup": {
+    "autostart": {
+      "title": "Start when signing in to Windows",
+      "desc": "Starts quietly in the system tray. Open the window with the keyboard shortcut or by clicking the tray icon.",
+      "error": "Couldn't change the startup setting: {error}"
+    },
+    "closeToTray": {
+      "title": "Keep in the system tray when closed",
+      "desc": "Keeps Argus running so it reopens quickly. While hidden, it samples every 5 seconds, and history and rules keep working.",
+      "error": "Couldn't save the setting: {error}"
+    }
+  },
+  "hotkey": {
+    "title": "Show or hide Argus",
+    "desc": "Works in any program. While recording, press Esc to cancel or Backspace to turn off the shortcut.",
+    "recording": "Press a new key combination…",
+    "unset": "Not set",
+    "change": "Change"
+  },
+  "privilege": {
+    "desc": "Lets Argus running as a standard user manage system processes, apply rules automatically, collect per-process network traffic, find file locks, control services and close IPv4 TCP connections. Installing and uninstalling both require administrator permission.",
+    "statusDesc": "Argus connects to the service automatically while it runs. The network columns are hidden when network collection is unavailable; each rule shows its results below it.",
+    "state": {
+      "busy": "Waiting for administrator permission or working on the service…",
+      "checking": "Checking service status…",
+      "unknown": "Can't read the status right now",
+      "notInstalled": "Not installed",
+      "connected": "Connected · {version}",
+      "unreachable": "Running, but can't connect right now",
+      "stopped": "Stopped",
+      "startPending": "Starting",
+      "stopPending": "Stopping",
+      "unavailable": "Unavailable"
+    },
+    "outdated": "Service version {service} doesn't match Argus {app}. Click Update service.",
+    "install": {
+      "title": "Enable the privileged service?",
+      "body": "Once it's installed, the current Windows account can use the background service, without asking for permission again, to:\n· end processes of any user (except critical system processes) and set their priority and efficiency mode;\n· start and stop any Windows service and change its startup type, including services of security software and Windows Update;\n· close any IPv4 TCP connection, and see the file locks and network traffic of every process.\n\nOther programs running as a standard user under this account can use these operations too, which effectively gives the account some administrator rights. Install it only on an account that you use yourself. The service starts with Windows. Installing requires administrator permission; the service can be uninstalled in Settings later.",
+      "action": "Install and enable"
+    },
+    "uninstall": {
+      "title": "Uninstall the privileged service?",
+      "body": "Windows Task Manager is restored first, then the background service is stopped and removed. If restoring fails, uninstalling stops. Argus keeps running, and actions on system processes and services are limited by its current permissions again. Uninstalling requires administrator permission.",
+      "confirm": "Uninstall service",
+      "action": "Uninstall"
+    },
+    "start": "Start service",
+    "update": "Update service",
+    "ready": "The privileged service is ready.",
+    "uninstalled": "The privileged service has been uninstalled."
+  },
+  "taskManager": {
+    "title": "Replace Task Manager",
+    "desc": "Makes Ctrl+Shift+Esc and other Task Manager shortcuts open Argus. Off by default; the standalone recovery tool doesn't depend on the interface or the service. Replacement is turned off before the privileged service is updated or uninstalled.",
+    "confirm": {
+      "title": "Replace Task Manager?",
+      "body": "Ctrl+Shift+Esc and other ways of opening Task Manager will open Argus. The change applies to the whole PC; other accounts still open Windows Task Manager. Turning it on requires administrator permission; if Argus fails to start, the built-in Task Manager is opened instead. Keep the standalone recovery tool so the change can be undone if the interface or the service can't run."
+    },
+    "enable": "Enable replacement",
+    "restore": "Restore Windows Task Manager",
+    "enabled": "Task Manager replacement is enabled.",
+    "restored": "Windows Task Manager has been restored.",
+    "busy": "Applying Task Manager settings…",
+    "checking": "Checking Task Manager settings…",
+    "unknown": "Couldn't read the replacement status",
+    "state": {
+      "disabled": "Using Windows Task Manager",
+      "enabled": "Replaced by Argus",
+      "recoveryNeeded": "Needs restoring",
+      "conflict": "Configured by something else"
+    },
+    "retry": "Refresh the status and try again.",
+    "recovery": "If the interface won't open, run the standalone recovery tool: {path}"
+  },
+  "motion": {
+    "ui": {
+      "title": "Interface animations",
+      "desc": "Transitions when switching pages and opening menus and dialogs, and the sliding selection marker. Follows the Windows Animation effects setting by default."
+    },
+    "chart": {
+      "title": "Chart animations",
+      "desc": "Higher frame rates make charts smoother but use more resources: Smooth takes about 10–15% of one core and Balanced about half that. Power saving moves one whole pixel at a time, so smaller charts move in steps.",
+      "fluid": "Smooth ({fps} fps)",
+      "balanced": "Balanced ({fps} fps)",
+      "pixel": "Power saving (pixel steps)",
+      "off": "Off (one step per sample)"
+    }
+  },
+  "data": {
+    "intervalDesc": "Shorter intervals give finer charts but make Argus itself use more resources.",
+    "netUnit": {
+      "title": "Network speed unit",
+      "desc": "Bytes match the unit of disk speeds; bits match network adapter link speeds and broadband plans. The network view on the Performance page shows both.",
+      "bytes": "Bytes per second",
+      "bits": "Bits per second"
+    },
+    "history": {
+      "title": "Record history",
+      "on": "Records resource usage and the top processes every 5 seconds. The data stays on this PC for 7 days and can be viewed on the History page.",
+      "off": "Off. Existing records expire after 7 days, or can be cleared now.",
+      "error": "Couldn't change the history setting: {error}",
+      "saved": "Saved history",
+      "counting": "Calculating…",
+      "size": "Using {size}.",
+      "sizeSince": "Using {size}, with records since {date}.",
+      "empty": "No records yet.",
+      "clear": "Clear",
+      "confirm": {
+        "title": "Clear history?",
+        "body": "All recorded history ({size}) will be deleted. This can't be undone."
+      },
+      "cleared": "History cleared.",
+      "clearError": "Couldn't clear history: {error}"
+    }
+  },
+  "rules": {
+    "title": "Set priority or efficiency mode when a program starts",
+    "desc": "Saved rules apply to running processes right away. Rules can also be added by right-clicking a process in the list and selecting Add rule.",
+    "placeholder": "Program name, e.g. chrome.exe",
+    "newName": "Program name for the new rule",
+    "add": "Add",
+    "exists": "A rule for {name} already exists.",
+    "error": "Couldn't save the rules: {error}",
+    "priority": {
+      "label": "Priority for {name}",
+      "keep": "Keep priority",
+      "option": "Priority: {priority}"
+    },
+    "efficiency": {
+      "label": "Efficiency mode for {name}",
+      "keep": "Keep efficiency mode",
+      "on": "Efficiency mode on",
+      "off": "Efficiency mode off"
+    },
+    "toggle": "Enable the rule for {name}",
+    "enable": "Enable rule",
+    "disable": "Disable rule",
+    "delete": "Delete rule",
+    "deleteLabel": "Delete the rule for {name}",
+    "summary": {
+      "noAction": "Choose a priority or efficiency mode to apply.",
+      "disabled": "Disabled.",
+      "notSeen": "The program hasn't been detected yet.",
+      "applied": {
+        "one": "Applied to {count} process",
+        "other": "Applied to {count} processes"
+      },
+      "denied": {
+        "one": "Access denied for {count} process; enable the privileged service, though protected processes may still be restricted",
+        "other": "Access denied for {count} processes; enable the privileged service, though protected processes may still be restricted"
+      },
+      "failed": {
+        "one": "Couldn't apply to {count} process; check the privileged service status, then save the rules again",
+        "other": "Couldn't apply to {count} processes; check the privileged service status, then save the rules again"
+      },
+      "separator": ". ",
+      "sentence": "{parts}."
+    }
+  },
+  "update": {
+    "error": "Couldn't save the update settings: {error}",
+    "installError": "Couldn't install the update: {error}",
+    "status": {
+      "loading": "Reading update status…",
+      "disabled": "Not checking for updates",
+      "idle": "Haven't checked for updates yet",
+      "checking": "Checking for updates…",
+      "upToDate": "Argus is up to date",
+      "available": "New version available: {version}",
+      "downloading": "Downloading {version}",
+      "downloadingPercent": "Downloading {version} · {percent}%",
+      "ready": "{version} has been downloaded",
+      "installing": "Starting the installer for {version}…",
+      "error": "Update failed"
+    },
+    "detail": {
+      "ready": "Installing requires administrator permission. Argus exits during the installation; the installer only shows its progress and restarts Argus when it's done.",
+      "portable": "The portable version doesn't update automatically. Download the new version from the release page.",
+      "downloaded": "Downloaded {received} from {source}.",
+      "downloadedOf": "Downloaded {received} of {total} from {source}.",
+      "checked": "Last checked: {time}.",
+      "checkedFrom": "Last checked: {time}, from {source}.",
+      "source": "Updates come from GitHub Releases, and an installer is installed only after its signature is verified."
+    },
+    "restart": "Restart and update",
+    "download": "Download",
+    "check": "Check for updates",
+    "notes": "What's new in {version}",
+    "auto": {
+      "title": "Check for updates automatically",
+      "desc": "Checks about 1 minute after startup, then once a day. New versions download in the background and are installed only after confirmation."
+    },
+    "channel": {
+      "label": "Update channel",
+      "desc": "Beta gets new features earlier but may be less stable than Stable. After switching from Beta to Stable, Argus updates only once a stable version is newer than the current one.",
+      "stable": "Stable",
+      "beta": "Beta"
+    },
+    "route": {
+      "label": "Download source",
+      "desc": "GitHub proxies are run by third parties and can see this PC's IP address and the files it downloads. Installer signatures also cover the version number, so a proxy can't tamper with an update or pass off an old version as a new one.",
+      "auto": "Automatic (GitHub first, then a GitHub proxy)",
+      "direct": "GitHub only",
+      "proxy": "GitHub proxy only"
+    },
+    "proxy": {
+      "label": "GitHub proxy",
+      "fallback": "When GitHub can't be reached, this proxy is tried first, then the other built-in proxies.",
+      "only": "All update requests go through this proxy.",
+      "custom": "Custom…"
+    },
+    "custom": {
+      "title": "Custom proxy",
+      "desc": "A prefix added before GitHub URLs. It must use https, e.g. https://example.com/.",
+      "label": "Custom proxy URL",
+      "save": "Save"
+    }
+  },
+  "about": {
+    "tagline": "A fast, modern and informative task manager for Windows.",
+    "admin": "Running as administrator.",
+    "standard": "Running as a standard user. Information and actions for some system processes are limited.",
+    "quit": "Exit Argus",
+    "onboarding": {
+      "title": "Welcome guide",
+      "desc": "Go through the essential settings and tips again.",
+      "open": "Open guide"
+    },
+    "license": {
+      "title": "License",
+      "desc": "Argus is free software, released under the GNU Affero General Public License, version 3 or any later version (AGPL-3.0-or-later). It can be redistributed and modified under the terms of that license. Argus comes with no warranty.",
+      "view": "View license"
+    },
+    "notices": {
+      "title": "Third-party components",
+      "desc": "Open-source components included in Argus, with their licenses and copyright notices.",
+      "view": "View notices",
+      "dialog": "Third-party notices"
+    },
+    "log": {
+      "title": "Log",
+      "desc": "Records startup information and errors from updates and privileged service operations, to help troubleshoot problems. Stored only on this PC and rotated when it exceeds 1 MB.",
+      "open": "Open log folder"
+    }
+  }
+}

@@ -3,6 +3,7 @@
 
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import { createEffect, createMemo, createSignal, For, type JSX, on, onMount, Show } from "solid-js";
+import { localized } from "../lib/i18n";
 import { ChevronDown, ChevronUp } from "./icons";
 
 const ROW_HEIGHT = 30;
@@ -25,6 +26,8 @@ export interface SortSpec {
 }
 
 interface Props<T> {
+  /** Stable across languages: keys the remembered scroll position and row ids. */
+  id: string;
   label: string;
   rows: T[];
   columns: Column<T>[];
@@ -39,7 +42,7 @@ interface Props<T> {
   empty?: JSX.Element;
 }
 
-const collator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
+const collator = localized((l) => new Intl.Collator(l, { numeric: true, sensitivity: "base" }));
 
 /** Scroll position per table, kept while another page is open. */
 const scrollMemory = new Map<string, number>();
@@ -55,11 +58,12 @@ export default function DataTable<T>(props: Props<T>) {
     if (!s || !col?.sortValue) return props.rows;
     const value = col.sortValue;
     const dir = s.desc ? -1 : 1;
+    const text = collator();
     return [...props.rows].sort((a, b) => {
       const va = value(a);
       const vb = value(b);
       const c =
-        typeof va === "number" && typeof vb === "number" ? va - vb : collator.compare(String(va), String(vb));
+        typeof va === "number" && typeof vb === "number" ? va - vb : text.compare(String(va), String(vb));
       return dir * c;
     });
   });
@@ -74,7 +78,7 @@ export default function DataTable<T>(props: Props<T>) {
   });
 
   onMount(() => {
-    scrollEl.scrollTop = scrollMemory.get(props.label) ?? 0;
+    scrollEl.scrollTop = scrollMemory.get(props.id) ?? 0;
   });
 
   // A selection made elsewhere (e.g. "show this service") scrolls into view once the
@@ -149,7 +153,7 @@ export default function DataTable<T>(props: Props<T>) {
     e.preventDefault();
   };
 
-  const rowId = (key: string) => `dt-${props.label}-${key.replace(/[^\w-]/g, "_")}`;
+  const rowId = (key: string) => `dt-${props.id}-${key.replace(/[^\w-]/g, "_")}`;
 
   return (
     <div
@@ -191,7 +195,7 @@ export default function DataTable<T>(props: Props<T>) {
         ref={scrollEl}
         class="tbody"
         role="rowgroup"
-        onScroll={() => scrollMemory.set(props.label, scrollEl.scrollTop)}
+        onScroll={() => scrollMemory.set(props.id, scrollEl.scrollTop)}
       >
         <Show when={sorted().length > 0} fallback={<div class="empty">{props.empty}</div>}>
           <div

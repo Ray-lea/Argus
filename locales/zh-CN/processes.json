@@ -1,0 +1,49 @@
+{
+  "label": "进程",
+  "total": "{count} 个进程",
+  "column": {
+    "name": { "label": "名称", "title": "按名称排序" },
+    "pid": { "label": "PID", "title": "进程 ID" },
+    "cpu": { "label": "CPU", "title": "占全部处理器能力的百分比" },
+    "mem": { "label": "内存", "title": "专用工作集：进程独占的物理内存" },
+    "io": { "label": "I/O", "title": "每秒读、写及其他 I/O 字节数" },
+    "gpu": { "label": "GPU", "title": "进程在最忙的 GPU 引擎上占用的时间比例" },
+    "net": { "label": "网络", "title": "每秒发送和接收的字节数" },
+    "threads": { "label": "线程", "title": "线程数" },
+    "handles": { "label": "句柄", "title": "句柄数" }
+  },
+  "noMatch": "没有与“{query}”匹配的进程",
+  "efficiencyCount": "{count} 个进程处于效率模式",
+  "suspended": "已暂停",
+  "netRates": "发送 {sent}，接收 {received}",
+  "section": {
+    "apps": "应用",
+    "background": "后台进程"
+  },
+  "servicesSummary": "{names} 等 {count} 个服务",
+  "pidExited": "PID {pid} 已经退出。",
+  "priority": {
+    "realtime": "实时",
+    "high": "高",
+    "aboveNormal": "高于正常",
+    "normal": "正常",
+    "belowNormal": "低于正常",
+    "idle": "低"
+  },
+  "menu": {
+    "endAll": "结束全部 {count} 个进程",
+    "setPriority": "设置优先级",
+    "addRule": "添加规则",
+    "copyPid": "复制 PID",
+    "copyPidWhat": " PID",
+    "details": "详细信息"
+  },
+  "vitals": {
+    "label": "系统概况",
+    "cores": "每个逻辑处理器的使用率",
+    "open": "在“性能”中查看{device}",
+    "diskActive": "活动 {value}%",
+    "netTitle": "接收 / 发送",
+    "netRates": "收 {received} 发 {sent}"
+  }
+}

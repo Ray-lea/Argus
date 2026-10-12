@@ -1,0 +1,61 @@
+{
+  "filter": {
+    "all": {
+      "label": "全部",
+      "title": "所有 TCP 和 UDP 端点"
+    },
+    "listen": {
+      "label": "监听",
+      "title": "正在等待连接的 TCP 端口"
+    },
+    "established": {
+      "label": "已连接",
+      "title": "已建立的 TCP 连接"
+    },
+    "udp": {
+      "label": "UDP",
+      "title": "UDP 端点"
+    }
+  },
+  "state": {
+    "listen": "监听",
+    "established": "已连接",
+    "synSent": "正在连接",
+    "synReceived": "正在接受",
+    "finWait1": "正在关闭",
+    "finWait2": "正在关闭",
+    "closeWait": "等待关闭",
+    "closing": "正在关闭",
+    "lastAck": "正在关闭",
+    "timeWait": "等待超时",
+    "closed": "已关闭"
+  },
+  "loadFailed": "无法读取网络连接",
+  "menu": {
+    "end": "结束 {name}",
+    "close": "断开此连接",
+    "copyLocal": "复制本地地址",
+    "copyRemote": "复制远程地址"
+  },
+  "closed": "已断开连接。",
+  "closeFailed": "无法断开连接",
+  "copied": {
+    "local": "本地地址",
+    "remote": "远程地址"
+  },
+  "search": "端口、地址或进程，例如 8080",
+  "column": {
+    "process": "进程",
+    "protocol": "协议",
+    "localAddress": "本地地址",
+    "localPort": "本地端口",
+    "remoteAddress": "远程地址",
+    "remotePort": "远程端口"
+  },
+  "exited": "已退出",
+  "loading": "正在读取连接…",
+  "noMatch": "没有匹配的连接",
+  "noMatchPort": "没有匹配的连接：没有程序在使用端口 {port}",
+  "clearFilter": "清除筛选",
+  "note": "每 2 秒刷新一次。双击某行可转到对应进程。"
+}

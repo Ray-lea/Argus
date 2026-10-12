@@ -1,6 +1,7 @@
 // Context menu, confirm dialog and toasts.
 
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { t } from "../lib/i18n";
 import { presence } from "../lib/motion";
 import {
   confirmRequest,
@@ -236,7 +237,7 @@ export function ConfirmDialog() {
                   {req.confirmLabel}
                 </button>
                 <button type="button" class="btn" onClick={() => answer(false)}>
-                  取消
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
@@ -251,25 +252,25 @@ export function Toasts() {
   return (
     <div class="toasts" aria-live="polite">
       <For each={toasts()}>
-        {(t) => (
+        {(item) => (
           <div
             class="toast"
             classList={{
-              error: t.kind === "error",
-              success: t.kind === "success",
-              leaving: leavingToasts().has(t.id),
+              error: item.kind === "error",
+              success: item.kind === "success",
+              leaving: leavingToasts().has(item.id),
             }}
             role="status"
           >
-            <Show when={t.kind === "error"} fallback={<CheckIcon />}>
+            <Show when={item.kind === "error"} fallback={<CheckIcon />}>
               <WarningIcon />
             </Show>
-            <div class="toast-text">{t.text}</div>
+            <div class="toast-text">{item.text}</div>
             <button
               type="button"
               class="btn ghost small icon"
-              aria-label="关闭"
-              onClick={() => dismissToast(t.id)}
+              aria-label={t("common.close")}
+              onClick={() => dismissToast(item.id)}
             >
               <DismissIcon size={12} />
             </button>

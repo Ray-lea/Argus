@@ -2,21 +2,37 @@
 ; packaged). The privileged service and the task manager replacement live in
 ; Program Files, outside $INSTDIR, so removing Argus does not remove them.
 
+; Sets OUT to the text in the installer's language: Simplified Chinese (2052)
+; or English. Keep in step with the languages in tauri.conf.json.
+!macro ARGUS_TEXT OUT ZH EN
+  ${If} $LANGUAGE == 2052
+    StrCpy ${OUT} "${ZH}"
+  ${Else}
+    StrCpy ${OUT} "${EN}"
+  ${EndIf}
+!macroend
+
 !macro NSIS_HOOK_PREUNINSTALL
 !if "${BUNDLEID}" == "dev.argus.taskmanager"
   ; Choosing "uninstall before installing" on an upgrade makes the installer run
   ; the old uninstaller in place (with _?=). A real uninstall, from Apps or from
   ; uninstall.exe, runs a copy from %TEMP%. Reinstalling keeps both.
   ${If} $EXEDIR != $INSTDIR
+    !insertmacro ARGUS_TEXT $2 \
+      "检测到已安装的 Argus 特权服务。是否一并卸载？$\r$\n$\r$\n卸载服务需要管理员授权，并将先恢复 Windows 任务管理器。选择“否”将保留该服务，服务会继续随 Windows 启动。" \
+      "The Argus privileged service is installed. Uninstall it as well?$\r$\n$\r$\nUninstalling the service requires administrator permission and restores Windows Task Manager first. Choose No to keep the service; it will keep starting with Windows."
     ClearErrors
     ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
     ${IfNot} ${Errors}
-    ${AndIf} ${Cmd} `MessageBox MB_YESNO|MB_ICONQUESTION "检测到已安装的 Argus 特权服务。是否一并卸载？$\r$\n$\r$\n卸载服务需要管理员授权，并将先恢复 Windows 任务管理器。选择“否”将保留该服务，服务会继续随 Windows 启动。" /SD IDYES IDYES`
+    ${AndIf} ${Cmd} `MessageBox MB_YESNO|MB_ICONQUESTION "$2" /SD IDYES IDYES`
       ClearErrors
       ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-service-remove' $0
       ${If} ${Errors}
       ${OrIf} $0 != 0
-        MessageBox MB_YESNO|MB_ICONEXCLAMATION "特权服务未能卸载（可能已取消管理员授权）。是否继续卸载 Argus？" /SD IDYES IDYES +2
+        !insertmacro ARGUS_TEXT $2 \
+          "特权服务未能卸载（可能已取消管理员授权）。是否继续卸载 Argus？" \
+          "The privileged service couldn't be uninstalled (administrator permission may have been declined). Continue uninstalling Argus?"
+        MessageBox MB_YESNO|MB_ICONEXCLAMATION "$2" /SD IDYES IDYES +2
         Abort
       ${EndIf}
     ${EndIf}
@@ -28,10 +44,16 @@
       ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-taskmgr-uninstall' $0
     ${EndIf}
     ${If} ${Errors}
-      MessageBox MB_OK|MB_ICONSTOP "无法运行任务管理器恢复检查。请先完成应急恢复，再卸载。" /SD IDOK
+      !insertmacro ARGUS_TEXT $2 \
+        "无法运行任务管理器恢复检查。请先完成应急恢复，再卸载。" \
+        "Couldn't run the Task Manager recovery check. Complete the emergency recovery first, then uninstall."
+      MessageBox MB_OK|MB_ICONSTOP "$2" /SD IDOK
       Abort
     ${ElseIf} $0 != 0
-      MessageBox MB_OK|MB_ICONSTOP "请先在 Argus 设置中恢复 Windows 任务管理器，再卸载。" /SD IDOK
+      !insertmacro ARGUS_TEXT $2 \
+        "请先在 Argus 设置中恢复 Windows 任务管理器，再卸载。" \
+        "Restore Windows Task Manager in Argus settings first, then uninstall."
+      MessageBox MB_OK|MB_ICONSTOP "$2" /SD IDOK
       Abort
     ${EndIf}
   ${EndIf}

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use argus_core::tr;
 use serde::Serialize;
 use windows::Win32::Foundation::{ERROR_SERVICE_DOES_NOT_EXIST, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Storage::FileSystem::{
@@ -373,10 +374,10 @@ fn install_or_update(
                         manager.0,
                         PCWSTR(wide(crate::SERVICE_NAME).as_ptr()),
                         PCWSTR(
-                            wide(if cfg!(debug_assertions) {
-                                "Argus 特权服务（开发版）"
+                            wide(&if cfg!(debug_assertions) {
+                                tr!("service.displayNameDev")
                             } else {
-                                "Argus 特权服务"
+                                tr!("service.displayName")
                             })
                             .as_ptr(),
                         ),
@@ -394,7 +395,7 @@ fn install_or_update(
                 }
                 .map_err(win)?,
             );
-            let mut desc_text = wide("为授权的本机账户提供 Argus 进程和服务管理操作。");
+            let mut desc_text = wide(&tr!("service.description"));
             let desc = SERVICE_DESCRIPTIONW {
                 lpDescription: PWSTR(desc_text.as_mut_ptr()),
             };
@@ -521,7 +522,7 @@ pub fn manage(action: &str) -> std::result::Result<ServiceStatus, String> {
         return Err(message(87));
     }
     if MANAGING.swap(true, Ordering::AcqRel) {
-        return Err("已有服务操作正在进行".into());
+        return Err(tr!("service.busy"));
     }
     struct Busy;
     impl Drop for Busy {

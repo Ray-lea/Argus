@@ -6,10 +6,13 @@
 
 | 路径 | 内容 |
 |---|---|
+| `src/main.tsx` | 入口：先取得 `app_info` 中的界面语言再渲染，避免先以错误的语言显示 |
 | `src/App.tsx` | 外壳：页面切换与过渡、全局键盘快捷键、文件拖放 |
-| `src/components/` | 页面：`ProcessTable`、`Performance`、`ServicesPage`、`StartupPage`、`ConnectionsPage`、`HistoryPage`、`Settings`。外壳与通用组件：`Toolbar`、`Vitals`（概况带）、`StatusBar`、`DetailsPanel`、`DataTable`（虚拟化表格）、`Trace`（实时曲线）、`Overlays`（右键菜单及一级子菜单、确认框、提示）、`FileLockDialog` |
+| `src/components/` | 页面：`ProcessTable`、`Performance`、`ServicesPage`、`StartupPage`、`ConnectionsPage`、`HistoryPage`、`Settings`。外壳与通用组件：`Toolbar`、`Vitals`（概况带）、`StatusBar`、`DetailsPanel`、`DataTable`（虚拟化表格）、`Trace`（实时曲线）、`Overlays`（右键菜单及一级子菜单、确认框、提示）、`FileLockDialog`、`Onboarding`（首次启动引导） |
 | `src/lib/store.ts` | 应用状态：实时快照、滚动历史、视图偏好 |
 | `src/lib/ipc.ts` | 与宿主通信 |
+| `src/lib/i18n.ts` | 文案查找（`t`、`rich`）、当前语言信号、按语言缓存的 `Intl` 对象；文案在仓库根目录的 `locales/`，见[多语言](../development/i18n.md) |
+| `src/lib/language.ts`、`src/lib/keys.ts` | 切换语言（保存到原生设置后应用宿主解析的结果）；快捷键的显示名称 |
 | `src/lib/rows.ts` | 把进程快照整理成三种视图要渲染的行 |
 | `src/lib/motion.ts` | 动画偏好（界面动画、曲线动画四档）、屏幕刷新率测量、Fluent 缓动曲线与进出场辅助 |
 | `src/lib/actions.ts` | 面向用户的进程操作：确认、执行、反馈 |

@@ -12,13 +12,14 @@ use argus_core::rules::{ProcessRule, RuleStats};
 use argus_core::services::{ServiceAction, ServiceInfo, StartType};
 use argus_core::startup::{self, StartupItem};
 use argus_core::theme::{self, AccentColors};
+use argus_core::tr;
 use argus_service::{Operation, Reply, ServiceStatus};
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::{Manager, State};
 
 use crate::sampler::Control;
-use crate::settings::{SettingsStore, SettingsView, UpdateChannel, UpdateRoute};
+use crate::settings::{Language, SettingsStore, SettingsView, UpdateChannel, UpdateRoute};
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
 
@@ -52,6 +53,8 @@ pub struct AppInfo {
     accent: Option<AccentColors>,
     /// Relaunched by the installer of an update.
     updated: bool,
+    /// The UI language, resolved; the UI renders nothing before it knows.
+    locale: argus_core::i18n::Locale,
 }
 
 #[tauri::command]
@@ -61,6 +64,7 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
         elevated: state.elevated,
         accent: theme::accent_colors(),
         updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
+        locale: argus_core::i18n::locale(),
     }
 }
 
@@ -106,9 +110,7 @@ fn privileged_done(state: &AppState, operation: Operation) -> Result<bool, Actio
     match privileged(state, operation)? {
         Some(Reply::Done) => Ok(true),
         None => Ok(false),
-        _ => Err(ActionError::Os(
-            "特权服务返回了无法识别的结果，请更新服务".into(),
-        )),
+        _ => Err(ActionError::Os(tr!("host.serviceReply"))),
     }
 }
 
@@ -164,9 +166,7 @@ pub fn set_priority(
     ) {
         Ok(Some(Reply::Priority(p))) => Ok(p),
         Ok(None) => actions::set_priority(pid, create_time, priority),
-        Ok(_) => Err(ActionError::Os(
-            "特权服务返回了无法识别的结果，请更新服务".into(),
-        )),
+        Ok(_) => Err(ActionError::Os(tr!("host.serviceReply"))),
         Err(e) => Err(e),
     };
     state.sampler.send(Control::Refresh);
@@ -200,7 +200,7 @@ pub fn set_efficiency_mode(
 #[tauri::command]
 pub fn reveal_in_explorer(path: String) -> Result<(), String> {
     if !std::path::Path::new(&path).exists() {
-        return Err("文件不存在".into());
+        return Err(tr!("host.fileMissing"));
     }
     // Windows paths cannot contain `"`, so quoting is safe; explorer needs the
     // `/select,"path"` form verbatim, hence raw_arg.
@@ -217,6 +217,7 @@ fn settings_view<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> SettingsView {
     SettingsView {
         settings: store.get(),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
+        locale: argus_core::i18n::locale(),
         hotkey_error: store.hotkey_error.lock().unwrap().clone(),
     }
 }
@@ -240,6 +241,27 @@ pub fn manage_privileged_service(
         .inspect_err(|e| log::warn!("privileged service {action} failed: {e}"))?;
     state.sampler.send(Control::Refresh);
     Ok(status)
+}
+
+/// Switches the language of the native text (tray, errors); the UI follows
+/// the returned `locale`.
+#[tauri::command]
+pub fn set_language(app: tauri::AppHandle, language: Language) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.language = language)
+        .map_err(|e| e.to_string())?;
+    argus_core::i18n::set_locale(language.resolve());
+    shell::apply_language(&app);
+    Ok(settings_view(&app))
+}
+
+/// Records that the onboarding of `version` was completed or skipped.
+#[tauri::command]
+pub fn complete_onboarding(app: tauri::AppHandle, version: u32) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.onboarding = s.onboarding.max(version))
+        .map_err(|e| e.to_string())?;
+    Ok(settings_view(&app))
 }
 
 #[tauri::command]
@@ -352,7 +374,7 @@ pub fn clear_history(state: State<'_, AppState>, dir: State<'_, HistoryDir>) -> 
     state.sampler.send(Control::ClearHistory(dir.0.clone(), tx));
     match rx.recv_timeout(Duration::from_secs(10)) {
         Ok(result) => result.map_err(|e| e.to_string()),
-        Err(_) => Err("采样线程没有响应".into()),
+        Err(_) => Err(tr!("host.samplerStalled")),
     }
 }
 
@@ -543,10 +565,10 @@ pub fn pick_path(app: tauri::AppHandle, folder: bool) -> Option<String> {
     let dialog = app.dialog().file();
     let picked = if folder {
         dialog
-            .set_title("选择要检查的文件夹")
+            .set_title(tr!("host.pickFolder"))
             .blocking_pick_folder()
     } else {
-        dialog.set_title("选择要检查的文件").blocking_pick_file()
+        dialog.set_title(tr!("host.pickFile")).blocking_pick_file()
     };
     picked
         .and_then(|p| p.into_path().ok())

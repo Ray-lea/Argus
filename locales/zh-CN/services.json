@@ -1,0 +1,61 @@
+{
+  "state": {
+    "running": "正在运行",
+    "stopped": "已停止",
+    "startPending": "正在启动",
+    "stopPending": "正在停止",
+    "paused": "已暂停",
+    "pausePending": "正在暂停",
+    "continuePending": "正在继续"
+  },
+  "startType": {
+    "auto": "自动",
+    "autoDelayed": "自动（延迟启动）",
+    "manual": "手动",
+    "disabled": "禁用",
+    "boot": "引导",
+    "system": "系统"
+  },
+  "filter": {
+    "all": "全部",
+    "running": "正在运行",
+    "stopped": "已停止"
+  },
+  "search": "搜索服务名称、描述或 PID",
+  "control": {
+    "start": "启动服务",
+    "stop": "停止服务",
+    "restart": "重新启动服务",
+    "openConsole": "服务管理器",
+    "openConsoleTitle": "打开 Windows 服务管理器"
+  },
+  "done": {
+    "start": "已启动“{name}”。",
+    "stop": "已停止“{name}”。",
+    "restart": "已重新启动“{name}”。"
+  },
+  "failed": {
+    "start": "无法启动“{name}”",
+    "stop": "无法停止“{name}”",
+    "restart": "无法重新启动“{name}”"
+  },
+  "startTypeChanged": "“{name}”的启动类型已改为{type}。",
+  "startTypeFailed": "无法更改“{name}”的启动类型",
+  "menu": {
+    "startType": "启动类型：{type}",
+    "copyName": "复制服务名称"
+  },
+  "copied": {
+    "name": "服务名称"
+  },
+  "column": {
+    "display": "服务",
+    "startType": "启动类型",
+    "description": "描述"
+  },
+  "loading": "正在读取服务…",
+  "noMatch": "没有匹配的服务",
+  "clearFilter": "清除筛选",
+  "summary": "正在运行 {running} / 共 {total} 个服务",
+  "manageHint": "多数服务需要启用特权服务或以管理员身份运行 Argus 才能管理。"
+}

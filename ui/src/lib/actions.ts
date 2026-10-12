@@ -1,18 +1,32 @@
 // User-facing process operations: confirm, run, report.
 
+import { t } from "./i18n";
 import { api } from "./ipc";
 import type { DisplayRow } from "./rows";
 import { markEnding, setFocusRule, setPage, snapshot } from "./store";
 import type { ActionError, PriorityClass, ProcessRow, ProcessRule } from "./types";
 import { confirm, toast } from "./ui";
 
-export const PRIORITY_LABEL: Record<PriorityClass, string> = {
-  realtime: "实时",
-  high: "高",
-  aboveNormal: "高于正常",
-  normal: "正常",
-  belowNormal: "低于正常",
-  idle: "低",
+/** Display names of the priority classes; getters, so each read follows the UI language. */
+export const PRIORITY_LABEL: Readonly<Record<PriorityClass, string>> = {
+  get realtime() {
+    return t("processes.priority.realtime");
+  },
+  get high() {
+    return t("processes.priority.high");
+  },
+  get aboveNormal() {
+    return t("processes.priority.aboveNormal");
+  },
+  get normal() {
+    return t("processes.priority.normal");
+  },
+  get belowNormal() {
+    return t("processes.priority.belowNormal");
+  },
+  get idle() {
+    return t("processes.priority.idle");
+  },
 };
 
 /** The class behind a base priority as the process list reports it (4, 6, 8, 10, 13, 24). */
@@ -39,17 +53,14 @@ function errorText(e: unknown, name: string): string {
   const err = e as ActionError;
   switch (err?.kind) {
     case "accessDenied":
-      return `没有权限结束 ${name}。可在设置中启用特权服务，或以管理员身份运行 Argus；受保护的进程仍可能无法结束。`;
     case "notFound":
-      return `${name} 已经退出。`;
     case "critical":
-      return `${name} 是系统关键进程，结束该进程会导致系统崩溃，操作已阻止。`;
     case "refused":
-      return `不能结束 ${name}。`;
+      return t(`actions.error.${err.kind}`, { name });
     case "os":
-      return `无法结束 ${name}：${err.message}`;
+      return t("actions.error.generic", { name, error: err.message });
     default:
-      return `无法结束 ${name}：${String(e)}`;
+      return t("actions.error.generic", { name, error: String(e) });
   }
 }
 
@@ -103,9 +114,9 @@ export async function endRow(row: DisplayRow, skipConfirm = false) {
     if (
       !skipConfirm &&
       !(await confirm({
-        title: `结束 ${row.label}？`,
-        body: `将结束 ${row.proc.name} 的全部 ${members.length} 个进程，未保存的数据会丢失。`,
-        confirmLabel: "全部结束",
+        title: t("actions.end.title", { name: row.label }),
+        body: t("actions.endGroup.body", { name: row.proc.name, count: members.length }),
+        confirmLabel: t("actions.endAll"),
         danger: true,
       }))
     ) {
@@ -117,8 +128,16 @@ export async function endRow(row: DisplayRow, skipConfirm = false) {
       (r) => r.some((x) => x.status === "fulfilled"),
     );
     const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
-    if (failed.length === 0) toast("success", `已结束 ${row.label} 的 ${members.length} 个进程。`);
-    else toast("error", `${errorText(failed[0].reason, row.label)}（${failed.length} 个未结束）`);
+    if (failed.length === 0)
+      toast("success", t("actions.endGroup.done", { name: row.label, count: members.length }));
+    else
+      toast(
+        "error",
+        t("actions.endGroup.partial", {
+          error: errorText(failed[0].reason, row.label),
+          count: failed.length,
+        }),
+      );
     return;
   }
 
@@ -126,9 +145,9 @@ export async function endRow(row: DisplayRow, skipConfirm = false) {
   if (
     !skipConfirm &&
     !(await confirm({
-      title: `结束 ${p.name}？`,
-      body: `PID ${p.pid}。未保存的数据会丢失。`,
-      confirmLabel: "结束进程",
+      title: t("actions.end.title", { name: p.name }),
+      body: t("actions.end.body", { pid: p.pid }),
+      confirmLabel: t("common.endProcess"),
       danger: true,
     }))
   ) {
@@ -140,7 +159,7 @@ export async function endRow(row: DisplayRow, skipConfirm = false) {
       () => api.kill(p.pid, p.createTime),
       () => true,
     );
-    toast("success", `已结束 ${p.name}。`, 2500);
+    toast("success", t("actions.end.done", { name: p.name }), 2500);
   } catch (e) {
     toast("error", errorText(e, p.name));
   }
@@ -150,12 +169,12 @@ export async function endTree(row: DisplayRow) {
   const p = row.proc;
   const n = descendantCount(p);
   const ok = await confirm({
-    title: `结束 ${p.name} 的进程树？`,
+    title: t("actions.endTree.title", { name: p.name }),
     body:
       n > 0
-        ? `将结束 PID ${p.pid} 及其 ${n} 个子进程，未保存的数据会丢失。`
-        : `PID ${p.pid} 没有子进程，仅结束该进程。`,
-    confirmLabel: "结束进程树",
+        ? t("actions.endTree.body", { pid: p.pid, count: n })
+        : t("actions.endTree.bodyAlone", { pid: p.pid }),
+    confirmLabel: t("common.endProcessTree"),
     danger: true,
   });
   if (!ok) return;
@@ -166,9 +185,9 @@ export async function endTree(row: DisplayRow) {
       (r) => r.terminated > 0,
     );
     if (report.failed > 0) {
-      toast("error", `已结束 ${report.terminated} 个进程，${report.failed} 个没有权限或已退出。`);
+      toast("error", t("actions.endTree.partial", { count: report.terminated, failed: report.failed }));
     } else {
-      toast("success", `已结束 ${report.terminated} 个进程。`, 2500);
+      toast("success", t("actions.endTree.done", { count: report.terminated }), 2500);
     }
   } catch (e) {
     toast("error", errorText(e, p.name));
@@ -183,9 +202,9 @@ export async function setRowPriority(row: DisplayRow, priority: PriorityClass) {
   if (
     priority === "realtime" &&
     !(await confirm({
-      title: `将 ${row.label} 设为实时优先级？`,
-      body: "实时优先级的进程优先于系统任务运行，占满处理器时鼠标和键盘可能失去响应。",
-      confirmLabel: "设为实时",
+      title: t("actions.priority.confirmTitle", { name: row.label }),
+      body: t("actions.priority.confirmBody"),
+      confirmLabel: t("actions.priority.confirm"),
       danger: true,
     }))
   ) {
@@ -197,17 +216,22 @@ export async function setRowPriority(row: DisplayRow, priority: PriorityClass) {
   );
   const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
   if (failed.length === targets.length) {
-    toastActionError(failed[0].reason, `无法更改 ${row.label} 的优先级`);
+    toastActionError(failed[0].reason, t("actions.priority.failed", { name: row.label }));
     return;
   }
   const downgraded = results.some((r) => r.status === "fulfilled" && r.value !== priority);
-  if (downgraded) toast("error", "实时优先级需要管理员权限，已改为“高”。");
+  if (downgraded) toast("error", t("actions.priority.downgraded"));
   else if (failed.length > 0)
     toast(
       "error",
-      `已更改 ${targets.length - failed.length} 个进程的优先级，${failed.length} 个没有权限或已退出。`,
+      t("actions.priority.partial", { count: targets.length - failed.length, failed: failed.length }),
     );
-  else toast("success", `${row.label} 的优先级已设为“${PRIORITY_LABEL[priority]}”。`, 2500);
+  else
+    toast(
+      "success",
+      t("actions.priority.done", { name: row.label, priority: PRIORITY_LABEL[priority] }),
+      2500,
+    );
 }
 
 /** Turns efficiency mode on or off for a process, or for every process in an app group. */
@@ -215,15 +239,18 @@ export async function setRowEfficiency(row: DisplayRow, on: boolean) {
   const targets = targetsOf(row);
   const results = await Promise.allSettled(targets.map((p) => api.setEfficiency(p.pid, p.createTime, on)));
   const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
-  const verb = on ? "开启" : "关闭";
+  const state = on ? "on" : "off";
   if (failed.length === targets.length)
-    toastActionError(failed[0].reason, `无法为 ${row.label} ${verb}效率模式`);
+    toastActionError(failed[0].reason, t(`actions.efficiency.${state}.failed`, { name: row.label }));
   else if (failed.length > 0)
     toast(
       "error",
-      `已为 ${targets.length - failed.length} 个进程${verb}效率模式，${failed.length} 个没有权限或已退出。`,
+      t(`actions.efficiency.${state}.partial`, {
+        count: targets.length - failed.length,
+        failed: failed.length,
+      }),
     );
-  else toast("success", `已为 ${row.label} ${verb}效率模式。`, 2500);
+  else toast("success", t(`actions.efficiency.${state}.done`, { name: row.label }), 2500);
 }
 
 /**
@@ -250,16 +277,17 @@ export async function addRuleFor(row: DisplayRow) {
     setFocusRule(rule.id);
     setPage("settings");
   } catch (e) {
-    toast("error", `无法添加规则：${String(e)}`);
+    toast("error", t("actions.addRuleFailed", { error: String(e) }));
   }
 }
 
+/** `what` names the copied text in the UI language, e.g. `t("common.path")`. */
 export async function copyText(text: string, what: string) {
   try {
     await navigator.clipboard.writeText(text);
-    toast("success", `已复制${what}。`, 1800);
+    toast("success", t("actions.copied", { what }), 1800);
   } catch {
-    toast("error", `无法访问剪贴板，${what}未复制。`);
+    toast("error", t("actions.copyFailed", { what }));
   }
 }
 
@@ -267,7 +295,7 @@ export async function revealInExplorer(path: string) {
   try {
     await api.reveal(path);
   } catch (e) {
-    toast("error", `无法打开文件位置：${String(e)}`);
+    toast("error", t("actions.revealFailed", { error: String(e) }));
   }
 }
 
@@ -276,16 +304,16 @@ export function toastActionError(e: unknown, what: string) {
   const err = e as ActionError;
   switch (err?.kind) {
     case "accessDenied":
-      toast("error", `${what}：需要管理员权限。请以管理员身份运行 Argus 后重试。`);
+      toast("error", t("actions.failed.accessDenied", { what }));
       break;
     case "notFound":
-      toast("error", `${what}：目标已不存在。`);
+      toast("error", t("actions.failed.notFound", { what }));
       break;
     case "os":
-      toast("error", `${what}：${err.message}`);
+      toast("error", t("actions.failed.generic", { what, error: err.message }));
       break;
     default:
-      toast("error", `${what}：${String(e)}`);
+      toast("error", t("actions.failed.generic", { what, error: String(e) }));
   }
 }
 
@@ -296,20 +324,20 @@ export async function endProcessByPid(pid: number, name: string, createTime?: nu
   );
   const identity = createTime ?? proc?.createTime;
   if (!identity) {
-    toast("error", "进程实例信息已失效，请刷新后重试。");
+    toast("error", t("actions.staleProcess"));
     return false;
   }
   const label = proc?.name ?? name;
   const ok = await confirm({
-    title: `结束 ${label}？`,
-    body: `PID ${pid}。未保存的数据会丢失。`,
-    confirmLabel: "结束进程",
+    title: t("actions.end.title", { name: label }),
+    body: t("actions.end.body", { pid }),
+    confirmLabel: t("common.endProcess"),
     danger: true,
   });
   if (!ok) return false;
   try {
     await api.kill(pid, identity);
-    toast("success", `已结束 ${label}。`, 2500);
+    toast("success", t("actions.end.done", { name: label }), 2500);
     return true;
   } catch (e) {
     toast("error", errorText(e, label));

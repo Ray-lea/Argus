@@ -1,0 +1,38 @@
+{
+  "title": "谁在占用文件",
+  "intro": "删除或移动文件时提示“文件正在使用”，可在此查找占用该文件的进程，也可将文件直接拖放到 Argus 窗口。",
+  "dropZone": "将文件或文件夹拖放到窗口，或",
+  "pickFile": "选择文件",
+  "pickFolder": "选择文件夹",
+  "recheck": "重新检查",
+  "checking": "正在检查…",
+  "error": {
+    "notFound": "找不到该文件或文件夹。",
+    "failed": "检查失败：{error}"
+  },
+  "none": "本次查询未发现可访问的占用进程。",
+  "found": "找到 {count} 个进程正在使用这些文件或文件夹。",
+  "kind": {
+    "service": "服务",
+    "explorer": "资源管理器",
+    "console": "控制台",
+    "critical": "系统关键"
+  },
+  "service": "服务 {name}",
+  "handleCount": "{count} 个句柄",
+  "showProcess": "在进程列表中查看",
+  "end": "结束",
+  "checked": "Restart Manager 检查了 {count} 个文件。{handles}",
+  "handles": {
+    "service": "特权服务已检查 {count} 个文件句柄，包括目录句柄。",
+    "local": "本地已检查 {count} 个文件句柄，包括目录句柄。",
+    "unfinished": "句柄查询未完成。"
+  },
+  "incomplete": "结果不完整：{denied} 个进程无法访问，{skipped} 个句柄无法读取，{timeouts} 次查询超时。{limit}",
+  "limitReached": "已达到查询限制。",
+  "serviceHint": "可在设置中启用特权服务，以检查更多系统进程。",
+  "unchecked": "另有 {count} 个文件 Restart Manager 未能检查，可能与权限或文件状态变化有关。",
+  "truncated": "文件夹中的文件过多，仅检查了前 {count} 个。",
+  "footerHint": "句柄查询可发现当前目录占用；受保护进程仍可能无法检查。",
+  "drop": "释放鼠标以查找占用这些文件的进程"
+}

@@ -1490,3 +1490,140 @@ html.still *::after {
   align-items: center;
   gap: 10px;
 }
+
+/* ---- Onboarding ------------------------------------------------------------ */
+
+.dialog.onboarding {
+  width: min(580px, calc(100vw - 32px));
+}
+
+/* Steps keep one height so the buttons stay put while paging. */
+.onboarding-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: min(440px, calc(100vh - 140px));
+  overflow-y: auto;
+  padding: 28px 32px 20px;
+}
+
+.onboarding-hero {
+  display: grid;
+  place-items: center;
+  padding: 8px 0 4px;
+}
+
+.onboarding-hero img {
+  filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent));
+}
+
+.dialog-title.onboarding-welcome-title {
+  margin: 0;
+  font-size: 24px;
+  text-align: center;
+}
+
+.onboarding-heading .dialog-title {
+  margin: 12px 0 6px;
+}
+
+.onboarding-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.onboarding-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer);
+}
+
+.onboarding-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.onboarding-hint {
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.onboarding-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+}
+
+.onboarding-note {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+.onboarding-note.warning {
+  display: flex;
+  gap: 6px;
+  color: var(--ink);
+  line-height: inherit;
+}
+
+.onboarding-note.warning svg {
+  flex: none;
+  align-self: center;
+  color: var(--io);
+}
+
+.onboarding-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.onboarding-list li::marker {
+  color: var(--accent);
+}
+
+.onboarding-footer {
+  align-items: center;
+}
+
+.onboarding-footer .btn.ghost {
+  min-width: 0;
+}
+
+.onboarding-dots {
+  display: flex;
+  gap: 6px;
+  margin-right: auto;
+}
+
+.onboarding-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--stroke-strong);
+  transition:
+    width var(--t-med) var(--ease-move),
+    background-color var(--t-med) linear;
+}
+
+.onboarding-dots span.current {
+  width: 18px;
+  background: var(--accent);
+}

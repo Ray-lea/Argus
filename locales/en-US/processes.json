@@ -1,0 +1,52 @@
+{
+  "label": "Processes",
+  "total": { "one": "{count} process", "other": "{count} processes" },
+  "column": {
+    "name": { "label": "Name", "title": "Sort by name" },
+    "pid": { "label": "PID", "title": "Process ID" },
+    "cpu": { "label": "CPU", "title": "Share of total processor capacity" },
+    "mem": { "label": "Memory", "title": "Private working set: physical memory used by this process alone" },
+    "io": { "label": "I/O", "title": "Bytes read, written and other I/O per second" },
+    "gpu": { "label": "GPU", "title": "Share of time the process uses its busiest GPU engine" },
+    "net": { "label": "Network", "title": "Bytes sent and received per second" },
+    "threads": { "label": "Threads", "title": "Number of threads" },
+    "handles": { "label": "Handles", "title": "Number of handles" }
+  },
+  "noMatch": "No processes match “{query}”",
+  "efficiencyCount": {
+    "one": "{count} process in Efficiency mode",
+    "other": "{count} processes in Efficiency mode"
+  },
+  "suspended": "Suspended",
+  "netRates": "Send {sent}, receive {received}",
+  "section": {
+    "apps": "Apps",
+    "background": "Background processes"
+  },
+  "servicesSummary": "{names} and others ({count} services)",
+  "pidExited": "PID {pid} has already exited.",
+  "priority": {
+    "realtime": "Realtime",
+    "high": "High",
+    "aboveNormal": "Above normal",
+    "normal": "Normal",
+    "belowNormal": "Below normal",
+    "idle": "Low"
+  },
+  "menu": {
+    "endAll": { "one": "End {count} process", "other": "End all {count} processes" },
+    "setPriority": "Set priority",
+    "addRule": "Add rule",
+    "copyPid": "Copy PID",
+    "copyPidWhat": "PID",
+    "details": "Details"
+  },
+  "vitals": {
+    "label": "System overview",
+    "cores": "Usage of each logical processor",
+    "open": "View {device} in Performance",
+    "diskActive": "Active {value}%",
+    "netTitle": "R: received, S: sent",
+    "netRates": "R: {received} S: {sent}"
+  }
+}

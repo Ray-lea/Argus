@@ -35,6 +35,7 @@ const MAX_DISKS: u32 = 32;
 #[serde(rename_all = "camelCase")]
 pub struct DiskInfo {
     pub index: u32,
+    /// Empty when the drive does not report one.
     pub model: String,
     pub size: u64,
     /// `nvme` | `sata` | `usb` | `sd` | `other`
@@ -269,7 +270,7 @@ fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> DiskInfo {
     volumes.sort();
     let mut info = DiskInfo {
         index,
-        model: format!("磁盘 {index}"),
+        model: String::new(),
         size: 0,
         bus: "other",
         ssd: None,

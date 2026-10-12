@@ -30,6 +30,7 @@ use windows::core::{PCWSTR, PWSTR};
 use crate::actions::ActionError;
 use crate::nt::{self, ProcessIter, UnicodeString};
 use crate::paths::PathResolver;
+use crate::tr;
 use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, from_wide, ticks_to_unix_ms, wide};
 
 pub const MAX_LOCKERS: usize = 128;
@@ -106,9 +107,7 @@ pub fn validate_paths(paths: &[String]) -> Result<(), ActionError> {
         || paths.len() > 32
         || paths.iter().map(String::len).sum::<usize>() > MAX_PATH_BYTES
     {
-        return Err(ActionError::Os(
-            "一次最多查询 32 个路径，路径总长度不能超过 8 KiB".into(),
-        ));
+        return Err(ActionError::Os(tr!("core.handles.tooMany")));
     }
     for path in paths {
         let path = path.strip_prefix(r"\\?\").unwrap_or(path);
@@ -121,9 +120,7 @@ pub fn validate_paths(paths: &[String]) -> Result<(), ActionError> {
             || path[3..].contains([':', '"', '<', '>', '|', '?', '*'])
             || path[3..].split(['\\', '/']).any(|p| p == "." || p == "..")
         {
-            return Err(ActionError::Os(
-                "句柄扫描仅支持本地磁盘的绝对路径，不支持网络路径、设备路径或数据流".into(),
-            ));
+            return Err(ActionError::Os(tr!("core.handles.localPathsOnly")));
         }
     }
     Ok(())
@@ -133,10 +130,11 @@ fn nt_error(status: i32) -> ActionError {
     match status as u32 {
         0xc000_0022 => ActionError::AccessDenied,
         0xc000_000f | 0xc000_0034 | 0xc000_003a => ActionError::NotFound,
-        0xc000_050b => {
-            ActionError::Os("句柄扫描不跟随符号链接或目录联接，请选择链接的实际目标".into())
-        }
-        _ => ActionError::Os(format!("句柄查询失败（NTSTATUS 0x{:08X}）", status as u32)),
+        0xc000_050b => ActionError::Os(tr!("core.handles.reparsePoint")),
+        _ => ActionError::Os(tr!(
+            "core.handles.ntStatus",
+            status = format_args!("0x{:08X}", status as u32)
+        )),
     }
 }
 
@@ -157,9 +155,7 @@ fn open_target(path: &str) -> Result<OwnedHandle, ActionError> {
         .strip_prefix(r"\Device\HarddiskVolume")
         .is_some_and(|n| !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()))
     {
-        return Err(ActionError::Os(
-            "句柄扫描仅支持本地磁盘，不支持映射网络驱动器或 SUBST 驱动器".into(),
-        ));
+        return Err(ActionError::Os(tr!("core.handles.localDisksOnly")));
     }
     let mut name = wide(&format!("{device}{}", &path[2..]));
     let mut unicode = UNICODE_STRING {
@@ -303,7 +299,7 @@ fn targets(paths: &[String]) -> Result<Vec<Target>, ActionError> {
         .map(|path| {
             let handle = open_target(path)?;
             let name = object_text(handle.0, 1)
-                .ok_or_else(|| ActionError::Os("无法解析目标的文件名称".into()))?;
+                .ok_or_else(|| ActionError::Os(tr!("core.handles.unresolvedName")))?;
             let mut info = BY_HANDLE_FILE_INFORMATION::default();
             unsafe { GetFileInformationByHandle(handle.0, &mut info) }?;
             let identity = file_identity(handle.0);
@@ -356,12 +352,12 @@ pub fn scan(
     let returned = nt::query_system_information(nt::SYSTEM_EXTENDED_HANDLE_INFORMATION, &mut table)
         .map_err(|s| nt_error(s.0))?;
     let entries = nt::handle_entries(&table, returned)
-        .ok_or_else(|| ActionError::Os("系统句柄表的格式无法识别".into()))?;
+        .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownTable")))?;
     let file_type = entries
         .iter()
         .find(|e| e.pid == me as usize && e.handle == anchor.0.0 as usize)
         .map(|e| e.object_type)
-        .ok_or_else(|| ActionError::Os("无法识别系统的文件句柄类型".into()))?;
+        .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownFileType")))?;
     let mut entries: Vec<_> = entries
         .iter()
         .filter(|e| {

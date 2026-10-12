@@ -11,6 +11,7 @@ use windows::core::{PCWSTR, PWSTR};
 
 use super::state::{Journal, Observation, Result, Store, Value};
 use crate::{security, util};
+use argus_core::tr;
 
 pub const IFEO: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
 pub const KEY: &str =
@@ -75,7 +76,7 @@ pub fn read_value(key: &Key, name: &str) -> Result<Option<Value>> {
     }
     err(code)?;
     if size > 16 * 1024 {
-        return Err("注册表值过长，已停止操作".into());
+        return Err(tr!("taskManager.valueTooLong"));
     }
     let mut bytes = vec![0; size as usize];
     err(unsafe {
@@ -173,18 +174,18 @@ impl Machine {
         match fs::symlink_metadata(&path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e.to_string()),
-            Ok(meta) if meta.len() > 64 * 1024 => return Err("恢复记录过长".into()),
+            Ok(meta) if meta.len() > 64 * 1024 => return Err(tr!("taskManager.recordTooLong")),
             _ => {}
         }
         let _file = security::protect_directory(&path).map_err(util::message)?;
         let journal: Journal = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
-            .map_err(|_| "恢复记录损坏，请使用应急恢复说明".to_string())?;
+            .map_err(|_| tr!("taskManager.recordCorrupt"))?;
         if journal.version != 1
             || journal.before != Observation::default()
             || journal.replacement != super::replacement(&self.dir)
             || !super::valid_image(&journal.image)
         {
-            return Err("恢复记录与此安装不符，已停止操作".into());
+            return Err(tr!("taskManager.recordMismatch"));
         }
         security::validate_sid(&journal.owner).map_err(util::message)?;
         Ok(Some(journal))

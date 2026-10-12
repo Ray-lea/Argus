@@ -13,6 +13,7 @@ use windows::Win32::System::RestartManager::{
 use windows::core::{PCWSTR, PWSTR};
 
 use crate::actions::ActionError;
+use crate::tr;
 use crate::util::{filetime_ticks, from_wide, ticks_to_unix_ms, wide};
 
 /// Folders are checked file by file; cap the walk so a drive root stays responsive.
@@ -60,7 +61,7 @@ impl LockReport {
                 unchecked: 0,
                 truncated: false,
                 handles: None,
-                restart_error: Some("Restart Manager 无法检查目标，以下为句柄查询结果".into()),
+                restart_error: Some(tr!("core.fileLock.restartManagerFailed")),
             },
             Err(error) => return Err(error),
         };

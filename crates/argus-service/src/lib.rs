@@ -12,6 +12,8 @@ mod server;
 pub mod taskmgr;
 mod util;
 
+use argus_core::tr;
+
 pub use background::{NetworkClient, RuleRunner};
 pub use install::{ServiceStatus, manage, status};
 pub use network::NetworkFrame;
@@ -88,24 +90,27 @@ pub fn find_handle_lockers(paths: Vec<String>) -> argus_core::handles::HandleRep
             report.summary.via_service = true;
             return report;
         }
-        Ok(Some(Reply::Handles(report))) => Some(format!(
-            "特权服务未完成此次查询，以下为本地结果：{}",
-            report.summary.error.as_deref().unwrap_or("查询暂不可用")
-        )),
+        Ok(Some(Reply::Handles(report))) => {
+            let error = report
+                .summary
+                .error
+                .unwrap_or_else(|| tr!("service.handles.unavailable"));
+            Some(tr!("service.handles.serviceIncomplete", error = error))
+        }
         Ok(None) => None,
         Ok(Some(Reply::Error(error))) => Some(match error {
             argus_core::actions::ActionError::Os(message) => {
-                format!("特权服务未完成此次查询，以下为本地结果：{message}")
+                tr!("service.handles.serviceIncomplete", error = message)
             }
-            _ => "特权服务未完成此次查询，以下为本地查询结果".into(),
+            _ => tr!("service.handles.serviceIncompleteLocal"),
         }),
-        Ok(_) => Some("特权服务未提供句柄查询，请更新服务；以下为本地查询结果".to_string()),
-        Err(error) => Some(format!("特权服务不可用，以下为本地查询结果：{error}")),
+        Ok(_) => Some(tr!("service.handles.serviceOutdated")),
+        Err(error) => Some(tr!("service.handles.serviceUnavailable", error = error)),
     };
     let mut report = handles::scan_local(paths);
     if let Some(warning) = warning {
         report.summary.error = Some(match report.summary.error.take() {
-            Some(error) => format!("{warning}；{error}"),
+            Some(error) => tr!("app.join", first = warning, second = error),
             None => warning,
         });
     }

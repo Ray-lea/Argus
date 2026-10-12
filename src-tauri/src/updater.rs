@@ -12,6 +12,7 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use argus_core::tr;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_updater::{Error, Update, UpdaterExt};
@@ -95,9 +96,9 @@ pub fn init(app: &AppHandle) {
         .map(|exe| exe.with_file_name("uninstall.exe").exists())
         .unwrap_or(false);
     let disabled = if cfg!(debug_assertions) {
-        Some("开发版不检查更新。")
+        Some(tr!("updater.devBuild"))
     } else if pubkey(app).is_empty() {
-        Some("此版本没有配置更新签名公钥，无法验证更新。")
+        Some(tr!("updater.noPublicKey"))
     } else {
         None
     };
@@ -107,7 +108,7 @@ pub fn init(app: &AppHandle) {
         } else {
             "idle"
         },
-        error: disabled.map(Into::into),
+        error: disabled.clone(),
         portable,
         ..Default::default()
     };
@@ -210,12 +211,12 @@ fn via(url: &str, source: Option<&str>) -> Result<Url, String> {
 /// Checks that a proxy prefix is an https URL the GitHub URL can follow.
 pub fn normalize_proxy(proxy: &str) -> Result<String, String> {
     let proxy = proxy.trim();
-    let url = Url::parse(proxy).map_err(|_| "代理地址无效".to_string())?;
+    let url = Url::parse(proxy).map_err(|_| tr!("updater.proxyInvalid"))?;
     if url.scheme() != "https" || url.host_str().is_none() {
-        return Err("代理地址必须以 https:// 开头".into());
+        return Err(tr!("updater.proxyNotHttps"));
     }
     if url.query().is_some() || url.fragment().is_some() {
-        return Err("代理地址不能包含 ? 或 #".into());
+        return Err(tr!("updater.proxyQuery"));
     }
     Ok(if proxy.ends_with('/') {
         proxy.to_string()
@@ -235,14 +236,23 @@ fn manifest_url(channel: UpdateChannel) -> String {
 fn describe(e: &Error) -> String {
     match e {
         Error::Minisign(_) | Error::SignedVersionMismatch { .. } | Error::MissingSignedVersion => {
-            "更新包签名校验失败，已丢弃".into()
+            tr!("updater.signatureFailed")
         }
-        Error::ReleaseNotFound => "未找到更新信息".into(),
-        Error::Reqwest(e) if e.is_timeout() => "连接超时".into(),
-        Error::Reqwest(e) if e.is_connect() => "无法连接".into(),
+        Error::ReleaseNotFound => tr!("updater.notFound"),
+        Error::Reqwest(e) if e.is_timeout() => tr!("updater.timeout"),
+        Error::Reqwest(e) if e.is_connect() => tr!("updater.connectFailed"),
         Error::Network(message) => message.clone(),
         other => other.to_string(),
     }
+}
+
+/// The failures of several sources as one message.
+fn join(failures: &[String]) -> String {
+    failures
+        .iter()
+        .cloned()
+        .reduce(|first, second| tr!("app.join", first = first, second = second))
+        .unwrap_or_default()
 }
 
 fn signature_error(e: &Error) -> bool {
@@ -306,7 +316,11 @@ pub async fn check(app: &AppHandle) {
                 found = Some((index, update));
                 break;
             }
-            Err(e) => failures.push(format!("{}：{e}", label(source.as_deref()))),
+            Err(e) => failures.push(tr!(
+                "updater.sourceFailed",
+                source = label(source.as_deref()),
+                error = e
+            )),
         }
     }
 
@@ -316,7 +330,7 @@ pub async fn check(app: &AppHandle) {
         update_status(app, |inner| {
             inner.next_check = now + RETRY_AFTER_MS;
             inner.status.state = "error";
-            inner.status.error = Some(failures.join("；"));
+            inner.status.error = Some(join(&failures));
             inner.status.checked_at = Some(now);
         });
         return;
@@ -415,7 +429,11 @@ pub async fn check(app: &AppHandle) {
                 return;
             }
             Err(e) => {
-                failures.push(format!("{}：{}", label(source.as_deref()), describe(&e)));
+                failures.push(tr!(
+                    "updater.sourceFailed",
+                    source = label(source.as_deref()),
+                    error = describe(&e)
+                ));
                 // A bad artifact is bad from every source.
                 if signature_error(&e) {
                     break;
@@ -427,7 +445,7 @@ pub async fn check(app: &AppHandle) {
     update_status(app, |inner| {
         inner.next_check = now + RETRY_AFTER_MS;
         inner.status.state = "error";
-        inner.status.error = Some(format!("下载失败：{}", failures.join("；")));
+        inner.status.error = Some(tr!("updater.downloadFailed", error = join(&failures)));
     });
 }
 
@@ -438,9 +456,12 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
     let (update, bytes) = {
         let mut inner = updates.0.lock().unwrap();
         if inner.status.state != "ready" {
-            return Err("没有可安装的更新".into());
+            return Err(tr!("updater.nothingReady"));
         }
-        let ready = inner.ready.take().ok_or("没有可安装的更新")?;
+        let ready = inner
+            .ready
+            .take()
+            .ok_or_else(|| tr!("updater.nothingReady"))?;
         inner.status.state = "installing";
         inner.status.error = None;
         let status = inner.status.clone();
@@ -474,7 +495,7 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
     }
     update_status(app, |inner| {
         inner.status.state = "ready";
-        inner.status.error = Some(format!("无法启动安装程序：{error}"));
+        inner.status.error = Some(tr!("updater.installerFailed", error = error));
         inner.ready = Some((update, bytes));
     });
     Err(error)
@@ -494,7 +515,7 @@ pub fn open_release_page(version: &str) -> Result<(), String> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'))
     {
-        return Err("版本号无效".into());
+        return Err(tr!("updater.invalidVersion"));
     }
     std::process::Command::new("explorer.exe")
         .arg(format!("{REPO}/releases/tag/v{version}"))

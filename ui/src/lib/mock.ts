@@ -1,6 +1,7 @@
 // Synthetic data for running the UI in a plain browser (`pnpm dev`).
 // Never bundled into the Tauri build's hot path: ipc.ts only imports it outside Tauri.
 
+import { type Language, type Locale, localeFor } from "./i18n";
 import type {
   AppInfo,
   Connection,
@@ -416,7 +417,16 @@ function mockHardware(cpu: number, io: number): Hardware {
   };
 }
 
+// `?lang=en-US` previews a language, `?onboarding` the onboarding.
+const query = new URLSearchParams(location.search);
+const resolve = (language: Language): Locale =>
+  language === "system" ? localeFor(navigator.language) : language;
+const language = (query.get("lang") ?? "system") as Language;
+
 const mockSettings: SettingsView = {
+  language,
+  onboarding: query.has("onboarding") ? 0 : 1,
+  locale: resolve(language),
   closeToTray: true,
   hotkey: "Ctrl+Alt+Escape",
   rules: [],
@@ -433,6 +443,7 @@ export const settings = {
   get: async (): Promise<SettingsView> => ({ ...mockSettings }),
   update: async (patch: Partial<SettingsView>): Promise<SettingsView> => {
     Object.assign(mockSettings, patch);
+    mockSettings.locale = resolve(mockSettings.language);
     return { ...mockSettings };
   },
 };
@@ -461,6 +472,7 @@ export const appInfo = async (): Promise<AppInfo> => ({
   elevated: false,
   accent: null,
   updated: false,
+  locale: mockSettings.locale,
 });
 
 // Starts idle; "检查更新" plays a check and a download, then offers the update.

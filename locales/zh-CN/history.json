@@ -1,0 +1,43 @@
+{
+  "range": {
+    "label": "时间范围",
+    "hours": "{count} 小时",
+    "days": "{count} 天"
+  },
+  "latest": {
+    "label": "回到最新",
+    "title": "取消选中的时刻，显示最新数据"
+  },
+  "metric": {
+    "peak": "最高 {value}%",
+    "total": "共 {value} GB"
+  },
+  "exited": "{name}（PID {pid}）已经退出。",
+  "copied": {
+    "name": "名称"
+  },
+  "column": {
+    "cpuTitle": "该 5 秒内的平均值",
+    "memTitle": "专用工作集"
+  },
+  "systemHistory": "系统历史",
+  "noData": "无记录",
+  "empty": {
+    "off": "历史记录已关闭",
+    "none": "此时间段内无记录",
+    "offHint": "在设置中开启后，Argus 每 5 秒记录一次。",
+    "hint": "Argus 运行时每 5 秒记录一次，保留 7 天。"
+  },
+  "time": "时间",
+  "busiest": "最忙的进程",
+  "busiestAt": "{time} 最忙的进程",
+  "hint": {
+    "pick": "单击图表上的任意时刻，查看当时的进程",
+    "move": "在图表上按 ← → 前后移动，按 Esc 返回最新"
+  },
+  "tableLabel": "历史进程",
+  "noRecordAt": "该时刻无记录",
+  "earliest": "最早的记录",
+  "note": "每 5 秒记录 CPU、内存、I/O、GPU 和网络占用最高的进程，保留 7 天。",
+  "off": "历史记录已关闭，不再记录新的数据。<link>打开设置</link>"
+}

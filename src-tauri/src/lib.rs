@@ -161,6 +161,7 @@ pub fn run() {
             );
             let config = app.path().app_config_dir()?.join("settings.json");
             let settings = SettingsStore::load(config);
+            argus_core::i18n::set_locale(settings.get().language.resolve());
             app.state::<AppState>()
                 .rules
                 .set_rules(settings.get().rules);
@@ -197,12 +198,12 @@ pub fn run() {
                 } else {
                     0.0
                 };
-                let tip = format!(
-                    "{}\nCPU {:.0}%  内存 {:.0}%",
-                    shell::APP_TITLE,
-                    s.system.cpu,
-                    mem
+                let usage = argus_core::tr!(
+                    "tray.tooltip",
+                    cpu = format_args!("{:.0}", s.system.cpu),
+                    memory = format_args!("{mem:.0}"),
                 );
+                let tip = format!("{}\n{usage}", shell::app_title());
                 let mut last = last_tip.lock().unwrap();
                 if *last != tip {
                     shell::set_tray_tooltip(&handle, &tip);
@@ -224,7 +225,7 @@ pub fn run() {
                 app.state::<AppState>()
                     .sampler
                     .send(Control::SetHiddenProbe(Box::new(probe)));
-                window.set_title(shell::APP_TITLE)?;
+                window.set_title(&shell::app_title())?;
                 shell::extend_backdrop(&window);
                 shell::guard_resize_seam(&window);
                 if !start_hidden {
@@ -274,6 +275,8 @@ pub fn run() {
             commands::set_efficiency_mode,
             commands::reveal_in_explorer,
             commands::get_settings,
+            commands::set_language,
+            commands::complete_onboarding,
             commands::privileged_service_status,
             commands::manage_privileged_service,
             commands::task_manager_status,

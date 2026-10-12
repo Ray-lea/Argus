@@ -11,4 +11,5 @@ homepage.workspace = true
 [dependencies]
 png = "0.18.1"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
+serde_json = "1.0.151"
 windows = { workspace = true }

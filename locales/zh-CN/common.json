@@ -1,0 +1,42 @@
+{
+  "cancel": "取消",
+  "close": "关闭",
+  "enable": "启用",
+  "disable": "禁用",
+  "enabled": "已启用",
+  "disabled": "已禁用",
+  "on": "开启",
+  "off": "关闭",
+  "start": "启动",
+  "stop": "停止",
+  "restart": "重新启动",
+  "expand": "展开",
+  "collapse": "折叠",
+  "none": "无",
+  "name": "名称",
+  "status": "状态",
+  "path": "路径",
+  "command": "命令",
+  "copyName": "复制名称",
+  "copyPath": "复制路径",
+  "openFileLocation": "打开文件位置",
+  "goToProcess": "转到进程",
+  "endProcess": "结束进程",
+  "endProcessTree": "结束进程树",
+  "efficiencyMode": "效率模式",
+  "privilegedService": "特权服务",
+  "filter": "筛选",
+  "listSeparator": "、",
+  "resource": {
+    "cpu": "CPU",
+    "memory": "内存",
+    "disk": "磁盘",
+    "network": "网络",
+    "gpu": "GPU",
+    "temperature": "温度"
+  },
+  "languageSystem": "跟随系统",
+  "keys": {
+    "space": "空格"
+  }
+}

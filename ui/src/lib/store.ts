@@ -1,6 +1,7 @@
 // Application state: the live snapshot, rolling history and view preferences.
 
 import { batch, createMemo, createRoot, createSignal } from "solid-js";
+import { t } from "./i18n";
 import { api } from "./ipc";
 import { persisted } from "./prefs";
 import {
@@ -359,7 +360,7 @@ export function revealProcess(pid: number) {
   const s = snapshot();
   const proc = s?.processes.find((p) => p.pid === pid);
   if (!s || !proc) {
-    toast("error", `PID ${pid} 已经退出。`);
+    toast("error", t("processes.pidExited", { pid }));
     return;
   }
   batch(() => {
@@ -380,6 +381,6 @@ export function revealProcess(pid: number) {
     }
     setSelectedKey(procKey(proc));
     setDetailsOpen(true);
-    setRevealTick((t) => t + 1);
+    setRevealTick((n) => n + 1);
   });
 }

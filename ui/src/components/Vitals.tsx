@@ -1,5 +1,6 @@
 import { createEffect, Index, type JSX, Show, untrack } from "solid-js";
 import { fmtGB, fmtNet, netParts, rateParts } from "../lib/format";
+import { t } from "../lib/i18n";
 import { balancedFrameMs, chartMode } from "../lib/motion";
 import { intervalMs, paused, series, setPage, setPerfDevice, snapshot } from "../lib/store";
 import type { DiskStats, GpuStats } from "../lib/types";
@@ -58,7 +59,7 @@ function CoreBars(props: { values: () => readonly number[] }) {
   });
 
   return (
-    <div class="comb" title="每个逻辑处理器的使用率">
+    <div class="comb" title={t("processes.vitals.cores")}>
       <Index each={props.values()}>
         {(_, i) => (
           <span>
@@ -80,7 +81,7 @@ function Vital(props: { device: string; title: string; children: JSX.Element }) 
     <button
       type="button"
       class="vital"
-      title={`在“性能”中查看${props.title}`}
+      title={t("processes.vitals.open", { device: props.title })}
       onClick={() => {
         setPerfDevice(props.device);
         setPage("performance");
@@ -109,7 +110,7 @@ export default function Vitals() {
   const netMax = autoMax("net.total", 128 * 1024);
 
   return (
-    <section class="vitals" classList={{ "no-gpu": !gpu() }} aria-label="系统概况">
+    <section class="vitals" classList={{ "no-gpu": !gpu() }} aria-label={t("processes.vitals.label")}>
       <Vital device="cpu" title="CPU">
         <div class="vital-head">
           <span class="vital-label">CPU</span>
@@ -127,9 +128,9 @@ export default function Vitals() {
         <Trace class="vital-trace" data={() => series("cpu")} max={() => 100} colorVar="--cpu" />
       </Vital>
 
-      <Vital device="memory" title="内存">
+      <Vital device="memory" title={t("common.resource.memory")}>
         <div class="vital-head">
-          <span class="vital-label">内存</span>
+          <span class="vital-label">{t("common.resource.memory")}</span>
           <span class="vital-sub">{memPct()}%</span>
         </div>
         <div class="vital-figure">
@@ -146,11 +147,15 @@ export default function Vitals() {
         />
       </Vital>
 
-      <Vital device={`disk:${busiestDisk()?.info.index ?? 0}`} title="磁盘">
+      <Vital device={`disk:${busiestDisk()?.info.index ?? 0}`} title={t("common.resource.disk")}>
         <div class="vital-head">
-          <span class="vital-label">磁盘</span>
+          <span class="vital-label">{t("common.resource.disk")}</span>
           <Show when={busiestDisk()}>
-            {(d) => <span class="vital-sub">活动 {Math.round(d().active)}%</span>}
+            {(d) => (
+              <span class="vital-sub">
+                {t("processes.vitals.diskActive", { value: Math.round(d().active) })}
+              </span>
+            )}
           </Show>
         </div>
         <div class="vital-figure">
@@ -162,11 +167,11 @@ export default function Vitals() {
         <Trace class="vital-trace" data={() => series("disk.total")} max={diskMax} colorVar="--io" />
       </Vital>
 
-      <Vital device={`nic:${hw()?.nics[0]?.info.id ?? ""}`} title="网络">
+      <Vital device={`nic:${hw()?.nics[0]?.info.id ?? ""}`} title={t("common.resource.network")}>
         <div class="vital-head">
-          <span class="vital-label">网络</span>
-          <span class="vital-sub" title="接收 / 发送">
-            收 {fmtNet(netRx())} 发 {fmtNet(netTx())}
+          <span class="vital-label">{t("common.resource.network")}</span>
+          <span class="vital-sub" title={t("processes.vitals.netTitle")}>
+            {t("processes.vitals.netRates", { received: fmtNet(netRx()), sent: fmtNet(netTx()) })}
           </span>
         </div>
         <div class="vital-figure">

@@ -3,7 +3,7 @@
 ```
 docs/
 ├── guide/            使用指南：界面与操作、常驻与快捷键、设置、硬件数据
-├── development/      开发指南：环境与命令、构建与缓存、性能基线与测量、提交与发布
+├── development/      开发指南：环境与命令、构建与缓存、性能基线与测量、提交与发布、多语言
 ├── architecture/     架构：分层与数据流、采集层、Tauri 宿主、前端
 ├── design/           设计：设计原则、曲线动画、窗口外观
 ├── roadmap.md        路线图
@@ -12,7 +12,7 @@ docs/
 
 ## 使用指南
 
-- [界面与操作](guide/README.md)：页面、概况带、文件占用、键盘操作、权限
+- [界面与操作](guide/README.md)：首次启动、页面、概况带、文件占用、键盘操作、权限
 - [常驻、托盘与快捷键](guide/resident-mode.md)
 - [设置](guide/settings.md)
 - [硬件数据的来源与限制](guide/hardware-data.md)
@@ -23,6 +23,7 @@ docs/
 - [构建与缓存](development/build.md)：缓存优化、链接器与工具链
 - [性能基线与测量](development/performance.md)
 - [提交与发布](development/release.md)：持续集成、提交信息规范、版本号、发布步骤、更新签名与通道、发布前验收
+- [多语言](development/i18n.md)：文案目录、界面与 Rust 中的用法、检查、增加语言、术语表
 
 ## 架构
 

@@ -1,0 +1,61 @@
+{
+  "state": {
+    "running": "Running",
+    "stopped": "Stopped",
+    "startPending": "Starting",
+    "stopPending": "Stopping",
+    "paused": "Paused",
+    "pausePending": "Pausing",
+    "continuePending": "Resuming"
+  },
+  "startType": {
+    "auto": "Automatic",
+    "autoDelayed": "Automatic (Delayed Start)",
+    "manual": "Manual",
+    "disabled": "Disabled",
+    "boot": "Boot",
+    "system": "System"
+  },
+  "filter": {
+    "all": "All",
+    "running": "Running",
+    "stopped": "Stopped"
+  },
+  "search": "Search name, description or PID",
+  "control": {
+    "start": "Start service",
+    "stop": "Stop service",
+    "restart": "Restart service",
+    "openConsole": "Open Services",
+    "openConsoleTitle": "Open the Windows Services console"
+  },
+  "done": {
+    "start": "Started “{name}”.",
+    "stop": "Stopped “{name}”.",
+    "restart": "Restarted “{name}”."
+  },
+  "failed": {
+    "start": "Couldn't start “{name}”",
+    "stop": "Couldn't stop “{name}”",
+    "restart": "Couldn't restart “{name}”"
+  },
+  "startTypeChanged": "Changed the startup type of “{name}” to {type}.",
+  "startTypeFailed": "Couldn't change the startup type of “{name}”",
+  "menu": {
+    "startType": "Startup type: {type}",
+    "copyName": "Copy service name"
+  },
+  "copied": {
+    "name": "service name"
+  },
+  "column": {
+    "display": "Service",
+    "startType": "Startup type",
+    "description": "Description"
+  },
+  "loading": "Reading services…",
+  "noMatch": "No matching services",
+  "clearFilter": "Clear filters",
+  "summary": "{running} of {total} running",
+  "manageHint": "Most services can only be managed with the privileged service enabled or with Argus running as administrator."
+}

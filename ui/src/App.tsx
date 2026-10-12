@@ -3,6 +3,7 @@ import ConnectionsPage from "./components/ConnectionsPage";
 import { DetailsHost } from "./components/DetailsPanel";
 import FileLockDialog, { DropOverlay, openFileLock } from "./components/FileLockDialog";
 import HistoryPage from "./components/HistoryPage";
+import Onboarding, { maybeOpenOnboarding } from "./components/Onboarding";
 import { ConfirmDialog, ContextMenu, Toasts } from "./components/Overlays";
 import Performance from "./components/Performance";
 import ProcessTable from "./components/ProcessTable";
@@ -12,6 +13,7 @@ import StartupPage from "./components/StartupPage";
 import StatusBar from "./components/StatusBar";
 import Toolbar, { focusSearch, PAGES } from "./components/Toolbar";
 import Vitals from "./components/Vitals";
+import { t } from "./lib/i18n";
 import { api, inTauri, subscribe } from "./lib/ipc";
 import { EASE_OUT, play } from "./lib/motion";
 import {
@@ -22,7 +24,6 @@ import {
   type Page,
   page,
   refreshServices,
-  setAppInfo,
   setPage,
   snapshot,
 } from "./lib/store";
@@ -115,12 +116,13 @@ export default function App() {
     void subscribe(ingest).then(() => {
       if (intervalMs() !== 1000) void api.setInterval(intervalMs());
     });
-    void api.appInfo().then((info) => {
-      setAppInfo(info);
+    const info = appInfo();
+    if (info) {
       applyAccent(info.accent);
       if (info.updated) void afterUpdate(info.version);
-    });
+    }
     void watchUpdates().then((stop) => onCleanup(stop));
+    void maybeOpenOnboarding();
   });
 
   return (
@@ -137,7 +139,7 @@ export default function App() {
                   <div class="empty">
                     <span class="loading">
                       <span class="spinner" />
-                      正在读取进程…
+                      {t("shell.loadingProcesses")}
                     </span>
                   </div>
                 }
@@ -170,6 +172,7 @@ export default function App() {
       <StatusBar />
       <ContextMenu />
       <FileLockDialog />
+      <Onboarding />
       <ConfirmDialog />
       <Toasts />
       <DropOverlay visible={dragging()} />

@@ -1,0 +1,8 @@
+{
+  "uptime": {
+    "days": "{days}d {hours}h",
+    "hours": "{hours}h {minutes}m",
+    "minutes": "{minutes}m {seconds}s"
+  },
+  "sinceBoot": "At system startup"
+}

@@ -2,6 +2,7 @@ import { createVirtualizer } from "@tanstack/solid-virtual";
 import { For, onMount, Show } from "solid-js";
 import { endRow } from "../lib/actions";
 import { fmtCount, fmtCpu, fmtMem, fmtNet, fmtRate } from "../lib/format";
+import { t } from "../lib/i18n";
 import {
   type DisplayRow,
   isSection,
@@ -38,9 +39,8 @@ const MB = 1024 * 1024;
 let savedScroll = 0;
 
 interface Column {
+  /** Also names the header's label and tooltip (`processes.column.<key>`). */
   key: SortKey;
-  label: string;
-  title: string;
   /** Sorting this column starts descending (largest first). */
   descFirst: boolean;
   /** Dropped when the table gets narrow (`opt` first, then `opt2`; see styles.css). */
@@ -48,23 +48,18 @@ interface Column {
 }
 
 const COLUMNS: Column[] = [
-  { key: "name", label: "名称", title: "按名称排序", descFirst: false },
-  { key: "pid", label: "PID", title: "进程 ID", descFirst: false, optional: "opt2" },
-  { key: "cpu", label: "CPU", title: "占全部处理器能力的百分比", descFirst: true },
-  { key: "mem", label: "内存", title: "专用工作集：进程独占的物理内存", descFirst: true },
-  { key: "io", label: "I/O", title: "每秒读、写及其他 I/O 字节数", descFirst: true, optional: "opt2" },
-  { key: "gpu", label: "GPU", title: "进程在最忙的 GPU 引擎上占用的时间比例", descFirst: true },
-  { key: "threads", label: "线程", title: "线程数", descFirst: true, optional: "opt" },
-  { key: "handles", label: "句柄", title: "句柄数", descFirst: true, optional: "opt" },
+  { key: "name", descFirst: false },
+  { key: "pid", descFirst: false, optional: "opt2" },
+  { key: "cpu", descFirst: true },
+  { key: "mem", descFirst: true },
+  { key: "io", descFirst: true, optional: "opt2" },
+  { key: "gpu", descFirst: true },
+  { key: "threads", descFirst: true, optional: "opt" },
+  { key: "handles", descFirst: true, optional: "opt" },
 ];
 
 /** Measured only while Argus runs with administrator rights (see net_process.rs). */
-const NET_COLUMN: Column = {
-  key: "net",
-  label: "网络",
-  title: "每秒发送和接收的字节数",
-  descFirst: true,
-};
+const NET_COLUMN: Column = { key: "net", descFirst: true };
 const COLUMNS_WITH_NET = [...COLUMNS.slice(0, 6), NET_COLUMN, ...COLUMNS.slice(6)];
 
 // Heat ramps: 0 below a threshold, so only rows with real load are tinted.
@@ -100,7 +95,7 @@ export default function ProcessTable() {
         return gpus.length ? `${Math.round(Math.max(...gpus.map((g) => g.util)))}%` : "";
       }
       case "name":
-        return `${fmtCount(s.processCount)} 个进程`;
+        return t("processes.total", { count: s.processCount });
       case "cpu":
         return `${Math.round(s.cpu)}%`;
       case "mem":
@@ -204,7 +199,7 @@ export default function ProcessTable() {
       role="grid"
       tabIndex={0}
       aria-rowcount={rows().length}
-      aria-label="进程"
+      aria-label={t("processes.label")}
       aria-activedescendant={selectedKey() ? rowId(selectedKey() as string) : undefined}
       onKeyDown={onKeyDown}
     >
@@ -221,13 +216,13 @@ export default function ProcessTable() {
                 opt: col.optional === "opt",
                 opt2: col.optional === "opt2",
               }}
-              title={col.title}
+              title={t(`processes.column.${col.key}.title`)}
               aria-sort={sort().key === col.key ? (sort().desc ? "descending" : "ascending") : "none"}
               onClick={() => onSort(col)}
             >
               <span class="th-total">{totals(col.key) || " "}</span>
               <span class="th-label">
-                {col.label}
+                {t(`processes.column.${col.key}.label`)}
                 <Show when={sort().key === col.key}>
                   <Show when={sort().desc} fallback={<ChevronUp size={12} />}>
                     <ChevronDown size={12} />
@@ -253,9 +248,9 @@ export default function ProcessTable() {
           when={rows().length > 0 || !snapshot()}
           fallback={
             <div class="empty">
-              <span>没有与“{query()}”匹配的进程</span>
+              <span>{t("processes.noMatch", { query: query() })}</span>
               <button type="button" class="btn" onClick={() => setQuery("")}>
-                清除搜索
+                {t("shell.search.clear")}
               </button>
             </div>
           }
@@ -339,7 +334,7 @@ function Row(props: { row: DisplayRow; start: number; withNet: boolean }) {
             class="twisty"
             tabindex="-1"
             aria-expanded={r().expanded}
-            aria-label={r().expanded ? "折叠" : "展开"}
+            aria-label={r().expanded ? t("common.collapse") : t("common.expand")}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => toggleRow(r())}
           >
@@ -360,14 +355,18 @@ function Row(props: { row: DisplayRow; start: number; withNet: boolean }) {
           <span
             class="eco"
             role="img"
-            title={isGroup() ? `${r().efficiency} 个进程处于效率模式` : "效率模式"}
-            aria-label="效率模式"
+            title={
+              isGroup()
+                ? t("processes.efficiencyCount", { count: r().efficiency })
+                : t("common.efficiencyMode")
+            }
+            aria-label={t("common.efficiencyMode")}
           >
             <LeafIcon size={12} />
           </span>
         </Show>
         <Show when={r().suspended}>
-          <span class="tag">已暂停</span>
+          <span class="tag">{t("processes.suspended")}</span>
         </Show>
       </div>
       <div class="cell dim opt2" role="gridcell">
@@ -407,7 +406,7 @@ function Row(props: { row: DisplayRow; start: number; withNet: boolean }) {
           role="gridcell"
           classList={{ dim: r().netSent + r().netReceived < 1 }}
           style={{ "--h": heatIo(r().netSent + r().netReceived) }}
-          title={`发送 ${fmtNet(r().netSent)}，接收 ${fmtNet(r().netReceived)}`}
+          title={t("processes.netRates", { sent: fmtNet(r().netSent), received: fmtNet(r().netReceived) })}
         >
           {fmtNet(r().netSent + r().netReceived, true)}
         </div>

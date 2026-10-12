@@ -1,0 +1,56 @@
+{
+  "title": "What's using the file",
+  "intro": "If deleting or moving a file fails because it's in use, find the processes holding it here. Files can also be dropped onto the Argus window.",
+  "dropZone": "Drop files or folders onto the window, or",
+  "pickFile": "Choose file",
+  "pickFolder": "Choose folder",
+  "recheck": "Check again",
+  "checking": "Checking…",
+  "error": {
+    "notFound": "Couldn't find the file or folder.",
+    "failed": "Check failed: {error}"
+  },
+  "none": "No accessible process was found using these files.",
+  "found": {
+    "one": "Found {count} process using these files or folders.",
+    "other": "Found {count} processes using these files or folders."
+  },
+  "kind": {
+    "service": "Service",
+    "explorer": "File Explorer",
+    "console": "Console",
+    "critical": "System critical"
+  },
+  "service": "Service {name}",
+  "handleCount": {
+    "one": "{count} handle",
+    "other": "{count} handles"
+  },
+  "showProcess": "Show in Processes",
+  "end": "End task",
+  "checked": {
+    "one": "Restart Manager checked {count} file. {handles}",
+    "other": "Restart Manager checked {count} files. {handles}"
+  },
+  "handles": {
+    "service": {
+      "one": "The privileged service checked {count} file handle, including directory handles.",
+      "other": "The privileged service checked {count} file handles, including directory handles."
+    },
+    "local": {
+      "one": "Checked {count} file handle locally, including directory handles.",
+      "other": "Checked {count} file handles locally, including directory handles."
+    },
+    "unfinished": "The handle query didn't finish."
+  },
+  "incomplete": "Results are incomplete. Inaccessible processes: {denied}; unreadable handles: {skipped}; timed-out queries: {timeouts}. {limit}",
+  "limitReached": "The query limit was reached.",
+  "serviceHint": "Enable the privileged service in Settings to check more system processes.",
+  "unchecked": {
+    "one": "Restart Manager couldn't check {count} more file, possibly because of permissions or a change to the file.",
+    "other": "Restart Manager couldn't check {count} more files, possibly because of permissions or changes to the files."
+  },
+  "truncated": "The folder has too many files; only the first {count} were checked.",
+  "footerHint": "The handle query also finds folders in use as a working directory; protected processes may still be out of reach.",
+  "drop": "Release to find the processes using these files"
+}

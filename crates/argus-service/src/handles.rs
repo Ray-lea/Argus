@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use argus_core::actions::ActionError;
 use argus_core::handles::{self, Cursor, HandleLocker, HandleReport, HandleSummary, ScanEvent};
+use argus_core::tr;
 use serde::{Deserialize, Serialize};
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::JobObjects::{
@@ -43,12 +44,10 @@ pub(crate) struct WorkerRequest {
 
 fn error_text(error: ActionError) -> String {
     match error {
-        ActionError::AccessDenied => {
-            "没有权限检查系统句柄，请启用特权服务或以管理员身份运行".into()
-        }
-        ActionError::NotFound => "目标已不存在，或查询期间已经被移动".into(),
+        ActionError::AccessDenied => tr!("service.handles.accessDenied"),
+        ActionError::NotFound => tr!("service.handles.targetGone"),
         ActionError::Os(message) => message,
-        _ => "无法完成句柄查询".into(),
+        _ => tr!("service.handles.failed"),
     }
 }
 
@@ -69,16 +68,17 @@ pub fn scan_local(paths: Vec<String>) -> HandleReport {
         return unavailable(error_text(error));
     }
     let Ok(_guard) = SCANNING.try_lock() else {
-        return unavailable("另一个句柄查询仍在进行，请稍后重新检查".into());
+        return unavailable(tr!("service.handles.busy"));
     };
     let Ok(exe) = std::env::current_exe() else {
-        return unavailable("无法定位句柄查询辅助程序".into());
+        return unavailable(tr!("service.handles.noHelper"));
     };
     run(
         paths,
         |request| {
             let mut command = Command::new(&exe);
             command
+                .env(argus_core::i18n::ENV, argus_core::i18n::locale().tag())
                 .arg(WORKER_ARG)
                 .arg(serde_json::to_string(request).expect("serialize handle request"));
             command
@@ -253,8 +253,10 @@ fn run(
         })) {
             Ok(worker) => worker,
             Err(error) => {
-                report.summary.error =
-                    Some(format!("无法启动句柄查询：{}", crate::util::message(error)));
+                report.summary.error = Some(tr!(
+                    "service.handles.startFailed",
+                    error = crate::util::message(error)
+                ));
                 break;
             }
         };
@@ -285,7 +287,7 @@ fn run(
                     after = Some(current);
                     continue 'restart;
                 }
-                report.summary.error = Some("句柄查询已达到时间限制，以下仅为已完成的结果".into());
+                report.summary.error = Some(tr!("service.handles.timeLimit"));
                 break 'restart;
             }
             match worker.read() {
@@ -343,8 +345,7 @@ fn run(
                     report.summary.checked += checked;
                     report.summary.denied_processes += denied;
                     report.summary.skipped += skipped;
-                    report.summary.error =
-                        Some("句柄查询辅助进程提前退出，以下仅为已完成的结果".into());
+                    report.summary.error = Some(tr!("service.handles.helperExited"));
                     break 'restart;
                 }
             }

@@ -17,6 +17,7 @@ use crate::util::AlignedBuf;
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CpuInfo {
+    /// Empty when the registry does not say.
     pub name: String,
     pub base_mhz: u32,
     pub sockets: u32,
@@ -49,7 +50,7 @@ pub fn cpu_info() -> CpuInfo {
     let mut info = CpuInfo {
         name: reg_string(CPU_KEY, w!("ProcessorNameString"))
             .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
-            .unwrap_or_else(|| "处理器".into()),
+            .unwrap_or_default(),
         base_mhz: reg_dword(CPU_KEY, w!("~MHz")).unwrap_or(0),
         logical: unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) },
         virtualization: unsafe { IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED) }.as_bool(),
