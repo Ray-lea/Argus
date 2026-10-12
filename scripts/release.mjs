@@ -261,23 +261,32 @@ function renderSection(version, prevTag, commits) {
     const key = parsed ? parsed.type : "other";
     if (groups.has(key)) groups.get(key).push(entry(commit));
   }
-  const date = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD, local time
-  const title = repo && prevTag ? `[${version}](${repo}/compare/${prevTag}...v${version})` : version;
   const body = SECTIONS.filter(([key]) => groups.get(key).length)
     .map(([key, name]) => `### ${name}\n\n${groups.get(key).join("\n")}`)
     .join("\n\n");
-  return `## ${title} - ${date}\n\n${body || "只有内部改动（重构、文档、构建等），没有用户可见的变化。"}\n`;
+  return `${sectionHeading(version, prevTag)}\n\n${body || "只有内部改动（重构、文档、构建等），没有用户可见的变化。"}\n`;
+}
+
+/** "## [1.2.0](compare link) - 2026-10-12"; the first release has no link. */
+function sectionHeading(version, prevTag) {
+  const repo = repoUrl();
+  const date = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD, local time
+  const title = repo && prevTag ? `[${version}](${repo}/compare/${prevTag}...v${version})` : version;
+  return `## ${title} - ${date}`;
 }
 
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const headingPattern = (version) =>
+  new RegExp(`^## \\[?${escapeRegExp(version)}\\]?(?:\\([^)]*\\))? - .*$`, "m");
+
 /** Body of the changelog entry for `version`, without its heading. */
 function readNotes(version) {
   if (!existsSync(join(root, CHANGELOG))) return null;
   const text = read(CHANGELOG);
-  const heading = new RegExp(`^## \\[?${escapeRegExp(version)}\\]?(?:\\([^)]*\\))? - .*$`, "m").exec(text);
+  const heading = headingPattern(version).exec(text);
   if (!heading) return null;
   const rest = text.slice(heading.index + heading[0].length);
   const next = /^## /m.exec(rest);
@@ -324,17 +333,30 @@ function cmdBump(args) {
   const tag = `v${version}`;
   if (tryGit("rev-parse", "-q", "--verify", `refs/tags/${tag}`)) fail(`标签 ${tag} 已存在`);
 
-  const section = renderSection(version, prevTag, commits);
+  // Notes written ahead of time (e.g. for the first release) are kept; only
+  // their heading is brought up to date.
+  const written = readNotes(version);
+  const section = written
+    ? `${sectionHeading(version, prevTag)}\n\n${written}\n`
+    : renderSection(version, prevTag, commits);
   console.log(
     `版本：${formatVersion(current)} → ${version}（上一个标签：${prevTag ?? "无"}，${commits.length} 个提交）\n`,
   );
+  if (written) console.log(`沿用 ${CHANGELOG} 中已写好的发布说明。\n`);
   if (dryRun) {
     console.log(section);
     return;
   }
 
   writeVersion(version);
-  prependChangelog(section);
+  if (written) {
+    write(
+      CHANGELOG,
+      read(CHANGELOG).replace(headingPattern(version), () => sectionHeading(version, prevTag)),
+    );
+  } else {
+    prependChangelog(section);
+  }
   try {
     // Cargo.lock was edited by hand above; make sure Cargo agrees with it.
     execFileSync("cargo", ["metadata", "--locked", "--offline", "--format-version", "1"], {
@@ -345,7 +367,9 @@ function cmdBump(args) {
     fail("Cargo.lock 与清单不一致。版本文件已修改，未提交；用 git restore . 撤销");
   }
   git("add", CARGO_TOML, "Cargo.lock", ...VERSION_FILES, CHANGELOG);
-  git("commit", "--quiet", "-m", `chore(release): ${tag}`);
+  // Empty when nothing changed: a first release of the current version with
+  // its notes written ahead of time on the same day.
+  git("commit", "--quiet", "--allow-empty", "-m", `chore(release): ${tag}`);
   git("tag", "-a", tag, "-m", `Argus ${tag}`);
   console.log(`已提交 chore(release): ${tag} 并创建标签 ${tag}。检查 ${CHANGELOG} 后推送，推送标签即开始发布：
 
@@ -381,7 +405,9 @@ function plainNotes(markdown) {
     .replace(/ \([0-9a-f]{7}\)$/gm, "")
     .replace(/^### /gm, "")
     .replace(/^- \*\*([^*]+):\*\* /gm, "· $1：")
-    .replace(/^- /gm, "· ");
+    .replace(/^- /gm, "· ")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 }
 
 /** The manifest the in-app updater reads (latest.json and beta.json). */
