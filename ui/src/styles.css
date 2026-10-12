@@ -1270,6 +1270,8 @@ button {
 .dialog-text {
   margin: 0;
   color: var(--ink-2);
+  /* Line breaks in a confirmation's text start new lines. */
+  white-space: pre-line;
 }
 
 .dialog-footer {
