@@ -1,0 +1,84 @@
+# Pull requests, manual runs and the release workflow. Pushes to branches are
+# deliberately not checked here; run `start.bat check` before pushing.
+name: Check
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Not github.workflow: under workflow_call that is the caller's name.
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  commits:
+    name: Commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Conventional Commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # The title becomes the commit message of a squash merge.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          node scripts/release.mjs lint "$BASE_SHA..$HEAD_SHA"
+          node scripts/release.mjs lint --message "$TITLE"
+
+  check:
+    name: Lint, test and build
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+          cache: true
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component rustfmt,clippy --no-self-update
+          rustup default stable-x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+
+      # The steps of `pnpm check`, split so a failure names the tool. Keep in sync with package.json.
+      - name: TypeScript
+        run: pnpm typecheck
+      - name: Biome
+        run: pnpm lint
+      # Before Clippy: Tauri's context macro reads the built frontend.
+      - name: Frontend build
+        run: pnpm build
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # src-tauri has no unit tests; compiling its test harness would cost a full Tauri build.
+      - name: Tests
+        run: cargo test --workspace --exclude argus --locked

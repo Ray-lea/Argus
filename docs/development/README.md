@@ -2,6 +2,7 @@
 
 - [构建与缓存](build.md)
 - [性能基线与测量](performance.md)
+- [提交与发布](release.md)
 - 代码结构见[架构](../architecture/README.md)
 
 ## 环境要求
@@ -53,3 +54,4 @@ cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史
 - 文本文件统一用 LF 换行（`.gitattributes` 强制），`.bat` 例外，用 CRLF。
 - 界面文案使用中文，代码注释使用英文。
 - `ui/src/lib/types.ts` 与 `argus-core` 的 serde 类型一一对应，改一边要同步另一边。
+- 提交信息遵循 Conventional Commits，版本号遵循语义化版本，见[提交与发布](release.md)。

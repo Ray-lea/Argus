@@ -37,6 +37,18 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 改链接器、工具链或 `RUSTFLAGS` 会让整个依赖缓存失效（约 5 分钟重建），不要随手试。
 - Rust 1.97 的 Clippy 会把已经用 `const { … }` 初始化的 `thread_local!` 误报为 `missing_const_for_thread_local`，导致 `pnpm check` 失败；需要全局状态时用 `static` 原子量等替代。
 
+## 提交与发布
+
+规范与流程见 `docs/development/release.md`，这里只列容易做错的地方。
+
+- 提交信息用 Conventional Commits：`<type>(<scope>)!: <中文描述>`。type 只用 feat、fix、perf、refactor、docs、style、test、build、ci、chore、revert；scope 按模块用 core、service、host、ui，跨模块时省略。提交前用 `pnpm commitlint --message "<首行>"` 自查。
+- 按改动的实际性质选 type，不要一律写 feat 或 chore：type 决定下一个版本号和发布说明。修复卡顿或视觉瑕疵是 fix，纯性能改进是 perf，只改文档是 docs。一次改动跨几类时按类拆成几个提交。
+- 首行写用户能看懂的变化，它会原样进入 `CHANGELOG.md` 和 GitHub Release；实现细节和测量数据写在正文。
+- 不兼容的改动（设置或历史数据格式、特权服务 IPC 协议、删除功能或快捷键、命令行参数）在冒号前加 `!`，并写 `BREAKING CHANGE:` 页脚。
+- 版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`src-tauri/tauri.conf.json` 里的版本，也不要手写 `CHANGELOG.md` 的版本条目。只在用户要求发布时运行它；推送 `v*` 标签就是正式发布，同样要等用户明确要求。
+- CI 只由拉取请求、手动运行和 `v*` 标签触发：不要加 push 触发的检查、nightly 或定时构建；Rust 用 stable，不用 nightly 工具链。`.github/workflows/check.yml` 把 `pnpm check` 拆成了单独的步骤，改一边要同步另一边。
+- 改了 `scripts/release.mjs` 后先用 `pnpm release --dry-run` 看结果，再在临时克隆里走一遍完整发布（把克隆的推送地址设成无效值）；不要在真实仓库里打测试标签。
+
 ## 性能测量
 
 方法见 `docs/development/performance.md`，要点：

@@ -13,6 +13,8 @@
     "lint": "biome check ui",
     "format": "biome format --write ui",
     "check": "pnpm typecheck && pnpm lint && cargo fmt --all --check && cargo clippy --workspace --all-targets --target-dir target/rust-analyzer -- -D warnings",
+    "commitlint": "node scripts/release.mjs lint",
+    "release": "node scripts/release.mjs bump",
     "tauri": "tauri"
   },
   "dependencies": {

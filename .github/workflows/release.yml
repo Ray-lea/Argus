@@ -1,0 +1,91 @@
+# Publishes a GitHub release for a version tag created by `pnpm release`.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Tag matches the version files and the changelog
+        run: node scripts/release.mjs verify "$GITHUB_REF_NAME"
+      - name: Tag is on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::$GITHUB_REF_NAME 不在 main 上；用 git push --atomic origin main $GITHUB_REF_NAME 一起推送"
+            exit 1
+          }
+
+  check:
+    needs: verify
+    uses: ./.github/workflows/check.yml
+
+  publish:
+    name: Build and publish
+    needs: check
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # No dependency or build caches: release binaries come from a clean build.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
+          rustup default stable-x86_64-pc-windows-msvc
+      - run: pnpm install --frozen-lockfile
+
+      # Builds the embedded task manager helpers, the frontend, argus.exe and the NSIS installer.
+      - name: Build
+        run: pnpm tauri build
+
+      - name: Collect assets
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir assets
+          cp target/release/bundle/nsis/*-setup.exe assets/
+          cp target/release/argus.exe "assets/Argus_${version}_x64_portable.exe"
+          cd assets
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          node scripts/release.mjs notes "$version" > notes.md
+          flags=()
+          if [[ "$version" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" assets/* --verify-tag \
+            --title "Argus $GITHUB_REF_NAME" --notes-file notes.md "${flags[@]}"
