@@ -1,64 +1,66 @@
-name: 缺陷报告
-description: 报告错误、崩溃、显示异常或性能问题
+name: 缺陷报告 / Bug report
+description: 报告错误、崩溃、显示异常或性能问题 / Report an error, crash, display glitch or performance problem
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        提交前请先搜索已有的 Issue。安全漏洞请勿在此提交，按[安全策略](https://github.com/Ray-lea/Argus/security/policy)私下报告。
+        提交前请先搜索已有的 Issue。安全漏洞请勿在此提交，按[安全策略](https://github.com/Ray-lea/Argus/security/policy)私下报告。中文或英文均可。
+
+        Please search existing issues first. Do not report security vulnerabilities here; report them privately as described in the [security policy](https://github.com/Ray-lea/Argus/security/policy). Chinese or English is fine.
   - type: input
     id: version
     attributes:
-      label: Argus 版本
-      description: 设置 → 关于 中显示的版本号。
-      placeholder: 例如 0.1.0
+      label: Argus 版本 / Argus version
+      description: 设置 → 关于 中显示的版本号。/ The version shown in Settings → About.
+      placeholder: 例如 / e.g. 0.1.0
     validations:
       required: true
   - type: dropdown
     id: install
     attributes:
-      label: 安装方式
+      label: 安装方式 / Installation
       options:
-        - 安装版
-        - 免安装版
-        - 从源码构建
+        - 安装版 / Installed version
+        - 免安装版 / Portable version
+        - 从源码构建 / Built from source
     validations:
       required: true
   - type: input
     id: windows
     attributes:
-      label: Windows 版本
-      description: 运行 `winver` 显示的版本与内部版本号。
-      placeholder: 例如 Windows 11 24H2（26100.4061）
+      label: Windows 版本 / Windows version
+      description: 运行 `winver` 显示的版本与内部版本号。/ The version and build that `winver` shows.
+      placeholder: 例如 / e.g. Windows 11 24H2 (26100.4061)
     validations:
       required: true
   - type: checkboxes
     id: privilege
     attributes:
-      label: 权限
+      label: 权限 / Permissions
       options:
-        - label: 以管理员身份运行 Argus
-        - label: 已安装特权服务
-        - label: 已启用系统任务管理器替换
+        - label: 以管理员身份运行 Argus / Argus runs as administrator
+        - label: 已安装特权服务 / The privileged service is installed
+        - label: 已启用系统任务管理器替换 / Task Manager replacement is enabled
   - type: textarea
     id: description
     attributes:
-      label: 问题描述
-      description: 发生了什么，期望的结果是什么。
+      label: 问题描述 / What happened
+      description: 发生了什么，期望的结果是什么。/ What happened, and what you expected instead.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: 复现步骤
+      label: 复现步骤 / Steps to reproduce
       placeholder: |
-        1. 打开……
-        2. 单击……
-        3. 出现……
+        1. 打开…… / Open …
+        2. 单击…… / Click …
+        3. 出现…… / See …
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: 日志与截图
-      description: 日志位于 设置 → 关于 → 打开日志文件夹。附上问题发生前后的相关内容；截图可直接粘贴。
+      label: 日志与截图 / Logs and screenshots
+      description: 日志位于 设置 → 关于 → 打开日志文件夹。附上问题发生前后的相关内容；截图可直接粘贴。/ Logs are in Settings → About → Open log folder. Include the part around the problem; screenshots can be pasted directly.

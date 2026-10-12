@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 报告安全漏洞
+  - name: 报告安全漏洞 / Report a security vulnerability
     url: https://github.com/Ray-lea/Argus/security/advisories/new
-    about: 安全漏洞请通过私密漏洞报告提交，不要创建公开的 Issue。
-  - name: 使用指南
+    about: 安全漏洞请通过私密漏洞报告提交，不要创建公开的 Issue。/ Report vulnerabilities privately, not in a public issue.
+  - name: 使用指南 / User guide
     url: https://github.com/Ray-lea/Argus/blob/main/docs/guide/README.md
-    about: 界面与操作、设置、硬件数据的来源与限制。
+    about: 界面与操作、设置、硬件数据的来源与限制（中文）。/ Interface, settings, and where hardware data comes from (in Chinese).
