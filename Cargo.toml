@@ -7,6 +7,8 @@ version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 authors = ["Argus contributors"]
+repository = "https://github.com/Ray-lea/Argus"
+homepage = "https://github.com/Ray-lea/Argus"
 
 [workspace.dependencies]
 # One feature set for every build. Cargo unifies features only across the
