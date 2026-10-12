@@ -37,6 +37,8 @@ export interface ProcessRow {
   suspended: boolean;
   /** Efficiency mode (EcoQoS) is on. */
   efficiency: boolean;
+  /** Owns a taskbar window, which puts it under "Apps". */
+  appWindow: boolean;
 }
 
 export interface SystemStats {

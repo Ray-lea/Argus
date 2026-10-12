@@ -45,6 +45,7 @@ cargo run -p argus-core --example hardware --release   # CPU、传感器、内�
 cargo run -p argus-core --example m3 --release         # 服务、启动项、连接与一次文件占用查询
 cargo run -p argus-core --example lockers -- C:\Windows\System32\ntdll.dll   # 占用指定文件的进程
 cargo run -p argus-core --example gpu_processes --release   # 每进程 GPU 占用与采集耗时
+cargo run -p argus-core --example app_windows --release     # 归入“应用”的进程（拥有任务栏窗口）与查找耗时
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 ```
 

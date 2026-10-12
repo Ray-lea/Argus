@@ -706,6 +706,26 @@ button {
   background: var(--hover);
 }
 
+/* "应用" and "后台进程" while the list is sorted by name. */
+.section-row {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  right: 4px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 30px;
+  padding: 0 0 5px 12px;
+  font-weight: 600;
+  contain: layout style;
+}
+
+.section-row .section-count {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
 /* A process that just started: tinted for a few samples, then fading out in
    six steps (the transition repaints the row, so it stays short and coarse). */
 .row::after {

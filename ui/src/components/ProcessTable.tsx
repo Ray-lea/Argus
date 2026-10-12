@@ -2,7 +2,14 @@ import { createVirtualizer } from "@tanstack/solid-virtual";
 import { For, onMount, Show } from "solid-js";
 import { endRow } from "../lib/actions";
 import { fmtCount, fmtCpu, fmtMem, fmtNet, fmtRate } from "../lib/format";
-import { type DisplayRow, procKey, type SortKey } from "../lib/rows";
+import {
+  type DisplayRow,
+  isSection,
+  procKey,
+  type SectionRow,
+  type SortKey,
+  type TableRow,
+} from "../lib/rows";
 import {
   ending,
   isFresh,
@@ -116,10 +123,18 @@ export default function ProcessTable() {
     setSort(cur.key === col.key ? { key: col.key, desc: !cur.desc } : { key: col.key, desc: col.descFirst });
   };
 
-  const select = (index: number) => {
+  /** Selects the row at `index`, or the nearest process past a heading in direction `dir`. */
+  const select = (index: number, dir: 1 | -1 = 1) => {
     const list = rows();
     if (list.length === 0) return;
-    const i = Math.max(0, Math.min(list.length - 1, index));
+    const start = Math.max(0, Math.min(list.length - 1, index));
+    const step = (d: number) => {
+      let j = start;
+      while (j >= 0 && j < list.length && isSection(list[j])) j += d;
+      return j >= 0 && j < list.length ? j : -1;
+    };
+    const i = step(dir) >= 0 ? step(dir) : step(-dir);
+    if (i < 0) return;
     setSelectedKey(list[i].key);
     virtualizer.scrollToIndex(i, { align: "auto" });
   };
@@ -128,26 +143,27 @@ export default function ProcessTable() {
     if (e.target !== e.currentTarget) return; // keys on header buttons keep their own meaning
     const list = rows();
     const i = list.findIndex((r) => r.key === selectedKey());
-    const row = i >= 0 ? list[i] : undefined;
+    const found = i >= 0 ? list[i] : undefined;
+    const row = found && !isSection(found) ? found : undefined;
     const page = Math.max(1, Math.floor(scrollEl.clientHeight / ROW_HEIGHT) - 1);
     switch (e.key) {
       case "ArrowDown":
         select(i + 1);
         break;
       case "ArrowUp":
-        select(i < 0 ? 0 : i - 1);
+        select(i < 0 ? 0 : i - 1, -1);
         break;
       case "PageDown":
         select(i + page);
         break;
       case "PageUp":
-        select(i - page);
+        select(i - page, -1);
         break;
       case "Home":
         select(0);
         break;
       case "End":
-        select(list.length - 1);
+        select(list.length - 1, -1);
         break;
       case "ArrowRight":
         if (row?.expandable && !row.expanded) toggleRow(row);
@@ -157,7 +173,8 @@ export default function ProcessTable() {
         if (row?.expanded) toggleRow(row);
         else if (row && row.depth > 0) {
           for (let j = i - 1; j >= 0; j--) {
-            if (list[j].depth < row.depth) {
+            const above = list[j];
+            if (!isSection(above) && above.depth < row.depth) {
               select(j);
               break;
             }
@@ -250,7 +267,7 @@ export default function ProcessTable() {
             <For each={virtualizer.getVirtualItems()}>
               {(item) => (
                 <Show when={rows()[item.index]}>
-                  {(row) => <Row row={row()} start={item.start} withNet={withNet()} />}
+                  {(row) => <Item row={row()} start={item.start} withNet={withNet()} />}
                 </Show>
               )}
             </For>
@@ -262,6 +279,31 @@ export default function ProcessTable() {
 }
 
 const rowId = (key: string) => `row-${key.replace(/[^\w-]/g, "_")}`;
+
+/** A process row or, while sorted by name, an "应用" / "后台进程" heading. */
+function Item(props: { row: TableRow; start: number; withNet: boolean }) {
+  const process = () => (isSection(props.row) ? undefined : props.row);
+  const heading = () => (isSection(props.row) ? props.row : undefined);
+  return (
+    <Show
+      when={process()}
+      fallback={<Show when={heading()}>{(h) => <SectionHeading row={h()} start={props.start} />}</Show>}
+    >
+      {(r) => <Row row={r()} start={props.start} withNet={props.withNet} />}
+    </Show>
+  );
+}
+
+function SectionHeading(props: { row: SectionRow; start: number }) {
+  return (
+    <div role="row" class="section-row" style={{ transform: `translateY(${props.start}px)` }}>
+      <span role="rowheader">
+        {props.row.label}
+        <span class="section-count"> ({props.row.count})</span>
+      </span>
+    </div>
+  );
+}
 
 function Row(props: { row: DisplayRow; start: number; withNet: boolean }) {
   const r = () => props.row;

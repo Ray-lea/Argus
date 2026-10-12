@@ -7,6 +7,7 @@
 #![cfg(windows)]
 
 pub mod actions;
+pub mod app_windows;
 pub mod collector;
 pub mod connections;
 pub mod details;

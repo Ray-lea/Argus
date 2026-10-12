@@ -536,6 +536,7 @@ mod tests {
             base_priority: 8,
             suspended: false,
             efficiency: false,
+            app_window: false,
         }
     }
 

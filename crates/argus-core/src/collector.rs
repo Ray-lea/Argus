@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
+use crate::app_windows;
 use crate::gpu_process::GpuProcessTracker;
 use crate::hardware::{Hardware, HardwareTracker};
 use crate::meta::MetaStore;
@@ -84,6 +85,11 @@ impl Collector {
                     p.net_received = received;
                 }
             }
+        }
+
+        let apps = app_windows::owners();
+        for p in &mut processes {
+            p.app_window = apps.contains(&p.pid);
         }
 
         system.process_count = processes.len() as u32;

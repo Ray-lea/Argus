@@ -68,6 +68,8 @@ pub struct ProcessRow {
     pub suspended: bool,
     /// Efficiency mode (EcoQoS) is on, set by the app itself or by a user.
     pub efficiency: bool,
+    /// Owns a taskbar window, which puts it under "Apps" (see `app_windows`).
+    pub app_window: bool,
 }
 
 struct Tracked {
@@ -211,6 +213,7 @@ impl ProcessTracker {
                 base_priority: p.base_priority,
                 suspended,
                 efficiency: entry.handle.as_ref().is_some_and(|h| efficiency_mode(h.0)),
+                app_window: false,
             });
             next.insert(key, entry);
         }

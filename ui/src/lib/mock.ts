@@ -87,6 +87,7 @@ function add(
     basePriority: 8,
     suspended: false,
     efficiency: false,
+    appWindow: false,
     load: o.load ?? 0,
     baseMem: (o.mem ?? 8) * MB,
     ioLevel: o.io ?? 0,
@@ -181,10 +182,18 @@ function seed() {
       load: i === 0 ? 0.6 : 0,
       gpu: i === 0 ? 2 : 0,
     });
-  add("Spotify.exe", "Spotify", "Spotify Ltd", { ppid: explorer.pid, mem: 210, load: 0.5, io: 1 });
+  const spotify = add("Spotify.exe", "Spotify", "Spotify Ltd", {
+    ppid: explorer.pid,
+    mem: 210,
+    load: 0.5,
+    io: 1,
+  });
   add("Everything.exe", "Everything", "voidtools", { ppid: explorer.pid, mem: 350 });
   const paused = add("Calculator.exe", "计算器", ms, { ppid: explorer.pid, mem: 38 });
   paused.suspended = true;
+
+  // The processes that own a window on the taskbar, listed under "Apps".
+  for (const p of [explorer, chrome, code, qq, wx, steam, argus, spotify]) p.appWindow = true;
 }
 
 let elapsed = 1;

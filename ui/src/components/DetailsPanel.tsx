@@ -46,6 +46,7 @@ function asRow(sel: Selection, proc: ProcessRow): DisplayRow {
     expanded: false,
     suspended: false,
     efficiency: sel.members.filter((p) => p.efficiency).length,
+    app: sel.members.some((p) => p.appWindow),
   };
 }
 

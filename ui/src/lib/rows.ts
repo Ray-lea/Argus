@@ -35,7 +35,22 @@ export interface DisplayRow {
   suspended: boolean;
   /** Processes in efficiency mode: 0 or 1 for a process, any number for a group. */
   efficiency: number;
+  /** Owns a taskbar window (a group: any member does), which files it under "Apps". */
+  app: boolean;
 }
+
+/** A heading that splits the name-sorted list into apps and background processes. */
+export interface SectionRow {
+  key: string;
+  kind: "section";
+  label: string;
+  /** Entries under the heading: apps and groups, not their expanded members. */
+  count: number;
+}
+
+export type TableRow = DisplayRow | SectionRow;
+
+export const isSection = (row: TableRow): row is SectionRow => row.kind === "section";
 
 export interface BuildOptions {
   mode: ViewMode;
@@ -75,6 +90,7 @@ function procRow(p: ProcessRow, depth: number, label: string, detail: string | n
     expanded: false,
     suspended: p.suspended,
     efficiency: p.efficiency ? 1 : 0,
+    app: p.appWindow,
   };
 }
 
@@ -133,7 +149,7 @@ export function summarizeServices(names: readonly string[]): string {
   return `${names.slice(0, 2).join("、")} 等 ${names.length} 个服务`;
 }
 
-export function buildRows(procs: readonly ProcessRow[], opts: BuildOptions): DisplayRow[] {
+export function buildRows(procs: readonly ProcessRow[], opts: BuildOptions): TableRow[] {
   const cmp = comparator(opts.sort);
   const match = matcher(opts.query, opts.hosted);
   let rows: DisplayRow[];
@@ -159,7 +175,31 @@ export function buildRows(procs: readonly ProcessRow[], opts: BuildOptions): Dis
       if (names && !(opts.mode === "apps" && row.depth === 0)) row.detail = summarizeServices(names);
     }
   }
-  return rows;
+  // Like Windows Task Manager: sorted by name, apps come first under their own
+  // heading. Other sorts and the tree keep one list.
+  return opts.sort.key === "name" && opts.mode !== "tree" ? sections(rows) : rows;
+}
+
+/** Splits rows into apps and background processes; a row's expanded members follow it. */
+function sections(rows: DisplayRow[]): TableRow[] {
+  const apps: DisplayRow[] = [];
+  const background: DisplayRow[] = [];
+  let into = background;
+  let appCount = 0;
+  for (const row of rows) {
+    if (row.depth === 0) {
+      into = row.app ? apps : background;
+      if (row.app) appCount++;
+    }
+    into.push(row);
+  }
+  const out: TableRow[] = [];
+  if (apps.length) out.push({ key: "s:apps", kind: "section", label: "应用", count: appCount }, ...apps);
+  if (background.length) {
+    const count = rows.filter((r) => r.depth === 0).length - appCount;
+    out.push({ key: "s:background", kind: "section", label: "后台进程", count }, ...background);
+  }
+  return out;
 }
 
 function buildTree(
@@ -270,6 +310,7 @@ function buildApps(
       expanded: expanded.has(key) || shown.length < members.length,
       suspended: members.every((p) => p.suspended),
       efficiency: members.filter((p) => p.efficiency).length,
+      app: members.some((p) => p.appWindow),
     };
     let busiest = 0;
     for (const p of members) {

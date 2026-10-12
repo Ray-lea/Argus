@@ -10,6 +10,7 @@ import {
   groupKey,
   procKey,
   type SortState,
+  type TableRow,
   type ViewMode,
 } from "./rows";
 import type { AppInfo, ProcessRow, ServiceInfo, Snapshot } from "./types";
@@ -285,7 +286,7 @@ const sameView = (a: BuildOptions, b: BuildOptions) =>
  * their place right after the row that precedes them in the fresh list, which
  * keeps children inside their expanded parent.
  */
-function keepOrder(fresh: DisplayRow[], previous: DisplayRow[]): DisplayRow[] {
+function keepOrder(fresh: TableRow[], previous: TableRow[]): TableRow[] {
   const rank = new Map(previous.map((r, i) => [r.key, i]));
   let last = -1;
   const ranked = fresh.map((row) => {
@@ -301,8 +302,8 @@ const derived = createRoot(() => {
   // open), new data updates values in place but never reorders rows.
   const holdOrder = createMemo(() => pointerInTable() || menu() !== null || confirmRequest() !== null);
 
-  let previous: { rows: DisplayRow[]; opts: BuildOptions } | null = null;
-  const view = createMemo<{ rows: DisplayRow[]; held: boolean }>(() => {
+  let previous: { rows: TableRow[]; opts: BuildOptions } | null = null;
+  const view = createMemo<{ rows: TableRow[]; held: boolean }>(() => {
     const s = snapshot();
     if (!s) return { rows: [], held: false };
     const opts: BuildOptions = {
