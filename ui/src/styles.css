@@ -548,7 +548,8 @@ button {
   display: none;
 }
 
-.toolbar[data-compact="2"] .segmented button:has(svg) .seg-label {
+/* Only segments with icons (the view modes) have .seg-label. */
+.toolbar[data-compact="2"] .seg-label {
   display: none;
 }
 
