@@ -2,6 +2,9 @@
 ; packaged). The privileged service and the task manager replacement live in
 ; Program Files, outside $INSTDIR, so removing Argus does not remove them.
 
+; Where installer-template.nsi finds installer-ui.nsh (this folder).
+!define ARGUS_DIR "${__FILEDIR__}"
+
 ; Sets OUT to the text in the installer's language: Simplified Chinese (2052)
 ; or English. Keep in step with the languages in tauri.conf.json.
 !macro ARGUS_TEXT OUT ZH EN
@@ -14,9 +17,10 @@
 
 !macro NSIS_HOOK_PREUNINSTALL
 !if "${BUNDLEID}" == "dev.argus.taskmanager"
-  ; Choosing "uninstall before installing" on an upgrade makes the installer run
-  ; the old uninstaller in place (with _?=). A real uninstall, from Apps or from
-  ; uninstall.exe, runs a copy from %TEMP%. Reinstalling keeps both.
+  ; An installer that uninstalls before upgrading (Tauri's own pages offer it;
+  ; Argus's upgrade in place) runs the old uninstaller in place (with _?=). A
+  ; real uninstall, from Apps or from uninstall.exe, runs a copy from %TEMP%.
+  ; Reinstalling keeps both.
   ${If} $EXEDIR != $INSTDIR
     !insertmacro ARGUS_TEXT $2 \
       "检测到已安装的 Argus 特权服务。是否一并卸载？$\r$\n$\r$\n卸载服务需要管理员授权，并将先恢复 Windows 任务管理器。选择“否”将保留该服务，服务会继续随 Windows 启动。" \

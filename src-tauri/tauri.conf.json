@@ -55,7 +55,9 @@
           "SimpChinese"
         ],
         "installerIcon": "icons/icon.ico",
-        "installerHooks": "installer-hooks.nsh"
+        "uninstallerIcon": "icons/icon.ico",
+        "installerHooks": "installer-hooks.nsh",
+        "template": "installer-template.nsi"
       }
     }
   },

@@ -23,6 +23,15 @@
 - 插件安装更新时用 `std::process::exit` 退出，不经过 `RunEvent::Exit`；需要在退出前做的事放进 `on_before_exit`（现在是停止 ETW 会话）。
 - 开发版和缺少公钥的构建不检查更新。完整的检查、下载、安装只能在两个已发布的版本之间验证；本地只能测签名与清单（见 `docs/development/release.md`）。
 
+## 安装程序（`installer-template.nsi`、`installer-ui.nsh`）
+
+- 模板由 `node scripts/nsis-template.mjs` 生成，不要手改；要改页面列表就改脚本。升级 Tauri 后先运行它。
+- `SetCtlColors` 的颜色在编译时写进数据块，只有窗口句柄可以是变量：颜色用 `ArgusPaint` 的角色与调色板常量，运行时只按深浅色分支。需要运行时颜色的地方（按钮、进度条、标题栏）用 COLORREF 变量自己画或发消息。
+- `System::Call` 传不了 `REAL`（GDI+ 路径的弧角度全变成 0），只用整数版本的 GDI+ 调用；按钮位图用 24 位 DIB，32 位位图里 GDI 写的文字像素 alpha 为 0，静态控件会把它们混合掉。
+- 给 NSIS 自带页面里的静态控件改对齐时先清掉低 5 位类型：`SS_LEFTNOWORDWRAP`（0xC）或上 `SS_CENTER` 就成了 `SS_OWNERDRAW`，控件什么都不画。NSIS 不会把自带页面拉伸到页面区域，需要自己 `SetWindowPos`。
+- 共用函数通过 `ArgusSharedFunctions` 生成安装与卸载（`un.`）两份；宏里用 `ArgusCall` / `ArgusOnClick`，按 `__UNINSTALL__` 选择。
+- 看效果不要运行打包出的安装程序（见根 AGENTS.md）：从 `target/release/nsis/x64/installer.nsi` 派生一份只看界面的副本（`RequestExecutionLevel user`，清空安装与卸载区段，按需固定 `$LANGUAGE`、深浅色与已安装版本），放到 scratchpad 编译运行；窗口放到最底层后用 `PrintWindow`（`PW_RENDERFULLCONTENT`）截图，先 `RedrawWindow`。`PrintWindow` 不体现子窗口的 `SetWindowRgn`，透明背景的静态控件偶尔截不全。
+
 ## 配置
 
 - 发布版标识 `dev.argus.taskmanager`；开发版由 `tauri.dev.conf.json` 改为 `dev.argus.taskmanager.devbuild`，单实例锁、设置、WebView2 数据目录、开机启动项都分开。
