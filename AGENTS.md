@@ -48,6 +48,9 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`src-tauri/tauri.conf.json` 里的版本，也不要手写 `CHANGELOG.md` 的版本条目。只在用户要求发布时运行它；推送 `v*` 标签就是正式发布，同样要等用户明确要求。
 - CI 只由拉取请求、手动运行和 `v*` 标签触发：不要加 push 触发的检查、nightly 或定时构建；Rust 用 stable，不用 nightly 工具链。`.github/workflows/check.yml` 把 `pnpm check` 拆成了单独的步骤，改一边要同步另一边。
 - 改了 `scripts/release.mjs` 后先用 `pnpm release --dry-run` 看结果，再在临时克隆里走一遍完整发布（把克隆的推送地址设成无效值）；不要在真实仓库里打测试标签。
+- 更新签名公钥在 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`。不要生成新密钥替换它（已安装的版本只认旧公钥，用户会收不到更新），不要关掉 `requireSignedVersion`；私钥只在 GitHub Secrets 和维护者本机，不要读取或要求用户提供。测试签名流程用 scratchpad 里临时生成的密钥。
+- 加速代理预设写在 `src-tauri/src/updater.rs` 和 `ui/src/components/Settings.tsx` 两处，改一处同步另一处；加入新的代理前，用真实的 Release 文件实测它返回的内容与直连逐字节一致。
+- 不要在开发机上运行打包出来的安装程序：它会覆盖已安装 Argus 的卸载项和快捷方式。安装与卸载靠 `release.yml` 的静默安装测试和虚拟机验收；卸载钩子的分支逻辑可以用 Tauri 下载的 makensis（`target/.tauri/NSIS`）编一个替换了服务注册表项和 Program Files 路径的测试包，只写 scratchpad。
 
 ## 性能测量
 
@@ -68,5 +71,6 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 项目用 MSVC 工具链（`x86_64-pc-windows-msvc`）构建。开发机的默认工具链是 GNU，仓库目录上有 `rustup override`（`stable-x86_64-pc-windows-msvc`）；`rust-toolchain.toml` 不允许在 channel 里写主机三元组，没法在仓库里强制。不要改用户的全局默认工具链，也不要删掉这个 override。
 - 辅助脚本用 node 写；仓库不依赖 Python 或 .NET。
 - Windows PowerShell 5.1：传给原生程序的参数里的双引号会被剥掉（把 JS 写进文件再传路径）；没有 BOM 的 .ps1 按 ANSI 读取，含中文的 .ps1 要存成 UTF-8 with BOM。
+- Git Bash 会把以 `/` 开头的参数改写成路径：NSIS 的 `/S`、`/D=…` 因此失效，安装程序会弹出界面。运行这类 Windows 程序用 PowerShell 的 `Start-Process`，或者设 `MSYS_NO_PATHCONV=1`；GitHub Actions 的 Windows 机器上同样如此，工作流里这类步骤写成 `shell: pwsh`。
 - 部分杀毒软件会让 Windows PowerShell 在脚本扫描（AMSI）里偶发崩溃，先重试一次再下结论。
 - 验证环境的显示器是 165 Hz。Chromium 的帧时间按 0.1 ms 量化，计算刷新率时对中位数附近的间隔求平均，不要直接取中位数。

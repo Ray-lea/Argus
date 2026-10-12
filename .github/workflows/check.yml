@@ -79,6 +79,5 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      # src-tauri has no unit tests; compiling its test harness would cost a full Tauri build.
       - name: Tests
-        run: cargo test --workspace --exclude argus --locked
+        run: cargo test --workspace --locked

@@ -9,7 +9,7 @@ GitHub Actions 只有两个工作流，都在 Windows 上用 stable Rust（MSVC�
 | 工作流 | 触发 | 内容 |
 |---|---|---|
 | `check.yml` | 拉取请求；在 Actions 页面手动运行；发布时调用 | 提交信息格式（仅拉取请求，含标题）、TypeScript、Biome、前端构建、rustfmt、Clippy、单元测试 |
-| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号与 `CHANGELOG.md`，确认标签在 `main` 上；运行上面的检查；构建并发布 GitHub Release |
+| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；静默安装、核对卸载项、再静默卸载；生成更新清单并发布 GitHub Release |
 
 推送到分支不会触发检查，也没有 nightly 或定时构建。推送前在本地运行 `start.bat check`。
 
@@ -90,7 +90,7 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 
 ## 发布步骤
 
-1. 切到 `main`，工作区干净，`start.bat check` 通过。
+1. 切到 `main`，工作区干净，`start.bat check` 通过。第一次发布前先配置[更新签名密钥](#更新签名密钥)；`tauri.conf.json` 里没有公钥时脚本会拒绝发布。
 2. 预览版本号与发布说明：`pnpm release --dry-run`。
 3. 创建发布提交和标签：
 
@@ -112,8 +112,51 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 
 | 文件 | 说明 |
 |---|---|
-| `Argus_<版本>_x64-setup.exe` | NSIS 安装程序，安装到当前用户，附带卸载前的任务管理器恢复检查 |
-| `Argus_<版本>_x64_portable.exe` | 便携版主程序（即 `argus.exe`），无需安装 |
+| `Argus_<版本>_x64-setup.exe` | NSIS 安装程序：安装到当前用户、简体中文界面、不允许降级；卸载时询问是否一并卸载特权服务，并做任务管理器恢复检查 |
+| `Argus_<版本>_x64.exe` | 免安装版主程序（即 `argus.exe`）。与安装版使用相同的设置、历史和开机启动项，数据同样在 `%APPDATA%`、`%LOCALAPPDATA%`，不能应用内更新 |
 | `SHA256SUMS.txt` | 上面两个文件的 SHA-256，可用 `sha256sum -c SHA256SUMS.txt` 校验 |
+| `latest.json`、`beta.json` | 应用内更新的清单，只在稳定版上，见[更新通道](#更新通道) |
 
 带预发布后缀的版本标记为 Pre-release。程序没有代码签名，首次运行时 Windows SmartScreen 会提示“未知发布者”。
+
+## 更新签名密钥
+
+应用内更新只安装用这把密钥签名的安装包，签名同时覆盖版本号（插件的 `requireSignedVersion`）。这与代码签名无关，消除不了 SmartScreen 提示。
+
+第一次配置时，在维护者本机生成密钥（会提示设置密码），把私钥和密码存进仓库的 Actions Secrets。PowerShell 默认禁止运行脚本，`pnpm` 会解析到被拦下的 `pnpm.ps1`，所以这里写 `pnpm.cmd`：
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.tauri" | Out-Null
+pnpm.cmd tauri signer generate -w "$env:USERPROFILE\.tauri\argus-updater.key"
+gh secret set TAURI_SIGNING_PRIVATE_KEY --repo Ray-lea/Argus --body (Get-Content -Raw "$env:USERPROFILE\.tauri\argus-updater.key").Trim()
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo Ray-lea/Argus
+```
+
+再把 `argus-updater.key.pub` 的内容填进 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey` 并提交。私钥和密码要离线备份：丢失后只能换一把新密钥，而已安装的版本只认旧公钥，用户必须手动下载新版本重新安装一次。
+
+本地构建（`start.bat build installer`）不生成更新签名，不需要私钥；发布工作流用 `--config` 打开 `createUpdaterArtifacts`，签名后用 `node scripts/release.mjs check-signature` 以 `tauri.conf.json` 中的公钥校验，Secrets 里的私钥与公钥不配对时在发布前失败。
+
+## 更新通道
+
+应用读取最新稳定版 Release 上的清单：稳定版通道读 `releases/latest/download/latest.json`，测试版通道读同一位置的 `beta.json`。
+
+- 发布稳定版时，两份清单都指向这个版本，随 Release 一起上传。
+- 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。仓库还没有稳定版时测试版通道收不到更新，工作流会给出警告。
+- 清单由 `node scripts/release.mjs manifest` 生成，更新说明取自 `CHANGELOG.md` 的对应条目，转成纯文本。
+
+应用依次尝试 GitHub 与加速代理（见[设置 → 更新](../guide/settings.md#更新)）。代理只在 GitHub 地址前加前缀，清单和安装包都不变。
+
+## 发布前验收
+
+以下场景需要管理员环境和真实的安装、卸载，CI 无法覆盖。第一次发布，以及改动安装包、卸载钩子、特权服务或更新流程之后，在虚拟机里走一遍：
+
+1. 安装，启动，确认设置页显示版本号，“更新”分组能检查更新。
+2. 安装特权服务并启用任务管理器替换，确认 Ctrl+Shift+Esc 打开 Argus。
+3. 用新版本的安装包覆盖安装，分别选择“先卸载再安装”和“不卸载”：两种情况都不应询问特权服务，替换保持开启。
+4. 通过应用内更新升级：分别在窗口显示和隐藏到托盘时安装，确认重新打开后的状态一致；首次启动询问更新特权服务，更新后替换需要重新开启。
+5. 从“设置 → 应用”卸载：确认询问并卸载特权服务、恢复任务管理器；再测一次取消管理员授权、选择保留服务，以及勾选“删除应用数据”。
+6. 在开启替换、未安装恢复程序的情况下卸载，确认恢复检查会阻止卸载并给出提示。
+
+## 发布到 winget
+
+第一个稳定版发布后，可以用 [wingetcreate](https://github.com/microsoft/winget-create) 向 `microsoft/winget-pkgs` 提交清单，安装包使用 `Argus_<版本>_x64-setup.exe`（支持 `/S` 静默安装）。之后的版本用 `wingetcreate update` 提交新地址。提交会创建公开的拉取请求，由维护者手动执行。

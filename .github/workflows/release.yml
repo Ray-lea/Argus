@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: Tag matches the version files and the changelog
+      - name: Tag matches the version files, the changelog and the update key
         run: node scripts/release.mjs verify "$GITHUB_REF_NAME"
       - name: Tag is on main
         run: |
@@ -64,28 +64,78 @@ jobs:
           rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
           rustup default stable-x86_64-pc-windows-msvc
       - run: pnpm install --frozen-lockfile
+      - name: Version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      # Builds the embedded task manager helpers, the frontend, argus.exe and the NSIS installer.
+      # Builds the embedded task manager helpers, the frontend, argus.exe and the
+      # NSIS installer, and signs the installer for the in-app updater. Local
+      # builds leave the updater artifacts off, so they need no key.
       - name: Build
-        run: pnpm tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'
+
+      # A secret that does not match the public key would ship an update that
+      # every installed copy rejects.
+      - name: Check the update signature
+        run: |
+          setup=$(ls target/release/bundle/nsis/*-setup.exe)
+          node scripts/release.mjs check-signature "$VERSION" "$setup" "$setup.sig"
+
+      # PowerShell, not bash: Git Bash rewrites /S and /D=... into paths.
+      - name: Install and uninstall silently
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP "argus-smoke"
+          $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Argus"
+          $p = Start-Process $setup -ArgumentList "/S", "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "安装程序退出码 $($p.ExitCode)" }
+          foreach ($file in "argus.exe", "uninstall.exe") {
+            if (-not (Test-Path (Join-Path $dir $file))) { throw "安装后缺少 $file" }
+          }
+          $entry = Get-ItemProperty $key
+          if ($entry.DisplayVersion -ne $env:VERSION) { throw "卸载项的版本是 $($entry.DisplayVersion)" }
+          if ($entry.Publisher -ne "Argus contributors") { throw "卸载项的发布者是 $($entry.Publisher)" }
+          # The uninstaller hands over to a copy in %TEMP% and returns at once.
+          Start-Process (Join-Path $dir "uninstall.exe") -ArgumentList "/S" -Wait
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path $key) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+          if (Test-Path $key) { throw "卸载后卸载项仍在" }
+          if (Test-Path (Join-Path $dir "argus.exe")) { throw "卸载后 argus.exe 仍在" }
 
       - name: Collect assets
         run: |
-          version="${GITHUB_REF_NAME#v}"
           mkdir assets
-          cp target/release/bundle/nsis/*-setup.exe assets/
-          cp target/release/argus.exe "assets/Argus_${version}_x64_portable.exe"
-          cd assets
-          sha256sum -- * > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          setup=$(ls target/release/bundle/nsis/*-setup.exe)
+          cp "$setup" assets/
+          cp target/release/argus.exe "assets/Argus_${VERSION}_x64.exe"
+          (cd assets && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          # Update manifests; the beta channel also offers stable releases.
+          node scripts/release.mjs manifest "$VERSION" "$setup" "$setup.sig" > manifest.json
+          cat manifest.json
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          node scripts/release.mjs notes "$version" > notes.md
-          flags=()
-          if [[ "$version" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" assets/* --verify-tag \
-            --title "Argus $GITHUB_REF_NAME" --notes-file notes.md "${flags[@]}"
+          node scripts/release.mjs notes "$VERSION" > notes.md
+          if [[ "$VERSION" == *-* ]]; then
+            gh release create "$GITHUB_REF_NAME" assets/* --verify-tag --prerelease \
+              --title "Argus $GITHUB_REF_NAME" --notes-file notes.md
+            # Both channels read their manifest from the latest stable release.
+            stable=$(gh release view --json tagName --jq .tagName 2>/dev/null || true)
+            if [[ -z "$stable" ]]; then
+              echo "::warning::还没有稳定版，测试版通道暂时收不到 $GITHUB_REF_NAME"
+            else
+              cp manifest.json beta.json
+              gh release upload "$stable" beta.json --clobber
+            fi
+          else
+            cp manifest.json latest.json
+            cp manifest.json beta.json
+            gh release create "$GITHUB_REF_NAME" assets/* latest.json beta.json --verify-tag \
+              --title "Argus $GITHUB_REF_NAME" --notes-file notes.md
+          fi

@@ -2,7 +2,7 @@
 
 ## 构建缓存
 
-发布构建通过 `pnpm tauri build --no-bundle` 执行时，先构建 `argus-service` 包中的任务管理器启动器和恢复程序，再把这两个独立程序内嵌到 Argus。便携发布仍只需主程序；不要跳过 Tauri 的 beforeBuildCommand 直接构建一个缺少或使用过期内嵌程序的发布版。NSIS 安装包附带卸载前恢复检查，编译安装包不会运行该检查或修改机器设置。
+发布构建通过 `pnpm tauri build --no-bundle` 执行时，先构建 `argus-service` 包中的任务管理器启动器和恢复程序，再把这两个独立程序内嵌到 Argus。免安装版仍只需主程序；不要跳过 Tauri 的 beforeBuildCommand 直接构建一个缺少或使用过期内嵌程序的发布版。NSIS 安装包附带卸载前恢复检查，编译安装包不会运行该检查或修改机器设置。
 
 | | 优化前 | 优化后 |
 |---|---|---|

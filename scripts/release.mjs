@@ -2,8 +2,9 @@
 // notes the release workflow publishes. Run `node scripts/release.mjs help`.
 
 import { execFileSync } from "node:child_process";
+import { createHash, createPublicKey, verify } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -46,8 +47,14 @@ const HELP = `用法：node scripts/release.mjs <命令>
       --dry-run 只打印版本号和发布说明，不改文件。
   lint <修订范围>          检查范围内的提交信息，例如 origin/main..HEAD
   lint --message <文本>    检查一条提交信息（例如拉取请求标题）
-  verify <标签>            核对标签与各处版本号、CHANGELOG.md 条目一致（发布工作流使用）
-  notes <版本>             打印 CHANGELOG.md 中该版本的发布说明（发布工作流使用）`;
+  verify <标签>            核对标签与各处版本号、CHANGELOG.md 条目、更新公钥（发布工作流使用）
+  notes <版本>             打印 CHANGELOG.md 中该版本的发布说明（发布工作流使用）
+  manifest <版本> <安装包> <签名文件>
+                           打印应用内更新读取的清单 JSON（发布工作流使用）
+  check-signature <版本> <文件> <签名文件>
+                           用 tauri.conf.json 中的公钥校验更新签名及其中的版本号（发布工作流使用）`;
+
+const TAURI_CONF = "src-tauri/tauri.conf.json";
 
 function fail(message) {
   console.error(`[错误] ${message}`);
@@ -294,6 +301,7 @@ function cmdBump(args) {
   const target = args.find((arg) => !arg.startsWith("--"));
   const current = parseVersion(readVersion());
   if (!dryRun) {
+    requirePubkey();
     if (git("status", "--porcelain")) fail("工作区有未提交的改动，先提交或暂存");
     const branch = git("rev-parse", "--abbrev-ref", "HEAD");
     if (branch !== "main") fail(`只能在 main 分支发布，当前在 ${branch}`);
@@ -351,7 +359,13 @@ function cmdVerify([tag]) {
   const version = readVersion();
   if (version !== tag.slice(1)) fail(`标签 ${tag} 与版本号 ${version} 不一致`);
   if (!readNotes(version)) fail(`${CHANGELOG} 里没有 ${version} 的条目，发布请用 pnpm release`);
-  console.log(`[通过] ${tag} 与版本号、${CHANGELOG} 一致`);
+  requirePubkey();
+  console.log(`[通过] ${tag} 与版本号、${CHANGELOG}、更新公钥一致`);
+}
+
+/** Without it the released app can verify, and therefore install, no update. */
+function requirePubkey() {
+  if (!JSON.parse(read(TAURI_CONF)).plugins?.updater?.pubkey) fail(`${TAURI_CONF} 没有配置更新签名公钥`);
 }
 
 function cmdNotes([version]) {
@@ -360,8 +374,82 @@ function cmdNotes([version]) {
   console.log(notes);
 }
 
+/** Release notes as the app shows them: plain text, no links or Markdown. */
+function plainNotes(markdown) {
+  return markdown
+    .replace(/ \(\[[0-9a-f]{7}\]\([^)]*\)\)/g, "")
+    .replace(/ \([0-9a-f]{7}\)$/gm, "")
+    .replace(/^### /gm, "")
+    .replace(/^- \*\*([^*]+):\*\* /gm, "· $1：")
+    .replace(/^- /gm, "· ");
+}
+
+/** The manifest the in-app updater reads (latest.json and beta.json). */
+function cmdManifest([version, installer, signature]) {
+  if (!version || !installer || !signature) fail("用法：manifest <版本> <安装包> <签名文件>");
+  const notes = readNotes(version) ?? fail(`${CHANGELOG} 里没有 ${version} 的条目`);
+  const repo = process.env.GITHUB_REPOSITORY
+    ? `${process.env.GITHUB_SERVER_URL ?? "https://github.com"}/${process.env.GITHUB_REPOSITORY}`
+    : (repoUrl() ?? fail("找不到 GitHub 仓库地址"));
+  const asset = {
+    signature: readFileSync(signature, "utf8").trim(),
+    url: `${repo}/releases/download/v${version}/${encodeURIComponent(basename(installer))}`,
+  };
+  const manifest = {
+    version,
+    notes: plainNotes(notes),
+    pub_date: new Date().toISOString(),
+    // The updater looks for `{os}-{arch}-{installer}` first, then `{os}-{arch}`.
+    platforms: { "windows-x86_64-nsis": asset, "windows-x86_64": asset },
+  };
+  console.log(JSON.stringify(manifest, null, 2));
+}
+
+/**
+ * Verifies a minisign signature the way the updater does (`requireSignedVersion`),
+ * so a release signed with a key that does not match the public key never ships.
+ */
+function cmdCheckSignature([version, file, signature]) {
+  if (!version || !file || !signature) fail("用法：check-signature <版本> <文件> <签名文件>");
+  // Tauri stores both as base64 of the minisign text files.
+  const lines = (base64) => Buffer.from(base64.trim(), "base64").toString("utf8").split("\n");
+  const pubkey =
+    JSON.parse(read(TAURI_CONF)).plugins?.updater?.pubkey || fail(`${TAURI_CONF} 没有配置更新签名公钥`);
+  // Public key: algorithm (2) + key id (8) + Ed25519 key (32).
+  const pk = Buffer.from(lines(pubkey)[1], "base64");
+  // Signature: algorithm (2) + key id (8) + Ed25519 signature (64), then the
+  // trusted comment and the global signature over signature + comment.
+  const [, sigLine = "", commentLine = "", globalLine = ""] = lines(readFileSync(signature, "utf8"));
+  const sig = Buffer.from(sigLine, "base64");
+  const comment = commentLine.replace(/^trusted comment: /, "");
+  const key = createPublicKey({
+    key: { kty: "OKP", crv: "Ed25519", x: pk.subarray(10).toString("base64url") },
+    format: "jwk",
+  });
+  if (sig.length !== 74 || !sig.subarray(2, 10).equals(pk.subarray(2, 10))) {
+    fail(`签名使用的密钥与 ${TAURI_CONF} 中的公钥不同`);
+  }
+  const data = readFileSync(file);
+  // "ED" signs the BLAKE2b-512 hash of the file, legacy "Ed" the file itself.
+  const message =
+    sig.subarray(0, 2).toString() === "ED" ? createHash("blake2b512").update(data).digest() : data;
+  if (!verify(null, message, key, sig.subarray(10))) fail("签名与文件内容不符");
+  const signedComment = Buffer.concat([sig.subarray(10), Buffer.from(comment)]);
+  if (!verify(null, signedComment, key, Buffer.from(globalLine, "base64")))
+    fail("签名中的可信注释没有通过校验");
+  if (!comment.split("\t").includes(`version:${version}`)) fail(`签名中的版本不是 ${version}：${comment}`);
+  console.log(`[通过] 签名来自 ${TAURI_CONF} 中的公钥，版本为 ${version}`);
+}
+
 const [command, ...args] = process.argv.slice(2);
-const commands = { bump: cmdBump, lint: cmdLint, verify: cmdVerify, notes: cmdNotes };
+const commands = {
+  bump: cmdBump,
+  lint: cmdLint,
+  verify: cmdVerify,
+  notes: cmdNotes,
+  manifest: cmdManifest,
+  "check-signature": cmdCheckSignature,
+};
 if (commands[command]) commands[command](args);
 else if (!command || command === "help" || command === "--help") console.log(HELP);
 else fail(`未知命令：${command}\n\n${HELP}`);
