@@ -6,6 +6,7 @@ mod shell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use argus_core::rules::RuleEngine;
 use argus_core::services::ServiceCatalog;
 use argus_core::{Collector, MetaStore, Snapshot, privilege};
 use tauri::Manager;
@@ -18,11 +19,23 @@ use crate::settings::SettingsStore;
 
 static WAS_MINIMIZED: AtomicBool = AtomicBool::new(false);
 
+/// ETW session for per-process network traffic; one per build, like the app
+/// identifier, so a development build never stops an installed one's session.
+const NETWORK_SESSION: &str = if cfg!(debug_assertions) {
+    "Argus Network (dev)"
+} else {
+    "Argus Network"
+};
+
+/// Where history is recorded (set once the app's data folder is known).
+pub struct HistoryDir(pub std::path::PathBuf);
+
 pub struct AppState {
     sampler: Sampler,
     elevated: bool,
     meta: Arc<MetaStore>,
     services: ServiceCatalog,
+    rules: Arc<Mutex<RuleEngine>>,
 }
 
 pub fn run() {
@@ -35,7 +48,19 @@ pub fn run() {
     // Start sampling before the webview exists so the first snapshot is ready
     // (with meaningful CPU deltas) by the time the UI subscribes.
     let meta = MetaStore::new();
-    let sampler = Sampler::spawn(Collector::new(meta.clone()));
+    let rules = Arc::new(Mutex::new(RuleEngine::default()));
+    let sampler = Sampler::spawn(
+        {
+            let meta = meta.clone();
+            move || {
+                let mut collector = Collector::new(meta);
+                // Needs administrator rights; otherwise the column stays hidden.
+                collector.enable_process_network(NETWORK_SESSION);
+                collector
+            }
+        },
+        rules.clone(),
+    );
 
     // Autostart launches with --hidden: stay in the tray until summoned.
     let start_hidden = std::env::args().any(|a| a == "--hidden");
@@ -56,11 +81,23 @@ pub fn run() {
             elevated,
             meta: meta.clone(),
             services: ServiceCatalog::default(),
+            rules,
         })
         .register_uri_scheme_protocol("argus", icon_protocol(meta))
         .setup(move |app| {
             let config = app.path().app_config_dir()?.join("settings.json");
-            app.manage(SettingsStore::load(config));
+            let settings = SettingsStore::load(config);
+            if let Ok(mut engine) = app.state::<AppState>().rules.lock() {
+                engine.set_rules(settings.get().rules);
+            }
+            let history = app.path().app_local_data_dir()?.join("history");
+            // Expired days go even while recording is off.
+            argus_core::history::prune_expired(&history);
+            app.state::<AppState>().sampler.send(Control::SetHistoryDir(
+                settings.get().history.then(|| history.clone()),
+            ));
+            app.manage(settings);
+            app.manage(HistoryDir(history));
             shell::build_tray(app.handle())?;
             shell::register_saved_hotkey(app.handle());
 
@@ -145,11 +182,21 @@ pub fn run() {
             commands::process_details,
             commands::kill_process,
             commands::kill_process_tree,
+            commands::set_priority,
+            commands::set_efficiency_mode,
             commands::reveal_in_explorer,
             commands::get_settings,
             commands::set_close_to_tray,
             commands::set_hotkey,
             commands::set_autostart,
+            commands::set_rules,
+            commands::rule_stats,
+            commands::history_range,
+            commands::history_series,
+            commands::history_moment,
+            commands::history_usage,
+            commands::set_history_enabled,
+            commands::clear_history,
             commands::quit,
             commands::list_services,
             commands::control_service,
@@ -162,8 +209,15 @@ pub fn run() {
             commands::find_lockers,
             commands::pick_path,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Argus");
+        .build(tauri::generate_context!())
+        .expect("error while building Argus")
+        .run(|_app, event| {
+            // Trace sessions outlive their process, and threads get no chance
+            // to clean up on exit, so stop it here.
+            if let tauri::RunEvent::Exit = event {
+                argus_core::net_process::stop_session(NETWORK_SESSION);
+            }
+        });
 }
 
 /// Serves process icons at `argus://icon/<id>` (`http://argus.localhost/icon/<id>`).

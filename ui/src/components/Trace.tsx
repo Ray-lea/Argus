@@ -110,7 +110,7 @@ document.addEventListener("visibilitychange", requestWake);
 
 // ---- Drawing ----------------------------------------------------------------------
 
-function withAlpha(hex: string, alpha: number): string {
+export function withAlpha(hex: string, alpha: number): string {
   const h = hex.replace("#", "");
   const full = h.length === 3 ? [...h].map((c) => c + c).join("") : h;
   const n = Number.parseInt(full, 16);

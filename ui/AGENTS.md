@@ -27,6 +27,11 @@
 
 ## 其他
 
+- 网络速率一律用 `lib/format.ts` 的 `fmtNet` / `netParts`（跟随设置里的字节或比特；表格单元格传 `quiet` 让空闲显示为“0”），不要直接用 `fmtRate` / `fmtBits`；只有性能页的网络视图用 `fmtNetAlt` 同时显示另一种单位。磁盘与 I/O 用 `fmtRate`，标签和提示里传 `quiet = false`，空闲时也带单位。
+- 右键菜单支持一级子菜单（`MenuEntry.children`），不要再往下嵌套。
+- 设置页的滚动容器 `.settings` 是尺寸容器（`container-type`，为了窄窗口时隐藏分组列表），它会成为 `position: fixed` 后代的包含块。在设置页里打开的遮罩和对话框要用 `Portal` 挂到 `body` 上（参考许可证对话框）。
+- 历史页的曲线（`HistoryPage.tsx`）不随采样流动，只在查询结果变化或尺寸变化时重画；查询结果连同它的时间窗一起保存，刷新时不会把旧数据画到新坐标上。
+
 - 屏幕刷新率由 `lib/motion.ts` 测量（去掉跳帧后求平均，再对齐常见标称值），只用于显示和均衡模式；流畅模式不依赖它。
 - `lib/types.ts` 与 argus-core 的 serde 类型保持同步。
 - 在浏览器里调样式用 `start.bat ui`（模拟数据 `lib/mock.ts`），真实性能只在 Tauri 发布构建里量。

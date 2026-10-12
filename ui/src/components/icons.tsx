@@ -208,3 +208,115 @@ export const ExternalIcon = (p: IconProps) => (
     <path d="M12 9.5v3c0 .8-.7 1.5-1.5 1.5h-7c-.8 0-1.5-.7-1.5-1.5v-7C2 4.7 2.7 4 3.5 4h3" />
   </Svg>
 );
+
+/** Efficiency mode. */
+export const LeafIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M13.5 2.5c-6.1 0-9.5 2.8-9.5 6.9 0 2.4 1.7 4.1 4.1 4.1 4.1 0 5.4-4.5 5.4-11Z" />
+    <path d="M2.5 13.5c1.8-3 4.2-5.2 7.3-6.6" />
+  </Svg>
+);
+
+/** Process priority. */
+export const GaugeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.8 11.5a5.5 5.5 0 1 1 10.4 0" />
+    <path d="m8 9.5 2.6-3.4" />
+  </Svg>
+);
+
+// ---- Settings ----------------------------------------------------------------------
+
+export const PowerIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5.1 4.3a5 5 0 1 0 5.8 0" />
+    <path d="M8 2.2v5.3" />
+  </Svg>
+);
+
+/** Closing to the tray. */
+export const TrayIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 2v6.5M5.6 6.1 8 8.5l2.4-2.4" />
+    <path d="M2 10h3.2l.8 1.5h4l.8-1.5H14v2.5c0 .8-.7 1.5-1.5 1.5h-9c-.8 0-1.5-.7-1.5-1.5Z" />
+  </Svg>
+);
+
+export const KeyboardIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" />
+    <path d="M4.2 6.5h.6M6.7 6.5h.6M9.2 6.5h.6M11.7 6.5h.6M5 9.5h6" />
+  </Svg>
+);
+
+/** Interface animation. */
+export const SparkleIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M7 2.5c.5 2.6 1.4 3.5 4 4-2.6.5-3.5 1.4-4 4-.5-2.6-1.4-3.5-4-4 2.6-.5 3.5-1.4 4-4Z" />
+    <path d="M12.5 10.5v3M11 12h3" />
+  </Svg>
+);
+
+/** Chart animation. */
+export const PulseIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M1.5 8.5h2.6l1.6-4 2.6 7 1.9-5 1 2h3.3" />
+  </Svg>
+);
+
+/** Refresh interval. */
+export const TimerIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="8" cy="9" r="5" />
+    <path d="M8 9V6.5M6.3 2h3.4M12.2 4.8l.9-.9" />
+  </Svg>
+);
+
+export const HistoryIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.7 8.2A5.3 5.3 0 1 0 4.3 4.3" />
+    <path d="M4.4 1.9v2.5H1.9" />
+    <path d="M8 5.3V8l1.9 1.4" />
+  </Svg>
+);
+
+/** Stored data. */
+export const StorageIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <ellipse cx="8" cy="4" rx="5" ry="2" />
+    <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4" />
+    <path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" />
+  </Svg>
+);
+
+export const TrashIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.5 4.5h11" />
+    <path d="M6 4.5V3c0-.6.4-1 1-1h2c.6 0 1 .4 1 1v1.5" />
+    <path d="m3.8 4.5.6 8.1c.1.8.7 1.4 1.5 1.4h4.2c.8 0 1.4-.6 1.5-1.4l.6-8.1" />
+    <path d="M6.6 7.2v4M9.4 7.2v4" />
+  </Svg>
+);
+
+/** The license. */
+export const DocumentIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 2h5l3.5 3.5V13c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V3c0-.6.4-1 1-1Z" />
+    <path d="M9 2v3.5h3.5M5.5 8.5h5M5.5 11h3.5" />
+  </Svg>
+);
+
+/** Rules: applied automatically. */
+export const BoltIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9.2 1.8 3.8 9.2h4l-1 5 5.4-7.4h-4Z" />
+  </Svg>
+);
+
+/** Network rates: up and down. */
+export const TransferIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 13.5v-11M2.5 5 5 2.5 7.5 5" />
+    <path d="M11 2.5v11M8.5 11l2.5 2.5 2.5-2.5" />
+  </Svg>
+);

@@ -7,10 +7,12 @@
 ## 环境要求
 
 - Windows 11 x64
-- Rust（stable）
+- Rust（stable，`x86_64-pc-windows-msvc` 工具链）
 - Node.js 22+ 与 pnpm
-- Visual Studio Build Tools（C++ 生成工具）
+- Visual Studio Build Tools（“使用 C++ 的桌面开发”，含 Windows SDK）
 - WebView2 运行时（Windows 11 自带）
+
+rustup 在 Windows 上默认安装 MSVC 工具链。如果你的默认工具链是 GNU（`x86_64-pc-windows-gnu`），在仓库目录执行 `rustup override set stable-x86_64-pc-windows-msvc`，只对本项目生效，原因见[构建与缓存](build.md#链接器与工具链)。
 
 ## 常用命令
 
@@ -41,6 +43,8 @@ cargo run -p argus-core --example dump --release       # 进程（按 CPU 排序
 cargo run -p argus-core --example hardware --release   # CPU、传感器、内存、磁盘、网络、GPU、电池
 cargo run -p argus-core --example m3 --release         # 服务、启动项、连接与一次文件占用查询
 cargo run -p argus-core --example lockers -- C:\Windows\System32\ntdll.dll   # 占用指定文件的进程
+cargo run -p argus-core --example gpu_processes --release   # 每进程 GPU 占用与采集耗时
+cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 ```
 
 ## 代码规范

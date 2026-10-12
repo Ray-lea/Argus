@@ -1,15 +1,17 @@
 import { createEffect, createMemo, For, type JSX, Match, on, Show, Switch } from "solid-js";
 import {
-  bitsParts,
-  fmtBits,
   fmtCache,
   fmtCapacity,
   fmtCount,
   fmtGB,
   fmtGHz,
   fmtLinkSpeed,
+  fmtMem,
+  fmtNet,
+  fmtNetAlt,
   fmtRate,
   fmtUptime,
+  netParts,
   rateParts,
 } from "../lib/format";
 import { EASE_OUT, play } from "../lib/motion";
@@ -77,7 +79,7 @@ function ChartBox(props: {
   );
 }
 
-function Stat(props: { label: string; value: JSX.Element; unit?: string }) {
+function Stat(props: { label: string; value: JSX.Element; unit?: string; note?: string }) {
   return (
     <div>
       <div class="stat-label">{props.label}</div>
@@ -87,9 +89,18 @@ function Stat(props: { label: string; value: JSX.Element; unit?: string }) {
           <small>{props.unit}</small>
         </Show>
       </div>
+      <Show when={props.note}>
+        <div class="stat-note">{props.note}</div>
+      </Show>
     </div>
   );
 }
+
+/** A figure split into number and unit, e.g. memory as "912.0" + "MB". */
+const parts = (text: string) => {
+  const [value, unit] = text.split(" ");
+  return { value, unit };
+};
 
 function Head(props: { title: string; model?: string }) {
   return (
@@ -138,7 +149,7 @@ function devices(sys: SystemStats, hw: Hardware): Device[] {
     {
       key: "memory",
       title: "内存",
-      sub: `${fmtGB(sys.memUsed)}/${fmtGB(sys.memTotal)} GB (${Math.round((sys.memUsed / sys.memTotal) * 100)}%)`,
+      sub: `${fmtGB(sys.memUsed)} / ${fmtGB(sys.memTotal)} GB（${Math.round((sys.memUsed / sys.memTotal) * 100)}%）`,
       colorVar: "--mem",
       series: [{ data: () => series("mem"), colorVar: "--mem" }],
       max: () => sys.memTotal,
@@ -160,7 +171,7 @@ function devices(sys: SystemStats, hw: Hardware): Device[] {
     list.push({
       key: `nic:${n.info.id}`,
       title: n.info.name,
-      sub: `收 ${fmtBits(n.rx)}  发 ${fmtBits(n.tx)}`,
+      sub: `收 ${fmtNet(n.rx)}  发 ${fmtNet(n.tx)}`,
       colorVar: "--net",
       series: [
         { data: () => series(`${k}.rx`), colorVar: "--net" },
@@ -605,8 +616,8 @@ function MemoryView() {
           <Stat label="可用" value={fmtGB(sys().memAvailable)} unit="GB" />
           <Stat label="已提交" value={`${fmtGB(sys().commitUsed)} / ${fmtGB(sys().commitLimit)}`} unit="GB" />
           <Stat label="已缓存" value={fmtGB(sys().cached)} unit="GB" />
-          <Stat label="分页缓冲池" value={(sys().kernelPaged / MB).toFixed(0)} unit="MB" />
-          <Stat label="非分页缓冲池" value={(sys().kernelNonpaged / MB).toFixed(0)} unit="MB" />
+          <Stat label="分页缓冲池" {...parts(fmtMem(sys().kernelPaged))} />
+          <Stat label="非分页缓冲池" {...parts(fmtMem(sys().kernelNonpaged))} />
         </div>
         <dl class="info-list">
           <dt>速度</dt>
@@ -654,7 +665,7 @@ function DiskView(props: { index: number }) {
               colorVar="--io"
               size="half"
               scale={rateMax}
-              format={fmtRate}
+              format={(v) => fmtRate(v, false)}
               series={[
                 { data: () => series(`${k()}.read`), colorVar: "--io", label: "读取" },
                 {
@@ -727,11 +738,11 @@ function NicView(props: { id: string }) {
           <Head title={n().info.name} model={n().info.description} />
           <ChartBox
             label="吞吐量"
-            max={fmtBits(scale())}
+            max={fmtNet(scale())}
             colorVar="--net"
             size="main"
             scale={scale}
-            format={fmtBits}
+            format={(v) => `${fmtNet(v)}（${fmtNetAlt(v)}）`}
             series={[
               { data: () => series(`${k()}.rx`), colorVar: "--net", label: "接收" },
               { data: () => series(`${k()}.tx`), colorVar: "--net", dashed: true, fill: 0, label: "发送" },
@@ -743,14 +754,28 @@ function NicView(props: { id: string }) {
           </div>
           <div class="perf-stats">
             <div class="stat-grid">
-              <Stat label="接收" value={bitsParts(n().rx)[0]} unit={bitsParts(n().rx)[1]} />
-              <Stat label="发送" value={bitsParts(n().tx)[0]} unit={bitsParts(n().tx)[1]} />
+              <Stat
+                label="接收"
+                value={netParts(n().rx)[0]}
+                unit={netParts(n().rx)[1]}
+                note={fmtNetAlt(n().rx)}
+              />
+              <Stat
+                label="发送"
+                value={netParts(n().tx)[0]}
+                unit={netParts(n().tx)[1]}
+                note={fmtNetAlt(n().tx)}
+              />
             </div>
             <dl class="info-list selectable">
               <dt>连接类型</dt>
               <dd>{NIC_KIND[n().info.kind]}</dd>
               <dt>链路速度</dt>
-              <dd>{n().info.linkSpeed ? fmtLinkSpeed(n().info.linkSpeed) : "—"}</dd>
+              <dd>
+                {n().info.linkSpeed
+                  ? `${fmtLinkSpeed(n().info.linkSpeed)}（${fmtRate(n().info.linkSpeed / 8, false)}）`
+                  : "—"}
+              </dd>
               <dt>IPv4 地址</dt>
               <dd style={{ "white-space": "pre-line" }}>{listAddrs(n().info.ipv4)}</dd>
               <dt>IPv6 地址</dt>

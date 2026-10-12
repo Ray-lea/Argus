@@ -1,14 +1,40 @@
 // Context menu contents, shared by tables and panels.
 
-import { copyText, endRow, endTree, revealInExplorer } from "../lib/actions";
+import {
+  addRuleFor,
+  copyText,
+  endRow,
+  endTree,
+  PRIORITY_LABEL,
+  priorityOf,
+  revealInExplorer,
+  setRowEfficiency,
+  setRowPriority,
+} from "../lib/actions";
 import type { DisplayRow } from "../lib/rows";
-import { setDetailsOpen, toggleRow } from "../lib/store";
+import { setDetailsOpen, snapshot, toggleRow } from "../lib/store";
+import type { PriorityClass } from "../lib/types";
 import type { MenuEntry } from "../lib/ui";
-import { BranchEndIcon, CopyIcon, EndIcon, FolderIcon, InfoIcon } from "./icons";
+import { BranchEndIcon, CopyIcon, EndIcon, FolderIcon, GaugeIcon, InfoIcon, LeafIcon } from "./icons";
+
+/** Task Manager's order, highest first. */
+const PRIORITIES: PriorityClass[] = ["realtime", "high", "aboveNormal", "normal", "belowNormal", "idle"];
+
+/** The priority every process of the row shares, or null if they differ. */
+function currentPriority(row: DisplayRow): PriorityClass | null {
+  if (row.kind !== "group") return priorityOf(row.proc.basePriority);
+  const name = row.proc.name.toLowerCase();
+  const classes = new Set(
+    (snapshot()?.processes ?? []).filter((p) => p.name.toLowerCase() === name).map((p) => p.basePriority),
+  );
+  return classes.size === 1 ? priorityOf([...classes][0]) : null;
+}
 
 export function processMenu(row: DisplayRow): MenuEntry[] {
   const isGroup = row.kind === "group";
   const path = row.proc.path;
+  const priority = currentPriority(row);
+  const efficient = row.efficiency > 0 && row.efficiency === row.count;
   const items: MenuEntry[] = [
     {
       label: isGroup ? `结束全部 ${row.count} 个进程` : "结束进程",
@@ -19,7 +45,26 @@ export function processMenu(row: DisplayRow): MenuEntry[] {
     },
   ];
   if (!isGroup) items.push({ label: "结束进程树", icon: () => <BranchEndIcon />, run: () => endTree(row) });
-  items.push("separator");
+  items.push(
+    "separator",
+    {
+      label: "设置优先级",
+      icon: () => <GaugeIcon />,
+      children: PRIORITIES.map((p) => ({
+        label: PRIORITY_LABEL[p],
+        checked: priority === p,
+        run: () => setRowPriority(row, p),
+      })),
+    },
+    {
+      label: "效率模式",
+      icon: () => <LeafIcon />,
+      checked: efficient,
+      run: () => setRowEfficiency(row, !efficient),
+    },
+    { label: "添加规则", run: () => addRuleFor(row) },
+    "separator",
+  );
   if (row.expandable) items.push({ label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) });
   items.push(
     {

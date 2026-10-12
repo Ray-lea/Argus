@@ -4,13 +4,10 @@
 //! administrator rights; counters a machine lacks are simply absent.
 
 use serde::Serialize;
-use windows::Win32::System::Performance::{
-    PDH_FMT_COUNTERVALUE, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY,
-    PDH_MORE_DATA, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData,
-    PdhGetFormattedCounterArrayW, PdhGetFormattedCounterValue, PdhOpenQueryW,
-};
-use windows::core::{PCWSTR, w};
+use windows::Win32::System::Performance::PDH_HCOUNTER;
+use windows::core::w;
 
+use crate::pdh::{self, Query};
 use crate::util::AlignedBuf;
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,7 +42,8 @@ pub struct SensorSample {
 }
 
 pub(crate) struct Sensors {
-    query: PDH_HQUERY,
+    query: Query,
+    buf: AlignedBuf,
     base_mhz: u32,
     total_perf: Option<PDH_HCOUNTER>,
     /// MHz per processor (`Actual Frequency`, Windows 11) ...
@@ -63,14 +61,8 @@ unsafe impl Send for Sensors {}
 
 impl Sensors {
     pub fn new(base_mhz: u32) -> Option<Self> {
-        let mut query = PDH_HQUERY::default();
-        if unsafe { PdhOpenQueryW(PCWSTR::null(), 0, &mut query) } != 0 {
-            return None;
-        }
-        let add = |path: PCWSTR| {
-            let mut counter = PDH_HCOUNTER::default();
-            (unsafe { PdhAddEnglishCounterW(query, path, 0, &mut counter) } == 0).then_some(counter)
-        };
+        let query = Query::open()?;
+        let add = |path| query.add(path);
         let total_perf = (base_mhz > 0)
             .then(|| {
                 add(w!(
@@ -94,9 +86,10 @@ impl Sensors {
         }
         let energy = add(w!(r"\Energy Meter(*)\Power"));
         // Rate counters need a first collection to have something to diff against.
-        unsafe { PdhCollectQueryData(query) };
+        query.collect();
         Some(Self {
             query,
+            buf: AlignedBuf::with_capacity(16 * 1024),
             base_mhz,
             total_perf,
             core_freq,
@@ -109,20 +102,20 @@ impl Sensors {
 
     pub fn sample(&mut self) -> SensorSample {
         let mut out = SensorSample::default();
-        if unsafe { PdhCollectQueryData(self.query) } != 0 {
+        if !self.query.collect() {
             return out;
         }
         let base = self.base_mhz as f64;
         out.cpu_mhz = self
             .total_perf
-            .and_then(value)
+            .and_then(pdh::value)
             .filter(|&pct| pct > 0.0)
             .map(|pct| (base * pct / 100.0).round() as u32);
 
         let per_core = if let Some(c) = self.core_freq {
-            array(c)
+            pdh::array(c, &mut self.buf)
         } else if let Some(c) = self.core_perf {
-            array(c)
+            pdh::array(c, &mut self.buf)
                 .into_iter()
                 .map(|(name, pct)| (name, base * pct / 100.0))
                 .collect()
@@ -145,7 +138,7 @@ impl Sensors {
         }
 
         if let Some(c) = self.zones {
-            for (name, raw) in array(c) {
+            for (name, raw) in pdh::array(c, &mut self.buf) {
                 let kelvin = if self.zones_precise { raw / 10.0 } else { raw };
                 let celsius = (kelvin - 273.15) as f32;
                 // Zero kelvin or 0 °C means "not reported".
@@ -158,7 +151,7 @@ impl Sensors {
 
         if let Some(c) = self.energy {
             let mut power = CpuPower::default();
-            for (name, milliwatts) in array(c) {
+            for (name, milliwatts) in pdh::array(c, &mut self.buf) {
                 if milliwatts <= 0.0 || name == "_Total" {
                     continue;
                 }
@@ -177,47 +170,4 @@ impl Sensors {
         }
         out
     }
-}
-
-impl Drop for Sensors {
-    fn drop(&mut self) {
-        unsafe { PdhCloseQuery(self.query) };
-    }
-}
-
-fn value(counter: PDH_HCOUNTER) -> Option<f64> {
-    let mut v = PDH_FMT_COUNTERVALUE::default();
-    (unsafe { PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, None, &mut v) } == 0)
-        .then_some(unsafe { v.Anonymous.doubleValue })
-}
-
-/// Every instance of a wildcard counter, as (instance name, value).
-fn array(counter: PDH_HCOUNTER) -> Vec<(String, f64)> {
-    let (mut size, mut count) = (0u32, 0u32);
-    let status = unsafe {
-        PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, None)
-    };
-    if status != PDH_MORE_DATA || size == 0 {
-        return Vec::new();
-    }
-    // The items are followed by the instance name strings they point into.
-    let mut buf = AlignedBuf::with_capacity(size as usize);
-    let items = buf.as_mut_ptr().cast::<PDH_FMT_COUNTERVALUE_ITEM_W>();
-    if unsafe {
-        PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, Some(items))
-    } != 0
-    {
-        return Vec::new();
-    }
-    (0..count as usize)
-        .filter_map(|i| {
-            let item = unsafe { &*items.add(i) };
-            // 0 and 1 are "valid" and "new data"; anything else failed this round.
-            if item.FmtValue.CStatus > 1 {
-                return None;
-            }
-            let name = unsafe { item.szName.to_string() }.ok()?;
-            Some((name, unsafe { item.FmtValue.Anonymous.doubleValue }))
-        })
-        .collect()
 }

@@ -10,7 +10,13 @@ use std::time::Instant;
 
 use serde::Serialize;
 use windows::Wdk::System::SystemInformation::SystemProcessInformation as SPI_CLASS;
+use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
+use windows::Win32::System::Threading::{
+    GetProcessInformation, OpenProcess, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+    PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
+    PROCESS_QUERY_LIMITED_INFORMATION, ProcessPowerThrottling,
+};
 
 use crate::meta::{FileMeta, MetaStore};
 use crate::nt::{
@@ -18,7 +24,7 @@ use crate::nt::{
     query_system_information,
 };
 use crate::paths::PathResolver;
-use crate::util::{AlignedBuf, filetime_ticks, ticks_to_unix_ms};
+use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, ticks_to_unix_ms};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,11 +51,23 @@ pub struct ProcessRow {
     pub io_read: u64,
     pub io_write: u64,
     pub io_other: u64,
+    /// The process's share of its busiest GPU engine, percent.
+    pub gpu: f32,
+    /// That engine, e.g. `GPU 0 - 3D`; None while the process leaves the GPU idle.
+    pub gpu_engine: Option<Arc<str>>,
+    /// GPU memory in use, bytes: video memory and system memory.
+    pub gpu_dedicated: u64,
+    pub gpu_shared: u64,
+    /// Network bytes per second, when per-process traffic is measured (ETW).
+    pub net_sent: u64,
+    pub net_received: u64,
     pub threads: u32,
     pub handles: u32,
     pub session_id: u32,
     pub base_priority: i32,
     pub suspended: bool,
+    /// Efficiency mode (EcoQoS) is on, set by the app itself or by a user.
+    pub efficiency: bool,
 }
 
 struct Tracked {
@@ -58,6 +76,9 @@ struct Tracked {
     meta: Option<Arc<FileMeta>>,
     cpu_ticks: i64,
     io: [i64; 3],
+    /// Query handle, opened once per process instance (None when access is
+    /// denied, which is final for that instance).
+    handle: Option<OwnedHandle>,
 }
 
 pub(crate) struct ProcessTracker {
@@ -129,6 +150,11 @@ impl ProcessTracker {
                             meta: None,
                             cpu_ticks,
                             io,
+                            handle: unsafe {
+                                OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+                            }
+                            .ok()
+                            .map(OwnedHandle),
                         },
                         prev,
                     )
@@ -173,17 +199,43 @@ impl ProcessTracker {
                 io_read: rates[0],
                 io_write: rates[1],
                 io_other: rates[2],
+                gpu: 0.0,
+                gpu_engine: None,
+                gpu_dedicated: 0,
+                gpu_shared: 0,
+                net_sent: 0,
+                net_received: 0,
                 threads: p.number_of_threads,
                 handles: p.handle_count,
                 session_id: p.session_id,
                 base_priority: p.base_priority,
                 suspended,
+                efficiency: entry.handle.as_ref().is_some_and(|h| efficiency_mode(h.0)),
             });
             next.insert(key, entry);
         }
         self.tracked = next;
         rows
     }
+}
+
+/// Whether efficiency mode is explicitly on (about 1 µs per process with a
+/// cached handle).
+fn efficiency_mode(process: HANDLE) -> bool {
+    let mut state = PROCESS_POWER_THROTTLING_STATE {
+        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        ..Default::default()
+    };
+    unsafe {
+        GetProcessInformation(
+            process,
+            ProcessPowerThrottling,
+            (&mut state as *mut PROCESS_POWER_THROTTLING_STATE).cast(),
+            size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+        )
+    }
+    .is_ok()
+        && state.ControlMask & state.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED != 0
 }
 
 /// Minimal (pid, ppid, create time) listing, used to walk process trees.

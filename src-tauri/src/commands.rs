@@ -1,11 +1,14 @@
+use std::collections::HashMap;
 use std::os::windows::process::CommandExt;
 use std::time::Duration;
 
 use argus_core::Snapshot;
-use argus_core::actions::{self, ActionError, TreeKillReport};
+use argus_core::actions::{self, ActionError, Priority, TreeKillReport};
 use argus_core::connections::{self, Connection};
 use argus_core::details::{self, ProcessDetails};
 use argus_core::filelock::{self, LockReport};
+use argus_core::history::{self, HistoryMoment, HistoryPoint, HistoryUsage};
+use argus_core::rules::{ProcessRule, RuleStats};
 use argus_core::services::{ServiceAction, ServiceInfo, StartType};
 use argus_core::startup::{self, StartupItem};
 use argus_core::theme::{self, AccentColors};
@@ -13,10 +16,10 @@ use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::{Manager, State};
 
-use crate::AppState;
 use crate::sampler::Control;
 use crate::settings::{SettingsStore, SettingsView};
 use crate::shell;
+use crate::{AppState, HistoryDir};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,6 +85,30 @@ pub fn kill_process_tree(
     create_time: i64,
 ) -> Result<TreeKillReport, ActionError> {
     let result = actions::terminate_tree(pid, create_time);
+    state.sampler.send(Control::Refresh);
+    result
+}
+
+#[tauri::command(async)]
+pub fn set_priority(
+    state: State<'_, AppState>,
+    pid: u32,
+    create_time: i64,
+    priority: Priority,
+) -> Result<Priority, ActionError> {
+    let result = actions::set_priority(pid, create_time, priority);
+    state.sampler.send(Control::Refresh);
+    result
+}
+
+#[tauri::command(async)]
+pub fn set_efficiency_mode(
+    state: State<'_, AppState>,
+    pid: u32,
+    create_time: i64,
+    on: bool,
+) -> Result<(), ActionError> {
+    let result = actions::set_efficiency_mode(pid, create_time, on);
     state.sampler.send(Control::Refresh);
     result
 }
@@ -152,6 +179,88 @@ pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<SettingsVie
     }
     .map_err(|e| e.to_string())?;
     Ok(settings_view(&app))
+}
+
+/// Replaces the process rules and applies them to running processes at once.
+#[tauri::command]
+pub fn set_rules(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    rules: Vec<ProcessRule>,
+) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.rules = rules.clone())
+        .map_err(|e| e.to_string())?;
+    if let Ok(mut engine) = state.rules.lock() {
+        engine.set_rules(rules);
+    }
+    state.sampler.send(Control::Refresh);
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
+pub fn rule_stats(state: State<'_, AppState>) -> HashMap<String, RuleStats> {
+    state
+        .rules
+        .lock()
+        .map(|engine| engine.stats())
+        .unwrap_or_default()
+}
+
+// ---- History --------------------------------------------------------------------
+
+/// Unix ms of the first and last recorded frame.
+#[tauri::command(async)]
+pub fn history_range(dir: State<'_, HistoryDir>) -> Option<(i64, i64)> {
+    history::range(&dir.0)
+}
+
+#[tauri::command(async)]
+pub fn history_series(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+    buckets: usize,
+) -> Vec<HistoryPoint> {
+    history::series(&dir.0, from, to, buckets.min(4096))
+}
+
+#[tauri::command(async)]
+pub fn history_moment(dir: State<'_, HistoryDir>, ts: i64) -> Option<HistoryMoment> {
+    history::moment(&dir.0, ts)
+}
+
+#[tauri::command(async)]
+pub fn history_usage(dir: State<'_, HistoryDir>) -> HistoryUsage {
+    history::usage(&dir.0)
+}
+
+/// Starts or stops recording; what is already recorded stays until it expires.
+#[tauri::command]
+pub fn set_history_enabled(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    dir: State<'_, HistoryDir>,
+    enabled: bool,
+) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.history = enabled)
+        .map_err(|e| e.to_string())?;
+    state
+        .sampler
+        .send(Control::SetHistoryDir(enabled.then(|| dir.0.clone())));
+    Ok(settings_view(&app))
+}
+
+/// Deletes all recorded history.
+#[tauri::command(async)]
+pub fn clear_history(state: State<'_, AppState>, dir: State<'_, HistoryDir>) -> Result<(), String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    state.sampler.send(Control::ClearHistory(dir.0.clone(), tx));
+    match rx.recv_timeout(Duration::from_secs(10)) {
+        Ok(result) => result.map_err(|e| e.to_string()),
+        Err(_) => Err("采样线程没有响应".into()),
+    }
 }
 
 #[tauri::command]

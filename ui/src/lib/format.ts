@@ -1,3 +1,5 @@
+import { persisted } from "./prefs";
+
 const KB = 1024;
 const MB = KB * 1024;
 const GB = MB * 1024;
@@ -12,19 +14,19 @@ export function fmtGB(bytes: number, digits = 1): string {
   return (bytes / GB).toFixed(digits);
 }
 
-/** Byte rate; zero renders as a bare "0" so idle rows stay quiet. */
-export function fmtRate(bytesPerSec: number): string {
-  if (bytesPerSec < 1) return "0";
+/** Byte rate. Idle renders as a bare "0" so table rows stay quiet; pass
+ * `quiet = false` where the unit should show anyway (labels, tooltips). */
+export function fmtRate(bytesPerSec: number, quiet = true): string {
+  if (bytesPerSec < 1) return quiet ? "0" : "0 KB/s";
   if (bytesPerSec < MB) return `${Math.max(1, Math.round(bytesPerSec / KB))} KB/s`;
   if (bytesPerSec < GB) return `${(bytesPerSec / MB).toFixed(1)} MB/s`;
   return `${(bytesPerSec / GB).toFixed(2)} GB/s`;
 }
 
-/** Splits a rate into number and unit, for large figures. */
+/** Splits a rate into number and unit, for large figures (rounded as fmtRate). */
 export function rateParts(bytesPerSec: number): [string, string] {
-  if (bytesPerSec < MB) return [(bytesPerSec / KB).toFixed(0), "KB/s"];
-  if (bytesPerSec < GB) return [(bytesPerSec / MB).toFixed(1), "MB/s"];
-  return [(bytesPerSec / GB).toFixed(2), "GB/s"];
+  const [n, unit] = fmtRate(bytesPerSec, false).split(" ");
+  return [n, unit];
 }
 
 export function fmtCpu(pct: number): string {
@@ -63,7 +65,7 @@ const dtf = new Intl.DateTimeFormat("zh-CN", {
 });
 export const fmtDateTime = (unixMs: number) => (unixMs > 0 ? dtf.format(unixMs) : "系统启动时");
 
-/** Network rate in bits per second, the unit adapters are sold in. */
+/** Rate in bits per second, the unit adapters and broadband plans are sold in. */
 export function fmtBits(bytesPerSec: number): string {
   const bits = bytesPerSec * 8;
   if (bits < 1) return "0 Kbps";
@@ -75,6 +77,32 @@ export function fmtBits(bytesPerSec: number): string {
 export function bitsParts(bytesPerSec: number): [string, string] {
   const [n, unit] = fmtBits(bytesPerSec).split(" ");
   return [n, unit];
+}
+
+// ---- Network rates ------------------------------------------------------------------
+
+export type NetUnit = "bytes" | "bits";
+
+/**
+ * The unit every network rate is shown in (a setting): bytes, like disk and
+ * I/O, or bits, like link speeds and broadband plans. The performance page
+ * shows the other one too.
+ */
+export const [netUnit, setNetUnit] = persisted<NetUnit>("netUnit", "bytes");
+
+/** A network rate in the chosen unit; `quiet` renders idle as a bare "0" (table rows). */
+export function fmtNet(bytesPerSec: number, quiet = false): string {
+  if (netUnit() === "bytes") return fmtRate(bytesPerSec, quiet);
+  return quiet && bytesPerSec * 8 < 1 ? "0" : fmtBits(bytesPerSec);
+}
+
+/** The same rate in the unit not chosen, where both are shown. */
+export function fmtNetAlt(bytesPerSec: number): string {
+  return netUnit() === "bytes" ? fmtBits(bytesPerSec) : fmtRate(bytesPerSec, false);
+}
+
+export function netParts(bytesPerSec: number): [string, string] {
+  return netUnit() === "bytes" ? rateParts(bytesPerSec) : bitsParts(bytesPerSec);
 }
 
 export function fmtLinkSpeed(bitsPerSec: number): string {

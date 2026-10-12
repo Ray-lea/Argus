@@ -2,8 +2,14 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   AppInfo,
   Connection,
+  HistoryMoment,
+  HistoryPoint,
+  HistoryUsage,
   LockReport,
+  PriorityClass,
   ProcessDetails,
+  ProcessRule,
+  RuleStats,
   ServiceInfo,
   SettingsView,
   Snapshot,
@@ -35,6 +41,10 @@ export const api = {
     mock ? mock.kill(pid) : invoke("kill_process", { pid, createTime, force }),
   killTree: (pid: number, createTime: number): Promise<TreeKillReport> =>
     mock ? mock.killTree(pid) : invoke("kill_process_tree", { pid, createTime }),
+  setPriority: (pid: number, createTime: number, priority: PriorityClass): Promise<PriorityClass> =>
+    mock ? mock.setPriority(pid, priority) : invoke("set_priority", { pid, createTime, priority }),
+  setEfficiency: (pid: number, createTime: number, on: boolean): Promise<void> =>
+    mock ? mock.setEfficiency(pid, on) : invoke("set_efficiency_mode", { pid, createTime, on }),
   reveal: (path: string): Promise<void> =>
     mock ? Promise.resolve() : invoke("reveal_in_explorer", { path }),
   settings: (): Promise<SettingsView> => (mock ? mock.settings.get() : invoke("get_settings")),
@@ -44,6 +54,19 @@ export const api = {
     mock ? mock.settings.update({ hotkey }) : invoke("set_hotkey", { hotkey }),
   setAutostart: (enabled: boolean): Promise<SettingsView> =>
     mock ? mock.settings.update({ autostart: enabled }) : invoke("set_autostart", { enabled }),
+  setRules: (rules: ProcessRule[]): Promise<SettingsView> =>
+    mock ? mock.settings.update({ rules }) : invoke("set_rules", { rules }),
+  ruleStats: (): Promise<Record<string, RuleStats>> => (mock ? Promise.resolve({}) : invoke("rule_stats")),
+  historyRange: (): Promise<[number, number] | null> =>
+    mock ? mock.history.range() : invoke("history_range"),
+  historySeries: (from: number, to: number, buckets: number): Promise<HistoryPoint[]> =>
+    mock ? mock.history.series(from, to, buckets) : invoke("history_series", { from, to, buckets }),
+  historyMoment: (ts: number): Promise<HistoryMoment | null> =>
+    mock ? mock.history.moment(ts) : invoke("history_moment", { ts }),
+  historyUsage: (): Promise<HistoryUsage> => (mock ? mock.history.usage() : invoke("history_usage")),
+  setHistoryEnabled: (enabled: boolean): Promise<SettingsView> =>
+    mock ? mock.settings.update({ history: enabled }) : invoke("set_history_enabled", { enabled }),
+  clearHistory: (): Promise<void> => (mock ? mock.history.clear() : invoke("clear_history")),
   quit: (): Promise<void> => (mock ? Promise.resolve() : invoke("quit")),
 
   services: (): Promise<ServiceInfo[]> => (mock ? mock.m3.services() : invoke("list_services")),

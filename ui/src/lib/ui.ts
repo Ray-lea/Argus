@@ -15,7 +15,9 @@ export type MenuEntry =
       disabled?: boolean;
       /** Shows a check mark (radio-style choices such as a start type). */
       checked?: boolean;
-      run: () => unknown;
+      /** Opens a submenu instead of running anything. */
+      children?: MenuEntry[];
+      run?: () => unknown;
     };
 
 export interface MenuState {

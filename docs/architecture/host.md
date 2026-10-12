@@ -6,10 +6,10 @@
 
 | 模块 | 职责 |
 |---|---|
-| `lib.rs` | 启动流程：注册插件（单实例、全局快捷键、开机启动、对话框）、托盘、采样线程与主窗口；处理关闭窗口（留在托盘或退出） |
-| `sampler.rs` | 采样线程：窗口可见时按设定节拍采样，隐藏或最小化时每 5 秒一次；经 Tauri Channel 推送快照 |
+| `lib.rs` | 启动流程：注册插件（单实例、全局快捷键、开机启动、对话框）、托盘、采样线程与主窗口；历史记录写在 `%LOCALAPPDATA%\<标识>\history`，启动时删掉过期的天（关闭记录时也会过期）；处理关闭窗口（留在托盘或退出）；退出时停止每进程网络的 ETW 会话（会话名开发版与正式版不同） |
+| `sampler.rs` | 采样线程：采集器在这个线程里创建（初始化与 WebView 启动并行）；窗口可见时按设定节拍采样，隐藏、最小化或暂停刷新时每 5 秒一次（暂停时不推送给界面，操作后的立即刷新除外）；每次采样后运行规则引擎、写入历史（关闭记录时停掉录制；清除历史也由这个线程执行，删除时没有帧在写）；经 Tauri Channel 推送快照 |
 | `shell.rs` | 常驻：窗口显隐（隐藏时通知 WebView2 停止渲染、释放内存）、托盘、全局快捷键；窗口背景（Mica 延伸到客户区）；调整大小时的斜线防护，见[窗口外观](../design/window.md) |
-| `settings.rs` | 界面加载前原生侧就要用到的设置（快捷键、关闭行为、开机启动），以 JSON 存在 `%APPDATA%\dev.argus.taskmanager\settings.json` |
+| `settings.rs` | 界面加载前原生侧就要用到的设置（快捷键、关闭行为、开机启动、规则、是否记录历史），以 JSON 存在 `%APPDATA%\dev.argus.taskmanager\settings.json` |
 | `commands.rs` | IPC 命令；`argus://` 协议提供进程图标 |
 
 ## IPC 命令
@@ -17,12 +17,14 @@
 | 用途 | 命令 |
 |---|---|
 | 应用与快照 | `app_info`、`subscribe`、`set_interval`、`set_paused`、`refresh` |
-| 进程 | `process_details`、`kill_process`、`kill_process_tree`、`reveal_in_explorer` |
+| 进程 | `process_details`、`kill_process`、`kill_process_tree`、`set_priority`、`set_efficiency_mode`、`reveal_in_explorer` |
 | 设置与窗口 | `get_settings`、`set_close_to_tray`、`set_hotkey`、`set_autostart`、`quit` |
+| 规则 | `set_rules`、`rule_stats` |
 | 服务 | `list_services`、`control_service`、`set_service_start_type`、`open_services_console` |
 | 启动项 | `list_startup`、`set_startup_enabled` |
 | 连接 | `list_connections`、`close_connection` |
 | 文件占用 | `find_lockers`、`pick_path` |
+| 历史 | `history_range`、`history_series`（分桶数上限 4096）、`history_moment`、`history_usage`、`set_history_enabled`、`clear_history` |
 
 ## 配置
 

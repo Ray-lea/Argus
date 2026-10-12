@@ -1,5 +1,5 @@
 import { createEffect, Index, type JSX, Show, untrack } from "solid-js";
-import { bitsParts, fmtGB, fmtRate, rateParts } from "../lib/format";
+import { fmtGB, fmtNet, netParts, rateParts } from "../lib/format";
 import { balancedFrameMs, chartMode } from "../lib/motion";
 import { intervalMs, paused, series, setPage, setPerfDevice, snapshot } from "../lib/store";
 import type { DiskStats, GpuStats } from "../lib/types";
@@ -166,13 +166,13 @@ export default function Vitals() {
         <div class="vital-head">
           <span class="vital-label">网络</span>
           <span class="vital-sub" title="接收 / 发送">
-            收 {fmtRate(netRx())} 发 {fmtRate(netTx())}
+            收 {fmtNet(netRx())} 发 {fmtNet(netTx())}
           </span>
         </div>
         <div class="vital-figure">
           <span>
-            <span class="vital-value">{bitsParts(netRx() + netTx())[0]}</span>
-            <span class="vital-unit">{bitsParts(netRx() + netTx())[1]}</span>
+            <span class="vital-value">{netParts(netRx() + netTx())[0]}</span>
+            <span class="vital-unit">{netParts(netRx() + netTx())[1]}</span>
           </span>
         </div>
         <Trace class="vital-trace" data={() => series("net.total")} max={netMax} colorVar="--net" />

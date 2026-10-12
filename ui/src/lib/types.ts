@@ -20,11 +20,23 @@ export interface ProcessRow {
   ioRead: number;
   ioWrite: number;
   ioOther: number;
+  /** The process's share of its busiest GPU engine, percent. */
+  gpu: number;
+  /** That engine, e.g. `GPU 0 - 3D`; null while the GPU is idle for it. */
+  gpuEngine: string | null;
+  /** GPU memory in use, bytes. */
+  gpuDedicated: number;
+  gpuShared: number;
+  /** Network bytes per second; 0 unless `Snapshot.processNetwork`. */
+  netSent: number;
+  netReceived: number;
   threads: number;
   handles: number;
   sessionId: number;
   basePriority: number;
   suspended: boolean;
+  /** Efficiency mode (EcoQoS) is on. */
+  efficiency: boolean;
 }
 
 export interface SystemStats {
@@ -215,14 +227,72 @@ export interface Snapshot {
   system: SystemStats;
   hardware: Hardware;
   processes: ProcessRow[];
+  /** Per-process network traffic is measured (needs administrator rights). */
+  processNetwork: boolean;
+}
+
+/** System totals of one recorded frame (or one chart bucket). */
+export interface HistoryPoint {
+  ts: number;
+  cpu: number;
+  cpuPeak: number;
+  gpu: number;
+  memUsed: number;
+  memTotal: number;
+  /** Bytes per second, all disks / all adapters. */
+  disk: number;
+  net: number;
+}
+
+/** A process that stood out in a recorded frame (averages over the frame). */
+export interface HistoryProcess {
+  name: string;
+  pid: number;
+  cpu: number;
+  mem: number;
+  io: number;
+  gpu: number;
+  net: number;
+}
+
+export interface HistoryMoment {
+  system: HistoryPoint;
+  processes: HistoryProcess[];
 }
 
 export interface SettingsView {
   closeToTray: boolean;
   /** Accelerator such as `Ctrl+Alt+Escape`; empty when disabled. */
   hotkey: string;
+  rules: ProcessRule[];
+  /** Record history for the history page. */
+  history: boolean;
   autostart: boolean;
   hotkeyError: string | null;
+}
+
+/** What the recorded history takes on disk. */
+export interface HistoryUsage {
+  bytes: number;
+  /** Unix ms of the oldest frame. */
+  first: number | null;
+}
+
+/** Applied to a program each time it starts (and to running copies when saved). */
+export interface ProcessRule {
+  id: string;
+  /** Executable file name, matched case-insensitively. */
+  name: string;
+  enabled: boolean;
+  priority: PriorityClass | null;
+  /** true turns efficiency mode on, false off, null leaves it alone. */
+  efficiency: boolean | null;
+}
+
+export interface RuleStats {
+  applied: number;
+  /** Processes it could not change without administrator rights. */
+  denied: number;
 }
 
 export interface AccentColors {

@@ -8,8 +8,12 @@ import type {
   DiskInfo,
   GpuInfo,
   Hardware,
+  HistoryMoment,
+  HistoryPoint,
+  HistoryUsage,
   LockReport,
   NicInfo,
+  PriorityClass,
   ProcessDetails,
   ProcessRow,
   ServiceInfo,
@@ -28,6 +32,9 @@ interface MockProc extends ProcessRow {
   load: number;
   baseMem: number;
   ioLevel: number;
+  /** Typical GPU use and the engine it lands on. */
+  gpuLoad: number;
+  gpuOn: string;
 }
 
 const procs: MockProc[] = [];
@@ -37,7 +44,16 @@ function add(
   name: string,
   description: string | null,
   company: string | null,
-  o: { ppid?: number; mem?: number; load?: number; io?: number; pid?: number; dir?: string } = {},
+  o: {
+    ppid?: number;
+    mem?: number;
+    load?: number;
+    io?: number;
+    pid?: number;
+    dir?: string;
+    gpu?: number;
+    gpuOn?: string;
+  } = {},
 ): MockProc {
   if (o.pid === undefined) nextPid += 4 + Math.floor(Math.random() * 300);
   const pid = o.pid ?? nextPid;
@@ -58,14 +74,23 @@ function add(
     ioRead: 0,
     ioWrite: 0,
     ioOther: 0,
+    gpu: 0,
+    gpuEngine: null,
+    gpuDedicated: 0,
+    gpuShared: 0,
+    netSent: 0,
+    netReceived: 0,
     threads: 4 + Math.floor(Math.random() * 40),
     handles: 120 + Math.floor(Math.random() * 1500),
     sessionId: 1,
     basePriority: 8,
     suspended: false,
+    efficiency: false,
     load: o.load ?? 0,
     baseMem: (o.mem ?? 8) * MB,
     ioLevel: o.io ?? 0,
+    gpuLoad: o.gpu ?? 0,
+    gpuOn: o.gpuOn ?? "3D",
   };
   procs.push(p);
   return p;
@@ -91,9 +116,11 @@ function seed() {
       dir: sys32,
     });
   }
-  add("dwm.exe", "桌面窗口管理器", ms, { mem: 140, load: 1.4, dir: sys32 });
+  add("dwm.exe", "桌面窗口管理器", ms, { mem: 140, load: 1.4, dir: sys32, gpu: 4 });
   const explorer = add("explorer.exe", "Windows 资源管理器", ms, { mem: 320, load: 0.4, dir: "C:\\Windows" });
-  add("SearchHost.exe", "搜索", ms, { mem: 110, dir: "C:\\Windows\\SystemApps" });
+  const search = add("SearchHost.exe", "搜索", ms, { mem: 110, dir: "C:\\Windows\\SystemApps" });
+  search.efficiency = true;
+  search.basePriority = 4;
 
   const chrome = add("chrome.exe", "Google Chrome", "Google LLC", {
     ppid: explorer.pid,
@@ -101,6 +128,7 @@ function seed() {
     load: 1.2,
     io: 3,
     dir: "C:\\Program Files\\Google\\Chrome\\Application",
+    gpu: 6,
   });
   for (let i = 0; i < 21; i++) {
     add("chrome.exe", "Google Chrome", "Google LLC", {
@@ -109,6 +137,8 @@ function seed() {
       load: Math.random() < 0.25 ? 1.5 + Math.random() * 3 : 0.05,
       io: Math.random() < 0.2 ? 2 : 0,
       dir: "C:\\Program Files\\Google\\Chrome\\Application",
+      // One tab plays a video.
+      ...(i === 3 ? { gpu: 9, gpuOn: "Video Decode" } : {}),
     });
   }
   const code = add("Code.exe", "Visual Studio Code", ms, {
@@ -116,6 +146,7 @@ function seed() {
     mem: 380,
     load: 0.8,
     dir: "C:\\Users\\me\\AppData\\Local\\Programs\\Microsoft VS Code",
+    gpu: 1.2,
   });
   for (let i = 0; i < 9; i++)
     add("Code.exe", "Visual Studio Code", ms, { ppid: code.pid, mem: 40 + Math.random() * 300, load: 0.2 });
@@ -147,6 +178,7 @@ function seed() {
       ppid: argus.pid,
       mem: 20 + Math.random() * 60,
       load: i === 0 ? 0.6 : 0,
+      gpu: i === 0 ? 2 : 0,
     });
   add("Spotify.exe", "Spotify", "Spotify Ltd", { ppid: explorer.pid, mem: 210, load: 0.5, io: 1 });
   add("Everything.exe", "Everything", "voidtools", { ppid: explorer.pid, mem: 350 });
@@ -178,6 +210,14 @@ function tick(): Snapshot {
     p.ioRead = level * 0.7;
     p.ioWrite = level * 0.3;
     p.ioOther = level > 0 ? 2048 : 0;
+    p.gpu = p.suspended || !p.gpuLoad ? 0 : Math.min(100, p.gpuLoad * (0.5 + Math.random()));
+    p.gpuEngine = p.gpu > 0 ? `GPU 0 - ${p.gpuOn}` : null;
+    p.gpuDedicated = p.gpuLoad * 40 * MB;
+    p.gpuShared = p.gpuLoad * 6 * MB;
+    // Network follows the processes that also do I/O, mostly downloads.
+    const net = p.ioLevel && !p.suspended && Math.random() < 0.7 ? p.ioLevel * 120_000 * Math.random() : 0;
+    p.netReceived = net;
+    p.netSent = net * 0.15;
     cpu += p.cpu;
     mem += p.privateWs;
     io += p.ioRead + p.ioWrite + p.ioOther;
@@ -212,7 +252,11 @@ function tick(): Snapshot {
       ioWrite: io * 0.3,
       ioOther: 0,
     },
-    processes: procs.map(({ load: _l, baseMem: _b, ioLevel: _i, ...row }) => ({ ...row })),
+    processes: procs.map(({ load: _l, baseMem: _b, ioLevel: _i, gpuLoad: _g, gpuOn: _o, ...row }) => ({
+      ...row,
+    })),
+    // As if running elevated, so the network column shows in the browser preview.
+    processNetwork: true,
   };
 }
 
@@ -365,6 +409,8 @@ function mockHardware(cpu: number, io: number): Hardware {
 const mockSettings: SettingsView = {
   closeToTray: true,
   hotkey: "Ctrl+Alt+Escape",
+  rules: [],
+  history: true,
   autostart: false,
   hotkeyError: null,
 };
@@ -445,6 +491,36 @@ export async function kill(pid: number) {
   listener?.(tick());
 }
 
+const BASE_PRIORITY: Record<PriorityClass, number> = {
+  idle: 4,
+  belowNormal: 6,
+  normal: 8,
+  aboveNormal: 10,
+  high: 13,
+  realtime: 24,
+};
+
+export async function setPriority(pid: number, priority: PriorityClass): Promise<PriorityClass> {
+  const p = procs.find((x) => x.pid === pid);
+  if (!p) throw { kind: "notFound" };
+  if (pid < 1000) throw { kind: "accessDenied" };
+  // Like a standard user: "realtime" quietly becomes "high".
+  const applied = priority === "realtime" ? "high" : priority;
+  p.basePriority = BASE_PRIORITY[applied];
+  listener?.(tick());
+  return applied;
+}
+
+export async function setEfficiency(pid: number, on: boolean) {
+  const p = procs.find((x) => x.pid === pid);
+  if (!p) throw { kind: "notFound" };
+  if (pid < 1000) throw { kind: "accessDenied" };
+  p.efficiency = on;
+  if (on) p.basePriority = BASE_PRIORITY.idle;
+  else if (p.basePriority === BASE_PRIORITY.idle) p.basePriority = BASE_PRIORITY.normal;
+  listener?.(tick());
+}
+
 export async function killTree(pid: number): Promise<TreeKillReport> {
   const doomed = new Set([pid]);
   for (let grew = true; grew; ) {
@@ -461,6 +537,74 @@ export async function killTree(pid: number): Promise<TreeKillReport> {
   listener?.(tick());
   return { terminated: before - procs.length, failed: 0 };
 }
+
+// ---- History -----------------------------------------------------------------------
+// Synthetic, but shaped like a real week: a daily rhythm, short spikes, and
+// nights when the machine (and Argus) was off.
+
+const HOUR = 3_600_000;
+// Moves to the present when the mock history is cleared.
+let started = Date.now() - 6.5 * 24 * HOUR;
+const isOff = (ts: number) => {
+  const h = new Date(ts).getHours();
+  return ts < started || (h >= 2 && h < 7);
+};
+const level = (ts: number) => {
+  const h = new Date(ts).getHours() + new Date(ts).getMinutes() / 60;
+  const day = Math.max(0, Math.sin(((h - 8) / 24) * 2 * Math.PI));
+  const spike = Math.sin(ts / 97_000) > 0.97 ? 35 : 0;
+  return 6 + 30 * day + 8 * Math.sin(ts / 600_000) + spike;
+};
+const point = (ts: number): HistoryPoint => {
+  const cpu = Math.max(1, level(ts));
+  return {
+    ts,
+    cpu,
+    cpuPeak: Math.min(100, cpu * 1.6 + 4),
+    gpu: Math.max(0, cpu * 0.5 - 2),
+    memUsed: (12 + cpu / 10) * GB,
+    memTotal: 32 * GB,
+    disk: cpu * 180_000,
+    net: cpu * 60_000,
+  };
+};
+
+export const history = {
+  range: async (): Promise<[number, number] | null> => [started, Date.now() - 5000],
+  usage: async (): Promise<HistoryUsage> => {
+    // About 450 bytes a frame while the machine was on.
+    const frames = (Date.now() - started) / 5000;
+    return { bytes: Math.round(frames * 450 * 0.8), first: frames > 1 ? started : null };
+  },
+  clear: async (): Promise<void> => {
+    started = Date.now();
+  },
+  series: async (from: number, to: number, buckets: number): Promise<HistoryPoint[]> => {
+    const out: HistoryPoint[] = [];
+    const step = Math.max(5000, (to - from) / buckets);
+    for (let ts = from + step / 2; ts < to; ts += step) if (!isOff(ts)) out.push(point(Math.round(ts)));
+    return out;
+  },
+  moment: async (ts: number): Promise<HistoryMoment | null> => {
+    if (isOff(ts) || ts > Date.now()) return null;
+    if (procs.length === 0) seed();
+    const system = point(ts - (ts % 5000));
+    const scale = system.cpu / 20;
+    const processes = procs
+      .filter((p) => p.load > 0.3 || p.baseMem > 300 * MB)
+      .slice(0, 12)
+      .map((p) => ({
+        name: p.name,
+        pid: p.pid,
+        cpu: p.load * scale,
+        mem: p.baseMem,
+        io: p.ioLevel * 200_000 * scale,
+        gpu: p.gpuLoad * scale,
+        net: p.ioLevel * 50_000 * scale,
+      }));
+    return { system, processes };
+  },
+};
 
 // ---- M3: services, startup, connections, file locks -----------------------------
 

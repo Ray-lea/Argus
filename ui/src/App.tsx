@@ -2,6 +2,7 @@ import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch
 import ConnectionsPage from "./components/ConnectionsPage";
 import { DetailsHost } from "./components/DetailsPanel";
 import FileLockDialog, { DropOverlay, openFileLock } from "./components/FileLockDialog";
+import HistoryPage from "./components/HistoryPage";
 import { ConfirmDialog, ContextMenu, Toasts } from "./components/Overlays";
 import Performance from "./components/Performance";
 import ProcessTable from "./components/ProcessTable";
@@ -144,6 +145,9 @@ export default function App() {
         </Match>
         <Match when={page() === "network"}>
           <ConnectionsPage />
+        </Match>
+        <Match when={page() === "history"}>
+          <HistoryPage />
         </Match>
         <Match when={page() === "settings"}>
           <SettingsPage />

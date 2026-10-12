@@ -3,7 +3,7 @@
 import type { ProcessRow } from "./types";
 
 export type ViewMode = "apps" | "tree" | "list";
-export type SortKey = "name" | "pid" | "cpu" | "mem" | "io" | "threads" | "handles";
+export type SortKey = "name" | "pid" | "cpu" | "mem" | "io" | "gpu" | "net" | "threads" | "handles";
 export interface SortState {
   key: SortKey;
   desc: boolean;
@@ -22,11 +22,19 @@ export interface DisplayRow {
   cpu: number;
   mem: number;
   io: number;
+  gpu: number;
+  /** Busiest GPU engine (a group's busiest member's). */
+  gpuEngine: string | null;
+  /** Network bytes per second, sent and received. */
+  netSent: number;
+  netReceived: number;
   threads: number;
   handles: number;
   expandable: boolean;
   expanded: boolean;
   suspended: boolean;
+  /** Processes in efficiency mode: 0 or 1 for a process, any number for a group. */
+  efficiency: number;
 }
 
 export interface BuildOptions {
@@ -57,11 +65,16 @@ function procRow(p: ProcessRow, depth: number, label: string, detail: string | n
     cpu: p.cpu,
     mem: p.privateWs,
     io: ioTotal(p),
+    gpu: p.gpu,
+    gpuEngine: p.gpuEngine,
+    netSent: p.netSent,
+    netReceived: p.netReceived,
     threads: p.threads,
     handles: p.handles,
     expandable: false,
     expanded: false,
     suspended: p.suspended,
+    efficiency: p.efficiency ? 1 : 0,
   };
 }
 
@@ -69,10 +82,15 @@ const collator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base"
 
 // Sort on displayed precision, so rows whose values only differ in invisible
 // digits do not trade places on every refresh.
-const quantize: Record<"cpu" | "mem" | "io" | "threads" | "handles", (r: DisplayRow) => number> = {
+const quantize: Record<
+  "cpu" | "mem" | "io" | "gpu" | "net" | "threads" | "handles",
+  (r: DisplayRow) => number
+> = {
   cpu: (r) => Math.round(r.cpu * 10),
   mem: (r) => Math.round(r.mem / 104_858),
   io: (r) => Math.round(r.io / 1024),
+  gpu: (r) => Math.round(r.gpu * 10),
+  net: (r) => Math.round((r.netSent + r.netReceived) / 1024),
   threads: (r) => r.threads,
   handles: (r) => r.handles,
 };
@@ -242,19 +260,33 @@ function buildApps(
       cpu: 0,
       mem: 0,
       io: 0,
+      gpu: 0,
+      gpuEngine: null,
+      netSent: 0,
+      netReceived: 0,
       threads: 0,
       handles: 0,
       expandable: true,
       expanded: expanded.has(key) || shown.length < members.length,
       suspended: members.every((p) => p.suspended),
+      efficiency: members.filter((p) => p.efficiency).length,
     };
+    let busiest = 0;
     for (const p of members) {
       row.cpu += p.cpu;
       row.mem += p.privateWs;
       row.io += ioTotal(p);
+      row.gpu += p.gpu;
+      row.netSent += p.netSent;
+      row.netReceived += p.netReceived;
+      if (p.gpu > busiest) {
+        busiest = p.gpu;
+        row.gpuEngine = p.gpuEngine;
+      }
       row.threads += p.threads;
       row.handles += p.handles;
     }
+    row.gpu = Math.min(100, row.gpu);
     top.push({ row, members: shown });
   }
 

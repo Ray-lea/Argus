@@ -1,7 +1,7 @@
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import { For, onMount, Show } from "solid-js";
 import { endRow } from "../lib/actions";
-import { fmtCount, fmtCpu, fmtMem, fmtRate } from "../lib/format";
+import { fmtCount, fmtCpu, fmtMem, fmtNet, fmtRate } from "../lib/format";
 import { type DisplayRow, procKey, type SortKey } from "../lib/rows";
 import {
   ending,
@@ -20,7 +20,7 @@ import {
   viewMode,
 } from "../lib/store";
 import { openMenu } from "../lib/ui";
-import { ChevronDown, ChevronRight, ChevronUp } from "./icons";
+import { ChevronDown, ChevronRight, ChevronUp, LeafIcon } from "./icons";
 import { processMenu } from "./menus";
 import ProcIcon from "./ProcIcon";
 
@@ -36,25 +36,40 @@ interface Column {
   title: string;
   /** Sorting this column starts descending (largest first). */
   descFirst: boolean;
+  /** Dropped when the table gets narrow (`opt` first, then `opt2`; see styles.css). */
+  optional?: "opt" | "opt2";
 }
 
 const COLUMNS: Column[] = [
   { key: "name", label: "名称", title: "按名称排序", descFirst: false },
-  { key: "pid", label: "PID", title: "进程 ID", descFirst: false },
+  { key: "pid", label: "PID", title: "进程 ID", descFirst: false, optional: "opt2" },
   { key: "cpu", label: "CPU", title: "占全部处理器能力的百分比", descFirst: true },
   { key: "mem", label: "内存", title: "专用工作集：进程独占的物理内存", descFirst: true },
-  { key: "io", label: "I/O", title: "每秒读、写及其他 I/O 字节数", descFirst: true },
-  { key: "threads", label: "线程", title: "线程数", descFirst: true },
-  { key: "handles", label: "句柄", title: "句柄数", descFirst: true },
+  { key: "io", label: "I/O", title: "每秒读、写及其他 I/O 字节数", descFirst: true, optional: "opt2" },
+  { key: "gpu", label: "GPU", title: "进程在最忙的 GPU 引擎上占用的时间比例", descFirst: true },
+  { key: "threads", label: "线程", title: "线程数", descFirst: true, optional: "opt" },
+  { key: "handles", label: "句柄", title: "句柄数", descFirst: true, optional: "opt" },
 ];
+
+/** Measured only while Argus runs with administrator rights (see net_process.rs). */
+const NET_COLUMN: Column = {
+  key: "net",
+  label: "网络",
+  title: "每秒发送和接收的字节数",
+  descFirst: true,
+};
+const COLUMNS_WITH_NET = [...COLUMNS.slice(0, 6), NET_COLUMN, ...COLUMNS.slice(6)];
 
 // Heat ramps: 0 below a threshold, so only rows with real load are tinted.
 const heatCpu = (v: number) => (v < 1 ? 0 : Math.min(1, v / 40));
+const heatGpu = heatCpu;
 const heatMem = (b: number) => (b < 200 * MB ? 0 : Math.min(1, b / (2048 * MB)));
 const heatIo = (b: number) => (b < MB ? 0 : Math.min(1, Math.log10(b / MB + 1) / 2));
 
 export default function ProcessTable() {
   let scrollEl!: HTMLDivElement;
+  const withNet = () => snapshot()?.processNetwork ?? false;
+  const columns = () => (withNet() ? COLUMNS_WITH_NET : COLUMNS);
 
   const virtualizer = createVirtualizer({
     get count() {
@@ -73,6 +88,10 @@ export default function ProcessTable() {
     const s = snapshot()?.system;
     if (!s) return "";
     switch (key) {
+      case "gpu": {
+        const gpus = snapshot()?.hardware.gpus ?? [];
+        return gpus.length ? `${Math.round(Math.max(...gpus.map((g) => g.util)))}%` : "";
+      }
       case "name":
         return `${fmtCount(s.processCount)} 个进程`;
       case "cpu":
@@ -81,6 +100,8 @@ export default function ProcessTable() {
         return `${s.memTotal ? Math.round((s.memUsed / s.memTotal) * 100) : 0}%`;
       case "io":
         return fmtRate(s.ioRead + s.ioWrite + s.ioOther);
+      case "net":
+        return fmtNet(snapshot()?.processes.reduce((a, p) => a + p.netSent + p.netReceived, 0) ?? 0, true);
       case "threads":
         return fmtCount(s.threadCount);
       case "handles":
@@ -162,6 +183,7 @@ export default function ProcessTable() {
   return (
     <div
       class="table"
+      classList={{ "with-net": withNet() }}
       role="grid"
       tabIndex={0}
       aria-rowcount={rows().length}
@@ -170,13 +192,18 @@ export default function ProcessTable() {
       onKeyDown={onKeyDown}
     >
       <div class="thead cols" role="row">
-        <For each={COLUMNS}>
+        <For each={columns()}>
           {(col) => (
             <button
               type="button"
               role="columnheader"
               class="th"
-              classList={{ left: col.key === "name", sorted: sort().key === col.key }}
+              classList={{
+                left: col.key === "name",
+                sorted: sort().key === col.key,
+                opt: col.optional === "opt",
+                opt2: col.optional === "opt2",
+              }}
               title={col.title}
               aria-sort={sort().key === col.key ? (sort().desc ? "descending" : "ascending") : "none"}
               onClick={() => onSort(col)}
@@ -222,7 +249,9 @@ export default function ProcessTable() {
           >
             <For each={virtualizer.getVirtualItems()}>
               {(item) => (
-                <Show when={rows()[item.index]}>{(row) => <Row row={row()} start={item.start} />}</Show>
+                <Show when={rows()[item.index]}>
+                  {(row) => <Row row={row()} start={item.start} withNet={withNet()} />}
+                </Show>
               )}
             </For>
           </div>
@@ -234,7 +263,7 @@ export default function ProcessTable() {
 
 const rowId = (key: string) => `row-${key.replace(/[^\w-]/g, "_")}`;
 
-function Row(props: { row: DisplayRow; start: number }) {
+function Row(props: { row: DisplayRow; start: number; withNet: boolean }) {
   const r = () => props.row;
   const selected = () => selectedKey() === r().key;
   const isGroup = () => r().kind === "group";
@@ -285,11 +314,21 @@ function Row(props: { row: DisplayRow; start: number }) {
         <Show when={r().detail}>
           <span class="detail">{r().detail}</span>
         </Show>
+        <Show when={r().efficiency > 0}>
+          <span
+            class="eco"
+            role="img"
+            title={isGroup() ? `${r().efficiency} 个进程处于效率模式` : "效率模式"}
+            aria-label="效率模式"
+          >
+            <LeafIcon size={12} />
+          </span>
+        </Show>
         <Show when={r().suspended}>
           <span class="tag">已暂停</span>
         </Show>
       </div>
-      <div class="cell dim" role="gridcell">
+      <div class="cell dim opt2" role="gridcell">
         {isGroup() ? "" : r().proc.pid}
       </div>
       <div
@@ -304,17 +343,37 @@ function Row(props: { row: DisplayRow; start: number }) {
         {fmtMem(r().mem)}
       </div>
       <div
-        class="cell heat"
+        class="cell heat opt2"
         role="gridcell"
         classList={{ dim: r().io < 1 }}
         style={{ "--h": heatIo(r().io) }}
       >
         {fmtRate(r().io)}
       </div>
-      <div class="cell" role="gridcell">
+      <div
+        class="cell heat"
+        role="gridcell"
+        classList={{ dim: r().gpu < 0.05 }}
+        style={{ "--h": heatGpu(r().gpu) }}
+        title={r().gpuEngine ?? undefined}
+      >
+        {fmtCpu(r().gpu)}
+      </div>
+      <Show when={props.withNet}>
+        <div
+          class="cell heat"
+          role="gridcell"
+          classList={{ dim: r().netSent + r().netReceived < 1 }}
+          style={{ "--h": heatIo(r().netSent + r().netReceived) }}
+          title={`发送 ${fmtNet(r().netSent)}，接收 ${fmtNet(r().netReceived)}`}
+        >
+          {fmtNet(r().netSent + r().netReceived, true)}
+        </div>
+      </Show>
+      <div class="cell opt" role="gridcell">
         {fmtCount(r().threads)}
       </div>
-      <div class="cell" role="gridcell">
+      <div class="cell opt" role="gridcell">
         {fmtCount(r().handles)}
       </div>
     </div>

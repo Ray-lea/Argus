@@ -1,9 +1,11 @@
 //! User settings that the native side needs before the UI loads (hotkey,
-//! close behavior, autostart), persisted as JSON in the app config dir.
+//! close behavior, autostart, process rules, history recording), persisted as
+//! JSON in the app config dir.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use argus_core::rules::ProcessRule;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_HOTKEY: &str = "Ctrl+Alt+Escape";
@@ -15,6 +17,10 @@ pub struct Settings {
     pub close_to_tray: bool,
     /// Global shortcut that shows/hides the window; empty disables it.
     pub hotkey: String,
+    /// Priority and efficiency mode rules, applied as programs start.
+    pub rules: Vec<ProcessRule>,
+    /// Record history for the history page.
+    pub history: bool,
 }
 
 impl Default for Settings {
@@ -22,6 +28,8 @@ impl Default for Settings {
         Self {
             close_to_tray: true,
             hotkey: DEFAULT_HOTKEY.into(),
+            rules: Vec::new(),
+            history: true,
         }
     }
 }

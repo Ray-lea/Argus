@@ -198,7 +198,7 @@ export function markEnding(key: string, on: boolean) {
 
 // ---- Preferences -------------------------------------------------------------
 
-export type Page = "processes" | "performance" | "services" | "startup" | "network" | "settings";
+export type Page = "processes" | "performance" | "services" | "startup" | "network" | "history" | "settings";
 export const [page, setPage] = persisted<Page>("page", "processes");
 /** Device shown on the performance page: `cpu`, `memory`, `disk:<n>`, `nic:<id>`, `gpu:<id>`. */
 export const [perfDevice, setPerfDevice] = persisted<string>("perfDevice", "cpu");
@@ -208,6 +208,8 @@ export const [sort, setSort] = persisted<SortState>("sort", { key: "cpu", desc: 
 export const [intervalMs, setIntervalMs] = persisted<number>("interval", 1000);
 export const [detailsOpen, setDetailsOpen] = persisted<boolean>("details", true);
 export const [paused, setPaused] = createSignal(false);
+/** A rule the settings page should scroll to and highlight once (set from the process menu). */
+export const [focusRule, setFocusRule] = createSignal<string | null>(null);
 export const [query, setQuery] = createSignal("");
 
 // ---- Table state -------------------------------------------------------------

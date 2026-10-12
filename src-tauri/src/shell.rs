@@ -253,7 +253,31 @@ pub fn apply_hotkey<R: Runtime>(
             toggle_main(app);
         }
     })
-    .map_err(|e| format!("无法注册 {accelerator}：{e}。可能已被其他程序占用。"))
+    .map_err(|e| {
+        let label = shortcut_label(accelerator);
+        if e.to_string().contains("already registered") {
+            format!("{label} 已被其他程序占用，请换一个组合键。")
+        } else {
+            format!("无法注册 {label}：{e}")
+        }
+    })
+}
+
+/// How a shortcut reads in messages: "Ctrl+Alt+Esc" rather than "Ctrl+Alt+Escape".
+fn shortcut_label(accelerator: &str) -> String {
+    accelerator
+        .split('+')
+        .map(|part| match part {
+            "Super" => "Win",
+            "Escape" => "Esc",
+            _ => part
+                .strip_prefix("Key")
+                .or_else(|| part.strip_prefix("Digit"))
+                .filter(|rest| rest.len() == 1)
+                .unwrap_or(part),
+        })
+        .collect::<Vec<_>>()
+        .join("+")
 }
 
 /// Registers the saved hotkey at startup, remembering why if it fails.

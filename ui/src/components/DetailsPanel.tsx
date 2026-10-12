@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createResource, For, on, Show } from "solid-js";
-import { copyText, endRow, endTree, revealInExplorer } from "../lib/actions";
-import { fmtCount, fmtCpu, fmtCpuTime, fmtDateTime, fmtMem } from "../lib/format";
+import { copyText, endRow, endTree, PRIORITY_LABEL, priorityOf, revealInExplorer } from "../lib/actions";
+import { fmtCount, fmtCpu, fmtCpuTime, fmtDateTime, fmtMem, fmtNet } from "../lib/format";
 import { api } from "../lib/ipc";
 import { EASE_OUT, play } from "../lib/motion";
 import { type DisplayRow, groupKey, procKey } from "../lib/rows";
@@ -21,15 +21,6 @@ const INTEGRITY: Record<Integrity, string> = {
   protected: "受保护",
 };
 
-const PRIORITY: Record<PriorityClass, string> = {
-  idle: "低",
-  belowNormal: "低于正常",
-  normal: "正常",
-  aboveNormal: "高于正常",
-  high: "高",
-  realtime: "实时",
-};
-
 const ARCH = { x64: "64 位 (x64)", x86: "32 位 (x86)", arm64: "ARM64", arm: "ARM" } as const;
 
 /** Rebuilds a DisplayRow for actions shared with the table and context menu. */
@@ -45,11 +36,16 @@ function asRow(sel: Selection, proc: ProcessRow): DisplayRow {
     cpu: 0,
     mem: 0,
     io: 0,
+    gpu: 0,
+    gpuEngine: null,
+    netSent: 0,
+    netReceived: 0,
     threads: 0,
     handles: 0,
     expandable: false,
     expanded: false,
     suspended: false,
+    efficiency: sel.members.filter((p) => p.efficiency).length,
   };
 }
 
@@ -229,7 +225,9 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 <dt>架构</dt>
                 <dd>{info()?.architecture ? ARCH[info()?.architecture as keyof typeof ARCH] : "—"}</dd>
                 <dt>优先级</dt>
-                <dd>{info()?.priorityClass ? PRIORITY[info()?.priorityClass as PriorityClass] : "—"}</dd>
+                <dd>{PRIORITY_LABEL[priorityOf(proc().basePriority) as PriorityClass] ?? "—"}</dd>
+                <dt>效率模式</dt>
+                <dd>{proc().efficiency ? "开启" : "关闭"}</dd>
                 <dt>会话</dt>
                 <dd>{proc().sessionId}</dd>
               </dl>
@@ -242,6 +240,28 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 <dd>{fmtMem(proc().workingSet)}</dd>
                 <dt>提交大小</dt>
                 <dd>{fmtMem(proc().commit)}</dd>
+                <Show when={(snapshot()?.hardware.gpus.length ?? 0) > 0}>
+                  <dt>GPU</dt>
+                  <dd>
+                    {fmtCpu(proc().gpu)}%
+                    <Show when={proc().gpuEngine}>
+                      <span class="dim">（{proc().gpuEngine}）</span>
+                    </Show>
+                  </dd>
+                  <dt>专用 GPU 内存</dt>
+                  <dd>{fmtMem(proc().gpuDedicated)}</dd>
+                  <dt>共享 GPU 内存</dt>
+                  <dd>{fmtMem(proc().gpuShared)}</dd>
+                </Show>
+                <dt>网络</dt>
+                <dd>
+                  <Show
+                    when={snapshot()?.processNetwork}
+                    fallback={<span class="dim">以管理员身份运行后可查看</span>}
+                  >
+                    发送 {fmtNet(proc().netSent)}，接收 {fmtNet(proc().netReceived)}
+                  </Show>
+                </dd>
                 <dt>线程</dt>
                 <dd>{fmtCount(proc().threads)}</dd>
                 <dt>句柄</dt>

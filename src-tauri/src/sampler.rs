@@ -1,16 +1,22 @@
 //! The sampling thread: produces snapshots on a fixed cadence and streams them
 //! to the UI over a Tauri channel.
 
+use std::io;
+use std::path::PathBuf;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use argus_core::history::{self, HistoryRecorder};
+use argus_core::rules::RuleEngine;
 use argus_core::{Collector, Snapshot};
 use tauri::ipc::Channel;
 
 /// Shortest window over which CPU percentages are still meaningful.
 const MIN_SAMPLE_GAP: Duration = Duration::from_millis(250);
-/// Cadence while the window is hidden: history stays continuous and the
-/// first frame after showing is fresh, at a fraction of the cost.
+/// Cadence while the window is hidden or the view is paused: history and the
+/// process rules keep going, and the first frame after showing is fresh, at a
+/// fraction of the cost.
 const BACKGROUND_INTERVAL: Duration = Duration::from_secs(5);
 pub const DEFAULT_INTERVAL: Duration = Duration::from_millis(1000);
 
@@ -27,6 +33,11 @@ pub enum Control {
     SetHiddenProbe(Probe),
     /// Called with every snapshot on the sampler thread (tray tooltip).
     SetObserver(Observer),
+    /// Starts recording history into this folder, or stops with None.
+    SetHistoryDir(Option<PathBuf>),
+    /// Deletes the history in this folder; replies once the files are gone.
+    /// Goes through this thread so no frame is being written meanwhile.
+    ClearHistory(PathBuf, Sender<io::Result<()>>),
 }
 
 pub struct Sampler {
@@ -34,15 +45,23 @@ pub struct Sampler {
 }
 
 impl Sampler {
-    pub fn spawn(collector: Collector) -> Self {
+    /// Starts the sampling thread. The collector is built there, so its setup
+    /// (PDH queries, adapter enumeration, a priming sample) overlaps the
+    /// WebView's startup instead of delaying it.
+    /// Every sample also runs the process rules and goes into the history.
+    pub fn spawn(
+        make_collector: impl FnOnce() -> Collector + Send + 'static,
+        rules: Arc<Mutex<RuleEngine>>,
+    ) -> Self {
         let (tx, rx) = mpsc::channel::<Control>();
         std::thread::Builder::new()
             .name("argus-sampler".into())
             .spawn(move || {
-                let mut collector = collector;
+                let mut collector = make_collector();
                 let mut subscriber: Option<Channel<Snapshot>> = None;
                 let mut hidden: Option<Probe> = None;
                 let mut observer: Option<Observer> = None;
+                let mut history: Option<HistoryRecorder> = None;
                 let mut interval = DEFAULT_INTERVAL;
                 let mut paused = false;
                 let mut next_tick = Instant::now() + interval;
@@ -73,6 +92,18 @@ impl Sampler {
                             observer = Some(f);
                             continue;
                         }
+                        Ok(Control::SetHistoryDir(dir)) => {
+                            history = dir.map(HistoryRecorder::new);
+                            continue;
+                        }
+                        Ok(Control::ClearHistory(dir, reply)) => {
+                            let result = match &mut history {
+                                Some(recorder) => recorder.clear(),
+                                None => history::clear(&dir),
+                            };
+                            let _ = reply.send(result);
+                            continue;
+                        }
                         Err(RecvTimeoutError::Timeout) => {
                             next_tick += interval;
                             if next_tick < Instant::now() {
@@ -89,10 +120,10 @@ impl Sampler {
                     let since = last_sample.elapsed();
                     let skip = if forced {
                         since < MIN_SAMPLE_GAP
-                    } else if hidden.as_ref().is_some_and(|h| h()) {
+                    } else if paused || hidden.as_ref().is_some_and(|h| h()) {
                         since < BACKGROUND_INTERVAL
                     } else {
-                        paused
+                        false
                     };
                     if skip {
                         continue;
@@ -100,10 +131,18 @@ impl Sampler {
 
                     last_sample = Instant::now();
                     let snapshot = collector.sample();
+                    if let Ok(mut engine) = rules.lock() {
+                        engine.apply(&snapshot.processes);
+                    }
+                    if let Some(recorder) = &mut history {
+                        recorder.record(&snapshot);
+                    }
                     if let Some(f) = &observer {
                         f(&snapshot);
                     }
+                    // A paused view stays as it is, except right after an action.
                     if let Some(ch) = &subscriber
+                        && (forced || !paused)
                         && ch.send(snapshot).is_err()
                     {
                         subscriber = None;

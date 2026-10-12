@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { fmtCount, fmtGB, fmtUptime } from "../lib/format";
+import { fmtCount, fmtGB, fmtMem, fmtUptime } from "../lib/format";
 import { intervalMs, orderHeld, paused, snapshot } from "../lib/store";
 
 export default function StatusBar() {
@@ -16,7 +16,7 @@ export default function StatusBar() {
         缓存 <b>{fmtGB(sys()?.cached ?? 0)} GB</b>
       </span>
       <span>
-        内核分页池 <b>{fmtGB(sys()?.kernelPaged ?? 0, 2)} GB</b>
+        分页缓冲池 <b>{fmtMem(sys()?.kernelPaged ?? 0)}</b>
       </span>
       <span>
         已运行 <b>{fmtUptime(sys()?.uptimeMs ?? 0)}</b>

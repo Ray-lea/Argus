@@ -496,6 +496,28 @@ button {
   color: CanvasText;
 }
 
+.input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke);
+  border-bottom-color: var(--stroke-strong);
+  border-radius: 4px;
+  background: var(--control);
+  font: inherit;
+  color: var(--ink);
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+/* Fluent text box: an accent underline while focused. */
+.input:focus {
+  outline: none;
+  border-bottom: 2px solid var(--accent);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -535,7 +557,57 @@ button {
 
 .cols {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 72px 70px 96px 92px 62px 76px;
+  grid-template-columns: minmax(220px, 1fr) 72px 70px 96px 92px 70px 62px 76px;
+}
+
+.with-net .cols {
+  grid-template-columns: minmax(220px, 1fr) 72px 70px 96px 92px 70px 92px 62px 76px;
+}
+
+/* A narrow table (details panel open in a small window) drops the least used
+   columns rather than squeezing every number. */
+.table {
+  container-type: inline-size;
+}
+
+@container (max-width: 880px) {
+  .with-net .cols {
+    grid-template-columns: minmax(200px, 1fr) 72px 70px 96px 92px 70px 92px;
+  }
+
+  .with-net .cols > .opt {
+    display: none;
+  }
+}
+
+@container (max-width: 780px) {
+  .cols {
+    grid-template-columns: minmax(200px, 1fr) 72px 70px 96px 92px 70px;
+  }
+
+  .cols > .opt {
+    display: none;
+  }
+}
+
+@container (max-width: 730px) {
+  .with-net .cols {
+    grid-template-columns: minmax(160px, 1fr) 70px 96px 70px 92px;
+  }
+
+  .with-net .cols > .opt2 {
+    display: none;
+  }
+}
+
+@container (max-width: 640px) {
+  .cols {
+    grid-template-columns: minmax(160px, 1fr) 70px 96px 70px;
+  }
+
+  .cols > .opt2 {
+    display: none;
+  }
 }
 
 .thead {
@@ -789,6 +861,13 @@ button {
   color: var(--ink-2);
   font-size: 11px;
   line-height: 16px;
+}
+
+/* Efficiency mode: a status, not a data series, so it stays neutral. */
+.eco {
+  display: inline-flex;
+  flex: none;
+  color: var(--ink-2);
 }
 
 .empty {
@@ -1078,6 +1157,11 @@ button {
 .menu-item:hover,
 .menu-item:focus-visible {
   outline: none;
+  background: var(--hover);
+}
+
+/* The item whose submenu is open stays highlighted. */
+.menu-item.open {
   background: var(--hover);
 }
 

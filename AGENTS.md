@@ -32,10 +32,10 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 ## 命令
 
 - `start.bat check`（即 `pnpm check`）：tsc、Biome、rustfmt、Clippy（`-D warnings`）。改完代码必须通过。
-- `pnpm tauri build --no-bundle`（即 `start.bat build`）：发布构建，约 2.5 分钟。
+- `pnpm tauri build --no-bundle`（即 `start.bat build`）：发布构建，只改了本项目代码时约 3 分钟（全量约 6 分钟）。
 - 在部分代理沙箱里 cmd 不会在当前目录查找批处理文件，用绝对路径运行 `start.bat`。
 - 改链接器、工具链或 `RUSTFLAGS` 会让整个依赖缓存失效（约 5 分钟重建），不要随手试。
-- 当前工具链（Rust 1.97.1）的 Clippy 会把已经用 `const { … }` 初始化的 `thread_local!` 误报为 `missing_const_for_thread_local`，导致 `pnpm check` 失败；需要全局状态时用 `static` 原子量等替代。
+- Rust 1.97 的 Clippy 会把已经用 `const { … }` 初始化的 `thread_local!` 误报为 `missing_const_for_thread_local`，导致 `pnpm check` 失败；需要全局状态时用 `static` 原子量等替代。
 
 ## 性能测量
 
@@ -53,7 +53,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 ## 环境与工具
 
-- 项目目前用 `x86_64-pc-windows-gnu` 工具链构建，它与 Tauri 的清单冲突（见 `docs/development/build.md`）。是否切换到 MSVC 由维护者决定，不要自行切换。
+- 项目用 MSVC 工具链（`x86_64-pc-windows-msvc`）构建。开发机的默认工具链是 GNU，仓库目录上有 `rustup override`（`stable-x86_64-pc-windows-msvc`）；`rust-toolchain.toml` 不允许在 channel 里写主机三元组，没法在仓库里强制。不要改用户的全局默认工具链，也不要删掉这个 override。
 - 辅助脚本用 node 写；仓库不依赖 Python 或 .NET。
 - Windows PowerShell 5.1：传给原生程序的参数里的双引号会被剥掉（把 JS 写进文件再传路径）；没有 BOM 的 .ps1 按 ANSI 读取，含中文的 .ps1 要存成 UTF-8 with BOM。
 - 部分杀毒软件会让 Windows PowerShell 在脚本扫描（AMSI）里偶发崩溃，先重试一次再下结论。

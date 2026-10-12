@@ -151,7 +151,7 @@ pub fn version_info(path: &str) -> VersionInfo {
             && len >= 4
         {
             let pairs = std::slice::from_raw_parts(ptr as *const u16, len as usize / 2);
-            for pair in pairs.chunks_exact(2) {
+            for pair in pairs.as_chunks::<2>().0 {
                 prefixes.push(format!(r"\StringFileInfo\{:04x}{:04x}\", pair[0], pair[1]));
             }
         }
@@ -277,16 +277,25 @@ unsafe fn read_icon_bitmaps(color: HBITMAP, mask: HBITMAP) -> Option<(u32, u32, 
     };
     let mut px = read(color);
     if let Some(px) = px.as_mut()
-        && !px.chunks_exact(4).any(|p| p[3] != 0)
+        && !px.as_chunks::<4>().0.iter().any(|p| p[3] != 0)
     {
         // Legacy icon without an alpha channel: derive alpha from the AND mask.
         match (!mask.is_invalid()).then(|| read(mask)).flatten() {
             Some(m) => {
-                for (p, m) in px.chunks_exact_mut(4).zip(m.chunks_exact(4)) {
+                for (p, m) in px
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .zip(m.as_chunks::<4>().0)
+                {
                     p[3] = if m[0] == 0 { 255 } else { 0 };
                 }
             }
-            None => px.chunks_exact_mut(4).for_each(|p| p[3] = 255),
+            None => px
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .for_each(|p| p[3] = 255),
         }
     }
     unsafe {
@@ -294,7 +303,7 @@ unsafe fn read_icon_bitmaps(color: HBITMAP, mask: HBITMAP) -> Option<(u32, u32, 
     }
 
     let mut px = px?;
-    for p in px.chunks_exact_mut(4) {
+    for p in px.as_chunks_mut::<4>().0 {
         p.swap(0, 2); // BGRA -> RGBA
     }
     Some((w as u32, h as u32, px))

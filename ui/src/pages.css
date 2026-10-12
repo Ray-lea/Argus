@@ -123,14 +123,17 @@
   background: transparent;
 }
 
-/* The selected device: a raised surface with an accent pill, sliding between items. */
-.dev-mark {
+/* The selected device (or settings section): a raised surface with an accent
+   pill, sliding between items. */
+.dev-mark,
+.settings-nav-mark {
   border: 1px solid var(--stroke);
   border-radius: 6px;
   background: var(--layer-strong);
 }
 
-.dev-mark::before {
+.dev-mark::before,
+.settings-nav-mark::before {
   content: "";
   position: absolute;
   top: 50%;
@@ -404,6 +407,14 @@
   font-size: 13px;
 }
 
+/* The same figure in another unit (network rates in bytes and bits). */
+.stat-note {
+  margin-top: 1px;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .info-list {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -469,34 +480,331 @@
   margin-top: 18px;
 }
 
+/* ---- History page ---------------------------------------------------------- */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Labels on the left, one chart per row; the two columns share row heights. */
+.history-graphs {
+  --row: clamp(36px, 7.5vh, 96px);
+  --axis: 22px;
+  display: grid;
+  flex: none;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 0 14px;
+  margin: 0 12px;
+  padding: 14px 16px 6px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--layer);
+}
+
+.history-labels,
+.history-plot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.history-labels::after {
+  content: "";
+  height: var(--axis);
+}
+
+.history-label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: var(--row);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.history-label span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.history-label span::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--c);
+}
+
+.history-label b {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+
+.history-label b.dim {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.history-label small {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Short windows: rows only fit the name and the value. */
+@media (max-height: 720px) {
+  .history-label small {
+    display: none;
+  }
+}
+
+.history-plot {
+  position: relative;
+}
+
+.history-chart {
+  position: relative;
+  flex: none;
+  height: var(--row);
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  border-radius: 4px;
+}
+
+.history-chart > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* The readout's dots move with the pointer: their own layers, so moving them repaints nothing. */
+.history-chart .chart-dot {
+  will-change: transform;
+}
+
+.history-scale {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.history-axis {
+  position: relative;
+  flex: none;
+  height: var(--axis);
+  color: var(--ink-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-axis span {
+  position: absolute;
+  top: 3px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.history-empty {
+  position: absolute;
+  inset: 0 0 var(--axis);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+.history-empty small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* Takes the pointer and the keyboard for the whole plot; the charts below only draw. */
+.history-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  cursor: crosshair;
+}
+
+.history-overlay:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.history-cursor {
+  position: absolute;
+  top: 0;
+  bottom: var(--axis);
+  left: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.history-cursor.pinned {
+  background: var(--accent);
+}
+
+.history-time {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  padding: 0 6px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 4px;
+  background: var(--tip);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.history-time.pinned {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* The processes of one moment: header, table, footer. */
+.history-moment {
+  display: grid;
+  flex: 1;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  margin: 0 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--layer);
+}
+
+.history-moment-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 10px 14px 4px;
+}
+
+.history-moment-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-moment-head span {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
 /* ---- Settings page --------------------------------------------------------- */
 
+/* The page scrolls as a whole (the scrollbar stays at the window edge); the
+   section list and the cards sit centred in it. */
 .settings {
   margin: 0 12px;
   overflow-y: auto;
+  container-type: inline-size;
 }
 
-.settings-inner {
-  max-width: 760px;
-  padding: 8px 4px 24px;
+.settings-layout {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 780px);
+  justify-content: center;
+  gap: 32px;
+  padding: 4px 4px 32px;
 }
 
-.settings h2 {
-  margin: 20px 0 8px;
+.settings-nav {
+  position: sticky;
+  top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  gap: 2px;
+}
+
+.settings-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  text-align: left;
+  transition:
+    background-color var(--t-fast) linear,
+    color var(--t-fast) linear;
+}
+
+.settings-nav-item:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.settings-nav-item[aria-current="true"] {
+  color: var(--ink);
+}
+
+.settings-nav-item[aria-current="true"]:hover {
+  background: transparent;
+}
+
+/* Too narrow for both: the cards take the width. */
+@container (max-width: 900px) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    display: none;
+  }
+}
+
+.settings-section {
+  scroll-margin-top: 4px;
+}
+
+.settings-section h2 {
+  margin: 28px 0 10px;
   font-size: 14px;
   font-weight: 600;
 }
 
-.settings h2:first-child {
-  margin-top: 4px;
+.settings-section:first-child h2 {
+  margin-top: 6px;
 }
 
+/* A card: icon, title and description, control on the right. */
 .setting {
-  display: flex;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  min-height: 64px;
+  gap: 16px;
+  min-height: 68px;
   padding: 12px 16px;
   border: 1px solid var(--stroke);
   border-radius: 6px;
@@ -505,6 +813,12 @@
 
 .setting + .setting {
   margin-top: 4px;
+}
+
+.setting-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .setting-text {
@@ -525,9 +839,57 @@
 
 .setting-control {
   display: flex;
-  flex: none;
   align-items: center;
   gap: 8px;
+}
+
+/* A rule opened from the process menu is outlined for a moment. */
+.rule {
+  transition: border-color var(--t-med) linear;
+}
+
+.rule.focused {
+  border-color: var(--accent);
+}
+
+.rule-name {
+  font-weight: 600;
+}
+
+.rule-add {
+  display: flex;
+  gap: 8px;
+}
+
+.rule-add .input {
+  width: 220px;
+}
+
+/* About: the app's mark, the one picture on the page. */
+.setting.about {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  min-height: 92px;
+}
+
+.about-logo {
+  display: block;
+  width: 48px;
+  height: 48px;
+}
+
+.about-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.about-version {
+  margin-left: 8px;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .keycaps {
@@ -610,4 +972,24 @@
   min-width: 2.5em;
   color: var(--ink-2);
   text-align: right;
+}
+
+/* License text, opened from the about section. */
+.dialog.license-dialog {
+  width: min(720px, calc(100vw - 48px));
+}
+
+.license-text {
+  max-height: min(60vh, 560px);
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }

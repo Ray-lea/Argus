@@ -18,12 +18,13 @@ use serde::Serialize;
 pub use battery::{BatteryInfo, BatteryStats};
 pub use cpu::{CpuInfo, CpuThread};
 pub use disk::{DiskInfo, DiskStats};
+pub(crate) use gpu::pretty_engine;
 pub use gpu::{GpuInfo, GpuStats};
 pub use memory::MemoryInfo;
 pub use net::{NicInfo, NicStats};
 pub use sensors::{CpuPower, ThermalZone};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Hardware {
     pub cpu: Arc<CpuInfo>,

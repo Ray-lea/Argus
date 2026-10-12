@@ -2,9 +2,38 @@
 
 import { api } from "./ipc";
 import type { DisplayRow } from "./rows";
-import { markEnding, snapshot } from "./store";
-import type { ActionError, ProcessRow } from "./types";
+import { markEnding, setFocusRule, setPage, snapshot } from "./store";
+import type { ActionError, PriorityClass, ProcessRow, ProcessRule } from "./types";
 import { confirm, toast } from "./ui";
+
+export const PRIORITY_LABEL: Record<PriorityClass, string> = {
+  realtime: "实时",
+  high: "高",
+  aboveNormal: "高于正常",
+  normal: "正常",
+  belowNormal: "低于正常",
+  idle: "低",
+};
+
+/** The class behind a base priority as the process list reports it (4, 6, 8, 10, 13, 24). */
+export function priorityOf(basePriority: number): PriorityClass | null {
+  switch (basePriority) {
+    case 4:
+      return "idle";
+    case 6:
+      return "belowNormal";
+    case 8:
+      return "normal";
+    case 10:
+      return "aboveNormal";
+    case 13:
+      return "high";
+    case 24:
+      return "realtime";
+    default:
+      return null;
+  }
+}
 
 function errorText(e: unknown, name: string): string {
   const err = e as ActionError;
@@ -143,6 +172,85 @@ export async function endTree(row: DisplayRow) {
     }
   } catch (e) {
     toast("error", errorText(e, p.name));
+  }
+}
+
+/** The processes an action on `row` applies to: one, or every member of an app group. */
+const targetsOf = (row: DisplayRow) => (row.kind === "group" ? groupMembers(row) : [row.proc]);
+
+/** Sets the priority class of a process, or of every process in an app group. */
+export async function setRowPriority(row: DisplayRow, priority: PriorityClass) {
+  if (
+    priority === "realtime" &&
+    !(await confirm({
+      title: `将 ${row.label} 设为实时优先级？`,
+      body: "实时优先级的进程会抢在系统任务之前运行，占满处理器时鼠标和键盘都可能失去响应。",
+      confirmLabel: "设为实时",
+      danger: true,
+    }))
+  ) {
+    return;
+  }
+  const targets = targetsOf(row);
+  const results = await Promise.allSettled(
+    targets.map((p) => api.setPriority(p.pid, p.createTime, priority)),
+  );
+  const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+  if (failed.length === targets.length) {
+    toastActionError(failed[0].reason, `无法更改 ${row.label} 的优先级`);
+    return;
+  }
+  const downgraded = results.some((r) => r.status === "fulfilled" && r.value !== priority);
+  if (downgraded) toast("error", "实时优先级需要管理员权限，已改为“高”。");
+  else if (failed.length > 0)
+    toast(
+      "error",
+      `已更改 ${targets.length - failed.length} 个进程的优先级，${failed.length} 个没有权限或已退出。`,
+    );
+  else toast("success", `${row.label} 的优先级已设为“${PRIORITY_LABEL[priority]}”。`, 2500);
+}
+
+/** Turns efficiency mode on or off for a process, or for every process in an app group. */
+export async function setRowEfficiency(row: DisplayRow, on: boolean) {
+  const targets = targetsOf(row);
+  const results = await Promise.allSettled(targets.map((p) => api.setEfficiency(p.pid, p.createTime, on)));
+  const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+  const verb = on ? "开启" : "关闭";
+  if (failed.length === targets.length)
+    toastActionError(failed[0].reason, `无法为 ${row.label} ${verb}效率模式`);
+  else if (failed.length > 0)
+    toast(
+      "error",
+      `已为 ${targets.length - failed.length} 个进程${verb}效率模式，${failed.length} 个没有权限或已退出。`,
+    );
+  else toast("success", `已为 ${row.label} ${verb}效率模式。`, 2500);
+}
+
+/**
+ * Opens the settings page on the rule for this row's program, creating one
+ * that keeps the process's current priority and efficiency mode.
+ */
+export async function addRuleFor(row: DisplayRow) {
+  const name = row.proc.name;
+  try {
+    const settings = await api.settings();
+    let rule = settings.rules.find((r) => r.name.toLowerCase() === name.toLowerCase());
+    if (!rule) {
+      const priority = priorityOf(row.proc.basePriority);
+      const created: ProcessRule = {
+        id: crypto.randomUUID(),
+        name,
+        enabled: true,
+        priority: priority && priority !== "normal" ? priority : null,
+        efficiency: row.efficiency > 0 ? true : null,
+      };
+      await api.setRules([...settings.rules, created]);
+      rule = created;
+    }
+    setFocusRule(rule.id);
+    setPage("settings");
+  } catch (e) {
+    toast("error", `无法添加规则：${String(e)}`);
   }
 }
 

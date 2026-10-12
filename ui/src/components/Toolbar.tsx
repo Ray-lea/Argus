@@ -19,6 +19,7 @@ import {
 } from "../lib/store";
 import { ConnectionControls } from "./ConnectionsPage";
 import { openFileLock } from "./FileLockDialog";
+import { HistoryControls } from "./HistoryPage";
 import Indicator from "./Indicator";
 import { AppsIcon, ListIcon, LockIcon, PanelIcon, PauseIcon, PlayIcon, ShieldIcon, TreeIcon } from "./icons";
 import SearchBox from "./SearchBox";
@@ -39,7 +40,8 @@ export const PAGES: { page: Page; label: string; key: string }[] = [
   { page: "services", label: "服务", key: "3" },
   { page: "startup", label: "启动", key: "4" },
   { page: "network", label: "连接", key: "5" },
-  { page: "settings", label: "设置", key: "6" },
+  { page: "history", label: "历史", key: "6" },
+  { page: "settings", label: "设置", key: "7" },
 ];
 
 let searchInput: HTMLInputElement | undefined;
@@ -104,6 +106,11 @@ export default function Toolbar() {
       <Show when={page() === "network"}>
         <div class="page-controls">
           <ConnectionControls />
+        </div>
+      </Show>
+      <Show when={page() === "history"}>
+        <div class="page-controls">
+          <HistoryControls />
         </div>
       </Show>
 

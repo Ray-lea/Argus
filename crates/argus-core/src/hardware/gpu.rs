@@ -350,7 +350,7 @@ fn engine_type_name(kind: DXGK_ENGINE_TYPE) -> &'static str {
 }
 
 /// `VideoDecode` -> `Video Decode`; numbered duplicates like `Copy_1` stay distinct.
-fn pretty_engine(raw: &str) -> String {
+pub(crate) fn pretty_engine(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len() + 4);
     let mut prev_lower = false;
     for c in raw.chars() {

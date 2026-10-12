@@ -6,8 +6,8 @@
 
 | 模块 | 职责 |
 |---|---|
-| `collector.rs` | 把系统与进程采样合成一份快照 |
-| `process.rs` | 一次 `NtQuerySystemInformation(SystemProcessInformation)` 拿到全部进程与线程，按与上一次采样的差量计算 CPU 与 I/O 速率 |
+| `collector.rs` | 把系统与进程采样合成一份快照，并给每个进程附上 GPU 占用 |
+| `process.rs` | 一次 `NtQuerySystemInformation(SystemProcessInformation)` 拿到全部进程与线程，按与上一次采样的差量计算 CPU 与 I/O 速率；每个进程实例打开一次查询句柄并缓存，用来读取效率模式（全部进程约 0.5 ms） |
 | `paths.rs` | 用 `SystemProcessIdInformation` 取映像路径：不需要打开进程、没有访问检查，非管理员也能拿到受保护进程和其他用户进程的路径，再把 NT 路径映射回 DOS 路径 |
 | `meta.rs` | 在后台线程解析文件描述、公司名和图标（PNG），按路径缓存 |
 | `system.rs` | 总 CPU（含内核时间）、每个逻辑处理器的 CPU、内存、提交、缓存 |
@@ -16,7 +16,12 @@
 | `startup.rs` | 注册表 Run 键与启动文件夹（解析 .lnk）；启用 / 禁用写 `StartupApproved`，与系统任务管理器用同一个开关，可以还原 |
 | `connections.rs` | TCP / UDP（IPv4 / IPv6）端点与所属进程（`netstat -ano` 显示的内容）；断开 IPv4 TCP 连接 |
 | `filelock.rs` | 文件占用：通过 Restart Manager 找出打开文件或加载 DLL 的进程，不需要管理员；整批查询被拒时二分重试，隔离出无法检查的文件 |
-| `actions.rs` | 结束进程 / 进程树：校验 PID 与启动时间，防止 PID 被复用；拦截关键系统进程 |
+| `actions.rs` | 结束进程 / 进程树、设置优先级、开关效率模式（EcoQoS 加低优先级，与系统任务管理器相同）：都先校验 PID 与启动时间，防止 PID 被复用；结束时拦截关键系统进程 |
+| `gpu_process.rs` | 每进程 GPU：每次采样一个 PDH 查询，读出所有进程在各引擎上的占用（取最忙的引擎）和专用 / 共享 GPU 内存，约 2 ms |
+| `net_process.rs` | 每进程网络：以实时 ETW 会话接收 `Microsoft-Windows-Kernel-Network` 的 TCP / UDP 收发事件，按 PID 累计字节数，每次采样换算成速率。启动会话需要管理员权限，否则不启用；会话名由宿主按构建区分，启动前先停掉上次残留的同名会话 |
+| `rules.rs` | 规则引擎：按程序名匹配，新进程出现时套用一次，规则变化时对所有在运行的进程重新套用，并统计应用次数和因权限不足失败的次数 |
+| `history.rs` | 历史记录：把采样按 5 秒一帧汇总（CPU 平均值与最高值、内存、磁盘与网络吞吐量、最忙的 GPU，以及 CPU、内存、I/O、GPU、网络各自最高的几个进程），追加写入每天（UTC）一个的二进制文件，保留 7 天。每帧整块写入并刷新，重新打开时截掉崩溃留下的半帧；进程名在文件内只写一次。读取侧按时间范围分桶汇总（空桶不输出，曲线上留出断档），或取离某一时刻最近的一帧；另有占用统计、清除和过期清理。每次采样约 30 µs，每帧约 450 字节 |
+| `pdh.rs` | PDH 查询的薄封装，`sensors.rs` 与 `gpu_process.rs` 共用 |
 | `privilege.rs` | Argus 自身的提权状态、启用 SeDebugPrivilege、提高自身优先级 |
 | `theme.rs` | 系统个性化颜色（强调色） |
 | `nt.rs` | `windows` crate 没有（完整）提供的原生结构，布局按 phnt 头文件的 x64 版本 |
@@ -37,4 +42,4 @@
 
 ## 示例
 
-`examples/` 下的示例直接打印采集结果（`dump`、`hardware`、`m3`、`lockers`），用法见[环境与命令](../development/README.md#验证采集数据)。
+`examples/` 下的示例直接打印采集结果（`dump`、`hardware`、`m3`、`lockers`、`gpu_processes`、`history`），用法见[环境与命令](../development/README.md#验证采集数据)。
