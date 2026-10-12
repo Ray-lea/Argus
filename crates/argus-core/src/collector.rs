@@ -22,7 +22,7 @@ pub struct Snapshot {
     pub system: SystemStats,
     pub hardware: Hardware,
     pub processes: Vec<ProcessRow>,
-    /// Per-process network traffic is measured (needs administrator rights).
+    /// Per-process network traffic is measured, locally or by the service.
     pub process_network: bool,
 }
 
@@ -69,6 +69,13 @@ impl Collector {
         let mut processes = self.processes.sample(self.system.logical_cpus());
         let hardware = self.hardware.sample();
         self.attach_gpu_usage(&mut processes, &hardware);
+        if self
+            .network
+            .as_ref()
+            .is_some_and(|network| !network.is_active())
+        {
+            self.network = None;
+        }
         if let Some(network) = &mut self.network {
             let rates = network.rates();
             for p in &mut processes {

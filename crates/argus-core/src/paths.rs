@@ -79,7 +79,7 @@ impl PathResolver {
         Some(nt)
     }
 
-    fn to_dos(&self, nt: &str) -> Option<String> {
+    pub(crate) fn to_dos(&self, nt: &str) -> Option<String> {
         if let Some(rest) = nt.strip_prefix(r"\??\") {
             return Some(rest.to_owned());
         }

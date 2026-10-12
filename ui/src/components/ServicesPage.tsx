@@ -309,7 +309,7 @@ export default function ServicesPage() {
           正在运行 <b>{counts().running}</b> / 共 <b>{counts().total}</b> 个服务
         </span>
         <Show when={appInfo() && !appInfo()?.elevated}>
-          <span>多数服务需要管理员权限才能启动、停止或更改启动类型。</span>
+          <span>多数服务需要启用特权服务或以管理员身份运行 Argus 才能管理。</span>
         </Show>
       </footer>
     </main>

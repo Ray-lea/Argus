@@ -227,7 +227,7 @@ export interface Snapshot {
   system: SystemStats;
   hardware: Hardware;
   processes: ProcessRow[];
-  /** Per-process network traffic is measured (needs administrator rights). */
+  /** Per-process network traffic is measured locally or by the privileged service. */
   processNetwork: boolean;
 }
 
@@ -293,6 +293,7 @@ export interface RuleStats {
   applied: number;
   /** Processes it could not change without administrator rights. */
   denied: number;
+  failed: number;
 }
 
 export interface AccentColors {
@@ -310,6 +311,23 @@ export interface AppInfo {
   elevated: boolean;
   accent: AccentColors | null;
 }
+
+export interface PrivilegedServiceStatus {
+  state: "notInstalled" | "running" | "stopped" | "startPending" | "stopPending" | "unavailable";
+  authorized: boolean;
+  version: string | null;
+  error: string | null;
+}
+
+export interface TaskManagerStatus {
+  state: "disabled" | "enabled" | "recoveryNeeded" | "conflict";
+  canEnable: boolean;
+  canRestore: boolean;
+  recoveryPath: string;
+  detail: string;
+}
+
+export type PrivilegedServiceAction = "install" | "update" | "start" | "uninstall";
 
 export type Integrity = "untrusted" | "low" | "medium" | "mediumPlus" | "high" | "system" | "protected";
 export type PriorityClass = "idle" | "belowNormal" | "normal" | "aboveNormal" | "high" | "realtime";
@@ -412,6 +430,20 @@ export interface Locker {
   appName: string;
   service: string | null;
   kind: "window" | "service" | "explorer" | "console" | "critical" | "other";
+  handleCount: number;
+  handlePath: string | null;
+}
+
+export interface HandleSummary {
+  available: boolean;
+  viaService: boolean;
+  elevated: boolean;
+  checked: number;
+  deniedProcesses: number;
+  skipped: number;
+  timeouts: number;
+  truncated: boolean;
+  error: string | null;
 }
 
 export interface LockReport {
@@ -420,4 +452,6 @@ export interface LockReport {
   /** Files Windows would not let us inspect (system files used by protected processes). */
   unchecked: number;
   truncated: boolean;
+  handles: HandleSummary | null;
+  restartError: string | null;
 }

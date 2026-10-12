@@ -88,6 +88,11 @@ export default function App() {
 
     // Dropping files anywhere on the window asks who is using them.
     if (inTauri) {
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const unlisten = await listen("argus-taskmgr-ready", () => void api.taskManagerReady());
+        onCleanup(unlisten);
+        await api.taskManagerReady();
+      });
       void import("@tauri-apps/api/webview").then(async ({ getCurrentWebview }) => {
         const unlisten = await getCurrentWebview().onDragDropEvent(({ payload }) => {
           if (payload.type === "enter" || payload.type === "over") setDragging(true);

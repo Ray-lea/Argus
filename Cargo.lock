@@ -52,6 +52,7 @@ name = "argus"
 version = "0.1.0"
 dependencies = [
  "argus-core",
+ "argus-service",
  "serde",
  "serde_json",
  "tauri",
@@ -70,6 +71,16 @@ version = "0.1.0"
 dependencies = [
  "png 0.18.1",
  "serde",
+ "windows",
+]
+
+[[package]]
+name = "argus-service"
+version = "0.1.0"
+dependencies = [
+ "argus-core",
+ "serde",
+ "serde_json",
  "windows",
 ]
 

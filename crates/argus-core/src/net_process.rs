@@ -94,12 +94,21 @@ impl NetworkTracker {
         }
         // ProcessTrace delivers events on this thread until the session stops.
         let handle = trace.Value;
-        let consumer = std::thread::Builder::new()
-            .name("argus-etw".into())
-            .spawn(move || unsafe {
-                let _ = ProcessTrace(&[PROCESSTRACE_HANDLE { Value: handle }], None, None);
-            })
-            .ok()?;
+        let consumer =
+            match std::thread::Builder::new()
+                .name("argus-etw".into())
+                .spawn(move || unsafe {
+                    let _ = ProcessTrace(&[PROCESSTRACE_HANDLE { Value: handle }], None, None);
+                }) {
+                Ok(thread) => thread,
+                Err(_) => {
+                    unsafe {
+                        let _ = CloseTrace(trace);
+                    }
+                    stop_session(session_name);
+                    return None;
+                }
+            };
         Some(Self {
             session,
             trace,
@@ -113,7 +122,7 @@ impl NetworkTracker {
     pub fn rates(&mut self) -> HashMap<u32, (u64, u64)> {
         let secs = self.last.elapsed().as_secs_f64().max(0.001);
         self.last = Instant::now();
-        let totals = std::mem::take(&mut *self.totals.lock().unwrap());
+        let totals = self.take_bytes();
         totals
             .into_iter()
             .map(|(pid, (sent, received))| {
@@ -121,6 +130,18 @@ impl NetworkTracker {
                 (pid, (rate(sent), rate(received)))
             })
             .collect()
+    }
+
+    /// Raw deltas for a service that maintains non-destructive cumulative
+    /// counters for multiple readers. Only the tracker owner drains these.
+    pub fn take_bytes(&mut self) -> HashMap<u32, (u64, u64)> {
+        std::mem::take(&mut *self.totals.lock().unwrap())
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.consumer
+            .as_ref()
+            .is_some_and(|thread| !thread.is_finished())
     }
 }
 

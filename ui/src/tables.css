@@ -236,6 +236,21 @@
   margin-top: 16px;
 }
 
+.lock-dialog {
+  display: flex;
+  max-height: calc(100vh - 32px);
+  flex-direction: column;
+}
+
+.lock-dialog > .dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.lock-dialog > .dialog-footer {
+  flex-shrink: 0;
+}
+
 .lock-progress {
   margin-top: 10px;
 }

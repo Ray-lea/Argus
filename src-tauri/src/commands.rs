@@ -12,6 +12,7 @@ use argus_core::rules::{ProcessRule, RuleStats};
 use argus_core::services::{ServiceAction, ServiceInfo, StartType};
 use argus_core::startup::{self, StartupItem};
 use argus_core::theme::{self, AccentColors};
+use argus_service::{Operation, Reply, ServiceStatus};
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::{Manager, State};
@@ -20,6 +21,27 @@ use crate::sampler::Control;
 use crate::settings::{SettingsStore, SettingsView};
 use crate::shell;
 use crate::{AppState, HistoryDir};
+
+#[tauri::command(async)]
+pub fn task_manager_status() -> Result<argus_service::taskmgr::Status, String> {
+    argus_service::taskmgr::status()
+}
+
+#[tauri::command(async)]
+pub fn manage_task_manager(action: String) -> Result<argus_service::taskmgr::Status, String> {
+    argus_service::taskmgr::manage(&action)
+}
+
+#[tauri::command(async)]
+pub fn task_manager_ready(app: tauri::AppHandle) {
+    for completion in argus_service::taskmgr::ready::complete() {
+        if completion.should_show() {
+            shell::show_main(&app);
+            crate::TASKMGR_COMPLETED.store(true, std::sync::atomic::Ordering::Release);
+        }
+        completion.acknowledge();
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +88,36 @@ pub fn process_details(pid: u32, path: Option<String>) -> ProcessDetails {
     details::query(pid, path.as_deref())
 }
 
+fn privileged(state: &AppState, operation: Operation) -> Result<Option<Reply>, ActionError> {
+    if state.elevated {
+        return Ok(None);
+    }
+    match argus_service::request(operation).map_err(ActionError::Os)? {
+        Some(Reply::Error(e)) => Err(e),
+        reply => Ok(reply),
+    }
+}
+
+fn privileged_done(state: &AppState, operation: Operation) -> Result<bool, ActionError> {
+    match privileged(state, operation)? {
+        Some(Reply::Done) => Ok(true),
+        None => Ok(false),
+        _ => Err(ActionError::Os(
+            "特权服务返回了无法识别的结果，请更新服务".into(),
+        )),
+    }
+}
+
+fn terminate(state: &AppState, pid: u32, create_time: i64, force: bool) -> Result<(), ActionError> {
+    if pid == std::process::id() {
+        return Err(ActionError::Refused);
+    }
+    if privileged_done(state, Operation::Terminate { pid, create_time })? {
+        return Ok(());
+    }
+    actions::terminate(pid, create_time, force)
+}
+
 #[tauri::command(async)]
 pub fn kill_process(
     state: State<'_, AppState>,
@@ -73,7 +125,7 @@ pub fn kill_process(
     create_time: i64,
     force: bool,
 ) -> Result<(), ActionError> {
-    let result = actions::terminate(pid, create_time, force);
+    let result = terminate(&state, pid, create_time, force);
     state.sampler.send(Control::Refresh);
     result
 }
@@ -84,7 +136,9 @@ pub fn kill_process_tree(
     pid: u32,
     create_time: i64,
 ) -> Result<TreeKillReport, ActionError> {
-    let result = actions::terminate_tree(pid, create_time);
+    let result = actions::terminate_tree_with(pid, create_time, |pid, created| {
+        terminate(&state, pid, created, false)
+    });
     state.sampler.send(Control::Refresh);
     result
 }
@@ -96,7 +150,21 @@ pub fn set_priority(
     create_time: i64,
     priority: Priority,
 ) -> Result<Priority, ActionError> {
-    let result = actions::set_priority(pid, create_time, priority);
+    let result = match privileged(
+        &state,
+        Operation::Priority {
+            pid,
+            create_time,
+            priority,
+        },
+    ) {
+        Ok(Some(Reply::Priority(p))) => Ok(p),
+        Ok(None) => actions::set_priority(pid, create_time, priority),
+        Ok(_) => Err(ActionError::Os(
+            "特权服务返回了无法识别的结果，请更新服务".into(),
+        )),
+        Err(e) => Err(e),
+    };
     state.sampler.send(Control::Refresh);
     result
 }
@@ -108,7 +176,18 @@ pub fn set_efficiency_mode(
     create_time: i64,
     on: bool,
 ) -> Result<(), ActionError> {
-    let result = actions::set_efficiency_mode(pid, create_time, on);
+    let result = match privileged_done(
+        &state,
+        Operation::Efficiency {
+            pid,
+            create_time,
+            on,
+        },
+    ) {
+        Ok(true) => Ok(()),
+        Ok(false) => actions::set_efficiency_mode(pid, create_time, on),
+        Err(e) => Err(e),
+    };
     state.sampler.send(Control::Refresh);
     result
 }
@@ -141,6 +220,21 @@ fn settings_view<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> SettingsView {
 #[tauri::command]
 pub fn get_settings(app: tauri::AppHandle) -> SettingsView {
     settings_view(&app)
+}
+
+#[tauri::command(async)]
+pub fn privileged_service_status() -> Result<ServiceStatus, String> {
+    argus_service::status()
+}
+
+#[tauri::command(async)]
+pub fn manage_privileged_service(
+    state: State<'_, AppState>,
+    action: String,
+) -> Result<ServiceStatus, String> {
+    let status = argus_service::manage(&action)?;
+    state.sampler.send(Control::Refresh);
+    Ok(status)
 }
 
 #[tauri::command]
@@ -191,20 +285,14 @@ pub fn set_rules(
     app.state::<SettingsStore>()
         .update(|s| s.rules = rules.clone())
         .map_err(|e| e.to_string())?;
-    if let Ok(mut engine) = state.rules.lock() {
-        engine.set_rules(rules);
-    }
+    state.rules.set_rules(rules);
     state.sampler.send(Control::Refresh);
     Ok(settings_view(&app))
 }
 
 #[tauri::command]
 pub fn rule_stats(state: State<'_, AppState>) -> HashMap<String, RuleStats> {
-    state
-        .rules
-        .lock()
-        .map(|engine| engine.stats())
-        .unwrap_or_default()
+    state.rules.stats()
 }
 
 // ---- History --------------------------------------------------------------------
@@ -281,7 +369,20 @@ pub fn control_service(
     name: String,
     action: ServiceAction,
 ) -> Result<(), ActionError> {
-    let result = state.services.control(&name, action);
+    let result = match privileged_done(
+        &state,
+        Operation::ControlService {
+            name: name.clone(),
+            action,
+        },
+    ) {
+        Ok(true) => {
+            state.services.invalidate(&name);
+            Ok(())
+        }
+        Ok(false) => state.services.control(&name, action),
+        Err(e) => Err(e),
+    };
     state.sampler.send(Control::Refresh);
     result
 }
@@ -292,6 +393,16 @@ pub fn set_service_start_type(
     name: String,
     start_type: StartType,
 ) -> Result<(), ActionError> {
+    if privileged_done(
+        &state,
+        Operation::ServiceStartType {
+            name: name.clone(),
+            start_type,
+        },
+    )? {
+        state.services.invalidate(&name);
+        return Ok(());
+    }
     state.services.set_start_type(&name, start_type)
 }
 
@@ -326,11 +437,23 @@ pub fn list_connections() -> Vec<Connection> {
 
 #[tauri::command(async)]
 pub fn close_connection(
+    state: State<'_, AppState>,
     local_address: String,
     local_port: u16,
     remote_address: String,
     remote_port: u16,
 ) -> Result<(), ActionError> {
+    if privileged_done(
+        &state,
+        Operation::CloseConnection {
+            local_address: local_address.clone(),
+            local_port,
+            remote_address: remote_address.clone(),
+            remote_port,
+        },
+    )? {
+        return Ok(());
+    }
     connections::close_tcp(&local_address, local_port, &remote_address, remote_port)
 }
 
@@ -338,7 +461,8 @@ pub fn close_connection(
 
 #[tauri::command(async)]
 pub fn find_lockers(paths: Vec<String>) -> Result<LockReport, ActionError> {
-    filelock::find_lockers(&paths)
+    let base = filelock::find_lockers(&paths);
+    LockReport::combine(base, argus_service::find_handle_lockers(paths))
 }
 
 /// Native file or folder picker.

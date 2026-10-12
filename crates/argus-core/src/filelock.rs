@@ -29,6 +29,8 @@ pub struct Locker {
     pub service: Option<String>,
     /// `window` | `service` | `explorer` | `console` | `critical` | `other`
     pub kind: &'static str,
+    pub handle_count: usize,
+    pub handle_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,6 +43,54 @@ pub struct LockReport {
     pub unchecked: usize,
     /// The folder held more files than were checked.
     pub truncated: bool,
+    pub handles: Option<crate::handles::HandleSummary>,
+    pub restart_error: Option<String>,
+}
+
+impl LockReport {
+    pub fn combine(
+        base: Result<Self, ActionError>,
+        handles: crate::handles::HandleReport,
+    ) -> Result<Self, ActionError> {
+        let mut report = match base {
+            Ok(report) => report,
+            Err(_) if handles.summary.available => Self {
+                lockers: Vec::new(),
+                files_checked: 0,
+                unchecked: 0,
+                truncated: false,
+                handles: None,
+                restart_error: Some("Restart Manager 无法检查目标，以下为句柄查询结果".into()),
+            },
+            Err(error) => return Err(error),
+        };
+        report.merge_handles(handles);
+        Ok(report)
+    }
+    pub fn merge_handles(&mut self, report: crate::handles::HandleReport) {
+        for hit in report.lockers {
+            if let Some(locker) = self
+                .lockers
+                .iter_mut()
+                .find(|l| l.pid == hit.pid && l.create_time == hit.create_time)
+            {
+                locker.handle_count += hit.count;
+                locker.handle_path = Some(hit.path);
+            } else {
+                self.lockers.push(Locker {
+                    pid: hit.pid,
+                    create_time: hit.create_time,
+                    app_name: hit.name,
+                    service: None,
+                    kind: "other",
+                    handle_count: hit.count,
+                    handle_path: Some(hit.path),
+                });
+            }
+        }
+        self.lockers.sort_by_key(|l| (l.pid, l.create_time));
+        self.handles = Some(report.summary);
+    }
 }
 
 struct Session(u32);
@@ -93,15 +143,19 @@ pub fn find_lockers(paths: &[String]) -> Result<LockReport, ActionError> {
                 1000 => "critical",
                 _ => "other",
             },
+            handle_count: 0,
+            handle_path: None,
         })
         .collect();
-    lockers.sort_by_key(|l| l.pid);
-    lockers.dedup_by_key(|l| l.pid);
+    lockers.sort_by_key(|l| (l.pid, l.create_time));
+    lockers.dedup_by_key(|l| (l.pid, l.create_time));
     Ok(LockReport {
         lockers,
         files_checked: files.len() - unchecked,
         unchecked,
         truncated,
+        handles: None,
+        restart_error: None,
     })
 }
 
@@ -192,4 +246,62 @@ fn walk(dir: &Path, files: &mut Vec<PathBuf>) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::handles::{HandleLocker, HandleReport, HandleSummary};
+
+    fn handle_report() -> HandleReport {
+        HandleReport {
+            lockers: vec![HandleLocker {
+                pid: 10,
+                create_time: 20,
+                name: "test.exe".into(),
+                path: r"C:\test".into(),
+                count: 2,
+            }],
+            summary: HandleSummary {
+                available: true,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn merges_the_same_instance_but_does_not_merge_reused_pids() {
+        let base = LockReport {
+            lockers: vec![Locker {
+                pid: 10,
+                create_time: 20,
+                app_name: "Friendly name".into(),
+                service: Some("service".into()),
+                kind: "service",
+                handle_count: 0,
+                handle_path: None,
+            }],
+            files_checked: 1,
+            unchecked: 0,
+            truncated: false,
+            handles: None,
+            restart_error: None,
+        };
+        let mut result = LockReport::combine(Ok(base), handle_report()).unwrap();
+        assert_eq!(result.lockers.len(), 1);
+        assert_eq!(result.lockers[0].handle_count, 2);
+        assert_eq!(result.lockers[0].app_name, "Friendly name");
+        let mut reused = handle_report();
+        reused.lockers[0].create_time = 30;
+        result.merge_handles(reused);
+        assert_eq!(result.lockers.len(), 2);
+    }
+
+    #[test]
+    fn privileged_results_survive_a_restart_manager_access_failure() {
+        let report = LockReport::combine(Err(ActionError::AccessDenied), handle_report()).unwrap();
+        assert_eq!(report.lockers.len(), 1);
+        assert!(report.restart_error.is_some());
+        assert!(LockReport::combine(Err(ActionError::NotFound), HandleReport::default()).is_err());
+    }
 }

@@ -6,11 +6,11 @@ mod shell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use argus_core::rules::RuleEngine;
 use argus_core::services::ServiceCatalog;
 use argus_core::{Collector, MetaStore, Snapshot, privilege};
-use tauri::Manager;
+use argus_service::RuleRunner;
 use tauri::http::{Response, StatusCode};
+use tauri::{Emitter, Manager};
 
 use tauri_plugin_autostart::MacosLauncher;
 
@@ -18,6 +18,7 @@ use crate::sampler::{Control, Sampler};
 use crate::settings::SettingsStore;
 
 static WAS_MINIMIZED: AtomicBool = AtomicBool::new(false);
+static TASKMGR_COMPLETED: AtomicBool = AtomicBool::new(false);
 
 /// ETW session for per-process network traffic; one per build, like the app
 /// identifier, so a development build never stops an installed one's session.
@@ -35,10 +36,23 @@ pub struct AppState {
     elevated: bool,
     meta: Arc<MetaStore>,
     services: ServiceCatalog,
-    rules: Arc<Mutex<RuleEngine>>,
+    rules: Arc<RuleRunner>,
 }
 
 pub fn run() {
+    #[cfg(not(debug_assertions))]
+    let assets = Some((
+        include_bytes!("../../target/release/argus-taskmgr-launcher.exe").as_slice(),
+        include_bytes!("../../target/release/argus-taskmgr-recover.exe").as_slice(),
+    ));
+    #[cfg(debug_assertions)]
+    let assets = None;
+    if let Some(code) = argus_service::taskmgr::run_mode(assets) {
+        std::process::exit(code);
+    }
+    if let Some(code) = argus_service::run_mode() {
+        std::process::exit(code);
+    }
     privilege::raise_self_priority();
     let elevated = privilege::is_elevated();
     if elevated {
@@ -48,7 +62,7 @@ pub fn run() {
     // Start sampling before the webview exists so the first snapshot is ready
     // (with meaningful CPU deltas) by the time the UI subscribes.
     let meta = MetaStore::new();
-    let rules = Arc::new(Mutex::new(RuleEngine::default()));
+    let rules = Arc::new(RuleRunner::spawn(elevated));
     let sampler = Sampler::spawn(
         {
             let meta = meta.clone();
@@ -63,12 +77,18 @@ pub fn run() {
     );
 
     // Autostart launches with --hidden: stay in the tray until summoned.
-    let start_hidden = std::env::args().any(|a| a == "--hidden");
+    let taskmgr_start = argus_service::taskmgr::ready::queue(&std::env::args().collect::<Vec<_>>());
+    let start_hidden = taskmgr_start || std::env::args().any(|a| a == "--hidden");
 
     tauri::Builder::default()
         // Must come first: a second launch just brings the running one forward.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            shell::show_main(app)
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if argus_service::taskmgr::ready::queue(&args) {
+                let _ = app.emit("argus-taskmgr-ready", ());
+            } else {
+                TASKMGR_COMPLETED.store(true, Ordering::Release);
+                shell::show_main(app)
+            }
         }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
@@ -87,9 +107,9 @@ pub fn run() {
         .setup(move |app| {
             let config = app.path().app_config_dir()?.join("settings.json");
             let settings = SettingsStore::load(config);
-            if let Ok(mut engine) = app.state::<AppState>().rules.lock() {
-                engine.set_rules(settings.get().rules);
-            }
+            app.state::<AppState>()
+                .rules
+                .set_rules(settings.get().rules);
             let history = app.path().app_local_data_dir()?.join("history");
             // Expired days go even while recording is off.
             argus_core::history::prune_expired(&history);
@@ -100,6 +120,16 @@ pub fn run() {
             app.manage(HistoryDir(history));
             shell::build_tray(app.handle())?;
             shell::register_saved_hotkey(app.handle());
+
+            if taskmgr_start {
+                let app = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(15));
+                    if !TASKMGR_COMPLETED.load(Ordering::Acquire) {
+                        app.exit(0);
+                    }
+                });
+            }
 
             let handle = app.handle().clone();
             let last_tip = Mutex::new(String::new());
@@ -186,6 +216,11 @@ pub fn run() {
             commands::set_efficiency_mode,
             commands::reveal_in_explorer,
             commands::get_settings,
+            commands::privileged_service_status,
+            commands::manage_privileged_service,
+            commands::task_manager_status,
+            commands::manage_task_manager,
+            commands::task_manager_ready,
             commands::set_close_to_tray,
             commands::set_hotkey,
             commands::set_autostart,

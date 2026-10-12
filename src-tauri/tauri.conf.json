@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "cargo build -p argus-service --bins --release && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -45,7 +45,8 @@
     ],
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "taskmgr-hooks.nsh"
       }
     }
   }

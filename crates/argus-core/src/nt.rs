@@ -11,6 +11,39 @@ pub const STATUS_BUFFER_TOO_SMALL: i32 = 0xC000_0023_u32 as i32;
 pub const STATUS_BUFFER_OVERFLOW: i32 = 0x8000_0005_u32 as i32;
 
 pub const SYSTEM_PROCESS_ID_INFORMATION: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(88);
+pub const SYSTEM_EXTENDED_HANDLE_INFORMATION: SYSTEM_INFORMATION_CLASS =
+    SYSTEM_INFORMATION_CLASS(64);
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SystemHandleEntry {
+    pub object: usize,
+    pub pid: usize,
+    pub handle: usize,
+    pub granted_access: u32,
+    pub creator_backtrace: u16,
+    pub object_type: u16,
+    pub attributes: u32,
+    pub reserved: u32,
+}
+
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<SystemHandleEntry>() == 40);
+
+/// SYSTEM_HANDLE_INFORMATION_EX starts with two ULONG_PTRs. Never trust the
+/// count independently of the returned buffer length, including on newer OSes.
+pub fn handle_entries(buf: &AlignedBuf, returned: usize) -> Option<&[SystemHandleEntry]> {
+    let header = 2 * std::mem::size_of::<usize>();
+    let available = returned.min(buf.len());
+    if available < header {
+        return None;
+    }
+    let count = unsafe { *buf.as_ptr().cast::<usize>() };
+    if count > (available - header) / std::mem::size_of::<SystemHandleEntry>() {
+        return None;
+    }
+    Some(unsafe { std::slice::from_raw_parts(buf.as_ptr().add(header).cast(), count) })
+}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -187,5 +220,23 @@ impl<'a> Iterator for ProcessIter<'a> {
             n => Some(offset + n as usize),
         };
         Some(ProcessEntry { info, threads })
+    }
+}
+
+#[cfg(test)]
+mod handle_tests {
+    use super::*;
+    #[test]
+    fn bounds_checks_the_native_handle_count() {
+        let mut buffer = AlignedBuf::with_capacity(16 + 40);
+        assert!(handle_entries(&buffer, 8).is_none());
+        unsafe {
+            *buffer.as_mut_ptr().cast::<usize>() = 2;
+        }
+        assert!(handle_entries(&buffer, 56).is_none());
+        unsafe {
+            *buffer.as_mut_ptr().cast::<usize>() = 1;
+        }
+        assert_eq!(handle_entries(&buffer, 56).unwrap().len(), 1);
     }
 }

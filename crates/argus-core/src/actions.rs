@@ -20,7 +20,7 @@ use crate::util::{OwnedHandle, filetime_ticks, ticks_to_unix_ms};
 
 const PROCESS_BREAK_ON_TERMINATION: PROCESSINFOCLASS = PROCESSINFOCLASS(29);
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "message", rename_all = "camelCase")]
 pub enum ActionError {
     /// Needs administrator rights (or the target is protected).
@@ -193,6 +193,18 @@ pub struct TreeKillReport {
 
 /// Terminates a process and all of its descendants, deepest first.
 pub fn terminate_tree(pid: u32, create_time: i64) -> Result<TreeKillReport, ActionError> {
+    terminate_tree_with(pid, create_time, |pid, created| {
+        terminate(pid, created, false)
+    })
+}
+
+/// Enumerates locally while allowing the host to route individual operations
+/// through its privileged service. Every target retains its creation time.
+pub fn terminate_tree_with(
+    pid: u32,
+    create_time: i64,
+    mut terminate_one: impl FnMut(u32, i64) -> Result<(), ActionError>,
+) -> Result<TreeKillReport, ActionError> {
     let procs = list_lineage();
     let mut children: HashMap<u32, Vec<(u32, i64)>> = HashMap::new();
     let created: HashMap<u32, i64> = procs.iter().map(|&(p, _, c)| (p, c)).collect();
@@ -222,12 +234,12 @@ pub fn terminate_tree(pid: u32, create_time: i64) -> Result<TreeKillReport, Acti
 
     let mut report = TreeKillReport::default();
     for (p, c) in order.into_iter().rev() {
-        match terminate(p, c, false) {
+        match terminate_one(p, c) {
             Ok(()) => report.terminated += 1,
             Err(_) => report.failed += 1,
         }
     }
-    terminate(root.0, root.1, false)?;
+    terminate_one(root.0, root.1)?;
     report.terminated += 1;
     Ok(report)
 }

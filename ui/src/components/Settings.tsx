@@ -28,7 +28,14 @@ import {
   uiMotion,
 } from "../lib/motion";
 import { appInfo, focusRule, intervalMs, setFocusRule, setIntervalMs, setPage, snapshot } from "../lib/store";
-import type { PriorityClass, ProcessRow, ProcessRule, RuleStats, SettingsView } from "../lib/types";
+import type {
+  PriorityClass,
+  PrivilegedServiceAction,
+  ProcessRow,
+  ProcessRule,
+  RuleStats,
+  SettingsView,
+} from "../lib/types";
 import { confirm, toast } from "../lib/ui";
 import Indicator from "./Indicator";
 import {
@@ -40,6 +47,7 @@ import {
   KeyboardIcon,
   PowerIcon,
   PulseIcon,
+  ShieldIcon,
   SparkleIcon,
   StorageIcon,
   TimerIcon,
@@ -52,6 +60,7 @@ import ProcIcon from "./ProcIcon";
 const SECTIONS = [
   { id: "startup", label: "启动与后台", icon: PowerIcon },
   { id: "hotkey", label: "快捷键", icon: KeyboardIcon },
+  { id: "privilege", label: "权限", icon: ShieldIcon },
   { id: "motion", label: "动画", icon: SparkleIcon },
   { id: "data", label: "数据与历史", icon: HistoryIcon },
   { id: "rules", label: "规则", icon: BoltIcon },
@@ -164,13 +173,225 @@ const PRIORITY_CHOICES: PriorityClass[] = [
   "idle",
 ];
 
+const [privilegeRevision, setPrivilegeRevision] = createSignal(0);
+
+function PrivilegedServiceSettings() {
+  const [error, setError] = createSignal<string | null>(null);
+  const [busy, setBusy] = createSignal(false);
+  const [status, { refetch, mutate }] = createResource(async () => {
+    try {
+      const value = await api.privilegedServiceStatus();
+      setError(null);
+      return value;
+    } catch (e) {
+      setError(String(e));
+      return null;
+    }
+  });
+  const manage = async (action: PrivilegedServiceAction) => {
+    if (busy() || status.loading) return;
+    const installing = action === "install";
+    if (
+      (installing || action === "uninstall") &&
+      !(await confirm({
+        title: installing ? "启用特权服务？" : "卸载特权服务？",
+        body: installing
+          ? "允许当前 Windows 账户通过后台服务管理系统进程、应用规则、统计每进程网络流量、查询文件占用、控制服务和断开连接。服务随 Windows 启动，此账户下的其他本机程序也能调用这些功能。安装需要管理员授权，以后可随时卸载。"
+          : "先恢复 Windows 任务管理器，再停止并移除后台服务。恢复失败时停止卸载。Argus 继续运行，系统进程和服务的操作将重新受当前权限限制。卸载需要管理员授权。",
+        confirmLabel: installing ? "安装并启用" : "卸载服务",
+        danger: !installing,
+      }))
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      mutate(await api.managePrivilegedService(action));
+      toast("success", action === "uninstall" ? "特权服务已卸载。" : "特权服务已就绪。");
+    } catch (e) {
+      await refetch();
+      setError(String(e));
+    } finally {
+      setBusy(false);
+      setPrivilegeRevision((value) => value + 1);
+    }
+  };
+  const label = () => {
+    if (busy()) return "正在等待管理员授权或处理服务…";
+    if (status.loading) return "正在检查服务状态…";
+    const s = status();
+    if (!s) return "暂时无法读取状态";
+    if (s.state === "notInstalled") return "未安装";
+    if (s.state === "running")
+      return s.authorized && !s.error ? `已连接 · ${s.version}` : "正在运行，但暂不可用";
+    if (s.state === "stopped") return "已停止";
+    if (s.state === "startPending") return "正在启动";
+    if (s.state === "stopPending") return "正在停止";
+    return "暂不可用";
+  };
+  return (
+    <>
+      <Setting
+        icon={<ShieldIcon size={20} />}
+        title="特权服务"
+        desc="让标准权限下的 Argus 管理系统进程、自动应用规则、采集每进程网络流量、查询文件占用，以及控制服务和断开 IPv4 TCP 连接。安装和卸载时需要管理员授权。"
+      />
+      <Setting
+        icon={<PulseIcon size={20} />}
+        title={<span aria-live="polite">{label()}</span>}
+        desc="Argus 运行时会自动连接。网络采集不可用时隐藏网络列；规则下方显示应用结果。"
+        error={error() ?? status()?.error}
+      >
+        <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
+          刷新状态
+        </button>
+        <Show when={status()}>
+          {(s) => (
+            <Show
+              when={s().state !== "notInstalled"}
+              fallback={
+                <button type="button" class="btn" disabled={busy()} onClick={() => void manage("install")}>
+                  安装并启用
+                </button>
+              }
+            >
+              <Show when={s().authorized && s().state === "stopped"}>
+                <button
+                  type="button"
+                  class="btn"
+                  disabled={busy() || status.loading}
+                  onClick={() => void manage("start")}
+                >
+                  启动服务
+                </button>
+              </Show>
+              <Show when={s().authorized}>
+                <button
+                  type="button"
+                  class="btn"
+                  disabled={busy() || status.loading}
+                  onClick={() => void manage("update")}
+                >
+                  更新服务
+                </button>
+              </Show>
+              <button
+                type="button"
+                class="btn"
+                disabled={busy() || status.loading}
+                onClick={() => void manage("uninstall")}
+              >
+                卸载
+              </button>
+            </Show>
+          )}
+        </Show>
+      </Setting>
+    </>
+  );
+}
+
+function TaskManagerSettings() {
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+  const [status, { refetch, mutate }] = createResource(privilegeRevision, async () => {
+    try {
+      const value = await api.taskManagerStatus();
+      setError(null);
+      return value;
+    } catch (e) {
+      setError(String(e));
+      return null;
+    }
+  });
+  const manage = async (action: "enable" | "restore") => {
+    if (busy() || status.loading) return;
+    if (
+      action === "enable" &&
+      !(await confirm({
+        title: "替换系统任务管理器？",
+        body: "Ctrl+Shift+Esc 等任务管理器入口将打开 Argus。此更改作用于整台电脑，其他账户仍打开 Windows 任务管理器。开启需要管理员授权；程序启动失败时尝试打开原生任务管理器。请保留独立恢复程序，以便界面或服务无法运行时恢复。",
+        confirmLabel: "启用替换",
+      }))
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      mutate(await api.manageTaskManager(action));
+      toast("success", action === "restore" ? "已恢复 Windows 任务管理器。" : "任务管理器替换已启用。");
+    } catch (e) {
+      await refetch();
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const label = () => {
+    if (busy()) return "正在处理任务管理器设置…";
+    if (status.loading) return "正在检查任务管理器设置…";
+    const s = status();
+    if (!s) return "无法读取替换状态";
+    return {
+      disabled: "使用 Windows 任务管理器",
+      enabled: "已替换为 Argus",
+      recoveryNeeded: "需要恢复",
+      conflict: "已有其他配置",
+    }[s.state];
+  };
+  return (
+    <>
+      <Setting
+        icon={<KeyboardIcon size={20} />}
+        title="替换系统任务管理器"
+        desc="让 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。更新或卸载特权服务会先关闭替换。"
+      />
+      <Setting
+        icon={<ShieldIcon size={20} />}
+        title={<span aria-live="polite">{label()}</span>}
+        desc={status()?.detail ?? "请刷新状态后重试。"}
+        error={error()}
+      >
+        <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
+          刷新状态
+        </button>
+        <Show when={status()?.canEnable}>
+          <button
+            type="button"
+            class="btn"
+            disabled={busy() || status.loading}
+            onClick={() => void manage("enable")}
+          >
+            启用替换
+          </button>
+        </Show>
+        <Show when={status()?.canRestore}>
+          <button
+            type="button"
+            class="btn"
+            disabled={busy() || status.loading}
+            onClick={() => void manage("restore")}
+          >
+            恢复 Windows 任务管理器
+          </button>
+        </Show>
+      </Setting>
+      <Show when={status()?.canRestore}>
+        <p class="note">界面无法打开时，可运行独立恢复程序：{status()?.recoveryPath}</p>
+      </Show>
+    </>
+  );
+}
+
 function ruleSummary(rule: ProcessRule, stats: RuleStats | undefined): string {
   if (rule.priority === null && rule.efficiency === null) return "选择要应用的优先级或效率模式。";
   if (!rule.enabled) return "已停用。";
-  if (!stats || (stats.applied === 0 && stats.denied === 0)) return "还没有遇到这个程序。";
+  if (!stats || (stats.applied === 0 && stats.denied === 0 && stats.failed === 0))
+    return "还没有遇到这个程序。";
   const parts = [];
   if (stats.applied > 0) parts.push(`已应用于 ${stats.applied} 个进程`);
-  if (stats.denied > 0) parts.push(`${stats.denied} 个需要以管理员身份运行 Argus 才能更改`);
+  if (stats.denied > 0) parts.push(`${stats.denied} 个权限不足，可启用特权服务；受保护的进程仍可能受限`);
+  if (stats.failed > 0) parts.push(`${stats.failed} 个未能应用，请检查特权服务状态后重新保存规则`);
   return `${parts.join("，")}。`;
 }
 
@@ -608,6 +829,12 @@ export default function SettingsPage() {
                       更改
                     </button>
                   </Setting>
+                </section>
+
+                <section id="settings-privilege" class="settings-section">
+                  <h2>权限</h2>
+                  <PrivilegedServiceSettings />
+                  <TaskManagerSettings />
                 </section>
 
                 <section id="settings-motion" class="settings-section">

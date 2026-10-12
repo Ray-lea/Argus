@@ -28,6 +28,8 @@ pub struct RuleStats {
     pub applied: u32,
     /// Processes it could not change without administrator rights.
     pub denied: u32,
+    /// Transport or other unexpected errors; never silently replayed.
+    pub failed: u32,
 }
 
 #[derive(Default)]
@@ -74,33 +76,49 @@ impl RuleEngine {
     /// Applies the rules to processes that started since the last call (to all
     /// of them right after the rules changed).
     pub fn apply(&mut self, processes: &[ProcessRow]) {
+        self.apply_with(
+            processes
+                .iter()
+                .map(|p| (p.pid, p.create_time, p.name.as_ref())),
+            apply_rule,
+        );
+    }
+
+    /// The host can execute matched rules outside the sampling thread and
+    /// route them through a privileged service without changing matching.
+    pub fn apply_with<'a>(
+        &mut self,
+        processes: impl IntoIterator<Item = (u32, i64, &'a str)>,
+        mut execute: impl FnMut(&ProcessRule, u32, i64) -> Result<(), ActionError>,
+    ) {
         if self.by_name.is_empty() {
             // Nothing to do; adding a rule rechecks everything anyway.
             self.seen.clear();
             self.recheck = false;
             return;
         }
-        let mut seen = HashSet::with_capacity(processes.len());
+        let processes = processes.into_iter();
+        let mut seen = HashSet::with_capacity(processes.size_hint().0);
         let mut name = String::new();
-        for p in processes {
-            let key = (p.pid, p.create_time);
+        for (pid, created, process_name) in processes {
+            let key = (pid, created);
             seen.insert(key);
             if !self.recheck && self.seen.contains(&key) {
                 continue;
             }
             name.clear();
-            name.extend(p.name.chars().flat_map(char::to_lowercase));
+            name.extend(process_name.chars().flat_map(char::to_lowercase));
             let Some(&i) = self.by_name.get(&name) else {
                 continue;
             };
             let rule = &self.rules[i];
-            let result = apply_rule(rule, p);
+            let result = execute(rule, pid, created);
             let stats = self.stats.entry(rule.id.clone()).or_default();
             match result {
                 Ok(()) => stats.applied += 1,
                 Err(ActionError::AccessDenied) => stats.denied += 1,
-                // Exited meanwhile, or something unexpected: nothing to report.
-                Err(_) => {}
+                Err(ActionError::NotFound) => {}
+                Err(_) => stats.failed += 1,
             }
         }
         self.seen = seen;
@@ -110,16 +128,23 @@ impl RuleEngine {
     pub fn stats(&self) -> HashMap<String, RuleStats> {
         self.stats.clone()
     }
+
+    /// A different executor (service started/stopped/restarted) starts a fresh
+    /// accounting period and retries processes denied under the old rights.
+    pub fn reset_executor(&mut self) {
+        self.stats.clear();
+        self.recheck = true;
+    }
 }
 
-fn apply_rule(rule: &ProcessRule, p: &ProcessRow) -> Result<(), ActionError> {
+pub fn apply_rule(rule: &ProcessRule, pid: u32, create_time: i64) -> Result<(), ActionError> {
     // Efficiency mode first: turning it on also lowers the priority, which an
     // explicit priority in the same rule then overrides.
     if let Some(on) = rule.efficiency {
-        actions::set_efficiency_mode(p.pid, p.create_time, on)?;
+        actions::set_efficiency_mode(pid, create_time, on)?;
     }
     if let Some(priority) = rule.priority {
-        actions::set_priority(p.pid, p.create_time, priority)?;
+        actions::set_priority(pid, create_time, priority)?;
     }
     Ok(())
 }

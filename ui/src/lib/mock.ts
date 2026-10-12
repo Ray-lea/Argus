@@ -448,6 +448,35 @@ export const appInfo = async (): Promise<AppInfo> => ({
   accent: null,
 });
 
+let serviceInstalled = false;
+export const privilegedService = {
+  status: async (): Promise<import("./types").PrivilegedServiceStatus> => ({
+    state: serviceInstalled ? "running" : "notInstalled",
+    authorized: serviceInstalled,
+    version: serviceInstalled ? "0.1.0-mock" : null,
+    error: null,
+  }),
+  manage: async (action: import("./types").PrivilegedServiceAction) => {
+    serviceInstalled = action !== "uninstall";
+    return privilegedService.status();
+  },
+};
+
+let taskManagerEnabled = false;
+export const taskManager = {
+  status: async (): Promise<import("./types").TaskManagerStatus> => ({
+    state: taskManagerEnabled ? "enabled" : "disabled",
+    canEnable: !taskManagerEnabled,
+    canRestore: taskManagerEnabled,
+    recoveryPath: "C:\\Program Files\\Argus Privileged\\argus-taskmgr-recover.exe",
+    detail: taskManagerEnabled ? "任务管理器入口已交给 Argus。" : "当前使用 Windows 任务管理器。",
+  }),
+  manage: async (action: "enable" | "restore") => {
+    taskManagerEnabled = action === "enable";
+    return taskManager.status();
+  },
+};
+
 export async function setInterval_(ms: number) {
   interval = ms;
   restart();
@@ -832,10 +861,24 @@ export const m3 = {
         appName: p.description ?? p.name,
         service: null,
         kind: p.name === "explorer.exe" ? "explorer" : "window",
+        handleCount: 1,
+        handlePath: paths[0] ?? null,
       })),
       filesChecked: paths.length * 12,
       unchecked: 0,
       truncated: false,
+      handles: {
+        available: true,
+        viaService: false,
+        elevated: false,
+        checked: 2800,
+        deniedProcesses: 2,
+        skipped: 0,
+        timeouts: 0,
+        truncated: false,
+        error: null,
+      },
+      restartError: null,
     };
   },
 };

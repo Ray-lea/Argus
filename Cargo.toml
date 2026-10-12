@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/argus-core", "src-tauri"]
+members = ["crates/argus-core", "crates/argus-service", "src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
@@ -17,6 +17,8 @@ authors = ["Argus contributors"]
 windows = { version = "0.62.2", features = [
   # argus-core and the host
   "UI_ViewManagement",
+  "Wdk_Foundation",
+  "Wdk_Storage_FileSystem",
   "Wdk_Graphics_Direct3D",
   "Wdk_System_SystemInformation",
   "Wdk_System_Threading",
@@ -27,6 +29,7 @@ windows = { version = "0.62.2", features = [
   "Win32_NetworkManagement_Ndis",
   "Win32_Networking_WinSock",
   "Win32_Security",
+  "Win32_Security_Authorization",
   "Win32_Storage_FileSystem",
   "Win32_System_Com",
   "Win32_System_Diagnostics_Debug",
@@ -34,7 +37,9 @@ windows = { version = "0.62.2", features = [
   "Win32_System_Environment",
   "Win32_System_IO",
   "Win32_System_Ioctl",
+  "Win32_System_JobObjects",
   "Win32_System_Performance",
+  "Win32_System_Pipes",
   "Win32_System_Power",
   "Win32_System_ProcessStatus",
   "Win32_System_Registry",

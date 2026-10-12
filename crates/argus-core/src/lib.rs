@@ -12,6 +12,7 @@ pub mod connections;
 pub mod details;
 pub mod filelock;
 pub mod gpu_process;
+pub mod handles;
 pub mod hardware;
 pub mod history;
 pub mod meta;

@@ -7,6 +7,8 @@ import type {
   HistoryUsage,
   LockReport,
   PriorityClass,
+  PrivilegedServiceAction,
+  PrivilegedServiceStatus,
   ProcessDetails,
   ProcessRule,
   RuleStats,
@@ -14,6 +16,7 @@ import type {
   SettingsView,
   Snapshot,
   StartupItem,
+  TaskManagerStatus,
   TreeKillReport,
 } from "./types";
 
@@ -48,6 +51,15 @@ export const api = {
   reveal: (path: string): Promise<void> =>
     mock ? Promise.resolve() : invoke("reveal_in_explorer", { path }),
   settings: (): Promise<SettingsView> => (mock ? mock.settings.get() : invoke("get_settings")),
+  privilegedServiceStatus: (): Promise<PrivilegedServiceStatus> =>
+    mock ? mock.privilegedService.status() : invoke("privileged_service_status"),
+  managePrivilegedService: (action: PrivilegedServiceAction): Promise<PrivilegedServiceStatus> =>
+    mock ? mock.privilegedService.manage(action) : invoke("manage_privileged_service", { action }),
+  taskManagerStatus: (): Promise<TaskManagerStatus> =>
+    mock ? mock.taskManager.status() : invoke("task_manager_status"),
+  manageTaskManager: (action: "enable" | "restore"): Promise<TaskManagerStatus> =>
+    mock ? mock.taskManager.manage(action) : invoke("manage_task_manager", { action }),
+  taskManagerReady: (): Promise<void> => (mock ? Promise.resolve() : invoke("task_manager_ready")),
   setCloseToTray: (value: boolean): Promise<SettingsView> =>
     mock ? mock.settings.update({ closeToTray: value }) : invoke("set_close_to_tray", { value }),
   setHotkey: (hotkey: string): Promise<SettingsView> =>

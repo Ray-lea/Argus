@@ -28,6 +28,8 @@ docs/
 - [总览](architecture/README.md)：分层、数据流、设计取向
 - [采集层 argus-core](architecture/core.md)
 - [Tauri 宿主](architecture/host.md)
+- [特权服务](architecture/privileged-service.md)：安装、授权边界、IPC 与验证
+- [系统任务管理器替换](architecture/task-manager.md)：启用、回退、更新和卸载保护
 - [前端](architecture/frontend.md)
 
 ## 设计

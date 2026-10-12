@@ -39,7 +39,7 @@ function errorText(e: unknown, name: string): string {
   const err = e as ActionError;
   switch (err?.kind) {
     case "accessDenied":
-      return `没有权限结束 ${name}。以管理员身份运行 Argus 后可以结束它。`;
+      return `没有权限结束 ${name}。可在设置中启用特权服务，或以管理员身份运行 Argus；受保护的进程仍可能无法结束。`;
     case "notFound":
       return `${name} 已经退出。`;
     case "critical":
@@ -290,8 +290,15 @@ export function toastActionError(e: unknown, what: string) {
 }
 
 /** Ends one process by PID (connections and file locks have no table row to act on). */
-export async function endProcessByPid(pid: number, name: string) {
-  const proc = snapshot()?.processes.find((p) => p.pid === pid);
+export async function endProcessByPid(pid: number, name: string, createTime?: number) {
+  const proc = snapshot()?.processes.find(
+    (p) => p.pid === pid && (createTime === undefined || p.createTime === createTime),
+  );
+  const identity = createTime ?? proc?.createTime;
+  if (!identity) {
+    toast("error", "进程实例信息已失效，请刷新后重试。");
+    return false;
+  }
   const label = proc?.name ?? name;
   const ok = await confirm({
     title: `结束 ${label}？`,
@@ -301,7 +308,7 @@ export async function endProcessByPid(pid: number, name: string) {
   });
   if (!ok) return false;
   try {
-    await api.kill(pid, proc?.createTime ?? 0);
+    await api.kill(pid, identity);
     toast("success", `已结束 ${label}。`, 2500);
     return true;
   } catch (e) {

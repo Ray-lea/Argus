@@ -4,7 +4,7 @@ import { createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import { endProcessByPid } from "../lib/actions";
 import { api } from "../lib/ipc";
 import { presence } from "../lib/motion";
-import { appInfo, revealProcess, snapshot } from "../lib/store";
+import { revealProcess, snapshot } from "../lib/store";
 import type { ActionError, Locker, LockReport } from "../lib/types";
 import { EndIcon, FolderIcon, GoToIcon, LockIcon } from "./icons";
 import ProcIcon from "./ProcIcon";
@@ -18,6 +18,7 @@ type State =
 const [open, setOpen] = createSignal(false);
 const [paths, setPaths] = createSignal<string[]>([]);
 const [state, setState] = createSignal<State>({ kind: "idle" });
+let searchVersion = 0;
 
 const KIND_LABEL: Partial<Record<Locker["kind"], string>> = {
   service: "服务",
@@ -28,10 +29,14 @@ const KIND_LABEL: Partial<Record<Locker["kind"], string>> = {
 
 async function search() {
   if (paths().length === 0) return;
+  const version = ++searchVersion;
+  const selectedPaths = [...paths()];
   setState({ kind: "searching" });
   try {
-    setState({ kind: "done", report: await api.findLockers(paths()) });
+    const report = await api.findLockers(selectedPaths);
+    if (version === searchVersion) setState({ kind: "done", report });
   } catch (e) {
+    if (version !== searchVersion) return;
     const err = e as ActionError;
     setState({
       kind: "error",
@@ -77,7 +82,8 @@ function LockDialogBody(props: { leaving: boolean }) {
   };
   window.addEventListener("keydown", onKey);
   onCleanup(() => window.removeEventListener("keydown", onKey));
-  const procOf = (pid: number) => snapshot()?.processes.find((p) => p.pid === pid);
+  const procOf = (locker: Locker) =>
+    snapshot()?.processes.find((p) => p.pid === locker.pid && p.createTime === locker.createTime);
 
   return (
     <div
@@ -85,7 +91,7 @@ function LockDialogBody(props: { leaving: boolean }) {
       classList={{ leaving: props.leaving }}
       onMouseDown={(e) => e.target === e.currentTarget && close()}
     >
-      <div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="lock-title">
+      <div class="dialog wide lock-dialog" role="dialog" aria-modal="true" aria-labelledby="lock-title">
         <div class="dialog-body">
           <h2 id="lock-title" class="dialog-title">
             谁在占用文件
@@ -148,49 +154,43 @@ function LockDialogBody(props: { leaving: boolean }) {
                   <div class="lock-report">
                     <Show
                       when={report().lockers.length > 0}
-                      fallback={
-                        <Show
-                          when={report().filesChecked > 0}
-                          fallback={
-                            <p class="dialog-text">
-                              Windows 不允许检查它：它正被受保护的系统进程使用，常见于系统 DLL。
-                            </p>
-                          }
-                        >
-                          <p class="dialog-text">
-                            没有进程占用它。
-                            <Show when={!appInfo()?.elevated}>
-                              {" "}
-                              以管理员身份运行 Argus 可以检查到更多进程。
-                            </Show>
-                          </p>
-                        </Show>
-                      }
+                      fallback={<p class="dialog-text">本次查询未发现可访问的占用进程。</p>}
                     >
                       <p class="dialog-text">
-                        {report().lockers.length} 个进程正在使用，检查了 {report().filesChecked} 个文件。
+                        找到 {report().lockers.length} 个进程正在使用这些文件或文件夹。
                       </p>
                       <div class="locker-list">
                         <For each={report().lockers}>
                           {(l) => {
-                            const proc = procOf(l.pid);
+                            const proc = () => procOf(l);
                             return (
                               <div class="locker">
-                                <ProcIcon proc={{ icon: proc?.icon ?? null, path: proc?.path ?? null }} />
+                                <ProcIcon proc={{ icon: proc()?.icon ?? null, path: proc()?.path ?? null }} />
                                 <div class="locker-name">
-                                  <div class="label">{proc?.description ?? l.appName}</div>
+                                  <div class="label">{proc()?.description ?? l.appName}</div>
                                   <div class="dim">
-                                    {proc?.name ?? l.appName}　PID {l.pid}
+                                    {proc()?.name ?? l.appName}　PID {l.pid}
                                     <Show when={l.service}>　服务 {l.service}</Show>
                                   </div>
+                                  <Show when={l.handlePath}>
+                                    {(path) => (
+                                      <div class="dim label" title={path()}>
+                                        {path()}
+                                      </div>
+                                    )}
+                                  </Show>
                                 </div>
                                 <Show when={KIND_LABEL[l.kind]}>
                                   <span class="tag">{KIND_LABEL[l.kind]}</span>
+                                </Show>
+                                <Show when={l.handleCount > 0}>
+                                  <span class="tag">{l.handleCount} 个句柄</span>
                                 </Show>
                                 <button
                                   type="button"
                                   class="btn small ghost"
                                   title="在进程列表中查看"
+                                  disabled={!proc()}
                                   onClick={() => {
                                     close();
                                     revealProcess(l.pid);
@@ -201,8 +201,9 @@ function LockDialogBody(props: { leaving: boolean }) {
                                 <button
                                   type="button"
                                   class="btn small danger"
+                                  disabled={l.createTime <= 0}
                                   onClick={async () => {
-                                    if (await endProcessByPid(l.pid, l.appName)) await search();
+                                    if (await endProcessByPid(l.pid, l.appName, l.createTime)) await search();
                                   }}
                                 >
                                   <EndIcon size={14} />
@@ -214,10 +215,41 @@ function LockDialogBody(props: { leaving: boolean }) {
                         </For>
                       </div>
                     </Show>
-                    <Show when={report().unchecked > 0 && report().filesChecked > 0}>
+                    <Show when={report().handles}>
+                      {(handles) => (
+                        <>
+                          <p class="note">
+                            Restart Manager 检查了 {report().filesChecked} 个文件。
+                            {handles().available
+                              ? `${handles().viaService ? "特权服务" : "本地"}已检查 ${handles().checked} 个文件句柄，包括目录句柄。`
+                              : "句柄查询未完成。"}
+                          </p>
+                          <Show
+                            when={
+                              handles().deniedProcesses > 0 ||
+                              handles().skipped > 0 ||
+                              handles().timeouts > 0 ||
+                              handles().truncated
+                            }
+                          >
+                            <p class="note">
+                              结果不完整：{handles().deniedProcesses} 个进程无法访问，{handles().skipped}{" "}
+                              个句柄无法读取，{handles().timeouts} 次查询超时。
+                              <Show when={handles().truncated}>已达到查询限制。</Show>
+                            </p>
+                          </Show>
+                          <Show when={!handles().viaService && !handles().elevated}>
+                            <p class="note">可在设置中启用特权服务，以检查更多系统进程。</p>
+                          </Show>
+                          <Show when={handles().error}>{(error) => <p class="note">{error()}</p>}</Show>
+                        </>
+                      )}
+                    </Show>
+                    <Show when={report().restartError}>{(error) => <p class="note">{error()}</p>}</Show>
+                    <Show when={report().unchecked > 0}>
                       <p class="note">
-                        另有 {report().unchecked} 个文件 Windows
-                        不允许检查，通常是被受保护的系统进程加载的系统文件。
+                        另有 {report().unchecked} 个文件 Restart Manager
+                        未能检查，可能与权限或文件状态变化有关。
                       </p>
                     </Show>
                     <Show when={report().truncated}>
@@ -232,7 +264,7 @@ function LockDialogBody(props: { leaving: boolean }) {
           </div>
         </div>
         <div class="dialog-footer">
-          <span class="dialog-hint">以文件夹为当前目录的进程（例如打开着它的命令行）不会被检查到。</span>
+          <span class="dialog-hint">句柄查询可发现当前目录占用；受保护进程仍可能无法检查。</span>
           <button type="button" class="btn" onClick={close}>
             关闭
           </button>

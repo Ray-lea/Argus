@@ -3,13 +3,13 @@
 
 use std::io;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use argus_core::history::{self, HistoryRecorder};
-use argus_core::rules::RuleEngine;
 use argus_core::{Collector, Snapshot};
+use argus_service::{NetworkClient, RuleRunner};
 use tauri::ipc::Channel;
 
 /// Shortest window over which CPU percentages are still meaningful.
@@ -48,16 +48,17 @@ impl Sampler {
     /// Starts the sampling thread. The collector is built there, so its setup
     /// (PDH queries, adapter enumeration, a priming sample) overlaps the
     /// WebView's startup instead of delaying it.
-    /// Every sample also runs the process rules and goes into the history.
+    /// Every sample also queues process rules and goes into the history.
     pub fn spawn(
         make_collector: impl FnOnce() -> Collector + Send + 'static,
-        rules: Arc<Mutex<RuleEngine>>,
+        rules: Arc<RuleRunner>,
     ) -> Self {
         let (tx, rx) = mpsc::channel::<Control>();
         std::thread::Builder::new()
             .name("argus-sampler".into())
             .spawn(move || {
                 let mut collector = make_collector();
+                let mut network = NetworkClient::spawn();
                 let mut subscriber: Option<Channel<Snapshot>> = None;
                 let mut hidden: Option<Probe> = None;
                 let mut observer: Option<Observer> = None;
@@ -118,9 +119,10 @@ impl Sampler {
                         continue;
                     }
                     let since = last_sample.elapsed();
+                    let background = paused || hidden.as_ref().is_some_and(|h| h());
                     let skip = if forced {
                         since < MIN_SAMPLE_GAP
-                    } else if paused || hidden.as_ref().is_some_and(|h| h()) {
+                    } else if background {
                         since < BACKGROUND_INTERVAL
                     } else {
                         false
@@ -130,10 +132,16 @@ impl Sampler {
                     }
 
                     last_sample = Instant::now();
-                    let snapshot = collector.sample();
-                    if let Ok(mut engine) = rules.lock() {
-                        engine.apply(&snapshot.processes);
-                    }
+                    let mut snapshot = collector.sample();
+                    network.enrich(
+                        &mut snapshot,
+                        if background {
+                            BACKGROUND_INTERVAL
+                        } else {
+                            interval
+                        },
+                    );
+                    rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);
                     }
