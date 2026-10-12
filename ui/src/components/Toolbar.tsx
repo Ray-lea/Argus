@@ -1,5 +1,5 @@
-import { For, Show } from "solid-js";
-import { t } from "../lib/i18n";
+import { createEffect, For, on, onCleanup, onMount, Show } from "solid-js";
+import { locale, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import type { ViewMode } from "../lib/rows";
 import {
@@ -53,7 +53,52 @@ export function focusSearch() {
   searchInput?.select();
 }
 
+/** Levels of `fitToolbar`, set as `data-compact` (styles.css). */
+const COMPACT_LEVELS = 3;
+
+/**
+ * Keeps the toolbar's controls inside the window. When they overflow it sheds
+ * what it can do without, one level at a time: the text of the permission
+ * badge and of labelled buttons, then the labels of segments that have icons,
+ * then the page's own controls move to a second row. Titles still name what
+ * lost its label. The width each level needs is learned when it overflows, so
+ * a resize costs one layout read; `refit` starts over after the content
+ * changes (another page, another language).
+ */
+function fitToolbar(bar: HTMLElement) {
+  let level = 0;
+  let need: number[] = [];
+  const set = (next: number) => {
+    level = next;
+    if (next) bar.dataset.compact = String(next);
+    else delete bar.dataset.compact;
+  };
+  const fit = () => {
+    while (level > 0 && bar.clientWidth >= need[level - 1]) set(level - 1);
+    while (level < COMPACT_LEVELS && bar.scrollWidth > bar.clientWidth) {
+      need[level] = bar.scrollWidth;
+      set(level + 1);
+    }
+  };
+  const observer = new ResizeObserver(fit);
+  observer.observe(bar);
+  return {
+    refit: () => {
+      need = [];
+      set(0);
+      fit();
+    },
+    dispose: () => observer.disconnect(),
+  };
+}
+
 export default function Toolbar() {
+  let bar!: HTMLDivElement;
+  onMount(() => {
+    const fitter = fitToolbar(bar);
+    createEffect(on([page, locale, appInfo], () => fitter.refit()));
+    onCleanup(fitter.dispose);
+  });
   const changeInterval = (ms: number) => {
     setIntervalMs(ms);
     void api.setInterval(ms);
@@ -67,7 +112,7 @@ export default function Toolbar() {
   const sampled = () => page() === "processes" || page() === "performance";
 
   return (
-    <div class="toolbar" role="toolbar" aria-label={t("shell.toolbar")}>
+    <div ref={bar} class="toolbar" role="toolbar" aria-label={t("shell.toolbar")}>
       <div class="tabs" role="tablist" aria-label={t("shell.pages")}>
         <Indicator selector="[aria-selected='true']" track={page} class="tab-mark" shape="underline" />
         <For each={PAGES}>
@@ -132,7 +177,9 @@ export default function Toolbar() {
             title={info().elevated ? t("shell.elevation.adminHint") : t("shell.elevation.standardHint")}
           >
             <ShieldIcon size={14} />
-            {info().elevated ? t("shell.elevation.admin") : t("shell.elevation.standard")}
+            <span class="badge-text">
+              {info().elevated ? t("shell.elevation.admin") : t("shell.elevation.standard")}
+            </span>
           </span>
         )}
       </Show>

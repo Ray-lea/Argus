@@ -164,7 +164,7 @@ export function ServiceControls() {
         onClick={() => api.openServicesConsole()}
       >
         <ExternalIcon />
-        {t("services.control.openConsole")}
+        <span class="btn-text">{t("services.control.openConsole")}</span>
       </button>
     </>
   );

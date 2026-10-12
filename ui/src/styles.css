@@ -536,6 +536,36 @@ button {
   color: var(--accent);
 }
 
+/* A narrow window (or a long language) sheds toolbar labels; see fitToolbar
+   in Toolbar.tsx. Titles keep naming the controls. On a second row the page's
+   controls have room for their labels again. */
+.toolbar[data-compact] .badge {
+  padding: 0 6px;
+}
+
+.toolbar[data-compact] .badge-text,
+.toolbar:is([data-compact="1"], [data-compact="2"]) .btn-text {
+  display: none;
+}
+
+.toolbar[data-compact="2"] .segmented button:has(svg) .seg-label {
+  display: none;
+}
+
+.toolbar[data-compact="3"] {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.toolbar[data-compact="3"] > .toolbar-sep {
+  display: none;
+}
+
+.toolbar[data-compact="3"] > .page-controls {
+  order: 1;
+  flex: 1 0 100%;
+}
+
 /* ---- Process table --------------------------------------------------------- */
 
 .workspace {
