@@ -37,6 +37,9 @@
     "targets": [
       "nsis"
     ],
+    "publisher": "Argus contributors",
+    "copyright": "© 2026 Argus contributors",
+    "homepage": "https://github.com/Ray-lea/Argus",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -44,8 +47,13 @@
       "icons/icon.ico"
     ],
     "windows": {
+      "allowDowngrades": false,
       "nsis": {
         "installMode": "currentUser",
+        "languages": [
+          "SimpChinese"
+        ],
+        "installerIcon": "icons/icon.ico",
         "installerHooks": "taskmgr-hooks.nsh"
       }
     }
