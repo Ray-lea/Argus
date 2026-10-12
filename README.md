@@ -102,6 +102,11 @@ start.bat build     # 发布构建，生成 target\release\argus.exe
 | [设计](docs/design/README.md) | 设计原则、曲线动画、窗口外观 |
 | [路线图](docs/roadmap.md) | 已完成与计划中的功能 |
 | [已知问题](docs/known-issues.md) | 当前版本的限制 |
+| [更新日志](CHANGELOG.md) | 各版本的变更 |
+
+## 🤝 参与贡献
+
+欢迎提交问题与拉取请求，请先阅读[贡献指南](.github/CONTRIBUTING.md)。安全漏洞请按[安全策略](.github/SECURITY.md)私下报告，不要创建公开的 Issue。
 
 ## 🧭 路线图
 

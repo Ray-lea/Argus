@@ -1,0 +1,64 @@
+name: 缺陷报告
+description: 报告错误、崩溃、显示异常或性能问题
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先搜索已有的 Issue。安全漏洞请勿在此提交，按[安全策略](https://github.com/Ray-lea/Argus/security/policy)私下报告。
+  - type: input
+    id: version
+    attributes:
+      label: Argus 版本
+      description: 设置 → 关于 中显示的版本号。
+      placeholder: 例如 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: 安装方式
+      options:
+        - 安装版
+        - 免安装版
+        - 从源码构建
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows 版本
+      description: 运行 `winver` 显示的版本与内部版本号。
+      placeholder: 例如 Windows 11 24H2（26100.4061）
+    validations:
+      required: true
+  - type: checkboxes
+    id: privilege
+    attributes:
+      label: 权限
+      options:
+        - label: 以管理员身份运行 Argus
+        - label: 已安装特权服务
+        - label: 已启用系统任务管理器替换
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 发生了什么，期望的结果是什么。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 单击……
+        3. 出现……
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与截图
+      description: 日志位于 设置 → 关于 → 打开日志文件夹。附上问题发生前后的相关内容；截图可直接粘贴。
