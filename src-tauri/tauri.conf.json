@@ -54,7 +54,7 @@
           "SimpChinese"
         ],
         "installerIcon": "icons/icon.ico",
-        "installerHooks": "taskmgr-hooks.nsh"
+        "installerHooks": "installer-hooks.nsh"
       }
     }
   }

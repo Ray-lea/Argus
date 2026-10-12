@@ -29,6 +29,8 @@ const PIPE_NAME: &str = if cfg!(debug_assertions) {
 };
 const SERVICE_ARG: &str = "--argus-service";
 const INSTALL_ARG: &str = "--argus-service-manage";
+/// Run by the NSIS uninstaller once the user agreed to remove the service too.
+const REMOVE_ARG: &str = "--argus-service-remove";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PROTOCOL: u32 = 4;
 
@@ -43,8 +45,22 @@ pub fn run_mode() -> Option<i32> {
         Some(INSTALL_ARG) if args.len() == 3 => {
             Some(install::run_helper(&args[1], &args[2]).map_or_else(|e| e as i32, |_| 0))
         }
-        Some(SERVICE_ARG | INSTALL_ARG | handles::WORKER_ARG) => Some(87),
+        Some(REMOVE_ARG) if args.len() == 1 => Some(remove_for_uninstall()),
+        Some(SERVICE_ARG | INSTALL_ARG | REMOVE_ARG | handles::WORKER_ARG) => Some(87),
         _ => None,
+    }
+}
+
+/// Uninstalls the service through the same UAC helper as the settings page,
+/// which restores the system task manager first. 0 when nothing is left
+/// installed; the uninstaller asks the user what to do otherwise.
+fn remove_for_uninstall() -> i32 {
+    match status() {
+        Ok(s) if s.state == "notInstalled" => 0,
+        _ => match manage("uninstall") {
+            Ok(s) if s.state == "notInstalled" => 0,
+            _ => 1,
+        },
     }
 }
 
