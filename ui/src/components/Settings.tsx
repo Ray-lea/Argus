@@ -203,7 +203,7 @@ function PrivilegedServiceSettings() {
       !(await confirm({
         title: installing ? "启用特权服务？" : "卸载特权服务？",
         body: installing
-          ? "允许当前 Windows 账户通过后台服务管理系统进程、应用规则、统计每进程网络流量、查询文件占用、控制服务和断开连接。服务随 Windows 启动，此账户下的其他本机程序也能调用这些功能。安装需要管理员授权，以后可随时卸载。"
+          ? "允许当前 Windows 账户通过后台服务管理系统进程、应用规则、统计每进程网络流量、查询文件占用、控制服务和断开连接。服务随 Windows 启动，此账户下的其他本机程序也能调用这些功能。安装需要管理员授权，之后可在设置中卸载。"
           : "先恢复 Windows 任务管理器，再停止并移除后台服务。恢复失败时停止卸载。Argus 继续运行，系统进程和服务的操作将重新受当前权限限制。卸载需要管理员授权。",
         confirmLabel: installing ? "安装并启用" : "卸载服务",
         danger: !installing,
@@ -230,7 +230,7 @@ function PrivilegedServiceSettings() {
     if (!s) return "暂时无法读取状态";
     if (s.state === "notInstalled") return "未安装";
     if (s.state === "running")
-      return s.authorized && !s.error ? `已连接 · ${s.version}` : "正在运行，但暂不可用";
+      return s.authorized && !s.error ? `已连接 · ${s.version}` : "正在运行，暂时无法连接";
     if (s.state === "stopped") return "已停止";
     if (s.state === "startPending") return "正在启动";
     if (s.state === "stopPending") return "正在停止";
@@ -248,12 +248,12 @@ function PrivilegedServiceSettings() {
       <Setting
         icon={<ShieldIcon size={20} />}
         title="特权服务"
-        desc="让标准权限下的 Argus 管理系统进程、自动应用规则、采集每进程网络流量、查询文件占用，以及控制服务和断开 IPv4 TCP 连接。安装和卸载时需要管理员授权。"
+        desc="使以标准权限运行的 Argus 能够管理系统进程、自动应用规则、采集每进程网络流量、查询文件占用，以及控制服务和断开 IPv4 TCP 连接。安装和卸载均需要管理员授权。"
       />
       <Setting
         icon={<PulseIcon size={20} />}
         title={<span aria-live="polite">{label()}</span>}
-        desc="Argus 运行时会自动连接。网络采集不可用时隐藏网络列；规则下方显示应用结果。"
+        desc="Argus 运行时自动连接服务。网络采集不可用时隐藏网络列；各规则下方显示应用结果。"
         error={error() ?? status()?.error ?? outdated()}
       >
         <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
@@ -358,7 +358,7 @@ function TaskManagerSettings() {
       <Setting
         icon={<KeyboardIcon size={20} />}
         title="替换系统任务管理器"
-        desc="让 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。更新或卸载特权服务会先关闭替换。"
+        desc="使 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。更新或卸载特权服务前会先关闭替换。"
       />
       <Setting
         icon={<ShieldIcon size={20} />}
@@ -401,7 +401,7 @@ function ruleSummary(rule: ProcessRule, stats: RuleStats | undefined): string {
   if (rule.priority === null && rule.efficiency === null) return "选择要应用的优先级或效率模式。";
   if (!rule.enabled) return "已停用。";
   if (!stats || (stats.applied === 0 && stats.denied === 0 && stats.failed === 0))
-    return "还没有遇到这个程序。";
+    return "尚未检测到该程序。";
   const parts = [];
   if (stats.applied > 0) parts.push(`已应用于 ${stats.applied} 个进程`);
   if (stats.denied > 0) parts.push(`${stats.denied} 个权限不足，可启用特权服务；受保护的进程仍可能受限`);
@@ -434,7 +434,7 @@ function RulesSection(props: { rules: ProcessRule[]; onChange: (rules: ProcessRu
     const name = draft().trim();
     if (!name) return;
     if (props.rules.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
-      setDraftError(`已经有 ${name} 的规则。`);
+      setDraftError(`${name} 的规则已存在。`);
       return;
     }
     const rule: ProcessRule = {
@@ -467,7 +467,7 @@ function RulesSection(props: { rules: ProcessRule[]; onChange: (rules: ProcessRu
       <Setting
         icon={<BoltIcon size={20} />}
         title="程序启动时自动设置优先级或效率模式"
-        desc="保存后已在运行的进程也立即生效。也可以在进程列表中右键一个进程，选择“添加规则”。"
+        desc="保存后对正在运行的进程立即生效。也可在进程列表中右键单击进程，选择“添加规则”。"
         error={draftError()}
       >
         <form class="rule-add" onSubmit={add}>
@@ -661,7 +661,7 @@ function UpdateSettings(props: {
       case "downloading":
         return `正在下载 ${s.version}${s.total ? ` · ${Math.floor((s.received / s.total) * 100)}%` : ""}`;
       case "ready":
-        return `${s.version} 已下载，可以安装`;
+        return `${s.version} 已下载完成`;
       case "installing":
         return `正在启动 ${s.version} 的安装程序…`;
       case "error":
@@ -675,15 +675,15 @@ function UpdateSettings(props: {
       case "disabled":
         return s.error;
       case "ready":
-        return "安装时 Argus 会退出，安装程序只显示进度，完成后自动重新打开 Argus。";
+        return "安装期间 Argus 将退出，安装程序仅显示进度，完成后自动重新启动 Argus。";
       case "available":
-        return "免安装版不能自动更新，请从发布页下载新版本。";
+        return "免安装版不支持自动更新，请从发布页下载新版本。";
       case "downloading":
         return `已下载 ${fmtCache(s.received)}${s.total ? ` / ${fmtCache(s.total)}` : ""}，来自 ${s.source ?? "GitHub"}。`;
     }
     if (s.checkedAt)
       return `上次检查：${dateFmt.format(s.checkedAt)}${s.source ? `，来自 ${s.source}` : ""}。`;
-    return "从 GitHub Releases 获取更新；安装包带有签名，校验通过才会安装。";
+    return "更新来自 GitHub Releases，安装包通过签名校验后才会安装。";
   };
   const showNotes = () =>
     Boolean(status()?.notes) && (state() === "available" || state() === "downloading" || state() === "ready");
@@ -731,7 +731,7 @@ function UpdateSettings(props: {
       <Setting
         icon={<TimerIcon size={20} />}
         title="自动检查更新"
-        desc="启动约 1 分钟后检查一次，之后每天一次。新版本在后台下载，由你决定何时安装。"
+        desc="启动约 1 分钟后检查一次，此后每天检查一次。新版本在后台下载，安装需手动确认。"
       >
         <ToggleSwitch
           label="自动检查更新"
@@ -742,7 +742,7 @@ function UpdateSettings(props: {
       <Setting
         icon={<SparkleIcon size={20} />}
         title="更新通道"
-        desc="测试版会更早收到新功能，也可能不稳定。从测试版切回稳定版后，要等稳定版的版本号超过当前版本才会更新。"
+        desc="测试版提前提供新功能，稳定性可能不及稳定版。由测试版切换到稳定版后，需等到稳定版的版本号高于当前版本时才会更新。"
       >
         <select
           class="select"
@@ -757,7 +757,7 @@ function UpdateSettings(props: {
       <Setting
         icon={<GlobeIcon size={20} />}
         title="下载线路"
-        desc="加速代理由第三方提供，能看到你的 IP 地址和下载的文件。安装包的签名同时覆盖版本号，代理既不能篡改更新，也不能用旧版本冒充新版本。"
+        desc="加速代理由第三方提供，可获知本机的 IP 地址及所下载的文件。安装包签名同时覆盖版本号，代理无法篡改更新，也无法以旧版本冒充新版本。"
       >
         <select
           class="select"
@@ -765,9 +765,9 @@ function UpdateSettings(props: {
           value={props.settings.updateRoute}
           onChange={(e) => void save({ route: e.currentTarget.value as UpdateRoute })}
         >
-          <option value="auto">自动：先连 GitHub，失败时用加速代理</option>
-          <option value="direct">只连 GitHub</option>
-          <option value="proxy">只用加速代理</option>
+          <option value="auto">自动（优先连接 GitHub，失败时使用加速代理）</option>
+          <option value="direct">仅连接 GitHub</option>
+          <option value="proxy">仅使用加速代理</option>
         </select>
       </Setting>
       <Show when={props.settings.updateRoute !== "direct"}>
@@ -776,8 +776,8 @@ function UpdateSettings(props: {
           title="加速代理"
           desc={
             props.settings.updateRoute === "auto"
-              ? "GitHub 连不上时先试这个代理，再试其他内置代理。"
-              : "所有更新请求都经过这个代理。"
+              ? "无法连接 GitHub 时，依次尝试此代理和其他内置代理。"
+              : "所有更新请求均经由此代理。"
           }
         >
           <select
@@ -806,7 +806,7 @@ function UpdateSettings(props: {
           <Setting
             icon={<GlobeIcon size={20} />}
             title="自定义代理"
-            desc="加在 GitHub 地址前面的前缀，例如 https://example.com/，必须使用 https。"
+            desc="添加在 GitHub 地址之前的前缀，须使用 https，例如 https://example.com/。"
           >
             <form
               class="rule-add"
@@ -871,8 +871,8 @@ function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => v
         title="记录历史"
         desc={
           props.enabled
-            ? "每 5 秒记录一次资源占用和当时最忙的进程，只保存在这台电脑上，保留 7 天。在“历史”页查看。"
-            : "已关闭。已有的记录会在 7 天后过期，也可以现在清除。"
+            ? "每 5 秒记录一次资源占用及占用最高的进程。数据仅保存在本机，保留 7 天，可在“历史”页查看。"
+            : "已关闭。现有记录将在 7 天后过期，也可立即清除。"
         }
       >
         <ToggleSwitch label="记录历史" checked={props.enabled} onChange={props.onToggle} />
@@ -886,10 +886,10 @@ function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => v
               u().bytes > 0 ? (
                 <>
                   占用 {fmtCache(u().bytes)}
-                  <Show when={u().first}>{(first) => <>，最早的记录在 {dateFmt.format(first())}</>}</Show>。
+                  <Show when={u().first}>{(first) => <>，最早记录于 {dateFmt.format(first())}</>}</Show>。
                 </>
               ) : (
-                "还没有记录。"
+                "暂无记录。"
               )
             }
           </Show>
@@ -1049,7 +1049,7 @@ export default function SettingsPage() {
                   <Setting
                     icon={<PowerIcon size={20} />}
                     title="登录 Windows 时启动"
-                    desc="在托盘中静默启动，需要时用快捷键或单击托盘图标打开。"
+                    desc="以托盘方式静默启动，可通过快捷键或单击托盘图标打开窗口。"
                   >
                     <ToggleSwitch
                       label="登录 Windows 时启动"
@@ -1060,7 +1060,7 @@ export default function SettingsPage() {
                   <Setting
                     icon={<TrayIcon size={20} />}
                     title="关闭窗口时保留在托盘"
-                    desc="保持常驻，再次打开几乎瞬间完成。隐藏时每 5 秒采样一次，历史记录和规则照常进行。"
+                    desc="保持常驻，可快速重新打开。隐藏期间每 5 秒采样一次，历史记录与规则照常运行。"
                   >
                     <ToggleSwitch
                       label="关闭窗口时保留在托盘"
@@ -1075,7 +1075,7 @@ export default function SettingsPage() {
                   <Setting
                     icon={<KeyboardIcon size={20} />}
                     title="显示或隐藏 Argus"
-                    desc="在任何程序中都能使用。录制时按 Esc 取消，按 Backspace 关闭快捷键。"
+                    desc="在任意程序中均可使用。录制时按 Esc 取消，按 Backspace 停用快捷键。"
                     error={hotkeyError() ?? s().hotkeyError}
                   >
                     <span class="keycaps" aria-live="polite">
@@ -1109,7 +1109,7 @@ export default function SettingsPage() {
                   <Setting
                     icon={<PulseIcon size={20} />}
                     title="曲线动画"
-                    desc="帧率越高越顺滑，占用也越多：流畅约占单核 10%–15%，均衡约一半；省电每次移动一个整像素，小图会一顿一顿。"
+                    desc="帧率越高，曲线越流畅，资源占用也越高：流畅模式约占单核 10%–15%，均衡模式约为其一半；省电模式每次移动一个整像素，较小图表的移动不连续。"
                   >
                     <select
                       class="select"
@@ -1130,7 +1130,7 @@ export default function SettingsPage() {
                   <Setting
                     icon={<TimerIcon size={20} />}
                     title="刷新频率"
-                    desc="间隔越短曲线越细腻，Argus 自身的开销也越高。"
+                    desc="间隔越短，曲线越精细，Argus 自身的资源开销也越高。"
                   >
                     <select
                       class="select"
@@ -1148,7 +1148,7 @@ export default function SettingsPage() {
                   <Setting
                     icon={<TransferIcon size={20} />}
                     title="网络速率单位"
-                    desc="字节与磁盘速度一致，比特与网卡的链路速度、宽带套餐一致。性能页的网络视图同时显示两种。"
+                    desc="字节与磁盘速率的单位一致，比特与网卡链路速率、宽带带宽的单位一致。性能页的网络视图同时显示两种单位。"
                   >
                     <div class="segmented" role="group" aria-label="网络速率单位">
                       <Indicator selector="[aria-pressed='true']" track={netUnit} class="seg-thumb" />
@@ -1214,7 +1214,7 @@ export default function SettingsPage() {
                   <Setting
                     icon={<DocumentIcon size={20} />}
                     title="许可证"
-                    desc="Argus 是自由软件，以 GNU Affero General Public License 第 3 版或（由你选择）任何更高版本发布，你可以按这一许可证的条款再分发和修改它。Argus 不提供任何担保。"
+                    desc="Argus 是自由软件，依据 GNU Affero General Public License 第 3 版或任何更高版本（AGPL-3.0-or-later）发布，可按该许可证的条款再分发和修改。Argus 不提供任何担保。"
                   >
                     <button type="button" class="btn" onClick={() => setLicenseOpen(true)}>
                       查看许可证

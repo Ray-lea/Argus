@@ -558,8 +558,8 @@ function CpuView() {
       </div>
       <Show when={hw().thermal.length > 0}>
         <p class="perf-note">
-          温度来自主板的 ACPI 热区，通常反映 CPU 封装附近的温度。每个核心的温度要读取处理器内部寄存器，Windows
-          只允许内核驱动读取，将随特权服务（路线图 M5）提供。
+          温度来自主板的 ACPI 热区，通常反映 CPU 封装附近的温度。每个核心的温度需读取处理器内部寄存器，Windows
+          仅允许内核驱动读取，目前不提供。
         </p>
       </Show>
     </>
@@ -1013,7 +1013,7 @@ function BatteryView(props: { id: string }) {
             </div>
             <Show when={health() !== null && (health() ?? 100) < 80}>
               <p class="perf-note">
-                完全充电容量已降到设计容量的 {Math.round(health() ?? 0)}%，充满后的续航会比新电池短。
+                完全充电容量已降到设计容量的 {Math.round(health() ?? 0)}%，充满后的续航时间将短于新电池。
               </p>
             </Show>
           </>

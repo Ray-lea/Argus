@@ -40,7 +40,7 @@ export async function afterUpdate(version: string) {
   const taskManager = await api.taskManagerStatus().catch(() => null);
   const ok = await confirm({
     title: "更新特权服务？",
-    body: `特权服务仍是${service.version ? ` ${service.version}` : "旧版本"}，与 Argus ${version} 不一致，部分功能可能不可用。更新需要管理员授权。${
+    body: `特权服务的版本${service.version ? `为 ${service.version}` : "较旧"}，与 Argus ${version} 不一致，部分功能可能无法使用。更新需要管理员授权。${
       taskManager?.state === "enabled" ? "更新会先恢复 Windows 任务管理器，之后可在设置中重新启用替换。" : ""
     }`,
     confirmLabel: "更新服务",

@@ -286,7 +286,7 @@ export default function ConnectionsPage() {
         <span>
           UDP <b>{summary().udp}</b>
         </span>
-        <span>每 2 秒刷新。双击一行转到对应进程。</span>
+        <span>每 2 秒刷新一次。双击某行可转到对应进程。</span>
       </footer>
     </main>
   );

@@ -292,7 +292,7 @@ pub fn apply_hotkey<R: Runtime>(
     .map_err(|e| {
         let label = shortcut_label(accelerator);
         if e.to_string().contains("already registered") {
-            format!("{label} 已被其他程序占用，请换一个组合键。")
+            format!("{label} 已被其他程序占用，请选择其他组合键。")
         } else {
             format!("无法注册 {label}：{e}")
         }

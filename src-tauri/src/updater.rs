@@ -237,7 +237,7 @@ fn describe(e: &Error) -> String {
         Error::Minisign(_) | Error::SignedVersionMismatch { .. } | Error::MissingSignedVersion => {
             "更新包签名校验失败，已丢弃".into()
         }
-        Error::ReleaseNotFound => "没有找到更新信息".into(),
+        Error::ReleaseNotFound => "未找到更新信息".into(),
         Error::Reqwest(e) if e.is_timeout() => "连接超时".into(),
         Error::Reqwest(e) if e.is_connect() => "无法连接".into(),
         Error::Network(message) => message.clone(),
@@ -434,9 +434,9 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
     let (update, bytes) = {
         let mut inner = updates.0.lock().unwrap();
         if inner.status.state != "ready" {
-            return Err("没有可以安装的更新".into());
+            return Err("没有可安装的更新".into());
         }
-        let ready = inner.ready.take().ok_or("没有可以安装的更新")?;
+        let ready = inner.ready.take().ok_or("没有可安装的更新")?;
         inner.status.state = "installing";
         inner.status.error = None;
         let status = inner.status.clone();

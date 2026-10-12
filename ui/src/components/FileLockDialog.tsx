@@ -42,7 +42,7 @@ async function search() {
       kind: "error",
       message:
         err?.kind === "notFound"
-          ? "找不到这个文件或文件夹。"
+          ? "找不到该文件或文件夹。"
           : err?.kind === "os"
             ? err.message
             : `检查失败：${String(e)}`,
@@ -97,7 +97,7 @@ function LockDialogBody(props: { leaving: boolean }) {
             谁在占用文件
           </h2>
           <p class="dialog-text">
-            删除或移动时提示“文件正在使用”？在这里找出占用它的进程。也可以直接把文件拖到 Argus 窗口上。
+            删除或移动文件时提示“文件正在使用”，可在此查找占用该文件的进程，也可将文件直接拖放到 Argus 窗口。
           </p>
 
           <div class="lock-paths">
@@ -106,7 +106,7 @@ function LockDialogBody(props: { leaving: boolean }) {
               fallback={
                 <div class="drop-zone">
                   <LockIcon size={20} />
-                  <span>把文件或文件夹拖到窗口上，或者</span>
+                  <span>将文件或文件夹拖放到窗口，或</span>
                 </div>
               }
             >
@@ -254,7 +254,7 @@ function LockDialogBody(props: { leaving: boolean }) {
                     </Show>
                     <Show when={report().truncated}>
                       <p class="note">
-                        文件夹里的文件很多，只检查了前 {report().filesChecked + report().unchecked} 个。
+                        文件夹中的文件过多，仅检查了前 {report().filesChecked + report().unchecked} 个。
                       </p>
                     </Show>
                   </div>
@@ -282,7 +282,7 @@ export function DropOverlay(props: { visible: boolean }) {
       <div class="drop-overlay" classList={{ leaving: shown.leaving() }} aria-hidden="true">
         <div>
           <LockIcon size={28} />
-          <p>松开以查找占用这些文件的进程</p>
+          <p>释放鼠标以查找占用这些文件的进程</p>
         </div>
       </div>
     </Show>

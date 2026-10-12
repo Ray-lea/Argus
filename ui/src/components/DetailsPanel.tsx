@@ -311,7 +311,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
               <Show when={info() && !info()?.accessible}>
                 <div class="note">
                   <InfoIcon />
-                  <span>无法打开此进程读取命令行和用户信息。以管理员身份运行 Argus 可以查看。</span>
+                  <span>无法打开此进程以读取命令行和用户信息。以管理员身份运行 Argus 后可查看。</span>
                 </div>
               </Show>
 

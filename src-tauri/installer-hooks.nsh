@@ -11,12 +11,12 @@
     ClearErrors
     ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
     ${IfNot} ${Errors}
-    ${AndIf} ${Cmd} `MessageBox MB_YESNO|MB_ICONQUESTION "Argus 特权服务仍然安装在这台电脑上。是否同时卸载它？$\r$\n$\r$\n卸载服务需要管理员授权，并会先恢复 Windows 任务管理器。选择“否”会保留服务，它会继续随 Windows 启动。" /SD IDYES IDYES`
+    ${AndIf} ${Cmd} `MessageBox MB_YESNO|MB_ICONQUESTION "检测到已安装的 Argus 特权服务。是否一并卸载？$\r$\n$\r$\n卸载服务需要管理员授权，并将先恢复 Windows 任务管理器。选择“否”将保留该服务，服务会继续随 Windows 启动。" /SD IDYES IDYES`
       ClearErrors
       ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-service-remove' $0
       ${If} ${Errors}
       ${OrIf} $0 != 0
-        MessageBox MB_YESNO|MB_ICONEXCLAMATION "没有卸载特权服务（可能取消了管理员授权）。仍要继续卸载 Argus 吗？" /SD IDYES IDYES +2
+        MessageBox MB_YESNO|MB_ICONEXCLAMATION "特权服务未能卸载（可能已取消管理员授权）。是否继续卸载 Argus？" /SD IDYES IDYES +2
         Abort
       ${EndIf}
     ${EndIf}

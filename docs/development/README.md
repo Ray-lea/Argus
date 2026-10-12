@@ -13,7 +13,7 @@
 - Visual Studio Build Tools（“使用 C++ 的桌面开发”，含 Windows SDK）
 - WebView2 运行时（Windows 11 自带）
 
-rustup 在 Windows 上默认安装 MSVC 工具链。如果你的默认工具链是 GNU（`x86_64-pc-windows-gnu`），在仓库目录执行 `rustup override set stable-x86_64-pc-windows-msvc`，只对本项目生效，原因见[构建与缓存](build.md#链接器与工具链)。
+rustup 在 Windows 上默认安装 MSVC 工具链。默认工具链为 GNU（`x86_64-pc-windows-gnu`）时，在仓库目录执行 `rustup override set stable-x86_64-pc-windows-msvc`，只对本项目生效，原因见[构建与缓存](build.md#链接器与工具链)。
 
 ## 常用命令
 

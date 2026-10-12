@@ -23,7 +23,7 @@ export default function StatusBar() {
       </span>
       <span class="spacer" />
       <Show when={orderHeld()}>
-        <span title="鼠标移出列表后按当前排序重新排列">指针在列表上，暂不重新排序</span>
+        <span title="鼠标移出列表后按当前排序重新排列">指针位于列表上，暂停重新排序</span>
       </Show>
       <span>
         <span class="live-dot" classList={{ paused: paused() }} />

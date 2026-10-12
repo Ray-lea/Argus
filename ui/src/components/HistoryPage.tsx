@@ -566,7 +566,7 @@ export default function HistoryPage() {
         label: "CPU",
         width: "70px",
         align: "end",
-        title: "这 5 秒内的平均值",
+        title: "该 5 秒内的平均值",
         sortValue: (p) => p.cpu,
         cell: (p) => fmtCpu(p.cpu),
       },
@@ -650,7 +650,7 @@ export default function HistoryPage() {
           </div>
           <Show when={empty()}>
             <div class="history-empty">
-              <span>{recordingOff() ? "历史记录已关闭" : "这段时间没有记录"}</span>
+              <span>{recordingOff() ? "历史记录已关闭" : "此时间段内无记录"}</span>
               <small>
                 {recordingOff()
                   ? "在设置中开启后，Argus 每 5 秒记录一次。"
@@ -706,8 +706,8 @@ export default function HistoryPage() {
           </h2>
           <span>
             {pinned() === null
-              ? "点图表上的任意时刻，查看当时的进程"
-              : "在图表上按 ← → 前后移动，按 Esc 回到最新"}
+              ? "单击图表上的任意时刻，查看当时的进程"
+              : "在图表上按 ← → 前后移动，按 Esc 返回最新"}
           </span>
         </header>
         <DataTable
@@ -720,7 +720,7 @@ export default function HistoryPage() {
           onSelect={setSelected}
           onContextMenu={(p, e) => openMenu(e, rowMenu(p))}
           onActivate={openLive}
-          empty={<span>{moment.loading ? "" : "这个时刻没有记录"}</span>}
+          empty={<span>{moment.loading ? "" : "该时刻无记录"}</span>}
         />
         <footer class="page-foot">
           <Show when={first.latest}>
@@ -732,7 +732,7 @@ export default function HistoryPage() {
           </Show>
           <Show
             when={recordingOff()}
-            fallback={<span>每 5 秒记录 CPU、内存、I/O、GPU 和网络最高的进程，保留 7 天。</span>}
+            fallback={<span>每 5 秒记录 CPU、内存、I/O、GPU 和网络占用最高的进程，保留 7 天。</span>}
           >
             <span>
               历史记录已关闭，不再记录新的数据。

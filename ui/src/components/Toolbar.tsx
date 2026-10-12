@@ -127,7 +127,7 @@ export default function Toolbar() {
             classList={{ elevated: info().elevated }}
             title={
               info().elevated
-                ? "Argus 以管理员身份运行，可以查看和结束几乎所有进程"
+                ? "Argus 正以管理员身份运行，可查看和结束绝大多数进程"
                 : "部分系统进程的信息需要管理员权限才能读取或结束"
             }
           >
@@ -165,7 +165,7 @@ export default function Toolbar() {
       <button
         type="button"
         class="btn icon"
-        title="谁在占用文件（也可以直接把文件拖到窗口上）"
+        title="查找文件占用（也可将文件拖放到窗口）"
         aria-label="查找占用文件的进程"
         onClick={() => openFileLock()}
       >

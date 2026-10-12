@@ -96,7 +96,7 @@ export default function StartupPage() {
             {i.name}
           </span>
           <Show when={!i.exists}>
-            <span class="tag warn" title="命令指向的程序已不存在，可以禁用这一项">
+            <span class="tag warn" title="命令指向的程序已不存在，可禁用此项">
               文件不存在
             </span>
           </Show>
@@ -168,7 +168,7 @@ export default function StartupPage() {
         <span>
           已启用 <b>{enabledCount()}</b> / 共 <b>{items()?.length ?? 0}</b> 项
         </span>
-        <span>禁用与任务管理器的“启动应用”使用同一开关，可随时恢复；“所有用户”的项需要管理员权限。</span>
+        <span>禁用操作与任务管理器的“启动应用”使用同一开关，可重新启用；“所有用户”的项需要管理员权限。</span>
       </footer>
     </main>
   );

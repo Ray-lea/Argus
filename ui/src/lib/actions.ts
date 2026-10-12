@@ -43,7 +43,7 @@ function errorText(e: unknown, name: string): string {
     case "notFound":
       return `${name} 已经退出。`;
     case "critical":
-      return `${name} 是系统关键进程，结束它会导致系统崩溃，已阻止。`;
+      return `${name} 是系统关键进程，结束该进程会导致系统崩溃，操作已阻止。`;
     case "refused":
       return `不能结束 ${name}。`;
     case "os":
@@ -154,7 +154,7 @@ export async function endTree(row: DisplayRow) {
     body:
       n > 0
         ? `将结束 PID ${p.pid} 及其 ${n} 个子进程，未保存的数据会丢失。`
-        : `PID ${p.pid} 没有子进程，只会结束它本身。`,
+        : `PID ${p.pid} 没有子进程，仅结束该进程。`,
     confirmLabel: "结束进程树",
     danger: true,
   });
@@ -184,7 +184,7 @@ export async function setRowPriority(row: DisplayRow, priority: PriorityClass) {
     priority === "realtime" &&
     !(await confirm({
       title: `将 ${row.label} 设为实时优先级？`,
-      body: "实时优先级的进程会抢在系统任务之前运行，占满处理器时鼠标和键盘都可能失去响应。",
+      body: "实时优先级的进程优先于系统任务运行，占满处理器时鼠标和键盘可能失去响应。",
       confirmLabel: "设为实时",
       danger: true,
     }))
@@ -259,7 +259,7 @@ export async function copyText(text: string, what: string) {
     await navigator.clipboard.writeText(text);
     toast("success", `已复制${what}。`, 1800);
   } catch {
-    toast("error", `无法访问剪贴板，${what}没有复制。`);
+    toast("error", `无法访问剪贴板，${what}未复制。`);
   }
 }
 
@@ -276,10 +276,10 @@ export function toastActionError(e: unknown, what: string) {
   const err = e as ActionError;
   switch (err?.kind) {
     case "accessDenied":
-      toast("error", `${what}：需要管理员权限。以管理员身份运行 Argus 后再试。`);
+      toast("error", `${what}：需要管理员权限。请以管理员身份运行 Argus 后重试。`);
       break;
     case "notFound":
-      toast("error", `${what}：目标已经不存在。`);
+      toast("error", `${what}：目标已不存在。`);
       break;
     case "os":
       toast("error", `${what}：${err.message}`);
