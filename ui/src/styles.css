@@ -262,6 +262,7 @@ button {
 }
 
 .vital-label {
+  flex: none;
   font-size: 12px;
   color: var(--ink-2);
 }
@@ -293,12 +294,15 @@ button {
   color: var(--ink-2);
 }
 
+/* One line; in a narrow segment it ends in an ellipsis (titles have the rest). */
 .vital-sub {
+  min-width: 0;
   overflow: hidden;
   font-size: 12px;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .vital-sub b {
