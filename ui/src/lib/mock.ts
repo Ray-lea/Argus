@@ -596,7 +596,14 @@ export const taskManager = {
     canEnable: !taskManagerEnabled,
     canRestore: taskManagerEnabled,
     recoveryPath: "C:\\Program Files\\Argus Privileged\\argus-taskmgr-recover.exe",
-    detail: taskManagerEnabled ? "任务管理器入口已交给 Argus。" : "当前使用 Windows 任务管理器。",
+    detail:
+      mockSettings.locale === "en-US"
+        ? taskManagerEnabled
+          ? "Task Manager shortcuts open Argus."
+          : "Windows Task Manager is in use."
+        : taskManagerEnabled
+          ? "任务管理器入口已交给 Argus。"
+          : "当前使用 Windows 任务管理器。",
   }),
   manage: async (action: "enable" | "restore") => {
     taskManagerEnabled = action === "enable";

@@ -21,11 +21,26 @@ import { shortcutKeys } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
 import { EASE_OUT, play, presence } from "../lib/motion";
 import { appInfo } from "../lib/store";
-import type { PrivilegedServiceStatus, SettingsView, UpdateChannel, UpdateRoute } from "../lib/types";
+import type {
+  PrivilegedServiceStatus,
+  SettingsView,
+  TaskManagerStatus,
+  UpdateChannel,
+  UpdateRoute,
+} from "../lib/types";
 import { toast } from "../lib/ui";
 import { updateStatus } from "../lib/updates";
 import Indicator from "./Indicator";
-import { CheckIcon, GlobeIcon, ShieldIcon, SparkleIcon, TrayIcon, UpdateIcon, WarningIcon } from "./icons";
+import {
+  CheckIcon,
+  GlobeIcon,
+  KeyboardIcon,
+  ShieldIcon,
+  SparkleIcon,
+  TrayIcon,
+  UpdateIcon,
+  WarningIcon,
+} from "./icons";
 import Select from "./Select";
 import { serviceState } from "./Settings";
 
@@ -47,7 +62,7 @@ export async function maybeOpenOnboarding() {
   if (settings && settings.onboarding < ONBOARDING_VERSION) setOpen(true);
 }
 
-const STEPS = ["welcome", "background", "update", "privilege", "tips"] as const;
+const STEPS = ["welcome", "background", "update", "privilege", "taskManager", "tips"] as const;
 type Step = (typeof STEPS)[number];
 
 export default function Onboarding() {
@@ -128,6 +143,27 @@ function OnboardingDialog(props: { leaving: boolean }) {
     }
   };
 
+  // The replacement needs the service; its state follows the service's.
+  const [taskManager, { refetch: refetchTaskManager, mutate: mutateTaskManager }] = createResource(
+    service,
+    () => api.taskManagerStatus().catch(() => null),
+  );
+  const [taskManagerBusy, setTaskManagerBusy] = createSignal(false);
+  const [taskManagerError, setTaskManagerError] = createSignal<string | null>(null);
+  const enableTaskManager = async () => {
+    if (taskManagerBusy()) return;
+    setTaskManagerBusy(true);
+    setTaskManagerError(null);
+    try {
+      mutateTaskManager(await api.manageTaskManager("enable"));
+    } catch (e) {
+      setTaskManagerError(String(e));
+      void refetchTaskManager();
+    } finally {
+      setTaskManagerBusy(false);
+    }
+  };
+
   return (
     <div class="scrim onboarding-scrim" classList={{ leaving: props.leaving }}>
       <div class="dialog onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
@@ -149,6 +185,16 @@ function OnboardingDialog(props: { leaving: boolean }) {
                 busy={serviceBusy()}
                 error={serviceError()}
                 onManage={(action) => void manageService(action)}
+              />
+            </Match>
+            <Match when={step() === "taskManager"}>
+              <TaskManager
+                status={taskManager()}
+                serviceReady={service()?.state === "running" && !!service()?.authorized}
+                checking={taskManager.loading || service.loading}
+                busy={taskManagerBusy()}
+                error={taskManagerError()}
+                onEnable={() => void enableTaskManager()}
               />
             </Match>
             <Match when={step() === "tips"}>
@@ -481,6 +527,73 @@ function Privilege(props: {
             </p>
           )}
         </Show>
+      </Show>
+    </>
+  );
+}
+
+function TaskManager(props: {
+  status: TaskManagerStatus | null | undefined;
+  serviceReady: boolean;
+  checking: boolean;
+  busy: boolean;
+  error: string | null;
+  onEnable: () => void;
+}) {
+  const enabled = () => props.status?.state === "enabled";
+  const state = () => {
+    if (props.busy) return t("settings.taskManager.busy");
+    if (props.checking) return t("settings.taskManager.checking");
+    if (!props.serviceReady) return t("settings.privilege.state.notInstalled");
+    const s = props.status;
+    return s ? t(`settings.taskManager.state.${s.state}`) : t("settings.taskManager.unknown");
+  };
+  const hint = () => {
+    if (!props.serviceReady) return t("onboarding.taskManager.needsService");
+    if (enabled()) return props.status?.detail ?? "";
+    if (props.status?.canEnable || props.busy) return t("onboarding.taskManager.later");
+    return props.status?.detail ?? t("settings.taskManager.retry");
+  };
+  return (
+    <>
+      <Heading
+        icon={<KeyboardIcon size={22} />}
+        title={t("onboarding.taskManager.title")}
+        body={t("onboarding.taskManager.body")}
+      />
+      <p class="onboarding-note">{t("onboarding.taskManager.scope")}</p>
+      <p class="onboarding-note">{t("onboarding.taskManager.undo")}</p>
+      <div class="onboarding-row">
+        <div class="onboarding-row-text">
+          <div class="onboarding-state" aria-live="polite">
+            <Show when={props.busy}>
+              <span class="spinner" />
+            </Show>
+            <Show when={enabled() && !props.busy}>
+              <CheckIcon size={14} />
+            </Show>
+            {state()}
+          </div>
+          <div class="onboarding-hint">{hint()}</div>
+        </div>
+        <Show when={props.serviceReady && props.status?.canEnable}>
+          <button
+            type="button"
+            class="btn"
+            disabled={props.busy || props.checking}
+            onClick={() => props.onEnable()}
+          >
+            {t("settings.taskManager.enable")}
+          </button>
+        </Show>
+      </div>
+      <Show when={props.error}>
+        {(error) => (
+          <p class="onboarding-note warning">
+            <WarningIcon size={14} />
+            {error()}
+          </p>
+        )}
       </Show>
     </>
   );

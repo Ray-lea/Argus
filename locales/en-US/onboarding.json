@@ -47,9 +47,17 @@
     },
     "risk": "The permission belongs to the current Windows account: any program running under it can use these functions, which amounts to partial administrator rights. Only install it on an account you use yourself.",
     "later": "Installing requires administrator permission. It can also be skipped and installed or uninstalled later in Settings → Permissions.",
-    "replace": "To open Argus with Ctrl+Shift+Esc, replace the system Task Manager in Settings → Permissions.",
+    "replace": "The next step offers replacing Task Manager with Argus.",
     "manage": "See the details, update or reinstall it in Settings → Permissions.",
     "elevated": "Argus is running as administrator, so these actions don't need the privileged service."
+  },
+  "taskManager": {
+    "title": "Replace Task Manager (optional)",
+    "body": "When on, Ctrl+Shift+Esc, Task Manager in the taskbar's context menu and the other ways to open Task Manager open Argus.",
+    "scope": "This applies to the whole PC; other accounts still open Windows Task Manager. If Argus can't start, Windows Task Manager opens instead.",
+    "undo": "It can be turned off anytime in Settings → Permissions, and a standalone recovery tool works even when the interface or the service can't run.",
+    "later": "Turning it on requires administrator permission. It can also be skipped and turned on later in Settings → Permissions.",
+    "needsService": "The replacement relies on the privileged service; install it in the previous step first."
   },
   "tips": {
     "title": "You're all set",
