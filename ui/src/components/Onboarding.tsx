@@ -26,6 +26,7 @@ import { toast } from "../lib/ui";
 import { updateStatus } from "../lib/updates";
 import Indicator from "./Indicator";
 import { CheckIcon, GlobeIcon, ShieldIcon, SparkleIcon, TrayIcon, UpdateIcon, WarningIcon } from "./icons";
+import Select from "./Select";
 import { serviceState } from "./Settings";
 
 /**
@@ -244,19 +245,19 @@ function Welcome(props: {
       </h2>
       <p class="dialog-text">{t("onboarding.welcome.body")}</p>
       <Row title={t("onboarding.welcome.language")}>
-        <label class="onboarding-select">
+        <div class="onboarding-select">
           <GlobeIcon />
-          <select
-            class="select"
-            aria-label={t("onboarding.welcome.language")}
+          <Select<Language>
+            label={t("onboarding.welcome.language")}
             value={props.settings?.language ?? "system"}
             disabled={!props.settings}
-            onChange={(e) => void choose(e.currentTarget.value as Language)}
-          >
-            <option value="system">{t("common.languageSystem")}</option>
-            <For each={LOCALES}>{(l) => <option value={l.locale}>{l.name}</option>}</For>
-          </select>
-        </label>
+            options={[
+              { value: "system", label: t("common.languageSystem") },
+              ...LOCALES.map((l) => ({ value: l.locale, label: l.name })),
+            ]}
+            onChange={(language) => void choose(language)}
+          />
+        </div>
       </Row>
     </>
   );
@@ -381,16 +382,16 @@ function Updates(props: {
               </div>
             </Row>
             <Row title={t("onboarding.update.route")}>
-              <select
-                class="select"
-                aria-label={t("onboarding.update.route")}
+              <Select<UpdateRoute>
+                label={t("onboarding.update.route")}
                 value={s().updateRoute}
-                onChange={(e) => void update(s(), { route: e.currentTarget.value as UpdateRoute })}
-              >
-                <option value="auto">{t("onboarding.update.routeAuto")}</option>
-                <option value="direct">{t("onboarding.update.routeDirect")}</option>
-                <option value="proxy">{t("onboarding.update.routeProxy")}</option>
-              </select>
+                options={[
+                  { value: "auto", label: t("onboarding.update.routeAuto") },
+                  { value: "direct", label: t("onboarding.update.routeDirect") },
+                  { value: "proxy", label: t("onboarding.update.routeProxy") },
+                ]}
+                onChange={(route) => void update(s(), { route })}
+              />
             </Row>
             <p class="onboarding-note">{t("onboarding.update.proxyNotice")}</p>
             <Show when={disabled()}>

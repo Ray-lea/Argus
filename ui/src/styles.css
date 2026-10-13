@@ -509,20 +509,92 @@ button {
   filter: brightness(1.08);
 }
 
+/* Drop-down (Select.tsx): a Fluent combo box button and a listbox flyout. */
 .select {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   height: 32px;
-  padding: 0 8px;
+  padding: 0 10px 0 11px;
   border: 1px solid var(--stroke);
   border-bottom-color: var(--stroke-strong);
   border-radius: 4px;
   background: var(--control);
   font: inherit;
   color: var(--ink);
+  text-align: left;
+  transition: background-color var(--t-fast) linear;
 }
 
-.select option {
-  background: Canvas;
-  color: CanvasText;
+.select:hover:not(:disabled),
+.select[aria-expanded="true"] {
+  background: var(--control-hover);
+}
+
+.select:active:not(:disabled) {
+  color: var(--ink-2);
+}
+
+.select:disabled {
+  opacity: 0.5;
+}
+
+/* All labels share one cell, so the width is that of the longest. */
+.select-value {
+  display: grid;
+  flex: 1;
+}
+
+.select-value > span {
+  grid-area: 1 / 1;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+.select-value > span.current {
+  visibility: visible;
+}
+
+.select-chevron {
+  flex: none;
+  color: var(--ink-2);
+}
+
+.select-list.menu {
+  z-index: 70;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.select-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.select-option.active {
+  background: var(--hover);
+}
+
+.select-option:active {
+  background: var(--press);
+}
+
+/* The chosen option: an accent pill on the left, as in Fluent lists. */
+.select-option.selected::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 .input {

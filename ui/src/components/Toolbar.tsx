@@ -25,6 +25,7 @@ import { HistoryControls } from "./HistoryPage";
 import Indicator from "./Indicator";
 import { AppsIcon, ListIcon, LockIcon, PanelIcon, PauseIcon, PlayIcon, ShieldIcon, TreeIcon } from "./icons";
 import SearchBox from "./SearchBox";
+import Select from "./Select";
 import { ServiceControls } from "./ServicesPage";
 import { StartupControls } from "./StartupPage";
 
@@ -185,17 +186,17 @@ export default function Toolbar() {
       </Show>
 
       <Show when={sampled()}>
-        <select
-          class="select tnum"
-          aria-label={t("shell.interval.label")}
+        <Select
+          class="tnum"
+          label={t("shell.interval.label")}
           title={t("shell.interval.label")}
           value={intervalMs()}
-          onChange={(e) => changeInterval(Number(e.currentTarget.value))}
-        >
-          <For each={INTERVALS}>
-            {(ms) => <option value={ms}>{t("shell.interval.option", { seconds: ms / 1000 })}</option>}
-          </For>
-        </select>
+          options={INTERVALS.map((ms) => ({
+            value: ms,
+            label: t("shell.interval.option", { seconds: ms / 1000 }),
+          }))}
+          onChange={changeInterval}
+        />
 
         <button
           type="button"

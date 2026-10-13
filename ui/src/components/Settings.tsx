@@ -71,6 +71,7 @@ import {
 } from "./icons";
 import { onboardingOpen, openOnboarding } from "./Onboarding";
 import ProcIcon from "./ProcIcon";
+import Select from "./Select";
 
 const SECTIONS = [
   { id: "language", icon: GlobeIcon },
@@ -499,36 +500,28 @@ function RulesSection(props: { rules: ProcessRule[]; onChange: (rules: ProcessRu
               title={<span class="rule-name">{rule.name}</span>}
               desc={ruleSummary(rule, stats()?.[rule.id])}
             >
-              <select
-                class="select"
-                aria-label={t("settings.rules.priority.label", { name: rule.name })}
+              <Select
+                label={t("settings.rules.priority.label", { name: rule.name })}
                 value={rule.priority ?? ""}
-                onChange={(e) =>
-                  update(rule.id, { priority: (e.currentTarget.value || null) as PriorityClass | null })
-                }
-              >
-                <option value="">{t("settings.rules.priority.keep")}</option>
-                <For each={PRIORITY_CHOICES}>
-                  {(p) => (
-                    <option value={p}>
-                      {t("settings.rules.priority.option", { priority: PRIORITY_LABEL[p] })}
-                    </option>
-                  )}
-                </For>
-              </select>
-              <select
-                class="select"
-                aria-label={t("settings.rules.efficiency.label", { name: rule.name })}
+                options={[
+                  { value: "", label: t("settings.rules.priority.keep") },
+                  ...PRIORITY_CHOICES.map((p) => ({
+                    value: p,
+                    label: t("settings.rules.priority.option", { priority: PRIORITY_LABEL[p] }),
+                  })),
+                ]}
+                onChange={(v) => update(rule.id, { priority: (v || null) as PriorityClass | null })}
+              />
+              <Select
+                label={t("settings.rules.efficiency.label", { name: rule.name })}
                 value={rule.efficiency === null ? "" : rule.efficiency ? "on" : "off"}
-                onChange={(e) => {
-                  const v = e.currentTarget.value;
-                  update(rule.id, { efficiency: v === "" ? null : v === "on" });
-                }}
-              >
-                <option value="">{t("settings.rules.efficiency.keep")}</option>
-                <option value="on">{t("settings.rules.efficiency.on")}</option>
-                <option value="off">{t("settings.rules.efficiency.off")}</option>
-              </select>
+                options={[
+                  { value: "", label: t("settings.rules.efficiency.keep") },
+                  { value: "on", label: t("settings.rules.efficiency.on") },
+                  { value: "off", label: t("settings.rules.efficiency.off") },
+                ]}
+                onChange={(v) => update(rule.id, { efficiency: v === "" ? null : v === "on" })}
+              />
               <button
                 type="button"
                 role="switch"
@@ -789,31 +782,31 @@ function UpdateSettings(props: {
         title={t("settings.update.channel.label")}
         desc={t("settings.update.channel.desc")}
       >
-        <select
-          class="select"
-          aria-label={t("settings.update.channel.label")}
+        <Select<UpdateChannel>
+          label={t("settings.update.channel.label")}
           value={props.settings.updateChannel}
-          onChange={(e) => void save({ channel: e.currentTarget.value as UpdateChannel })}
-        >
-          <option value="stable">{t("settings.update.channel.stable")}</option>
-          <option value="beta">{t("settings.update.channel.beta")}</option>
-        </select>
+          options={[
+            { value: "stable", label: t("settings.update.channel.stable") },
+            { value: "beta", label: t("settings.update.channel.beta") },
+          ]}
+          onChange={(channel) => void save({ channel })}
+        />
       </Setting>
       <Setting
         icon={<GlobeIcon size={20} />}
         title={t("settings.update.route.label")}
         desc={t("settings.update.route.desc")}
       >
-        <select
-          class="select"
-          aria-label={t("settings.update.route.label")}
+        <Select<UpdateRoute>
+          label={t("settings.update.route.label")}
           value={props.settings.updateRoute}
-          onChange={(e) => void save({ route: e.currentTarget.value as UpdateRoute })}
-        >
-          <option value="auto">{t("settings.update.route.auto")}</option>
-          <option value="direct">{t("settings.update.route.direct")}</option>
-          <option value="proxy">{t("settings.update.route.proxy")}</option>
-        </select>
+          options={[
+            { value: "auto", label: t("settings.update.route.auto") },
+            { value: "direct", label: t("settings.update.route.direct") },
+            { value: "proxy", label: t("settings.update.route.proxy") },
+          ]}
+          onChange={(route) => void save({ route })}
+        />
       </Setting>
       <Show when={props.settings.updateRoute !== "direct"}>
         <Setting
@@ -825,12 +818,14 @@ function UpdateSettings(props: {
               : t("settings.update.proxy.only")
           }
         >
-          <select
-            class="select"
-            aria-label={t("settings.update.proxy.label")}
+          <Select
+            label={t("settings.update.proxy.label")}
             value={proxyChoice()}
-            onChange={(e) => {
-              const value = e.currentTarget.value;
+            options={[
+              ...PROXY_PRESETS.map((p) => ({ value: p, label: hostOf(p) })),
+              { value: "custom", label: t("settings.update.proxy.custom") },
+            ]}
+            onChange={(value) => {
               if (value === "custom") {
                 setDraft(
                   PROXY_PRESETS.includes(props.settings.updateProxy)
@@ -842,10 +837,7 @@ function UpdateSettings(props: {
                 void save({ proxy: value });
               }
             }}
-          >
-            <For each={PROXY_PRESETS}>{(p) => <option value={p}>{hostOf(p)}</option>}</For>
-            <option value="custom">{t("settings.update.proxy.custom")}</option>
-          </select>
+          />
         </Setting>
         <Show when={draft() !== null}>
           <Setting
@@ -1104,17 +1096,15 @@ export default function SettingsPage() {
                     title={t("settings.language.title")}
                     desc={t("settings.language.desc")}
                   >
-                    <select
-                      class="select"
-                      aria-label={t("settings.language.title")}
+                    <Select<Language>
+                      label={t("settings.language.title")}
                       value={s().language}
-                      onChange={(e) =>
-                        apply(changeLanguage(e.currentTarget.value as Language), "settings.language.error")
-                      }
-                    >
-                      <option value="system">{t("common.languageSystem")}</option>
-                      <For each={LOCALES}>{(l) => <option value={l.locale}>{l.name}</option>}</For>
-                    </select>
+                      options={[
+                        { value: "system", label: t("common.languageSystem") },
+                        ...LOCALES.map((l) => ({ value: l.locale, label: l.name })),
+                      ]}
+                      onChange={(language) => apply(changeLanguage(language), "settings.language.error")}
+                    />
                   </Setting>
                   <Setting
                     icon={<ThemeIcon size={20} />}
@@ -1215,19 +1205,22 @@ export default function SettingsPage() {
                     title={t("settings.motion.chart.title")}
                     desc={t("settings.motion.chart.desc")}
                   >
-                    <select
-                      class="select"
-                      aria-label={t("settings.motion.chart.title")}
+                    <Select<ChartMode>
+                      label={t("settings.motion.chart.title")}
                       value={chartMode()}
-                      onChange={(e) => setChartMode(e.currentTarget.value as ChartMode)}
-                    >
-                      <option value="fluid">{t("settings.motion.chart.fluid", { fps: refreshHz() })}</option>
-                      <option value="balanced">
-                        {t("settings.motion.chart.balanced", { fps: Math.round(1000 / balancedFrameMs()) })}
-                      </option>
-                      <option value="pixel">{t("settings.motion.chart.pixel")}</option>
-                      <option value="off">{t("settings.motion.chart.off")}</option>
-                    </select>
+                      options={[
+                        { value: "fluid", label: t("settings.motion.chart.fluid", { fps: refreshHz() }) },
+                        {
+                          value: "balanced",
+                          label: t("settings.motion.chart.balanced", {
+                            fps: Math.round(1000 / balancedFrameMs()),
+                          }),
+                        },
+                        { value: "pixel", label: t("settings.motion.chart.pixel") },
+                        { value: "off", label: t("settings.motion.chart.off") },
+                      ]}
+                      onChange={setChartMode}
+                    />
                   </Setting>
                 </section>
 
@@ -1238,22 +1231,19 @@ export default function SettingsPage() {
                     title={t("shell.interval.label")}
                     desc={t("settings.data.intervalDesc")}
                   >
-                    <select
-                      class="select"
-                      aria-label={t("shell.interval.label")}
+                    <Select
+                      class="tnum"
+                      label={t("shell.interval.label")}
                       value={intervalMs()}
-                      onChange={(e) => {
-                        const ms = Number(e.currentTarget.value);
+                      options={INTERVALS.map((ms) => ({
+                        value: ms,
+                        label: t("shell.interval.option", { seconds: ms / 1000 }),
+                      }))}
+                      onChange={(ms) => {
                         setIntervalMs(ms);
                         void api.setInterval(ms);
                       }}
-                    >
-                      <For each={INTERVALS}>
-                        {(ms) => (
-                          <option value={ms}>{t("shell.interval.option", { seconds: ms / 1000 })}</option>
-                        )}
-                      </For>
-                    </select>
+                    />
                   </Setting>
                   <Setting
                     icon={<TransferIcon size={20} />}

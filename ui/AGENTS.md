@@ -35,6 +35,8 @@
 
 ## 其他
 
+- 下拉框用 `components/Select.tsx`，不要写原生 `<select>`：原生弹出列表由 Windows 按经典样式绘制，与主题不符。
+- Solid 编译 `style={{ … }}` 时按字面键逐个设置，计算出的键（`[cond ? "top" : "bottom"]`）会被丢掉；两个属性都写，用值切换。
 - 滚动条样式只在 `styles.css` 的全局 `::-webkit-scrollbar` 规则里定义，局部只加轨道边距之类的补充。
 - 网络速率一律用 `lib/format.ts` 的 `fmtNet` / `netParts`（跟随设置里的字节或比特；表格单元格传 `quiet` 让空闲显示为“0”），不要直接用 `fmtRate` / `fmtBits`；只有性能页的网络视图用 `fmtNetAlt` 同时显示另一种单位。磁盘与 I/O 用 `fmtRate`，标签和提示里传 `quiet = false`，空闲时也带单位。
 - 右键菜单支持一级子菜单（`MenuEntry.children`），不要再往下嵌套。
