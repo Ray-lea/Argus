@@ -3,7 +3,7 @@ import ConnectionsPage from "./components/ConnectionsPage";
 import { DetailsHost } from "./components/DetailsPanel";
 import FileLockDialog, { DropOverlay, openFileLock } from "./components/FileLockDialog";
 import HistoryPage from "./components/HistoryPage";
-import Nav, { navExpanded, PAGES } from "./components/Nav";
+import Nav, { navExpanded, navPosition, PAGES } from "./components/Nav";
 import Onboarding, { maybeOpenOnboarding } from "./components/Onboarding";
 import { ConfirmDialog, ContextMenu, Toasts } from "./components/Overlays";
 import Performance from "./components/Performance";
@@ -44,16 +44,18 @@ const pageIndex = (p: Page) => PAGES.findIndex((x) => x.page === p);
 export default function App() {
   const [dragging, setDragging] = createSignal(false);
 
-  // The new page slides in from the side of its entry in the navigation pane
-  // (from below for a page further down); the pane stays put.
+  // The new page slides in from the side of its entry in the navigation (from
+  // below for a page further down the pane, from the right for a tab further
+  // right); the navigation stays put.
   createEffect(
     on(page, (p, prev) => {
       if (prev === undefined || p === prev) return;
       const dir = Math.sign(pageIndex(p) - pageIndex(prev));
+      const shift = navPosition() === "top" ? `translateX(${dir * 32}px)` : `translateY(${dir * 24}px)`;
       play(
         document.querySelector(".app > .page"),
         [
-          { opacity: 0, transform: `translateY(${dir * 24}px)` },
+          { opacity: 0, transform: shift },
           { opacity: 1, transform: "none" },
         ],
         { duration: 300, easing: EASE_OUT },
@@ -130,7 +132,13 @@ export default function App() {
   });
 
   return (
-    <div class="app" classList={{ "nav-compact": !navExpanded() }}>
+    <div
+      class="app"
+      classList={{
+        "nav-top": navPosition() === "top",
+        "nav-compact": navPosition() === "side" && !navExpanded(),
+      }}
+    >
       <Toolbar />
       <Nav />
       <Switch>

@@ -22,7 +22,7 @@ import { openFileLock } from "./FileLockDialog";
 import { HistoryControls, showsLatest } from "./HistoryPage";
 import Indicator from "./Indicator";
 import { AppsIcon, ListIcon, LockIcon, PanelIcon, PauseIcon, PlayIcon, TreeIcon } from "./icons";
-import { navExpanded } from "./Nav";
+import { navExpanded, navPosition } from "./Nav";
 import SearchBox from "./SearchBox";
 import Select from "./Select";
 import { ServiceActions, ServiceControls, ServiceSearch } from "./ServicesPage";
@@ -111,7 +111,9 @@ export default function Toolbar() {
     const fitter = fitToolbar(bar);
     // After every effect of the change has run: the search box sets its width
     // in one of its own.
-    createEffect(on([page, locale, navExpanded, showsLatest], () => queueMicrotask(fitter.refit)));
+    createEffect(
+      on([page, locale, navExpanded, navPosition, showsLatest], () => queueMicrotask(fitter.refit)),
+    );
     onCleanup(fitter.dispose);
   });
   const changeInterval = (ms: number) => {

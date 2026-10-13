@@ -58,6 +58,8 @@ import {
   HistoryIcon,
   InfoIcon,
   KeyboardIcon,
+  NavSideIcon,
+  NavTopIcon,
   PowerIcon,
   PulseIcon,
   ShieldIcon,
@@ -70,6 +72,7 @@ import {
   TrayIcon,
   UpdateIcon,
 } from "./icons";
+import { NavPositionChoice, navPosition } from "./Nav";
 import { onboardingOpen, openOnboarding } from "./Onboarding";
 import ProcIcon from "./ProcIcon";
 import Select from "./Select";
@@ -1182,6 +1185,13 @@ export default function SettingsPage() {
                         )}
                       </For>
                     </div>
+                  </Setting>
+                  <Setting
+                    icon={navPosition() === "top" ? <NavTopIcon size={20} /> : <NavSideIcon size={20} />}
+                    title={t("settings.navigation.title")}
+                    desc={t("settings.navigation.desc")}
+                  >
+                    <NavPositionChoice label={t("settings.navigation.title")} />
                   </Setting>
                 </section>
 

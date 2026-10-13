@@ -29,6 +29,12 @@
     "dark": "Dark",
     "error": "Couldn't change the theme: {error}"
   },
+  "navigation": {
+    "title": "Navigation position",
+    "desc": "The side pane can be collapsed to icons with the ☰ button in its top-left corner; top navigation shows the pages as tabs below the toolbar.",
+    "side": "Side",
+    "top": "Top"
+  },
   "startup": {
     "autostart": {
       "title": "Start when signing in to Windows",

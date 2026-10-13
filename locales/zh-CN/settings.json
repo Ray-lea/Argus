@@ -29,6 +29,12 @@
     "dark": "深色",
     "error": "无法切换主题：{error}"
   },
+  "navigation": {
+    "title": "导航栏位置",
+    "desc": "侧边导航栏可通过左上角的 ☰ 按钮收起为仅显示图标；顶部导航栏以标签形式排列在工具栏下方。",
+    "side": "侧边",
+    "top": "顶部"
+  },
   "startup": {
     "autostart": {
       "title": "登录 Windows 时启动",

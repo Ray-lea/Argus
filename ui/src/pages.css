@@ -1,4 +1,4 @@
-/* Navigation pane, performance page and settings page. Tokens live in styles.css. */
+/* Page navigation, performance page and settings page. Tokens live in styles.css. */
 
 /* ---- Navigation pane ------------------------------------------------------- */
 
@@ -90,6 +90,62 @@
 .nav-mark {
   border-radius: 2px;
   background: var(--accent);
+}
+
+/* On top: tabs with names only in a row under the title row, settings last
+   among them, the mark sliding underneath. The chosen tab is set in semibold. */
+.nav.top {
+  flex-direction: row;
+  padding: 0 12px 6px;
+}
+
+.nav.top .nav-items {
+  flex-direction: row;
+  gap: 2px;
+}
+
+.nav.top .nav-spacer {
+  display: none;
+}
+
+.nav.top .nav-item {
+  gap: 6px;
+  height: 32px;
+}
+
+.nav.top .nav-item[aria-selected="true"] {
+  font-weight: 600;
+}
+
+.nav.top .nav-item[aria-selected="true"]:not(:hover, :active) {
+  background: transparent;
+}
+
+.nav.top .nav-icon {
+  display: contents;
+}
+
+.nav.top .nav-icon > svg {
+  display: none;
+}
+
+/* The semibold width is reserved, so choosing a tab never moves the others. */
+.nav.top .nav-label {
+  display: inline-grid;
+  overflow: visible;
+}
+
+.nav.top .nav-label::after {
+  content: attr(data-text);
+  height: 0;
+  overflow: hidden;
+  font-weight: 600;
+  visibility: hidden;
+}
+
+.nav.top .nav-dot {
+  top: 7px;
+  right: 5px;
 }
 
 .toolbar-sep {

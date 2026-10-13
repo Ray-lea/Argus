@@ -178,7 +178,9 @@ button {
 
 /* The title row across the top; below it the navigation pane on the left, and
    the page with the status bar beside it. --nav-width (184 px open, 48 px
-   with icons only) also lines the title row's page controls up with the page. */
+   with icons only) also lines the title row's page controls up with the page.
+   With the navigation on top, its tabs take a row of their own under the
+   title row and the page spans the window. */
 .app {
   --nav-width: 184px;
   display: grid;
@@ -207,6 +209,22 @@ button {
 
 .app > .statusbar {
   grid-area: 3 / 2;
+}
+
+.app.nav-top {
+  grid-template: auto auto minmax(0, 1fr) auto / minmax(0, 1fr);
+}
+
+.app.nav-top > .nav {
+  grid-row: 2;
+}
+
+.app.nav-top > .page {
+  grid-area: 3 / 1;
+}
+
+.app.nav-top > .statusbar {
+  grid-area: 4 / 1;
 }
 
 /* ---- Vitals band: the one loud element ------------------------------------- */
@@ -413,7 +431,8 @@ button {
   pointer-events: none;
 }
 
-.toolbar[data-compact] .brand {
+.toolbar[data-compact] .brand,
+.app.nav-top .brand {
   min-width: 0;
 }
 
