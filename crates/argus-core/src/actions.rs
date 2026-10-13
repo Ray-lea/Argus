@@ -1,6 +1,7 @@
 //! Operations that change process state.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use windows::Wdk::System::Threading::{NtQueryInformationProcess, PROCESSINFOCLASS};
@@ -11,8 +12,9 @@ use windows::Win32::System::Threading::{
     NORMAL_PRIORITY_CLASS, OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_CREATION_FLAGS,
     PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
     PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_SET_INFORMATION, PROCESS_TERMINATE, ProcessPowerThrottling, REALTIME_PRIORITY_CLASS,
-    SetPriorityClass, SetProcessInformation, TerminateProcess,
+    PROCESS_SET_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, ProcessPowerThrottling,
+    REALTIME_PRIORITY_CLASS, SetPriorityClass, SetProcessInformation, TerminateProcess,
+    WaitForSingleObject,
 };
 
 use crate::process::list_lineage;
@@ -78,6 +80,35 @@ pub fn terminate(pid: u32, create_time: i64, allow_critical: bool) -> Result<(),
     }
     unsafe { TerminateProcess(handle.0, 1) }?;
     Ok(())
+}
+
+/// Ends process instances (`pid`, `create_time`) and waits up to `wait` for
+/// them to be gone; returns how many were ended. Each is raised to high
+/// priority first: a process ended while starved of CPU (an idle-priority
+/// WebView2 renderer on a busy machine, say) took half a minute to finish
+/// exiting, keeping its files open all along; raised, about 0.1 s.
+pub fn end_and_wait(targets: &[(u32, i64)], wait: Duration) -> usize {
+    let me = unsafe { GetCurrentProcessId() };
+    let access = PROCESS_TERMINATE | PROCESS_SET_INFORMATION | PROCESS_SYNCHRONIZE;
+    let ended: Vec<OwnedHandle> = targets
+        .iter()
+        .filter(|&&(pid, _)| pid != 0 && pid != 4 && pid != me)
+        .filter_map(|&(pid, create_time)| {
+            let handle = open_instance(pid, create_time, access).ok()?;
+            if is_critical(pid) {
+                return None;
+            }
+            let _ = unsafe { SetPriorityClass(handle.0, HIGH_PRIORITY_CLASS) };
+            unsafe { TerminateProcess(handle.0, 1) }.ok()?;
+            Some(handle)
+        })
+        .collect();
+    let deadline = Instant::now() + wait;
+    for handle in &ended {
+        let left = deadline.saturating_duration_since(Instant::now());
+        unsafe { WaitForSingleObject(handle.0, left.as_millis() as u32) };
+    }
+    ended.len()
 }
 
 /// Whether the process is marked critical (terminating it bugchecks the

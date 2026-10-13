@@ -1,6 +1,7 @@
 mod caption;
 mod commands;
 mod diagnostics;
+mod leftovers;
 mod sampler;
 mod settings;
 mod shell;
@@ -117,6 +118,14 @@ pub fn run() {
     let start_hidden = taskmgr_start || std::env::args().any(|a| a == "--hidden");
     let updated = std::env::args().any(|a| a == updater::UPDATED_ARG);
 
+    let context = tauri::generate_context!();
+    // Before the window and its WebView exist (see leftovers.rs). Tauri keeps
+    // WebView2's data in the app's local data folder.
+    let leftovers = std::env::var_os("LOCALAPPDATA").map_or(0, |dir| {
+        let folder = std::path::Path::new(&dir).join(&context.config().identifier);
+        leftovers::end(&folder.join("EBWebView"))
+    });
+
     tauri::Builder::default()
         // Must come first: a second launch just brings the running one forward.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -161,6 +170,9 @@ pub fn run() {
                     ""
                 },
             );
+            if leftovers > 0 {
+                log::info!("ended {leftovers} WebView2 processes an earlier Argus left behind");
+            }
             let config = app.path().app_config_dir()?.join("settings.json");
             let settings = SettingsStore::load(config);
             argus_core::i18n::set_locale(settings.get().language.resolve());
@@ -321,7 +333,7 @@ pub fn run() {
             commands::find_lockers,
             commands::pick_path,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building Argus")
         .run(|_app, event| {
             // Trace sessions outlive their process, and threads get no chance

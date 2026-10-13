@@ -241,6 +241,48 @@ fn efficiency_mode(process: HANDLE) -> bool {
         && state.ControlMask & state.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED != 0
 }
 
+/// A process found by image name, on demand (not part of sampling).
+#[derive(Debug, Clone)]
+pub struct Found {
+    pub pid: u32,
+    pub parent_pid: u32,
+    /// Unix ms, as `actions::terminate` checks it.
+    pub create_time: i64,
+    /// Whether the parent still runs. A process under that PID started after
+    /// this one only reuses the number.
+    pub parent_running: bool,
+}
+
+/// Running processes whose image name is `image`, compared without case.
+pub fn find(image: &str) -> Vec<Found> {
+    let mut buf = AlignedBuf::with_capacity(512 * 1024);
+    if query_system_information(SPI_CLASS, &mut buf).is_err() {
+        return Vec::new();
+    }
+    let started: HashMap<u32, i64> = ProcessIter::new(&buf)
+        .map(|e| {
+            (
+                e.info.unique_process_id.0 as usize as u32,
+                e.info.create_time,
+            )
+        })
+        .collect();
+    ProcessIter::new(&buf)
+        .filter(|e| unsafe { e.info.image_name.to_string_lossy() }.eq_ignore_ascii_case(image))
+        .map(|e| {
+            let parent_pid = e.info.inherited_from_unique_process_id.0 as usize as u32;
+            Found {
+                pid: e.info.unique_process_id.0 as usize as u32,
+                parent_pid,
+                create_time: ticks_to_unix_ms(e.info.create_time),
+                parent_running: started
+                    .get(&parent_pid)
+                    .is_some_and(|&created| created <= e.info.create_time),
+            }
+        })
+        .collect()
+}
+
 /// Minimal (pid, ppid, create time) listing, used to walk process trees.
 pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
     let mut buf = AlignedBuf::with_capacity(512 * 1024);
