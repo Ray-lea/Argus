@@ -1407,6 +1407,11 @@ button {
 
 /* ---- Flyouts: menu, dialog, toasts ----------------------------------------- */
 
+/* Menus, drop-down lists and toasts float over the transparent page without a
+   drop shadow; the border sets them apart. On a 4K screen at 150% a light
+   halo showed around open drop-downs, as far out as their shadow reached, on
+   screen only (screenshots did not show it). Dialogs keep theirs: the scrim
+   lies beneath them. */
 .menu {
   position: fixed;
   z-index: 50;
@@ -1415,7 +1420,6 @@ button {
   border: 1px solid var(--stroke-strong);
   border-radius: 8px;
   background: var(--flyout);
-  box-shadow: var(--shadow-flyout);
   backdrop-filter: blur(30px) saturate(1.3);
   transform-origin: var(--origin, top left);
   animation: flyout-in var(--t-med) var(--ease-out);
@@ -1589,7 +1593,6 @@ button {
   border: 1px solid var(--stroke-strong);
   border-radius: 8px;
   background: var(--flyout);
-  box-shadow: var(--shadow-flyout);
   backdrop-filter: blur(30px);
   animation: toast-in var(--t-slow) var(--ease-out);
 }
