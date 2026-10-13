@@ -1,4 +1,4 @@
-import { createEffect, createMemo, For, type JSX, Match, on, Show, Switch } from "solid-js";
+import { createEffect, createMemo, createSignal, For, type JSX, Match, on, Show, Switch } from "solid-js";
 import {
   fmtCache,
   fmtCapacity,
@@ -228,6 +228,74 @@ function devices(sys: SystemStats, hw: Hardware): Device[] {
   return list;
 }
 
+const SIDE_DEFAULT = 248;
+const SIDE_MIN = 200;
+const SIDE_MAX = 440;
+const [savedSide, saveSide] = persisted("perfSideWidth", SIDE_DEFAULT);
+
+/**
+ * The handle between the device list and the detail: drag it, use the arrow
+ * keys, or double-click to go back to the default width. The width is only
+ * saved when a drag ends.
+ */
+function Splitter(props: { width: number; onResize: (width: number) => void; onCommit: () => void }) {
+  const [dragging, setDragging] = createSignal(false);
+  const begin = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    setDragging(true);
+    const startX = e.clientX;
+    const start = props.width;
+    let next = start;
+    let frame = 0;
+    const move = (m: PointerEvent) => {
+      next = start + m.clientX - startX;
+      // One layout per frame, however fast the pointer reports.
+      frame ||= requestAnimationFrame(() => {
+        frame = 0;
+        props.onResize(next);
+      });
+    };
+    const end = () => {
+      cancelAnimationFrame(frame);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("lostpointercapture", end);
+      props.onResize(next);
+      props.onCommit();
+      setDragging(false);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("lostpointercapture", end);
+  };
+  const key = (e: KeyboardEvent) => {
+    const step = e.key === "ArrowLeft" ? -16 : e.key === "ArrowRight" ? 16 : 0;
+    if (step === 0 && e.key !== "Home" && e.key !== "End") return;
+    e.preventDefault();
+    props.onResize(e.key === "Home" ? SIDE_MIN : e.key === "End" ? SIDE_MAX : props.width + step);
+    props.onCommit();
+  };
+  return (
+    <div
+      class="perf-splitter"
+      classList={{ dragging: dragging() }}
+      role="separator"
+      tabIndex={0}
+      aria-orientation="vertical"
+      aria-label={t("performance.resizeList")}
+      aria-valuemin={SIDE_MIN}
+      aria-valuemax={SIDE_MAX}
+      aria-valuenow={props.width}
+      onPointerDown={begin}
+      onKeyDown={key}
+      onDblClick={() => {
+        props.onResize(SIDE_DEFAULT);
+        props.onCommit();
+      }}
+    />
+  );
+}
+
 export default function Performance() {
   const sys = () => snapshot()?.system;
   const hw = () => snapshot()?.hardware;
@@ -248,6 +316,11 @@ export default function Performance() {
   });
   const current = () => (keys().includes(perfDevice()) ? perfDevice() : "cpu");
   let detail!: HTMLDivElement;
+  let page!: HTMLDivElement;
+  // At most half the page, so the detail never gets squeezed on a narrow window.
+  const clampSide = (width: number) =>
+    Math.round(Math.max(SIDE_MIN, Math.min(width, SIDE_MAX, (page?.clientWidth ?? 2 * SIDE_MAX) / 2)));
+  const [side, setSide] = createSignal(savedSide());
 
   // The detail view arrives from the direction of the chosen device.
   createEffect(
@@ -267,7 +340,7 @@ export default function Performance() {
   );
 
   return (
-    <div class="perf page">
+    <div ref={page} class="perf page" style={{ "--perf-side": `${side()}px` }}>
       <nav class="dev-list" aria-label={t("performance.devices")}>
         <Indicator selector="[aria-current='true']" track={current} class="dev-mark" />
         <For each={keys()}>
@@ -299,6 +372,7 @@ export default function Performance() {
           }}
         </For>
       </nav>
+      <Splitter width={side()} onResize={(w) => setSide(clampSide(w))} onCommit={() => saveSide(side())} />
 
       <section class="perf-detail" aria-live="off">
         <div ref={detail} class="perf-scroll">

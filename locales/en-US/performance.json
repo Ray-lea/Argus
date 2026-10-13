@@ -1,5 +1,6 @@
 {
   "devices": "Devices",
+  "resizeList": "Resize the device list",
   "span": {
     "seconds": { "one": "{count} second", "other": "{count} seconds" },
     "minutes": { "one": "{count} minute", "other": "{count} minutes" }

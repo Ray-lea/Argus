@@ -96,11 +96,51 @@
 
 /* ---- Performance page ------------------------------------------------------ */
 
+/* --perf-side: the device list's width, set by the splitter; never more than half. */
 .perf {
+  --side: min(var(--perf-side, 248px), 50%);
+  position: relative;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: var(--side) minmax(0, 1fr);
   gap: 12px;
   margin: 0 12px;
+}
+
+/* The drag handle fills the gap between the list and the detail; a short bar
+   shows where it is on hover, while dragging and with keyboard focus. */
+.perf-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 12px;
+  left: calc(var(--side) + 2px);
+  z-index: 1;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.perf-splitter::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 2px;
+  height: 32px;
+  margin-top: -16px;
+  border-radius: 1px;
+  background: var(--stroke-strong);
+  opacity: 0;
+}
+
+.perf-splitter:hover::after,
+.perf-splitter:focus-visible::after {
+  opacity: 1;
+}
+
+.perf-splitter.dragging::after {
+  opacity: 1;
+  background: var(--accent);
 }
 
 .dev-list {

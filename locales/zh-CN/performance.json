@@ -1,5 +1,6 @@
 {
   "devices": "设备",
+  "resizeList": "调整设备列表宽度",
   "span": {
     "seconds": "{count} 秒",
     "minutes": "{count} 分钟"
