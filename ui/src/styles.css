@@ -367,13 +367,32 @@ button {
 
 /* ---- Toolbar --------------------------------------------------------------- */
 
-/* The right padding keeps the toolbar clear of the caption buttons. */
+/* The title row: the app's name and the page's controls, the page's search
+   box in the middle of the window, and the end controls, whose margin keeps
+   them clear of the caption buttons. The sides share what the search box
+   leaves, so it stays centred until one of them needs more than half. The
+   box widens to 360 px before the sides grow, and gives way first when room
+   runs short, down to its placeholder's width. */
 .toolbar {
   --caption-width: 138px;
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(min-content, 360px) minmax(max-content, 1fr);
+  grid-template-areas: "start search end";
+  align-items: center;
+  column-gap: 8px;
+  padding: 10px 12px;
+}
+
+.toolbar-start {
   display: flex;
+  grid-area: start;
   align-items: center;
   gap: 8px;
-  padding: 10px calc(12px + var(--caption-width) + 4px) 10px 12px;
+}
+
+.toolbar > .search {
+  grid-area: search;
+  animation: fade-in var(--t-slow) linear;
 }
 
 /* The app's icon and name, where the system title bar had them. At full width
@@ -449,7 +468,6 @@ button {
 /* --fit (SearchBox.tsx): the placeholder's width, the least the box may shrink to. */
 .search {
   position: relative;
-  flex: 0 1 360px;
   min-width: var(--fit, 200px);
 }
 
@@ -733,8 +751,9 @@ button {
 
 /* A narrow window (or a long language) sheds toolbar labels; see fitToolbar
    in Toolbar.tsx. Titles keep naming the controls. On a second row the page's
-   controls have room for their labels again. */
-.toolbar:is([data-compact="1"], [data-compact="2"]) .btn-text {
+   controls have room for their labels again; the end controls stay put. */
+.toolbar:is([data-compact="1"], [data-compact="2"]) .btn-text,
+.toolbar[data-compact] .toolbar-end .btn-text {
   display: none;
 }
 
@@ -743,61 +762,34 @@ button {
   display: none;
 }
 
-/* The refresh rate and buttons at the end of the toolbar. */
+/* The refresh rate and buttons at the end of the title row. */
 .toolbar-end {
   display: flex;
-  flex: none;
+  grid-area: end;
+  justify-self: end;
   align-items: center;
   gap: 8px;
+  margin-right: calc(var(--caption-width) + 4px);
 }
 
-.toolbar-break {
-  display: none;
-}
-
-/* Levels 3 and 4 use two rows. At 3 the page's controls take the second row,
-   reaching under the caption buttons to the window edge, so the rows are as
-   far apart as the toolbar's padding: the second starts where the caption
-   buttons end. At 4 the end controls join them, after a break that has no
-   height (the rows' spacing is then a margin rather than a row gap, which
-   would count twice), and the second row keeps clear of the caption buttons. */
-.toolbar:is([data-compact="3"], [data-compact="4"]) {
-  flex-wrap: wrap;
+/* Level 3 moves the page's controls to a second row (an implicit one, so a
+   page without controls gets no gap), reaching under the caption buttons to
+   the window edge. The rows are as far apart as the toolbar's padding: the
+   second starts where the caption buttons end. */
+.toolbar[data-compact="3"] {
   row-gap: 10px;
 }
 
-.toolbar[data-compact="4"] {
-  row-gap: 0;
+.toolbar[data-compact="3"] > .toolbar-start {
+  display: contents;
 }
 
-.toolbar[data-compact="4"] > .toolbar-break {
-  display: block;
-  order: 1;
-  flex-basis: 100%;
-  height: 0;
+.toolbar[data-compact="3"] .brand {
+  grid-area: start;
 }
 
-.toolbar[data-compact="4"] > .toolbar-end {
-  order: 3;
-  margin-top: 8px;
-  margin-left: auto;
-}
-
-.toolbar[data-compact="4"] :is(.seg-label, .btn-text) {
-  display: none;
-}
-
-.toolbar[data-compact="3"] > .page-controls {
-  order: 1;
-  flex: 1 0 calc(100% + var(--caption-width) + 4px);
-  margin-right: calc(-4px - var(--caption-width));
-}
-
-.toolbar[data-compact="4"] > .page-controls {
-  order: 2;
-  flex: 1 1 auto;
-  min-width: 0;
-  margin-top: 8px;
+.toolbar[data-compact="3"] .page-controls {
+  grid-area: 2 / 1 / 3 / -1;
 }
 
 /* ---- Process table --------------------------------------------------------- */

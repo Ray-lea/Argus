@@ -67,6 +67,9 @@ function chooseRange(id: RangeId) {
   setAnchor(end !== null && end < Date.now() ? end : null);
 }
 
+/** The toolbar offers a way back to the newest data. */
+export const showsLatest = () => pinned() !== null || anchor() !== null;
+
 function backToLatest() {
   setPinned(null);
   setAnchor(null);
@@ -85,7 +88,7 @@ export function HistoryControls() {
           )}
         </For>
       </div>
-      <Show when={pinned() !== null || anchor() !== null}>
+      <Show when={showsLatest()}>
         <button type="button" class="btn" title={t("history.latest.title")} onClick={backToLatest}>
           {t("history.latest.label")}
         </button>

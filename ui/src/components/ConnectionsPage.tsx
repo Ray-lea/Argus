@@ -85,26 +85,27 @@ function connectionMenu(c: Connection, proc: ProcessRow | undefined): MenuEntry[
   ];
 }
 
+export function ConnectionSearch() {
+  return <SearchBox value={query()} onInput={setQuery} placeholder={t("connections.search")} />;
+}
+
 export function ConnectionControls() {
   return (
-    <>
-      <SearchBox value={query()} onInput={setQuery} placeholder={t("connections.search")} />
-      <div class="segmented" role="group" aria-label={t("common.filter")}>
-        <Indicator selector="[aria-pressed='true']" track={filter} class="seg-thumb" />
-        <For each={FILTERS}>
-          {(f) => (
-            <button
-              type="button"
-              aria-pressed={filter() === f}
-              title={t(`connections.filter.${f}.title`)}
-              onClick={() => setFilter(f)}
-            >
-              {t(`connections.filter.${f}.label`)}
-            </button>
-          )}
-        </For>
-      </div>
-    </>
+    <div class="segmented" role="group" aria-label={t("common.filter")}>
+      <Indicator selector="[aria-pressed='true']" track={filter} class="seg-thumb" />
+      <For each={FILTERS}>
+        {(f) => (
+          <button
+            type="button"
+            aria-pressed={filter() === f}
+            title={t(`connections.filter.${f}.title`)}
+            onClick={() => setFilter(f)}
+          >
+            {t(`connections.filter.${f}.label`)}
+          </button>
+        )}
+      </For>
+    </div>
   );
 }
 

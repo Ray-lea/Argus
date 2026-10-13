@@ -53,7 +53,7 @@ function startupMenu(item: StartupItem): MenuEntry[] {
   ];
 }
 
-export function StartupControls() {
+export function StartupSearch() {
   return <SearchBox value={query()} onInput={setQuery} placeholder={t("startup.search")} />;
 }
 

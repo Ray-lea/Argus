@@ -107,7 +107,27 @@ function serviceMenu(s: ServiceInfo): MenuEntry[] {
   ];
 }
 
+export function ServiceSearch() {
+  return <SearchBox value={query()} onInput={setQuery} placeholder={t("services.search")} />;
+}
+
 export function ServiceControls() {
+  return (
+    <div class="segmented" role="group" aria-label={t("common.filter")}>
+      <Indicator selector="[aria-pressed='true']" track={filter} class="seg-thumb" />
+      <For each={FILTERS}>
+        {(f) => (
+          <button type="button" aria-pressed={filter() === f} onClick={() => setFilter(f)}>
+            {t(`services.filter.${f}`)}
+          </button>
+        )}
+      </For>
+    </div>
+  );
+}
+
+/** What can be done to the selected service, at the end of the title row. */
+export function ServiceActions() {
   const s = selectedService;
   const pending = () => {
     const svc = s();
@@ -115,18 +135,6 @@ export function ServiceControls() {
   };
   return (
     <>
-      <SearchBox value={query()} onInput={setQuery} placeholder={t("services.search")} />
-      <div class="segmented" role="group" aria-label={t("common.filter")}>
-        <Indicator selector="[aria-pressed='true']" track={filter} class="seg-thumb" />
-        <For each={FILTERS}>
-          {(f) => (
-            <button type="button" aria-pressed={filter() === f} onClick={() => setFilter(f)}>
-              {t(`services.filter.${f}`)}
-            </button>
-          )}
-        </For>
-      </div>
-      <span class="toolbar-sep" />
       <button
         type="button"
         class="btn icon"
@@ -166,6 +174,7 @@ export function ServiceControls() {
         <ExternalIcon />
         <span class="btn-text">{t("services.control.openConsole")}</span>
       </button>
+      <span class="toolbar-sep" />
     </>
   );
 }
