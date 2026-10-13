@@ -421,7 +421,7 @@ function Updates(props: {
                       aria-pressed={s().updateChannel === channel}
                       onClick={() => void update(s(), { channel })}
                     >
-                      <span class="seg-label">{t(`onboarding.update.${channel}`)}</span>
+                      <span>{t(`onboarding.update.${channel}`)}</span>
                     </button>
                   )}
                 </For>

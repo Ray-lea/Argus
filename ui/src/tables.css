@@ -142,13 +142,6 @@
   height: 16px;
 }
 
-/* View-mode labels give way to icons when the toolbar gets tight. */
-@media (max-width: 1180px) {
-  .seg-label {
-    display: none;
-  }
-}
-
 /* ---- Details panel: hosted services ---------------------------------------- */
 
 .svc-list {
