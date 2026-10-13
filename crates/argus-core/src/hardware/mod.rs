@@ -8,6 +8,7 @@ mod disk;
 mod gpu;
 mod memory;
 mod net;
+mod nvml;
 mod registry;
 mod sensors;
 

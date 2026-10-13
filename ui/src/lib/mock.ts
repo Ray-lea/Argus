@@ -435,6 +435,8 @@ function mockHardware(cpu: number, io: number): Hardware {
         temperature: wave(52, 1.5),
         fanRpm: null,
         power: null,
+        boardPower: wave(18 + g3d * 0.6, 2),
+        boardPowerLimit: 115,
         clockMhz: Math.round(1800 + g3d * 12),
         clockMaxMhz: 3105,
         voltageMv: null,

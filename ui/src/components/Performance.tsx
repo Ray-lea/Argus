@@ -200,7 +200,13 @@ function devices(sys: SystemStats, hw: Hardware): Device[] {
     list.push({
       key: `gpu:${g.info.id}`,
       title: `GPU ${i}`,
-      sub: `${Math.round(g.util)}%${g.temperature !== null ? `  ${Math.round(g.temperature)} °C` : ""}`,
+      sub: [
+        `${Math.round(g.util)}%`,
+        g.temperature !== null && `${Math.round(g.temperature)} °C`,
+        g.boardPower !== null && `${fmtW(g.boardPower)} W`,
+      ]
+        .filter(Boolean)
+        .join("  "),
       colorVar: "--gpu",
       series: [{ data: () => series(`gpu.${g.info.id}.util`), colorVar: "--gpu" }],
       max: () => 100,
@@ -976,8 +982,15 @@ function GpuView(props: { id: string }) {
                   <Stat label={t("performance.gpu.coreVoltage")} value={(v() / 1000).toFixed(3)} unit="V" />
                 )}
               </Show>
-              <Show when={g().power}>
-                {(p) => <Stat label={t("performance.gpu.power")} value={Math.round(p())} unit="% TDP" />}
+              <Show
+                when={g().boardPower}
+                fallback={
+                  <Show when={g().power}>
+                    {(p) => <Stat label={t("performance.gpu.power")} value={Math.round(p())} unit="% TDP" />}
+                  </Show>
+                }
+              >
+                {(w) => <Stat label={t("performance.gpu.power")} value={fmtW(w())} unit="W" />}
               </Show>
             </div>
             <dl class="info-list">
@@ -985,6 +998,14 @@ function GpuView(props: { id: string }) {
               <dd>{fmtGB(g().info.dedicatedTotal)} GB</dd>
               <dt>{t("performance.gpu.sharedMemory")}</dt>
               <dd>{fmtGB(g().info.sharedTotal)} GB</dd>
+              <Show when={g().boardPowerLimit}>
+                {(w) => (
+                  <>
+                    <dt>{t("performance.gpu.powerLimit")}</dt>
+                    <dd>{watts(w())}</dd>
+                  </>
+                )}
+              </Show>
               <Show when={g().info.temperatureMax}>
                 <dt>{t("performance.gpu.maxTemperature")}</dt>
                 <dd>{Math.round(g().info.temperatureMax ?? 0)} °C</dd>

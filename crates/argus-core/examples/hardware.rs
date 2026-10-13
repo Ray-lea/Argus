@@ -64,7 +64,7 @@ fn main() {
     }
     for g in &hw.gpus {
         println!(
-            "GPU {:?} id={} dedicated {}/{} MB shared {}/{} MB temp {:?} (max {:?}) fan {:?} power {:?} clock {:?}/{:?} MHz {:?} mV mem {:?} MHz",
+            "GPU {:?} id={} dedicated {}/{} MB shared {}/{} MB temp {:?} (max {:?}) fan {:?} power {:?}% board {:?}/{:?} W clock {:?}/{:?} MHz {:?} mV mem {:?} MHz",
             g.info.name,
             g.info.id,
             g.dedicated_used >> 20,
@@ -75,6 +75,8 @@ fn main() {
             g.info.temperature_max,
             g.fan_rpm,
             g.power,
+            g.board_power,
+            g.board_power_limit,
             g.clock_mhz,
             g.clock_max_mhz,
             g.voltage_mv,

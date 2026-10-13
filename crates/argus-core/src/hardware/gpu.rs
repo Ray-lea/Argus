@@ -2,26 +2,30 @@
 //! per-engine utilization from node running time, memory from segment
 //! residency, temperature/fan/power/memory clock from the WDDM 2.4+ adapter
 //! perf data, and core clock/voltage from the 3D engine's node perf data.
+//! NVIDIA cards leave power out of that perf data; their board power comes
+//! from NVML (`nvml.rs`), matched to the adapter by PCI address.
 
 use std::sync::Arc;
 use std::time::Instant;
 
 use serde::Serialize;
 use windows::Wdk::Graphics::Direct3D::{
-    D3DKMT_ADAPTER_PERFDATA, D3DKMT_ADAPTER_PERFDATACAPS, D3DKMT_ADAPTERINFO,
-    D3DKMT_ADAPTERREGISTRYINFO, D3DKMT_ADAPTERTYPE, D3DKMT_CLOSEADAPTER, D3DKMT_ENUMADAPTERS2,
-    D3DKMT_NODE_PERFDATA, D3DKMT_NODEMETADATA, D3DKMT_QUERYADAPTERINFO, D3DKMT_QUERYSTATISTICS,
-    D3DKMT_QUERYSTATISTICS_ADAPTER, D3DKMT_QUERYSTATISTICS_NODE, D3DKMT_QUERYSTATISTICS_SEGMENT,
-    D3DKMT_SEGMENTSIZEINFO, D3DKMTCloseAdapter, D3DKMTEnumAdapters2, D3DKMTQueryAdapterInfo,
-    D3DKMTQueryStatistics, DXGK_ENGINE_TYPE, DXGK_ENGINE_TYPE_3D, DXGK_ENGINE_TYPE_COPY,
-    DXGK_ENGINE_TYPE_CRYPTO, DXGK_ENGINE_TYPE_OVERLAY, DXGK_ENGINE_TYPE_SCENE_ASSEMBLY,
-    DXGK_ENGINE_TYPE_VIDEO_DECODE, DXGK_ENGINE_TYPE_VIDEO_ENCODE,
-    DXGK_ENGINE_TYPE_VIDEO_PROCESSING, KMTQAITYPE_ADAPTERPERFDATA, KMTQAITYPE_ADAPTERPERFDATA_CAPS,
-    KMTQAITYPE_ADAPTERREGISTRYINFO, KMTQAITYPE_ADAPTERTYPE, KMTQAITYPE_GETSEGMENTSIZE,
-    KMTQAITYPE_NODEMETADATA, KMTQAITYPE_NODEPERFDATA, KMTQUERYADAPTERINFOTYPE,
+    D3DKMT_ADAPTER_PERFDATA, D3DKMT_ADAPTER_PERFDATACAPS, D3DKMT_ADAPTERADDRESS,
+    D3DKMT_ADAPTERINFO, D3DKMT_ADAPTERREGISTRYINFO, D3DKMT_ADAPTERTYPE, D3DKMT_CLOSEADAPTER,
+    D3DKMT_ENUMADAPTERS2, D3DKMT_NODE_PERFDATA, D3DKMT_NODEMETADATA, D3DKMT_QUERYADAPTERINFO,
+    D3DKMT_QUERYSTATISTICS, D3DKMT_QUERYSTATISTICS_ADAPTER, D3DKMT_QUERYSTATISTICS_NODE,
+    D3DKMT_QUERYSTATISTICS_SEGMENT, D3DKMT_SEGMENTSIZEINFO, D3DKMTCloseAdapter,
+    D3DKMTEnumAdapters2, D3DKMTQueryAdapterInfo, D3DKMTQueryStatistics, DXGK_ENGINE_TYPE,
+    DXGK_ENGINE_TYPE_3D, DXGK_ENGINE_TYPE_COPY, DXGK_ENGINE_TYPE_CRYPTO, DXGK_ENGINE_TYPE_OVERLAY,
+    DXGK_ENGINE_TYPE_SCENE_ASSEMBLY, DXGK_ENGINE_TYPE_VIDEO_DECODE, DXGK_ENGINE_TYPE_VIDEO_ENCODE,
+    DXGK_ENGINE_TYPE_VIDEO_PROCESSING, KMTQAITYPE_ADAPTERADDRESS, KMTQAITYPE_ADAPTERPERFDATA,
+    KMTQAITYPE_ADAPTERPERFDATA_CAPS, KMTQAITYPE_ADAPTERREGISTRYINFO, KMTQAITYPE_ADAPTERTYPE,
+    KMTQAITYPE_GETSEGMENTSIZE, KMTQAITYPE_NODEMETADATA, KMTQAITYPE_NODEPERFDATA,
+    KMTQUERYADAPTERINFOTYPE,
 };
 use windows::Win32::Foundation::LUID;
 
+use super::nvml::Nvml;
 use crate::util::from_wide;
 
 #[derive(Debug, Serialize)]
@@ -52,6 +56,9 @@ pub struct GpuStats {
     pub fan_rpm: Option<u32>,
     /// Percent of the board's power budget.
     pub power: Option<f32>,
+    /// Board power draw and the limit the driver enforces, W (NVIDIA only).
+    pub board_power: Option<f32>,
+    pub board_power_limit: Option<f32>,
     /// 3D engine clock and its maximum, MHz.
     pub clock_mhz: Option<u32>,
     pub clock_max_mhz: Option<u32>,
@@ -71,11 +78,14 @@ struct Adapter {
     has_perf: bool,
     /// Node of the 3D engine, while its perf data keeps answering.
     node_3d: Option<u32>,
+    /// PCI bus and device number.
+    pci: Option<(u32, u32)>,
 }
 
 pub(crate) struct GpuTracker {
     adapters: Vec<Adapter>,
     last: Option<Instant>,
+    nvml: Option<Nvml>,
 }
 
 // Adapter handles are process-wide kernel handles.
@@ -83,9 +93,17 @@ unsafe impl Send for GpuTracker {}
 
 impl GpuTracker {
     pub fn new() -> Self {
+        let adapters = enumerate();
+        // Only hardware adapters have a PCI address for NVML to match.
+        let nvml = adapters
+            .iter()
+            .any(|a| a.pci.is_some())
+            .then(Nvml::load)
+            .flatten();
         Self {
-            adapters: enumerate(),
+            adapters,
             last: None,
+            nvml,
         }
     }
 
@@ -106,6 +124,8 @@ impl GpuTracker {
                     temperature: None,
                     fan_rpm: None,
                     power: None,
+                    board_power: None,
+                    board_power_limit: None,
                     clock_mhz: None,
                     clock_max_mhz: None,
                     voltage_mv: None,
@@ -156,6 +176,9 @@ impl GpuTracker {
                     } else {
                         a.has_perf = false;
                     }
+                }
+                if let (Some(nvml), Some((bus, device))) = (&self.nvml, a.pci) {
+                    (stats.board_power, stats.board_power_limit) = nvml.power(bus, device);
                 }
                 if let Some(node) = a.node_3d {
                     let mut perf = D3DKMT_NODE_PERFDATA {
@@ -304,6 +327,10 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
     let mut perf = D3DKMT_ADAPTER_PERFDATA::default();
     let has_perf = query_info(a.hAdapter, KMTQAITYPE_ADAPTERPERFDATA, &mut perf);
 
+    let mut address = D3DKMT_ADAPTERADDRESS::default();
+    let pci = query_info(a.hAdapter, KMTQAITYPE_ADAPTERADDRESS, &mut address)
+        .then_some((address.BusNumber, address.DeviceNumber));
+
     let node_3d = node_engine
         .iter()
         .position(|&e| engines[e] == "3D")
@@ -326,6 +353,7 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
         prev_running: vec![0; nodes as usize],
         segments,
         has_perf,
+        pci,
     })
 }
 

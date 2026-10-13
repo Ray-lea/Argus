@@ -130,6 +130,7 @@
     "memoryClock": "显存频率",
     "coreVoltage": "核心电压",
     "power": "功耗",
+    "powerLimit": "功耗上限",
     "maxTemperature": "最高温度",
     "engines": "引擎",
     "maxCoreClock": "最高核心频率"

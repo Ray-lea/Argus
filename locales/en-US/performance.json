@@ -130,6 +130,7 @@
     "memoryClock": "Memory clock",
     "coreVoltage": "Core voltage",
     "power": "Power",
+    "powerLimit": "Power limit",
     "maxTemperature": "Max temperature",
     "engines": "Engines",
     "maxCoreClock": "Max core clock"

@@ -205,7 +205,11 @@ export interface GpuStats {
   sharedUsed: number;
   temperature: number | null;
   fanRpm: number | null;
+  /** Percent of the board's power budget. */
   power: number | null;
+  /** Board power draw and the enforced limit, W (NVIDIA only). */
+  boardPower: number | null;
+  boardPowerLimit: number | null;
   clockMhz: number | null;
   clockMaxMhz: number | null;
   voltageMv: number | null;
