@@ -1,0 +1,45 @@
+// What Argus may do beyond a standard user's rights, for the status bar: it
+// runs as administrator, or it reaches the privileged service, which does
+// what needs those rights on its behalf.
+
+import { createSignal } from "solid-js";
+import { api } from "./ipc";
+import { appInfo } from "./store";
+import type { PrivilegedServiceStatus } from "./types";
+
+export type Privilege = "admin" | "service" | "standard";
+
+const [service, setService] = createSignal<PrivilegedServiceStatus | null>(null);
+
+/** The service runs for this account and answers. */
+export const serviceConnected = (s: PrivilegedServiceStatus | null | undefined) =>
+  s?.state === "running" && s.authorized && !s.error;
+
+export const privilege = (): Privilege => {
+  if (appInfo()?.elevated) return "admin";
+  return serviceConnected(service()) ? "service" : "standard";
+};
+
+/** Takes a status read elsewhere (the settings page, the onboarding). */
+export const noteServiceStatus = (status: PrivilegedServiceStatus | null) => setService(status);
+
+const refresh = async () => setService(await api.privilegedServiceStatus().catch(() => null));
+
+/**
+ * Follows the service while the window shows: it may start after Argus (both
+ * start with Windows) or be stopped elsewhere. A check is a few service
+ * manager calls and a ping, so every half minute costs nothing to speak of.
+ */
+export function watchPrivilege(): () => void {
+  if (appInfo()?.elevated) return () => {};
+  void refresh();
+  const check = () => {
+    if (document.visibilityState === "visible") void refresh();
+  };
+  const timer = setInterval(check, 30_000);
+  document.addEventListener("visibilitychange", check);
+  return () => {
+    clearInterval(timer);
+    document.removeEventListener("visibilitychange", check);
+  };
+}

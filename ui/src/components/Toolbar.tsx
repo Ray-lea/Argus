@@ -4,7 +4,6 @@ import { locale, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import type { ViewMode } from "../lib/rows";
 import {
-  appInfo,
   detailsOpen,
   intervalMs,
   page,
@@ -22,7 +21,7 @@ import { ConnectionControls } from "./ConnectionsPage";
 import { openFileLock } from "./FileLockDialog";
 import { HistoryControls } from "./HistoryPage";
 import Indicator from "./Indicator";
-import { AppsIcon, ListIcon, LockIcon, PanelIcon, PauseIcon, PlayIcon, ShieldIcon, TreeIcon } from "./icons";
+import { AppsIcon, ListIcon, LockIcon, PanelIcon, PauseIcon, PlayIcon, TreeIcon } from "./icons";
 import { navExpanded } from "./Nav";
 import SearchBox from "./SearchBox";
 import Select from "./Select";
@@ -49,14 +48,14 @@ const COMPACT_LEVELS = 4;
 
 /**
  * Keeps the toolbar's controls inside the window. When they overflow it sheds
- * what it can do without, one level at a time: the text of the permission
- * badge and of labelled buttons (and the room that lines the page's controls
- * up with the page), then the labels of segments that have icons, then the
- * page's own controls move to a second row, and last the end controls join
- * them there when they no longer fit beside the app's name. Titles still name
- * what lost its label. The width each level needs is learned when it stops
- * fitting, so a resize costs one layout read; `refit` starts over after the
- * content changes (another page, another language, the navigation pane).
+ * what it can do without, one level at a time: the text of labelled buttons
+ * (and the room that lines the page's controls up with the page), then the
+ * labels of segments that have icons, then the page's own controls move to a
+ * second row, and last the end controls join them there when they no longer
+ * fit beside the app's name. Titles still name what lost its label. The width
+ * each level needs is learned when it stops fitting, so a resize costs one
+ * layout read; `refit` starts over after the content changes (another page,
+ * another language, the navigation pane).
  */
 function fitToolbar(bar: HTMLElement) {
   let level = 0;
@@ -126,7 +125,7 @@ export default function Toolbar() {
     const fitter = fitToolbar(bar);
     // After every effect of the change has run: the search box sets its width
     // in one of its own.
-    createEffect(on([page, locale, appInfo, navExpanded], () => queueMicrotask(fitter.refit)));
+    createEffect(on([page, locale, navExpanded], () => queueMicrotask(fitter.refit)));
     onCleanup(fitter.dispose);
   });
   const changeInterval = (ms: number) => {
@@ -181,21 +180,6 @@ export default function Toolbar() {
       <span class="toolbar-break" />
 
       <div class="toolbar-end" data-tauri-drag-region>
-        <Show when={appInfo()}>
-          {(info) => (
-            <span
-              class="badge"
-              classList={{ elevated: info().elevated }}
-              title={info().elevated ? t("shell.elevation.adminHint") : t("shell.elevation.standardHint")}
-            >
-              <ShieldIcon size={14} />
-              <span class="badge-text">
-                {info().elevated ? t("shell.elevation.admin") : t("shell.elevation.standard")}
-              </span>
-            </span>
-          )}
-        </Show>
-
         <Show when={sampled()}>
           <Select
             class="tnum"

@@ -31,6 +31,7 @@ import {
   setUiMotion,
   uiMotion,
 } from "../lib/motion";
+import { noteServiceStatus, privilege, serviceConnected } from "../lib/privilege";
 import { appInfo, focusRule, intervalMs, setFocusRule, setIntervalMs, setPage, snapshot } from "../lib/store";
 import type {
   HistoryUsage,
@@ -245,6 +246,7 @@ function PrivilegedServiceSettings() {
     try {
       const value = await api.privilegedServiceStatus();
       setError(null);
+      noteServiceStatus(value);
       return value;
     } catch (e) {
       setError(String(e));
@@ -269,7 +271,9 @@ function PrivilegedServiceSettings() {
     setBusy(true);
     setError(null);
     try {
-      mutate(await api.managePrivilegedService(action));
+      const value = await api.managePrivilegedService(action);
+      mutate(value);
+      noteServiceStatus(value);
       toast(
         "success",
         action === "uninstall" ? t("settings.privilege.uninstalled") : t("settings.privilege.ready"),
@@ -291,7 +295,7 @@ function PrivilegedServiceSettings() {
     const s = status();
     if (busy() || status.loading) return "busy";
     if (s?.state === "notInstalled") return "off";
-    return s?.state === "running" && s.authorized && !s.error ? "ok" : "warn";
+    return serviceConnected(s) ? "ok" : "warn";
   };
   // Updating Argus does not update the service, which needs administrator rights.
   const outdated = () => {
@@ -1354,9 +1358,7 @@ export default function SettingsPage() {
                         Argus<span class="about-version">{appInfo()?.version}</span>
                       </div>
                       <div class="setting-desc">{t("settings.about.tagline")}</div>
-                      <div class="setting-desc">
-                        {appInfo()?.elevated ? t("settings.about.admin") : t("settings.about.standard")}
-                      </div>
+                      <div class="setting-desc">{t(`settings.about.${privilege()}`)}</div>
                       <div class="setting-desc">© 2026 Argus contributors</div>
                     </div>
                     <div class="setting-control">

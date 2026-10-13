@@ -250,6 +250,7 @@
   "about": {
     "tagline": "A fast, modern and informative task manager for Windows.",
     "admin": "Running as administrator.",
+    "service": "Running as a standard user. The privileged service is connected and carries out actions that need administrator rights.",
     "standard": "Running as a standard user. Information and actions for some system processes are limited.",
     "quit": "Exit Argus",
     "onboarding": {

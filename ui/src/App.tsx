@@ -17,6 +17,7 @@ import Vitals from "./components/Vitals";
 import { t } from "./lib/i18n";
 import { api, inTauri, subscribe } from "./lib/ipc";
 import { EASE_OUT, play } from "./lib/motion";
+import { watchPrivilege } from "./lib/privilege";
 import {
   appInfo,
   detailsOpen,
@@ -124,6 +125,7 @@ export default function App() {
       if (info.updated) void afterUpdate(info.version);
     }
     void watchUpdates().then((stop) => onCleanup(stop));
+    onCleanup(watchPrivilege());
     void maybeOpenOnboarding();
   });
 

@@ -731,32 +731,9 @@ button {
   border-bottom: 2px solid var(--accent);
 }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 10px;
-  border: 1px solid var(--stroke);
-  border-radius: 999px;
-  color: var(--ink-2);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.badge.elevated {
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  color: var(--accent);
-}
-
 /* A narrow window (or a long language) sheds toolbar labels; see fitToolbar
    in Toolbar.tsx. Titles keep naming the controls. On a second row the page's
    controls have room for their labels again. */
-.toolbar[data-compact] .badge {
-  padding: 0 6px;
-}
-
-.toolbar[data-compact] .badge-text,
 .toolbar:is([data-compact="1"], [data-compact="2"]) .btn-text {
   display: none;
 }
@@ -766,7 +743,7 @@ button {
   display: none;
 }
 
-/* The badge, refresh rate and buttons at the end of the toolbar. */
+/* The refresh rate and buttons at the end of the toolbar. */
 .toolbar-end {
   display: flex;
   flex: none;
@@ -1365,8 +1342,42 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.statusbar .spacer {
+/* One line of figures: those that do not fit wrap onto lines that are cut
+   off, so they drop out whole, from the last one, and the refresh rate and
+   the permission badge keep their place at the end. */
+.statusbar-figures {
+  display: flex;
   flex: 1;
+  flex-wrap: wrap;
+  column-gap: 20px;
+  min-width: 0;
+  height: 1lh;
+  overflow: hidden;
+}
+
+/* What Argus may do: run as administrator (accent), reach the privileged
+   service (green, as on its settings card) or neither. No taller than the
+   bar's text, so the bar keeps its height. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  margin: -2px 0;
+  padding: 0 8px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  color: var(--ink-2);
+}
+
+.badge[data-privilege="admin"] {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+
+.badge[data-privilege="service"] {
+  border-color: color-mix(in srgb, var(--net) 40%, transparent);
+  color: var(--net);
 }
 
 .live-dot {

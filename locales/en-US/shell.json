@@ -27,6 +27,8 @@
   "elevation": {
     "admin": "Administrator",
     "adminHint": "Argus is running as administrator and can view and end almost every process",
+    "service": "Privileged service",
+    "serviceHint": "Argus runs as a standard user; the privileged service carries out what needs administrator rights",
     "standard": "Standard user",
     "standardHint": "Some system processes need administrator rights to read or end"
   },

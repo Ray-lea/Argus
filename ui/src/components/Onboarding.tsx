@@ -20,6 +20,7 @@ import { api } from "../lib/ipc";
 import { shortcutKeys } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
 import { EASE_OUT, play, presence } from "../lib/motion";
+import { noteServiceStatus, serviceConnected } from "../lib/privilege";
 import { appInfo } from "../lib/store";
 import type {
   PrivilegedServiceStatus,
@@ -124,9 +125,11 @@ function OnboardingDialog(props: { leaving: boolean }) {
   };
 
   // The service is installed right here; the state survives paging back and forth.
-  const [service, { refetch: refetchService, mutate: mutateService }] = createResource(() =>
-    api.privilegedServiceStatus().catch(() => null),
-  );
+  const [service, { refetch: refetchService, mutate: mutateService }] = createResource(async () => {
+    const status = await api.privilegedServiceStatus().catch(() => null);
+    if (status) noteServiceStatus(status);
+    return status;
+  });
   const [serviceBusy, setServiceBusy] = createSignal(false);
   const [serviceError, setServiceError] = createSignal<string | null>(null);
   const manageService = async (action: "install" | "start") => {
@@ -134,7 +137,9 @@ function OnboardingDialog(props: { leaving: boolean }) {
     setServiceBusy(true);
     setServiceError(null);
     try {
-      mutateService(await api.managePrivilegedService(action));
+      const status = await api.managePrivilegedService(action);
+      mutateService(status);
+      noteServiceStatus(status);
     } catch (e) {
       setServiceError(String(e));
       void refetchService();
@@ -459,7 +464,7 @@ function Privilege(props: {
   error: string | null;
   onManage: (action: "install" | "start") => void;
 }) {
-  const connected = () => props.status?.state === "running" && props.status.authorized && !props.status.error;
+  const connected = () => serviceConnected(props.status);
   // What can be done from here: install, or start a stopped service of this account.
   const action = (): "install" | "start" | null => {
     if (props.status?.state === "notInstalled") return "install";

@@ -27,6 +27,8 @@
   "elevation": {
     "admin": "管理员",
     "adminHint": "Argus 正以管理员身份运行，可查看和结束绝大多数进程",
+    "service": "特权服务",
+    "serviceHint": "Argus 以标准权限运行，需要管理员权限的操作由特权服务代为执行",
     "standard": "标准权限",
     "standardHint": "部分系统进程的信息需要管理员权限才能读取或结束"
   },
