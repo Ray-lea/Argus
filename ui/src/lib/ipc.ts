@@ -60,6 +60,9 @@ export const api = {
     mock ? mock.settings.update({ language }) : invoke("set_language", { language }),
   setTheme: (theme: Theme): Promise<SettingsView> =>
     mock ? mock.settings.update({ theme }) : invoke("set_theme", { theme }),
+  /** Where the caption's maximize button is (CSS px, `right` from the window's right edge). */
+  setCaptionButton: (rect: { right: number; top: number; width: number; height: number }): Promise<void> =>
+    mock ? Promise.resolve() : invoke("set_caption_button", { rect }),
   completeOnboarding: (version: number): Promise<SettingsView> =>
     mock ? mock.settings.update({ onboarding: version }) : invoke("complete_onboarding", { version }),
   privilegedServiceStatus: (): Promise<PrivilegedServiceStatus> =>

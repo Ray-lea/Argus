@@ -1,6 +1,12 @@
 {
   "loadingProcesses": "Reading processes…",
   "toolbar": "Toolbar",
+  "caption": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore Down",
+    "close": "Close"
+  },
   "pages": "Pages",
   "page": {
     "processes": "Processes",

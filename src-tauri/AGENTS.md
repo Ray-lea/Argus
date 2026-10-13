@@ -6,6 +6,7 @@
 
 - 不要启用 Tauri 的 `transparent: true`：它走旧版 blur-behind，拖动窗口明显变卡。Mica 由 `windowEffects` 提供，`shell::extend_backdrop` 用 `DwmExtendFrameIntoClientArea(-1)` 延伸到客户区，WebView 背景保持透明（`#00000000`）。
 - 主题设置走原生：`shell::apply_theme` 调用窗口的 `set_theme`，tao 设置标题栏与 Mica 的深色属性并发出 `ThemeChanged`，Tauri 再把它设为 WebView2 的 `PreferredColorScheme`，页面的 `prefers-color-scheme` 随之变化。不要在 CSS 里另加主题开关（标题栏和 Mica 不会跟着变）；浏览器里的模拟数据页面没有这条链路，看主题效果时用 CDP 的 `Emulation.setEmulatedMedia`。
+- 窗口没有系统标题栏（`decorations: false`）。tao 对这种窗口保留系统边框（阴影、圆角、贴靠、左右下边缩放），顶边缩放由 Tauri 的子窗口 `TAURI_DRAG_RESIZE_BORDERS` 提供。`caption.rs` 的 `ArgusCaptionMaximize` 子窗口盖在页面的最大化按钮上（位置由页面通过 `set_caption_button` 报告，CSS 像素，按 DPI 换算）；改工具栏布局后用 `ChildWindowFromPointEx` 确认它仍在按钮中心最上层，并核对 `WM_NCHITTEST` 返回 9。单击最大化会激活窗口，不要在开发机上自动化测试。
 - 窗口隐藏时调用 `set_webview_active(false)`：WebView2 停止渲染并降到低内存目标，脚本照常运行；采样线程同时降到 5 秒一次。
 - wry 也子类化了主窗口：WM_SIZE 时同步设置 WebView 的 bounds，再异步（`SWP_ASYNCWINDOWPOS`）调整容器窗口 `WRY_WEBVIEW` 的大小。我们的子类过程后安装、先执行。
 

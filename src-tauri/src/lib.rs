@@ -1,3 +1,4 @@
+mod caption;
 mod commands;
 mod sampler;
 mod settings;
@@ -228,6 +229,7 @@ pub fn run() {
                 window.set_title(&shell::app_title())?;
                 shell::apply_theme(app.handle(), app.state::<SettingsStore>().get().theme);
                 shell::extend_backdrop(&window);
+                caption::install(&window, app.handle());
                 shell::guard_resize_seam(&window);
                 if !start_hidden {
                     window.show()?;
@@ -278,6 +280,7 @@ pub fn run() {
             commands::get_settings,
             commands::set_language,
             commands::set_theme,
+            commands::set_caption_button,
             commands::complete_onboarding,
             commands::privileged_service_status,
             commands::manage_privileged_service,

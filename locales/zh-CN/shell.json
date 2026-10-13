@@ -1,6 +1,12 @@
 {
   "loadingProcesses": "正在读取进程…",
   "toolbar": "工具栏",
+  "caption": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "向下还原",
+    "close": "关闭"
+  },
   "pages": "页面",
   "page": {
     "processes": "进程",

@@ -23,6 +23,7 @@
   --layer: rgb(255 255 255 / 0.5);
   --layer-strong: rgb(255 255 255 / 0.78);
   --hover: rgb(0 0 0 / 0.04);
+  --hover-strong: rgb(0 0 0 / 0.06);
   --press: rgb(0 0 0 / 0.07);
   --stroke: rgb(0 0 0 / 0.075);
   --stroke-strong: rgb(0 0 0 / 0.14);
@@ -69,6 +70,7 @@
     --layer: rgb(255 255 255 / 0.035);
     --layer-strong: rgb(255 255 255 / 0.06);
     --hover: rgb(255 255 255 / 0.045);
+    --hover-strong: rgb(255 255 255 / 0.08);
     --press: rgb(255 255 255 / 0.03);
     --stroke: rgb(255 255 255 / 0.07);
     --stroke-strong: rgb(255 255 255 / 0.12);
@@ -340,11 +342,61 @@ button {
 
 /* ---- Toolbar --------------------------------------------------------------- */
 
+/* The right padding keeps the toolbar clear of the caption buttons. */
 .toolbar {
+  --caption-width: 138px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 10px calc(12px + var(--caption-width) + 4px) 10px 12px;
+}
+
+/* Caption buttons in the window's top-right corner, as tall as the toolbar's
+   first row (with the page's top padding). Above dialog scrims, like a system
+   title bar. */
+.caption {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 80;
+  display: flex;
+  height: 56px;
+}
+
+.caption button {
+  width: 46px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  font-size: 10px;
+  line-height: 1;
+  transition: background-color var(--t-fast) linear;
+}
+
+.caption button:hover,
+.caption button.hover {
+  background: var(--hover-strong);
+}
+
+.caption button:active,
+.caption button.press {
+  background: var(--press);
+  color: var(--ink-2);
+}
+
+.caption button.close:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+.caption button.close:active {
+  background: #c42b1ce6;
+  color: #ffffffb3;
+}
+
+.caption.inactive button:not(:hover, .hover) {
+  color: var(--ink-3);
 }
 
 .search {
@@ -654,18 +706,63 @@ button {
   display: none;
 }
 
-.toolbar[data-compact="3"] {
+/* The badge, refresh rate and buttons at the end of the toolbar. */
+.toolbar-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-break {
+  display: none;
+}
+
+/* Levels 3 and 4 use two rows. At 3 the page's controls take the second row,
+   reaching under the caption buttons to the window edge; at 4 the end
+   controls join them, after a break that has no height (the rows' spacing is
+   then a margin rather than a row gap, which would count twice). */
+.toolbar:is([data-compact="3"], [data-compact="4"]) {
   flex-wrap: wrap;
   row-gap: 8px;
 }
 
-.toolbar[data-compact="3"] > .toolbar-sep {
+.toolbar:is([data-compact="3"], [data-compact="4"]) > .toolbar-sep {
+  display: none;
+}
+
+.toolbar[data-compact="4"] {
+  row-gap: 0;
+}
+
+.toolbar[data-compact="4"] > .toolbar-break {
+  display: block;
+  order: 1;
+  flex-basis: 100%;
+  height: 0;
+}
+
+.toolbar[data-compact="4"] > .toolbar-end {
+  order: 3;
+  margin-top: 8px;
+  margin-left: auto;
+}
+
+.toolbar[data-compact="4"] :is(.seg-label, .btn-text) {
   display: none;
 }
 
 .toolbar[data-compact="3"] > .page-controls {
   order: 1;
-  flex: 1 0 100%;
+  flex: 1 0 calc(100% + var(--caption-width) + 4px);
+  margin-right: calc(-4px - var(--caption-width));
+}
+
+.toolbar[data-compact="4"] > .page-controls {
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 8px;
 }
 
 /* ---- Process table --------------------------------------------------------- */

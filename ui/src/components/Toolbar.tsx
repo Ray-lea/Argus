@@ -19,6 +19,7 @@ import {
   viewMode,
 } from "../lib/store";
 import { updatePending } from "../lib/updates";
+import Caption from "./Caption";
 import { ConnectionControls } from "./ConnectionsPage";
 import { openFileLock } from "./FileLockDialog";
 import { HistoryControls } from "./HistoryPage";
@@ -55,16 +56,17 @@ export function focusSearch() {
 }
 
 /** Levels of `fitToolbar`, set as `data-compact` (styles.css). */
-const COMPACT_LEVELS = 3;
+const COMPACT_LEVELS = 4;
 
 /**
  * Keeps the toolbar's controls inside the window. When they overflow it sheds
  * what it can do without, one level at a time: the text of the permission
  * badge and of labelled buttons, then the labels of segments that have icons,
- * then the page's own controls move to a second row. Titles still name what
- * lost its label. The width each level needs is learned when it overflows, so
- * a resize costs one layout read; `refit` starts over after the content
- * changes (another page, another language).
+ * then the page's own controls move to a second row, and last the end
+ * controls join them there when they no longer fit beside the tabs. Titles
+ * still name what lost its label. The width each level needs is learned when
+ * it stops fitting, so a resize costs one layout read; `refit` starts over
+ * after the content changes (another page, another language).
  */
 function fitToolbar(bar: HTMLElement) {
   let level = 0;
@@ -74,10 +76,28 @@ function fitToolbar(bar: HTMLElement) {
     if (next) bar.dataset.compact = String(next);
     else delete bar.dataset.compact;
   };
+  // Level 3 wraps instead of overflowing: it no longer fits once the end
+  // controls fall off the tabs' row. They need the tabs, a gap, themselves and
+  // the padding that keeps clear of the caption buttons.
+  const endRowWidth = () => {
+    const tabs = bar.querySelector<HTMLElement>(".tabs");
+    const end = bar.querySelector<HTMLElement>(".toolbar-end");
+    if (!tabs || !end || end.offsetTop < tabs.offsetTop + tabs.offsetHeight / 2) return 0;
+    const style = getComputedStyle(bar);
+    return (
+      tabs.offsetLeft +
+      tabs.offsetWidth +
+      Number.parseFloat(style.columnGap) +
+      end.offsetWidth +
+      Number.parseFloat(style.paddingRight)
+    );
+  };
   const fit = () => {
     while (level > 0 && bar.clientWidth >= need[level - 1]) set(level - 1);
-    while (level < COMPACT_LEVELS && bar.scrollWidth > bar.clientWidth) {
-      need[level] = bar.scrollWidth;
+    for (;;) {
+      const wanted = level === 3 ? endRowWidth() : bar.scrollWidth > bar.clientWidth ? bar.scrollWidth : 0;
+      if (level >= COMPACT_LEVELS || wanted === 0) break;
+      need[level] = wanted;
       set(level + 1);
     }
   };
@@ -113,7 +133,9 @@ export default function Toolbar() {
   const sampled = () => page() === "processes" || page() === "performance";
 
   return (
-    <div ref={bar} class="toolbar" role="toolbar" aria-label={t("shell.toolbar")}>
+    // The toolbar is the window's caption: its empty space moves the window
+    // (and double-click maximizes); Tauri only reacts on the marked element itself.
+    <div ref={bar} class="toolbar" role="toolbar" aria-label={t("shell.toolbar")} data-tauri-drag-region>
       <div class="tabs" role="tablist" aria-label={t("shell.pages")}>
         <Indicator selector="[aria-selected='true']" track={page} class="tab-mark" shape="underline" />
         <For each={PAGES}>
@@ -140,7 +162,7 @@ export default function Toolbar() {
       </div>
 
       <Show when={page() !== "performance" && page() !== "settings"}>
-        <span class="toolbar-sep" />
+        <span class="toolbar-sep" data-tauri-drag-region />
       </Show>
       <Show when={page() === "processes"}>
         <div class="page-controls">
@@ -168,72 +190,77 @@ export default function Toolbar() {
         </div>
       </Show>
 
-      <div class="flex-1" />
+      <div class="flex-1" data-tauri-drag-region />
+      <span class="toolbar-break" />
 
-      <Show when={appInfo()}>
-        {(info) => (
-          <span
-            class="badge"
-            classList={{ elevated: info().elevated }}
-            title={info().elevated ? t("shell.elevation.adminHint") : t("shell.elevation.standardHint")}
-          >
-            <ShieldIcon size={14} />
-            <span class="badge-text">
-              {info().elevated ? t("shell.elevation.admin") : t("shell.elevation.standard")}
+      <div class="toolbar-end" data-tauri-drag-region>
+        <Show when={appInfo()}>
+          {(info) => (
+            <span
+              class="badge"
+              classList={{ elevated: info().elevated }}
+              title={info().elevated ? t("shell.elevation.adminHint") : t("shell.elevation.standardHint")}
+            >
+              <ShieldIcon size={14} />
+              <span class="badge-text">
+                {info().elevated ? t("shell.elevation.admin") : t("shell.elevation.standard")}
+              </span>
             </span>
-          </span>
-        )}
-      </Show>
+          )}
+        </Show>
 
-      <Show when={sampled()}>
-        <Select
-          class="tnum"
-          label={t("shell.interval.label")}
-          title={t("shell.interval.label")}
-          value={intervalMs()}
-          options={INTERVALS.map((ms) => ({
-            value: ms,
-            label: t("shell.interval.option", { seconds: ms / 1000 }),
-          }))}
-          onChange={changeInterval}
-        />
+        <Show when={sampled()}>
+          <Select
+            class="tnum"
+            label={t("shell.interval.label")}
+            title={t("shell.interval.label")}
+            value={intervalMs()}
+            options={INTERVALS.map((ms) => ({
+              value: ms,
+              label: t("shell.interval.option", { seconds: ms / 1000 }),
+            }))}
+            onChange={changeInterval}
+          />
+
+          <button
+            type="button"
+            class="btn icon"
+            aria-pressed={paused()}
+            title={paused() ? t("shell.resume") : t("shell.pause")}
+            aria-label={paused() ? t("shell.resume") : t("shell.pause")}
+            onClick={togglePause}
+          >
+            <Show when={paused()} fallback={<PauseIcon />}>
+              <PlayIcon />
+            </Show>
+          </button>
+        </Show>
 
         <button
           type="button"
           class="btn icon"
-          aria-pressed={paused()}
-          title={paused() ? t("shell.resume") : t("shell.pause")}
-          aria-label={paused() ? t("shell.resume") : t("shell.pause")}
-          onClick={togglePause}
+          title={t("shell.fileLock.title")}
+          aria-label={t("shell.fileLock.label")}
+          onClick={() => openFileLock()}
         >
-          <Show when={paused()} fallback={<PauseIcon />}>
-            <PlayIcon />
-          </Show>
+          <LockIcon />
         </button>
-      </Show>
 
-      <button
-        type="button"
-        class="btn icon"
-        title={t("shell.fileLock.title")}
-        aria-label={t("shell.fileLock.label")}
-        onClick={() => openFileLock()}
-      >
-        <LockIcon />
-      </button>
+        <Show when={page() === "processes"}>
+          <button
+            type="button"
+            class="btn icon"
+            aria-pressed={detailsOpen()}
+            title={detailsOpen() ? t("shell.details.hide") : t("shell.details.show")}
+            aria-label={t("shell.details.label")}
+            onClick={() => setDetailsOpen(!detailsOpen())}
+          >
+            <PanelIcon />
+          </button>
+        </Show>
+      </div>
 
-      <Show when={page() === "processes"}>
-        <button
-          type="button"
-          class="btn icon"
-          aria-pressed={detailsOpen()}
-          title={detailsOpen() ? t("shell.details.hide") : t("shell.details.show")}
-          aria-label={t("shell.details.label")}
-          onClick={() => setDetailsOpen(!detailsOpen())}
-        >
-          <PanelIcon />
-        </button>
-      </Show>
+      <Caption />
     </div>
   );
 }

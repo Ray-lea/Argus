@@ -18,6 +18,7 @@ use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::{Manager, State};
 
+use crate::caption::{self, ButtonRect};
 use crate::sampler::Control;
 use crate::settings::{Language, SettingsStore, SettingsView, Theme, UpdateChannel, UpdateRoute};
 use crate::updater::{self, UpdateStatus};
@@ -262,6 +263,12 @@ pub fn set_theme(app: tauri::AppHandle, theme: Theme) -> Result<SettingsView, St
         .map_err(|e| e.to_string())?;
     shell::apply_theme(&app, theme);
     Ok(settings_view(&app))
+}
+
+/// Where the page's maximize button is, for the snap layout overlay.
+#[tauri::command]
+pub fn set_caption_button(rect: ButtonRect) {
+    caption::set_maximize_button(rect);
 }
 
 /// Records that the onboarding of `version` was completed or skipped.
