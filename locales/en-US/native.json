@@ -88,7 +88,7 @@
     }
   },
   "taskManager": {
-    "alertTitle": "Argus Task Manager Recovery",
+    "alertTitle": "Argus Task Manager Replacement",
     "recoveryFile": "Argus Task Manager emergency recovery\r\n\r\nFirst run argus-taskmgr-recover.exe in this folder and allow administrator permission. It doesn't depend on the Argus window or the background service.\r\nIf that program is damaged too: press Win+R, enter regedit, open it as administrator and go to HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Check that Debugger really points to argus-taskmgr-launcher.exe --task-manager in this folder and that before.debugger in taskmgr-recovery.json is null, then delete only the Debugger value. Don't delete the whole taskmgr.exe key, and don't delete settings of other tools.\r\nThe recovery program keeps third-party changes and the recovery record; it stops automatic recovery when no trusted backup exists.\r\n",
     "status": {
       "native": "Windows Task Manager is in use.",
@@ -111,6 +111,9 @@
     "ownerMismatch": "The service is authorized for a different account",
     "conflict": "Another replacement or path filter is configured; enabling was stopped",
     "uiNotReady": "The standard-user Argus window failed its readiness check; the replacement wasn't enabled",
+    "prepareFailed": "Couldn't prepare the replacement's files: {error}",
+    "selfTestFailed": "The startup self-test failed: {error}",
+    "uiStartFailed": "Couldn't start the window check as the account that asked for it: {error}",
     "probeNameTaken": "The startup self-test name is already in use",
     "probeNotRedirected": "The IFEO self-test wasn't redirected as expected",
     "probeFallbackFailed": "The native fallback self-test failed",
@@ -131,6 +134,7 @@
     "callerAccount": "The account that started the operation doesn't match",
     "callerSession": "The session that started the operation doesn't match",
     "noStandardToken": "Couldn't get a standard user token for the current account",
+    "noShell": "Couldn't find the desktop shell (Explorer) to start Argus with standard user rights",
     "detachFailed": "Couldn't detach the debugger from the native launch: {error}",
     "wrongAccount": "The current account or permissions can't start the standard-user Argus window",
     "uiTimeout": "The Argus window wasn't ready within 10 seconds",

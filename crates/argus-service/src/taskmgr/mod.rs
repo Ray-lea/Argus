@@ -208,27 +208,32 @@ fn enable(owner: &str, caller: u32, created: u64, assets: Assets) -> Result<()> 
     if live.debugger.is_some() || live.filtered {
         return Err(tr!("taskManager.conflict"));
     }
-    registry::atomic_file(&machine.dir, LAUNCHER, assets.0)?;
-    registry::atomic_file(&machine.dir, RECOVER, assets.1)?;
+    // Errors name the step: the helper's message box is all the user sees.
     let image = format!("argus-taskmgr-ui-{}.exe", id()?);
-    // Source code and embedded helper bytes are from the explicitly elevated
-    // GUI executable, not adjacent user-writable sidecar files.
-    let source =
-        fs::read(std::env::current_exe().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    registry::atomic_file(&machine.dir, &image, &source)?;
-    registry::atomic_file(
-        &machine.dir,
-        "taskmgr-recovery.txt",
-        recovery_text().as_bytes(),
-    )?;
-    preflight(&machine.dir)?;
+    (|| {
+        registry::atomic_file(&machine.dir, LAUNCHER, assets.0)?;
+        registry::atomic_file(&machine.dir, RECOVER, assets.1)?;
+        // Source code and embedded helper bytes are from the explicitly elevated
+        // GUI executable, not adjacent user-writable sidecar files.
+        let source = fs::read(std::env::current_exe().map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+        registry::atomic_file(&machine.dir, &image, &source)?;
+        registry::atomic_file(
+            &machine.dir,
+            "taskmgr-recovery.txt",
+            recovery_text().as_bytes(),
+        )
+    })()
+    .map_err(|error| tr!("taskManager.prepareFailed", error = error))?;
+    preflight(&machine.dir).map_err(|error| tr!("taskManager.selfTestFailed", error = error))?;
     let probe = launch::probe_as_caller(
         &machine.dir.join(LAUNCHER),
         &["--probe-ui".into(), image.clone(), owner.into()],
         caller,
         created,
         owner,
-    )?;
+    )
+    .map_err(|error| tr!("taskManager.uiStartFailed", error = error))?;
     if launch::exit_code(&probe, Duration::from_secs(15))? != 0 {
         return Err(tr!("taskManager.uiNotReady"));
     }

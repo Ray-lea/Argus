@@ -88,7 +88,7 @@
     }
   },
   "taskManager": {
-    "alertTitle": "Argus 任务管理器恢复",
+    "alertTitle": "Argus 任务管理器替换",
     "recoveryFile": "Argus 任务管理器应急恢复\r\n\r\n先运行本目录的 argus-taskmgr-recover.exe，并允许管理员授权。它不依赖 Argus 界面或后台服务。\r\n如果程序也已损坏：Win+R 输入 regedit，以管理员身份打开，定位 HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe。核对 Debugger 确实指向本目录的 argus-taskmgr-launcher.exe --task-manager，且 taskmgr-recovery.json 中 before.debugger 为 null，再只删除 Debugger 值。不要删除整个 taskmgr.exe 键，不要删除其他工具的设置。\r\n恢复程序会保留第三方更改和恢复记录；缺少可信备份时停止自动恢复。\r\n",
     "status": {
       "native": "当前使用 Windows 任务管理器。",
@@ -111,6 +111,9 @@
     "ownerMismatch": "服务授权账户不匹配",
     "conflict": "已有其他替换或路径过滤配置，已停止启用",
     "uiNotReady": "标准权限界面的就绪检查失败，未启用替换",
+    "prepareFailed": "无法准备替换所需的文件：{error}",
+    "selfTestFailed": "启动自检失败：{error}",
+    "uiStartFailed": "无法以发起操作的账户启动界面自检：{error}",
     "probeNameTaken": "启动自检名称冲突",
     "probeNotRedirected": "IFEO 自检未发生预期重定向",
     "probeFallbackFailed": "原生回退自检失败",
@@ -131,6 +134,7 @@
     "callerAccount": "发起操作的账户不匹配",
     "callerSession": "发起操作的会话不匹配",
     "noStandardToken": "无法获得当前账户的标准权限令牌",
+    "noShell": "未找到桌面外壳（资源管理器），无法以标准权限启动 Argus",
     "detachFailed": "原生启动脱离调试失败：{error}",
     "wrongAccount": "当前账户或权限不适合启动标准权限界面",
     "uiTimeout": "Argus 界面未在 10 秒内就绪",
