@@ -6,7 +6,7 @@
 
 - 不要启用 Tauri 的 `transparent: true`：它走旧版 blur-behind，拖动窗口明显变卡。Mica 由 `windowEffects` 提供，`shell::extend_backdrop` 用 `DwmExtendFrameIntoClientArea(-1)` 延伸到客户区，WebView 背景保持透明（`#00000000`）。
 - 主题设置走原生：`shell::apply_theme` 调用窗口的 `set_theme`，tao 设置标题栏与 Mica 的深色属性并发出 `ThemeChanged`，Tauri 再把它设为 WebView2 的 `PreferredColorScheme`，页面的 `prefers-color-scheme` 随之变化。不要在 CSS 里另加主题开关（标题栏和 Mica 不会跟着变）；浏览器里的模拟数据页面没有这条链路，看主题效果时用 CDP 的 `Emulation.setEmulatedMedia`。
-- 窗口没有系统标题栏（`decorations: false`）。tao 对这种窗口保留系统边框（阴影、圆角、贴靠、左右下边缩放），顶边缩放由 Tauri 的子窗口 `TAURI_DRAG_RESIZE_BORDERS` 提供。`caption.rs` 的 `ArgusCaptionMaximize` 子窗口盖在页面的最大化按钮上（位置由页面通过 `set_caption_button` 报告，CSS 像素，按 DPI 换算）；改工具栏布局后用 `ChildWindowFromPointEx` 确认它仍在按钮中心最上层，并核对 `WM_NCHITTEST` 返回 9。单击最大化会激活窗口，不要在开发机上自动化测试。
+- 窗口没有系统标题栏（`decorations: false`）。tao 对这种窗口保留系统边框（阴影、圆角、贴靠、左右下边缩放），顶边缩放由 Tauri 的子窗口 `TAURI_DRAG_RESIZE_BORDERS` 提供。`caption.rs` 的 `ArgusCaptionMaximize` 子窗口盖在页面的最大化按钮上（位置由页面通过 `set_caption_button` 报告，CSS 像素，按 DPI 换算）；改工具栏布局后用 `ChildWindowFromPointEx` 确认它仍在按钮中心最上层，并核对 `WM_NCHITTEST` 返回 9。单击最大化会激活窗口，不要在开发机上自动化测试。不要去掉 tao 在 Windows 11 上保留的 1 像素顶部非客户区（例如在 `WM_NCCALCSIZE` 里把它并回客户区）：DWM 会在透明页面背后画出完整的系统标题栏和按钮。开启“标题栏显示强调色”时顶端的彩色带子由 `caption.rs` 的 `paint_caption` 处理（标题栏颜色设为 `DWMWA_COLOR_NONE`，不要换成纯色：Mica 会随壁纸偏色），原理与实测见 `docs/design/window.md`。检查标题栏时把窗口捕获的右上角放大看：系统按钮是灰色细线，原尺寸的截图里容易漏看。本机没开强调色时，向测试窗口发送 `WM_NCACTIVATE`（wParam 为 1）可以让 DWM 按激活状态绘制而不移动焦点，再从外部设置 `DWMWA_CAPTION_COLOR` 观察顶端带子；不要为测试去改系统的强调色设置。
 - 窗口隐藏时调用 `set_webview_active(false)`：WebView2 停止渲染并降到低内存目标，脚本照常运行；采样线程同时降到 5 秒一次。
 - wry 也子类化了主窗口：WM_SIZE 时同步设置 WebView 的 bounds，再异步（`SWP_ASYNCWINDOWPOS`）调整容器窗口 `WRY_WEBVIEW` 的大小。我们的子类过程后安装、先执行。
 
