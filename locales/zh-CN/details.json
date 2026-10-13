@@ -5,7 +5,12 @@
     "title": "进程已退出",
     "hint": "选择列表中的其他进程查看详细信息。"
   },
-  "groupNote": "此应用共有 {count} 个进程，合计 CPU {cpu}%，内存 {memory}。下方显示最早启动的主进程。",
+  "group": {
+    "count": "{count} 个进程",
+    "earliest": "最早启动",
+    "members": "进程（{count}）",
+    "open": "查看 PID {pid} 的详细信息"
+  },
   "services": "运行的服务（{count}）",
   "section": {
     "process": "进程",

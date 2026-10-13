@@ -5,7 +5,16 @@ import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { EASE_OUT, play } from "../lib/motion";
 import { type DisplayRow, groupKey, procKey } from "../lib/rows";
-import { procHistoryOf, type Selection, selection, services, setSelectedKey, snapshot } from "../lib/store";
+import {
+  groupHistoryOf,
+  procHistoryOf,
+  revealProcess,
+  type Selection,
+  selection,
+  services,
+  setSelectedKey,
+  snapshot,
+} from "../lib/store";
 import type { PriorityClass, ProcessDetails, ProcessRow } from "../lib/types";
 import { CopyIcon, DismissIcon, FolderIcon, InfoIcon } from "./icons";
 import ProcIcon from "./ProcIcon";
@@ -68,11 +77,24 @@ export default function DetailsPanel(props: { sel: Selection }) {
     return parent && parent.createTime <= p.createTime ? parent : null;
   };
 
+  // An app group shows its own totals, history and members; the details
+  // fetched for its earliest process only supply what they share (version).
   const groupSum = (pick: (p: ProcessRow) => number) => props.sel.members.reduce((a, p) => a + pick(p), 0);
-  const history = () => (props.sel.proc ? procHistoryOf(procKey(props.sel.proc)) : undefined);
+  const cpu = () => (props.sel.isGroup ? groupSum((p) => p.cpu) : (props.sel.proc?.cpu ?? 0));
+  const mem = () => (props.sel.isGroup ? groupSum((p) => p.privateWs) : (props.sel.proc?.privateWs ?? 0));
+  const history = () =>
+    props.sel.isGroup
+      ? groupHistoryOf(props.sel.key)
+      : props.sel.proc
+        ? procHistoryOf(procKey(props.sel.proc))
+        : undefined;
+  const hosted = () => {
+    const pids = new Set(props.sel.members.map((p) => p.pid));
+    return services().filter((sv) => pids.has(sv.pid));
+  };
   const memMax = easedMax(
     () => Math.max(...(history()?.mem ?? [1])) * 1.25,
-    () => identity()?.key,
+    () => props.sel.key,
   );
 
   // Another process selected: its details settle in where the last ones were.
@@ -129,6 +151,10 @@ export default function DetailsPanel(props: { sel: Selection }) {
                   <div class="details-title">{proc().description ?? proc().name}</div>
                   <div class="details-subtitle">
                     {proc().name}
+                    <Show when={props.sel.isGroup}>
+                      {" · "}
+                      {t("details.group.count", { count: props.sel.members.length })}
+                    </Show>
                     <Show when={proc().company}>
                       <br />
                       {proc().company}
@@ -146,33 +172,20 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 </button>
               </div>
 
-              <Show when={props.sel.isGroup}>
-                <div class="note">
-                  <InfoIcon />
-                  <span>
-                    {t("details.groupNote", {
-                      count: props.sel.members.length,
-                      cpu: fmtCpu(groupSum((p) => p.cpu)),
-                      memory: fmtMem(groupSum((p) => p.privateWs)),
-                    })}
-                  </span>
-                </div>
-              </Show>
-
               <div class="mini-charts">
                 <div class="mini-chart">
                   <div class="vital-label">CPU</div>
-                  <div class="mini-value">{fmtCpu(proc().cpu)}%</div>
+                  <div class="mini-value">{fmtCpu(cpu())}%</div>
                   <Trace class="trace" data={() => history()?.cpu ?? []} max={() => 100} colorVar="--cpu" />
                 </div>
                 <div class="mini-chart">
                   <div class="vital-label">{t("common.resource.memory")}</div>
-                  <div class="mini-value">{fmtMem(proc().privateWs)}</div>
+                  <div class="mini-value">{fmtMem(mem())}</div>
                   <Trace class="trace" data={() => history()?.mem ?? []} max={memMax} colorVar="--mem" />
                 </div>
               </div>
 
-              <Show when={services().filter((sv) => sv.pid === proc().pid)}>
+              <Show when={hosted()}>
                 {(hosted) => (
                   <Show when={hosted().length > 0}>
                     <div class="section-title">{t("details.services", { count: hosted().length })}</div>
@@ -195,83 +208,89 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 )}
               </Show>
 
-              <div class="section-title">{t("details.section.process")}</div>
-              <dl class="facts selectable">
-                <dt>PID</dt>
-                <dd>{proc().pid}</dd>
-                <dt>{t("details.parent")}</dt>
-                <dd>
-                  <Show
-                    when={parent()}
-                    fallback={
-                      <span class="text-[var(--ink-3)]">{t("details.noParent", { pid: proc().ppid })}</span>
-                    }
-                  >
-                    {(pp) => (
-                      <button type="button" class="link" onClick={() => setSelectedKey(procKey(pp()))}>
-                        {t("details.parentLink", { name: pp().name, pid: pp().pid })}
-                      </button>
-                    )}
-                  </Show>
-                </dd>
-                <dt>{t("details.started")}</dt>
-                <dd>{fmtDateTime(proc().createTime)}</dd>
-                <dt>{t("details.cpuTime")}</dt>
-                <dd>{fmtCpuTime(proc().cpuTime)}</dd>
-                <dt>{t("details.user")}</dt>
-                <dd>{info()?.user ?? "—"}</dd>
-                <dt>{t("details.integrity")}</dt>
-                <dd>{integrityName(info()?.integrity)}</dd>
-                <dt>{t("details.architecture")}</dt>
-                <dd>{archName(info()?.architecture)}</dd>
-                <dt>{t("details.priority")}</dt>
-                <dd>{PRIORITY_LABEL[priorityOf(proc().basePriority) as PriorityClass] ?? "—"}</dd>
-                <dt>{t("common.efficiencyMode")}</dt>
-                <dd>{proc().efficiency ? t("common.on") : t("common.off")}</dd>
-                <dt>{t("details.session")}</dt>
-                <dd>{proc().sessionId}</dd>
-              </dl>
+              <Show when={props.sel.isGroup}>
+                <GroupFacts members={props.sel.members} />
+              </Show>
 
-              <div class="section-title">{t("details.section.resources")}</div>
-              <dl class="facts">
-                <dt>{t("details.privateWs")}</dt>
-                <dd>{fmtMem(proc().privateWs)}</dd>
-                <dt>{t("details.workingSet")}</dt>
-                <dd>{fmtMem(proc().workingSet)}</dd>
-                <dt>{t("details.commit")}</dt>
-                <dd>{fmtMem(proc().commit)}</dd>
-                <Show when={(snapshot()?.hardware.gpus.length ?? 0) > 0}>
-                  <dt>GPU</dt>
+              <Show when={!props.sel.isGroup}>
+                <div class="section-title">{t("details.section.process")}</div>
+                <dl class="facts selectable">
+                  <dt>PID</dt>
+                  <dd>{proc().pid}</dd>
+                  <dt>{t("details.parent")}</dt>
                   <dd>
-                    {fmtCpu(proc().gpu)}%
-                    <Show when={proc().gpuEngine}>
-                      <span class="dim">{t("details.gpuEngine", { engine: proc().gpuEngine ?? "" })}</span>
+                    <Show
+                      when={parent()}
+                      fallback={
+                        <span class="text-[var(--ink-3)]">{t("details.noParent", { pid: proc().ppid })}</span>
+                      }
+                    >
+                      {(pp) => (
+                        <button type="button" class="link" onClick={() => setSelectedKey(procKey(pp()))}>
+                          {t("details.parentLink", { name: pp().name, pid: pp().pid })}
+                        </button>
+                      )}
                     </Show>
                   </dd>
-                  <dt>{t("details.gpuDedicated")}</dt>
-                  <dd>{fmtMem(proc().gpuDedicated)}</dd>
-                  <dt>{t("details.gpuShared")}</dt>
-                  <dd>{fmtMem(proc().gpuShared)}</dd>
-                </Show>
-                <dt>{t("common.resource.network")}</dt>
-                <dd>
-                  <Show
-                    when={snapshot()?.processNetwork}
-                    fallback={<span class="dim">{t("details.netNeedsAdmin")}</span>}
-                  >
-                    {t("processes.netRates", {
-                      sent: fmtNet(proc().netSent),
-                      received: fmtNet(proc().netReceived),
-                    })}
-                  </Show>
-                </dd>
-                <dt>{t("details.threads")}</dt>
-                <dd>{fmtCount(proc().threads)}</dd>
-                <dt>{t("details.handles")}</dt>
-                <dd>{fmtCount(proc().handles)}</dd>
-              </dl>
+                  <dt>{t("details.started")}</dt>
+                  <dd>{fmtDateTime(proc().createTime)}</dd>
+                  <dt>{t("details.cpuTime")}</dt>
+                  <dd>{fmtCpuTime(proc().cpuTime)}</dd>
+                  <dt>{t("details.user")}</dt>
+                  <dd>{info()?.user ?? "—"}</dd>
+                  <dt>{t("details.integrity")}</dt>
+                  <dd>{integrityName(info()?.integrity)}</dd>
+                  <dt>{t("details.architecture")}</dt>
+                  <dd>{archName(info()?.architecture)}</dd>
+                  <dt>{t("details.priority")}</dt>
+                  <dd>{PRIORITY_LABEL[priorityOf(proc().basePriority) as PriorityClass] ?? "—"}</dd>
+                  <dt>{t("common.efficiencyMode")}</dt>
+                  <dd>{proc().efficiency ? t("common.on") : t("common.off")}</dd>
+                  <dt>{t("details.session")}</dt>
+                  <dd>{proc().sessionId}</dd>
+                </dl>
 
-              <Show when={proc().path}>
+                <div class="section-title">{t("details.section.resources")}</div>
+                <dl class="facts">
+                  <dt>{t("details.privateWs")}</dt>
+                  <dd>{fmtMem(proc().privateWs)}</dd>
+                  <dt>{t("details.workingSet")}</dt>
+                  <dd>{fmtMem(proc().workingSet)}</dd>
+                  <dt>{t("details.commit")}</dt>
+                  <dd>{fmtMem(proc().commit)}</dd>
+                  <Show when={(snapshot()?.hardware.gpus.length ?? 0) > 0}>
+                    <dt>GPU</dt>
+                    <dd>
+                      {fmtCpu(proc().gpu)}%
+                      <Show when={proc().gpuEngine}>
+                        <span class="dim">{t("details.gpuEngine", { engine: proc().gpuEngine ?? "" })}</span>
+                      </Show>
+                    </dd>
+                    <dt>{t("details.gpuDedicated")}</dt>
+                    <dd>{fmtMem(proc().gpuDedicated)}</dd>
+                    <dt>{t("details.gpuShared")}</dt>
+                    <dd>{fmtMem(proc().gpuShared)}</dd>
+                  </Show>
+                  <dt>{t("common.resource.network")}</dt>
+                  <dd>
+                    <Show
+                      when={snapshot()?.processNetwork}
+                      fallback={<span class="dim">{t("details.netNeedsAdmin")}</span>}
+                    >
+                      {t("processes.netRates", {
+                        sent: fmtNet(proc().netSent),
+                        received: fmtNet(proc().netReceived),
+                      })}
+                    </Show>
+                  </dd>
+                  <dt>{t("details.threads")}</dt>
+                  <dd>{fmtCount(proc().threads)}</dd>
+                  <dt>{t("details.handles")}</dt>
+                  <dd>{fmtCount(proc().handles)}</dd>
+                </dl>
+              </Show>
+
+              <Show when={!props.sel.isGroup && proc().path}>
                 {(path) => (
                   <>
                     <div class="section-title">{t("details.section.location")}</div>
@@ -302,7 +321,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 )}
               </Show>
 
-              <Show when={info()?.commandLine}>
+              <Show when={!props.sel.isGroup && info()?.commandLine}>
                 {(cmd) => (
                   <>
                     <div class="section-title">{t("details.section.commandLine")}</div>
@@ -311,7 +330,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 )}
               </Show>
 
-              <Show when={info() && !info()?.accessible}>
+              <Show when={!props.sel.isGroup && info() && !info()?.accessible}>
                 <div class="note">
                   <InfoIcon />
                   <span>{t("details.noAccess")}</span>
@@ -347,6 +366,117 @@ export default function DetailsPanel(props: { sel: Selection }) {
         )}
       </Show>
     </aside>
+  );
+}
+
+/** An app group: its resources added up, its processes, and where they run from. */
+function GroupFacts(props: { members: ProcessRow[] }) {
+  const sum = (pick: (p: ProcessRow) => number) => props.members.reduce((a, p) => a + pick(p), 0);
+  const earliest = () => Math.min(...props.members.map((p) => p.createTime));
+  const busiest = () => props.members.reduce((a, p) => (p.gpu > a.gpu ? p : a), props.members[0]);
+  // Busiest first; a process clicked here opens on its own.
+  const byLoad = () => [...props.members].sort((a, b) => b.cpu - a.cpu || b.privateWs - a.privateWs);
+  const paths = () => [...new Set(props.members.map((p) => p.path).filter((p): p is string => !!p))];
+  return (
+    <>
+      <div class="section-title">{t("details.section.resources")}</div>
+      <dl class="facts">
+        <dt>{t("details.privateWs")}</dt>
+        <dd>{fmtMem(sum((p) => p.privateWs))}</dd>
+        <dt>{t("details.workingSet")}</dt>
+        <dd>{fmtMem(sum((p) => p.workingSet))}</dd>
+        <dt>{t("details.commit")}</dt>
+        <dd>{fmtMem(sum((p) => p.commit))}</dd>
+        <Show when={(snapshot()?.hardware.gpus.length ?? 0) > 0}>
+          <dt>GPU</dt>
+          <dd>
+            {fmtCpu(
+              Math.min(
+                100,
+                sum((p) => p.gpu),
+              ),
+            )}
+            %
+            <Show when={busiest()?.gpu && busiest()?.gpuEngine}>
+              <span class="dim">{t("details.gpuEngine", { engine: busiest()?.gpuEngine ?? "" })}</span>
+            </Show>
+          </dd>
+          <dt>{t("details.gpuDedicated")}</dt>
+          <dd>{fmtMem(sum((p) => p.gpuDedicated))}</dd>
+          <dt>{t("details.gpuShared")}</dt>
+          <dd>{fmtMem(sum((p) => p.gpuShared))}</dd>
+        </Show>
+        <dt>{t("common.resource.network")}</dt>
+        <dd>
+          <Show
+            when={snapshot()?.processNetwork}
+            fallback={<span class="dim">{t("details.netNeedsAdmin")}</span>}
+          >
+            {t("processes.netRates", {
+              sent: fmtNet(sum((p) => p.netSent)),
+              received: fmtNet(sum((p) => p.netReceived)),
+            })}
+          </Show>
+        </dd>
+        <dt>{t("details.threads")}</dt>
+        <dd>{fmtCount(sum((p) => p.threads))}</dd>
+        <dt>{t("details.handles")}</dt>
+        <dd>{fmtCount(sum((p) => p.handles))}</dd>
+        <dt>{t("details.cpuTime")}</dt>
+        <dd>{fmtCpuTime(sum((p) => p.cpuTime))}</dd>
+        <dt>{t("details.group.earliest")}</dt>
+        <dd>{fmtDateTime(earliest())}</dd>
+      </dl>
+
+      <div class="section-title">{t("details.group.members", { count: props.members.length })}</div>
+      <div class="member-list">
+        <For each={byLoad()}>
+          {(p) => (
+            <button
+              type="button"
+              class="member"
+              title={t("details.group.open", { pid: p.pid })}
+              onClick={() => revealProcess(p.pid)}
+            >
+              <span class="member-pid">PID {p.pid}</span>
+              <span class="member-value">{fmtCpu(p.cpu)}%</span>
+              <span class="member-value">{fmtMem(p.privateWs)}</span>
+            </button>
+          )}
+        </For>
+      </div>
+
+      <Show when={paths().length > 0}>
+        <div class="section-title">{t("details.section.location")}</div>
+        <For each={paths()}>
+          {(path) => (
+            <div class="path-row">
+              <div class="code selectable">{path}</div>
+              <div class="flex flex-col gap-1">
+                <button
+                  type="button"
+                  class="btn ghost small icon"
+                  title={t("common.openFileLocation")}
+                  aria-label={t("common.openFileLocation")}
+                  onClick={() => revealInExplorer(path)}
+                >
+                  <FolderIcon size={14} />
+                </button>
+                <button
+                  type="button"
+                  class="btn ghost small icon"
+                  title={t("common.copyPath")}
+                  aria-label={t("common.copyPath")}
+                  onClick={() => copyText(path, t("actions.copyWhat.path"))}
+                >
+                  <CopyIcon size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+        </For>
+      </Show>
+    </>
   );
 }
 

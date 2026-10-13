@@ -5,9 +5,14 @@
     "title": "Process has exited",
     "hint": "Select another process in the list to see its details."
   },
-  "groupNote": {
-    "one": "This app has {count} process, using {cpu}% CPU and {memory} of memory. The earliest-started main process is shown below.",
-    "other": "This app has {count} processes, using {cpu}% CPU and {memory} of memory in total. The earliest-started main process is shown below."
+  "group": {
+    "count": {
+      "one": "{count} process",
+      "other": "{count} processes"
+    },
+    "earliest": "First started",
+    "members": "Processes ({count})",
+    "open": "Show the details of PID {pid}"
   },
   "services": "Running services ({count})",
   "section": {

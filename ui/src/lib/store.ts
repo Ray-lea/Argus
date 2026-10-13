@@ -40,6 +40,8 @@ interface ProcHistory {
   mem: number[];
 }
 const procHistory = new Map<string, ProcHistory>();
+/** The same per app (group key): totals of whichever processes ran at the time. */
+const groupHistory = new Map<string, ProcHistory>();
 const seriesHistory = new Map<string, number[]>();
 const times: number[] = [];
 const [historyTick, setHistoryTick] = createSignal(0);
@@ -70,6 +72,21 @@ export function procHistoryOf(key: string): ProcHistory | undefined {
   historyTick();
   return procHistory.get(key);
 }
+
+/** Rolling history of an app: its processes' CPU and memory added up. */
+export function groupHistoryOf(key: string): ProcHistory | undefined {
+  historyTick();
+  return groupHistory.get(key);
+}
+
+const pushSample = (h: ProcHistory, cpu: number, mem: number) => {
+  if (h.cpu.length >= KEEP) {
+    h.cpu.shift();
+    h.mem.shift();
+  }
+  h.cpu.push(cpu);
+  h.mem.push(mem);
+};
 
 const EMPTY: number[] = [];
 
@@ -162,6 +179,7 @@ export function ingest(s: Snapshot) {
     times.push(performance.now());
 
     const live = new Set<string>();
+    const apps = new Map<string, { cpu: number; mem: number }>();
     for (const p of s.processes) {
       const k = procKey(p);
       live.add(k);
@@ -171,14 +189,24 @@ export function ingest(s: Snapshot) {
         procHistory.set(k, h);
         if (!first) firstSeen.set(k, seq);
       }
-      if (h.cpu.length >= KEEP) {
-        h.cpu.shift();
-        h.mem.shift();
-      }
-      h.cpu.push(p.cpu);
-      h.mem.push(p.privateWs);
+      pushSample(h, p.cpu, p.privateWs);
+      const g = groupKey(p.name);
+      const sum = apps.get(g);
+      if (sum) {
+        sum.cpu += p.cpu;
+        sum.mem += p.privateWs;
+      } else apps.set(g, { cpu: p.cpu, mem: p.privateWs });
     }
     for (const k of procHistory.keys()) if (!live.has(k)) procHistory.delete(k);
+    for (const [g, sum] of apps) {
+      let h = groupHistory.get(g);
+      if (!h) {
+        h = { cpu: [], mem: [] };
+        groupHistory.set(g, h);
+      }
+      pushSample(h, sum.cpu, sum.mem);
+    }
+    for (const g of groupHistory.keys()) if (!apps.has(g)) groupHistory.delete(g);
     for (const [k, at] of firstSeen) if (seq - at >= FRESH_SAMPLES || !live.has(k)) firstSeen.delete(k);
     setHistoryTick(seq);
   });

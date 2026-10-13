@@ -42,7 +42,7 @@
 - 右键菜单支持一级子菜单（`MenuEntry.children`），不要再往下嵌套。
 - 设置页的滚动容器 `.settings` 是尺寸容器（`container-type`，为了窄窗口时隐藏分组列表），它会成为 `position: fixed` 后代的包含块。在设置页里打开的遮罩和对话框要用 `Portal` 挂到 `body` 上（参考许可证对话框）。
 - 历史页的曲线（`HistoryPage.tsx`）不随采样流动，只在查询结果变化或尺寸变化时重画；查询结果连同它的时间窗一起保存，刷新时不会把旧数据画到新坐标上。
-
+- 按应用分组的行（`rows.ts` 的 `groupKey`）在 `store.ts` 里有自己的合计历史（`groupHistoryOf`），详细信息面板选中分组时显示合计，不要退回组内某个进程的数据。
 - 屏幕刷新率由 `lib/motion.ts` 测量（去掉跳帧后求平均，再对齐常见标称值），只用于显示和均衡模式；流畅模式不依赖它。
 - `lib/types.ts` 与 argus-core 的 serde 类型保持同步。
 - 在浏览器里调样式用 `start.bat ui`（模拟数据 `lib/mock.ts`），真实性能只在 Tauri 发布构建里量。

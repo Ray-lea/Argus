@@ -178,6 +178,35 @@
   font-size: 12px;
 }
 
+/* An app group's processes in the details panel: PID, CPU, memory. */
+.member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.member {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 72px;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.member:hover {
+  background: var(--hover);
+}
+
+.member-value {
+  color: var(--ink-2);
+  text-align: right;
+}
+
 /* ---- File-lock dialog ------------------------------------------------------ */
 
 .dialog.wide {
