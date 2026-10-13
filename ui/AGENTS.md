@@ -42,6 +42,7 @@
 - 右键菜单支持一级子菜单（`MenuEntry.children`），不要再往下嵌套。
 - 设置页的滚动容器 `.settings` 是尺寸容器（`container-type`，为了窄窗口时隐藏分组列表），它会成为 `position: fixed` 后代的包含块。在设置页里打开的遮罩和对话框要用 `Portal` 挂到 `body` 上（参考许可证对话框）。
 - 历史页的曲线（`HistoryPage.tsx`）不随采样流动，只在查询结果变化或尺寸变化时重画；查询结果连同它的时间窗一起保存，刷新时不会把旧数据画到新坐标上。
+- 搜索框用 `components/SearchBox.tsx`：它按当前语言实测占位文字的宽度，设为最小宽度（`--fit`），工具栏收起标签时也不会截断提示。不要在外面给 `.search` 写固定的 `min-width` 或 `width` 覆盖它。`type="search"` 的原生清除按钮由 `styles.css` 隐藏：它在空输入框里也占约 13 像素，会截掉提示的最后一个字，输入时还会和自带的清除按钮同时出现。检查提示是否放得下时，把占位文字填进输入框，看 `scrollWidth` 是否超过 `clientWidth`；不要用与实现相同的 canvas 测量去验证，那样查不出输入框内部少掉的空间。
 - 按应用分组的行（`rows.ts` 的 `groupKey`）在 `store.ts` 里有自己的合计历史（`groupHistoryOf`），详细信息面板选中分组时显示合计，不要退回组内某个进程的数据。
 - 屏幕刷新率由 `lib/motion.ts` 测量（去掉跳帧后求平均，再对齐常见标称值），只用于显示和均衡模式；流畅模式不依赖它。
 - `lib/types.ts` 与 argus-core 的 serde 类型保持同步。

@@ -366,7 +366,3 @@
   flex: none;
   white-space: nowrap;
 }
-
-.toolbar .search {
-  min-width: 150px;
-}

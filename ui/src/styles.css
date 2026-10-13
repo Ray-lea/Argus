@@ -399,9 +399,11 @@ button {
   color: var(--ink-3);
 }
 
+/* --fit (SearchBox.tsx): the placeholder's width, the least the box may shrink to. */
 .search {
   position: relative;
   flex: 0 1 360px;
+  min-width: var(--fit, 200px);
 }
 
 .search > svg {
@@ -415,7 +417,7 @@ button {
 .search input {
   width: 100%;
   height: 32px;
-  padding: 0 34px 0 34px;
+  padding: 0 12px 0 34px;
   border: 1px solid var(--stroke);
   border-bottom-color: var(--stroke-strong);
   border-radius: 4px;
@@ -429,6 +431,12 @@ button {
   color: var(--ink-3);
 }
 
+/* The box has its own clear button. The native one would be a second cross
+   while typing, and even hidden it takes room from the placeholder. */
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+
 .search input:hover {
   background: var(--control-hover);
 }
@@ -436,6 +444,11 @@ button {
 .search input:focus {
   border-bottom: 2px solid var(--accent);
   background: var(--layer-strong);
+}
+
+/* Room for the clear button only while there is something to clear. */
+.search.filled input {
+  padding-right: 34px;
 }
 
 .search .clear {
