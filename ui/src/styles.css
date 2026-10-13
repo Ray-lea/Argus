@@ -732,12 +732,14 @@ button {
 }
 
 /* Levels 3 and 4 use two rows. At 3 the page's controls take the second row,
-   reaching under the caption buttons to the window edge; at 4 the end
-   controls join them, after a break that has no height (the rows' spacing is
-   then a margin rather than a row gap, which would count twice). */
+   reaching under the caption buttons to the window edge, so the rows are as
+   far apart as the toolbar's padding: the second starts where the caption
+   buttons end. At 4 the end controls join them, after a break that has no
+   height (the rows' spacing is then a margin rather than a row gap, which
+   would count twice), and the second row keeps clear of the caption buttons. */
 .toolbar:is([data-compact="3"], [data-compact="4"]) {
   flex-wrap: wrap;
-  row-gap: 8px;
+  row-gap: 10px;
 }
 
 .toolbar:is([data-compact="3"], [data-compact="4"]) > .toolbar-sep {

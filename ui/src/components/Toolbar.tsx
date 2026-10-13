@@ -76,6 +76,11 @@ function fitToolbar(bar: HTMLElement) {
     if (next) bar.dataset.compact = String(next);
     else delete bar.dataset.compact;
   };
+  // Widths are compared as laid out, fractions included: at most scales the
+  // toolbar is a fraction of a pixel wider than clientWidth says, and a
+  // toolbar that fitted then looked a pixel short and wrapped. Half a pixel
+  // either way is slack nobody can see.
+  const width = () => bar.getBoundingClientRect().width;
   // Level 3 wraps instead of overflowing: it no longer fits once the end
   // controls fall off the tabs' row. They need the tabs, a gap, themselves and
   // the padding that keeps clear of the caption buttons.
@@ -92,10 +97,22 @@ function fitToolbar(bar: HTMLElement) {
       Number.parseFloat(style.paddingRight)
     );
   };
+  // Below level 3 everything is on one row: it fits when the end controls stop
+  // short of the padding kept for the caption buttons. (scrollWidth would miss
+  // controls that run into that padding, under the caption buttons: they only
+  // count as overflow once they pass the toolbar's edge.)
+  const rowWidth = () => {
+    const end = bar.querySelector<HTMLElement>(".toolbar-end");
+    if (!end) return 0;
+    const box = bar.getBoundingClientRect();
+    const wanted =
+      end.getBoundingClientRect().right - box.left + Number.parseFloat(getComputedStyle(bar).paddingRight);
+    return wanted > box.width + 0.5 ? wanted : 0;
+  };
   const fit = () => {
-    while (level > 0 && bar.clientWidth >= need[level - 1]) set(level - 1);
+    while (level > 0 && width() + 0.5 >= need[level - 1]) set(level - 1);
     for (;;) {
-      const wanted = level === 3 ? endRowWidth() : bar.scrollWidth > bar.clientWidth ? bar.scrollWidth : 0;
+      const wanted = level === 3 ? endRowWidth() : rowWidth();
       if (level >= COMPACT_LEVELS || wanted === 0) break;
       need[level] = wanted;
       set(level + 1);
@@ -117,7 +134,9 @@ export default function Toolbar() {
   let bar!: HTMLDivElement;
   onMount(() => {
     const fitter = fitToolbar(bar);
-    createEffect(on([page, locale, appInfo], () => fitter.refit()));
+    // After every effect of the change has run: the search box sets its width
+    // in one of its own.
+    createEffect(on([page, locale, appInfo], () => queueMicrotask(fitter.refit)));
     onCleanup(fitter.dispose);
   });
   const changeInterval = (ms: number) => {
