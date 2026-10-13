@@ -579,6 +579,8 @@ export const privilegedService = {
     error: null,
   }),
   manage: async (action: import("./types").PrivilegedServiceAction) => {
+    // Stands in for the administrator prompt and the service starting.
+    await new Promise((done) => setTimeout(done, 1500));
     serviceInstalled = action !== "uninstall";
     return privilegedService.status();
   },

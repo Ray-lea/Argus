@@ -1590,6 +1590,17 @@ html.still *::after {
   font-size: 12px;
 }
 
+.onboarding-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboarding-state svg {
+  flex: none;
+  color: var(--accent);
+}
+
 .onboarding-select {
   display: flex;
   align-items: center;

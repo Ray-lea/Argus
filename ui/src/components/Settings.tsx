@@ -36,6 +36,7 @@ import type {
   HistoryUsage,
   PriorityClass,
   PrivilegedServiceAction,
+  PrivilegedServiceStatus,
   ProcessRow,
   ProcessRule,
   RuleStats,
@@ -170,11 +171,27 @@ const PRIORITY_CHOICES: PriorityClass[] = [
 ];
 
 const [privilegeRevision, setPrivilegeRevision] = createSignal(0);
+/** Bumped when the onboarding, which can install the service, closes. */
+const [serviceRevision, setServiceRevision] = createSignal(0);
+
+/** The privileged service's state in a few words (also used by the onboarding). */
+export function serviceState(s: PrivilegedServiceStatus | null | undefined): string {
+  if (!s) return t("settings.privilege.state.unknown");
+  if (s.state === "notInstalled") return t("settings.privilege.state.notInstalled");
+  if (s.state === "running")
+    return s.authorized && !s.error
+      ? t("settings.privilege.state.connected", { version: s.version ?? "" })
+      : t("settings.privilege.state.unreachable");
+  if (s.state === "stopped") return t("settings.privilege.state.stopped");
+  if (s.state === "startPending") return t("settings.privilege.state.startPending");
+  if (s.state === "stopPending") return t("settings.privilege.state.stopPending");
+  return t("settings.privilege.state.unavailable");
+}
 
 function PrivilegedServiceSettings() {
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
-  const [status, { refetch, mutate }] = createResource(async () => {
+  const [status, { refetch, mutate }] = createResource(serviceRevision, async () => {
     try {
       const value = await api.privilegedServiceStatus();
       setError(null);
@@ -218,17 +235,7 @@ function PrivilegedServiceSettings() {
   const label = () => {
     if (busy()) return t("settings.privilege.state.busy");
     if (status.loading) return t("settings.privilege.state.checking");
-    const s = status();
-    if (!s) return t("settings.privilege.state.unknown");
-    if (s.state === "notInstalled") return t("settings.privilege.state.notInstalled");
-    if (s.state === "running")
-      return s.authorized && !s.error
-        ? t("settings.privilege.state.connected", { version: s.version ?? "" })
-        : t("settings.privilege.state.unreachable");
-    if (s.state === "stopped") return t("settings.privilege.state.stopped");
-    if (s.state === "startPending") return t("settings.privilege.state.startPending");
-    if (s.state === "stopPending") return t("settings.privilege.state.stopPending");
-    return t("settings.privilege.state.unavailable");
+    return serviceState(status());
   };
   // Updating Argus does not update the service, which needs administrator rights.
   const outdated = () => {
@@ -938,8 +945,16 @@ function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => v
 
 export default function SettingsPage() {
   const [settings, { mutate, refetch }] = createResource(() => api.settings());
-  // The onboarding (opened from the about section) changes settings too.
-  createEffect(on(onboardingOpen, (open, wasOpen) => wasOpen && !open && void refetch()));
+  // The onboarding (opened from the about section) changes settings and may
+  // install the service.
+  createEffect(
+    on(onboardingOpen, (open, wasOpen) => {
+      if (!wasOpen || open) return;
+      void refetch();
+      setServiceRevision((value) => value + 1);
+      setPrivilegeRevision((value) => value + 1);
+    }),
+  );
   const [hotkeyError, setHotkeyError] = createSignal<string | null>(null);
   const [recording, setRecording] = createSignal(false);
   let stopRecording: (() => void) | null = null;

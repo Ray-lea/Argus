@@ -46,9 +46,9 @@
       "control": "Control Windows services and close network connections"
     },
     "risk": "The permission belongs to the current Windows account: any program running under it can use these functions, which amounts to partial administrator rights. Only install it on an account you use yourself.",
-    "later": "Installing requires administrator permission. The service can be installed or uninstalled anytime in Settings → Permissions.",
-    "open": "Open Settings",
-    "installed": "The privileged service is installed and connected.",
+    "later": "Installing requires administrator permission. It can also be skipped and installed or uninstalled later in Settings → Permissions.",
+    "replace": "To open Argus with Ctrl+Shift+Esc, replace the system Task Manager in Settings → Permissions.",
+    "manage": "See the details, update or reinstall it in Settings → Permissions.",
     "elevated": "Argus is running as administrator, so these actions don't need the privileged service."
   },
   "tips": {

@@ -1,6 +1,7 @@
 // First-run onboarding: the settings that matter on day one (language, tray,
 // updates, the privileged service) and a few tips. Every step can be skipped;
-// whatever is changed here is saved at once, like on the settings page.
+// whatever is changed here is saved at once, like on the settings page, and
+// nothing sends the user elsewhere before the end.
 
 import {
   createEffect,
@@ -20,12 +21,12 @@ import { shortcutKeys } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
 import { EASE_OUT, play, presence } from "../lib/motion";
 import { appInfo } from "../lib/store";
-import type { SettingsView, UpdateChannel, UpdateRoute } from "../lib/types";
+import type { PrivilegedServiceStatus, SettingsView, UpdateChannel, UpdateRoute } from "../lib/types";
 import { toast } from "../lib/ui";
 import { updateStatus } from "../lib/updates";
 import Indicator from "./Indicator";
-import { GlobeIcon, ShieldIcon, SparkleIcon, TrayIcon, UpdateIcon, WarningIcon } from "./icons";
-import { openSettings } from "./Settings";
+import { CheckIcon, GlobeIcon, ShieldIcon, SparkleIcon, TrayIcon, UpdateIcon, WarningIcon } from "./icons";
+import { serviceState } from "./Settings";
 
 /**
  * The onboarding a start shows if the settings record an older one. Raise it
@@ -106,6 +107,26 @@ function OnboardingDialog(props: { leaving: boolean }) {
     }
   };
 
+  // The service is installed right here; the state survives paging back and forth.
+  const [service, { refetch: refetchService, mutate: mutateService }] = createResource(() =>
+    api.privilegedServiceStatus().catch(() => null),
+  );
+  const [serviceBusy, setServiceBusy] = createSignal(false);
+  const [serviceError, setServiceError] = createSignal<string | null>(null);
+  const manageService = async (action: "install" | "start") => {
+    if (serviceBusy()) return;
+    setServiceBusy(true);
+    setServiceError(null);
+    try {
+      mutateService(await api.managePrivilegedService(action));
+    } catch (e) {
+      setServiceError(String(e));
+      void refetchService();
+    } finally {
+      setServiceBusy(false);
+    }
+  };
+
   return (
     <div class="scrim onboarding-scrim" classList={{ leaving: props.leaving }}>
       <div class="dialog onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
@@ -121,7 +142,13 @@ function OnboardingDialog(props: { leaving: boolean }) {
               <Updates settings={settings()} save={save} />
             </Match>
             <Match when={step() === "privilege"}>
-              <Privilege onOpenSettings={close} />
+              <Privilege
+                status={service()}
+                checking={service.loading}
+                busy={serviceBusy()}
+                error={serviceError()}
+                onManage={(action) => void manageService(action)}
+              />
             </Match>
             <Match when={step() === "tips"}>
               <Tips />
@@ -378,12 +405,28 @@ function Updates(props: {
 
 const FEATURES = ["end", "tune", "inspect", "control"] as const;
 
-function Privilege(props: { onOpenSettings: () => void }) {
-  const [status] = createResource(() => api.privilegedServiceStatus().catch(() => null));
-  const connected = () => status()?.state === "running" && status()?.authorized;
-  const openPermissions = () => {
-    props.onOpenSettings();
-    openSettings("privilege");
+function Privilege(props: {
+  status: PrivilegedServiceStatus | null | undefined;
+  checking: boolean;
+  busy: boolean;
+  error: string | null;
+  onManage: (action: "install" | "start") => void;
+}) {
+  const connected = () => props.status?.state === "running" && props.status.authorized && !props.status.error;
+  // What can be done from here: install, or start a stopped service of this account.
+  const action = (): "install" | "start" | null => {
+    if (props.status?.state === "notInstalled") return "install";
+    if (props.status?.state === "stopped" && props.status.authorized) return "start";
+    return null;
+  };
+  const state = () => {
+    if (props.busy) return t("settings.privilege.state.busy");
+    if (props.checking) return t("settings.privilege.state.checking");
+    return serviceState(props.status);
+  };
+  const hint = () => {
+    if (connected()) return t("onboarding.privilege.replace");
+    return action() || props.busy ? t("onboarding.privilege.later") : t("onboarding.privilege.manage");
   };
   return (
     <>
@@ -399,23 +442,45 @@ function Privilege(props: { onOpenSettings: () => void }) {
         <WarningIcon size={14} />
         {t("onboarding.privilege.risk")}
       </p>
-      <Switch
-        fallback={
-          <div class="onboarding-row">
-            <div class="onboarding-row-text onboarding-hint">{t("onboarding.privilege.later")}</div>
-            <button type="button" class="btn" onClick={openPermissions}>
-              {t("onboarding.privilege.open")}
-            </button>
-          </div>
-        }
+      <Show
+        when={!appInfo()?.elevated}
+        fallback={<p class="onboarding-note">{t("onboarding.privilege.elevated")}</p>}
       >
-        <Match when={appInfo()?.elevated}>
-          <p class="onboarding-note">{t("onboarding.privilege.elevated")}</p>
-        </Match>
-        <Match when={connected()}>
-          <p class="onboarding-note">{t("onboarding.privilege.installed")}</p>
-        </Match>
-      </Switch>
+        <div class="onboarding-row">
+          <div class="onboarding-row-text">
+            <div class="onboarding-state" aria-live="polite">
+              <Show when={props.busy}>
+                <span class="spinner" />
+              </Show>
+              <Show when={connected() && !props.busy}>
+                <CheckIcon size={14} />
+              </Show>
+              {state()}
+            </div>
+            <div class="onboarding-hint">{hint()}</div>
+          </div>
+          <Show when={action()}>
+            {(a) => (
+              <button
+                type="button"
+                class="btn"
+                disabled={props.busy || props.checking}
+                onClick={() => props.onManage(a())}
+              >
+                {a() === "install" ? t("settings.privilege.install.action") : t("settings.privilege.start")}
+              </button>
+            )}
+          </Show>
+        </div>
+        <Show when={props.error}>
+          {(error) => (
+            <p class="onboarding-note warning">
+              <WarningIcon size={14} />
+              {error()}
+            </p>
+          )}
+        </Show>
+      </Show>
     </>
   );
 }
