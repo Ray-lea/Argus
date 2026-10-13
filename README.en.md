@@ -46,7 +46,7 @@ Argus reads Windows' native interfaces directly from Rust, with an interface bui
 | 🕘 | **History** | Resource charts for the last 7 days; click any moment to see the busiest processes at that time. |
 | 📌 | **System tray** | Show or hide the window with the global shortcut Ctrl+Alt+Esc; it uses very little while hidden. |
 | 🔄 | **In-app updates** | Stable and beta channels, with optional GitHub proxies; only updates that pass signature verification are installed. |
-| 🎨 | **Native look** | Mica background and the system accent color; dark and light themes follow Windows. |
+| 🎨 | **Native look** | Mica background and the system accent color; dark and light themes follow Windows by default or can be chosen in Settings. |
 | 🌍 | **Languages** | English and Simplified Chinese, following the Windows display language by default; a welcome guide sets up the essentials on first start. |
 | 👤 | **No administrator rights needed** | See the path and resource usage of every process as a standard user. |
 | 🛡️ | **Optional privileged service** | After a single administrator approval, Argus running as a standard user can also manage system processes, apply rules automatically, measure per-process network traffic, control services and close connections; it can be uninstalled in Settings. |

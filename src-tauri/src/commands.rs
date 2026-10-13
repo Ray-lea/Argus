@@ -19,7 +19,7 @@ use tauri::ipc::Channel;
 use tauri::{Manager, State};
 
 use crate::sampler::Control;
-use crate::settings::{Language, SettingsStore, SettingsView, UpdateChannel, UpdateRoute};
+use crate::settings::{Language, SettingsStore, SettingsView, Theme, UpdateChannel, UpdateRoute};
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
 
@@ -252,6 +252,15 @@ pub fn set_language(app: tauri::AppHandle, language: Language) -> Result<Setting
         .map_err(|e| e.to_string())?;
     argus_core::i18n::set_locale(language.resolve());
     shell::apply_language(&app);
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
+pub fn set_theme(app: tauri::AppHandle, theme: Theme) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.theme = theme)
+        .map_err(|e| e.to_string())?;
+    shell::apply_theme(&app, theme);
     Ok(settings_view(&app))
 }
 

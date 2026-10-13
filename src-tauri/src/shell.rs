@@ -23,7 +23,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::Interface;
 
-use crate::settings::SettingsStore;
+use crate::settings::{SettingsStore, Theme};
 
 pub const TRAY_ID: &str = "argus";
 
@@ -244,6 +244,19 @@ pub fn apply_language<R: Runtime>(app: &AppHandle<R>) {
         let hotkey = store.get().hotkey;
         let err = apply_hotkey(app, Some(&hotkey), &hotkey).err();
         *store.hotkey_error.lock().unwrap() = err;
+    }
+}
+
+/// Sets the main window's color theme. Tauri passes the window's theme on to
+/// WebView2's preferred color scheme, so the page's `prefers-color-scheme`,
+/// the title bar and Mica all follow.
+pub fn apply_theme<R: Runtime>(app: &AppHandle<R>, theme: Theme) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_theme(match theme {
+            Theme::System => None,
+            Theme::Light => Some(tauri::Theme::Light),
+            Theme::Dark => Some(tauri::Theme::Dark),
+        });
     }
 }
 

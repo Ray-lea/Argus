@@ -1,7 +1,7 @@
 {
   "nav": "设置分组",
   "sections": {
-    "language": "语言",
+    "language": "语言与外观",
     "startup": "启动与后台",
     "hotkey": "快捷键",
     "privilege": "权限",
@@ -20,6 +20,14 @@
     "title": "界面语言",
     "desc": "立即生效，托盘菜单与提示信息也随之切换。“跟随系统”使用 Windows 的显示语言。",
     "error": "无法切换语言：{error}"
+  },
+  "theme": {
+    "title": "主题",
+    "desc": "“跟随系统”使用 Windows 的应用模式，系统切换浅色或深色时随之切换。",
+    "system": "跟随系统",
+    "light": "浅色",
+    "dark": "深色",
+    "error": "无法切换主题：{error}"
   },
   "startup": {
     "autostart": {

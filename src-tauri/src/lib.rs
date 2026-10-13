@@ -226,6 +226,7 @@ pub fn run() {
                     .sampler
                     .send(Control::SetHiddenProbe(Box::new(probe)));
                 window.set_title(&shell::app_title())?;
+                shell::apply_theme(app.handle(), app.state::<SettingsStore>().get().theme);
                 shell::extend_backdrop(&window);
                 shell::guard_resize_seam(&window);
                 if !start_hidden {
@@ -276,6 +277,7 @@ pub fn run() {
             commands::reveal_in_explorer,
             commands::get_settings,
             commands::set_language,
+            commands::set_theme,
             commands::complete_onboarding,
             commands::privileged_service_status,
             commands::manage_privileged_service,

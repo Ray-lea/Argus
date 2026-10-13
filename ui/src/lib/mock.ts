@@ -468,6 +468,7 @@ const mockSettings: SettingsView = {
   language,
   onboarding: query.has("onboarding") ? 0 : 1,
   locale: resolve(language),
+  theme: "system",
   closeToTray: true,
   hotkey: "Ctrl+Alt+Escape",
   rules: [],

@@ -1,7 +1,7 @@
 {
   "nav": "Settings sections",
   "sections": {
-    "language": "Language",
+    "language": "Language and appearance",
     "startup": "Startup and tray",
     "hotkey": "Keyboard shortcut",
     "privilege": "Permissions",
@@ -20,6 +20,14 @@
     "title": "Display language",
     "desc": "Takes effect at once, including the tray menu and messages. “Same as Windows” follows the Windows display language.",
     "error": "Couldn't change the language: {error}"
+  },
+  "theme": {
+    "title": "Theme",
+    "desc": "“Same as Windows” follows the Windows app mode and changes with it.",
+    "system": "Same as Windows",
+    "light": "Light",
+    "dark": "Dark",
+    "error": "Couldn't change the theme: {error}"
   },
   "startup": {
     "autostart": {

@@ -269,8 +269,12 @@ export type UpdateChannel = "stable" | "beta";
 /** `auto`: GitHub first, then the proxies; `proxy`: only the chosen proxy. */
 export type UpdateRoute = "auto" | "direct" | "proxy";
 
+/** `system` follows the Windows app mode. */
+export type Theme = "system" | "light" | "dark";
+
 export interface SettingsView {
   language: Language;
+  theme: Theme;
   /** The onboarding version last completed or skipped; 0 before the first. */
   onboarding: number;
   closeToTray: boolean;

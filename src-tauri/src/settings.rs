@@ -1,5 +1,5 @@
 //! User settings that the native side needs before the UI loads (language,
-//! hotkey, close behavior, autostart, process rules, history recording,
+//! theme, hotkey, close behavior, autostart, process rules, history recording,
 //! updates, onboarding), persisted as JSON in the app config dir.
 
 use std::path::PathBuf;
@@ -45,6 +45,38 @@ impl From<Language> for String {
     }
 }
 
+/// The color theme: light, dark, or the Windows app mode. Stored as its name;
+/// one this version does not know reads as `System`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl From<String> for Theme {
+    fn from(name: String) -> Self {
+        match name.as_str() {
+            "light" => Theme::Light,
+            "dark" => Theme::Dark,
+            _ => Theme::System,
+        }
+    }
+}
+
+impl From<Theme> for String {
+    fn from(theme: Theme) -> Self {
+        match theme {
+            Theme::System => "system",
+            Theme::Light => "light",
+            Theme::Dark => "dark",
+        }
+        .into()
+    }
+}
+
 /// Which releases count as updates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +103,7 @@ pub enum UpdateRoute {
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub language: Language,
+    pub theme: Theme,
     /// The onboarding version last completed or skipped; 0 before the first.
     /// The UI owns the numbering (`ONBOARDING_VERSION` in Onboarding.tsx).
     pub onboarding: u32,
@@ -94,6 +127,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             language: Language::default(),
+            theme: Theme::default(),
             onboarding: 0,
             close_to_tray: true,
             hotkey: DEFAULT_HOTKEY.into(),

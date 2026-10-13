@@ -9,7 +9,7 @@
 | `lib.rs` | 启动流程：注册插件（单实例、日志、全局快捷键、开机启动、对话框、更新）、托盘、采样线程与主窗口；历史记录写在 `%LOCALAPPDATA%\<标识>\history`，启动时删掉过期的天（关闭记录时也会过期）；处理关闭窗口（留在托盘或退出）；退出时停止每进程网络的 ETW 会话（会话名开发版与正式版不同） |
 | `sampler.rs` | 采样线程：采集器在这个线程里创建（初始化与 WebView 启动并行）；窗口可见时按设定节拍采样，隐藏、最小化或暂停刷新时每 5 秒一次（暂停时不推送给界面，操作后的立即刷新除外）；合入已完成的服务网络计数，把进程身份交给后台规则线程，再写入历史（关闭记录时停掉录制；清除历史也由这个线程执行）；经 Tauri Channel 推送快照，全程不等待服务 RPC |
 | `shell.rs` | 常驻：窗口显隐（隐藏时通知 WebView2 停止渲染、释放内存）、托盘、全局快捷键；切换语言后重建托盘菜单、窗口标题和快捷键错误信息；窗口背景（Mica 延伸到客户区）；调整大小时的斜线防护，见[窗口外观](../design/window.md) |
-| `settings.rs` | 界面加载前原生侧就要用到的设置（语言、快捷键、关闭行为、开机启动、规则、是否记录历史、更新通道与线路、已完成的首次启动引导版本），以 JSON 存在 `%APPDATA%\dev.argus.taskmanager\settings.json`；语言保存为标签（`system`、`zh-CN`、`en-US`），无法识别的值按 `system` 处理 |
+| `settings.rs` | 界面加载前原生侧就要用到的设置（语言、主题、快捷键、关闭行为、开机启动、规则、是否记录历史、更新通道与线路、已完成的首次启动引导版本），以 JSON 存在 `%APPDATA%\dev.argus.taskmanager\settings.json`；语言保存为标签（`system`、`zh-CN`、`en-US`），主题保存为 `system`、`light` 或 `dark`，无法识别的值都按 `system` 处理；主题通过 `set_theme` 设到主窗口，Tauri 再把它传给 WebView2 的首选配色，页面的 `prefers-color-scheme` 随之变化 |
 | `updater.rs` | 应用内更新：后台线程在启动 1 分钟后、之后每天检查一次；按通道读取最新稳定版 Release 上的 `latest.json` 或 `beta.json`，按线路直连 GitHub 或在地址前加代理前缀，失败时换下一个来源；发现新版本立即下载（插件校验签名和签名中的版本号），由用户触发安装；状态通过 `update-status` 事件推给界面，可安装时托盘菜单增加“重启并更新” |
 | `commands.rs` | IPC 命令；标准权限下将手动进程操作、服务控制和断开连接交给已授权且运行中的特权服务，未安装、未授权或停止时按本地权限执行；服务已接受请求后出错不自动重试；`argus://` 协议提供进程图标 |
 
@@ -19,7 +19,7 @@
 |---|---|
 | 应用与快照 | `app_info`（含解析后的界面语言）、`subscribe`、`set_interval`、`set_paused`、`refresh` |
 | 进程 | `process_details`、`kill_process`、`kill_process_tree`、`set_priority`、`set_efficiency_mode`、`reveal_in_explorer` |
-| 设置与窗口 | `get_settings`、`set_language`、`complete_onboarding`、`set_close_to_tray`、`set_hotkey`、`set_autostart`、`open_log_dir`、`quit` |
+| 设置与窗口 | `get_settings`、`set_language`、`set_theme`、`complete_onboarding`、`set_close_to_tray`、`set_hotkey`、`set_autostart`、`open_log_dir`、`quit` |
 | 特权服务 | `privileged_service_status`、`manage_privileged_service`（`install` / `start` / `update` / `uninstall`，显式操作才请求管理员授权） |
 | 更新 | `update_status`、`check_update`（在后台检查并下载，立即返回）、`install_update`（启动安装程序后 Argus 退出）、`set_update_settings`、`open_release_page`（免安装版） |
 | 规则 | `set_rules`、`rule_stats` |

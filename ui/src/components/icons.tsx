@@ -337,3 +337,10 @@ export const GlobeIcon = (p: IconProps) => (
     <path d="M8 2.5c1.5 1.6 2.25 3.4 2.25 5.5S9.5 11.9 8 13.5C6.5 11.9 5.75 10.1 5.75 8S6.5 4.1 8 2.5Z" />
   </Svg>
 );
+
+export const ThemeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="8" cy="8" r="5.5" />
+    <path d="M8 2.5a5.5 5.5 0 0 1 0 11Z" fill="currentColor" />
+  </Svg>
+);

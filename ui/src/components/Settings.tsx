@@ -41,6 +41,7 @@ import type {
   ProcessRule,
   RuleStats,
   SettingsView,
+  Theme,
   UpdateChannel,
   UpdateRoute,
 } from "../lib/types";
@@ -61,6 +62,7 @@ import {
   ShieldIcon,
   SparkleIcon,
   StorageIcon,
+  ThemeIcon,
   TimerIcon,
   TransferIcon,
   TrashIcon,
@@ -93,6 +95,7 @@ export function openSettings(section: SectionId) {
 }
 
 const INTERVALS = [500, 1000, 2000, 5000];
+const THEMES: Theme[] = ["system", "light", "dark"];
 const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta"]);
 
 /** Builds an accelerator the native hotkey parser accepts, e.g. `Ctrl+Alt+KeyK`. */
@@ -1112,6 +1115,26 @@ export default function SettingsPage() {
                       <option value="system">{t("common.languageSystem")}</option>
                       <For each={LOCALES}>{(l) => <option value={l.locale}>{l.name}</option>}</For>
                     </select>
+                  </Setting>
+                  <Setting
+                    icon={<ThemeIcon size={20} />}
+                    title={t("settings.theme.title")}
+                    desc={t("settings.theme.desc")}
+                  >
+                    <div class="segmented" role="group" aria-label={t("settings.theme.title")}>
+                      <Indicator selector="[aria-pressed='true']" track={() => s().theme} class="seg-thumb" />
+                      <For each={THEMES}>
+                        {(theme) => (
+                          <button
+                            type="button"
+                            aria-pressed={s().theme === theme}
+                            onClick={() => apply(api.setTheme(theme), "settings.theme.error")}
+                          >
+                            {t(`settings.theme.${theme}`)}
+                          </button>
+                        )}
+                      </For>
+                    </div>
                   </Setting>
                 </section>
 
