@@ -18,7 +18,7 @@
 [![SolidJS](https://img.shields.io/badge/SolidJS-1.9-2C4F7C?logo=solid&logoColor=white)](https://www.solidjs.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-[Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation)
+[Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community)
 
 </div>
 
@@ -105,6 +105,12 @@ The documentation is in Chinese.
 | [Roadmap](docs/roadmap.md) | Done and planned features |
 | [Known issues](docs/known-issues.md) | Limitations of the current version |
 | [Changelog](CHANGELOG.md) | Changes in each version |
+
+## 💬 Community
+
+[![QQ group 453803497](https://img.shields.io/badge/QQ%20group-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+
+Join the QQ group **453803497** (Chinese-speaking) to report problems, suggest features or talk with other users: click the badge above or [this link](https://qm.qq.com/q/97YqJAQRNK) to open the invitation. In Argus, Settings → About has a “Join QQ group” button as well.
 
 ## 🤝 Contributing
 

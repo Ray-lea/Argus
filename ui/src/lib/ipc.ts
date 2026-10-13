@@ -119,6 +119,8 @@ export const api = {
   openReleasePage: (version: string): Promise<void> =>
     mock ? Promise.resolve() : invoke("open_release_page", { version }),
   openLogDir: (): Promise<void> => (mock ? Promise.resolve() : invoke("open_log_dir")),
+  /** The QQ group's invitation, in the default browser. */
+  openCommunity: (): Promise<void> => (mock ? Promise.resolve() : invoke("open_community")),
 
   services: (): Promise<ServiceInfo[]> => (mock ? mock.m3.services() : invoke("list_services")),
   controlService: (name: string, action: "start" | "stop" | "restart"): Promise<void> =>

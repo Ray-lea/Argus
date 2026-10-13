@@ -338,6 +338,13 @@ export const GlobeIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Talking with others: the feedback group. */
+export const ChatIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 3h8a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 12 11H7.5l-3 2.5V11H4a1.5 1.5 0 0 1-1.5-1.5v-5A1.5 1.5 0 0 1 4 3Z" />
+  </Svg>
+);
+
 export const ThemeIcon = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="8" cy="8" r="5.5" />

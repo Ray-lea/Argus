@@ -264,6 +264,13 @@
       "desc": "Go through the essential settings and tips again.",
       "open": "Open guide"
     },
+    "community": {
+      "title": "Feedback and community",
+      "desc": "Join the QQ group {group} to report problems, suggest features or talk with other users (in Chinese).",
+      "join": "Join QQ group",
+      "copy": "Copy group number",
+      "number": "group number"
+    },
     "license": {
       "title": "License",
       "desc": "Argus is free software, released under the GNU Affero General Public License, version 3 or any later version (AGPL-3.0-or-later). It can be redistributed and modified under the terms of that license. Argus comes with no warranty.",

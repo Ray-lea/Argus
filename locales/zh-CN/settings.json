@@ -255,6 +255,13 @@
       "desc": "重新查看常用设置与使用提示。",
       "open": "打开引导"
     },
+    "community": {
+      "title": "交流与反馈",
+      "desc": "加入 QQ 群 {group}，反馈问题、提出建议或交流使用心得。",
+      "join": "加入 QQ 群",
+      "copy": "复制群号",
+      "number": "群号"
+    },
     "license": {
       "title": "许可证",
       "desc": "Argus 是自由软件，依据 GNU Affero General Public License 第 3 版或任何更高版本（AGPL-3.0-or-later）发布，可按该许可证的条款再分发和修改。Argus 不提供任何担保。",

@@ -15,7 +15,7 @@ import {
   Show,
 } from "solid-js";
 import { Portal } from "solid-js/web";
-import { PRIORITY_LABEL } from "../lib/actions";
+import { copyText, PRIORITY_LABEL } from "../lib/actions";
 import { fmtCache, netUnit, setNetUnit } from "../lib/format";
 import { type Language, LOCALES, localized, type MessageKey, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
@@ -60,6 +60,7 @@ import { updatePending, updateStatus } from "../lib/updates";
 import Indicator from "./Indicator";
 import {
   BoltIcon,
+  ChatIcon,
   DismissIcon,
   DocumentIcon,
   ExternalIcon,
@@ -108,6 +109,8 @@ export function openSettings(section: SectionId) {
   setPage("settings");
 }
 
+/** The feedback group (Settings > About; the invitation link is in commands.rs). */
+const QQ_GROUP = "453803497";
 const THEMES: Theme[] = ["system", "light", "dark"];
 const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta"]);
 
@@ -1392,6 +1395,22 @@ export default function SettingsPage() {
                   >
                     <button type="button" class="btn" onClick={openOnboarding}>
                       {t("settings.about.onboarding.open")}
+                    </button>
+                  </Setting>
+                  <Setting
+                    icon={<ChatIcon size={20} />}
+                    title={t("settings.about.community.title")}
+                    desc={t("settings.about.community.desc", { group: QQ_GROUP })}
+                  >
+                    <button
+                      type="button"
+                      class="btn"
+                      onClick={() => void copyText(QQ_GROUP, t("settings.about.community.number"))}
+                    >
+                      {t("settings.about.community.copy")}
+                    </button>
+                    <button type="button" class="btn accent" onClick={() => void api.openCommunity()}>
+                      {t("settings.about.community.join")}
                     </button>
                   </Setting>
                   <Setting

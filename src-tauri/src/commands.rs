@@ -453,6 +453,19 @@ pub fn open_release_page(version: String) -> Result<(), String> {
     updater::open_release_page(&version)
 }
 
+/// The invitation to the QQ group for feedback and discussion.
+const COMMUNITY_URL: &str = "https://qm.qq.com/q/97YqJAQRNK";
+
+/// Opens the group invitation in the default browser, which hands it to QQ.
+#[tauri::command]
+pub fn open_community() -> Result<(), String> {
+    std::process::Command::new("explorer.exe")
+        .arg(COMMUNITY_URL)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// Opens the folder with `argus.log`, for attaching to bug reports.
 #[tauri::command]
 pub fn open_log_dir(app: tauri::AppHandle) -> Result<(), String> {

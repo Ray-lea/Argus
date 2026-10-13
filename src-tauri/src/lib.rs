@@ -322,6 +322,7 @@ pub fn run() {
             commands::set_update_settings,
             commands::open_release_page,
             commands::open_log_dir,
+            commands::open_community,
             commands::list_services,
             commands::control_service,
             commands::set_service_start_type,

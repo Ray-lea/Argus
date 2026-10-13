@@ -18,7 +18,7 @@
 [![SolidJS](https://img.shields.io/badge/SolidJS-1.9-2C4F7C?logo=solid&logoColor=white)](https://www.solidjs.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-[特性](#-特性) · [下载](#-下载) · [从源码构建](#-从源码构建) · [快捷键](#-快捷键) · [文档](#-文档)
+[特性](#-特性) · [下载](#-下载) · [从源码构建](#-从源码构建) · [快捷键](#-快捷键) · [文档](#-文档) · [交流与反馈](#-交流与反馈)
 
 </div>
 
@@ -103,6 +103,12 @@ start.bat build     # 发布构建，生成 target\release\argus.exe
 | [路线图](docs/roadmap.md) | 已完成与计划中的功能 |
 | [已知问题](docs/known-issues.md) | 当前版本的限制 |
 | [更新日志](CHANGELOG.md) | 各版本的变更 |
+
+## 💬 交流与反馈
+
+[![QQ 群 453803497](https://img.shields.io/badge/QQ%20%E7%BE%A4-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+
+欢迎加入 QQ 群 **453803497** 反馈问题、提出建议或交流使用心得，单击上方徽标或[此链接](https://qm.qq.com/q/97YqJAQRNK)即可打开加群页面。在 Argus 中，“设置 → 关于”也提供“加入 QQ 群”按钮。
 
 ## 🤝 参与贡献
 
