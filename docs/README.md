@@ -22,7 +22,7 @@ docs/
 - [环境与命令](development/README.md)：环境要求、`start.bat`、开发版隔离、验证采集数据、代码规范
 - [构建与缓存](development/build.md)：缓存优化、链接器与工具链
 - [性能基线与测量](development/performance.md)
-- [提交与发布](development/release.md)：持续集成、提交信息规范、版本号、发布步骤、更新签名与通道、发布前验收
+- [提交与发布](development/release.md)：持续集成、提交信息规范、版本号、发布步骤、更新签名与通道
 - [多语言](development/i18n.md)：文案目录、界面与 Rust 中的用法、检查、增加语言、术语表
 
 ## 架构
