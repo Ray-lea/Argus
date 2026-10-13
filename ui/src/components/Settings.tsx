@@ -149,6 +149,52 @@ function Setting(props: {
   );
 }
 
+type Tone = "ok" | "warn" | "off" | "busy";
+
+/**
+ * One feature in one card: what it is and its state on top; below a divider,
+ * what it reports now (and any error) beside what can be done.
+ */
+function FeatureCard(props: {
+  icon: JSX.Element;
+  title: string;
+  desc: string;
+  state: string;
+  tone: Tone;
+  note: JSX.Element;
+  error?: string | null;
+  footer?: JSX.Element;
+  children?: JSX.Element;
+}) {
+  return (
+    <div class="feature">
+      <div class="feature-head">
+        <span class="setting-icon">{props.icon}</span>
+        <div class="setting-text">
+          <div class="setting-title">{props.title}</div>
+          <div class="setting-desc">{props.desc}</div>
+        </div>
+        <span class="state-pill" data-tone={props.tone} aria-live="polite">
+          <Show when={props.tone === "busy"} fallback={<span class="state-dot" />}>
+            <span class="spinner" />
+          </Show>
+          {props.state}
+        </span>
+      </div>
+      <div class="feature-body">
+        <div class="feature-note">
+          <div>{props.note}</div>
+          <Show when={props.error}>{(error) => <div class="setting-error">{error()}</div>}</Show>
+        </div>
+        <div class="setting-control">{props.children}</div>
+      </div>
+      <Show when={props.footer}>
+        <div class="feature-foot">{props.footer}</div>
+      </Show>
+    </div>
+  );
+}
+
 function ToggleSwitch(props: { checked: boolean; label: string; onChange: (v: boolean) => void }) {
   return (
     <>
@@ -241,6 +287,12 @@ function PrivilegedServiceSettings() {
     if (status.loading) return t("settings.privilege.state.checking");
     return serviceState(status());
   };
+  const tone = (): Tone => {
+    const s = status();
+    if (busy() || status.loading) return "busy";
+    if (s?.state === "notInstalled") return "off";
+    return s?.state === "running" && s.authorized && !s.error ? "ok" : "warn";
+  };
   // Updating Argus does not update the service, which needs administrator rights.
   const outdated = () => {
     const s = status();
@@ -249,64 +301,60 @@ function PrivilegedServiceSettings() {
     return t("settings.privilege.outdated", { service: s.version, app });
   };
   return (
-    <>
-      <Setting
-        icon={<ShieldIcon size={20} />}
-        title={t("common.privilegedService")}
-        desc={t("settings.privilege.desc")}
-      />
-      <Setting
-        icon={<PulseIcon size={20} />}
-        title={<span aria-live="polite">{label()}</span>}
-        desc={t("settings.privilege.statusDesc")}
-        error={error() ?? status()?.error ?? outdated()}
-      >
-        <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
-          {t("settings.refreshStatus")}
-        </button>
-        <Show when={status()}>
-          {(s) => (
-            <Show
-              when={s().state !== "notInstalled"}
-              fallback={
-                <button type="button" class="btn" disabled={busy()} onClick={() => void manage("install")}>
-                  {t("settings.privilege.install.action")}
-                </button>
-              }
-            >
-              <Show when={s().authorized && s().state === "stopped"}>
-                <button
-                  type="button"
-                  class="btn"
-                  disabled={busy() || status.loading}
-                  onClick={() => void manage("start")}
-                >
-                  {t("settings.privilege.start")}
-                </button>
-              </Show>
-              <Show when={s().authorized}>
-                <button
-                  type="button"
-                  class="btn"
-                  disabled={busy() || status.loading}
-                  onClick={() => void manage("update")}
-                >
-                  {t("settings.privilege.update")}
-                </button>
-              </Show>
+    <FeatureCard
+      icon={<ShieldIcon size={20} />}
+      title={t("common.privilegedService")}
+      desc={t("settings.privilege.desc")}
+      state={label()}
+      tone={tone()}
+      note={t("settings.privilege.statusDesc")}
+      error={error() ?? status()?.error ?? outdated()}
+    >
+      <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
+        {t("settings.refreshStatus")}
+      </button>
+      <Show when={status()}>
+        {(s) => (
+          <Show
+            when={s().state !== "notInstalled"}
+            fallback={
+              <button type="button" class="btn" disabled={busy()} onClick={() => void manage("install")}>
+                {t("settings.privilege.install.action")}
+              </button>
+            }
+          >
+            <Show when={s().authorized && s().state === "stopped"}>
               <button
                 type="button"
                 class="btn"
                 disabled={busy() || status.loading}
-                onClick={() => void manage("uninstall")}
+                onClick={() => void manage("start")}
               >
-                {t("settings.privilege.uninstall.action")}
+                {t("settings.privilege.start")}
               </button>
             </Show>
-          )}
-        </Show>
-      </Setting>
-    </>
+            <Show when={s().authorized}>
+              <button
+                type="button"
+                class="btn"
+                disabled={busy() || status.loading}
+                onClick={() => void manage("update")}
+              >
+                {t("settings.privilege.update")}
+              </button>
+            </Show>
+            <button
+              type="button"
+              class="btn"
+              disabled={busy() || status.loading}
+              onClick={() => void manage("uninstall")}
+            >
+              {t("settings.privilege.uninstall.action")}
+            </button>
+          </Show>
+        )}
+      </Show>
+    </FeatureCard>
   );
 }
 
@@ -356,47 +404,52 @@ function TaskManagerSettings() {
     if (!s) return t("settings.taskManager.unknown");
     return t(`settings.taskManager.state.${s.state}`);
   };
+  const tone = (): Tone => {
+    const state = status()?.state;
+    if (busy() || status.loading) return "busy";
+    return state === "enabled" ? "ok" : state === "disabled" ? "off" : "warn";
+  };
   return (
-    <>
-      <Setting
-        icon={<KeyboardIcon size={20} />}
-        title={t("settings.taskManager.title")}
-        desc={t("settings.taskManager.desc")}
-      />
-      <Setting
-        icon={<ShieldIcon size={20} />}
-        title={<span aria-live="polite">{label()}</span>}
-        desc={status()?.detail ?? t("settings.taskManager.retry")}
-        error={error()}
-      >
-        <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
-          {t("settings.refreshStatus")}
+    <FeatureCard
+      icon={<KeyboardIcon size={20} />}
+      title={t("settings.taskManager.title")}
+      desc={t("settings.taskManager.desc")}
+      state={label()}
+      tone={tone()}
+      note={status()?.detail ?? t("settings.taskManager.retry")}
+      error={error()}
+      footer={
+        status()?.canRestore ? (
+          <span class="selectable">
+            {t("settings.taskManager.recovery", { path: status()?.recoveryPath ?? "" })}
+          </span>
+        ) : undefined
+      }
+    >
+      <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
+        {t("settings.refreshStatus")}
+      </button>
+      <Show when={status()?.canEnable}>
+        <button
+          type="button"
+          class="btn"
+          disabled={busy() || status.loading}
+          onClick={() => void manage("enable")}
+        >
+          {t("settings.taskManager.enable")}
         </button>
-        <Show when={status()?.canEnable}>
-          <button
-            type="button"
-            class="btn"
-            disabled={busy() || status.loading}
-            onClick={() => void manage("enable")}
-          >
-            {t("settings.taskManager.enable")}
-          </button>
-        </Show>
-        <Show when={status()?.canRestore}>
-          <button
-            type="button"
-            class="btn"
-            disabled={busy() || status.loading}
-            onClick={() => void manage("restore")}
-          >
-            {t("settings.taskManager.restore")}
-          </button>
-        </Show>
-      </Setting>
-      <Show when={status()?.canRestore}>
-        <p class="note">{t("settings.taskManager.recovery", { path: status()?.recoveryPath ?? "" })}</p>
       </Show>
-    </>
+      <Show when={status()?.canRestore}>
+        <button
+          type="button"
+          class="btn"
+          disabled={busy() || status.loading}
+          onClick={() => void manage("restore")}
+        >
+          {t("settings.taskManager.restore")}
+        </button>
+      </Show>
+    </FeatureCard>
   );
 }
 

@@ -893,6 +893,85 @@
   gap: 8px;
 }
 
+/* One feature, one card (FeatureCard in Settings.tsx): what it is and its
+   state on top; below a divider, what it reports and what can be done. The
+   note and the controls line up with the title, past the icon. */
+.feature {
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer);
+}
+
+.feature + .feature {
+  margin-top: 8px;
+}
+
+.feature-head {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+.feature-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  padding: 8px 16px 8px 52px;
+  border-top: 1px solid var(--stroke);
+}
+
+.feature-note {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.feature-foot {
+  padding: 0 16px 12px 52px;
+  color: var(--ink-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* The state, in a pill: a colored dot (or a spinner while busy) and a word. */
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 11px;
+  border: 1px solid var(--stroke);
+  border-radius: 13px;
+  background: var(--layer-strong);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+
+.state-pill[data-tone="ok"] .state-dot {
+  background: var(--net);
+}
+
+.state-pill[data-tone="warn"] .state-dot {
+  background: var(--io);
+}
+
+.state-pill .spinner {
+  width: 10px;
+  height: 10px;
+  border-width: 2px;
+}
+
 /* A rule opened from the process menu is outlined for a moment. */
 .rule {
   transition: border-color var(--t-med) linear;
