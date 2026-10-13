@@ -44,6 +44,7 @@
   --glyph-bg: rgb(0 0 0 / 0.04);
   --glyph-stroke: rgb(0 0 0 / 0.38);
   --scroll-thumb: rgb(0 0 0 / 0.22);
+  --scroll-thumb-hover: rgb(0 0 0 / 0.38);
   --shadow-flyout: 0 8px 28px rgb(0 0 0 / 0.14), 0 2px 6px rgb(0 0 0 / 0.06);
   --fallback-bg: radial-gradient(1200px 600px at 15% -10%, #dfe6f5, transparent 70%), #eceff4;
   --tip: rgb(252 252 253 / 0.96);
@@ -89,6 +90,7 @@
     --glyph-bg: rgb(255 255 255 / 0.05);
     --glyph-stroke: rgb(255 255 255 / 0.42);
     --scroll-thumb: rgb(255 255 255 / 0.2);
+    --scroll-thumb-hover: rgb(255 255 255 / 0.34);
     --shadow-flyout: 0 12px 32px rgb(0 0 0 / 0.42), 0 2px 8px rgb(0 0 0 / 0.25);
     --fallback-bg: radial-gradient(1200px 600px at 15% -10%, #2b2742, transparent 70%), #1c1d24;
     --tip: rgb(44 45 52 / 0.96);
@@ -132,6 +134,33 @@ button {
   outline: 2px solid var(--ink);
   outline-offset: 1px;
   border-radius: 4px;
+}
+
+/* One scrollbar for every scrolling area: a slim rounded thumb without arrows
+   or track that widens under the pointer, as in Fluent. Areas that need more
+   only add to this (e.g. a track margin), never restyle the thumb. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background: var(--scroll-thumb);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  border-width: 2px;
+  background: var(--scroll-thumb-hover);
+  background-clip: padding-box;
 }
 
 .selectable {
@@ -704,21 +733,6 @@ button {
   outline: none;
 }
 
-.tbody::-webkit-scrollbar {
-  width: 10px;
-}
-
-.tbody::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 10px;
-  background: var(--scroll-thumb);
-  background-clip: padding-box;
-}
-
-.tbody::-webkit-scrollbar-thumb:hover {
-  border-width: 2px;
-}
-
 .row {
   position: absolute;
   top: 0;
@@ -964,17 +978,6 @@ button {
   min-height: 0;
   padding: 14px 16px 16px;
   overflow-y: auto;
-}
-
-.details-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-
-.details-scroll::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 8px;
-  background: var(--scroll-thumb);
-  background-clip: padding-box;
 }
 
 .details-head {
