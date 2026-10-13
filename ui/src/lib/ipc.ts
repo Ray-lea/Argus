@@ -60,6 +60,10 @@ export const api = {
     mock ? mock.settings.update({ language }) : invoke("set_language", { language }),
   setTheme: (theme: Theme): Promise<SettingsView> =>
     mock ? mock.settings.update({ theme }) : invoke("set_theme", { theme }),
+  /** Records an error the page did not handle (the host caps and scrubs it). */
+  logError: (message: string): void => {
+    if (!mock) void invoke("log_ui_error", { message }).catch(() => {});
+  },
   /** Where the caption's maximize button is (CSS px, `right` from the window's right edge). */
   setCaptionButton: (rect: { right: number; top: number; width: number; height: number }): Promise<void> =>
     mock ? Promise.resolve() : invoke("set_caption_button", { rect }),

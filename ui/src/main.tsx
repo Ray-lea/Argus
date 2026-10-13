@@ -16,6 +16,14 @@ document.addEventListener("contextmenu", (e) => {
   if (!t.closest("input, textarea, .selectable")) e.preventDefault();
 });
 
+// Errors nothing else caught go to the log, which bug reports carry.
+const describe = (error: unknown) =>
+  error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error);
+window.addEventListener("error", (e) => api.logError(describe(e.error ?? e.message)));
+window.addEventListener("unhandledrejection", (e) =>
+  api.logError(`unhandled rejection: ${describe(e.reason)}`),
+);
+
 // Know the language before the first render, so no text shows in the wrong one.
 const info = await api.appInfo().catch(() => null);
 setLocale(info?.locale ?? localeFor(navigator.language));

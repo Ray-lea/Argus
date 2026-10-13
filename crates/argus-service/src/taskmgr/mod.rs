@@ -16,7 +16,7 @@ use state::{Phase, Result, Store, Value};
 use std::fs::{self, OpenOptions};
 use std::os::windows::fs::OpenOptionsExt;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
 use windows::Win32::System::Com::CoCreateGuid;
 use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
@@ -357,7 +357,23 @@ pub fn manage(action: &str) -> Result<Status> {
     status()
 }
 
+/// A failed maintenance helper leaves its error here, in the protected
+/// folder beside the launcher, for the window that started it to show and log
+/// (`elevate` reads it back). Only administrators can write the folder.
+const ERROR_FILE: &str = "taskmgr-error.txt";
+
+/// The helper's error from this run, if it left one.
+fn helper_error(since: SystemTime) -> Option<String> {
+    let path = machine().ok()?.dir.join(ERROR_FILE);
+    let meta = fs::metadata(&path).ok()?;
+    if meta.len() > 8 * 1024 || meta.modified().ok()? + Duration::from_secs(2) < since {
+        return None;
+    }
+    fs::read_to_string(path).ok().filter(|s| !s.is_empty())
+}
+
 fn elevate(exe: &Path, args: &[String]) -> Result<()> {
+    let started = SystemTime::now();
     let file = wide(&exe.to_string_lossy());
     let params = wide(
         &args
@@ -391,7 +407,7 @@ fn elevate(exe: &Path, args: &[String]) -> Result<()> {
     if code == 0 {
         Ok(())
     } else {
-        Err(tr!("taskManager.helperFailed"))
+        Err(helper_error(started).unwrap_or_else(|| tr!("taskManager.helperFailed")))
     }
 }
 
@@ -415,11 +431,65 @@ fn code(result: Result<()>) -> i32 {
     }
 }
 
+/// Exit code of a maintenance helper: its error goes back to the window that
+/// started it; a message box only when it cannot be left there.
+fn report(result: Result<()>) -> i32 {
+    let Err(error) = result else { return 0 };
+    let written =
+        machine().and_then(|m| registry::atomic_file(&m.dir, ERROR_FILE, error.as_bytes()));
+    if written.is_err() {
+        alert(&error);
+    }
+    1
+}
+
+/// Appends a line to `taskmgr.log` beside Argus's own log. The launcher and
+/// its probe have no window to report to, and a fallback to the system Task
+/// Manager would otherwise leave no trace. Bounded; no paths or names.
+fn log_line(text: &str) {
+    use std::io::Write;
+    let Some(dir) = log_dir() else { return };
+    let path = dir.join("taskmgr.log");
+    if fs::metadata(&path).is_ok_and(|m| m.len() > 256 * 1024) {
+        let _ = fs::remove_file(&path);
+    }
+    let _ = fs::create_dir_all(&dir);
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&path) {
+        let t = unsafe { windows::Win32::System::SystemInformation::GetLocalTime() };
+        let _ = writeln!(
+            file,
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02} {text}",
+            t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond
+        );
+    }
+}
+
+/// Argus's log folder for the account this process runs as.
+fn log_dir() -> Option<std::path::PathBuf> {
+    use windows::Win32::System::Com::CoTaskMemFree;
+    use windows::Win32::UI::Shell::{FOLDERID_LocalAppData, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
+    let raw =
+        unsafe { SHGetKnownFolderPath(&FOLDERID_LocalAppData, KF_FLAG_DEFAULT, None) }.ok()?;
+    let base = unsafe { raw.to_string() };
+    unsafe { CoTaskMemFree(Some(raw.0.cast())) };
+    let identifier = if cfg!(debug_assertions) {
+        "dev.argus.taskmanager.devbuild"
+    } else {
+        "dev.argus.taskmanager"
+    };
+    Some(
+        std::path::PathBuf::from(base.ok()?)
+            .join(identifier)
+            .join("logs"),
+    )
+}
+
 pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     match args.as_slice() {
         [mode, action, owner, pid, created] if mode == MANAGE && action == "enable" => {
-            Some(code((|| {
+            clear_error();
+            Some(report((|| {
                 let pid = pid.parse().map_err(|_| tr!("taskManager.invalidCaller"))?;
                 let created = created
                     .parse()
@@ -429,10 +499,20 @@ pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
                     .and_then(|a| enable(owner, pid, created, a))
             })()))
         }
-        [mode, action, _owner] if mode == MANAGE && action == "restore" => Some(code(restore())),
+        [mode, action, _owner] if mode == MANAGE && action == "restore" => {
+            clear_error();
+            Some(report(restore()))
+        }
         [mode] if mode == "--argus-taskmgr-uninstall" => Some(code(uninstall_guard())),
         _ if args.first().is_some_and(|s| s == MANAGE) => Some(87),
         _ => None,
+    }
+}
+
+/// A helper starts without an earlier run's error.
+fn clear_error() {
+    if let Ok(machine) = machine() {
+        let _ = fs::remove_file(machine.dir.join(ERROR_FILE));
     }
 }
 
@@ -457,7 +537,13 @@ pub fn launcher_main() -> i32 {
                 let _image = security::protect_directory(&image).map_err(util::message)?;
                 ready::activate(&image, &args[2], true)
             })();
-            if result.is_ok() { 0 } else { 1 }
+            match result {
+                Ok(()) => 0,
+                Err(error) => {
+                    log_line(&format!("enable check: Argus did not start: {error}"));
+                    1
+                }
+            }
         }
         Some("--native") if args.len() == 1 => code(launch::native()),
         Some("--task-manager") => {
@@ -474,10 +560,18 @@ pub fn launcher_main() -> i32 {
                 let _image = security::protect_directory(&image).map_err(util::message)?;
                 ready::activate(&image, &journal.owner, false)
             })();
-            if result.is_ok() {
-                0
-            } else {
-                code(launch::native())
+            match result {
+                Ok(()) => 0,
+                Err(error) => {
+                    log_line(&format!(
+                        "Argus did not open ({error}); opening Windows Task Manager"
+                    ));
+                    let native = launch::native();
+                    if let Err(error) = &native {
+                        log_line(&format!("Windows Task Manager did not open: {error}"));
+                    }
+                    code(native)
+                }
             }
         }
         _ => 87,

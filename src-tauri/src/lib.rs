@@ -1,5 +1,6 @@
 mod caption;
 mod commands;
+mod diagnostics;
 mod sampler;
 mod settings;
 mod shell;
@@ -163,6 +164,8 @@ pub fn run() {
             let config = app.path().app_config_dir()?.join("settings.json");
             let settings = SettingsStore::load(config);
             argus_core::i18n::set_locale(settings.get().language.resolve());
+            diagnostics::log_environment(elevated);
+            diagnostics::log_privileged_state();
             app.state::<AppState>()
                 .rules
                 .set_rules(settings.get().rules);
@@ -194,6 +197,7 @@ pub fn run() {
             let handle = app.handle().clone();
             let last_tip = Mutex::new(String::new());
             let observer = move |s: &Snapshot| {
+                diagnostics::log_hardware_once(s);
                 let mem = if s.system.mem_total > 0 {
                     s.system.mem_used as f64 / s.system.mem_total as f64 * 100.0
                 } else {
@@ -281,6 +285,7 @@ pub fn run() {
             commands::set_language,
             commands::set_theme,
             commands::set_caption_button,
+            diagnostics::log_ui_error,
             commands::complete_onboarding,
             commands::privileged_service_status,
             commands::manage_privileged_service,
