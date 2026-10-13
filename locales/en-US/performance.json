@@ -58,7 +58,9 @@
     "cache": "L{level} cache",
     "thermalSource": "Temperature source",
     "thermalZones": "ACPI thermal zone {zones}",
-    "thermalNote": "Temperatures come from the motherboard's ACPI thermal zones and usually reflect the area around the CPU package. Per-core temperatures require reading registers inside the processor, which Windows allows only kernel drivers to do, so they aren't shown."
+    "thermalNone": "Not available",
+    "thermalNote": "Temperatures come from the motherboard's ACPI thermal zones and usually reflect the area around the CPU package. Per-core temperatures require reading registers inside the processor, which Windows allows only kernel drivers to do, so they aren't shown.",
+    "thermalMissing": "This PC's motherboard doesn't report a temperature through ACPI thermal zones, as is the case on many AMD desktops. The processor's own temperature sensor can only be read by a kernel driver, and Argus doesn't install one, so the CPU temperature isn't shown."
   },
   "memory": {
     "sub": "{used} / {total} GB ({percent}%)",

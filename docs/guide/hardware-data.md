@@ -5,8 +5,8 @@ Argus 不安装驱动，也不使用 WMI，所有数据都来自标准用户可�
 | 数据 | 来源 | 说明 |
 |---|---|---|
 | CPU 频率 | 性能计数器 `Processor Information`（实际频率） | 整体与每个逻辑处理器 |
-| CPU 温度 | ACPI 热区（`Thermal Zone Information` 计数器） | 多数笔记本上跟随 CPU 封装温度；台式机主板上可能只是一个固定值，或者没有 |
-| CPU 功耗 | `Energy Meter` 计数器（Intel RAPL） | 封装、核心、核显。需要较新的 Intel 平台；AMD 与部分台式机没有 |
+| CPU 温度 | ACPI 热区（`Thermal Zone Information` 计数器） | 多数笔记本上跟随 CPU 封装温度；台式机主板上可能只是一个固定值，或者没有（许多 AMD 台式机属于这种情况，例如 Ryzen 9 9950X 的机器）。没有热区时，性能页注明温度不可用及原因 |
+| CPU 功耗 | `Energy Meter` 计数器（RAPL） | 封装、核心、核显。较新的 Intel 平台与部分 AMD 平台（例如 Ryzen 9000 系列）提供；其余机器没有 |
 | 每核温度、CPU 电压 | 处理器的 MSR 寄存器 | Windows 只允许内核驱动读取，留给 M5 的特权服务 |
 | 电池 | 电池类驱动（`powercfg /batteryreport` 背后的接口） | 电量、充放电功率、电压、设计 / 完全充电容量、健康度、循环次数 |
 | 磁盘 | 存储 IOCTL | 活动时间、读写速率、响应时间、型号、容量、SSD / HDD、所含的卷；硬盘提供时显示温度 |

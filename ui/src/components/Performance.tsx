@@ -685,21 +685,21 @@ function CpuView() {
           <dd>{fmtCache(cpu().l2)}</dd>
           <dt>{t("performance.cpu.cache", { level: 3 })}</dt>
           <dd>{fmtCache(cpu().l3)}</dd>
-          <Show when={hw().thermal.length > 0}>
-            <dt>{t("performance.cpu.thermalSource")}</dt>
-            <dd>
-              {t("performance.cpu.thermalZones", {
-                zones: hw()
-                  .thermal.map((z) => z.name)
-                  .join(t("common.listSeparator")),
-              })}
-            </dd>
-          </Show>
+          <dt>{t("performance.cpu.thermalSource")}</dt>
+          <dd>
+            {hw().thermal.length > 0
+              ? t("performance.cpu.thermalZones", {
+                  zones: hw()
+                    .thermal.map((z) => z.name)
+                    .join(t("common.listSeparator")),
+                })
+              : t("performance.cpu.thermalNone")}
+          </dd>
         </dl>
       </div>
-      <Show when={hw().thermal.length > 0}>
-        <p class="perf-note">{t("performance.cpu.thermalNote")}</p>
-      </Show>
+      <p class="perf-note">
+        {hw().thermal.length > 0 ? t("performance.cpu.thermalNote") : t("performance.cpu.thermalMissing")}
+      </p>
     </>
   );
 }
