@@ -657,6 +657,11 @@ Function ArgusChangeLocation
   ${If} $0 != error
   ${AndIf} $0 != ""
     ; Like the directory page: a chosen parent folder gets a folder of its own.
+    ; A drive root comes back with its backslash ("D:\").
+    StrCpy $1 $0 1 -1
+    ${If} $1 == "\"
+      StrCpy $0 $0 -1
+    ${EndIf}
     StrLen $1 "${PRODUCTNAME}"
     IntOp $1 0 - $1
     StrCpy $2 $0 "" $1
