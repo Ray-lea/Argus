@@ -176,16 +176,37 @@ button {
 
 /* ---- Shell ----------------------------------------------------------------- */
 
+/* The title row across the top; below it the navigation pane on the left, and
+   the page with the status bar beside it. --nav-width (184 px open, 48 px
+   with icons only) also lines the title row's page controls up with the page. */
 .app {
-  display: flex;
-  flex-direction: column;
+  --nav-width: 184px;
+  display: grid;
+  grid-template: auto minmax(0, 1fr) auto / var(--nav-width) minmax(0, 1fr);
   height: 100%;
   padding-top: 4px;
 }
 
+.app.nav-compact {
+  --nav-width: 48px;
+}
+
+.app > .toolbar {
+  grid-column: 1 / -1;
+}
+
+.app > .nav {
+  grid-row: 2 / -1;
+}
+
 .app > .page {
-  flex: 1;
+  grid-area: 2 / 2;
+  min-width: 0;
   min-height: 0;
+}
+
+.app > .statusbar {
+  grid-area: 3 / 2;
 }
 
 /* ---- Vitals band: the one loud element ------------------------------------- */
@@ -353,6 +374,28 @@ button {
   align-items: center;
   gap: 8px;
   padding: 10px calc(12px + var(--caption-width) + 4px) 10px 12px;
+}
+
+/* The app's icon and name, where the system title bar had them. At full width
+   they span the navigation pane, so the page's controls line up with the page. */
+.brand {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  min-width: calc(var(--nav-width) - 8px);
+  padding-left: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* The toolbar moves the window only from the marked element itself. */
+.brand > * {
+  pointer-events: none;
+}
+
+.toolbar[data-compact] .brand {
+  min-width: 0;
 }
 
 /* Caption buttons in the window's top-right corner, as tall as the toolbar's
@@ -744,10 +787,6 @@ button {
 .toolbar:is([data-compact="3"], [data-compact="4"]) {
   flex-wrap: wrap;
   row-gap: 10px;
-}
-
-.toolbar:is([data-compact="3"], [data-compact="4"]) > .toolbar-sep {
-  display: none;
 }
 
 .toolbar[data-compact="4"] {

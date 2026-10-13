@@ -33,7 +33,7 @@
 
 ## 标题栏
 
-窗口不使用系统标题栏（`decorations: false`）：顶部工具栏兼作标题栏，空白处可以拖动窗口、双击最大化，右端是 Argus 自己绘制的最小化、最大化与关闭按钮，字形取自系统的 Segoe Fluent Icons（Windows 10 上为 Segoe MDL2 Assets）。系统标题栏只显示一行“Argus”，开启“在标题栏和窗口边框上显示强调色”时还会整条染成强调色，与 Mica 背景不协调。tao 对这种窗口保留系统边框的其余部分：阴影、Windows 11 圆角、拖到屏幕边缘贴靠，以及左、右、下边的缩放；顶边的缩放由 Tauri 放在页面上方的一条子窗口提供。DWM 默认还会画一像素边框（同样会染成强调色），通过 `DWMWA_BORDER_COLOR` 设为 `DWMWA_COLOR_NONE` 去掉。
+窗口不使用系统标题栏（`decorations: false`）：顶部工具栏兼作标题栏，空白处可以拖动窗口、双击最大化，左端是 Argus 的图标与名称（开发版为“Argus 开发版”，与原来系统标题栏上的一致），右端是 Argus 自己绘制的最小化、最大化与关闭按钮，字形取自系统的 Segoe Fluent Icons（Windows 10 上为 Segoe MDL2 Assets）。系统标题栏只显示一行“Argus”，开启“在标题栏和窗口边框上显示强调色”时还会整条染成强调色，与 Mica 背景不协调。tao 对这种窗口保留系统边框的其余部分：阴影、Windows 11 圆角、拖到屏幕边缘贴靠，以及左、右、下边的缩放；顶边的缩放由 Tauri 放在页面上方的一条子窗口提供。DWM 默认还会画一像素边框（同样会染成强调色），通过 `DWMWA_BORDER_COLOR` 设为 `DWMWA_COLOR_NONE` 去掉。
 
 Windows 11 的贴靠布局只在指针停在“最大化按钮”上时出现，系统靠 `WM_NCHITTEST` 返回 `HTMAXBUTTON` 判断。页面里的按钮位于 WebView2 内部，命中测试由 WebView2 自己回答，因此 Argus 在页面最大化按钮的位置放一个透明的原生子窗口（位于 WebView 之上）替它回答。这个子窗口接收单击（最大化或还原），悬停与按下以事件交给页面，由页面画出对应的状态。按钮的位置由页面报告（CSS 像素），窗口尺寸或 DPI 变化时按比例重新摆放。
 

@@ -1,6 +1,7 @@
 {
   "loadingProcesses": "Reading processes…",
   "toolbar": "Toolbar",
+  "devTitle": "Argus Dev",
   "caption": {
     "minimize": "Minimize",
     "maximize": "Maximize",
@@ -8,6 +9,10 @@
     "close": "Close"
   },
   "pages": "Pages",
+  "nav": {
+    "expand": "Expand navigation",
+    "collapse": "Collapse navigation"
+  },
   "page": {
     "processes": "Processes",
     "performance": "Performance",

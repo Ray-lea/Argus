@@ -1,4 +1,5 @@
 import { createEffect, For, on, onCleanup, onMount, Show } from "solid-js";
+import logo from "../../../src-tauri/icons/logo-small.svg?url";
 import { locale, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import type { ViewMode } from "../lib/rows";
@@ -6,25 +7,23 @@ import {
   appInfo,
   detailsOpen,
   intervalMs,
-  type Page,
   page,
   paused,
   query,
   setDetailsOpen,
   setIntervalMs,
-  setPage,
   setPaused,
   setQuery,
   setViewMode,
   viewMode,
 } from "../lib/store";
-import { updatePending } from "../lib/updates";
 import Caption from "./Caption";
 import { ConnectionControls } from "./ConnectionsPage";
 import { openFileLock } from "./FileLockDialog";
 import { HistoryControls } from "./HistoryPage";
 import Indicator from "./Indicator";
 import { AppsIcon, ListIcon, LockIcon, PanelIcon, PauseIcon, PlayIcon, ShieldIcon, TreeIcon } from "./icons";
+import { navExpanded } from "./Nav";
 import SearchBox from "./SearchBox";
 import Select from "./Select";
 import { ServiceControls } from "./ServicesPage";
@@ -37,16 +36,6 @@ const MODES: { mode: ViewMode; icon: typeof AppsIcon }[] = [
 ];
 
 const INTERVALS = [500, 1000, 2000, 5000];
-
-export const PAGES: { page: Page; key: string }[] = [
-  { page: "processes", key: "1" },
-  { page: "performance", key: "2" },
-  { page: "services", key: "3" },
-  { page: "startup", key: "4" },
-  { page: "network", key: "5" },
-  { page: "history", key: "6" },
-  { page: "settings", key: "7" },
-];
 
 let searchInput: HTMLInputElement | undefined;
 
@@ -61,12 +50,13 @@ const COMPACT_LEVELS = 4;
 /**
  * Keeps the toolbar's controls inside the window. When they overflow it sheds
  * what it can do without, one level at a time: the text of the permission
- * badge and of labelled buttons, then the labels of segments that have icons,
- * then the page's own controls move to a second row, and last the end
- * controls join them there when they no longer fit beside the tabs. Titles
- * still name what lost its label. The width each level needs is learned when
- * it stops fitting, so a resize costs one layout read; `refit` starts over
- * after the content changes (another page, another language).
+ * badge and of labelled buttons (and the room that lines the page's controls
+ * up with the page), then the labels of segments that have icons, then the
+ * page's own controls move to a second row, and last the end controls join
+ * them there when they no longer fit beside the app's name. Titles still name
+ * what lost its label. The width each level needs is learned when it stops
+ * fitting, so a resize costs one layout read; `refit` starts over after the
+ * content changes (another page, another language, the navigation pane).
  */
 function fitToolbar(bar: HTMLElement) {
   let level = 0;
@@ -82,16 +72,16 @@ function fitToolbar(bar: HTMLElement) {
   // either way is slack nobody can see.
   const width = () => bar.getBoundingClientRect().width;
   // Level 3 wraps instead of overflowing: it no longer fits once the end
-  // controls fall off the tabs' row. They need the tabs, a gap, themselves and
-  // the padding that keeps clear of the caption buttons.
+  // controls fall off the first row. They need the app's name, a gap,
+  // themselves and the padding that keeps clear of the caption buttons.
   const endRowWidth = () => {
-    const tabs = bar.querySelector<HTMLElement>(".tabs");
+    const brand = bar.querySelector<HTMLElement>(".brand");
     const end = bar.querySelector<HTMLElement>(".toolbar-end");
-    if (!tabs || !end || end.offsetTop < tabs.offsetTop + tabs.offsetHeight / 2) return 0;
+    if (!brand || !end || end.offsetTop < brand.offsetTop + brand.offsetHeight / 2) return 0;
     const style = getComputedStyle(bar);
     return (
-      tabs.offsetLeft +
-      tabs.offsetWidth +
+      brand.offsetLeft +
+      brand.offsetWidth +
       Number.parseFloat(style.columnGap) +
       end.offsetWidth +
       Number.parseFloat(style.paddingRight)
@@ -136,7 +126,7 @@ export default function Toolbar() {
     const fitter = fitToolbar(bar);
     // After every effect of the change has run: the search box sets its width
     // in one of its own.
-    createEffect(on([page, locale, appInfo], () => queueMicrotask(fitter.refit)));
+    createEffect(on([page, locale, appInfo, navExpanded], () => queueMicrotask(fitter.refit)));
     onCleanup(fitter.dispose);
   });
   const changeInterval = (ms: number) => {
@@ -155,34 +145,12 @@ export default function Toolbar() {
     // The toolbar is the window's caption: its empty space moves the window
     // (and double-click maximizes); Tauri only reacts on the marked element itself.
     <div ref={bar} class="toolbar" role="toolbar" aria-label={t("shell.toolbar")} data-tauri-drag-region>
-      <div class="tabs" role="tablist" aria-label={t("shell.pages")}>
-        <Indicator selector="[aria-selected='true']" track={page} class="tab-mark" shape="underline" />
-        <For each={PAGES}>
-          {(p) => {
-            const label = () => t(`shell.page.${p.page}`);
-            return (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={page() === p.page}
-                title={t("shell.pageTitle", { page: label(), key: p.key })}
-                onClick={() => setPage(p.page)}
-              >
-                <span class="tab-text" data-text={label()}>
-                  {label()}
-                </span>
-                <Show when={p.page === "settings" && updatePending()}>
-                  <span class="tab-dot" role="img" aria-label={t("shell.updateAvailable")} />
-                </Show>
-              </button>
-            );
-          }}
-        </For>
+      {/* Where the system title bar had the app's icon and name. */}
+      <div class="brand" data-tauri-drag-region>
+        <img src={logo} alt="" width="18" height="18" draggable={false} />
+        <span>{import.meta.env.DEV ? t("shell.devTitle") : "Argus"}</span>
       </div>
 
-      <Show when={page() !== "performance" && page() !== "settings"}>
-        <span class="toolbar-sep" data-tauri-drag-region />
-      </Show>
       <Show when={page() === "processes"}>
         <div class="page-controls">
           <ProcessControls />

@@ -3,6 +3,7 @@ import ConnectionsPage from "./components/ConnectionsPage";
 import { DetailsHost } from "./components/DetailsPanel";
 import FileLockDialog, { DropOverlay, openFileLock } from "./components/FileLockDialog";
 import HistoryPage from "./components/HistoryPage";
+import Nav, { navExpanded, PAGES } from "./components/Nav";
 import Onboarding, { maybeOpenOnboarding } from "./components/Onboarding";
 import { ConfirmDialog, ContextMenu, Toasts } from "./components/Overlays";
 import Performance from "./components/Performance";
@@ -11,7 +12,7 @@ import ServicesPage from "./components/ServicesPage";
 import SettingsPage, { openSettings } from "./components/Settings";
 import StartupPage from "./components/StartupPage";
 import StatusBar from "./components/StatusBar";
-import Toolbar, { focusSearch, PAGES } from "./components/Toolbar";
+import Toolbar, { focusSearch } from "./components/Toolbar";
 import Vitals from "./components/Vitals";
 import { t } from "./lib/i18n";
 import { api, inTauri, subscribe } from "./lib/ipc";
@@ -42,7 +43,8 @@ const pageIndex = (p: Page) => PAGES.findIndex((x) => x.page === p);
 export default function App() {
   const [dragging, setDragging] = createSignal(false);
 
-  // The new page slides in from the side of its tab; the tab bar stays put.
+  // The new page slides in from the side of its entry in the navigation pane
+  // (from below for a page further down); the pane stays put.
   createEffect(
     on(page, (p, prev) => {
       if (prev === undefined || p === prev) return;
@@ -50,7 +52,7 @@ export default function App() {
       play(
         document.querySelector(".app > .page"),
         [
-          { opacity: 0, transform: `translateX(${dir * 32}px)` },
+          { opacity: 0, transform: `translateY(${dir * 24}px)` },
           { opacity: 1, transform: "none" },
         ],
         { duration: 300, easing: EASE_OUT },
@@ -126,8 +128,9 @@ export default function App() {
   });
 
   return (
-    <div class="app">
+    <div class="app" classList={{ "nav-compact": !navExpanded() }}>
       <Toolbar />
+      <Nav />
       <Switch>
         <Match when={page() === "processes"}>
           <div class="page proc-page">

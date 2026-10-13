@@ -350,11 +350,6 @@
 }
 
 /* Toolbar items never wrap; the search box is what gives way. */
-.tabs {
-  flex: none;
-}
-
-.tabs button,
 .segmented button {
   flex: none;
   white-space: nowrap;

@@ -344,3 +344,36 @@ export const ThemeIcon = (p: IconProps) => (
     <path d="M8 2.5a5.5 5.5 0 0 1 0 11Z" fill="currentColor" />
   </Svg>
 );
+
+// ---- Navigation pane ----------------------------------------------------------------
+
+/** Shows or hides the pane's labels. */
+export const MenuIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+  </Svg>
+);
+
+/** Processes: a list of entries. */
+export const ProcessesIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2" y="2.5" width="3" height="3" rx=".75" />
+    <rect x="2" y="6.5" width="3" height="3" rx=".75" />
+    <rect x="2" y="10.5" width="3" height="3" rx=".75" />
+    <path d="M7.5 4h6M7.5 8h6M7.5 12h6" />
+  </Svg>
+);
+
+/** Services: a puzzle piece. */
+export const ServicesIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.5 4.5h3a1.5 1.5 0 0 1 3 0h3v3a1.5 1.5 0 0 1 0 3v3h-9Z" />
+  </Svg>
+);
+
+export const SettingsIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6.82 3.24 6.97 1.79h2.06l.15 1.45 1.35.56 1.13-.93 1.47 1.47-.93 1.13.56 1.35 1.45.15v2.06l-1.45.15-.56 1.35.93 1.13-1.47 1.47-1.13-.93-1.35.56-.15 1.45H6.97l-.15-1.45-1.35-.56-1.13.93-1.47-1.47.93-1.13-.56-1.35-1.45-.15V6.97l1.45-.15.56-1.35-.93-1.13 1.47-1.47 1.13.93Z" />
+    <circle cx="8" cy="8" r="2" />
+  </Svg>
+);

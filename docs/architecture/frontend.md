@@ -8,7 +8,7 @@
 |---|---|
 | `src/main.tsx` | 入口：先取得 `app_info` 中的界面语言再渲染，避免先以错误的语言显示 |
 | `src/App.tsx` | 外壳：页面切换与过渡、全局键盘快捷键、文件拖放 |
-| `src/components/` | 页面：`ProcessTable`、`Performance`、`ServicesPage`、`StartupPage`、`ConnectionsPage`、`HistoryPage`、`Settings`。外壳与通用组件：`Toolbar`（兼作标题栏，空白处可拖动窗口）、`Caption`（最小化、最大化、关闭按钮）、`Select`（下拉框，取代原生 `<select>`）、`Vitals`（概况带）、`StatusBar`、`DetailsPanel`、`DataTable`（虚拟化表格）、`Trace`（实时曲线）、`Overlays`（右键菜单及一级子菜单、确认框、提示）、`FileLockDialog`、`Onboarding`（首次启动引导） |
+| `src/components/` | 页面：`ProcessTable`、`Performance`、`ServicesPage`、`StartupPage`、`ConnectionsPage`、`HistoryPage`、`Settings`。外壳与通用组件：`Toolbar`（兼作标题栏：Argus 的图标与名称、页面自己的控件、刷新与暂停等，空白处可拖动窗口）、`Nav`（左侧导航栏，可收起为仅显示图标）、`Caption`（最小化、最大化、关闭按钮）、`Select`（下拉框，取代原生 `<select>`）、`Vitals`（概况带）、`StatusBar`、`DetailsPanel`、`DataTable`（虚拟化表格）、`Trace`（实时曲线）、`Overlays`（右键菜单及一级子菜单、确认框、提示）、`FileLockDialog`、`Onboarding`（首次启动引导） |
 | `src/lib/store.ts` | 应用状态：实时快照、滚动历史（每个进程一份，按应用分组另存合计）、视图偏好 |
 | `src/lib/ipc.ts` | 与宿主通信 |
 | `src/lib/i18n.ts` | 文案查找（`t`、`rich`）、当前语言信号、按语言缓存的 `Intl` 对象；文案在仓库根目录的 `locales/`，见[多语言](../development/i18n.md) |

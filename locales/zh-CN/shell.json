@@ -1,6 +1,7 @@
 {
   "loadingProcesses": "正在读取进程…",
   "toolbar": "工具栏",
+  "devTitle": "Argus 开发版",
   "caption": {
     "minimize": "最小化",
     "maximize": "最大化",
@@ -8,6 +9,10 @@
     "close": "关闭"
   },
   "pages": "页面",
+  "nav": {
+    "expand": "展开导航",
+    "collapse": "收起导航"
+  },
   "page": {
     "processes": "进程",
     "performance": "性能",

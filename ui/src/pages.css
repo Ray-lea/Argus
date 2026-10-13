@@ -1,69 +1,93 @@
-/* Page tabs, performance page and settings page. Tokens live in styles.css. */
+/* Navigation pane, performance page and settings page. Tokens live in styles.css. */
 
-/* ---- Page tabs ------------------------------------------------------------- */
+/* ---- Navigation pane ------------------------------------------------------- */
 
-.tabs {
-  position: relative;
+/* Entries fill the pane but for 4 px on each side: 40 px squares with icons
+   only. Settings sits at the bottom. */
+.nav {
   display: flex;
-  gap: 2px;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  padding: 0 4px 8px;
 }
 
-.tabs button {
+.nav-items {
   position: relative;
-  display: inline-flex;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-spacer {
+  flex: 1;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  flex: none;
   align-items: center;
-  gap: 6px;
-  height: 32px;
+  gap: 12px;
+  height: 36px;
   padding: 0 12px;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: var(--ink-2);
+  text-align: left;
+  white-space: nowrap;
   transition:
     background-color var(--t-fast) linear,
     color var(--t-fast) linear;
 }
 
-.tabs button:hover {
+.nav-item:hover {
   background: var(--hover);
   color: var(--ink);
 }
 
-.tabs button:active {
+.nav-item:active {
   background: var(--press);
 }
 
-.tabs button[aria-selected="true"] {
+.nav-item[aria-selected="true"] {
+  background: var(--hover-strong);
   color: var(--ink);
-  font-weight: 600;
 }
 
-/* Reserve the semibold width so selecting a tab never shifts its neighbours. */
-.tab-text {
-  display: inline-grid;
-}
-
-.tab-text::after {
-  content: attr(data-text);
-  height: 0;
-  overflow: hidden;
-  font-weight: 600;
-  visibility: hidden;
+.nav-icon {
+  position: relative;
+  display: flex;
+  flex: none;
 }
 
 /* An update waits on the settings page. */
-.tab-dot {
+.nav-dot {
   position: absolute;
-  top: 7px;
-  right: 5px;
+  top: -2px;
+  right: -3px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
 }
 
-/* The selection mark slides to the chosen tab (see Indicator.tsx). */
-.tab-mark {
+/* The names fade in as the pane opens; with icons only, titles name the pages. */
+.nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: fade-in var(--t-med) linear;
+}
+
+.app.nav-compact .nav-label {
+  display: none;
+}
+
+/* The selection mark slides to the chosen page (see Indicator.tsx). */
+.nav-mark {
   border-radius: 2px;
   background: var(--accent);
 }
