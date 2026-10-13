@@ -10,6 +10,18 @@
     "body": "Argus is a modern task manager for Windows. It shows processes, performance, services, startup apps and network connections, and keeps a history of resource usage. The next few steps set up the essentials. Every step can be skipped, and everything can be changed later in Settings.",
     "language": "Language"
   },
+  "display": {
+    "title": "Display and refresh",
+    "body": "Choose the navigation position, animations and refresh rate.",
+    "nav": "Navigation position",
+    "navHint": "The side pane can be collapsed to icons.",
+    "motion": "Interface animations",
+    "motionHint": "Transitions when switching pages and opening menus and dialogs.",
+    "chart": "Chart animations",
+    "chartHint": "Higher frame rates are smoother but use more resources.",
+    "interval": "Refresh rate",
+    "intervalHint": "Shorter intervals keep data more current but make Argus itself use more resources."
+  },
   "background": {
     "title": "Stay in the background",
     "body": "Argus can keep running in the system tray, recording history and applying rules, ready to open whenever it's needed.",

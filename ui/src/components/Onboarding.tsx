@@ -1,7 +1,8 @@
-// First-run onboarding: the settings that matter on day one (language, tray,
-// updates, the privileged service) and a few tips. Every step can be skipped;
-// whatever is changed here is saved at once, like on the settings page, and
-// nothing sends the user elsewhere before the end.
+// First-run onboarding: the settings that matter on day one (language, the
+// navigation, animations and refresh rate, tray, updates, the privileged
+// service) and a few tips. Every step can be skipped; whatever is changed here
+// is saved at once, like on the settings page, and nothing sends the user
+// elsewhere before the end.
 
 import {
   createEffect,
@@ -19,9 +20,18 @@ import { type Language, LOCALES, rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { shortcutKeys } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
-import { EASE_OUT, play, presence } from "../lib/motion";
+import {
+  type ChartMode,
+  chartMode,
+  EASE_OUT,
+  play,
+  presence,
+  setChartMode,
+  setUiMotion,
+  uiMotion,
+} from "../lib/motion";
 import { noteServiceStatus, serviceConnected } from "../lib/privilege";
-import { appInfo } from "../lib/store";
+import { appInfo, changeInterval, INTERVALS, intervalMs } from "../lib/store";
 import type {
   PrivilegedServiceStatus,
   SettingsView,
@@ -38,12 +48,14 @@ import {
   KeyboardIcon,
   ShieldIcon,
   SparkleIcon,
+  ThemeIcon,
   TrayIcon,
   UpdateIcon,
   WarningIcon,
 } from "./icons";
+import { NavPositionChoice } from "./Nav";
 import Select from "./Select";
-import { serviceState } from "./Settings";
+import { chartModeOptions, serviceState } from "./Settings";
 
 /**
  * The onboarding a start shows if the settings record an older one. Raise it
@@ -63,7 +75,7 @@ export async function maybeOpenOnboarding() {
   if (settings && settings.onboarding < ONBOARDING_VERSION) setOpen(true);
 }
 
-const STEPS = ["welcome", "background", "update", "privilege", "taskManager", "tips"] as const;
+const STEPS = ["welcome", "display", "background", "update", "privilege", "taskManager", "tips"] as const;
 type Step = (typeof STEPS)[number];
 
 export default function Onboarding() {
@@ -176,6 +188,9 @@ function OnboardingDialog(props: { leaving: boolean }) {
           <Switch>
             <Match when={step() === "welcome"}>
               <Welcome settings={settings()} onChange={(view) => mutate(view)} />
+            </Match>
+            <Match when={step() === "display"}>
+              <Display />
             </Match>
             <Match when={step() === "background"}>
               <Background settings={settings()} save={save} />
@@ -309,6 +324,44 @@ function Welcome(props: {
             onChange={(language) => void choose(language)}
           />
         </div>
+      </Row>
+    </>
+  );
+}
+
+function Display() {
+  return (
+    <>
+      <Heading
+        icon={<ThemeIcon size={22} />}
+        title={t("onboarding.display.title")}
+        body={t("onboarding.display.body")}
+      />
+      <Row title={t("onboarding.display.nav")} hint={t("onboarding.display.navHint")}>
+        <NavPositionChoice label={t("onboarding.display.nav")} />
+      </Row>
+      <Row title={t("onboarding.display.motion")} hint={t("onboarding.display.motionHint")}>
+        <Toggle checked={uiMotion()} label={t("onboarding.display.motion")} onChange={setUiMotion} />
+      </Row>
+      <Row title={t("onboarding.display.chart")} hint={t("onboarding.display.chartHint")}>
+        <Select<ChartMode>
+          label={t("onboarding.display.chart")}
+          value={chartMode()}
+          options={chartModeOptions()}
+          onChange={setChartMode}
+        />
+      </Row>
+      <Row title={t("onboarding.display.interval")} hint={t("onboarding.display.intervalHint")}>
+        <Select
+          class="tnum"
+          label={t("onboarding.display.interval")}
+          value={intervalMs()}
+          options={INTERVALS.map((ms) => ({
+            value: ms,
+            label: t("shell.interval.option", { seconds: ms / 1000 }),
+          }))}
+          onChange={changeInterval}
+        />
       </Row>
     </>
   );

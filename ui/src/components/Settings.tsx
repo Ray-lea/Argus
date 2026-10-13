@@ -32,7 +32,16 @@ import {
   uiMotion,
 } from "../lib/motion";
 import { noteServiceStatus, privilege, serviceConnected } from "../lib/privilege";
-import { appInfo, focusRule, intervalMs, setFocusRule, setIntervalMs, setPage, snapshot } from "../lib/store";
+import {
+  appInfo,
+  changeInterval,
+  focusRule,
+  INTERVALS,
+  intervalMs,
+  setFocusRule,
+  setPage,
+  snapshot,
+} from "../lib/store";
 import type {
   HistoryUsage,
   PriorityClass,
@@ -99,7 +108,6 @@ export function openSettings(section: SectionId) {
   setPage("settings");
 }
 
-const INTERVALS = [500, 1000, 2000, 5000];
 const THEMES: Theme[] = ["system", "light", "dark"];
 const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta"]);
 
@@ -227,6 +235,19 @@ const PRIORITY_CHOICES: PriorityClass[] = [
 const [privilegeRevision, setPrivilegeRevision] = createSignal(0);
 /** Bumped when the onboarding, which can install the service, closes. */
 const [serviceRevision, setServiceRevision] = createSignal(0);
+
+/** The chart modes, labelled with their frame rates (also used by the onboarding). */
+export function chartModeOptions(): { value: ChartMode; label: string }[] {
+  return [
+    { value: "fluid", label: t("settings.motion.chart.fluid", { fps: refreshHz() }) },
+    {
+      value: "balanced",
+      label: t("settings.motion.chart.balanced", { fps: Math.round(1000 / balancedFrameMs()) }),
+    },
+    { value: "pixel", label: t("settings.motion.chart.pixel") },
+    { value: "off", label: t("settings.motion.chart.off") },
+  ];
+}
 
 /** The privileged service's state in a few words (also used by the onboarding). */
 export function serviceState(s: PrivilegedServiceStatus | null | undefined): string {
@@ -1275,17 +1296,7 @@ export default function SettingsPage() {
                     <Select<ChartMode>
                       label={t("settings.motion.chart.title")}
                       value={chartMode()}
-                      options={[
-                        { value: "fluid", label: t("settings.motion.chart.fluid", { fps: refreshHz() }) },
-                        {
-                          value: "balanced",
-                          label: t("settings.motion.chart.balanced", {
-                            fps: Math.round(1000 / balancedFrameMs()),
-                          }),
-                        },
-                        { value: "pixel", label: t("settings.motion.chart.pixel") },
-                        { value: "off", label: t("settings.motion.chart.off") },
-                      ]}
+                      options={chartModeOptions()}
                       onChange={setChartMode}
                     />
                   </Setting>
@@ -1306,10 +1317,7 @@ export default function SettingsPage() {
                         value: ms,
                         label: t("shell.interval.option", { seconds: ms / 1000 }),
                       }))}
-                      onChange={(ms) => {
-                        setIntervalMs(ms);
-                        void api.setInterval(ms);
-                      }}
+                      onChange={changeInterval}
                     />
                   </Setting>
                   <Setting

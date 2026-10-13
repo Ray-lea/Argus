@@ -4,13 +4,14 @@ import { locale, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import type { ViewMode } from "../lib/rows";
 import {
+  changeInterval,
   detailsOpen,
+  INTERVALS,
   intervalMs,
   page,
   paused,
   query,
   setDetailsOpen,
-  setIntervalMs,
   setPaused,
   setQuery,
   setViewMode,
@@ -33,8 +34,6 @@ const MODES: { mode: ViewMode; icon: typeof AppsIcon }[] = [
   { mode: "tree", icon: TreeIcon },
   { mode: "list", icon: ListIcon },
 ];
-
-const INTERVALS = [500, 1000, 2000, 5000];
 
 let searchInput: HTMLInputElement | undefined;
 
@@ -116,10 +115,6 @@ export default function Toolbar() {
     );
     onCleanup(fitter.dispose);
   });
-  const changeInterval = (ms: number) => {
-    setIntervalMs(ms);
-    void api.setInterval(ms);
-  };
   const togglePause = () => {
     const next = !paused();
     setPaused(next);

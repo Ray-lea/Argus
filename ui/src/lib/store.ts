@@ -242,6 +242,15 @@ export const [paused, setPaused] = createSignal(false);
 export const [focusRule, setFocusRule] = createSignal<string | null>(null);
 export const [query, setQuery] = createSignal("");
 
+/** The refresh intervals on offer (toolbar, settings, onboarding). */
+export const INTERVALS = [500, 1000, 2000, 5000];
+
+/** Samples every `ms` from now on, also after a restart. */
+export function changeInterval(ms: number) {
+  setIntervalMs(ms);
+  void api.setInterval(ms);
+}
+
 // ---- Table state -------------------------------------------------------------
 
 export const [selectedKey, setSelectedKey] = createSignal<string | null>(null);
