@@ -182,11 +182,37 @@ impl SettingsStore {
 
     pub fn update(&self, f: impl FnOnce(&mut Settings)) -> std::io::Result<Settings> {
         let mut s = self.current.lock().unwrap();
-        f(&mut s);
+        let mut next = s.clone();
+        f(&mut next);
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        std::fs::write(&self.path, serde_json::to_vec_pretty(&*s)?)?;
+        std::fs::write(&self.path, serde_json::to_vec_pretty(&next)?)?;
+        *s = next;
         Ok(s.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_save_does_not_enable_kernel_sensors_in_memory() {
+        let id = unsafe { windows::Win32::System::Com::CoCreateGuid() }.unwrap();
+        let directory = std::env::temp_dir().join(format!("argus-settings-{id:?}"));
+        std::fs::create_dir(&directory).unwrap();
+        let store = SettingsStore {
+            path: directory.clone(),
+            current: Mutex::new(Settings::default()),
+            hotkey_error: Mutex::new(None),
+        };
+        assert!(
+            store
+                .update(|settings| settings.kernel_sensors = true)
+                .is_err()
+        );
+        assert!(!store.get().kernel_sensors);
+        std::fs::remove_dir(directory).unwrap();
     }
 }
