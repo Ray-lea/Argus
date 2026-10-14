@@ -17,6 +17,7 @@ import {
 import { t } from "../lib/i18n";
 import { EASE_OUT, play } from "../lib/motion";
 import { persisted } from "../lib/prefs";
+import { cpuTemperature, hasCpuDieTemperature } from "../lib/sensors";
 import {
   cpuMode,
   HISTORY,
@@ -437,7 +438,14 @@ function CpuView() {
     [],
     { equals: (a, b) => a.length === b.length && a.every((v, i) => v === b[i]) },
   );
-  const temp = () => (hw().thermal.length ? Math.max(...hw().thermal.map((z) => z.celsius)) : null);
+  const temp = () => cpuTemperature(hw());
+  const coreTemperatures = createMemo(
+    () =>
+      new Map(
+        hw().cpuSensors?.coreTemperatures.map((core) => [core.group * 64 + core.processor, core.celsius]) ??
+          [],
+      ),
+  );
   const powerMax = autoMax(5, "cpu.pkgW", "cpu.coresW");
   /** Mean clock of the P or E cores, MHz. */
   const meanMhz = (eff: boolean) => {
@@ -548,18 +556,19 @@ function CpuView() {
                   const eff = () => hybrid() && efficient(i);
                   const color = () => (eff() ? "--cpu-e" : "--cpu");
                   const mhz = () => hw().coreMhz[i] ?? 0;
+                  const temperature = () => coreTemperatures().get(i);
                   return (
                     <div
                       class="chart-frame core-cell"
                       style={{ "--c": `var(${color()})` }}
-                      title={t(
+                      title={`${t(
                         hybrid()
                           ? eff()
                             ? "performance.cpu.coreTipE"
                             : "performance.cpu.coreTipP"
                           : "performance.cpu.coreTip",
                         { index: i, core: cpu().threads[i]?.core ?? "?" },
-                      )}
+                      )}${temperature() !== undefined ? `\n${t("common.resource.temperature")}: ${Math.round(temperature() ?? 0)} °C` : ""}`}
                     >
                       <span class="chart-cell-label">
                         <Show when={hybrid()}>
@@ -687,18 +696,57 @@ function CpuView() {
           <dd>{fmtCache(cpu().l3)}</dd>
           <dt>{t("performance.cpu.thermalSource")}</dt>
           <dd>
-            {hw().thermal.length > 0
-              ? t("performance.cpu.thermalZones", {
-                  zones: hw()
-                    .thermal.map((z) => z.name)
-                    .join(t("common.listSeparator")),
-                })
-              : t("performance.cpu.thermalNone")}
+            {hasCpuDieTemperature(hw())
+              ? t("performance.cpu.driverSource")
+              : hw().thermal.length > 0
+                ? t("performance.cpu.thermalZones", {
+                    zones: hw()
+                      .thermal.map((z) => z.name)
+                      .join(t("common.listSeparator")),
+                  })
+                : t("performance.cpu.thermalNone")}
           </dd>
+          <Show when={hw().cpuSensors}>
+            {(sensors) => (
+              <>
+                <dt>{t("performance.cpu.driverStatus")}</dt>
+                <dd>{t(`performance.cpu.sensorState.${sensors().state}`)}</dd>
+                <Show when={sensors().controlCelsius !== null}>
+                  <dt>{t("performance.cpu.controlTemperature")}</dt>
+                  <dd>{Math.round(sensors().controlCelsius ?? 0)} °C</dd>
+                </Show>
+                <Show when={sensors().coreVoltage !== null}>
+                  <dt>{t("performance.cpu.coreVoltage")}</dt>
+                  <dd>{sensors().coreVoltage?.toFixed(3)} V</dd>
+                </Show>
+                <Show when={sensors().coreVid !== null}>
+                  <dt>{t("performance.cpu.coreVid")}</dt>
+                  <dd>{sensors().coreVid?.toFixed(3)} V</dd>
+                </Show>
+                <For each={sensors().ccdTemperatures.map((ccd) => ccd.index)}>
+                  {(index) => (
+                    <>
+                      <dt>{t("performance.cpu.ccdTemperature", { index: index + 1 })}</dt>
+                      <dd>
+                        {Math.round(
+                          sensors().ccdTemperatures.find((ccd) => ccd.index === index)?.celsius ?? 0,
+                        )}{" "}
+                        °C
+                      </dd>
+                    </>
+                  )}
+                </For>
+              </>
+            )}
+          </Show>
         </dl>
       </div>
       <p class="perf-note">
-        {hw().thermal.length > 0 ? t("performance.cpu.thermalNote") : t("performance.cpu.thermalMissing")}
+        {hw().cpuSensors?.state === "ready"
+          ? t("performance.cpu.driverNote")
+          : hw().thermal.length > 0
+            ? t("performance.cpu.thermalNote")
+            : t("performance.cpu.thermalMissing")}
       </p>
     </>
   );
@@ -1057,17 +1105,25 @@ function GpuView(props: { id: string }) {
                 )}
               </Show>
               <Show
-                when={g().boardPower}
+                when={g().boardPower !== null}
                 fallback={
                   <Show when={g().power}>
                     {(p) => <Stat label={t("performance.gpu.power")} value={Math.round(p())} unit="% TDP" />}
                   </Show>
                 }
               >
-                {(w) => <Stat label={t("performance.gpu.power")} value={fmtW(w())} unit="W" />}
+                <Stat label={t("performance.gpu.power")} value={fmtW(g().boardPower ?? 0)} unit="W" />
               </Show>
             </div>
             <dl class="info-list">
+              <Show when={g().powerSource}>
+                {(source) => (
+                  <>
+                    <dt>{t("performance.gpu.powerSource")}</dt>
+                    <dd>{t(`performance.gpu.sources.${source()}`)}</dd>
+                  </>
+                )}
+              </Show>
               <dt>{t("performance.gpu.dedicatedMemory")}</dt>
               <dd>{fmtGB(g().info.dedicatedTotal)} GB</dd>
               <dt>{t("performance.gpu.sharedMemory")}</dt>

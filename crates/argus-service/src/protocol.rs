@@ -10,6 +10,7 @@ pub const MAX_REPLY: usize = 1024 * 1024;
 pub(crate) struct Context {
     services: ServiceCatalog,
     network: crate::network::NetworkMonitor,
+    sensors: crate::sensors::SensorMonitor,
 }
 
 impl Context {
@@ -17,6 +18,7 @@ impl Context {
         Self {
             services: ServiceCatalog::default(),
             network: crate::network::NetworkMonitor::spawn(),
+            sensors: crate::sensors::SensorMonitor::spawn(),
         }
     }
 
@@ -25,6 +27,7 @@ impl Context {
         Self {
             services: ServiceCatalog::default(),
             network: crate::network::NetworkMonitor::disabled(),
+            sensors: crate::sensors::SensorMonitor::disabled(),
         }
     }
 }
@@ -35,6 +38,7 @@ pub enum Operation {
     Ping,
     RestoreTaskManager,
     NetworkSnapshot,
+    SensorSnapshot {},
     FindHandles {
         paths: Vec<String>,
     },
@@ -87,6 +91,7 @@ pub enum Reply {
     Pong { version: String, protocol: u32 },
     Done,
     Network(Option<crate::NetworkFrame>),
+    Sensors(argus_core::hardware::CpuSensors),
     Handles(argus_core::handles::HandleReport),
     Priority(Priority),
     Error(ActionError),
@@ -131,7 +136,10 @@ impl Operation {
                     return Err(ActionError::Refused);
                 }
             }
-            Self::Ping | Self::NetworkSnapshot | Self::RestoreTaskManager => {}
+            Self::Ping
+            | Self::NetworkSnapshot
+            | Self::SensorSnapshot {}
+            | Self::RestoreTaskManager => {}
         }
         Ok(())
     }
@@ -147,6 +155,7 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
             return Reply::Handles(crate::handles::scan_local(paths));
         }
         Operation::NetworkSnapshot => return Reply::Network(context.network.snapshot()),
+        Operation::SensorSnapshot {} => return Reply::Sensors(context.sensors.snapshot()),
         Operation::ApplyRule {
             pid,
             create_time,
@@ -286,6 +295,21 @@ mod tests {
 
     #[test]
     fn rejects_unknown_operations_and_force_flag() {
+        assert!(
+            serde_json::from_str::<Operation>(r#"{"op":"sensorSnapshot","register":416}"#).is_err()
+        );
+        assert!(
+            serde_json::from_str::<Operation>(
+                r#"{"op":"sensorSnapshot","module":"untrusted.bin"}"#
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_str::<Operation>(r#"{"op":"sensorSnapshot"}"#)
+                .unwrap()
+                .validate()
+                .is_ok()
+        );
         assert!(
             serde_json::from_str::<Request>(
                 r#"{"protocol":1,"operation":{"op":"execute","command":"cmd"}}"#

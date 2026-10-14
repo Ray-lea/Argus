@@ -1,7 +1,7 @@
 // First-run onboarding: the settings that matter on day one (language, the
 // navigation, animations and refresh rate, tray, updates, the privileged
-// service) and a few tips. Every step can be skipped; whatever is changed here
-// is saved at once, like on the settings page, and nothing sends the user
+// service and kernel sensors) and a few tips. Every step can be skipped;
+// changes are saved as on the settings page, and nothing sends the user
 // elsewhere before the end.
 
 import {
@@ -18,6 +18,7 @@ import {
 } from "solid-js";
 import { type Language, LOCALES, rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
+import { changeKernelSensors, kernelBusy, kernelError, kernelRevision } from "../lib/kernel-setup";
 import { shortcutKeys } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
 import {
@@ -43,6 +44,7 @@ import { toast } from "../lib/ui";
 import { updateStatus } from "../lib/updates";
 import Indicator from "./Indicator";
 import {
+  BoltIcon,
   CheckIcon,
   GlobeIcon,
   KeyboardIcon,
@@ -75,7 +77,16 @@ export async function maybeOpenOnboarding() {
   if (settings && settings.onboarding < ONBOARDING_VERSION) setOpen(true);
 }
 
-const STEPS = ["welcome", "display", "background", "update", "privilege", "taskManager", "tips"] as const;
+const STEPS = [
+  "welcome",
+  "display",
+  "background",
+  "update",
+  "privilege",
+  "sensors",
+  "taskManager",
+  "tips",
+] as const;
 type Step = (typeof STEPS)[number];
 
 export default function Onboarding() {
@@ -89,7 +100,7 @@ export default function Onboarding() {
 
 function OnboardingDialog(props: { leaving: boolean }) {
   const [index, setIndex] = createSignal(0);
-  const [settings, { mutate }] = createResource(() => api.settings().catch(() => null));
+  const [settings, { mutate }] = createResource(kernelRevision, () => api.settings().catch(() => null));
   let stepEl: HTMLDivElement | undefined;
   let primary: HTMLButtonElement | undefined;
 
@@ -160,6 +171,13 @@ function OnboardingDialog(props: { leaving: boolean }) {
     }
   };
 
+  const enableSensors = async () => {
+    if (kernelBusy() || serviceBusy() || service.loading || !serviceConnected(service())) return;
+    const value = await changeKernelSensors(true);
+    if (value) mutate(value);
+    else void refetchService();
+  };
+
   // The replacement needs the service; its state follows the service's.
   const [taskManager, { refetch: refetchTaskManager, mutate: mutateTaskManager }] = createResource(
     service,
@@ -210,11 +228,20 @@ function OnboardingDialog(props: { leaving: boolean }) {
             <Match when={step() === "taskManager"}>
               <TaskManager
                 status={taskManager()}
-                serviceReady={service()?.state === "running" && !!service()?.authorized}
+                serviceReady={serviceConnected(service())}
                 checking={taskManager.loading || service.loading}
                 busy={taskManagerBusy()}
                 error={taskManagerError()}
                 onEnable={() => void enableTaskManager()}
+              />
+            </Match>
+            <Match when={step() === "sensors"}>
+              <KernelSensors
+                enabled={settings()?.kernelSensors ?? false}
+                serviceReady={serviceConnected(service())}
+                checking={settings.loading || service.loading || serviceBusy()}
+                onEnable={() => void enableSensors()}
+                onService={() => setIndex(STEPS.indexOf("privilege"))}
               />
             </Match>
             <Match when={step() === "tips"}>
@@ -508,7 +535,7 @@ function Updates(props: {
   );
 }
 
-const FEATURES = ["end", "tune", "inspect", "control"] as const;
+const FEATURES = ["end", "tune", "inspect", "control", "sensors"] as const;
 
 function Privilege(props: {
   status: PrivilegedServiceStatus | null | undefined;
@@ -547,44 +574,119 @@ function Privilege(props: {
         <WarningIcon size={14} />
         {t("onboarding.privilege.risk")}
       </p>
-      <Show
-        when={!appInfo()?.elevated}
-        fallback={<p class="onboarding-note">{t("onboarding.privilege.elevated")}</p>}
-      >
-        <div class="onboarding-row">
-          <div class="onboarding-row-text">
-            <div class="onboarding-state" aria-live="polite">
-              <Show when={props.busy}>
-                <span class="spinner" />
-              </Show>
-              <Show when={connected() && !props.busy}>
-                <CheckIcon size={14} />
-              </Show>
-              {state()}
-            </div>
-            <div class="onboarding-hint">{hint()}</div>
+      <Show when={appInfo()?.elevated}>
+        <p class="onboarding-note">{t("onboarding.privilege.elevated")}</p>
+      </Show>
+      <div class="onboarding-row">
+        <div class="onboarding-row-text">
+          <div class="onboarding-state" aria-live="polite">
+            <Show when={props.busy}>
+              <span class="spinner" />
+            </Show>
+            <Show when={connected() && !props.busy}>
+              <CheckIcon size={14} />
+            </Show>
+            {state()}
           </div>
-          <Show when={action()}>
-            {(a) => (
+          <div class="onboarding-hint">{hint()}</div>
+        </div>
+        <Show when={action()}>
+          {(a) => (
+            <button
+              type="button"
+              class="btn"
+              disabled={props.busy || props.checking}
+              onClick={() => props.onManage(a())}
+            >
+              {a() === "install" ? t("settings.privilege.install.action") : t("settings.privilege.start")}
+            </button>
+          )}
+        </Show>
+      </div>
+      <Show when={props.error}>
+        {(error) => (
+          <p class="onboarding-note warning">
+            <WarningIcon size={14} />
+            {error()}
+          </p>
+        )}
+      </Show>
+    </>
+  );
+}
+
+function KernelSensors(props: {
+  enabled: boolean;
+  serviceReady: boolean;
+  checking: boolean;
+  onEnable: () => void;
+  onService: () => void;
+}) {
+  const state = () => {
+    if (kernelBusy()) return t("settings.sensors.preparing");
+    if (props.checking) return t("onboarding.sensors.checking");
+    return props.enabled ? t("onboarding.sensors.enabled") : t("onboarding.sensors.disabled");
+  };
+  return (
+    <>
+      <Heading
+        icon={<BoltIcon size={22} />}
+        title={t("onboarding.sensors.title")}
+        body={t("onboarding.sensors.body")}
+      />
+      <p class="onboarding-note">{t("onboarding.sensors.install")}</p>
+      <p class="onboarding-note">{t("onboarding.sensors.limits")}</p>
+      <div class="onboarding-row">
+        <div class="onboarding-row-text">
+          <div class="onboarding-state" role="status">
+            <Show when={kernelBusy()}>
+              <span class="spinner" />
+            </Show>
+            <Show when={props.enabled && !kernelBusy()}>
+              <CheckIcon size={14} />
+            </Show>
+            {state()}
+          </div>
+          <div class="onboarding-hint">
+            {!props.serviceReady
+              ? t("onboarding.sensors.needsService")
+              : props.enabled
+                ? t("onboarding.sensors.manage")
+                : t("onboarding.sensors.later")}
+          </div>
+        </div>
+        <Show
+          when={!props.serviceReady}
+          fallback={
+            <Show when={!props.enabled}>
               <button
                 type="button"
                 class="btn"
-                disabled={props.busy || props.checking}
-                onClick={() => props.onManage(a())}
+                disabled={kernelBusy() || props.checking}
+                onClick={props.onEnable}
               >
-                {a() === "install" ? t("settings.privilege.install.action") : t("settings.privilege.start")}
+                {t("onboarding.sensors.enable")}
               </button>
-            )}
-          </Show>
-        </div>
-        <Show when={props.error}>
-          {(error) => (
-            <p class="onboarding-note warning">
-              <WarningIcon size={14} />
-              {error()}
-            </p>
-          )}
+            </Show>
+          }
+        >
+          <button
+            type="button"
+            class="btn"
+            disabled={kernelBusy() || props.checking}
+            onClick={props.onService}
+          >
+            {t("onboarding.sensors.configureService")}
+          </button>
         </Show>
+      </div>
+      <Show when={kernelError()}>
+        {(error) => (
+          <p class="onboarding-note warning" role="alert">
+            <WarningIcon size={14} />
+            {error()}
+          </p>
+        )}
       </Show>
     </>
   );

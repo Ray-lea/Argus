@@ -152,5 +152,15 @@
     "modified": "配置已被其他程序修改，Argus 不会覆盖；恢复记录已保留",
     "changedBeforeRestore": "恢复前配置再次变化，已停止操作",
     "verifyFailed": "恢复后核验失败，未删除任何恢复文件"
+  },
+  "sensorSetup": {
+    "busy": "内核传感器设置正在处理中，请等待当前操作完成。",
+    "serviceRequired": "请先在权限设置中安装、更新并启动 Argus 特权服务，再开启内核传感器。",
+    "download": "无法从官方发布地址下载 PawnIO 安装程序。请检查网络连接，或通过 PawnIO 官网安装后重试。",
+    "packageInvalid": "PawnIO 安装程序的大小或 SHA-256 校验不符，已停止安装。",
+    "signatureInvalid": "PawnIO 安装程序的 Windows 签名验证失败，已停止安装。",
+    "foreignDriver": "现有 PawnIO 服务的类型、文件位置、权限或版本信息不符合预期，未更改该服务。请通过官方安装程序检查安装。",
+    "notReady": "PawnIO 尚未正常运行，内核传感器保持关闭。请检查驱动状态或系统提示后重试。",
+    "reboot": "PawnIO 安装需要重启 Windows 才能完成。请重启后再次开启内核传感器。"
   }
 }

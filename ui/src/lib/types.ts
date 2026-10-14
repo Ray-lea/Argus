@@ -207,9 +207,10 @@ export interface GpuStats {
   fanRpm: number | null;
   /** Percent of the board's power budget. */
   power: number | null;
-  /** Board power draw and the enforced limit, W (NVIDIA only). */
+  /** Power and limit in W; the source identifies the measurement scope. */
   boardPower: number | null;
   boardPowerLimit: number | null;
+  powerSource: "nvml" | "adlBoard" | "adlChip" | "igcl" | null;
   clockMhz: number | null;
   clockMaxMhz: number | null;
   voltageMv: number | null;
@@ -223,11 +224,30 @@ export interface Hardware {
   coreMhz: number[];
   thermal: ThermalZone[];
   power: CpuPower;
+  cpuSensors: CpuSensors | null;
   memory: MemoryInfo;
   disks: DiskStats[];
   nics: NicStats[];
   gpus: GpuStats[];
   batteries: BatteryStats[];
+}
+
+export interface CpuSensors {
+  state:
+    | "pending"
+    | "serviceUnavailable"
+    | "driverUnavailable"
+    | "moduleRejected"
+    | "unsupported"
+    | "noData"
+    | "ready";
+  packageCelsius: number | null;
+  controlCelsius: number | null;
+  coreTemperatures: { group: number; processor: number; celsius: number }[];
+  ccdTemperatures: { index: number; celsius: number }[];
+  coreVoltage: number | null;
+  coreVid: number | null;
+  packageWatts: number | null;
 }
 
 export interface Snapshot {
@@ -287,6 +307,7 @@ export interface SettingsView {
   rules: ProcessRule[];
   /** Record history for the history page. */
   history: boolean;
+  kernelSensors: boolean;
   updateCheck: boolean;
   updateChannel: UpdateChannel;
   updateRoute: UpdateRoute;

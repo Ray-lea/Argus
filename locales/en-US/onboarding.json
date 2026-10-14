@@ -55,13 +55,28 @@
       "end": "End other users' processes (except critical system processes)",
       "tune": "Set priority and efficiency mode, also automatically through rules",
       "inspect": "Find file locks in every process and measure per-process network traffic",
-      "control": "Control Windows services and close network connections"
+      "control": "Control Windows services and close network connections",
+      "sensors": "Provide access to kernel sensors (the driver is enabled separately)"
     },
     "risk": "The permission belongs to the current Windows account: any program running under it can use these functions, which amounts to partial administrator rights. Only install it on an account you use yourself.",
     "later": "Installing requires administrator permission. It can also be skipped and installed or uninstalled later in Settings → Permissions.",
-    "replace": "The next step offers replacing Task Manager with Argus.",
+    "replace": "The following steps offer kernel sensors and Task Manager replacement.",
     "manage": "See the details, update or reinstall it in Settings → Permissions.",
-    "elevated": "Argus is running as administrator, so these actions don't need the privileged service."
+    "elevated": "Argus is running as administrator, so process management does not need the privileged service. Kernel sensors and Task Manager replacement still require it."
+  },
+  "sensors": {
+    "title": "Kernel sensors (optional)",
+    "body": "Read processor temperature, voltage and power to supplement the sensors Windows provides.",
+    "install": "Enable kernel sensors to check PawnIO, download and verify the official driver if needed, and install or start it. Installation or startup requires administrator permission.",
+    "limits": "Available metrics depend on the processor. AMD CCD temperatures are not per-core readings; unsupported metrics stay empty.",
+    "checking": "Checking status",
+    "enabled": "Enabled",
+    "disabled": "Not enabled",
+    "needsService": "Install and start the privileged service first. An existing service that cannot connect can be updated in Settings.",
+    "configureService": "Set up service",
+    "enable": "Enable kernel sensors",
+    "later": "Off by default. Select Next to skip this option and enable it later in Settings → Permissions.",
+    "manage": "View readings on the Performance page and turn sensors off in Settings → Permissions. Turning them off does not uninstall the shared driver."
   },
   "taskManager": {
     "title": "Replace Task Manager (optional)",
@@ -69,7 +84,7 @@
     "scope": "This applies to the whole PC; other accounts still open Windows Task Manager. If Argus can't start, Windows Task Manager opens instead.",
     "undo": "It can be turned off anytime in Settings → Permissions, and a standalone recovery tool works even when the interface or the service can't run.",
     "later": "Turning it on requires administrator permission. It can also be skipped and turned on later in Settings → Permissions.",
-    "needsService": "The replacement relies on the privileged service; install it in the previous step first."
+    "needsService": "The replacement relies on the privileged service; install and start it in the Privileged service step first."
   },
   "tips": {
     "title": "You're all set",

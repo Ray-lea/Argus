@@ -152,5 +152,15 @@
     "modified": "Another program changed the configuration; Argus won't overwrite it, and the recovery record was kept",
     "changedBeforeRestore": "The configuration changed again before restoring; the operation was stopped",
     "verifyFailed": "Verification after restoring failed; no recovery files were deleted"
+  },
+  "sensorSetup": {
+    "busy": "Kernel sensor setup is in progress. Wait for the current operation to finish.",
+    "serviceRequired": "Install or update and start the Argus privileged service under Permissions before enabling kernel sensors.",
+    "download": "Could not download the official PawnIO installer. Check the network connection, or install it from the PawnIO website and try again.",
+    "packageInvalid": "The PawnIO installer size or SHA-256 did not match. Installation was stopped.",
+    "signatureInvalid": "Windows could not verify the PawnIO installer signature. Installation was stopped.",
+    "foreignDriver": "The existing PawnIO service type, file location, permissions or version information is unexpected. The service was not changed. Check the installation with the official installer.",
+    "notReady": "PawnIO is not running correctly. Kernel sensors remain off. Check the driver status or system messages and try again.",
+    "reboot": "PawnIO installation requires a Windows restart. Restart Windows, then enable kernel sensors again."
   }
 }

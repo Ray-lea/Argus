@@ -26,6 +26,7 @@ use windows::Wdk::Graphics::Direct3D::{
 use windows::Win32::Foundation::LUID;
 
 use super::nvml::Nvml;
+use super::vendor_gpu::{GpuPowerSource, Pci, VendorGpu};
 use crate::util::from_wide;
 
 #[derive(Debug, Serialize)]
@@ -56,9 +57,10 @@ pub struct GpuStats {
     pub fan_rpm: Option<u32>,
     /// Percent of the board's power budget.
     pub power: Option<f32>,
-    /// Board power draw and the limit the driver enforces, W (NVIDIA only).
+    /// Measured power and enforced limit, W; source specifies the scope.
     pub board_power: Option<f32>,
     pub board_power_limit: Option<f32>,
+    pub power_source: Option<GpuPowerSource>,
     /// 3D engine clock and its maximum, MHz.
     pub clock_mhz: Option<u32>,
     pub clock_max_mhz: Option<u32>,
@@ -79,13 +81,14 @@ struct Adapter {
     /// Node of the 3D engine, while its perf data keeps answering.
     node_3d: Option<u32>,
     /// PCI bus and device number.
-    pci: Option<(u32, u32)>,
+    pci: Option<Pci>,
 }
 
 pub(crate) struct GpuTracker {
     adapters: Vec<Adapter>,
     last: Option<Instant>,
     nvml: Option<Nvml>,
+    vendor: VendorGpu,
 }
 
 // Adapter handles are process-wide kernel handles.
@@ -104,12 +107,18 @@ impl GpuTracker {
             adapters,
             last: None,
             nvml,
+            vendor: VendorGpu::spawn(),
         }
     }
 
     pub fn sample(&mut self) -> Vec<GpuStats> {
         let now = Instant::now();
         let elapsed_ticks = self.last.map(|t| now.duration_since(t).as_secs_f64() * 1e7);
+        let vendor = self.vendor.sample(
+            self.last
+                .map(|at| now.duration_since(at))
+                .unwrap_or_default(),
+        );
         self.last = Some(now);
 
         self.adapters
@@ -126,6 +135,7 @@ impl GpuTracker {
                     power: None,
                     board_power: None,
                     board_power_limit: None,
+                    power_source: None,
                     clock_mhz: None,
                     clock_max_mhz: None,
                     voltage_mv: None,
@@ -177,8 +187,10 @@ impl GpuTracker {
                         a.has_perf = false;
                     }
                 }
-                if let (Some(nvml), Some((bus, device))) = (&self.nvml, a.pci) {
-                    (stats.board_power, stats.board_power_limit) = nvml.power(bus, device);
+                if let (Some(nvml), Some((bus, device, function))) = (&self.nvml, a.pci) {
+                    (stats.board_power, stats.board_power_limit) =
+                        nvml.power(bus, device, function);
+                    stats.power_source = stats.board_power.map(|_| GpuPowerSource::Nvml);
                 }
                 if let Some(node) = a.node_3d {
                     let mut perf = D3DKMT_NODE_PERFDATA {
@@ -192,6 +204,17 @@ impl GpuTracker {
                     } else {
                         a.node_3d = None;
                     }
+                }
+                if let Some((_, reading)) = vendor.iter().find(|(pci, _)| Some(*pci) == a.pci) {
+                    if reading.watts.is_some() {
+                        stats.board_power = reading.watts;
+                        stats.board_power_limit = reading.limit;
+                        stats.power_source = reading.source;
+                    }
+                    stats.temperature = stats.temperature.or(reading.temperature);
+                    stats.clock_mhz = stats.clock_mhz.or(reading.clock);
+                    stats.memory_clock_mhz = stats.memory_clock_mhz.or(reading.memory_clock);
+                    stats.voltage_mv = stats.voltage_mv.or(reading.voltage);
                 }
                 stats
             })
@@ -328,8 +351,11 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
     let has_perf = query_info(a.hAdapter, KMTQAITYPE_ADAPTERPERFDATA, &mut perf);
 
     let mut address = D3DKMT_ADAPTERADDRESS::default();
-    let pci = query_info(a.hAdapter, KMTQAITYPE_ADAPTERADDRESS, &mut address)
-        .then_some((address.BusNumber, address.DeviceNumber));
+    let pci = query_info(a.hAdapter, KMTQAITYPE_ADAPTERADDRESS, &mut address).then_some((
+        address.BusNumber,
+        address.DeviceNumber,
+        address.FunctionNumber,
+    ));
 
     let node_3d = node_engine
         .iter()

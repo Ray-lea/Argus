@@ -133,6 +133,9 @@ export const api = {
   openReleasePage: (version: string): Promise<void> =>
     mock ? Promise.resolve() : invoke("open_release_page", { version }),
   openLogDir: (): Promise<void> => (mock ? Promise.resolve() : invoke("open_log_dir")),
+  openSensorDriverPage: (): Promise<void> => (mock ? Promise.resolve() : invoke("open_sensor_driver_page")),
+  setKernelSensors: (enabled: boolean): Promise<SettingsView> =>
+    mock ? mock.setKernelSensors(enabled) : invoke("set_kernel_sensors", { enabled }),
   /** The QQ group's invitation, in the default browser. */
   openCommunity: (): Promise<void> => (mock ? Promise.resolve() : invoke("open_community")),
 

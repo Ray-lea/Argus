@@ -5,6 +5,7 @@
 // Usage: node scripts/notices.mjs [--check]
 
 import { execFileSync, execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -111,8 +112,18 @@ function npmPackages() {
   return [...found.values()];
 }
 
-function render(rust, npm) {
-  const all = [...rust, ...npm];
+function vendored() {
+  const dir = join(root, "crates/argus-service/vendor/pawnio");
+  const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+  for (const [name, hash] of Object.entries(manifest.sha256)) {
+    const actual = createHash("sha256").update(readFileSync(join(dir, name))).digest("hex");
+    if (actual !== hash) fail(`PawnIO module/source hash mismatch: ${name}`);
+  }
+  return [{ ...manifest, texts: [manifest.copyright, ...licenseTexts(dir)] }];
+}
+
+function render(rust, npm, native) {
+  const all = [...rust, ...npm, ...native];
   const byName = (a, b) => a.name.localeCompare(b.name, "en") || a.version.localeCompare(b.version, "en");
   const line = (p) => `  ${p.name} ${p.version}（${p.license}）${p.url}`;
   const rule = "=".repeat(80);
@@ -132,6 +143,9 @@ function render(rust, npm) {
     "",
     `界面组件（${npm.length} 个）`,
     ...npm.sort(byName).map(line),
+    "",
+    `内核传感器模块（${native.length} 个组件）`,
+    ...native.sort(byName).map(line),
   ];
 
   // Most texts are the same license with a different copyright line. Each
@@ -179,7 +193,7 @@ function render(rust, npm) {
   return `${out.join("\n")}\n`;
 }
 
-const text = render(crates(), npmPackages());
+const text = render(crates(), npmPackages(), vendored());
 const path = join(root, OUT);
 if (process.argv.includes("--check")) {
   if (!existsSync(path) || readFileSync(path, "utf8") !== text) {

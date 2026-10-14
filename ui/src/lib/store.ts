@@ -14,6 +14,7 @@ import {
   type TableRow,
   type ViewMode,
 } from "./rows";
+import { cpuTemperature } from "./sensors";
 import type { AppInfo, ProcessRow, ServiceInfo, Snapshot } from "./types";
 import { confirmRequest, menu, toast } from "./ui";
 
@@ -154,7 +155,7 @@ function recordSeries(s: Snapshot) {
   }
   put("gpu.max", gpuMax);
 
-  putMaybe("cpu.temp", hw.thermal.length ? Math.max(...hw.thermal.map((z) => z.celsius)) : null);
+  putMaybe("cpu.temp", cpuTemperature(hw));
   putMaybe("cpu.pkgW", hw.power.package);
   putMaybe("cpu.coresW", hw.power.cores);
   for (const d of hw.disks) putMaybe(`disk.${d.info.index}.temp`, d.temperature);

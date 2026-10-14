@@ -6,24 +6,29 @@ mod battery;
 mod cpu;
 mod disk;
 mod gpu;
+mod kernel_sensors;
 mod memory;
 mod net;
 mod nvml;
 mod registry;
 mod sensors;
+mod vendor_gpu;
 
 use std::sync::Arc;
 
 use serde::Serialize;
 
 pub use battery::{BatteryInfo, BatteryStats};
+pub use cpu::cpu_info;
 pub use cpu::{CpuInfo, CpuThread};
 pub use disk::{DiskInfo, DiskStats};
 pub(crate) use gpu::pretty_engine;
 pub use gpu::{GpuInfo, GpuStats};
+pub use kernel_sensors::{CcdTemperature, CoreTemperature, CpuSensors, SensorState};
 pub use memory::MemoryInfo;
 pub use net::{NicInfo, NicStats};
 pub use sensors::{CpuPower, ThermalZone};
+pub use vendor_gpu::GpuPowerSource;
 
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +41,7 @@ pub struct Hardware {
     /// ACPI thermal zones; on most laptops one of them tracks the CPU package.
     pub thermal: Vec<ThermalZone>,
     pub power: CpuPower,
+    pub cpu_sensors: Option<CpuSensors>,
     pub memory: Arc<MemoryInfo>,
     pub disks: Vec<DiskStats>,
     pub nics: Vec<NicStats>,
@@ -81,6 +87,7 @@ impl HardwareTracker {
             core_mhz: sensed.core_mhz,
             thermal: sensed.thermal,
             power: sensed.power,
+            cpu_sensors: None,
             memory: self.memory.clone(),
             disks: self.disks.sample(),
             nics: self.nics.sample(),

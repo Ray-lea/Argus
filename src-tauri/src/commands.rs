@@ -393,6 +393,42 @@ pub fn set_history_enabled(
     Ok(settings_view(&app))
 }
 
+static SENSOR_CHANGE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The explicit switch action may request UAC; startup never does. Persist
+/// only after the driver is ready, so cancellation/failure leaves it off.
+#[tauri::command(async)]
+pub fn set_kernel_sensors(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<SettingsView, String> {
+    use std::sync::atomic::Ordering;
+    if SENSOR_CHANGE.swap(true, Ordering::AcqRel) {
+        return Err(tr!("sensorSetup.busy"));
+    }
+    struct Change;
+    impl Drop for Change {
+        fn drop(&mut self) {
+            SENSOR_CHANGE.store(false, Ordering::Release);
+        }
+    }
+    let _change = Change;
+    if enabled {
+        argus_service::driver::ensure_ready().inspect_err(|error| {
+            log::warn!(
+                "kernel sensor preparation failed: {}",
+                argus_core::diagnostics::failure(error)
+            );
+        })?;
+    }
+    app.state::<SettingsStore>()
+        .update(|s| s.kernel_sensors = enabled)
+        .map_err(|e| e.to_string())?;
+    state.sampler.send(Control::SetKernelSensors(enabled));
+    Ok(settings_view(&app))
+}
+
 /// Deletes all recorded history.
 #[tauri::command(async)]
 pub fn clear_history(state: State<'_, AppState>, dir: State<'_, HistoryDir>) -> Result<(), String> {
@@ -465,6 +501,15 @@ pub fn open_release_page(version: String) -> Result<(), String> {
 
 /// The invitation to the QQ group for feedback and discussion.
 const COMMUNITY_URL: &str = "https://qm.qq.com/q/97YqJAQRNK";
+
+#[tauri::command]
+pub fn open_sensor_driver_page() -> Result<(), String> {
+    std::process::Command::new("explorer.exe")
+        .arg("https://pawnio.eu/")
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
 
 /// Opens the group invitation in the default browser, which hands it to QQ.
 #[tauri::command]

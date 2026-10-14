@@ -1,13 +1,15 @@
 //! Opt-in, per-account authorization for a fixed set of local administrative
-//! operations. No command execution, arbitrary file writes, or driver access.
+//! operations. Driver access is restricted to fixed, read-only sensor snapshots.
 
 mod background;
+pub mod driver;
 mod handles;
 mod install;
 mod network;
 mod pipe;
 mod protocol;
 mod security;
+mod sensors;
 mod server;
 pub mod taskmgr;
 mod util;
@@ -18,6 +20,7 @@ pub use background::{NetworkClient, RuleRunner};
 pub use install::{ServiceStatus, manage, status};
 pub use network::NetworkFrame;
 pub use protocol::{Operation, Reply};
+pub use sensors::SensorClient;
 
 pub const SERVICE_NAME: &str = if cfg!(debug_assertions) {
     "ArgusPrivilegedDev"
@@ -34,12 +37,15 @@ const INSTALL_ARG: &str = "--argus-service-manage";
 /// Run by the NSIS uninstaller once the user agreed to remove the service too.
 const REMOVE_ARG: &str = "--argus-service-remove";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const PROTOCOL: u32 = 4;
+const PROTOCOL: u32 = 5;
 
 /// Handle service/helper modes before starting Tauri, its singleton or sampler.
 pub fn run_mode() -> Option<i32> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
+        Some(driver::MANAGE_ARG) if args.len() == 1 => {
+            Some(driver::run_helper().map_or_else(|code| code as i32, |_| 0))
+        }
         Some(handles::WORKER_ARG) if args.len() == 2 => Some(handles::worker(&args[1]) as i32),
         Some(SERVICE_ARG) if args.len() == 1 => {
             Some(server::dispatch().map_or_else(|e| e as i32, |_| 0))
@@ -48,7 +54,9 @@ pub fn run_mode() -> Option<i32> {
             Some(install::run_helper(&args[1], &args[2]).map_or_else(|e| e as i32, |_| 0))
         }
         Some(REMOVE_ARG) if args.len() == 1 => Some(remove_for_uninstall()),
-        Some(SERVICE_ARG | INSTALL_ARG | REMOVE_ARG | handles::WORKER_ARG) => Some(87),
+        Some(SERVICE_ARG | INSTALL_ARG | REMOVE_ARG | handles::WORKER_ARG | driver::MANAGE_ARG) => {
+            Some(87)
+        }
         _ => None,
     }
 }

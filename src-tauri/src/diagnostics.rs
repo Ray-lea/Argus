@@ -6,7 +6,7 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use argus_core::Snapshot;
+use argus_core::{Snapshot, hardware::GpuPowerSource};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Security::{
     GetTokenInformation, TOKEN_ELEVATION_TYPE, TOKEN_QUERY, TokenElevationType,
@@ -157,7 +157,13 @@ pub fn log_hardware_once(s: &Snapshot) {
     );
     for (index, g) in hw.gpus.iter().enumerate() {
         let power = if g.board_power.is_some() {
-            "watts (NVML)"
+            match g.power_source {
+                Some(GpuPowerSource::Nvml) => "watts (NVML board)",
+                Some(GpuPowerSource::AdlBoard) => "watts (ADL board)",
+                Some(GpuPowerSource::AdlChip) => "watts (ADL chip)",
+                Some(GpuPowerSource::Igcl) => "watts (IGCL GPU)",
+                None => "watts (source unavailable)",
+            }
         } else if g.power.is_some() {
             "percent of budget"
         } else {

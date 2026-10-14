@@ -1,7 +1,7 @@
 // Synthetic data for running the UI in a plain browser (`pnpm dev`).
 // Never bundled into the Tauri build's hot path: ipc.ts only imports it outside Tauri.
 
-import { type Language, type Locale, localeFor } from "./i18n";
+import { type Language, type Locale, localeFor, t } from "./i18n";
 import type {
   AppInfo,
   Connection,
@@ -402,6 +402,22 @@ function mockHardware(cpu: number, io: number): Hardware {
     cpuMhz: Math.round(2400 * (1 + cpu / 120) + Math.random() * 300),
     coreMhz: CPU_INFO.threads.map((t) => Math.round((t.efficient ? 2800 : 3500) + wave(0, 120))),
     thermal: [{ name: "TZ01", celsius: wave(55 + cpu / 4, 1.5) }],
+    cpuSensors: mockSettings.kernelSensors
+      ? {
+          state: "ready",
+          packageCelsius: wave(55 + cpu / 4, 1.5),
+          controlCelsius: null,
+          coreTemperatures: Array.from({ length: CPU_INFO.logical }, (_, i) => ({
+            group: 0,
+            processor: i,
+            celsius: wave(50 + cpu / 4, 2),
+          })),
+          ccdTemperatures: [],
+          coreVoltage: null,
+          coreVid: 1.15,
+          packageWatts: null,
+        }
+      : null,
     power: { package: wave(30 + cpu * 0.8, 3), cores: wave(22 + cpu * 0.7, 3), graphics: null, memory: null },
     memory: {
       installed: 32 * GB,
@@ -437,6 +453,7 @@ function mockHardware(cpu: number, io: number): Hardware {
         power: null,
         boardPower: wave(18 + g3d * 0.6, 2),
         boardPowerLimit: 115,
+        powerSource: "nvml",
         clockMhz: Math.round(1800 + g3d * 12),
         clockMaxMhz: 3105,
         voltageMv: null,
@@ -475,6 +492,7 @@ const mockSettings: SettingsView = {
   hotkey: "Ctrl+Alt+Escape",
   rules: [],
   history: true,
+  kernelSensors: false,
   updateCheck: true,
   updateChannel: "stable",
   updateRoute: "auto",
@@ -491,6 +509,15 @@ export const settings = {
     return { ...mockSettings };
   },
 };
+
+/** Browser-only fixture for pending/failure UI; no installer or service calls. */
+export async function setKernelSensors(enabled: boolean): Promise<SettingsView> {
+  if (enabled) {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    if (query.get("sensorSetup") === "failure") throw new Error(t("settings.sensors.error"));
+  }
+  return settings.update({ kernelSensors: enabled });
+}
 
 let timer: ReturnType<typeof setInterval> | undefined;
 let interval = 1000;

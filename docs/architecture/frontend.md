@@ -15,6 +15,7 @@
 | `src/lib/language.ts`、`src/lib/keys.ts` | 切换语言（保存到原生设置后应用宿主解析的结果）；快捷键的显示名称 |
 | `src/lib/rows.ts` | 把进程快照整理成三种视图要渲染的行 |
 | `src/lib/privilege.ts` | 状态栏权限标记的状态：管理员、特权服务已连接或标准权限；窗口显示时每 30 秒检查一次服务 |
+| `src/lib/kernel-setup.ts` | 设置页与首次启动引导共用的内核传感器操作：防止重复请求，跨页面保留准备状态和错误，操作完成后刷新设置；仅在显式开启时调用宿主准备驱动 |
 | `src/lib/motion.ts` | 动画偏好（界面动画、曲线动画四档）、屏幕刷新率测量、Fluent 缓动曲线与进出场辅助 |
 | `src/lib/actions.ts` | 面向用户的进程操作：确认、执行、反馈 |
 | `src/lib/prefs.ts` | 存在 localStorage 的偏好（按 WebView 配置隔离，开发版与正式版各一份） |

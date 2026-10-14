@@ -42,6 +42,8 @@
 | `disk.rs` | 物理磁盘：存储 IOCTL 取型号、容量、SSD、所含的卷和温度，`IOCTL_DISK_PERFORMANCE` 取活动时间、速率、响应时间。用到的 IOCTL 都是 `FILE_ANY_ACCESS`，不需要提权 |
 | `net.rs` | 网络适配器：接口表（`GetIfTable2`）取吞吐量，`GetAdaptersAddresses` 取地址 |
 | `gpu.rs` | D3DKMT（与系统任务管理器同源，无需驱动）：按节点运行时间算各引擎利用率，按段驻留算显存，WDDM 2.4+ 的适配器性能数据给出温度与显存频率，3D 引擎节点的性能数据给出核心频率；适配器的 PCI 地址用于对应 NVML 的设备 |
+| `vendor_gpu/` | AMD ADL2 PMLog / Overdrive 与 Intel IGCL 电源域，独立线程加载 System32 库、读取遥测；容量为 1 的请求队列，最短 500 ms 采集间隔，过期缓存不进入快照 |
+| `kernel_sensors.rs` | 与特权服务共享的固定 CPU 传感器快照；温度类型、VID 与实测电压分开，宿主按开关异步补充 |
 | `nvml.rs` | NVIDIA 显卡的板卡功耗与功耗上限（瓦）：只从 System32 加载驱动附带的 `nvml.dll`，没有 NVIDIA 驱动时不加载。每次读取约 10 µs |
 
 ## 示例

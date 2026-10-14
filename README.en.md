@@ -121,7 +121,7 @@ Issues and pull requests are welcome; please read the [contributing guide](.gith
 - [x] **M0–M3**: processes, performance, services, startup apps, network connections and file locks
 - [x] **M4**: per-process GPU usage, priority and efficiency mode rules, history
 - [x] **M5**: optional privileged service, rules and network collection through it, file locks by handle, [Task Manager replacement](docs/architecture/task-manager.md)
-- [ ] Features that need a kernel driver
+- [x] Optional CPU kernel sensors (automatically installs and starts the official PawnIO driver when enabled), AMD/Intel GPU telemetry; [hardware coverage](docs/guide/hardware-data.md) (Chinese)
 
 See the [roadmap](docs/roadmap.md) for details.
 

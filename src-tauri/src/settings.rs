@@ -115,6 +115,8 @@ pub struct Settings {
     pub rules: Vec<ProcessRule>,
     /// Record history for the history page.
     pub history: bool,
+    /// Opt-in CPU sensors; an explicit enable action prepares PawnIO if needed.
+    pub kernel_sensors: bool,
     /// Check for updates in the background.
     pub update_check: bool,
     pub update_channel: UpdateChannel,
@@ -133,6 +135,7 @@ impl Default for Settings {
             hotkey: DEFAULT_HOTKEY.into(),
             rules: Vec::new(),
             history: true,
+            kernel_sensors: false,
             update_check: true,
             update_channel: UpdateChannel::default(),
             update_route: UpdateRoute::default(),

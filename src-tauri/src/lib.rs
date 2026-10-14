@@ -200,6 +200,11 @@ pub fn run() {
                 settings.get().history.then(|| history.clone()),
             ));
             app.manage(settings);
+            app.state::<AppState>()
+                .sampler
+                .send(Control::SetKernelSensors(
+                    app.state::<SettingsStore>().get().kernel_sensors,
+                ));
             app.manage(HistoryDir(history));
             updater::init(app.handle());
             // An update started while Argus was in the tray relaunches it there.
@@ -335,6 +340,8 @@ pub fn run() {
             commands::open_release_page,
             commands::open_log_dir,
             commands::open_community,
+            commands::open_sensor_driver_page,
+            commands::set_kernel_sensors,
             commands::list_services,
             commands::control_service,
             commands::set_service_start_type,

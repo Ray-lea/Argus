@@ -119,7 +119,7 @@ start.bat build     # 发布构建，生成 target\release\argus.exe
 - [x] **M0–M3**：进程、性能、服务、启动项、网络连接与文件占用
 - [x] **M4**：每进程 GPU 占用、优先级与效率模式规则、历史回溯
 - [x] **M5**：可选特权服务、规则与网络采集接入、按句柄查询文件占用、[系统任务管理器替换](docs/architecture/task-manager.md)
-- [ ] 依赖内核驱动的功能
+- [x] 可选 CPU 内核传感器（开启时自动安装、启动官方 PawnIO 驱动），AMD／Intel 显卡遥测；[硬件支持范围](docs/guide/hardware-data.md)
 
 详情参见[路线图](docs/roadmap.md)。
 

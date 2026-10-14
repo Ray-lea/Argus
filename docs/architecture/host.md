@@ -22,7 +22,7 @@
 |---|---|
 | 应用与快照 | `app_info`（含解析后的界面语言）、`subscribe`、`set_interval`、`set_paused`、`refresh` |
 | 进程 | `process_details`、`kill_process`、`kill_process_tree`、`set_priority`、`set_efficiency_mode`、`reveal_in_explorer` |
-| 设置与窗口 | `get_settings`、`set_language`、`set_theme`、`complete_onboarding`、`set_close_to_tray`、`set_hotkey`、`set_autostart`、`open_log_dir`、`quit`、`set_caption_button`（页面最大化按钮的位置）、`log_ui_error` |
+| 设置与窗口 | `get_settings`、`set_language`、`set_theme`、`complete_onboarding`、`set_close_to_tray`、`set_hotkey`、`set_autostart`、`set_kernel_sensors`、`open_sensor_driver_page`（固定官方地址）、`open_log_dir`、`quit`、`set_caption_button`（页面最大化按钮的位置）、`log_ui_error` |
 | 特权服务 | `privileged_service_status`、`manage_privileged_service`（`install` / `start` / `update` / `uninstall`，显式操作才请求管理员授权） |
 | 更新 | `update_status`、`check_update`（在后台检查并下载，立即返回）、`install_update`（启动安装程序后 Argus 退出）、`set_update_settings`、`open_release_page`（免安装版） |
 | 规则 | `set_rules`、`rule_stats` |

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use argus_core::history::{self, HistoryRecorder};
 use argus_core::{Collector, Snapshot};
-use argus_service::{NetworkClient, RuleRunner};
+use argus_service::{NetworkClient, RuleRunner, SensorClient};
 use tauri::ipc::Channel;
 
 /// Shortest window over which CPU percentages are still meaningful.
@@ -26,6 +26,7 @@ type Observer = Box<dyn Fn(&Snapshot) + Send>;
 pub enum Control {
     Subscribe(Channel<Snapshot>),
     SetInterval(Duration),
+    SetKernelSensors(bool),
     SetPaused(bool),
     /// Take a sample now (e.g. right after ending a process, or on show).
     Refresh,
@@ -59,6 +60,8 @@ impl Sampler {
             .spawn(move || {
                 let mut collector = make_collector();
                 let mut network = NetworkClient::spawn();
+                let mut sensors = SensorClient::spawn();
+                let mut kernel_sensors = false;
                 let mut subscriber: Option<Channel<Snapshot>> = None;
                 let mut hidden: Option<Probe> = None;
                 let mut observer: Option<Observer> = None;
@@ -71,6 +74,10 @@ impl Sampler {
                 loop {
                     let wait = next_tick.saturating_duration_since(Instant::now());
                     let forced = match rx.recv_timeout(wait) {
+                        Ok(Control::SetKernelSensors(enabled)) => {
+                            kernel_sensors = enabled;
+                            true
+                        }
                         Ok(Control::Subscribe(ch)) => {
                             subscriber = Some(ch);
                             true
@@ -133,6 +140,15 @@ impl Sampler {
 
                     last_sample = Instant::now();
                     let mut snapshot = collector.sample();
+                    sensors.enrich(
+                        &mut snapshot,
+                        kernel_sensors,
+                        if background {
+                            BACKGROUND_INTERVAL
+                        } else {
+                            interval
+                        },
+                    );
                     network.enrich(
                         &mut snapshot,
                         if background {

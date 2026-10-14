@@ -19,6 +19,7 @@ import { copyText, PRIORITY_LABEL } from "../lib/actions";
 import { fmtCache, netUnit, setNetUnit } from "../lib/format";
 import { type Language, LOCALES, localized, type MessageKey, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
+import { changeKernelSensors, kernelBusy, kernelError, kernelRevision } from "../lib/kernel-setup";
 import { keyLabel } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
 import {
@@ -210,7 +211,12 @@ function FeatureCard(props: {
   );
 }
 
-function ToggleSwitch(props: { checked: boolean; label: string; onChange: (v: boolean) => void }) {
+function ToggleSwitch(props: {
+  checked: boolean;
+  label: string;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <>
       <span class="switch-label">{props.checked ? t("settings.toggle.on") : t("settings.toggle.off")}</span>
@@ -220,6 +226,7 @@ function ToggleSwitch(props: { checked: boolean; label: string; onChange: (v: bo
         class="switch"
         aria-checked={props.checked}
         aria-label={props.label}
+        disabled={props.disabled}
         onClick={() => props.onChange(!props.checked)}
       />
     </>
@@ -386,6 +393,49 @@ function PrivilegedServiceSettings() {
         )}
       </Show>
     </FeatureCard>
+  );
+}
+
+function KernelSensorSettings(props: { enabled: boolean; onSaved: (value: SettingsView) => void }) {
+  const toggle = async (enabled: boolean) => {
+    const value = await changeKernelSensors(enabled);
+    if (value) props.onSaved(value);
+  };
+  return (
+    <Setting
+      icon={<BoltIcon size={20} />}
+      title={t("settings.sensors.title")}
+      desc={
+        <>
+          {t("settings.sensors.desc")}
+          <br />
+          <span role="status">
+            {kernelBusy()
+              ? t("settings.sensors.preparing")
+              : props.enabled
+                ? t(`performance.cpu.sensorState.${snapshot()?.hardware.cpuSensors?.state ?? "pending"}`)
+                : t("settings.sensors.off")}
+          </span>
+        </>
+      }
+      error={kernelError()}
+    >
+      <button
+        type="button"
+        class="btn"
+        disabled={kernelBusy()}
+        onClick={() => void api.openSensorDriverPage()}
+      >
+        <ExternalIcon />
+        {t("settings.sensors.driver")}
+      </button>
+      <ToggleSwitch
+        label={t("settings.sensors.title")}
+        checked={props.enabled}
+        disabled={kernelBusy()}
+        onChange={(enabled) => void toggle(enabled)}
+      />
+    </Setting>
   );
 }
 
@@ -1023,7 +1073,7 @@ function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => v
 }
 
 export default function SettingsPage() {
-  const [settings, { mutate, refetch }] = createResource(() => api.settings());
+  const [settings, { mutate, refetch }] = createResource(kernelRevision, () => api.settings());
   // The onboarding (opened from the about section) changes settings and may
   // install the service.
   createEffect(
@@ -1275,6 +1325,7 @@ export default function SettingsPage() {
                 <section id="settings-privilege" class="settings-section">
                   <h2>{t("settings.sections.privilege")}</h2>
                   <PrivilegedServiceSettings />
+                  <KernelSensorSettings enabled={s().kernelSensors} onSaved={mutate} />
                   <TaskManagerSettings />
                 </section>
 

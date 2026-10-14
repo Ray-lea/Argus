@@ -2,8 +2,14 @@
   "devices": "Devices",
   "resizeList": "Resize the device list",
   "span": {
-    "seconds": { "one": "{count} second", "other": "{count} seconds" },
-    "minutes": { "one": "{count} minute", "other": "{count} minutes" }
+    "seconds": {
+      "one": "{count} second",
+      "other": "{count} seconds"
+    },
+    "minutes": {
+      "one": "{count} minute",
+      "other": "{count} minutes"
+    }
   },
   "withAlt": "{value} ({alt})",
   "chart": {
@@ -59,8 +65,24 @@
     "thermalSource": "Temperature source",
     "thermalZones": "ACPI thermal zone {zones}",
     "thermalNone": "Not available",
-    "thermalNote": "Temperatures come from the motherboard's ACPI thermal zones and usually reflect the area around the CPU package. Per-core temperatures require reading registers inside the processor, which Windows allows only kernel drivers to do, so they aren't shown.",
-    "thermalMissing": "This PC's motherboard doesn't report a temperature through ACPI thermal zones, as is the case on many AMD desktops. The processor's own temperature sensor can only be read by a kernel driver, and Argus doesn't install one, so the CPU temperature isn't shown."
+    "thermalNote": "ACPI thermal zones typically reflect temperature near the CPU package. Kernel sensors can be enabled under Permissions in Settings.",
+    "thermalMissing": "This motherboard does not expose an ACPI temperature. Enable kernel sensors under Permissions in Settings and install the privileged service and PawnIO driver. Available metrics depend on the processor.",
+    "driverSource": "Processor sensors (PawnIO)",
+    "driverStatus": "Kernel sensors",
+    "controlTemperature": "Control temperature (Tctl)",
+    "coreVoltage": "Core voltage (SVI2)",
+    "coreVid": "Requested voltage (VID)",
+    "ccdTemperature": "CCD {index} temperature",
+    "driverNote": "Processor sensors are read through the privileged service. AMD Tctl is a control temperature; CCD temperatures are not per-core readings. VID is requested voltage, not measured supply voltage. Unsupported metrics remain empty.",
+    "sensorState": {
+      "pending": "Waiting for readings",
+      "serviceUnavailable": "Privileged service disconnected or incompatible",
+      "driverUnavailable": "PawnIO driver unavailable or inaccessible",
+      "moduleRejected": "PawnIO rejected the sensor module; check the official driver version",
+      "unsupported": "No supported processor interface",
+      "noData": "No valid readings yet",
+      "ready": "Connected"
+    }
   },
   "memory": {
     "sub": "{used} / {total} GB ({percent}%)",
@@ -136,7 +158,14 @@
     "powerLimit": "Power limit",
     "maxTemperature": "Max temperature",
     "engines": "Engines",
-    "maxCoreClock": "Max core clock"
+    "maxCoreClock": "Max core clock",
+    "powerSource": "Power source",
+    "sources": {
+      "nvml": "NVIDIA NVML · board",
+      "adlBoard": "AMD ADL · board",
+      "adlChip": "AMD ADL · chip",
+      "igcl": "Intel IGCL · GPU power domain"
+    }
   },
   "battery": {
     "title": "Battery",

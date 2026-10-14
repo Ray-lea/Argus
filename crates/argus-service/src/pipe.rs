@@ -714,7 +714,10 @@ mod tests {
         rx.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(matches!(
             request(&name, std::process::id(), Operation::Ping).unwrap(),
-            Reply::Pong { protocol: 4, .. }
+            Reply::Pong {
+                protocol: crate::PROTOCOL,
+                ..
+            }
         ));
         assert!(request(&name, 4, Operation::Ping).is_err());
         assert!(matches!(
