@@ -66,9 +66,8 @@
   },
   "sensors": {
     "title": "Kernel sensors (optional)",
-    "body": "Read processor temperature, voltage and power to supplement the sensors Windows provides.",
-    "install": "Enable kernel sensors to check PawnIO, download and verify the official driver if needed, and install or start it. Installation or startup requires administrator permission.",
-    "limits": "Available metrics depend on the processor. AMD CCD temperatures are not per-core readings; unsupported metrics stay empty.",
+    "body": "Read the processor's internal sensors for temperature and power data.",
+    "install": "Administrator permission is requested when PawnIO needs to be installed or started.",
     "checking": "Checking status",
     "enabled": "Enabled",
     "disabled": "Not enabled",

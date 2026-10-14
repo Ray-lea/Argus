@@ -635,7 +635,6 @@ function KernelSensors(props: {
         body={t("onboarding.sensors.body")}
       />
       <p class="onboarding-note">{t("onboarding.sensors.install")}</p>
-      <p class="onboarding-note">{t("onboarding.sensors.limits")}</p>
       <div class="onboarding-row">
         <div class="onboarding-row-text">
           <div class="onboarding-state" role="status">

@@ -660,17 +660,21 @@ function CpuView() {
               <Stat label={t("performance.cpu.eCoreSpeed")} value={(m() / 1000).toFixed(2)} unit="GHz" />
             )}
           </Show>
-          <Show when={temp()}>
-            {(c) => <Stat label={t("common.resource.temperature")} value={Math.round(c())} unit="°C" />}
+          <Show when={temp() !== null}>
+            <Stat label={t("common.resource.temperature")} value={Math.round(temp() ?? 0)} unit="°C" />
           </Show>
-          <Show when={hw().power.package}>
-            {(w) => <Stat label={t("performance.cpu.packagePower")} value={fmtW(w())} unit="W" />}
+          <Show when={hw().power.package !== null}>
+            <Stat label={t("performance.cpu.packagePower")} value={fmtW(hw().power.package ?? 0)} unit="W" />
           </Show>
-          <Show when={hw().power.cores}>
-            {(w) => <Stat label={t("performance.cpu.corePower")} value={fmtW(w())} unit="W" />}
+          <Show when={hw().power.cores !== null}>
+            <Stat label={t("performance.cpu.corePower")} value={fmtW(hw().power.cores ?? 0)} unit="W" />
           </Show>
-          <Show when={hw().power.graphics}>
-            {(w) => <Stat label={t("performance.cpu.graphicsPower")} value={fmtW(w())} unit="W" />}
+          <Show when={hw().power.graphics !== null}>
+            <Stat
+              label={t("performance.cpu.graphicsPower")}
+              value={fmtW(hw().power.graphics ?? 0)}
+              unit="W"
+            />
           </Show>
           <Stat label={t("performance.cpu.processes")} value={fmtCount(sys().processCount)} />
           <Stat label={t("performance.cpu.threads")} value={fmtCount(sys().threadCount)} />
@@ -741,13 +745,9 @@ function CpuView() {
           </Show>
         </dl>
       </div>
-      <p class="perf-note">
-        {hw().cpuSensors?.state === "ready"
-          ? t("performance.cpu.driverNote")
-          : hw().thermal.length > 0
-            ? t("performance.cpu.thermalNote")
-            : t("performance.cpu.thermalMissing")}
-      </p>
+      <Show when={!hw().cpuSensors && hw().thermal.length === 0}>
+        <p class="perf-note">{t("performance.cpu.thermalMissing")}</p>
+      </Show>
     </>
   );
 }
