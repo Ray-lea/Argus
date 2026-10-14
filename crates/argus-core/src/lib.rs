@@ -11,6 +11,7 @@ pub mod app_windows;
 pub mod collector;
 pub mod connections;
 pub mod details;
+pub mod diagnostics;
 pub mod filelock;
 pub mod gpu_process;
 pub mod handles;

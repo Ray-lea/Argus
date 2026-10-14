@@ -284,7 +284,7 @@
     },
     "log": {
       "title": "Log",
-      "desc": "Records the Windows and WebView2 versions, the sensors this PC offers, the state of the privileged features, and errors from updates, the privileged service, the Task Manager replacement and the interface, without personal information such as file paths or user names. Stored only on this PC and rotated when it exceeds 1 MB. Please attach it to bug reports.",
+      "desc": "Records system versions, sensor availability, privileged feature status and fixed error categories. Raw error messages, stacks, file paths, command lines and user names are excluded. Stored locally and rotated at 1 MB. Use this entry to locate diagnostic logs for bug reports.",
       "open": "Open log folder"
     }
   }

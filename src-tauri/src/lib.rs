@@ -38,17 +38,20 @@ pub(crate) fn stop_network_session() {
 }
 
 /// Logs to `%LOCALAPPDATA%\<identifier>\logs\argus.log` for bug reports:
-/// info and above from Argus and the plugins, one rotated file kept.
-fn logger() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+/// Reviewed Argus events only. Legacy logs stay outside the shareable folder.
+fn logger(path: std::path::PathBuf) -> tauri::plugin::TauriPlugin<tauri::Wry> {
     use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
     let mut builder = tauri_plugin_log::Builder::new()
         .clear_targets()
-        .target(Target::new(TargetKind::LogDir {
+        .target(Target::new(TargetKind::Folder {
+            path,
             file_name: Some("argus".into()),
         }))
         .max_file_size(1024 * 1024)
         .rotation_strategy(RotationStrategy::KeepOne)
         .timezone_strategy(TimezoneStrategy::UseLocal)
+        // Third-party log payloads have not passed Argus's privacy boundary.
+        .filter(|record| record.target().starts_with("argus"))
         .level(log::LevelFilter::Info);
     if cfg!(debug_assertions) {
         builder = builder.target(Target::new(TargetKind::Stdout));
@@ -60,7 +63,15 @@ fn logger() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 fn log_panics() {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        log::error!("{info}");
+        if let Some(location) = info.location() {
+            log::error!(
+                "panic at line {}, column {} (payload and file omitted)",
+                location.line(),
+                location.column()
+            );
+        } else {
+            log::error!("panic (payload omitted)");
+        }
         default(info);
     }));
 }
@@ -136,7 +147,6 @@ pub fn run() {
                 shell::show_main(app)
             }
         }))
-        .plugin(logger())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -153,6 +163,8 @@ pub fn run() {
         })
         .register_uri_scheme_protocol("argus", icon_protocol(meta))
         .setup(move |app| {
+            app.handle()
+                .plugin(logger(app.path().app_log_dir()?.join("diagnostics")))?;
             log_panics();
             log::info!(
                 "Argus {} started ({}{}{}{})",

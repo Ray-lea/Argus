@@ -358,7 +358,10 @@ pub fn register_saved_hotkey<R: Runtime>(app: &AppHandle<R>) {
     let hotkey = store.get().hotkey;
     let err = apply_hotkey(app, None, &hotkey).err();
     if let Some(e) = &err {
-        log::warn!("hotkey not registered: {e}");
+        log::warn!(
+            "hotkey not registered: {}",
+            argus_core::diagnostics::failure(&e.to_string())
+        );
     }
     *store.hotkey_error.lock().unwrap() = err;
 }

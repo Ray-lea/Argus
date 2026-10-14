@@ -446,8 +446,9 @@ fn report(result: Result<()>) -> i32 {
 /// Appends a line to `taskmgr.log` beside Argus's own log. The launcher and
 /// its probe have no window to report to, and a fallback to the system Task
 /// Manager would otherwise leave no trace. Bounded; no paths or names.
-fn log_line(text: &str) {
+fn log_line(event: &'static str, error: &str) {
     use std::io::Write;
+    let text = argus_core::diagnostics::failure(error);
     let Some(dir) = log_dir() else { return };
     let path = dir.join("taskmgr.log");
     if fs::metadata(&path).is_ok_and(|m| m.len() > 256 * 1024) {
@@ -458,7 +459,7 @@ fn log_line(text: &str) {
         let t = unsafe { windows::Win32::System::SystemInformation::GetLocalTime() };
         let _ = writeln!(
             file,
-            "{:04}-{:02}-{:02} {:02}:{:02}:{:02} {text}",
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02} {event}: {text}",
             t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond
         );
     }
@@ -480,7 +481,8 @@ fn log_dir() -> Option<std::path::PathBuf> {
     Some(
         std::path::PathBuf::from(base.ok()?)
             .join(identifier)
-            .join("logs"),
+            .join("logs")
+            .join("diagnostics"),
     )
 }
 
@@ -540,7 +542,7 @@ pub fn launcher_main() -> i32 {
             match result {
                 Ok(()) => 0,
                 Err(error) => {
-                    log_line(&format!("enable check: Argus did not start: {error}"));
+                    log_line("enable check failed", &error);
                     1
                 }
             }
@@ -563,12 +565,10 @@ pub fn launcher_main() -> i32 {
             match result {
                 Ok(()) => 0,
                 Err(error) => {
-                    log_line(&format!(
-                        "Argus did not open ({error}); opening Windows Task Manager"
-                    ));
+                    log_line("Argus launch failed; opening Windows Task Manager", &error);
                     let native = launch::native();
                     if let Err(error) = &native {
-                        log_line(&format!("Windows Task Manager did not open: {error}"));
+                        log_line("Windows Task Manager launch failed", error);
                     }
                     code(native)
                 }

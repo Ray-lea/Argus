@@ -23,7 +23,10 @@ pub fn log_environment(elevated: bool) {
     log::info!(
         "environment: {}, WebView2 {}, {} ({}), language {}",
         windows_version(),
-        tauri::webview_version().unwrap_or_else(|_| "unavailable".into()),
+        tauri::webview_version()
+            .ok()
+            .filter(|v| v.len() <= 32 && v.bytes().all(|c| c.is_ascii_digit() || c == b'.'))
+            .unwrap_or_else(|| "unavailable".into()),
         if elevated {
             "administrator"
         } else {
@@ -68,13 +71,16 @@ fn windows_version() -> String {
         )
     }
     .is_ok();
-    let build = text(w!("CurrentBuild")).unwrap_or_default();
-    let name = if build.parse::<u32>().is_ok_and(|b| b >= 22000) {
+    let build = text(w!("CurrentBuild"))
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or_default();
+    let name = if build >= 22000 {
         "Windows 11"
     } else {
         "Windows 10"
     };
     let release = text(w!("DisplayVersion"))
+        .filter(|v| v.len() <= 16 && v.bytes().all(|c| c.is_ascii_alphanumeric()))
         .map(|v| format!(" {v}"))
         .unwrap_or_default();
     let ubr = if has_ubr {
@@ -132,14 +138,7 @@ pub fn log_hardware_once(s: &Snapshot) {
     let temperature = if hw.thermal.is_empty() {
         "none (no ACPI thermal zone)".to_string()
     } else {
-        format!(
-            "ACPI thermal zones {}",
-            hw.thermal
-                .iter()
-                .map(|z| z.name.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
+        format!("ACPI thermal zones {}", hw.thermal.len())
     };
     let power = match (hw.power.package, hw.power.cores) {
         (Some(_), Some(_)) => "package and cores",
@@ -148,8 +147,7 @@ pub fn log_hardware_once(s: &Snapshot) {
         (None, None) => "none",
     };
     log::info!(
-        "cpu: {} ({} logical); temperature: {temperature}; RAPL power: {power}; clock: {}",
-        hw.cpu.name,
+        "cpu: {} logical; temperature: {temperature}; RAPL power: {power}; clock: {}",
         hw.cpu.logical,
         if hw.core_mhz.is_empty() {
             "total only"
@@ -157,7 +155,7 @@ pub fn log_hardware_once(s: &Snapshot) {
             "per processor"
         },
     );
-    for g in &hw.gpus {
+    for (index, g) in hw.gpus.iter().enumerate() {
         let power = if g.board_power.is_some() {
             "watts (NVML)"
         } else if g.power.is_some() {
@@ -167,7 +165,7 @@ pub fn log_hardware_once(s: &Snapshot) {
         };
         log::info!(
             "gpu: {}; temperature: {}; power: {power}; clock: {}",
-            g.info.name,
+            index,
             if g.temperature.is_some() {
                 "yes"
             } else {
@@ -194,18 +192,28 @@ pub fn log_privileged_state() {
             Ok(s) => log::info!(
                 "privileged service: {}{}{}",
                 s.state,
-                s.version.map(|v| format!(" {v}")).unwrap_or_default(),
+                if s.version.is_some() {
+                    " (version available)"
+                } else {
+                    ""
+                },
                 if s.authorized || s.state == "notInstalled" {
                     ""
                 } else {
                     ", authorized for another account"
                 },
             ),
-            Err(e) => log::warn!("privileged service status unavailable: {e}"),
+            Err(e) => log::warn!(
+                "privileged service status unavailable: {}",
+                argus_core::diagnostics::failure(&e)
+            ),
         }
         match argus_service::taskmgr::status() {
             Ok(s) => log::info!("task manager replacement: {}", s.state),
-            Err(e) => log::warn!("task manager replacement status unavailable: {e}"),
+            Err(e) => log::warn!(
+                "task manager replacement status unavailable: {}",
+                argus_core::diagnostics::failure(&e)
+            ),
         }
     });
 }
@@ -216,48 +224,19 @@ static UI_ERRORS: AtomicU32 = AtomicU32::new(0);
 const UI_ERRORS_MAX: u32 = 20;
 
 #[tauri::command]
-pub fn log_ui_error(message: String) {
+pub fn log_ui_error(event: String, category: String) {
     let n = UI_ERRORS.fetch_add(1, Ordering::Relaxed);
     if n < UI_ERRORS_MAX {
-        let text: String = scrub(&message).chars().take(2000).collect();
-        log::error!("page: {text}");
+        let event = if event == "unhandledRejection" {
+            "unhandled rejection"
+        } else {
+            "uncaught exception"
+        };
+        log::error!(
+            "page: {event}: {} (payload omitted)",
+            argus_core::diagnostics::exception(&category)
+        );
     } else if n == UI_ERRORS_MAX {
         log::error!("page: more errors this session are not logged");
-    }
-}
-
-/// Replaces user profile paths (`C:\Users\<name>\…`) with `<profile>`: error
-/// text can carry a path, and the profile folder is named after the user.
-fn scrub(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.to_ascii_lowercase().find(r"\users\") {
-        let start = rest[..at]
-            .rfind(|c: char| !(c.is_ascii_alphabetic() || c == ':'))
-            .map_or(0, |i| i + 1);
-        out.push_str(&rest[..start]);
-        let after = &rest[at + r"\users\".len()..];
-        let end = after
-            .find(['\\', '/', '"', '\'', ' ', '\n'])
-            .unwrap_or(after.len());
-        out.push_str("<profile>");
-        rest = &after[end..];
-    }
-    out.push_str(rest);
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::scrub;
-
-    #[test]
-    fn profile_paths_lose_the_user_name() {
-        assert_eq!(
-            scrub(r"cannot open C:\Users\someone\AppData\x.json: denied"),
-            r"cannot open <profile>\AppData\x.json: denied"
-        );
-        assert_eq!(scrub(r"d:\USERS\a b"), r"<profile> b");
-        assert_eq!(scrub("no path here"), "no path here");
     }
 }
