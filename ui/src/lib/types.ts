@@ -68,6 +68,12 @@ export interface SystemStats {
 
 export interface CpuInfo {
   name: string;
+  vendor: string;
+  family: number;
+  model: number;
+  stepping: number;
+  instructions: string[];
+  microcode: number | null;
   baseMhz: number;
   baseSource: "cpuid" | "windows" | null;
   sockets: number;
@@ -97,6 +103,12 @@ export interface ThermalZone {
 }
 
 /** RAPL power domains in watts; null where not metered. */
+export interface CpuIdle {
+  c1: number | null;
+  c2: number | null;
+  c3: number | null;
+}
+
 export interface CpuPower {
   package: number | null;
   cores: number | null;
@@ -223,6 +235,7 @@ export interface Hardware {
   cpuMhz: number | null;
   /** Per logical processor, MHz; empty when unknown. */
   coreMhz: number[];
+  cpuIdle: CpuIdle[];
   thermal: ThermalZone[];
   power: CpuPower;
   cpuSensors: CpuSensors | null;
@@ -234,6 +247,7 @@ export interface Hardware {
 }
 
 export interface CpuSensors {
+  limits: CpuLimitStatus[];
   state:
     | "pending"
     | "serviceUnavailable"
@@ -249,6 +263,117 @@ export interface CpuSensors {
   coreVoltage: number | null;
   coreVid: number | null;
   packageWatts: number | null;
+  metrics: CpuMetric[];
+  cores: CpuCoreSensors[];
+  smuState: "pending" | "unavailable" | "unsupportedTable" | "ready" | null;
+  smuTableVersion: number | null;
+  thermalThrottling: boolean | null;
+  boardSensor: string | null;
+  boardFans: { channel: number; rpm: number }[];
+}
+
+export type CpuMetricKind =
+  | "ringMhz"
+  | "ringMinMhz"
+  | "ringMaxMhz"
+  | "ringMultiplier"
+  | "pptPercent"
+  | "tdcPercent"
+  | "edcPercent"
+  | "coreSmuVoltage"
+  | "vddioWatts"
+  | "vdd18Watts"
+  | "memoryIoVolts"
+  | "graphicsMhz"
+  | "vidLimitVolts"
+  | "coreVoltage"
+  | "coreCurrent"
+  | "coreRailWatts"
+  | "coreRailVid"
+  | "coreVrmCelsius"
+  | "secondCoreVoltage"
+  | "secondCoreCurrent"
+  | "secondCoreRailWatts"
+  | "secondCoreRailVid"
+  | "secondCoreVrmCelsius"
+  | "socVoltage"
+  | "socCurrent"
+  | "socRailWatts"
+  | "socVid"
+  | "socVrmCelsius"
+  | "miscVoltage"
+  | "miscCurrent"
+  | "miscRailWatts"
+  | "miscVid"
+  | "miscVrmCelsius"
+  | "coresWatts"
+  | "socWatts"
+  | "miscWatts"
+  | "graphicsWatts"
+  | "memoryWatts"
+  | "platformWatts"
+  | "pptWatts"
+  | "pptLimitWatts"
+  | "pptFastWatts"
+  | "pptFastLimitWatts"
+  | "pptSlowWatts"
+  | "tdcAmps"
+  | "tdcLimitAmps"
+  | "edcAmps"
+  | "edcLimitAmps"
+  | "pl1Watts"
+  | "pl2Watts"
+  | "pl1Seconds"
+  | "pl2Seconds"
+  | "tdpWatts"
+  | "thermalLimitCelsius"
+  | "averageMhz"
+  | "effectiveMhz"
+  | "busMhz"
+  | "fabricMhz"
+  | "uncoreMhz"
+  | "memoryMhz"
+  | "socCelsius"
+  | "ioDieCelsius"
+  | "l3Ccd1Celsius"
+  | "l3Ccd2Celsius"
+  | "vddpVolts"
+  | "vddgIodVolts"
+  | "vddgCcdVolts"
+  | "northbridgeVidVolts";
+export interface CpuMetric {
+  kind: CpuMetricKind;
+  value: number;
+  source: "msr" | "smu" | "svi2" | "svi3";
+}
+export interface CpuLimitStatus {
+  reason: "thermal" | "prochot" | "criticalTemperature" | "power" | "current" | "crossDomain";
+  active: boolean;
+  occurred: boolean;
+}
+
+export interface CpuCoreSensors {
+  voltage: number | null;
+  smuC0Percent: number | null;
+  c1Percent: number | null;
+  c6Percent: number | null;
+  osC1Percent: number | null;
+  osC2Percent: number | null;
+  osC3Percent: number | null;
+  efficient: boolean;
+  limits: CpuLimitStatus[];
+  core: number;
+  group: number;
+  processor: number;
+  celsius: number | null;
+  distanceToLimit: number | null;
+  clockMhz: number | null;
+  effectiveMhz: number | null;
+  watts: number | null;
+  vid: number | null;
+  multiplier: number | null;
+  c0Percent: number | null;
+  thermalThrottling: boolean | null;
 }
 
 export interface Snapshot {

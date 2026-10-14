@@ -29,6 +29,7 @@ import {
   snapshot,
 } from "../lib/store";
 import type { BatteryStats, DiskStats, Hardware, Snapshot, SystemStats } from "../lib/types";
+import CpuTelemetry, { CpuIdleSummary } from "./CpuTelemetry";
 import Indicator from "./Indicator";
 import { Chart, easedMax, type Series } from "./Trace";
 
@@ -642,7 +643,7 @@ function CpuView() {
         </div>
       </Show>
 
-      <div class="perf-stats">
+      <div class="perf-stats cpu-stats">
         <div class="stat-grid">
           <Stat label={t("performance.cpu.utilization")} value={Math.round(sys().cpu)} unit="%" />
           <Stat
@@ -682,6 +683,16 @@ function CpuView() {
           <Stat label={t("performance.cpu.uptime")} value={fmtUptime(sys().uptimeMs)} />
         </div>
         <dl class="info-list">
+          <Show when={cpu().vendor}>
+            <dt>{t("performance.cpu.vendor")}</dt>
+            <dd>{cpu().vendor}</dd>
+            <dt>{t("performance.cpu.identity")}</dt>
+            <dd>{`0x${cpu().family.toString(16).toUpperCase()} / 0x${cpu().model.toString(16).toUpperCase()} / ${cpu().stepping}`}</dd>
+          </Show>
+          <Show when={cpu().microcode != null}>
+            <dt>{t("performance.cpu.microcode")}</dt>
+            <dd>{`0x${cpu().microcode?.toString(16).toUpperCase()}`}</dd>
+          </Show>
           <dt>{t("performance.cpu.baseSpeed")}</dt>
           <dd
             title={
@@ -731,7 +742,11 @@ function CpuView() {
                   <dt>{t("performance.cpu.controlTemperature")}</dt>
                   <dd>{Math.round(sensors().controlCelsius ?? 0)} °C</dd>
                 </Show>
-                <Show when={sensors().coreVoltage !== null}>
+                <Show
+                  when={
+                    sensors().coreVoltage !== null && !sensors().metrics.some((m) => m.kind === "coreVoltage")
+                  }
+                >
                   <dt>{t("performance.cpu.coreVoltage")}</dt>
                   <dd>{sensors().coreVoltage?.toFixed(3)} V</dd>
                 </Show>
@@ -755,8 +770,14 @@ function CpuView() {
               </>
             )}
           </Show>
+          <Show when={cpu().instructions.length > 0}>
+            <dt class="cpu-instructions-label">{t("performance.cpu.instructions")}</dt>
+            <dd class="cpu-instructions">{cpu().instructions.join(" · ")}</dd>
+          </Show>
         </dl>
       </div>
+      <Show when={hw().cpuSensors}>{(sensors) => <CpuTelemetry sensors={sensors()} />}</Show>
+      <CpuIdleSummary idle={hw().cpuIdle} />
       <Show when={!hw().cpuSensors && hw().thermal.length === 0}>
         <p class="perf-note">{t("performance.cpu.thermalMissing")}</p>
       </Show>

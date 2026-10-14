@@ -3,8 +3,17 @@
 //! Register maps: AMD OSRR 56255; Linux k10temp; Intel SDM Vol. 4;
 //! LibreHardwareMonitor (SVI2 layouts). See vendor/pawnio/manifest.json.
 
+mod board;
+mod counters;
+mod intel;
+mod known_smu;
+mod smu;
+mod telemetry;
+
 use crate::util::Handle;
-use argus_core::hardware::{CcdTemperature, CoreTemperature, CpuSensors, SensorState};
+use argus_core::hardware::{
+    CcdTemperature, CoreTemperature, CpuMetricKind, CpuSensorSource, CpuSensors, SensorState,
+};
 use std::time::Instant;
 use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, WAIT_ABANDONED, WAIT_OBJECT_0};
 use windows::Win32::Storage::FileSystem::{
@@ -59,30 +68,33 @@ impl Module {
     }
 
     fn read(&self, function: &[u8], input: &[u64]) -> Option<u64> {
+        let mut value = [0u64];
+        self.call(function, input, &mut value).then_some(value[0])
+    }
+
+    fn call(&self, function: &[u8], input: &[u64], output: &mut [u64]) -> bool {
         // Fixed-size ABI: 32-byte NUL-padded function name, then 64-bit cells.
-        if function.len() >= 32 || input.len() > 2 {
-            return None;
+        if function.len() >= 32 || input.len() > 2 || output.len() > 512 {
+            return false;
         }
         let mut request = [0u64; 6];
         let name = unsafe { std::slice::from_raw_parts_mut(request.as_mut_ptr().cast::<u8>(), 32) };
         name[..function.len()].copy_from_slice(function);
         request[4..4 + input.len()].copy_from_slice(input);
-        let mut value = 0u64;
         let mut returned = 0;
-        unsafe {
+        let result = unsafe {
             DeviceIoControl(
                 self.0.0,
                 EXECUTE,
                 Some(request.as_ptr().cast()),
                 (32 + input.len() * 8) as u32,
-                Some((&mut value as *mut u64).cast()),
-                8,
+                (!output.is_empty()).then_some(output.as_mut_ptr().cast()),
+                std::mem::size_of_val(output) as u32,
                 Some(&mut returned),
                 None,
             )
-        }
-        .ok()?;
-        (returned == 8).then_some(value)
+        };
+        result.is_ok() && returned as usize == std::mem::size_of_val(output)
     }
 
     fn msr(&self, register: u32) -> Option<u64> {
@@ -181,7 +193,10 @@ pub(super) struct CpuReader {
     id: Identity,
     processors: Vec<(u16, u8)>,
     amd_offset: f32,
-    energy: Option<(u32, Instant)>,
+    energy: counters::EnergyCounter,
+    telemetry: telemetry::Telemetry,
+    smu: smu::Smu,
+    board: board::Board,
 }
 
 impl CpuReader {
@@ -200,7 +215,7 @@ impl CpuReader {
             return Err(SensorState::Unsupported);
         }
         let module = Module::open(blob)?;
-        let processors = (0..unsafe { GetActiveProcessorGroupCount() })
+        let processors: Vec<_> = (0..unsafe { GetActiveProcessorGroupCount() })
             .flat_map(|group| {
                 (0..unsafe { GetActiveProcessorCount(group) }.min(64))
                     .map(move |processor| (group, processor as u8))
@@ -224,16 +239,21 @@ impl CpuReader {
         } else {
             0.0
         };
+        let telemetry = telemetry::Telemetry::new(&module, id, &info, &processors);
         Ok(Self {
             module,
             id,
             processors,
             amd_offset,
-            energy: None,
+            energy: counters::EnergyCounter::default(),
+            telemetry,
+            smu: smu::Smu::default(),
+            board: board::Board::default(),
         })
     }
 
     pub fn sample(&mut self) -> CpuSensors {
+        let started = Instant::now();
         let mut frame = CpuSensors::default();
         let Some(_affinity) = Affinity::set(0, 0) else {
             return CpuSensors::unavailable(SensorState::NoData);
@@ -243,29 +263,27 @@ impl CpuReader {
         } else {
             self.amd(&mut frame);
         }
+        self.telemetry
+            .sample(&self.module, self.id, &mut frame, started);
+        if !self.id.intel && self.id.family >= 0x15 && started.elapsed().as_millis() < 500 {
+            self.smu.sample(&mut frame, &self.telemetry.cores, self.id);
+        }
+        if started.elapsed().as_millis() < 500 {
+            self.board.sample(&mut frame);
+        }
         let (unit_register, energy_register) = if self.id.intel {
             (0x606, 0x611)
         } else {
             (0xc0010299, 0xc001029b)
         };
         if self.id.intel || self.id.family >= 0x17 {
-            if let (Some(unit), Some(energy)) = (
-                self.module.msr(unit_register),
-                self.module.msr(energy_register),
-            ) {
-                let scale = energy_unit(self.id, unit as u32);
-                let now = Instant::now();
-                if let Some((before, at)) = self.energy.replace((energy as u32, now)) {
-                    frame.package_watts = energy_delta(
-                        before,
-                        energy as u32,
-                        now.duration_since(at).as_secs_f64(),
-                        scale,
-                    );
-                }
-            } else {
-                self.energy = None;
-            }
+            let scale = self
+                .module
+                .msr(unit_register)
+                .map_or(0.0, |unit| energy_unit(self.id, unit as u32));
+            frame.package_watts =
+                self.energy
+                    .sample(self.module.msr(energy_register), scale, Instant::now());
         }
         frame.state = if frame.package_celsius.is_some()
             || frame.control_celsius.is_some()
@@ -274,7 +292,11 @@ impl CpuReader {
             || frame.core_voltage.is_some()
             || frame.core_vid.is_some()
             || frame.package_watts.is_some()
-        {
+            || !frame.metrics.is_empty()
+            || !frame.board_fans.is_empty()
+            || frame.cores.iter().any(|core| {
+                core.clock_mhz.is_some() || core.effective_mhz.is_some() || core.watts.is_some()
+            }) {
             SensorState::Ready
         } else {
             SensorState::NoData
@@ -306,12 +328,17 @@ impl CpuReader {
                 });
             }
             if group == 0 && processor == 0 {
-                if self.id.thermal & (1 << 6) != 0 {
-                    frame.package_celsius = target.and_then(|target| {
-                        self.module
-                            .msr(0x1b1)
-                            .and_then(|v| intel_temperature(v, target))
-                    });
+                frame.metric(
+                    CpuMetricKind::ThermalLimitCelsius,
+                    target.and_then(|t| valid(t as f64, 50.0, 125.0)),
+                    CpuSensorSource::Msr,
+                );
+                if self.id.thermal & (1 << 6) != 0
+                    && let Some(status) = self.module.msr(0x1b1)
+                {
+                    frame.package_celsius =
+                        target.and_then(|target| intel_temperature(status, target));
+                    frame.limits = intel::limits(status, self.id.thermal, true);
                 }
                 // PERF_STATUS[47:32] VID is model specific. Never reinterpret
                 // its frequency fields or use this encoding on future models.
@@ -376,6 +403,25 @@ impl CpuReader {
                     .smn(offset)
                     .filter(|v| *v != 0 && *v != u32::MAX)
                     .and_then(|v| valid(1.55 - ((v >> 16) & 255) as f64 * 0.00625, 0.1, 1.55));
+                frame.metric(
+                    CpuMetricKind::CoreVoltage,
+                    frame.core_voltage,
+                    CpuSensorSource::Svi2,
+                );
+                if flags & 2 == 0 {
+                    let soc_offset =
+                        if matches!((self.id.family, self.id.model), (0x17, 0x71) | (0x19, 0x21)) {
+                            0x5a00c
+                        } else {
+                            0x5a010
+                        };
+                    let voltage = self
+                        .module
+                        .smn(soc_offset)
+                        .filter(|v| *v != 0 && *v != u32::MAX)
+                        .and_then(|v| valid(1.55 - ((v >> 16) & 255) as f64 * 0.00625, 0.1, 1.55));
+                    frame.metric(CpuMetricKind::SocVoltage, voltage, CpuSensorSource::Svi2);
+                }
             }
         } else {
             let raw = if self.id.family == 0x15 && matches!(self.id.model & 0xf0, 0x60 | 0x70) {
@@ -467,6 +513,21 @@ fn energy_delta(before: u32, after: u32, seconds: f64, unit: f64) -> Option<f32>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "Read-only sensor probe with an already installed driver; never elevates"]
+    fn installed_sensor_probe() {
+        match CpuReader::open() {
+            Ok(mut reader) => {
+                let _ = reader.sample();
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                let frame = reader.sample();
+                println!("{}", serde_json::to_string(&frame).unwrap());
+                assert_eq!(frame.state, SensorState::Ready);
+            }
+            Err(state) => println!("Normal-permission sensor probe unavailable: {state:?}"),
+        }
+    }
     #[test]
     fn affinity_is_restored_without_administrator_access() {
         use windows::Win32::System::Threading::GetThreadGroupAffinity;

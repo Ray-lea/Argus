@@ -113,13 +113,15 @@ function npmPackages() {
 }
 
 function vendored() {
-  const dir = join(root, "crates/argus-service/vendor/pawnio");
-  const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
-  for (const [name, hash] of Object.entries(manifest.sha256)) {
-    const actual = createHash("sha256").update(readFileSync(join(dir, name))).digest("hex");
-    if (actual !== hash) fail(`PawnIO module/source hash mismatch: ${name}`);
-  }
-  return [{ ...manifest, texts: [manifest.copyright, ...licenseTexts(dir)] }];
+  return ["pawnio", "cpu-layouts"].map((component) => {
+    const dir = join(root, "crates/argus-service/vendor", component);
+    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+    for (const [name, hash] of Object.entries(manifest.sha256)) {
+      const actual = createHash("sha256").update(readFileSync(join(dir, name))).digest("hex");
+      if (actual !== hash) fail(`${component} module/source hash mismatch: ${name}`);
+    }
+    return { ...manifest, texts: [manifest.copyright, ...licenseTexts(dir)] };
+  });
 }
 
 function render(rust, npm, native) {

@@ -19,6 +19,12 @@ use crate::util::AlignedBuf;
 pub struct CpuInfo {
     /// Empty when the registry does not say.
     pub name: String,
+    pub vendor: String,
+    pub family: u32,
+    pub model: u32,
+    pub stepping: u32,
+    pub instructions: Vec<&'static str>,
+    pub microcode: Option<u32>,
     pub base_mhz: u32,
     pub base_source: Option<&'static str>,
     #[serde(skip)]
@@ -59,7 +65,7 @@ pub fn cpu_info() -> CpuInfo {
         virtualization: unsafe { IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED) }.as_bool(),
         ..Default::default()
     };
-
+    identify(&mut info);
     let (base, source) = base_frequency(info.logical);
     info.base_mhz = base;
     info.base_source = source;
@@ -185,5 +191,125 @@ fn base_frequency(logical: u32) -> (u32, Option<&'static str>) {
         (info[0].max_mhz, Some("windows"))
     } else {
         (0, None)
+    }
+}
+
+fn identify(info: &mut CpuInfo) {
+    use std::arch::x86_64::{__cpuid, __cpuid_count};
+    let vendor = __cpuid(0);
+    let bytes: Vec<_> = [vendor.ebx, vendor.edx, vendor.ecx]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect();
+    info.vendor = String::from_utf8_lossy(&bytes).into_owned();
+    if vendor.eax < 1 {
+        return;
+    }
+    let id = __cpuid(1);
+    let family = (id.eax >> 8) & 15;
+    info.family = family
+        + if family == 15 {
+            (id.eax >> 20) & 255
+        } else {
+            0
+        };
+    info.model = (id.eax >> 4) & 15
+        | if matches!(family, 6 | 15) {
+            (id.eax >> 12) & 0xf0
+        } else {
+            0
+        };
+    info.stepping = id.eax & 15;
+    let mut add = |bits: u32, items: &[(u8, &'static str)]| {
+        info.instructions.extend(
+            items
+                .iter()
+                .filter(|(bit, _)| bits & (1 << bit) != 0)
+                .map(|(_, name)| *name),
+        );
+    };
+    add(id.edx, &[(25, "SSE"), (26, "SSE2")]);
+    add(
+        id.ecx,
+        &[
+            (0, "SSE3"),
+            (9, "SSSE3"),
+            (19, "SSE4.1"),
+            (20, "SSE4.2"),
+            (28, "AVX"),
+            (12, "FMA"),
+            (25, "AES"),
+            (29, "F16C"),
+            (23, "POPCNT"),
+            (1, "PCLMULQDQ"),
+        ],
+    );
+    if vendor.eax >= 7 {
+        let bits = __cpuid_count(7, 0);
+        add(
+            bits.ebx,
+            &[
+                (5, "AVX2"),
+                (3, "BMI1"),
+                (8, "BMI2"),
+                (19, "ADX"),
+                (29, "SHA"),
+                (16, "AVX-512F"),
+                (17, "AVX-512DQ"),
+                (28, "AVX-512CD"),
+                (30, "AVX-512BW"),
+                (31, "AVX-512VL"),
+            ],
+        );
+        add(
+            bits.ecx,
+            &[(11, "AVX-512VNNI"), (9, "VAES"), (10, "VPCLMULQDQ")],
+        );
+        add(
+            bits.edx,
+            &[
+                (23, "AVX-512FP16"),
+                (24, "AMX-TILE"),
+                (22, "AMX-BF16"),
+                (25, "AMX-INT8"),
+            ],
+        );
+        if bits.eax >= 1 {
+            add(
+                __cpuid_count(7, 1).eax,
+                &[(4, "AVX-VNNI"), (5, "AVX-512BF16")],
+            );
+        }
+    }
+    if __cpuid(0x80000000).eax >= 0x80000001 {
+        add(__cpuid(0x80000001).ecx, &[(5, "LZCNT"), (6, "SSE4a")]);
+    }
+    use windows::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_BINARY, RegGetValueW};
+    let mut data = [0u8; 64];
+    let mut size = data.len() as u32;
+    if unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            CPU_KEY,
+            w!("Update Revision"),
+            RRF_RT_REG_BINARY,
+            None,
+            Some(data.as_mut_ptr().cast()),
+            Some(&mut size),
+        )
+    }
+    .is_ok()
+    {
+        let offset = if size == 8 {
+            4
+        } else if size == 4 {
+            0
+        } else {
+            return;
+        };
+        info.microcode = Some(u32::from_le_bytes(
+            data[offset..offset + 4].try_into().unwrap(),
+        ))
+        .filter(|v| *v != 0);
     }
 }

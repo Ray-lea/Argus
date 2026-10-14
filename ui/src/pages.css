@@ -555,6 +555,107 @@
   font-variant-numeric: tabular-nums;
 }
 
+.cpu-instructions {
+  line-height: 1.55;
+  font-size: 11px;
+}
+
+.cpu-stats {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+
+.cpu-instructions-label,
+.cpu-instructions {
+  grid-column: 1 / -1;
+}
+
+.cpu-telemetry {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.cpu-sensor-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 20px 28px;
+}
+
+.cpu-sensor-group {
+  min-width: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--stroke);
+}
+
+.cpu-telemetry > .cpu-sensor-group {
+  margin-top: 20px;
+}
+
+.cpu-sensor-group h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cpu-sensor-group small {
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.cpu-sensor-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 125px), 1fr));
+  gap: 12px 18px;
+  margin: 0;
+}
+
+.cpu-sensor-values dt {
+  color: var(--ink-2);
+  font-size: 11px;
+}
+
+.cpu-sensor-values dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+}
+
+.cpu-sensor-status {
+  margin-bottom: 12px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.cpu-core-scroll {
+  overflow-x: auto;
+}
+
+.cpu-core-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cpu-core-table th,
+.cpu-core-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--stroke);
+  text-align: right;
+}
+
+.cpu-core-table th {
+  color: var(--ink-2);
+  font-weight: 400;
+}
+
+.cpu-core-table th:first-child {
+  text-align: left;
+}
+
+.cpu-core-table .cpu-throttled {
+  color: var(--danger);
+}
+
 .mem-bar {
   position: relative;
   height: 28px;
@@ -1210,4 +1311,10 @@
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.cpu-limit-cell {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

@@ -165,12 +165,100 @@ impl SensorClient {
                 .as_ref()
                 .and_then(|s| s.package_watts);
         }
+        if let Some(frame) = &mut snapshot.hardware.cpu_sensors {
+            use argus_core::hardware::CpuMetricKind;
+            for (target, kind) in [
+                (
+                    &mut snapshot.hardware.power.cores,
+                    CpuMetricKind::CoresWatts,
+                ),
+                (
+                    &mut snapshot.hardware.power.graphics,
+                    CpuMetricKind::GraphicsWatts,
+                ),
+                (
+                    &mut snapshot.hardware.power.memory,
+                    CpuMetricKind::MemoryWatts,
+                ),
+            ] {
+                if target.is_none() {
+                    *target = frame.value(kind);
+                }
+            }
+            for core in &mut frame.cores {
+                let samples: Vec<_> = snapshot
+                    .hardware
+                    .cpu
+                    .threads
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, thread)| thread.core == core.core)
+                    .map(|(index, _)| snapshot.hardware.cpu_idle.get(index))
+                    .collect();
+                let average = |field: fn(&argus_core::hardware::CpuIdle) -> Option<f32>| {
+                    let values: Option<Vec<_>> = samples
+                        .iter()
+                        .map(|sample| sample.and_then(field))
+                        .collect();
+                    values
+                        .filter(|v| !v.is_empty())
+                        .map(|v| v.iter().sum::<f32>() / v.len() as f32)
+                };
+                core.os_c1_percent = average(|s| s.c1);
+                core.os_c2_percent = average(|s| s.c2);
+                core.os_c3_percent = average(|s| s.c3);
+                if core.clock_mhz.is_none() {
+                    core.clock_mhz = snapshot
+                        .hardware
+                        .core_mhz
+                        .get(core.group as usize * 64 + core.processor as usize)
+                        .copied()
+                        .filter(|mhz| *mhz > 0)
+                        .map(|mhz| mhz as f32);
+                }
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enrich_preserves_windows_power_and_keeps_zero_sensor_readings() {
+        use argus_core::hardware::{CpuCoreSensors, CpuMetricKind, CpuSensorSource};
+        let mut client =
+            SensorClient::with_reader(|| CpuSensors::unavailable(SensorState::ServiceUnavailable));
+        let mut frame = CpuSensors {
+            state: SensorState::Ready,
+            package_watts: Some(101.0),
+            cores: vec![CpuCoreSensors::default()],
+            ..Default::default()
+        };
+        frame.metric(CpuMetricKind::CoresWatts, Some(0.0), CpuSensorSource::Msr);
+        frame.metric(CpuMetricKind::MemoryWatts, Some(2.5), CpuSensorSource::Msr);
+        *client.cache.lock().unwrap() = Some((Instant::now(), frame));
+        client.last = Some(Instant::now());
+        let mut snapshot = argus_core::Snapshot {
+            seq: 0,
+            timestamp: 0,
+            system: Default::default(),
+            hardware: Default::default(),
+            processes: vec![],
+            process_network: false,
+        };
+        snapshot.hardware.power.package = Some(99.0);
+        snapshot.hardware.core_mhz = vec![4200];
+        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        assert_eq!(snapshot.hardware.power.package, Some(99.0));
+        assert_eq!(snapshot.hardware.power.cores, Some(0.0));
+        assert_eq!(snapshot.hardware.power.memory, Some(2.5));
+        assert_eq!(
+            snapshot.hardware.cpu_sensors.unwrap().cores[0].clock_mhz,
+            Some(4200.0)
+        );
+    }
     #[test]
     fn disconnected_reader_returns_without_driver_access() {
         let started = Instant::now();

@@ -2,6 +2,7 @@
 // Never bundled into the Tauri build's hot path: ipc.ts only imports it outside Tauri.
 
 import { type Language, type Locale, localeFor, t } from "./i18n";
+import { mockCpuSensors } from "./mock-cpu";
 import type {
   AppInfo,
   Connection,
@@ -27,7 +28,8 @@ import type {
 
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
-const CORES = 16;
+const AMD_FIXTURE = new URLSearchParams(location.search).get("cpu") === "amd";
+const CORES = AMD_FIXTURE ? 32 : 20;
 const BOOT = Date.now() - (5 * 86400 + 14 * 3600) * 1000;
 
 interface MockProc extends ProcessRow {
@@ -314,13 +316,33 @@ function tick(): Snapshot {
 
 const wave = (base: number, amp: number) => Math.max(0, base + (Math.random() - 0.5) * 2 * amp);
 const CPU_INFO: CpuInfo = {
-  name: "Mock Core i7-13700H",
-  baseMhz: 2400,
+  name: AMD_FIXTURE ? "Mock Ryzen 9 9950X" : "Mock Core i5-13500HX",
+  vendor: AMD_FIXTURE ? "AuthenticAMD" : "GenuineIntel",
+  family: AMD_FIXTURE ? 0x1a : 6,
+  model: AMD_FIXTURE ? 0x44 : 0xbf,
+  stepping: AMD_FIXTURE ? 0 : 2,
+  microcode: AMD_FIXTURE ? 0xb404021 : 0x4122,
+  instructions: [
+    "SSE",
+    "SSE2",
+    "SSE3",
+    "SSSE3",
+    "SSE4.1",
+    "SSE4.2",
+    "AVX",
+    "AVX2",
+    "FMA",
+    "AES",
+    "BMI1",
+    "BMI2",
+    ...(AMD_FIXTURE ? ["AVX-512F", "AVX-512BW", "AVX-512VL", "AVX-512VNNI"] : []),
+  ],
+  baseMhz: AMD_FIXTURE ? 4300 : 2500,
   baseSource: "windows",
   sockets: 1,
-  cores: 14,
-  performanceCores: 6,
-  efficiencyCores: 8,
+  cores: AMD_FIXTURE ? 16 : 14,
+  performanceCores: AMD_FIXTURE ? 0 : 6,
+  efficiencyCores: AMD_FIXTURE ? 0 : 8,
   logical: CORES,
   l1: 1_228_800,
   l2: 11_534_336,
@@ -328,7 +350,7 @@ const CPU_INFO: CpuInfo = {
   virtualization: true,
   // 6 hyper-threaded P-cores, then 8 E-cores.
   threads: Array.from({ length: CORES }, (_, i) =>
-    i < 12 ? { core: i >> 1, efficient: false } : { core: i - 6, efficient: true },
+    AMD_FIXTURE || i < 12 ? { core: i >> 1, efficient: false } : { core: i - 6, efficient: true },
   ),
 };
 const BATTERY_INFO = {
@@ -403,22 +425,8 @@ function mockHardware(cpu: number, io: number): Hardware {
     cpuMhz: Math.round(2400 * (1 + cpu / 120) + Math.random() * 300),
     coreMhz: CPU_INFO.threads.map((t) => Math.round((t.efficient ? 2800 : 3500) + wave(0, 120))),
     thermal: [{ name: "TZ01", celsius: wave(55 + cpu / 4, 1.5) }],
-    cpuSensors: mockSettings.kernelSensors
-      ? {
-          state: "ready",
-          packageCelsius: wave(55 + cpu / 4, 1.5),
-          controlCelsius: null,
-          coreTemperatures: Array.from({ length: CPU_INFO.logical }, (_, i) => ({
-            group: 0,
-            processor: i,
-            celsius: wave(50 + cpu / 4, 2),
-          })),
-          ccdTemperatures: [],
-          coreVoltage: null,
-          coreVid: 1.15,
-          packageWatts: null,
-        }
-      : null,
+    cpuIdle: CPU_INFO.threads.map(() => ({ c1: 10, c2: 5, c3: 30 })),
+    cpuSensors: mockSettings.kernelSensors ? mockCpuSensors(CPU_INFO, cpu, AMD_FIXTURE) : null,
     power: { package: wave(30 + cpu * 0.8, 3), cores: wave(22 + cpu * 0.7, 3), graphics: null, memory: null },
     memory: {
       installed: 32 * GB,
@@ -493,7 +501,7 @@ const mockSettings: SettingsView = {
   hotkey: "Ctrl+Alt+Escape",
   rules: [],
   history: true,
-  kernelSensors: false,
+  kernelSensors: query.has("sensors"),
   updateCheck: true,
   updateChannel: "stable",
   updateRoute: "auto",

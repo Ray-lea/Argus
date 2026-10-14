@@ -215,6 +215,74 @@ mod tests {
     use super::*;
 
     #[test]
+    fn expanded_cpu_snapshot_stays_within_the_reply_budget() {
+        use argus_core::hardware::{
+            CoreTemperature, CpuCoreSensors, CpuMetric, CpuMetricKind, CpuSensorSource, CpuSensors,
+        };
+        let value = CpuCoreSensors {
+            core: 255,
+            group: 3,
+            processor: 63,
+            celsius: Some(125.0),
+            distance_to_limit: Some(127.0),
+            clock_mhz: Some(12000.0),
+            effective_mhz: Some(12000.0),
+            watts: Some(2000.0),
+            vid: Some(2.0),
+            multiplier: Some(120.0),
+            c0_percent: Some(100.0),
+            thermal_throttling: Some(true),
+            voltage: Some(2.0),
+            smu_c0_percent: Some(100.0),
+            c1_percent: Some(100.0),
+            c6_percent: Some(100.0),
+            os_c1_percent: Some(100.0),
+            os_c2_percent: Some(100.0),
+            os_c3_percent: Some(100.0),
+            efficient: true,
+            limits: [
+                argus_core::hardware::CpuLimitReason::Thermal,
+                argus_core::hardware::CpuLimitReason::Prochot,
+                argus_core::hardware::CpuLimitReason::CriticalTemperature,
+                argus_core::hardware::CpuLimitReason::Power,
+                argus_core::hardware::CpuLimitReason::Current,
+                argus_core::hardware::CpuLimitReason::CrossDomain,
+            ]
+            .into_iter()
+            .map(|reason| argus_core::hardware::CpuLimitStatus {
+                reason,
+                active: true,
+                occurred: true,
+            })
+            .collect(),
+        };
+        let reply = Reply::Sensors(CpuSensors {
+            cores: vec![value; 256],
+            core_temperatures: vec![
+                CoreTemperature {
+                    group: 3,
+                    processor: 63,
+                    celsius: 125.0
+                };
+                256
+            ],
+            metrics: vec![
+                CpuMetric {
+                    kind: CpuMetricKind::SecondCoreVrmCelsius,
+                    value: 1234.5678,
+                    source: CpuSensorSource::Svi3
+                };
+                64
+            ],
+            ..Default::default()
+        });
+        let bytes = serde_json::to_vec(&reply).unwrap();
+        assert!(bytes.len() < 256 * 1024);
+        assert!(bytes.len() < MAX_REPLY);
+        assert!(serde_json::from_slice::<Reply>(&bytes).is_ok());
+    }
+
+    #[test]
     fn handle_queries_validate_paths_and_bound_the_reply() {
         assert!(
             Operation::FindHandles {

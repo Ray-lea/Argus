@@ -37,7 +37,7 @@ const INSTALL_ARG: &str = "--argus-service-manage";
 /// Run by the NSIS uninstaller once the user agreed to remove the service too.
 const REMOVE_ARG: &str = "--argus-service-remove";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const PROTOCOL: u32 = 5;
+const PROTOCOL: u32 = 7;
 
 /// Handle service/helper modes before starting Tauri, its singleton or sampler.
 pub fn run_mode() -> Option<i32> {

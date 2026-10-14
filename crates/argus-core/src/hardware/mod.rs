@@ -24,10 +24,13 @@ pub use cpu::{CpuInfo, CpuThread};
 pub use disk::{DiskInfo, DiskStats};
 pub(crate) use gpu::pretty_engine;
 pub use gpu::{GpuInfo, GpuStats};
-pub use kernel_sensors::{CcdTemperature, CoreTemperature, CpuSensors, SensorState};
+pub use kernel_sensors::{
+    CcdTemperature, CoreTemperature, CpuCoreSensors, CpuFanReading, CpuLimitReason, CpuLimitStatus,
+    CpuMetric, CpuMetricKind, CpuSensorSource, CpuSensors, SensorState, SmuState,
+};
 pub use memory::MemoryInfo;
 pub use net::{NicInfo, NicStats};
-pub use sensors::{CpuPower, ThermalZone};
+pub use sensors::{CpuIdle, CpuPower, ThermalZone};
 pub use vendor_gpu::GpuPowerSource;
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -38,6 +41,8 @@ pub struct Hardware {
     pub cpu_mhz: Option<u32>,
     /// Per logical processor, MHz; empty when Windows does not publish it.
     pub core_mhz: Vec<u32>,
+    /// Logical-thread idle-state residency reported by Windows, not hardware C6/C10.
+    pub cpu_idle: Vec<CpuIdle>,
     /// ACPI thermal zones; on most laptops one of them tracks the CPU package.
     pub thermal: Vec<ThermalZone>,
     pub power: CpuPower,
@@ -85,6 +90,7 @@ impl HardwareTracker {
             cpu: self.cpu.clone(),
             cpu_mhz: sensed.cpu_mhz,
             core_mhz: sensed.core_mhz,
+            cpu_idle: sensed.idle,
             thermal: sensed.thermal,
             power: sensed.power,
             cpu_sensors: None,

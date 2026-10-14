@@ -7,11 +7,13 @@
   "source": "https://github.com/namazso/PawnIO.Modules/archive/refs/tags/0.2.11.tar.gz",
   "binaries": "https://github.com/namazso/PawnIO.Modules/releases/download/0.2.11/release_0_2_11.zip",
   "copyright": "Copyright (C) 2025-2026 namazso",
-  "notes": "Unmodified signed CPU modules only; complete corresponding source is included. The official PawnIO installer is not bundled; an explicit settings action downloads the pinned package and requests administrator permission to install/start it. CPU module calls are read-only and external modules are never accepted.",
+  "notes": "Unmodified signed sensor modules; complete corresponding source is included. The official installer is downloaded only by an explicit settings action. CPU telemetry uses fixed reads and SMU table-transfer requests. Nuvoton tachometer access restores register selectors and the temporary monitoring I/O access latch; PWM, fan curves and tuning commands are never exposed.",
   "sha256": {
     "AMDFamily10.bin": "6443080b2968474ffbc38aa4356cc56f9664349fa4b917afdb33027d6bb50525",
     "AMDFamily17.bin": "dae74615761b78bdf064dfb3e136252ddcc6fc727d88f14738d0e5800d427a91",
     "IntelMSR.bin": "d6ed85d65ab17a22f813ef98207d6d537155ee2ded5976a21cb48413c9b92e5f",
-    "source-0.2.11.tar.gz": "afe6ec8b43189376107d860d9ba875a0d481dbc2a5a5e965d6232d6ce267cc4a"
+    "source-0.2.11.tar.gz": "afe6ec8b43189376107d860d9ba875a0d481dbc2a5a5e965d6232d6ce267cc4a",
+    "RyzenSMU.bin": "301d9ca397108e09f31bfbd5ac4c9bb4f352a5de68532c32db3ba7ddcde93450",
+    "LpcIO.bin": "b3896a1cab0d808fca31fe2ebcae045d59dac690da87b17c858bb8da357eb45e"
   }
 }

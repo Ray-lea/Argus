@@ -31,6 +31,14 @@ pub struct CpuPower {
     pub memory: Option<f32>,
 }
 
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CpuIdle {
+    pub c1: Option<f32>,
+    pub c2: Option<f32>,
+    pub c3: Option<f32>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SensorSample {
     /// Effective clock in MHz, the way Task Manager reports it.
@@ -39,6 +47,7 @@ pub struct SensorSample {
     pub core_mhz: Vec<u32>,
     pub thermal: Vec<ThermalZone>,
     pub power: CpuPower,
+    pub idle: Vec<CpuIdle>,
 }
 
 pub(crate) struct Sensors {
@@ -54,6 +63,7 @@ pub(crate) struct Sensors {
     /// Zones in tenths of a kelvin (`High Precision Temperature`) rather than kelvin.
     zones_precise: bool,
     energy: Option<PDH_HCOUNTER>,
+    idle: [Option<PDH_HCOUNTER>; 3],
 }
 
 // PDH handles are process-wide; the sampler uses them from one thread at a time.
@@ -85,6 +95,11 @@ impl Sensors {
             zones = add(w!(r"\Thermal Zone Information(*)\Temperature"));
         }
         let energy = add(w!(r"\Energy Meter(*)\Power"));
+        let idle = [
+            add(w!(r"\Processor Information(*)\% C1 Time")),
+            add(w!(r"\Processor Information(*)\% C2 Time")),
+            add(w!(r"\Processor Information(*)\% C3 Time")),
+        ];
         // Rate counters need a first collection to have something to diff against.
         query.collect();
         Some(Self {
@@ -97,6 +112,7 @@ impl Sensors {
             zones,
             zones_precise,
             energy,
+            idle,
         })
     }
 
@@ -136,6 +152,25 @@ impl Sensors {
             }
             out.core_mhz[index] = mhz.round() as u32;
         }
+        for (state, counter) in self.idle.iter().enumerate() {
+            let Some(counter) = counter else { continue };
+            for (name, value) in pdh::array(*counter, &mut self.buf) {
+                let Some(index) = processor_index(&name) else {
+                    continue;
+                };
+                if !value.is_finite() || !(0.0..=100.01).contains(&value) {
+                    continue;
+                }
+                out.idle
+                    .resize_with(out.idle.len().max(index + 1), CpuIdle::default);
+                let reading = Some(value.min(100.0) as f32);
+                match state {
+                    0 => out.idle[index].c1 = reading,
+                    1 => out.idle[index].c2 = reading,
+                    _ => out.idle[index].c3 = reading,
+                }
+            }
+        }
 
         if let Some(c) = self.zones {
             for (name, raw) in pdh::array(c, &mut self.buf) {
@@ -169,5 +204,23 @@ impl Sensors {
             out.power = power;
         }
         out
+    }
+}
+
+fn processor_index(name: &str) -> Option<usize> {
+    let (group, number) = name.split_once(',')?;
+    let (group, number) = (group.parse::<usize>().ok()?, number.parse::<usize>().ok()?);
+    (group < 64 && number < 64).then_some(group * 64 + number)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn idle_instances_preserve_groups_and_ignore_rollups() {
+        assert_eq!(processor_index("1,2"), Some(66));
+        for value in ["_Total", "0,_Total", "0,64", "9999,1", "0,-1"] {
+            assert_eq!(processor_index(value), None);
+        }
     }
 }
