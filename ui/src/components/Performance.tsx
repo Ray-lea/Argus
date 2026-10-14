@@ -683,7 +683,19 @@ function CpuView() {
         </div>
         <dl class="info-list">
           <dt>{t("performance.cpu.baseSpeed")}</dt>
-          <dd>{cpu().baseMhz ? fmtGHz(cpu().baseMhz) : "—"}</dd>
+          <dd
+            title={
+              cpu().baseSource
+                ? t(
+                    cpu().baseSource === "cpuid"
+                      ? "performance.cpu.baseSourceCpuid"
+                      : "performance.cpu.baseSourceWindows",
+                  )
+                : undefined
+            }
+          >
+            {cpu().baseMhz ? fmtGHz(cpu().baseMhz) : "—"}
+          </dd>
           <dt>{t("performance.cpu.sockets")}</dt>
           <dd>{cpu().sockets}</dd>
           <dt>{t("performance.cpu.cores")}</dt>

@@ -74,7 +74,9 @@
       "unsupported": "暂无适用的处理器采集接口",
       "noData": "暂未取得有效读数",
       "ready": "已连接"
-    }
+    },
+    "baseSourceCpuid": "来源：CPUID 额定频率",
+    "baseSourceWindows": "来源：Windows 电源接口报告的额定频率"
   },
   "memory": {
     "sub": "{used} / {total} GB（{percent}%）",

@@ -316,6 +316,7 @@ const wave = (base: number, amp: number) => Math.max(0, base + (Math.random() - 
 const CPU_INFO: CpuInfo = {
   name: "Mock Core i7-13700H",
   baseMhz: 2400,
+  baseSource: "windows",
   sockets: 1,
   cores: 14,
   performanceCores: 6,

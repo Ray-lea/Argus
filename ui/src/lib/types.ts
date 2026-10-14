@@ -69,6 +69,7 @@ export interface SystemStats {
 export interface CpuInfo {
   name: string;
   baseMhz: number;
+  baseSource: "cpuid" | "windows" | null;
   sockets: number;
   cores: number;
   /** Hybrid CPUs only (0 otherwise). */

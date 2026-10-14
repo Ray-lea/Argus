@@ -80,7 +80,9 @@
       "unsupported": "No supported processor interface",
       "noData": "No valid readings yet",
       "ready": "Connected"
-    }
+    },
+    "baseSourceCpuid": "Source: CPUID nominal frequency",
+    "baseSourceWindows": "Source: nominal frequency reported by Windows power information"
   },
   "memory": {
     "sub": "{used} / {total} GB ({percent}%)",

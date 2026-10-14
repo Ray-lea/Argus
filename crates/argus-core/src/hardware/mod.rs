@@ -63,7 +63,7 @@ impl HardwareTracker {
     pub fn new() -> Self {
         let cpu = cpu::cpu_info();
         let mut t = Self {
-            sensors: sensors::Sensors::new(cpu.base_mhz),
+            sensors: sensors::Sensors::new(cpu.reference_mhz),
             cpu: Arc::new(cpu),
             memory: Arc::new(memory::memory_info()),
             disks: disk::DiskTracker::new(),

@@ -20,6 +20,9 @@ pub struct CpuInfo {
     /// Empty when the registry does not say.
     pub name: String,
     pub base_mhz: u32,
+    pub base_source: Option<&'static str>,
+    #[serde(skip)]
+    pub(crate) reference_mhz: u32,
     pub sockets: u32,
     pub cores: u32,
     /// Hybrid CPUs only: cores in the highest efficiency class.
@@ -51,11 +54,15 @@ pub fn cpu_info() -> CpuInfo {
         name: reg_string(CPU_KEY, w!("ProcessorNameString"))
             .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
             .unwrap_or_default(),
-        base_mhz: reg_dword(CPU_KEY, w!("~MHz")).unwrap_or(0),
+        reference_mhz: reg_dword(CPU_KEY, w!("~MHz")).unwrap_or(0),
         logical: unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) },
         virtualization: unsafe { IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED) }.as_bool(),
         ..Default::default()
     };
+
+    let (base, source) = base_frequency(info.logical);
+    info.base_mhz = base;
+    info.base_source = source;
 
     let mut len = 0u32;
     let _ = unsafe { GetLogicalProcessorInformationEx(RelationAll, None, &mut len) };
@@ -133,4 +140,50 @@ pub fn cpu_info() -> CpuInfo {
         }
     }
     info
+}
+
+fn base_frequency(logical: u32) -> (u32, Option<&'static str>) {
+    use std::arch::x86_64::__cpuid;
+    let cpuid = (__cpuid(0).eax >= 0x16).then(|| __cpuid(0x16).eax & 0xffff);
+    if let Some(mhz) = cpuid.filter(|v| (100..=12000).contains(v)) {
+        return (mhz, Some("cpuid"));
+    }
+    // ~MHz is often the invariant TSC/reference frequency (2688 MHz on
+    // i5-13500HX), not the nominal processor frequency. Keep it only as
+    // the existing PDH performance-counter reference, never as a base clock.
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct PowerInfo {
+        number: u32,
+        max_mhz: u32,
+        current_mhz: u32,
+        limit_mhz: u32,
+        max_idle: u32,
+        idle: u32,
+    }
+    #[link(name = "PowrProf")]
+    unsafe extern "system" {
+        fn CallNtPowerInformation(
+            level: u32,
+            input: *const std::ffi::c_void,
+            input_len: u32,
+            output: *mut std::ffi::c_void,
+            output_len: u32,
+        ) -> u32;
+    }
+    let mut info = vec![PowerInfo::default(); logical.clamp(1, 4096) as usize];
+    let status = unsafe {
+        CallNtPowerInformation(
+            11,
+            std::ptr::null(),
+            0,
+            info.as_mut_ptr().cast(),
+            std::mem::size_of_val(info.as_slice()) as u32,
+        )
+    };
+    if status == 0 && (100..=12000).contains(&info[0].max_mhz) {
+        (info[0].max_mhz, Some("windows"))
+    } else {
+        (0, None)
+    }
 }
