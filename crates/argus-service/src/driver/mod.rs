@@ -39,6 +39,9 @@ const PACKAGE_INVALID: u32 = 0x2000_0102;
 const SIGNATURE_INVALID: u32 = 0x2000_0103;
 const FOREIGN_DRIVER: u32 = 0x2000_0104;
 const NOT_READY: u32 = 0x2000_0105;
+const UNSAFE_DRIVER_PATH: u32 = 0x2000_0106;
+const WRITABLE_DRIVER_STORE: u32 = 0x2000_0107;
+const UNSAFE_SETUP_PATH: u32 = 0x2000_0108;
 const REBOOT_REQUIRED: u32 = 3010;
 const MIN_VERSION: (u32, u32, u32, u32) = (2, 2, 0, 0);
 const INSTALL_ARGS: [&str; 2] = ["-install", "-silent"];
@@ -95,6 +98,9 @@ fn message(code: u32) -> String {
         SIGNATURE_INVALID => tr!("sensorSetup.signatureInvalid"),
         FOREIGN_DRIVER => tr!("sensorSetup.foreignDriver"),
         NOT_READY => tr!("sensorSetup.notReady"),
+        UNSAFE_DRIVER_PATH => tr!("sensorSetup.unsafeDriverPath"),
+        WRITABLE_DRIVER_STORE => tr!("sensorSetup.writableDriverStore"),
+        UNSAFE_SETUP_PATH => tr!("sensorSetup.unsafeSetupPath"),
         REBOOT_REQUIRED | 1641 => tr!("sensorSetup.reboot"),
         _ => util::message(code),
     }
@@ -181,7 +187,39 @@ fn pin_image(path: &Path, windows: &Path, programs: &Path) -> Result<Vec<Handle>
         .filter(|p| p.components().count() >= root_depth)
         .collect();
     chain.reverse();
-    chain.into_iter().map(security::protect_directory).collect()
+    chain
+        .into_iter()
+        .map(|part| {
+            security::inspect_path(part).map_err(|error| driver_path_error(part, windows, error))
+        })
+        .collect()
+}
+
+fn driver_path_error(path: &Path, windows: &Path, error: security::PathError) -> u32 {
+    if let security::PathError::Os(code) = error {
+        return code;
+    }
+    if error == security::PathError::Writable
+        && path.as_os_str().eq_ignore_ascii_case(
+            windows
+                .join(r"System32\DriverStore\FileRepository")
+                .as_os_str(),
+        )
+    {
+        WRITABLE_DRIVER_STORE
+    } else {
+        UNSAFE_DRIVER_PATH
+    }
+}
+
+fn protect_setup_path(path: &Path) -> Result<Handle> {
+    security::protect_directory(path).map_err(|code| {
+        if code == util::UNSAFE_PATH {
+            UNSAFE_SETUP_PATH
+        } else {
+            code
+        }
+    })
 }
 
 fn file_version(path: &Path) -> Result<(u32, u32, u32, u32)> {
@@ -404,7 +442,7 @@ fn protected_dir(path: &Path) -> Result<Handle> {
             return Err(code);
         }
     }
-    security::protect_directory(path)
+    protect_setup_path(path)
 }
 
 fn install_package(root: &Path) -> Result<()> {
@@ -441,7 +479,7 @@ pub(crate) fn run_helper() -> Result<()> {
         return Err(5);
     }
     let programs = program_files()?;
-    let _parent = security::protect_directory(&programs)?;
+    let _parent = protect_setup_path(&programs)?;
     let root = programs.join("Argus Sensor Setup");
     let _root = protected_dir(&root)?;
     let _lock = OpenOptions::new()
@@ -529,6 +567,50 @@ pub fn verify_installer_download() -> std::result::Result<&'static str, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "Read-only check of the locally installed PawnIO driver"]
+    fn installed_driver_preflight() {
+        let plan = current_plan().unwrap();
+        assert!(matches!(plan, Plan::Ready | Plan::Start));
+    }
+
+    #[test]
+    fn unsafe_driver_paths_report_the_driver_instead_of_the_argus_service() {
+        let windows = Path::new(r"C:\Windows");
+        let repository = Path::new(r"C:\WINDOWS\System32\DriverStore\FileRepository");
+        assert_eq!(
+            driver_path_error(repository, windows, security::PathError::Writable),
+            WRITABLE_DRIVER_STORE
+        );
+        for error in [
+            security::PathError::Owner,
+            security::PathError::Permissions,
+            security::PathError::ReparsePoint,
+        ] {
+            assert_eq!(
+                driver_path_error(repository, windows, error),
+                UNSAFE_DRIVER_PATH
+            );
+        }
+        assert_eq!(
+            driver_path_error(
+                &repository.join("PawnIO.sys"),
+                windows,
+                security::PathError::Writable
+            ),
+            UNSAFE_DRIVER_PATH
+        );
+        assert_eq!(
+            driver_path_error(repository, windows, security::PathError::Os(5)),
+            5
+        );
+        assert_eq!(
+            protect_setup_path(&std::env::temp_dir()).err(),
+            Some(UNSAFE_SETUP_PATH)
+        );
+    }
+
     #[test]
     fn cancellation_failure_and_reboot_never_start_collection() {
         for code in [1223, 3010, 1641, 5] {

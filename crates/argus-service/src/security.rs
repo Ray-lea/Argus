@@ -227,6 +227,34 @@ pub fn allow_process_query(owner: &str) -> Result<()> {
 /// Pin the directory against renaming, reject reparse points, and refuse any
 /// owner/allow ACE that could let an unprivileged account replace service code.
 pub fn protect_directory(path: &Path) -> Result<Handle> {
+    inspect_path(path).map_err(PathError::code)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PathError {
+    Os(u32),
+    ReparsePoint,
+    Owner,
+    Permissions,
+    Writable,
+}
+
+impl PathError {
+    pub(crate) fn code(self) -> u32 {
+        match self {
+            Self::Os(code) => code,
+            _ => UNSAFE_PATH,
+        }
+    }
+}
+
+impl From<u32> for PathError {
+    fn from(code: u32) -> Self {
+        Self::Os(code)
+    }
+}
+
+pub(crate) fn inspect_path(path: &Path) -> std::result::Result<Handle, PathError> {
     let path = wide(&path.to_string_lossy());
     let h = unsafe {
         CreateFileW(
@@ -244,7 +272,7 @@ pub fn protect_directory(path: &Path) -> Result<Handle> {
     let mut info = BY_HANDLE_FILE_INFORMATION::default();
     unsafe { GetFileInformationByHandle(h, &mut info) }.map_err(win)?;
     if info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
-        return Err(UNSAFE_PATH);
+        return Err(PathError::ReparsePoint);
     }
     let mut owner = PSID::default();
     let mut dacl = std::ptr::null_mut::<ACL>();
@@ -264,8 +292,16 @@ pub fn protect_directory(path: &Path) -> Result<Handle> {
     .ok()
     .map_err(win)?;
     let _sd = Descriptor(sd);
-    if !trusted(&sid_string(owner)?) || dacl.is_null() {
-        return Err(UNSAFE_PATH);
+    check_path_acl(owner, dacl)?;
+    Ok(handle)
+}
+
+fn check_path_acl(owner: PSID, dacl: *mut ACL) -> std::result::Result<(), PathError> {
+    if !trusted(&sid_string(owner)?) {
+        return Err(PathError::Owner);
+    }
+    if dacl.is_null() {
+        return Err(PathError::Permissions);
     }
     for index in 0..unsafe { (*dacl).AceCount } {
         let mut ace: *mut c_void = std::ptr::null_mut();
@@ -280,17 +316,17 @@ pub fn protect_directory(path: &Path) -> Result<Handle> {
             continue;
         } // Deny ACEs cannot grant write access.
         if header.AceType != 0 {
-            return Err(UNSAFE_PATH);
+            return Err(PathError::Permissions);
         }
         let allow = unsafe { &*ace.cast::<ACCESS_ALLOWED_ACE>() };
         let sid = PSID((&allow.SidStart as *const u32).cast_mut().cast());
         // Generic all/write, maximum allowed, delete, write DAC/owner, and
         // file/directory writes (including delete-child).
         if allow.Mask & 0x520d_0156 != 0 && !trusted(&sid_string(sid)?) {
-            return Err(UNSAFE_PATH);
+            return Err(PathError::Writable);
         }
     }
-    Ok(handle)
+    Ok(())
 }
 
 fn trusted(sid: &str) -> bool {
@@ -329,6 +365,63 @@ fn trusted(sid: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn inspect_acl(sddl: &str) -> std::result::Result<(), PathError> {
+        let descriptor = Descriptor::new(sddl).unwrap();
+        let mut owner = PSID::default();
+        let mut defaulted = false.into();
+        let mut present = false.into();
+        let mut dacl = std::ptr::null_mut();
+        unsafe {
+            windows::Win32::Security::GetSecurityDescriptorOwner(
+                descriptor.0,
+                &mut owner,
+                &mut defaulted,
+            )
+        }
+        .unwrap();
+        unsafe { GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut dacl, &mut defaulted) }
+            .unwrap();
+        check_path_acl(owner, dacl)
+    }
+
+    #[test]
+    fn driver_store_full_control_is_rejected_but_inherited_read_access_is_safe() {
+        // The failing machine grants Everyone full control on FileRepository,
+        // even though its driver package and the driver itself are read-only.
+        assert_eq!(
+            inspect_acl(
+                "O:BAG:BAD:(A;OICIID;FA;;;SY)(A;OICIID;FA;;;WD)(A;OICIID;0x1200a9;;;AC)(A;OICIID;0x1200a9;;;S-1-15-2-2)"
+            ),
+            Err(PathError::Writable)
+        );
+        assert_eq!(
+            inspect_acl(
+                "O:BAG:BAD:AI(A;OICIID;FA;;;SY)(A;OICIID;0x1200a9;;;WD)(A;OICIID;0x1200a9;;;AC)(A;OICIID;0x1200a9;;;S-1-15-2-2)"
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            inspect_acl(
+                "O:SYG:SYD:AI(A;ID;FA;;;SY)(A;ID;0x1200a9;;;WD)(A;ID;0x1200a9;;;AC)(A;ID;0x1200a9;;;S-1-15-2-2)"
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn path_failures_preserve_the_existing_service_error_codes() {
+        assert_eq!(PathError::Os(5).code(), 5);
+        for error in [
+            PathError::Owner,
+            PathError::Permissions,
+            PathError::Writable,
+            PathError::ReparsePoint,
+        ] {
+            assert_eq!(error.code(), UNSAFE_PATH);
+        }
+    }
+
     #[test]
     fn descriptor_uses_current_account_and_rejects_sddl_injection() {
         let sid = current_sid().unwrap();
