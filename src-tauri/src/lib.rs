@@ -1,6 +1,7 @@
 mod caption;
 mod commands;
 mod diagnostics;
+mod instance;
 mod leftovers;
 mod sampler;
 mod settings;
@@ -101,6 +102,32 @@ pub fn run() {
     if let Some(code) = argus_service::run_mode() {
         std::process::exit(code);
     }
+    let context = tauri::generate_context!();
+    let _instance = match instance::acquire(
+        &context.config().identifier,
+        &std::env::args().collect::<Vec<_>>(),
+    ) {
+        Ok(Some(owner)) => owner,
+        Ok(None) => return,
+        Err(_) => {
+            use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+            use windows::core::PCWSTR;
+            let message: Vec<u16> = argus_core::tr!("app.instanceUnavailable")
+                .encode_utf16()
+                .chain(Some(0))
+                .collect();
+            let title: Vec<u16> = shell::app_title().encode_utf16().chain(Some(0)).collect();
+            unsafe {
+                MessageBoxW(
+                    None,
+                    PCWSTR(message.as_ptr()),
+                    PCWSTR(title.as_ptr()),
+                    MB_OK | MB_ICONERROR,
+                );
+            }
+            return;
+        }
+    };
     privilege::raise_self_priority();
     let elevated = privilege::is_elevated();
     if elevated {
@@ -129,7 +156,6 @@ pub fn run() {
     let start_hidden = taskmgr_start || std::env::args().any(|a| a == "--hidden");
     let updated = std::env::args().any(|a| a == updater::UPDATED_ARG);
 
-    let context = tauri::generate_context!();
     // Before the window and its WebView exist (see leftovers.rs). Tauri keeps
     // WebView2's data in the app's local data folder.
     let leftovers = std::env::var_os("LOCALAPPDATA").map_or(0, |dir| {
@@ -139,7 +165,7 @@ pub fn run() {
 
     tauri::Builder::default()
         // Must come first: a second launch just brings the running one forward.
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        .plugin(instance::plugin(|app, args| {
             if argus_service::taskmgr::ready::queue(&args) {
                 let _ = app.emit("argus-taskmgr-ready", ());
             } else {

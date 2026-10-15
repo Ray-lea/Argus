@@ -1,7 +1,8 @@
 {
   "app": {
     "devTitle": "Argus 开发版",
-    "join": "{first}；{second}"
+    "join": "{first}；{second}",
+    "instanceUnavailable": "已有 Argus 正在启动或退出，暂时无法接收请求。请稍后重试。"
   },
   "tray": {
     "show": "显示 Argus",

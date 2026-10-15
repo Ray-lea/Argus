@@ -1,7 +1,8 @@
 {
   "app": {
     "devTitle": "Argus Dev",
-    "join": "{first}; {second}"
+    "join": "{first}; {second}",
+    "instanceUnavailable": "An Argus instance is starting or exiting and could not accept this request. Please try again shortly."
   },
   "tray": {
     "show": "Show Argus",

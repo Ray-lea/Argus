@@ -22,7 +22,6 @@ tauri-plugin-autostart = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-log = "2.10"
-tauri-plugin-single-instance = "2"
 # Schannel instead of rustls: the system certificate store, including roots
 # that corporate proxies install. No zip: the update is the NSIS installer itself.
 tauri-plugin-updater = { version = "2.13", default-features = false, features = ["native-tls", "system-proxy"] }
