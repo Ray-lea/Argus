@@ -209,7 +209,17 @@
       "current": "Current limit",
       "crossDomain": "Cross-domain limit"
     },
-    "idlePerCore": "Per-core idle states"
+    "idlePerCore": "Per-core idle states",
+    "boardMetrics": {
+      "plus5Volts": "+5 V",
+      "plus12Volts": "+12 V",
+      "plus3v3Volts": "+3.3 V",
+      "avccVolts": "AVCC",
+      "standby3v3Volts": "+3.3 V standby",
+      "batteryVolts": "CMOS battery",
+      "vrmCelsius": "VRM temperature",
+      "motherboardCelsius": "Motherboard temperature"
+    }
   },
   "memory": {
     "sub": "{used} / {total} GB ({percent}%)",

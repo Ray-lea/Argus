@@ -203,7 +203,17 @@
       "current": "电流限制",
       "crossDomain": "跨域限制"
     },
-    "idlePerCore": "每核空闲状态"
+    "idlePerCore": "每核空闲状态",
+    "boardMetrics": {
+      "plus5Volts": "+5 V",
+      "plus12Volts": "+12 V",
+      "plus3v3Volts": "+3.3 V",
+      "avccVolts": "AVCC",
+      "standby3v3Volts": "+3.3 V 待机",
+      "batteryVolts": "CMOS 电池",
+      "vrmCelsius": "供电温度",
+      "motherboardCelsius": "主板温度"
+    }
   },
   "memory": {
     "sub": "{used} / {total} GB（{percent}%）",

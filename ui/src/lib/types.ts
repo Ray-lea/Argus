@@ -272,7 +272,18 @@ export interface CpuSensors {
   thermalThrottling: boolean | null;
   boardSensor: string | null;
   boardFans: { channel: number; rpm: number }[];
+  boardMetrics: { kind: BoardMetricKind; value: number }[];
 }
+
+export type BoardMetricKind =
+  | "plus5Volts"
+  | "plus12Volts"
+  | "plus3v3Volts"
+  | "avccVolts"
+  | "standby3v3Volts"
+  | "batteryVolts"
+  | "vrmCelsius"
+  | "motherboardCelsius";
 
 export type CpuMetricKind =
   | "ringMhz"

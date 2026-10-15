@@ -184,6 +184,26 @@ pub struct CpuFanReading {
     pub rpm: f32,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum BoardMetricKind {
+    Plus5Volts,
+    Plus12Volts,
+    Plus3v3Volts,
+    AvccVolts,
+    Standby3v3Volts,
+    BatteryVolts,
+    VrmCelsius,
+    MotherboardCelsius,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardMetric {
+    pub kind: BoardMetricKind,
+    pub value: f32,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct CpuSensors {
@@ -205,6 +225,7 @@ pub struct CpuSensors {
     pub thermal_throttling: Option<bool>,
     pub board_sensor: Option<String>,
     pub board_fans: Vec<CpuFanReading>,
+    pub board_metrics: Vec<BoardMetric>,
     pub limits: Vec<CpuLimitStatus>,
 }
 

@@ -25,8 +25,9 @@ pub use disk::{DiskInfo, DiskStats};
 pub(crate) use gpu::pretty_engine;
 pub use gpu::{GpuInfo, GpuStats};
 pub use kernel_sensors::{
-    CcdTemperature, CoreTemperature, CpuCoreSensors, CpuFanReading, CpuLimitReason, CpuLimitStatus,
-    CpuMetric, CpuMetricKind, CpuSensorSource, CpuSensors, SensorState, SmuState,
+    BoardMetric, BoardMetricKind, CcdTemperature, CoreTemperature, CpuCoreSensors, CpuFanReading,
+    CpuLimitReason, CpuLimitStatus, CpuMetric, CpuMetricKind, CpuSensorSource, CpuSensors,
+    SensorState, SmuState,
 };
 pub use memory::MemoryInfo;
 pub use net::{NicInfo, NicStats};

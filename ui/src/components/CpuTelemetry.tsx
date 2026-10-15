@@ -184,12 +184,29 @@ export default function CpuTelemetry(props: { sensors: CpuSensors }) {
           </div>
         </section>
       </Show>
-      <Show when={props.sensors.boardFans.length > 0}>
+      <Show when={props.sensors.boardFans.length > 0 || props.sensors.boardMetrics.length > 0}>
         <section class="cpu-sensor-group">
           <h3>
             {t("performance.cpu.boardSensor")} <small>{props.sensors.boardSensor}</small>
           </h3>
           <dl class="cpu-sensor-values">
+            <For each={props.sensors.boardMetrics.map((metric) => metric.kind)}>
+              {(kind) => {
+                const temperature = kind.endsWith("Celsius");
+                return (
+                  <div>
+                    <dt>{t(`performance.cpu.boardMetrics.${kind}`)}</dt>
+                    <dd>
+                      {number(
+                        props.sensors.boardMetrics.find((metric) => metric.kind === kind)?.value,
+                        temperature ? 1 : 3,
+                      )}{" "}
+                      <small>{temperature ? "°C" : "V"}</small>
+                    </dd>
+                  </div>
+                );
+              }}
+            </For>
             <For each={props.sensors.boardFans.map((fan) => fan.channel)}>
               {(channel) => (
                 <div>

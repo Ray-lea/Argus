@@ -131,6 +131,15 @@ export function mockCpuSensors(info: CpuInfo, load: number, amd: boolean): CpuSe
     smuTableVersion: amd ? 0x620205 : null,
     thermalThrottling: amd ? null : false,
     boardSensor: amd ? "NCT6799D" : null,
+    boardMetrics: amd
+      ? [
+          { kind: "plus5Volts", value: 5.04 },
+          { kind: "plus12Volts", value: 12.096 },
+          { kind: "plus3v3Volts", value: 3.312 },
+          { kind: "vrmCelsius", value: 48.5 },
+          { kind: "motherboardCelsius", value: 35 },
+        ]
+      : [],
     boardFans: amd
       ? [
           { channel: 0, rpm: 920 },

@@ -294,6 +294,7 @@ impl CpuReader {
             || frame.package_watts.is_some()
             || !frame.metrics.is_empty()
             || !frame.board_fans.is_empty()
+            || !frame.board_metrics.is_empty()
             || frame.cores.iter().any(|core| {
                 core.clock_mhz.is_some() || core.effective_mhz.is_some() || core.watts.is_some()
             }) {

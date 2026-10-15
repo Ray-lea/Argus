@@ -1,11 +1,11 @@
-//! Nuvoton NCT6779/NCT679x tachometers. Only index/bank selectors and the
+//! Nuvoton NCT6779/NCT679x monitoring. Only index/bank selectors and the
 //! temporary I/O-space access latch are written; PWM and fan curves are untouched.
 use std::time::{Duration, Instant};
 
-use argus_core::hardware::{CpuFanReading, CpuSensors};
+use argus_core::hardware::{BoardMetric, BoardMetricKind as Kind, CpuFanReading, CpuSensors};
 use windows::Win32::Foundation::{WAIT_ABANDONED, WAIT_OBJECT_0};
 use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex, WaitForSingleObject};
-use windows::core::w;
+use windows::core::{PCWSTR, w};
 
 use super::Module;
 use crate::util::Handle;
@@ -140,6 +140,12 @@ struct Chip {
     name: &'static str,
     fans: usize,
     seen: u8,
+    strix_x670e: bool,
+}
+
+struct Readings {
+    fans: Vec<Option<f32>>,
+    metrics: Vec<BoardMetric>,
 }
 
 #[derive(Default)]
@@ -176,7 +182,9 @@ impl Board {
             return;
         }
         frame.board_sensor = Some(chip.name.into());
-        for (index, rpm) in readings.unwrap().into_iter().enumerate() {
+        let readings = readings.unwrap();
+        frame.board_metrics = readings.metrics;
+        for (index, rpm) in readings.fans.into_iter().enumerate() {
             let Some(rpm) = rpm else { continue };
             if rpm > 0.0 {
                 chip.seen |= 1 << index;
@@ -229,6 +237,7 @@ fn detect() -> Option<Chip> {
                 name,
                 fans,
                 seen: 0,
+                strix_x670e: name == "NCT6799D" && board_profile(),
             });
         }
     }
@@ -262,7 +271,7 @@ impl Chip {
         }
         read_port(&self.module, self.base + 6)
     }
-    fn read(&self) -> Option<Vec<Option<f32>>> {
+    fn read(&self) -> Option<Readings> {
         // Preserve the bank selector for other cooperating monitor programs.
         if !write_port(&self.module, self.base + 5, 0x4e) {
             return None;
@@ -278,7 +287,12 @@ impl Chip {
                 let low = self.byte(register + 1)?;
                 fans.push(fan_rpm(high, low));
             }
-            Some(fans)
+            let metrics = if self.strix_x670e {
+                board_metrics(|r| self.byte(r))
+            } else {
+                Vec::new()
+            };
+            Some(Readings { fans, metrics })
         })();
         if !write_port(&self.module, self.base + 5, 0x4e)
             || !write_port(&self.module, self.base + 6, bank)
@@ -287,6 +301,105 @@ impl Chip {
         }
         result
     }
+}
+
+fn board_profile() -> bool {
+    use windows::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
+    let read = |name: PCWSTR| -> Option<String> {
+        let mut data = [0u16; 256];
+        let mut bytes = std::mem::size_of_val(&data) as u32;
+        unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                w!(r"HARDWARE\DESCRIPTION\System\BIOS"),
+                name,
+                RRF_RT_REG_SZ,
+                None,
+                Some(data.as_mut_ptr().cast()),
+                Some(&mut bytes),
+            )
+        }
+        .ok()
+        .ok()?;
+        let end = data.iter().position(|v| *v == 0)?;
+        Some(String::from_utf16_lossy(&data[..end]))
+    };
+    matches_board(
+        read(w!("BaseBoardManufacturer")).as_deref(),
+        read(w!("BaseBoardProduct")).as_deref(),
+    )
+}
+
+fn matches_board(vendor: Option<&str>, model: Option<&str>) -> bool {
+    vendor.is_some_and(|v| v.trim().eq_ignore_ascii_case("ASUSTeK COMPUTER INC."))
+        && model.is_some_and(|m| {
+            m.trim()
+                .eq_ignore_ascii_case("ROG STRIX X670E-A GAMING WIFI")
+        })
+}
+
+// This board's divider network and temperature source identities are pinned
+// in vendor/cpu-layouts/manifest.json. Vcore and termination are deliberately
+// absent: the upstream board profile itself marks those mappings as wrong.
+fn board_metrics(read: impl Fn(u16) -> Option<u8>) -> Vec<BoardMetric> {
+    let mut values = Vec::new();
+    for (kind, channel, factor) in [
+        (Kind::Plus5Volts, 1, 5.),
+        (Kind::AvccVolts, 2, 2.),
+        (Kind::Plus3v3Volts, 3, 2.),
+        (Kind::Plus12Volts, 4, 12.),
+        (Kind::Standby3v3Volts, 7, 2.),
+        (Kind::BatteryVolts, 8, 2.),
+    ] {
+        if kind == Kind::BatteryVolts && read(0x5d).is_none_or(|v| v & 1 == 0) {
+            continue;
+        }
+        if let Some(raw) = read(0x480 + channel).filter(|v| *v > 0 && *v != 255) {
+            values.push(BoardMetric {
+                kind,
+                value: f32::from(raw) * 0.008 * factor,
+            });
+        }
+    }
+    let mut temperatures = [None; 2];
+    // Multiplexed temperature registers are identified by their source, never
+    // by the slot number. Prefer their half-degree samples over integer fallbacks.
+    for (register, half, bit, selector) in [
+        (0x73, 0x74, 7, 0x100),
+        (0x75, 0x76, 7, 0x200),
+        (0x77, 0x78, 7, 0x300),
+        (0x79, 0x7a, 7, 0x800),
+        (0x7b, 0x7c, 7, 0x900),
+        (0x7d, 0x7e, 7, 0xa00),
+        (0x4a0, 0x49e, 6, 0xb00),
+        (0x4a2, 0x4a1, 7, 0xc00),
+    ] {
+        let Some(source @ 1..=2) = read(selector).map(|v| v & 31) else {
+            continue;
+        };
+        let value = read(register).zip(read(half)).and_then(|(raw, fraction)| {
+            super::valid(
+                f64::from(raw as i8) + f64::from((fraction >> bit) & 1) * 0.5,
+                1.,
+                125.,
+            )
+        });
+        if temperatures[source as usize - 1].is_none() {
+            temperatures[source as usize - 1] = value;
+        }
+    }
+    for (index, kind, fallback) in [
+        (0, Kind::MotherboardCelsius, 0x490),
+        (1, Kind::VrmCelsius, 0x491),
+    ] {
+        let value = temperatures[index].or_else(|| {
+            read(fallback).and_then(|raw| super::valid(f64::from(raw as i8), 1., 125.))
+        });
+        if let Some(value) = value {
+            values.push(BoardMetric { kind, value });
+        }
+    }
+    values
 }
 
 fn fan_rpm(high: u8, low: u8) -> Option<f32> {
@@ -360,5 +473,35 @@ mod tests {
         assert_eq!(fan_rpm(255, 255), Some(0.0));
         assert_eq!(fan_rpm(0, 0), Some(0.0));
         assert_eq!(fan_rpm(0, 1), None);
+    }
+    #[test]
+    fn board_dividers_and_mux_sources_require_the_exact_profile() {
+        assert!(matches_board(
+            Some("ASUSTeK COMPUTER INC."),
+            Some("ROG STRIX X670E-A GAMING WIFI")
+        ));
+        assert!(!matches_board(
+            Some("ASUSTeK COMPUTER INC."),
+            Some("ROG STRIX X670E-E GAMING WIFI")
+        ));
+        assert!(!matches_board(None, Some("ROG STRIX X670E-A GAMING WIFI")));
+        let readings = board_metrics(|r| match r {
+            0x481 | 0x484 => Some(125),
+            0x483 | 0x488 => Some(200),
+            0x5d => Some(0), // VBAT disabled must not be enabled as a side effect.
+            0x100 => Some(2),
+            0x73 => Some(48),
+            0x74 => Some(128),
+            0x490 => Some(35),
+            0x491 => Some(70),
+            _ => None,
+        });
+        let value = |kind| readings.iter().find(|m| m.kind == kind).map(|m| m.value);
+        assert_eq!(value(Kind::Plus5Volts), Some(5.));
+        assert_eq!(value(Kind::Plus12Volts), Some(12.));
+        assert_eq!(value(Kind::BatteryVolts), None);
+        assert_eq!(value(Kind::VrmCelsius), Some(48.5));
+        assert_eq!(value(Kind::MotherboardCelsius), Some(35.));
+        assert!(board_metrics(|_| Some(255)).is_empty());
     }
 }

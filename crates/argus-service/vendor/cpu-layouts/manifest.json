@@ -9,9 +9,11 @@
     "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/cd60f10f3290ff9b706e0f489b27ba9a50c1f9fa/LibreHardwareMonitorLib/Hardware/RyzenSMU.cs",
     "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/cd60f10f3290ff9b706e0f489b27ba9a50c1f9fa/LibreHardwareMonitorLib/Hardware/Cpu/Amd17Cpu.cs",
     "https://github.com/Kyworn/gnr-smu/blob/def79d66d5431dfc4b6fc773f0b99fb99c8e378d/gnr_smu/profiles.py",
-    "https://github.com/Kyworn/gnr-smu/blob/def79d66d5431dfc4b6fc773f0b99fb99c8e378d/docs/architectures/granite_ridge/9950X3D.md"
+    "https://github.com/Kyworn/gnr-smu/blob/def79d66d5431dfc4b6fc773f0b99fb99c8e378d/docs/architectures/granite_ridge/9950X3D.md",
+    "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/cd60f10f3290ff9b706e0f489b27ba9a50c1f9fa/LibreHardwareMonitorLib/Hardware/Motherboard/SuperIOHardware.cs",
+    "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/cd60f10f3290ff9b706e0f489b27ba9a50c1f9fa/LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/Nct677X.cs"
   ],
-  "notes": "Exact table versions and bounded named fields only. GNR-SMU 0x620205/0x620105 mappings override the earlier unverified ZenStates candidates. Their per-core blocks also require family/model, core count and CoreId checks. EDC-live, FIT-as-frequency, ambiguous SVI3/VRM and L3 candidates are excluded.",
+  "notes": "Exact table versions and bounded named fields only. GNR-SMU 0x620205/0x620105 mappings override the earlier unverified ZenStates candidates. Their per-core blocks also require family/model, core count and CoreId checks. EDC-live, FIT-as-frequency, ambiguous SVI3/VRM and L3 candidates are excluded. NCT6799D X670E-A board rails and temperature source routing follow the pinned motherboard profile; known-wrong Vcore/termination labels and unknown fan connector names are excluded. Granite Ridge d[83] is a SoC voltage setpoint, and unconfirmed d[18] is not exposed as a VID limit.",
   "sha256": {
     "amd-smu.json": "017a52c09b8dfee1685aeb77832965e04ae768abdbddda355db3bdd4b2779f48",
     "fixtures/vermeer-idle_01.bin": "1dedcfa0408fbc4d885b8ece44ac9f7b8059b2e309ba2a425d6599fe473d7fa1",
