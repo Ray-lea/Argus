@@ -68,7 +68,7 @@ impl HardwareTracker {
     pub fn new() -> Self {
         let cpu = cpu::cpu_info();
         let mut t = Self {
-            sensors: sensors::Sensors::new(cpu.reference_mhz),
+            sensors: sensors::Sensors::new(cpu.reference_mhz, &cpu.threads),
             cpu: Arc::new(cpu),
             memory: Arc::new(memory::memory_info()),
             disks: disk::DiskTracker::new(),
@@ -81,6 +81,12 @@ impl HardwareTracker {
     }
 
     pub fn sample(&mut self) -> Hardware {
+        use windows::Win32::System::Threading::{ALL_PROCESSOR_GROUPS, GetActiveProcessorCount};
+        if unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) } != self.cpu.logical {
+            let cpu = cpu::cpu_info();
+            self.sensors = sensors::Sensors::new(cpu.reference_mhz, &cpu.threads);
+            self.cpu = Arc::new(cpu);
+        }
         let sensed = self
             .sensors
             .as_mut()

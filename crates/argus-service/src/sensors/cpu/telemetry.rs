@@ -71,7 +71,10 @@ impl Telemetry {
             .and_then(|(tsc, ratio)| valid((tsc / ratio) as f64, 40.0, 400.0));
         let mut cores: BTreeMap<u32, CoreSampler> = BTreeMap::new();
         for &(group, processor) in processors {
-            let Some(thread) = info.threads.get(group as usize * 64 + processor as usize) else {
+            let Some(thread) = info
+                .thread_index(group, processor)
+                .and_then(|i| info.threads.get(i))
+            else {
                 continue;
             };
             let core = cores.entry(thread.core).or_insert_with(|| CoreSampler {

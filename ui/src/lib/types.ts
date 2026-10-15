@@ -47,7 +47,7 @@ export interface SystemStats {
   cpu: number;
   /** Portion of `cpu` spent in kernel mode. */
   cpuKernel: number;
-  cores: number[];
+  cores: (number | null)[];
   logicalCpus: number;
   memTotal: number;
   memUsed: number;
@@ -91,6 +91,8 @@ export interface CpuInfo {
 }
 
 export interface CpuThread {
+  group: number;
+  processor: number;
   /** Physical core (hyper-threads share one). */
   core: number;
   /** An efficiency core of a hybrid CPU. */

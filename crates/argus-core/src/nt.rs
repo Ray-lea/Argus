@@ -6,6 +6,18 @@ use windows::Win32::Foundation::{HANDLE, NTSTATUS};
 
 use crate::util::AlignedBuf;
 
+#[link(name = "ntdll")]
+unsafe extern "system" {
+    pub fn NtQuerySystemInformationEx(
+        class: SYSTEM_INFORMATION_CLASS,
+        input: *const core::ffi::c_void,
+        input_len: u32,
+        output: *mut core::ffi::c_void,
+        output_len: u32,
+        returned: *mut u32,
+    ) -> NTSTATUS;
+}
+
 pub const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC000_0004_u32 as i32;
 pub const STATUS_BUFFER_TOO_SMALL: i32 = 0xC000_0023_u32 as i32;
 pub const STATUS_BUFFER_OVERFLOW: i32 = 0x8000_0005_u32 as i32;

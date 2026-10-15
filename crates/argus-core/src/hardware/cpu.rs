@@ -40,17 +40,27 @@ pub struct CpuInfo {
     pub l3: u64,
     /// Hardware virtualization enabled in firmware.
     pub virtualization: bool,
-    /// One entry per logical processor, indexed by processor number.
+    /// Dense logical-processor order, sorted by (group, processor).
     pub threads: Vec<CpuThread>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CpuThread {
+    pub group: u16,
+    pub processor: u8,
     /// Physical core it belongs to (hyper-threads share one).
     pub core: u32,
     /// An efficiency core of a hybrid CPU (Intel E-core).
     pub efficient: bool,
+}
+
+impl CpuInfo {
+    pub fn thread_index(&self, group: u16, processor: u8) -> Option<usize> {
+        self.threads
+            .binary_search_by_key(&(group, processor), |t| (t.group, t.processor))
+            .ok()
+    }
 }
 
 const CPU_KEY: PCWSTR = w!(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
@@ -85,8 +95,8 @@ pub fn cpu_info() -> CpuInfo {
     }
 
     let mut core_classes = Vec::new();
-    // (logical processor, core, efficiency class)
-    let mut members: Vec<(usize, u32, u8)> = Vec::new();
+    // (group, processor, core, efficiency class)
+    let mut members: Vec<(u16, u8, u32, u8)> = Vec::new();
     let mut offset = 0usize;
     while offset < len as usize {
         // SAFETY: records are laid out back to back, each `Size` bytes long.
@@ -109,7 +119,7 @@ pub fn cpu_info() -> CpuInfo {
                 for m in masks {
                     for bit in 0..usize::BITS as usize {
                         if m.Mask & (1usize << bit) != 0 {
-                            members.push((m.Group as usize * 64 + bit, core, p.EfficiencyClass));
+                            members.push((m.Group, bit as u8, core, p.EfficiencyClass));
                         }
                     }
                 }
@@ -136,15 +146,16 @@ pub fn cpu_info() -> CpuInfo {
         info.performance_cores = core_classes.iter().filter(|&&c| c == top).count() as u32;
         info.efficiency_cores = info.cores - info.performance_cores;
     }
-    if let Some(last) = members.iter().map(|m| m.0).max() {
-        info.threads = vec![CpuThread::default(); last + 1];
-        for (logical, core, class) in members {
-            info.threads[logical] = CpuThread {
-                core,
-                efficient: hybrid && class < top,
-            };
-        }
-    }
+    members.sort_unstable_by_key(|m| (m.0, m.1));
+    info.threads = members
+        .into_iter()
+        .map(|(group, processor, core, class)| CpuThread {
+            group,
+            processor,
+            core,
+            efficient: hybrid && class < top,
+        })
+        .collect();
     info
 }
 

@@ -349,9 +349,11 @@ const CPU_INFO: CpuInfo = {
   l3: 25_165_824,
   virtualization: true,
   // 6 hyper-threaded P-cores, then 8 E-cores.
-  threads: Array.from({ length: CORES }, (_, i) =>
-    AMD_FIXTURE || i < 12 ? { core: i >> 1, efficient: false } : { core: i - 6, efficient: true },
-  ),
+  threads: Array.from({ length: CORES }, (_, i) => ({
+    group: 0,
+    processor: i,
+    ...(AMD_FIXTURE || i < 12 ? { core: i >> 1, efficient: false } : { core: i - 6, efficient: true }),
+  })),
 };
 const BATTERY_INFO = {
   id: "0",

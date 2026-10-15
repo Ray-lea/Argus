@@ -210,8 +210,9 @@ impl SensorClient {
                 if core.clock_mhz.is_none() {
                     core.clock_mhz = snapshot
                         .hardware
-                        .core_mhz
-                        .get(core.group as usize * 64 + core.processor as usize)
+                        .cpu
+                        .thread_index(core.group, core.processor)
+                        .and_then(|i| snapshot.hardware.core_mhz.get(i))
                         .copied()
                         .filter(|mhz| *mhz > 0)
                         .map(|mhz| mhz as f32);
@@ -250,6 +251,8 @@ mod tests {
         };
         snapshot.hardware.power.package = Some(99.0);
         snapshot.hardware.core_mhz = vec![4200];
+        std::sync::Arc::make_mut(&mut snapshot.hardware.cpu).threads =
+            vec![argus_core::hardware::CpuThread::default()];
         client.enrich(&mut snapshot, true, Duration::from_secs(1));
         assert_eq!(snapshot.hardware.power.package, Some(99.0));
         assert_eq!(snapshot.hardware.power.cores, Some(0.0));

@@ -443,7 +443,7 @@ function CpuView() {
   const coreTemperatures = createMemo(
     () =>
       new Map(
-        hw().cpuSensors?.coreTemperatures.map((core) => [core.group * 64 + core.processor, core.celsius]) ??
+        hw().cpuSensors?.coreTemperatures.map((core) => [`${core.group},${core.processor}`, core.celsius]) ??
           [],
       ),
   );
@@ -557,7 +557,10 @@ function CpuView() {
                   const eff = () => hybrid() && efficient(i);
                   const color = () => (eff() ? "--cpu-e" : "--cpu");
                   const mhz = () => hw().coreMhz[i] ?? 0;
-                  const temperature = () => coreTemperatures().get(i);
+                  const temperature = () => {
+                    const thread = cpu().threads[i];
+                    return thread && coreTemperatures().get(`${thread.group},${thread.processor}`);
+                  };
                   return (
                     <div
                       class="chart-frame core-cell"
@@ -575,13 +578,21 @@ function CpuView() {
                         <Show when={hybrid()}>
                           <i class="core-kind">{eff() ? "E" : "P"}</i>
                         </Show>
-                        {i} <b>{Math.round(sys().cores[i] ?? 0)}%</b>
+                        {i} <b>{sys().cores[i] == null ? "—" : `${Math.round(sys().cores[i] ?? 0)}%`}</b>
                       </span>
                       <Show when={mhz() > 0}>
                         <span class="chart-cell-note">{fmtGHz(mhz())}</span>
                       </Show>
                       <Chart
-                        series={[{ data: () => series(`core.${i}`), colorVar: color() }]}
+                        series={[
+                          {
+                            data: () => {
+                              const thread = cpu().threads[i];
+                              return thread ? series(`core.${thread.group}.${thread.processor}`) : [];
+                            },
+                            colorVar: color(),
+                          },
+                        ]}
                         max={() => 100}
                       />
                     </div>

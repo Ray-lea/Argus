@@ -13,7 +13,7 @@ const MB = 1024 * 1024;
  * where it is to the new sample over exactly one interval, arriving as the
  * next sample does, so the bars never stand still (same modes as the charts).
  */
-function CoreBars(props: { values: () => readonly number[] }) {
+function CoreBars(props: { values: () => readonly (number | null)[] }) {
   const fills: HTMLElement[] = [];
   const bars: { from: number; to: number; start: number; duration: number; anim: Animation | null }[] = [];
 
@@ -28,7 +28,8 @@ function CoreBars(props: { values: () => readonly number[] }) {
         if (!el) return;
         bars[i] ??= { from: 0, to: 0, start: 0, duration: 0, anim: null };
         const b = bars[i];
-        const target = Math.max(0, Math.min(1, v / 100));
+        const target = Math.max(0, Math.min(1, (v ?? 0) / 100));
+        el.style.visibility = v === null ? "hidden" : "";
         const progress = b.duration > 0 ? Math.min(1, Math.max(0, (now - b.start) / b.duration)) : 1;
         const current = b.from + (b.to - b.from) * progress;
         b.anim?.cancel();

@@ -92,7 +92,7 @@ const pushSample = (h: ProcHistory, cpu: number, mem: number) => {
 const EMPTY: number[] = [];
 
 /**
- * Rolling history of a device metric, e.g. `cpu`, `core.3`, `disk.0.read`,
+ * Rolling history of a device metric, e.g. `cpu`, `core.0.3`, `disk.0.read`,
  * `nic.<id>.rx`, `gpu.<id>.e2`. Reactive: re-reads on every snapshot.
  */
 export function series(key: string): readonly number[] {
@@ -121,7 +121,10 @@ function recordSeries(s: Snapshot) {
   const { system: sys, hardware: hw } = s;
   put("cpu", sys.cpu);
   put("cpu.kernel", sys.cpuKernel);
-  for (const [i, v] of sys.cores.entries()) put(`core.${i}`, v);
+  for (const [i, v] of sys.cores.entries()) {
+    const thread = hw.cpu.threads[i];
+    if (thread) putMaybe(`core.${thread.group}.${thread.processor}`, v);
+  }
   put("mem", sys.memUsed);
   put("commit", sys.commitUsed);
 

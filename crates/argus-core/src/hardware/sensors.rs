@@ -7,6 +7,7 @@ use serde::Serialize;
 use windows::Win32::System::Performance::PDH_HCOUNTER;
 use windows::core::w;
 
+use super::CpuThread;
 use crate::pdh::{self, Query};
 use crate::util::AlignedBuf;
 
@@ -43,7 +44,7 @@ pub struct CpuIdle {
 pub struct SensorSample {
     /// Effective clock in MHz, the way Task Manager reports it.
     pub cpu_mhz: Option<u32>,
-    /// Per logical processor (index = processor number), MHz; empty if unknown.
+    /// Dense logical-processor order, matching CpuInfo::threads; 0 if unknown.
     pub core_mhz: Vec<u32>,
     pub thermal: Vec<ThermalZone>,
     pub power: CpuPower,
@@ -54,6 +55,7 @@ pub(crate) struct Sensors {
     query: Query,
     buf: AlignedBuf,
     base_mhz: u32,
+    threads: Vec<CpuThread>,
     total_perf: Option<PDH_HCOUNTER>,
     /// MHz per processor (`Actual Frequency`, Windows 11) ...
     core_freq: Option<PDH_HCOUNTER>,
@@ -70,7 +72,7 @@ pub(crate) struct Sensors {
 unsafe impl Send for Sensors {}
 
 impl Sensors {
-    pub fn new(base_mhz: u32) -> Option<Self> {
+    pub fn new(base_mhz: u32, threads: &[CpuThread]) -> Option<Self> {
         let query = Query::open()?;
         let add = |path| query.add(path);
         let total_perf = (base_mhz > 0)
@@ -106,6 +108,7 @@ impl Sensors {
             query,
             buf: AlignedBuf::with_capacity(16 * 1024),
             base_mhz,
+            threads: threads.to_vec(),
             total_perf,
             core_freq,
             core_perf,
@@ -138,24 +141,22 @@ impl Sensors {
         } else {
             Vec::new()
         };
+        out.core_mhz.resize(self.threads.len(), 0);
+        out.idle.resize_with(self.threads.len(), CpuIdle::default);
         for (name, mhz) in per_core {
             // Instances are "group,number"; skip the "_Total" rollups.
-            let Some((group, number)) = name.split_once(',') else {
+            let Some(index) = processor_index(&name, &self.threads) else {
                 continue;
             };
-            let (Ok(group), Ok(number)) = (group.parse::<usize>(), number.parse::<usize>()) else {
+            if !mhz.is_finite() || !(0.0..=12000.0).contains(&mhz) {
                 continue;
-            };
-            let index = group * 64 + number;
-            if out.core_mhz.len() <= index {
-                out.core_mhz.resize(index + 1, 0);
             }
             out.core_mhz[index] = mhz.round() as u32;
         }
         for (state, counter) in self.idle.iter().enumerate() {
             let Some(counter) = counter else { continue };
             for (name, value) in pdh::array(*counter, &mut self.buf) {
-                let Some(index) = processor_index(&name) else {
+                let Some(index) = processor_index(&name, &self.threads) else {
                     continue;
                 };
                 if !value.is_finite() || !(0.0..=100.01).contains(&value) {
@@ -207,10 +208,12 @@ impl Sensors {
     }
 }
 
-fn processor_index(name: &str) -> Option<usize> {
+fn processor_index(name: &str, threads: &[CpuThread]) -> Option<usize> {
     let (group, number) = name.split_once(',')?;
-    let (group, number) = (group.parse::<usize>().ok()?, number.parse::<usize>().ok()?);
-    (group < 64 && number < 64).then_some(group * 64 + number)
+    let (group, number) = (group.parse::<u16>().ok()?, number.parse::<u8>().ok()?);
+    threads
+        .binary_search_by_key(&(group, number), |t| (t.group, t.processor))
+        .ok()
 }
 
 #[cfg(test)]
@@ -218,9 +221,18 @@ mod tests {
     use super::*;
     #[test]
     fn idle_instances_preserve_groups_and_ignore_rollups() {
-        assert_eq!(processor_index("1,2"), Some(66));
+        let threads: Vec<_> = [(0, 0), (0, 1), (1, 0), (1, 2)]
+            .into_iter()
+            .map(|(group, processor)| CpuThread {
+                group,
+                processor,
+                ..Default::default()
+            })
+            .collect();
+        assert_eq!(processor_index("1,2", &threads), Some(3));
+        assert_eq!(processor_index("1,1", &threads), None);
         for value in ["_Total", "0,_Total", "0,64", "9999,1", "0,-1"] {
-            assert_eq!(processor_index(value), None);
+            assert_eq!(processor_index(value, &threads), None);
         }
     }
 }
