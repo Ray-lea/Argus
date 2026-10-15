@@ -155,7 +155,7 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo Ray-lea/Argus
 
 已安装旧版本时，安装页显示“将从版本 X 升级到 Y”，覆盖安装而不先卸载（与应用内更新相同）；已安装更新的版本时按钮不可用，需先卸载。被动模式（应用内更新）只显示进度页，静默安装（`/S`）不显示界面，命令行参数与 Tauri 的安装程序相同。
 
-已知限制：NSIS 的 `SetCtlColors` 只接受编译时的颜色，界面使用 Argus 的默认强调色而不跟随 Windows 强调色；按钮是绘制出的图片，没有悬停与按下效果，也不能用 Tab 键聚焦，按 Enter 等同单击。
+NSIS 的 `SetCtlColors` 只接受编译时的颜色，界面使用 Argus 的默认强调色而不跟随 Windows 强调色。主按钮和次要操作支持 Tab／Shift+Tab 导航；主按钮具有焦点边框、悬停与按下反馈，可用空格或 Enter 激活。被禁用的降级按钮不参与键盘操作。
 
 ## 发布到 winget
 
