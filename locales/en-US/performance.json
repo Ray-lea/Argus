@@ -178,7 +178,7 @@
       "vdd18Watts": "VDD18 power",
       "memoryIoVolts": "Memory I/O voltage",
       "graphicsMhz": "Integrated graphics clock",
-      "vidLimitVolts": "VID limit"
+      "socVoltageSetpoint": "SoC voltage setpoint"
     },
     "columnVoltage": "Voltage (SMU)",
     "columnSmuC0": "C0 (SMU)",

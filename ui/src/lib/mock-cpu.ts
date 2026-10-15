@@ -122,7 +122,7 @@ export function mockCpuSensors(info: CpuInfo, load: number, amd: boolean): CpuSe
           )
           .concat([
             { kind: "coreSmuVoltage", value: 1.15, source: "smu" },
-            { kind: "socVoltage", value: 1.2, source: "smu" },
+            { kind: "socVoltageSetpoint", value: 1.25, source: "smu" },
             { kind: "pptPercent", value: 44, source: "smu" },
           ])
       : metrics,

@@ -13,7 +13,7 @@ export const CPU_METRICS = {
   vdd18Watts: { unit: "W", digits: 1, group: "power" },
   memoryIoVolts: { unit: "V", digits: 3, group: "voltage" },
   graphicsMhz: { unit: "MHz", digits: 0, group: "clock" },
-  vidLimitVolts: { unit: "V", digits: 3, group: "voltage" },
+  socVoltageSetpoint: { unit: "V", digits: 3, group: "voltage" },
   coreVoltage: {
     unit: "V",
     digits: 3,

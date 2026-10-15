@@ -36,12 +36,11 @@ pub(super) fn decode(version: u32, data: &[f32], frame: &mut CpuSensors, cores: 
             (Kind::FabricMhz, 71, 50., 10000.),
             (Kind::UncoreMhz, 75, 50., 10000.),
             (Kind::MemoryMhz, 79, 50., 10000.),
-            (Kind::SocVoltage, 83, 0.1, 2.5),
+            (Kind::SocVoltageSetpoint, 83, 0.1, 2.5),
             (Kind::MiscVoltage, 58, 0.1, 2.5),
             (Kind::VddgIodVolts, 259, 0.1, 2.),
             (Kind::VddgCcdVolts, 261, 0.1, 2.),
             (Kind::VddpVolts, 269, 0.1, 2.),
-            (Kind::VidLimitVolts, 18, 0.1, 2.),
             (Kind::SocWatts, 21, 0., 500.),
             (Kind::VddioWatts, 22, 0., 500.),
             (Kind::Vdd18Watts, 23, 0., 500.),
@@ -56,7 +55,7 @@ pub(super) fn decode(version: u32, data: &[f32], frame: &mut CpuSensors, cores: 
             (Kind::FabricMhz, 71, 50., 10000.),
             (Kind::UncoreMhz, 75, 50., 10000.),
             (Kind::MemoryMhz, 79, 50., 10000.),
-            (Kind::SocVoltage, 83, 0.1, 2.5),
+            (Kind::SocVoltageSetpoint, 83, 0.1, 2.5),
             (Kind::MemoryIoVolts, 58, 0.1, 2.5),
             (Kind::SocWatts, 21, 0., 500.),
             (Kind::GraphicsWatts, 107, 0., 500.),
@@ -69,7 +68,8 @@ pub(super) fn decode(version: u32, data: &[f32], frame: &mut CpuSensors, cores: 
     }
     // These two tables share a header, but not every rail identity. In
     // particular d[64] (EDC), the SVI3/VRM block and L3 candidates are not
-    // promoted to established telemetry from plausible values alone.
+    // promoted to established telemetry from plausible values alone. d[18]
+    // is also omitted: it has not been established as a hard VID ceiling.
     let profile = match version {
         0x620205 => (333, 317, 381, 397, 413, None),
         0x620105 => (317, 309, 341, 349, 357, Some(325)),
@@ -223,6 +223,8 @@ mod tests {
         assert_eq!(frame.value(Kind::PptWatts), Some(115.));
         assert_eq!(frame.value(Kind::PptPercent), Some(50.));
         assert_eq!(frame.value(Kind::EdcAmps), None);
+        assert_eq!(frame.value(Kind::SocVoltageSetpoint), Some(1.2));
+        assert_eq!(frame.value(Kind::SocVoltage), None);
         assert_eq!(frame.cores[8].celsius, Some(58.));
         assert_eq!(frame.cores[8].c6_percent, Some(70.));
         assert_eq!(frame.cores[8].clock_mhz, None);

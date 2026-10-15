@@ -172,7 +172,7 @@
       "vdd18Watts": "VDD18 功耗",
       "memoryIoVolts": "内存 I/O 电压",
       "graphicsMhz": "核显频率",
-      "vidLimitVolts": "VID 上限"
+      "socVoltageSetpoint": "SoC 设定电压"
     },
     "columnVoltage": "电压（SMU）",
     "columnSmuC0": "C0（SMU）",
