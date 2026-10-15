@@ -15,7 +15,7 @@
 !define ARGUS_TEXT 0x50000101 ; WS_CHILD | WS_VISIBLE | SS_CENTER | SS_NOTIFY
 !define ARGUS_LABEL 0x50000100 ; WS_CHILD | WS_VISIBLE | SS_NOTIFY
 !define ARGUS_PATH 0x50008100 ; … | SS_PATHELLIPSIS
-!define ARGUS_IMAGE 0x5000010E ; WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_BITMAP
+!define ARGUS_BUTTON 0x50018080 ; WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_BITMAP | BS_FLAT
 !define ARGUS_ICON 0x50000043 ; WS_CHILD | WS_VISIBLE | SS_ICON | SS_REALSIZECONTROL
 !define ARGUS_CHECK 0x50010003 ; WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX
 !define /ifndef SS_CENTER 0x1
@@ -148,6 +148,11 @@ Var ArgusFontBody
 Var ArgusFontSmall
 Var ArgusFontButton
 Var ArgusCheckBox ; the page's check box (see ArgusCheck)
+Var ArgusButtonBitmap
+Var ArgusMainButton
+Var ArgusButtonState
+Var ArgusHoverRef
+Var ArgusPressedRef
 
 !macro ArgusScale VAR VALUE
   IntOp ${VAR} ${VALUE} * $ArgusDpi
@@ -237,20 +242,28 @@ Var ArgusCheckBox ; the page's check box (see ArgusCheck)
 !macro ArgusLink OUT Y W TEXT
   IntOp $R0 $ArgusWidth - ${W}
   IntOp $R0 $R0 / 2
-  !insertmacro ArgusControl ${OUT} dialog STATIC ${ARGUS_TEXT} 0 $R0 ${Y} ${W} 22 "${TEXT}" $ArgusFontBody
+  !insertmacro ArgusControl ${OUT} dialog LINK ${__NSD_Link_STYLE} 0 $R0 ${Y} ${W} 22 "${TEXT}" $ArgusFontBody
   !insertmacro ArgusPaint ${OUT} link
 !macroend
 
-; A flat accent button, W × 40 (at 96 DPI) and centered: a static control
-; showing a bitmap of it. ENABLED 0 draws it grayed out.
+; A native button keeps keyboard navigation, accessibility, pressed/focus/hot
+; feedback. Its bitmap supplies the accent color and rounded face.
 !macro ArgusButton OUT Y W TEXT ENABLED
   IntOp $R0 $ArgusWidth - ${W}
   IntOp $R0 $R0 / 2
-  !insertmacro ArgusControl ${OUT} dialog STATIC ${ARGUS_IMAGE} 0 $R0 ${Y} ${W} 40 "" 0
+  !insertmacro ArgusControl ${OUT} dialog BUTTON ${ARGUS_BUTTON} 0 $R0 ${Y} ${W} 40 "${TEXT}" $ArgusFontButton
+  EnableWindow ${OUT} ${ENABLED}
+  StrCpy $ArgusMainButton ${OUT}
+  StrCpy $ArgusButtonState -1
   Push ${OUT}
   Push "${TEXT}"
   Push ${ENABLED}
   !insertmacro ArgusCall ArgusDrawButton
+  !ifdef __UNINSTALL__
+    ${NSD_CreateTimer} un.ArgusButtonFeedback 50
+  !else
+    ${NSD_CreateTimer} ArgusButtonFeedback 50
+  !endif
 !macroend
 
 ; A check box with its label, centered together at Y; OUT is the box. A themed
@@ -314,6 +327,8 @@ Function ${UN}ArgusLoadTheme
     !insertmacro ArgusColorRef $ArgusOnAccentRef ${ARGUS_DARK_ON_ACCENT}
     !insertmacro ArgusColorRef $ArgusTrackRef ${ARGUS_DARK_TRACK}
     !insertmacro ArgusColorRef $ArgusInk3Ref ${ARGUS_DARK_INK3}
+    !insertmacro ArgusColorRef $ArgusHoverRef 67CCFF
+    !insertmacro ArgusColorRef $ArgusPressedRef 3AA5DB
   ${Else}
     StrCpy $ArgusDark 0
     !insertmacro ArgusColorRef $ArgusBgRef ${ARGUS_LIGHT_BG}
@@ -321,6 +336,8 @@ Function ${UN}ArgusLoadTheme
     !insertmacro ArgusColorRef $ArgusOnAccentRef ${ARGUS_LIGHT_ON_ACCENT}
     !insertmacro ArgusColorRef $ArgusTrackRef ${ARGUS_LIGHT_TRACK}
     !insertmacro ArgusColorRef $ArgusInk3Ref ${ARGUS_LIGHT_INK3}
+    !insertmacro ArgusColorRef $ArgusHoverRef 005BAA
+    !insertmacro ArgusColorRef $ArgusPressedRef 005094
   ${EndIf}
 
   ; GDI+ draws the buttons (anti-aliased corners).
@@ -403,9 +420,64 @@ Function ${UN}ArgusHideButtons
   ${Next}
 FunctionEnd
 
-; Draws the button bitmap for the static control on the stack (see ArgusButton).
+; Native buttons handle input. Poll only their visual state, redrawing once
+; per change. Release the timer and bitmap when the page closes.
+Function ${UN}ArgusButtonFeedback
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+  Push $5
+  Push $6
+  System::Call 'user32::IsWindowEnabled(p $ArgusMainButton) i .r0'
+  ${If} $0 <> 0
+    StrCpy $0 1
+    SendMessage $ArgusMainButton ${BM_GETSTATE} 0 0 $1
+    IntOp $2 $1 & 8 ; BST_FOCUS
+    ${If} $2 <> 0
+      IntOp $0 $0 | 2
+    ${EndIf}
+    IntOp $2 $1 & 4 ; BST_PUSHED
+    ${If} $2 <> 0
+      IntOp $0 $0 | 8
+    ${EndIf}
+    System::Call '*(i, i) p .r1'
+    System::Call 'user32::GetCursorPos(p r1)'
+    System::Call '*$1(l .r2)'
+    System::Call 'user32::WindowFromPoint(l r2) p .r3'
+    System::Free $1
+    ${If} $3 = $ArgusMainButton
+      IntOp $0 $0 | 4
+    ${EndIf}
+  ${EndIf}
+  ${If} $0 <> $ArgusButtonState
+    StrCpy $ArgusButtonState $0
+    System::Call 'user32::GetWindowTextW(p $ArgusMainButton, w .r1, i ${NSIS_MAX_STRLEN})'
+    Push $ArgusMainButton
+    Push $1
+    Push $0
+    Call ${UN}ArgusDrawButton
+  ${EndIf}
+  Pop $6
+  Pop $5
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+Function ${UN}ArgusReleaseButton
+  ${NSD_KillTimer} ${UN}ArgusButtonFeedback
+  System::Call 'gdi32::DeleteObject(p $ArgusButtonBitmap)'
+  StrCpy $ArgusButtonBitmap 0
+  StrCpy $ArgusMainButton 0
+FunctionEnd
+
+; Draws the button bitmap for the native control on the stack (see ArgusButton).
 Function ${UN}ArgusDrawButton
-  Pop $R9 ; enabled
+  Pop $R9 ; visual state: enabled, focused, hovered, pressed
   Pop $R8 ; text
   Pop $R7 ; control
   Push $0
@@ -418,9 +490,18 @@ Function ${UN}ArgusDrawButton
   Push $7
   Push $8
   Push $9
-  ${If} $R9 = 1
+  IntOp $0 $R9 & 1
+  ${If} $0 <> 0
     StrCpy $8 $ArgusAccentRef
     StrCpy $9 $ArgusOnAccentRef
+    IntOp $0 $R9 & 4
+    ${If} $0 <> 0
+      StrCpy $8 $ArgusHoverRef
+    ${EndIf}
+    IntOp $0 $R9 & 8
+    ${If} $0 <> 0
+      StrCpy $8 $ArgusPressedRef
+    ${EndIf}
   ${Else}
     StrCpy $8 $ArgusTrackRef
     StrCpy $9 $ArgusInk3Ref
@@ -477,10 +558,20 @@ Function ${UN}ArgusDrawButton
   System::Call 'gdi32::SetTextColor(p r1, i r9)'
   System::Call 'user32::DrawTextW(p r1, w R8, i -1, p r6, i 0x25)' ; DT_CENTER | DT_VCENTER | DT_SINGLELINE
 
+  IntOp $0 $R9 & 2
+  ${If} $0 <> 0
+    ${ArgusScale} $0 4
+    IntOp $4 $4 - $0
+    IntOp $5 $5 - $0
+    System::Call '*$6(i r0, i r0, i r4, i r5)'
+    System::Call 'user32::DrawFocusRect(p r1, p r6)'
+  ${EndIf}
+
   System::Call 'gdi32::SelectObject(p r1, p r3)'
   System::Call 'gdi32::DeleteDC(p r1)'
   System::Free $6
-  SendMessage $R7 ${STM_SETIMAGE} 0 $2 $0
+  SendMessage $R7 ${BM_SETIMAGE} 0 $2 $0
+  StrCpy $ArgusButtonBitmap $2
   ${If} $0 <> 0
     System::Call 'gdi32::DeleteObject(p r0)'
   ${EndIf}
@@ -636,13 +727,14 @@ Function ArgusPageMain
   !insertmacro ArgusPaint $ArgusLocationText ink3
   ${If} $ArgusCompare = 2
     IntOp $3 $ArgusWidth - 88
-    !insertmacro ArgusControl $1 dialog STATIC ${ARGUS_LABEL} 0 $3 $2 64 20 "$(ArgusChange)" $ArgusFontSmall
+    !insertmacro ArgusControl $1 dialog LINK ${__NSD_Link_STYLE} 0 $3 $2 64 20 "$(ArgusChange)" $ArgusFontSmall
     !insertmacro ArgusPaint $1 link
     ${NSD_OnClick} $1 ArgusChangeLocation
   ${EndIf}
 
   Call ArgusHideButtons
   nsDialogs::Show
+  Call ArgusReleaseButton
 FunctionEnd
 
 Function ArgusPageMainLeave
@@ -711,6 +803,7 @@ Function ArgusPageFinish
 
   Call ArgusHideButtons
   nsDialogs::Show
+  Call ArgusReleaseButton
 FunctionEnd
 
 Function ArgusCloseOnly
@@ -749,6 +842,7 @@ Function un.ArgusPageConfirm
 
   Call un.ArgusHideButtons
   nsDialogs::Show
+  Call un.ArgusReleaseButton
 FunctionEnd
 
 Function un.ArgusPageConfirmLeave
@@ -786,4 +880,5 @@ Function un.ArgusPageDone
 
   Call un.ArgusHideButtons
   nsDialogs::Show
+  Call un.ArgusReleaseButton
 FunctionEnd
