@@ -4,7 +4,7 @@ Argus 提供默认关闭的系统任务管理器替换。界面入口在“设�
 
 ## 启动路径
 
-固定修改 `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\taskmgr.exe` 的 `Debugger` 值，类型为 `REG_SZ`，内容是带引号的独立启动器绝对路径及 `--task-manager`。不修改其他值、键权限或系统可执行文件；发现已有 Debugger（包括空值）、UseFilter 或子项时拒绝启用。
+固定修改 `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\taskmgr.exe` 的 `Debugger` 值，类型为 `REG_SZ`，内容是带引号的独立启动器绝对路径及 `--task-manager`。不修改其他值、键权限或系统可执行文件；发现已有 Debugger（包括空值）、UseFilter 或子项时拒绝启用。此时状态说明写明发现的是哪一项（Debugger 的值、UseFilter、前几个子项的名称及总数），诊断日志只记类别（Debugger 指向 Argus 的启动器、其他程序、为空或不是文本，UseFilter，子项数量及其中是否有 `PerfOptions`），不记值。
 
 IFEO 会把调试器前缀加入原启动命令，因此按程序名影响整台电脑，不局限于 Ctrl+Shift+Esc，也不能靠普通启动一次 taskmgr.exe 绕过。参见 Microsoft 的 [IFEO 命令行说明](https://devblogs.microsoft.com/oldnewthing/20070702-00/?p=26193/)。Windows 11 上该注册表分支在 WOW64 视图之间共享，不另写 Wow6432Node，见 [WOW64 注册表规则](https://learn.microsoft.com/en-us/windows/win32/winprog64/shared-registry-keys)。
 

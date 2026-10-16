@@ -78,6 +78,131 @@ pub struct Status {
     pub can_restore: bool,
     pub recovery_path: String,
     pub detail: String,
+    /// What a conflict consists of, in fixed words for the log.
+    #[serde(skip)]
+    found: Option<String>,
+    /// A self-test left its entry or files behind.
+    #[serde(skip)]
+    leftovers: bool,
+}
+
+impl Status {
+    /// For the diagnostic log: never the detail, which can hold paths.
+    pub fn summary(&self) -> String {
+        let mut text = self.state.to_string();
+        if let Some(found) = &self.found {
+            text += &format!(" ({found})");
+        }
+        if self.leftovers {
+            text += "; self-test leftovers present";
+        }
+        text
+    }
+
+    /// The entry holds what Argus will not overwrite: say what it is.
+    fn conflict(&mut self, detail: String, ours: &Value) {
+        self.state = "conflict";
+        self.detail = detail;
+        let Ok(found) = registry::describe(registry::KEY) else {
+            return;
+        };
+        if let Some(items) = found_items(&found, ours)
+            .into_iter()
+            .reduce(|first, second| tr!("taskManager.found.join", first = first, second = second))
+        {
+            self.detail = tr!(
+                "taskManager.found.detail",
+                status = self.detail,
+                found = items
+            );
+        }
+        self.found = Some(found_log(&found, ours)).filter(|log| !log.is_empty());
+    }
+}
+
+/// The text of a string value, without its terminating NULs.
+fn value_text(value: &Value) -> Option<String> {
+    let (pairs, []) = value.bytes.as_chunks::<2>() else {
+        return None;
+    };
+    if !matches!(value.kind, 1 | 2) {
+        return None;
+    }
+    let units: Vec<u16> = pairs.iter().map(|&pair| u16::from_le_bytes(pair)).collect();
+    Some(
+        String::from_utf16_lossy(&units)
+            .trim_end_matches('\0')
+            .to_owned(),
+    )
+}
+
+/// One sentence for each thing a conflicting entry holds, for the window.
+/// Argus's own value is no news there; what was added beside it is.
+fn found_items(found: &registry::Found, ours: &Value) -> Vec<String> {
+    let mut items = Vec::new();
+    if let Some(value) = found.debugger.as_ref().filter(|value| *value != ours) {
+        items.push(match value_text(value) {
+            Some(text) if text.is_empty() => tr!("taskManager.found.emptyDebugger"),
+            Some(text) => {
+                let shown = if text.chars().count() > 200 {
+                    text.chars().take(200).chain(Some('…')).collect()
+                } else {
+                    text
+                };
+                tr!("taskManager.found.debugger", value = shown)
+            }
+            None => tr!("taskManager.found.otherDebugger"),
+        });
+    }
+    if found.use_filter {
+        items.push(tr!("taskManager.found.useFilter"));
+    }
+    if found.subkey_count > 0 {
+        let names = found.subkeys.join(&tr!("taskManager.found.separator"));
+        items.push(if found.subkey_count as usize > found.subkeys.len() {
+            tr!(
+                "taskManager.found.moreSubkeys",
+                count = found.subkey_count,
+                names = names
+            )
+        } else {
+            tr!("taskManager.found.subkeys", names = names)
+        });
+    }
+    items
+}
+
+/// What a conflicting entry holds, for the log: fixed words, never a value.
+fn found_log(found: &registry::Found, ours: &Value) -> String {
+    let mut parts = Vec::new();
+    if let Some(value) = &found.debugger {
+        let debugger = if value == ours {
+            "Debugger names the Argus launcher"
+        } else {
+            match value_text(value) {
+                Some(text) if text.is_empty() => "Debugger is empty",
+                Some(_) => "Debugger names another program",
+                None => "Debugger is not text",
+            }
+        };
+        parts.push(debugger.to_string());
+    }
+    if found.use_filter {
+        parts.push("UseFilter value".to_string());
+    }
+    if found.subkey_count > 0 {
+        let perf = found
+            .subkeys
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case("PerfOptions"));
+        parts.push(format!(
+            "{} subkey{}{}",
+            found.subkey_count,
+            if found.subkey_count == 1 { "" } else { "s" },
+            if perf { ", PerfOptions among them" } else { "" }
+        ));
+    }
+    parts.join("; ")
 }
 
 /// Where an enable or restore stopped; fixed names for the log.
@@ -248,12 +373,14 @@ pub fn status() -> Result<Status> {
         can_restore: false,
         recovery_path: machine.dir.join(RECOVER).to_string_lossy().into_owned(),
         detail: tr!("taskManager.status.native"),
+        found: None,
+        leftovers: machine.dir.join(probe::RECORD).exists(),
     };
+    let ours = replacement(&machine.dir);
     if !machine.dir.exists() {
         status.detail = tr!("taskManager.status.needsService");
         if live.debugger.is_some() || live.filtered {
-            status.state = "conflict";
-            status.detail = tr!("taskManager.status.conflict");
+            status.conflict(tr!("taskManager.status.conflict"), &ours);
         }
         return Ok(status);
     }
@@ -279,18 +406,16 @@ pub fn status() -> Result<Status> {
             return Ok(status);
         }
         if live != journal.before {
-            status.state = "conflict";
-            status.detail = tr!("taskManager.status.modified");
+            status.conflict(tr!("taskManager.status.modified"), &ours);
             return Ok(status);
         }
-    } else if live.debugger.as_ref() == Some(&replacement(&machine.dir)) {
+    } else if live.debugger.as_ref() == Some(&ours) {
         status.state = "recoveryNeeded";
         status.detail = tr!("taskManager.status.recordMissing");
         return Ok(status);
     }
     if live.debugger.is_some() || live.filtered {
-        status.state = "conflict";
-        status.detail = tr!("taskManager.status.conflict");
+        status.conflict(tr!("taskManager.status.conflict"), &ours);
     } else if !installed {
         status.detail = tr!("taskManager.status.serviceRemoved");
     } else if cfg!(debug_assertions) {
@@ -848,6 +973,69 @@ mod tests {
             }
         }
         assert!(!text.replace("\r\n", "").contains('\n'));
+    }
+
+    #[test]
+    fn a_conflict_is_described_for_the_window_and_classified_for_the_log() {
+        let ours = replacement(Path::new(r"C:\Program Files\Argus Privileged"));
+        let other = r"C:\Users\Someone Private\tools\procexp64.exe";
+        let found = registry::Found {
+            debugger: Some(Value::string(other)),
+            use_filter: true,
+            subkeys: vec!["PerfOptions".into()],
+            subkey_count: 1,
+        };
+        let items = found_items(&found, &ours);
+        assert_eq!(items.len(), 3);
+        assert!(items[0].contains(other));
+        assert_eq!(
+            found_log(&found, &ours),
+            "Debugger names another program; UseFilter value; 1 subkey, PerfOptions among them"
+        );
+        for (debugger, class, items) in [
+            (ours.clone(), "Debugger names the Argus launcher", 0),
+            (Value::string(""), "Debugger is empty", 1),
+            (
+                Value {
+                    kind: 4,
+                    bytes: vec![1, 0, 0, 0],
+                },
+                "Debugger is not text",
+                1,
+            ),
+        ] {
+            let found = registry::Found {
+                debugger: Some(debugger),
+                ..Default::default()
+            };
+            assert_eq!(found_log(&found, &ours), class);
+            assert_eq!(found_items(&found, &ours).len(), items);
+        }
+        // Only the first names are listed; the count says how many there are.
+        let many = registry::Found {
+            subkeys: ["a", "b", "c", "d"].map(String::from).into(),
+            subkey_count: 6,
+            ..Default::default()
+        };
+        assert_eq!(found_log(&many, &ours), "6 subkeys");
+        assert!(found_items(&many, &ours)[0].contains('6'));
+    }
+
+    #[test]
+    fn the_status_summary_never_holds_the_detail() {
+        let status = Status {
+            state: "conflict",
+            can_enable: false,
+            can_restore: false,
+            recovery_path: r"C:\Program Files\Argus Privileged".into(),
+            detail: r"C:\Users\Someone Private".into(),
+            found: Some("UseFilter value".into()),
+            leftovers: true,
+        };
+        assert_eq!(
+            status.summary(),
+            "conflict (UseFilter value); self-test leftovers present"
+        );
     }
 
     #[test]

@@ -163,6 +163,71 @@ pub fn observe(path: &str) -> RegResult<Observation> {
     })
 }
 
+/// What an entry holds, to tell the user what keeps Argus from enabling.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Found {
+    pub debugger: Option<Value>,
+    pub use_filter: bool,
+    /// The first few subkey names.
+    pub subkeys: Vec<String>,
+    pub subkey_count: u32,
+}
+
+pub fn describe(path: &str) -> RegResult<Found> {
+    describe_in(HKEY_LOCAL_MACHINE, path)
+}
+
+fn describe_in(root: HKEY, path: &str) -> RegResult<Found> {
+    let Some(key) = open_in(root, path, KEY_READ)? else {
+        return Ok(Found::default());
+    };
+    let mut count = 0;
+    err(unsafe {
+        RegQueryInfoKeyW(
+            key.0,
+            None,
+            None,
+            None,
+            Some(&mut count),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+    })?;
+    let mut subkeys = Vec::new();
+    for index in 0..count.min(4) {
+        let mut name = [0u16; 256];
+        let mut len = name.len() as u32;
+        let code = unsafe {
+            RegEnumKeyExW(
+                key.0,
+                index,
+                Some(PWSTR(name.as_mut_ptr())),
+                &mut len,
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+        if code == ERROR_NO_MORE_ITEMS {
+            break;
+        }
+        err(code)?;
+        subkeys.push(String::from_utf16_lossy(&name[..len as usize]));
+    }
+    Ok(Found {
+        debugger: read_value(&key, "Debugger")?,
+        use_filter: read_value(&key, "UseFilter")?.is_some(),
+        subkeys,
+        subkey_count: count,
+    })
+}
+
 pub fn write(path: &str, value: Option<&Value>) -> RegResult<()> {
     let key = match open(path, true)? {
         Some(key) => key,
@@ -427,6 +492,38 @@ mod tests {
         assert_eq!(
             write_allowed_in(HKEY_CURRENT_USER, &scratch.0, &scratch.0),
             Some(false)
+        );
+    }
+
+    #[test]
+    fn an_entry_is_described_by_what_it_holds() {
+        let scratch = Scratch::new();
+        let path = format!(r"{}\taskmgr.exe", scratch.0);
+        let found = || describe_in(HKEY_CURRENT_USER, &path).unwrap();
+        assert_eq!(found(), Found::default());
+        let key = create_in(HKEY_CURRENT_USER, &path).unwrap();
+        assert_eq!(found(), Found::default());
+        create_in(HKEY_CURRENT_USER, &format!(r"{path}\PerfOptions")).unwrap();
+        err(unsafe {
+            RegSetValueExW(
+                key.0,
+                PCWSTR(util::wide("UseFilter").as_ptr()),
+                None,
+                REG_DWORD,
+                Some(&0u32.to_le_bytes()),
+            )
+        })
+        .unwrap();
+        let empty = Value::string("");
+        set_debugger(&key, Some(&empty)).unwrap();
+        assert_eq!(
+            found(),
+            Found {
+                debugger: Some(empty),
+                use_filter: true,
+                subkeys: vec!["PerfOptions".into()],
+                subkey_count: 1,
+            }
         );
     }
 

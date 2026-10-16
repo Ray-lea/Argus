@@ -103,6 +103,17 @@
       "devBuild": "Dev builds don't offer Task Manager replacement. Use a release build.",
       "otherAccount": "The privileged service is authorized for another Windows account."
     },
+    "found": {
+      "detail": "{status} {found} Turn them off in the tool that wrote them, then refresh.",
+      "join": "{first} {second}",
+      "debugger": "The IFEO key of taskmgr.exe already has the Debugger value \"{value}\", usually from another tool's Replace Task Manager option.",
+      "emptyDebugger": "The IFEO key of taskmgr.exe has an empty Debugger value.",
+      "otherDebugger": "The IFEO key of taskmgr.exe has a Debugger value that isn't text.",
+      "useFilter": "The IFEO key of taskmgr.exe has a UseFilter value (IFEO filtering by program path).",
+      "subkeys": "The IFEO key of taskmgr.exe has subkeys: {names}.",
+      "moreSubkeys": "The IFEO key of taskmgr.exe has {count} subkeys, including {names}.",
+      "separator": ", "
+    },
     "invalidDirectory": "Invalid folder",
     "launcherKept": "The recovery record of the Argus replacement is missing; the launcher wasn't deleted",
     "restoreNeedsAdmin": "Restoring requires administrator rights",

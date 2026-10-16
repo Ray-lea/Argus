@@ -103,6 +103,17 @@
       "devBuild": "开发版不提供系统任务管理器替换，请使用发布版。",
       "otherAccount": "特权服务授权给另一个 Windows 账户。"
     },
+    "found": {
+      "detail": "{status}{found}可在写入这些配置的工具中关闭后刷新状态。",
+      "join": "{first}{second}",
+      "debugger": "taskmgr.exe 的 IFEO 键已有 Debugger 值“{value}”，通常来自其他工具的“替换任务管理器”功能。",
+      "emptyDebugger": "taskmgr.exe 的 IFEO 键有空的 Debugger 值。",
+      "otherDebugger": "taskmgr.exe 的 IFEO 键有非文本的 Debugger 值。",
+      "useFilter": "taskmgr.exe 的 IFEO 键有 UseFilter 值（按程序路径过滤的 IFEO 配置）。",
+      "subkeys": "taskmgr.exe 的 IFEO 键有子项：{names}。",
+      "moreSubkeys": "taskmgr.exe 的 IFEO 键有 {count} 个子项，包括 {names}。",
+      "separator": "、"
+    },
     "invalidDirectory": "无效目录",
     "launcherKept": "Argus 替换的恢复记录缺失，已阻止删除启动器",
     "restoreNeedsAdmin": "恢复需要管理员权限",
