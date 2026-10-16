@@ -20,10 +20,12 @@
 
 ## 应用内更新（`updater.rs`）
 
-- `updater::install` 会阻塞并查询窗口状态，不要在主线程（托盘菜单回调、非 async 命令）里直接调用。
-- 重新打开 Argus 的参数固定为 `/R /ARGS --updated`，并对下载好的更新设置 `restart_after_install(false)`。不要改回插件默认的“沿用当前启动参数”：通过任务管理器替换启动的 Argus 带着一次性的握手参数，原样重启后会在 15 秒后退出。
-- 插件安装更新时用 `std::process::exit` 退出，不经过 `RunEvent::Exit`；需要在退出前做的事放进 `on_before_exit`（现在是停止 ETW 会话）。
-- 开发版和缺少公钥的构建不检查更新。完整的检查、下载、安装只能在两个已发布的版本之间验证；本地只能测签名与清单（见 `docs/development/release.md`）。
+- `updater::install` 会阻塞并查询窗口状态，不要在主线程（托盘菜单回调、非 async 命令）里直接调用。托盘的更新菜单项只打开更新对话框，安装由对话框或设置页发起。
+- 插件只负责检查和下载（下载时验签）。下载好的安装包存在 `%LOCALAPPDATA%\<标识>\updates`，由 `updater::launch` 自己启动：先以只读共享打开文件、再验签，然后用 `ShellExecuteExW` 带 `/P /UPDATE /R /ARGS --updated` 运行，成功后停止 ETW 会话、`std::process::exit`（不经过 `RunEvent::Exit`，退出前要做的事放在这里）。参数里不要沿用当前启动参数：通过任务管理器替换启动的 Argus 带着一次性的握手参数，原样重启后会在 15 秒后退出。管理员授权被取消时 `ShellExecuteExW` 返回 `ERROR_CANCELLED`，按 `cancelled` 返回，不当作错误。
+- 存盘的安装包、清单里的更新内容（`argus.releaseNotes`）都用 `verify_signed` 验签，规则与插件相同（签名必须带 `version:`，且与宣称的版本一致）。更新内容验签失败时连同旁边未签名的 `notes` 一起丢弃。失败原因用枚举区分，不要比较本地化后的文案。
+- 已有可安装的更新时，后台检查保持“已就绪”，只在发现更新的版本时下载替换；下载失败时恢复原来的状态。
+- 测试用的签名向量由 scratchpad 里临时生成的密钥签出（`tauri signer generate`、`signer sign --app-version`），不要用发布密钥。
+- 开发版和缺少公钥的构建不检查更新。完整的检查、下载、安装只能在两个已发布的版本之间验证；本地只能测签名与清单（见 `docs/development/release.md`）。安装程序的安装后钩子（`installer-hooks.nsh`）以管理员身份运行 `argus.exe --argus-service-refresh` 更新特权服务，需要在虚拟机里装旧版本、启用特权服务后经应用内更新验证。
 
 ## 安装程序（`installer-template.nsi`、`installer-ui.nsh`）
 

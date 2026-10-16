@@ -15,7 +15,7 @@
 | `leftovers.rs` | 启动时、创建窗口之前，结束上一个 Argus 遗留的 WebView2 进程：Argus 崩溃、被结束或开发运行被停止后，WebView2 进程可能继续存在几分钟到几小时并占用数据文件夹，这时新的 WebView 无法创建（`0x800700AA`，“请求的资源正在使用中”），Argus 不显示窗口就退出。只处理本构建数据文件夹的浏览器进程（父进程已不在）及其子进程：先提高到高优先级再结束，最多等待 3 秒（繁忙的电脑上，低优先级的残留进程被结束后约 30 秒才退出完，提高优先级后约 0.1 秒）；日志只记录结束的个数 |
 | `diagnostics.rs` | 日志中的诊断信息：启动时的系统与 WebView2 版本、令牌类型和界面语言；首次采样后的传感器可用性；特权服务与任务管理器替换的状态；页面异常仅保留固定事件和异常类别，每次运行最多 20 条，不传输错误原文或堆栈 |
 | `settings.rs` | 界面加载前原生侧就要用到的设置（语言、主题、快捷键、关闭行为、开机启动、规则、是否记录历史、更新通道与线路、已完成的首次启动引导版本），以 JSON 存在 `%APPDATA%\dev.argus.taskmanager\settings.json`；语言保存为标签（`system`、`zh-CN`、`en-US`），主题保存为 `system`、`light` 或 `dark`，无法识别的值都按 `system` 处理；主题通过 `set_theme` 设到主窗口，Tauri 再把它传给 WebView2 的首选配色，页面的 `prefers-color-scheme` 随之变化 |
-| `updater.rs` | 应用内更新：后台线程在启动 1 分钟后、之后每天检查一次；按通道读取最新稳定版 Release 上的 `latest.json` 或 `beta.json`，按线路直连 GitHub 或在地址前加代理前缀，失败时换下一个来源；发现新版本立即下载（插件校验签名和签名中的版本号），由用户触发安装；状态通过 `update-status` 事件推给界面，可安装时托盘菜单增加“重启并更新” |
+| `updater.rs` | 应用内更新：后台线程在启动 1 分钟后、之后每天检查一次；按通道读取最新稳定版 Release 上的 `latest.json` 或 `beta.json`，按线路直连 GitHub 或在地址前加代理前缀，失败时换下一个来源；发现新版本立即下载（插件校验签名和签名中的版本号）。清单中的更新内容（`argus.releaseNotes`，`CHANGELOG.md` 条目）以同一公钥验签并核对版本号后才交给界面。下载的安装包连同版本、签名与更新内容存入 `%LOCALAPPDATA%\<标识>\updates`，启动时重新验签后直接恢复为可安装，版本已安装、换了通道或验签失败时删除；已有可安装的更新时，后台检查不改变其状态。安装由用户触发：在只读共享锁定文件的状态下再验签一次，由 Argus 自己以 `/P /UPDATE /R /ARGS --updated` 启动安装程序后退出（插件只能安装本次运行检查到的更新），管理员授权被取消时返回 `cancelled`。状态通过 `update-status` 事件推给界面；可安装时托盘图标加强调色圆点、悬停提示与菜单增加对应项，菜单项发出 `argus-show-update` 打开更新对话框 |
 | `commands.rs` | IPC 命令；标准权限下将手动进程操作、服务控制和断开连接交给已授权且运行中的特权服务，未安装、未授权或停止时按本地权限执行；服务已接受请求后出错不自动重试；`argus://` 协议提供进程图标 |
 
 ## IPC 命令
@@ -26,7 +26,7 @@
 | 进程 | `process_details`、`kill_process`、`kill_process_tree`、`set_priority`、`set_efficiency_mode`、`reveal_in_explorer` |
 | 设置与窗口 | `get_settings`、`set_language`、`set_theme`、`complete_onboarding`、`set_close_to_tray`、`set_hotkey`（同时开启快捷键）、`set_hotkey_enabled`（开关，保留组合）、`suspend_hotkey` / `resume_hotkey`（录制快捷键期间暂停，结束或重试时重新注册）、`set_autostart`、`set_kernel_sensors`、`open_sensor_driver_page`（固定官方地址）、`open_log_dir`、`quit`、`set_caption_button`（页面最大化按钮的位置）、`log_ui_error` |
 | 特权服务 | `privileged_service_status`、`manage_privileged_service`（`install` / `start` / `update` / `uninstall`，显式操作才请求管理员授权） |
-| 更新 | `update_status`、`check_update`（在后台检查并下载，立即返回）、`install_update`（启动安装程序后 Argus 退出）、`set_update_settings`、`open_release_page`（免安装版） |
+| 更新 | `update_status`、`check_update`（在后台检查并下载，立即返回）、`install_update`（启动安装程序后 Argus 退出；未启动时返回 `{ cancelled, message }`）、`set_update_settings`、`open_release_page`（免安装版及更新对话框的“在 GitHub 上查看”） |
 | 规则 | `set_rules`、`rule_stats` |
 | 服务 | `list_services`、`control_service`、`set_service_start_type`、`open_services_console` |
 | 启动项 | `list_startup`、`set_startup_enabled` |
@@ -42,6 +42,6 @@
 
 进入 `lib.rs::run` 后先检查特权服务与安装助手模式，命中时直接运行并退出，不初始化 Tauri、单实例插件、采样器或 WebView。安装和协议边界见[特权服务](privileged-service.md)。这些操作在后台命令线程执行，不阻塞采样线程。
 
-- `tauri.conf.json`：标识 `dev.argus.taskmanager`；主窗口 1240×800（最小 860×540），启动时隐藏、由 setup 显示（带 `--hidden` 启动时保持隐藏），Mica 效果，WebView 背景透明（`#00000000`）；打包目标为 NSIS，为所有用户安装到 Program Files：提权助手和复制成特权服务的程序都取自安装目录，这个目录只有管理员能写入，标准权限的程序无法替换其中的文件；英文与简体中文界面（按 Windows 显示语言选择，卸载钩子的提示按 `$LANGUAGE` 选择文字），不允许降级安装；安装与卸载页面由 `installer-template.nsi`（Tauri 模板，只替换页面列表）与 `installer-ui.nsh` 绘制，卸载钩子在 `installer-hooks.nsh`，见[安装程序](../development/release.md#安装程序)。`plugins.updater` 保存更新签名公钥并开启 `requireSignedVersion`，更新以 passive 模式安装。
+- `tauri.conf.json`：标识 `dev.argus.taskmanager`；主窗口 1240×800（最小 860×540），启动时隐藏、由 setup 显示（带 `--hidden` 启动时保持隐藏），Mica 效果，WebView 背景透明（`#00000000`）；打包目标为 NSIS，为所有用户安装到 Program Files：提权助手和复制成特权服务的程序都取自安装目录，这个目录只有管理员能写入，标准权限的程序无法替换其中的文件；英文与简体中文界面（按 Windows 显示语言选择，卸载钩子的提示按 `$LANGUAGE` 选择文字），不允许降级安装；安装与卸载页面由 `installer-template.nsi`（Tauri 模板，只替换页面列表）与 `installer-ui.nsh` 绘制，卸载钩子在 `installer-hooks.nsh`，见[安装程序](../development/release.md#安装程序)。`plugins.updater` 保存更新签名公钥并开启 `requireSignedVersion`；`updater.rs` 以同样的规则校验存盘的安装包与更新内容，更新以 passive 模式安装。安装后钩子以 `argus.exe --argus-service-refresh` 在同一次管理员授权中更新已安装的特权服务（任务管理器替换可能处于启用状态时不更新）。
 - 更新安装程序重新打开 Argus 时只传 `--updated`，不沿用原来的启动参数（其中可能带有一次性的任务管理器握手参数）。从隐藏状态开始的更新在应用数据目录留下 `relaunch-hidden` 标记，重新打开时据此留在托盘。
 - `tauri.dev.conf.json`：开发版覆盖产品名与标识（`dev.argus.taskmanager.devbuild`），见[开发版与已安装版互不干扰](../development/README.md#开发版与已安装版互不干扰)。

@@ -1628,9 +1628,333 @@ button {
   color: var(--accent);
 }
 
+.toast.info > svg {
+  color: var(--accent);
+}
+
 .toast-text {
   flex: 1;
   min-width: 0;
+}
+
+.toast-action {
+  flex: none;
+  align-self: center;
+}
+
+/* ---- Updates ----------------------------------------------------------------
+   The title bar's button, the update dialog (UpdateDialog.tsx). */
+
+/* The one control in the title row that is not the page's: a round button
+   filled with the accent (.btn.accent), apart from the square controls. It
+   appears once, without motion after that. */
+.btn.update-button {
+  border-radius: 50%;
+  animation: update-in var(--t-slow) var(--ease-out);
+}
+
+.btn.update-button:active {
+  color: var(--on-accent);
+  filter: brightness(0.92);
+}
+
+@keyframes update-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+.dialog.update-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.update-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.update-logo {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+.update-head-text {
+  min-width: 0;
+}
+
+.update-head .dialog-title {
+  margin: 0;
+}
+
+.update-sub {
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+/* From this version to the next: two tiles, the new one in the accent. */
+.update-versions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.update-version {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer);
+}
+
+.update-version.next {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.update-version-label {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.update-version-number {
+  overflow-wrap: anywhere;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-version.next :is(.update-version-label, .update-version-number) {
+  color: var(--accent);
+}
+
+.update-arrow {
+  color: var(--ink-3);
+}
+
+.update-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 12px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.update-facts:empty {
+  display: none;
+}
+
+.update-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-fact.verified > svg {
+  color: var(--net);
+}
+
+.update-progress {
+  margin-top: 12px;
+}
+
+/* A known amount: the bar fills from the left, on the compositor. */
+.progress.determinate::after {
+  content: none;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transform-origin: left;
+  transition: transform var(--t-slow) linear;
+}
+
+/* What changed: one section per release, the newest open. The text can be
+   selected and copied. */
+.update-notes {
+  max-height: min(42vh, 360px);
+  margin: 16px -8px 0;
+  padding: 0 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.update-entry + .update-entry {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--stroke);
+}
+
+.update-entry-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  transition: background-color var(--t-fast) linear;
+}
+
+.update-entry-head:hover {
+  background: var(--hover);
+}
+
+.update-entry-chevron {
+  flex: none;
+  color: var(--ink-2);
+  transition: transform var(--t-med) var(--ease-out);
+}
+
+.update-entry.open .update-entry-chevron {
+  transform: rotate(90deg);
+}
+
+.update-entry-version {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-entry-date,
+.update-entry-count {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.update-entry-count {
+  margin-left: auto;
+}
+
+.update-entry-body {
+  padding: 4px 8px 10px 28px;
+  line-height: 1.6;
+  user-select: text;
+  cursor: text;
+}
+
+.update-entry-body > * + * {
+  margin-top: 12px;
+}
+
+.update-text {
+  margin: 0;
+}
+
+/* Each heading as a tag in its own hue: new features in the accent, fixes in
+   green, performance in amber, breaking changes in coral. */
+.update-group {
+  --tone: var(--ink-2);
+}
+
+.update-group[data-category="feat"] {
+  --tone: var(--accent);
+}
+
+.update-group[data-category="fix"] {
+  --tone: var(--net);
+}
+
+.update-group[data-category="perf"] {
+  --tone: var(--io);
+}
+
+.update-group[data-category="breaking"] {
+  --tone: var(--danger);
+}
+
+.update-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  color: var(--tone);
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.update-items {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.update-items li + li {
+  margin-top: 3px;
+}
+
+.update-items li::marker {
+  color: var(--ink-3);
+}
+
+.update-entry-body code {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--layer-strong);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.update-quiet,
+.update-plain {
+  margin: 10px 8px 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.update-plain {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-line;
+  user-select: text;
+}
+
+.update-hint,
+.update-failure {
+  margin: 14px 0 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.update-failure {
+  margin-top: 8px;
+  color: var(--danger);
+}
+
+.update-failure.cancelled {
+  color: var(--ink-2);
+}
+
+.update-footer .update-github {
+  margin-right: auto;
+}
+
+/* A spinner on an accent button. */
+.spinner.on-accent {
+  width: 14px;
+  height: 14px;
+  border-color: color-mix(in srgb, var(--on-accent) 30%, transparent);
+  border-top-color: var(--on-accent);
 }
 
 /* Interface motion off (Settings, or Windows' "Animation effects" off). */

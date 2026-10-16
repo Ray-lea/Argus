@@ -579,21 +579,54 @@ export async function subscribe(cb: (s: Snapshot) => void) {
 }
 
 export const appInfo = async (): Promise<AppInfo> => ({
-  version: "0.1.0-mock",
+  version: "0.1.0",
   elevated: false,
   accent: null,
-  updated: false,
+  // ?updated plays the first start after an update.
+  updated: new URLSearchParams(location.search).has("updated"),
   locale: mockSettings.locale,
 });
 
 // Starts idle; "检查更新" plays a check and a download, then offers the update.
+// ?update=ready starts with it offered. Installing plays a declined
+// administrator prompt.
+const MOCK_RELEASES = [
+  {
+    version: "0.2.0",
+    date: "2026-10-20",
+    notes: [
+      "### 新功能",
+      "",
+      "- **ui:** 新版本就绪后，标题栏显示更新按钮，可查看各版本的更新内容 ([a1b2c3d](https://github.com/Ray-lea/Argus/commit/a1b2c3d))",
+      "- **core:** 采集每个磁盘的队列长度 ([b2c3d4e](https://github.com/Ray-lea/Argus/commit/b2c3d4e))",
+      "",
+      "### 修复",
+      "",
+      "- **core:** 修复未装 Intel 显卡的电脑上程序运行一段时间后崩溃的问题 ([db0aac5](https://github.com/Ray-lea/Argus/commit/db0aac5))",
+      "- **host:** 窗口最大化时标题栏右上角不再出现两组重叠的按钮 ([ad831d5](https://github.com/Ray-lea/Argus/commit/ad831d5))",
+      "",
+      "### 性能",
+      "",
+      "- 托盘常驻时的唤醒次数减少一半 ([c3d4e5f](https://github.com/Ray-lea/Argus/commit/c3d4e5f))",
+    ].join("\n"),
+  },
+  {
+    version: "0.1.1",
+    date: "2026-10-18",
+    notes:
+      "### 修复\n\n- **ui:** 窗口最大化时贴着屏幕顶边也能拖动 ([3240521](https://github.com/Ray-lea/Argus/commit/3240521))",
+  },
+  { version: "0.1.0", date: "2026-10-16", notes: "Argus 的首个公开版本。" },
+];
+const offeredAtStart = new URLSearchParams(location.search).get("update") === "ready";
 let updateStatus: UpdateStatus = {
-  state: "idle",
-  version: null,
+  state: offeredAtStart ? "ready" : "idle",
+  version: offeredAtStart ? "0.2.0" : null,
+  releases: offeredAtStart ? MOCK_RELEASES : null,
   notes: null,
   date: null,
-  received: 0,
-  total: null,
+  received: offeredAtStart ? 6_412_000 : 0,
+  total: offeredAtStart ? 6_412_000 : null,
   error: null,
   checkedAt: null,
   source: null,
@@ -617,8 +650,8 @@ export const updates = {
       setUpdate({
         state: "downloading",
         version: "0.2.0",
-        notes:
-          "新功能\n· ui：进程页支持按列筛选\n· core：采集每个磁盘的队列长度\n\n修复\n· host：托盘菜单偶尔不响应",
+        releases: MOCK_RELEASES,
+        notes: null,
         date: Date.now() - 86_400_000,
         received: 0,
         total,
@@ -637,7 +670,12 @@ export const updates = {
     }, 700);
     return { ...updateStatus };
   },
-  install: async () => setUpdate({ state: "installing" }),
+  install: async () => {
+    setUpdate({ state: "installing" });
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    setUpdate({ state: "ready" });
+    throw { cancelled: true, message: "已取消管理员授权，未安装更新" };
+  },
 };
 
 let serviceInstalled = false;
@@ -645,7 +683,7 @@ export const privilegedService = {
   status: async (): Promise<import("./types").PrivilegedServiceStatus> => ({
     state: serviceInstalled ? "running" : "notInstalled",
     authorized: serviceInstalled,
-    version: serviceInstalled ? "0.1.0-mock" : null,
+    version: serviceInstalled ? "0.1.0" : null,
     error: null,
   }),
   manage: async (action: import("./types").PrivilegedServiceAction) => {

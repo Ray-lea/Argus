@@ -479,7 +479,7 @@ pub fn check_update(app: tauri::AppHandle) -> UpdateStatus {
 
 /// Runs the downloaded installer; Argus exits and the installer relaunches it.
 #[tauri::command(async)]
-pub fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+pub fn install_update(app: tauri::AppHandle) -> Result<(), updater::InstallError> {
     updater::install(&app)
 }
 

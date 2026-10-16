@@ -45,7 +45,7 @@ Argus reads Windows' native interfaces directly from Rust, with an interface bui
 | 🔍 | **File locks** | Drop a file or folder onto the window to find the processes using it, combining Restart Manager with handle enumeration, including processes' current directories; the privileged service can check more processes. |
 | 🕘 | **History** | Resource charts for the last 7 days; click any moment to see the busiest processes at that time. |
 | 📌 | **System tray** | Show or hide the window with the global shortcut Ctrl+Alt+Esc; it uses very little while hidden. |
-| 🔄 | **In-app updates** | Stable and beta channels, with optional GitHub proxies; only updates that pass signature verification are installed. |
+| 🔄 | **In-app updates** | New versions download in the background and are announced in the title bar, with everything that changed since your version shown before installing. Stable and beta channels, with optional GitHub proxies; only updates that pass signature verification are installed. |
 | 🎨 | **Native look** | Mica background and the system accent color; dark and light themes follow Windows by default or can be chosen in Settings. |
 | 🌍 | **Languages** | English and Simplified Chinese, following the Windows display language by default; a welcome guide sets up the essentials on first start. |
 | 👤 | **No administrator rights needed** | See the path and resource usage of every process as a standard user. |

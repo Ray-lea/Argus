@@ -75,7 +75,7 @@ import type {
   UpdateRoute,
 } from "../lib/types";
 import { confirm, toast } from "../lib/ui";
-import { updatePending, updateStatus } from "../lib/updates";
+import { installUpdate, openUpdateDialog, openWhatsNew, updatePending, updateStatus } from "../lib/updates";
 import Indicator from "./Indicator";
 import {
   BoltIcon,
@@ -806,13 +806,19 @@ function UpdateSettings(props: {
     );
   const install = async () => {
     setInstalling(true);
-    try {
-      await api.installUpdate();
-    } catch (e) {
-      toast("error", t("settings.update.installError", { error: String(e) }));
-    } finally {
-      setInstalling(false);
-    }
+    const error = await installUpdate(appInfo()?.version);
+    setInstalling(false);
+    // A declined administrator prompt is no failure; the card says the rest.
+    if (error?.cancelled) toast("info", error.message, 4000);
+  };
+  const current = () =>
+    t("settings.update.current", {
+      version: appInfo()?.version ?? "",
+      channel: t(`updates.dialog.${props.settings.updateChannel}`),
+    });
+  const progress = () => {
+    const s = status();
+    return s?.state === "downloading" && s.total ? Math.min(1, s.received / s.total) : null;
   };
 
   const title = () => {
@@ -871,18 +877,35 @@ function UpdateSettings(props: {
     }
     return t("settings.update.detail.source");
   };
-  const showNotes = () =>
-    Boolean(status()?.notes) && (state() === "available" || state() === "downloading" || state() === "ready");
+  const offered = () => state() === "ready" || state() === "available" || state() === "downloading";
   const proxyChoice = () => (draft() !== null ? "custom" : props.settings.updateProxy);
 
   return (
     <>
       <Setting
+        class="update-card"
         icon={<UpdateIcon size={20} />}
         title={<span aria-live="polite">{title()}</span>}
-        desc={desc()}
+        desc={
+          <>
+            <span class="update-card-line">{current()}</span>
+            <span class="update-card-line">{desc()}</span>
+            <Show when={state() === "downloading"}>
+              <Show when={progress() !== null} fallback={<div class="progress update-card-progress" />}>
+                <div class="progress determinate update-card-progress">
+                  <div class="progress-fill" style={{ transform: `scaleX(${progress() ?? 0})` }} />
+                </div>
+              </Show>
+            </Show>
+          </>
+        }
         error={state() === "error" || state() === "ready" ? status()?.error : null}
       >
+        <Show when={offered()}>
+          <button type="button" class="btn" onClick={openUpdateDialog}>
+            {t("settings.update.viewNotes")}
+          </button>
+        </Show>
         <Show when={state() === "ready"}>
           <button type="button" class="btn accent" disabled={installing()} onClick={install}>
             {t("settings.update.restart")}
@@ -890,13 +913,13 @@ function UpdateSettings(props: {
         </Show>
         <Show when={state() === "available" && status()?.version}>
           {(version) => (
-            <button type="button" class="btn" onClick={() => void api.openReleasePage(version())}>
+            <button type="button" class="btn accent" onClick={() => void api.openReleasePage(version())}>
               <ExternalIcon />
               {t("settings.update.download")}
             </button>
           )}
         </Show>
-        <Show when={state() !== "disabled" && state() !== "ready"}>
+        <Show when={!offered() && state() !== "disabled"}>
           <button
             type="button"
             class="btn"
@@ -907,13 +930,6 @@ function UpdateSettings(props: {
           </button>
         </Show>
       </Setting>
-      <Show when={showNotes()}>
-        <Setting
-          icon={<DocumentIcon size={20} />}
-          title={t("settings.update.notes", { version: status()?.version ?? "" })}
-          desc={<pre class="update-notes">{status()?.notes}</pre>}
-        />
-      </Show>
       <Setting
         icon={<TimerIcon size={20} />}
         title={t("settings.update.auto.title")}
@@ -1989,6 +2005,9 @@ export default function SettingsPage() {
                       <div class="setting-desc">© 2026 Argus contributors</div>
                     </div>
                     <div class="setting-control">
+                      <button type="button" class="btn" onClick={() => openWhatsNew()}>
+                        {t("settings.about.whatsNew")}
+                      </button>
                       <button type="button" class="btn" onClick={() => api.quit()}>
                         {t("settings.about.quit")}
                       </button>

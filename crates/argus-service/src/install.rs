@@ -516,6 +516,31 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
     result
 }
 
+/// Brings an installed service to this executable, for the installer: it
+/// already runs elevated after replacing argus.exe, so an update asks for
+/// administrator rights once. The service stays with the account that
+/// installed it. While the task manager replacement may be on nothing
+/// changes, because updating turns it off; Argus offers the update when it
+/// starts instead.
+pub(crate) fn refresh() -> Result<()> {
+    if !argus_core::privilege::is_elevated() {
+        return Err(5);
+    }
+    if open(&scm(SC_MANAGER_CONNECT)?, SERVICE_QUERY_STATUS)?.is_none() {
+        return Ok(());
+    }
+    let dir = directory()?;
+    let owner = {
+        let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
+        let _dir = security::protect_directory(&dir)?;
+        if crate::taskmgr::may_be_on(&dir) {
+            return Ok(());
+        }
+        owner(&dir)?
+    };
+    run_helper("update", &owner)
+}
+
 /// UAC belongs to this explicit settings action, never a background retry.
 pub fn manage(action: &str) -> std::result::Result<ServiceStatus, String> {
     if !matches!(action, "install" | "update" | "start" | "uninstall") {

@@ -1,5 +1,54 @@
 {
   "updated": "Argus 已更新到 {version}。",
+  "whatsNew": "查看更新内容",
+  "readyToast": "Argus {version} 已准备就绪",
+  "availableToast": "发现新版本 {version}",
+  "view": "查看",
+  "button": {
+    "title": "Argus {version} 已准备就绪。单击查看更新内容并安装",
+    "availableTitle": "发现新版本 {version}。单击查看更新内容"
+  },
+  "menu": {
+    "view": "查看更新内容",
+    "dismiss": "此版本不再提醒"
+  },
+  "dialog": {
+    "ready": "Argus {version} 已准备就绪",
+    "available": "发现新版本 {version}",
+    "downloading": "正在下载 Argus {version}",
+    "installing": "正在启动安装程序",
+    "installed": "Argus {version} 的更新内容",
+    "current": "当前版本",
+    "previous": "更新前",
+    "next": "新版本",
+    "stable": "稳定版",
+    "beta": "测试版",
+    "released": "{date}发布",
+    "verified": "签名校验通过",
+    "source": "来自 {source}",
+    "progress": "已下载 {received} / {total}",
+    "changes": "{count} 项更改",
+    "earlier": "更早版本的更新内容可在 GitHub 上查看。",
+    "empty": "暂无可显示的更新内容，可在 GitHub 上查看。",
+    "language": "更新内容以中文撰写。",
+    "hint": "安装需要管理员授权。Argus 将短暂退出，安装完成后自动重新打开并回到当前页面。",
+    "portable": "免安装版不支持自动更新，请从发布页下载新版本。",
+    "github": "在 GitHub 上查看",
+    "install": "重启并更新",
+    "starting": "正在启动…",
+    "download": "前往下载",
+    "later": "稍后",
+    "close": "关闭"
+  },
+  "category": {
+    "breaking": "破坏性变更",
+    "feat": "新功能",
+    "fix": "修复",
+    "perf": "性能",
+    "revert": "回退",
+    "known": "已知限制",
+    "other": "其他"
+  },
   "service": {
     "title": "更新特权服务？",
     "body": "特权服务的版本为 {serviceVersion}，与 Argus {version} 不一致，部分功能可能无法使用。更新需要管理员授权。",

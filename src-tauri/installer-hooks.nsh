@@ -1,6 +1,7 @@
-; Uninstaller hooks for the released app (the development build is never
-; packaged). The privileged service and the task manager replacement live in
-; Program Files, outside $INSTDIR, so removing Argus does not remove them.
+; Installer and uninstaller hooks for the released app (the development build
+; is never packaged). The privileged service and the task manager replacement
+; live in Program Files, outside $INSTDIR, so installing or removing Argus does
+; not replace or remove them by itself.
 
 ; Where installer-template.nsi finds installer-ui.nsh (this folder).
 !define ARGUS_DIR "${__FILEDIR__}"
@@ -13,6 +14,24 @@
   ${Else}
     StrCpy ${OUT} "${EN}"
   ${EndIf}
+!macroend
+
+!macro NSIS_HOOK_POSTINSTALL
+!if "${BUNDLEID}" == "dev.argus.taskmanager"
+  ; The installer already runs elevated: bring an installed privileged service
+  ; to this version now, so an update needs no second administrator prompt.
+  ; The new argus.exe leaves the service alone while the task manager
+  ; replacement may be on (updating turns it off) and when anything fails;
+  ; Argus then offers the update when it starts. Never blocks the install.
+  ClearErrors
+  ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
+  ${IfNot} ${Errors}
+    !insertmacro ARGUS_TEXT $2 "正在更新 Argus 特权服务…" "Updating the Argus privileged service…"
+    DetailPrint "$2"
+    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-service-refresh' $0
+    ClearErrors
+  ${EndIf}
+!endif
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

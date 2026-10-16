@@ -7,13 +7,23 @@
 //! workflow), fetched from GitHub directly or through a GitHub proxy. The
 //! installer must carry a signature from the key in tauri.conf.json that also
 //! covers its version (`requireSignedVersion`), so a proxy can withhold an
-//! update but not alter or downgrade one.
+//! update but not alter or downgrade one. The release notes the update dialog
+//! shows are signed the same way; notes that fail the check are not shown.
+//!
+//! A downloaded installer is kept in the app's local data folder together
+//! with what the dialog shows about it, so it survives a restart. It is
+//! checked again when Argus starts and right before it runs, and removed once
+//! its version is installed. Argus starts it itself, as the plugin would: the
+//! plugin can only install an update it checked during this run.
 
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use argus_core::tr;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_updater::{Error, Update, UpdaterExt};
 
@@ -32,6 +42,9 @@ pub const UPDATED_ARG: &str = "--updated";
 /// Left by an update started while the window was hidden: the relaunched app
 /// stays in the tray.
 const RELAUNCH_HIDDEN: &str = "relaunch-hidden";
+/// The kept installer and what is known about it, in the app's local data folder.
+const UPDATES_DIR: &str = "updates";
+const PENDING: &str = "pending.json";
 
 const FIRST_CHECK: Duration = Duration::from_secs(60);
 const TICK: Duration = Duration::from_secs(3600);
@@ -40,6 +53,19 @@ const RETRY_AFTER_MS: i64 = 6 * 3600 * 1000;
 const MANIFEST_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 const PROGRESS_EVERY: Duration = Duration::from_millis(250);
+/// Bounds on the release notes a manifest may carry.
+const MAX_NOTES_BYTES: usize = 512 * 1024;
+const MAX_RELEASES: usize = 50;
+
+/// One changelog entry, as CHANGELOG.md has it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReleaseEntry {
+    pub version: String,
+    /// `YYYY-MM-DD`.
+    pub date: String,
+    /// The entry's Markdown.
+    pub notes: String,
+}
 
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,11 +74,16 @@ pub struct UpdateStatus {
     /// standalone exe), `downloading`, `ready`, `installing` or `error`.
     pub state: &'static str,
     pub version: Option<String>,
-    /// Release notes as plain text; unlike the installer they are not signed.
+    /// Signed changelog entries of `version` and the releases before it,
+    /// newest first.
+    pub releases: Option<Vec<ReleaseEntry>>,
+    /// Plain-text notes of a manifest without signed ones (releases before
+    /// 0.2). Not signed; not set when signed notes failed the check.
     pub notes: Option<String>,
     /// Release date, Unix ms.
     pub date: Option<i64>,
     pub received: u64,
+    /// The installer's size once known.
     pub total: Option<u64>,
     /// Why the last check failed, or why updates are disabled.
     pub error: Option<String>,
@@ -64,14 +95,69 @@ pub struct UpdateStatus {
     pub portable: bool,
 }
 
+/// Release notes as a manifest carries them (`argus` in latest.json): the
+/// exact text that was signed, and its signature.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SignedNotes {
+    release_notes: String,
+    signature: String,
+}
+
+#[derive(Deserialize)]
+struct NotesPayload {
+    version: String,
+    releases: Vec<ReleaseEntry>,
+}
+
+/// A downloaded installer kept for later, saved as `pending.json`.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Pending {
+    version: String,
+    channel: UpdateChannel,
+    /// The installer's file name in the updates folder.
+    file: String,
+    signature: String,
+    date: Option<i64>,
+    notes: Option<String>,
+    signed_notes: Option<SignedNotes>,
+    source: Option<String>,
+}
+
+/// The verified installer of `version`, on disk.
+#[derive(Clone)]
+struct Ready {
+    version: String,
+    path: PathBuf,
+    signature: String,
+}
+
 struct Inner {
     status: UpdateStatus,
-    /// The verified installer for `status.version`.
-    ready: Option<(Update, Vec<u8>)>,
+    ready: Option<Ready>,
     next_check: i64,
 }
 
 pub struct Updates(Mutex<Inner>);
+
+/// Why an update was not installed. `cancelled`: the administrator prompt
+/// was declined, which is no failure.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallError {
+    cancelled: bool,
+    message: String,
+}
+
+impl InstallError {
+    fn failed(message: String) -> Self {
+        Self {
+            cancelled: false,
+            message,
+        }
+    }
+}
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -124,6 +210,9 @@ pub fn init(app: &AppHandle) {
     let _ = std::thread::Builder::new()
         .name("argus-updates".into())
         .spawn(move || {
+            if !portable {
+                restore(&app);
+            }
             std::thread::sleep(FIRST_CHECK);
             loop {
                 let due = app.state::<SettingsStore>().get().update_check
@@ -142,11 +231,11 @@ pub fn status(app: &AppHandle) -> UpdateStatus {
 
 fn publish(app: &AppHandle, status: &UpdateStatus) {
     let _ = app.emit("update-status", status);
-    let ready = status
+    let offered = status
         .version
         .as_deref()
-        .filter(|_| status.state == "ready");
-    crate::shell::set_tray_update(app, ready);
+        .filter(|_| matches!(status.state, "ready" | "available"));
+    crate::shell::set_tray_update(app, offered);
 }
 
 fn update_status(app: &AppHandle, f: impl FnOnce(&mut Inner)) {
@@ -161,6 +250,7 @@ fn update_status(app: &AppHandle, f: impl FnOnce(&mut Inner)) {
 
 /// Forgets a downloaded update, e.g. after switching channels.
 pub fn reset(app: &AppHandle) {
+    let mut forgot = false;
     update_status(app, |inner| {
         if matches!(
             inner.status.state,
@@ -168,6 +258,7 @@ pub fn reset(app: &AppHandle) {
         ) {
             return;
         }
+        forgot = true;
         inner.ready = None;
         inner.next_check = 0;
         inner.status = UpdateStatus {
@@ -176,6 +267,9 @@ pub fn reset(app: &AppHandle) {
             ..Default::default()
         };
     });
+    if forgot {
+        discard(app);
+    }
 }
 
 /// Where requests go, in order: `None` is GitHub itself, `Some` a proxy prefix.
@@ -262,6 +356,89 @@ fn signature_error(e: &Error) -> bool {
     )
 }
 
+/// Checks a minisign signature the way the updater plugin does, with the
+/// version it was signed for (`requireSignedVersion`).
+fn verify_signed(data: &[u8], signature: &str, pubkey: &str, version: &str) -> Result<(), String> {
+    use base64::Engine;
+    use minisign_verify::{PublicKey, Signature};
+    let failed = || tr!("updater.signatureFailed");
+    // Tauri stores both as base64 of the minisign text files.
+    let text = |base64: &str| {
+        base64::engine::general_purpose::STANDARD
+            .decode(base64.trim())
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .ok_or_else(failed)
+    };
+    let key = PublicKey::decode(&text(pubkey)?).map_err(|_| failed())?;
+    let signature = Signature::decode(&text(signature)?).map_err(|_| failed())?;
+    key.verify(data, &signature, true).map_err(|_| failed())?;
+    // Only now is the trusted comment, and the version in it, known to be signed.
+    let signed = signature
+        .trusted_comment()
+        .split('\t')
+        .find_map(|field| field.strip_prefix("version:"));
+    match signed {
+        Some(v) if v.trim_start_matches('v') == version.trim_start_matches('v') => Ok(()),
+        _ => Err(failed()),
+    }
+}
+
+/// The signed release notes a manifest carries, if any.
+fn signed_notes(raw: &serde_json::Value) -> Option<SignedNotes> {
+    raw.get("argus")
+        .and_then(|value| serde_json::from_value(value.clone()).ok())
+}
+
+/// The changelog entries in signed notes, once they pass the signature.
+fn open_notes(
+    notes: &SignedNotes,
+    pubkey: &str,
+    version: &str,
+) -> Result<Vec<ReleaseEntry>, String> {
+    if notes.release_notes.len() > MAX_NOTES_BYTES {
+        return Err(tr!("updater.signatureFailed"));
+    }
+    verify_signed(
+        notes.release_notes.as_bytes(),
+        &notes.signature,
+        pubkey,
+        version,
+    )?;
+    let payload: NotesPayload =
+        serde_json::from_str(&notes.release_notes).map_err(|e| e.to_string())?;
+    if payload.version != version {
+        return Err(tr!("updater.signatureFailed"));
+    }
+    let mut releases = payload.releases;
+    releases.truncate(MAX_RELEASES);
+    Ok(releases)
+}
+
+/// What the dialog may show about `version`: the signed entries, or plain
+/// notes from a manifest that has none. Notes that fail the signature are
+/// dropped along with the plain ones beside them.
+fn notes_for(
+    signed: Option<&SignedNotes>,
+    plain: Option<String>,
+    pubkey: &str,
+    version: &str,
+) -> (Option<Vec<ReleaseEntry>>, Option<String>) {
+    match signed {
+        None => (None, plain),
+        Some(signed) => match open_notes(signed, pubkey, version) {
+            Ok(releases) => (Some(releases), plain),
+            Err(e) => {
+                log::warn!(
+                    "release notes rejected: {}",
+                    argus_core::diagnostics::failure(&e)
+                );
+                (None, None)
+            }
+        },
+    }
+}
+
 async fn find(
     app: &AppHandle,
     manifest: &str,
@@ -271,11 +448,6 @@ async fn find(
         .endpoints(vec![via(manifest, source)?])
         .map_err(|e| describe(&e))?
         .timeout(MANIFEST_TIMEOUT)
-        // Relaunch with our own arguments: the current ones may carry a
-        // one-time task manager handshake.
-        .installer_args(["/R", "/ARGS", UPDATED_ARG])
-        // The installer is started with std::process::exit, which skips RunEvent::Exit.
-        .on_before_exit(crate::stop_network_session)
         .build()
         .map_err(|e| describe(&e))?
         .check()
@@ -284,15 +456,33 @@ async fn find(
 }
 
 /// Checks the chosen channel and downloads a newer release. Does nothing while
-/// another check, download or install is under way.
+/// another check, download or install is under way. With an update already
+/// downloaded the check runs quietly: that update stays offered unless a
+/// newer one replaces it.
 pub async fn check(app: &AppHandle) {
+    // A quiet check leaves the state as it is, so the state alone cannot keep
+    // two checks from running at once.
+    static CHECKING: AtomicBool = AtomicBool::new(false);
+    struct Running;
+    impl Drop for Running {
+        fn drop(&mut self) {
+            CHECKING.store(false, Ordering::Release);
+        }
+    }
+    if CHECKING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let _running = Running;
+
     let mut busy = false;
+    let mut quiet = false;
     update_status(app, |inner| {
         busy = matches!(
             inner.status.state,
             "disabled" | "checking" | "downloading" | "installing"
         );
-        if !busy {
+        quiet = inner.ready.is_some();
+        if !busy && !quiet {
             inner.status = UpdateStatus {
                 state: "checking",
                 portable: inner.status.portable,
@@ -332,35 +522,55 @@ pub async fn check(app: &AppHandle) {
         );
         update_status(app, |inner| {
             inner.next_check = now + RETRY_AFTER_MS;
-            inner.status.state = "error";
-            inner.status.error = Some(join(&failures));
-            inner.status.checked_at = Some(now);
+            // A downloaded update can still be installed.
+            if inner.ready.is_none() {
+                inner.status.state = "error";
+                inner.status.error = Some(join(&failures));
+                inner.status.checked_at = Some(now);
+            }
         });
         return;
     };
     let source = label(sources[index].as_deref());
     let Some(update) = update else {
+        // Nothing newer than this version: a kept installer is no longer
+        // offered (a withdrawn release).
+        let mut had = false;
         update_status(app, |inner| {
+            had = inner.ready.take().is_some();
             inner.next_check = now + CHECK_EVERY_MS;
-            inner.ready = None;
-            inner.status.state = "upToDate";
-            inner.status.checked_at = Some(now);
-            inner.status.source = Some(source);
+            inner.status = UpdateStatus {
+                state: "upToDate",
+                checked_at: Some(now),
+                source: Some(source),
+                portable: inner.status.portable,
+                ..Default::default()
+            };
         });
+        if had {
+            discard(app);
+        }
         return;
     };
 
     log::info!("update available");
+    let key = pubkey(app);
+    let signed = signed_notes(&update.raw_json);
+    let (releases, notes) = notes_for(signed.as_ref(), update.body.clone(), &key, &update.version);
+    let date = update.date.map(|d| d.unix_timestamp() * 1000);
     let mut already = false;
+    // The offer a failed download of a newer release falls back to.
+    let mut previous = None;
     update_status(app, |inner| {
         inner.next_check = now + CHECK_EVERY_MS;
         already = inner
             .ready
             .as_ref()
-            .is_some_and(|(ready, _)| ready.version == update.version);
-        if !already {
-            inner.ready = None;
+            .is_some_and(|r| r.version == update.version && r.signature == update.signature);
+        if inner.ready.is_some() && !already {
+            previous = Some(inner.status.clone());
         }
+        let size = if already { inner.status.total } else { None };
         inner.status = UpdateStatus {
             state: if already {
                 "ready"
@@ -370,8 +580,11 @@ pub async fn check(app: &AppHandle) {
                 "downloading"
             },
             version: Some(update.version.clone()),
-            notes: update.body.clone(),
-            date: update.date.map(|d| d.unix_timestamp() * 1000),
+            releases: releases.clone(),
+            notes: notes.clone(),
+            date,
+            received: size.unwrap_or_default(),
+            total: size,
             checked_at: Some(now),
             source: Some(source),
             portable: inner.status.portable,
@@ -421,15 +634,33 @@ pub async fn check(app: &AppHandle) {
         match result {
             Ok(bytes) => {
                 let host = label(source.as_deref());
-                log::info!("update downloaded");
-                update_status(app, |inner| {
-                    inner.status.state = "ready";
-                    inner.status.received = bytes.len() as u64;
-                    inner.status.total = Some(bytes.len() as u64);
-                    inner.status.source = Some(host);
-                    inner.ready = Some((attempt.restart_after_install(false), bytes));
-                });
-                return;
+                let pending = Pending {
+                    version: update.version.clone(),
+                    channel: settings.update_channel,
+                    file: String::new(),
+                    signature: update.signature.clone(),
+                    date,
+                    notes: notes.clone(),
+                    signed_notes: signed.clone().filter(|_| releases.is_some()),
+                    source: Some(host.clone()),
+                };
+                match keep(app, pending, &bytes) {
+                    Ok(ready) => {
+                        log::info!("update downloaded");
+                        update_status(app, |inner| {
+                            inner.ready = Some(ready);
+                            inner.status.state = "ready";
+                            inner.status.received = bytes.len() as u64;
+                            inner.status.total = Some(bytes.len() as u64);
+                            inner.status.source = Some(host);
+                        });
+                        return;
+                    }
+                    Err(e) => {
+                        failures.push(tr!("updater.saveFailed", error = e));
+                        break;
+                    }
+                }
             }
             Err(e) => {
                 failures.push(tr!(
@@ -450,24 +681,169 @@ pub async fn check(app: &AppHandle) {
     );
     update_status(app, |inner| {
         inner.next_check = now + RETRY_AFTER_MS;
-        inner.status.state = "error";
-        inner.status.error = Some(tr!("updater.downloadFailed", error = join(&failures)));
+        match previous.take().filter(|_| inner.ready.is_some()) {
+            Some(offer) => inner.status = offer,
+            None => {
+                inner.status.state = "error";
+                inner.status.error = Some(tr!("updater.downloadFailed", error = join(&failures)));
+            }
+        }
+    });
+}
+
+fn updates_dir(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_local_data_dir()
+        .ok()
+        .map(|dir| dir.join(UPDATES_DIR))
+}
+
+/// A version is only ever part of a file name; anything else stays out.
+fn file_name(version: &str) -> Option<String> {
+    (!version.is_empty()
+        && version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+')))
+    .then(|| format!("Argus_{version}_x64-setup.exe"))
+}
+
+/// Saves a verified installer for later. An older one stays until the new one
+/// and its record are written, so a failure leaves the older offer intact.
+fn keep(app: &AppHandle, mut pending: Pending, bytes: &[u8]) -> Result<Ready, String> {
+    let dir = updates_dir(app).ok_or_else(|| tr!("updater.noDataFolder"))?;
+    let name = file_name(&pending.version).ok_or_else(|| tr!("updater.invalidVersion"))?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(&name);
+    write_new(&path, bytes)?;
+    pending.file = name.clone();
+    let record = serde_json::to_vec(&pending).map_err(|e| e.to_string())?;
+    if let Err(e) = write_new(&dir.join(PENDING), &record) {
+        let _ = fs::remove_file(&path);
+        return Err(e);
+    }
+    for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
+        let other = entry.file_name();
+        if other != name.as_str() && other != PENDING {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+    Ok(Ready {
+        version: pending.version,
+        path,
+        signature: pending.signature,
+    })
+}
+
+/// Writes through a temporary name, so a crash leaves no half file behind.
+fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let partial = path.with_extension("partial");
+    fs::write(&partial, bytes)
+        .and_then(|_| fs::rename(&partial, path))
+        .map_err(|e| {
+            let _ = fs::remove_file(&partial);
+            e.to_string()
+        })
+}
+
+/// Removes the kept installer. Right after an update the old installer may
+/// still be running for a moment; the next start tries again.
+fn discard(app: &AppHandle) {
+    if let Some(dir) = updates_dir(app) {
+        let _ = fs::remove_dir_all(dir);
+    }
+}
+
+fn newer(version: &str, than: &str) -> bool {
+    match (
+        semver::Version::parse(version),
+        semver::Version::parse(than),
+    ) {
+        (Ok(a), Ok(b)) => a > b,
+        _ => false,
+    }
+}
+
+/// Offers an installer kept from an earlier run after checking it again, or
+/// removes it once its version is installed or no longer belongs to the
+/// chosen channel.
+fn restore(app: &AppHandle) {
+    let Some(dir) = updates_dir(app) else { return };
+    let Ok(text) = fs::read_to_string(dir.join(PENDING)) else {
+        if dir.exists() {
+            discard(app);
+        }
+        return;
+    };
+    let channel = app.state::<SettingsStore>().get().update_channel;
+    let kept = serde_json::from_str::<Pending>(&text).ok().filter(|p| {
+        p.channel == channel
+            && newer(&p.version, env!("CARGO_PKG_VERSION"))
+            && file_name(&p.version).as_deref() == Some(p.file.as_str())
+    });
+    let Some(pending) = kept else {
+        discard(app);
+        return;
+    };
+    let path = dir.join(&pending.file);
+    let key = pubkey(app);
+    let size = match fs::read(&path)
+        .map_err(|e| e.to_string())
+        .and_then(|bytes| {
+            verify_signed(&bytes, &pending.signature, &key, &pending.version)
+                .map(|_| bytes.len() as u64)
+        }) {
+        Ok(size) => size,
+        Err(e) => {
+            log::warn!(
+                "kept update dropped: {}",
+                argus_core::diagnostics::failure(&e)
+            );
+            discard(app);
+            return;
+        }
+    };
+    let (releases, notes) = notes_for(
+        pending.signed_notes.as_ref(),
+        pending.notes.clone(),
+        &key,
+        &pending.version,
+    );
+    update_status(app, |inner| {
+        // A check that already got further wins.
+        if inner.status.state != "idle" {
+            return;
+        }
+        inner.ready = Some(Ready {
+            version: pending.version.clone(),
+            path,
+            signature: pending.signature.clone(),
+        });
+        inner.status = UpdateStatus {
+            state: "ready",
+            version: Some(pending.version),
+            releases,
+            notes,
+            date: pending.date,
+            received: size,
+            total: Some(size),
+            source: pending.source,
+            portable: inner.status.portable,
+            ..Default::default()
+        };
     });
 }
 
 /// Starts the downloaded installer, which exits Argus and relaunches it.
-/// Returns only on failure. Must not run on the main thread.
-pub fn install(app: &AppHandle) -> Result<(), String> {
+/// Returns only when it did not start. Must not run on the main thread.
+pub fn install(app: &AppHandle) -> Result<(), InstallError> {
     let updates = app.state::<Updates>();
-    let (update, bytes) = {
+    let ready = {
         let mut inner = updates.0.lock().unwrap();
-        if inner.status.state != "ready" {
-            return Err(tr!("updater.nothingReady"));
-        }
         let ready = inner
             .ready
-            .take()
-            .ok_or_else(|| tr!("updater.nothingReady"))?;
+            .clone()
+            .filter(|_| inner.status.state == "ready")
+            .ok_or_else(|| InstallError::failed(tr!("updater.nothingReady")))?;
         inner.status.state = "installing";
         inner.status.error = None;
         let status = inner.status.clone();
@@ -485,36 +861,130 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
         .is_some_and(|w| !w.is_visible().unwrap_or(true));
     if hidden && let Ok(marker) = &marker {
         if let Some(dir) = marker.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            let _ = fs::create_dir_all(dir);
         }
-        let _ = std::fs::write(marker, b"");
+        let _ = fs::write(marker, b"");
     }
 
     log::info!("installing update");
-    let error = match update.install(&bytes) {
-        Ok(()) => return Ok(()),
-        Err(e) => describe(&e),
-    };
-    log::error!(
-        "could not start the update installer: {}",
-        argus_core::diagnostics::failure(&error)
-    );
+    let failure = launch(app, &ready);
     if let Ok(marker) = &marker {
-        let _ = std::fs::remove_file(marker);
+        let _ = fs::remove_file(marker);
     }
+    let error = match &failure {
+        Failure::Cancelled => {
+            log::info!("update installation cancelled at the administrator prompt");
+            InstallError {
+                cancelled: true,
+                message: tr!("updater.cancelled"),
+            }
+        }
+        Failure::Changed => {
+            log::warn!("kept update changed on disk; downloading it again");
+            InstallError::failed(tr!("updater.keptChanged"))
+        }
+        Failure::Other(message) => {
+            log::error!(
+                "could not start the update installer: {}",
+                argus_core::diagnostics::failure(message)
+            );
+            InstallError::failed(tr!("updater.installerFailed", error = message))
+        }
+    };
+    let changed = matches!(failure, Failure::Changed);
     update_status(app, |inner| {
-        inner.status.state = "ready";
-        inner.status.error = Some(tr!("updater.installerFailed", error = error));
-        inner.ready = Some((update, bytes));
+        if changed {
+            inner.ready = None;
+            inner.next_check = 0;
+            inner.status.state = "error";
+            inner.status.error = Some(error.message.clone());
+        } else {
+            inner.status.state = "ready";
+            inner.status.error = (!error.cancelled).then(|| error.message.clone());
+        }
     });
+    if changed {
+        discard(app);
+        let handle = app.clone();
+        tauri::async_runtime::spawn(async move { check(&handle).await });
+    }
     Err(error)
+}
+
+/// Why the installer did not start.
+enum Failure {
+    /// The administrator prompt was declined.
+    Cancelled,
+    /// The kept installer no longer passes the signature.
+    Changed,
+    Other(String),
+}
+
+/// Checks the kept installer once more and runs it the way the updater plugin
+/// would: passive, in update mode, relaunching Argus as the user with our own
+/// arguments (the current ones may carry a one-time task manager handshake).
+/// Exits the process when the installer started.
+fn launch(app: &AppHandle, ready: &Ready) -> Failure {
+    use std::io::Read;
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows::Win32::Foundation::ERROR_CANCELLED;
+    use windows::Win32::Storage::FileSystem::FILE_SHARE_READ;
+    use windows::Win32::UI::Shell::{
+        SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW, ShellExecuteExW,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::{HSTRING, PCWSTR, w};
+
+    // The folder belongs to the user: hold the file against changes from the
+    // check until the installer has started.
+    let mut file = match fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ.0)
+        .open(&ready.path)
+    {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Failure::Changed,
+        Err(e) => return Failure::Other(e.to_string()),
+    };
+    let mut bytes = Vec::new();
+    if let Err(e) = file.read_to_end(&mut bytes) {
+        return Failure::Other(e.to_string());
+    }
+    if verify_signed(&bytes, &ready.signature, &pubkey(app), &ready.version).is_err() {
+        return Failure::Changed;
+    }
+    drop(bytes);
+
+    let path = HSTRING::from(ready.path.as_os_str());
+    let parameters = HSTRING::from(format!("/P /UPDATE /R /ARGS {UPDATED_ARG}"));
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI,
+        lpVerb: w!("open"),
+        lpFile: PCWSTR(path.as_ptr()),
+        lpParameters: PCWSTR(parameters.as_ptr()),
+        nShow: SW_SHOWNORMAL.0,
+        ..Default::default()
+    };
+    if let Err(e) = unsafe { ShellExecuteExW(&mut info) } {
+        return if e.code() == ERROR_CANCELLED.to_hresult() {
+            Failure::Cancelled
+        } else {
+            Failure::Other(e.message())
+        };
+    }
+    drop(file);
+    // std::process::exit skips RunEvent::Exit.
+    crate::stop_network_session();
+    log::logger().flush();
+    std::process::exit(0);
 }
 
 /// Whether the app was relaunched by an update started from the tray; clears the marker.
 pub fn take_relaunch_hidden(app: &AppHandle) -> bool {
     app.path()
         .app_local_data_dir()
-        .map(|dir| std::fs::remove_file(dir.join(RELAUNCH_HIDDEN)).is_ok())
+        .map(|dir| fs::remove_file(dir.join(RELAUNCH_HIDDEN)).is_ok())
         .unwrap_or(false)
 }
 
@@ -579,5 +1049,84 @@ mod tests {
         assert!(normalize_proxy("http://p.example/").is_err());
         assert!(normalize_proxy("https://p.example/?u=").is_err());
         assert!(normalize_proxy("p.example").is_err());
+    }
+
+    #[test]
+    fn kept_installers_have_plain_names() {
+        assert_eq!(
+            file_name("0.2.0-beta.1").as_deref(),
+            Some("Argus_0.2.0-beta.1_x64-setup.exe")
+        );
+        assert_eq!(file_name("../x"), None);
+        assert_eq!(file_name("1.0\\x"), None);
+        assert_eq!(file_name(""), None);
+    }
+
+    // Signed with a throwaway key (`tauri signer generate`), never a release key.
+    const TEST_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJDNkMyMzZCOTYwN0Q2MTAKUldRUTFnZVdheU5zTElwbGNISW5BM004RDlaYWhmZ1ZRNkFONXFqdmI0YnY1dnZTMnFhWWdiU3gK";
+    const DATA: &[u8] = b"argus signed data";
+    /// `DATA`, signed for version 1.2.3.
+    const DATA_SIG: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUTFnZVdheU5zTExIN1c3aUMxUE10KzNRblg5eWwvb1J3aFUyZ1VTR1AvdVdTVkxKU1NvL2VRSldYd1FuMjFOUCt6V1dZRmNMNllOM3dwOWdWM3Y2SDRFY2tPekxTM0FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMTg2NDc3CWZpbGU6ZGF0YS5iaW4JdmVyc2lvbjoxLjIuMwpqVW1oV3FjNEMvSnFqdHJ3bjFYOVVEMlQ3RnY4TVE4eUg2WVN4YXhQeGtTSWhkWXk5SkZ6cFlVaU1LQUNpSGZyYmUwLy9YWHRjYWFOYmhuM0Ixd2hBdz09Cg==";
+    /// `DATA`, signed without a version.
+    const DATA_SIG_UNVERSIONED: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUTFnZVdheU5zTEUvbURUZlN0SGlaRGdENVVoNkhHR0N2WDhFeTNQTXc4d2w1YWowTER1QmpvL0pNck51L3YxTmkwOUtid0ZWa0tmL1JxRFA2MlFXR3pBU3IwNGhXUWd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMTg2NDgwCWZpbGU6ZGF0YS5iaW4KMW56UFRSTUlyNC9wcFI5aS8wd09xcVZPemp5K2c2VFVwU09CMWRpelpEMlFlSG0yc1ZEMnoxanNYcmROUUd4VFhKeTM2YkxhRTRyMjQyOUFuM0lHRGc9PQo=";
+    const NOTES: &str = r####"{"version":"1.2.3","releases":[{"version":"1.2.3","date":"2026-10-20","notes":"### Fixes\n\n- A fix"},{"version":"1.2.2","date":"2026-10-01","notes":"- Older"}]}"####;
+    /// `NOTES`, signed for version 1.2.3.
+    const NOTES_SIG: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUTFnZVdheU5zTE5IZ3o5cVhFN0RzaEV0U2dYM0ZsMXlQMHZodjhlNThjdG9NT2Fnb1JDSEVROWpTRG9CWWwrY0RZd1hkeWhZOHlYVmJnUklaaFRXZjFJcEt2UHZLbXdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMTg2NDkxCWZpbGU6bm90ZXMuanNvbgl2ZXJzaW9uOjEuMi4zCjlrWXp3SUNUazB3MGJ2ZmI5L1psVUtKUkhHMjFRQ1Z3SzhJOVlUT05rUWl5Zmg2Z2VHaU52aFE3YXY3RG9TYm5yNEYxWHJiQWhONUxJc21oMWkrSEFnPT0K";
+
+    #[test]
+    fn signatures_cover_the_data_and_the_version() {
+        assert!(verify_signed(DATA, DATA_SIG, TEST_KEY, "1.2.3").is_ok());
+        assert!(verify_signed(DATA, DATA_SIG, TEST_KEY, "v1.2.3").is_ok());
+        assert!(verify_signed(b"argus signed datA", DATA_SIG, TEST_KEY, "1.2.3").is_err());
+        // Another version's signature cannot vouch for this one.
+        assert!(verify_signed(DATA, DATA_SIG, TEST_KEY, "1.2.4").is_err());
+        assert!(verify_signed(DATA, DATA_SIG_UNVERSIONED, TEST_KEY, "1.2.3").is_err());
+        assert!(verify_signed(DATA, "not base64", TEST_KEY, "1.2.3").is_err());
+    }
+
+    #[test]
+    fn release_notes_show_only_when_signed() {
+        let signed = SignedNotes {
+            release_notes: NOTES.into(),
+            signature: NOTES_SIG.into(),
+        };
+        let releases = open_notes(&signed, TEST_KEY, "1.2.3").unwrap();
+        assert_eq!(releases.len(), 2);
+        assert_eq!(releases[0].version, "1.2.3");
+        assert_eq!(releases[1].notes, "- Older");
+        assert!(open_notes(&signed, TEST_KEY, "1.2.4").is_err());
+
+        let altered = SignedNotes {
+            release_notes: NOTES.replace("A fix", "A fiX"),
+            signature: NOTES_SIG.into(),
+        };
+        assert!(open_notes(&altered, TEST_KEY, "1.2.3").is_err());
+        // Altered notes take the unsigned text beside them down too.
+        assert_eq!(
+            notes_for(Some(&altered), Some("plain".into()), TEST_KEY, "1.2.3"),
+            (None, None)
+        );
+        assert_eq!(
+            notes_for(None, Some("plain".into()), TEST_KEY, "1.2.3"),
+            (None, Some("plain".into()))
+        );
+
+        let manifest = serde_json::json!({
+            "version": "1.2.3",
+            "argus": { "releaseNotes": NOTES, "signature": NOTES_SIG },
+        });
+        let found = signed_notes(&manifest).unwrap();
+        assert_eq!(found.release_notes, NOTES);
+        assert!(signed_notes(&serde_json::json!({ "version": "1.2.3" })).is_none());
+    }
+
+    #[test]
+    fn versions_compare_as_semver() {
+        assert!(newer("0.2.0", "0.1.0"));
+        assert!(newer("0.2.0", "0.2.0-beta.2"));
+        assert!(newer("0.2.0-beta.10", "0.2.0-beta.2"));
+        assert!(!newer("0.1.0", "0.1.0"));
+        assert!(!newer("0.1.0", "0.2.0"));
+        assert!(!newer("x", "0.1.0"));
     }
 }

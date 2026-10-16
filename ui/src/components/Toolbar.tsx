@@ -17,12 +17,24 @@ import {
   setViewMode,
   viewMode,
 } from "../lib/store";
+import { openMenu } from "../lib/ui";
+import { dismissUpdate, openUpdateDialog, updateButtonVersion, updateStatus } from "../lib/updates";
 import Caption from "./Caption";
 import { ConnectionControls, ConnectionSearch } from "./ConnectionsPage";
 import { openFileLock } from "./FileLockDialog";
 import { HistoryControls, showsLatest } from "./HistoryPage";
 import Indicator from "./Indicator";
-import { AppsIcon, ListIcon, LockIcon, PanelIcon, PauseIcon, PlayIcon, TreeIcon } from "./icons";
+import {
+  AppsIcon,
+  DismissIcon,
+  ListIcon,
+  LockIcon,
+  PanelIcon,
+  PauseIcon,
+  PlayIcon,
+  TreeIcon,
+  UpdateIcon,
+} from "./icons";
 import { navExpanded, navPosition } from "./Nav";
 import SearchBox from "./SearchBox";
 import Select from "./Select";
@@ -111,7 +123,9 @@ export default function Toolbar() {
     // After every effect of the change has run: the search box sets its width
     // in one of its own.
     createEffect(
-      on([page, locale, navExpanded, navPosition, showsLatest], () => queueMicrotask(fitter.refit)),
+      on([page, locale, navExpanded, navPosition, showsLatest, updateButtonVersion], () =>
+        queueMicrotask(fitter.refit),
+      ),
     );
     onCleanup(fitter.dispose);
   });
@@ -233,10 +247,55 @@ export default function Toolbar() {
             <PanelIcon />
           </button>
         </Show>
+
+        <UpdateButton />
       </div>
 
       <Caption />
     </div>
+  );
+}
+
+/**
+ * An update waiting for the user, beside the caption buttons on every page
+ * until it is installed or dismissed for this version. An icon, filled with
+ * the accent: text there pushed the search box out of the middle by up to
+ * 160 px at the default window width; the title names the version.
+ */
+function UpdateButton() {
+  return (
+    <Show when={updateButtonVersion()}>
+      {(version) => {
+        const title = () =>
+          t(
+            updateStatus()?.state === "available" ? "updates.button.availableTitle" : "updates.button.title",
+            {
+              version: version(),
+            },
+          );
+        return (
+          <button
+            type="button"
+            class="btn icon accent update-button"
+            title={title()}
+            aria-label={title()}
+            onClick={openUpdateDialog}
+            onContextMenu={(e) =>
+              openMenu(e, [
+                { label: t("updates.menu.view"), icon: () => <UpdateIcon />, run: openUpdateDialog },
+                {
+                  label: t("updates.menu.dismiss"),
+                  icon: () => <DismissIcon />,
+                  run: () => dismissUpdate(version()),
+                },
+              ])
+            }
+          >
+            <UpdateIcon />
+          </button>
+        );
+      }}
+    </Show>
   );
 }
 

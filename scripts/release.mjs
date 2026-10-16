@@ -28,6 +28,8 @@ const SECTIONS = [
 ];
 
 const CHANGELOG = "CHANGELOG.md";
+/** Changelog entries the update dialog can show: the release and the ones before it. */
+const NOTES_RELEASES = 15;
 const CHANGELOG_HEAD = `# 更新日志
 
 Argus 各版本的用户可见变更。版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)；本文件由 \`pnpm release\` 根据 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 提交信息生成，发布说明取自对应条目。
@@ -49,7 +51,10 @@ const HELP = `用法：node scripts/release.mjs <命令>
   lint --message <文本>    检查一条提交信息（例如拉取请求标题）
   verify <标签>            核对标签与各处版本号、CHANGELOG.md 条目、更新公钥（发布工作流使用）
   notes <版本>             打印 CHANGELOG.md 中该版本的发布说明（发布工作流使用）
-  manifest <版本> <安装包> <签名文件>
+  release-notes <版本> <输出文件>
+                           写出应用内更新对话框显示的更新内容：该版本及之前最近 ${NOTES_RELEASES} 个
+                           版本的 CHANGELOG.md 条目（JSON，发布工作流签名后放进清单）
+  manifest <版本> <安装包> <签名文件> [<更新内容> <更新内容的签名文件>]
                            打印应用内更新读取的清单 JSON（发布工作流使用）
   check-signature <版本> <文件> <签名文件>
                            用 tauri.conf.json 中的公钥校验更新签名及其中的版本号（发布工作流使用）`;
@@ -293,6 +298,18 @@ function readNotes(version) {
   return (next ? rest.slice(0, next.index) : rest).trim();
 }
 
+/** Every changelog entry, newest first: version, date and body. */
+function readEntries() {
+  if (!existsSync(join(root, CHANGELOG))) return [];
+  const text = read(CHANGELOG);
+  const headings = [...text.matchAll(/^## \[?([^\]\s(]+)\]?(?:\([^)]*\))? - (\d{4}-\d{2}-\d{2})\s*$/gm)];
+  return headings.map((m, i) => ({
+    version: m[1],
+    date: m[2],
+    notes: text.slice(m.index + m[0].length, headings[i + 1]?.index ?? text.length).trim(),
+  }));
+}
+
 function prependChangelog(section) {
   const path = join(root, CHANGELOG);
   const text = existsSync(path) ? read(CHANGELOG) : CHANGELOG_HEAD;
@@ -398,21 +415,47 @@ function cmdNotes([version]) {
   console.log(notes);
 }
 
-/** Release notes as the app shows them: plain text, no links or Markdown. */
+/**
+ * Release notes as versions before 0.2 show them: plain text, no links or
+ * Markdown, and no commit scopes (core, ui, ...), which mean nothing to users.
+ */
 function plainNotes(markdown) {
   return markdown
     .replace(/ \(\[[0-9a-f]{7}\]\([^)]*\)\)/g, "")
     .replace(/ \([0-9a-f]{7}\)$/gm, "")
     .replace(/^### /gm, "")
-    .replace(/^- \*\*([^*]+):\*\* /gm, "· $1：")
+    .replace(/^- \*\*[a-z0-9][a-z0-9,-]*:\*\* /gm, "· ")
     .replace(/^- /gm, "· ")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 }
 
+/**
+ * The notes the update dialog shows, as one JSON text: the entries of
+ * `version` and the releases before it, so someone skipping versions sees
+ * every change. The release workflow signs the file as written, bound to the
+ * version, and the manifest carries it verbatim; the app shows nothing that
+ * fails the signature.
+ */
+function cmdReleaseNotes([version, output]) {
+  if (!version || !output) fail("用法：release-notes <版本> <输出文件>");
+  const target = parseVersion(version) ?? fail(`「${version}」不是有效的语义化版本号`);
+  const entries = readEntries();
+  if (!entries.some((e) => e.version === version)) fail(`${CHANGELOG} 里没有 ${version} 的条目`);
+  const releases = entries
+    .filter((e) => {
+      const v = parseVersion(e.version);
+      return v && compare(v, target) <= 0;
+    })
+    .slice(0, NOTES_RELEASES);
+  writeFileSync(output, JSON.stringify({ version, releases }));
+  console.log(`已写出 ${output}：${releases.map((e) => e.version).join("、")}`);
+}
+
 /** The manifest the in-app updater reads (latest.json and beta.json). */
-function cmdManifest([version, installer, signature]) {
-  if (!version || !installer || !signature) fail("用法：manifest <版本> <安装包> <签名文件>");
+function cmdManifest([version, installer, signature, releaseNotes, releaseNotesSignature]) {
+  if (!version || !installer || !signature || Boolean(releaseNotes) !== Boolean(releaseNotesSignature))
+    fail("用法：manifest <版本> <安装包> <签名文件> [<更新内容> <更新内容的签名文件>]");
   const notes = readNotes(version) ?? fail(`${CHANGELOG} 里没有 ${version} 的条目`);
   const repo = process.env.GITHUB_REPOSITORY
     ? `${process.env.GITHUB_SERVER_URL ?? "https://github.com"}/${process.env.GITHUB_REPOSITORY}`
@@ -428,6 +471,12 @@ function cmdManifest([version, installer, signature]) {
     // The updater looks for `{os}-{arch}-{installer}` first, then `{os}-{arch}`.
     platforms: { "windows-x86_64-nsis": asset, "windows-x86_64": asset },
   };
+  if (releaseNotes) {
+    // Kept as the exact text that was signed; the app parses it after checking.
+    const text = readFileSync(releaseNotes, "utf8");
+    if (JSON.parse(text).version !== version) fail(`${releaseNotes} 不是 ${version} 的更新内容`);
+    manifest.argus = { releaseNotes: text, signature: readFileSync(releaseNotesSignature, "utf8").trim() };
+  }
   console.log(JSON.stringify(manifest, null, 2));
 }
 
@@ -473,6 +522,7 @@ const commands = {
   lint: cmdLint,
   verify: cmdVerify,
   notes: cmdNotes,
+  "release-notes": cmdReleaseNotes,
   manifest: cmdManifest,
   "check-signature": cmdCheckSignature,
 };

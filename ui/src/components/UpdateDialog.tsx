@@ -1,0 +1,441 @@
+// The update dialog. For the update on offer: the version it brings beside
+// this one, its size and signature, what changed since this version (signed
+// changelog entries; skipped releases folded) and installing it. For the
+// installed version: what changed, from CHANGELOG.md built into the app.
+// Also says once per version that an update is ready, when the window is in
+// view (never at start: Argus is often opened to deal with a busy system).
+
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+  untrack,
+} from "solid-js";
+import { fmtCache } from "../lib/format";
+import { locale, localized, t } from "../lib/i18n";
+import { api } from "../lib/ipc";
+import { EASE_OUT, play, presence } from "../lib/motion";
+import {
+  type Block,
+  between,
+  changelogEntries,
+  compareVersions,
+  isPrerelease,
+  itemCount,
+  parseNotes,
+  type Release,
+  type Span,
+} from "../lib/release-notes";
+import { appInfo } from "../lib/store";
+import type { InstallError } from "../lib/types";
+import { toast } from "../lib/ui";
+import {
+  announced,
+  installUpdate,
+  openUpdateDialog,
+  setAnnounced,
+  setUpdateDialog,
+  type UpdateDialogState,
+  updateButtonVersion,
+  updateDialog,
+  updateStatus,
+} from "../lib/updates";
+import { ArrowRightIcon, ChevronRight, ExternalIcon, GlobeIcon, ShieldIcon, UpdateIcon } from "./icons";
+
+const dayFmt = localized(
+  (l) => new Intl.DateTimeFormat(l, { month: "long", day: "numeric", timeZone: "UTC" }),
+);
+const fullFmt = localized(
+  (l) => new Intl.DateTimeFormat(l, { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }),
+);
+
+/** A `YYYY-MM-DD` changelog date; the year only when it is not this one. */
+function formatDate(date: string): string {
+  const ms = Date.parse(`${date}T00:00:00Z`);
+  if (Number.isNaN(ms)) return date;
+  return (new Date(ms).getUTCFullYear() === new Date().getFullYear() ? dayFmt() : fullFmt()).format(ms);
+}
+
+export default function UpdateDialog() {
+  const shown = presence(updateDialog, 170);
+  announceReady();
+  return (
+    <Show when={shown.value()} keyed>
+      {(state) => <Body state={state} leaving={shown.leaving()} />}
+    </Show>
+  );
+}
+
+/** Says once per version, when the window is in view, that an update waits. */
+function announceReady() {
+  createEffect(() => {
+    const version = updateButtonVersion();
+    if (!version || version === announced()) return;
+    const available = updateStatus()?.state === "available";
+    const show = () => {
+      if (document.visibilityState !== "visible") return false;
+      setAnnounced(version);
+      if (!untrack(updateDialog))
+        toast("info", t(available ? "updates.availableToast" : "updates.readyToast", { version }), 10000, {
+          icon: () => <UpdateIcon />,
+          action: { label: t("updates.view"), run: openUpdateDialog },
+        });
+      return true;
+    };
+    if (show()) return;
+    const onVisible = () => {
+      if (show()) document.removeEventListener("visibilitychange", onVisible);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    onCleanup(() => document.removeEventListener("visibilitychange", onVisible));
+  });
+}
+
+function Body(props: { state: UpdateDialogState; leaving: boolean }) {
+  const [starting, setStarting] = createSignal(false);
+  const [failure, setFailure] = createSignal<InstallError | null>(null);
+  const offer = props.state.mode === "offer";
+  const from = props.state.mode === "installed" ? props.state.from : null;
+  const current = () => appInfo()?.version ?? "";
+  const state = () => (offer ? updateStatus()?.state : undefined);
+  const target = () => (offer ? (updateStatus()?.version ?? "") : current());
+  const busy = () => starting() || state() === "installing";
+
+  // What an installed version changed comes with the app, loaded when asked for.
+  const [changelog] = createResource(
+    () => !offer || undefined,
+    async () => changelogEntries((await import("../../../CHANGELOG.md?raw")).default),
+  );
+  /** The entries to show, newest first. */
+  const entries = createMemo<Release[]>(() => {
+    if (offer) {
+      const list = updateStatus()?.releases;
+      return list ? between(list, current(), target()) : [];
+    }
+    const all = changelog();
+    return all ? between(all, from, current()) : [];
+  });
+  /** Releases in between that the entries do not reach. */
+  const earlier = () => {
+    const list = offer ? updateStatus()?.releases : changelog();
+    const since = offer ? current() : from;
+    return !!list?.length && !!since && list.every((r) => compareVersions(r.version, since) > 0);
+  };
+  const released = () => {
+    const entry = entries().find((e) => compareVersions(e.version, target()) === 0);
+    return entry ? formatDate(entry.date) : null;
+  };
+
+  const title = () => {
+    const version = target();
+    if (!offer) return t("updates.dialog.installed", { version });
+    switch (state()) {
+      case "available":
+        return t("updates.dialog.available", { version });
+      case "checking":
+      case "downloading":
+        return t("updates.dialog.downloading", { version });
+      case "installing":
+        return t("updates.dialog.installing");
+      case "ready":
+        return t("updates.dialog.ready", { version });
+      // Nothing on offer any more while the dialog is open: say what happened.
+      default:
+        return t(`settings.update.status.${state() ?? "idle"}`);
+    }
+  };
+  const subtitle = () =>
+    [
+      offer ? t(isPrerelease(target()) ? "updates.dialog.beta" : "updates.dialog.stable") : null,
+      released() ? t("updates.dialog.released", { date: released() ?? "" }) : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  const before = () => (offer ? current() : from);
+  const progress = () => {
+    const s = updateStatus();
+    return s?.total ? Math.min(1, s.received / s.total) : null;
+  };
+
+  const close = () => {
+    if (!busy()) setUpdateDialog(null);
+  };
+  const install = async () => {
+    setFailure(null);
+    setStarting(true);
+    const error = await installUpdate(appInfo()?.version);
+    setStarting(false);
+    if (error) setFailure(error);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") close();
+  };
+  window.addEventListener("keydown", onKey);
+  onCleanup(() => window.removeEventListener("keydown", onKey));
+  const focus = (b: HTMLButtonElement) => queueMicrotask(() => b.focus());
+
+  const canInstall = () => offer && (state() === "ready" || state() === "installing");
+  const canDownload = () => offer && state() === "available";
+
+  return (
+    <div
+      class="scrim"
+      classList={{ leaving: props.leaving }}
+      onMouseDown={(e) => e.target === e.currentTarget && close()}
+    >
+      <div class="dialog update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
+        <div class="dialog-body update-body">
+          <div class="update-head">
+            <img class="update-logo" src="/logo.svg" alt="" width="40" height="40" />
+            <div class="update-head-text">
+              <h2 id="update-title" class="dialog-title">
+                {title()}
+              </h2>
+              <Show when={subtitle()}>
+                <div class="update-sub">{subtitle()}</div>
+              </Show>
+            </div>
+          </div>
+
+          <Show when={before()}>
+            {(version) => (
+              <div class="update-versions">
+                <div class="update-version">
+                  <span class="update-version-label">
+                    {offer ? t("updates.dialog.current") : t("updates.dialog.previous")}
+                  </span>
+                  <span class="update-version-number">{version()}</span>
+                </div>
+                <ArrowRightIcon class="update-arrow" />
+                <div class="update-version next">
+                  <span class="update-version-label">
+                    {offer ? t("updates.dialog.next") : t("updates.dialog.current")}
+                  </span>
+                  <span class="update-version-number">{target()}</span>
+                </div>
+              </div>
+            )}
+          </Show>
+
+          <Show when={offer}>
+            <div class="update-facts">
+              <Show when={updateStatus()?.total}>
+                {(size) => (
+                  <span class="update-fact">
+                    <UpdateIcon size={14} />
+                    {state() === "downloading"
+                      ? t("updates.dialog.progress", {
+                          received: fmtCache(updateStatus()?.received ?? 0),
+                          total: fmtCache(size()),
+                        })
+                      : fmtCache(size())}
+                  </span>
+                )}
+              </Show>
+              <Show when={state() === "ready" || state() === "installing"}>
+                <span class="update-fact verified">
+                  <ShieldIcon size={14} />
+                  {t("updates.dialog.verified")}
+                </span>
+              </Show>
+              <Show when={updateStatus()?.source}>
+                {(source) => (
+                  <span class="update-fact">
+                    <GlobeIcon size={14} />
+                    {t("updates.dialog.source", { source: source() })}
+                  </span>
+                )}
+              </Show>
+            </div>
+            <Show when={state() === "downloading" || state() === "checking"}>
+              <Show when={progress() !== null} fallback={<div class="progress update-progress" />}>
+                <div
+                  class="progress determinate update-progress"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round((progress() ?? 0) * 100)}
+                >
+                  <div class="progress-fill" style={{ transform: `scaleX(${progress() ?? 0})` }} />
+                </div>
+              </Show>
+            </Show>
+          </Show>
+
+          <div class="update-notes">
+            <Show
+              when={entries().length > 0}
+              fallback={
+                <Show when={offer || changelog.state === "ready"}>
+                  <Show
+                    when={offer && updateStatus()?.notes}
+                    fallback={<p class="update-quiet">{t("updates.dialog.empty")}</p>}
+                  >
+                    {(notes) => <p class="update-plain">{notes()}</p>}
+                  </Show>
+                </Show>
+              }
+            >
+              <For each={entries()}>{(entry, i) => <Entry entry={entry} open={i() === 0} />}</For>
+              <Show when={earlier()}>
+                <p class="update-quiet">{t("updates.dialog.earlier")}</p>
+              </Show>
+              <Show when={!locale().startsWith("zh")}>
+                <p class="update-quiet">{t("updates.dialog.language")}</p>
+              </Show>
+            </Show>
+          </div>
+
+          <Show when={canInstall()}>
+            <p class="update-hint">{t("updates.dialog.hint")}</p>
+          </Show>
+          <Show when={canDownload()}>
+            <p class="update-hint">{t("updates.dialog.portable")}</p>
+          </Show>
+          <Show
+            when={
+              failure() ??
+              (state() === "error" && updateStatus()?.error
+                ? { cancelled: false, message: updateStatus()?.error ?? "" }
+                : null)
+            }
+          >
+            {(f) => (
+              <p class="update-failure" classList={{ cancelled: f().cancelled }} role="alert">
+                {f().message}
+              </p>
+            )}
+          </Show>
+        </div>
+
+        <div class="dialog-footer update-footer">
+          <button
+            type="button"
+            class="btn ghost update-github"
+            disabled={!target()}
+            onClick={() => void api.openReleasePage(target())}
+          >
+            <ExternalIcon />
+            {t("updates.dialog.github")}
+          </button>
+          <Show when={canInstall()}>
+            <button type="button" class="btn accent" ref={focus} disabled={busy()} onClick={install}>
+              <Show when={busy()} fallback={t("updates.dialog.install")}>
+                <span class="spinner on-accent" />
+                {t("updates.dialog.starting")}
+              </Show>
+            </button>
+          </Show>
+          <Show when={canDownload()}>
+            <button
+              type="button"
+              class="btn accent"
+              ref={focus}
+              onClick={() => {
+                void api.openReleasePage(target());
+                close();
+              }}
+            >
+              <ExternalIcon />
+              {t("updates.dialog.download")}
+            </button>
+          </Show>
+          <Show
+            when={canInstall() || canDownload()}
+            fallback={
+              <button type="button" class="btn accent" ref={focus} onClick={close}>
+                {t("updates.dialog.close")}
+              </button>
+            }
+          >
+            <button type="button" class="btn" disabled={busy()} onClick={close}>
+              {t("updates.dialog.later")}
+            </button>
+          </Show>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One release: its version, date and size of change; the newest starts open. */
+function Entry(props: { entry: Release; open: boolean }) {
+  const blocks = createMemo(() => parseNotes(props.entry.notes));
+  const [open, setOpen] = createSignal(props.open);
+  let body: HTMLDivElement | undefined;
+  const toggle = () => {
+    const next = !open();
+    setOpen(next);
+    if (next)
+      queueMicrotask(() =>
+        play(
+          body,
+          [
+            { opacity: 0, transform: "translateY(-4px)" },
+            { opacity: 1, transform: "none" },
+          ],
+          { duration: 180, easing: EASE_OUT },
+        ),
+      );
+  };
+  return (
+    <section class="update-entry" classList={{ open: open() }}>
+      <button type="button" class="update-entry-head" aria-expanded={open()} onClick={toggle}>
+        <ChevronRight size={12} class="update-entry-chevron" />
+        <span class="update-entry-version">{props.entry.version}</span>
+        <span class="update-entry-date">{formatDate(props.entry.date)}</span>
+        <Show when={itemCount(blocks())}>
+          {(count) => (
+            <span class="update-entry-count">{t("updates.dialog.changes", { count: count() })}</span>
+          )}
+        </Show>
+      </button>
+      <Show when={open()}>
+        <div ref={body} class="update-entry-body">
+          <For each={blocks()}>{(block) => <BlockView block={block} />}</For>
+        </div>
+      </Show>
+    </section>
+  );
+}
+
+function BlockView(props: { block: Block }) {
+  const block = props.block;
+  if (block.kind === "text")
+    return (
+      <p class="update-text">
+        <Spans spans={block.spans} />
+      </p>
+    );
+  // Known headings in the reader's language; others as written.
+  const tag =
+    block.title && (block.category === "other" ? block.title : t(`updates.category.${block.category}`));
+  return (
+    <div class="update-group" data-category={block.category}>
+      <Show when={tag}>
+        <span class="update-tag">{tag}</span>
+      </Show>
+      <ul class="update-items">
+        <For each={block.items}>
+          {(item) => (
+            <li>
+              <Spans spans={item} />
+            </li>
+          )}
+        </For>
+      </ul>
+    </div>
+  );
+}
+
+function Spans(props: { spans: Span[] }) {
+  return (
+    <For each={props.spans}>
+      {(s) => (s.code ? <code>{s.text}</code> : s.strong ? <strong>{s.text}</strong> : s.text)}
+    </For>
+  );
+}

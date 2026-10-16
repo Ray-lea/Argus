@@ -208,7 +208,7 @@ pub fn set_webview_active<R: Runtime>(w: &WebviewWindow<R>, active: bool) {
     });
 }
 
-/// The tray menu, with "restart to update" while an update is ready.
+/// The tray menu, with an entry for the update dialog while an update waits.
 fn tray_menu<R: Runtime>(app: &AppHandle<R>, update: Option<&str>) -> tauri::Result<Menu<R>> {
     let show = MenuItem::with_id(app, "show", tr!("tray.show"), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", tr!("tray.quit"), true, None::<&str>)?;
@@ -223,18 +223,126 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>, update: Option<&str>) -> tauri::Res
     }
 }
 
-/// The version the tray menu currently offers to install.
+/// The version the tray currently offers.
 static TRAY_UPDATE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+/// Offers an update in the tray (menu entry, a dot on the icon, a line in the
+/// tooltip), or stops offering one. An update kept from an earlier run can be
+/// offered before the tray exists; `build_tray` picks it up.
 pub fn set_tray_update<R: Runtime>(app: &AppHandle<R>, version: Option<&str>) {
     let mut current = TRAY_UPDATE.lock().unwrap();
     if current.as_deref() == version {
         return;
     }
-    if let (Some(tray), Ok(menu)) = (app.tray_by_id(TRAY_ID), tray_menu(app, version)) {
+    *current = version.map(str::to_string);
+    show_tray_update(app, version);
+}
+
+/// Puts the offer on the tray, if there is one yet. Called with TRAY_UPDATE
+/// held, so an offer and a new tray cannot pass each other.
+fn show_tray_update<R: Runtime>(app: &AppHandle<R>, version: Option<&str>) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    if let Ok(menu) = tray_menu(app, version) {
         let _ = tray.set_menu(Some(menu));
-        *current = version.map(str::to_string);
     }
+    let icon = match version {
+        Some(_) => badged_icon(app),
+        None => app.default_window_icon().cloned(),
+    };
+    if icon.is_some() {
+        let _ = tray.set_icon(icon);
+    }
+}
+
+/// The tray tooltip: the app, the usage line, and an offered update.
+pub fn tray_tooltip(usage: &str) -> String {
+    let mut tip = format!("{}\n{usage}", app_title());
+    if let Some(version) = TRAY_UPDATE.lock().unwrap().as_deref() {
+        tip.push('\n');
+        tip.push_str(&tr!("tray.updateReady", version = version));
+    }
+    tip
+}
+
+/// The app icon with an accent dot in its lower right corner, cut out of the
+/// icon by a thin transparent ring so it reads on any part of it.
+fn badged_icon<R: Runtime>(app: &AppHandle<R>) -> Option<tauri::image::Image<'static>> {
+    let icon = app.default_window_icon()?;
+    let (width, height) = (icon.width(), icon.height());
+    let mut rgba = icon.rgba().to_vec();
+    draw_badge(&mut rgba, width, height, badge_color());
+    Some(tauri::image::Image::new_owned(rgba, width, height))
+}
+
+/// Draws the dot onto straight-alpha RGBA pixels, edges anti-aliased.
+fn draw_badge(rgba: &mut [u8], width: u32, height: u32, [r, g, b]: [u8; 3]) {
+    let side = width.min(height) as f32;
+    let radius = side * 0.2;
+    let ring = (side / 16.0).max(1.0);
+    let (cx, cy) = (
+        width as f32 - radius - ring * 0.5,
+        height as f32 - radius - ring * 0.5,
+    );
+    for y in 0..height {
+        for x in 0..width {
+            let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+            let cut = (radius + ring - d + 0.5).clamp(0.0, 1.0);
+            if cut == 0.0 {
+                continue;
+            }
+            let px = &mut rgba[((y * width + x) * 4) as usize..][..4];
+            let under = px[3] as f32 / 255.0 * (1.0 - cut);
+            let dot = (radius - d + 0.5).clamp(0.0, 1.0);
+            let alpha = dot + under * (1.0 - dot);
+            if alpha <= 0.0 {
+                px[3] = 0;
+                continue;
+            }
+            for (channel, color) in px[..3].iter_mut().zip([r, g, b]) {
+                let mixed = (color as f32 * dot + *channel as f32 * under * (1.0 - dot)) / alpha;
+                *channel = mixed.round() as u8;
+            }
+            px[3] = (alpha * 255.0).round() as u8;
+        }
+    }
+}
+
+/// The accent shade Windows uses on the taskbar: a light one on a dark
+/// taskbar, a dark one on a light taskbar.
+fn badge_color() -> [u8; 3] {
+    use windows::UI::ViewManagement::{UIColorType, UISettings};
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+    use windows::core::w;
+    let mut light = 0u32;
+    let mut size = size_of::<u32>() as u32;
+    let read = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"),
+            w!("SystemUsesLightTheme"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&raw mut light).cast()),
+            Some(&mut size),
+        )
+    };
+    let light = read.is_ok() && light != 0;
+    UISettings::new()
+        .and_then(|s| {
+            s.GetColorValue(if light {
+                UIColorType::AccentDark1
+            } else {
+                UIColorType::AccentLight2
+            })
+        })
+        .map(|c| [c.R, c.G, c.B])
+        .unwrap_or(if light {
+            [0x00, 0x67, 0xc0]
+        } else {
+            [0x4c, 0xc2, 0xff]
+        })
 }
 
 /// Redoes the native text after a language change: tray menu and window
@@ -270,16 +378,10 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main(app),
+            // The update dialog: what changed, then the user installs it there.
             "update" => {
-                // install() blocks while it starts the installer and queries the
-                // window; keep it off the event loop thread.
-                let app = app.clone();
-                std::thread::spawn(move || {
-                    if crate::updater::install(&app).is_err() {
-                        show_main(&app);
-                        let _ = app.emit("argus-open-settings", "update");
-                    }
-                });
+                show_main(app);
+                let _ = app.emit("argus-show-update", ());
             }
             "quit" => app.exit(0),
             _ => {}
@@ -298,11 +400,38 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         builder = builder.icon(icon.clone());
     }
     builder.build(app)?;
+    let offered = TRAY_UPDATE.lock().unwrap();
+    if offered.is_some() {
+        show_tray_update(app, offered.as_deref());
+    }
     Ok(())
 }
 
 pub fn set_tray_tooltip<R: Runtime>(app: &AppHandle<R>, text: &str) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let _ = tray.set_tooltip(Some(text));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::draw_badge;
+
+    #[test]
+    fn the_badge_sits_in_a_cleared_ring() {
+        // An opaque white 32 px icon: radius 6.4, ring 2, centre (24.6, 24.6).
+        let (w, h) = (32u32, 32u32);
+        let mut rgba = vec![255u8; (w * h * 4) as usize];
+        draw_badge(&mut rgba, w, h, [0, 103, 192]);
+        let px = |x: u32, y: u32| {
+            let i = ((y * w + x) * 4) as usize;
+            [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]
+        };
+        assert_eq!(px(24, 24), [0, 103, 192, 255], "the dot");
+        assert_eq!(px(24, 17)[3], 0, "the ring between dot and icon");
+        assert_eq!(px(24, 14), [255, 255, 255, 255], "the icon past the ring");
+        assert_eq!(px(0, 0), [255, 255, 255, 255], "the far corner");
+        // Edges are blended, not stepped.
+        assert!((1..255).contains(&px(24, 16)[3]) && (1..255).contains(&px(24, 18)[3]));
     }
 }

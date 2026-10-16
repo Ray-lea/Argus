@@ -6,13 +6,14 @@ import { presence } from "../lib/motion";
 import {
   confirmRequest,
   dismissToast,
+  holdToast,
   leavingToasts,
   type MenuEntry,
   menu,
   setMenu,
   toasts,
 } from "../lib/ui";
-import { CheckIcon, ChevronRight, DismissIcon, WarningIcon } from "./icons";
+import { CheckIcon, ChevronRight, DismissIcon, InfoIcon, WarningIcon } from "./icons";
 
 /** Hover time before a submenu opens or another one replaces it (Windows uses about 400 ms). */
 const SUBMENU_DELAY = 250;
@@ -258,14 +259,37 @@ export function Toasts() {
             classList={{
               error: item.kind === "error",
               success: item.kind === "success",
+              info: item.kind === "info",
               leaving: leavingToasts().has(item.id),
             }}
             role="status"
+            onMouseEnter={() => holdToast(item.id, true)}
+            onMouseLeave={() => holdToast(item.id, false)}
           >
-            <Show when={item.kind === "error"} fallback={<CheckIcon />}>
+            {item.icon ? (
+              item.icon()
+            ) : item.kind === "error" ? (
               <WarningIcon />
-            </Show>
+            ) : item.kind === "info" ? (
+              <InfoIcon />
+            ) : (
+              <CheckIcon />
+            )}
             <div class="toast-text">{item.text}</div>
+            <Show when={item.action}>
+              {(action) => (
+                <button
+                  type="button"
+                  class="btn small toast-action"
+                  onClick={() => {
+                    dismissToast(item.id);
+                    void action().run();
+                  }}
+                >
+                  {action().label}
+                </button>
+              )}
+            </Show>
             <button
               type="button"
               class="btn ghost small icon"

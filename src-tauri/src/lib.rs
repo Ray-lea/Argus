@@ -265,7 +265,7 @@ pub fn run() {
                     cpu = format_args!("{:.0}", s.system.cpu),
                     memory = format_args!("{mem:.0}"),
                 );
-                let tip = format!("{}\n{usage}", shell::app_title());
+                let tip = shell::tray_tooltip(&usage);
                 let mut last = last_tip.lock().unwrap();
                 if *last != tip {
                     shell::set_tray_tooltip(&handle, &tip);

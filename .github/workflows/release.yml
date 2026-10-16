@@ -83,6 +83,17 @@ jobs:
           setup=$(ls target/release/bundle/nsis/*-setup.exe)
           node scripts/release.mjs check-signature "$VERSION" "$setup" "$setup.sig"
 
+      # The update dialog shows only notes signed with the same key, bound to
+      # the version like the installer.
+      - name: Sign the release notes
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          node scripts/release.mjs release-notes "$VERSION" release-notes.json
+          pnpm tauri signer sign --app-version "$VERSION" release-notes.json
+          node scripts/release.mjs check-signature "$VERSION" release-notes.json release-notes.json.sig
+
       # PowerShell, not bash: Git Bash rewrites /S and /D=... into paths.
       - name: Install and uninstall silently
         shell: pwsh
@@ -115,7 +126,8 @@ jobs:
           cp target/release/argus.exe "assets/Argus_${VERSION}_x64.exe"
           (cd assets && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
           # Update manifests; the beta channel also offers stable releases.
-          node scripts/release.mjs manifest "$VERSION" "$setup" "$setup.sig" > manifest.json
+          node scripts/release.mjs manifest "$VERSION" "$setup" "$setup.sig" \
+            release-notes.json release-notes.json.sig > manifest.json
           cat manifest.json
 
       - name: Publish release

@@ -136,13 +136,15 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo Ray-lea/Argus
 
 本地构建（`start.bat build installer`）不生成更新签名，不需要私钥；发布工作流用 `--config` 打开 `createUpdaterArtifacts`，签名后用 `node scripts/release.mjs check-signature` 以 `tauri.conf.json` 中的公钥校验，Secrets 里的私钥与公钥不配对时在发布前失败。
 
+更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `CHANGELOG.md` 条目（JSON），`pnpm tauri signer sign --app-version <版本>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。`signer sign` 只接受私钥文本本身，`TAURI_SIGNING_PRIVATE_KEY` 须保存私钥内容而不是文件路径。应用只显示验签通过且版本号一致的更新内容。
+
 ## 更新通道
 
 应用读取最新稳定版 Release 上的清单：稳定版通道读 `releases/latest/download/latest.json`，测试版通道读同一位置的 `beta.json`。
 
 - 发布稳定版时，两份清单都指向这个版本，随 Release 一起上传。
 - 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。仓库还没有稳定版时测试版通道收不到更新，工作流会给出警告。
-- 清单由 `node scripts/release.mjs manifest` 生成，更新说明取自 `CHANGELOG.md` 的对应条目，转成纯文本。
+- 清单由 `node scripts/release.mjs manifest` 生成。`notes` 取自 `CHANGELOG.md` 的对应条目，转成纯文本并去掉提交范围（`core`、`ui` 等），供 0.2 之前的版本显示；`argus.releaseNotes` 与 `argus.signature` 是上一节签名的更新内容原文及其签名，新版本的更新对话框只读这两项。
 
 应用依次尝试 GitHub 与加速代理（见[设置 → 更新](../guide/settings.md#更新)）。代理只在 GitHub 地址前加前缀，清单和安装包都不变。
 

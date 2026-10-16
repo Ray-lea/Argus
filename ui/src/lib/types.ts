@@ -483,11 +483,20 @@ export interface UpdateStatus {
     | "installing"
     | "error";
   version: string | null;
-  /** Plain text; unlike the installer, not signed. */
+  /**
+   * Changelog entries of `version` and the releases before it, newest first,
+   * signed like the installer (lib/release-notes.ts reads them).
+   */
+  releases: ReleaseEntry[] | null;
+  /**
+   * Plain text from a manifest without signed entries (releases before
+   * 0.2); not signed. Neither is set when signed entries failed the check.
+   */
   notes: string | null;
   /** Unix ms. */
   date: number | null;
   received: number;
+  /** The installer's size once known. */
   total: number | null;
   /** Why the last check failed, or why updates are disabled. */
   error: string | null;
@@ -495,6 +504,19 @@ export interface UpdateStatus {
   /** "GitHub" or the proxy's host. */
   source: string | null;
   portable: boolean;
+}
+
+/** One CHANGELOG.md entry: `YYYY-MM-DD` date and Markdown body. */
+export interface ReleaseEntry {
+  version: string;
+  date: string;
+  notes: string;
+}
+
+/** Why an update was not installed; `cancelled` is no failure. */
+export interface InstallError {
+  cancelled: boolean;
+  message: string;
 }
 
 /** What the recorded history takes on disk. */

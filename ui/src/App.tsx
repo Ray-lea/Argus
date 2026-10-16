@@ -9,10 +9,11 @@ import { ConfirmDialog, ContextMenu, Toasts } from "./components/Overlays";
 import Performance from "./components/Performance";
 import ProcessTable from "./components/ProcessTable";
 import ServicesPage from "./components/ServicesPage";
-import SettingsPage, { openSettings } from "./components/Settings";
+import SettingsPage from "./components/Settings";
 import StartupPage from "./components/StartupPage";
 import StatusBar from "./components/StatusBar";
 import Toolbar, { focusSearch } from "./components/Toolbar";
+import UpdateDialog from "./components/UpdateDialog";
 import Vitals from "./components/Vitals";
 import { t } from "./lib/i18n";
 import { api, inTauri, subscribe } from "./lib/ipc";
@@ -30,7 +31,7 @@ import {
   snapshot,
 } from "./lib/store";
 import type { AccentColors } from "./lib/types";
-import { afterUpdate, watchUpdates } from "./lib/updates";
+import { afterUpdate, openUpdateDialog, watchUpdates } from "./lib/updates";
 
 function applyAccent(accent: AccentColors | null) {
   if (!accent) return;
@@ -98,12 +99,9 @@ export default function App() {
       void import("@tauri-apps/api/event").then(async ({ listen }) => {
         const unlisten = await listen("argus-taskmgr-ready", () => void api.taskManagerReady());
         onCleanup(unlisten);
-        // The tray could not start an update: show what went wrong.
-        const unlistenSettings = await listen<Parameters<typeof openSettings>[0]>(
-          "argus-open-settings",
-          (e) => openSettings(e.payload),
-        );
-        onCleanup(unlistenSettings);
+        // The tray's update entry: what changed, then install it from the dialog.
+        const unlistenUpdate = await listen("argus-show-update", openUpdateDialog);
+        onCleanup(unlistenUpdate);
         await api.taskManagerReady();
       });
       void import("@tauri-apps/api/webview").then(async ({ getCurrentWebview }) => {
@@ -186,6 +184,7 @@ export default function App() {
       <ContextMenu />
       <FileLockDialog />
       <Onboarding />
+      <UpdateDialog />
       <ConfirmDialog />
       <Toasts />
       <DropOverlay visible={dragging()} />

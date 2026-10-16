@@ -70,7 +70,10 @@ version = "0.1.0"
 dependencies = [
  "argus-core",
  "argus-service",
+ "base64 0.22.1",
  "log",
+ "minisign-verify",
+ "semver",
  "serde",
  "serde_json",
  "tauri",

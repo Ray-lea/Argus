@@ -1385,13 +1385,19 @@
   width: 220px;
 }
 
-/* Release notes arrive as plain text with line breaks. */
-.update-notes {
-  max-height: 220px;
-  margin: 4px 0 0;
-  overflow: auto;
-  font: inherit;
-  white-space: pre-wrap;
+/* The update card: this version, then what the updater is doing; the
+   download's progress under them. What changed is in the update dialog. */
+.update-card-line {
+  display: block;
+}
+
+.update-card-line:empty {
+  display: none;
+}
+
+.update-card-progress {
+  max-width: 320px;
+  margin-top: 8px;
 }
 
 /* About: the app's mark, the one picture on the page. */

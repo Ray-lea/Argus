@@ -15,6 +15,11 @@ name = "argus_lib"
 argus-core = { path = "../crates/argus-core" }
 log = "0.4"
 argus-service = { path = "../crates/argus-service" }
+# The updater plugin's own: a kept installer and the signed release notes are
+# checked the way it checks a download.
+base64 = "0.22"
+minisign-verify = "0.3"
+semver = "1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tauri = { version = "2", features = ["tray-icon"] }

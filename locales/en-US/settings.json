@@ -239,7 +239,6 @@
   },
   "update": {
     "error": "Couldn't save the update settings: {error}",
-    "installError": "Couldn't install the update: {error}",
     "status": {
       "loading": "Reading update status…",
       "disabled": "Not checking for updates",
@@ -249,10 +248,11 @@
       "available": "New version available: {version}",
       "downloading": "Downloading {version}",
       "downloadingPercent": "Downloading {version} · {percent}%",
-      "ready": "{version} has been downloaded",
+      "ready": "Argus {version} is ready",
       "installing": "Starting the installer for {version}…",
       "error": "Update failed"
     },
+    "current": "Current version {version} · {channel}",
     "detail": {
       "ready": "Installing requires administrator permission. Argus exits during the installation; the installer only shows its progress and restarts Argus when it's done.",
       "portable": "The portable version doesn't update automatically. Download the new version from the release page.",
@@ -265,7 +265,7 @@
     "restart": "Restart and update",
     "download": "Download",
     "check": "Check for updates",
-    "notes": "What's new in {version}",
+    "viewNotes": "See what's new",
     "auto": {
       "title": "Check for updates automatically",
       "desc": "Checks about 1 minute after startup, then once a day. New versions download in the background and are installed only after confirmation."
@@ -301,6 +301,7 @@
     "admin": "Running as administrator.",
     "service": "Running as a standard user. The privileged service is connected and carries out actions that need administrator rights.",
     "standard": "Running as a standard user. Information and actions for some system processes are limited.",
+    "whatsNew": "What's new",
     "quit": "Exit Argus",
     "onboarding": {
       "title": "Welcome guide",

@@ -36,6 +36,9 @@ const SERVICE_ARG: &str = "--argus-service";
 const INSTALL_ARG: &str = "--argus-service-manage";
 /// Run by the NSIS uninstaller once the user agreed to remove the service too.
 const REMOVE_ARG: &str = "--argus-service-remove";
+/// Run by the NSIS installer after it replaced argus.exe: updates an
+/// installed service in the same elevation.
+const REFRESH_ARG: &str = "--argus-service-refresh";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PROTOCOL: u32 = 8;
 
@@ -54,9 +57,17 @@ pub fn run_mode() -> Option<i32> {
             Some(install::run_helper(&args[1], &args[2]).map_or_else(|e| e as i32, |_| 0))
         }
         Some(REMOVE_ARG) if args.len() == 1 => Some(remove_for_uninstall()),
-        Some(SERVICE_ARG | INSTALL_ARG | REMOVE_ARG | handles::WORKER_ARG | driver::MANAGE_ARG) => {
-            Some(87)
+        Some(REFRESH_ARG) if args.len() == 1 => {
+            Some(install::refresh().map_or_else(|e| e as i32, |_| 0))
         }
+        Some(
+            SERVICE_ARG
+            | INSTALL_ARG
+            | REMOVE_ARG
+            | REFRESH_ARG
+            | handles::WORKER_ARG
+            | driver::MANAGE_ARG,
+        ) => Some(87),
         _ => None,
     }
 }

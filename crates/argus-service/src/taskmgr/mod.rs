@@ -155,6 +155,16 @@ pub(crate) fn restore_for_maintenance(dir: &Path) -> Result<()> {
     }
 }
 
+/// Whether the replacement may be on (or half way): an update of the service
+/// would turn it off. Unsure counts as on.
+pub(crate) fn may_be_on(dir: &Path) -> bool {
+    let machine = registry::Machine { dir: dir.into() };
+    match (machine.load(), registry::observe(registry::KEY)) {
+        (Ok(None), Ok(live)) => live.debugger.as_ref() == Some(&replacement(dir)),
+        _ => true,
+    }
+}
+
 pub fn restore() -> Result<()> {
     if !argus_core::privilege::is_elevated() {
         return Err(tr!("taskManager.restoreNeedsAdmin"));

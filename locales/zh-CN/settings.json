@@ -230,7 +230,6 @@
   },
   "update": {
     "error": "无法保存更新设置：{error}",
-    "installError": "无法安装更新：{error}",
     "status": {
       "loading": "正在读取更新状态…",
       "disabled": "不检查更新",
@@ -240,10 +239,11 @@
       "available": "发现新版本 {version}",
       "downloading": "正在下载 {version}",
       "downloadingPercent": "正在下载 {version} · {percent}%",
-      "ready": "{version} 已下载完成",
+      "ready": "Argus {version} 已准备就绪",
       "installing": "正在启动 {version} 的安装程序…",
       "error": "更新失败"
     },
+    "current": "当前版本 {version} · {channel}",
     "detail": {
       "ready": "安装需要管理员授权。安装期间 Argus 将退出，安装程序仅显示进度，完成后自动重新启动 Argus。",
       "portable": "免安装版不支持自动更新，请从发布页下载新版本。",
@@ -256,7 +256,7 @@
     "restart": "重启并更新",
     "download": "前往下载",
     "check": "检查更新",
-    "notes": "{version} 的更新内容",
+    "viewNotes": "查看更新内容",
     "auto": {
       "title": "自动检查更新",
       "desc": "启动约 1 分钟后检查一次，此后每天检查一次。新版本在后台下载，安装需手动确认。"
@@ -292,6 +292,7 @@
     "admin": "正在以管理员身份运行。",
     "service": "正在以标准权限运行；特权服务已连接，可代为执行需要管理员权限的操作。",
     "standard": "正在以标准权限运行，部分系统进程的信息与操作受限。",
+    "whatsNew": "更新内容",
     "quit": "退出 Argus",
     "onboarding": {
       "title": "首次启动引导",
