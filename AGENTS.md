@@ -32,7 +32,8 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 ## 命令
 
-- `start.bat check`（即 `pnpm check`）：tsc、Biome、rustfmt、Clippy（`-D warnings`）。改完代码必须通过。
+- `start.bat check`（即 `pnpm check`）：tsc、Biome、文案检查、前端单元测试、rustfmt、Clippy（`-D warnings`）。改完代码必须通过。
+- 前端单元测试（`pnpm test:ui`）由 node 直接运行 `ui/tests/*.test.ts`（类型剥离，不经打包）：被测模块只能用可擦除的 TypeScript 语法，相对导入写 `.ts` 扩展名，JSON 用 `with { type: "json" }` 导入，不能依赖 Solid、`import.meta.glob` 或 `i18n.ts`。
 - `pnpm tauri build --no-bundle`（即 `start.bat build`）：发布构建，只改了本项目代码时约 3 分钟（全量约 6 分钟）。
 - 在部分代理沙箱里 cmd 不会在当前目录查找批处理文件，用绝对路径运行 `start.bat`。
 - 改链接器、工具链或 `RUSTFLAGS` 会让整个依赖缓存失效（约 5 分钟重建），不要随手试。

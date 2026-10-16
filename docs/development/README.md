@@ -23,7 +23,7 @@ rustup 在 Windows 上默认安装 MSVC 工具链。默认工具链为 GNU（`x8
 ```bash
 start.bat                  # 启动开发版：改前端即时热更新，改 Rust 自动重新编译并重启
 start.bat ui               # 只在浏览器里运行界面（模拟数据），适合调样式
-start.bat check            # TypeScript、Biome、文案检查、rustfmt、Clippy
+start.bat check            # TypeScript、Biome、文案检查、前端单元测试、rustfmt、Clippy
 start.bat build            # 发布构建，生成 target\release\argus.exe
 start.bat build installer  # 发布构建并打包 NSIS 安装程序（target\release\bundle\nsis）
 start.bat clean            # 清理增量编译缓存与发布产物，保留调试依赖缓存
@@ -74,7 +74,7 @@ node scripts/notices.mjs
 
 ## 代码规范
 
-- `start.bat check` 必须通过：TypeScript 类型检查、Biome（格式与 lint）、文案检查（`pnpm i18n`）、rustfmt、Clippy（`-D warnings`）。
+- `start.bat check` 必须通过：TypeScript 类型检查、Biome（格式与 lint）、文案检查（`pnpm i18n`）、前端单元测试（`pnpm test:ui`，用 node 直接运行 `ui/tests` 中的测试）、rustfmt、Clippy（`-D warnings`）。
 - 文本文件统一用 LF 换行（`.gitattributes` 强制），`.bat` 例外，用 CRLF。
 - 界面与原生层的文案写在 `locales/` 的目录中（源语言为简体中文，另有英文译文），代码中不直接写文案，见[多语言](i18n.md)；代码注释使用英文。
 - `ui/src/lib/types.ts` 与 `argus-core` 的 serde 类型一一对应，改一边要同步另一边。

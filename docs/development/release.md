@@ -8,7 +8,7 @@ GitHub Actions 只有两个工作流，都在 Windows 上用 stable Rust（MSVC�
 
 | 工作流 | 触发 | 内容 |
 |---|---|---|
-| `check.yml` | 拉取请求；在 Actions 页面手动运行；发布时调用 | 提交信息格式（仅拉取请求，含标题）、TypeScript、Biome、前端构建、rustfmt、Clippy、单元测试、第三方许可声明是否最新 |
+| `check.yml` | 拉取请求；在 Actions 页面手动运行；发布时调用 | 提交信息格式（仅拉取请求，含标题）、TypeScript、Biome、前端单元测试、前端构建、rustfmt、Clippy、单元测试、第三方许可声明是否最新 |
 | `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；静默安装、核对卸载项、再静默卸载；生成更新清单并发布 GitHub Release |
 
 推送到分支不会触发检查，也没有 nightly 或定时构建。推送前在本地运行 `start.bat check`。

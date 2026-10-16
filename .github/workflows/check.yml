@@ -74,6 +74,8 @@ jobs:
         run: pnpm lint
       - name: Translations
         run: pnpm i18n
+      - name: UI tests
+        run: pnpm test:ui
       # Before Clippy: Tauri's context macro reads the built frontend.
       - name: Frontend build
         run: pnpm build
