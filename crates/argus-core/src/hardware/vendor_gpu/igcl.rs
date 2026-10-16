@@ -120,6 +120,12 @@ unsafe fn enumerate(query: Enum, parent: Handle) -> Option<Vec<Handle>> {
 impl Igcl {
     pub fn load() -> Option<Self> {
         let library = Library::load(w!("ControlLib.dll"))?;
+        // ControlLib registers an ETW provider that neither ctlClose nor its
+        // unload unregisters. Once the DLL is gone, the next session to enable
+        // the provider calls into freed code from a thread-pool thread, which
+        // happened minutes to hours after a failed load on a machine with the
+        // DLL but no Intel GPU. Pinned, it stays for the process's lifetime.
+        library.pin();
         unsafe {
             let init: unsafe extern "C" fn(*mut Init, *mut Handle) -> i32 =
                 library.export(s!("ctlInit"))?;
@@ -251,5 +257,18 @@ mod tests {
         assert_eq!(size_of::<Energy>(), 24);
         assert_eq!(std::mem::offset_of!(Energy, energy), 8);
         assert_eq!(size_of::<Limits>(), 36);
+    }
+
+    #[test]
+    fn control_lib_stays_loaded() {
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        // Holds a reference while the SDK is used, so that dropping it shows
+        // whether anything else keeps the DLL; returns where it is missing.
+        let Some(probe) = Library::load(w!("ControlLib.dll")) else {
+            return;
+        };
+        drop(Igcl::load());
+        drop(probe);
+        assert!(unsafe { GetModuleHandleW(w!("ControlLib.dll")) }.is_ok());
     }
 }

@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use windows::Win32::Foundation::{FreeLibrary, HMODULE};
 use windows::Win32::System::LibraryLoader::{
+    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_PIN, GetModuleHandleExW,
     GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
 };
 use windows::core::{PCSTR, PCWSTR};
@@ -99,6 +100,19 @@ impl Library {
         unsafe { LoadLibraryExW(name, None, LOAD_LIBRARY_SEARCH_SYSTEM32) }
             .ok()
             .map(Self)
+    }
+
+    /// Keeps the DLL in the process until it exits, whatever `FreeLibrary`
+    /// does later, for libraries that leave callbacks registered behind them.
+    fn pin(&self) {
+        let mut module = HMODULE::default();
+        unsafe {
+            let _ = GetModuleHandleExW(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                PCWSTR(self.0.0 as *const u16),
+                &mut module,
+            );
+        }
     }
 
     unsafe fn export<F: Copy>(&self, name: PCSTR) -> Option<F> {

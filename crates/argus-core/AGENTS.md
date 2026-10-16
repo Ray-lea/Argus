@@ -7,6 +7,7 @@
 - 改了 serde 类型要同步 `ui/src/lib/types.ts`。
 - 采样在采样线程上进行，整份采样约 19–25 ms。新增采集项要量耗时；昂贵的改为按需查询（`details.rs` 的做法）或缓存后偶尔刷新（`services.rs`、`meta.rs` 的做法）。
 - 已验证无需管理员或驱动即可读取：PDH `\Processor Information(*)\Actual Frequency` 与 `% Processor Performance`、`\Thermal Zone Information(*)\High Precision Temperature`、`\Energy Meter(*)\Power`（RAPL，单位 mW）；电池类驱动 IOCTL（SetupDi 枚举设备）；以零访问权限句柄查询 `StorageDeviceTemperatureProperty`；D3DKMT 的节点与适配器性能数据（NVIDIA 不提供电压和功耗）；NVML 的板卡功耗与功耗上限（`System32\nvml.dll`，RTX 4060 笔记本 GPU 实测）；PDH `\GPU Engine(*)\Utilization Percentage` 与 `\GPU Process Memory(*)`（每进程 GPU，所有进程都可读）。
+- 第三方 SDK 的 DLL（IGCL、ADL、NVML）卸载前要确认它没有留下回调：`ControlLib.dll` 注册的 ETW 提供程序不随 `ctlClose` 与卸载注销，曾让没有 Intel 显卡的机器在加载失败后几分钟到几小时内崩溃（栈上只有线程池帧和 `ControlLib.dll_unloaded`），现在用 `Library::pin` 固定。排查这类崩溃看“应用程序”事件日志的 Application Error 1000 和 `%LOCALAPPDATA%CrashDumps` 里的转储；微信输入法等注入的 CrashRpt 会先截获异常，弹出 “Error launching CrashSender.exe”，这类弹窗不是 Argus 自己的。
 - 每核温度和 CPU 电压只能由内核驱动读 MSR，属于 M5，不要尝试别的途径。
 - 每进程网络（`net_process.rs`）用实时 ETW 会话，启动需要相应权限；标准权限下本地启动失败时，宿主通过特权服务异步读取累计计数，两条来源都不可用才隐藏网络列。GUI 的 `Argus Network` 与服务的 `Argus Service Network` 会话分别按构建区分，不能互相停止。会话会比进程活得久：启动时清理同名残留，GUI 在 `RunEvent::Exit` 中停止本地会话，服务在租期结束或退出时析构 tracker。不要为了测试去提权；请用户以管理员身份运行来验证。
 - `windows` crate 的特性统一列在根 `Cargo.toml` 的 `[workspace.dependencies]`，新特性加在那里，不要加在本 crate 里；升级 Tauri 后用 `cargo tree -p argus -i windows -e features` 核对，否则会多编一份 `windows`。
