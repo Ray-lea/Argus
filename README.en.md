@@ -131,7 +131,7 @@ Argus is built on the following open-source projects, with thanks:
 
 | Project | Used for |
 |---|---|
-| [Tauri](https://tauri.app/) and its plugins | App host, tray, global shortcut, start at sign-in and in-app updates |
+| [Tauri](https://tauri.app/) and its plugins | App host, tray, start at sign-in and in-app updates |
 | [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/), [webview2-com](https://github.com/wravery/webview2-rs) | Rendering the interface |
 | [windows-rs](https://github.com/microsoft/windows-rs) | Rust bindings for Windows' native interfaces |
 | [SolidJS](https://www.solidjs.com/), [TanStack Virtual](https://tanstack.com/virtual) | UI framework and virtual scrolling for long lists |

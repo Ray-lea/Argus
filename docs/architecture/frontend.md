@@ -12,7 +12,8 @@
 | `src/lib/store.ts` | 应用状态：实时快照、滚动历史（每个进程一份，按应用分组另存合计）、视图偏好 |
 | `src/lib/ipc.ts` | 与宿主通信 |
 | `src/lib/i18n.ts` | 文案查找（`t`、`rich`）、当前语言信号、按语言缓存的 `Intl` 对象；文案在仓库根目录的 `locales/`，见[多语言](../development/i18n.md) |
-| `src/lib/language.ts`、`src/lib/keys.ts` | 切换语言（保存到原生设置后应用宿主解析的结果）；快捷键的显示名称 |
+| `src/lib/language.ts`、`src/lib/keys.ts` | 切换语言（保存到原生设置后应用宿主解析的结果）；快捷键的显示名称与错误说明 |
+| `src/lib/hotkey.ts`、`src/lib/hotkey-table.json` | 全局快捷键的规则与录制：键表和不允许的组合（与原生侧共用）、解析与判定（允许、需确认、拒绝）、按键事件到组合的纯函数 `record`；不依赖界面，由 `ui/tests` 中的测试直接运行，见[全局快捷键](../design/hotkey.md) |
 | `src/lib/rows.ts` | 把进程快照整理成三种视图要渲染的行 |
 | `src/lib/privilege.ts` | 状态栏权限标记的状态：管理员、特权服务已连接或标准权限；窗口显示时每 30 秒检查一次服务 |
 | `src/lib/kernel-setup.ts` | 设置页与首次启动引导共用的内核传感器操作：防止重复请求，跨页面保留准备状态和错误，操作完成后刷新设置；仅在显式开启时调用宿主准备驱动 |
@@ -23,6 +24,7 @@
 | `src/lib/prefs.ts` | 存在 localStorage 的偏好（按 WebView 配置隔离，开发版与正式版各一份） |
 | `src/lib/types.ts` | 与 `argus-core` 的 serde 类型一一对应，需要保持同步 |
 | `src/styles.css`、`pages.css`、`tables.css` | 样式与设计令牌 |
+| `tests/` | 单元测试：`pnpm test:ui` 用 node 直接运行其中的 `*.test.ts`，只能导入不依赖 Solid 与 `i18n.ts` 的模块 |
 
 ## 历史曲线
 

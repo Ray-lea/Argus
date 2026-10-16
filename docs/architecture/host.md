@@ -7,9 +7,10 @@
 | 模块 | 职责 |
 |---|---|
 | `instance.rs` | 在采样和 WebView 初始化前取得具备所有权的互斥锁；辅助窗口转交激活参数。并发启动等待窗口就绪，异常退出后接管废弃锁；窗口尚未就绪或转交失败时不启动第二个主实例 |
-| `lib.rs` | 启动流程：注册插件（单实例、日志、全局快捷键、开机启动、对话框、更新）、托盘、采样线程与主窗口；历史记录写在 `%LOCALAPPDATA%\<标识>\history`，启动时删掉过期的天（关闭记录时也会过期）；处理关闭窗口（留在托盘或退出）；退出时停止每进程网络的 ETW 会话（会话名开发版与正式版不同） |
+| `lib.rs` | 启动流程：注册插件（单实例、日志、开机启动、对话框、更新）、托盘、采样线程与主窗口；历史记录写在 `%LOCALAPPDATA%\<标识>\history`，启动时删掉过期的天（关闭记录时也会过期）；处理关闭窗口（留在托盘或退出）；退出时停止每进程网络的 ETW 会话（会话名开发版与正式版不同） |
 | `sampler.rs` | 采样线程：采集器在这个线程里创建（初始化与 WebView 启动并行）；窗口可见时按设定节拍采样，隐藏、最小化或暂停刷新时每 5 秒一次（暂停时不推送给界面，操作后的立即刷新除外）；合入已完成的服务网络计数，把进程身份交给后台规则线程，再写入历史（关闭记录时停掉录制；清除历史也由这个线程执行）；经 Tauri Channel 推送快照，全程不等待服务 RPC |
-| `shell.rs` | 常驻：窗口显隐（隐藏时通知 WebView2 停止渲染、释放内存）、托盘、全局快捷键；切换语言后重建托盘菜单、窗口标题和快捷键错误信息；窗口背景（Mica 延伸到客户区）；调整大小时的斜线防护，见[窗口外观](../design/window.md) |
+| `shell.rs` | 常驻：窗口显隐（隐藏时通知 WebView2 停止渲染、释放内存）、托盘；切换语言后重建托盘菜单和窗口标题；窗口背景（Mica 延伸到客户区）；调整大小时的斜线防护，见[窗口外观](../design/window.md) |
+| `hotkey.rs` | 显示或隐藏窗口的全局快捷键：在主窗口上调用 `RegisterHotKey`（子类化接收 `WM_HOTKEY`，只在主线程注册）；按与设置页共用的 `ui/src/lib/hotkey-table.json` 解析与校验组合，已保存的旧值照常注册；停用时只注销、保留组合（旧版本以空字符串表示停用，读取时迁移为默认组合加停用）；更改时先注册新组合、保存成功后再注销旧组合；录制期间暂停，窗口隐藏或 60 秒后自动恢复，并以 `argus-hotkey-changed` 事件通知页面；启动时被占用的快捷键在窗口显示时重试。错误以结构化形式交给页面翻译，日志只记类别。见[全局快捷键](../design/hotkey.md) |
 | `caption.rs` | 自绘标题栏的原生部分：窗口不带系统标题栏（`decorations: false`，保留阴影、圆角、贴靠和边缘缩放），去掉 DWM 边框（含强调色边框）；在页面的最大化按钮上放一个透明子窗口，命中测试返回 `HTMAXBUTTON`，让 Windows 11 显示贴靠布局，单击时最大化或还原，悬停与按下以 `argus-caption-maximize` 事件交给页面绘制。见[窗口外观](../design/window.md#标题栏) |
 | `leftovers.rs` | 启动时、创建窗口之前，结束上一个 Argus 遗留的 WebView2 进程：Argus 崩溃、被结束或开发运行被停止后，WebView2 进程可能继续存在几分钟到几小时并占用数据文件夹，这时新的 WebView 无法创建（`0x800700AA`，“请求的资源正在使用中”），Argus 不显示窗口就退出。只处理本构建数据文件夹的浏览器进程（父进程已不在）及其子进程：先提高到高优先级再结束，最多等待 3 秒（繁忙的电脑上，低优先级的残留进程被结束后约 30 秒才退出完，提高优先级后约 0.1 秒）；日志只记录结束的个数 |
 | `diagnostics.rs` | 日志中的诊断信息：启动时的系统与 WebView2 版本、令牌类型和界面语言；首次采样后的传感器可用性；特权服务与任务管理器替换的状态；页面异常仅保留固定事件和异常类别，每次运行最多 20 条，不传输错误原文或堆栈 |
@@ -23,7 +24,7 @@
 |---|---|
 | 应用与快照 | `app_info`（含解析后的界面语言）、`subscribe`、`set_interval`、`set_paused`、`refresh` |
 | 进程 | `process_details`、`kill_process`、`kill_process_tree`、`set_priority`、`set_efficiency_mode`、`reveal_in_explorer` |
-| 设置与窗口 | `get_settings`、`set_language`、`set_theme`、`complete_onboarding`、`set_close_to_tray`、`set_hotkey`、`set_autostart`、`set_kernel_sensors`、`open_sensor_driver_page`（固定官方地址）、`open_log_dir`、`quit`、`set_caption_button`（页面最大化按钮的位置）、`log_ui_error` |
+| 设置与窗口 | `get_settings`、`set_language`、`set_theme`、`complete_onboarding`、`set_close_to_tray`、`set_hotkey`（同时开启快捷键）、`set_hotkey_enabled`（开关，保留组合）、`suspend_hotkey` / `resume_hotkey`（录制快捷键期间暂停，结束或重试时重新注册）、`set_autostart`、`set_kernel_sensors`、`open_sensor_driver_page`（固定官方地址）、`open_log_dir`、`quit`、`set_caption_button`（页面最大化按钮的位置）、`log_ui_error` |
 | 特权服务 | `privileged_service_status`、`manage_privileged_service`（`install` / `start` / `update` / `uninstall`，显式操作才请求管理员授权） |
 | 更新 | `update_status`、`check_update`（在后台检查并下载，立即返回）、`install_update`（启动安装程序后 Argus 退出）、`set_update_settings`、`open_release_page`（免安装版） |
 | 规则 | `set_rules`、`rule_stats` |

@@ -2,6 +2,7 @@
 
 - [曲线动画](charts.md)
 - [窗口外观](window.md)
+- [全局快捷键](hotkey.md)
 
 ## 原则
 

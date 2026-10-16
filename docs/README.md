@@ -5,7 +5,7 @@ docs/
 ├── guide/            使用指南：界面与操作、常驻与快捷键、设置、硬件数据
 ├── development/      开发指南：环境与命令、构建与缓存、性能基线与测量、提交与发布、多语言
 ├── architecture/     架构：分层与数据流、采集层、Tauri 宿主、前端
-├── design/           设计：设计原则、曲线动画、窗口外观
+├── design/           设计：设计原则、曲线动画、窗口外观、全局快捷键
 ├── roadmap.md        路线图
 └── known-issues.md   已知问题
 ```
@@ -39,6 +39,7 @@ docs/
 - [设计原则](design/README.md)
 - [曲线动画](design/charts.md)：时间轴、四档模式与开销、实现要点
 - [窗口外观](design/window.md)：Mica 背景、调整大小时的斜线
+- [全局快捷键](design/hotkey.md)：RegisterHotKey 的实测行为、录制与组合规则
 
 ## 其他
 

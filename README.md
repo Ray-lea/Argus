@@ -129,7 +129,7 @@ Argus 构建于以下开源项目之上，在此致谢：
 
 | 项目 | 用途 |
 |---|---|
-| [Tauri](https://tauri.app/) 及其插件 | 应用宿主、托盘、全局快捷键、开机启动与应用内更新 |
+| [Tauri](https://tauri.app/) 及其插件 | 应用宿主、托盘、开机启动与应用内更新 |
 | [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)、[webview2-com](https://github.com/wravery/webview2-rs) | 界面渲染 |
 | [windows-rs](https://github.com/microsoft/windows-rs) | Windows 原生接口的 Rust 绑定 |
 | [SolidJS](https://www.solidjs.com/)、[TanStack Virtual](https://tanstack.com/virtual) | 界面框架与长列表虚拟滚动 |
