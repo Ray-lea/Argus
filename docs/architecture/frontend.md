@@ -16,7 +16,8 @@
 | `src/lib/rows.ts` | 把进程快照整理成三种视图要渲染的行 |
 | `src/lib/privilege.ts` | 状态栏权限标记的状态：管理员、特权服务已连接或标准权限；窗口显示时每 30 秒检查一次服务 |
 | `src/lib/kernel-setup.ts` | 设置页与首次启动引导共用的内核传感器操作：防止重复请求，跨页面保留准备状态和错误，操作完成后刷新设置；仅在显式开启时调用宿主准备驱动 |
-| `src/components/CpuTelemetry.tsx`、`src/lib/cpu-sensors.ts` | CPU 扩展读数按类别显示，元数据定义单位与精度；每核表格以物理核心编号保持行节点稳定，只显示有读数的列，窄窗口在表格内部横向滚动 |
+| `src/components/CpuTelemetry.tsx`、`src/lib/cpu-sensors.ts` | CPU 扩展读数按类别分卡片显示，并提供卡片收起时的摘要；元数据定义单位与精度；每核表格以物理核心编号保持行节点稳定，只显示有读数的列，窄窗口在表格内部横向滚动 |
+| `src/components/Expander.tsx` | 性能页的展开卡片：标题行显示实时摘要，内容只在展开时渲染，展开状态存在 localStorage |
 | `src/lib/motion.ts` | 动画偏好（界面动画、曲线动画四档）、屏幕刷新率测量、Fluent 缓动曲线与进出场辅助 |
 | `src/lib/actions.ts` | 面向用户的进程操作：确认、执行、反馈 |
 | `src/lib/prefs.ts` | 存在 localStorage 的偏好（按 WebView 配置隔离，开发版与正式版各一份） |
