@@ -186,7 +186,6 @@ button {
   display: grid;
   grid-template: auto minmax(0, 1fr) auto / var(--nav-width) minmax(0, 1fr);
   height: 100%;
-  padding-top: 4px;
 }
 
 .app.nav-compact {
@@ -390,7 +389,8 @@ button {
    them clear of the caption buttons. The sides share what the search box
    leaves, so it stays centred until one of them needs more than half. The
    box widens to 360 px before the sides grow, and gives way first when room
-   runs short, down to its placeholder's width. */
+   runs short, down to its placeholder's width. It reaches the top edge, so a
+   maximized window moves from the very top of the screen. */
 .toolbar {
   --caption-width: 138px;
   display: grid;
@@ -398,7 +398,7 @@ button {
   grid-template-areas: "start search end";
   align-items: center;
   column-gap: 8px;
-  padding: 10px 12px;
+  padding: 14px 12px 10px;
 }
 
 .toolbar-start {
@@ -437,8 +437,7 @@ button {
 }
 
 /* Caption buttons in the window's top-right corner, as tall as the toolbar's
-   first row (with the page's top padding). Above dialog scrims, like a system
-   title bar. */
+   first row with its padding. Above dialog scrims, like a system title bar. */
 .caption {
   position: fixed;
   top: 0;
