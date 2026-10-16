@@ -1,7 +1,7 @@
-// Page navigation: a pane on the left with settings at the bottom, as in
-// Windows 11's Task Manager, or tabs in a row under the title row. The pane
-// shows labels or only icons (titles still name each page). Both choices are
-// kept across restarts.
+// Page navigation: tabs in a row under the title row (the default), or a pane
+// on the left with settings at the bottom, as in Windows 11's Task Manager. The
+// pane shows only icons until expanded (titles still name each page). Both
+// choices are kept across restarts.
 
 import { For, type JSX, Show } from "solid-js";
 import { t } from "../lib/i18n";
@@ -33,10 +33,10 @@ export const PAGES: { page: Page; key: string; icon: (p: { size?: number }) => J
 ];
 
 export type NavPosition = "side" | "top";
-export const [navPosition, setNavPosition] = persisted<NavPosition>("navPosition", "side");
+export const [navPosition, setNavPosition] = persisted<NavPosition>("navPosition", "top");
 
 /** Whether the pane shows the pages' names next to their icons. */
-export const [navExpanded, setNavExpanded] = persisted("navExpanded", true);
+export const [navExpanded, setNavExpanded] = persisted("navExpanded", false);
 
 const POSITIONS = [
   { position: "side", icon: NavSideIcon },

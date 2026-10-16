@@ -31,7 +31,7 @@
   },
   "navigation": {
     "title": "Navigation position",
-    "desc": "The side pane can be collapsed to icons with the ☰ button in its top-left corner; top navigation shows the pages as tabs below the toolbar.",
+    "desc": "The side pane shows only icons by default; the ☰ button in its top-left corner expands it to show page names. Top navigation shows the pages as tabs below the toolbar.",
     "side": "Side",
     "top": "Top"
   },

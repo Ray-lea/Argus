@@ -14,7 +14,7 @@
     "title": "Display and refresh",
     "body": "Choose the navigation position, animations and refresh rate.",
     "nav": "Navigation position",
-    "navHint": "The side pane can be collapsed to icons.",
+    "navHint": "The side pane shows only icons by default and expands to show page names.",
     "motion": "Interface animations",
     "motionHint": "Transitions when switching pages and opening menus and dialogs.",
     "chart": "Chart animations",
