@@ -49,10 +49,30 @@
   },
   "hotkey": {
     "title": "显示或隐藏 Argus",
-    "desc": "在任意程序中均可使用。录制时按 Esc 取消，按 Backspace 停用快捷键。",
+    "desc": "在大多数程序中可用。单击“更改”后按下组合键再松开：组合通常包含 Ctrl、Alt 或 Win 之一和一个普通键，修饰键不区分左右。录制时按 Esc 取消，按 Backspace 停用。",
     "recording": "按下新的组合键…",
     "unset": "未设置",
     "change": "更改",
+    "confirmUse": "仍然使用",
+    "rerecord": "重新录制",
+    "unknownKey": "此键",
+    "side": {
+      "left": "左 {key}",
+      "right": "右 {key}"
+    },
+    "hint": {
+      "order": "请先按住修饰键（Ctrl、Alt、Shift 或 Win），再按普通键。",
+      "altGraph": "当前键盘布局用这个组合输入字符（AltGr），它不能用作快捷键，请换一个键或修饰键。",
+      "lockKey": "CapsLock、NumLock 和 ScrollLock 不参与组合，保存时会被忽略。",
+      "maybeTaken": "按下组合键后若没有反应，该组合可能已被 Windows 或其他程序占用。"
+    },
+    "warning": {
+      "common": "{shortcut} 在许多程序中有各自的用途，设为全局快捷键后，这些程序中的该组合将失效。",
+      "inApp": "{shortcut} 是 Argus 中切换页面或搜索的快捷键，设为全局快捷键后将不再可用。",
+      "imeSwitch": "Ctrl+空格 通常用于切换输入法，设为全局快捷键后将无法再用它切换。",
+      "numpad": "小键盘的数字键和小数点键仅在 NumLock 开启时可触发该快捷键。",
+      "printScreen": "{shortcut} 可能与系统截图或截图软件冲突。"
+    },
     "error": {
       "invalid": "{shortcut} 不能用作快捷键：{reason}",
       "taken": "{shortcut} 已被 Windows 或其他程序（包括另一个正在运行的 Argus）占用，请选择其他组合键。",
@@ -62,7 +82,7 @@
     "issue": {
       "invalid": "无法识别该组合键。",
       "noKey": "仅由修饰键组成的组合不能用作快捷键，还需按一个普通键；Windows 的全局快捷键也不区分左右 Ctrl、Alt、Shift 和 Win。",
-      "unsupported": "{key} 键不能用于全局快捷键。",
+      "unsupported": "{key} 不能用于全局快捷键。",
       "lockKey": "CapsLock、NumLock 和 ScrollLock 不能用于组合键。",
       "needsModifier": "组合须包含 Ctrl、Alt 或 Win（F13–F24 及 Shift+F1–F11 除外）；其他仅含 Shift 的组合会影响所有程序中的正常输入。",
       "reserved": "{shortcut} 用于 Windows 或大多数程序的常用操作。",

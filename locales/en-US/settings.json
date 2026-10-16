@@ -49,10 +49,30 @@
   },
   "hotkey": {
     "title": "Show or hide Argus",
-    "desc": "Works in any program. While recording, press Esc to cancel or Backspace to turn off the shortcut.",
+    "desc": "Works in most programs. Select Change, then press and release the combination: it usually needs Ctrl, Alt or Win plus one ordinary key, and either side of a modifier works. While recording, press Esc to cancel or Backspace to turn off the shortcut.",
     "recording": "Press a new key combination…",
     "unset": "Not set",
     "change": "Change",
+    "confirmUse": "Use anyway",
+    "rerecord": "Record again",
+    "unknownKey": "This key",
+    "side": {
+      "left": "Left {key}",
+      "right": "Right {key}"
+    },
+    "hint": {
+      "order": "Hold the modifiers (Ctrl, Alt, Shift or Win) first, then press the other key.",
+      "altGraph": "On this keyboard layout, this combination types a character (AltGr), so it can't be used as a shortcut. Choose another key or modifier.",
+      "lockKey": "Caps Lock, Num Lock and Scroll Lock aren't part of a combination and are ignored.",
+      "maybeTaken": "If nothing happens after pressing a combination, Windows or another app may be using it."
+    },
+    "warning": {
+      "common": "{shortcut} has its own use in many apps. As a global shortcut, it will stop working there.",
+      "inApp": "{shortcut} switches pages or searches in Argus. As a global shortcut, it will no longer do that.",
+      "imeSwitch": "Ctrl+Space usually switches the input method. As a global shortcut, it will no longer do that.",
+      "numpad": "Keypad digits and the decimal point trigger the shortcut only while Num Lock is on.",
+      "printScreen": "{shortcut} may conflict with the Windows screenshot or a screenshot app."
+    },
     "error": {
       "invalid": "{shortcut} can't be used as a shortcut: {reason}",
       "taken": "{shortcut} is in use by Windows or another app (possibly another running Argus). Choose a different combination.",
@@ -62,7 +82,7 @@
     "issue": {
       "invalid": "The combination isn't recognized.",
       "noKey": "Modifier keys alone can't be a shortcut; add an ordinary key. Windows shortcuts also don't tell left and right Ctrl, Alt, Shift or Win apart.",
-      "unsupported": "The {key} key can't be used in a global shortcut.",
+      "unsupported": "{key} can't be used in a global shortcut.",
       "lockKey": "Caps Lock, Num Lock and Scroll Lock can't be part of a combination.",
       "needsModifier": "A combination needs Ctrl, Alt or Win (except F13–F24 and Shift+F1–F11). Other Shift-only combinations would interfere with typing in every app.",
       "reserved": "{shortcut} is used by Windows or by most apps.",

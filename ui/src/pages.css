@@ -1226,6 +1226,16 @@
   font-size: 12px;
 }
 
+.setting-note {
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.setting-note:empty {
+  display: none;
+}
+
 .setting-control {
   display: flex;
   align-items: center;
@@ -1385,7 +1395,8 @@
   font-size: 12px;
 }
 
-.keycaps .pending {
+.keycaps .pending,
+.keycaps kbd[data-ignored] {
   border-style: dashed;
   color: var(--ink-2);
 }

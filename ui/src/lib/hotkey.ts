@@ -175,3 +175,238 @@ export function keyName(key: KeySpec): string {
   if (key.group === "digit") return key.code.slice(5);
   return key.code;
 }
+
+// ---- Recording -----------------------------------------------------------------------
+//
+// The settings page records a combination as RegisterHotKey will match it:
+// the modifiers held when the main key goes down, committed when that key
+// comes up. Committing on the way down would register the hotkey while the
+// key is still held, and its next auto-repeat would fire it (measured, even
+// with MOD_NOREPEAT): the window would hide at once.
+
+/** One key event, as the page saw it. */
+export interface KeyInput {
+  type: "down" | "up";
+  /** Physical position, e.g. `ControlRight`. */
+  code: string;
+  key: string;
+  /** Windows' virtual-key code for most keys; 229 while an IME handles the key. */
+  keyCode: number;
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  meta: boolean;
+  /** The key types a character with AltGr (or Ctrl+Alt, its equivalent). */
+  altGraph: boolean;
+  repeat: boolean;
+}
+
+/** A key of the chord being recorded; `key` is the table code of a main key. */
+export interface ChordKey {
+  code: string;
+  kind: "modifier" | "altGraph" | "lock" | "key";
+  key?: string;
+}
+
+/** Why nothing was committed, or what the keys did not do. */
+export type RecordHint =
+  | { kind: "noKey" | "order" | "altGraph" | "lockKey" }
+  | { kind: "unsupported"; key: string };
+
+export interface Recording {
+  /** Keys down now. */
+  held: string[];
+  /** Every key pressed since the keys were last all up, in order. */
+  chord: ChordKey[];
+  /** The main key and the combination it makes, until it comes up. */
+  pending: { code: string; hotkey: string; mods: Mods } | null;
+  /** The main key went down before a modifier. */
+  order: boolean;
+  hint: RecordHint | null;
+}
+
+export type RecordEffect =
+  | { type: "none" }
+  | { type: "cancel" }
+  | { type: "disable" }
+  | { type: "commit"; hotkey: string };
+
+export const startRecording = (): Recording => ({
+  held: [],
+  chord: [],
+  pending: null,
+  order: false,
+  hint: null,
+});
+
+const MODIFIER_CODES: Record<string, keyof Mods> = {
+  ControlLeft: "ctrl",
+  ControlRight: "ctrl",
+  AltLeft: "alt",
+  AltRight: "alt",
+  ShiftLeft: "shift",
+  ShiftRight: "shift",
+  MetaLeft: "win",
+  MetaRight: "win",
+  OSLeft: "win",
+  OSRight: "win",
+};
+const MODIFIER_KEYS: Record<string, keyof Mods> = {
+  Control: "ctrl",
+  Alt: "alt",
+  Shift: "shift",
+  Meta: "win",
+  OS: "win",
+};
+const LOCK_CODES = new Set(["CapsLock", "NumLock", "ScrollLock"]);
+
+/** Which modifier a key is, if it is one; by position, or by name when there is none. */
+export const modifierOf = (input: Pick<KeyInput, "code" | "key">): keyof Mods | undefined =>
+  MODIFIER_CODES[input.code] ?? (input.code ? undefined : MODIFIER_KEYS[input.key]);
+
+/** Which modifier a key listed in `Recording.held` (a code, or a name without one) is. */
+export const heldModifier = (id: string): keyof Mods | undefined => MODIFIER_CODES[id] ?? MODIFIER_KEYS[id];
+
+const modsOf = (input: KeyInput): Mods => ({
+  ctrl: input.ctrl,
+  alt: input.alt,
+  shift: input.shift,
+  win: input.meta,
+});
+
+/**
+ * The table key for a main key. Windows reports the virtual-key code, which is
+ * what RegisterHotKey takes, so the layout's own letters are recorded (Z on a
+ * German keyboard is Z, wherever it sits). Only an IME's 229 and a missing
+ * code fall back to the physical key: any other code the table lacks is a key
+ * of its own (VK_OEM_8, or Pause with Ctrl, which arrives as VK_CANCEL), and
+ * the physical key's name would register a different one.
+ */
+export function tokenFor(input: Pick<KeyInput, "code" | "keyCode">): KeySpec | undefined {
+  if (input.keyCode !== 229 && input.keyCode !== 0) {
+    const byVk = keyByVk(input.keyCode);
+    return byVk?.group === "lock" ? undefined : byVk;
+  }
+  return keyByCode(input.code === "NumpadEnter" ? "Enter" : input.code);
+}
+
+const noMods = (input: KeyInput) => !input.ctrl && !input.alt && !input.shift && !input.meta;
+
+/** Advances a recording by one key event. */
+export function record(state: Recording, input: KeyInput): { state: Recording; effect: RecordEffect } {
+  const none = { type: "none" } as const;
+  if (input.repeat) return { state, effect: none };
+  const id = input.code || input.key;
+  const modifier = modifierOf(input);
+  const mods = modsOf(input);
+  let { chord, pending, order, hint } = state;
+  // A keyup lost to a focus change leaves a modifier listed; the flags tell
+  // (AltGr aside: Chromium clears Ctrl and Alt while it is down).
+  const altGraph = (code: string) => chord.some((k) => k.code === code && k.kind === "altGraph");
+  let held = state.held.filter((code) => {
+    const m = heldModifier(code);
+    return !m || mods[m] || code === id || altGraph(code);
+  });
+
+  if (input.type === "down") {
+    if (held.length === 0) {
+      chord = [];
+      order = false;
+      hint = null;
+    }
+    if (!held.includes(id)) held = [...held, id];
+    const add = (key: ChordKey) => {
+      if (!chord.some((k) => k.code === key.code)) chord = [...chord, key];
+    };
+    // Right Alt on layouts that type characters with it (AltGr): Chromium
+    // clears Ctrl and Alt for the keys pressed with it.
+    if (input.key === "AltGraph") {
+      add({ code: id, kind: "altGraph" });
+      return { state: { held, chord, pending: null, order, hint: { kind: "altGraph" } }, effect: none };
+    }
+    if (modifier) {
+      add({ code: id, kind: "modifier" });
+      // A modifier the main key went down without: pressed too late.
+      if (pending && !pending.mods[modifier]) order = true;
+      return { state: { held, chord, pending, order, hint }, effect: none };
+    }
+    if (LOCK_CODES.has(input.code) || LOCK_CODES.has(input.key)) {
+      add({ code: id, kind: "lock" });
+      return { state: { held, chord, pending, order, hint: { kind: "lockKey" } }, effect: none };
+    }
+    // Tab and Shift+Tab move the focus on, out of the recording.
+    if (input.key === "Tab" && !input.ctrl && !input.alt && !input.meta) {
+      return { state: startRecording(), effect: { type: "cancel" } };
+    }
+    if (held.length === 1 && noMods(input)) {
+      if (input.key === "Escape") return { state: startRecording(), effect: { type: "cancel" } };
+      if (input.key === "Backspace") return { state: startRecording(), effect: { type: "disable" } };
+    }
+    if (input.altGraph || chord.some((k) => k.kind === "altGraph")) {
+      add({ code: id, kind: "key" });
+      return { state: { held, chord, pending: null, order, hint: { kind: "altGraph" } }, effect: none };
+    }
+    const key = tokenFor(input);
+    if (!key) {
+      add({ code: id, kind: "key" });
+      const physical = keyByCode(input.code);
+      const name =
+        input.key.length === 1
+          ? input.key.toUpperCase()
+          : physical
+            ? keyName(physical)
+            : input.key || input.code;
+      return {
+        state: { held, chord, pending: null, order, hint: { kind: "unsupported", key: name } },
+        effect: none,
+      };
+    }
+    add({ code: id, kind: "key", key: key.code });
+    return {
+      state: {
+        held,
+        chord,
+        pending: { code: id, hotkey: canonical({ ...mods, key }), mods },
+        order: false,
+        hint: null,
+      },
+      effect: none,
+    };
+  }
+
+  held = held.filter((code) => code !== id);
+  if (pending && pending.code === id) {
+    const next = { held, chord, pending: null, order, hint };
+    if (order) return { state: { ...next, hint: { kind: "order" } }, effect: none };
+    return { state: next, effect: { type: "commit", hotkey: pending.hotkey } };
+  }
+  // A main key whose keydown never arrived: PrintScreen has none on Windows,
+  // and a combination another program registered loses it. Taken as the
+  // main key while Ctrl, Alt or Win is still held, so that registering it
+  // can say whether it is free.
+  if (
+    !modifier &&
+    !pending &&
+    !chord.some((k) => k.code === id) &&
+    (input.ctrl || input.alt || input.meta) &&
+    chord.some((k) => k.kind === "modifier")
+  ) {
+    const key = tokenFor(input);
+    if (key && !LOCK_CODES.has(key.code)) {
+      return {
+        state: {
+          held,
+          chord: [...chord, { code: id, kind: "key", key: key.code }],
+          pending: null,
+          order,
+          hint,
+        },
+        effect: { type: "commit", hotkey: canonical({ ...mods, key }) },
+      };
+    }
+  }
+  // Everything up, and no main key: modifiers alone (CapsLock aside).
+  const onlyModifiers = chord.some((k) => k.kind === "modifier") && chord.every((k) => k.kind !== "key");
+  if (held.length === 0 && onlyModifiers && (!hint || hint.kind === "lockKey")) hint = { kind: "noKey" };
+  return { state: { held, chord, pending, order, hint }, effect: none };
+}

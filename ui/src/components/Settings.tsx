@@ -17,10 +17,23 @@ import {
 import { Portal } from "solid-js/web";
 import { copyText, PRIORITY_LABEL } from "../lib/actions";
 import { fmtCache, netUnit, setNetUnit } from "../lib/format";
+import {
+  type ChordKey,
+  type HotkeyIssue,
+  type HotkeyWarning,
+  heldModifier,
+  judge,
+  keyByCode,
+  keyName,
+  type RecordHint,
+  type Recording,
+  record,
+  startRecording,
+} from "../lib/hotkey";
 import { type Language, LOCALES, localized, type MessageKey, t } from "../lib/i18n";
-import { api } from "../lib/ipc";
+import { api, inTauri } from "../lib/ipc";
 import { changeKernelSensors, kernelBusy, kernelError, kernelRevision } from "../lib/kernel-setup";
-import { hotkeyErrorText, shortcutKeys } from "../lib/keys";
+import { hotkeyErrorText, hotkeyIssueText, keyLabel, shortcutKeys, shortcutText } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
 import {
   balancedFrameMs,
@@ -45,6 +58,7 @@ import {
 } from "../lib/store";
 import type {
   HistoryUsage,
+  HotkeyError,
   PriorityClass,
   PrivilegedServiceAction,
   PrivilegedServiceStatus,
@@ -113,18 +127,6 @@ export function openSettings(section: SectionId) {
 /** The feedback group (Settings > About; the invitation link is in commands.rs). */
 const QQ_GROUP = "453803497";
 const THEMES: Theme[] = ["system", "light", "dark"];
-const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta"]);
-
-/** Builds an accelerator the native hotkey parser accepts, e.g. `Ctrl+Alt+KeyK`. */
-function accelerator(e: KeyboardEvent): string | null {
-  if (MODIFIER_KEYS.has(e.key)) return null;
-  const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Super"].filter(
-    Boolean,
-  ) as string[];
-  if (mods.length === 0) return null;
-  return [...mods, e.code].join("+");
-}
-
 const dateFmt = localized(
   (l) =>
     new Intl.DateTimeFormat(l, {
@@ -142,6 +144,8 @@ function Setting(props: {
   title: JSX.Element;
   desc?: JSX.Element;
   error?: string | null;
+  /** Neutral information below the description. */
+  note?: string | null;
   id?: string;
   class?: string;
   children?: JSX.Element;
@@ -157,6 +161,7 @@ function Setting(props: {
           <div class="setting-desc">{desc()}</div>
         </Show>
         <Show when={props.error}>{(err) => <div class="setting-error">{err()}</div>}</Show>
+        <Show when={props.note}>{(note) => <div class="setting-note">{note()}</div>}</Show>
       </div>
       <Show when={control()}>
         <div class="setting-control">{control()}</div>
@@ -1072,6 +1077,314 @@ function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => v
   );
 }
 
+type HotkeyMode = "idle" | "recording" | "confirm" | "saving";
+
+/** What the hotkey row says below its description. */
+type HotkeyMessage =
+  | { kind: "error"; error: unknown }
+  | { kind: "issue"; issue: HotkeyIssue; hotkey: string }
+  | { kind: "hint"; hint: RecordHint }
+  | { kind: "maybeTaken" }
+  | { kind: "warning"; warnings: HotkeyWarning[]; hotkey: string };
+
+/** How a key of the chord being recorded reads, e.g. "左 Ctrl". */
+function chordLabel(key: ChordKey): string {
+  if (key.kind === "altGraph") return "AltGr";
+  if (key.kind === "modifier") {
+    const name = { ctrl: "Ctrl", alt: "Alt", shift: "Shift", win: "Win" }[heldModifier(key.code) ?? "ctrl"];
+    if (key.code.endsWith("Left")) return t("settings.hotkey.side.left", { key: name });
+    if (key.code.endsWith("Right")) return t("settings.hotkey.side.right", { key: name });
+    return name;
+  }
+  if (key.key) return keyLabel(key.key);
+  const lock = keyByCode(key.code);
+  return lock ? keyName(lock) : key.code;
+}
+
+/**
+ * The show/hide hotkey: records a combination as RegisterHotKey will match it
+ * (see `record` in lib/hotkey.ts) while the current one is suspended, so
+ * that pressing it again reaches the page instead of hiding the window.
+ */
+function HotkeySetting(props: { settings: SettingsView; onSaved: (value: SettingsView) => void }) {
+  const [mode, setMode] = createSignal<HotkeyMode>("idle");
+  const [recording, setRecording] = createSignal<Recording>(startRecording());
+  const [message, setMessage] = createSignal<HotkeyMessage | null>(null);
+  /** The combination being confirmed or saved. */
+  const [candidate, setCandidate] = createSignal("");
+  let toggle!: HTMLButtonElement;
+  let again: HTMLButtonElement | undefined;
+  let endSession: (() => void) | null = null;
+  let endKeys: (() => void) | null = null;
+  let idleTimer = 0;
+  let quietTimer = 0;
+
+  const clearTimers = () => {
+    clearTimeout(idleTimer);
+    clearTimeout(quietTimer);
+  };
+  const detachKeys = () => {
+    endKeys?.();
+    endKeys = null;
+    clearTimers();
+  };
+  /** Ends the recording; `resume` brings the old hotkey back. */
+  const finish = (resume: boolean, keepMessage = false) => {
+    detachKeys();
+    endSession?.();
+    endSession = null;
+    setMode("idle");
+    setRecording(startRecording());
+    setCandidate("");
+    if (!keepMessage) setMessage(null);
+    if (resume) void api.resumeHotkey().then(props.onSaved, () => {});
+    toggle?.focus();
+  };
+  const cancel = () => finish(true);
+
+  // Ends the recording after a while without keys; the native side gives
+  // the hotkey back on its own a little later in any case.
+  const armIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = window.setTimeout(cancel, 15_000);
+  };
+  // Modifiers held and nothing else arriving: the main key may be one that
+  // Windows or another program takes before the page sees it.
+  const armQuiet = (state: Recording) => {
+    clearTimeout(quietTimer);
+    const mods = state.held.map(heldModifier);
+    if (state.pending || !mods.some((m) => m && m !== "shift") || mods.some((m) => !m)) return;
+    quietTimer = window.setTimeout(() => {
+      if (!message()) setMessage({ kind: "maybeTaken" });
+    }, 1500);
+  };
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.isComposing) return;
+    const before = recording();
+    const { state, effect } = record(before, {
+      type: e.type === "keydown" ? "down" : "up",
+      code: e.code,
+      key: e.key,
+      keyCode: e.keyCode,
+      ctrl: e.ctrlKey,
+      alt: e.altKey,
+      shift: e.shiftKey,
+      meta: e.metaKey,
+      altGraph: e.getModifierState("AltGraph"),
+      repeat: e.repeat,
+    });
+    e.stopPropagation();
+    // Tab still moves the focus as it ends the recording.
+    if (!(effect.type === "cancel" && e.key === "Tab")) e.preventDefault();
+    if (e.type === "keydown" && before.held.length === 0) setMessage(null);
+    setRecording(state);
+    armIdle();
+    armQuiet(state);
+    if (state.hint && state.hint !== before.hint) setMessage({ kind: "hint", hint: state.hint });
+    if (effect.type === "cancel") cancel();
+    else if (effect.type === "disable") void save("");
+    else if (effect.type === "commit") attempt(effect.hotkey);
+  };
+  const attachKeys = () => {
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("keyup", onKey, true);
+    endKeys = () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keyup", onKey, true);
+    };
+    armIdle();
+  };
+  const listen = () => {
+    setRecording(startRecording());
+    setCandidate("");
+    setMode("recording");
+    attachKeys();
+  };
+
+  const begin = () => {
+    setMessage(null);
+    void api.suspendHotkey().catch(() => {});
+    listen();
+    const row = document.getElementById("setting-hotkey");
+    const onBlur = () => cancel();
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") cancel();
+    };
+    const onPointer = (e: PointerEvent) => {
+      if (!row?.contains(e.target as Node)) cancel();
+    };
+    const onConfirmKey = (e: KeyboardEvent) => {
+      if (mode() === "confirm" && e.key === "Escape") cancel();
+    };
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onHidden);
+    document.addEventListener("pointerdown", onPointer, true);
+    window.addEventListener("keydown", onConfirmKey);
+    endSession = () => {
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onHidden);
+      document.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("keydown", onConfirmKey);
+    };
+  };
+
+  const attempt = (hotkey: string) => {
+    const verdict = judge(hotkey);
+    if (verdict.level === "block") {
+      setMessage({ kind: "issue", issue: verdict.issue, hotkey });
+      return;
+    }
+    if (verdict.level === "warn") {
+      detachKeys();
+      setCandidate(hotkey);
+      setMessage({ kind: "warning", warnings: verdict.warnings, hotkey });
+      setMode("confirm");
+      // Thinking it over restarts the native side's wait as well; the
+      // question goes away after as long as a recording would.
+      void api.suspendHotkey().catch(() => {});
+      armIdle();
+      queueMicrotask(() => again?.focus());
+      return;
+    }
+    void save(hotkey);
+  };
+
+  const save = async (hotkey: string) => {
+    detachKeys();
+    setCandidate(hotkey);
+    setMode("saving");
+    try {
+      props.onSaved(await api.setHotkey(hotkey));
+      finish(false);
+    } catch (e) {
+      setMessage({ kind: "error", error: e });
+      const kind = (e as HotkeyError | null)?.kind;
+      // Taken or refused: try another combination, the old one still suspended.
+      if (hotkey && (kind === "taken" || kind === "failed" || kind === "invalid")) listen();
+      else finish(true, true);
+    }
+  };
+
+  onMount(() => {
+    if (!inTauri) return;
+    void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      // The native side brought the hotkey back itself (the window hid, or
+      // the recording went on too long), or a retry succeeded.
+      const unlisten = await listen("argus-hotkey-changed", async () => {
+        if (mode() !== "idle") finish(false);
+        props.onSaved(await api.settings());
+      });
+      onCleanup(unlisten);
+    });
+  });
+  onCleanup(() => {
+    if (mode() !== "idle") finish(true);
+  });
+
+  const shown = () => {
+    if (mode() === "confirm" || mode() === "saving") return shortcutKeys(candidate());
+    return [];
+  };
+  const errorText = () => {
+    const m = message();
+    if (!m) return hotkeyErrorText(props.settings.hotkeyError);
+    if (m.kind === "error") return hotkeyErrorText(m.error);
+    if (m.kind === "issue") return hotkeyIssueText(m.issue, m.hotkey);
+    if (m.kind !== "hint") return null;
+    switch (m.hint.kind) {
+      case "noKey":
+        return t("settings.hotkey.issue.noKey");
+      case "order":
+        return t("settings.hotkey.hint.order");
+      case "altGraph":
+        return t("settings.hotkey.hint.altGraph");
+      case "unsupported": {
+        const key =
+          m.hint.key === "Unidentified" || !m.hint.key ? t("settings.hotkey.unknownKey") : m.hint.key;
+        return t("settings.hotkey.issue.unsupported", { key });
+      }
+      default:
+        return null;
+    }
+  };
+  const noteText = () => {
+    const m = message();
+    if (m?.kind === "maybeTaken") return t("settings.hotkey.hint.maybeTaken");
+    if (m?.kind === "hint" && m.hint.kind === "lockKey") return t("settings.hotkey.hint.lockKey");
+    if (m?.kind === "warning") {
+      const shortcut = shortcutText(m.hotkey);
+      return m.warnings.map((w) => t(`settings.hotkey.warning.${w}`, { shortcut })).join(" ");
+    }
+    return null;
+  };
+
+  return (
+    <Setting
+      id="setting-hotkey"
+      icon={<KeyboardIcon size={20} />}
+      title={t("settings.hotkey.title")}
+      desc={t("settings.hotkey.desc")}
+      error={errorText()}
+      note={noteText()}
+    >
+      <span class="keycaps" aria-live="polite">
+        <Show
+          when={mode() === "recording"}
+          fallback={
+            <Show when={mode() === "idle" ? shortcutKeys(props.settings.hotkey) : shown()} keyed>
+              {(keys) => (
+                <Show
+                  when={keys.length > 0}
+                  fallback={<span class="pending">{t("settings.hotkey.unset")}</span>}
+                >
+                  <For each={keys}>{(key) => <kbd>{key}</kbd>}</For>
+                </Show>
+              )}
+            </Show>
+          }
+        >
+          <Show
+            when={recording().chord.length > 0}
+            fallback={<span class="pending">{t("settings.hotkey.recording")}</span>}
+          >
+            <For each={recording().chord}>
+              {(key) => <kbd data-ignored={key.kind === "lock" ? "" : undefined}>{chordLabel(key)}</kbd>}
+            </For>
+          </Show>
+        </Show>
+      </span>
+      <Show when={mode() === "confirm"}>
+        <button type="button" class="btn" onClick={() => void save(candidate())}>
+          {t("settings.hotkey.confirmUse")}
+        </button>
+        <button
+          ref={again}
+          type="button"
+          class="btn"
+          onClick={() => {
+            setMessage(null);
+            void api.suspendHotkey().catch(() => {});
+            listen();
+          }}
+        >
+          {t("settings.hotkey.rerecord")}
+        </button>
+      </Show>
+      <button
+        ref={toggle}
+        type="button"
+        class="btn stacked"
+        disabled={mode() === "saving"}
+        onClick={() => (mode() === "idle" ? begin() : cancel())}
+      >
+        <span classList={{ off: mode() !== "idle" }}>{t("settings.hotkey.change")}</span>
+        <span classList={{ off: mode() === "idle" }}>{t("common.cancel")}</span>
+      </button>
+    </Setting>
+  );
+}
+
 export default function SettingsPage() {
   const [settings, { mutate, refetch }] = createResource(kernelRevision, () => api.settings());
   // The onboarding (opened from the about section) changes settings and may
@@ -1084,11 +1397,6 @@ export default function SettingsPage() {
       setPrivilegeRevision((value) => value + 1);
     }),
   );
-  const [hotkeyError, setHotkeyError] = createSignal<unknown>(null);
-  const [recording, setRecording] = createSignal(false);
-  let stopRecording: (() => void) | null = null;
-  onCleanup(() => stopRecording?.());
-
   // ---- Section list: follows the scroll; a picked section stays marked until
   // the user scrolls on their own (the last ones cannot reach the top).
   let scroller!: HTMLDivElement;
@@ -1150,44 +1458,6 @@ export default function SettingsPage() {
       toast("error", t(failure, { error: String(e) }));
       return false;
     }
-  };
-
-  const saveHotkey = async (hotkey: string) => {
-    setRecording(false);
-    try {
-      mutate(await api.setHotkey(hotkey));
-      setHotkeyError(null);
-    } catch (e) {
-      setHotkeyError(e);
-    }
-  };
-
-  const startRecording = () => {
-    setHotkeyError(null);
-    setRecording(true);
-    const onKey = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
-        stop();
-      } else if (e.key === "Backspace" && !e.ctrlKey && !e.altKey) {
-        stop();
-        void saveHotkey("");
-      } else {
-        const acc = accelerator(e);
-        if (acc) {
-          stop();
-          void saveHotkey(acc);
-        }
-      }
-    };
-    const stop = () => {
-      setRecording(false);
-      window.removeEventListener("keydown", onKey, true);
-      stopRecording = null;
-    };
-    stopRecording = stop;
-    window.addEventListener("keydown", onKey, true);
   };
 
   return (
@@ -1297,29 +1567,7 @@ export default function SettingsPage() {
 
                 <section id="settings-hotkey" class="settings-section">
                   <h2>{t("settings.sections.hotkey")}</h2>
-                  <Setting
-                    icon={<KeyboardIcon size={20} />}
-                    title={t("settings.hotkey.title")}
-                    desc={t("settings.hotkey.desc")}
-                    error={hotkeyErrorText(hotkeyError() ?? s().hotkeyError)}
-                  >
-                    <span class="keycaps" aria-live="polite">
-                      <Show
-                        when={!recording()}
-                        fallback={<span class="pending">{t("settings.hotkey.recording")}</span>}
-                      >
-                        <Show
-                          when={s().hotkey}
-                          fallback={<span class="pending">{t("settings.hotkey.unset")}</span>}
-                        >
-                          <For each={shortcutKeys(s().hotkey)}>{(key) => <kbd>{key}</kbd>}</For>
-                        </Show>
-                      </Show>
-                    </span>
-                    <button type="button" class="btn" disabled={recording()} onClick={startRecording}>
-                      {t("settings.hotkey.change")}
-                    </button>
-                  </Setting>
+                  <HotkeySetting settings={s()} onSaved={mutate} />
                 </section>
 
                 <section id="settings-privilege" class="settings-section">

@@ -603,6 +603,19 @@ button {
     filter var(--t-fast) linear;
 }
 
+/* Labels that take turns in one button, which keeps the widest one's size. */
+.btn.stacked {
+  display: inline-grid;
+}
+
+.btn.stacked > * {
+  grid-area: 1 / 1;
+}
+
+.btn.stacked > .off {
+  visibility: hidden;
+}
+
 .btn:hover {
   background: var(--control-hover);
 }
