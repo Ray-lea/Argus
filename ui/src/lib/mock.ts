@@ -396,8 +396,16 @@ const NICS: NicInfo[] = [
     linkSpeed: 1_201_000_000,
     // Locally administered MAC and documentation prefixes (RFC 3849): nothing real.
     mac: "02-00-00-00-00-01",
-    ipv4: ["192.168.1.23"],
-    ipv6: ["2001:db8::a14", "fd00::51"],
+    ipv4: ["192.168.1.23", "10.8.0.2"],
+    // More than the view lists before its "show all" button.
+    ipv6: [
+      "2001:db8::a14",
+      "2001:db8::8a2e:370:7334",
+      "2001:db8::1c9d:5f2e:6b41:e07a",
+      "fd00::51",
+      "fd00::7a3c:91ff:fe40:22b0",
+      "fe80::7a3c:91ff:fe40:22b0%12",
+    ],
   },
   {
     id: "2",

@@ -39,6 +39,12 @@
     "coreTipP": "Logical processor {index}, physical core {core} (P-core)",
     "coreTipE": "Logical processor {index}, physical core {core} (E-core)",
     "power": "Power",
+    "charts": {
+      "both": "Temperature and power charts",
+      "temperature": "Temperature chart",
+      "power": "Power chart"
+    },
+    "chartsRange": "Last {span}: {values}",
     "powerSeries": {
       "package": "Package",
       "cores": "Cores"
@@ -85,15 +91,28 @@
     "identity": "Family / model / stepping",
     "instructions": "Instruction sets",
     "microcode": "Microcode revision",
+    "sectionInfo": "Processor details",
+    "instructionCount": {
+      "one": "{count} instruction set",
+      "other": "{count} instruction sets"
+    },
     "telemetryTitle": "Internal sensors",
     "telemetryPower": "Power and limits",
     "telemetryVoltage": "Voltage and current",
     "telemetryClock": "Clocks",
     "telemetryTemperature": "Temperatures",
     "perCore": "Per-core readings",
+    "coreCount": {
+      "one": "{count} core",
+      "other": "{count} cores"
+    },
     "coreName": "Core {index}",
     "fan": "Motherboard fan {index}",
     "boardSensor": "Motherboard sensor",
+    "fanCount": {
+      "one": "{count} fan",
+      "other": "{count} fans"
+    },
     "thermalThrottle": "Thermal throttling",
     "throttleActive": "Active",
     "throttleInactive": "Inactive",
@@ -189,7 +208,11 @@
     "columnOsC3": "C3 (Windows)",
     "idleStates": "Idle states (Windows)",
     "idleSource": "Windows idle-state classes averaged across logical processors; separate from hardware package C-states.",
+    "idleTitle": "Idle states",
+    "idleSummary": "{source}: {values}",
     "packageLimits": "Package limit status",
+    "limitsActive": "Active: {reasons}",
+    "limitsNone": "No limit active",
     "limitReasons": "Limit reasons",
     "limitCurrent": "Current",
     "limitHistory": "Logged",
@@ -269,7 +292,8 @@
       "virtual": "Virtual adapter",
       "other": "Other"
     },
-    "more": "{count} in total",
+    "showAll": "Show all {count}",
+    "showFewer": "Show fewer",
     "disconnected": "This network connection has been disconnected.",
     "throughput": "Throughput",
     "receive": "Receive",

@@ -305,7 +305,11 @@
   inset: 0;
 }
 
+/* A size container: a view's first screen takes the card's height (cqh), and
+   the charts in it take what the figures leave, so a big window enlarges them
+   and a short one flattens them instead of pushing the figures out. */
 .perf-detail {
+  container: perf / size;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -327,6 +331,38 @@
 /* Keeps the thumb clear of the card's rounded corners. */
 .perf-scroll::-webkit-scrollbar-track {
   margin: 8px 0;
+}
+
+/* A view's first screen: the card's height less the scroller's padding (16 +
+   20). Its charts grow into the height left over; anything after it (the
+   CPU's expanders) starts below the fold. */
+.perf-main {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100cqh - 36px);
+}
+
+/* Regions sharing that height, nested down to the chart frames. */
+.perf-grow {
+  display: flex;
+  flex-direction: column;
+}
+
+.perf-main > .chart-box,
+.perf-main > .perf-grow,
+.perf-grow > .chart-box,
+.perf-grow > .perf-grow,
+.perf-grow > .chart-grid {
+  flex: 1 1 0;
+}
+
+/* GPU: the engines take more of the height than the memory charts. */
+.perf-main > .chart-grid {
+  flex: 3 1 0;
+}
+
+.perf-main > .chart-pair {
+  flex: 2 1 0;
 }
 
 .perf-head {
@@ -389,25 +425,61 @@
   inset: 0;
 }
 
-/* Chart heights follow the window so the performance page uses its space. */
+.chart-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-box > .chart-frame {
+  flex: 1 1 auto;
+}
+
+/* The heights the first screen may flatten charts to; below them the page
+   scrolls. */
 .chart-frame.main {
-  height: clamp(260px, 44vh, 640px);
+  min-height: 120px;
 }
 
 .chart-frame.half {
-  height: clamp(150px, 24vh, 340px);
+  min-height: 80px;
 }
 
 .chart-frame.small {
-  height: clamp(110px, 16vh, 220px);
+  min-height: 64px;
 }
 
-.chart-frame.core-cell {
-  height: clamp(80px, 12vh, 150px);
+/* Charts in an expander sit below the first screen and keep their height. */
+.expander-body .chart-frame.small {
+  height: clamp(96px, 20cqh, 220px);
 }
 
-.chart-frame.engine-cell {
-  height: clamp(100px, 15vh, 190px);
+/* Short cards: the captions move inside the frame, as on the small cells. */
+@container perf (max-height: 640px) {
+  .chart-box {
+    position: relative;
+  }
+
+  .chart-box > .chart-labels {
+    position: absolute;
+    right: 7px;
+    left: 7px;
+    z-index: 1;
+    margin: 0;
+    font-size: 11px;
+    pointer-events: none;
+    /* Keeps the captions readable where the trace runs under them. */
+    text-shadow:
+      0 0 3px var(--fallback-bg),
+      0 0 6px var(--fallback-bg);
+  }
+
+  .chart-box > .chart-labels:first-child {
+    top: 4px;
+  }
+
+  .chart-box > .chart-labels:last-child {
+    bottom: 3px;
+  }
 }
 
 .chart-cell-label {
@@ -452,10 +524,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.chart-grid.cores {
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-}
-
 .perf-note {
   max-width: 72ch;
   margin: 18px 0 0;
@@ -463,10 +531,21 @@
   font-size: 12px;
 }
 
+/* Small charts (GPU engines, logical processors): rows stretch to the grid's
+   height, and fitGrid (Performance.tsx) sets the column count for its area;
+   until it has, columns fill the width. */
 .chart-grid {
+  --cell-w: 118px;
+  --cell-h: 64px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  grid-template-columns: repeat(var(--cols, auto-fill), minmax(var(--cell-w), 1fr));
+  grid-auto-rows: minmax(var(--cell-h), 1fr);
   gap: 6px;
+}
+
+.chart-grid.cores {
+  --cell-w: 150px;
+  --cell-h: 56px;
 }
 
 .chart-pair {
@@ -569,11 +648,6 @@
   grid-column: 1 / -1;
 }
 
-.cpu-telemetry {
-  min-width: 0;
-  font-variant-numeric: tabular-nums;
-}
-
 .cpu-sensor-groups {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
@@ -582,11 +656,10 @@
 
 .cpu-sensor-group {
   min-width: 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--stroke);
 }
 
-.cpu-telemetry > .cpu-sensor-group {
+/* Stacked groups in one expander (idle states: Windows, then per core). */
+.expander-body > .cpu-sensor-group + .cpu-sensor-group {
   margin-top: 20px;
 }
 
@@ -701,6 +774,91 @@
 
 .section-gap {
   margin-top: 18px;
+}
+
+/* ---- Expanders (less used CPU details) -------------------------------------- */
+
+.perf-more {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 22px;
+}
+
+.expander {
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer);
+}
+
+.expander-head {
+  display: grid;
+  grid-template-columns: 12px max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+
+.expander-head:hover {
+  background: var(--hover);
+}
+
+.expander-chevron {
+  color: var(--ink-2);
+  transition: transform var(--t-fast) var(--ease-out, ease-out);
+}
+
+.expander.open .expander-chevron {
+  transform: rotate(90deg);
+}
+
+.expander-title {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.expander-title small {
+  margin-left: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.expander-summary {
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expander.alert .expander-summary {
+  color: var(--danger);
+}
+
+/* Indented to the title, past the chevron. */
+.expander-body {
+  padding: 12px 14px 16px 36px;
+  border-top: 1px solid var(--stroke);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Address lists (network) ----------------------------------------------- */
+
+.addresses-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
 }
 
 /* ---- History page ---------------------------------------------------------- */

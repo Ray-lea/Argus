@@ -1,4 +1,15 @@
-import { createEffect, createMemo, createSignal, For, type JSX, Match, on, Show, Switch } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  Match,
+  on,
+  onCleanup,
+  Show,
+  Switch,
+} from "solid-js";
 import {
   fmtCache,
   fmtCapacity,
@@ -29,8 +40,22 @@ import {
   snapshot,
 } from "../lib/store";
 import type { BatteryStats, DiskStats, Hardware, Snapshot, SystemStats } from "../lib/types";
-import CpuTelemetry, { CpuIdleSummary } from "./CpuTelemetry";
+import {
+  BoardSensors,
+  boardSummary,
+  CoreTable,
+  coreSummary,
+  hasCoreColumns,
+  IdleStates,
+  idleSummary,
+  limitSummary,
+  PackageLimits,
+  SensorGroups,
+  sensorSummary,
+} from "./CpuTelemetry";
+import Expander from "./Expander";
 import Indicator from "./Indicator";
+import { ChevronDown, ChevronUp } from "./icons";
 import { Chart, easedMax, type Series } from "./Trace";
 
 const MB = 1024 * 1024;
@@ -68,7 +93,7 @@ function ChartBox(props: {
   format: (v: number) => string;
 }) {
   return (
-    <div>
+    <div class="chart-box">
       <div class="chart-labels">
         <span>{props.label}</span>
         <span>{props.max}</span>
@@ -82,6 +107,68 @@ function ChartBox(props: {
       </div>
     </div>
   );
+}
+
+/** Width to height a small chart reads best at. */
+const CELL_ASPECT = 1.5;
+
+/**
+ * Columns for `count` small charts filling a `width` × `height` area: of the
+ * arrangements whose rows fit the height, the one with the largest cells
+ * (measured at CELL_ASPECT); when none fits (a short window), as many columns
+ * as the minimum cell width allows, so the grid is as short as it can be.
+ */
+function fitColumns(
+  count: number,
+  width: number,
+  height: number,
+  cell: { width: number; height: number },
+  gap: number,
+) {
+  let best = 0;
+  let bestSize = 0;
+  let widest = 1;
+  for (let cols = 1; cols <= count; cols++) {
+    const w = (width - (cols - 1) * gap) / cols;
+    if (cols > 1 && w < cell.width) break;
+    widest = cols;
+    const rows = Math.ceil(count / cols);
+    const h = (height - (rows - 1) * gap) / rows;
+    if (h < cell.height - 0.5) continue;
+    const size = Math.min(w / CELL_ASPECT, h);
+    if (size > bestSize) {
+      bestSize = size;
+      best = cols;
+    }
+  }
+  return best || widest;
+}
+
+/**
+ * Keeps a grid of small charts (logical processors, GPU engines) filling the
+ * height the view leaves it: rows stretch (CSS), the column count follows the
+ * area. Minimum cell size and gap come from the grid's CSS.
+ */
+function fitGrid(el: HTMLElement, count: () => number) {
+  let size = { width: 0, height: 0 };
+  const fit = () => {
+    if (!size.width || !size.height) return;
+    const style = getComputedStyle(el);
+    const cell = {
+      width: Number.parseFloat(style.getPropertyValue("--cell-w")),
+      height: Number.parseFloat(style.getPropertyValue("--cell-h")),
+    };
+    const cols = fitColumns(count(), size.width, size.height, cell, Number.parseFloat(style.columnGap) || 0);
+    el.style.setProperty("--cols", String(cols));
+  };
+  // Layout sizes: the view's settle animation scales the grid for a moment.
+  const observer = new ResizeObserver(([entry]) => {
+    size = { width: entry.contentRect.width, height: entry.contentRect.height };
+    fit();
+  });
+  observer.observe(el);
+  createEffect(on(count, fit, { defer: true }));
+  onCleanup(() => observer.disconnect());
 }
 
 function Stat(props: { label: string; value: JSX.Element; unit?: string; note?: string }) {
@@ -479,319 +566,399 @@ function CpuView() {
         })
       : String(c.cores);
   };
+  const identity = () =>
+    `0x${cpu().family.toString(16).toUpperCase()} / 0x${cpu().model.toString(16).toUpperCase()} / ${cpu().stepping}`;
+  const microcode = () => `0x${cpu().microcode?.toString(16).toUpperCase()}`;
+
+  // One-line summaries for the closed sections.
+  const infoSummary = () =>
+    [
+      cpu().vendor && `${cpu().vendor} · ${identity()}`,
+      cpu().microcode != null && `${t("performance.cpu.microcode")} ${microcode()}`,
+      cpu().instructions.length > 0 &&
+        t("performance.cpu.instructionCount", { count: cpu().instructions.length }),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  /** Lowest to highest over what a chart shows, e.g. "54–61 °C". */
+  const extent = (key: string, format: (v: number) => string, unit: string) => {
+    const values = series(key).slice(-HISTORY).filter(Number.isFinite);
+    if (!values.length) return null;
+    const [low, high] = [format(Math.min(...values)), format(Math.max(...values))];
+    return `${low === high ? low : `${low}–${high}`} ${unit}`;
+  };
+  const chartsTitle = () =>
+    t(
+      temp() === null
+        ? "performance.cpu.charts.power"
+        : hw().power.package === null
+          ? "performance.cpu.charts.temperature"
+          : "performance.cpu.charts.both",
+    );
+  const chartsSummary = () => {
+    const values = [
+      temp() !== null && extent("cpu.temp", (v) => String(Math.round(v)), "°C"),
+      hw().power.package !== null && extent("cpu.pkgW", fmtW, "W"),
+    ].filter(Boolean);
+    return values.length
+      ? t("performance.cpu.chartsRange", { span: spanLabel(), values: values.join(" · ") })
+      : null;
+  };
 
   return (
     <>
-      <Head title="CPU" model={cpu().name} />
-      <div class="perf-toolbar">
-        <Show when={hybrid() && cpuMode() === "logical"}>
-          <div class="segmented" role="group" aria-label={t("performance.cpu.coreType")}>
-            <Indicator selector="[aria-pressed='true']" track={coreFilter} class="seg-thumb" />
-            <For each={CORE_FILTERS}>
-              {(f) => (
-                <button
-                  type="button"
-                  title={t(`performance.cpu.filterTitle.${f}`)}
-                  aria-pressed={coreFilter() === f}
-                  onClick={() => setCoreFilter(f)}
-                >
-                  {f === "all" ? t("performance.cpu.filterAll") : t(`performance.cpu.coreKind.${f}`)}
-                </button>
-              )}
-            </For>
-          </div>
-        </Show>
-        <div class="segmented" role="group" aria-label={t("performance.cpu.graph")}>
-          <Indicator selector="[aria-pressed='true']" track={cpuMode} class="seg-thumb" />
-          <button type="button" aria-pressed={cpuMode() === "overall"} onClick={() => setCpuMode("overall")}>
-            {t("performance.cpu.overall")}
-          </button>
-          <button type="button" aria-pressed={cpuMode() === "logical"} onClick={() => setCpuMode("logical")}>
-            {t("performance.cpu.logical")}
-          </button>
-        </div>
-      </div>
-
-      <div ref={charts}>
-        <Show
-          when={cpuMode() === "logical"}
-          fallback={
-            <div>
-              <ChartBox
-                label={t("performance.cpu.utilizationChart")}
-                max="100%"
-                colorVar="--cpu"
-                size="main"
-                scale={() => 100}
-                format={pct}
-                series={[
-                  {
-                    data: () => series("cpu"),
-                    colorVar: "--cpu",
-                    get label() {
-                      return t("performance.cpu.total");
-                    },
-                  },
-                  {
-                    data: () => series("cpu.kernel"),
-                    colorVar: "--cpu",
-                    dashed: true,
-                    fill: 0.18,
-                    get label() {
-                      return t("performance.cpu.kernel");
-                    },
-                  },
-                ]}
-              />
-              <div class="legend" style={{ "--c": "var(--cpu)" }}>
-                <span>{t("performance.cpu.total")}</span>
-                <span class="dashed">{t("performance.cpu.kernelTime")}</span>
-              </div>
-            </div>
-          }
-        >
-          <div>
-            <div class="chart-grid cores">
-              <For each={shown()}>
-                {(i) => {
-                  const eff = () => hybrid() && efficient(i);
-                  const color = () => (eff() ? "--cpu-e" : "--cpu");
-                  const mhz = () => hw().coreMhz[i] ?? 0;
-                  const temperature = () => {
-                    const thread = cpu().threads[i];
-                    return thread && coreTemperatures().get(`${thread.group},${thread.processor}`);
-                  };
-                  return (
-                    <div
-                      class="chart-frame core-cell"
-                      style={{ "--c": `var(${color()})` }}
-                      title={`${t(
-                        hybrid()
-                          ? eff()
-                            ? "performance.cpu.coreTipE"
-                            : "performance.cpu.coreTipP"
-                          : "performance.cpu.coreTip",
-                        { index: i, core: cpu().threads[i]?.core ?? "?" },
-                      )}${temperature() !== undefined ? `\n${t("common.resource.temperature")}: ${Math.round(temperature() ?? 0)} °C` : ""}`}
-                    >
-                      <span class="chart-cell-label">
-                        <Show when={hybrid()}>
-                          <i class="core-kind">{eff() ? "E" : "P"}</i>
-                        </Show>
-                        {i} <b>{sys().cores[i] == null ? "—" : `${Math.round(sys().cores[i] ?? 0)}%`}</b>
-                      </span>
-                      <Show when={mhz() > 0}>
-                        <span class="chart-cell-note">{fmtGHz(mhz())}</span>
-                      </Show>
-                      <Chart
-                        series={[
-                          {
-                            data: () => {
-                              const thread = cpu().threads[i];
-                              return thread ? series(`core.${thread.group}.${thread.processor}`) : [];
-                            },
-                            colorVar: color(),
-                          },
-                        ]}
-                        max={() => 100}
-                      />
-                    </div>
-                  );
-                }}
+      <div class="perf-main">
+        <Head title="CPU" model={cpu().name} />
+        <div class="perf-toolbar">
+          <Show when={hybrid() && cpuMode() === "logical"}>
+            <div class="segmented" role="group" aria-label={t("performance.cpu.coreType")}>
+              <Indicator selector="[aria-pressed='true']" track={coreFilter} class="seg-thumb" />
+              <For each={CORE_FILTERS}>
+                {(f) => (
+                  <button
+                    type="button"
+                    title={t(`performance.cpu.filterTitle.${f}`)}
+                    aria-pressed={coreFilter() === f}
+                    onClick={() => setCoreFilter(f)}
+                  >
+                    {f === "all" ? t("performance.cpu.filterAll") : t(`performance.cpu.coreKind.${f}`)}
+                  </button>
+                )}
               </For>
             </div>
-            <Show when={hybrid()}>
-              <div class="legend">
-                <span style={{ "--c": "var(--cpu)" }}>{t("performance.cpu.coreKind.p")}</span>
-                <span style={{ "--c": "var(--cpu-e)" }}>{t("performance.cpu.coreKind.e")}</span>
-              </div>
-            </Show>
+          </Show>
+          <div class="segmented" role="group" aria-label={t("performance.cpu.graph")}>
+            <Indicator selector="[aria-pressed='true']" track={cpuMode} class="seg-thumb" />
+            <button
+              type="button"
+              aria-pressed={cpuMode() === "overall"}
+              onClick={() => setCpuMode("overall")}
+            >
+              {t("performance.cpu.overall")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={cpuMode() === "logical"}
+              onClick={() => setCpuMode("logical")}
+            >
+              {t("performance.cpu.logical")}
+            </button>
           </div>
+        </div>
+
+        <div ref={charts} class="perf-grow">
+          <Show
+            when={cpuMode() === "logical"}
+            fallback={
+              <div class="perf-grow">
+                <ChartBox
+                  label={t("performance.cpu.utilizationChart")}
+                  max="100%"
+                  colorVar="--cpu"
+                  size="main"
+                  scale={() => 100}
+                  format={pct}
+                  series={[
+                    {
+                      data: () => series("cpu"),
+                      colorVar: "--cpu",
+                      get label() {
+                        return t("performance.cpu.total");
+                      },
+                    },
+                    {
+                      data: () => series("cpu.kernel"),
+                      colorVar: "--cpu",
+                      dashed: true,
+                      fill: 0.18,
+                      get label() {
+                        return t("performance.cpu.kernel");
+                      },
+                    },
+                  ]}
+                />
+                <div class="legend" style={{ "--c": "var(--cpu)" }}>
+                  <span>{t("performance.cpu.total")}</span>
+                  <span class="dashed">{t("performance.cpu.kernelTime")}</span>
+                </div>
+              </div>
+            }
+          >
+            <div class="perf-grow">
+              <div class="chart-grid cores" ref={(el) => fitGrid(el, () => shown().length)}>
+                <For each={shown()}>
+                  {(i) => {
+                    const eff = () => hybrid() && efficient(i);
+                    const color = () => (eff() ? "--cpu-e" : "--cpu");
+                    const mhz = () => hw().coreMhz[i] ?? 0;
+                    const temperature = () => {
+                      const thread = cpu().threads[i];
+                      return thread && coreTemperatures().get(`${thread.group},${thread.processor}`);
+                    };
+                    return (
+                      <div
+                        class="chart-frame core-cell"
+                        style={{ "--c": `var(${color()})` }}
+                        title={`${t(
+                          hybrid()
+                            ? eff()
+                              ? "performance.cpu.coreTipE"
+                              : "performance.cpu.coreTipP"
+                            : "performance.cpu.coreTip",
+                          { index: i, core: cpu().threads[i]?.core ?? "?" },
+                        )}${temperature() !== undefined ? `\n${t("common.resource.temperature")}: ${Math.round(temperature() ?? 0)} °C` : ""}`}
+                      >
+                        <span class="chart-cell-label">
+                          <Show when={hybrid()}>
+                            <i class="core-kind">{eff() ? "E" : "P"}</i>
+                          </Show>
+                          {i} <b>{sys().cores[i] == null ? "—" : `${Math.round(sys().cores[i] ?? 0)}%`}</b>
+                        </span>
+                        <Show when={mhz() > 0}>
+                          <span class="chart-cell-note">{fmtGHz(mhz())}</span>
+                        </Show>
+                        <Chart
+                          series={[
+                            {
+                              data: () => {
+                                const thread = cpu().threads[i];
+                                return thread ? series(`core.${thread.group}.${thread.processor}`) : [];
+                              },
+                              colorVar: color(),
+                            },
+                          ]}
+                          max={() => 100}
+                        />
+                      </div>
+                    );
+                  }}
+                </For>
+              </div>
+              <Show when={hybrid()}>
+                <div class="legend">
+                  <span style={{ "--c": "var(--cpu)" }}>{t("performance.cpu.coreKind.p")}</span>
+                  <span style={{ "--c": "var(--cpu-e)" }}>{t("performance.cpu.coreKind.e")}</span>
+                </div>
+              </Show>
+            </div>
+          </Show>
+        </div>
+
+        <div class="perf-stats cpu-stats">
+          <div class="stat-grid">
+            <Stat label={t("performance.cpu.utilization")} value={Math.round(sys().cpu)} unit="%" />
+            <Stat
+              label={t("performance.cpu.speed")}
+              value={((hw().cpuMhz ?? 0) / 1000).toFixed(2)}
+              unit="GHz"
+            />
+            <Show when={hybrid() && meanMhz(false)}>
+              {(m) => (
+                <Stat label={t("performance.cpu.pCoreSpeed")} value={(m() / 1000).toFixed(2)} unit="GHz" />
+              )}
+            </Show>
+            <Show when={hybrid() && meanMhz(true)}>
+              {(m) => (
+                <Stat label={t("performance.cpu.eCoreSpeed")} value={(m() / 1000).toFixed(2)} unit="GHz" />
+              )}
+            </Show>
+            <Show when={temp() !== null}>
+              <Stat label={t("common.resource.temperature")} value={Math.round(temp() ?? 0)} unit="°C" />
+            </Show>
+            <Show when={hw().power.package !== null}>
+              <Stat
+                label={t("performance.cpu.packagePower")}
+                value={fmtW(hw().power.package ?? 0)}
+                unit="W"
+              />
+            </Show>
+            <Show when={hw().power.cores !== null}>
+              <Stat label={t("performance.cpu.corePower")} value={fmtW(hw().power.cores ?? 0)} unit="W" />
+            </Show>
+            <Show when={hw().power.graphics !== null}>
+              <Stat
+                label={t("performance.cpu.graphicsPower")}
+                value={fmtW(hw().power.graphics ?? 0)}
+                unit="W"
+              />
+            </Show>
+            <Stat label={t("performance.cpu.processes")} value={fmtCount(sys().processCount)} />
+            <Stat label={t("performance.cpu.threads")} value={fmtCount(sys().threadCount)} />
+            <Stat label={t("performance.cpu.handles")} value={fmtCount(sys().handleCount)} />
+            <Stat label={t("performance.cpu.uptime")} value={fmtUptime(sys().uptimeMs)} />
+          </div>
+          <dl class="info-list">
+            <dt>{t("performance.cpu.baseSpeed")}</dt>
+            <dd
+              title={
+                cpu().baseSource
+                  ? t(
+                      cpu().baseSource === "cpuid"
+                        ? "performance.cpu.baseSourceCpuid"
+                        : "performance.cpu.baseSourceWindows",
+                    )
+                  : undefined
+              }
+            >
+              {cpu().baseMhz ? fmtGHz(cpu().baseMhz) : "—"}
+            </dd>
+            <dt>{t("performance.cpu.sockets")}</dt>
+            <dd>{cpu().sockets}</dd>
+            <dt>{t("performance.cpu.cores")}</dt>
+            <dd>{coresText()}</dd>
+            <dt>{t("performance.cpu.logicalProcessors")}</dt>
+            <dd>{cpu().logical}</dd>
+            <dt>{t("performance.cpu.virtualization")}</dt>
+            <dd>{cpu().virtualization ? t("common.enabled") : t("performance.cpu.notEnabled")}</dd>
+            <dt>{t("performance.cpu.cache", { level: 1 })}</dt>
+            <dd>{fmtCache(cpu().l1)}</dd>
+            <dt>{t("performance.cpu.cache", { level: 2 })}</dt>
+            <dd>{fmtCache(cpu().l2)}</dd>
+            <dt>{t("performance.cpu.cache", { level: 3 })}</dt>
+            <dd>{fmtCache(cpu().l3)}</dd>
+          </dl>
+        </div>
+        <Show when={!hw().cpuSensors && hw().thermal.length === 0}>
+          <p class="perf-note">{t("performance.cpu.thermalMissing")}</p>
         </Show>
       </div>
 
-      <Show when={temp() !== null || hw().power.package !== null}>
-        <div class="chart-pair section-gap">
-          <Show when={temp() !== null}>
-            <ChartBox
-              label={t("common.resource.temperature")}
-              max="100 °C"
-              colorVar="--cpu"
-              size="small"
-              scale={() => 100}
-              format={celsius}
-              series={[{ data: () => series("cpu.temp"), colorVar: "--cpu" }]}
-            />
-          </Show>
-          <Show when={hw().power.package !== null}>
-            <ChartBox
-              label={t("performance.cpu.power")}
-              max={watts(powerMax())}
-              colorVar="--cpu"
-              size="small"
-              scale={powerMax}
-              format={watts}
-              series={[
-                {
-                  data: () => series("cpu.pkgW"),
-                  colorVar: "--cpu",
-                  get label() {
-                    return t("performance.cpu.powerSeries.package");
-                  },
-                },
-                {
-                  data: () => series("cpu.coresW"),
-                  colorVar: "--cpu",
-                  dashed: true,
-                  fill: 0,
-                  get label() {
-                    return t("performance.cpu.powerSeries.cores");
-                  },
-                },
-              ]}
-            />
-          </Show>
-        </div>
-      </Show>
-
-      <div class="perf-stats cpu-stats">
-        <div class="stat-grid">
-          <Stat label={t("performance.cpu.utilization")} value={Math.round(sys().cpu)} unit="%" />
-          <Stat
-            label={t("performance.cpu.speed")}
-            value={((hw().cpuMhz ?? 0) / 1000).toFixed(2)}
-            unit="GHz"
-          />
-          <Show when={hybrid() && meanMhz(false)}>
-            {(m) => (
-              <Stat label={t("performance.cpu.pCoreSpeed")} value={(m() / 1000).toFixed(2)} unit="GHz" />
-            )}
-          </Show>
-          <Show when={hybrid() && meanMhz(true)}>
-            {(m) => (
-              <Stat label={t("performance.cpu.eCoreSpeed")} value={(m() / 1000).toFixed(2)} unit="GHz" />
-            )}
-          </Show>
-          <Show when={temp() !== null}>
-            <Stat label={t("common.resource.temperature")} value={Math.round(temp() ?? 0)} unit="°C" />
-          </Show>
-          <Show when={hw().power.package !== null}>
-            <Stat label={t("performance.cpu.packagePower")} value={fmtW(hw().power.package ?? 0)} unit="W" />
-          </Show>
-          <Show when={hw().power.cores !== null}>
-            <Stat label={t("performance.cpu.corePower")} value={fmtW(hw().power.cores ?? 0)} unit="W" />
-          </Show>
-          <Show when={hw().power.graphics !== null}>
-            <Stat
-              label={t("performance.cpu.graphicsPower")}
-              value={fmtW(hw().power.graphics ?? 0)}
-              unit="W"
-            />
-          </Show>
-          <Stat label={t("performance.cpu.processes")} value={fmtCount(sys().processCount)} />
-          <Stat label={t("performance.cpu.threads")} value={fmtCount(sys().threadCount)} />
-          <Stat label={t("performance.cpu.handles")} value={fmtCount(sys().handleCount)} />
-          <Stat label={t("performance.cpu.uptime")} value={fmtUptime(sys().uptimeMs)} />
-        </div>
-        <dl class="info-list">
-          <Show when={cpu().vendor}>
-            <dt>{t("performance.cpu.vendor")}</dt>
-            <dd>{cpu().vendor}</dd>
-            <dt>{t("performance.cpu.identity")}</dt>
-            <dd>{`0x${cpu().family.toString(16).toUpperCase()} / 0x${cpu().model.toString(16).toUpperCase()} / ${cpu().stepping}`}</dd>
-          </Show>
-          <Show when={cpu().microcode != null}>
-            <dt>{t("performance.cpu.microcode")}</dt>
-            <dd>{`0x${cpu().microcode?.toString(16).toUpperCase()}`}</dd>
-          </Show>
-          <dt>{t("performance.cpu.baseSpeed")}</dt>
-          <dd
-            title={
-              cpu().baseSource
-                ? t(
-                    cpu().baseSource === "cpuid"
-                      ? "performance.cpu.baseSourceCpuid"
-                      : "performance.cpu.baseSourceWindows",
-                  )
-                : undefined
-            }
-          >
-            {cpu().baseMhz ? fmtGHz(cpu().baseMhz) : "—"}
-          </dd>
-          <dt>{t("performance.cpu.sockets")}</dt>
-          <dd>{cpu().sockets}</dd>
-          <dt>{t("performance.cpu.cores")}</dt>
-          <dd>{coresText()}</dd>
-          <dt>{t("performance.cpu.logicalProcessors")}</dt>
-          <dd>{cpu().logical}</dd>
-          <dt>{t("performance.cpu.virtualization")}</dt>
-          <dd>{cpu().virtualization ? t("common.enabled") : t("performance.cpu.notEnabled")}</dd>
-          <dt>{t("performance.cpu.cache", { level: 1 })}</dt>
-          <dd>{fmtCache(cpu().l1)}</dd>
-          <dt>{t("performance.cpu.cache", { level: 2 })}</dt>
-          <dd>{fmtCache(cpu().l2)}</dd>
-          <dt>{t("performance.cpu.cache", { level: 3 })}</dt>
-          <dd>{fmtCache(cpu().l3)}</dd>
-          <dt>{t("performance.cpu.thermalSource")}</dt>
-          <dd>
-            {hasCpuDieTemperature(hw())
-              ? t("performance.cpu.driverSource")
-              : hw().thermal.length > 0
-                ? t("performance.cpu.thermalZones", {
-                    zones: hw()
-                      .thermal.map((z) => z.name)
-                      .join(t("common.listSeparator")),
-                  })
-                : t("performance.cpu.thermalNone")}
-          </dd>
-          <Show when={hw().cpuSensors}>
-            {(sensors) => (
-              <>
-                <dt>{t("performance.cpu.driverStatus")}</dt>
-                <dd>{t(`performance.cpu.sensorState.${sensors().state}`)}</dd>
-                <Show when={sensors().controlCelsius !== null}>
-                  <dt>{t("performance.cpu.controlTemperature")}</dt>
-                  <dd>{Math.round(sensors().controlCelsius ?? 0)} °C</dd>
-                </Show>
-                <Show
-                  when={
-                    sensors().coreVoltage !== null && !sensors().metrics.some((m) => m.kind === "coreVoltage")
-                  }
+      {/* Less used details below the first screen, each closed until asked for
+          (and then remembered). */}
+      <div class="perf-more">
+        <Show when={temp() !== null || hw().power.package !== null}>
+          <Expander id="cpu.charts" title={chartsTitle()} summary={chartsSummary()}>
+            <div class="chart-pair">
+              <Show when={temp() !== null}>
+                <ChartBox
+                  label={t("common.resource.temperature")}
+                  max="100 °C"
+                  colorVar="--cpu"
+                  size="small"
+                  scale={() => 100}
+                  format={celsius}
+                  series={[{ data: () => series("cpu.temp"), colorVar: "--cpu" }]}
+                />
+              </Show>
+              <Show when={hw().power.package !== null}>
+                <ChartBox
+                  label={t("performance.cpu.power")}
+                  max={watts(powerMax())}
+                  colorVar="--cpu"
+                  size="small"
+                  scale={powerMax}
+                  format={watts}
+                  series={[
+                    {
+                      data: () => series("cpu.pkgW"),
+                      colorVar: "--cpu",
+                      get label() {
+                        return t("performance.cpu.powerSeries.package");
+                      },
+                    },
+                    {
+                      data: () => series("cpu.coresW"),
+                      colorVar: "--cpu",
+                      dashed: true,
+                      fill: 0,
+                      get label() {
+                        return t("performance.cpu.powerSeries.cores");
+                      },
+                    },
+                  ]}
+                />
+              </Show>
+            </div>
+          </Expander>
+        </Show>
+        <Show when={hw().cpuSensors}>
+          {(sensors) => (
+            <>
+              <Expander
+                id="cpu.sensors"
+                title={t("performance.cpu.telemetryTitle")}
+                summary={sensorSummary(sensors(), hw().power.package)}
+              >
+                <SensorGroups sensors={sensors()} />
+              </Expander>
+              <Show when={sensors().cores.length > 0 && hasCoreColumns(sensors())}>
+                <Expander
+                  id="cpu.cores"
+                  title={t("performance.cpu.perCore")}
+                  summary={coreSummary(sensors())}
                 >
-                  <dt>{t("performance.cpu.coreVoltage")}</dt>
-                  <dd>{sensors().coreVoltage?.toFixed(3)} V</dd>
-                </Show>
-                <Show when={sensors().coreVid !== null}>
-                  <dt>{t("performance.cpu.coreVid")}</dt>
-                  <dd>{sensors().coreVid?.toFixed(3)} V</dd>
-                </Show>
-                <For each={sensors().ccdTemperatures.map((ccd) => ccd.index)}>
-                  {(index) => (
-                    <>
-                      <dt>{t("performance.cpu.ccdTemperature", { index: index + 1 })}</dt>
-                      <dd>
-                        {Math.round(
-                          sensors().ccdTemperatures.find((ccd) => ccd.index === index)?.celsius ?? 0,
-                        )}{" "}
-                        °C
-                      </dd>
-                    </>
-                  )}
-                </For>
-              </>
-            )}
-          </Show>
-          <Show when={cpu().instructions.length > 0}>
-            <dt class="cpu-instructions-label">{t("performance.cpu.instructions")}</dt>
-            <dd class="cpu-instructions">{cpu().instructions.join(" · ")}</dd>
-          </Show>
-        </dl>
+                  <CoreTable sensors={sensors()} />
+                </Expander>
+              </Show>
+              <Show when={sensors().boardFans.length > 0 || sensors().boardMetrics.length > 0}>
+                <Expander
+                  id="cpu.board"
+                  title={t("performance.cpu.boardSensor")}
+                  note={sensors().boardSensor}
+                  summary={boardSummary(sensors())}
+                >
+                  <BoardSensors sensors={sensors()} />
+                </Expander>
+              </Show>
+              <Show when={sensors().limits.length > 0}>
+                <Expander
+                  id="cpu.limits"
+                  title={t("performance.cpu.packageLimits")}
+                  summary={limitSummary(sensors().limits)}
+                  alert={sensors().limits.some((flag) => flag.active)}
+                >
+                  <PackageLimits sensors={sensors()} />
+                </Expander>
+              </Show>
+            </>
+          )}
+        </Show>
+        <Show when={idleSummary(hw().cpuSensors, hw().cpuIdle)}>
+          {(summary) => (
+            <Expander id="cpu.idle" title={t("performance.cpu.idleTitle")} summary={summary()}>
+              <IdleStates idle={hw().cpuIdle} sensors={hw().cpuSensors} />
+            </Expander>
+          )}
+        </Show>
+        <Expander id="cpu.info" title={t("performance.cpu.sectionInfo")} summary={infoSummary()}>
+          <dl class="info-list">
+            <Show when={cpu().vendor}>
+              <dt>{t("performance.cpu.vendor")}</dt>
+              <dd>{cpu().vendor}</dd>
+              <dt>{t("performance.cpu.identity")}</dt>
+              <dd>{identity()}</dd>
+            </Show>
+            <Show when={cpu().microcode != null}>
+              <dt>{t("performance.cpu.microcode")}</dt>
+              <dd>{microcode()}</dd>
+            </Show>
+            <dt>{t("performance.cpu.thermalSource")}</dt>
+            <dd>
+              {hasCpuDieTemperature(hw())
+                ? t("performance.cpu.driverSource")
+                : hw().thermal.length > 0
+                  ? t("performance.cpu.thermalZones", {
+                      zones: hw()
+                        .thermal.map((z) => z.name)
+                        .join(t("common.listSeparator")),
+                    })
+                  : t("performance.cpu.thermalNone")}
+            </dd>
+            <Show when={hw().cpuSensors}>
+              {(sensors) => (
+                <>
+                  <dt>{t("performance.cpu.driverStatus")}</dt>
+                  <dd>{t(`performance.cpu.sensorState.${sensors().state}`)}</dd>
+                </>
+              )}
+            </Show>
+            <Show when={cpu().instructions.length > 0}>
+              <dt class="cpu-instructions-label">{t("performance.cpu.instructions")}</dt>
+              <dd class="cpu-instructions">{cpu().instructions.join(" · ")}</dd>
+            </Show>
+          </dl>
+        </Expander>
       </div>
-      <Show when={hw().cpuSensors}>{(sensors) => <CpuTelemetry sensors={sensors()} />}</Show>
-      <CpuIdleSummary idle={hw().cpuIdle} />
-      <Show when={!hw().cpuSensors && hw().thermal.length === 0}>
-        <p class="perf-note">{t("performance.cpu.thermalMissing")}</p>
-      </Show>
     </>
   );
 }
@@ -806,7 +973,7 @@ function MemoryView() {
   const reserved = () => Math.max(0, mem().installed - sys().memTotal);
 
   return (
-    <>
+    <div class="perf-main">
       <Head
         title={t("common.resource.memory")}
         model={`${fmtGB(mem().installed || sys().memTotal, 0)} GB${mem().kind ? ` ${mem().kind}` : ""}`}
@@ -872,7 +1039,7 @@ function MemoryView() {
           </Show>
         </dl>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -885,7 +1052,7 @@ function DiskView(props: { index: number }) {
   return (
     <Show when={disk()} fallback={<p class="empty">{t("performance.disk.removed")}</p>}>
       {(d) => (
-        <>
+        <div class="perf-main">
           <Head title={diskTitle(d())} model={d().info.model} />
           <ChartBox
             label={t("performance.disk.activeTime")}
@@ -896,7 +1063,7 @@ function DiskView(props: { index: number }) {
             format={pct}
             series={[{ data: () => series(`${k()}.active`), colorVar: "--io" }]}
           />
-          <div class="section-gap">
+          <div class="perf-grow section-gap">
             <ChartBox
               label={t("performance.disk.transferRate")}
               max={fmtRate(rateMax())}
@@ -967,7 +1134,7 @@ function DiskView(props: { index: number }) {
               </Show>
             </dl>
           </div>
-        </>
+        </div>
       )}
     </Show>
   );
@@ -975,19 +1142,43 @@ function DiskView(props: { index: number }) {
 
 // ---- Network -----------------------------------------------------------------
 
+/** Addresses listed before the rest fold behind a button (closed again on another device). */
+const ADDRESSES_SHOWN = 3;
+
+function Addresses(props: { list: string[] }) {
+  const [all, setAll] = createSignal(false);
+  const shown = () => (all() ? props.list : props.list.slice(0, ADDRESSES_SHOWN));
+  return (
+    <dd>
+      <Show when={props.list.length > 0} fallback="—">
+        <For each={shown()}>{(address) => <div>{address}</div>}</For>
+        <Show when={props.list.length > ADDRESSES_SHOWN}>
+          <button
+            type="button"
+            class="link addresses-toggle"
+            aria-expanded={all()}
+            onClick={() => setAll(!all())}
+          >
+            {all()
+              ? t("performance.network.showFewer")
+              : t("performance.network.showAll", { count: props.list.length })}
+            {all() ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
+        </Show>
+      </Show>
+    </dd>
+  );
+}
+
 function NicView(props: { id: string }) {
   const nic = () => now().hardware.nics.find((n) => n.info.id === props.id);
   const k = () => `nic.${props.id}`;
   const scale = autoMax(64 * 1024, `${k()}.rx`, `${k()}.tx`);
-  const listAddrs = (list: string[]) =>
-    list.length > 3
-      ? `${list.slice(0, 3).join("\n")}\n${t("performance.network.more", { count: list.length })}`
-      : list.join("\n") || "—";
 
   return (
     <Show when={nic()} fallback={<p class="empty">{t("performance.network.disconnected")}</p>}>
       {(n) => (
-        <>
+        <div class="perf-main">
           <Head title={n().info.name} model={n().info.description} />
           <ChartBox
             label={t("performance.network.throughput")}
@@ -1047,14 +1238,14 @@ function NicView(props: { id: string }) {
                   : "—"}
               </dd>
               <dt>{t("performance.network.ipv4")}</dt>
-              <dd style={{ "white-space": "pre-line" }}>{listAddrs(n().info.ipv4)}</dd>
+              <Addresses list={n().info.ipv4} />
               <dt>{t("performance.network.ipv6")}</dt>
-              <dd style={{ "white-space": "pre-line" }}>{listAddrs(n().info.ipv6)}</dd>
+              <Addresses list={n().info.ipv6} />
               <dt>{t("performance.network.mac")}</dt>
               <dd>{n().info.mac ?? "—"}</dd>
             </dl>
           </div>
-        </>
+        </div>
       )}
     </Show>
   );
@@ -1071,13 +1262,13 @@ function GpuView(props: { id: string }) {
   return (
     <Show when={gpu()} fallback={<p class="empty">{t("performance.gpu.notFound")}</p>}>
       {(g) => (
-        <>
+        <div class="perf-main">
           <Head title={`GPU ${index()}`} model={g().info.name} />
           <div class="chart-labels">
             <span>{t("performance.gpu.engineUtilization")}</span>
             <span>100%</span>
           </div>
-          <div class="chart-grid">
+          <div class="chart-grid" ref={(el) => fitGrid(el, () => g().info.engines.length)}>
             <For each={g().info.engines}>
               {(name, i) => (
                 <div class="chart-frame engine-cell" style={{ "--c": "var(--gpu)" }}>
@@ -1192,7 +1383,7 @@ function GpuView(props: { id: string }) {
               </Show>
             </dl>
           </div>
-        </>
+        </div>
       )}
     </Show>
   );
@@ -1255,7 +1446,7 @@ function BatteryView(props: { id: string }) {
             ? t("performance.battery.chargeRate")
             : t("performance.battery.dischargeRate");
         return (
-          <>
+          <div class="perf-main">
             <Head
               title={t("performance.battery.title")}
               model={[b().info.manufacturer, b().info.name].filter(Boolean).join(" ")}
@@ -1270,7 +1461,7 @@ function BatteryView(props: { id: string }) {
               series={[{ data: () => series(`${k}.pct`), colorVar: "--bat" }]}
             />
             <Show when={b().rate !== null}>
-              <div class="section-gap">
+              <div class="perf-grow section-gap">
                 <ChartBox
                   label={flow()}
                   max={watts(powerMax())}
@@ -1334,7 +1525,7 @@ function BatteryView(props: { id: string }) {
                 {t("performance.battery.wornNote", { percent: Math.round(health() ?? 0) })}
               </p>
             </Show>
-          </>
+          </div>
         );
       }}
     </Show>
