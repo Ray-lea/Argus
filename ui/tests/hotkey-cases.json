@@ -1,0 +1,428 @@
+[
+  {
+    "hotkey": "Ctrl+Alt+Escape",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+KeyK",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+Shift+KeyK",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Alt+Super+KeyK",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Super+KeyK",
+    "level": "ok"
+  },
+  {
+    "hotkey": "F13",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Shift+F24",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+F12",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+F5",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+Backspace",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+Space",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+Enter",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+ArrowUp",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+IntlBackslash",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+ContextMenu",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+Pause",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Ctrl+Alt+Digit1",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Shift+F1",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+KeyK",
+    "level": "warn",
+    "warnings": ["common"]
+  },
+  {
+    "hotkey": "Alt+KeyA",
+    "level": "warn",
+    "warnings": ["common"]
+  },
+  {
+    "hotkey": "Ctrl+Shift+KeyK",
+    "level": "warn",
+    "warnings": ["common"]
+  },
+  {
+    "hotkey": "Alt+Shift+Digit2",
+    "level": "warn",
+    "warnings": ["common"]
+  },
+  {
+    "hotkey": "Ctrl+Backspace",
+    "level": "warn",
+    "warnings": ["common"]
+  },
+  {
+    "hotkey": "Ctrl+ArrowLeft",
+    "level": "warn",
+    "warnings": ["common"]
+  },
+  {
+    "hotkey": "Shift+F1",
+    "level": "warn",
+    "warnings": ["common"]
+  },
+  {
+    "hotkey": "Shift+F11",
+    "level": "warn",
+    "warnings": ["common"]
+  },
+  {
+    "hotkey": "Ctrl+Digit1",
+    "level": "warn",
+    "warnings": ["inApp"]
+  },
+  {
+    "hotkey": "Ctrl+Digit7",
+    "level": "warn",
+    "warnings": ["inApp"]
+  },
+  {
+    "hotkey": "Ctrl+Numpad3",
+    "level": "warn",
+    "warnings": ["inApp", "numpad"]
+  },
+  {
+    "hotkey": "Ctrl+KeyF",
+    "level": "warn",
+    "warnings": ["inApp"]
+  },
+  {
+    "hotkey": "Ctrl+Space",
+    "level": "warn",
+    "warnings": ["imeSwitch"]
+  },
+  {
+    "hotkey": "Ctrl+Alt+Numpad1",
+    "level": "warn",
+    "warnings": ["numpad"]
+  },
+  {
+    "hotkey": "Ctrl+Alt+NumpadDecimal",
+    "level": "warn",
+    "warnings": ["numpad"]
+  },
+  {
+    "hotkey": "Ctrl+Alt+PrintScreen",
+    "level": "warn",
+    "warnings": ["printScreen"]
+  },
+  {
+    "hotkey": "Super+PrintScreen",
+    "level": "warn",
+    "warnings": ["printScreen"]
+  },
+  {
+    "hotkey": "Ctrl+",
+    "level": "block",
+    "issue": "invalid"
+  },
+  {
+    "hotkey": "Ctrl+KeyK+Alt",
+    "level": "block",
+    "issue": "invalid"
+  },
+  {
+    "hotkey": "Ctrl+Alt",
+    "level": "block",
+    "issue": "noKey"
+  },
+  {
+    "hotkey": "Shift",
+    "level": "block",
+    "issue": "noKey"
+  },
+  {
+    "hotkey": "Ctrl+Alt+AltRight",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Ctrl+Alt+NumpadEqual",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Ctrl+Alt+AudioVolumeUp",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Ctrl+Alt+MediaPlayPause",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Ctrl+Alt+CapsLock",
+    "level": "block",
+    "issue": "lockKey"
+  },
+  {
+    "hotkey": "Ctrl+NumLock",
+    "level": "block",
+    "issue": "lockKey"
+  },
+  {
+    "hotkey": "Alt+ScrollLock",
+    "level": "block",
+    "issue": "lockKey"
+  },
+  {
+    "hotkey": "Shift+KeyA",
+    "level": "block",
+    "issue": "needsModifier"
+  },
+  {
+    "hotkey": "KeyA",
+    "level": "block",
+    "issue": "needsModifier"
+  },
+  {
+    "hotkey": "F1",
+    "level": "block",
+    "issue": "needsModifier"
+  },
+  {
+    "hotkey": "Shift+Backspace",
+    "level": "block",
+    "issue": "needsModifier"
+  },
+  {
+    "hotkey": "Shift+Insert",
+    "level": "block",
+    "issue": "needsModifier"
+  },
+  {
+    "hotkey": "Escape",
+    "level": "block",
+    "issue": "needsModifier"
+  },
+  {
+    "hotkey": "Shift+Numpad1",
+    "level": "block",
+    "issue": "needsModifier"
+  },
+  {
+    "hotkey": "Alt+F4",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Alt+Tab",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Alt+Shift+Tab",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Alt+Space",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Alt+Escape",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Ctrl+Escape",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "F12",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Shift+F12",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Shift+F10",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Ctrl+Pause",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Alt+PrintScreen",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Ctrl+Alt+Delete",
+    "level": "block",
+    "issue": "reserved"
+  },
+  {
+    "hotkey": "Ctrl+Shift+Escape",
+    "level": "block",
+    "issue": "taskManager"
+  },
+  {
+    "hotkey": "Ctrl+KeyC",
+    "level": "block",
+    "issue": "editing"
+  },
+  {
+    "hotkey": "Ctrl+KeyV",
+    "level": "block",
+    "issue": "editing"
+  },
+  {
+    "hotkey": "Ctrl+KeyX",
+    "level": "block",
+    "issue": "editing"
+  },
+  {
+    "hotkey": "Ctrl+KeyZ",
+    "level": "block",
+    "issue": "editing"
+  },
+  {
+    "hotkey": "Ctrl+KeyY",
+    "level": "block",
+    "issue": "editing"
+  },
+  {
+    "hotkey": "Ctrl+KeyA",
+    "level": "block",
+    "issue": "editing"
+  },
+  {
+    "hotkey": "Ctrl+Insert",
+    "level": "block",
+    "issue": "editing"
+  },
+  {
+    "hotkey": "Ctrl+Shift+Pause",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Alt+Shift+Pause",
+    "level": "warn",
+    "warnings": ["common"]
+  },
+  {
+    "hotkey": "Ctrl+Numpad8",
+    "level": "warn",
+    "warnings": ["common", "numpad"]
+  },
+  {
+    "hotkey": "Ctrl+PrintScreen",
+    "level": "warn",
+    "warnings": ["common", "printScreen"]
+  },
+  {
+    "hotkey": "Ctrl+Alt+NumpadMultiply",
+    "level": "ok"
+  },
+  {
+    "hotkey": "ctrl+alt+esc",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Control+Option+Up",
+    "level": "ok"
+  },
+  {
+    "hotkey": "CmdOrCtrl+Alt+K",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Ctrl+Alt+KeyK",
+    "level": "ok"
+  },
+  {
+    "hotkey": "Ctrl+Alt+NumpadEnter",
+    "level": "ok"
+  },
+  {
+    "hotkey": "constructor+Ctrl+Alt+KeyK",
+    "level": "block",
+    "issue": "invalid"
+  },
+  {
+    "hotkey": "__proto__+Ctrl+Alt+KeyK",
+    "level": "block",
+    "issue": "invalid"
+  },
+  {
+    "hotkey": "Ctrl+Alt+constructor",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Ctrl+Alt+K",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Ctrl+Alt+Kİ",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Ctrl+Alt+Shift+Pause",
+    "level": "block",
+    "issue": "unsupported"
+  },
+  {
+    "hotkey": "Alt+Super+Pause",
+    "level": "ok"
+  }
+]

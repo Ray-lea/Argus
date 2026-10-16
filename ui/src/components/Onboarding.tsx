@@ -19,7 +19,7 @@ import {
 import { type Language, LOCALES, rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { changeKernelSensors, kernelBusy, kernelError, kernelRevision } from "../lib/kernel-setup";
-import { shortcutKeys } from "../lib/keys";
+import { hotkeyErrorText, shortcutKeys } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
 import {
   type ChartMode,
@@ -431,7 +431,7 @@ function Background(props: {
                 {rich("onboarding.background.hotkey", { hotkey: <Keycaps keys={keys()} /> })}
               </Show>
             </p>
-            <Show when={s().hotkeyError}>
+            <Show when={hotkeyErrorText(s().hotkeyError)}>
               {(error) => (
                 <p class="onboarding-note warning">
                   <WarningIcon size={14} />

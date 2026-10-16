@@ -1,5 +1,5 @@
-//! Resident mode: main window toggling, tray icon and the global hotkey; the
-//! window backdrop.
+//! Resident mode: main window toggling and the tray icon (the hotkey that
+//! toggles it is in hotkey.rs); the window backdrop.
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
@@ -8,7 +8,6 @@ use argus_core::tr;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewWindow};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
     ICoreWebView2_19,
@@ -23,7 +22,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::Interface;
 
-use crate::settings::{SettingsStore, Theme};
+use crate::settings::Theme;
 
 pub const TRAY_ID: &str = "argus";
 
@@ -44,11 +43,14 @@ pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
         let _ = w.show();
         let _ = w.set_focus();
     }
+    crate::hotkey::retry_failed(app);
 }
 
 pub fn hide_main<R: Runtime>(w: &WebviewWindow<R>) {
     let _ = w.hide();
     set_webview_active(w, false);
+    // The settings page cannot end a hotkey recording it can no longer see.
+    crate::hotkey::resume_if_suspended(w.app_handle());
 }
 
 /// Hides the window if it is the one in front; otherwise brings it forward.
@@ -235,8 +237,8 @@ pub fn set_tray_update<R: Runtime>(app: &AppHandle<R>, version: Option<&str>) {
     }
 }
 
-/// Redoes the native text after a language change: tray menu, window title
-/// and the hotkey's error. The tray tooltip follows with the next sample.
+/// Redoes the native text after a language change: tray menu and window
+/// title. The tray tooltip follows with the next sample.
 pub fn apply_language<R: Runtime>(app: &AppHandle<R>) {
     let update = TRAY_UPDATE.lock().unwrap().clone();
     if let (Some(tray), Ok(menu)) = (app.tray_by_id(TRAY_ID), tray_menu(app, update.as_deref())) {
@@ -245,12 +247,6 @@ pub fn apply_language<R: Runtime>(app: &AppHandle<R>) {
     }
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_title(&app_title());
-    }
-    let store = app.state::<SettingsStore>();
-    if store.hotkey_error.lock().unwrap().is_some() {
-        let hotkey = store.get().hotkey;
-        let err = apply_hotkey(app, Some(&hotkey), &hotkey).err();
-        *store.hotkey_error.lock().unwrap() = err;
     }
 }
 
@@ -309,66 +305,4 @@ pub fn set_tray_tooltip<R: Runtime>(app: &AppHandle<R>, text: &str) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let _ = tray.set_tooltip(Some(text));
     }
-}
-
-/// Registers `accelerator` as the show/hide hotkey, replacing `previous`.
-pub fn apply_hotkey<R: Runtime>(
-    app: &AppHandle<R>,
-    previous: Option<&str>,
-    accelerator: &str,
-) -> Result<(), String> {
-    let gs = app.global_shortcut();
-    if let Some(prev) = previous.filter(|p| !p.is_empty()) {
-        let _ = gs.unregister(prev);
-    }
-    if accelerator.is_empty() {
-        return Ok(());
-    }
-    if !accelerator.contains('+') {
-        return Err(tr!("hotkey.needsModifier"));
-    }
-    gs.on_shortcut(accelerator, |app, _shortcut, event| {
-        if event.state == ShortcutState::Pressed {
-            toggle_main(app);
-        }
-    })
-    .map_err(|e| {
-        let label = shortcut_label(accelerator);
-        if e.to_string().contains("already registered") {
-            tr!("hotkey.taken", shortcut = label)
-        } else {
-            tr!("hotkey.failed", shortcut = label, error = e)
-        }
-    })
-}
-
-/// How a shortcut reads in messages: "Ctrl+Alt+Esc" rather than "Ctrl+Alt+Escape".
-fn shortcut_label(accelerator: &str) -> String {
-    accelerator
-        .split('+')
-        .map(|part| match part {
-            "Super" => "Win",
-            "Escape" => "Esc",
-            _ => part
-                .strip_prefix("Key")
-                .or_else(|| part.strip_prefix("Digit"))
-                .filter(|rest| rest.len() == 1)
-                .unwrap_or(part),
-        })
-        .collect::<Vec<_>>()
-        .join("+")
-}
-
-/// Registers the saved hotkey at startup, remembering why if it fails.
-pub fn register_saved_hotkey<R: Runtime>(app: &AppHandle<R>) {
-    let store = app.state::<SettingsStore>();
-    let hotkey = store.get().hotkey;
-    let err = apply_hotkey(app, None, &hotkey).err();
-    if let Some(e) = &err {
-        log::warn!(
-            "hotkey not registered: {}",
-            argus_core::diagnostics::failure(&e.to_string())
-        );
-    }
-    *store.hotkey_error.lock().unwrap() = err;
 }

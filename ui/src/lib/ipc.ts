@@ -94,8 +94,13 @@ export const api = {
   taskManagerReady: (): Promise<void> => (mock ? Promise.resolve() : invoke("task_manager_ready")),
   setCloseToTray: (value: boolean): Promise<SettingsView> =>
     mock ? mock.settings.update({ closeToTray: value }) : invoke("set_close_to_tray", { value }),
+  /** Rejects with a `HotkeyError`; the old hotkey then stays. */
   setHotkey: (hotkey: string): Promise<SettingsView> =>
-    mock ? mock.settings.update({ hotkey }) : invoke("set_hotkey", { hotkey }),
+    mock ? mock.setHotkey(hotkey) : invoke("set_hotkey", { hotkey }),
+  /** Frees the hotkey while a new one is recorded. */
+  suspendHotkey: (): Promise<void> => (mock ? Promise.resolve() : invoke("suspend_hotkey")),
+  /** Registers the saved hotkey again: after recording, or to retry. */
+  resumeHotkey: (): Promise<SettingsView> => (mock ? mock.settings.get() : invoke("resume_hotkey")),
   setAutostart: (enabled: boolean): Promise<SettingsView> =>
     mock ? mock.settings.update({ autostart: enabled }) : invoke("set_autostart", { enabled }),
   setRules: (rules: ProcessRule[]): Promise<SettingsView> =>

@@ -1,6 +1,7 @@
 // Synthetic data for running the UI in a plain browser (`pnpm dev`).
 // Never bundled into the Tauri build's hot path: ipc.ts only imports it outside Tauri.
 
+import { canonical, judge, parseHotkey } from "./hotkey";
 import { type Language, type Locale, localeFor, t } from "./i18n";
 import { mockCpuSensors } from "./mock-cpu";
 import type {
@@ -517,8 +518,24 @@ const mockSettings: SettingsView = {
   updateRoute: "auto",
   updateProxy: "https://gh-proxy.com/",
   autostart: false,
-  hotkeyError: null,
+  // `?hotkey=taken`: every combination is taken, the saved one too.
+  hotkeyError: query.get("hotkey") === "taken" ? { kind: "taken", shortcut: "Ctrl+Alt+Escape" } : null,
+  defaultHotkey: "Ctrl+Alt+Escape",
 };
+
+/** What set_hotkey does, with the same rules. */
+export async function setHotkey(hotkey: string): Promise<SettingsView> {
+  if (hotkey) {
+    const result = judge(hotkey);
+    if (result.level === "block") throw { kind: "invalid", shortcut: hotkey, issue: result.issue };
+    if (query.get("hotkey") === "taken") throw { kind: "taken", shortcut: hotkey };
+  }
+  const parsed = hotkey ? parseHotkey(hotkey) : null;
+  return settings.update({
+    hotkey: parsed && typeof parsed !== "string" ? canonical(parsed) : hotkey,
+    hotkeyError: null,
+  });
+}
 
 export const settings = {
   get: async (): Promise<SettingsView> => ({ ...mockSettings }),

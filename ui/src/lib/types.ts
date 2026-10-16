@@ -1,5 +1,6 @@
 // Mirrors the serde types in argus-core. Keep in sync.
 
+import type { HotkeyIssue } from "./hotkey";
 import type { Language, Locale } from "./i18n";
 
 export interface ProcessRow {
@@ -455,8 +456,18 @@ export interface SettingsView {
   autostart: boolean;
   /** The language in effect (`language` resolved). */
   locale: Locale;
-  hotkeyError: string | null;
+  /** Why the hotkey is not active. */
+  hotkeyError: HotkeyError | null;
+  defaultHotkey: string;
 }
+
+/** Why the hotkey is not active, or why a change failed (hotkey.rs). */
+export type HotkeyError =
+  | { kind: "invalid"; shortcut: string; issue: HotkeyIssue }
+  /** Registered by Windows or another program (or another Argus). */
+  | { kind: "taken"; shortcut: string }
+  | { kind: "failed"; shortcut: string; code: number }
+  | { kind: "saveFailed" };
 
 export interface UpdateStatus {
   /** `available` only for the standalone exe, which updates by hand. */

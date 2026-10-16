@@ -19,6 +19,7 @@ use tauri::ipc::Channel;
 use tauri::{Manager, State};
 
 use crate::caption::{self, ButtonRect};
+use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
 use crate::settings::{Language, SettingsStore, SettingsView, Theme, UpdateChannel, UpdateRoute};
 use crate::updater::{self, UpdateStatus};
@@ -224,7 +225,8 @@ fn settings_view<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> SettingsView {
         settings: store.get(),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
         locale: argus_core::i18n::locale(),
-        hotkey_error: store.hotkey_error.lock().unwrap().clone(),
+        hotkey_error: crate::hotkey::error(app),
+        default_hotkey: crate::settings::DEFAULT_HOTKEY,
     }
 }
 
@@ -298,21 +300,26 @@ pub fn set_close_to_tray(app: tauri::AppHandle, value: bool) -> Result<SettingsV
     Ok(settings_view(&app))
 }
 
-/// Replaces the show/hide hotkey. An empty string turns it off.
+/// Replaces the show/hide hotkey. An empty string turns it off. On failure
+/// the old one stays.
 #[tauri::command]
-pub fn set_hotkey(app: tauri::AppHandle, hotkey: String) -> Result<SettingsView, String> {
-    let store = app.state::<SettingsStore>();
-    let previous = store.get().hotkey;
-    if let Err(e) = shell::apply_hotkey(&app, Some(&previous), &hotkey) {
-        // Put the old one back so the user is never left without a hotkey by accident.
-        let _ = shell::apply_hotkey(&app, None, &previous);
-        return Err(e);
-    }
-    store
-        .update(|s| s.hotkey = hotkey)
-        .map_err(|e| e.to_string())?;
-    *store.hotkey_error.lock().unwrap() = None;
+pub fn set_hotkey(app: tauri::AppHandle, hotkey: String) -> Result<SettingsView, HotkeyError> {
+    crate::hotkey::set(&app, &hotkey)?;
     Ok(settings_view(&app))
+}
+
+/// Frees the hotkey while the settings page records a new one.
+#[tauri::command]
+pub fn suspend_hotkey(app: tauri::AppHandle) {
+    crate::hotkey::suspend(&app);
+}
+
+/// Registers the saved hotkey again: after recording, or to retry one that
+/// another program held.
+#[tauri::command]
+pub fn resume_hotkey(app: tauri::AppHandle) -> SettingsView {
+    crate::hotkey::resume(&app);
+    settings_view(&app)
 }
 
 #[tauri::command]

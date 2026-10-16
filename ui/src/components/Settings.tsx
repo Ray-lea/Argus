@@ -20,7 +20,7 @@ import { fmtCache, netUnit, setNetUnit } from "../lib/format";
 import { type Language, LOCALES, localized, type MessageKey, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { changeKernelSensors, kernelBusy, kernelError, kernelRevision } from "../lib/kernel-setup";
-import { keyLabel } from "../lib/keys";
+import { hotkeyErrorText, shortcutKeys } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
 import {
   balancedFrameMs,
@@ -1084,7 +1084,7 @@ export default function SettingsPage() {
       setPrivilegeRevision((value) => value + 1);
     }),
   );
-  const [hotkeyError, setHotkeyError] = createSignal<string | null>(null);
+  const [hotkeyError, setHotkeyError] = createSignal<unknown>(null);
   const [recording, setRecording] = createSignal(false);
   let stopRecording: (() => void) | null = null;
   onCleanup(() => stopRecording?.());
@@ -1158,7 +1158,7 @@ export default function SettingsPage() {
       mutate(await api.setHotkey(hotkey));
       setHotkeyError(null);
     } catch (e) {
-      setHotkeyError(String(e));
+      setHotkeyError(e);
     }
   };
 
@@ -1301,7 +1301,7 @@ export default function SettingsPage() {
                     icon={<KeyboardIcon size={20} />}
                     title={t("settings.hotkey.title")}
                     desc={t("settings.hotkey.desc")}
-                    error={hotkeyError() ?? s().hotkeyError}
+                    error={hotkeyErrorText(hotkeyError() ?? s().hotkeyError)}
                   >
                     <span class="keycaps" aria-live="polite">
                       <Show
@@ -1312,7 +1312,7 @@ export default function SettingsPage() {
                           when={s().hotkey}
                           fallback={<span class="pending">{t("settings.hotkey.unset")}</span>}
                         >
-                          <For each={s().hotkey.split("+")}>{(part) => <kbd>{keyLabel(part)}</kbd>}</For>
+                          <For each={shortcutKeys(s().hotkey)}>{(key) => <kbd>{key}</kbd>}</For>
                         </Show>
                       </Show>
                     </span>

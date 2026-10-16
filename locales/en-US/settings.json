@@ -52,7 +52,23 @@
     "desc": "Works in any program. While recording, press Esc to cancel or Backspace to turn off the shortcut.",
     "recording": "Press a new key combination…",
     "unset": "Not set",
-    "change": "Change"
+    "change": "Change",
+    "error": {
+      "invalid": "{shortcut} can't be used as a shortcut: {reason}",
+      "taken": "{shortcut} is in use by Windows or another app (possibly another running Argus). Choose a different combination.",
+      "failed": "Couldn't register {shortcut} (error {code}).",
+      "saveFailed": "Couldn't save the setting. The shortcut is unchanged."
+    },
+    "issue": {
+      "invalid": "The combination isn't recognized.",
+      "noKey": "Modifier keys alone can't be a shortcut; add an ordinary key. Windows shortcuts also don't tell left and right Ctrl, Alt, Shift or Win apart.",
+      "unsupported": "The {key} key can't be used in a global shortcut.",
+      "lockKey": "Caps Lock, Num Lock and Scroll Lock can't be part of a combination.",
+      "needsModifier": "A combination needs Ctrl, Alt or Win (except F13–F24 and Shift+F1–F11). Other Shift-only combinations would interfere with typing in every app.",
+      "reserved": "{shortcut} is used by Windows or by most apps.",
+      "taskManager": "Ctrl+Shift+Esc opens the task manager. To have it open Argus, turn on “Replace Task Manager” in Settings > Permissions.",
+      "editing": "{shortcut} is used for copy, paste and other editing."
+    }
   },
   "privilege": {
     "desc": "Lets Argus running as a standard user manage system processes, apply rules automatically, collect per-process network traffic, find file locks, control services and close IPv4 TCP connections. Installing and uninstalling both require administrator permission.",

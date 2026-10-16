@@ -1,6 +1,7 @@
 mod caption;
 mod commands;
 mod diagnostics;
+mod hotkey;
 mod instance;
 mod leftovers;
 mod sampler;
@@ -173,13 +174,15 @@ pub fn run() {
                 shell::show_main(app)
             }
         }))
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
         ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Before setup: a second launch reaches show_main (and the hotkey's
+        // retry) as soon as the window exists, before setup has run.
+        .manage(hotkey::HotkeyState::default())
         .manage(AppState {
             sampler,
             elevated,
@@ -237,7 +240,6 @@ pub fn run() {
             let relaunch_hidden = updater::take_relaunch_hidden(app.handle());
             let start_hidden = start_hidden || (updated && relaunch_hidden);
             shell::build_tray(app.handle())?;
-            shell::register_saved_hotkey(app.handle());
 
             if taskmgr_start {
                 let app = app.handle().clone();
@@ -290,6 +292,7 @@ pub fn run() {
                 shell::extend_backdrop(&window);
                 caption::install(&window, app.handle());
                 shell::guard_resize_seam(&window);
+                hotkey::init(app.handle(), &window);
                 if !start_hidden {
                     window.show()?;
                     window.set_focus()?;
@@ -303,6 +306,7 @@ pub fn run() {
                 // Coming back from the tray or minimized: refresh immediately.
                 tauri::WindowEvent::Focused(true) => {
                     window.state::<AppState>().sampler.send(Control::Refresh);
+                    hotkey::retry_failed(window.app_handle());
                 }
                 // Resized fires continuously while dragging; act on transitions only.
                 tauri::WindowEvent::Resized(_) => {
@@ -349,6 +353,8 @@ pub fn run() {
             commands::task_manager_ready,
             commands::set_close_to_tray,
             commands::set_hotkey,
+            commands::suspend_hotkey,
+            commands::resume_hotkey,
             commands::set_autostart,
             commands::set_rules,
             commands::rule_stats,

@@ -109,7 +109,9 @@ pub struct Settings {
     pub onboarding: u32,
     /// Closing the window keeps Argus running in the tray.
     pub close_to_tray: bool,
-    /// Global shortcut that shows/hides the window; empty disables it.
+    /// Global shortcut that shows/hides the window, e.g. `Ctrl+Alt+Escape`
+    /// (see hotkey.rs); empty disables it.
+    #[serde(deserialize_with = "lenient_hotkey")]
     pub hotkey: String,
     /// Priority and efficiency mode rules, applied as programs start.
     pub rules: Vec<ProcessRule>,
@@ -144,6 +146,15 @@ impl Default for Settings {
     }
 }
 
+/// A hotkey that is not text (a hand edit) reads as the default instead of
+/// sending every other setting back to its default too.
+fn lenient_hotkey<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(match serde_json::Value::deserialize(d)? {
+        serde_json::Value::String(hotkey) => hotkey,
+        _ => DEFAULT_HOTKEY.into(),
+    })
+}
+
 /// What the settings page shows: stored settings plus live state.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,13 +165,13 @@ pub struct SettingsView {
     /// The language in effect (`language` resolved).
     pub locale: Locale,
     /// Why the hotkey is not active (e.g. taken by another app).
-    pub hotkey_error: Option<String>,
+    pub hotkey_error: Option<crate::hotkey::HotkeyError>,
+    pub default_hotkey: &'static str,
 }
 
 pub struct SettingsStore {
     path: PathBuf,
     pub current: Mutex<Settings>,
-    pub hotkey_error: Mutex<Option<String>>,
 }
 
 impl SettingsStore {
@@ -172,7 +183,6 @@ impl SettingsStore {
         Self {
             path,
             current: Mutex::new(current),
-            hotkey_error: Mutex::new(None),
         }
     }
 
@@ -205,7 +215,6 @@ mod tests {
         let store = SettingsStore {
             path: directory.clone(),
             current: Mutex::new(Settings::default()),
-            hotkey_error: Mutex::new(None),
         };
         assert!(
             store
@@ -214,5 +223,13 @@ mod tests {
         );
         assert!(!store.get().kernel_sensors);
         std::fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn a_hotkey_that_is_not_text_keeps_the_other_settings() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"hotkey": 5, "closeToTray": false}"#).unwrap();
+        assert_eq!(settings.hotkey, DEFAULT_HOTKEY);
+        assert!(!settings.close_to_tray);
     }
 }

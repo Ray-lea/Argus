@@ -52,7 +52,23 @@
     "desc": "在任意程序中均可使用。录制时按 Esc 取消，按 Backspace 停用快捷键。",
     "recording": "按下新的组合键…",
     "unset": "未设置",
-    "change": "更改"
+    "change": "更改",
+    "error": {
+      "invalid": "{shortcut} 不能用作快捷键：{reason}",
+      "taken": "{shortcut} 已被 Windows 或其他程序（包括另一个正在运行的 Argus）占用，请选择其他组合键。",
+      "failed": "无法注册 {shortcut}（错误代码 {code}）。",
+      "saveFailed": "无法保存设置，快捷键保持不变。"
+    },
+    "issue": {
+      "invalid": "无法识别该组合键。",
+      "noKey": "仅由修饰键组成的组合不能用作快捷键，还需按一个普通键；Windows 的全局快捷键也不区分左右 Ctrl、Alt、Shift 和 Win。",
+      "unsupported": "{key} 键不能用于全局快捷键。",
+      "lockKey": "CapsLock、NumLock 和 ScrollLock 不能用于组合键。",
+      "needsModifier": "组合须包含 Ctrl、Alt 或 Win（F13–F24 及 Shift+F1–F11 除外）；其他仅含 Shift 的组合会影响所有程序中的正常输入。",
+      "reserved": "{shortcut} 用于 Windows 或大多数程序的常用操作。",
+      "taskManager": "Ctrl+Shift+Esc 用于打开任务管理器。如需用它打开 Argus，可在“设置 → 权限”中开启“替换系统任务管理器”。",
+      "editing": "{shortcut} 用于复制、粘贴等编辑操作。"
+    }
   },
   "privilege": {
     "desc": "使以标准权限运行的 Argus 能够管理系统进程、自动应用规则、采集每进程网络流量、查询文件占用，以及控制服务和断开 IPv4 TCP 连接。安装和卸载均需要管理员授权。",

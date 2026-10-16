@@ -10,11 +10,6 @@
     "update": "重启并更新到 {version}",
     "tooltip": "CPU {cpu}%  内存 {memory}%"
   },
-  "hotkey": {
-    "needsModifier": "快捷键至少需要一个修饰键（Ctrl、Alt、Shift 或 Win）",
-    "taken": "{shortcut} 已被其他程序占用，请选择其他组合键。",
-    "failed": "无法注册 {shortcut}：{error}"
-  },
   "host": {
     "serviceReply": "特权服务返回了无法识别的结果，请更新服务",
     "fileMissing": "文件不存在",

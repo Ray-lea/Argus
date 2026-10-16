@@ -10,11 +10,6 @@
     "update": "Restart to update to {version}",
     "tooltip": "CPU {cpu}%  Memory {memory}%"
   },
-  "hotkey": {
-    "needsModifier": "A shortcut needs at least one modifier key (Ctrl, Alt, Shift or Win)",
-    "taken": "{shortcut} is in use by another app. Choose a different combination.",
-    "failed": "Couldn't register {shortcut}: {error}"
-  },
   "host": {
     "serviceReply": "The privileged service returned an unrecognized result; update the service",
     "fileMissing": "The file doesn't exist",
