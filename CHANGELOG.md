@@ -2,7 +2,7 @@
 
 Argus 各版本的用户可见变更。版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)；本文件由 `pnpm release` 根据 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 提交信息生成，发布说明取自对应条目。
 
-## 0.1.0 - 2026-10-12
+## 0.1.0 - 2026-10-16
 
 Argus 的首个公开版本。
 
