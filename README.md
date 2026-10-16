@@ -123,6 +123,26 @@ start.bat build     # 发布构建，生成 target\release\argus.exe
 
 详情参见[路线图](docs/roadmap.md)。
 
+## 🙏 致谢
+
+Argus 构建于以下开源项目之上，在此致谢：
+
+| 项目 | 用途 |
+|---|---|
+| [Tauri](https://tauri.app/) 及其插件 | 应用宿主、托盘、全局快捷键、开机启动与应用内更新 |
+| [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)、[webview2-com](https://github.com/wravery/webview2-rs) | 界面渲染 |
+| [windows-rs](https://github.com/microsoft/windows-rs) | Windows 原生接口的 Rust 绑定 |
+| [SolidJS](https://www.solidjs.com/)、[TanStack Virtual](https://tanstack.com/virtual) | 界面框架与长列表虚拟滚动 |
+| [Vite](https://vite.dev/)、[Tailwind CSS](https://tailwindcss.com/)、[TypeScript](https://www.typescriptlang.org/)、[Biome](https://biomejs.dev/) | 前端构建、样式与代码检查 |
+| [serde](https://serde.rs/)、[reqwest](https://github.com/seanmonstar/reqwest) 等 Rust crate | 序列化、网络请求等基础功能 |
+| [PawnIO](https://pawnio.eu/)、[PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) | 可选内核传感器使用的签名驱动与模块 |
+| [ZenStates-Core](https://github.com/irusanov/ZenStates-Core)、[LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)、[GNR-SMU](https://github.com/Kyworn/gnr-smu) | AMD SMU 表等 CPU 寄存器布局 |
+| [Intel IGCL](https://github.com/intel/drivers.gpu.control-library)、[AMD ADL](https://github.com/GPUOpen-LibrariesAndSDKs/display-library) | 显卡遥测接口 |
+
+全部第三方组件及其许可证见 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。
+
+感谢 [LINUX DO](https://linux.do/) 社区的支持。
+
 ## 📄 许可证
 
 Argus 是自由软件，依据 [GNU Affero General Public License](LICENSE) 第 3 版或任何更高版本（AGPL-3.0-or-later）发布。

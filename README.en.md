@@ -125,6 +125,26 @@ Issues and pull requests are welcome; please read the [contributing guide](.gith
 
 See the [roadmap](docs/roadmap.md) for details.
 
+## 🙏 Acknowledgements
+
+Argus is built on the following open-source projects, with thanks:
+
+| Project | Used for |
+|---|---|
+| [Tauri](https://tauri.app/) and its plugins | App host, tray, global shortcut, start at sign-in and in-app updates |
+| [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/), [webview2-com](https://github.com/wravery/webview2-rs) | Rendering the interface |
+| [windows-rs](https://github.com/microsoft/windows-rs) | Rust bindings for Windows' native interfaces |
+| [SolidJS](https://www.solidjs.com/), [TanStack Virtual](https://tanstack.com/virtual) | UI framework and virtual scrolling for long lists |
+| [Vite](https://vite.dev/), [Tailwind CSS](https://tailwindcss.com/), [TypeScript](https://www.typescriptlang.org/), [Biome](https://biomejs.dev/) | Frontend build, styling and linting |
+| [serde](https://serde.rs/), [reqwest](https://github.com/seanmonstar/reqwest) and other Rust crates | Serialization, HTTP and other groundwork |
+| [PawnIO](https://pawnio.eu/), [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) | Signed driver and modules behind the optional kernel sensors |
+| [ZenStates-Core](https://github.com/irusanov/ZenStates-Core), [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), [GNR-SMU](https://github.com/Kyworn/gnr-smu) | CPU register layouts such as AMD SMU tables |
+| [Intel IGCL](https://github.com/intel/drivers.gpu.control-library), [AMD ADL](https://github.com/GPUOpen-LibrariesAndSDKs/display-library) | GPU telemetry interfaces |
+
+All third-party components and their licenses are listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
+
+Thanks to the [LINUX DO](https://linux.do/) community for its support.
+
 ## 📄 License
 
 Argus is free software, released under the [GNU Affero General Public License](LICENSE), version 3 or (at your option) any later version (AGPL-3.0-or-later).
