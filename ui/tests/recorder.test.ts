@@ -223,6 +223,30 @@ test("a modifier added after the main key is reported, not dropped", () => {
   }
 });
 
+test("two ordinary keys together are refused with the reason", () => {
+  const numpad = keyboard();
+  numpad.down("NumpadAdd");
+  numpad.down("NumpadSubtract");
+  numpad.up("NumpadSubtract");
+  numpad.up("NumpadAdd");
+  assert.deepEqual(numpad.commits(), []);
+  assert.deepEqual(numpad.state.hint, { kind: "multipleKeys" });
+  assert.deepEqual(
+    numpad.state.chord.map((k) => k.key),
+    ["NumpadAdd", "NumpadSubtract"],
+  );
+
+  const withCtrl = keyboard();
+  withCtrl.down("ControlLeft");
+  withCtrl.down("KeyK");
+  withCtrl.down("KeyJ");
+  withCtrl.up("KeyK");
+  withCtrl.up("KeyJ");
+  withCtrl.up("ControlLeft");
+  assert.deepEqual(withCtrl.commits(), []);
+  assert.deepEqual(withCtrl.state.hint, { kind: "multipleKeys" });
+});
+
 test("keys the table lacks are named", () => {
   const k = keyboard();
   k.down("ControlLeft");

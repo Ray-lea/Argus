@@ -30,7 +30,7 @@
     "closeToTray": "关闭窗口时保留在托盘",
     "closeToTrayHint": "关闭这一项后，关闭窗口即退出 Argus。",
     "hotkey": "按 {hotkey} 可随时显示或隐藏 Argus，可在设置中更改。",
-    "hotkeyOff": "显示或隐藏 Argus 的全局快捷键已关闭，可在设置中开启。"
+    "hotkeyOff": "显示或隐藏 Argus 的全局快捷键已停用，可在设置中重新开启。"
   },
   "update": {
     "title": "保持最新",

@@ -30,7 +30,7 @@
     "closeToTray": "Keep in the system tray when closed",
     "closeToTrayHint": "When this is off, closing the window exits Argus.",
     "hotkey": "Press {hotkey} anytime to show or hide Argus. The shortcut can be changed in Settings.",
-    "hotkeyOff": "The shortcut for showing or hiding Argus is off. It can be turned on in Settings."
+    "hotkeyOff": "The shortcut for showing or hiding Argus is turned off. It can be turned back on in Settings."
   },
   "update": {
     "title": "Stay up to date",

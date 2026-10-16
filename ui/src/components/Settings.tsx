@@ -2,6 +2,7 @@
 // left that follows the scroll.
 
 import {
+  batch,
   children,
   createEffect,
   createMemo,
@@ -30,7 +31,7 @@ import {
   record,
   startRecording,
 } from "../lib/hotkey";
-import { type Language, LOCALES, localized, type MessageKey, t } from "../lib/i18n";
+import { type Language, LOCALES, localized, type MessageKey, rich, t } from "../lib/i18n";
 import { api, inTauri } from "../lib/ipc";
 import { changeKernelSensors, kernelBusy, kernelError, kernelRevision } from "../lib/kernel-setup";
 import { hotkeyErrorText, hotkeyIssueText, keyLabel, shortcutKeys, shortcutText } from "../lib/keys";
@@ -39,6 +40,9 @@ import {
   balancedFrameMs,
   type ChartMode,
   chartMode,
+  EASE_IN,
+  EASE_OUT,
+  play,
   presence,
   refreshHz,
   setChartMode,
@@ -76,6 +80,7 @@ import Indicator from "./Indicator";
 import {
   BoltIcon,
   ChatIcon,
+  CheckIcon,
   DismissIcon,
   DocumentIcon,
   ExternalIcon,
@@ -96,6 +101,7 @@ import {
   TrashIcon,
   TrayIcon,
   UpdateIcon,
+  WarningIcon,
 } from "./icons";
 import { NavPositionChoice, navPosition } from "./Nav";
 import { onboardingOpen, openOnboarding } from "./Onboarding";
@@ -144,8 +150,6 @@ function Setting(props: {
   title: JSX.Element;
   desc?: JSX.Element;
   error?: string | null;
-  /** Neutral information below the description. */
-  note?: string | null;
   id?: string;
   class?: string;
   children?: JSX.Element;
@@ -160,8 +164,13 @@ function Setting(props: {
         <Show when={desc()}>
           <div class="setting-desc">{desc()}</div>
         </Show>
-        <Show when={props.error}>{(err) => <div class="setting-error">{err()}</div>}</Show>
-        <Show when={props.note}>{(note) => <div class="setting-note">{note()}</div>}</Show>
+        <Show when={props.error}>
+          {(err) => (
+            <div class="setting-error" role="alert">
+              {err()}
+            </div>
+          )}
+        </Show>
       </div>
       <Show when={control()}>
         <div class="setting-control">{control()}</div>
@@ -1079,13 +1088,16 @@ function HistorySettings(props: { enabled: boolean; onToggle: (on: boolean) => v
 
 type HotkeyMode = "idle" | "recording" | "confirm" | "saving";
 
-/** What the hotkey row says below its description. */
+/** What the hotkey card says in its lower part. */
 type HotkeyMessage =
   | { kind: "error"; error: unknown }
   | { kind: "issue"; issue: HotkeyIssue; hotkey: string }
   | { kind: "hint"; hint: RecordHint }
   | { kind: "maybeTaken" }
   | { kind: "warning"; warnings: HotkeyWarning[]; hotkey: string };
+
+/** What a save just did, said for a moment before the lower part closes. */
+type HotkeyDone = { kind: "saved"; hotkey: string } | { kind: "off" };
 
 /** How a key of the chord being recorded reads, e.g. "左 Ctrl". */
 function chordLabel(key: ChordKey): string {
@@ -1102,9 +1114,11 @@ function chordLabel(key: ChordKey): string {
 }
 
 /**
- * The show/hide hotkey: records a combination as RegisterHotKey will match it
- * (see `record` in lib/hotkey.ts) while the current one is suspended, so
- * that pressing it again reaches the page instead of hiding the window.
+ * The show/hide hotkey: the combination and a switch on top; below, opened
+ * while a combination is recorded, confirmed or refused, what is going on and
+ * what can be done. Records a combination as RegisterHotKey will match it
+ * (see `record` in lib/hotkey.ts) while the current one is suspended, so that
+ * pressing it again reaches the page instead of hiding the window.
  */
 function HotkeySetting(props: { settings: SettingsView; onSaved: (value: SettingsView) => void }) {
   const [mode, setMode] = createSignal<HotkeyMode>("idle");
@@ -1112,12 +1126,24 @@ function HotkeySetting(props: { settings: SettingsView; onSaved: (value: Setting
   const [message, setMessage] = createSignal<HotkeyMessage | null>(null);
   /** The combination being confirmed or saved. */
   const [candidate, setCandidate] = createSignal("");
-  let toggle!: HTMLButtonElement;
+  const [switching, setSwitching] = createSignal(false);
+  const [done, setDone] = createSignal<HotkeyDone | null>(null);
+  let change!: HTMLButtonElement;
+  let headKeys: HTMLSpanElement | undefined;
+  let drawer: HTMLDivElement | undefined;
+  /** The lower part is sliding closed. */
+  let closing = false;
+  let doneTimer = 0;
+  let mounted = false;
+  let cancelButton: HTMLButtonElement | undefined;
   let again: HTMLButtonElement | undefined;
   let endSession: (() => void) | null = null;
   let endKeys: (() => void) | null = null;
   let idleTimer = 0;
   let quietTimer = 0;
+  /** Bumped when a recording starts or ends: a save that returns later sees it ended. */
+  let session = 0;
+  let disposed = false;
 
   const clearTimers = () => {
     clearTimeout(idleTimer);
@@ -1128,19 +1154,166 @@ function HotkeySetting(props: { settings: SettingsView; onSaved: (value: Setting
     endKeys = null;
     clearTimers();
   };
+  // ---- The lower part's motion: it slides open, follows the height of what
+  // it says, and slides closed. One animation at a time moves the drawer,
+  // and the content is clipped while it runs.
+  let motion: Animation | null = null;
+  /** Runs `keyframes` on the drawer in place of any running one; `hold`
+   *  keeps the starting height until the animation's first frame. */
+  const animate = (
+    el: HTMLDivElement,
+    keyframes: Keyframe[],
+    options: KeyframeAnimationOptions,
+    hold?: string,
+  ) => {
+    const previous = motion;
+    motion = null;
+    previous?.cancel();
+    const slide = play(el, keyframes, options);
+    if (!slide) {
+      el.style.height = "";
+      el.style.overflow = "";
+      return null;
+    }
+    motion = slide;
+    if (hold) el.style.height = hold;
+    el.style.overflow = "hidden";
+    const settle = () => {
+      if (motion !== slide) return;
+      motion = null;
+      el.style.height = "";
+      el.style.overflow = "";
+    };
+    slide.finished.then(settle, settle);
+    return slide;
+  };
+  /** Slides the lower part open as it appears (not when the page opens with it). */
+  const slideOpen = (el: HTMLDivElement) => {
+    drawer = el;
+    if (!mounted) return;
+    queueMicrotask(() =>
+      animate(
+        el,
+        [
+          { height: "0px", opacity: 0 },
+          { height: `${el.offsetHeight}px`, opacity: 1 },
+        ],
+        { duration: 250, easing: EASE_OUT },
+      ),
+    );
+  };
+  /** Slides the lower part closed, then runs `after`, which hides it. */
+  const collapse = (after: () => void) => {
+    if (closing) return;
+    const el = drawer;
+    const slide =
+      el?.isConnected && !disposed
+        ? animate(
+            el,
+            [
+              { height: `${el.offsetHeight}px`, opacity: 1 },
+              { height: "0px", opacity: 0 },
+            ],
+            { duration: 167, easing: EASE_IN, fill: "forwards" },
+          )
+        : null;
+    if (!el || !slide) {
+      after();
+      return;
+    }
+    closing = true;
+    const end = () => {
+      closing = false;
+      after();
+      // Still shown (a recording started meanwhile): drop the closed state.
+      if (el.isConnected) slide.cancel();
+    };
+    slide.finished.then(end, end);
+  };
   /** Ends the recording; `resume` brings the old hotkey back. */
   const finish = (resume: boolean, keepMessage = false) => {
+    session += 1;
     detachKeys();
     endSession?.();
     endSession = null;
-    setMode("idle");
-    setRecording(startRecording());
-    setCandidate("");
-    if (!keepMessage) setMessage(null);
     if (resume) void api.resumeHotkey().then(props.onSaved, () => {});
-    toggle?.focus();
+    const reset = () => {
+      batch(() => {
+        setMode("idle");
+        setRecording(startRecording());
+        setCandidate("");
+        if (!keepMessage) setMessage(null);
+      });
+      change?.focus();
+    };
+    // An error to show keeps the lower part; otherwise it slides away first.
+    if ((keepMessage && message()) || props.settings.hotkeyError) reset();
+    else collapse(reset);
   };
   const cancel = () => finish(true);
+
+  // What the lower part says changes its height (a hint, an error, the
+  // saved message): it follows smoothly rather than jumping.
+  let bodyHeight = 0;
+  const resizer = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const target = entry.target as HTMLElement;
+      if (!target.isConnected) {
+        resizer.unobserve(target);
+        bodyHeight = 0;
+        continue;
+      }
+      const height = entry.borderBoxSize[0]?.blockSize ?? target.offsetHeight;
+      const from = bodyHeight;
+      bodyHeight = height;
+      const el = drawer;
+      if (!el || !from || closing || Math.abs(height - from) < 1) continue;
+      // From where the drawer is now: mid-way through opening, or the old height.
+      const start = `${motion ? el.getBoundingClientRect().height : from}px`;
+      animate(el, [{ height: start }, { height: `${height}px` }], { duration: 167, easing: EASE_OUT }, start);
+    }
+  });
+  onCleanup(() => resizer.disconnect());
+
+  // The new combination on top lights up once in the accent color.
+  const flashKeys = () => {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    for (const kbd of headKeys?.querySelectorAll("kbd") ?? []) {
+      const rest = getComputedStyle(kbd);
+      play(
+        kbd,
+        [
+          { borderColor: accent, color: accent },
+          { borderColor: rest.borderTopColor, color: rest.color },
+        ],
+        { duration: 1200, easing: "ease-in" },
+      );
+    }
+  };
+  /** After a save: says what changed for a moment, then the lower part slides away. */
+  const succeed = (result: HotkeyDone) => {
+    session += 1;
+    detachKeys();
+    endSession?.();
+    endSession = null;
+    // At once, so that the lower part stays open from the recording to the message.
+    batch(() => {
+      setMode("idle");
+      setRecording(startRecording());
+      setCandidate("");
+      setMessage(null);
+      setDone(result);
+    });
+    change?.focus();
+    if (result.kind === "saved") queueMicrotask(flashKeys);
+    clearTimeout(doneTimer);
+    doneTimer = window.setTimeout(() => collapse(() => setDone(null)), 1600);
+  };
+  const dismissDone = () => {
+    clearTimeout(doneTimer);
+    if (closing) motion?.cancel();
+    setDone(null);
+  };
 
   // Ends the recording after a while without keys; the native side gives
   // the hotkey back on its own a little later in any case.
@@ -1183,7 +1356,7 @@ function HotkeySetting(props: { settings: SettingsView; onSaved: (value: Setting
     armQuiet(state);
     if (state.hint && state.hint !== before.hint) setMessage({ kind: "hint", hint: state.hint });
     if (effect.type === "cancel") cancel();
-    else if (effect.type === "disable") void save("");
+    else if (effect.type === "disable") void turnOff();
     else if (effect.type === "commit") attempt(effect.hotkey);
   };
   const attachKeys = () => {
@@ -1195,24 +1368,32 @@ function HotkeySetting(props: { settings: SettingsView; onSaved: (value: Setting
     };
     armIdle();
   };
-  const listen = () => {
-    setRecording(startRecording());
+  /** Starts or restarts listening for keys, from `from`. */
+  const listen = (from: Recording = startRecording()) => {
+    // Each start renews the native side's wait for the hotkey to come back.
+    void api.suspendHotkey().catch(() => {});
+    setRecording(from);
     setCandidate("");
     setMode("recording");
     attachKeys();
+    queueMicrotask(() => cancelButton?.focus());
   };
 
   const begin = () => {
-    setMessage(null);
-    void api.suspendHotkey().catch(() => {});
-    listen();
-    const row = document.getElementById("setting-hotkey");
+    session += 1;
+    // At once, so that a saved message showing turns into the recording.
+    batch(() => {
+      dismissDone();
+      setMessage(null);
+      listen();
+    });
+    const card = document.getElementById("setting-hotkey");
     const onBlur = () => cancel();
     const onHidden = () => {
       if (document.visibilityState === "hidden") cancel();
     };
     const onPointer = (e: PointerEvent) => {
-      if (!row?.contains(e.target as Node)) cancel();
+      if (!card?.contains(e.target as Node)) cancel();
     };
     const onConfirmKey = (e: KeyboardEvent) => {
       if (mode() === "confirm" && e.key === "Escape") cancel();
@@ -1250,45 +1431,98 @@ function HotkeySetting(props: { settings: SettingsView; onSaved: (value: Setting
     void save(hotkey);
   };
 
+  /** Saves a recorded combination (or the default), which also turns the hotkey on. */
   const save = async (hotkey: string) => {
+    const current = session;
+    const before = recording();
     detachKeys();
     setCandidate(hotkey);
     setMode("saving");
     try {
-      props.onSaved(await api.setHotkey(hotkey));
-      finish(false);
+      const view = await api.setHotkey(hotkey);
+      props.onSaved(view);
+      if (current === session) succeed({ kind: "saved", hotkey: view.hotkey });
     } catch (e) {
+      // The recording ended meanwhile: cancelled, the window hidden, the page left.
+      if (current !== session || disposed) return;
       setMessage({ kind: "error", error: e });
       const kind = (e as HotkeyError | null)?.kind;
-      // Taken or refused: try another combination, the old one still suspended.
-      if (hotkey && (kind === "taken" || kind === "failed" || kind === "invalid")) listen();
-      else finish(true, true);
+      // Taken or refused: try another combination, the old one still
+      // suspended, with the modifiers still down kept.
+      if (kind === "taken" || kind === "failed" || kind === "invalid") {
+        const held = before.held.filter((code) => heldModifier(code));
+        listen({ ...startRecording(), held, chord: before.chord.filter((k) => held.includes(k.code)) });
+      } else finish(true, true);
     }
   };
 
+  /** Backspace while recording: turns the hotkey off, keeping the combination. */
+  const turnOff = async () => {
+    const current = session;
+    detachKeys();
+    setMode("saving");
+    try {
+      props.onSaved(await api.setHotkeyEnabled(false));
+      if (current === session) succeed({ kind: "off" });
+    } catch (e) {
+      if (current !== session || disposed) return;
+      setMessage({ kind: "error", error: e });
+      finish(true, true);
+    }
+  };
+
+  const setEnabled = async (on: boolean) => {
+    dismissDone();
+    setSwitching(true);
+    setMessage(null);
+    try {
+      props.onSaved(await api.setHotkeyEnabled(on));
+    } catch (e) {
+      setMessage({ kind: "error", error: e });
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const retry = async () => {
+    dismissDone();
+    setMessage(null);
+    props.onSaved(await api.resumeHotkey());
+  };
+
   onMount(() => {
+    mounted = true;
     if (!inTauri) return;
-    void import("@tauri-apps/api/event").then(async ({ listen }) => {
-      // The native side brought the hotkey back itself (the window hid, or
-      // the recording went on too long), or a retry succeeded.
-      const unlisten = await listen("argus-hotkey-changed", async () => {
-        if (mode() !== "idle") finish(false);
-        props.onSaved(await api.settings());
+    let unlisten: (() => void) | undefined;
+    onCleanup(() => unlisten?.());
+    void import("@tauri-apps/api/event")
+      .then(({ listen: subscribe }) =>
+        // The native side brought the hotkey back itself (the window hid, or
+        // the recording went on too long), or a retry succeeded.
+        subscribe("argus-hotkey-changed", async () => {
+          if (mode() !== "idle") finish(false);
+          props.onSaved(await api.settings());
+        }),
+      )
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
       });
-      onCleanup(unlisten);
-    });
   });
   onCleanup(() => {
+    disposed = true;
+    clearTimeout(doneTimer);
     if (mode() !== "idle") finish(true);
   });
 
-  const shown = () => {
-    if (mode() === "confirm" || mode() === "saving") return shortcutKeys(candidate());
-    return [];
+  /** Taken or failed while on: a retry may help. */
+  const failed = () => {
+    const kind = props.settings.hotkeyError?.kind;
+    return props.settings.hotkeyEnabled && (kind === "taken" || kind === "failed");
   };
   const errorText = () => {
     const m = message();
-    if (!m) return hotkeyErrorText(props.settings.hotkeyError);
+    if (!m) return mode() === "idle" && !done() ? hotkeyErrorText(props.settings.hotkeyError) : null;
     if (m.kind === "error") return hotkeyErrorText(m.error);
     if (m.kind === "issue") return hotkeyIssueText(m.issue, m.hotkey);
     if (m.kind !== "hint") return null;
@@ -1299,6 +1533,8 @@ function HotkeySetting(props: { settings: SettingsView; onSaved: (value: Setting
         return t("settings.hotkey.hint.order");
       case "altGraph":
         return t("settings.hotkey.hint.altGraph");
+      case "multipleKeys":
+        return t("settings.hotkey.hint.multipleKeys");
       case "unsupported": {
         const key =
           m.hint.key === "Unidentified" || !m.hint.key ? t("settings.hotkey.unknownKey") : m.hint.key;
@@ -1308,80 +1544,151 @@ function HotkeySetting(props: { settings: SettingsView; onSaved: (value: Setting
         return null;
     }
   };
+  /** Neutral text below the keys: a hint, or how recording works. */
   const noteText = () => {
     const m = message();
     if (m?.kind === "maybeTaken") return t("settings.hotkey.hint.maybeTaken");
     if (m?.kind === "hint" && m.hint.kind === "lockKey") return t("settings.hotkey.hint.lockKey");
-    if (m?.kind === "warning") {
-      const shortcut = shortcutText(m.hotkey);
-      return m.warnings.map((w) => t(`settings.hotkey.warning.${w}`, { shortcut })).join(" ");
-    }
-    return null;
+    return mode() === "recording" && !errorText() ? t("settings.hotkey.help") : null;
   };
+  const warningText = () => {
+    const m = message();
+    if (m?.kind !== "warning") return null;
+    const shortcut = shortcutText(m.hotkey);
+    return m.warnings.map((w) => t(`settings.hotkey.warning.${w}`, { shortcut })).join(" ");
+  };
+  /** The lower part opens while recording or confirming, to say what a save did, or to show an error. */
+  const open = () => mode() !== "idle" || !!done() || !!errorText();
+  const doneText = (result: HotkeyDone) =>
+    result.kind === "off"
+      ? t("settings.hotkey.done.off")
+      : rich("settings.hotkey.done.saved", {
+          keys: (
+            <span class="keycaps">
+              <For each={shortcutKeys(result.hotkey)}>{(key) => <kbd>{key}</kbd>}</For>
+            </span>
+          ),
+        });
+  const confirming = () => mode() === "confirm" || (mode() === "saving" && !!candidate() && !!warningText());
 
   return (
-    <Setting
-      id="setting-hotkey"
-      icon={<KeyboardIcon size={20} />}
-      title={t("settings.hotkey.title")}
-      desc={t("settings.hotkey.desc")}
-      error={errorText()}
-      note={noteText()}
-    >
-      <span class="keycaps" aria-live="polite">
-        <Show
-          when={mode() === "recording"}
-          fallback={
-            <Show when={mode() === "idle" ? shortcutKeys(props.settings.hotkey) : shown()} keyed>
-              {(keys) => (
-                <Show
-                  when={keys.length > 0}
-                  fallback={<span class="pending">{t("settings.hotkey.unset")}</span>}
+    <div id="setting-hotkey" class="feature hotkey">
+      <div class="feature-head">
+        <span class="setting-icon">
+          <KeyboardIcon size={20} />
+        </span>
+        <div class="setting-text">
+          <div class="setting-title">{t("settings.hotkey.title")}</div>
+          <div class="setting-desc">{t("settings.hotkey.desc")}</div>
+        </div>
+        <div class="setting-control">
+          <span ref={headKeys} class="keycaps" data-off={props.settings.hotkeyEnabled ? undefined : ""}>
+            <For each={shortcutKeys(props.settings.hotkey)}>{(key) => <kbd>{key}</kbd>}</For>
+          </span>
+          <button ref={change} type="button" class="btn" disabled={mode() !== "idle"} onClick={begin}>
+            {t("settings.hotkey.change")}
+          </button>
+          <ToggleSwitch
+            checked={props.settings.hotkeyEnabled}
+            label={t("settings.hotkey.title")}
+            disabled={mode() !== "idle" || switching()}
+            onChange={(on) => void setEnabled(on)}
+          />
+        </div>
+      </div>
+      <Show when={open()}>
+        <div ref={slideOpen} class="hotkey-drawer">
+          <div ref={(el) => resizer.observe(el)} class="feature-body hotkey-body">
+            <div class="feature-note">
+              <Show when={done()}>
+                {(result) => (
+                  <div class="hotkey-done" role="status">
+                    <CheckIcon size={14} />
+                    <span>{doneText(result())}</span>
+                  </div>
+                )}
+              </Show>
+              <Show when={mode() !== "idle"}>
+                <span class="keycaps" aria-live="polite">
+                  <Show
+                    when={mode() === "recording"}
+                    fallback={<For each={shortcutKeys(candidate())}>{(key) => <kbd>{key}</kbd>}</For>}
+                  >
+                    <Show
+                      when={recording().chord.length > 0}
+                      fallback={<span class="pending">{t("settings.hotkey.recording")}</span>}
+                    >
+                      <For each={recording().chord}>
+                        {(key) => (
+                          <kbd data-ignored={key.kind === "lock" ? "" : undefined}>{chordLabel(key)}</kbd>
+                        )}
+                      </For>
+                    </Show>
+                  </Show>
+                </span>
+              </Show>
+              <Show when={warningText()}>
+                {(text) => (
+                  <div class="hotkey-warning">
+                    <WarningIcon size={14} />
+                    <span>{text()}</span>
+                  </div>
+                )}
+              </Show>
+              <Show when={errorText()}>
+                {(text) => (
+                  <div class="setting-error" role="alert">
+                    {text()}
+                  </div>
+                )}
+              </Show>
+              <div class="hotkey-help" aria-live="polite">
+                {noteText()}
+              </div>
+            </div>
+            <div class="setting-control">
+              <Show when={confirming()}>
+                <button
+                  ref={again}
+                  type="button"
+                  class="btn"
+                  disabled={mode() === "saving"}
+                  onClick={() => {
+                    setMessage(null);
+                    listen();
+                  }}
                 >
-                  <For each={keys}>{(key) => <kbd>{key}</kbd>}</For>
+                  {t("settings.hotkey.rerecord")}
+                </button>
+                <button
+                  type="button"
+                  class="btn accent"
+                  disabled={mode() === "saving"}
+                  onClick={() => void save(candidate())}
+                >
+                  {t("settings.hotkey.confirmUse")}
+                </button>
+              </Show>
+              <Show when={mode() === "recording"}>
+                <Show when={props.settings.hotkey !== props.settings.defaultHotkey}>
+                  <button type="button" class="btn" onClick={() => void save(props.settings.defaultHotkey)}>
+                    {t("settings.hotkey.reset")}
+                  </button>
                 </Show>
-              )}
-            </Show>
-          }
-        >
-          <Show
-            when={recording().chord.length > 0}
-            fallback={<span class="pending">{t("settings.hotkey.recording")}</span>}
-          >
-            <For each={recording().chord}>
-              {(key) => <kbd data-ignored={key.kind === "lock" ? "" : undefined}>{chordLabel(key)}</kbd>}
-            </For>
-          </Show>
-        </Show>
-      </span>
-      <Show when={mode() === "confirm"}>
-        <button type="button" class="btn" onClick={() => void save(candidate())}>
-          {t("settings.hotkey.confirmUse")}
-        </button>
-        <button
-          ref={again}
-          type="button"
-          class="btn"
-          onClick={() => {
-            setMessage(null);
-            void api.suspendHotkey().catch(() => {});
-            listen();
-          }}
-        >
-          {t("settings.hotkey.rerecord")}
-        </button>
+                <button ref={cancelButton} type="button" class="btn" onClick={cancel}>
+                  {t("common.cancel")}
+                </button>
+              </Show>
+              <Show when={mode() === "idle" && failed()}>
+                <button type="button" class="btn" onClick={() => void retry()}>
+                  {t("settings.hotkey.retry")}
+                </button>
+              </Show>
+            </div>
+          </div>
+        </div>
       </Show>
-      <button
-        ref={toggle}
-        type="button"
-        class="btn stacked"
-        disabled={mode() === "saving"}
-        onClick={() => (mode() === "idle" ? begin() : cancel())}
-      >
-        <span classList={{ off: mode() !== "idle" }}>{t("settings.hotkey.change")}</span>
-        <span classList={{ off: mode() === "idle" }}>{t("common.cancel")}</span>
-      </button>
-    </Setting>
+    </div>
   );
 }
 

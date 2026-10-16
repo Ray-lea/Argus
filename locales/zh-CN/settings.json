@@ -49,12 +49,18 @@
   },
   "hotkey": {
     "title": "显示或隐藏 Argus",
-    "desc": "在大多数程序中可用。单击“更改”后按下组合键再松开：组合通常包含 Ctrl、Alt 或 Win 之一和一个普通键，修饰键不区分左右。录制时按 Esc 取消，按 Backspace 停用。",
+    "desc": "在大多数程序中可用。组合通常包含 Ctrl、Alt 或 Win 之一和一个普通键，修饰键不区分左右。",
+    "help": "按下组合键再松开即可保存；按 Esc 取消，按 Backspace 停用快捷键。",
     "recording": "按下新的组合键…",
-    "unset": "未设置",
     "change": "更改",
+    "reset": "恢复默认",
+    "retry": "重试",
     "confirmUse": "仍然使用",
     "rerecord": "重新录制",
+    "done": {
+      "saved": "已保存，快捷键现为 {keys}",
+      "off": "快捷键已停用，组合已保留，可随时用开关重新开启。"
+    },
     "unknownKey": "此键",
     "side": {
       "left": "左 {key}",
@@ -62,6 +68,7 @@
     },
     "hint": {
       "order": "请先按住修饰键（Ctrl、Alt、Shift 或 Win），再按普通键。",
+      "multipleKeys": "只能有一个普通键：全局快捷键由 Ctrl、Alt、Shift、Win 加一个普通键组成，两个普通键不能组合。",
       "altGraph": "当前键盘布局用这个组合输入字符（AltGr），它不能用作快捷键，请换一个键或修饰键。",
       "lockKey": "CapsLock、NumLock 和 ScrollLock 不参与组合，保存时会被忽略。",
       "maybeTaken": "按下组合键后若没有反应，该组合可能已被 Windows 或其他程序占用。"

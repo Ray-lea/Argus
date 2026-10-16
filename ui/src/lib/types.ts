@@ -442,8 +442,9 @@ export interface SettingsView {
   /** The onboarding version last completed or skipped; 0 before the first. */
   onboarding: number;
   closeToTray: boolean;
-  /** Accelerator such as `Ctrl+Alt+Escape`; empty when disabled. */
+  /** Accelerator such as `Ctrl+Alt+Escape`, kept while the hotkey is off. */
   hotkey: string;
+  hotkeyEnabled: boolean;
   rules: ProcessRule[];
   /** Record history for the history page. */
   history: boolean;

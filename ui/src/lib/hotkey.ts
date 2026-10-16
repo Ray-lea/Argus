@@ -210,7 +210,7 @@ export interface ChordKey {
 
 /** Why nothing was committed, or what the keys did not do. */
 export type RecordHint =
-  | { kind: "noKey" | "order" | "altGraph" | "lockKey" }
+  | { kind: "noKey" | "order" | "altGraph" | "lockKey" | "multipleKeys" }
   | { kind: "unsupported"; key: string };
 
 export interface Recording {
@@ -347,6 +347,15 @@ export function record(state: Recording, input: KeyInput): { state: Recording; e
       return { state: { held, chord, pending: null, order, hint: { kind: "altGraph" } }, effect: none };
     }
     const key = tokenFor(input);
+    // Another ordinary key still down: a hotkey is modifiers and one key, and
+    // Windows would match this one alone.
+    const others = held.some(
+      (code) => code !== id && !heldModifier(code) && !LOCK_CODES.has(code) && !altGraph(code),
+    );
+    if (others) {
+      add({ code: id, kind: "key", key: key?.code });
+      return { state: { held, chord, pending: null, order, hint: { kind: "multipleKeys" } }, effect: none };
+    }
     if (!key) {
       add({ code: id, kind: "key" });
       const physical = keyByCode(input.code);

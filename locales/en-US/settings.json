@@ -49,12 +49,18 @@
   },
   "hotkey": {
     "title": "Show or hide Argus",
-    "desc": "Works in most programs. Select Change, then press and release the combination: it usually needs Ctrl, Alt or Win plus one ordinary key, and either side of a modifier works. While recording, press Esc to cancel or Backspace to turn off the shortcut.",
+    "desc": "Works in most programs. A combination usually has Ctrl, Alt or Win plus one ordinary key; either side of a modifier works.",
+    "help": "Press and release a key combination to save it. Esc cancels; Backspace turns the shortcut off.",
     "recording": "Press a new key combination…",
-    "unset": "Not set",
     "change": "Change",
+    "reset": "Restore default",
+    "retry": "Retry",
     "confirmUse": "Use anyway",
     "rerecord": "Record again",
+    "done": {
+      "saved": "Saved. The shortcut is now {keys}",
+      "off": "The shortcut is turned off. The combination is kept; turn it back on with the switch."
+    },
     "unknownKey": "This key",
     "side": {
       "left": "Left {key}",
@@ -62,6 +68,7 @@
     },
     "hint": {
       "order": "Hold the modifiers (Ctrl, Alt, Shift or Win) first, then press the other key.",
+      "multipleKeys": "Only one ordinary key: a global shortcut is Ctrl, Alt, Shift or Win plus a single other key, so two ordinary keys can't be combined.",
       "altGraph": "On this keyboard layout, this combination types a character (AltGr), so it can't be used as a shortcut. Choose another key or modifier.",
       "lockKey": "Caps Lock, Num Lock and Scroll Lock aren't part of a combination and are ignored.",
       "maybeTaken": "If nothing happens after pressing a combination, Windows or another app may be using it."

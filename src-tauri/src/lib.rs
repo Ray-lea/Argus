@@ -353,6 +353,7 @@ pub fn run() {
             commands::task_manager_ready,
             commands::set_close_to_tray,
             commands::set_hotkey,
+            commands::set_hotkey_enabled,
             commands::suspend_hotkey,
             commands::resume_hotkey,
             commands::set_autostart,

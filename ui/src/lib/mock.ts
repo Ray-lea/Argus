@@ -510,6 +510,7 @@ const mockSettings: SettingsView = {
   theme: "system",
   closeToTray: true,
   hotkey: "Ctrl+Alt+Escape",
+  hotkeyEnabled: true,
   rules: [],
   history: true,
   kernelSensors: query.has("sensors"),
@@ -525,16 +526,19 @@ const mockSettings: SettingsView = {
 
 /** What set_hotkey does, with the same rules. */
 export async function setHotkey(hotkey: string): Promise<SettingsView> {
-  if (hotkey) {
-    const result = judge(hotkey);
-    if (result.level === "block") throw { kind: "invalid", shortcut: hotkey, issue: result.issue };
-    if (query.get("hotkey") === "taken") throw { kind: "taken", shortcut: hotkey };
+  const parsed = parseHotkey(hotkey);
+  const result = judge(hotkey);
+  if (typeof parsed === "string" || result.level === "block") {
+    throw { kind: "invalid", shortcut: hotkey, issue: result.level === "block" ? result.issue : parsed };
   }
-  const parsed = hotkey ? parseHotkey(hotkey) : null;
-  return settings.update({
-    hotkey: parsed && typeof parsed !== "string" ? canonical(parsed) : hotkey,
-    hotkeyError: null,
-  });
+  if (query.get("hotkey") === "taken") throw { kind: "taken", shortcut: hotkey };
+  return settings.update({ hotkey: canonical(parsed), hotkeyEnabled: true, hotkeyError: null });
+}
+
+/** What set_hotkey_enabled does. */
+export async function setHotkeyEnabled(enabled: boolean): Promise<SettingsView> {
+  if (enabled && query.get("hotkey") === "taken") throw { kind: "taken", shortcut: mockSettings.hotkey };
+  return settings.update({ hotkeyEnabled: enabled, hotkeyError: null });
 }
 
 export const settings = {

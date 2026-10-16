@@ -427,7 +427,10 @@ function Background(props: {
               />
             </Row>
             <p class="onboarding-note">
-              <Show when={keys().length > 0} fallback={t("onboarding.background.hotkeyOff")}>
+              <Show
+                when={s().hotkeyEnabled && keys().length > 0}
+                fallback={t("onboarding.background.hotkeyOff")}
+              >
                 {rich("onboarding.background.hotkey", { hotkey: <Keycaps keys={keys()} /> })}
               </Show>
             </p>

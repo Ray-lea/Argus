@@ -113,6 +113,8 @@ pub struct Settings {
     /// (see hotkey.rs); empty disables it.
     #[serde(deserialize_with = "lenient_hotkey")]
     pub hotkey: String,
+    /// Whether `hotkey` is registered; turning it off keeps the combination.
+    pub hotkey_enabled: bool,
     /// Priority and efficiency mode rules, applied as programs start.
     pub rules: Vec<ProcessRule>,
     /// Record history for the history page.
@@ -135,6 +137,7 @@ impl Default for Settings {
             onboarding: 0,
             close_to_tray: true,
             hotkey: DEFAULT_HOTKEY.into(),
+            hotkey_enabled: true,
             rules: Vec::new(),
             history: true,
             kernel_sensors: false,
@@ -142,6 +145,18 @@ impl Default for Settings {
             update_channel: UpdateChannel::default(),
             update_route: UpdateRoute::default(),
             update_proxy: crate::updater::PROXY_PRESETS[0].into(),
+        }
+    }
+}
+
+impl Settings {
+    /// Brings settings saved by an older version up to date, in memory; they
+    /// are written back with the next change.
+    fn migrate(&mut self) {
+        // The hotkey used to be turned off by clearing it.
+        if self.hotkey.is_empty() {
+            self.hotkey = DEFAULT_HOTKEY.into();
+            self.hotkey_enabled = false;
         }
     }
 }
@@ -176,10 +191,11 @@ pub struct SettingsStore {
 
 impl SettingsStore {
     pub fn load(path: PathBuf) -> Self {
-        let current = std::fs::read(&path)
+        let mut current: Settings = std::fs::read(&path)
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
+        current.migrate();
         Self {
             path,
             current: Mutex::new(current),
@@ -223,6 +239,20 @@ mod tests {
         );
         assert!(!store.get().kernel_sensors);
         std::fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn a_cleared_hotkey_reads_as_turned_off() {
+        let mut settings: Settings = serde_json::from_str(r#"{"hotkey": ""}"#).unwrap();
+        settings.migrate();
+        assert_eq!(settings.hotkey, DEFAULT_HOTKEY);
+        assert!(!settings.hotkey_enabled);
+
+        let mut settings: Settings =
+            serde_json::from_str(r#"{"hotkey": "Ctrl+Alt+KeyK"}"#).unwrap();
+        settings.migrate();
+        assert_eq!(settings.hotkey, "Ctrl+Alt+KeyK");
+        assert!(settings.hotkey_enabled);
     }
 
     #[test]

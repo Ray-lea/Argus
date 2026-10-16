@@ -269,21 +269,20 @@ impl Hotkey {
         }
     }
 
-    /// Registers the saved combination (at startup, after a suspension, on a
-    /// retry). Returns whether anything changed.
-    fn restore(&mut self, reg: &mut impl Registrar, saved: &str) -> bool {
+    /// Registers the saved combination, or nothing while the hotkey is off
+    /// (`None`): at startup, after a suspension, on a retry. Returns whether
+    /// anything changed.
+    fn restore(&mut self, reg: &mut impl Registrar, saved: Option<&str>) -> bool {
         let before = (self.registered, self.suspended, self.error.clone());
         self.suspended = false;
-        let target = if saved.is_empty() {
-            Ok(None)
-        } else {
-            parse(saved).map(Some)
-        };
+        let target = saved
+            .map(|text| parse(text).map_err(|issue| (text, issue)))
+            .transpose();
         match target {
-            Err(issue) => {
+            Err((text, issue)) => {
                 self.release(reg);
                 self.error = Some(HotkeyError::Invalid {
-                    shortcut: saved.into(),
+                    shortcut: text.into(),
                     issue,
                 });
             }
@@ -309,31 +308,56 @@ impl Hotkey {
         self.generation += 1;
     }
 
-    /// Checks, registers and saves `text` (empty turns the hotkey off). The
-    /// new combination is registered before the old one goes, and dropped
-    /// again if saving fails, so a failure leaves everything as it was.
+    /// Checks, registers and saves `text`, which also turns the hotkey on.
     fn change(
         &mut self,
         reg: &mut impl Registrar,
         text: &str,
         save: impl FnOnce(&str) -> std::io::Result<()>,
     ) -> Result<(), HotkeyError> {
-        let next = if text.is_empty() {
-            None
+        let a = parse(text)
+            .and_then(|a| check(&a).map(|()| a))
+            .map_err(|issue| HotkeyError::Invalid {
+                shortcut: text.into(),
+                issue,
+            })?;
+        self.replace(reg, Some(a), || save(&a.canonical()))
+    }
+
+    /// Turns the hotkey on (registering `saved`) or off; the combination
+    /// stays saved either way.
+    fn set_enabled(
+        &mut self,
+        reg: &mut impl Registrar,
+        enabled: bool,
+        saved: &str,
+        save: impl FnOnce() -> std::io::Result<()>,
+    ) -> Result<(), HotkeyError> {
+        let target = if enabled {
+            Some(parse(saved).map_err(|issue| HotkeyError::Invalid {
+                shortcut: saved.into(),
+                issue,
+            })?)
         } else {
-            let a = parse(text)
-                .and_then(|a| check(&a).map(|()| a))
-                .map_err(|issue| HotkeyError::Invalid {
-                    shortcut: text.into(),
-                    issue,
-                })?;
-            Some(a)
+            None
         };
+        self.replace(reg, target, save)
+    }
+
+    /// Registers `next` and saves. The new combination is registered before
+    /// the old one goes, and dropped again if saving fails, so a failure
+    /// leaves everything as it was.
+    fn replace(
+        &mut self,
+        reg: &mut impl Registrar,
+        next: Option<Accelerator>,
+        save: impl FnOnce() -> std::io::Result<()>,
+    ) -> Result<(), HotkeyError> {
         let fresh = next.filter(|a| self.registered != Some(*a));
         if let Some(a) = fresh {
             reg.register(&a).map_err(|e| e.for_shortcut(&a))?;
         }
-        if save(&next.map_or_else(String::new, |a| a.canonical())).is_err() {
+        if save().is_err() {
             if let Some(a) = fresh {
                 reg.unregister(&a);
             }
@@ -405,7 +429,7 @@ pub fn init(app: &AppHandle, window: &WebviewWindow) {
     }
     let state = app.state::<HotkeyState>();
     let mut hotkey = state.0.lock().unwrap();
-    hotkey.restore(&mut System, &store.get().hotkey);
+    hotkey.restore(&mut System, saved_hotkey(&store).as_deref());
     if let Some(e) = &hotkey.error {
         log::warn!("hotkey not registered: {}", e.summary());
     }
@@ -430,19 +454,48 @@ unsafe extern "system" fn hotkey_proc(
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
+/// The combination to register; `None` while the hotkey is off.
+fn saved_hotkey(store: &SettingsStore) -> Option<String> {
+    let settings = store.get();
+    settings.hotkey_enabled.then_some(settings.hotkey)
+}
+
 pub fn error<R: Runtime>(app: &AppHandle<R>) -> Option<HotkeyError> {
     app.state::<HotkeyState>().0.lock().unwrap().error.clone()
 }
 
-/// Replaces the hotkey with `text` and saves it; empty turns it off.
+/// Replaces the hotkey with `text`, turns it on and saves it.
 pub fn set<R: Runtime>(app: &AppHandle<R>, text: &str) -> Result<(), HotkeyError> {
     let store = app.state::<SettingsStore>();
     let state = app.state::<HotkeyState>();
     let result = state.0.lock().unwrap().change(&mut System, text, |value| {
-        store.update(|s| s.hotkey = value.into()).map(|_| ())
+        store
+            .update(|s| {
+                s.hotkey = value.into();
+                s.hotkey_enabled = true;
+            })
+            .map(|_| ())
     });
     if let Err(e) = &result {
         log::warn!("hotkey not changed: {}", e.summary());
+    }
+    result
+}
+
+/// Turns the hotkey on or off and saves that; the combination stays.
+pub fn set_enabled<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<(), HotkeyError> {
+    let store = app.state::<SettingsStore>();
+    let saved = store.get().hotkey;
+    let state = app.state::<HotkeyState>();
+    let result = state
+        .0
+        .lock()
+        .unwrap()
+        .set_enabled(&mut System, enabled, &saved, || {
+            store.update(|s| s.hotkey_enabled = enabled).map(|_| ())
+        });
+    if let Err(e) = &result {
+        log::warn!("hotkey not turned on or off: {}", e.summary());
     }
     result
 }
@@ -476,9 +529,13 @@ pub fn suspend<R: Runtime>(app: &AppHandle<R>) {
 /// Registers the saved hotkey again (ends a suspension, retries a failure).
 /// Returns whether anything changed.
 pub fn resume<R: Runtime>(app: &AppHandle<R>) -> bool {
-    let saved = app.state::<SettingsStore>().get().hotkey;
+    let saved = saved_hotkey(&app.state::<SettingsStore>());
     let state = app.state::<HotkeyState>();
-    state.0.lock().unwrap().restore(&mut System, &saved)
+    state
+        .0
+        .lock()
+        .unwrap()
+        .restore(&mut System, saved.as_deref())
 }
 
 /// Ends a suspension the page left behind when the window hides.
@@ -552,7 +609,7 @@ mod tests {
     fn started(saved: &str) -> (Hotkey, Fake) {
         let mut hotkey = Hotkey::default();
         let mut fake = Fake::default();
-        hotkey.restore(&mut fake, saved);
+        hotkey.restore(&mut fake, Some(saved));
         (hotkey, fake)
     }
 
@@ -681,9 +738,11 @@ mod tests {
             })
         ));
 
-        let (hotkey, fake) = started("");
+        let mut off = Hotkey::default();
+        let mut fake = Fake::default();
+        off.restore(&mut fake, None);
         assert!(fake.registered.is_empty());
-        assert_eq!(hotkey.error, None);
+        assert_eq!(off.error, None);
     }
 
     #[test]
@@ -693,19 +752,19 @@ mod tests {
             taken: vec!["Ctrl+Alt+Escape".into()],
             ..Fake::default()
         };
-        hotkey.restore(&mut fake, "Ctrl+Alt+Escape");
+        hotkey.restore(&mut fake, Some("Ctrl+Alt+Escape"));
         assert!(matches!(hotkey.error, Some(HotkeyError::Taken { .. })));
         assert!(
-            !hotkey.restore(&mut fake, "Ctrl+Alt+Escape"),
+            !hotkey.restore(&mut fake, Some("Ctrl+Alt+Escape")),
             "nothing changed"
         );
 
         fake.taken.clear();
-        assert!(hotkey.restore(&mut fake, "Ctrl+Alt+Escape"));
+        assert!(hotkey.restore(&mut fake, Some("Ctrl+Alt+Escape")));
         assert_eq!(hotkey.error, None);
         assert_eq!(fake.registered, ["Ctrl+Alt+Escape"]);
         assert!(
-            !hotkey.restore(&mut fake, "Ctrl+Alt+Escape"),
+            !hotkey.restore(&mut fake, Some("Ctrl+Alt+Escape")),
             "already registered"
         );
         assert_eq!(fake.registered, ["Ctrl+Alt+Escape"]);
@@ -728,9 +787,71 @@ mod tests {
         hotkey.change(&mut fake, "Ctrl+Alt+KeyK", ok_save).unwrap();
         assert_eq!(fake.registered, ["Ctrl+Alt+KeyK"]);
 
-        hotkey.change(&mut fake, "", ok_save).unwrap();
+        assert!(hotkey.change(&mut fake, "", ok_save).is_err());
+        assert_eq!(fake.registered, ["Ctrl+Alt+KeyK"]);
+    }
+
+    fn save_nothing() -> std::io::Result<()> {
+        Ok(())
+    }
+
+    #[test]
+    fn turning_off_keeps_the_combination_for_turning_on() {
+        let (mut hotkey, mut fake) = started("Ctrl+Alt+Escape");
+        hotkey
+            .set_enabled(&mut fake, false, "Ctrl+Alt+Escape", save_nothing)
+            .unwrap();
         assert!(fake.registered.is_empty());
         assert_eq!(hotkey.registered, None);
+
+        hotkey
+            .set_enabled(&mut fake, true, "Ctrl+Alt+Escape", save_nothing)
+            .unwrap();
+        assert_eq!(fake.registered, ["Ctrl+Alt+Escape"]);
+    }
+
+    #[test]
+    fn turning_on_a_taken_hotkey_leaves_it_off() {
+        let mut hotkey = Hotkey::default();
+        let mut fake = Fake {
+            taken: vec!["Ctrl+Alt+Escape".into()],
+            ..Fake::default()
+        };
+        hotkey.restore(&mut fake, None);
+        let error = hotkey
+            .set_enabled(&mut fake, true, "Ctrl+Alt+Escape", save_nothing)
+            .unwrap_err();
+        assert!(matches!(error, HotkeyError::Taken { .. }));
+        assert_eq!(hotkey.registered, None);
+    }
+
+    #[test]
+    fn a_failed_save_leaves_the_hotkey_on_or_off_as_it_was() {
+        let (mut hotkey, mut fake) = started("Ctrl+Alt+Escape");
+        let failing = || Err(std::io::Error::other("read-only"));
+        let error = hotkey
+            .set_enabled(&mut fake, false, "Ctrl+Alt+Escape", failing)
+            .unwrap_err();
+        assert_eq!(error, HotkeyError::SaveFailed);
+        assert_eq!(fake.registered, ["Ctrl+Alt+Escape"]);
+
+        hotkey
+            .set_enabled(&mut fake, false, "Ctrl+Alt+Escape", save_nothing)
+            .unwrap();
+        let error = hotkey
+            .set_enabled(&mut fake, true, "Ctrl+Alt+Escape", failing)
+            .unwrap_err();
+        assert_eq!(error, HotkeyError::SaveFailed);
+        assert!(fake.registered.is_empty());
+    }
+
+    #[test]
+    fn recording_a_combination_while_off_turns_it_on() {
+        let mut hotkey = Hotkey::default();
+        let mut fake = Fake::default();
+        hotkey.restore(&mut fake, None);
+        hotkey.change(&mut fake, "Ctrl+Alt+KeyK", ok_save).unwrap();
+        assert_eq!(fake.registered, ["Ctrl+Alt+KeyK"]);
     }
 
     #[test]
@@ -791,7 +912,7 @@ mod tests {
         assert!(hotkey.suspended, "still recording");
         assert!(fake.registered.is_empty());
 
-        assert!(hotkey.restore(&mut fake, "Ctrl+Alt+Escape"));
+        assert!(hotkey.restore(&mut fake, Some("Ctrl+Alt+Escape")));
         assert_eq!(fake.registered, ["Ctrl+Alt+Escape"]);
         assert!(!hotkey.suspended);
     }

@@ -1226,16 +1226,6 @@
   font-size: 12px;
 }
 
-.setting-note {
-  margin-top: 4px;
-  color: var(--ink-2);
-  font-size: 12px;
-}
-
-.setting-note:empty {
-  display: none;
-}
-
 .setting-control {
   display: flex;
   align-items: center;
@@ -1284,6 +1274,58 @@
   color: var(--ink-3);
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+/* The hotkey card: its lower part opens while a combination is recorded,
+   confirmed or refused. */
+.hotkey-body .feature-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+/* While a combination is recorded, the controls on top wait. */
+.hotkey .feature-head :is(.btn, .switch):disabled {
+  opacity: 0.5;
+}
+
+.hotkey-body .setting-error {
+  margin-top: 0;
+}
+
+.hotkey-help:empty {
+  display: none;
+}
+
+.hotkey-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+
+.hotkey-done > svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.hotkey-done .keycaps {
+  margin-left: 2px;
+  vertical-align: middle;
+}
+
+.hotkey-warning {
+  display: flex;
+  gap: 6px;
+  color: var(--ink);
+}
+
+.hotkey-warning svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--io);
 }
 
 /* The state, in a pill: a colored dot (or a spinner while busy) and a word. */
@@ -1396,7 +1438,8 @@
 }
 
 .keycaps .pending,
-.keycaps kbd[data-ignored] {
+.keycaps kbd[data-ignored],
+.keycaps[data-off] kbd {
   border-style: dashed;
   color: var(--ink-2);
 }

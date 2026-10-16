@@ -300,11 +300,21 @@ pub fn set_close_to_tray(app: tauri::AppHandle, value: bool) -> Result<SettingsV
     Ok(settings_view(&app))
 }
 
-/// Replaces the show/hide hotkey. An empty string turns it off. On failure
-/// the old one stays.
+/// Replaces the show/hide hotkey and turns it on. On failure the old one
+/// stays.
 #[tauri::command]
 pub fn set_hotkey(app: tauri::AppHandle, hotkey: String) -> Result<SettingsView, HotkeyError> {
     crate::hotkey::set(&app, &hotkey)?;
+    Ok(settings_view(&app))
+}
+
+/// Turns the hotkey on or off, keeping the combination.
+#[tauri::command]
+pub fn set_hotkey_enabled(
+    app: tauri::AppHandle,
+    enabled: bool,
+) -> Result<SettingsView, HotkeyError> {
+    crate::hotkey::set_enabled(&app, enabled)?;
     Ok(settings_view(&app))
 }
 
