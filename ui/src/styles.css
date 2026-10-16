@@ -1651,7 +1651,8 @@ html.still *::after {
   contain: strict;
 }
 
-/* The canvas and hover markers move together, as one compositor layer. */
+/* The canvas moves as one compositor layer; the hover readout stays put above
+   it, under the pointer, while the trace flows past. */
 .chart-track {
   position: absolute;
   top: 0;
@@ -1684,6 +1685,12 @@ html.still *::after {
   border-radius: 50%;
   background: var(--dot);
   pointer-events: none;
+}
+
+/* On a live chart the dots glide along the trace (see glideDots in Trace.tsx):
+   their own layers, so moving them repaints nothing. */
+.chart > .chart-dot {
+  will-change: transform;
 }
 
 /* No drop shadow, like the menus (see .menu): the border sets it apart. */

@@ -4,10 +4,13 @@
 // so the newest sample is always already drawn just past the edge and the
 // trace drifts left at a constant speed, without stopping between samples.
 // Each sample is drawn once into a canvas a little wider than the box; then
-// the canvas (with any hover markers) moves left until the next sample:
+// the canvas moves left until the next sample:
 //  - fluid / balanced: one linear compositor animation per chart, so moving
 //    costs no main-thread work, only frames (every refresh, or ~60 a second);
 //  - pixel: one shared timer moves every chart a whole device pixel at a time.
+// A hover readout's cursor stays under the pointer while the curve flows past:
+// its dots ride the curve (on the compositor too, while the canvas glides) and
+// its text follows ten times a second.
 
 import {
   createEffect,
@@ -45,8 +48,8 @@ interface ChartProps {
 
 /** Headroom (CSS px) so a line at full scale is not clipped. */
 const TOP_PAD = 3;
-/** How often a hovered readout follows the data flowing under the pointer. */
-const HOVER_EVERY = 100;
+/** How often a hover tip's text follows a trace gliding under the cursor, ms. */
+const TEXT_EVERY = 100;
 
 /**
  * How far behind "now" the right edge runs. The spline's bend at a point
@@ -60,7 +63,7 @@ const lag = () => 2 * intervalMs() + 250;
 /** The mode in effect right now: paused charts hold still with the newest sample at the edge. */
 const activeMode = (): ChartMode => (paused() ? "off" : chartMode());
 
-// ---- Shared timer (pixel mode, hover readouts) --------------------------------------
+// ---- Shared timer (pixel mode, and the readouts on its charts) ---------------------
 
 interface Ticked {
   /** Milliseconds until this chart next needs a tick; Infinity for never. */
@@ -127,13 +130,12 @@ interface Curve {
 }
 
 /**
- * Monotone cubic through points with uneven spacing (samples taken while the
- * window was hidden are further apart): smooth, and never overshoots the data.
+ * Slopes of the monotone cubic through points with uneven spacing (samples
+ * taken while the window was hidden are further apart): smooth, and never
+ * overshoots the data.
  */
-function monotone(xs: number[], ys: number[]): Curve {
+function slopes(xs: number[], ys: number[]): Float64Array {
   const n = xs.length;
-  const path = new Path2D();
-  path.moveTo(xs[0], ys[0]);
   const m = new Float64Array(n);
   if (n >= 3) {
     const hs = new Float64Array(n - 1);
@@ -154,6 +156,40 @@ function monotone(xs: number[], ys: number[]): Curve {
   } else if (n === 2) {
     m[0] = m[1] = (ys[1] - ys[0]) / Math.max(1e-6, xs[1] - xs[0]);
   }
+  return m;
+}
+
+/**
+ * The same cubic as a function: y at `x`, or null outside the points. The
+ * control points sit at thirds of each segment, so x runs linearly with the
+ * Bezier parameter and the curve read here is exactly the one drawn.
+ */
+function interpolate(xs: number[], ys: number[], m: Float64Array) {
+  return (x: number): number | null => {
+    const n = xs.length;
+    if (n === 0 || x < xs[0] || x > xs[n - 1]) return null;
+    let lo = 0;
+    let hi = n - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (xs[mid] <= x) lo = mid;
+      else hi = mid;
+    }
+    if (hi === lo) return ys[lo];
+    const k = (xs[hi] - xs[lo]) / 3;
+    const t = k > 0 ? (x - xs[lo]) / (3 * k) : 0;
+    const u = 1 - t;
+    const y1 = ys[lo] + m[lo] * k;
+    const y2 = ys[hi] - m[hi] * k;
+    return u * u * u * ys[lo] + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * ys[hi];
+  };
+}
+
+/** The monotone cubic through the points (see `slopes`) as a path. */
+function monotone(xs: number[], ys: number[], m = slopes(xs, ys)): Curve {
+  const n = xs.length;
+  const path = new Path2D();
+  path.moveTo(xs[0], ys[0]);
   // Bezier control points of segment i: (x_i + k, y_i + m_i k), (x_i+1 - k, y_i+1 - m_i+1 k).
   const control = (i: number) => {
     const k = (xs[i + 1] - xs[i]) / 3;
@@ -238,13 +274,25 @@ function monotone(xs: number[], ys: number[]): Curve {
 
 const fmtAgo = (s: number) => (s < 10 ? `${Math.round(s * 10) / 10}` : `${Math.round(s)}`);
 
+/**
+ * What the hover tip shows. It changes only when its text does: the dots, which
+ * ride the trace on every frame, are moved directly (see updateReadout).
+ */
 interface Readout {
-  /** Position on the track (moves with the trace). */
+  /** The pointer's position in the box, CSS px: the cursor stays there while the trace flows past. */
   x: number;
   /** Past the middle of the box: put the tip on the left. */
   flip: boolean;
-  ago: number;
-  points: { s: Series; v: number; y: number }[];
+  /** Age of the time under the cursor, as shown (fmtAgo). */
+  ago: string;
+  /** Each series where it crosses the cursor, with its value there. */
+  points: { s: Series; v: number }[];
+}
+
+/** A drawn series as functions: height at a track x (device px), value at a time. */
+interface Drawn {
+  y: (x: number) => number | null;
+  value: (t: number) => number | null;
 }
 
 export function Chart(props: ChartProps) {
@@ -266,7 +314,16 @@ export function Chart(props: ChartProps) {
   let speed = 0;
   let mode: ChartMode = "off";
   let glide: Animation | null = null;
+  /** Balanced mode: the shared grid the glide steps on (see move). */
+  let grid = { start: 0, step: 0, steps: 0 };
   let hoverX: number | null = null;
+  /** The series as last drawn, for the readout. */
+  let drawn: (Drawn | null)[] = [];
+  /** The dots' compositor animations on a gliding trace (see glideDots). */
+  let dotGlides: Animation[] = [];
+  /** The readout's dots, one per series, and the tip's text as last shown. */
+  const dots: (HTMLSpanElement | undefined)[] = [];
+  let shownText = "";
   const colors = new Map<string, string>();
   /**
    * Where each sample sits in the dash pattern (px into it), by sample time, for
@@ -275,7 +332,8 @@ export function Chart(props: ChartProps) {
    * the new leftmost point.
    */
   const dashPhases: Map<number, number>[] = [];
-  const [box, setBox] = createSignal({ w: 0, h: 0, track: 0 });
+  /** Visible width, CSS px. */
+  const [box, setBox] = createSignal({ w: 0 });
   const [readout, setReadout] = createSignal<Readout | null>(null);
 
   const color = (v: string) => {
@@ -299,11 +357,16 @@ export function Chart(props: ChartProps) {
     return true;
   };
 
-  /** Current leftward shift of the track, device pixels. */
+  /** Leftward shift of the track at `now` as the compositor draws it, device pixels. */
   const shift = (now: number) => {
-    if (anchor === null || mode === "off") return 0;
+    if (anchor === null) return 0;
     if (mode === "pixel") return shown;
-    return Math.min(margin, Math.max(0, now - zeroAt) * speed);
+    if (mode === "fluid") return Math.min(margin, Math.max(0, now - zeroAt) * speed);
+    if (mode === "balanced" && grid.step > 0) {
+      const k = Math.min(grid.steps, Math.max(0, Math.floor((now - grid.start) / grid.step)));
+      return (grid.start + k * grid.step - zeroAt) * speed;
+    }
+    return 0;
   };
 
   const paint = (now: number) => {
@@ -335,17 +398,19 @@ export function Chart(props: ChartProps) {
       canvas.style.height = `${h / dpr}px`;
     }
     margin = width - w;
-    setBox({ w: w / dpr, h: h / dpr, track: width / dpr });
+    setBox({ w: w / dpr });
 
     c.clearRect(0, 0, width, h);
     const top = Math.round(TOP_PAD * dpr);
     const rangeY = h - top;
     const max = Math.max(props.max(), 1e-9);
+    drawn = props.series.map(() => null);
     props.series.forEach((s, si) => {
       const data = s.data();
       const xs: number[] = [];
       const ys: number[] = [];
       const ts: number[] = [];
+      const vs: number[] = [];
       // Newest first, back to two points left of the edge, then reversed. Two,
       // because the bend of the segment crossing the edge depends on the point
       // before it too; with one, that segment re-bent whenever the oldest point
@@ -359,6 +424,7 @@ export function Chart(props: ChartProps) {
           xs.push(x);
           ys.push(top + (1 - Math.min(1, Math.max(0, v / max))) * rangeY);
           ts.push(times[times.length - 1 - j]);
+          vs.push(v);
           if (x < 0) beyond++;
         }
       }
@@ -366,8 +432,12 @@ export function Chart(props: ChartProps) {
       xs.reverse();
       ys.reverse();
       ts.reverse();
+      vs.reverse();
       const n = xs.length;
-      const curve = monotone(xs, ys);
+      const m = slopes(xs, ys);
+      const curve = monotone(xs, ys, m);
+      // The readout reads the curve as drawn, and the values along the same cubic.
+      drawn[si] = { y: interpolate(xs, ys, m), value: interpolate(ts, vs, slopes(ts, vs)) };
       const line = curve.path;
       const col = color(s.colorVar);
       const fill = s.fill ?? 0.3;
@@ -418,6 +488,7 @@ export function Chart(props: ChartProps) {
     glide?.cancel();
     glide = null;
     shown = 0;
+    grid = { start: 0, step: 0, steps: 0 };
     track.style.transform = "translateX(0)";
     if (mode !== "fluid" && mode !== "balanced") return;
     // At any instant the shift must equal (now - zeroAt) * speed: exactly the
@@ -436,6 +507,7 @@ export function Chart(props: ChartProps) {
       const step = balancedFrameMs();
       const start = Math.floor(zeroAt / step) * step;
       const steps = Math.max(1, Math.ceil((zeroAt - start + margin / speed) / step));
+      grid = { start, step, steps };
       const from = ((zeroAt - start) * speed) / dpr;
       const to = from - (steps * step * speed) / dpr;
       glide = track.animate([{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }], {
@@ -457,40 +529,119 @@ export function Chart(props: ChartProps) {
     }
   };
 
+  /**
+   * The readout at the pointer: the cursor stays under it and the trace flows
+   * past, so it reads the drawn curve there (the same cubic, at the track's
+   * shift for `now`) rather than jumping between samples.
+   */
   const updateReadout = (now: number) => {
-    if (hoverX === null || !props.format || anchor === null || speed === 0) {
-      if (readout()) setReadout(null);
+    const b = box();
+    const format = props.format;
+    if (hoverX === null || !format || anchor === null || speed === 0 || hoverX < 0 || hoverX > b.w) {
+      hideReadout();
       return;
     }
-    const times = sampleTimes();
-    const cssSpeed = speed / dpr;
-    const offset = shift(now) / dpr;
-    const at = left + (hoverX + offset) / cssSpeed;
-    let best = -1;
-    for (let i = times.length - 1; i >= 0; i--) {
-      if (best < 0 || Math.abs(times[i] - at) < Math.abs(times[best] - at)) best = i;
-      if (times[i] < at) break;
+    const x = hoverX * dpr + shift(now);
+    const at = left + x / speed;
+    // Per series: the height drawn under the cursor (CSS px) and the value there.
+    const read = props.series.map((_, i) => {
+      const y = drawn[i]?.y(x);
+      const v = drawn[i]?.value(at);
+      return y == null || v == null ? null : { y: y / dpr, v };
+    });
+    const points = props.series.flatMap((s, i) => {
+      const r = read[i];
+      return r ? [{ s, v: r.v }] : [];
+    });
+    if (points.length === 0) {
+      hideReadout();
+      return;
     }
-    if (best < 0) return setReadout(null);
-    const k = times.length - 1 - best;
-    const max = Math.max(props.max(), 1e-9);
-    const b = box();
-    const points = props.series.flatMap((s) => {
-      const d = s.data();
-      const v = d[d.length - 1 - k];
-      if (v === undefined || !Number.isFinite(v)) return [];
-      return [{ s, v, y: TOP_PAD + (1 - Math.min(1, Math.max(0, v / max))) * (b.h - TOP_PAD) }];
-    });
-    // Markers live on the moving track, so they travel with their sample.
-    const x = (times[best] - left) * cssSpeed;
-    const onScreen = x - offset;
-    if (points.length === 0 || onScreen < 0 || onScreen > b.w) return setReadout(null);
-    setReadout({
-      x,
-      flip: onScreen > b.w / 2,
-      ago: (times[times.length - 1] - times[best]) / 1000,
-      points,
-    });
+    // Age of the time under the cursor. A moving trace keeps a fixed age at a
+    // fixed point, counted from now; a still one (off, paused) moves a sample
+    // at a time, so count from the newest sample. Counting a moving trace from
+    // the newest sample would climb back a second at every sample.
+    const times = sampleTimes();
+    const reference = mode === "off" ? times[times.length - 1] : now;
+    const ago = fmtAgo(Math.max(0, (reference - at) / 1000));
+    const flip = hoverX > b.w / 2;
+    const text = [hoverX, flip, b.w, ago, ...points.map((p) => format(p.v))].join("|");
+    if (text !== shownText || !readout()) {
+      shownText = text;
+      setReadout({ x: hoverX, flip, ago, points });
+    }
+    for (const [i, r] of read.entries()) {
+      const dot = dots[i];
+      if (!dot) continue;
+      dot.style.visibility = r ? "" : "hidden";
+      if (r) dot.style.transform = `translate(${hoverX}px, ${r.y}px)`;
+    }
+  };
+
+  const hideReadout = () => {
+    shownText = "";
+    stopDots();
+    if (readout()) setReadout(null);
+  };
+
+  /**
+   * Fluid and balanced: the dots ride the trace on the compositor, as the track
+   * does, from `now` until the track stops (a new sample redraws both first).
+   * The keyframes follow the drawn curve under the cursor, one per device pixel
+   * of travel (fluid) or per step of the shared grid (balanced), on the track's
+   * own timeline; the main thread then only updates the tip's text.
+   */
+  const glideDots = (now: number) => {
+    stopDots();
+    if (hoverX === null || !readout() || anchor === null || speed === 0) return;
+    const times: number[] = [];
+    const shifts: number[] = [];
+    if (mode === "fluid") {
+      const end = zeroAt + margin / speed;
+      if (now >= end) return;
+      let s = Math.max(0, (now - zeroAt) * speed);
+      for (;;) {
+        times.push(zeroAt + s / speed);
+        shifts.push(s);
+        if (s >= margin) break;
+        s = Math.min(margin, Math.floor(s) + 1);
+      }
+    } else if (mode === "balanced" && grid.step > 0) {
+      const first = Math.max(0, Math.floor((now - grid.start) / grid.step));
+      for (let k = first; k <= grid.steps; k++) {
+        times.push(grid.start + k * grid.step);
+        shifts.push((grid.start + k * grid.step - zeroAt) * speed);
+      }
+    }
+    if (times.length < 2) return;
+    const start = times[0];
+    const duration = times[times.length - 1] - start;
+    const x = hoverX * dpr;
+    for (const [i, d] of drawn.entries()) {
+      const dot = dots[i];
+      if (!dot || !d) continue;
+      const frames: Keyframe[] = [];
+      for (const [k, s] of shifts.entries()) {
+        const y = d.y(x + s);
+        if (y == null) break;
+        frames.push({
+          offset: (times[k] - start) / duration,
+          transform: `translate(${hoverX}px, ${y / dpr}px)`,
+          // Balanced: hold each position for its step, as the track does.
+          easing: mode === "balanced" ? "steps(1, end)" : "linear",
+        });
+      }
+      // A curve that ends before the track stops (no data that far back): stay put.
+      if (frames.length < shifts.length) continue;
+      const glide = dot.animate(frames, { duration, fill: "forwards" });
+      glide.startTime = start;
+      dotGlides.push(glide);
+    }
+  };
+
+  const stopDots = () => {
+    for (const glide of dotGlides) glide.cancel();
+    dotGlides = [];
   };
 
   const redraw = () => {
@@ -499,16 +650,19 @@ export function Chart(props: ChartProps) {
     move();
     place(now);
     updateReadout(now);
+    glideDots(now);
     requestWake();
   };
 
   const ticks: Ticked = {
     next(now) {
-      const hover = hoverX !== null ? HOVER_EVERY : Number.POSITIVE_INFINITY;
-      if (mode !== "pixel" || anchor === null || speed === 0) return hover;
+      // Fluid and balanced readouts: the text keeps up with the trace (the dots glide).
+      const text =
+        hoverX !== null && (mode === "fluid" || mode === "balanced") ? TEXT_EVERY : Number.POSITIVE_INFINITY;
+      if (mode !== "pixel" || anchor === null || speed === 0) return text;
       const px = Math.max(0, now - lag() - anchor) * speed;
-      if (px >= margin) return hover;
-      return Math.min(hover, (Math.floor(px) + 1 - px) / speed + 0.5);
+      if (px >= margin) return Number.POSITIVE_INFINITY;
+      return (Math.floor(px) + 1 - px) / speed + 0.5;
     },
     pixelSpeed: () => (mode === "pixel" ? speed : 0),
     tick(now) {
@@ -541,6 +695,7 @@ export function Chart(props: ChartProps) {
       document.removeEventListener("visibilitychange", onVisible);
       ticked.delete(ticks);
       glide?.cancel();
+      stopDots();
     });
 
     createEffect(() => {
@@ -560,9 +715,13 @@ export function Chart(props: ChartProps) {
       aria-hidden="true"
       onPointerMove={(e) => {
         if (!props.format) return;
+        const entering = hoverX === null;
         hoverX = e.clientX - host.getBoundingClientRect().left;
-        updateReadout(performance.now());
-        requestWake();
+        const now = performance.now();
+        updateReadout(now);
+        glideDots(now);
+        // Starts the text updates (see ticks.next).
+        if (entering) requestWake();
       }}
       onPointerLeave={() => {
         hoverX = null;
@@ -571,44 +730,45 @@ export function Chart(props: ChartProps) {
     >
       <div ref={track} class="chart-track">
         <canvas ref={canvas} />
-        <Show when={readout()}>
-          {(r) => (
-            <>
-              <span class="chart-cursor" style={{ transform: `translateX(${r().x}px)` }} />
+      </div>
+      <Show when={readout()}>
+        {(r) => (
+          <>
+            <span class="chart-cursor" style={{ transform: `translateX(${r().x}px)` }} />
+            {/* Placed by updateReadout on every frame the trace moves. */}
+            <Index each={props.series}>
+              {(s, i) => (
+                <span
+                  ref={(el) => {
+                    dots[i] = el;
+                  }}
+                  class="chart-dot"
+                  style={{ "--dot": `var(${s().colorVar})` }}
+                />
+              )}
+            </Index>
+            <div
+              class="chart-tip"
+              style={r().flip ? { right: `${box().w - r().x + 10}px` } : { left: `${r().x + 10}px` }}
+            >
+              <div class="chart-tip-time">
+                {r().ago === "0"
+                  ? t("performance.chart.latest")
+                  : t("performance.chart.ago", { seconds: r().ago })}
+              </div>
               <Index each={r().points}>
                 {(p) => (
-                  <span
-                    class="chart-dot"
-                    style={{
-                      transform: `translate(${r().x}px, ${p().y}px)`,
-                      "--dot": `var(${p().s.colorVar})`,
-                    }}
-                  />
+                  <div class="chart-tip-row">
+                    <i classList={{ dashed: p().s.dashed }} style={{ "--dot": `var(${p().s.colorVar})` }} />
+                    <span>{p().s.label}</span>
+                    <b>{props.format?.(p().v)}</b>
+                  </div>
                 )}
               </Index>
-              <div
-                class="chart-tip"
-                style={r().flip ? { right: `${box().track - r().x + 10}px` } : { left: `${r().x + 10}px` }}
-              >
-                <div class="chart-tip-time">
-                  {r().ago === 0
-                    ? t("performance.chart.latest")
-                    : t("performance.chart.ago", { seconds: fmtAgo(r().ago) })}
-                </div>
-                <Index each={r().points}>
-                  {(p) => (
-                    <div class="chart-tip-row">
-                      <i classList={{ dashed: p().s.dashed }} style={{ "--dot": `var(${p().s.colorVar})` }} />
-                      <span>{p().s.label}</span>
-                      <b>{props.format?.(p().v)}</b>
-                    </div>
-                  )}
-                </Index>
-              </div>
-            </>
-          )}
-        </Show>
-      </div>
+            </div>
+          </>
+        )}
+      </Show>
     </div>
   );
 }
