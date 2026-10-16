@@ -341,7 +341,36 @@ pub fn restore() -> Result<()> {
     let _lock = lock(&machine.dir)?;
     probe::cleanup(&mut probe::System::new(&machine.dir), Step::ProbeLeftover)
         .map_err(|failure| failure.message)?;
-    restore_for_maintenance(&machine.dir)
+    restore_for_maintenance(&machine.dir)?;
+    sweep_images(&machine);
+    Ok(())
+}
+
+/// Deletes the interface copies no unfinished recovery record names: from
+/// attempts that failed, or replacements restored since. A copy that is
+/// running cannot be deleted and waits for the next time. Callers hold
+/// install.lock.
+fn sweep_images(machine: &registry::Machine) {
+    let Ok(journal) = machine.load() else { return };
+    let keep = journal
+        .filter(|j| j.phase != Phase::Restored)
+        .map(|j| j.image);
+    remove_images(&machine.dir, keep.as_deref());
+}
+
+fn remove_images(dir: &Path, keep: Option<&str>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if let Some(name) = name.to_str()
+            && valid_image(name)
+            && keep != Some(name)
+        {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
 }
 
 pub(crate) fn reconcile(dir: &Path) -> Result<()> {
@@ -396,33 +425,58 @@ fn enable(
     if live.debugger.is_some() || live.filtered {
         return Err(check(tr!("taskManager.conflict")));
     }
-    // Errors name the step: the window shows them, and the log the step.
-    let image = format!("argus-taskmgr-ui-{}.exe", id().map_err(check)?);
+    sweep_images(&machine);
+    // Errors name the step: the window shows them, and the log the step. The
+    // self-test needs only the launcher; the interface copy waits for it.
     (|| {
         registry::atomic_file(&machine.dir, LAUNCHER, assets.0)?;
-        registry::atomic_file(&machine.dir, RECOVER, assets.1)?;
+        registry::atomic_file(&machine.dir, RECOVER, assets.1)
+    })()
+    .map_err(prepare)?;
+    probe::run(&mut probe::System::new(&machine.dir))?;
+    let image = format!("argus-taskmgr-ui-{}.exe", id().map_err(check)?);
+    let result = finish_enable(&mut machine, &image, owner, caller, created);
+    if result.is_err() {
+        // No active record names it. If its readiness check still runs it,
+        // the next sweep deletes it.
+        let _ = fs::remove_file(machine.dir.join(&image));
+    }
+    result
+}
+
+fn prepare(error: String) -> Failure {
+    Failure::new(
+        Step::Prepare,
+        tr!("taskManager.prepareFailed", error = error),
+    )
+}
+
+/// The rest of an enable once the self-test passed: the interface copy, its
+/// readiness check as the account that asked, then the record and taskmgr.exe.
+fn finish_enable(
+    machine: &mut registry::Machine,
+    image: &str,
+    owner: &str,
+    caller: u32,
+    created: u64,
+) -> std::result::Result<(), Failure> {
+    (|| {
         // Source code and embedded helper bytes are from the explicitly elevated
         // GUI executable, not adjacent user-writable sidecar files.
         let source = fs::read(std::env::current_exe().map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
-        registry::atomic_file(&machine.dir, &image, &source)?;
+        registry::atomic_file(&machine.dir, image, &source)?;
         registry::atomic_file(
             &machine.dir,
             "taskmgr-recovery.txt",
             recovery_text().as_bytes(),
         )
     })()
-    .map_err(|error| {
-        Failure::new(
-            Step::Prepare,
-            tr!("taskManager.prepareFailed", error = error),
-        )
-    })?;
-    probe::run(&mut probe::System::new(&machine.dir))?;
+    .map_err(prepare)?;
     let interface = |message| Failure::new(Step::Interface, message);
     let probe = launch::probe_as_caller(
         &machine.dir.join(LAUNCHER),
-        &["--probe-ui".into(), image.clone(), owner.into()],
+        &["--probe-ui".into(), image.into(), owner.into()],
         caller,
         created,
         owner,
@@ -432,7 +486,7 @@ fn enable(
         return Err(interface(tr!("taskManager.uiNotReady")));
     }
     let value = replacement(&machine.dir);
-    state::enable(&mut machine, owner.into(), image, value).map_err(|message| Failure {
+    state::enable(machine, owner.into(), image.into(), value).map_err(|message| Failure {
         cause: machine.refused,
         ..Failure::new(Step::Commit, message)
     })?;
@@ -794,6 +848,39 @@ mod tests {
             }
         }
         assert!(!text.replace("\r\n", "").contains('\n'));
+    }
+
+    #[test]
+    fn only_interface_copies_no_record_names_are_removed() {
+        let dir = std::env::temp_dir().join(format!("argus-taskmgr-{}", id().unwrap()));
+        fs::create_dir_all(&dir).unwrap();
+        let copy = || format!("argus-taskmgr-ui-{}.exe", id().unwrap());
+        let (old, kept, running) = (copy(), copy(), copy());
+        let others = [
+            LAUNCHER,
+            RECOVER,
+            registry::JOURNAL,
+            "argus-taskmgr-ui-x.exe",
+        ];
+        for name in [&old, &kept, &running]
+            .into_iter()
+            .map(String::as_str)
+            .chain(others)
+        {
+            fs::write(dir.join(name), b"x").unwrap();
+        }
+        // Open without FILE_SHARE_DELETE, as a running copy is.
+        let busy = OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(dir.join(&running))
+            .unwrap();
+        remove_images(&dir, Some(&kept));
+        drop(busy);
+        assert!(!dir.join(&old).exists());
+        assert!(dir.join(&kept).exists() && dir.join(&running).exists());
+        assert!(others.iter().all(|name| dir.join(name).exists()));
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
