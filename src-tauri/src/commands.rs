@@ -32,12 +32,13 @@ pub fn task_manager_status() -> Result<argus_service::taskmgr::Status, String> {
 
 #[tauri::command(async)]
 pub fn manage_task_manager(action: String) -> Result<argus_service::taskmgr::Status, String> {
-    argus_service::taskmgr::manage(&action).inspect_err(|e| {
+    argus_service::taskmgr::manage(&action).map_err(|failure| {
         log::warn!(
-            "task manager {} failed: {}",
+            "task manager {} failed {}",
             argus_core::diagnostics::action(&action),
-            argus_core::diagnostics::failure(e)
-        )
+            failure.log()
+        );
+        failure.message
     })
 }
 

@@ -1,6 +1,7 @@
 //! Task Manager replacement is opt-in. Status is read-only. All persistent
 //! writes live behind explicit maintenance actions, with a durable journal.
 mod launch;
+mod probe;
 pub mod ready;
 mod registry;
 mod state;
@@ -11,7 +12,7 @@ use crate::{
 };
 use argus_core::i18n::{Locale, text_in};
 use argus_core::tr;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use state::{Phase, Result, Store, Value};
 use std::fs::{self, OpenOptions};
 use std::os::windows::fs::OpenOptionsExt;
@@ -51,9 +52,9 @@ fn replacement(dir: &Path) -> Value {
     ))
 }
 fn machine() -> Result<registry::Machine> {
-    Ok(registry::Machine {
-        dir: crate::install::directory().map_err(util::message)?,
-    })
+    Ok(registry::Machine::new(
+        crate::install::directory().map_err(util::message)?,
+    ))
 }
 fn parent(dir: &Path) -> Result<&Path> {
     dir.parent()
@@ -77,6 +78,165 @@ pub struct Status {
     pub can_restore: bool,
     pub recovery_path: String,
     pub detail: String,
+}
+
+/// Where an enable or restore stopped; fixed names for the log.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Step {
+    /// Rights, account, lock, an earlier record or another configuration.
+    Check,
+    /// The launcher, recovery program and interface copy.
+    Prepare,
+    /// Removing what an earlier self-test left.
+    ProbeLeftover,
+    /// The self-test's record and test program.
+    ProbeFiles,
+    /// Creating the self-test's IFEO entry.
+    ProbeCreate,
+    /// Writing that entry's Debugger value.
+    ProbeWrite,
+    /// The normal start of the test program, which IFEO must redirect.
+    ProbeRedirect,
+    /// The debug start that bypasses IFEO.
+    ProbeBypass,
+    /// Removing the self-test's entry and files afterwards.
+    ProbeCleanup,
+    /// The interface readiness check as the account that asked.
+    Interface,
+    /// The recovery record and taskmgr.exe's Debugger value.
+    Commit,
+    Restore,
+    /// Starting the maintenance helper and waiting for it.
+    Helper,
+}
+
+impl Step {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Check => "check",
+            Self::Prepare => "file preparation",
+            Self::ProbeLeftover => "earlier self-test cleanup",
+            Self::ProbeFiles => "self-test files",
+            Self::ProbeCreate => "self-test entry creation",
+            Self::ProbeWrite => "self-test entry write",
+            Self::ProbeRedirect => "self-test redirect",
+            Self::ProbeBypass => "self-test debug start",
+            Self::ProbeCleanup => "self-test cleanup",
+            Self::Interface => "interface check",
+            Self::Commit => "taskmgr.exe entry",
+            Self::Restore => "restore",
+            Self::Helper => "maintenance helper",
+        }
+    }
+}
+
+/// Why an administrator could not change an entry under IFEO.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Cause {
+    /// Its permissions allow administrators to write: something outside them
+    /// refused, usually security software that guards the registry or a policy.
+    Blocked,
+    /// Its permissions do not allow administrators to write.
+    Permissions,
+}
+
+impl Cause {
+    fn text(self) -> String {
+        match self {
+            Self::Blocked => tr!("taskManager.refused.blocked"),
+            Self::Permissions => tr!("taskManager.refused.permissions"),
+        }
+    }
+
+    fn log(self) -> &'static str {
+        match self {
+            Self::Blocked => "; the key's permissions allow administrators to write",
+            Self::Permissions => "; the key's permissions do not allow administrators to write",
+        }
+    }
+}
+
+/// Adds why an administrator's IFEO change was refused to its error.
+fn explain(error: String, cause: Option<Cause>) -> String {
+    match cause {
+        Some(cause) => tr!(
+            "taskManager.refused.withCause",
+            error = error,
+            cause = cause.text()
+        ),
+        None => error,
+    }
+}
+
+/// A failed enable or restore. The maintenance helper hands it to the window
+/// in `ERROR_FILE`; the window shows `message`, and only the fixed step,
+/// cause and classifications reach the log (`log`).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Failure {
+    pub step: Step,
+    pub message: String,
+    /// `diagnostics::failure` of the step's own error.
+    reason: String,
+    cause: Option<Cause>,
+    /// The self-test entry stayed: the classified error of its cleanup.
+    kept: Option<String>,
+    /// The replacement's state, when the action is not allowed in it.
+    #[serde(skip)]
+    state: Option<&'static str>,
+}
+
+impl Failure {
+    fn new(step: Step, message: String) -> Self {
+        Self {
+            step,
+            reason: argus_core::diagnostics::failure(&message).into_owned(),
+            message,
+            cause: None,
+            kept: None,
+            state: None,
+        }
+    }
+
+    fn refused(step: Step, error: String, cause: Option<Cause>) -> Self {
+        Self {
+            cause,
+            ..Self::new(step, explain(error, cause))
+        }
+    }
+
+    /// The self-test failed, and so did its cleanup: the entry stays.
+    fn kept(self, cleanup: Failure) -> Self {
+        Self {
+            message: tr!(
+                "taskManager.probeKept",
+                error = self.message,
+                cleanup = cleanup.message
+            ),
+            cause: self.cause.or(cleanup.cause),
+            kept: Some(cleanup.reason),
+            ..self
+        }
+    }
+
+    /// For the diagnostic log: fixed words and Windows error codes, never
+    /// the text, which can hold paths.
+    pub fn log(&self) -> String {
+        use argus_core::diagnostics::failure;
+        let mut line = match self.state {
+            Some(state) => format!("at {}: not allowed while {state}", self.step.name()),
+            None => format!("at {}: {}", self.step.name(), failure(&self.reason)),
+        };
+        if let Some(cause) = self.cause {
+            line += cause.log();
+        }
+        if let Some(kept) = &self.kept {
+            line += &format!("; self-test entry kept ({})", failure(kept));
+        }
+        line
+    }
 }
 
 pub fn status() -> Result<Status> {
@@ -145,7 +305,7 @@ pub fn status() -> Result<Status> {
 
 /// The service installer already holds install.lock when calling this.
 pub(crate) fn restore_for_maintenance(dir: &Path) -> Result<()> {
-    let mut machine = registry::Machine { dir: dir.into() };
+    let mut machine = registry::Machine::new(dir.into());
     match machine.load()? {
         Some(mut journal) => state::restore(&mut machine, &mut journal),
         None if machine.observe()?.debugger.as_ref() == Some(&replacement(dir)) => {
@@ -158,7 +318,7 @@ pub(crate) fn restore_for_maintenance(dir: &Path) -> Result<()> {
 /// Whether the replacement may be on (or half way): an update of the service
 /// would turn it off. Unsure counts as on.
 pub(crate) fn may_be_on(dir: &Path) -> bool {
-    let machine = registry::Machine { dir: dir.into() };
+    let machine = registry::Machine::new(dir.into());
     match (machine.load(), registry::observe(registry::KEY)) {
         (Ok(None), Ok(live)) => live.debugger.as_ref() == Some(&replacement(dir)),
         _ => true,
@@ -179,15 +339,17 @@ pub fn restore() -> Result<()> {
     let _parent = security::protect_directory(parent(&machine.dir)?).map_err(util::message)?;
     let _dir = security::protect_directory(&machine.dir).map_err(util::message)?;
     let _lock = lock(&machine.dir)?;
-    cleanup_probe(&machine.dir)?;
+    probe::cleanup(&mut probe::System::new(&machine.dir), Step::ProbeLeftover)
+        .map_err(|failure| failure.message)?;
     restore_for_maintenance(&machine.dir)
 }
 
 pub(crate) fn reconcile(dir: &Path) -> Result<()> {
-    let machine = registry::Machine { dir: dir.into() };
-    if dir.join("taskmgr-probe.txt").exists() {
+    let machine = registry::Machine::new(dir.into());
+    if dir.join(probe::RECORD).exists() {
         let _lock = lock(dir)?;
-        cleanup_probe(dir)?;
+        probe::cleanup(&mut probe::System::new(dir), Step::ProbeLeftover)
+            .map_err(|failure| failure.message)?;
     }
     if let Some(journal) = machine.load()?
         && matches!(journal.phase, Phase::Prepared | Phase::Restoring)
@@ -198,28 +360,44 @@ pub(crate) fn reconcile(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn enable(owner: &str, caller: u32, created: u64, assets: Assets) -> Result<()> {
+fn enable(
+    owner: &str,
+    caller: u32,
+    created: u64,
+    assets: Assets,
+) -> std::result::Result<(), Failure> {
+    let check = |message| Failure::new(Step::Check, message);
     if cfg!(debug_assertions) {
-        return Err(tr!("taskManager.devBuild"));
+        return Err(check(tr!("taskManager.devBuild")));
     }
     if !argus_core::privilege::is_elevated() {
-        return Err(tr!("taskManager.enableNeedsAdmin"));
+        return Err(check(tr!("taskManager.enableNeedsAdmin")));
     }
-    security::validate_sid(owner).map_err(util::message)?;
-    let mut machine = machine()?;
-    let _parent = security::protect_directory(parent(&machine.dir)?).map_err(util::message)?;
-    let _dir = security::protect_directory(&machine.dir).map_err(util::message)?;
-    if crate::install::owner(&machine.dir).map_err(util::message)? != owner {
-        return Err(tr!("taskManager.ownerMismatch"));
+    security::validate_sid(owner)
+        .map_err(util::message)
+        .map_err(check)?;
+    let mut machine = machine().map_err(check)?;
+    let _parent = security::protect_directory(parent(&machine.dir).map_err(check)?)
+        .map_err(util::message)
+        .map_err(check)?;
+    let _dir = security::protect_directory(&machine.dir)
+        .map_err(util::message)
+        .map_err(check)?;
+    if crate::install::owner(&machine.dir)
+        .map_err(util::message)
+        .map_err(check)?
+        != owner
+    {
+        return Err(check(tr!("taskManager.ownerMismatch")));
     }
-    let _lock = lock(&machine.dir)?;
-    restore_for_maintenance(&machine.dir)?;
-    let live = machine.observe()?;
+    let _lock = lock(&machine.dir).map_err(check)?;
+    restore_for_maintenance(&machine.dir).map_err(check)?;
+    let live = machine.observe().map_err(check)?;
     if live.debugger.is_some() || live.filtered {
-        return Err(tr!("taskManager.conflict"));
+        return Err(check(tr!("taskManager.conflict")));
     }
-    // Errors name the step: the helper's message box is all the user sees.
-    let image = format!("argus-taskmgr-ui-{}.exe", id()?);
+    // Errors name the step: the window shows them, and the log the step.
+    let image = format!("argus-taskmgr-ui-{}.exe", id().map_err(check)?);
     (|| {
         registry::atomic_file(&machine.dir, LAUNCHER, assets.0)?;
         registry::atomic_file(&machine.dir, RECOVER, assets.1)?;
@@ -234,8 +412,14 @@ fn enable(owner: &str, caller: u32, created: u64, assets: Assets) -> Result<()> 
             recovery_text().as_bytes(),
         )
     })()
-    .map_err(|error| tr!("taskManager.prepareFailed", error = error))?;
-    preflight(&machine.dir).map_err(|error| tr!("taskManager.selfTestFailed", error = error))?;
+    .map_err(|error| {
+        Failure::new(
+            Step::Prepare,
+            tr!("taskManager.prepareFailed", error = error),
+        )
+    })?;
+    probe::run(&mut probe::System::new(&machine.dir))?;
+    let interface = |message| Failure::new(Step::Interface, message);
     let probe = launch::probe_as_caller(
         &machine.dir.join(LAUNCHER),
         &["--probe-ui".into(), image.clone(), owner.into()],
@@ -243,146 +427,90 @@ fn enable(owner: &str, caller: u32, created: u64, assets: Assets) -> Result<()> 
         created,
         owner,
     )
-    .map_err(|error| tr!("taskManager.uiStartFailed", error = error))?;
-    if launch::exit_code(&probe, Duration::from_secs(15))? != 0 {
-        return Err(tr!("taskManager.uiNotReady"));
+    .map_err(|error| interface(tr!("taskManager.uiStartFailed", error = error)))?;
+    if launch::exit_code(&probe, Duration::from_secs(15)).map_err(interface)? != 0 {
+        return Err(interface(tr!("taskManager.uiNotReady")));
     }
     let value = replacement(&machine.dir);
-    state::enable(&mut machine, owner.into(), image, value)?;
+    state::enable(&mut machine, owner.into(), image, value).map_err(|message| Failure {
+        cause: machine.refused,
+        ..Failure::new(Step::Commit, message)
+    })?;
     Ok(())
 }
 
-/// This runs only inside an explicitly elevated Enable action. The randomly
-/// named probe has no GUI and never redirects taskmgr.exe. Cleanup is checked.
-fn preflight(dir: &Path) -> Result<()> {
-    cleanup_probe(dir)?;
-    let name = format!("ArgusTaskmgrProbe-{}.exe", id()?);
-    let path = dir.join(&name);
-    let key = format!("{}\\{name}", registry::IFEO);
-    let debugger = Value::string(&format!(
-        "{} --probe-redirect",
-        launch::quote(&dir.join(LAUNCHER).to_string_lossy())
-    ));
-    if registry::open(&key, false)?.is_some() {
-        return Err(tr!("taskManager.probeNameTaken"));
-    }
-    registry::atomic_file(dir, "taskmgr-probe.txt", name.as_bytes())?;
-    registry::atomic_file(
-        dir,
-        &name,
-        &fs::read(dir.join(LAUNCHER)).map_err(|e| e.to_string())?,
-    )?;
-    let result = (|| {
-        registry::write(&key, Some(&debugger))?;
-        let normal = launch::spawn(&path, &["--probe-child".into()], false)?;
-        if launch::exit_code(&normal, Duration::from_secs(5))? != 86 {
-            return Err(tr!("taskManager.probeNotRedirected"));
-        }
-        let bypass = launch::spawn(&path, &["--probe-child".into()], true)?;
-        if launch::exit_code(&bypass, Duration::from_secs(5))? != 0 {
-            return Err(tr!("taskManager.probeFallbackFailed"));
-        }
-        Ok(())
-    })();
-    cleanup_probe(dir)?;
-    result
-}
-
-fn cleanup_probe(dir: &Path) -> Result<()> {
-    let record = dir.join("taskmgr-probe.txt");
-    if !record.exists() {
-        return Ok(());
-    }
-    let file = security::protect_directory(&record).map_err(util::message)?;
-    if fs::metadata(&record).map_err(|e| e.to_string())?.len() > 128 {
-        return Err(tr!("taskManager.probeRecordInvalid"));
-    }
-    let name = fs::read_to_string(&record).map_err(|e| e.to_string())?;
-    if !name
-        .strip_prefix("ArgusTaskmgrProbe-")
-        .and_then(|s| s.strip_suffix(".exe"))
-        .is_some_and(|s| s.len() == 36 && s.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
-    {
-        return Err(tr!("taskManager.probeRecordInvalid"));
-    }
-    let path = dir.join(&name);
-    let key = format!("{}\\{name}", registry::IFEO);
-    let debugger = Value::string(&format!(
-        "{} --probe-redirect",
-        launch::quote(&dir.join(LAUNCHER).to_string_lossy())
-    ));
-    let actual = registry::observe(&key)?;
-    if actual.filtered || (actual.debugger.is_some() && actual.debugger.as_ref() != Some(&debugger))
-    {
-        return Err(tr!("taskManager.probeModified"));
-    }
-    registry::write(&key, None)?;
-    use windows::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RegDeleteKeyW};
-    let code = unsafe { RegDeleteKeyW(HKEY_LOCAL_MACHINE, PCWSTR(wide(&key).as_ptr())) };
-    if code.0 != 2 {
-        code.ok().map_err(|e| e.to_string())?;
-    }
-    if path.exists() {
-        drop(security::protect_directory(&path).map_err(util::message)?);
-        fs::remove_file(&path).map_err(|e| e.to_string())?;
-    }
-    drop(file);
-    fs::remove_file(record).map_err(|e| e.to_string())
-}
-
-pub fn manage(action: &str) -> Result<Status> {
+pub fn manage(action: &str) -> std::result::Result<Status, Failure> {
+    let check = |message| Failure::new(Step::Check, message);
     match action {
         "restore" => {
             if let Ok(Some(crate::Reply::Done)) =
                 crate::request(crate::Operation::RestoreTaskManager)
             {
-                return status();
+                return status().map_err(check);
             }
             elevate(
-                &std::env::current_exe().map_err(|e| e.to_string())?,
+                &std::env::current_exe().map_err(|e| check(e.to_string()))?,
                 &[
                     MANAGE.into(),
                     "restore".into(),
-                    security::current_sid().map_err(util::message)?,
+                    security::current_sid()
+                        .map_err(util::message)
+                        .map_err(check)?,
                 ],
             )?;
         }
-        "enable" if status()?.can_enable => {
+        "enable" => {
+            let current = status().map_err(check)?;
+            if !current.can_enable {
+                return Err(Failure {
+                    state: Some(current.state),
+                    ..check(tr!("taskManager.notAllowed"))
+                });
+            }
             elevate(
-                &std::env::current_exe().map_err(|e| e.to_string())?,
+                &std::env::current_exe().map_err(|e| check(e.to_string()))?,
                 &[
                     MANAGE.into(),
                     "enable".into(),
-                    security::current_sid().map_err(util::message)?,
+                    security::current_sid()
+                        .map_err(util::message)
+                        .map_err(check)?,
                     std::process::id().to_string(),
                     launch::identity(unsafe {
                         windows::Win32::System::Threading::GetCurrentProcess()
-                    })?
+                    })
+                    .map_err(check)?
                     .to_string(),
                 ],
             )?;
         }
-        _ => return Err(tr!("taskManager.notAllowed")),
+        _ => return Err(check(tr!("taskManager.notAllowed"))),
     }
-    status()
+    status().map_err(check)
 }
 
-/// A failed maintenance helper leaves its error here, in the protected
+/// A failed maintenance helper leaves its `Failure` here, in the protected
 /// folder beside the launcher, for the window that started it to show and log
 /// (`elevate` reads it back). Only administrators can write the folder.
-const ERROR_FILE: &str = "taskmgr-error.txt";
+const ERROR_FILE: &str = "taskmgr-error.json";
+/// Where Argus 0.1.0 left the error, as plain text.
+const OLD_ERROR_FILE: &str = "taskmgr-error.txt";
 
 /// The helper's error from this run, if it left one.
-fn helper_error(since: SystemTime) -> Option<String> {
-    let path = machine().ok()?.dir.join(ERROR_FILE);
-    let meta = fs::metadata(&path).ok()?;
+fn helper_error(since: SystemTime) -> Option<Failure> {
+    read_failure(&machine().ok()?.dir.join(ERROR_FILE), since)
+}
+
+fn read_failure(path: &Path, since: SystemTime) -> Option<Failure> {
+    let meta = fs::metadata(path).ok()?;
     if meta.len() > 8 * 1024 || meta.modified().ok()? + Duration::from_secs(2) < since {
         return None;
     }
-    fs::read_to_string(path).ok().filter(|s| !s.is_empty())
+    serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
-fn elevate(exe: &Path, args: &[String]) -> Result<()> {
+fn elevate(exe: &Path, args: &[String]) -> std::result::Result<(), Failure> {
+    let helper = |message| Failure::new(Step::Helper, message);
     let started = SystemTime::now();
     let file = wide(&exe.to_string_lossy());
     let params = wide(
@@ -393,7 +521,11 @@ fn elevate(exe: &Path, args: &[String]) -> Result<()> {
             .join(" "),
     );
     let verb = wide("runas");
-    let directory = wide(&launch::system_directory()?.to_string_lossy());
+    let directory = wide(
+        &launch::system_directory()
+            .map_err(helper)?
+            .to_string_lossy(),
+    );
     let mut info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
         fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
@@ -404,20 +536,20 @@ fn elevate(exe: &Path, args: &[String]) -> Result<()> {
         nShow: SW_HIDE.0,
         ..Default::default()
     };
-    unsafe { ShellExecuteExW(&mut info) }.map_err(|e| e.to_string())?;
+    unsafe { ShellExecuteExW(&mut info) }.map_err(|e| helper(e.to_string()))?;
     if info.hProcess == HANDLE::default() {
-        return Err(tr!("taskManager.helperNotStarted"));
+        return Err(helper(tr!("taskManager.helperNotStarted")));
     }
     let process = Handle(info.hProcess);
     if unsafe { WaitForSingleObject(process.0, 120_000) } != WAIT_OBJECT_0 {
-        return Err(tr!("taskManager.helperBusy"));
+        return Err(helper(tr!("taskManager.helperBusy")));
     }
     let mut code = 0;
-    unsafe { GetExitCodeProcess(process.0, &mut code) }.map_err(|e| e.to_string())?;
+    unsafe { GetExitCodeProcess(process.0, &mut code) }.map_err(|e| helper(e.to_string()))?;
     if code == 0 {
         Ok(())
     } else {
-        Err(helper_error(started).unwrap_or_else(|| tr!("taskManager.helperFailed")))
+        Err(helper_error(started).unwrap_or_else(|| helper(tr!("taskManager.helperFailed"))))
     }
 }
 
@@ -443,12 +575,15 @@ fn code(result: Result<()>) -> i32 {
 
 /// Exit code of a maintenance helper: its error goes back to the window that
 /// started it; a message box only when it cannot be left there.
-fn report(result: Result<()>) -> i32 {
-    let Err(error) = result else { return 0 };
-    let written =
-        machine().and_then(|m| registry::atomic_file(&m.dir, ERROR_FILE, error.as_bytes()));
+fn report(result: std::result::Result<(), Failure>) -> i32 {
+    let Err(failure) = result else { return 0 };
+    let written = serde_json::to_vec(&failure)
+        .map_err(|e| e.to_string())
+        .and_then(|bytes| {
+            machine().and_then(|m| registry::atomic_file(&m.dir, ERROR_FILE, &bytes))
+        });
     if written.is_err() {
-        alert(&error);
+        alert(&failure.message);
     }
     1
 }
@@ -502,18 +637,22 @@ pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
         [mode, action, owner, pid, created] if mode == MANAGE && action == "enable" => {
             clear_error();
             Some(report((|| {
-                let pid = pid.parse().map_err(|_| tr!("taskManager.invalidCaller"))?;
+                let check = |message| Failure::new(Step::Check, message);
+                let pid = pid
+                    .parse()
+                    .map_err(|_| check(tr!("taskManager.invalidCaller")))?;
                 let created = created
                     .parse()
-                    .map_err(|_| tr!("taskManager.invalidInstance"))?;
-                assets
-                    .ok_or_else(|| tr!("taskManager.noLauncher"))
-                    .and_then(|a| enable(owner, pid, created, a))
+                    .map_err(|_| check(tr!("taskManager.invalidInstance")))?;
+                let assets = assets.ok_or_else(|| check(tr!("taskManager.noLauncher")))?;
+                enable(owner, pid, created, assets)
             })()))
         }
         [mode, action, _owner] if mode == MANAGE && action == "restore" => {
             clear_error();
-            Some(report(restore()))
+            Some(report(
+                restore().map_err(|message| Failure::new(Step::Restore, message)),
+            ))
         }
         [mode] if mode == "--argus-taskmgr-uninstall" => Some(code(uninstall_guard())),
         _ if args.first().is_some_and(|s| s == MANAGE) => Some(87),
@@ -525,6 +664,7 @@ pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
 fn clear_error() {
     if let Ok(machine) = machine() {
         let _ = fs::remove_file(machine.dir.join(ERROR_FILE));
+        let _ = fs::remove_file(machine.dir.join(OLD_ERROR_FILE));
     }
 }
 
@@ -533,7 +673,9 @@ fn uninstall_guard() -> Result<()> {
     if registry::observe(registry::KEY)?.debugger.as_ref() != Some(&replacement(&machine.dir)) {
         return Ok(());
     }
-    manage("restore").map(|_| ())
+    manage("restore")
+        .map(|_| ())
+        .map_err(|failure| failure.message)
 }
 
 pub fn launcher_main() -> i32 {
@@ -605,6 +747,7 @@ pub fn recover_main() -> i32 {
                     &std::env::current_exe().map_err(|e| e.to_string())?,
                     &["--restore".into()],
                 )
+                .map_err(|failure| failure.message)
             }
         })();
         return code(result);
@@ -616,7 +759,9 @@ pub fn recover_main() -> i32 {
         return code(
             std::env::current_exe()
                 .map_err(|e| e.to_string())
-                .and_then(|exe| elevate(&exe, &["--restore".into()])),
+                .and_then(|exe| {
+                    elevate(&exe, &["--restore".into()]).map_err(|failure| failure.message)
+                }),
         );
     }
     87
@@ -649,5 +794,46 @@ mod tests {
             }
         }
         assert!(!text.replace("\r\n", "").contains('\n'));
+    }
+
+    #[test]
+    fn helper_failures_reach_the_window_but_stale_or_foreign_files_do_not() {
+        let dir = std::env::temp_dir().join(format!("argus-taskmgr-{}", id().unwrap()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(ERROR_FILE);
+        let failure = Failure::refused(Step::ProbeCreate, util::message(5), Some(Cause::Blocked));
+        fs::write(&path, serde_json::to_vec(&failure).unwrap()).unwrap();
+        let read = read_failure(&path, SystemTime::now()).unwrap();
+        assert_eq!(
+            (read.step, read.cause),
+            (Step::ProbeCreate, Some(Cause::Blocked))
+        );
+        assert_eq!(read.message, failure.message);
+        // From an earlier run, or not written by this version's helper.
+        let later = SystemTime::now() + Duration::from_secs(60);
+        assert!(read_failure(&path, later).is_none());
+        fs::write(&path, "plain text").unwrap();
+        assert!(read_failure(&path, SystemTime::now()).is_none());
+        fs::write(&path, vec![b' '; 9 * 1024]).unwrap();
+        assert!(read_failure(&path, SystemTime::now()).is_none());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_log_line_names_the_step_cause_and_code_but_never_the_text() {
+        let private = format!(r"C:\Users\Someone Private\x: {}", util::message(5));
+        let failure = Failure::refused(Step::ProbeCreate, private.clone(), Some(Cause::Blocked))
+            .kept(Failure::new(Step::ProbeCleanup, private));
+        let line = failure.log();
+        assert!(line.starts_with(&format!("at {}:", Step::ProbeCreate.name())));
+        assert!(line.contains("(os error 5)"), "{line}");
+        assert!(line.contains(Cause::Blocked.log()), "{line}");
+        assert!(line.contains("self-test entry kept"), "{line}");
+        assert!(!line.contains("Someone") && !line.contains('\\'), "{line}");
+        let refused = Failure {
+            state: Some("conflict"),
+            ..Failure::new(Step::Check, tr!("taskManager.notAllowed"))
+        };
+        assert!(refused.log().contains("not allowed while conflict"));
     }
 }
