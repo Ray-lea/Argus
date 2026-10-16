@@ -9,15 +9,15 @@
 //! maximize or restore the window; hover and press are passed to the page,
 //! which draws the button.
 //!
-//! On Windows 11 DWM paints a band along the top edge (8 px at 100% scale),
-//! partly behind the transparent page, in the caption color. That is normally
-//! Mica, like the rest of the window; with "Show accent color on title bars and
-//! window borders" it is the accent color, a colored strip over the toolbar.
-//! While that setting is on, the caption color is set to `DWMWA_COLOR_NONE`:
-//! no fill, so the band shows the Mica behind it, active or not. (A solid
-//! color cannot stand in for Mica, which takes on the wallpaper's tint. Taking
-//! back the 1 px of non-client area tao leaves at the top is no way out either:
-//! DWM then paints a whole caption, system buttons included, behind the page.)
+//! On Windows 11 DWM paints the 1 px of non-client area tao leaves at the top
+//! in the caption color (with the frame extended along the top as well, a band
+//! of 8 px at 100% scale, partly behind the page; see `shell::extend_backdrop`).
+//! That is normally Mica, like the rest of the window; with "Show accent color
+//! on title bars and window borders" it is the accent color, a colored line over
+//! the toolbar. While that setting is on, the caption color is set to
+//! `DWMWA_COLOR_NONE`: no fill, so the line shows the Mica behind it, active or
+//! not. (A solid color cannot stand in for Mica, which takes on the wallpaper's
+//! tint.)
 
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::{Mutex, OnceLock};

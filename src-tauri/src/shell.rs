@@ -73,15 +73,22 @@ pub fn toggle_main<R: Runtime>(app: &AppHandle<R>) {
 /// window moves behind the cursor. Extending the frame into the client area is
 /// the Windows 11 way: the window stays a normal opaque window, and only the
 /// WebView (background `#00000000` in tauri.conf.json) is transparent.
+///
+/// The frame grows in from the left edge only, wider than any window, rather
+/// than all round (margins of -1). An extension along the top lets DWM draw
+/// its own caption buttons behind the page wherever the client area starts at
+/// the window's visible top, which a maximized window's does (tao gives it the
+/// monitor's work area): two sets of buttons showed. Without a top band DWM
+/// draws none, and the window is otherwise the same to the pixel, Mica included.
 pub fn extend_backdrop<R: Runtime>(w: &WebviewWindow<R>) {
     use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
     use windows::Win32::UI::Controls::MARGINS;
     if let Ok(hwnd) = w.hwnd() {
         let margins = MARGINS {
-            cxLeftWidth: -1,
-            cxRightWidth: -1,
-            cyTopHeight: -1,
-            cyBottomHeight: -1,
+            cxLeftWidth: i32::MAX,
+            cxRightWidth: 0,
+            cyTopHeight: 0,
+            cyBottomHeight: 0,
         };
         unsafe {
             let _ = DwmExtendFrameIntoClientArea(HWND(hwnd.0), &margins);
