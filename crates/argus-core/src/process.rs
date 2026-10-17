@@ -153,8 +153,8 @@ impl ProcessTracker {
                     let name: Arc<str> = unsafe { p.image_name.to_string_lossy() }.into();
                     let path = self.paths.image_path(pid).map(Arc::from);
                     // Started since the last sample: everything it consumed is new.
-                    let prev = (elapsed.is_some() && p.create_time > prev_systime)
-                        .then_some((0, [0; 3], None));
+                    let started = elapsed.is_some() && p.create_time > prev_systime;
+                    let prev = started.then_some((0, [0; 3], Some((0, 0))));
                     (
                         Tracked {
                             name,
@@ -189,17 +189,11 @@ impl ProcessTracker {
             };
             entry.cpu_ticks = cpu_ticks;
             entry.io = io;
-            let disk_rates = prev
-                .and_then(|(_, _, disk)| disk)
-                .zip(disk)
-                .zip(elapsed)
-                .filter(|(_, secs)| *secs > 0.0 && *secs <= 30.0)
-                .and_then(|(((r, w), (read, written)), secs)| {
-                    Some((
-                        (read.checked_sub(r)? as f64 / secs) as u64,
-                        (written.checked_sub(w)? as f64 / secs) as u64,
-                    ))
-                });
+            let disk_rates = crate::disk_process::interval_rates(
+                prev.and_then(|(_, _, disk)| disk),
+                disk,
+                elapsed,
+            );
             entry.disk = disk;
 
             let suspended = !threads.is_empty()

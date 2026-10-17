@@ -8,17 +8,35 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use windows::Wdk::System::SystemInformation::SYSTEM_INFORMATION_CLASS;
-use windows::Win32::System::SystemInformation::GetTickCount64;
+use windows::Win32::System::SystemInformation::{GetSystemTimePreciseAsFileTime, GetTickCount64};
 
 use crate::nt::{SystemProcessInformation, SystemThreadInformation, query_system_information};
 use crate::process::ProcessRow;
-use crate::util::{AlignedBuf, ticks_to_unix_ms};
+use crate::util::{AlignedBuf, filetime_ticks, ticks_to_unix_ms};
 
 pub const MAX_PROCESSES: usize = 8192;
 // SYSTEM_EXTENDED_THREAD_INFORMATION adds seven pointer-sized fields.
 const THREAD_BYTES: usize = size_of::<SystemThreadInformation>() + 7 * size_of::<usize>();
 const HEADER_BYTES: usize = size_of::<SystemProcessInformation>();
 const DISK_BYTES: usize = 5 * size_of::<u64>();
+/// Longer gaps re-establish the baseline instead of averaging over them.
+const MAX_INTERVAL_MS: u64 = 30_000;
+
+/// Bytes per second between two cumulative (read, written) readings of one
+/// process instance, `secs` apart. None without both readings, across a
+/// counter reset or over an interval too long to trust.
+pub(crate) fn interval_rates(
+    previous: Option<(u64, u64)>,
+    current: Option<(u64, u64)>,
+    secs: Option<f64>,
+) -> Option<(u64, u64)> {
+    let ((r, w), (read, written)) = previous.zip(current)?;
+    let secs = secs.filter(|s| *s > 0.0 && *s * 1000.0 <= MAX_INTERVAL_MS as f64)?;
+    Some((
+        (read.checked_sub(r)? as f64 / secs) as u64,
+        (written.checked_sub(w)? as f64 / secs) as u64,
+    ))
+}
 
 pub(crate) fn standard_supported() -> bool {
     static SUPPORTED: OnceLock<bool> = OnceLock::new();
@@ -197,6 +215,14 @@ pub struct DiskRates {
 
 impl DiskRates {
     pub fn apply(&mut self, frame: &DiskSnapshot, processes: &mut [ProcessRow]) {
+        // The tick count is system-wide, so the offset maps a snapshot's
+        // clock onto the wall clock that creation times use.
+        let wall_ms = ticks_to_unix_ms(filetime_ticks(unsafe { GetSystemTimePreciseAsFileTime() }));
+        let offset = wall_ms - unsafe { GetTickCount64() } as i64;
+        self.apply_with(frame, processes, offset);
+    }
+
+    fn apply_with(&mut self, frame: &DiskSnapshot, processes: &mut [ProcessRow], wall_offset: i64) {
         if self
             .previous
             .as_ref()
@@ -205,16 +231,22 @@ impl DiskRates {
             self.values.clear();
             if let Some(previous) = &self.previous
                 && let Some(elapsed) = frame.sampled_at_ms.checked_sub(previous.sampled_at_ms)
-                && (1..=30_000).contains(&elapsed)
+                && (1..=MAX_INTERVAL_MS).contains(&elapsed)
             {
                 let old: HashMap<_, _> = previous
                     .counters
                     .iter()
                     .map(|&(pid, created, read, written)| ((pid, created), (read, written)))
                     .collect();
+                // The clock is read before each query: a process missing from
+                // the previous snapshot but created after that read did all of
+                // its I/O since. Coarse ticks can only defer one to the next.
+                let taken = previous.sampled_at_ms as i64 + wall_offset;
                 for &(pid, created, read, written) in &frame.counters {
-                    let Some(&(r, w)) = old.get(&(pid, created)) else {
-                        continue;
+                    let (r, w) = match old.get(&(pid, created)) {
+                        Some(&counters) => counters,
+                        None if created > taken => (0, 0),
+                        None => continue,
                     };
                     let (Some(read), Some(written)) = (read.checked_sub(r), written.checked_sub(w))
                     else {
@@ -326,15 +358,87 @@ mod tests {
     }
 
     #[test]
+    fn standard_counters_end_the_last_record_where_the_returned_data_ends() {
+        // Two records: header, one thread, the trailer, then an 8-byte name.
+        let record = HEADER_BYTES + size_of::<SystemThreadInformation>() + DISK_BYTES + 8;
+        let mut buf = AlignedBuf::with_capacity(2 * record + 64);
+        let base = buf.as_ptr() as usize;
+        let name = offset_of!(SystemProcessInformation, image_name);
+        for (i, read) in [4096_u64, 8192].into_iter().enumerate() {
+            let at = i * record;
+            let trailer = at + HEADER_BYTES + size_of::<SystemThreadInformation>();
+            let next = if i == 0 { record as u32 } else { 0 };
+            let mut write = |offset: usize, value: &[u8]| unsafe {
+                std::ptr::copy_nonoverlapping(
+                    value.as_ptr(),
+                    buf.as_mut_ptr().cast::<u8>().add(offset),
+                    value.len(),
+                );
+            };
+            write(at, &next.to_le_bytes());
+            write(at + 4, &1_u32.to_le_bytes());
+            write(trailer, &read.to_le_bytes());
+            write(at + name + 2, &8_u16.to_le_bytes());
+            write(
+                at + name + 8,
+                &((base + trailer + DISK_BYTES) as u64).to_le_bytes(),
+            );
+        }
+        let info = |i: usize| unsafe {
+            &*(buf.as_ptr().add(i * record) as *const SystemProcessInformation)
+        };
+        assert_eq!(
+            standard_counters(&buf, 2 * record, info(0)),
+            Some((4096, 0))
+        );
+        assert_eq!(
+            standard_counters(&buf, 2 * record, info(1)),
+            Some((8192, 0))
+        );
+        // The name would extend past the bytes the kernel returned.
+        assert_eq!(standard_counters(&buf, 2 * record - 1, info(1)), None);
+        assert_eq!(standard_counters(&buf, buf.len() + 8, info(0)), None);
+    }
+
+    #[test]
+    fn interval_rates_need_two_readings_and_a_trustworthy_interval() {
+        // First sample, or a process the trailer does not cover.
+        assert_eq!(interval_rates(None, Some((4096, 0)), Some(1.0)), None);
+        assert_eq!(interval_rates(Some((0, 0)), None, Some(1.0)), None);
+        assert_eq!(interval_rates(Some((0, 0)), Some((4096, 0)), None), None);
+        // A process started since the last sample counts from zero.
+        assert_eq!(
+            interval_rates(Some((0, 0)), Some((4096, 8192)), Some(2.0)),
+            Some((2048, 4096))
+        );
+        assert_eq!(
+            interval_rates(Some((4096, 8192)), Some((4096, 8192)), Some(0.5)),
+            Some((0, 0))
+        );
+        // A counter reset, no time between readings, or too long a gap.
+        assert_eq!(
+            interval_rates(Some((4096, 0)), Some((0, 0)), Some(1.0)),
+            None
+        );
+        assert_eq!(interval_rates(Some((0, 0)), Some((1, 1)), Some(0.0)), None);
+        assert_eq!(interval_rates(Some((0, 0)), Some((1, 1)), Some(30.5)), None);
+        assert_eq!(
+            interval_rates(Some((0, 0)), Some((30, 30)), Some(30.0)),
+            Some((1, 1))
+        );
+    }
+
+    #[test]
     fn rates_use_source_time_and_reprime_on_pid_reuse_reset_and_gaps() {
         let mut rates = DiskRates::default();
         let mut apply = |ms, created, read, written| {
-            rates.apply(
+            rates.apply_with(
                 &DiskSnapshot {
                     sampled_at_ms: ms,
                     counters: vec![(17, created, read, written)],
                 },
                 &mut [],
+                0,
             );
             rates.values.get(&(17, created)).copied()
         };
@@ -346,5 +450,33 @@ mod tests {
         assert_eq!(apply(6000, 11, 0, 0), None);
         assert_eq!(apply(100_000, 11, 8000, 9000), None);
         assert_eq!(apply(99_000, 11, 8000, 9000), None);
+    }
+
+    #[test]
+    fn processes_started_after_the_previous_snapshot_count_from_zero() {
+        let mut rates = DiskRates::default();
+        let frame = |ms, counters| DiskSnapshot {
+            sampled_at_ms: ms,
+            counters,
+        };
+        // Snapshot clock 1000 ms is wall time 5000 ms.
+        rates.apply_with(&frame(1000, vec![(17, 4000, 100, 100)]), &mut [], 4000);
+        rates.apply_with(
+            &frame(
+                3000,
+                vec![
+                    (17, 4000, 2100, 100),
+                    (18, 5500, 4096, 0),
+                    (19, 4500, 4096, 0),
+                ],
+            ),
+            &mut [],
+            4000,
+        );
+        assert_eq!(rates.values.get(&(17, 4000)), Some(&(1000, 0)));
+        // Created after the previous snapshot: all of its bytes are new.
+        assert_eq!(rates.values.get(&(18, 5500)), Some(&(2048, 0)));
+        // Created before it yet missing from it: no baseline to trust.
+        assert_eq!(rates.values.get(&(19, 4500)), None);
     }
 }
