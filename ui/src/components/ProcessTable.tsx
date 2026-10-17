@@ -1,5 +1,5 @@
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { For, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { endRow } from "../lib/actions";
 import { fmtCount, fmtCpu, fmtMem, fmtNet, fmtRate } from "../lib/format";
 import { t } from "../lib/i18n";
@@ -72,9 +72,13 @@ const heatMem = (b: number) => (b < 200 * MB ? 0 : Math.min(1, b / (2048 * MB)))
 const heatIo = (b: number) => (b < MB ? 0 : Math.min(1, Math.log10(b / MB + 1) / 2));
 
 export default function ProcessTable() {
+  let tableEl!: HTMLDivElement;
   let scrollEl!: HTMLDivElement;
+  let sideEl!: HTMLDivElement;
   const withNet = () => snapshot()?.processNetwork ?? false;
   const columns = () => (withNet() ? COLUMNS_WITH_NET : COLUMNS);
+  /** How far the columns after the name are scrolled sideways (a narrow table). */
+  const [shift, setShift] = createSignal(0);
 
   const virtualizer = createVirtualizer({
     get count() {
@@ -87,6 +91,13 @@ export default function ProcessTable() {
 
   onMount(() => {
     scrollEl.scrollTop = savedScroll;
+    // Sideways wheel and touchpad gestures over the table drive its scrollbar.
+    // Passive, so vertical scrolling never waits for this page's main thread.
+    const wheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) sideEl.scrollLeft += e.deltaX;
+    };
+    tableEl.addEventListener("wheel", wheel, { passive: true });
+    onCleanup(() => tableEl.removeEventListener("wheel", wheel));
   });
 
   const totals = (key: SortKey): string => {
@@ -200,10 +211,39 @@ export default function ProcessTable() {
     e.preventDefault();
   };
 
+  const header = (col: Column) => (
+    <button
+      type="button"
+      role="columnheader"
+      class="th"
+      classList={{
+        left: col.key === "name",
+        sorted: sort().key === col.key,
+        opt: col.optional === "opt",
+        opt2: col.optional === "opt2",
+      }}
+      title={t(`processes.column.${col.key}.title`)}
+      aria-sort={sort().key === col.key ? (sort().desc ? "descending" : "ascending") : "none"}
+      onClick={() => onSort(col)}
+    >
+      <span class="th-total">{totals(col.key) || " "}</span>
+      <span class="th-label">
+        {t(`processes.column.${col.key}.label`)}
+        <Show when={sort().key === col.key}>
+          <Show when={sort().desc} fallback={<ChevronUp size={12} />}>
+            <ChevronDown size={12} />
+          </Show>
+        </Show>
+      </span>
+    </button>
+  );
+
   return (
     <div
+      ref={tableEl}
       class="table"
-      classList={{ "with-net": withNet() }}
+      classList={{ "with-net": withNet(), shifted: shift() > 0 }}
+      style={{ "--shift": `${shift()}px` }}
       role="grid"
       tabIndex={0}
       aria-rowcount={rows().length}
@@ -212,34 +252,10 @@ export default function ProcessTable() {
       onKeyDown={onKeyDown}
     >
       <div class="thead cols" role="row">
-        <For each={columns()}>
-          {(col) => (
-            <button
-              type="button"
-              role="columnheader"
-              class="th"
-              classList={{
-                left: col.key === "name",
-                sorted: sort().key === col.key,
-                opt: col.optional === "opt",
-                opt2: col.optional === "opt2",
-              }}
-              title={t(`processes.column.${col.key}.title`)}
-              aria-sort={sort().key === col.key ? (sort().desc ? "descending" : "ascending") : "none"}
-              onClick={() => onSort(col)}
-            >
-              <span class="th-total">{totals(col.key) || " "}</span>
-              <span class="th-label">
-                {t(`processes.column.${col.key}.label`)}
-                <Show when={sort().key === col.key}>
-                  <Show when={sort().desc} fallback={<ChevronUp size={12} />}>
-                    <ChevronDown size={12} />
-                  </Show>
-                </Show>
-              </span>
-            </button>
-          )}
-        </For>
+        {header(COLUMNS[0])}
+        <div class="metrics" role="presentation">
+          <For each={columns().slice(1)}>{header}</For>
+        </div>
       </div>
 
       <div
@@ -276,6 +292,16 @@ export default function ProcessTable() {
             </For>
           </div>
         </Show>
+      </div>
+
+      <div
+        ref={sideEl}
+        class="hscroll"
+        tabIndex={-1}
+        aria-hidden="true"
+        onScroll={() => setShift(sideEl.scrollLeft)}
+      >
+        <div />
       </div>
     </div>
   );
@@ -377,66 +403,68 @@ function Row(props: { row: DisplayRow; start: number; withNet: boolean }) {
           <span class="tag">{t("processes.suspended")}</span>
         </Show>
       </div>
-      <div class="cell dim opt2" role="gridcell">
-        {isGroup() ? "" : r().proc.pid}
-      </div>
-      <div
-        class="cell heat"
-        role="gridcell"
-        classList={{ dim: r().cpu < 0.05 }}
-        style={{ "--h": heatCpu(r().cpu) }}
-      >
-        {fmtCpu(r().cpu)}
-      </div>
-      <div class="cell heat" role="gridcell" style={{ "--h": heatMem(r().mem) }}>
-        {fmtMem(r().mem)}
-      </div>
-      <For each={["diskRead", "diskWrite"] as const}>
-        {(key) => (
-          <div
-            class="cell heat"
-            role="gridcell"
-            classList={{ dim: r()[key] == null || (r()[key] ?? 0) < 1 }}
-            style={{ "--h": heatIo(r()[key] ?? 0) }}
-            title={r()[key] == null ? t("processes.diskUnavailable") : undefined}
-          >
-            {r()[key] == null ? "—" : fmtRate(r()[key] ?? 0)}
-          </div>
-        )}
-      </For>
-      <div
-        class="cell heat opt2"
-        role="gridcell"
-        classList={{ dim: r().io < 1 }}
-        style={{ "--h": heatIo(r().io) }}
-      >
-        {fmtRate(r().io)}
-      </div>
-      <div
-        class="cell heat"
-        role="gridcell"
-        classList={{ dim: r().gpu < 0.05 }}
-        style={{ "--h": heatGpu(r().gpu) }}
-        title={r().gpuEngine ?? undefined}
-      >
-        {fmtCpu(r().gpu)}
-      </div>
-      <Show when={props.withNet}>
+      <div class="metrics" role="presentation">
+        <div class="cell dim opt2" role="gridcell">
+          {isGroup() ? "" : r().proc.pid}
+        </div>
         <div
           class="cell heat"
           role="gridcell"
-          classList={{ dim: r().netSent + r().netReceived < 1 }}
-          style={{ "--h": heatIo(r().netSent + r().netReceived) }}
-          title={t("processes.netRates", { sent: fmtNet(r().netSent), received: fmtNet(r().netReceived) })}
+          classList={{ dim: r().cpu < 0.05 }}
+          style={{ "--h": heatCpu(r().cpu) }}
         >
-          {fmtNet(r().netSent + r().netReceived, true)}
+          {fmtCpu(r().cpu)}
         </div>
-      </Show>
-      <div class="cell opt" role="gridcell">
-        {fmtCount(r().threads)}
-      </div>
-      <div class="cell opt" role="gridcell">
-        {fmtCount(r().handles)}
+        <div class="cell heat" role="gridcell" style={{ "--h": heatMem(r().mem) }}>
+          {fmtMem(r().mem)}
+        </div>
+        <For each={["diskRead", "diskWrite"] as const}>
+          {(key) => (
+            <div
+              class="cell heat"
+              role="gridcell"
+              classList={{ dim: r()[key] == null || (r()[key] ?? 0) < 1 }}
+              style={{ "--h": heatIo(r()[key] ?? 0) }}
+              title={r()[key] == null ? t("processes.diskUnavailable") : undefined}
+            >
+              {r()[key] == null ? "—" : fmtRate(r()[key] ?? 0)}
+            </div>
+          )}
+        </For>
+        <div
+          class="cell heat opt2"
+          role="gridcell"
+          classList={{ dim: r().io < 1 }}
+          style={{ "--h": heatIo(r().io) }}
+        >
+          {fmtRate(r().io)}
+        </div>
+        <div
+          class="cell heat"
+          role="gridcell"
+          classList={{ dim: r().gpu < 0.05 }}
+          style={{ "--h": heatGpu(r().gpu) }}
+          title={r().gpuEngine ?? undefined}
+        >
+          {fmtCpu(r().gpu)}
+        </div>
+        <Show when={props.withNet}>
+          <div
+            class="cell heat"
+            role="gridcell"
+            classList={{ dim: r().netSent + r().netReceived < 1 }}
+            style={{ "--h": heatIo(r().netSent + r().netReceived) }}
+            title={t("processes.netRates", { sent: fmtNet(r().netSent), received: fmtNet(r().netReceived) })}
+          >
+            {fmtNet(r().netSent + r().netReceived, true)}
+          </div>
+        </Show>
+        <div class="cell opt" role="gridcell">
+          {fmtCount(r().threads)}
+        </div>
+        <div class="cell opt" role="gridcell">
+          {fmtCount(r().handles)}
+        </div>
       </div>
     </div>
   );

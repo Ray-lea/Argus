@@ -833,21 +833,11 @@ button {
 
 .table {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  /* As wide as the space it gets: a narrow table's columns overflow inside it. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.table > .thead,
-.table > .tbody {
-  min-width: 622px;
-}
-
-.table.with-net > .thead,
-.table.with-net > .tbody {
-  min-width: 714px;
 }
 
 .cols {
@@ -860,7 +850,8 @@ button {
 }
 
 /* Keep disk reads/writes in narrow views; only secondary columns disappear.
-   Below the resource columns' minimum width, the header and body scroll together. */
+   Below the resource columns' minimum width, the columns after the name
+   scroll sideways together (see .hscroll). */
 .table {
   container-type: inline-size;
 }
@@ -870,7 +861,7 @@ button {
     grid-template-columns: minmax(200px, 1fr) 72px 70px 96px 104px 104px 92px 70px 92px;
   }
 
-  .with-net .cols > .opt {
+  .with-net .metrics > .opt {
     display: none;
   }
 }
@@ -880,7 +871,7 @@ button {
     grid-template-columns: minmax(200px, 1fr) 72px 70px 96px 104px 104px 92px 70px;
   }
 
-  .cols > .opt {
+  .metrics > .opt {
     display: none;
   }
 }
@@ -890,7 +881,7 @@ button {
     grid-template-columns: minmax(160px, 1fr) 70px 96px 104px 104px 70px 92px;
   }
 
-  .with-net .cols > .opt2 {
+  .with-net .metrics > .opt2 {
     display: none;
   }
 }
@@ -900,13 +891,53 @@ button {
     grid-template-columns: minmax(160px, 1fr) 70px 96px 104px 104px 70px;
   }
 
-  .cols > .opt2 {
+  .metrics > .opt2 {
     display: none;
   }
 }
 
+/* The columns after the name, in the header and in every row: part of the
+   row's own grid, unless scrolled sideways (.shifted, a narrow table). Then
+   they move together, clipped where the name column ends. Plain transforms,
+   so no row becomes a compositor layer. */
+.cols > .metrics {
+  display: contents;
+}
+
+.table.shifted .cols > .metrics {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: subgrid;
+  align-self: stretch;
+  overflow-x: clip;
+}
+
+.table.shifted .metrics > * {
+  translate: calc(-1 * var(--shift));
+}
+
+/* Has a scrollbar only when the columns do not fit: their narrowest widths
+   (604 px, 696 px with the network column) plus the header's 18 px padding.
+   The width needs a 1 px tall box to count as overflow; the margin takes the
+   pixel back, so a table that fits keeps its height. */
+.hscroll {
+  margin-top: -1px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.hscroll > div {
+  width: 622px;
+  height: 1px;
+}
+
+.with-net .hscroll > div {
+  width: 714px;
+}
+
 .thead {
   padding: 4px 14px 4px 4px; /* right side matches the scrollbar gutter */
+  overflow: clip; /* a narrow table's columns extend past it */
   border-bottom: 1px solid var(--stroke);
 }
 
