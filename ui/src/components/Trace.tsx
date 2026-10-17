@@ -615,24 +615,29 @@ export function Chart(props: ChartProps) {
     }
     if (times.length < 2) return;
     const start = times[0];
-    const duration = times[times.length - 1] - start;
     const x = hoverX * dpr;
     for (const [i, d] of drawn.entries()) {
       const dot = dots[i];
       if (!dot || !d) continue;
-      const frames: Keyframe[] = [];
-      for (const [k, s] of shifts.entries()) {
+      // As far as the curve goes. Near the right edge it ends at the newest
+      // sample before the track would stop; the next sample redraws long before
+      // the dot gets there. Giving up on the whole glide instead left the dot to
+      // the text's 10 updates a second there, visibly lagging the trace.
+      const ys: number[] = [];
+      for (const s of shifts) {
         const y = d.y(x + s);
         if (y == null) break;
-        frames.push({
-          offset: (times[k] - start) / duration,
-          transform: `translate(${hoverX}px, ${y / dpr}px)`,
-          // Balanced: hold each position for its step, as the track does.
-          easing: mode === "balanced" ? "steps(1, end)" : "linear",
-        });
+        ys.push(y);
       }
-      // A curve that ends before the track stops (no data that far back): stay put.
-      if (frames.length < shifts.length) continue;
+      // No curve under the cursor yet (data does not reach back that far): stay put.
+      if (ys.length < 2) continue;
+      const duration = times[ys.length - 1] - start;
+      const frames: Keyframe[] = ys.map((y, k) => ({
+        offset: (times[k] - start) / duration,
+        transform: `translate(${hoverX}px, ${y / dpr}px)`,
+        // Balanced: hold each position for its step, as the track does.
+        easing: mode === "balanced" ? "steps(1, end)" : "linear",
+      }));
       const glide = dot.animate(frames, { duration, fill: "forwards" });
       glide.startTime = start;
       dotGlides.push(glide);
