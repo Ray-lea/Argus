@@ -12,6 +12,10 @@ const MB = 1024 * 1024;
  * Per-core load bars. Each fill glides, linearly and on the compositor, from
  * where it is to the new sample over exactly one interval, arriving as the
  * next sample does, so the bars never stand still (same modes as the charts).
+ *
+ * All tracks are painted before the first fill. Anything painted after a
+ * moving layer that may overlap it gets a layer of its own, and every layer
+ * goes into each frame the compositor sends to the GPU process.
  */
 function CoreBars(props: { values: () => readonly (number | null)[] }) {
   const fills: HTMLElement[] = [];
@@ -61,17 +65,18 @@ function CoreBars(props: { values: () => readonly (number | null)[] }) {
 
   return (
     <div class="comb" title={t("processes.vitals.cores")}>
-      <Index each={props.values()}>
-        {(_, i) => (
-          <span>
+      <Index each={props.values()}>{() => <span />}</Index>
+      <div class="comb-fills">
+        <Index each={props.values()}>
+          {(_, i) => (
             <i
               ref={(el) => {
                 fills[i] = el;
               }}
             />
-          </span>
-        )}
-      </Index>
+          )}
+        </Index>
+      </div>
     </div>
   );
 }

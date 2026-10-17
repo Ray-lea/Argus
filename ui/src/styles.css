@@ -353,8 +353,11 @@ button {
   inset: 62px 0 0;
 }
 
-/* Per-core load, one bar per logical processor. */
+/* Per-core load, one bar per logical processor. The tracks come first and the
+   fills lie over them in a row of their own: a track painted after a moving
+   fill would get a compositor layer of its own (see CoreBars). */
 .comb {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 2px;
@@ -362,19 +365,25 @@ button {
 }
 
 .comb span {
-  position: relative;
   width: 4px;
   height: 100%;
   border-radius: 1.5px;
   background: color-mix(in srgb, var(--cpu) 14%, transparent);
 }
 
+.comb-fills {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 2px;
+}
+
 /* The fill is a real element (not ::after) so its animation runs on the
    compositor, and it rounds its own corners: a rounded overflow clip on the
    bar would cost a masked pass per bar on every frame. */
 .comb i {
-  position: absolute;
-  inset: 0;
+  width: 4px;
+  height: 100%;
   border-radius: 1.5px;
   background: var(--cpu);
   transform: scaleY(0);
