@@ -373,7 +373,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
   );
 }
 
-/** An app group: its resources added up, its processes, and where they run from. */
+/** Disk read and write rates of a process, or the measured members of a group. */
 function DiskFacts(props: { members: ProcessRow[] }) {
   const rates = createMemo(() => sumDiskIo(props.members));
   return (
@@ -392,6 +392,7 @@ function DiskFacts(props: { members: ProcessRow[] }) {
   );
 }
 
+/** An app group: its resources added up, its processes, and where they run from. */
 function GroupFacts(props: { members: ProcessRow[] }) {
   const sum = (pick: (p: ProcessRow) => number) => props.members.reduce((a, p) => a + pick(p), 0);
   const earliest = () => Math.min(...props.members.map((p) => p.createTime));
