@@ -24,7 +24,8 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 开发机通常有人在同时使用。
 
 - 不要把窗口调到前台、抢焦点，也不要截取整个桌面或用桌面复制录屏，那会拍到与项目无关的内容。要看 Argus，只抓它自己的窗口（Windows.Graphics.Capture 的窗口捕获，被挡住也能录），或者通过 CDP 截取页面。
-- 自己启动的测试窗口出现后，立即用 `SetWindowPos(hwnd, HWND_BOTTOM, …, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 放到最底层，并把前台还给原来的窗口。找窗口时按“可见且标题以 Argus 开头”查找：`Process.MainWindowHandle` 可能拿到单实例插件的 6×6 辅助窗口，按它操作会把真正的窗口留在最上层。
+- 测试实例一律带 `--hidden` 启动，主窗口创建后用 `SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 不激活地显示在最底层，并全程监视前台（每 50 ms 查一次 `GetForegroundWindow`，前台不应落到测试进程或它的 WebView2 进程）。不要正常启动后再放到最底层：setup 显示窗口时已经激活了它，事后放到最底层也还不回前台，后台进程没有权限把前台交还原来的窗口。主窗口按进程 ID、窗口类 `Tauri Window` 和标题（发布版为 `Argus`）枚举顶层窗口查找，隐藏时也能找到；只按标题可能拿到同一进程弹出的消息框，`Process.MainWindowHandle` 可能拿到单实例插件的 6×6 辅助窗口。
+- 再次启动、快捷键、托盘和任务管理器替换的 `task_manager_ready` 都经 `shell::show_main` 激活窗口；拿不到前台时 tao 的 `set_focus` 会用 `SendInput` 模拟按一下 Alt，这个按键落在用户正在用的窗口里。不要在用户的桌面上触发这些路径（包括经 CDP 调用命令、向主窗口发 `WM_HOTKEY`）。要测显示后的激活与键盘焦点，用 `CreateDesktop` 另建一个桌面（不要 `SwitchDesktop`），`CreateProcess` 的 `lpDesktop` 设为 `WinSta0\<名称>`，WebView2 进程随之在那里启动：那里的窗口拿不到用户桌面的前台，`SendInput` 也被拒绝。查询和发消息的线程先 `SetThreadDesktop` 过去，用 `GetGUIThreadInfo` 看激活窗口与键盘焦点窗口，用 CDP 看 `document.hasFocus()`，按键用 `PostMessage` 发给焦点窗口；CDP 的按键事件不经过系统的键盘焦点，窗口没有焦点时也会送进页面，并让 `document.hasFocus()` 变成真。单实例只在本桌面查找原实例的消息窗口，找不到就等 12 秒后弹出消息框，所以这类测试用 `--config` 换一个标识构建，单实例锁和数据目录都与发布版分开。
 - 不要改机器上真实的系统设置（启动项、服务等）。需要测试这些功能时用临时条目，测完清理。
 - 不要结束开发者自己启动的开发实例（`start.bat` 启动的 `target\debug\argus.exe`）。测试用 `target\release\argus.exe`，它的标识与开发版不同，不会被单实例转交（除非机器上正运行着已安装的 Argus）。
 - 自己启动的实例用完就关，尤其是开了远程调试端口的：端口可以驱动应用里的 Tauri 命令。
