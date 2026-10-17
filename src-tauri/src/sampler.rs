@@ -45,6 +45,16 @@ pub struct Sampler {
     tx: Sender<Control>,
 }
 
+/// How often to sample: the chosen interval while the window is shown, and
+/// no faster than every 5 s while it is hidden, minimized or paused.
+fn cadence(background: bool, interval: Duration) -> Duration {
+    if background {
+        interval.max(BACKGROUND_INTERVAL)
+    } else {
+        interval
+    }
+}
+
 impl Sampler {
     /// Starts the sampling thread. The collector is built there, so its setup
     /// (PDH queries, adapter enumeration, a priming sample) overlaps the
@@ -73,7 +83,9 @@ impl Sampler {
 
                 loop {
                     let wait = next_tick.saturating_duration_since(Instant::now());
-                    let forced = match rx.recv_timeout(wait) {
+                    let received = rx.recv_timeout(wait);
+                    let out_of_sight = hidden.as_ref().is_some_and(|probe| probe());
+                    let forced = match received {
                         Ok(Control::SetKernelSensors(enabled)) => {
                             kernel_sensors = enabled;
                             true
@@ -82,13 +94,15 @@ impl Sampler {
                             subscriber = Some(ch);
                             true
                         }
+                        // A changed cadence counts from the last sample.
                         Ok(Control::SetInterval(d)) => {
                             interval = d;
-                            next_tick = last_sample + interval;
+                            next_tick = last_sample + cadence(paused || out_of_sight, interval);
                             continue;
                         }
                         Ok(Control::SetPaused(p)) => {
                             paused = p;
+                            next_tick = last_sample + cadence(paused || out_of_sight, interval);
                             continue;
                         }
                         Ok(Control::Refresh) => true,
@@ -112,51 +126,37 @@ impl Sampler {
                             let _ = reply.send(result);
                             continue;
                         }
-                        Err(RecvTimeoutError::Timeout) => {
-                            next_tick += interval;
-                            if next_tick < Instant::now() {
-                                next_tick = Instant::now() + interval;
-                            }
-                            false
-                        }
+                        Err(RecvTimeoutError::Timeout) => false,
                         Err(RecvTimeoutError::Disconnected) => return,
                     };
 
+                    // The cadence for what the window is doing now. Timed samples
+                    // stay on its grid (a full period from now after falling
+                    // behind); skipping ticks of the shown cadence instead made
+                    // a 5 s background cadence 6 s, or 10 s at a 5 s interval.
+                    let period = cadence(paused || out_of_sight, interval);
+                    if !forced {
+                        next_tick += period;
+                        if next_tick < Instant::now() {
+                            next_tick = Instant::now() + period;
+                        }
+                    }
                     if subscriber.is_none() && observer.is_none() {
                         continue;
                     }
-                    let since = last_sample.elapsed();
-                    let background = paused || hidden.as_ref().is_some_and(|h| h());
-                    let skip = if forced {
-                        since < MIN_SAMPLE_GAP
-                    } else if background {
-                        since < BACKGROUND_INTERVAL
-                    } else {
-                        false
-                    };
-                    if skip {
+                    if forced && last_sample.elapsed() < MIN_SAMPLE_GAP {
                         continue;
                     }
 
                     last_sample = Instant::now();
+                    if forced {
+                        // A sample on demand (the window coming back, say) pulls in
+                        // a tick still on the slower background grid.
+                        next_tick = next_tick.min(last_sample + period);
+                    }
                     let mut snapshot = collector.sample();
-                    sensors.enrich(
-                        &mut snapshot,
-                        kernel_sensors,
-                        if background {
-                            BACKGROUND_INTERVAL
-                        } else {
-                            interval
-                        },
-                    );
-                    network.enrich(
-                        &mut snapshot,
-                        if background {
-                            BACKGROUND_INTERVAL
-                        } else {
-                            interval
-                        },
-                    );
+                    sensors.enrich(&mut snapshot, kernel_sensors, period);
+                    network.enrich(&mut snapshot, period);
                     rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);
@@ -179,5 +179,18 @@ impl Sampler {
 
     pub fn send(&self, control: Control) {
         let _ = self.tx.send(control);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn out_of_sight_or_paused_samples_every_5_s() {
+        let ms = Duration::from_millis;
+        assert_eq!(cadence(false, ms(500)), ms(500));
+        assert_eq!(cadence(true, ms(500)), ms(5000));
+        assert_eq!(cadence(true, ms(5000)), ms(5000));
     }
 }
