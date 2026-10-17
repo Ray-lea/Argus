@@ -99,6 +99,7 @@ import {
   MinimizeIcon,
   NavSideIcon,
   NavTopIcon,
+  NotesIcon,
   PowerIcon,
   PulseIcon,
   ShieldIcon,
@@ -944,6 +945,21 @@ function UpdateSettings(props: {
           label={t("settings.update.auto.title")}
           checked={props.settings.updateCheck}
           onChange={(check) => void save({ check })}
+        />
+      </Setting>
+      <Setting
+        id="setting-whatsNew"
+        icon={<NotesIcon size={20} />}
+        title={t("settings.update.whatsNew.title")}
+        desc={t("settings.update.whatsNew.desc")}
+      >
+        <button type="button" class="btn" onClick={() => openWhatsNew()}>
+          {t("settings.update.whatsNew.view")}
+        </button>
+        <ToggleSwitch
+          label={t("settings.update.whatsNew.title")}
+          checked={props.settings.whatsNew}
+          onChange={(on) => void props.onChange(api.setWhatsNew(on))}
         />
       </Setting>
       <Setting

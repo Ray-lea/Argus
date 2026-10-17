@@ -63,6 +63,9 @@ pub struct AppInfo {
     accent: Option<AccentColors>,
     /// Relaunched by the installer of an update.
     updated: bool,
+    /// Started by the task manager replacement: the system may be struggling,
+    /// so the UI holds back what is not urgent.
+    task_manager: bool,
     /// The UI language, resolved; the UI renders nothing before it knows.
     locale: argus_core::i18n::Locale,
 }
@@ -74,6 +77,7 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
         elevated: state.elevated,
         accent: theme::accent_colors(),
         updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
+        task_manager: state.task_manager_start,
         locale: argus_core::i18n::locale(),
     }
 }
@@ -292,6 +296,29 @@ pub fn complete_onboarding(app: tauri::AppHandle, version: u32) -> Result<Settin
     app.state::<SettingsStore>()
         .update(|s| s.onboarding = s.onboarding.max(version))
         .map_err(|e| e.to_string())?;
+    Ok(settings_view(&app))
+}
+
+/// Whether the first start of a new version shows what it changed.
+#[tauri::command]
+pub fn set_whats_new(app: tauri::AppHandle, enabled: bool) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.whats_new = enabled)
+        .map_err(|e| e.to_string())?;
+    Ok(settings_view(&app))
+}
+
+/// Records that the first start of this version has been dealt with, so what
+/// it changed does not show again.
+#[tauri::command]
+pub fn note_version_seen(app: tauri::AppHandle) -> Result<SettingsView, String> {
+    let store = app.state::<SettingsStore>();
+    let version = env!("CARGO_PKG_VERSION");
+    if store.get().seen_version != version {
+        store
+            .update(|s| s.seen_version = version.into())
+            .map_err(|e| e.to_string())?;
+    }
     Ok(settings_view(&app))
 }
 

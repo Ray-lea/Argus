@@ -508,6 +508,8 @@ function mockHardware(cpu: number, io: number): Hardware {
 
 // `?lang=en-US` previews a language, `?onboarding` the onboarding.
 const query = new URLSearchParams(location.search);
+/** The version the mock app runs. */
+export const VERSION = "0.1.0";
 const resolve = (language: Language): Locale =>
   language === "system" ? localeFor(navigator.language) : language;
 const language = (query.get("lang") ?? "system") as Language;
@@ -515,6 +517,8 @@ const language = (query.get("lang") ?? "system") as Language;
 const mockSettings: SettingsView = {
   language,
   onboarding: query.has("onboarding") ? 0 : 1,
+  // ?updated plays the first start after an update from 0.0.9; a fresh install has seen none.
+  seenVersion: query.has("updated") ? "0.0.9" : query.has("onboarding") ? "" : VERSION,
   locale: resolve(language),
   theme: "system",
   closeToTray: true,
@@ -529,6 +533,8 @@ const mockSettings: SettingsView = {
   updateChannel: "stable",
   updateRoute: "auto",
   updateProxy: "https://gh-proxy.com/",
+  // `?whatsnew=off`: the first start after an update only says so.
+  whatsNew: query.get("whatsnew") !== "off",
   autostart: false,
   // `?hotkey=taken`: every combination is taken, the saved one too.
   hotkeyError: query.get("hotkey") === "taken" ? { kind: "taken", shortcut: "Ctrl+Alt+Escape" } : null,
@@ -590,11 +596,13 @@ export async function subscribe(cb: (s: Snapshot) => void) {
 }
 
 export const appInfo = async (): Promise<AppInfo> => ({
-  version: "0.1.0",
+  version: VERSION,
   elevated: false,
   accent: null,
   // ?updated plays the first start after an update.
-  updated: new URLSearchParams(location.search).has("updated"),
+  updated: query.has("updated"),
+  // ?taskmgr plays a start by the task manager replacement.
+  taskManager: query.has("taskmgr"),
   locale: mockSettings.locale,
 });
 

@@ -313,6 +313,14 @@ export const TrashIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** What a version changed: a page, a spark at its corner. */
+export const NotesIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9.5 2H4c-.6 0-1 .4-1 1v10c0 .6.4 1 1 1h7.5c.6 0 1-.4 1-1V7" />
+    <path d="M5.5 8.5h4.5M5.5 11h3M12.5 1.5v3M11 3h3" />
+  </Svg>
+);
+
 /** The license. */
 export const DocumentIcon = (p: IconProps) => (
   <Svg {...p}>

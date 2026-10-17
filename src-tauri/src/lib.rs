@@ -84,6 +84,8 @@ pub struct HistoryDir(pub std::path::PathBuf);
 pub struct AppState {
     sampler: Sampler,
     elevated: bool,
+    /// Started by the task manager replacement (Ctrl+Shift+Esc and the like).
+    task_manager_start: bool,
     meta: Arc<MetaStore>,
     services: ServiceCatalog,
     rules: Arc<RuleRunner>,
@@ -186,6 +188,7 @@ pub fn run() {
         .manage(AppState {
             sampler,
             elevated,
+            task_manager_start: taskmgr_start,
             meta: meta.clone(),
             services: ServiceCatalog::default(),
             rules,
@@ -358,6 +361,8 @@ pub fn run() {
             commands::set_caption_button,
             diagnostics::log_ui_error,
             commands::complete_onboarding,
+            commands::set_whats_new,
+            commands::note_version_seen,
             commands::privileged_service_status,
             commands::manage_privileged_service,
             commands::task_manager_status,

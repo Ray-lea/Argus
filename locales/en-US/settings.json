@@ -281,6 +281,11 @@
       "title": "Check for updates automatically",
       "desc": "Checks about 1 minute after startup, then once a day. New versions download in the background and are installed only after confirmation."
     },
+    "whatsNew": {
+      "title": "Show what's new after updating",
+      "desc": "The first time the window opens after an update, it shows what the new version changed. Once closed, it doesn't come back until the next update. When this is off, a notice in the corner only says Argus was updated.",
+      "view": "This version's changes"
+    },
     "channel": {
       "label": "Update channel",
       "desc": "Beta gets new features earlier but may be less stable than Stable. After switching from Beta to Stable, Argus updates only once a stable version is newer than the current one.",

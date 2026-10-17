@@ -4,7 +4,7 @@ import { DetailsHost } from "./components/DetailsPanel";
 import FileLockDialog, { DropOverlay, openFileLock } from "./components/FileLockDialog";
 import HistoryPage from "./components/HistoryPage";
 import Nav, { navExpanded, navPosition, PAGES } from "./components/Nav";
-import Onboarding, { maybeOpenOnboarding } from "./components/Onboarding";
+import Onboarding, { maybeOpenOnboarding, onboardingOpen } from "./components/Onboarding";
 import { ConfirmDialog, ContextMenu, Toasts } from "./components/Overlays";
 import Performance from "./components/Performance";
 import ProcessTable from "./components/ProcessTable";
@@ -32,7 +32,7 @@ import {
   snapshot,
 } from "./lib/store";
 import type { AccentColors } from "./lib/types";
-import { afterUpdate, openUpdateDialog, watchUpdates } from "./lib/updates";
+import { afterStart, openUpdateDialog, watchUpdates } from "./lib/updates";
 
 function applyAccent(accent: AccentColors | null) {
   if (!accent) return;
@@ -121,14 +121,12 @@ export default function App() {
       if (intervalMs() !== 1000) void api.setInterval(intervalMs());
     });
     const info = appInfo();
-    if (info) {
-      applyAccent(info.accent);
-      if (info.updated) void afterUpdate(info.version);
-    }
+    if (info) applyAccent(info.accent);
     void watchUpdates().then((stop) => onCleanup(stop));
     void watchRestores().then((stop) => onCleanup(stop));
     onCleanup(watchPrivilege());
-    void maybeOpenOnboarding();
+    // What a new version changed waits for the onboarding, which decides first.
+    void maybeOpenOnboarding().then(() => info && afterStart(info, onboardingOpen));
   });
 
   return (

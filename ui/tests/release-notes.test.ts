@@ -8,6 +8,7 @@ import {
   categoryOf,
   changelogEntries,
   compareVersions,
+  firstStart,
   isPrerelease,
   itemCount,
   parseNotes,
@@ -48,6 +49,22 @@ test("an update shows every release after the current one", () => {
   assert.deepEqual(versions("0.2.0-beta.1", "0.2.0"), ["0.2.0"]);
   assert.deepEqual(versions(null, "0.2.0"), ["0.2.0"]);
   assert.deepEqual(versions("0.3.0", "0.3.0"), []);
+});
+
+test("what changed shows on the first start of a newer version only", () => {
+  // Shown once: the version is recorded, the next start finds it.
+  assert.deepEqual(firstStart("0.2.0", "0.1.0", true, false), { kind: "updated", from: "0.1.0" });
+  assert.deepEqual(firstStart("0.2.0", "0.2.0", true, true), { kind: "seen" });
+  assert.deepEqual(firstStart("0.2.0", "0.2.0-beta.1", true, false), {
+    kind: "updated",
+    from: "0.2.0-beta.1",
+  });
+  // A fresh install has nothing to show; a downgrade neither.
+  assert.deepEqual(firstStart("0.2.0", "", false, false), { kind: "record" });
+  assert.deepEqual(firstStart("0.1.0", "0.2.0", true, false), { kind: "record" });
+  // From a version that kept no record: an onboarding done, or the installer's relaunch.
+  assert.deepEqual(firstStart("0.2.0", "", true, false), { kind: "updated", from: null });
+  assert.deepEqual(firstStart("0.2.0", "", false, true), { kind: "updated", from: null });
 });
 
 test("changelog entries split at their headings", () => {

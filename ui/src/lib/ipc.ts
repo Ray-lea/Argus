@@ -83,6 +83,12 @@ export const api = {
     mock ? Promise.resolve() : invoke("set_caption_button", { rect }),
   completeOnboarding: (version: number): Promise<SettingsView> =>
     mock ? mock.settings.update({ onboarding: version }) : invoke("complete_onboarding", { version }),
+  /** Whether the first start of a new version shows what it changed. */
+  setWhatsNew: (enabled: boolean): Promise<SettingsView> =>
+    mock ? mock.settings.update({ whatsNew: enabled }) : invoke("set_whats_new", { enabled }),
+  /** Records the running version as dealt with, so its changes do not show again. */
+  noteVersionSeen: (): Promise<SettingsView> =>
+    mock ? mock.settings.update({ seenVersion: mock.VERSION }) : invoke("note_version_seen"),
   privilegedServiceStatus: (): Promise<PrivilegedServiceStatus> =>
     mock ? mock.privilegedService.status() : invoke("privileged_service_status"),
   managePrivilegedService: (action: PrivilegedServiceAction): Promise<PrivilegedServiceStatus> =>

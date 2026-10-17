@@ -1,6 +1,7 @@
 //! User settings that the native side needs before the UI loads (language,
 //! theme, hotkey, close behavior, autostart, process rules, history recording,
-//! updates, onboarding), persisted as JSON in the app config dir.
+//! updates and what a new version shows first, onboarding), persisted as JSON
+//! in the app config dir.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -113,6 +114,10 @@ pub struct Settings {
     /// The onboarding version last completed or skipped; 0 before the first.
     /// The UI owns the numbering (`ONBOARDING_VERSION` in Onboarding.tsx).
     pub onboarding: u32,
+    /// The version whose first start has been dealt with: its changes shown
+    /// or announced, or nothing to show (a fresh install). Empty until a
+    /// version that records it has run.
+    pub seen_version: String,
     /// Closing the window keeps Argus running in the tray.
     pub close_to_tray: bool,
     /// How often to sample while the window is minimized, ms; one of
@@ -138,6 +143,9 @@ pub struct Settings {
     pub update_route: UpdateRoute,
     /// GitHub proxy prefix, e.g. `https://gh-proxy.com/`.
     pub update_proxy: String,
+    /// Show what a new version changed on its first start; off, a notice
+    /// says it was updated instead.
+    pub whats_new: bool,
 }
 
 impl Default for Settings {
@@ -146,6 +154,7 @@ impl Default for Settings {
             language: Language::default(),
             theme: Theme::default(),
             onboarding: 0,
+            seen_version: String::new(),
             close_to_tray: true,
             minimized_interval: DEFAULT_BACKGROUND_INTERVAL,
             tray_interval: DEFAULT_BACKGROUND_INTERVAL,
@@ -158,6 +167,7 @@ impl Default for Settings {
             update_channel: UpdateChannel::default(),
             update_route: UpdateRoute::default(),
             update_proxy: crate::updater::PROXY_PRESETS[0].into(),
+            whats_new: true,
         }
     }
 }
@@ -371,6 +381,18 @@ mod tests {
             (edited.minimized_interval, edited.tray_interval),
             (5000, 30_000)
         );
+    }
+
+    #[test]
+    fn what_changed_shows_by_default_and_old_settings_have_seen_no_version() {
+        let old: Settings =
+            serde_json::from_str(r#"{"closeToTray": true, "onboarding": 1}"#).unwrap();
+        assert!(old.whats_new);
+        assert_eq!(old.seen_version, "");
+        let saved: Settings =
+            serde_json::from_str(r#"{"whatsNew": false, "seenVersion": "0.2.0"}"#).unwrap();
+        assert!(!saved.whats_new);
+        assert_eq!(saved.seen_version, "0.2.0");
     }
 
     fn scratch() -> PathBuf {

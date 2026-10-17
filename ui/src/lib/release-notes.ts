@@ -89,6 +89,27 @@ export function between(releases: Release[], from: string | null, to: string): R
     .sort((a, b) => compareVersions(b.version, a.version));
 }
 
+/** What a start makes of the version whose first start was dealt with last. */
+export type FirstStart = { kind: "seen" } | { kind: "record" } | { kind: "updated"; from: string | null };
+
+/**
+ * `seen` is the version recorded last (empty when none was): `current` again
+ * is `seen`; a newer one is `updated`, from it. Without a record, an update
+ * shows by the onboarding done before it or the installer's relaunch; else
+ * (a fresh install) and after a downgrade there is nothing to show, only the
+ * version to `record`.
+ */
+export function firstStart(
+  current: string,
+  seen: string,
+  onboarded: boolean,
+  relaunched: boolean,
+): FirstStart {
+  if (seen === current) return { kind: "seen" };
+  if (!seen) return onboarded || relaunched ? { kind: "updated", from: null } : { kind: "record" };
+  return compareVersions(current, seen) > 0 ? { kind: "updated", from: seen } : { kind: "record" };
+}
+
 // ---- Changelog ---------------------------------------------------------------
 
 /** Same headings as readEntries in scripts/release.mjs: `## [1.2.0](link) - 2026-10-12`. */

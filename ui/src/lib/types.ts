@@ -443,6 +443,8 @@ export interface SettingsView {
   theme: Theme;
   /** The onboarding version last completed or skipped; 0 before the first. */
   onboarding: number;
+  /** The version whose first start was dealt with (its changes shown); empty before any. */
+  seenVersion: string;
   closeToTray: boolean;
   /** How often to sample while the window is minimized, ms (`BACKGROUND_INTERVALS`). */
   minimizedInterval: number;
@@ -460,6 +462,8 @@ export interface SettingsView {
   updateRoute: UpdateRoute;
   /** GitHub proxy prefix, e.g. `https://gh-proxy.com/`. */
   updateProxy: string;
+  /** Show what a new version changed on its first start (else a notice). */
+  whatsNew: boolean;
   autostart: boolean;
   /** The language in effect (`language` resolved). */
   locale: Locale;
@@ -566,6 +570,8 @@ export interface AppInfo {
   accent: AccentColors | null;
   /** Relaunched by the installer of an update. */
   updated: boolean;
+  /** Started by the task manager replacement: the system may be struggling. */
+  taskManager: boolean;
   /** The UI language, resolved. */
   locale: Locale;
 }

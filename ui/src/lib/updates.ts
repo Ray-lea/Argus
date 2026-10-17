@@ -1,12 +1,13 @@
 // Update status pushed by the native updater; what the window offers about it
-// (the title bar button, the dialog) and what happens on the first start
-// after an update.
+// (the title bar button, the dialog) and what the first start of a new
+// version shows.
 
-import { createSignal } from "solid-js";
+import { createEffect, createRoot, createSignal, onCleanup } from "solid-js";
 import { t } from "./i18n";
 import { api, inTauri } from "./ipc";
 import { persisted } from "./prefs";
-import type { InstallError, UpdateStatus } from "./types";
+import { firstStart } from "./release-notes";
+import type { AppInfo, InstallError, UpdateStatus } from "./types";
 import { confirm, toast } from "./ui";
 
 export const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus | null>(null);
@@ -72,17 +73,83 @@ export async function watchUpdates(): Promise<() => void> {
 }
 
 /**
- * After an update: says so with a way to see what changed. The installer
- * updates the privileged service too, except while the task manager
- * replacement is on or when that failed; then offer it here, while the
- * mismatch is fresh.
+ * The first start of a version. After an update it shows what changed (or,
+ * turned off in Settings, says it was updated), once: the version is recorded
+ * natively as it shows, so closing the dialog is the end of it until the next
+ * update. It waits until the window is in view and `busy` (the onboarding,
+ * say) is over; a start by the task manager replacement leaves it to a later
+ * start, since the system may be struggling then.
  */
-export async function afterUpdate(version: string) {
-  const from = updatedFrom();
+export async function afterStart(info: AppInfo, busy: () => boolean) {
+  const settings = await api.settings().catch(() => null);
+  if (!settings) return;
+  const start = firstStart(info.version, settings.seenVersion, settings.onboarding > 0, info.updated);
+  if (start.kind === "seen") return;
+  if (start.kind === "record" || info.taskManager) {
+    if (start.kind === "record") void api.noteVersionSeen().catch(() => {});
+    return;
+  }
+  if (inTauri) await shown();
+  await free(() => !busy() && !updateDialog());
+  const from = start.from ?? updatedFrom();
   setUpdatedFrom(null);
-  toast("success", t("updates.updated", { version }), 10000, {
-    actions: [{ label: t("updates.whatsNew"), run: () => openWhatsNew(from) }],
+  void api.noteVersionSeen().catch(() => {});
+  if (settings.whatsNew) {
+    openWhatsNew(from);
+    await free(() => !updateDialog());
+  } else {
+    toast("success", t("updates.updated", { version: info.version }), 10000, {
+      actions: [{ label: t("updates.whatsNew"), run: () => openWhatsNew(from) }],
+    });
+  }
+  await offerServiceUpdate(info.version);
+}
+
+/**
+ * Resolves once the window has been on screen: at once after a normal start;
+ * a start hidden in the tray (autostart, an update begun there) waits for its
+ * first showing. The page cannot tell by itself: in a window not yet shown,
+ * WebView2 reports the page visible.
+ */
+async function shown(): Promise<void> {
+  const { once } = await import("@tauri-apps/api/event");
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await new Promise<void>((resolve) => {
+    // Listening first: a showing between the two calls is not missed.
+    void once("argus-restored", () => resolve()).then(() =>
+      getCurrentWindow()
+        .isVisible()
+        .then(
+          (visible) => visible && resolve(),
+          () => {},
+        ),
+    );
   });
+}
+
+/** Resolves once `ready` holds while the page is in view (not minimized or hidden again). */
+function free(ready: () => boolean): Promise<void> {
+  return new Promise((resolve) =>
+    createRoot((dispose) => {
+      const [visible, setVisible] = createSignal(document.visibilityState === "visible");
+      const update = () => setVisible(document.visibilityState === "visible");
+      document.addEventListener("visibilitychange", update);
+      onCleanup(() => document.removeEventListener("visibilitychange", update));
+      createEffect(() => {
+        if (!visible() || !ready()) return;
+        queueMicrotask(dispose);
+        resolve();
+      });
+    }),
+  );
+}
+
+/**
+ * The installer updates the privileged service too, except while the task
+ * manager replacement is on or when that failed; then offer it here, while
+ * the mismatch is fresh.
+ */
+async function offerServiceUpdate(version: string) {
   const service = await api.privilegedServiceStatus().catch(() => null);
   // A running service that does not report this version is older (or too old to answer).
   if (service?.state !== "running" || !service.authorized || service.version === version) return;
