@@ -4,5 +4,6 @@
     "hours": "{hours} 小时 {minutes} 分",
     "minutes": "{minutes} 分 {seconds} 秒"
   },
+  "uptimeExact": "{days}<u>天</u> {clock}",
   "sinceBoot": "系统启动时"
 }

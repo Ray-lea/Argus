@@ -21,11 +21,10 @@ import {
   fmtNet,
   fmtNetAlt,
   fmtRate,
-  fmtUptime,
   netParts,
   rateParts,
 } from "../lib/format";
-import { t } from "../lib/i18n";
+import { rich, t } from "../lib/i18n";
 import { EASE_OUT, play } from "../lib/motion";
 import { persisted } from "../lib/prefs";
 import { cpuTemperature, hasCpuDieTemperature } from "../lib/sensors";
@@ -186,6 +185,19 @@ function Stat(props: { label: string; value: JSX.Element; unit?: string; note?: 
       </Show>
     </div>
   );
+}
+
+/**
+ * Uptime to the second: days, then hh:mm:ss, which keeps its width as it
+ * ticks. Hours, minutes and seconds spelled out overflow the cell.
+ */
+function uptime(ms: number): JSX.Element {
+  const s = Math.floor(ms / 1000);
+  const days = Math.floor(s / 86400);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const clock = `${pad(Math.floor((s % 86400) / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+  if (days === 0) return clock;
+  return rich("format.uptimeExact", { days, clock, u: (unit) => <small>{unit}</small> });
 }
 
 /** A figure split into number and unit, e.g. memory as "912.0" + "MB". */
@@ -785,7 +797,7 @@ function CpuView() {
             <Stat label={t("performance.cpu.processes")} value={fmtCount(sys().processCount)} />
             <Stat label={t("performance.cpu.threads")} value={fmtCount(sys().threadCount)} />
             <Stat label={t("performance.cpu.handles")} value={fmtCount(sys().handleCount)} />
-            <Stat label={t("performance.cpu.uptime")} value={fmtUptime(sys().uptimeMs)} />
+            <Stat label={t("performance.cpu.uptime")} value={uptime(sys().uptimeMs)} />
           </div>
           <dl class="info-list">
             <dt>{t("performance.cpu.baseSpeed")}</dt>

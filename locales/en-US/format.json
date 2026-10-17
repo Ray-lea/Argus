@@ -4,5 +4,6 @@
     "hours": "{hours}h {minutes}m",
     "minutes": "{minutes}m {seconds}s"
   },
+  "uptimeExact": "{days}<u>d</u> {clock}",
   "sinceBoot": "At system startup"
 }
