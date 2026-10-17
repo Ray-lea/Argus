@@ -11,13 +11,14 @@ import {
   page,
   paused,
   query,
+  selection,
   setDetailsOpen,
   setPaused,
   setQuery,
   setViewMode,
   viewMode,
 } from "../lib/store";
-import { openMenu } from "../lib/ui";
+import { openMenu, toast } from "../lib/ui";
 import { dismissUpdate, openUpdateDialog, updateButtonVersion, updateStatus } from "../lib/updates";
 import Caption from "./Caption";
 import { ConnectionControls, ConnectionSearch } from "./ConnectionsPage";
@@ -136,6 +137,14 @@ export default function Toolbar() {
   };
   // Refresh rate and pause drive the 1 s sampler behind these two pages only.
   const sampled = () => page() === "processes" || page() === "performance";
+  // The pane needs a selected row. With none, asking for it says so instead of
+  // turning on a pane that stays out of sight; it shows on the next selection.
+  const detailsShown = () => detailsOpen() && selection() !== null;
+  const toggleDetails = () => {
+    if (detailsShown()) return setDetailsOpen(false);
+    setDetailsOpen(true);
+    if (!selection()) toast("info", t("shell.details.noSelection"));
+  };
 
   return (
     // The toolbar is the window's caption: its empty space moves the window
@@ -239,10 +248,10 @@ export default function Toolbar() {
           <button
             type="button"
             class="btn icon"
-            aria-pressed={detailsOpen()}
-            title={detailsOpen() ? t("shell.details.hide") : t("shell.details.show")}
+            aria-pressed={detailsShown()}
+            title={detailsShown() ? t("shell.details.hide") : t("shell.details.show")}
             aria-label={t("shell.details.label")}
-            onClick={() => setDetailsOpen(!detailsOpen())}
+            onClick={toggleDetails}
           >
             <PanelIcon />
           </button>
