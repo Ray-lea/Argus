@@ -42,5 +42,5 @@
 - 发布版标识 `dev.argus.taskmanager`；开发版由 `tauri.dev.conf.json` 改为 `dev.argus.taskmanager.devbuild`，单实例锁、设置、WebView2 数据目录、开机启动项都分开。
 - 主窗口以 `visible: false` 创建，在 setup 里显示；带 `--hidden` 启动（开机启动、任务管理器替换、隐藏状态下的更新重启）时保持隐藏。
 - 主窗口配置了 `focus: false`，不要去掉：wry 建好 WebView2 控制器后立即 `MoveFocus`，不管窗口是否可见，隐藏的主窗口因此被激活、拿到前台（启动后约 0.8 秒），之后的按键都进了看不见的窗口。窗口显示时 `WM_SETFOCUS` 经 wry 的父窗口子类转成 `MoveFocus`，页面照常获得键盘焦点，显示路径不需要另外调用 WebView 的 `focus`。
-- 原生设置存于应用配置目录的 `settings.json`；前端偏好在 WebView 的 localStorage 里，两个标识各一份。
+- 原生设置存于应用配置目录的 `settings.json`；前端偏好在 WebView 的 localStorage 里，两个标识各一份。保存经临时文件落盘后替换（`settings::write`），不要改回直接覆盖写入。排查“重启后设置丢失、引导重现”时先看日志里 `settings:` 开头的一行；Argus 自身的退出路径（正常退出、关机时的 `WM_QUERYENDSESSION` / `WM_ENDSESSION`、强制结束）实测都不写这个文件，测试时用发布构建以 `--hidden` 启动，向它的顶层窗口发送这两条消息模拟关机。
 - `icons/` 下的 PNG 和 `icon.ico` 由 `node scripts/icons.mjs` 生成，不要手改：改 `ui/public/logo.svg`（48 px 及以上）或 `icons/logo-small.svg`（16–32 px）后重新运行。看效果时把各尺寸按真实像素画到 canvas 再放大，SVG 直接缩放看不出小尺寸的问题。

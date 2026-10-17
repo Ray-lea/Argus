@@ -2,7 +2,8 @@
 //! theme, hotkey, close behavior, autostart, process rules, history recording,
 //! updates, onboarding), persisted as JSON in the app config dir.
 
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -217,10 +218,7 @@ pub struct SettingsStore {
 
 impl SettingsStore {
     pub fn load(path: PathBuf) -> Self {
-        let mut current: Settings = std::fs::read(&path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
+        let mut current = read(&path).unwrap_or_default();
         current.migrate();
         Self {
             path,
@@ -236,13 +234,84 @@ impl SettingsStore {
         let mut s = self.current.lock().unwrap();
         let mut next = s.clone();
         f(&mut next);
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        std::fs::write(&self.path, serde_json::to_vec_pretty(&next)?)?;
+        write(&self.path, &serde_json::to_vec_pretty(&next)?)?;
         *s = next;
         Ok(s.clone())
     }
+}
+
+/// The saved settings; None means defaults. Whatever stands in the way is
+/// logged by kind, never by content: settings lost across a restart can then
+/// be told apart (no file, an empty or zeroed one, one that does not parse).
+/// A file that does not parse is kept as `settings.json.bad`, since the next
+/// change would overwrite it.
+fn read(path: &Path) -> Option<Settings> {
+    let mut retries = 3;
+    let bytes = loop {
+        match std::fs::read(path) {
+            Ok(bytes) => break bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                log::info!("settings: none saved, using defaults");
+                return None;
+            }
+            // Another program (a virus scanner, say) may hold it for a moment;
+            // defaults now would overwrite it with the next change.
+            Err(_) if retries > 0 => {
+                retries -= 1;
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => {
+                log::warn!(
+                    "settings: not read ({}), using defaults",
+                    argus_core::diagnostics::failure(&e.to_string())
+                );
+                return None;
+            }
+        }
+    };
+    match serde_json::from_slice::<Settings>(&bytes) {
+        Ok(settings) => {
+            log::info!("settings: loaded (onboarding {})", settings.onboarding);
+            Some(settings)
+        }
+        Err(e) => {
+            let kind = if bytes.is_empty() {
+                "empty"
+            } else if bytes.iter().all(|&b| b == 0) {
+                "all zero bytes"
+            } else {
+                "not valid"
+            };
+            log::warn!(
+                "settings: {} bytes, {kind} ({:?} error at line {}), using defaults",
+                bytes.len(),
+                e.classify(),
+                e.line()
+            );
+            let _ = std::fs::rename(path, path.with_extension("json.bad"));
+            None
+        }
+    }
+}
+
+/// Writes through a temporary file that reaches the disk before it replaces
+/// the old one, so a crash, a forced restart or a power cut leaves the old
+/// settings or the new ones, never an empty or cut-off file.
+fn write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let partial = path.with_extension("json.partial");
+    let result = std::fs::File::create(&partial)
+        .and_then(|mut file| {
+            file.write_all(bytes)?;
+            file.sync_all()
+        })
+        .and_then(|_| std::fs::rename(&partial, path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    result
 }
 
 #[cfg(test)]
@@ -302,5 +371,54 @@ mod tests {
             (edited.minimized_interval, edited.tray_interval),
             (5000, 30_000)
         );
+    }
+
+    fn scratch() -> PathBuf {
+        let id = unsafe { windows::Win32::System::Com::CoCreateGuid() }.unwrap();
+        let directory = std::env::temp_dir().join(format!("argus-settings-{id:?}"));
+        std::fs::create_dir(&directory).unwrap();
+        directory
+    }
+
+    #[test]
+    fn saved_settings_come_back_and_leave_no_temporary_file() {
+        let directory = scratch();
+        let path = directory.join("settings.json");
+        let store = SettingsStore::load(path.clone());
+        store.update(|s| s.onboarding = 1).unwrap();
+        store
+            .update(|s| s.language = Language::Locale(Locale::EnUs))
+            .unwrap();
+        let again = SettingsStore::load(path).get();
+        assert_eq!(again.onboarding, 1);
+        assert_eq!(again.language, Language::Locale(Locale::EnUs));
+        let names: Vec<String> = std::fs::read_dir(&directory)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, vec!["settings.json"]);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn a_damaged_file_reads_as_defaults_and_is_kept_aside() {
+        let directory = scratch();
+        let path = directory.join("settings.json");
+        let cut_off = b"{\"onboarding\": 1, \"lang";
+        for damaged in [&b""[..], &[0; 300][..], &cut_off[..]] {
+            std::fs::write(&path, damaged).unwrap();
+            let store = SettingsStore::load(path.clone());
+            assert_eq!(store.get().onboarding, 0);
+            assert!(!path.exists());
+            assert_eq!(
+                std::fs::read(directory.join("settings.json.bad")).unwrap(),
+                damaged
+            );
+            // The next change starts a new file and leaves the damaged one be.
+            store.update(|s| s.onboarding = 1).unwrap();
+            assert_eq!(SettingsStore::load(path.clone()).get().onboarding, 1);
+            std::fs::remove_file(&path).unwrap();
+        }
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }
