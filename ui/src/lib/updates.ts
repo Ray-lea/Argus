@@ -108,10 +108,10 @@ export async function afterStart(info: AppInfo, busy: () => boolean) {
 /**
  * Resolves once the window has been on screen: at once after a normal start;
  * a start hidden in the tray (autostart, an update begun there) waits for its
- * first showing. The page cannot tell by itself: in a window not yet shown,
- * WebView2 reports the page visible.
+ * first showing. The page cannot tell by itself: a window started hidden
+ * keeps it awake, and reported visible, until it has drawn itself once.
  */
-async function shown(): Promise<void> {
+export async function shown(): Promise<void> {
   const { once } = await import("@tauri-apps/api/event");
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
   await new Promise<void>((resolve) => {

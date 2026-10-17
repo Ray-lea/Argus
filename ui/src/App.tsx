@@ -15,7 +15,7 @@ import StatusBar from "./components/StatusBar";
 import Toolbar, { focusSearch } from "./components/Toolbar";
 import UpdateDialog from "./components/UpdateDialog";
 import Vitals from "./components/Vitals";
-import { watchRestores } from "./lib/background";
+import { reportFirstFrame, watchRestores } from "./lib/background";
 import { t } from "./lib/i18n";
 import { api, inTauri, subscribe } from "./lib/ipc";
 import { EASE_OUT, play } from "./lib/motion";
@@ -120,6 +120,7 @@ export default function App() {
     void subscribe(ingest).then(() => {
       if (intervalMs() !== 1000) void api.setInterval(intervalMs());
     });
+    reportFirstFrame();
     const info = appInfo();
     if (info) applyAccent(info.accent);
     void watchUpdates().then((stop) => onCleanup(stop));

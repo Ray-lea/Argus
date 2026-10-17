@@ -290,6 +290,13 @@ pub fn set_caption_button(rect: ButtonRect) {
     caption::set_maximize_button(rect);
 }
 
+/// The page has drawn its first data; its WebView may sleep while the window
+/// is out of sight from now on.
+#[tauri::command]
+pub fn page_painted(window: tauri::WebviewWindow) {
+    shell::painted(&window);
+}
+
 /// Records that the onboarding of `version` was completed or skipped.
 #[tauri::command]
 pub fn complete_onboarding(app: tauri::AppHandle, version: u32) -> Result<SettingsView, String> {

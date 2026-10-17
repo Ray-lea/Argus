@@ -1,5 +1,6 @@
 //! Resident mode: main window toggling and the tray icon (the hotkey that
-//! toggles it is in hotkey.rs); the window backdrop.
+//! toggles it is in hotkey.rs), with WebView2 asleep while the window is out
+//! of sight; the window backdrop.
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
@@ -10,15 +11,16 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewWindow};
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
-    ICoreWebView2_19,
+    ICoreWebView2_19, ICoreWebView2Controller,
 };
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CombineRgn, CreateRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
 };
-use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
+use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowRect, KillTimer, SWP_NOSIZE, SetTimer, WINDOWPOS, WM_WINDOWPOSCHANGING,
+    GetWindowRect, IsIconic, IsWindowVisible, KillTimer, SWP_NOSIZE, SetTimer, WINDOWPOS,
+    WM_NCDESTROY, WM_WINDOWPOSCHANGED, WM_WINDOWPOSCHANGING,
 };
 use windows::core::Interface;
 
@@ -38,7 +40,6 @@ pub fn app_title() -> String {
 
 pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
-        set_webview_active(&w, true);
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
@@ -50,7 +51,6 @@ pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
 pub fn hide_main<R: Runtime>(w: &WebviewWindow<R>) {
     went_away(Away::Tray);
     let _ = w.hide();
-    set_webview_active(w, false);
     // The settings page cannot end a hotkey recording it can no longer see.
     crate::hotkey::resume_if_suspended(w.app_handle());
 }
@@ -227,25 +227,108 @@ fn set_corner_cut(on: bool) {
     }
 }
 
-/// Tells WebView2 whether anyone can see it. Hiding the window alone keeps the
-/// renderer painting and holding memory; an invisible controller stops
-/// rendering, and the low memory target lets it trim caches. Scripts keep
-/// running, so history stays continuous and the page is current on show.
-pub fn set_webview_active<R: Runtime>(w: &WebviewWindow<R>, active: bool) {
+const VISIBILITY_SUBCLASS: usize = 1;
+/// How long a page gets to report its first frame before its WebView sleeps
+/// out of sight anyway.
+const PAINT_GRACE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Whether WebView2 was last told it is visible. wry creates the controller
+/// visible, whether the window is shown or not.
+static AWAKE: AtomicBool = AtomicBool::new(true);
+/// Whether the page has drawn itself once. Until then the WebView stays awake
+/// even in a hidden window: put to sleep before its first frame, it has
+/// nothing to show when the window appears (an empty window for about 0.2 s),
+/// while once it has drawn it keeps its last frame and shows that at once.
+static PAINTED: AtomicBool = AtomicBool::new(false);
+
+/// Tells WebView2 from now on whether anyone can see the window: not while it
+/// is hidden (in the tray, or started there) or minimized, once the page has
+/// drawn itself (`painted`). Hiding the window alone keeps the renderer
+/// painting and holding memory; an invisible controller stops rendering, and
+/// the low memory target lets it trim caches. Scripts keep running, so history
+/// stays continuous and the page is current on show.
+///
+/// Follows the window rather than the code that shows it: every show, hide,
+/// minimize and restore ends in `WM_WINDOWPOSCHANGED`, whoever causes it
+/// (`show_main`, the taskbar, another program's `SetWindowPos`), and a window
+/// started hidden goes to sleep as soon as its page has drawn.
+pub fn follow_visibility<R: Runtime>(w: &WebviewWindow<R>) {
+    let Ok(hwnd) = w.hwnd() else { return };
+    let hwnd = hwnd.0 as isize;
     let _ = w.with_webview(move |wv| unsafe {
-        let controller = wv.controller();
-        let _ = controller.SetIsVisible(active);
+        let hwnd = HWND(hwnd as _);
+        let controller = Box::into_raw(Box::new(wv.controller()));
+        let data = controller as usize;
+        if SetWindowSubclass(hwnd, Some(visibility_proc), VISIBILITY_SUBCLASS, data).as_bool() {
+            sync_visibility(hwnd, &*controller);
+        } else {
+            drop(Box::from_raw(controller));
+        }
+    });
+    // A page that never reports its first frame sleeps out of sight anyway.
+    let app = w.app_handle().clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(PAINT_GRACE);
+        if let Some(w) = app.get_webview_window("main") {
+            painted(&w);
+        }
+    });
+}
+
+/// The page has drawn itself once (`page_painted`), or did not say so in
+/// time: from now on its WebView sleeps whenever the window is out of sight.
+pub fn painted<R: Runtime>(w: &WebviewWindow<R>) {
+    if PAINTED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let Ok(hwnd) = w.hwnd() else { return };
+    let hwnd = hwnd.0 as isize;
+    let _ = w.with_webview(move |wv| sync_visibility(HWND(hwnd as _), &wv.controller()));
+}
+
+unsafe extern "system" fn visibility_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    _id: usize,
+    data: usize,
+) -> LRESULT {
+    let controller = data as *mut ICoreWebView2Controller;
+    if msg == WM_NCDESTROY {
+        unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(visibility_proc), VISIBILITY_SUBCLASS);
+            drop(Box::from_raw(controller));
+        }
+        return unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+    }
+    let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+    // After the window's own handling, which gives the WebView its new size.
+    if msg == WM_WINDOWPOSCHANGED {
+        sync_visibility(hwnd, unsafe { &*controller });
+    }
+    result
+}
+
+fn sync_visibility(hwnd: HWND, controller: &ICoreWebView2Controller) {
+    let awake = !PAINTED.load(Ordering::Relaxed)
+        || unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() };
+    if AWAKE.swap(awake, Ordering::Relaxed) == awake {
+        return;
+    }
+    unsafe {
+        let _ = controller.SetIsVisible(awake);
         if let Ok(core) = controller.CoreWebView2()
             && let Ok(core) = core.cast::<ICoreWebView2_19>()
         {
-            let level = if active {
+            let level = if awake {
                 COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
             } else {
                 COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
             };
             let _ = core.SetMemoryUsageTargetLevel(level);
         }
-    });
+    }
 }
 
 /// The tray menu, with an entry for the update dialog while an update waits.

@@ -17,7 +17,7 @@ import {
 } from "solid-js";
 import { fmtCache } from "../lib/format";
 import { locale, localized, t } from "../lib/i18n";
-import { api } from "../lib/ipc";
+import { api, inTauri } from "../lib/ipc";
 import { EASE_OUT, play, presence } from "../lib/motion";
 import {
   type Block,
@@ -39,6 +39,7 @@ import {
   openUpdateDialog,
   setAnnounced,
   setUpdateDialog,
+  shown,
   type UpdateDialogState,
   updateButtonVersion,
   updateDialog,
@@ -72,9 +73,13 @@ export default function UpdateDialog() {
 
 /** Says once per version, when the window is in view, that an update waits. */
 function announceReady() {
+  // Until a window started in the tray is first shown, the page may report
+  // itself visible (see `shown`).
+  const [onScreen, setOnScreen] = createSignal(!inTauri);
+  if (inTauri) void shown().then(() => setOnScreen(true));
   createEffect(() => {
     const version = updateButtonVersion();
-    if (!version || version === announced()) return;
+    if (!onScreen() || !version || version === announced()) return;
     const available = updateStatus()?.state === "available";
     const show = () => {
       if (document.visibilityState !== "visible") return false;

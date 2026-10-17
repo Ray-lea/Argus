@@ -36,6 +36,7 @@
 
 ## 其他
 
+- 以 `--hidden` 启动时，页面画出第一帧之前 WebView 保持可见（`background.ts` 的 `reportFirstFrame` 报告后宿主才让它休眠），这段时间 `visibilityState` 为 `visible`，窗口却没有显示。要等用户看得到窗口才做的事（一次性提示、更新内容）先等 `updates.ts` 的 `shown()`，之后再按 `visibilityState` 判断。
 - 下拉框用 `components/Select.tsx`，不要写原生 `<select>`：原生弹出列表由 Windows 按经典样式绘制，与主题不符。
 - Solid 编译 `style={{ … }}` 时按字面键逐个设置，计算出的键（`[cond ? "top" : "bottom"]`）会被丢掉；两个属性都写，用值切换。
 - 滚动条样式只在 `styles.css` 的全局 `::-webkit-scrollbar` 规则里定义，局部只加轨道边距之类的补充。

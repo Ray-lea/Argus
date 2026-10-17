@@ -307,6 +307,9 @@ pub fn run() {
                     window.show()?;
                     window.set_focus()?;
                 }
+                // Asleep while out of sight once the page has drawn itself;
+                // awake whenever it is shown.
+                shell::follow_visibility(&window);
             }
             Ok(())
         })
@@ -321,10 +324,7 @@ pub fn run() {
                 // Resized fires continuously while dragging; act on transitions only.
                 tauri::WindowEvent::Resized(_) => {
                     let minimized = window.is_minimized().unwrap_or(false);
-                    if WAS_MINIMIZED.swap(minimized, Ordering::Relaxed) != minimized
-                        && let Some(w) = main()
-                    {
-                        shell::set_webview_active(&w, !minimized);
+                    if WAS_MINIMIZED.swap(minimized, Ordering::Relaxed) != minimized {
                         if minimized {
                             shell::went_away(shell::Away::Minimized);
                         } else {
@@ -359,6 +359,7 @@ pub fn run() {
             commands::set_language,
             commands::set_theme,
             commands::set_caption_button,
+            commands::page_painted,
             diagnostics::log_ui_error,
             commands::complete_onboarding,
             commands::set_whats_new,

@@ -1,12 +1,15 @@
 // How often Argus samples while the window is minimized and while it is in
 // the tray (native settings, sampler.rs): the choices, the confirmation for
 // short ones, and the notice on coming back that the window refreshed less
-// often meanwhile. The two notices are turned off separately.
+// often meanwhile. The two notices are turned off separately. Also tells the
+// host when the page has drawn itself, so a window started in the tray can
+// let its WebView sleep.
 
+import { createEffect, createRoot } from "solid-js";
 import { t } from "./i18n";
 import { api, inTauri } from "./ipc";
 import { persisted } from "./prefs";
-import { goToSetting, intervalMs } from "./store";
+import { goToSetting, intervalMs, snapshot } from "./store";
 import { confirm, toast } from "./ui";
 
 /** The cadences on offer, ms: BACKGROUND_INTERVALS in settings.rs. */
@@ -79,4 +82,33 @@ export async function watchRestores(): Promise<() => void> {
   return listen<{ from: Away; awayMs: number }>("argus-restored", (e) => {
     void noticeRestored(e.payload.from, e.payload.awayMs);
   });
+}
+
+/**
+ * Tells the host once the page has drawn its first data. A window started in
+ * the tray keeps its WebView awake until then: put to sleep before its first
+ * frame, it would have nothing to show for a moment when the window appears
+ * (shell.rs, `follow_visibility`).
+ */
+export function reportFirstFrame() {
+  if (!inTauri) return;
+  createRoot((dispose) =>
+    createEffect(() => {
+      if (!snapshot()) return;
+      queueMicrotask(dispose);
+      void drawn().then(() => api.pagePainted().catch(() => {}));
+    }),
+  );
+}
+
+const frame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
+
+/** Resolves once the page as it is now, images and fonts included, has been drawn. */
+async function drawn() {
+  await frame();
+  const decoded = [...document.images].map((img) => img.decode().catch(() => {}));
+  const timeout = new Promise((resolve) => setTimeout(resolve, 2000));
+  await Promise.race([Promise.all([...decoded, document.fonts.ready]), timeout]);
+  await frame();
+  await frame();
 }

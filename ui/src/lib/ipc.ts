@@ -98,6 +98,8 @@ export const api = {
   manageTaskManager: (action: "enable" | "restore"): Promise<TaskManagerStatus> =>
     mock ? mock.taskManager.manage(action) : invoke("manage_task_manager", { action }),
   taskManagerReady: (): Promise<void> => (mock ? Promise.resolve() : invoke("task_manager_ready")),
+  /** The page has drawn its first data; the host may put a hidden window's WebView to sleep. */
+  pagePainted: (): Promise<void> => (mock ? Promise.resolve() : invoke("page_painted")),
   setCloseToTray: (value: boolean): Promise<SettingsView> =>
     mock ? mock.settings.update({ closeToTray: value }) : invoke("set_close_to_tray", { value }),
   /** Sampling while minimized and while in the tray, ms; takes effect at once. */
