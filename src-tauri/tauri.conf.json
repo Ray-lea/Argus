@@ -26,6 +26,7 @@
           ]
         },
         "visible": false,
+        "focus": false,
         "backgroundColor": "#00000000"
       }
     ],
