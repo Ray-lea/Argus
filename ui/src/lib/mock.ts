@@ -41,6 +41,8 @@ interface MockProc extends ProcessRow {
   /** Typical GPU use and the engine it lands on. */
   gpuLoad: number;
   gpuOn: string;
+  /** Samples taken so far; disk rates need two, as through the privileged service. */
+  samples: number;
 }
 
 const procs: MockProc[] = [];
@@ -141,6 +143,7 @@ function add(
     ioLevel: o.io ?? 0,
     gpuLoad: o.gpu ?? 0,
     gpuOn: o.gpuOn ?? "3D",
+    samples: 0,
   };
   procs.push(p);
   return p;
@@ -269,10 +272,11 @@ function tick(): Snapshot {
     p.ioWrite = level * 0.3;
     p.diskRead = p.suspended ? 0 : level * 0.4;
     p.diskWrite = p.suspended ? 0 : level * 0.2;
-    if (DISK_UNAVAILABLE) {
+    if (DISK_UNAVAILABLE || p.samples === 0) {
       p.diskRead = null;
       p.diskWrite = null;
     }
+    p.samples++;
     p.ioOther = level > 0 ? 2048 : 0;
     p.gpu = p.suspended || !p.gpuLoad ? 0 : Math.min(100, p.gpuLoad * (0.5 + Math.random()));
     p.gpuEngine = p.gpu > 0 ? `GPU 0 - ${p.gpuOn}` : null;
@@ -316,9 +320,11 @@ function tick(): Snapshot {
       ioWrite: io * 0.3,
       ioOther: 0,
     },
-    processes: procs.map(({ load: _l, baseMem: _b, ioLevel: _i, gpuLoad: _g, gpuOn: _o, ...row }) => ({
-      ...row,
-    })),
+    processes: procs.map(
+      ({ load: _l, baseMem: _b, ioLevel: _i, gpuLoad: _g, gpuOn: _o, samples: _s, ...row }) => ({
+        ...row,
+      }),
+    ),
     // As if running elevated, so the network column shows in the browser preview.
     processNetwork: true,
   };
