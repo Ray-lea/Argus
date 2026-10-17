@@ -33,6 +33,17 @@
 
 Argus reads Windows' native interfaces directly from Rust, with an interface built on Tauri 2 and SolidJS. Processes, performance, services, startup apps, network connections and the last 7 days of history share one window, and the charts move smoothly at the display's refresh rate; resident in the system tray, it uses about 1% of one CPU core. It is named after Argus Panoptes, the hundred-eyed giant of Greek myth.
 
+## ⭐ Star history
+
+If Argus is useful to you, please consider giving it a star on GitHub. It is the most direct way to support the project, and it helps more people find it.
+
+<a href="https://www.star-history.com/#Ray-lea/Argus&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Ray-lea/Argus&type=Date&theme=dark">
+    <img src="https://api.star-history.com/svg?repos=Ray-lea/Argus&type=Date" alt="Number of stars on Argus over time">
+  </picture>
+</a>
+
 ## ✨ Features
 
 | | Feature | Description |

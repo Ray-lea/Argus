@@ -33,6 +33,17 @@
 
 Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS 构建界面。进程、性能、服务、启动项、网络连接以及最近 7 天的历史记录集中在同一窗口中，曲线随屏幕刷新率连续流动；常驻托盘时约占用单个 CPU 核心的 1%。名称取自希腊神话中的百眼巨人阿尔戈斯（Argus Panoptes）。
 
+## ⭐ Star 趋势
+
+如果 Argus 对日常使用有所帮助，欢迎在 GitHub 上为它点亮 Star。这是对项目最直接的支持，也能让更多人发现它。
+
+<a href="https://www.star-history.com/#Ray-lea/Argus&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Ray-lea/Argus&type=Date&theme=dark">
+    <img src="https://api.star-history.com/svg?repos=Ray-lea/Argus&type=Date" alt="Argus 的 Star 数量变化">
+  </picture>
+</a>
+
 ## ✨ 特性
 
 | | 功能 | 说明 |
