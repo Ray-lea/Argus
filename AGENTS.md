@@ -65,7 +65,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 改动可能影响渲染开销时（动画、曲线、持续更新的元素、模糊或阴影等效果、合成层）量 WebView 的开销；静态的布局和文案不必每次做完整的 A/B，验证与改动的范围相称即可。开发机上常有其他负载，CPU 占用的 A/B 对比不可信；用 CDP 跟踪统计帧数、重绘次数，并累加 GPU 进程与渲染进程合成线程的耗时。
 - 测量结果写在提交正文和给用户的回复里，不追加到 `docs/`：文档只保留基线、方法和有依据的设计结论。
 - WebView2 在窗口被完全挡住时停止渲染。后台测量时用 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=<端口> --disable-features=CalculateNativeWinOcclusion"` 启动发布构建，按上一节放到最底层；先确认 `requestAnimationFrame` 在跑，启动后等约 25 秒再测，配置之间交替测量（单次相差约 2%）。
-- 连着 CDP 时 `visibilityState` 一直是 `visible`，不能用 CDP 判断隐藏状态下的行为；隐藏的内嵌浏览器预览也不渲染帧，不要在那里判断动画。
+- 连着 CDP 时页面的 `visibilityState` 照常跟随窗口（隐藏、最小化时为 `hidden`，不渲染帧），可以用 CDP 判断隐藏状态下的行为。隐藏的内嵌浏览器预览不渲染帧，不要在那里判断动画。
 
 ## 约定
 
