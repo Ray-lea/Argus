@@ -11,6 +11,7 @@ pub(crate) struct Context {
     services: ServiceCatalog,
     network: crate::network::NetworkMonitor,
     sensors: crate::sensors::SensorMonitor,
+    disk: crate::disk::DiskMonitor,
 }
 
 impl Context {
@@ -19,6 +20,7 @@ impl Context {
             services: ServiceCatalog::default(),
             network: crate::network::NetworkMonitor::spawn(),
             sensors: crate::sensors::SensorMonitor::spawn(),
+            disk: crate::disk::DiskMonitor::new(),
         }
     }
 
@@ -28,6 +30,7 @@ impl Context {
             services: ServiceCatalog::default(),
             network: crate::network::NetworkMonitor::disabled(),
             sensors: crate::sensors::SensorMonitor::disabled(),
+            disk: crate::disk::DiskMonitor::disabled(),
         }
     }
 }
@@ -39,6 +42,7 @@ pub enum Operation {
     RestoreTaskManager,
     NetworkSnapshot,
     SensorSnapshot {},
+    DiskSnapshot {},
     FindHandles {
         paths: Vec<String>,
     },
@@ -91,6 +95,7 @@ pub enum Reply {
     Pong { version: String, protocol: u32 },
     Done,
     Network(Option<crate::NetworkFrame>),
+    Disk(Option<argus_core::disk_process::DiskSnapshot>),
     Sensors(argus_core::hardware::CpuSensors),
     Handles(argus_core::handles::HandleReport),
     Priority(Priority),
@@ -139,6 +144,7 @@ impl Operation {
             Self::Ping
             | Self::NetworkSnapshot
             | Self::SensorSnapshot {}
+            | Self::DiskSnapshot {}
             | Self::RestoreTaskManager => {}
         }
         Ok(())
@@ -156,6 +162,7 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
         }
         Operation::NetworkSnapshot => return Reply::Network(context.network.snapshot()),
         Operation::SensorSnapshot {} => return Reply::Sensors(context.sensors.snapshot()),
+        Operation::DiskSnapshot {} => return Reply::Disk(context.disk.snapshot()),
         Operation::ApplyRule {
             pid,
             create_time,
@@ -213,6 +220,25 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disk_snapshot_is_fixed_and_fits_the_reply_budget() {
+        assert!(serde_json::from_str::<Operation>(r#"{"op":"diskSnapshot","pid":42}"#).is_err());
+        let reply = Reply::Disk(Some(argus_core::disk_process::DiskSnapshot {
+            sampled_at_ms: u64::MAX,
+            counters: vec![
+                (u32::MAX, i64::MAX, u64::MAX, u64::MAX);
+                argus_core::disk_process::MAX_PROCESSES
+            ],
+        }));
+        let bytes = serde_json::to_vec(&reply).unwrap();
+        assert!(bytes.len() < MAX_REPLY);
+        assert!(serde_json::from_slice::<Reply>(&bytes).is_ok());
+        assert!(matches!(
+            execute(Operation::DiskSnapshot {}, &Context::testing(), 123),
+            Reply::Disk(None)
+        ));
+    }
 
     #[test]
     fn expanded_cpu_snapshot_stays_within_the_reply_budget() {

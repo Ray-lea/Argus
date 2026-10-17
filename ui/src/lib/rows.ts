@@ -1,10 +1,22 @@
 // Turns a flat process snapshot into the rows the table renders, for each view mode.
 
 import { localized, t } from "./i18n";
+import { compareDiskRate, sumDiskIo } from "./process-io";
 import type { ProcessRow } from "./types";
 
 export type ViewMode = "apps" | "tree" | "list";
-export type SortKey = "name" | "pid" | "cpu" | "mem" | "io" | "gpu" | "net" | "threads" | "handles";
+export type SortKey =
+  | "name"
+  | "pid"
+  | "cpu"
+  | "mem"
+  | "diskRead"
+  | "diskWrite"
+  | "io"
+  | "gpu"
+  | "net"
+  | "threads"
+  | "handles";
 export interface SortState {
   key: SortKey;
   desc: boolean;
@@ -23,6 +35,8 @@ export interface DisplayRow {
   cpu: number;
   mem: number;
   io: number;
+  diskRead: number | null;
+  diskWrite: number | null;
   gpu: number;
   /** Busiest GPU engine (a group's busiest member's). */
   gpuEngine: string | null;
@@ -81,6 +95,8 @@ function procRow(p: ProcessRow, depth: number, label: string, detail: string | n
     cpu: p.cpu,
     mem: p.privateWs,
     io: ioTotal(p),
+    diskRead: p.diskRead,
+    diskWrite: p.diskWrite,
     gpu: p.gpu,
     gpuEngine: p.gpuEngine,
     netSent: p.netSent,
@@ -121,6 +137,11 @@ function comparator(sort: SortState): (a: DisplayRow, b: DisplayRow) => number {
       return (a, b) => dir * byName(a, b);
     case "pid":
       return (a, b) => dir * (a.proc.pid - b.proc.pid);
+    case "diskRead":
+    case "diskWrite": {
+      const key = sort.key;
+      return (a, b) => compareDiskRate(a[key], b[key], sort.desc) || byName(a, b);
+    }
     default: {
       const q = quantize[sort.key];
       return (a, b) => dir * (q(a) - q(b)) || byName(a, b);
@@ -310,6 +331,7 @@ function buildApps(
       cpu: 0,
       mem: 0,
       io: 0,
+      ...sumDiskIo(members),
       gpu: 0,
       gpuEngine: null,
       netSent: 0,

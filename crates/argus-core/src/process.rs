@@ -51,6 +51,9 @@ pub struct ProcessRow {
     pub io_read: u64,
     pub io_write: u64,
     pub io_other: u64,
+    /// Disk bytes per second; absent until the disk source has a valid interval.
+    pub disk_read: Option<u64>,
+    pub disk_write: Option<u64>,
     /// The process's share of its busiest GPU engine, percent.
     pub gpu: f32,
     /// That engine, e.g. `GPU 0 - 3D`; None while the process leaves the GPU idle.
@@ -78,6 +81,7 @@ struct Tracked {
     meta: Option<Arc<FileMeta>>,
     cpu_ticks: i64,
     io: [i64; 3],
+    disk: Option<(u64, u64)>,
     /// Query handle, opened once per process instance (None when access is
     /// denied, which is final for that instance).
     handle: Option<OwnedHandle>,
@@ -90,6 +94,7 @@ pub(crate) struct ProcessTracker {
     meta: Arc<MetaStore>,
     last_instant: Option<Instant>,
     last_systime: i64,
+    native_disk: bool,
 }
 
 impl ProcessTracker {
@@ -101,15 +106,16 @@ impl ProcessTracker {
             meta,
             last_instant: None,
             last_systime: 0,
+            native_disk: crate::disk_process::standard_supported(),
         }
     }
 
     pub fn sample(&mut self, logical_cpus: u32) -> Vec<ProcessRow> {
         let now = Instant::now();
         let systime = filetime_ticks(unsafe { GetSystemTimePreciseAsFileTime() });
-        if query_system_information(SPI_CLASS, &mut self.buf).is_err() {
+        let Ok(returned) = query_system_information(SPI_CLASS, &mut self.buf) else {
             return Vec::new();
-        }
+        };
         let elapsed = self
             .last_instant
             .map(|t| now.duration_since(t).as_secs_f64());
@@ -133,18 +139,22 @@ impl ProcessTracker {
                 p.write_transfer_count,
                 p.other_transfer_count,
             ];
+            let disk = self
+                .native_disk
+                .then(|| crate::disk_process::standard_counters(&self.buf, returned, p))
+                .flatten();
 
             let (mut entry, prev) = match self.tracked.remove(&key) {
                 Some(t) => {
-                    let prev = (t.cpu_ticks, t.io);
+                    let prev = (t.cpu_ticks, t.io, t.disk);
                     (t, Some(prev))
                 }
                 None => {
                     let name: Arc<str> = unsafe { p.image_name.to_string_lossy() }.into();
                     let path = self.paths.image_path(pid).map(Arc::from);
                     // Started since the last sample: everything it consumed is new.
-                    let prev =
-                        (elapsed.is_some() && p.create_time > prev_systime).then_some((0, [0; 3]));
+                    let prev = (elapsed.is_some() && p.create_time > prev_systime)
+                        .then_some((0, [0; 3], None));
                     (
                         Tracked {
                             name,
@@ -152,6 +162,7 @@ impl ProcessTracker {
                             meta: None,
                             cpu_ticks,
                             io,
+                            disk,
                             handle: unsafe {
                                 OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
                             }
@@ -169,7 +180,7 @@ impl ProcessTracker {
             }
 
             let (cpu, rates) = match (prev, capacity_ticks, elapsed) {
-                (Some((pc, pio)), Some(cap), Some(secs)) if cap > 0.0 => {
+                (Some((pc, pio, _)), Some(cap), Some(secs)) if cap > 0.0 => {
                     let cpu = ((cpu_ticks - pc).max(0) as f64 / cap * 100.0).min(100.0) as f32;
                     let rate = |i: usize| ((io[i] - pio[i]).max(0) as f64 / secs) as u64;
                     (cpu, [rate(0), rate(1), rate(2)])
@@ -178,6 +189,18 @@ impl ProcessTracker {
             };
             entry.cpu_ticks = cpu_ticks;
             entry.io = io;
+            let disk_rates = prev
+                .and_then(|(_, _, disk)| disk)
+                .zip(disk)
+                .zip(elapsed)
+                .filter(|(_, secs)| *secs > 0.0 && *secs <= 30.0)
+                .and_then(|(((r, w), (read, written)), secs)| {
+                    Some((
+                        (read.checked_sub(r)? as f64 / secs) as u64,
+                        (written.checked_sub(w)? as f64 / secs) as u64,
+                    ))
+                });
+            entry.disk = disk;
 
             let suspended = !threads.is_empty()
                 && threads.iter().all(|t| {
@@ -201,6 +224,8 @@ impl ProcessTracker {
                 io_read: rates[0],
                 io_write: rates[1],
                 io_other: rates[2],
+                disk_read: disk_rates.map(|v| v.0),
+                disk_write: disk_rates.map(|v| v.1),
                 gpu: 0.0,
                 gpu_engine: None,
                 gpu_dedicated: 0,

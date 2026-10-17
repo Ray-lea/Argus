@@ -3,6 +3,7 @@ import { For, onMount, Show } from "solid-js";
 import { endRow } from "../lib/actions";
 import { fmtCount, fmtCpu, fmtMem, fmtNet, fmtRate } from "../lib/format";
 import { t } from "../lib/i18n";
+import { sumDiskIo } from "../lib/process-io";
 import {
   type DisplayRow,
   isSection,
@@ -52,6 +53,8 @@ const COLUMNS: Column[] = [
   { key: "pid", descFirst: false, optional: "opt2" },
   { key: "cpu", descFirst: true },
   { key: "mem", descFirst: true },
+  { key: "diskRead", descFirst: true },
+  { key: "diskWrite", descFirst: true },
   { key: "io", descFirst: true, optional: "opt2" },
   { key: "gpu", descFirst: true },
   { key: "threads", descFirst: true, optional: "opt" },
@@ -60,7 +63,7 @@ const COLUMNS: Column[] = [
 
 /** Measured only while Argus runs with administrator rights (see net_process.rs). */
 const NET_COLUMN: Column = { key: "net", descFirst: true };
-const COLUMNS_WITH_NET = [...COLUMNS.slice(0, 6), NET_COLUMN, ...COLUMNS.slice(6)];
+const COLUMNS_WITH_NET = [...COLUMNS.slice(0, 8), NET_COLUMN, ...COLUMNS.slice(8)];
 
 // Heat ramps: 0 below a threshold, so only rows with real load are tinted.
 const heatCpu = (v: number) => (v < 1 ? 0 : Math.min(1, v / 40));
@@ -102,6 +105,11 @@ export default function ProcessTable() {
         return `${s.memTotal ? Math.round((s.memUsed / s.memTotal) * 100) : 0}%`;
       case "io":
         return fmtRate(s.ioRead + s.ioWrite + s.ioOther);
+      case "diskRead":
+      case "diskWrite": {
+        const value = sumDiskIo(snapshot()?.processes ?? [])[key];
+        return value == null ? "—" : fmtRate(value, false);
+      }
       case "net":
         return fmtNet(snapshot()?.processes.reduce((a, p) => a + p.netSent + p.netReceived, 0) ?? 0, true);
       case "threads":
@@ -383,6 +391,19 @@ function Row(props: { row: DisplayRow; start: number; withNet: boolean }) {
       <div class="cell heat" role="gridcell" style={{ "--h": heatMem(r().mem) }}>
         {fmtMem(r().mem)}
       </div>
+      <For each={["diskRead", "diskWrite"] as const}>
+        {(key) => (
+          <div
+            class="cell heat"
+            role="gridcell"
+            classList={{ dim: r()[key] == null || (r()[key] ?? 0) < 1 }}
+            style={{ "--h": heatIo(r()[key] ?? 0) }}
+            title={r()[key] == null ? t("processes.diskUnavailable") : undefined}
+          >
+            {r()[key] == null ? "—" : fmtRate(r()[key] ?? 0)}
+          </div>
+        )}
+      </For>
       <div
         class="cell heat opt2"
         role="gridcell"

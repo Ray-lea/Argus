@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use argus_core::history::{self, HistoryRecorder};
 use argus_core::{Collector, Snapshot};
-use argus_service::{NetworkClient, RuleRunner, SensorClient};
+use argus_service::{DiskClient, NetworkClient, RuleRunner, SensorClient};
 use tauri::ipc::Channel;
 
 /// Shortest window over which CPU percentages are still meaningful.
@@ -93,6 +93,7 @@ impl Sampler {
             .spawn(move || {
                 let mut collector = make_collector();
                 let mut network = NetworkClient::spawn();
+                let mut disk = DiskClient::spawn();
                 let mut sensors = SensorClient::spawn();
                 let mut kernel_sensors = false;
                 let mut subscriber: Option<Channel<Snapshot>> = None;
@@ -193,6 +194,7 @@ impl Sampler {
                     let mut snapshot = collector.sample();
                     sensors.enrich(&mut snapshot, kernel_sensors, period);
                     network.enrich(&mut snapshot, period);
+                    disk.enrich(&mut snapshot, period);
                     rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);

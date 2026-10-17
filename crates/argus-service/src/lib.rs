@@ -2,6 +2,7 @@
 //! operations. Driver access is restricted to fixed, read-only sensor snapshots.
 
 mod background;
+mod disk;
 pub mod driver;
 mod handles;
 mod install;
@@ -17,6 +18,7 @@ mod util;
 use argus_core::tr;
 
 pub use background::{NetworkClient, RuleRunner};
+pub use disk::DiskClient;
 pub use install::{ServiceStatus, manage, status};
 pub use network::NetworkFrame;
 pub use protocol::{Operation, Reply};
@@ -40,7 +42,7 @@ const REMOVE_ARG: &str = "--argus-service-remove";
 /// installed service in the same elevation.
 const REFRESH_ARG: &str = "--argus-service-refresh";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const PROTOCOL: u32 = 8;
+const PROTOCOL: u32 = 9;
 
 /// Handle service/helper modes before starting Tauri, its singleton or sampler.
 pub fn run_mode() -> Option<i32> {

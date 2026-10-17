@@ -836,26 +836,38 @@ button {
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.table > .thead,
+.table > .tbody {
+  min-width: 622px;
+}
+
+.table.with-net > .thead,
+.table.with-net > .tbody {
+  min-width: 714px;
 }
 
 .cols {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 72px 70px 96px 92px 70px 62px 76px;
+  grid-template-columns: minmax(220px, 1fr) 72px 70px 96px 104px 104px 92px 70px 62px 76px;
 }
 
 .with-net .cols {
-  grid-template-columns: minmax(220px, 1fr) 72px 70px 96px 92px 70px 92px 62px 76px;
+  grid-template-columns: minmax(220px, 1fr) 72px 70px 96px 104px 104px 92px 70px 92px 62px 76px;
 }
 
-/* A narrow table (details panel open in a small window) drops the least used
-   columns rather than squeezing every number. */
+/* Keep disk reads/writes in narrow views; only secondary columns disappear.
+   Below the resource columns' minimum width, the header and body scroll together. */
 .table {
   container-type: inline-size;
 }
 
-@container (max-width: 880px) {
+@container (max-width: 1080px) {
   .with-net .cols {
-    grid-template-columns: minmax(200px, 1fr) 72px 70px 96px 92px 70px 92px;
+    grid-template-columns: minmax(200px, 1fr) 72px 70px 96px 104px 104px 92px 70px 92px;
   }
 
   .with-net .cols > .opt {
@@ -863,9 +875,9 @@ button {
   }
 }
 
-@container (max-width: 780px) {
+@container (max-width: 980px) {
   .cols {
-    grid-template-columns: minmax(200px, 1fr) 72px 70px 96px 92px 70px;
+    grid-template-columns: minmax(200px, 1fr) 72px 70px 96px 104px 104px 92px 70px;
   }
 
   .cols > .opt {
@@ -873,9 +885,9 @@ button {
   }
 }
 
-@container (max-width: 730px) {
+@container (max-width: 920px) {
   .with-net .cols {
-    grid-template-columns: minmax(160px, 1fr) 70px 96px 70px 92px;
+    grid-template-columns: minmax(160px, 1fr) 70px 96px 104px 104px 70px 92px;
   }
 
   .with-net .cols > .opt2 {
@@ -883,9 +895,9 @@ button {
   }
 }
 
-@container (max-width: 640px) {
+@container (max-width: 840px) {
   .cols {
-    grid-template-columns: minmax(160px, 1fr) 70px 96px 70px;
+    grid-template-columns: minmax(160px, 1fr) 70px 96px 104px 104px 70px;
   }
 
   .cols > .opt2 {

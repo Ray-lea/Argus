@@ -30,6 +30,7 @@ import type {
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
 const AMD_FIXTURE = new URLSearchParams(location.search).get("cpu") === "amd";
+const DISK_UNAVAILABLE = new URLSearchParams(location.search).has("diskUnavailable");
 const CORES = AMD_FIXTURE ? 32 : 20;
 const BOOT = Date.now() - (5 * 86400 + 14 * 3600) * 1000;
 
@@ -120,6 +121,8 @@ function add(
     ioRead: 0,
     ioWrite: 0,
     ioOther: 0,
+    diskRead: 0,
+    diskWrite: 0,
     gpu: 0,
     gpuEngine: null,
     gpuDedicated: 0,
@@ -264,6 +267,12 @@ function tick(): Snapshot {
     const level = p.ioLevel * MB * (Math.random() < 0.6 ? Math.random() : 0);
     p.ioRead = level * 0.7;
     p.ioWrite = level * 0.3;
+    p.diskRead = p.suspended ? 0 : level * 0.4;
+    p.diskWrite = p.suspended ? 0 : level * 0.2;
+    if (DISK_UNAVAILABLE) {
+      p.diskRead = null;
+      p.diskWrite = null;
+    }
     p.ioOther = level > 0 ? 2048 : 0;
     p.gpu = p.suspended || !p.gpuLoad ? 0 : Math.min(100, p.gpuLoad * (0.5 + Math.random()));
     p.gpuEngine = p.gpu > 0 ? `GPU 0 - ${p.gpuOn}` : null;

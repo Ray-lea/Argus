@@ -669,6 +669,8 @@ mod tests {
             io_read: 0,
             io_write: 0,
             io_other: 0,
+            disk_read: None,
+            disk_write: None,
             gpu: 0.0,
             gpu_engine: None,
             gpu_dedicated: 0,

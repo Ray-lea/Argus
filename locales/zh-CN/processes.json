@@ -1,4 +1,5 @@
 {
+  "diskUnavailable": "暂无有效磁盘采样。新进程需等待两次采样；系统未提供该数据时，可启用特权服务。",
   "label": "进程",
   "total": "{count} 个进程",
   "column": {
@@ -6,7 +7,9 @@
     "pid": { "label": "PID", "title": "进程 ID" },
     "cpu": { "label": "CPU", "title": "占全部处理器能力的百分比" },
     "mem": { "label": "内存", "title": "专用工作集：进程独占的物理内存" },
-    "io": { "label": "I/O", "title": "每秒读、写及其他 I/O 字节数" },
+    "diskRead": { "label": "磁盘读取", "title": "每秒磁盘读取字节数，不包含网络及其他设备 I/O" },
+    "diskWrite": { "label": "磁盘写入", "title": "每秒磁盘写入字节数，不包含网络及其他设备 I/O" },
+    "io": { "label": "I/O", "title": "读、写及其他 I/O 合计，包含文件、网络和设备访问" },
     "gpu": { "label": "GPU", "title": "进程在最忙的 GPU 引擎上占用的时间比例" },
     "net": { "label": "网络", "title": "每秒发送和接收的字节数" },
     "threads": { "label": "线程", "title": "线程数" },

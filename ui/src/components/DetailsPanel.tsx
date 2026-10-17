@@ -1,9 +1,10 @@
 import { createEffect, createMemo, createResource, For, on, Show } from "solid-js";
 import { copyText, endRow, endTree, PRIORITY_LABEL, priorityOf, revealInExplorer } from "../lib/actions";
-import { fmtCount, fmtCpu, fmtCpuTime, fmtDateTime, fmtMem, fmtNet } from "../lib/format";
+import { fmtCount, fmtCpu, fmtCpuTime, fmtDateTime, fmtMem, fmtNet, fmtRate } from "../lib/format";
 import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { EASE_OUT, play } from "../lib/motion";
+import { sumDiskIo } from "../lib/process-io";
 import { type DisplayRow, groupKey, procKey } from "../lib/rows";
 import {
   groupHistoryOf,
@@ -39,6 +40,8 @@ function asRow(sel: Selection, proc: ProcessRow): DisplayRow {
     cpu: 0,
     mem: 0,
     io: 0,
+    diskRead: proc.diskRead,
+    diskWrite: proc.diskWrite,
     gpu: 0,
     gpuEngine: null,
     netSent: 0,
@@ -258,6 +261,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
                   <dd>{fmtMem(proc().workingSet)}</dd>
                   <dt>{t("details.commit")}</dt>
                   <dd>{fmtMem(proc().commit)}</dd>
+                  <DiskFacts members={[proc()]} />
                   <Show when={(snapshot()?.hardware.gpus.length ?? 0) > 0}>
                     <dt>GPU</dt>
                     <dd>
@@ -370,6 +374,24 @@ export default function DetailsPanel(props: { sel: Selection }) {
 }
 
 /** An app group: its resources added up, its processes, and where they run from. */
+function DiskFacts(props: { members: ProcessRow[] }) {
+  const rates = createMemo(() => sumDiskIo(props.members));
+  return (
+    <For each={["diskRead", "diskWrite"] as const}>
+      {(key) => (
+        <>
+          <dt>{t(`processes.column.${key}.label`)}</dt>
+          <dd
+            title={rates()[key] == null ? t("processes.diskUnavailable") : t(`processes.column.${key}.title`)}
+          >
+            {rates()[key] == null ? "—" : fmtRate(rates()[key] ?? 0, false)}
+          </dd>
+        </>
+      )}
+    </For>
+  );
+}
+
 function GroupFacts(props: { members: ProcessRow[] }) {
   const sum = (pick: (p: ProcessRow) => number) => props.members.reduce((a, p) => a + pick(p), 0);
   const earliest = () => Math.min(...props.members.map((p) => p.createTime));
@@ -387,6 +409,7 @@ function GroupFacts(props: { members: ProcessRow[] }) {
         <dd>{fmtMem(sum((p) => p.workingSet))}</dd>
         <dt>{t("details.commit")}</dt>
         <dd>{fmtMem(sum((p) => p.commit))}</dd>
+        <DiskFacts members={props.members} />
         <Show when={(snapshot()?.hardware.gpus.length ?? 0) > 0}>
           <dt>GPU</dt>
           <dd>

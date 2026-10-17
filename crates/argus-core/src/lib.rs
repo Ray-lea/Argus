@@ -12,6 +12,7 @@ pub mod collector;
 pub mod connections;
 pub mod details;
 pub mod diagnostics;
+pub mod disk_process;
 pub mod filelock;
 pub mod gpu_process;
 pub mod handles;

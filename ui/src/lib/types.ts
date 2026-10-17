@@ -23,6 +23,8 @@ export interface ProcessRow {
   ioRead: number;
   ioWrite: number;
   ioOther: number;
+  diskRead: number | null;
+  diskWrite: number | null;
   /** The process's share of its busiest GPU engine, percent. */
   gpu: number;
   /** That engine, e.g. `GPU 0 - 3D`; null while the GPU is idle for it. */
