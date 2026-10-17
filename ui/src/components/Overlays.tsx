@@ -209,11 +209,15 @@ export function ConfirmDialog() {
     <Show when={shown.value()} keyed>
       {(req) => {
         const answer = (ok: boolean) => !shown.leaving() && req.resolve(ok);
+        // On top of everything, a confirmation takes Escape for itself: a
+        // dialog under it (the onboarding, say) must not close too.
         const onKey = (e: KeyboardEvent) => {
-          if (e.key === "Escape") answer(false);
+          if (e.key !== "Escape") return;
+          e.stopImmediatePropagation();
+          answer(false);
         };
-        window.addEventListener("keydown", onKey);
-        onCleanup(() => window.removeEventListener("keydown", onKey));
+        window.addEventListener("keydown", onKey, true);
+        onCleanup(() => window.removeEventListener("keydown", onKey, true));
         return (
           <div
             class="scrim"
@@ -275,21 +279,27 @@ export function Toasts() {
             ) : (
               <CheckIcon />
             )}
-            <div class="toast-text">{item.text}</div>
-            <Show when={item.action}>
-              {(action) => (
-                <button
-                  type="button"
-                  class="btn small toast-action"
-                  onClick={() => {
-                    dismissToast(item.id);
-                    void action().run();
-                  }}
-                >
-                  {action().label}
-                </button>
-              )}
-            </Show>
+            <div class="toast-body">
+              <div class="toast-text">{item.text}</div>
+              <Show when={item.actions?.length}>
+                <div class="toast-actions">
+                  <For each={item.actions}>
+                    {(action) => (
+                      <button
+                        type="button"
+                        class="btn small"
+                        onClick={() => {
+                          dismissToast(item.id);
+                          void action.run();
+                        }}
+                      >
+                        {action.label}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
             <button
               type="button"
               class="btn ghost small icon"

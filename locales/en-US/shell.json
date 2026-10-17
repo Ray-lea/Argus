@@ -36,6 +36,25 @@
     "label": "Refresh rate",
     "option": "Every {seconds} s"
   },
+  "background": {
+    "confirm": {
+      "minimized": {
+        "title": "Refresh more often while minimized?",
+        "body": "While its window is minimized, Argus will sample every process and sensor every {seconds} s. Intervals under 5 seconds noticeably increase CPU use and power draw, especially on battery. History and rules work fine at the default 5 seconds."
+      },
+      "tray": {
+        "title": "Refresh more often in the tray?",
+        "body": "While hidden in the tray, Argus will sample every process and sensor every {seconds} s. Intervals under 5 seconds noticeably increase CPU use and power draw, especially on battery. History and rules work fine at the default 5 seconds."
+      },
+      "accept": "Use {seconds} s anyway"
+    },
+    "notice": {
+      "minimized": "While the window was minimized, Argus refreshed every {to} s instead of every {from} s to save resources.",
+      "tray": "While Argus was in the tray, it refreshed every {to} s instead of every {from} s to save resources.",
+      "adjust": "Adjust",
+      "quiet": "Don't remind me"
+    }
+  },
   "pause": "Pause updates",
   "resume": "Resume updates",
   "fileLock": {

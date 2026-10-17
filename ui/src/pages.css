@@ -1232,6 +1232,20 @@
   gap: 8px;
 }
 
+/* A setting pointed out from elsewhere (a notice's "adjust"): an accent ring
+   that fades once. */
+.setting.located {
+  animation: setting-located 1.8s var(--ease-out);
+}
+
+@keyframes setting-located {
+  from {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--layer));
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+}
+
 /* One feature, one card (FeatureCard in Settings.tsx): what it is and its
    state on top; below a divider, what it reports and what can be done. The
    note and the controls line up with the title, past the icon. */

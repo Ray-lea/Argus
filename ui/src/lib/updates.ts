@@ -81,7 +81,7 @@ export async function afterUpdate(version: string) {
   const from = updatedFrom();
   setUpdatedFrom(null);
   toast("success", t("updates.updated", { version }), 10000, {
-    action: { label: t("updates.whatsNew"), run: () => openWhatsNew(from) },
+    actions: [{ label: t("updates.whatsNew"), run: () => openWhatsNew(from) }],
   });
   const service = await api.privilegedServiceStatus().catch(() => null);
   // A running service that does not report this version is older (or too old to answer).

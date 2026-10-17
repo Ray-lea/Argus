@@ -1646,9 +1646,17 @@ button {
   min-width: 0;
 }
 
-.toast-action {
-  flex: none;
-  align-self: center;
+.toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Buttons under the text, like a Windows notification's. */
+.toast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 /* ---- Updates ----------------------------------------------------------------

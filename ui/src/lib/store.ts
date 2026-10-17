@@ -246,6 +246,17 @@ export const [paused, setPaused] = createSignal(false);
 export const [focusRule, setFocusRule] = createSignal<string | null>(null);
 export const [query, setQuery] = createSignal("");
 
+/** Where the settings page goes when it opens: a section, and a setting there to point out. */
+export const [settingsTarget, setSettingsTarget] = createSignal<{ section: string; item?: string } | null>(
+  null,
+);
+
+/** Opens the settings page at a section, pointing out one setting (`setting-<item>`) if given. */
+export function goToSetting(section: string, item?: string) {
+  setSettingsTarget({ section, item });
+  setPage("settings");
+}
+
 /** The refresh intervals on offer (toolbar, settings, onboarding). */
 export const INTERVALS = [500, 1000, 2000, 5000];
 

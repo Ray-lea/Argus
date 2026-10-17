@@ -29,6 +29,10 @@
     "autostartHint": "Starts silently in the system tray, without a window.",
     "closeToTray": "Keep in the system tray when closed",
     "closeToTrayHint": "When this is off, closing the window exits Argus.",
+    "minimizedInterval": "Refresh rate while minimized",
+    "minimizedIntervalHint": "5 seconds by default; shorter intervals cost more in the background.",
+    "trayInterval": "Refresh rate in the tray",
+    "trayIntervalHint": "History and rules run at this pace while Argus is in the tray.",
     "hotkey": "Press {hotkey} anytime to show or hide Argus. The shortcut can be changed in Settings.",
     "hotkeyOff": "The shortcut for showing or hiding Argus is turned off. It can be turned back on in Settings."
   },

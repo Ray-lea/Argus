@@ -29,6 +29,10 @@
     "autostartHint": "在托盘中静默启动，不显示窗口。",
     "closeToTray": "关闭窗口时保留在托盘",
     "closeToTrayHint": "关闭这一项后，关闭窗口即退出 Argus。",
+    "minimizedInterval": "最小化时的刷新间隔",
+    "minimizedIntervalHint": "默认 5 秒；更短的间隔会增加后台开销。",
+    "trayInterval": "后台常驻时的刷新间隔",
+    "trayIntervalHint": "隐藏到托盘后，按此间隔记录历史与执行规则。",
     "hotkey": "按 {hotkey} 可随时显示或隐藏 Argus，可在设置中更改。",
     "hotkeyOff": "显示或隐藏 Argus 的全局快捷键已停用，可在设置中重新开启。"
   },

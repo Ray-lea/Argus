@@ -82,7 +82,7 @@ function announceReady() {
       if (!untrack(updateDialog))
         toast("info", t(available ? "updates.availableToast" : "updates.readyToast", { version }), 10000, {
           icon: () => <UpdateIcon />,
-          action: { label: t("updates.view"), run: openUpdateDialog },
+          actions: [{ label: t("updates.view"), run: openUpdateDialog }],
         });
       return true;
     };

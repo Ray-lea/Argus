@@ -94,6 +94,11 @@ export const api = {
   taskManagerReady: (): Promise<void> => (mock ? Promise.resolve() : invoke("task_manager_ready")),
   setCloseToTray: (value: boolean): Promise<SettingsView> =>
     mock ? mock.settings.update({ closeToTray: value }) : invoke("set_close_to_tray", { value }),
+  /** Sampling while minimized and while in the tray, ms; takes effect at once. */
+  setBackgroundIntervals: (minimized: number, tray: number): Promise<SettingsView> =>
+    mock
+      ? mock.settings.update({ minimizedInterval: minimized, trayInterval: tray })
+      : invoke("set_background_intervals", { minimized, tray }),
   /** Saves and turns on; rejects with a `HotkeyError`, the old hotkey then stays. */
   setHotkey: (hotkey: string): Promise<SettingsView> =>
     mock ? mock.setHotkey(hotkey) : invoke("set_hotkey", { hotkey }),

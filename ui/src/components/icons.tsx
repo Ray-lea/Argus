@@ -249,6 +249,14 @@ export const TrayIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** A minimized window: its frame, and the bar it shrinks to. */
+export const MinimizeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.5" y="2.5" width="11" height="9" rx="1.5" />
+    <path d="M5.5 14h5" />
+  </Svg>
+);
+
 export const KeyboardIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" />

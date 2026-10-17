@@ -43,7 +43,7 @@
     },
     "closeToTray": {
       "title": "Keep in the system tray when closed",
-      "desc": "Keeps Argus running so it reopens quickly. While hidden, it samples every 5 seconds, and history and rules keep working.",
+      "desc": "Keeps Argus running so it reopens quickly. While hidden, it samples at the tray refresh rate, and history and rules keep working.",
       "error": "Couldn't save the setting: {error}"
     }
   },
@@ -168,6 +168,17 @@
   },
   "data": {
     "intervalDesc": "Shorter intervals give finer charts but make Argus itself use more resources.",
+    "minimized": {
+      "title": "Refresh rate while minimized",
+      "desc": "How often Argus samples while its window is minimized. Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely."
+    },
+    "tray": {
+      "title": "Refresh rate in the tray",
+      "desc": "How often Argus samples while it's hidden in the tray; the tray tooltip updates at the same pace. Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely."
+    },
+    "background": {
+      "error": "Couldn't save the refresh rate: {error}"
+    },
     "netUnit": {
       "title": "Network speed unit",
       "desc": "Bytes match the unit of disk speeds; bits match network adapter link speeds and broadband plans. The network view on the Performance page shows both.",
@@ -176,7 +187,7 @@
     },
     "history": {
       "title": "Record history",
-      "on": "Records resource usage and the top processes every 5 seconds. The data stays on this PC for 7 days and can be viewed on the History page.",
+      "on": "Records resource usage and the top processes every 5 seconds, or at the minimized or tray refresh rate when that's longer. The data stays on this PC for 7 days and can be viewed on the History page.",
       "off": "Off. Existing records expire after 7 days, or can be cleared now.",
       "error": "Couldn't change the history setting: {error}",
       "saved": "Saved history",

@@ -16,7 +16,8 @@
     "fileMissing": "文件不存在",
     "samplerStalled": "采样线程没有响应",
     "pickFolder": "选择要检查的文件夹",
-    "pickFile": "选择要检查的文件"
+    "pickFile": "选择要检查的文件",
+    "invalidInterval": "不支持此刷新间隔"
   },
   "updater": {
     "devBuild": "开发版不检查更新。",

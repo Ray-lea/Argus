@@ -57,7 +57,7 @@ import {
 } from "./icons";
 import { NavPositionChoice } from "./Nav";
 import Select from "./Select";
-import { chartModeOptions, serviceState } from "./Settings";
+import { BackgroundIntervalSelect, chartModeOptions, serviceState } from "./Settings";
 
 /**
  * The onboarding a start shows if the settings record an older one. Raise it
@@ -424,6 +424,28 @@ function Background(props: {
                 checked={s().closeToTray}
                 label={t("onboarding.background.closeToTray")}
                 onChange={(on) => void props.save(api.setCloseToTray(on))}
+              />
+            </Row>
+            <Row
+              title={t("onboarding.background.minimizedInterval")}
+              hint={t("onboarding.background.minimizedIntervalHint")}
+            >
+              <BackgroundIntervalSelect
+                away="minimized"
+                settings={s()}
+                label={t("onboarding.background.minimizedInterval")}
+                save={props.save}
+              />
+            </Row>
+            <Row
+              title={t("onboarding.background.trayInterval")}
+              hint={t("onboarding.background.trayIntervalHint")}
+            >
+              <BackgroundIntervalSelect
+                away="tray"
+                settings={s()}
+                label={t("onboarding.background.trayInterval")}
+                save={props.save}
               />
             </Row>
             <p class="onboarding-note">

@@ -442,6 +442,10 @@ export interface SettingsView {
   /** The onboarding version last completed or skipped; 0 before the first. */
   onboarding: number;
   closeToTray: boolean;
+  /** How often to sample while the window is minimized, ms (`BACKGROUND_INTERVALS`). */
+  minimizedInterval: number;
+  /** How often to sample while Argus is in the tray, ms. */
+  trayInterval: number;
   /** Accelerator such as `Ctrl+Alt+Escape`, kept while the hotkey is off. */
   hotkey: string;
   hotkeyEnabled: boolean;

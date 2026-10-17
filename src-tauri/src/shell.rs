@@ -43,14 +43,54 @@ pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
         let _ = w.show();
         let _ = w.set_focus();
     }
+    came_back(app);
     crate::hotkey::retry_failed(app);
 }
 
 pub fn hide_main<R: Runtime>(w: &WebviewWindow<R>) {
+    went_away(Away::Tray);
     let _ = w.hide();
     set_webview_active(w, false);
     // The settings page cannot end a hotkey recording it can no longer see.
     crate::hotkey::resume_if_suspended(w.app_handle());
+}
+
+/// How the window was out of sight, which sets the sampling cadence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Away {
+    Minimized,
+    /// Hidden in the tray, or started there.
+    Tray,
+}
+
+/// Since when, and how, the window is out of sight. Whatever brings it back
+/// reports it once (`argus-restored`); hiding a minimized window counts as
+/// the tray from then on.
+static AWAY: std::sync::Mutex<Option<(Away, std::time::Instant)>> = std::sync::Mutex::new(None);
+
+pub fn went_away(how: Away) {
+    let mut away = AWAY.lock().unwrap();
+    match *away {
+        None => *away = Some((how, std::time::Instant::now())),
+        Some((_, since)) if how == Away::Tray => *away = Some((Away::Tray, since)),
+        Some(_) => {}
+    }
+}
+
+/// Tells the page the window is back, how it was away and for how long, so it
+/// can say the refresh rate was lower meanwhile.
+pub fn came_back<R: Runtime>(app: &AppHandle<R>) {
+    #[derive(Clone, serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Restored {
+        from: Away,
+        away_ms: u64,
+    }
+    if let Some((from, since)) = AWAY.lock().unwrap().take() {
+        let away_ms = since.elapsed().as_millis() as u64;
+        let _ = app.emit("argus-restored", Restored { from, away_ms });
+    }
 }
 
 /// Hides the window if it is the one in front; otherwise brings it forward.

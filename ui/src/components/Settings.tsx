@@ -17,6 +17,12 @@ import {
 } from "solid-js";
 import { Portal } from "solid-js/web";
 import { copyText, PRIORITY_LABEL } from "../lib/actions";
+import {
+  type Away,
+  BACKGROUND_INTERVALS,
+  BACKGROUND_SETTING,
+  confirmBackgroundInterval,
+} from "../lib/background";
 import { fmtCache, netUnit, setNetUnit } from "../lib/format";
 import {
   type ChordKey,
@@ -54,10 +60,12 @@ import {
   appInfo,
   changeInterval,
   focusRule,
+  goToSetting,
   INTERVALS,
   intervalMs,
   setFocusRule,
-  setPage,
+  setSettingsTarget,
+  settingsTarget,
   snapshot,
 } from "../lib/store";
 import type {
@@ -88,6 +96,7 @@ import {
   HistoryIcon,
   InfoIcon,
   KeyboardIcon,
+  MinimizeIcon,
   NavSideIcon,
   NavTopIcon,
   PowerIcon,
@@ -121,13 +130,9 @@ const SECTIONS = [
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
-/** A section to bring into view when the page opens. */
-const [pendingSection, setPendingSection] = createSignal<SectionId | null>(null);
-
-/** Opens the settings page at a section (from another page). */
-export function openSettings(section: SectionId) {
-  setPendingSection(section);
-  setPage("settings");
+/** Opens the settings page at a section (from another page), pointing out one setting if given. */
+export function openSettings(section: SectionId, item?: string) {
+  goToSetting(section, item);
 }
 
 /** The feedback group (Settings > About; the invitation link is in commands.rs). */
@@ -1039,6 +1044,64 @@ function UpdateSettings(props: {
   );
 }
 
+/**
+ * How often to sample while minimized, or while in the tray (settings and
+ * onboarding); under 5 s only after a warning. Declining leaves the choice
+ * as it was.
+ */
+export function BackgroundIntervalSelect(props: {
+  away: Away;
+  settings: SettingsView;
+  label: string;
+  save: (change: Promise<SettingsView>) => Promise<unknown>;
+}) {
+  const value = () =>
+    props.away === "minimized" ? props.settings.minimizedInterval : props.settings.trayInterval;
+  const choose = async (ms: number) => {
+    if (ms === value() || !(await confirmBackgroundInterval(props.away, ms))) return;
+    await props.save(
+      api.setBackgroundIntervals(
+        props.away === "minimized" ? ms : props.settings.minimizedInterval,
+        props.away === "tray" ? ms : props.settings.trayInterval,
+      ),
+    );
+  };
+  return (
+    <Select
+      class="tnum"
+      label={props.label}
+      value={value()}
+      options={BACKGROUND_INTERVALS.map((ms) => ({
+        value: ms,
+        label: t("shell.interval.option", { seconds: ms / 1000 }),
+      }))}
+      onChange={(ms) => void choose(ms)}
+    />
+  );
+}
+
+function BackgroundInterval(props: {
+  away: Away;
+  settings: SettingsView;
+  apply: (change: Promise<SettingsView>) => Promise<boolean>;
+}) {
+  return (
+    <Setting
+      id={`setting-${BACKGROUND_SETTING[props.away]}`}
+      icon={props.away === "minimized" ? <MinimizeIcon size={20} /> : <TrayIcon size={20} />}
+      title={t(`settings.data.${props.away}.title`)}
+      desc={t(`settings.data.${props.away}.desc`)}
+    >
+      <BackgroundIntervalSelect
+        away={props.away}
+        settings={props.settings}
+        label={t(`settings.data.${props.away}.title`)}
+        save={props.apply}
+      />
+    </Setting>
+  );
+}
+
 /** The size of the saved history and its oldest record, once counted. */
 function usageText(usage: HistoryUsage | undefined): string {
   if (!usage) return t("settings.data.history.counting");
@@ -1764,12 +1827,26 @@ export default function SettingsPage() {
     }
     onCleanup(() => cancelAnimationFrame(frame));
   });
-  // Arriving from another page at a given section.
+  // Arriving from elsewhere at a given section, perhaps to point out one
+  // setting there: it comes to the middle, rings once in the accent and
+  // takes the focus.
   createEffect(() => {
-    const id = pendingSection();
-    if (!id || !settings()) return;
-    setPendingSection(null);
-    queueMicrotask(() => jump(id, false));
+    const target = settingsTarget();
+    if (!target || !settings()) return;
+    setSettingsTarget(null);
+    const section = SECTIONS.find((s) => s.id === target.section)?.id;
+    if (!section) return;
+    queueMicrotask(() => {
+      jump(section, false);
+      const el = target.item ? document.getElementById(`setting-${target.item}`) : null;
+      if (!el) return;
+      el.scrollIntoView({ block: "center" });
+      el.classList.remove("located");
+      void el.offsetWidth;
+      el.classList.add("located");
+      setTimeout(() => el.classList.remove("located"), 2000);
+      el.querySelector<HTMLElement>(".setting-control button")?.focus({ preventScroll: true });
+    });
   });
 
   /** Shows the new settings, or on failure the `failure` message with the error. */
@@ -1945,6 +2022,16 @@ export default function SettingsPage() {
                       onChange={changeInterval}
                     />
                   </Setting>
+                  <BackgroundInterval
+                    away="minimized"
+                    settings={s()}
+                    apply={(change) => apply(change, "settings.data.background.error")}
+                  />
+                  <BackgroundInterval
+                    away="tray"
+                    settings={s()}
+                    apply={(change) => apply(change, "settings.data.background.error")}
+                  />
                   <Setting
                     icon={<TransferIcon size={20} />}
                     title={t("settings.data.netUnit.title")}

@@ -10,6 +10,7 @@
 | `src/App.tsx` | 外壳：页面切换与过渡、全局键盘快捷键、文件拖放 |
 | `src/components/` | 页面：`ProcessTable`、`Performance`、`ServicesPage`、`StartupPage`、`ConnectionsPage`、`HistoryPage`、`Settings`。外壳与通用组件：`Toolbar`（兼作标题栏：左侧是 Argus 的图标与名称和页面的视图与筛选控件，中间是页面的搜索框，右侧是对所选项目的操作、刷新与暂停等，空白处可拖动窗口）、`Nav`（页面导航：左侧导航栏，可收起为仅显示图标；或工具栏下方的一行标签）、`Caption`（最小化、最大化、关闭按钮）、`Select`（下拉框，取代原生 `<select>`）、`Vitals`（概况带）、`StatusBar`、`DetailsPanel`、`DataTable`（虚拟化表格）、`Trace`（实时曲线）、`Overlays`（右键菜单及一级子菜单、确认框、提示，提示可带一个操作按钮）、`FileLockDialog`、`Onboarding`（首次启动引导）、`UpdateDialog`（更新对话框：待安装的版本与当前版本、大小与签名、此后各版本的更新内容；或当前版本的更新内容，取自构建时打包的 `CHANGELOG.md`；并在窗口可见时为每个版本提示一次） |
 | `src/lib/updates.ts` | 更新状态（宿主 `update-status` 事件）、标题栏更新按钮显示的版本与“此版本不再提醒”、更新对话框的打开状态、安装前记下原版本供更新后显示变化 |
+| `src/lib/background.ts` | 最小化与后台常驻时的刷新间隔：可选的几档、短于 5 秒时的确认，以及窗口回到前台（`argus-restored`）时提示期间的刷新间隔，两种提示的“不再提醒”分开保存 |
 | `src/lib/release-notes.ts` | 更新内容：拆分 `CHANGELOG.md` 条目、按语义化版本筛选两版本之间的条目、把条目解析为段落与分类列表（去掉提交范围和提交链接）；不依赖界面，由 `ui/tests` 中的测试直接运行 |
 | `src/lib/store.ts` | 应用状态：实时快照、滚动历史（每个进程一份，按应用分组另存合计）、视图偏好 |
 | `src/lib/ipc.ts` | 与宿主通信 |

@@ -509,6 +509,8 @@ const mockSettings: SettingsView = {
   locale: resolve(language),
   theme: "system",
   closeToTray: true,
+  minimizedInterval: 5000,
+  trayInterval: 5000,
   hotkey: "Ctrl+Alt+Escape",
   hotkeyEnabled: true,
   rules: [],

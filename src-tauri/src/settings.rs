@@ -4,12 +4,17 @@
 
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use argus_core::i18n::Locale;
 use argus_core::rules::ProcessRule;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_HOTKEY: &str = "Ctrl+Alt+Escape";
+/// The cadences on offer while minimized or in the tray, ms (Settings and the
+/// onboarding offer the same list).
+pub const BACKGROUND_INTERVALS: [u64; 6] = [500, 1000, 2000, 5000, 10_000, 30_000];
+pub const DEFAULT_BACKGROUND_INTERVAL: u64 = 5000;
 
 /// The UI language: a locale, or the Windows display language. Stored as the
 /// tag; one this version does not know (from a newer Argus) reads as `System`.
@@ -109,6 +114,11 @@ pub struct Settings {
     pub onboarding: u32,
     /// Closing the window keeps Argus running in the tray.
     pub close_to_tray: bool,
+    /// How often to sample while the window is minimized, ms; one of
+    /// `BACKGROUND_INTERVALS`.
+    pub minimized_interval: u64,
+    /// How often to sample while Argus is in the tray, ms.
+    pub tray_interval: u64,
     /// Global shortcut that shows/hides the window, e.g. `Ctrl+Alt+Escape`
     /// (see hotkey.rs); empty disables it.
     #[serde(deserialize_with = "lenient_hotkey")]
@@ -136,6 +146,8 @@ impl Default for Settings {
             theme: Theme::default(),
             onboarding: 0,
             close_to_tray: true,
+            minimized_interval: DEFAULT_BACKGROUND_INTERVAL,
+            tray_interval: DEFAULT_BACKGROUND_INTERVAL,
             hotkey: DEFAULT_HOTKEY.into(),
             hotkey_enabled: true,
             rules: Vec::new(),
@@ -157,6 +169,20 @@ impl Settings {
         if self.hotkey.is_empty() {
             self.hotkey = DEFAULT_HOTKEY.into();
             self.hotkey_enabled = false;
+        }
+        // A hand edit to an interval on offer nowhere.
+        for ms in [&mut self.minimized_interval, &mut self.tray_interval] {
+            if !BACKGROUND_INTERVALS.contains(ms) {
+                *ms = DEFAULT_BACKGROUND_INTERVAL;
+            }
+        }
+    }
+
+    /// The sampler's cadences while minimized and while in the tray.
+    pub fn background_intervals(&self) -> crate::sampler::Control {
+        crate::sampler::Control::SetBackgroundIntervals {
+            minimized: Duration::from_millis(self.minimized_interval),
+            tray: Duration::from_millis(self.tray_interval),
         }
     }
 }
@@ -261,5 +287,20 @@ mod tests {
             serde_json::from_str(r#"{"hotkey": 5, "closeToTray": false}"#).unwrap();
         assert_eq!(settings.hotkey, DEFAULT_HOTKEY);
         assert!(!settings.close_to_tray);
+    }
+
+    #[test]
+    fn background_intervals_default_to_5_s_and_drop_odd_values() {
+        // Settings from before these existed.
+        let mut old: Settings = serde_json::from_str(r#"{"closeToTray": true}"#).unwrap();
+        old.migrate();
+        assert_eq!((old.minimized_interval, old.tray_interval), (5000, 5000));
+        let mut edited: Settings =
+            serde_json::from_str(r#"{"minimizedInterval": 3000, "trayInterval": 30000}"#).unwrap();
+        edited.migrate();
+        assert_eq!(
+            (edited.minimized_interval, edited.tray_interval),
+            (5000, 30_000)
+        );
     }
 }

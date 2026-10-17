@@ -20,7 +20,7 @@ use tauri::{Emitter, Manager};
 
 use tauri_plugin_autostart::MacosLauncher;
 
-use crate::sampler::{Control, Sampler};
+use crate::sampler::{Control, Sampler, WindowState};
 use crate::settings::SettingsStore;
 
 static WAS_MINIMIZED: AtomicBool = AtomicBool::new(false);
@@ -229,11 +229,10 @@ pub fn run() {
                 settings.get().history.then(|| history.clone()),
             ));
             app.manage(settings);
-            app.state::<AppState>()
-                .sampler
-                .send(Control::SetKernelSensors(
-                    app.state::<SettingsStore>().get().kernel_sensors,
-                ));
+            let saved = app.state::<SettingsStore>().get();
+            let sampler = &app.state::<AppState>().sampler;
+            sampler.send(Control::SetKernelSensors(saved.kernel_sensors));
+            sampler.send(saved.background_intervals());
             app.manage(HistoryDir(history));
             updater::init(app.handle());
             // An update started while Argus was in the tray relaunches it there.
@@ -282,18 +281,26 @@ pub fn run() {
                     use windows::Win32::Foundation::HWND;
                     use windows::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
                     let hwnd = HWND(hwnd as *mut _);
-                    IsIconic(hwnd).as_bool() || !IsWindowVisible(hwnd).as_bool()
+                    if !IsWindowVisible(hwnd).as_bool() {
+                        WindowState::Hidden
+                    } else if IsIconic(hwnd).as_bool() {
+                        WindowState::Minimized
+                    } else {
+                        WindowState::Shown
+                    }
                 };
                 app.state::<AppState>()
                     .sampler
-                    .send(Control::SetHiddenProbe(Box::new(probe)));
+                    .send(Control::SetWindowProbe(Box::new(probe)));
                 window.set_title(&shell::app_title())?;
                 shell::apply_theme(app.handle(), app.state::<SettingsStore>().get().theme);
                 shell::extend_backdrop(&window);
                 caption::install(&window, app.handle());
                 shell::guard_resize_seam(&window);
                 hotkey::init(app.handle(), &window);
-                if !start_hidden {
+                if start_hidden {
+                    shell::went_away(shell::Away::Tray);
+                } else {
                     window.show()?;
                     window.set_focus()?;
                 }
@@ -315,6 +322,11 @@ pub fn run() {
                         && let Some(w) = main()
                     {
                         shell::set_webview_active(&w, !minimized);
+                        if minimized {
+                            shell::went_away(shell::Away::Minimized);
+                        } else {
+                            shell::came_back(window.app_handle());
+                        }
                     }
                 }
                 tauri::WindowEvent::CloseRequested { api, .. }
@@ -352,6 +364,7 @@ pub fn run() {
             commands::manage_task_manager,
             commands::task_manager_ready,
             commands::set_close_to_tray,
+            commands::set_background_intervals,
             commands::set_hotkey,
             commands::set_hotkey_enabled,
             commands::suspend_hotkey,

@@ -57,14 +57,19 @@ export function confirm(req: Omit<ConfirmRequest, "resolve">): Promise<boolean> 
 
 // ---- Toasts ------------------------------------------------------------------
 
+export interface ToastAction {
+  label: string;
+  run: () => unknown;
+}
+
 export interface Toast {
   id: number;
   /** `info` draws the accent and, unless given one, the info icon. */
   kind: "error" | "success" | "info";
   text: string;
   icon?: () => JSX.Element;
-  /** One button beside the text; using it also closes the toast. */
-  action?: { label: string; run: () => unknown };
+  /** Buttons under the text; using one also closes the toast. */
+  actions?: ToastAction[];
 }
 export const [toasts, setToasts] = createSignal<Toast[]>([]);
 let toastId = 0;
@@ -74,7 +79,7 @@ export function toast(
   kind: Toast["kind"],
   text: string,
   ms = 5000,
-  extra: Pick<Toast, "icon" | "action"> = {},
+  extra: Pick<Toast, "icon" | "actions"> = {},
 ) {
   const id = ++toastId;
   setToasts((list) => [...list.slice(-3), { id, kind, text, ...extra }]);

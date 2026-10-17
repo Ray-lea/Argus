@@ -16,7 +16,8 @@
     "fileMissing": "The file doesn't exist",
     "samplerStalled": "The sampling thread isn't responding",
     "pickFolder": "Select a folder to check",
-    "pickFile": "Select a file to check"
+    "pickFile": "Select a file to check",
+    "invalidInterval": "This refresh interval isn't supported"
   },
   "updater": {
     "devBuild": "Dev builds don't check for updates.",

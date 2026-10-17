@@ -21,7 +21,9 @@ use tauri::{Manager, State};
 use crate::caption::{self, ButtonRect};
 use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
-use crate::settings::{Language, SettingsStore, SettingsView, Theme, UpdateChannel, UpdateRoute};
+use crate::settings::{
+    BACKGROUND_INTERVALS, Language, SettingsStore, SettingsView, Theme, UpdateChannel, UpdateRoute,
+};
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
 
@@ -298,6 +300,32 @@ pub fn set_close_to_tray(app: tauri::AppHandle, value: bool) -> Result<SettingsV
     app.state::<SettingsStore>()
         .update(|s| s.close_to_tray = value)
         .map_err(|e| e.to_string())?;
+    Ok(settings_view(&app))
+}
+
+/// How often to sample while minimized and while in the tray, ms; takes
+/// effect at once.
+#[tauri::command]
+pub fn set_background_intervals(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    minimized: u64,
+    tray: u64,
+) -> Result<SettingsView, String> {
+    if ![minimized, tray]
+        .iter()
+        .all(|ms| BACKGROUND_INTERVALS.contains(ms))
+    {
+        return Err(tr!("host.invalidInterval"));
+    }
+    let saved = app
+        .state::<SettingsStore>()
+        .update(|s| {
+            s.minimized_interval = minimized;
+            s.tray_interval = tray;
+        })
+        .map_err(|e| e.to_string())?;
+    state.sampler.send(saved.background_intervals());
     Ok(settings_view(&app))
 }
 

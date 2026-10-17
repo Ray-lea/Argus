@@ -14,24 +14,40 @@ use tauri::ipc::Channel;
 
 /// Shortest window over which CPU percentages are still meaningful.
 const MIN_SAMPLE_GAP: Duration = Duration::from_millis(250);
-/// Cadence while the window is hidden or the view is paused: history and the
-/// process rules keep going, and the first frame after showing is fresh, at a
-/// fraction of the cost.
-const BACKGROUND_INTERVAL: Duration = Duration::from_secs(5);
+/// Cadence while the window is minimized or in the tray until the settings
+/// say otherwise: history and the process rules keep going, and the first
+/// frame after showing is fresh, at a fraction of the cost.
+pub const BACKGROUND_INTERVAL: Duration = Duration::from_secs(5);
+/// Cadence while the view is paused, for history and the rules.
+const PAUSED_INTERVAL: Duration = Duration::from_secs(5);
 pub const DEFAULT_INTERVAL: Duration = Duration::from_millis(1000);
 
-type Probe = Box<dyn Fn() -> bool + Send>;
+/// What the window is doing, as far as the cadence goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowState {
+    Shown,
+    Minimized,
+    /// Hidden in the tray, or not shown yet (started with --hidden).
+    Hidden,
+}
+
+type Probe = Box<dyn Fn() -> WindowState + Send>;
 type Observer = Box<dyn Fn(&Snapshot) + Send>;
 
 pub enum Control {
     Subscribe(Channel<Snapshot>),
     SetInterval(Duration),
+    /// How often to sample while minimized and while in the tray.
+    SetBackgroundIntervals {
+        minimized: Duration,
+        tray: Duration,
+    },
     SetKernelSensors(bool),
     SetPaused(bool),
     /// Take a sample now (e.g. right after ending a process, or on show).
     Refresh,
-    /// Tells whether the window is currently hidden or minimized.
-    SetHiddenProbe(Probe),
+    /// Tells what the window is currently doing.
+    SetWindowProbe(Probe),
     /// Called with every snapshot on the sampler thread (tray tooltip).
     SetObserver(Observer),
     /// Starts recording history into this folder, or stops with None.
@@ -45,13 +61,20 @@ pub struct Sampler {
     tx: Sender<Control>,
 }
 
-/// How often to sample: the chosen interval while the window is shown, and
-/// no faster than every 5 s while it is hidden, minimized or paused.
-fn cadence(background: bool, interval: Duration) -> Duration {
-    if background {
-        interval.max(BACKGROUND_INTERVAL)
-    } else {
-        interval
+/// How often to sample: the chosen interval while shown, the background ones
+/// while minimized or in the tray, and no faster than every 5 s while paused.
+fn cadence(
+    state: WindowState,
+    paused: bool,
+    interval: Duration,
+    minimized: Duration,
+    tray: Duration,
+) -> Duration {
+    match state {
+        WindowState::Hidden => tray,
+        WindowState::Minimized => minimized,
+        WindowState::Shown if paused => interval.max(PAUSED_INTERVAL),
+        WindowState::Shown => interval,
     }
 }
 
@@ -73,10 +96,12 @@ impl Sampler {
                 let mut sensors = SensorClient::spawn();
                 let mut kernel_sensors = false;
                 let mut subscriber: Option<Channel<Snapshot>> = None;
-                let mut hidden: Option<Probe> = None;
+                let mut window: Option<Probe> = None;
                 let mut observer: Option<Observer> = None;
                 let mut history: Option<HistoryRecorder> = None;
                 let mut interval = DEFAULT_INTERVAL;
+                let mut minimized = BACKGROUND_INTERVAL;
+                let mut tray = BACKGROUND_INTERVAL;
                 let mut paused = false;
                 let mut next_tick = Instant::now() + interval;
                 let mut last_sample = Instant::now();
@@ -84,7 +109,7 @@ impl Sampler {
                 loop {
                     let wait = next_tick.saturating_duration_since(Instant::now());
                     let received = rx.recv_timeout(wait);
-                    let out_of_sight = hidden.as_ref().is_some_and(|probe| probe());
+                    let state = window.as_ref().map_or(WindowState::Shown, |probe| probe());
                     let forced = match received {
                         Ok(Control::SetKernelSensors(enabled)) => {
                             kernel_sensors = enabled;
@@ -97,17 +122,28 @@ impl Sampler {
                         // A changed cadence counts from the last sample.
                         Ok(Control::SetInterval(d)) => {
                             interval = d;
-                            next_tick = last_sample + cadence(paused || out_of_sight, interval);
+                            next_tick =
+                                last_sample + cadence(state, paused, interval, minimized, tray);
+                            continue;
+                        }
+                        Ok(Control::SetBackgroundIntervals {
+                            minimized: m,
+                            tray: t,
+                        }) => {
+                            (minimized, tray) = (m, t);
+                            next_tick =
+                                last_sample + cadence(state, paused, interval, minimized, tray);
                             continue;
                         }
                         Ok(Control::SetPaused(p)) => {
                             paused = p;
-                            next_tick = last_sample + cadence(paused || out_of_sight, interval);
+                            next_tick =
+                                last_sample + cadence(state, paused, interval, minimized, tray);
                             continue;
                         }
                         Ok(Control::Refresh) => true,
-                        Ok(Control::SetHiddenProbe(probe)) => {
-                            hidden = Some(probe);
+                        Ok(Control::SetWindowProbe(probe)) => {
+                            window = Some(probe);
                             continue;
                         }
                         Ok(Control::SetObserver(f)) => {
@@ -130,11 +166,11 @@ impl Sampler {
                         Err(RecvTimeoutError::Disconnected) => return,
                     };
 
-                    // The cadence for what the window is doing now. Timed samples
+                    // The cadence of what the window is doing now. Timed samples
                     // stay on its grid (a full period from now after falling
                     // behind); skipping ticks of the shown cadence instead made
                     // a 5 s background cadence 6 s, or 10 s at a 5 s interval.
-                    let period = cadence(paused || out_of_sight, interval);
+                    let period = cadence(state, paused, interval, minimized, tray);
                     if !forced {
                         next_tick += period;
                         if next_tick < Instant::now() {
@@ -187,10 +223,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn out_of_sight_or_paused_samples_every_5_s() {
+    fn each_window_state_samples_at_its_own_cadence() {
+        let s = Duration::from_secs;
         let ms = Duration::from_millis;
-        assert_eq!(cadence(false, ms(500)), ms(500));
-        assert_eq!(cadence(true, ms(500)), ms(5000));
-        assert_eq!(cadence(true, ms(5000)), ms(5000));
+        let pick = |state, paused| cadence(state, paused, ms(500), s(10), s(30));
+        assert_eq!(pick(WindowState::Shown, false), ms(500));
+        assert_eq!(pick(WindowState::Minimized, false), s(10));
+        assert_eq!(pick(WindowState::Hidden, false), s(30));
+        // Paused: history and rules every 5 s, or the interval if longer.
+        assert_eq!(pick(WindowState::Shown, true), s(5));
+        assert_eq!(cadence(WindowState::Shown, true, s(10), s(5), s(5)), s(10));
+        // Out of sight, the background cadences apply even while paused.
+        assert_eq!(pick(WindowState::Minimized, true), s(10));
     }
 }
