@@ -14,6 +14,7 @@ import {
 } from "solid-js";
 import { copyText } from "../lib/actions";
 import { fmtCpu, fmtGB, fmtMem, fmtNet, fmtRate, netUnit } from "../lib/format";
+import { joins, nearest, pointAt } from "../lib/history-gaps";
 import { localized, rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { persisted } from "../lib/prefs";
@@ -234,27 +235,18 @@ const tickLabel = (ts: number) => {
   return d.getHours() === 0 && d.getMinutes() === 0 ? dayFmt().format(d) : timeFmt().format(d);
 };
 
-/** Index of the point closest to `ts` (points are in time order); -1 when there are none. */
-function nearest(points: HistoryPoint[], ts: number): number {
-  if (points.length === 0) return -1;
-  let lo = 0;
-  let hi = points.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (points[mid].ts < ts) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo > 0 && ts - points[lo - 1].ts < points[lo].ts - ts ? lo - 1 : lo;
-}
-
 // ---- Charts -----------------------------------------------------------------------
 
 interface View {
   from: number;
   to: number;
-  /** Expected spacing of the points; much wider jumps are gaps (Argus was not running). */
+  /** Spacing of the query's buckets; much wider jumps are gaps (`joins`). */
   step: number;
   points: HistoryPoint[];
+  /** The points' times. */
+  ts: number[];
+  /** Whether the line joins each point to the next (`joins`). */
+  joined: boolean[];
 }
 
 function HistoryChart(props: {
@@ -313,11 +305,10 @@ function HistoryChart(props: {
 
     // Runs of points without gaps.
     const runs: HistoryPoint[][] = [];
-    for (const p of view.points) {
-      const run = runs[runs.length - 1];
-      if (run && p.ts - run[run.length - 1].ts <= view.step * 2.5) run.push(p);
+    view.points.forEach((p, i) => {
+      if (i > 0 && view.joined[i - 1]) runs[runs.length - 1].push(p);
       else runs.push([p]);
-    }
+    });
     const trace = (run: HistoryPoint[], value: (p: HistoryPoint) => number) => {
       const path = new Path2D();
       path.moveTo(x(run[0].ts), yd(value(run[0])));
@@ -451,17 +442,20 @@ export default function HistoryPage() {
   });
   const [series] = createResource(query, async (q): Promise<View> => {
     const points = await api.historySeries(q.from, q.to, q.buckets).catch(() => []);
-    return { from: q.from, to: q.to, step: Math.max(FRAME, (q.to - q.from) / q.buckets), points };
+    const step = Math.max(FRAME, (q.to - q.from) / q.buckets);
+    const ts = points.map((p) => p.ts);
+    return { from: q.from, to: q.to, step, points, ts, joined: joins(ts, step) };
   });
   // Drawn with the window it was queried for, so a refresh never shows old points on a new axis.
-  const view = (): View => series.latest ?? { from: now() - range().ms, to: now(), step: FRAME, points: [] };
+  const view = (): View =>
+    series.latest ?? { from: now() - range().ms, to: now(), step: FRAME, points: [], ts: [], joined: [] };
   const tickList = createMemo(() => ticks(view().from, view().to, range().tick));
 
   /** The point drawn at `ts`, unless `ts` falls in a gap. */
-  const pointAt = (ts: number) => {
+  const shownAt = (ts: number) => {
     const v = view();
-    const p = v.points[nearest(v.points, ts)];
-    return p && Math.abs(p.ts - ts) <= v.step * 1.5 ? p : undefined;
+    const i = pointAt(v.ts, v.joined, v.step, ts);
+    return i === undefined ? undefined : v.points[i];
   };
   /** Where a cursor at `ts` goes across the plot, if it is in view. */
   const markAt = (ts: number | null) => {
@@ -481,23 +475,23 @@ export default function HistoryPage() {
     const v = view();
     const ts = v.from + f * (v.to - v.from);
     // Whole milliseconds: the host takes timestamps as integers.
-    return pointAt(ts)?.ts ?? Math.round(ts);
+    return shownAt(ts)?.ts ?? Math.round(ts);
   };
   /** What the labels show: the hovered moment, else the picked one, else the newest. */
   const readTs = () => hover() ?? pinned();
   const readout = () => {
     const ts = readTs();
-    return ts === null ? view().points.at(-1) : pointAt(ts);
+    return ts === null ? view().points.at(-1) : shownAt(ts);
   };
   const cursor = () => {
     const ts = readTs();
-    return (ts === null ? undefined : pointAt(ts)) ?? null;
+    return (ts === null ? undefined : shownAt(ts)) ?? null;
   };
 
   const move = (by: number) => {
-    const pts = view().points;
+    const { points: pts, ts } = view();
     if (pts.length === 0) return;
-    const at = nearest(pts, pinned() ?? pts[pts.length - 1].ts);
+    const at = nearest(ts, pinned() ?? pts[pts.length - 1].ts);
     setPinned(pts[Math.min(pts.length - 1, Math.max(0, at + by))].ts);
   };
   const onKey = (e: KeyboardEvent) => {

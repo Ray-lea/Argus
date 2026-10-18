@@ -23,7 +23,7 @@
     "name": "name"
   },
   "column": {
-    "cpuTitle": "Average over these 5 seconds",
+    "cpuTitle": "Average over the recording interval (usually 5 seconds)",
     "memTitle": "Private working set"
   },
   "systemHistory": "System history",
@@ -31,8 +31,8 @@
   "empty": {
     "off": "History recording is off",
     "none": "No records in this period",
-    "offHint": "Once turned on in Settings, Argus records every 5 seconds.",
-    "hint": "Argus records every 5 seconds while running and keeps 7 days."
+    "offHint": "Once turned on in Settings, Argus records every 5 seconds, or at the minimized or tray refresh rate when that is slower.",
+    "hint": "Argus records every 5 seconds while running, or at the minimized or tray refresh rate when that is slower, and keeps 7 days."
   },
   "time": "Time",
   "busiest": "Busiest processes",
@@ -44,6 +44,6 @@
   "tableLabel": "Recorded processes",
   "noRecordAt": "No records at this moment",
   "earliest": "Earliest record",
-  "note": "Records the top processes by CPU, memory, I/O, GPU and network every 5 seconds and keeps them for 7 days.",
+  "note": "Records the top processes by CPU, memory, I/O, GPU and network every 5 seconds (or at the minimized or tray refresh rate when that is slower) and keeps them for 7 days.",
   "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>"
 }
