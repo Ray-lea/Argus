@@ -29,7 +29,7 @@
 - 存盘的安装包、清单里的更新内容（`argus.releaseNotes`）都用 `verify_signed` 验签，规则与插件相同（签名必须带 `version:`，且与宣称的版本一致）。更新内容验签失败时连同旁边未签名的 `notes` 一起丢弃。失败原因用枚举区分，不要比较本地化后的文案。
 - 已有可安装的更新时，后台检查保持“已就绪”，只在发现更新的版本时下载替换；下载失败时恢复原来的状态。
 - 测试用的签名向量由 scratchpad 里临时生成的密钥签出（`tauri signer generate`、`signer sign --app-version`），不要用发布密钥。
-- 开发版和缺少公钥的构建不检查更新。完整的检查、下载、安装只能在两个已发布的版本之间验证；本地只能测签名与清单（见 `docs/development/release.md`）。安装程序的安装后钩子（`installer-hooks.nsh`）以管理员身份运行 `argus.exe --argus-service-refresh` 更新特权服务，需要在虚拟机里装旧版本、启用特权服务后经应用内更新验证。
+- 开发版和缺少公钥的构建不检查更新。完整的检查、下载、安装只能在两个已发布的版本之间验证；本地只能测签名与清单（见 `docs/development/release.md`）。安装程序的安装后钩子（`installer-hooks.nsh`）以管理员身份运行 `argus.exe --argus-service-refresh` 更新特权服务（启用了任务管理器替换时改为更新替换的界面副本、启动器和恢复程序，不动服务），需要在虚拟机里装旧版本、启用特权服务（及替换）后经应用内更新验证。钩子本身的分支、引号和两种语言的文字可以按根 AGENTS.md 卸载钩子的办法，用 makensis 编一个把服务键换成 HKCU 临时键、`$INSTDIR` 换成 scratchpad 目录并放桩程序的测试包，以普通权限运行。
 
 ## 安装程序（`installer-template.nsi`、`installer-ui.nsh`）
 

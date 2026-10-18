@@ -6,6 +6,12 @@ pub const UNSAFE_PATH: u32 = 0x2000_0001;
 pub const OTHER_OWNER: u32 = 0x2000_0002;
 pub const INCOMPATIBLE: u32 = 0x2000_0003;
 pub const FOREIGN_SERVICE: u32 = 0x2000_0004;
+/// The task manager replacement held up a service update or removal: Argus's
+/// own value is not restored yet.
+pub const TASK_MANAGER_ACTIVE: u32 = 0x2000_0005;
+/// The same, because another program's configuration holds taskmgr.exe's
+/// entry and Argus does not overwrite it.
+pub const TASK_MANAGER_CONFLICT: u32 = 0x2000_0006;
 
 pub fn message(code: u32) -> String {
     match code {
@@ -13,7 +19,8 @@ pub fn message(code: u32) -> String {
         OTHER_OWNER => tr!("service.otherOwner"),
         INCOMPATIBLE => tr!("service.incompatible"),
         FOREIGN_SERVICE => tr!("service.foreignService"),
-        0x2000_0005 => tr!("service.taskManagerActive"),
+        TASK_MANAGER_ACTIVE => tr!("service.taskManagerActive"),
+        TASK_MANAGER_CONFLICT => tr!("service.taskManagerConflict"),
         1223 => tr!("service.canceled"),
         1460 => tr!("service.timeout"),
         _ => tr!(

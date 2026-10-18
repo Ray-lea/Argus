@@ -25,7 +25,9 @@ use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 use windows::core::{PCWSTR, PWSTR};
 
 use crate::security;
-use crate::util::{FOREIGN_SERVICE, Handle, OTHER_OWNER, Result, io, message, wide, win};
+use crate::util::{
+    FOREIGN_SERVICE, Handle, OTHER_OWNER, Result, TASK_MANAGER_ACTIVE, io, message, wide, win,
+};
 
 static MANAGING: AtomicBool = AtomicBool::new(false);
 const OWNER_FILE: &str = "owner.sid";
@@ -479,7 +481,7 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
                 return Err(1060);
             }
             // Never retire service/recovery files while IFEO still owns them.
-            crate::taskmgr::restore_for_maintenance(&dir).map_err(|_| 0x2000_0005u32)?;
+            restore_task_manager(&dir)?;
             install_or_update(&manager, existing.as_ref(), &dir, sid)
         }
         "start" => {
@@ -491,7 +493,7 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
             start(s)
         }
         "uninstall" => {
-            crate::taskmgr::restore_for_maintenance(&dir).map_err(|_| 0x2000_0005u32)?;
+            restore_task_manager(&dir)?;
             let s = existing.as_ref().ok_or(1060u32)?;
             let exe = binary(s, &dir)?;
             stop(s)?;
@@ -516,12 +518,23 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
     result
 }
 
+/// Restores the system task manager before the service changes, then deletes
+/// the interface copies nothing names any more (older versions left them).
+/// The caller holds install.lock.
+fn restore_task_manager(dir: &Path) -> Result<()> {
+    crate::taskmgr::restore_for_maintenance(dir)
+        .map_err(|_| crate::taskmgr::maintenance_error(dir))?;
+    crate::taskmgr::sweep(dir);
+    Ok(())
+}
+
 /// Brings an installed service to this executable, for the installer: it
 /// already runs elevated after replacing argus.exe, so an update asks for
 /// administrator rights once. The service stays with the account that
-/// installed it. While the task manager replacement may be on nothing
-/// changes, because updating turns it off; Argus offers the update when it
-/// starts instead.
+/// installed it. While the task manager replacement may be on the service
+/// stays as it is, because updating turns the replacement off; an enabled
+/// replacement's own files follow this version instead, and Argus offers the
+/// service update when it starts.
 pub(crate) fn refresh() -> Result<()> {
     if !argus_core::privilege::is_elevated() {
         return Err(5);
@@ -534,7 +547,7 @@ pub(crate) fn refresh() -> Result<()> {
         let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
         let _dir = security::protect_directory(&dir)?;
         if crate::taskmgr::may_be_on(&dir) {
-            return Ok(());
+            return crate::taskmgr::follow_update(&dir).map_err(|_| TASK_MANAGER_ACTIVE);
         }
         owner(&dir)?
     };

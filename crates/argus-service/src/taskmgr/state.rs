@@ -132,6 +132,18 @@ pub fn restore(store: &mut impl Store, journal: &mut Journal) -> Result<()> {
     store.save(journal)
 }
 
+/// Undoes what Argus wrote, before the service is updated or removed. After a
+/// finished restore nothing in the entry is Argus's: a value written since
+/// belongs to someone else, stays, and does not hold up the service.
+pub fn settle(store: &mut impl Store, journal: &mut Journal) -> Result<()> {
+    if journal.phase == Phase::Restored
+        && store.observe()?.debugger.as_ref() != Some(&journal.replacement)
+    {
+        return Ok(());
+    }
+    restore(store, journal)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,6 +264,47 @@ mod tests {
         };
         assert!(activate(&mut s).is_err());
         assert_eq!(s.writes, 0);
+    }
+    #[test]
+    fn a_finished_restore_leaves_later_values_to_their_owner() {
+        let foreign = [
+            Observation {
+                debugger: Some(Value::string("procexp64.exe")),
+                filtered: false,
+            },
+            Observation {
+                debugger: None,
+                filtered: true,
+            },
+            Observation::default(),
+        ];
+        for live in foreign {
+            let mut s = Memory::default();
+            let mut j = activate(&mut s).unwrap();
+            restore(&mut s, &mut j).unwrap();
+            s.live = live.clone();
+            let writes = s.writes;
+            let mut loaded = s.disk.clone().unwrap();
+            settle(&mut s, &mut loaded).unwrap();
+            assert_eq!((s.live, s.writes), (live, writes));
+            assert_eq!(s.disk.unwrap().phase, Phase::Restored);
+        }
+        // Argus's value back under a finished record is still Argus's to undo.
+        let mut s = Memory::default();
+        let mut j = activate(&mut s).unwrap();
+        restore(&mut s, &mut j).unwrap();
+        s.live.debugger = Some(j.replacement.clone());
+        settle(&mut s, &mut j).unwrap();
+        assert_eq!(s.live, Observation::default());
+        // A record that is not finished keeps refusing someone else's value.
+        for phase in [Phase::Prepared, Phase::Active, Phase::Restoring] {
+            let mut s = Memory::default();
+            let mut j = activate(&mut s).unwrap();
+            j.phase = phase;
+            s.live.debugger = Some(Value::string("procexp64.exe"));
+            assert!(settle(&mut s, &mut j).is_err());
+            assert_eq!(s.live.debugger, Some(Value::string("procexp64.exe")));
+        }
     }
     #[test]
     fn failed_restore_preserves_files_and_ownership() {

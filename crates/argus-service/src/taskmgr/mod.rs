@@ -13,10 +13,11 @@ use crate::{
 use argus_core::i18n::{Locale, text_in};
 use argus_core::tr;
 use serde::{Deserialize, Serialize};
-use state::{Phase, Result, Store, Value};
+use state::{Journal, Observation, Phase, Result, Store, Value};
 use std::fs::{self, OpenOptions};
 use std::os::windows::fs::OpenOptionsExt;
 use std::path::Path;
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
 use windows::Win32::System::Com::CoCreateGuid;
@@ -29,8 +30,13 @@ use windows::core::PCWSTR;
 
 pub const LAUNCHER: &str = "argus-taskmgr-launcher.exe";
 pub const RECOVER: &str = "argus-taskmgr-recover.exe";
+const RECOVERY_TEXT: &str = "taskmgr-recovery.txt";
 const MANAGE: &str = "--argus-taskmgr-manage";
 pub type Assets = (&'static [u8], &'static [u8]);
+/// The launcher and recovery program this build carries, kept by `run_mode`
+/// for the installer's refresh of an enabled replacement (`follow_update`).
+/// None in a development build.
+static ASSETS: OnceLock<Assets> = OnceLock::new();
 
 pub fn id() -> Result<String> {
     Ok(format!(
@@ -84,6 +90,10 @@ pub struct Status {
     /// A self-test left its entry or files behind.
     #[serde(skip)]
     leftovers: bool,
+    /// The version of the interface copy an enabled replacement starts, when
+    /// it is older than this build.
+    #[serde(skip)]
+    older: Option<String>,
 }
 
 impl Status {
@@ -92,6 +102,9 @@ impl Status {
         let mut text = self.state.to_string();
         if let Some(found) = &self.found {
             text += &format!(" ({found})");
+        }
+        if let Some(version) = &self.older {
+            text += &format!("; the interface copy is version {version}");
         }
         if self.leftovers {
             text += "; self-test leftovers present";
@@ -375,6 +388,7 @@ pub fn status() -> Result<Status> {
         detail: tr!("taskManager.status.native"),
         found: None,
         leftovers: machine.dir.join(probe::RECORD).exists(),
+        older: None,
     };
     let ours = replacement(&machine.dir);
     if !machine.dir.exists() {
@@ -399,7 +413,11 @@ pub fn status() -> Result<Status> {
             };
             status.can_restore = authorized;
             status.detail = if status.state == "enabled" {
-                tr!("taskManager.status.enabled")
+                status.older = older_interface(&machine.dir, &journal.image);
+                match &status.older {
+                    Some(version) => tr!("taskManager.status.enabledOlder", version = version),
+                    None => tr!("taskManager.status.enabled"),
+                }
             } else {
                 tr!("taskManager.status.interrupted")
             };
@@ -428,11 +446,80 @@ pub fn status() -> Result<Status> {
     Ok(status)
 }
 
+/// The version of the interface copy an enabled replacement starts, when it
+/// is older than this build: an update did not reach it (a portable Argus
+/// replaced by hand, or an installer that could not refresh the replacement).
+fn older_interface(dir: &Path, image: &str) -> Option<String> {
+    if !valid_image(image) {
+        return None;
+    }
+    let copy = image_version(&dir.join(image))?;
+    older(copy, crate::VERSION).then(|| format!("{}.{}.{}", copy.0, copy.1, copy.2))
+}
+
+/// Whether `copy` comes before `current` (a version string such as 0.2.0 or
+/// 0.2.0-beta.1); the pre-release part does not count.
+fn older(copy: (u32, u32, u32), current: &str) -> bool {
+    let mut parts = current
+        .split(['-', '+'])
+        .next()
+        .unwrap_or_default()
+        .split('.')
+        .map(|part| part.parse::<u32>().ok());
+    match (parts.next(), parts.next(), parts.next(), parts.next()) {
+        (Some(Some(major)), Some(Some(minor)), Some(Some(patch)), None) => {
+            copy < (major, minor, patch)
+        }
+        _ => false,
+    }
+}
+
+/// Major, minor and patch from an executable's version resource.
+fn image_version(path: &Path) -> Option<(u32, u32, u32)> {
+    use windows::Win32::Storage::FileSystem::{
+        GetFileVersionInfoSizeW, GetFileVersionInfoW, VS_FIXEDFILEINFO, VerQueryValueW,
+    };
+    let path = wide(&path.to_string_lossy());
+    let size = unsafe { GetFileVersionInfoSizeW(PCWSTR(path.as_ptr()), None) };
+    if !(52..=1024 * 1024).contains(&size) {
+        return None;
+    }
+    let mut data = vec![0u64; (size as usize).div_ceil(8)];
+    unsafe { GetFileVersionInfoW(PCWSTR(path.as_ptr()), None, size, data.as_mut_ptr().cast()) }
+        .ok()?;
+    let mut pointer = std::ptr::null_mut();
+    let mut len = 0;
+    let start = data.as_ptr() as usize;
+    if !unsafe {
+        VerQueryValueW(
+            data.as_ptr().cast(),
+            windows::core::w!(r"\"),
+            &mut pointer,
+            &mut len,
+        )
+    }
+    .as_bool()
+        || (len as usize) < size_of::<VS_FIXEDFILEINFO>()
+        || (pointer as usize) < start
+        || (pointer as usize)
+            .checked_add(size_of::<VS_FIXEDFILEINFO>())
+            .is_none_or(|end| end > start + size as usize)
+    {
+        return None;
+    }
+    let info = unsafe { std::ptr::read_unaligned(pointer.cast::<VS_FIXEDFILEINFO>()) };
+    (info.dwSignature == 0xfeef04bd).then_some((
+        info.dwFileVersionMS >> 16,
+        info.dwFileVersionMS & 0xffff,
+        info.dwFileVersionLS >> 16,
+    ))
+}
+
 /// The service installer already holds install.lock when calling this.
 pub(crate) fn restore_for_maintenance(dir: &Path) -> Result<()> {
     let mut machine = registry::Machine::new(dir.into());
     match machine.load()? {
-        Some(mut journal) => state::restore(&mut machine, &mut journal),
+        Some(mut journal) => state::settle(&mut machine, &mut journal),
         None if machine.observe()?.debugger.as_ref() == Some(&replacement(dir)) => {
             Err(tr!("taskManager.launcherKept"))
         }
@@ -440,14 +527,161 @@ pub(crate) fn restore_for_maintenance(dir: &Path) -> Result<()> {
     }
 }
 
+/// Why `restore_for_maintenance` held up the service: another program's
+/// configuration in taskmgr.exe's entry, which Argus leaves to that program,
+/// or a restore of Argus's own value that did not finish.
+pub(crate) fn maintenance_error(dir: &Path) -> u32 {
+    if registry::observe(registry::KEY).is_ok_and(|live| held_by_other(&live, &replacement(dir))) {
+        util::TASK_MANAGER_CONFLICT
+    } else {
+        util::TASK_MANAGER_ACTIVE
+    }
+}
+
+/// Whether the entry holds a configuration that is not Argus's.
+fn held_by_other(live: &Observation, ours: &Value) -> bool {
+    live.filtered || live.debugger.as_ref().is_some_and(|value| value != ours)
+}
+
 /// Whether the replacement may be on (or half way): an update of the service
 /// would turn it off. Unsure counts as on.
 pub(crate) fn may_be_on(dir: &Path) -> bool {
     let machine = registry::Machine::new(dir.into());
-    match (machine.load(), registry::observe(registry::KEY)) {
-        (Ok(None), Ok(live)) => live.debugger.as_ref() == Some(&replacement(dir)),
+    on_or_unsure(
+        machine.load(),
+        registry::observe(registry::KEY).map_err(String::from),
+        &replacement(dir),
+    )
+}
+
+/// A finished restore is off whatever holds the entry since: the record stays
+/// for good once written, so it alone does not say the replacement is on. An
+/// unfinished one (on, or half way) and Argus's value without one count as on.
+fn on_or_unsure(journal: Result<Option<Journal>>, live: Result<Observation>, ours: &Value) -> bool {
+    match (journal, live) {
+        (Ok(journal), Ok(live)) => {
+            journal.is_some_and(|journal| journal.phase != Phase::Restored)
+                || live.debugger.as_ref() == Some(ours)
+        }
         _ => true,
     }
+}
+
+/// What bringing an enabled replacement to a new build touches in the
+/// protected folder. `follow` keeps it apart from the order and rollback,
+/// which the tests check without the folder.
+trait Files {
+    /// Whether `name` holds exactly `bytes`.
+    fn holds(&mut self, name: &str, bytes: &[u8]) -> bool;
+    /// Writes `name` in full beside the old one, then replaces it.
+    fn put(&mut self, name: &str, bytes: &[u8]) -> Result<()>;
+    fn remove(&mut self, name: &str);
+}
+
+struct Folder<'a>(&'a Path);
+
+impl Files for Folder<'_> {
+    fn holds(&mut self, name: &str, bytes: &[u8]) -> bool {
+        fs::read(self.0.join(name)).is_ok_and(|old| old == bytes)
+    }
+    fn put(&mut self, name: &str, bytes: &[u8]) -> Result<()> {
+        registry::atomic_file(self.0, name, bytes)
+    }
+    fn remove(&mut self, name: &str) {
+        let _ = fs::remove_file(self.0.join(name));
+    }
+}
+
+/// Brings an enabled replacement to the installer's build without turning it
+/// off (`install::refresh`): the interface as a new copy the record then
+/// names, since a running copy cannot be replaced, and the launcher, recovery
+/// program and instructions in place. taskmgr.exe's entry names the launcher
+/// and stays as it is. A replacement that is off, half way or overwritten by
+/// someone else is left alone. The installer holds no lock; this takes it.
+pub(crate) fn follow_update(dir: &Path) -> Result<()> {
+    // A development build carries no launcher and cannot enable one.
+    let Some(&assets) = ASSETS.get() else {
+        return Ok(());
+    };
+    let _lock = lock(dir)?;
+    let mut machine = registry::Machine::new(dir.into());
+    let Some(mut journal) = machine.load()? else {
+        return Ok(());
+    };
+    // Source code and embedded helper bytes are from the installed, elevated
+    // executable, as for an enable.
+    let interface =
+        fs::read(std::env::current_exe().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    follow(
+        &mut machine,
+        &mut Folder(dir),
+        &mut journal,
+        &interface,
+        assets,
+    )?;
+    // The copy the record named until now goes, unless it is running.
+    sweep_images(&machine);
+    Ok(())
+}
+
+/// The order of `follow_update`: the new interface copy first, under a name of
+/// its own; then the launcher and recovery program; then the record. A failure
+/// before the record names the new copy deletes it, so the record and the copy
+/// it names stay as they were.
+fn follow(
+    store: &mut impl Store,
+    files: &mut impl Files,
+    journal: &mut Journal,
+    interface: &[u8],
+    (launcher, recover): Assets,
+) -> Result<()> {
+    let live = store.observe()?;
+    if journal.phase != Phase::Active
+        || live.filtered
+        || live.debugger.as_ref() != Some(&journal.replacement)
+    {
+        return Ok(());
+    }
+    let image = if files.holds(&journal.image, interface) {
+        None
+    } else {
+        let image = format!("argus-taskmgr-ui-{}.exe", id()?);
+        files.put(&image, interface)?;
+        Some(image)
+    };
+    let result: Result<()> = (|| {
+        for (name, bytes) in [(LAUNCHER, launcher), (RECOVER, recover)] {
+            if !files.holds(name, bytes) {
+                files.put(name, bytes)?;
+            }
+        }
+        if let Some(image) = &image {
+            let next = Journal {
+                image: image.clone(),
+                ..journal.clone()
+            };
+            store.save(&next)?;
+            *journal = next;
+        }
+        Ok(())
+    })();
+    if let (Err(_), Some(image)) = (&result, &image) {
+        files.remove(image);
+    }
+    result?;
+    let text = recovery_text();
+    if !files.holds(RECOVERY_TEXT, text.as_bytes()) {
+        // Instructions only; the old ones still lead to the same files.
+        let _ = files.put(RECOVERY_TEXT, text.as_bytes());
+    }
+    Ok(())
+}
+
+/// Deletes the interface copies no unfinished record names. For an update or
+/// removal of the service, which restored the replacement first and holds
+/// install.lock.
+pub(crate) fn sweep(dir: &Path) {
+    sweep_images(&registry::Machine::new(dir.into()));
 }
 
 pub fn restore() -> Result<()> {
@@ -591,11 +825,7 @@ fn finish_enable(
         let source = fs::read(std::env::current_exe().map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
         registry::atomic_file(&machine.dir, image, &source)?;
-        registry::atomic_file(
-            &machine.dir,
-            "taskmgr-recovery.txt",
-            recovery_text().as_bytes(),
-        )
+        registry::atomic_file(&machine.dir, RECOVERY_TEXT, recovery_text().as_bytes())
     })()
     .map_err(prepare)?;
     let interface = |message| Failure::new(Step::Interface, message);
@@ -811,6 +1041,9 @@ fn log_dir() -> Option<std::path::PathBuf> {
 }
 
 pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
+    if let Some(assets) = assets {
+        let _ = ASSETS.set(assets);
+    }
     let args: Vec<_> = std::env::args().skip(1).collect();
     match args.as_slice() {
         [mode, action, owner, pid, created] if mode == MANAGE && action == "enable" => {
@@ -1031,10 +1264,54 @@ mod tests {
             detail: r"C:\Users\Someone Private".into(),
             found: Some("UseFilter value".into()),
             leftovers: true,
+            older: None,
         };
         assert_eq!(
             status.summary(),
             "conflict (UseFilter value); self-test leftovers present"
+        );
+        let status = Status {
+            state: "enabled",
+            found: None,
+            leftovers: false,
+            older: Some("0.1.0".into()),
+            ..status
+        };
+        assert_eq!(
+            status.summary(),
+            "enabled; the interface copy is version 0.1.0"
+        );
+    }
+
+    #[test]
+    fn an_older_interface_copy_is_told_by_its_version() {
+        assert!(older((0, 1, 0), "0.2.0"));
+        assert!(older((0, 2, 0), "0.2.1-beta.1"));
+        assert!(older((0, 9, 9), "1.0.0"));
+        assert!(!older((0, 2, 0), "0.2.0"));
+        assert!(!older((0, 2, 0), "0.2.0-beta.1"));
+        assert!(!older((0, 3, 0), "0.2.0"));
+        assert!(!older((0, 1, 0), "0.2"));
+        assert!(!older((0, 1, 0), "0.2.0.1"));
+        assert!(!older((0, 1, 0), "next"));
+        // A real version resource; a missing file has none.
+        let system = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("kernel32.dll");
+        assert!(image_version(&system).is_some_and(|(major, ..)| major >= 6));
+        let missing = std::env::temp_dir().join(format!("argus-taskmgr-ui-{}.exe", id().unwrap()));
+        assert_eq!(image_version(&missing), None);
+        // Only a file named as a copy counts.
+        assert_eq!(
+            older_interface(system.parent().unwrap(), "kernel32.dll"),
+            None
+        );
+        assert_eq!(
+            older_interface(
+                missing.parent().unwrap(),
+                &missing.file_name().unwrap().to_string_lossy()
+            ),
+            None
         );
     }
 
@@ -1069,6 +1346,224 @@ mod tests {
         assert!(dir.join(&kept).exists() && dir.join(&running).exists());
         assert!(others.iter().all(|name| dir.join(name).exists()));
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn journal(phase: Phase) -> Journal {
+        Journal {
+            version: 1,
+            owner: "S-1-5-21-1-2-3-1001".into(),
+            image: format!("argus-taskmgr-ui-{}.exe", id().unwrap()),
+            before: Observation::default(),
+            replacement: Value::string("launcher.exe --task-manager"),
+            phase,
+        }
+    }
+
+    #[test]
+    fn only_an_unfinished_record_or_argus_value_counts_as_on() {
+        let ours = Value::string("launcher.exe --task-manager");
+        let foreign = Observation {
+            debugger: Some(Value::string("procexp64.exe")),
+            filtered: false,
+        };
+        let filtered = Observation {
+            debugger: None,
+            filtered: true,
+        };
+        let argus = Observation {
+            debugger: Some(ours.clone()),
+            filtered: false,
+        };
+        let clean = Observation::default();
+        let on = |record: Option<Phase>, live: &Observation| {
+            on_or_unsure(Ok(record.map(journal)), Ok(live.clone()), &ours)
+        };
+        // No record: only Argus's value is on.
+        assert!(!on(None, &clean));
+        assert!(!on(None, &foreign));
+        assert!(on(None, &argus));
+        // A finished restore stays on disk; it is off whatever came since.
+        for live in [&clean, &foreign, &filtered] {
+            assert!(!on(Some(Phase::Restored), live));
+        }
+        assert!(on(Some(Phase::Restored), &argus));
+        // On, or half way, whatever the entry holds now.
+        for phase in [Phase::Prepared, Phase::Active, Phase::Restoring] {
+            for live in [&clean, &foreign, &argus] {
+                assert!(on(Some(phase), live));
+            }
+        }
+        // Unreadable counts as on.
+        let restored = || Ok(Some(journal(Phase::Restored)));
+        assert!(on_or_unsure(
+            Err("corrupt".into()),
+            Ok(clean.clone()),
+            &ours
+        ));
+        assert!(on_or_unsure(restored(), Err("denied".into()), &ours));
+        assert!(on_or_unsure(Ok(None), Err("denied".into()), &ours));
+        // What a held up service update or removal blames.
+        assert!(held_by_other(&foreign, &ours) && held_by_other(&filtered, &ours));
+        assert!(!held_by_other(&argus, &ours) && !held_by_other(&clean, &ours));
+    }
+
+    /// The record and taskmgr.exe's entry in memory.
+    #[derive(Default)]
+    struct Record {
+        live: Observation,
+        saved: Option<Journal>,
+        fail_save: bool,
+    }
+
+    impl Store for Record {
+        fn observe(&mut self) -> Result<Observation> {
+            Ok(self.live.clone())
+        }
+        fn write_debugger(&mut self, _: Option<&Value>) -> Result<()> {
+            panic!("following an update never writes the entry")
+        }
+        fn save(&mut self, journal: &Journal) -> Result<()> {
+            if self.fail_save {
+                return Err("disk failure".into());
+            }
+            self.saved = Some(journal.clone());
+            Ok(())
+        }
+    }
+
+    /// The protected folder in memory. A busy file cannot be replaced, as a
+    /// running program cannot.
+    #[derive(Clone, Default, PartialEq, Debug)]
+    struct Disk {
+        files: std::collections::BTreeMap<String, Vec<u8>>,
+        busy: Option<&'static str>,
+    }
+
+    impl Files for Disk {
+        fn holds(&mut self, name: &str, bytes: &[u8]) -> bool {
+            self.files.get(name).is_some_and(|old| old == bytes)
+        }
+        fn put(&mut self, name: &str, bytes: &[u8]) -> Result<()> {
+            if self.busy == Some(name) {
+                return Err("in use".into());
+            }
+            self.files.insert(name.into(), bytes.into());
+            Ok(())
+        }
+        fn remove(&mut self, name: &str) {
+            self.files.remove(name);
+        }
+    }
+
+    const NEW: Assets = (b"launcher 2", b"recover 2");
+
+    /// A replacement enabled by the last build.
+    fn enabled() -> (Record, Disk, Journal) {
+        let j = journal(Phase::Active);
+        let record = Record {
+            live: Observation {
+                debugger: Some(j.replacement.clone()),
+                filtered: false,
+            },
+            saved: Some(j.clone()),
+            fail_save: false,
+        };
+        let mut disk = Disk::default();
+        for (name, bytes) in [
+            (j.image.as_str(), b"ui 1".as_slice()),
+            (LAUNCHER, b"launcher 1"),
+            (RECOVER, b"recover 1"),
+            (RECOVERY_TEXT, b"text 1"),
+        ] {
+            disk.files.insert(name.into(), bytes.into());
+        }
+        (record, disk, j)
+    }
+
+    #[test]
+    fn an_enabled_replacement_follows_the_installed_build() {
+        let (mut record, mut disk, mut j) = enabled();
+        let (old, entry) = (j.clone(), record.live.clone());
+        follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap();
+        // A new copy the record names; the old one waits for the sweep.
+        assert_ne!(j.image, old.image);
+        assert!(valid_image(&j.image));
+        assert_eq!(record.saved.as_ref().map(|s| &s.image), Some(&j.image));
+        // Nothing else in the record changes.
+        let json = |j: &Journal| serde_json::to_value(j).unwrap();
+        let renamed = Journal {
+            image: old.image.clone(),
+            ..j.clone()
+        };
+        assert_eq!(json(&renamed), json(&old));
+        assert_eq!(disk.files[&j.image], b"ui 2");
+        assert_eq!(disk.files[&old.image], b"ui 1");
+        assert_eq!(disk.files[LAUNCHER], NEW.0);
+        assert_eq!(disk.files[RECOVER], NEW.1);
+        assert_eq!(disk.files[RECOVERY_TEXT], recovery_text().as_bytes());
+        assert_eq!(record.live, entry);
+        // Already this build: nothing is written again.
+        let before = (disk.clone(), j.clone());
+        follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap();
+        assert_eq!((&disk, &j.image), (&before.0, &before.1.image));
+    }
+
+    #[test]
+    fn a_replacement_that_is_not_on_is_left_alone() {
+        let clean = Observation::default();
+        let foreign = Observation {
+            debugger: Some(Value::string("procexp64.exe")),
+            filtered: false,
+        };
+        for (phase, live) in [
+            (Phase::Restored, Some(clean.clone())),
+            (Phase::Restored, None),
+            (Phase::Prepared, None),
+            (Phase::Restoring, None),
+            (Phase::Active, Some(foreign)),
+            (Phase::Active, Some(clean)),
+            (Phase::Active, None),
+        ] {
+            let (mut record, mut disk, mut j) = enabled();
+            j.phase = phase;
+            match live {
+                Some(live) => record.live = live,
+                // Argus's value; filtered as well when the record is on.
+                None => record.live.filtered = phase == Phase::Active,
+            }
+            let before = (disk.clone(), j.image.clone(), record.saved.clone());
+            follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap();
+            assert_eq!((&disk, &j.image), (&before.0, &before.1), "{phase:?}");
+            assert_eq!(
+                record.saved.map(|s| s.image),
+                before.2.map(|s| s.image),
+                "{phase:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_failed_follow_keeps_the_record_and_the_copy_it_names() {
+        // The launcher is running: the new copy goes, the record stays.
+        let (mut record, mut disk, mut j) = enabled();
+        disk.busy = Some(LAUNCHER);
+        let before = (disk.files.clone(), j.clone(), record.saved.clone());
+        assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).is_err());
+        assert_eq!(disk.files, before.0);
+        assert_eq!(j.image, before.1.image);
+        assert_eq!(record.saved.map(|s| s.image), before.2.map(|s| s.image));
+        // The record cannot be saved: the new copy goes too.
+        let (mut record, mut disk, mut j) = enabled();
+        record.fail_save = true;
+        let old = j.image.clone();
+        assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).is_err());
+        assert_eq!(j.image, old);
+        assert!(
+            disk.files
+                .keys()
+                .filter(|name| valid_image(name))
+                .eq([&old])
+        );
     }
 
     #[test]

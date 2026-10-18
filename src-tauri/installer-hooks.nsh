@@ -21,8 +21,9 @@
   ; The installer already runs elevated: bring an installed privileged service
   ; to this version now, so an update needs no second administrator prompt.
   ; The new argus.exe leaves the service alone while the task manager
-  ; replacement may be on (updating turns it off) and when anything fails;
-  ; Argus then offers the update when it starts. Never blocks the install.
+  ; replacement may be on (updating turns it off; an enabled replacement's own
+  ; files follow this version instead) and when anything fails; Argus then
+  ; offers the update when it starts. Never blocks the install.
   ClearErrors
   ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
   ${IfNot} ${Errors}
