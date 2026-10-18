@@ -34,7 +34,9 @@
     "trayInterval": "后台常驻时的刷新间隔",
     "trayIntervalHint": "隐藏到托盘后按此间隔采样；长于 5 秒时，历史记录随之变稀。",
     "hotkey": "按 {hotkey} 可随时显示或隐藏 Argus，可在设置中更改。",
-    "hotkeyOff": "显示或隐藏 Argus 的全局快捷键已停用，可在设置中重新开启。"
+    "hotkeyOff": "显示或隐藏 Argus 的全局快捷键已停用，可在设置中重新开启。",
+    "hotkeyTaken": "{shortcut} 已被 Windows 或其他程序（包括另一个正在运行的 Argus）占用，可在设置中更换组合键。",
+    "hotkeyProblem": "{problem}可在设置中更改快捷键。"
   },
   "update": {
     "title": "保持最新",

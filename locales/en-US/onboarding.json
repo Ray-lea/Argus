@@ -24,17 +24,19 @@
   },
   "background": {
     "title": "Stay in the background",
-    "body": "Argus can keep running in the system tray, recording history and applying rules, ready to open whenever it's needed.",
+    "body": "Argus can stay in the tray, recording history and applying rules, ready when needed.",
     "autostart": "Start when signing in to Windows",
     "autostartHint": "Starts silently in the system tray, without a window.",
     "closeToTray": "Keep in the system tray when closed",
     "closeToTrayHint": "When this is off, closing the window exits Argus.",
     "minimizedInterval": "Refresh rate while minimized",
-    "minimizedIntervalHint": "5 seconds by default; shorter intervals cost more in the background.",
+    "minimizedIntervalHint": "Default 5 seconds; shorter intervals cost more in the background.",
     "trayInterval": "Refresh rate in the tray",
-    "trayIntervalHint": "How often Argus samples in the tray; above 5 seconds, history is recorded more sparsely.",
-    "hotkey": "Press {hotkey} anytime to show or hide Argus. The shortcut can be changed in Settings.",
-    "hotkeyOff": "The shortcut for showing or hiding Argus is turned off. It can be turned back on in Settings."
+    "trayIntervalHint": "Above 5 seconds, history is recorded more sparsely.",
+    "hotkey": "Press {hotkey} anytime to show or hide Argus; it can be changed in Settings.",
+    "hotkeyOff": "The shortcut for showing or hiding Argus is turned off. It can be turned back on in Settings.",
+    "hotkeyTaken": "{shortcut} is in use by Windows or another app (possibly another running Argus). Choose a different combination in Settings.",
+    "hotkeyProblem": "{problem} The shortcut can be changed in Settings."
   },
   "update": {
     "title": "Stay up to date",
@@ -54,16 +56,16 @@
   },
   "privilege": {
     "title": "Privileged service (optional)",
-    "body": "Argus runs as a standard user, so some system processes can't be read, ended or adjusted. The optional privileged service runs in the background as SYSTEM. Once it's installed, Argus can:",
+    "body": "Argus runs as a standard user and can't read, end or adjust some system processes. The optional privileged service runs in the background as SYSTEM. With it, Argus can:",
     "features": {
       "end": "End other users' processes (except critical system processes)",
       "tune": "Set priority and efficiency mode, also automatically through rules",
-      "inspect": "Find file locks in every process, and measure per-process network traffic and disk reads and writes",
+      "inspect": "See every process's file locks, network traffic, and disk reads and writes",
       "control": "Control Windows services and close network connections",
       "sensors": "Provide access to kernel sensors (the driver is enabled separately)"
     },
     "risk": "The permission belongs to the current Windows account: any program running under it can use these functions, which amounts to partial administrator rights. Only install it on an account you use yourself.",
-    "later": "Installing requires administrator permission. It can also be skipped and installed or uninstalled later in Settings → Permissions.",
+    "later": "Installing requires administrator permission. It can also be installed or uninstalled later in Settings → Permissions.",
     "replace": "The following steps offer kernel sensors and Task Manager replacement.",
     "manage": "See the details, update or reinstall it in Settings → Permissions.",
     "elevated": "Argus is running as administrator, so process management does not need the privileged service. Kernel sensors and Task Manager replacement still require it."

@@ -19,7 +19,7 @@ import {
 import { type Language, LOCALES, rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { changeKernelSensors, kernelBusy, kernelError, kernelRevision } from "../lib/kernel-setup";
-import { hotkeyErrorText, shortcutKeys } from "../lib/keys";
+import { hotkeyErrorText, shortcutKeys, shortcutText } from "../lib/keys";
 import { changeLanguage } from "../lib/language";
 import {
   type ChartMode,
@@ -34,6 +34,7 @@ import {
 import { noteServiceStatus, serviceConnected } from "../lib/privilege";
 import { appInfo, changeInterval, INTERVALS, intervalMs } from "../lib/store";
 import type {
+  HotkeyError,
   PrivilegedServiceStatus,
   SettingsView,
   TaskManagerStatus,
@@ -394,6 +395,20 @@ function Display() {
   );
 }
 
+/**
+ * Why the shortcut does nothing, worded for the onboarding: it has no
+ * recorder, so the way out is in Settings.
+ */
+function hotkeyProblem(error: HotkeyError | null): string | null {
+  if (error?.kind === "taken") {
+    return t("onboarding.background.hotkeyTaken", { shortcut: shortcutText(error.shortcut) });
+  }
+  const problem = hotkeyErrorText(error);
+  return problem && error?.kind !== "saveFailed"
+    ? t("onboarding.background.hotkeyProblem", { problem })
+    : problem;
+}
+
 function Background(props: {
   settings: SettingsView | null | undefined;
   save: (change: Promise<SettingsView>) => Promise<void>;
@@ -448,15 +463,20 @@ function Background(props: {
                 save={props.save}
               />
             </Row>
-            <p class="onboarding-note">
-              <Show
-                when={s().hotkeyEnabled && keys().length > 0}
-                fallback={t("onboarding.background.hotkeyOff")}
-              >
-                {rich("onboarding.background.hotkey", { hotkey: <Keycaps keys={keys()} /> })}
-              </Show>
-            </p>
-            <Show when={hotkeyErrorText(s().hotkeyError)}>
+            {/* A taken shortcut does nothing yet: say that instead of how to press it. */}
+            <Show
+              when={hotkeyProblem(s().hotkeyError)}
+              fallback={
+                <p class="onboarding-note">
+                  <Show
+                    when={s().hotkeyEnabled && keys().length > 0}
+                    fallback={t("onboarding.background.hotkeyOff")}
+                  >
+                    {rich("onboarding.background.hotkey", { hotkey: <Keycaps keys={keys()} /> })}
+                  </Show>
+                </p>
+              }
+            >
               {(error) => (
                 <p class="onboarding-note warning">
                   <WarningIcon size={14} />
