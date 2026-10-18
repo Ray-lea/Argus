@@ -20,10 +20,9 @@ use tauri::{Emitter, Manager};
 
 use tauri_plugin_autostart::MacosLauncher;
 
-use crate::sampler::{Control, Sampler, WindowState};
+use crate::sampler::{Control, Sampler};
 use crate::settings::SettingsStore;
 
-static WAS_MINIMIZED: AtomicBool = AtomicBool::new(false);
 static TASKMGR_COMPLETED: AtomicBool = AtomicBool::new(false);
 
 /// ETW session for per-process network traffic; one per build, like the app
@@ -161,9 +160,11 @@ pub fn run() {
         rules.clone(),
     );
 
-    // Autostart launches with --hidden: stay in the tray until summoned.
+    // Autostart launches with --hidden: stay in the tray until summoned. The
+    // task manager replacement shows the window once the page is ready.
     let taskmgr_start = argus_service::taskmgr::ready::queue(&std::env::args().collect::<Vec<_>>());
-    let start_hidden = taskmgr_start || std::env::args().any(|a| a == "--hidden");
+    let hidden_arg = std::env::args().any(|a| a == "--hidden");
+    let start_hidden = taskmgr_start || hidden_arg;
     let updated = std::env::args().any(|a| a == updater::UPDATED_ARG);
 
     // Before the window and its WebView exist (see leftovers.rs). Tauri keeps
@@ -246,8 +247,10 @@ pub fn run() {
             app.manage(HistoryDir(history));
             updater::init(app.handle());
             // An update started while Argus was in the tray relaunches it there.
-            let relaunch_hidden = updater::take_relaunch_hidden(app.handle());
-            let start_hidden = start_hidden || (updated && relaunch_hidden);
+            let relaunch_hidden = updater::take_relaunch_hidden(app.handle()) && updated;
+            let start_hidden = start_hidden || relaunch_hidden;
+            // Not kept in the tray, just not shown before the page is ready.
+            let shown_when_ready = taskmgr_start && !hidden_arg && !relaunch_hidden;
             shell::build_tray(app.handle())?;
 
             if taskmgr_start {
@@ -287,18 +290,8 @@ pub fn run() {
 
             if let Some(window) = app.get_webview_window("main") {
                 let hwnd = window.hwnd()?.0 as isize;
-                let probe = move || unsafe {
-                    use windows::Win32::Foundation::HWND;
-                    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
-                    let hwnd = HWND(hwnd as *mut _);
-                    if !IsWindowVisible(hwnd).as_bool() {
-                        WindowState::Hidden
-                    } else if IsIconic(hwnd).as_bool() {
-                        WindowState::Minimized
-                    } else {
-                        WindowState::Shown
-                    }
-                };
+                let probe =
+                    move || shell::window_state(windows::Win32::Foundation::HWND(hwnd as *mut _));
                 app.state::<AppState>()
                     .sampler
                     .send(Control::SetWindowProbe(Box::new(probe)));
@@ -309,13 +302,14 @@ pub fn run() {
                 shell::guard_resize_seam(&window);
                 hotkey::init(app.handle(), &window);
                 if start_hidden {
-                    shell::went_away(shell::Away::Tray);
+                    shell::started_hidden(shown_when_ready);
                 } else {
                     window.show()?;
                     window.set_focus()?;
                 }
                 // Asleep while out of sight once the page has drawn itself;
-                // awake whenever it is shown.
+                // awake whenever it is shown. Also marks the window away and
+                // back, however that comes about.
                 shell::follow_visibility(&window);
             }
             Ok(())
@@ -323,21 +317,11 @@ pub fn run() {
         .on_window_event(|window, event| {
             let main = || window.app_handle().get_webview_window("main");
             match event {
-                // Coming back from the tray or minimized: refresh immediately.
+                // Activated: refresh immediately. (Coming back into view
+                // refreshes too, activated or not: shell::follow_visibility.)
                 tauri::WindowEvent::Focused(true) => {
                     window.state::<AppState>().sampler.send(Control::Refresh);
                     hotkey::retry_failed(window.app_handle());
-                }
-                // Resized fires continuously while dragging; act on transitions only.
-                tauri::WindowEvent::Resized(_) => {
-                    let minimized = window.is_minimized().unwrap_or(false);
-                    if WAS_MINIMIZED.swap(minimized, Ordering::Relaxed) != minimized {
-                        if minimized {
-                            shell::went_away(shell::Away::Minimized);
-                        } else {
-                            shell::came_back(window.app_handle());
-                        }
-                    }
                 }
                 tauri::WindowEvent::CloseRequested { api, .. }
                     if window.state::<SettingsStore>().get().close_to_tray =>

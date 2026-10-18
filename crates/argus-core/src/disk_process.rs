@@ -19,8 +19,10 @@ pub const MAX_PROCESSES: usize = 8192;
 const THREAD_BYTES: usize = size_of::<SystemThreadInformation>() + 7 * size_of::<usize>();
 const HEADER_BYTES: usize = size_of::<SystemProcessInformation>();
 const DISK_BYTES: usize = 5 * size_of::<u64>();
-/// Longer gaps re-establish the baseline instead of averaging over them.
-const MAX_INTERVAL_MS: u64 = 30_000;
+/// Longer gaps re-establish the baseline instead of averaging over them. Past
+/// the slowest background cadence (30 s), whose samples come a few to a few
+/// hundred milliseconds late or early: exactly 30 s dropped about every other.
+const MAX_INTERVAL_MS: u64 = 35_000;
 
 /// Bytes per second between two cumulative (read, written) readings of one
 /// process instance, `secs` apart. None without both readings, across a
@@ -421,10 +423,11 @@ mod tests {
             None
         );
         assert_eq!(interval_rates(Some((0, 0)), Some((1, 1)), Some(0.0)), None);
-        assert_eq!(interval_rates(Some((0, 0)), Some((1, 1)), Some(30.5)), None);
+        assert_eq!(interval_rates(Some((0, 0)), Some((1, 1)), Some(35.5)), None);
+        // The 30 s background cadence, a little late.
         assert_eq!(
-            interval_rates(Some((0, 0)), Some((30, 30)), Some(30.0)),
-            Some((1, 1))
+            interval_rates(Some((0, 0)), Some((61, 61)), Some(30.5)),
+            Some((2, 2))
         );
     }
 

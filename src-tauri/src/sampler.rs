@@ -61,6 +61,73 @@ pub struct Sampler {
     tx: Sender<Control>,
 }
 
+/// When the sampling thread samples: the next timed tick, and the last sample.
+struct Schedule {
+    next_tick: Instant,
+    last_sample: Instant,
+    /// The cadence when the last sample was taken.
+    last_period: Duration,
+}
+
+impl Schedule {
+    fn new(now: Instant, period: Duration) -> Self {
+        Self {
+            next_tick: now + period,
+            last_sample: now,
+            last_period: period,
+        }
+    }
+
+    fn wait(&self, now: Instant) -> Duration {
+        self.next_tick.saturating_duration_since(now)
+    }
+
+    /// A changed cadence counts from the last sample.
+    fn restart(&mut self, period: Duration) {
+        self.next_tick = self.last_sample + period;
+    }
+
+    /// A timed tick. The next one stays on the grid of `period`, the cadence
+    /// of what the window is doing now (a full period from now after falling
+    /// behind); skipping ticks of the shown cadence instead made a 5 s
+    /// background cadence 6 s, or 10 s at a 5 s interval.
+    fn tick(&mut self, now: Instant, period: Duration) {
+        self.next_tick += period;
+        if self.next_tick < now {
+            self.next_tick = now + period;
+        }
+    }
+
+    /// Whether a sample on demand is taken now: not this soon after the last
+    /// one. That one stays on screen then, but a tick still on a slower
+    /// background grid comes in to `period` all the same, so a window back
+    /// right after a background tick does not wait out a background cadence.
+    fn demand(&mut self, now: Instant, period: Duration) -> bool {
+        if now.saturating_duration_since(self.last_sample) >= MIN_SAMPLE_GAP {
+            return true;
+        }
+        self.next_tick = self.next_tick.min(self.last_sample + period);
+        false
+    }
+
+    /// Records a sample taken now at the cadence `period`. Returns how old the
+    /// results the service clients requested at the last sample may be by
+    /// now: up to that sample's cadence, which on coming back is the slower
+    /// background one. Judged by the shown cadence alone, the first frame
+    /// back dropped them (no network column, no disk readings).
+    fn taken(&mut self, now: Instant, forced: bool, period: Duration) -> Duration {
+        let stale_after = period.max(self.last_period);
+        self.last_sample = now;
+        self.last_period = period;
+        if forced {
+            // A sample on demand (the window coming back, say) pulls in a tick
+            // still on the slower background grid.
+            self.next_tick = self.next_tick.min(now + period);
+        }
+        stale_after
+    }
+}
+
 /// How often to sample: the chosen interval while shown, the background ones
 /// while minimized or in the tray, and no faster than every 5 s while paused.
 fn cadence(
@@ -104,12 +171,10 @@ impl Sampler {
                 let mut minimized = BACKGROUND_INTERVAL;
                 let mut tray = BACKGROUND_INTERVAL;
                 let mut paused = false;
-                let mut next_tick = Instant::now() + interval;
-                let mut last_sample = Instant::now();
+                let mut schedule = Schedule::new(Instant::now(), interval);
 
                 loop {
-                    let wait = next_tick.saturating_duration_since(Instant::now());
-                    let received = rx.recv_timeout(wait);
+                    let received = rx.recv_timeout(schedule.wait(Instant::now()));
                     let state = window.as_ref().map_or(WindowState::Shown, |probe| probe());
                     let forced = match received {
                         Ok(Control::SetKernelSensors(enabled)) => {
@@ -120,11 +185,9 @@ impl Sampler {
                             subscriber = Some(ch);
                             true
                         }
-                        // A changed cadence counts from the last sample.
                         Ok(Control::SetInterval(d)) => {
                             interval = d;
-                            next_tick =
-                                last_sample + cadence(state, paused, interval, minimized, tray);
+                            schedule.restart(cadence(state, paused, interval, minimized, tray));
                             continue;
                         }
                         Ok(Control::SetBackgroundIntervals {
@@ -132,14 +195,12 @@ impl Sampler {
                             tray: t,
                         }) => {
                             (minimized, tray) = (m, t);
-                            next_tick =
-                                last_sample + cadence(state, paused, interval, minimized, tray);
+                            schedule.restart(cadence(state, paused, interval, minimized, tray));
                             continue;
                         }
                         Ok(Control::SetPaused(p)) => {
                             paused = p;
-                            next_tick =
-                                last_sample + cadence(state, paused, interval, minimized, tray);
+                            schedule.restart(cadence(state, paused, interval, minimized, tray));
                             continue;
                         }
                         Ok(Control::Refresh) => true,
@@ -167,34 +228,24 @@ impl Sampler {
                         Err(RecvTimeoutError::Disconnected) => return,
                     };
 
-                    // The cadence of what the window is doing now. Timed samples
-                    // stay on its grid (a full period from now after falling
-                    // behind); skipping ticks of the shown cadence instead made
-                    // a 5 s background cadence 6 s, or 10 s at a 5 s interval.
+                    // The cadence of what the window is doing now.
                     let period = cadence(state, paused, interval, minimized, tray);
+                    let now = Instant::now();
                     if !forced {
-                        next_tick += period;
-                        if next_tick < Instant::now() {
-                            next_tick = Instant::now() + period;
-                        }
+                        schedule.tick(now, period);
                     }
                     if subscriber.is_none() && observer.is_none() {
                         continue;
                     }
-                    if forced && last_sample.elapsed() < MIN_SAMPLE_GAP {
+                    if forced && !schedule.demand(now, period) {
                         continue;
                     }
 
-                    last_sample = Instant::now();
-                    if forced {
-                        // A sample on demand (the window coming back, say) pulls in
-                        // a tick still on the slower background grid.
-                        next_tick = next_tick.min(last_sample + period);
-                    }
+                    let stale_after = schedule.taken(now, forced, period);
                     let mut snapshot = collector.sample();
-                    sensors.enrich(&mut snapshot, kernel_sensors, period);
-                    network.enrich(&mut snapshot, period);
-                    disk.enrich(&mut snapshot, period);
+                    sensors.enrich(&mut snapshot, kernel_sensors, stale_after);
+                    network.enrich(&mut snapshot, stale_after);
+                    disk.enrich(&mut snapshot, stale_after);
                     rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);
@@ -237,5 +288,49 @@ mod tests {
         assert_eq!(cadence(WindowState::Shown, true, s(10), s(5), s(5)), s(10));
         // Out of sight, the background cadences apply even while paused.
         assert_eq!(pick(WindowState::Minimized, true), s(10));
+    }
+
+    #[test]
+    fn coming_back_right_after_a_background_tick_moves_onto_the_shown_cadence() {
+        let (s, ms) = (Duration::from_secs, Duration::from_millis);
+        let t0 = Instant::now();
+        let mut schedule = Schedule::new(t0, s(1));
+        // Minimized: a tick at 1 s puts the next one 10 s later.
+        schedule.tick(t0 + s(1), s(10));
+        schedule.taken(t0 + s(1), false, s(10));
+        assert_eq!(schedule.next_tick, t0 + s(11));
+        // Restored 100 ms later: too soon for a sample of its own, but the
+        // next one comes a shown interval after the last, not 10 s.
+        assert!(!schedule.demand(t0 + s(1) + ms(100), s(1)));
+        assert_eq!(schedule.next_tick, t0 + s(2));
+        // Restored later: sampled at once, and on the shown grid from there.
+        let mut schedule = Schedule::new(t0, s(1));
+        schedule.tick(t0 + s(1), s(10));
+        schedule.taken(t0 + s(1), false, s(10));
+        assert!(schedule.demand(t0 + s(4), s(1)));
+        schedule.taken(t0 + s(4), true, s(1));
+        assert_eq!(schedule.next_tick, t0 + s(5));
+    }
+
+    #[test]
+    fn the_first_sample_back_takes_what_the_last_background_one_requested() {
+        let s = Duration::from_secs;
+        let t0 = Instant::now();
+        let mut schedule = Schedule::new(t0, s(1));
+        // In the tray at 10 s.
+        schedule.tick(t0 + s(1), s(10));
+        assert_eq!(schedule.taken(t0 + s(1), false, s(10)), s(10));
+        // Shown 6 s later: the service results requested at that tick are
+        // 6 s old, more than two shown intervals plus a client's 2 s timeout,
+        // but within the background cadence they were requested at.
+        assert!(schedule.demand(t0 + s(7), s(1)));
+        assert_eq!(schedule.taken(t0 + s(7), true, s(1)), s(10));
+        // From then on, the shown cadence alone.
+        schedule.tick(t0 + s(8), s(1));
+        assert_eq!(schedule.taken(t0 + s(8), false, s(1)), s(1));
+        // A longer interval chosen meanwhile counts from the sample before.
+        schedule.restart(s(5));
+        assert_eq!(schedule.next_tick, t0 + s(13));
+        assert_eq!(schedule.taken(t0 + s(13), false, s(5)), s(5));
     }
 }

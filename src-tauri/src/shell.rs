@@ -2,7 +2,9 @@
 //! toggles it is in hotkey.rs), with WebView2 asleep while the window is out
 //! of sight; the window backdrop.
 
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU8, Ordering};
+use std::time::Instant;
 
 use argus_core::tr;
 
@@ -24,6 +26,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::Interface;
 
+use crate::sampler::{Control, WindowState};
 use crate::settings::Theme;
 
 pub const TRAY_ID: &str = "argus";
@@ -44,15 +47,27 @@ pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
         let _ = w.show();
         let _ = w.set_focus();
     }
-    came_back(app);
     crate::hotkey::retry_failed(app);
 }
 
 pub fn hide_main<R: Runtime>(w: &WebviewWindow<R>) {
-    went_away(Away::Tray);
     let _ = w.hide();
     // The settings page cannot end a hotkey recording it can no longer see.
     crate::hotkey::resume_if_suspended(w.app_handle());
+}
+
+/// What the window is doing, as the sampling cadence and the WebView's sleep
+/// see it.
+pub fn window_state(hwnd: HWND) -> WindowState {
+    unsafe {
+        if !IsWindowVisible(hwnd).as_bool() {
+            WindowState::Hidden
+        } else if IsIconic(hwnd).as_bool() {
+            WindowState::Minimized
+        } else {
+            WindowState::Shown
+        }
+    }
 }
 
 /// How the window was out of sight, which sets the sampling cadence.
@@ -64,33 +79,59 @@ pub enum Away {
     Tray,
 }
 
-/// Since when, and how, the window is out of sight. Whatever brings it back
-/// reports it once (`argus-restored`); hiding a minimized window counts as
-/// the tray from then on.
-static AWAY: std::sync::Mutex<Option<(Away, std::time::Instant)>> = std::sync::Mutex::new(None);
+/// Since when, and how, the window is out of sight; `follow_visibility` keeps
+/// it. Whatever brings the window back reports it once (`argus-restored`);
+/// hiding a minimized window counts as the tray from then on. No time: hidden
+/// only until a start shows it (`started_hidden`), which nobody saw as away.
+static AWAY: Mutex<Option<(Away, Option<Instant>)>> = Mutex::new(None);
 
-pub fn went_away(how: Away) {
+fn went_away(how: Away) {
     let mut away = AWAY.lock().unwrap();
     match *away {
-        None => *away = Some((how, std::time::Instant::now())),
+        None => *away = Some((how, Some(Instant::now()))),
         Some((_, since)) if how == Away::Tray => *away = Some((Away::Tray, since)),
         Some(_) => {}
     }
 }
 
-/// Tells the page the window is back, how it was away and for how long, so it
-/// can say the refresh rate was lower meanwhile.
-pub fn came_back<R: Runtime>(app: &AppHandle<R>) {
+/// A start that keeps the window hidden: in the tray until summoned, or, by
+/// the task manager replacement (`shown_when_ready`), only until the page is
+/// ready. The first showing reports `argus-restored` either way, which also
+/// tells the page the window is on screen (`shown` in updates.ts); one that
+/// was due right away reports no time away, so the page does not say the
+/// refresh rate was lower in the tray while nobody had seen the window yet.
+pub fn started_hidden(shown_when_ready: bool) {
+    *AWAY.lock().unwrap() = Some((Away::Tray, (!shown_when_ready).then(Instant::now)));
+}
+
+/// The window is back in view: tells the page how it was away and for how
+/// long, so it can say the refresh rate was lower meanwhile, and samples at
+/// once rather than leaving a frame up to a background cadence old on screen
+/// (`Focused(true)` does too, but a window restored without activation never
+/// gets focus).
+fn came_back<R: Runtime>(app: &AppHandle<R>) {
     #[derive(Clone, serde::Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Restored {
         from: Away,
         away_ms: u64,
     }
-    if let Some((from, since)) = AWAY.lock().unwrap().take() {
-        let away_ms = since.elapsed().as_millis() as u64;
-        let _ = app.emit("argus-restored", Restored { from, away_ms });
+    let Some((from, away_ms)) = take_away() else {
+        return;
+    };
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        state.sampler.send(Control::Refresh);
     }
+    let _ = app.emit("argus-restored", Restored { from, away_ms });
+}
+
+/// How the window was away and for how long (ms), once.
+fn take_away() -> Option<(Away, u64)> {
+    let (from, since) = AWAY.lock().unwrap().take()?;
+    Some((
+        from,
+        since.map_or(0, |since| since.elapsed().as_millis() as u64),
+    ))
 }
 
 /// Hides the window if it is the one in front; otherwise brings it forward.
@@ -235,6 +276,8 @@ const PAINT_GRACE: std::time::Duration = std::time::Duration::from_secs(60);
 /// Whether WebView2 was last told it is visible. wry creates the controller
 /// visible, whether the window is shown or not.
 static AWAKE: AtomicBool = AtomicBool::new(true);
+/// The window state `visibility_proc` saw last (`WindowState as u8`).
+static VIEW: AtomicU8 = AtomicU8::new(WindowState::Hidden as u8);
 /// Whether the page has drawn itself once. Until then the WebView stays awake
 /// even in a hidden window: put to sleep before its first frame, it has
 /// nothing to show when the window appears (an empty window for about 0.2 s),
@@ -251,18 +294,30 @@ static PAINTED: AtomicBool = AtomicBool::new(false);
 /// Follows the window rather than the code that shows it: every show, hide,
 /// minimize and restore ends in `WM_WINDOWPOSCHANGED`, whoever causes it
 /// (`show_main`, the taskbar, another program's `SetWindowPos`), and a window
-/// started hidden goes to sleep as soon as its page has drawn.
+/// started hidden goes to sleep as soon as its page has drawn. The same
+/// changes mark the window away (`went_away`) and back (`came_back`), so a
+/// restore without activation or a show by another program also reports
+/// `argus-restored` and samples at once.
 pub fn follow_visibility<R: Runtime>(w: &WebviewWindow<R>) {
     let Ok(hwnd) = w.hwnd() else { return };
     let hwnd = hwnd.0 as isize;
+    let app = w.app_handle().clone();
     let _ = w.with_webview(move |wv| unsafe {
         let hwnd = HWND(hwnd as _);
-        let controller = Box::into_raw(Box::new(wv.controller()));
-        let data = controller as usize;
+        VIEW.store(window_state(hwnd) as u8, Ordering::Relaxed);
+        let follower = Box::into_raw(Box::new(Follower {
+            controller: wv.controller(),
+            moved: Box::new(move |state| match state {
+                WindowState::Shown => came_back(&app),
+                WindowState::Minimized => went_away(Away::Minimized),
+                WindowState::Hidden => went_away(Away::Tray),
+            }),
+        }));
+        let data = follower as usize;
         if SetWindowSubclass(hwnd, Some(visibility_proc), VISIBILITY_SUBCLASS, data).as_bool() {
-            sync_visibility(hwnd, &*controller);
+            sync_visibility(hwnd, &(*follower).controller);
         } else {
-            drop(Box::from_raw(controller));
+            drop(Box::from_raw(follower));
         }
     });
     // A page that never reports its first frame sleeps out of sight anyway.
@@ -286,6 +341,13 @@ pub fn painted<R: Runtime>(w: &WebviewWindow<R>) {
     let _ = w.with_webview(move |wv| sync_visibility(HWND(hwnd as _), &wv.controller()));
 }
 
+/// What `visibility_proc` works with, on the UI thread only.
+struct Follower {
+    controller: ICoreWebView2Controller,
+    /// Called when the window state changes.
+    moved: Box<dyn Fn(WindowState)>,
+}
+
 unsafe extern "system" fn visibility_proc(
     hwnd: HWND,
     msg: u32,
@@ -294,25 +356,30 @@ unsafe extern "system" fn visibility_proc(
     _id: usize,
     data: usize,
 ) -> LRESULT {
-    let controller = data as *mut ICoreWebView2Controller;
+    let follower = data as *mut Follower;
     if msg == WM_NCDESTROY {
         unsafe {
             let _ = RemoveWindowSubclass(hwnd, Some(visibility_proc), VISIBILITY_SUBCLASS);
-            drop(Box::from_raw(controller));
+            drop(Box::from_raw(follower));
         }
         return unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
     }
     let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
     // After the window's own handling, which gives the WebView its new size.
     if msg == WM_WINDOWPOSCHANGED {
-        sync_visibility(hwnd, unsafe { &*controller });
+        let follower = unsafe { &*follower };
+        sync_visibility(hwnd, &follower.controller);
+        // The WebView is awake by now when the window came back.
+        let state = window_state(hwnd);
+        if VIEW.swap(state as u8, Ordering::Relaxed) != state as u8 {
+            (follower.moved)(state);
+        }
     }
     result
 }
 
 fn sync_visibility(hwnd: HWND, controller: &ICoreWebView2Controller) {
-    let awake = !PAINTED.load(Ordering::Relaxed)
-        || unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() };
+    let awake = !PAINTED.load(Ordering::Relaxed) || window_state(hwnd) == WindowState::Shown;
     if AWAKE.swap(awake, Ordering::Relaxed) == awake {
         return;
     }
@@ -538,7 +605,32 @@ pub fn set_tray_tooltip<R: Runtime>(app: &AppHandle<R>, text: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::draw_badge;
+    use super::*;
+
+    /// The only test that touches `AWAY`, a process-wide static.
+    #[test]
+    fn time_away_counts_from_leaving_sight_and_not_for_a_start_shown_when_ready() {
+        let wait = || std::thread::sleep(std::time::Duration::from_millis(30));
+        // Started for the task manager replacement: shown once the page is
+        // ready, which is no time away.
+        started_hidden(true);
+        wait();
+        assert_eq!(take_away(), Some((Away::Tray, 0)));
+        assert_eq!(take_away(), None, "reported once");
+        // Started in the tray (autostart).
+        started_hidden(false);
+        wait();
+        assert!(take_away().is_some_and(|(from, ms)| from == Away::Tray && ms >= 30));
+        // Minimized, then hidden: the tray, since it was first minimized.
+        went_away(Away::Minimized);
+        wait();
+        went_away(Away::Tray);
+        assert!(take_away().is_some_and(|(from, ms)| from == Away::Tray && ms >= 30));
+        // Hidden, then minimized while hidden: still the tray.
+        went_away(Away::Tray);
+        went_away(Away::Minimized);
+        assert!(take_away().is_some_and(|(from, _)| from == Away::Tray));
+    }
 
     #[test]
     fn the_badge_sits_in_a_cleared_ring() {
