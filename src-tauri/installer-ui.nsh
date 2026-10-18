@@ -238,11 +238,15 @@ Var ArgusPressedRef
   !insertmacro ArgusPaint ${OUT} ${ROLE}
 !macroend
 
-; A link-colored line of text, W wide and centered at Y.
-!macro ArgusLink OUT Y W TEXT
-  IntOp $R0 $ArgusWidth - ${W}
+; A link-colored line of text centered at Y. nsDialogs draws a link's text
+; from the control's left edge in a box 2 pixels wider than the text, so the
+; control is that wide.
+!macro ArgusLink OUT Y TEXT
+  !insertmacro ArgusTextWidth $R5 "${TEXT}" $ArgusFontBody
+  IntOp $R5 $R5 + 2
+  IntOp $R0 $ArgusWidth - $R5
   IntOp $R0 $R0 / 2
-  !insertmacro ArgusControl ${OUT} dialog LINK ${__NSD_Link_STYLE} 0 $R0 ${Y} ${W} 22 "${TEXT}" $ArgusFontBody
+  !insertmacro ArgusControl ${OUT} dialog LINK ${__NSD_Link_STYLE} 0 $R0 ${Y} $R5 22 "${TEXT}" $ArgusFontBody
   !insertmacro ArgusPaint ${OUT} link
 !macroend
 
@@ -268,11 +272,12 @@ Var ArgusPressedRef
 
 ; A check box with its label, centered together at Y; OUT is the box. A themed
 ; check box draws its own text color, so the label is a separate control, and
-; clicking it toggles the box.
+; clicking it toggles the box. The label has room to spare on its right, which
+; the centering leaves out.
 !macro ArgusCheck OUT Y TEXT CHECKED
   !insertmacro ArgusTextWidth $R5 "${TEXT}" $ArgusFontBody
-  IntOp $R5 $R5 + 8
   IntOp $R0 $R5 + 24
+  IntOp $R5 $R5 + 8
   IntOp $R0 $ArgusWidth - $R0
   IntOp $R0 $R0 / 2
   IntOp $R6 ${Y} + 2
@@ -798,7 +803,7 @@ Function ArgusPageFinish
   !insertmacro ArgusCheck $1 185 "$(ArgusDesktopShortcut)" $2
   !insertmacro ArgusButton $1 228 176 "$(ArgusLaunch)" 1
   ${NSD_OnClick} $1 ArgusNext
-  !insertmacro ArgusLink $1 280 80 "$(ArgusClose)"
+  !insertmacro ArgusLink $1 280 "$(ArgusClose)"
   ${NSD_OnClick} $1 ArgusCloseOnly
 
   Call ArgusHideButtons
@@ -837,7 +842,7 @@ Function un.ArgusPageConfirm
   !insertmacro ArgusCheck $1 185 "$(ArgusDeleteData)" 0
   !insertmacro ArgusButton $1 228 176 "$(ArgusUninstall)" 1
   ${NSD_OnClick} $1 un.ArgusNext
-  !insertmacro ArgusLink $1 280 80 "$(ArgusCancel)"
+  !insertmacro ArgusLink $1 280 "$(ArgusCancel)"
   ${NSD_OnClick} $1 un.ArgusQuit
 
   Call un.ArgusHideButtons
