@@ -57,6 +57,7 @@
     "withNote": "{body}{note}",
     "confirm": "更新服务",
     "done": "特权服务已更新。",
+    "doneRestored": "特权服务已更新，Windows 任务管理器已恢复，可在设置中重新启用替换。",
     "failed": "无法更新特权服务：{error}"
   }
 }

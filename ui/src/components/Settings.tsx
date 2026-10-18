@@ -307,21 +307,43 @@ function PrivilegedServiceSettings() {
       return null;
     }
   });
-  const manage = async (action: PrivilegedServiceAction) => {
-    if (busy() || status.loading) return;
-    const installing = action === "install";
-    if (
-      (installing || action === "uninstall") &&
-      !(await confirm({
+  /**
+   * Asks what an action needs asked first. Null when declined; otherwise
+   * whether it restores Windows Task Manager (an update with the replacement on).
+   */
+  const ask = async (action: PrivilegedServiceAction): Promise<boolean | null> => {
+    if (action === "install" || action === "uninstall") {
+      const installing = action === "install";
+      const ok = await confirm({
         title: installing ? t("settings.privilege.install.title") : t("settings.privilege.uninstall.title"),
         body: installing ? t("settings.privilege.install.body") : t("settings.privilege.uninstall.body"),
         confirmLabel: installing
           ? t("settings.privilege.install.action")
           : t("settings.privilege.uninstall.confirm"),
         danger: !installing,
-      }))
-    )
-      return;
+      });
+      return ok ? false : null;
+    }
+    // Say so before the administrator prompt rather than turning the
+    // replacement off unasked.
+    if (action !== "update" || (await api.taskManagerStatus().catch(() => null))?.state !== "enabled")
+      return false;
+    const ok = await confirm({
+      title: t("settings.privilege.updateConfirm.title"),
+      body: t("settings.privilege.updateConfirm.body"),
+      confirmLabel: t("settings.privilege.update"),
+    });
+    return ok ? true : null;
+  };
+  // Set while `ask` runs, so a second click cannot start the action twice.
+  let asking = false;
+  const manage = async (action: PrivilegedServiceAction) => {
+    if (busy() || status.loading || asking) return;
+    asking = true;
+    const restores = await ask(action).finally(() => {
+      asking = false;
+    });
+    if (restores === null) return;
     setBusy(true);
     setError(null);
     try {
@@ -330,7 +352,11 @@ function PrivilegedServiceSettings() {
       noteServiceStatus(value);
       toast(
         "success",
-        action === "uninstall" ? t("settings.privilege.uninstalled") : t("settings.privilege.ready"),
+        action === "uninstall"
+          ? t("settings.privilege.uninstalled")
+          : restores
+            ? t("settings.privilege.updatedRestored")
+            : t("settings.privilege.ready"),
       );
     } catch (e) {
       await refetch();
@@ -351,7 +377,8 @@ function PrivilegedServiceSettings() {
     if (s?.state === "notInstalled") return "off";
     return serviceConnected(s) ? "ok" : "warn";
   };
-  // Updating Argus does not update the service, which needs administrator rights.
+  // The installer updates the service along with Argus, except while the task
+  // manager replacement is on or when that failed.
   const outdated = () => {
     const s = status();
     const app = appInfo()?.version;

@@ -60,6 +60,7 @@
     "withNote": "{body} {note}",
     "confirm": "Update service",
     "done": "The privileged service has been updated.",
+    "doneRestored": "The privileged service has been updated and Windows Task Manager restored; the replacement can be turned on again in Settings.",
     "failed": "Couldn't update the privileged service: {error}"
   }
 }

@@ -153,22 +153,23 @@ async function offerServiceUpdate(version: string) {
   const service = await api.privilegedServiceStatus().catch(() => null);
   // A running service that does not report this version is older (or too old to answer).
   if (service?.state !== "running" || !service.authorized || service.version === version) return;
-  const taskManager = await api.taskManagerStatus().catch(() => null);
+  const restores = (await api.taskManagerStatus().catch(() => null))?.state === "enabled";
+  // No version: too old to answer in this version's protocol, so it refuses
+  // what needs it; the body says what that is.
   const body = service.version
     ? t("updates.service.body", { serviceVersion: service.version, version })
     : t("updates.service.bodyOlder", { version });
   const ok = await confirm({
     title: t("updates.service.title"),
-    body:
-      taskManager?.state === "enabled"
-        ? t("updates.service.withNote", { body, note: t("updates.service.restoresTaskManager") })
-        : body,
+    body: restores
+      ? t("updates.service.withNote", { body, note: t("updates.service.restoresTaskManager") })
+      : body,
     confirmLabel: t("updates.service.confirm"),
   });
   if (!ok) return;
   try {
     await api.managePrivilegedService("update");
-    toast("success", t("updates.service.done"));
+    toast("success", restores ? t("updates.service.doneRestored") : t("updates.service.done"));
   } catch (e) {
     toast("error", t("updates.service.failed", { error: String(e) }));
   }
