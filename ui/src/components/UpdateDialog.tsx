@@ -3,7 +3,8 @@
 // changelog entries; skipped releases folded) and installing it. For the
 // installed version: what changed, from CHANGELOG.md built into the app.
 // Also says once per version that an update is ready, when the window is in
-// view (never at start: Argus is often opened to deal with a busy system).
+// view (never at start: Argus is often opened to deal with a busy system) and
+// the onboarding is over.
 
 import {
   createEffect,
@@ -32,17 +33,18 @@ import {
 } from "../lib/release-notes";
 import { appInfo } from "../lib/store";
 import type { InstallError } from "../lib/types";
-import { toast } from "../lib/ui";
+import { confirmRequest, toast } from "../lib/ui";
 import {
   announced,
   installUpdate,
-  openUpdateDialog,
+  openUpdateDialogAfter,
   setAnnounced,
   setUpdateDialog,
   shown,
   type UpdateDialogState,
   updateButtonVersion,
   updateDialog,
+  updateDialogQueued,
   updateStatus,
 } from "../lib/updates";
 import { ArrowRightIcon, ChevronRight, ExternalIcon, GlobeIcon, ShieldIcon, UpdateIcon } from "./icons";
@@ -61,9 +63,10 @@ function formatDate(date: string): string {
   return (new Date(ms).getUTCFullYear() === new Date().getFullYear() ? dayFmt() : fullFmt()).format(ms);
 }
 
-export default function UpdateDialog() {
+/** `busy`: the onboarding, which the notice and the dialog it opens wait for. */
+export default function UpdateDialog(props: { busy: () => boolean }) {
   const shown = presence(updateDialog, 170);
-  announceReady();
+  announceReady(props.busy);
   return (
     <Show when={shown.value()} keyed>
       {(state) => <Body state={state} leaving={shown.leaving()} />}
@@ -71,23 +74,24 @@ export default function UpdateDialog() {
   );
 }
 
-/** Says once per version, when the window is in view, that an update waits. */
-function announceReady() {
+/** Says once per version, when the window is in view and not `busy`, that an update waits. */
+function announceReady(busy: () => boolean) {
   // Until a window started in the tray is first shown, the page may report
   // itself visible (see `shown`).
   const [onScreen, setOnScreen] = createSignal(!inTauri);
   if (inTauri) void shown().then(() => setOnScreen(true));
   createEffect(() => {
     const version = updateButtonVersion();
-    if (!onScreen() || !version || version === announced()) return;
+    if (!onScreen() || busy() || !version || version === announced()) return;
     const available = updateStatus()?.state === "available";
     const show = () => {
       if (document.visibilityState !== "visible") return false;
       setAnnounced(version);
-      if (!untrack(updateDialog))
+      // Not beside the dialog itself, open or about to open.
+      if (!untrack(updateDialog) && !updateDialogQueued())
         toast("info", t(available ? "updates.availableToast" : "updates.readyToast", { version }), 10000, {
           icon: () => <UpdateIcon />,
-          actions: [{ label: t("updates.view"), run: openUpdateDialog }],
+          actions: [{ label: t("updates.view"), run: () => openUpdateDialogAfter(busy) }],
         });
       return true;
     };
@@ -177,10 +181,12 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
     if (error) setFailure(error);
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") close();
+    if (e.key !== "Escape" || confirmRequest()) return;
+    e.stopImmediatePropagation();
+    close();
   };
-  window.addEventListener("keydown", onKey);
-  onCleanup(() => window.removeEventListener("keydown", onKey));
+  window.addEventListener("keydown", onKey, true);
+  onCleanup(() => window.removeEventListener("keydown", onKey, true));
   const focus = (b: HTMLButtonElement) => queueMicrotask(() => b.focus());
 
   const canInstall = () => offer && (state() === "ready" || state() === "installing");

@@ -10,7 +10,8 @@ import { t } from "./i18n";
 import { api, inTauri } from "./ipc";
 import { persisted } from "./prefs";
 import { goToSetting, intervalMs, snapshot } from "./store";
-import { confirm, toast } from "./ui";
+import { confirm, confirmRequest, toast } from "./ui";
+import { updateDialog, updateDialogQueued, welcomePending } from "./updates";
 
 /** The cadences on offer, ms: BACKGROUND_INTERVALS in settings.rs. */
 export const BACKGROUND_INTERVALS = [500, 1000, 2000, 5000, 10000, 30000];
@@ -46,16 +47,18 @@ export async function confirmBackgroundInterval(away: Away, ms: number): Promise
 /**
  * Coming back: when the window sampled less often while it was away than it
  * does in front, says so once, with the way to that setting and a way to
- * stop the notice. Not after a moment away, when no tick was slower.
+ * stop the notice. Not after a moment away, when no tick was slower, and not
+ * when `yields` (the window comes back to something with a stronger claim)
+ * or a dialog is up by the time it would show (`dialogUp`).
  */
-async function noticeRestored(away: Away, awayMs: number) {
+async function noticeRestored(away: Away, awayMs: number, yields: Promise<boolean>, dialogUp: () => boolean) {
   const [isQuiet, setQuiet] = quiet[away];
-  if (isQuiet()) return;
+  if (isQuiet() || (await yields)) return;
   const settings = await api.settings().catch(() => null);
   if (!settings) return;
   const shown = intervalMs();
   const hidden = away === "minimized" ? settings.minimizedInterval : settings.trayInterval;
-  if (hidden <= shown || awayMs <= shown) return;
+  if (hidden <= shown || awayMs <= shown || dialogUp()) return;
   toast("info", t(`shell.background.notice.${away}`, { from: seconds(shown), to: seconds(hidden) }), 10000, {
     actions: [
       {
@@ -69,19 +72,30 @@ async function noticeRestored(away: Away, awayMs: number) {
 
 /**
  * Follows the host's `argus-restored`; returns a cleanup. In the browser
- * preview, `?restored=minimized` or `?restored=tray` plays one.
+ * preview, `?restored=minimized` or `?restored=tray` plays one. The notice
+ * gives way, that time, to a dialog the window comes back to (`busy`: the
+ * onboarding; the update dialog, a confirmation) and to what a new version
+ * shows at the first showing after an update or an autostart: one thing at a
+ * time, and the notice comes again on a later return.
  */
-export async function watchRestores(): Promise<() => void> {
+export async function watchRestores(busy: () => boolean): Promise<() => void> {
+  const dialogUp = () =>
+    busy() || updateDialog() !== null || updateDialogQueued() || confirmRequest() !== null;
+  const restored = (away: Away, awayMs: number) => {
+    // Decided as the window comes back, before anything opens for it; the
+    // tray's update entry asks for its dialog just after, so look again.
+    const yields = dialogUp() ? Promise.resolve(true) : welcomePending();
+    void noticeRestored(away, awayMs, yields, dialogUp);
+  };
   if (!inTauri) {
     const away = new URLSearchParams(location.search).get("restored");
-    const timer =
-      away === "minimized" || away === "tray" ? setTimeout(() => void noticeRestored(away, 60000), 1500) : 0;
+    const timer = away === "minimized" || away === "tray" ? setTimeout(() => restored(away, 60000), 1500) : 0;
     return () => clearTimeout(timer);
   }
   const { listen } = await import("@tauri-apps/api/event");
-  return listen<{ from: Away; awayMs: number }>("argus-restored", (e) => {
-    void noticeRestored(e.payload.from, e.payload.awayMs);
-  });
+  return listen<{ from: Away; awayMs: number }>("argus-restored", (e) =>
+    restored(e.payload.from, e.payload.awayMs),
+  );
 }
 
 /**

@@ -32,7 +32,7 @@ import {
   snapshot,
 } from "./lib/store";
 import type { AccentColors } from "./lib/types";
-import { afterStart, openUpdateDialog, watchUpdates } from "./lib/updates";
+import { afterStart, openUpdateDialogAfter, watchUpdates } from "./lib/updates";
 
 function applyAccent(accent: AccentColors | null) {
   if (!accent) return;
@@ -95,26 +95,32 @@ export default function App() {
       clearInterval(servicesTimer);
     });
 
-    // Dropping files anywhere on the window asks who is using them.
     if (inTauri) {
-      void import("@tauri-apps/api/event").then(async ({ listen }) => {
-        const unlisten = await listen("argus-taskmgr-ready", () => void api.taskManagerReady());
-        onCleanup(unlisten);
-        // The tray's update entry: what changed, then install it from the dialog.
-        const unlistenUpdate = await listen("argus-show-update", openUpdateDialog);
-        onCleanup(unlistenUpdate);
-        await api.taskManagerReady();
-      });
-      void import("@tauri-apps/api/webview").then(async ({ getCurrentWebview }) => {
-        const unlisten = await getCurrentWebview().onDragDropEvent(({ payload }) => {
-          if (payload.type === "enter" || payload.type === "over") setDragging(true);
-          else if (payload.type === "drop") {
-            setDragging(false);
-            if (payload.paths.length > 0) openFileLock(payload.paths);
-          } else setDragging(false);
-        });
-        onCleanup(unlisten);
-      });
+      cleanupLater(
+        import("@tauri-apps/api/event").then(async ({ listen }) => {
+          const ready = await listen("argus-taskmgr-ready", () => void api.taskManagerReady());
+          // The tray's update entry: what changed, then install it from the
+          // dialog; after the onboarding, never on top of it.
+          const update = await listen("argus-show-update", () => void openUpdateDialogAfter(onboardingOpen));
+          void api.taskManagerReady();
+          return () => {
+            ready();
+            update();
+          };
+        }),
+      );
+      // Dropping files anywhere on the window asks who is using them.
+      cleanupLater(
+        import("@tauri-apps/api/webview").then(({ getCurrentWebview }) =>
+          getCurrentWebview().onDragDropEvent(({ payload }) => {
+            if (payload.type === "enter" || payload.type === "over") setDragging(true);
+            else if (payload.type === "drop") {
+              setDragging(false);
+              if (payload.paths.length > 0) openFileLock(payload.paths);
+            } else setDragging(false);
+          }),
+        ),
+      );
     }
 
     void subscribe(ingest).then(() => {
@@ -123,11 +129,11 @@ export default function App() {
     reportFirstFrame();
     const info = appInfo();
     if (info) applyAccent(info.accent);
-    void watchUpdates().then((stop) => onCleanup(stop));
-    void watchRestores().then((stop) => onCleanup(stop));
+    cleanupLater(watchUpdates());
+    cleanupLater(watchRestores(onboardingOpen));
     onCleanup(watchPrivilege());
     // What a new version changed waits for the onboarding, which decides first.
-    void maybeOpenOnboarding().then(() => info && afterStart(info, onboardingOpen));
+    void maybeOpenOnboarding().then(() => afterStart(info, onboardingOpen));
   });
 
   return (
@@ -185,12 +191,30 @@ export default function App() {
       <ContextMenu />
       <FileLockDialog />
       <Onboarding />
-      <UpdateDialog />
+      <UpdateDialog busy={onboardingOpen} />
       <ConfirmDialog />
       <Toasts />
       <DropOverlay visible={dragging()} />
     </div>
   );
+}
+
+/**
+ * Undoes what an async setup resolves to when the component goes. `onCleanup`
+ * only registers while Solid knows the owner, which it no longer does after an
+ * await; so register now, and undo at once a setup that resolves too late.
+ */
+function cleanupLater(setup: Promise<() => void>) {
+  let stop: (() => void) | undefined;
+  let gone = false;
+  onCleanup(() => {
+    gone = true;
+    stop?.();
+  });
+  void setup.then((s) => {
+    if (gone) s();
+    else stop = s;
+  });
 }
 
 function isTyping(e: KeyboardEvent) {

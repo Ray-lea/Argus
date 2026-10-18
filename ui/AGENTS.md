@@ -6,6 +6,7 @@
 
 - 不要把本地组件命名为 `Switch`：开发模式的转换会和 solid-js 的 `Switch` 冲突（现在的开关组件叫 `ToggleSwitch`）。
 - 不要让 `on(() => 某个每次采样都会变的值)` 驱动重建：曾导致详细信息面板每秒闪一下。需要稳定的键时用 `createMemo`。
+- `onCleanup` 只在 Solid 知道所有者时登记：在 `onMount` 的 `await` 或 `.then` 回调里调用时没有所有者，清理函数从不执行（开发模式控制台警告 “cleanups created outside a `createRoot` or `render` will never be run”）。先同步登记，再在回调里交出清理函数（`App.tsx` 的 `cleanupLater`，`Settings.tsx` 的 `HotkeySetting`）。
 
 ## 动画与性能
 
@@ -38,6 +39,8 @@
 ## 其他
 
 - 以 `--hidden` 启动时，页面画出第一帧之前 WebView 保持可见（`background.ts` 的 `reportFirstFrame` 报告后宿主才让它休眠），这段时间 `visibilityState` 为 `visible`，窗口却没有显示。要等用户看得到窗口才做的事（一次性提示、更新内容）先等 `updates.ts` 的 `shown()`，之后再按 `visibilityState` 判断。
+- 叠在其他对话框之上的对话框（确认框、更新对话框）在捕获阶段处理 Esc 并 `stopImmediatePropagation`：各对话框都在 `window` 上监听，冒泡阶段的写法会让一次 Esc 同时关掉下面的引导，并把引导记为已完成。更新对话框在确认框打开时把 Esc 让给它。托盘菜单项和“已准备就绪”提示打开的更新对话框经 `updates.ts` 的 `openUpdateDialogAfter` 等引导结束，提示本身也等引导结束后再出现。
+- 窗口回到前台的刷新间隔提示（`background.ts`）在正显示引导、更新对话框或确认框时不出现，也让位于新版本首次显示的更新内容：是否让位在 `argus-restored` 到达时就决定（`updates.ts` 的 `welcomePending` 在 `afterStart` 读完设置后即有结果），不要等提示自己读完设置后再看对话框是否已打开：更新内容还要等页面变为可见才弹出，两者的先后没有保证。模拟数据页面的 `?restored=…` 在启动 1.5 秒后才模拟回到前台，测不出首次显示的先后。
 - 下拉框用 `components/Select.tsx`，不要写原生 `<select>`：原生弹出列表由 Windows 按经典样式绘制，与主题不符。
 - Solid 编译 `style={{ … }}` 时按字面键逐个设置，计算出的键（`[cond ? "top" : "bottom"]`）会被丢掉；两个属性都写，用值切换。
 - 滚动条样式只在 `styles.css` 的全局 `::-webkit-scrollbar` 规则里定义，局部只加轨道边距之类的补充。

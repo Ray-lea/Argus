@@ -42,6 +42,22 @@ export const [updateDialog, setUpdateDialog] = createSignal<UpdateDialogState | 
 export const openUpdateDialog = () => setUpdateDialog({ mode: "offer" });
 export const openWhatsNew = (from: string | null = null) => setUpdateDialog({ mode: "installed", from });
 
+let offerQueued = false;
+/** The update dialog is asked for and waits (`openUpdateDialogAfter`). */
+export const updateDialogQueued = () => offerQueued;
+/**
+ * The update dialog asked for by the tray or the ready notice: once `busy`
+ * (the onboarding) is over, never on top of it, and left as it is when
+ * already open.
+ */
+export async function openUpdateDialogAfter(busy: () => boolean) {
+  if (offerQueued) return;
+  offerQueued = true;
+  await free(() => !busy());
+  offerQueued = false;
+  if (updateDialog()?.mode !== "offer") openUpdateDialog();
+}
+
 /**
  * Starts the downloaded installer; Argus exits once it runs. Resolves with
  * why it did not start, `cancelled` when the administrator prompt was declined.
@@ -72,6 +88,35 @@ export async function watchUpdates(): Promise<() => void> {
   return unlisten;
 }
 
+// Whether `afterStart` has something to show and is not done with it yet;
+// `decided` once it has read the settings.
+let welcoming = false;
+let decided: () => void = () => {};
+const decision = new Promise<void>((resolve) => {
+  decided = resolve;
+});
+
+/**
+ * Whether the first start of this version is showing, or still to show, what
+ * changed (or that it was updated): until it is done, it has the window. Asked
+ * as the window comes back, it settles before anything is shown for that
+ * showing.
+ */
+export async function welcomePending(): Promise<boolean> {
+  await decision;
+  return welcoming;
+}
+
+/** The first start of this version (`firstStart`); `info` is null when the host did not say. */
+export async function afterStart(info: AppInfo | null, busy: () => boolean) {
+  try {
+    if (info) await welcome(info, busy);
+  } finally {
+    welcoming = false;
+    decided();
+  }
+}
+
 /**
  * The first start of a version. After an update it shows what changed (or,
  * turned off in Settings, says it was updated), once: the version is recorded
@@ -80,7 +125,7 @@ export async function watchUpdates(): Promise<() => void> {
  * say) is over; a start by the task manager replacement leaves it to a later
  * start, since the system may be struggling then.
  */
-export async function afterStart(info: AppInfo, busy: () => boolean) {
+async function welcome(info: AppInfo, busy: () => boolean) {
   const settings = await api.settings().catch(() => null);
   if (!settings) return;
   const start = firstStart(info.version, settings.seenVersion, settings.onboarding > 0, info.updated);
@@ -89,6 +134,8 @@ export async function afterStart(info: AppInfo, busy: () => boolean) {
     if (start.kind === "record") void api.noteVersionSeen().catch(() => {});
     return;
   }
+  welcoming = true;
+  decided();
   if (inTauri) await shown();
   await free(() => !busy() && !updateDialog());
   const from = start.from ?? updatedFrom();
