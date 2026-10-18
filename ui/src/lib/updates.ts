@@ -192,15 +192,13 @@ function free(ready: () => boolean): Promise<void> {
 }
 
 /**
- * The installer updates the privileged service too, except while the task
- * manager replacement is on or when that failed; then offer it here, while
- * the mismatch is fresh.
+ * The installer updates the privileged service too; when that failed, or for
+ * the standalone exe, offer it here while the mismatch is fresh.
  */
 async function offerServiceUpdate(version: string) {
   const service = await api.privilegedServiceStatus().catch(() => null);
   // A running service that does not report this version is older (or too old to answer).
   if (service?.state !== "running" || !service.authorized || service.version === version) return;
-  const restores = (await api.taskManagerStatus().catch(() => null))?.state === "enabled";
   // No version: too old to answer in this version's protocol, so it refuses
   // what needs it; the body says what that is.
   const body = service.version
@@ -208,15 +206,13 @@ async function offerServiceUpdate(version: string) {
     : t("updates.service.bodyOlder", { version });
   const ok = await confirm({
     title: t("updates.service.title"),
-    body: restores
-      ? t("updates.service.withNote", { body, note: t("updates.service.restoresTaskManager") })
-      : body,
+    body,
     confirmLabel: t("updates.service.confirm"),
   });
   if (!ok) return;
   try {
     await api.managePrivilegedService("update");
-    toast("success", restores ? t("updates.service.doneRestored") : t("updates.service.done"));
+    toast("success", t("updates.service.done"));
   } catch (e) {
     toast("error", t("updates.service.failed", { error: String(e) }));
   }

@@ -128,12 +128,7 @@
     },
     "start": "启动服务",
     "update": "更新服务",
-    "updateConfirm": {
-      "title": "更新特权服务？",
-      "body": "当前已启用任务管理器替换。更新会先恢复 Windows 任务管理器，Ctrl+Shift+Esc 等入口将重新打开 Windows 任务管理器；更新后可在“替换系统任务管理器”中重新启用替换。更新需要管理员授权。"
-    },
     "ready": "特权服务已就绪。",
-    "updatedRestored": "特权服务已更新，Windows 任务管理器已恢复，可在“替换系统任务管理器”中重新启用替换。",
     "uninstalled": "特权服务已卸载。"
   },
   "taskManager": {

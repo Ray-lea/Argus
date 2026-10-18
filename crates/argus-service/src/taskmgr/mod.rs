@@ -34,7 +34,7 @@ const RECOVERY_TEXT: &str = "taskmgr-recovery.txt";
 const MANAGE: &str = "--argus-taskmgr-manage";
 pub type Assets = (&'static [u8], &'static [u8]);
 /// The launcher and recovery program this build carries, kept by `run_mode`
-/// for the installer's refresh of an enabled replacement (`follow_update`).
+/// for a service update to bring an enabled replacement along (`follow_update`).
 /// None in a development build.
 static ASSETS: OnceLock<Assets> = OnceLock::new();
 
@@ -543,30 +543,6 @@ fn held_by_other(live: &Observation, ours: &Value) -> bool {
     live.filtered || live.debugger.as_ref().is_some_and(|value| value != ours)
 }
 
-/// Whether the replacement may be on (or half way): an update of the service
-/// would turn it off. Unsure counts as on.
-pub(crate) fn may_be_on(dir: &Path) -> bool {
-    let machine = registry::Machine::new(dir.into());
-    on_or_unsure(
-        machine.load(),
-        registry::observe(registry::KEY).map_err(String::from),
-        &replacement(dir),
-    )
-}
-
-/// A finished restore is off whatever holds the entry since: the record stays
-/// for good once written, so it alone does not say the replacement is on. An
-/// unfinished one (on, or half way) and Argus's value without one count as on.
-fn on_or_unsure(journal: Result<Option<Journal>>, live: Result<Observation>, ours: &Value) -> bool {
-    match (journal, live) {
-        (Ok(journal), Ok(live)) => {
-            journal.is_some_and(|journal| journal.phase != Phase::Restored)
-                || live.debugger.as_ref() == Some(ours)
-        }
-        _ => true,
-    }
-}
-
 /// What bringing an enabled replacement to a new build touches in the
 /// protected folder. `follow` keeps it apart from the order and rollback,
 /// which the tests check without the folder.
@@ -592,55 +568,62 @@ impl Files for Folder<'_> {
     }
 }
 
-/// Brings an enabled replacement to the installer's build without turning it
-/// off (`install::refresh`): the interface as a new copy the record then
-/// names, since a running copy cannot be replaced, and the launcher, recovery
-/// program and instructions in place. taskmgr.exe's entry names the launcher
-/// and stays as it is. A replacement that is off, half way or overwritten by
-/// someone else is left alone. The installer holds no lock; this takes it.
-pub(crate) fn follow_update(dir: &Path) -> Result<()> {
+/// Brings an enabled replacement to this build without turning it off, before
+/// an update of the service (`install::run_helper`, which holds install.lock):
+/// the interface as a new copy the record then names, since a running copy
+/// cannot be replaced, and the launcher, recovery program and instructions in
+/// place. taskmgr.exe's entry names the launcher and stays as it is, and the
+/// launcher does not need the service, so the service can change under it.
+/// False when the replacement is not whole (off, half way or overwritten by
+/// someone else): nothing changed, and the caller restores as before.
+pub(crate) fn follow_update(dir: &Path) -> Result<bool> {
     // A development build carries no launcher and cannot enable one.
     let Some(&assets) = ASSETS.get() else {
-        return Ok(());
+        return Ok(false);
     };
-    let _lock = lock(dir)?;
     let mut machine = registry::Machine::new(dir.into());
     let Some(mut journal) = machine.load()? else {
-        return Ok(());
+        return Ok(false);
     };
     // Source code and embedded helper bytes are from the installed, elevated
     // executable, as for an enable.
     let interface =
         fs::read(std::env::current_exe().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    follow(
+    if !follow(
         &mut machine,
         &mut Folder(dir),
         &mut journal,
         &interface,
         assets,
-    )?;
+    )? {
+        return Ok(false);
+    }
     // The copy the record named until now goes, unless it is running.
     sweep_images(&machine);
-    Ok(())
+    Ok(true)
+}
+
+/// Whether the replacement is on and whole: a finished enable whose value
+/// taskmgr.exe's entry still holds, unfiltered. `status` calls it enabled.
+fn whole(journal: &Journal, live: &Observation) -> bool {
+    journal.phase == Phase::Active
+        && !live.filtered
+        && live.debugger.as_ref() == Some(&journal.replacement)
 }
 
 /// The order of `follow_update`: the new interface copy first, under a name of
 /// its own; then the launcher and recovery program; then the record. A failure
 /// before the record names the new copy deletes it, so the record and the copy
-/// it names stay as they were.
+/// it names stay as they were. False, touching nothing, when not `whole`.
 fn follow(
     store: &mut impl Store,
     files: &mut impl Files,
     journal: &mut Journal,
     interface: &[u8],
     (launcher, recover): Assets,
-) -> Result<()> {
-    let live = store.observe()?;
-    if journal.phase != Phase::Active
-        || live.filtered
-        || live.debugger.as_ref() != Some(&journal.replacement)
-    {
-        return Ok(());
+) -> Result<bool> {
+    if !whole(journal, &store.observe()?) {
+        return Ok(false);
     }
     let image = if files.holds(&journal.image, interface) {
         None
@@ -674,12 +657,12 @@ fn follow(
         // Instructions only; the old ones still lead to the same files.
         let _ = files.put(RECOVERY_TEXT, text.as_bytes());
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Deletes the interface copies no unfinished record names. For an update or
-/// removal of the service, which restored the replacement first and holds
-/// install.lock.
+/// removal of the service, which restored the replacement first (or brought
+/// it to this build) and holds install.lock.
 pub(crate) fn sweep(dir: &Path) {
     sweep_images(&registry::Machine::new(dir.into()));
 }
@@ -1360,14 +1343,14 @@ mod tests {
     }
 
     #[test]
-    fn only_an_unfinished_record_or_argus_value_counts_as_on() {
+    fn only_a_finished_enable_argus_still_holds_is_whole() {
         let ours = Value::string("launcher.exe --task-manager");
         let foreign = Observation {
             debugger: Some(Value::string("procexp64.exe")),
             filtered: false,
         };
         let filtered = Observation {
-            debugger: None,
+            debugger: Some(ours.clone()),
             filtered: true,
         };
         let argus = Observation {
@@ -1375,34 +1358,21 @@ mod tests {
             filtered: false,
         };
         let clean = Observation::default();
-        let on = |record: Option<Phase>, live: &Observation| {
-            on_or_unsure(Ok(record.map(journal)), Ok(live.clone()), &ours)
-        };
-        // No record: only Argus's value is on.
-        assert!(!on(None, &clean));
-        assert!(!on(None, &foreign));
-        assert!(on(None, &argus));
-        // A finished restore stays on disk; it is off whatever came since.
+        // A service update keeps it on only then; anything else is restored first.
+        assert!(whole(&journal(Phase::Active), &argus));
         for live in [&clean, &foreign, &filtered] {
-            assert!(!on(Some(Phase::Restored), live));
+            assert!(!whole(&journal(Phase::Active), live));
         }
-        assert!(on(Some(Phase::Restored), &argus));
-        // On, or half way, whatever the entry holds now.
-        for phase in [Phase::Prepared, Phase::Active, Phase::Restoring] {
-            for live in [&clean, &foreign, &argus] {
-                assert!(on(Some(phase), live));
+        for phase in [Phase::Prepared, Phase::Restoring, Phase::Restored] {
+            for live in [&clean, &foreign, &filtered, &argus] {
+                assert!(!whole(&journal(phase), live));
             }
         }
-        // Unreadable counts as on.
-        let restored = || Ok(Some(journal(Phase::Restored)));
-        assert!(on_or_unsure(
-            Err("corrupt".into()),
-            Ok(clean.clone()),
-            &ours
-        ));
-        assert!(on_or_unsure(restored(), Err("denied".into()), &ours));
-        assert!(on_or_unsure(Ok(None), Err("denied".into()), &ours));
         // What a held up service update or removal blames.
+        let filtered = Observation {
+            debugger: None,
+            filtered: true,
+        };
         assert!(held_by_other(&foreign, &ours) && held_by_other(&filtered, &ours));
         assert!(!held_by_other(&argus, &ours) && !held_by_other(&clean, &ours));
     }
@@ -1481,10 +1451,10 @@ mod tests {
     }
 
     #[test]
-    fn an_enabled_replacement_follows_the_installed_build() {
+    fn an_enabled_replacement_follows_a_new_build() {
         let (mut record, mut disk, mut j) = enabled();
         let (old, entry) = (j.clone(), record.live.clone());
-        follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap();
+        assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap());
         // A new copy the record names; the old one waits for the sweep.
         assert_ne!(j.image, old.image);
         assert!(valid_image(&j.image));
@@ -1504,7 +1474,7 @@ mod tests {
         assert_eq!(record.live, entry);
         // Already this build: nothing is written again.
         let before = (disk.clone(), j.clone());
-        follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap();
+        assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap());
         assert_eq!((&disk, &j.image), (&before.0, &before.1.image));
     }
 
@@ -1532,7 +1502,10 @@ mod tests {
                 None => record.live.filtered = phase == Phase::Active,
             }
             let before = (disk.clone(), j.image.clone(), record.saved.clone());
-            follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap();
+            assert!(
+                !follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap(),
+                "{phase:?}"
+            );
             assert_eq!((&disk, &j.image), (&before.0, &before.1), "{phase:?}");
             assert_eq!(
                 record.saved.map(|s| s.image),

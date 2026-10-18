@@ -315,42 +315,30 @@ function PrivilegedServiceSettings() {
     }
   });
   /**
-   * Asks what an action needs asked first. Null when declined; otherwise
-   * whether it restores Windows Task Manager (an update with the replacement on).
+   * Asks what an action needs asked first: installing and uninstalling. An
+   * update keeps an enabled task manager replacement on, so it asks nothing.
    */
-  const ask = async (action: PrivilegedServiceAction): Promise<boolean | null> => {
-    if (action === "install" || action === "uninstall") {
-      const installing = action === "install";
-      const ok = await confirm({
-        title: installing ? t("settings.privilege.install.title") : t("settings.privilege.uninstall.title"),
-        body: installing ? t("settings.privilege.install.body") : t("settings.privilege.uninstall.body"),
-        confirmLabel: installing
-          ? t("settings.privilege.install.action")
-          : t("settings.privilege.uninstall.confirm"),
-        danger: !installing,
-      });
-      return ok ? false : null;
-    }
-    // Say so before the administrator prompt rather than turning the
-    // replacement off unasked.
-    if (action !== "update" || (await api.taskManagerStatus().catch(() => null))?.state !== "enabled")
-      return false;
-    const ok = await confirm({
-      title: t("settings.privilege.updateConfirm.title"),
-      body: t("settings.privilege.updateConfirm.body"),
-      confirmLabel: t("settings.privilege.update"),
+  const ask = async (action: PrivilegedServiceAction): Promise<boolean> => {
+    if (action !== "install" && action !== "uninstall") return true;
+    const installing = action === "install";
+    return confirm({
+      title: installing ? t("settings.privilege.install.title") : t("settings.privilege.uninstall.title"),
+      body: installing ? t("settings.privilege.install.body") : t("settings.privilege.uninstall.body"),
+      confirmLabel: installing
+        ? t("settings.privilege.install.action")
+        : t("settings.privilege.uninstall.confirm"),
+      danger: !installing,
     });
-    return ok ? true : null;
   };
   // Set while `ask` runs, so a second click cannot start the action twice.
   let asking = false;
   const manage = async (action: PrivilegedServiceAction) => {
     if (busy() || status.loading || asking) return;
     asking = true;
-    const restores = await ask(action).finally(() => {
+    const ok = await ask(action).finally(() => {
       asking = false;
     });
-    if (restores === null) return;
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -362,11 +350,9 @@ function PrivilegedServiceSettings() {
       const done =
         action === "uninstall"
           ? t("settings.privilege.uninstalled")
-          : restores
-            ? t("settings.privilege.updatedRestored")
-            : serviceConnected(value)
-              ? t("settings.privilege.ready")
-              : null;
+          : serviceConnected(value)
+            ? t("settings.privilege.ready")
+            : null;
       if (done) toast("success", done);
     } catch (e) {
       await refetch();

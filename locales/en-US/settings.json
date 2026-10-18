@@ -128,12 +128,7 @@
     },
     "start": "Start service",
     "update": "Update service",
-    "updateConfirm": {
-      "title": "Update the privileged service?",
-      "body": "Task Manager replacement is on. Updating first restores Windows Task Manager, so Ctrl+Shift+Esc and other shortcuts open Windows Task Manager again; after the update, the replacement can be turned on again under Replace Task Manager. Updating requires administrator permission."
-    },
     "ready": "The privileged service is ready.",
-    "updatedRestored": "The privileged service has been updated and Windows Task Manager restored; the replacement can be turned on again under Replace Task Manager.",
     "uninstalled": "The privileged service has been uninstalled."
   },
   "taskManager": {

@@ -26,7 +26,7 @@ use windows::core::{PCWSTR, PWSTR};
 
 use crate::security;
 use crate::util::{
-    FOREIGN_SERVICE, Handle, OTHER_OWNER, Result, TASK_MANAGER_ACTIVE, io, message, wide, win,
+    FOREIGN_SERVICE, Handle, OTHER_OWNER, Result, TASK_MANAGER_FOLLOW, io, message, wide, win,
 };
 
 static MANAGING: AtomicBool = AtomicBool::new(false);
@@ -499,8 +499,15 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
             if action == "update" && existing.is_none() {
                 return Err(1060);
             }
-            // Never retire service/recovery files while IFEO still owns them.
-            restore_task_manager(&dir)?;
+            // An enabled replacement comes along and stays on: its files are
+            // apart from the service's and its launcher does not need it.
+            // Anything else is restored first: never retire service/recovery
+            // files while IFEO still owns them.
+            let followed = action == "update"
+                && crate::taskmgr::follow_update(&dir).map_err(|_| TASK_MANAGER_FOLLOW)?;
+            if !followed {
+                restore_task_manager(&dir)?;
+            }
             install_or_update(&manager, existing.as_ref(), &dir, sid)
         }
         "start" => {
@@ -550,10 +557,8 @@ fn restore_task_manager(dir: &Path) -> Result<()> {
 /// Brings an installed service to this executable, for the installer: it
 /// already runs elevated after replacing argus.exe, so an update asks for
 /// administrator rights once. The service stays with the account that
-/// installed it. While the task manager replacement may be on the service
-/// stays as it is, because updating turns the replacement off; an enabled
-/// replacement's own files follow this version instead, and Argus offers the
-/// service update when it starts.
+/// installed it, and an enabled task manager replacement follows along and
+/// stays on. When this fails, Argus offers the service update when it starts.
 pub(crate) fn refresh() -> Result<()> {
     if !argus_core::privilege::is_elevated() {
         return Err(5);
@@ -565,9 +570,6 @@ pub(crate) fn refresh() -> Result<()> {
     let owner = {
         let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
         let _dir = security::protect_directory(&dir)?;
-        if crate::taskmgr::may_be_on(&dir) {
-            return crate::taskmgr::follow_update(&dir).map_err(|_| TASK_MANAGER_ACTIVE);
-        }
         owner(&dir)?
     };
     run_helper("update", &owner)
