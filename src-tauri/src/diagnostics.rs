@@ -127,10 +127,21 @@ fn token_kind() -> &'static str {
 }
 
 static HARDWARE_LOGGED: AtomicBool = AtomicBool::new(false);
+/// Samples so far without per-process network; `u32::MAX` once it was there.
+static WITHOUT_NETWORK: AtomicU32 = AtomicU32::new(0);
 
 /// Which sensors this PC offers, from the first sample: the usual answer to
-/// "why is there no temperature / power on my machine".
+/// "why is there no temperature / power on my machine". Runs for every sample:
+/// per-process network comes from the privileged service or the ETW session,
+/// which answer a sample or more after the first, so its line follows when it
+/// turns up.
 pub fn log_hardware_once(s: &Snapshot) {
+    let (without, from) = network_step(WITHOUT_NETWORK.load(Ordering::Relaxed), s.process_network);
+    // Only the sampling thread calls this.
+    WITHOUT_NETWORK.store(without, Ordering::Relaxed);
+    if let Some(sample) = from {
+        log::info!("per-process network: yes from sample {sample}");
+    }
     if HARDWARE_LOGGED.swap(true, Ordering::Relaxed) {
         return;
     }
@@ -186,8 +197,23 @@ pub fn log_hardware_once(s: &Snapshot) {
         hw.disks.iter().filter(|d| d.temperature.is_some()).count(),
         hw.nics.len(),
         hw.batteries.len(),
-        if s.process_network { "yes" } else { "no" },
+        if s.process_network {
+            "yes"
+        } else {
+            "not in the first sample"
+        },
     );
+}
+
+/// The count of samples without per-process network after one more, and the
+/// sample (from 1) to report it from when it turned up after the first.
+fn network_step(without: u32, available: bool) -> (u32, Option<u32>) {
+    match (without, available) {
+        (u32::MAX, _) => (u32::MAX, None),
+        (0, true) => (u32::MAX, None),
+        (n, true) => (u32::MAX, Some(n.saturating_add(1))),
+        (n, false) => (n.saturating_add(1).min(u32::MAX - 1), None),
+    }
 }
 
 /// The privileged service and the task manager replacement, as Argus finds
@@ -247,5 +273,28 @@ pub fn log_ui_error(event: String, category: String) {
         );
     } else if n == UI_ERRORS_MAX {
         log::error!("page: more errors this session are not logged");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn per_process_network_is_reported_when_it_turns_up() {
+        // There in the first sample: the devices line says so, nothing more.
+        assert_eq!(network_step(0, true), (u32::MAX, None));
+        // Missing at first, there from the third sample: one line for it.
+        let (n, from) = network_step(0, false);
+        assert_eq!(from, None);
+        let (n, from) = network_step(n, false);
+        assert_eq!(from, None);
+        let (n, from) = network_step(n, true);
+        assert_eq!(from, Some(3));
+        // Once only, whatever follows.
+        assert_eq!(network_step(n, false), (u32::MAX, None));
+        assert_eq!(network_step(n, true), (u32::MAX, None));
+        // Never there: the count stops short of the "was there" mark.
+        assert_eq!(network_step(u32::MAX - 1, false), (u32::MAX - 1, None));
     }
 }
