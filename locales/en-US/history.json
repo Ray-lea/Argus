@@ -16,7 +16,9 @@
   },
   "metric": {
     "peak": "Peak {value}%",
-    "total": "of {value} GB"
+    "total": "of {value} GB",
+    "charging": "Charging {value}",
+    "discharging": "Discharging {value}"
   },
   "exited": "{name} (PID {pid}) has exited.",
   "copied": {

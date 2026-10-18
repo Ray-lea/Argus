@@ -413,6 +413,10 @@ export interface HistoryPoint {
   /** Bytes per second, all disks / all adapters. */
   disk: number;
   net: number;
+  /** Battery charge, percent; null on machines without one. */
+  battery: number | null;
+  /** Battery power flow, mW (negative while discharging); null when unknown. */
+  batteryRate: number | null;
 }
 
 /** A process that stood out in a recorded frame (averages over the frame). */

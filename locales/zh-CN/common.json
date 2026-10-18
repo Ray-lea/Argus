@@ -33,6 +33,7 @@
     "disk": "磁盘",
     "network": "网络",
     "gpu": "GPU",
+    "battery": "电池",
     "temperature": "温度"
   },
   "languageSystem": "跟随系统",

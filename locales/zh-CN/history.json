@@ -10,7 +10,9 @@
   },
   "metric": {
     "peak": "最高 {value}%",
-    "total": "共 {value} GB"
+    "total": "共 {value} GB",
+    "charging": "充电 {value}",
+    "discharging": "放电 {value}"
   },
   "exited": "{name}（PID {pid}）已经退出。",
   "copied": {

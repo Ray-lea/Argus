@@ -65,6 +65,18 @@ fn main() {
             m.processes.len(),
             t.elapsed()
         );
+        let battery = m.system.battery.map_or_else(
+            || "none".to_string(),
+            |pct| {
+                format!(
+                    "{pct:.0}%{}",
+                    m.system
+                        .battery_rate
+                        .map_or(String::new(), |r| format!(", {r:.0} mW"))
+                )
+            },
+        );
+        println!("battery: {battery}");
         let mut procs = m.processes;
         procs.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
         for p in procs.iter().take(8) {

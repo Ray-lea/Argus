@@ -108,7 +108,7 @@ function niceCeil(v: number): number {
 }
 
 interface Metric {
-  resource: "cpu" | "memory" | "disk" | "network" | "gpu";
+  resource: "cpu" | "memory" | "disk" | "network" | "gpu" | "battery";
   colorVar: string;
   value: (p: HistoryPoint) => number;
   /** Drawn faintly above the value: CPU's highest one-second sample. */
@@ -125,6 +125,9 @@ const niceRate = (v: number) => (v <= MB ? Math.min(MB, niceCeil(v / KB) * KB) :
 
 /** Scales are round numbers: "20 MB/s" rather than "20.0 MB/s". */
 const round = (label: string) => label.replace(/\.0+ /, " ");
+
+/** Watts below ten keep a decimal, as on the performance page. */
+const fmtW = (v: number) => (v < 10 ? v.toFixed(1) : String(Math.round(v)));
 
 const highest = (points: HistoryPoint[], value: (p: HistoryPoint) => number) =>
   points.reduce((m, p) => Math.max(m, value(p)), 0);
@@ -185,6 +188,21 @@ const METRICS: Metric[] = [
     value: (p) => p.gpu,
     max: () => 100,
     format: (p) => `${fmtCpu(p.gpu)}%`,
+  },
+  {
+    resource: "battery",
+    colorVar: "--bat",
+    value: (p) => p.battery ?? 0,
+    max: () => 100,
+    format: (p) => `${Math.round(p.battery ?? 0)}%`,
+    // The power flow ties the drain to what the other charts were doing.
+    detail: (p) => {
+      const r = p.batteryRate;
+      if (r === null || r === 0) return "";
+      return t(r > 0 ? "history.metric.charging" : "history.metric.discharging", {
+        value: `${fmtW(Math.abs(r) / 1000)} W`,
+      });
+    },
   },
 ];
 
@@ -451,6 +469,12 @@ export default function HistoryPage() {
     series.latest ?? { from: now() - range().ms, to: now(), step: FRAME, points: [], ts: [], joined: [] };
   const tickList = createMemo(() => ticks(view().from, view().to, range().tick));
 
+  /** Battery charts appear only where battery data was recorded. */
+  const metrics = createMemo(() => {
+    const hasBattery = view().points.some((p) => p.battery !== null);
+    return hasBattery ? METRICS : METRICS.filter((m) => m.resource !== "battery");
+  });
+
   /** The point drawn at `ts`, unless `ts` falls in a gap. */
   const shownAt = (ts: number) => {
     const v = view();
@@ -629,7 +653,7 @@ export default function HistoryPage() {
     <div class="page history">
       <section class="history-graphs" aria-label={t("history.systemHistory")}>
         <div class="history-labels">
-          <For each={METRICS}>
+          <For each={metrics()}>
             {(m) => (
               <div class="history-label" style={{ "--c": `var(${m.colorVar})` }}>
                 <span>{t(`common.resource.${m.resource}`)}</span>
@@ -650,7 +674,7 @@ export default function HistoryPage() {
         </div>
 
         <div ref={plot} class="history-plot">
-          <For each={METRICS}>
+          <For each={metrics()}>
             {(m) => <HistoryChart view={view()} metric={m} ticks={tickList()} cursor={cursor()} />}
           </For>
           <div class="history-axis" aria-hidden="true">
