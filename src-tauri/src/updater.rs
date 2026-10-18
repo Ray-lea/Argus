@@ -19,7 +19,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use argus_core::tr;
@@ -137,6 +136,96 @@ struct Inner {
     status: UpdateStatus,
     ready: Option<Ready>,
     next_check: i64,
+    /// A check is running (`check`); there is never more than one.
+    checking: bool,
+    /// Bumped by `reset`: what a running check finds after that belongs to
+    /// the channel before, so it drops it and looks again.
+    generation: u64,
+}
+
+impl Inner {
+    fn new(status: UpdateStatus) -> Self {
+        Self {
+            status,
+            ready: None,
+            next_check: 0,
+            checking: false,
+            generation: 0,
+        }
+    }
+
+    /// Forgets the downloaded update (another channel), unless an installer
+    /// is starting. A check under way looks again once it ends, so meanwhile
+    /// the state says checking. Returns whether it forgot.
+    fn reset(&mut self) -> bool {
+        if matches!(self.status.state, "disabled" | "installing") {
+            return false;
+        }
+        self.generation += 1;
+        self.ready = None;
+        self.next_check = 0;
+        self.status = UpdateStatus {
+            state: if self.checking { "checking" } else { "idle" },
+            portable: self.status.portable,
+            ..Default::default()
+        };
+        true
+    }
+
+    /// Starts a check unless one is running: its generation.
+    fn begin_check(&mut self) -> Option<u64> {
+        if self.checking {
+            return None;
+        }
+        self.checking = true;
+        Some(self.generation)
+    }
+
+    /// Ends a check of `generation`, or returns the generation to check again
+    /// for when a reset came meanwhile. Under the same lock as `reset`, so a
+    /// reset either reaches this check or finds none running and the caller
+    /// starts one.
+    fn end_check(&mut self, generation: u64) -> Option<u64> {
+        if self.generation != generation {
+            return Some(self.generation);
+        }
+        self.checking = false;
+        None
+    }
+
+    /// Whether what a check of `generation` found still applies: not after a
+    /// reset, and never while an installer is starting, whose state only the
+    /// install itself ends.
+    fn current(&self, generation: u64) -> bool {
+        self.generation == generation && self.status.state != "installing"
+    }
+
+    /// Hands out the ready installer to run, now installing.
+    fn start_install(&mut self) -> Option<Ready> {
+        let ready = self
+            .ready
+            .clone()
+            .filter(|_| self.status.state == "ready")?;
+        self.status.state = "installing";
+        self.status.error = None;
+        Some(ready)
+    }
+
+    /// The installer did not start: offered again, with `error` unless the
+    /// administrator prompt was declined; or, `changed` on disk, dropped.
+    fn install_failed(&mut self, changed: bool, error: Option<String>) {
+        if self.status.state != "installing" {
+            return;
+        }
+        if changed {
+            self.ready = None;
+            self.next_check = 0;
+            self.status.state = "error";
+        } else {
+            self.status.state = "ready";
+        }
+        self.status.error = error;
+    }
 }
 
 pub struct Updates(Mutex<Inner>);
@@ -198,11 +287,7 @@ pub fn init(app: &AppHandle) {
         portable,
         ..Default::default()
     };
-    app.manage(Updates(Mutex::new(Inner {
-        status,
-        ready: None,
-        next_check: 0,
-    })));
+    app.manage(Updates(Mutex::new(Inner::new(status))));
     if disabled.is_some() {
         return;
     }
@@ -248,25 +333,27 @@ fn update_status(app: &AppHandle, f: impl FnOnce(&mut Inner)) {
     publish(app, &status);
 }
 
-/// Forgets a downloaded update, e.g. after switching channels.
+/// Applies what a check of `generation` found, unless that no longer applies
+/// (`Inner::current`). Returns whether it did.
+fn update_found(app: &AppHandle, generation: u64, f: impl FnOnce(&mut Inner)) -> bool {
+    let updates = app.state::<Updates>();
+    let status = {
+        let mut inner = updates.0.lock().unwrap();
+        if !inner.current(generation) {
+            return false;
+        }
+        f(&mut inner);
+        inner.status.clone()
+    };
+    publish(app, &status);
+    true
+}
+
+/// Forgets a downloaded update, e.g. after switching channels; a check under
+/// way drops what it finds and looks again.
 pub fn reset(app: &AppHandle) {
     let mut forgot = false;
-    update_status(app, |inner| {
-        if matches!(
-            inner.status.state,
-            "disabled" | "checking" | "downloading" | "installing"
-        ) {
-            return;
-        }
-        forgot = true;
-        inner.ready = None;
-        inner.next_check = 0;
-        inner.status = UpdateStatus {
-            state: "idle",
-            portable: inner.status.portable,
-            ..Default::default()
-        };
-    });
+    update_status(app, |inner| forgot = inner.reset());
     if forgot {
         discard(app);
     }
@@ -458,29 +545,37 @@ async fn find(
 /// Checks the chosen channel and downloads a newer release. Does nothing while
 /// another check, download or install is under way. With an update already
 /// downloaded the check runs quietly: that update stays offered unless a
-/// newer one replaces it.
+/// newer one replaces it. What it finds after a reset (another channel) is
+/// dropped, and it looks again; nothing it finds changes a starting install.
 pub async fn check(app: &AppHandle) {
     // A quiet check leaves the state as it is, so the state alone cannot keep
-    // two checks from running at once.
-    static CHECKING: AtomicBool = AtomicBool::new(false);
-    struct Running;
-    impl Drop for Running {
-        fn drop(&mut self) {
-            CHECKING.store(false, Ordering::Release);
+    // two checks from running at once. Release builds abort on a panic, so
+    // `checking` needs no guard against unwinding.
+    let Some(mut generation) = app.state::<Updates>().0.lock().unwrap().begin_check() else {
+        return;
+    };
+    loop {
+        check_once(app, generation).await;
+        let again = app
+            .state::<Updates>()
+            .0
+            .lock()
+            .unwrap()
+            .end_check(generation);
+        match again {
+            Some(next) => generation = next,
+            None => break,
         }
     }
-    if CHECKING.swap(true, Ordering::AcqRel) {
-        return;
-    }
-    let _running = Running;
+}
 
+async fn check_once(app: &AppHandle, generation: u64) {
     let mut busy = false;
     let mut quiet = false;
     update_status(app, |inner| {
-        busy = matches!(
-            inner.status.state,
-            "disabled" | "checking" | "downloading" | "installing"
-        );
+        // `checking` (a reset during the last pass) and `downloading` are this
+        // check's own: `begin_check` lets only one run.
+        busy = matches!(inner.status.state, "disabled" | "installing");
         quiet = inner.ready.is_some();
         if !busy && !quiet {
             inner.status = UpdateStatus {
@@ -520,7 +615,7 @@ pub async fn check(app: &AppHandle) {
             "update check failed: {}",
             argus_core::diagnostics::failure(&failures.join("; "))
         );
-        update_status(app, |inner| {
+        update_found(app, generation, |inner| {
             inner.next_check = now + RETRY_AFTER_MS;
             // A downloaded update can still be installed.
             if inner.ready.is_none() {
@@ -536,7 +631,7 @@ pub async fn check(app: &AppHandle) {
         // Nothing newer than this version: a kept installer is no longer
         // offered (a withdrawn release).
         let mut had = false;
-        update_status(app, |inner| {
+        update_found(app, generation, |inner| {
             had = inner.ready.take().is_some();
             inner.next_check = now + CHECK_EVERY_MS;
             inner.status = UpdateStatus {
@@ -559,15 +654,17 @@ pub async fn check(app: &AppHandle) {
     let (releases, notes) = notes_for(signed.as_ref(), update.body.clone(), &key, &update.version);
     let date = update.date.map(|d| d.unix_timestamp() * 1000);
     let mut already = false;
+    let mut portable = false;
     // The offer a failed download of a newer release falls back to.
     let mut previous = None;
-    update_status(app, |inner| {
+    let applies = update_found(app, generation, |inner| {
         inner.next_check = now + CHECK_EVERY_MS;
+        portable = inner.status.portable;
         already = inner
             .ready
             .as_ref()
             .is_some_and(|r| r.version == update.version && r.signature == update.signature);
-        if inner.ready.is_some() && !already {
+        if inner.ready.is_some() && !already && inner.status.state == "ready" {
             previous = Some(inner.status.clone());
         }
         let size = if already { inner.status.total } else { None };
@@ -591,7 +688,7 @@ pub async fn check(app: &AppHandle) {
             ..Default::default()
         };
     });
-    if already || status(app).portable {
+    if !applies || already || portable {
         return;
     }
 
@@ -622,7 +719,7 @@ pub async fn check(app: &AppHandle) {
                     received += chunk as u64;
                     if last.elapsed() >= PROGRESS_EVERY {
                         last = Instant::now();
-                        update_status(app, |inner| {
+                        update_found(app, generation, |inner| {
                             inner.status.received = received;
                             inner.status.total = total;
                         });
@@ -646,14 +743,22 @@ pub async fn check(app: &AppHandle) {
                 };
                 match keep(app, pending, &bytes) {
                     Ok(ready) => {
-                        log::info!("update downloaded");
-                        update_status(app, |inner| {
+                        let kept = update_found(app, generation, |inner| {
                             inner.ready = Some(ready);
                             inner.status.state = "ready";
                             inner.status.received = bytes.len() as u64;
                             inner.status.total = Some(bytes.len() as u64);
                             inner.status.source = Some(host);
                         });
+                        if kept {
+                            log::info!("update downloaded");
+                        } else if app.state::<Updates>().0.lock().unwrap().generation != generation
+                        {
+                            // Of the channel before a reset, which removed
+                            // the folder already; only this check wrote it
+                            // since, and it runs again (`check`).
+                            discard(app);
+                        }
                         return;
                     }
                     Err(e) => {
@@ -679,7 +784,7 @@ pub async fn check(app: &AppHandle) {
         "update download failed: {}",
         argus_core::diagnostics::failure(&failures.join("; "))
     );
-    update_status(app, |inner| {
+    update_found(app, generation, |inner| {
         inner.next_check = now + RETRY_AFTER_MS;
         match previous.take().filter(|_| inner.ready.is_some()) {
             Some(offer) => inner.status = offer,
@@ -768,6 +873,7 @@ fn newer(version: &str, than: &str) -> bool {
 /// chosen channel.
 fn restore(app: &AppHandle) {
     let Some(dir) = updates_dir(app) else { return };
+    let generation = app.state::<Updates>().0.lock().unwrap().generation;
     let Ok(text) = fs::read_to_string(dir.join(PENDING)) else {
         if dir.exists() {
             discard(app);
@@ -809,8 +915,9 @@ fn restore(app: &AppHandle) {
         &pending.version,
     );
     update_status(app, |inner| {
-        // A check that already got further wins.
-        if inner.status.state != "idle" {
+        // A check that already got further wins, and a reset (another
+        // channel) meanwhile removed the installer.
+        if inner.status.state != "idle" || inner.generation != generation {
             return;
         }
         inner.ready = Some(Ready {
@@ -840,12 +947,8 @@ pub fn install(app: &AppHandle) -> Result<(), InstallError> {
     let ready = {
         let mut inner = updates.0.lock().unwrap();
         let ready = inner
-            .ready
-            .clone()
-            .filter(|_| inner.status.state == "ready")
+            .start_install()
             .ok_or_else(|| InstallError::failed(tr!("updater.nothingReady")))?;
-        inner.status.state = "installing";
-        inner.status.error = None;
         let status = inner.status.clone();
         drop(inner);
         publish(app, &status);
@@ -893,15 +996,7 @@ pub fn install(app: &AppHandle) -> Result<(), InstallError> {
     };
     let changed = matches!(failure, Failure::Changed);
     update_status(app, |inner| {
-        if changed {
-            inner.ready = None;
-            inner.next_check = 0;
-            inner.status.state = "error";
-            inner.status.error = Some(error.message.clone());
-        } else {
-            inner.status.state = "ready";
-            inner.status.error = (!error.cancelled).then(|| error.message.clone());
-        }
+        inner.install_failed(changed, (!error.cancelled).then(|| error.message.clone()))
     });
     if changed {
         discard(app);
@@ -1118,6 +1213,69 @@ mod tests {
         let found = signed_notes(&manifest).unwrap();
         assert_eq!(found.release_notes, NOTES);
         assert!(signed_notes(&serde_json::json!({ "version": "1.2.3" })).is_none());
+    }
+
+    fn ready(version: &str) -> Inner {
+        let mut inner = Inner::new(UpdateStatus {
+            state: "ready",
+            version: Some(version.into()),
+            ..Default::default()
+        });
+        inner.ready = Some(Ready {
+            version: version.into(),
+            path: PathBuf::from(version),
+            signature: String::new(),
+        });
+        inner
+    }
+
+    #[test]
+    fn a_check_drops_what_it_finds_after_a_channel_switch_and_looks_again() {
+        let mut inner = ready("0.2.0");
+        let first = inner.begin_check().unwrap();
+        assert_eq!(inner.begin_check(), None, "one check at a time");
+        // Switching channels while it fetches: the kept update goes, and the
+        // check's result for the old channel no longer applies.
+        assert!(inner.reset());
+        assert!(inner.ready.is_none());
+        assert_eq!(inner.status.state, "checking");
+        assert!(!inner.current(first));
+        // It runs again for the new channel, then ends.
+        let second = inner.end_check(first).unwrap();
+        assert!(inner.current(second));
+        assert_eq!(inner.end_check(second), None);
+        assert_eq!(inner.begin_check(), Some(second));
+        assert_eq!(inner.end_check(second), None);
+        // With no check running, a reset just goes idle.
+        assert!(inner.reset());
+        assert_eq!(inner.status.state, "idle");
+    }
+
+    #[test]
+    fn checks_and_resets_leave_a_starting_installer_alone() {
+        let mut inner = ready("0.2.0");
+        let generation = inner.begin_check().unwrap();
+        let installing = inner.start_install().unwrap();
+        assert_eq!(installing.version, "0.2.0");
+        assert_eq!(inner.status.state, "installing");
+        assert!(inner.start_install().is_none(), "installing already");
+        // A newer release found by the quiet check meanwhile is not applied,
+        // nor taken as the offer to fall back to.
+        assert!(!inner.current(generation));
+        assert!(!inner.reset());
+        assert_eq!(inner.end_check(generation), None);
+        // The administrator prompt declined: the same update offered again.
+        inner.install_failed(false, None);
+        assert_eq!(inner.status.state, "ready");
+        assert_eq!(inner.status.version.as_deref(), Some("0.2.0"));
+        assert_eq!(inner.ready.as_ref().unwrap().version, "0.2.0");
+        // Only an installing state is ended by the install.
+        inner.install_failed(true, Some("changed".into()));
+        assert_eq!(inner.status.state, "ready");
+        inner.start_install().unwrap();
+        inner.install_failed(true, Some("changed".into()));
+        assert_eq!(inner.status.state, "error");
+        assert!(inner.ready.is_none());
     }
 
     #[test]
