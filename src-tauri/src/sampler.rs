@@ -246,6 +246,9 @@ impl Sampler {
                     sensors.enrich(&mut snapshot, kernel_sensors, stale_after);
                     network.enrich(&mut snapshot, stale_after);
                     disk.enrich(&mut snapshot, stale_after);
+                    if let Some(failure) = disk.new_failure() {
+                        log::warn!("per-process disk I/O unavailable: {failure}");
+                    }
                     rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);

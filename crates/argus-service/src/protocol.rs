@@ -92,10 +92,15 @@ pub struct Request {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum Reply {
-    Pong { version: String, protocol: u32 },
+    Pong {
+        version: String,
+        protocol: u32,
+    },
     Done,
     Network(Option<crate::NetworkFrame>),
     Disk(Option<argus_core::disk_process::DiskSnapshot>),
+    /// The service's disk query failed: why, in fixed words and codes.
+    DiskFailed(argus_core::disk_process::DiskFailure),
     Sensors(argus_core::hardware::CpuSensors),
     Handles(argus_core::handles::HandleReport),
     Priority(Priority),
@@ -162,7 +167,13 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
         }
         Operation::NetworkSnapshot => return Reply::Network(context.network.snapshot()),
         Operation::SensorSnapshot {} => return Reply::Sensors(context.sensors.snapshot()),
-        Operation::DiskSnapshot {} => return Reply::Disk(context.disk.snapshot()),
+        Operation::DiskSnapshot {} => {
+            return match context.disk.snapshot() {
+                Some(Ok(frame)) => Reply::Disk(Some(frame)),
+                Some(Err(failure)) => Reply::DiskFailed(failure),
+                None => Reply::Disk(None),
+            };
+        }
         Operation::ApplyRule {
             pid,
             create_time,
@@ -238,6 +249,27 @@ mod tests {
             execute(Operation::DiskSnapshot {}, &Context::testing(), 123),
             Reply::Disk(None)
         ));
+        // A failure crosses as its category and code, nothing else.
+        use argus_core::disk_process::DiskFailure;
+        for failure in [
+            DiskFailure::Query(0xC000_0022_u32 as i32),
+            DiskFailure::Length,
+            DiskFailure::Misaligned,
+            DiskFailure::Truncated,
+            DiskFailure::ProcessId,
+            DiskFailure::TooMany,
+        ] {
+            let bytes = serde_json::to_vec(&Reply::DiskFailed(failure)).unwrap();
+            assert!(matches!(
+                serde_json::from_slice::<Reply>(&bytes).unwrap(),
+                Reply::DiskFailed(back) if back == failure
+            ));
+        }
+        assert_eq!(
+            serde_json::to_string(&Reply::DiskFailed(DiskFailure::Query(-1073741790))).unwrap(),
+            r#"{"kind":"diskFailed","value":{"query":-1073741790}}"#
+        );
+        assert!(serde_json::from_str::<Reply>(r#"{"kind":"diskFailed","value":"path"}"#).is_err());
     }
 
     #[test]

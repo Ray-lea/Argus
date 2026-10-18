@@ -135,6 +135,39 @@ pub struct DiskSnapshot {
     pub counters: Vec<DiskCounter>,
 }
 
+/// Why a full process information query gave no counters, in fixed words and
+/// codes fit for a log. The privileged service hands it to the host, which
+/// keeps the only log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DiskFailure {
+    /// The query failed with this NTSTATUS.
+    Query(i32),
+    /// The kernel reported more data than the buffer holds.
+    Length,
+    /// A record's offset to the next is not 8-byte aligned.
+    Misaligned,
+    /// A record, its thread array or its disk counters end past the data.
+    Truncated,
+    /// A process ID beyond 32 bits.
+    ProcessId,
+    /// More than `MAX_PROCESSES` processes.
+    TooMany,
+}
+
+impl std::fmt::Display for DiskFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Query(status) => write!(f, "query failed (NTSTATUS 0x{:08X})", *status as u32),
+            Self::Length => f.write_str("returned length exceeds the buffer"),
+            Self::Misaligned => f.write_str("misaligned record"),
+            Self::Truncated => f.write_str("truncated record"),
+            Self::ProcessId => f.write_str("process ID out of range"),
+            Self::TooMany => f.write_str("too many processes"),
+        }
+    }
+}
+
 pub struct DiskQuery {
     buf: AlignedBuf,
 }
@@ -148,23 +181,26 @@ impl Default for DiskQuery {
 }
 
 impl DiskQuery {
-    pub fn read(&mut self) -> Option<DiskSnapshot> {
+    /// Never panics: it also runs in the privileged service.
+    pub fn read(&mut self) -> Result<DiskSnapshot, DiskFailure> {
         let sampled_at_ms = unsafe { GetTickCount64() };
-        let len = query_system_information(SYSTEM_INFORMATION_CLASS(148), &mut self.buf).ok()?;
+        let len = query_system_information(SYSTEM_INFORMATION_CLASS(148), &mut self.buf)
+            .map_err(|status| DiskFailure::Query(status.0))?;
         if len > self.buf.len() {
-            return None;
+            return Err(DiskFailure::Length);
         }
         // Only bytes returned by the kernel are inspected; each record and
         // extension is bounded again below before reading fixed numeric fields.
         let bytes = unsafe { std::slice::from_raw_parts(self.buf.as_ptr(), len) };
-        Some(DiskSnapshot {
+        Ok(DiskSnapshot {
             sampled_at_ms,
             counters: decode(bytes)?,
         })
     }
 }
 
-fn decode(bytes: &[u8]) -> Option<Vec<DiskCounter>> {
+fn decode(bytes: &[u8]) -> Result<Vec<DiskCounter>, DiskFailure> {
+    use DiskFailure::Truncated;
     let u32_at =
         |b: &[u8], at: usize| Some(u32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?));
     let u64_at =
@@ -172,40 +208,48 @@ fn decode(bytes: &[u8]) -> Option<Vec<DiskCounter>> {
     let mut counters = Vec::new();
     let mut offset = 0;
     loop {
-        let remaining = bytes.get(offset..)?;
-        let next = u32_at(remaining, 0)? as usize;
+        let remaining = bytes.get(offset..).ok_or(Truncated)?;
+        let next = u32_at(remaining, 0).ok_or(Truncated)? as usize;
         let record = if next == 0 {
             remaining
         } else {
             if !next.is_multiple_of(8) {
-                return None;
+                return Err(DiskFailure::Misaligned);
             }
-            remaining.get(..next)?
+            remaining.get(..next).ok_or(Truncated)?
         };
-        let threads = u32_at(record, 4)? as usize;
-        let extension = HEADER_BYTES.checked_add(threads.checked_mul(THREAD_BYTES)?)?;
-        record.get(extension..extension.checked_add(DISK_BYTES)?)?;
-        let pid = u32::try_from(u64_at(
+        let threads = u32_at(record, 4).ok_or(Truncated)? as usize;
+        let extension = threads
+            .checked_mul(THREAD_BYTES)
+            .and_then(|bytes| HEADER_BYTES.checked_add(bytes))
+            .ok_or(Truncated)?;
+        let disk = extension
+            .checked_add(DISK_BYTES)
+            .and_then(|end| record.get(extension..end))
+            .ok_or(Truncated)?;
+        let pid = u64_at(
             record,
             offset_of!(SystemProcessInformation, unique_process_id),
-        )?)
-        .ok()?;
+        )
+        .ok_or(Truncated)?;
+        let pid = u32::try_from(pid).map_err(|_| DiskFailure::ProcessId)?;
         if pid != 0 {
             if counters.len() == MAX_PROCESSES {
-                return None;
+                return Err(DiskFailure::TooMany);
             }
-            let created = u64_at(record, offset_of!(SystemProcessInformation, create_time))? as i64;
+            let created = u64_at(record, offset_of!(SystemProcessInformation, create_time))
+                .ok_or(Truncated)? as i64;
             counters.push((
                 pid,
                 ticks_to_unix_ms(created),
-                u64_at(record, extension)?,
-                u64_at(record, extension + 8)?,
+                u64_at(disk, 0).ok_or(Truncated)?,
+                u64_at(disk, 8).ok_or(Truncated)?,
             ));
         }
         if next == 0 {
-            return Some(counters);
+            return Ok(counters);
         }
-        offset = offset.checked_add(next)?;
+        offset = offset.checked_add(next).ok_or(Truncated)?;
     }
 }
 
@@ -345,18 +389,47 @@ mod tests {
 
     #[test]
     fn rejects_truncated_extensions_invalid_offsets_and_thread_counts() {
+        use DiskFailure::*;
         let valid = record(17, 2, 4, 8);
         for length in [0, 4, HEADER_BYTES - 1, valid.len() - 1] {
-            assert!(decode(&valid[..length]).is_none());
+            assert_eq!(decode(&valid[..length]), Err(Truncated), "{length} bytes");
         }
-        for next in [8, 255, u32::MAX] {
+        for (next, failure) in [(8, Truncated), (255, Misaligned), (u32::MAX, Misaligned)] {
             let mut bytes = valid.clone();
             bytes[..4].copy_from_slice(&next.to_le_bytes());
-            assert!(decode(&bytes).is_none());
+            assert_eq!(decode(&bytes), Err(failure), "next entry at {next}");
         }
-        let mut bytes = valid;
+        let mut bytes = valid.clone();
         bytes[4..8].copy_from_slice(&u32::MAX.to_le_bytes());
-        assert!(decode(&bytes).is_none());
+        assert_eq!(decode(&bytes), Err(Truncated));
+        let mut bytes = valid.clone();
+        let at = offset_of!(SystemProcessInformation, unique_process_id);
+        bytes[at..at + 8].copy_from_slice(&(1_u64 << 32).to_le_bytes());
+        assert_eq!(decode(&bytes), Err(ProcessId));
+        // One process too many.
+        let one = record(17, 0, 4, 8);
+        let mut bytes = Vec::new();
+        for i in 0..=MAX_PROCESSES {
+            let mut next = one.clone();
+            if i < MAX_PROCESSES {
+                next[..4].copy_from_slice(&(one.len() as u32).to_le_bytes());
+            }
+            bytes.extend(next);
+        }
+        assert_eq!(decode(&bytes), Err(TooMany));
+        assert_eq!(
+            decode(&bytes[one.len()..]).map(|c| c.len()),
+            Ok(MAX_PROCESSES)
+        );
+    }
+
+    #[test]
+    fn failures_read_as_fixed_words_and_codes() {
+        assert_eq!(
+            DiskFailure::Query(0xC000_0022_u32 as i32).to_string(),
+            "query failed (NTSTATUS 0xC0000022)"
+        );
+        assert_eq!(DiskFailure::Misaligned.to_string(), "misaligned record");
     }
 
     #[test]

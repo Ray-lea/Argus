@@ -5,9 +5,11 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use argus_core::Snapshot;
-use argus_core::disk_process::{DiskQuery, DiskRates, DiskSnapshot};
+use argus_core::disk_process::{DiskFailure, DiskQuery, DiskRates, DiskSnapshot};
 
 const TIMEOUT: Duration = Duration::from_secs(2);
+/// At most this many distinct failures are handed to the host's log per run.
+const MAX_REPORTED: usize = 8;
 
 pub(crate) struct DiskMonitor {
     query: Mutex<Option<DiskQuery>>,
@@ -20,8 +22,11 @@ impl DiskMonitor {
         }
     }
 
-    pub fn snapshot(&self) -> Option<DiskSnapshot> {
-        self.query.lock().ok()?.as_mut()?.read()
+    /// The counters, or why the query failed. The service keeps no log: the
+    /// failure goes back in the reply, and the host logs it
+    /// (`DiskClient::new_failure`). None without a query.
+    pub fn snapshot(&self) -> Option<Result<DiskSnapshot, DiskFailure>> {
+        Some(self.query.lock().ok()?.as_mut()?.read())
     }
 
     #[cfg(test)]
@@ -32,9 +37,59 @@ impl DiskMonitor {
     }
 }
 
+/// Why the host got no disk snapshot, in fixed words and codes fit for its
+/// log: nothing about a process, a path or the user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiskUnavailable {
+    /// Elevated, the query in this process failed.
+    Local(DiskFailure),
+    /// The privileged service's query failed.
+    Service(DiskFailure),
+    /// The privileged service answered without a snapshot or a failure: it
+    /// has no query to run.
+    ServiceEmpty,
+    /// The privileged service answered something else (a refusal, say).
+    ServiceReply,
+    /// The request to the privileged service failed (Windows error code).
+    Request(u32),
+}
+
+impl std::fmt::Display for DiskUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Local(failure) => write!(f, "local query: {failure}"),
+            Self::Service(failure) => write!(f, "privileged service query: {failure}"),
+            Self::ServiceEmpty => f.write_str("the privileged service returned no snapshot"),
+            Self::ServiceReply => f.write_str("unexpected reply from the privileged service"),
+            Self::Request(code) => {
+                write!(
+                    f,
+                    "request to the privileged service failed (os error {code})"
+                )
+            }
+        }
+    }
+}
+
+/// What a read gives: a snapshot, or why not. `Err(None)`: no source at all
+/// (standard user, no privileged service running), which is no failure.
+type Read = Result<DiskSnapshot, Option<DiskUnavailable>>;
+
+/// A read through the privileged service.
+fn from_service(reply: crate::util::Result<crate::Reply>) -> Read {
+    match reply {
+        Ok(crate::Reply::Disk(Some(frame))) => Ok(frame),
+        Ok(crate::Reply::DiskFailed(failure)) => Err(Some(DiskUnavailable::Service(failure))),
+        Ok(crate::Reply::Disk(None)) => Err(Some(DiskUnavailable::ServiceEmpty)),
+        Ok(_) => Err(Some(DiskUnavailable::ServiceReply)),
+        Err(code) => Err(Some(DiskUnavailable::Request(code))),
+    }
+}
+
 #[derive(Clone, Default)]
 struct Cache {
     frame: Option<Arc<DiskSnapshot>>,
+    failure: Option<DiskUnavailable>,
     received: Option<Instant>,
 }
 
@@ -44,6 +99,8 @@ pub struct DiskClient {
     last: Cache,
     thread: Option<JoinHandle<()>>,
     rates: DiskRates,
+    /// Failures already handed out by `new_failure`.
+    reported: Vec<DiskUnavailable>,
 }
 
 impl DiskClient {
@@ -51,24 +108,21 @@ impl DiskClient {
         let mut local = argus_core::privilege::is_elevated().then(DiskQuery::default);
         Self::with_reader(move || {
             if let Some(query) = &mut local {
-                return query.read();
+                return query.read().map_err(|e| Some(DiskUnavailable::Local(e)));
             }
-            let pid = crate::install::running_pid().ok()??;
-            match crate::pipe::request_with_timeout(
+            let Ok(Some(pid)) = crate::install::running_pid() else {
+                return Err(None);
+            };
+            from_service(crate::pipe::request_with_timeout(
                 crate::PIPE_NAME,
                 pid,
                 crate::Operation::DiskSnapshot {},
                 TIMEOUT,
-            )
-            .ok()?
-            {
-                crate::Reply::Disk(frame) => frame,
-                _ => None,
-            }
+            ))
         })
     }
 
-    fn with_reader(mut read: impl FnMut() -> Option<DiskSnapshot> + Send + 'static) -> Self {
+    fn with_reader(mut read: impl FnMut() -> Read + Send + 'static) -> Self {
         let (tx, rx) = mpsc::sync_channel(1);
         let cache: Arc<Mutex<Cache>> = Arc::default();
         let shared = cache.clone();
@@ -76,9 +130,13 @@ impl DiskClient {
             .name("argus-disk-client".into())
             .spawn(move || {
                 while rx.recv().is_ok() {
-                    let frame = read().map(Arc::new);
+                    let (frame, failure) = match read() {
+                        Ok(frame) => (Some(Arc::new(frame)), None),
+                        Err(failure) => (None, failure),
+                    };
                     *shared.lock().unwrap() = Cache {
                         frame,
+                        failure,
                         received: Some(Instant::now()),
                     };
                 }
@@ -90,7 +148,20 @@ impl DiskClient {
             last: Cache::default(),
             thread: Some(thread),
             rates: DiskRates::default(),
+            reported: Vec::new(),
         }
+    }
+
+    /// Why the latest read gave no snapshot, the first time each reason
+    /// comes up (and only a few of them per run), for the host to log once:
+    /// otherwise the disk columns would just stay empty without a trace.
+    pub fn new_failure(&mut self) -> Option<DiskUnavailable> {
+        let failure = self.last.failure?;
+        if self.reported.len() >= MAX_REPORTED || self.reported.contains(&failure) {
+            return None;
+        }
+        self.reported.push(failure);
+        Some(failure)
     }
 
     pub fn enrich(&mut self, snapshot: &mut Snapshot, interval: Duration) {
@@ -145,7 +216,7 @@ mod tests {
                 entered.send(()).unwrap();
                 wait_release.recv_timeout(Duration::from_secs(2)).unwrap();
             }
-            None
+            Err(None)
         });
         let mut snapshot = Snapshot {
             seq: 0,
@@ -217,7 +288,7 @@ mod tests {
         let client = DiskClient::with_reader(move || {
             let _ = called.send(());
             let _ = wait.recv_timeout(Duration::from_secs(5));
-            None
+            Err(None)
         });
         (client, calls, gate)
     }
@@ -228,8 +299,91 @@ mod tests {
                 sampled_at_ms,
                 counters: vec![(17, 10, bytes, bytes)],
             })),
+            failure: None,
             received: Instant::now().checked_sub(age),
         };
+    }
+
+    fn fail(client: &DiskClient, failure: DiskUnavailable) {
+        *client.cache.lock().unwrap() = Cache {
+            frame: None,
+            failure: Some(failure),
+            received: Some(Instant::now()),
+        };
+    }
+
+    #[test]
+    fn each_failure_is_reported_once_with_no_personal_data() {
+        let (mut client, _calls, gate) = gated();
+        let sample = |client: &mut DiskClient| {
+            let mut rows = snapshot(vec![process(17, None)]);
+            client.enrich(&mut rows, Duration::from_secs(1));
+            assert_eq!(rows.processes[0].disk_read, None);
+            client.new_failure()
+        };
+        // No source at all (no service, not elevated) is no failure.
+        assert_eq!(sample(&mut client), None);
+        fail(&client, DiskUnavailable::ServiceEmpty);
+        assert_eq!(sample(&mut client), Some(DiskUnavailable::ServiceEmpty));
+        assert_eq!(sample(&mut client), None);
+        let local = DiskUnavailable::Local(DiskFailure::Query(0xC000_0022_u32 as i32));
+        fail(&client, local);
+        assert_eq!(sample(&mut client), Some(local));
+        fail(&client, DiskUnavailable::ServiceEmpty);
+        assert_eq!(sample(&mut client), None);
+        assert_eq!(
+            local.to_string(),
+            "local query: query failed (NTSTATUS 0xC0000022)"
+        );
+        // The service's own failure, as its reply carries it.
+        let service = DiskUnavailable::Service(DiskFailure::Truncated);
+        fail(&client, service);
+        assert_eq!(sample(&mut client), Some(service));
+        assert_eq!(
+            service.to_string(),
+            "privileged service query: truncated record"
+        );
+        // A service that keeps failing in new ways fills only a few lines.
+        for code in 0..20 {
+            fail(&client, DiskUnavailable::Request(code));
+            sample(&mut client);
+        }
+        assert_eq!(client.reported.len(), MAX_REPORTED);
+        drop(gate);
+    }
+
+    #[test]
+    fn service_replies_map_to_snapshots_or_reasons() {
+        let failure = DiskFailure::Query(0xC000_0022_u32 as i32);
+        let reply = crate::protocol::execute(
+            crate::Operation::DiskSnapshot {},
+            &crate::protocol::Context::testing(),
+            1,
+        );
+        assert_eq!(
+            from_service(Ok(reply)).unwrap_err(),
+            Some(DiskUnavailable::ServiceEmpty)
+        );
+        assert_eq!(
+            from_service(Ok(crate::Reply::DiskFailed(failure))).unwrap_err(),
+            Some(DiskUnavailable::Service(failure))
+        );
+        assert_eq!(
+            from_service(Ok(crate::Reply::Done)).unwrap_err(),
+            Some(DiskUnavailable::ServiceReply)
+        );
+        assert_eq!(
+            from_service(Err(crate::util::INCOMPATIBLE)).unwrap_err(),
+            Some(DiskUnavailable::Request(crate::util::INCOMPATIBLE))
+        );
+        let frame = DiskSnapshot {
+            sampled_at_ms: 5,
+            counters: vec![(17, 10, 1, 2)],
+        };
+        let Ok(back) = from_service(Ok(crate::Reply::Disk(Some(frame)))) else {
+            panic!("a snapshot is a snapshot");
+        };
+        assert_eq!(back.counters, [(17, 10, 1, 2)]);
     }
 
     #[test]
