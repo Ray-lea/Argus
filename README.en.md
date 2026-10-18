@@ -48,19 +48,19 @@ If Argus is useful to you, please consider giving it a star on GitHub. It is the
 
 | | Feature | Description |
 |:---:|---|---|
-| 🧮 | **Processes** | View by app, as a process tree or as a list, including each process's GPU usage, plus network traffic when the privileged service is enabled or Argus runs as administrator. Sort, search, end a process or its whole tree; the details pane shows the command line, user, integrity level and more. |
+| 🧮 | **Processes** | View by app, as a process tree or as a list, including each process's disk read and write rates and GPU usage, plus network traffic when the privileged service is enabled or Argus runs as administrator. Sort, search, end a process or its whole tree; the details pane shows the command line, user, integrity level and more. |
 | ⚡ | **Priority and efficiency mode** | Set them from the context menu, or create rules that apply them every time a program starts. |
 | 📈 | **Performance** | CPU (per core, P-cores and E-cores, frequency, temperature, power), memory, disks, network, GPU and battery. |
 | 🧩 | **Services and startup apps** | Start and stop services and change their startup type; enable or disable startup apps with the same switch as Windows Task Manager. |
 | 🌐 | **Connections and ports** | TCP and UDP endpoints with the processes they belong to; search by exact port and close connections. |
 | 🔍 | **File locks** | Drop a file or folder onto the window to find the processes using it, combining Restart Manager with handle enumeration, including processes' current directories; the privileged service can check more processes. |
 | 🕘 | **History** | Resource charts for the last 7 days; click any moment to see the busiest processes at that time. |
-| 📌 | **System tray** | Show or hide the window with the global shortcut Ctrl+Alt+Esc; it uses very little while hidden. |
-| 🔄 | **In-app updates** | New versions download in the background and are announced in the title bar, with everything that changed since your version shown before installing. Stable and beta channels, with optional GitHub proxies; only updates that pass signature verification are installed. |
+| 📌 | **System tray** | Show or hide the window with the global shortcut Ctrl+Alt+Esc (which can be changed or turned off); it uses very little while hidden, and the refresh rates while minimized and in the tray can be set separately. |
+| 🔄 | **In-app updates** | New versions download in the background and are announced in the title bar, with everything that changed since your version shown before installing; after updating, Argus shows what the new version changed the first time its window opens. Stable and beta channels, with optional GitHub proxies; only updates that pass signature verification are installed. |
 | 🎨 | **Native look** | Mica background and the system accent color; dark and light themes follow Windows by default or can be chosen in Settings. |
 | 🌍 | **Languages** | English and Simplified Chinese, following the Windows display language by default; a welcome guide sets up the essentials on first start. |
 | 👤 | **No administrator rights needed** | See the path and resource usage of every process as a standard user. |
-| 🛡️ | **Optional privileged service** | After a single administrator approval, Argus running as a standard user can also manage system processes, apply rules automatically, measure per-process network traffic, control services and close connections; it can be uninstalled in Settings. |
+| 🛡️ | **Optional privileged service** | After a single administrator approval, Argus running as a standard user can also manage system processes, apply rules automatically, measure per-process network traffic (and disk reads and writes on Windows 11 versions before 24H2), control services and close connections; it can be uninstalled in Settings. |
 
 ## 📦 Download
 
@@ -130,9 +130,11 @@ Issues and pull requests are welcome; please read the [contributing guide](.gith
 ## 🧭 Roadmap
 
 - [x] **M0–M3**: processes, performance, services, startup apps, network connections and file locks
-- [x] **M4**: per-process GPU usage, priority and efficiency mode rules, history
-- [x] **M5**: optional privileged service, rules and network collection through it, file locks by handle, [Task Manager replacement](docs/architecture/task-manager.md)
+- [x] Languages, the welcome guide and in-app updates
+- [ ] **M4**: per-process GPU usage and disk reads and writes, priority and efficiency mode rules, and history are done; per-process network traffic through ETW is in progress
+- [ ] **M5**: the optional privileged service, rules and network collection through it, and file locks by handle are done; [Task Manager replacement](docs/architecture/task-manager.md) (Chinese) is in progress
 - [x] Optional CPU kernel sensors: per-core readings, effective clocks, voltage and power limits, with automatic setup of the official PawnIO driver; AMD/Intel GPU telemetry; [hardware coverage](docs/guide/hardware-data.md) (Chinese)
+- [ ] More keyboard shortcuts: telling left and right modifiers apart, and combinations of modifiers only or of two ordinary keys
 
 See the [roadmap](docs/roadmap.md) for details.
 

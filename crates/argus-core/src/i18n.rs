@@ -165,7 +165,7 @@ fn lookup(locale: Locale, key: &str) -> &str {
 }
 
 /// Looks up user-facing text: `tr!("tray.quit")`, or with placeholders,
-/// `tr!("tray.update", version = v)` for `"重启并更新到 {version}"`.
+/// `tr!("tray.update", version = v)` for `"更新到 {version}…"`.
 /// scripts/i18n.mjs checks that every key used this way exists.
 #[macro_export]
 macro_rules! tr {

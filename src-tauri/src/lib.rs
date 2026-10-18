@@ -38,8 +38,9 @@ pub(crate) fn stop_network_session() {
     argus_core::net_process::stop_session(NETWORK_SESSION);
 }
 
-/// Logs to `%LOCALAPPDATA%\<identifier>\logs\argus.log` for bug reports:
-/// Reviewed Argus events only. Legacy logs stay outside the shareable folder.
+/// Logs to `%LOCALAPPDATA%\<identifier>\logs\diagnostics\argus.log` for bug
+/// reports: reviewed Argus events only. Legacy logs stay outside the
+/// shareable folder, in `logs` itself.
 fn logger(path: std::path::PathBuf) -> tauri::plugin::TauriPlugin<tauri::Wry> {
     use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
     let mut builder = tauri_plugin_log::Builder::new()
