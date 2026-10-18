@@ -145,10 +145,11 @@
     "probeCleanupFailed": "启动自检的临时条目未能清理：{error}",
     "probeKept": "{error}；{cleanup}。下次启用、恢复或特权服务启动时会再次清理",
     "entryChangeFailed": "无法修改 taskmgr.exe 的 IFEO 配置：{error}",
+    "registryCallFailed": "{api} 调用失败：{error}",
     "refused": {
       "withCause": "{error}。{cause}",
-      "blocked": "当前已有管理员权限，且该注册表项的权限允许管理员写入，写入仍被拒绝。通常是安全软件的注册表防护（如“映像劫持”防护）或系统策略阻止了此类修改，可在安全软件的拦截记录中确认；Argus 不会绕过此限制",
-      "permissions": "该注册表项的权限不允许管理员写入，可能已被其他程序修改"
+      "blocked": "注册表访问权限检查通过，但 Windows 仍拒绝了调用，原因尚不能确定。可结合诊断日志中的 API 和错误码，以及系统或防护软件的记录核查",
+      "permissions": "注册表访问权限检查未通过，当前令牌未获得本次调用所需的访问权限"
     },
     "notAllowed": "当前状态不允许此操作，请刷新后重试",
     "helperNotStarted": "未能启动管理员维护助手",

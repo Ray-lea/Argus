@@ -2,6 +2,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_NO_MORE_ITEMS, HANDLE, WIN32_ERROR};
 use windows::Win32::Security::{
     AccessCheck, DACL_SECURITY_INFORMATION, DuplicateToken, GENERIC_MAPPING,
@@ -24,6 +26,8 @@ pub const IFEO: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File
 pub const KEY: &str =
     r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\taskmgr.exe";
 pub const JOURNAL: &str = "taskmgr-recovery.json";
+const READ_ACCESS: REG_SAM_FLAGS = REG_SAM_FLAGS(KEY_QUERY_VALUE.0 | KEY_ENUMERATE_SUB_KEYS.0);
+const WRITE_ACCESS: REG_SAM_FLAGS = REG_SAM_FLAGS(KEY_QUERY_VALUE.0 | KEY_SET_VALUE.0);
 pub struct Key(pub HKEY);
 impl Drop for Key {
     fn drop(&mut self) {
@@ -37,20 +41,93 @@ impl Drop for Key {
 /// refusal (`refusal`); the window gets the text.
 #[derive(Debug)]
 pub enum Error {
-    Os(u32),
+    Os(OsError),
     Text(String),
+}
+
+/// Fixed API names and access masks only: safe to include in public logs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Call {
+    Open(u32),
+    Create(u32),
+    QueryValue,
+    Enumerate,
+    QueryInfo,
+    SetValue,
+    DeleteValue,
+    Flush,
+    DeleteKey,
+    ReadSecurity,
+}
+
+impl Call {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Open(_) => "RegOpenKeyExW",
+            Self::Create(_) => "RegCreateKeyExW",
+            Self::QueryValue => "RegQueryValueExW",
+            Self::Enumerate => "RegEnumKeyExW",
+            Self::QueryInfo => "RegQueryInfoKeyW",
+            Self::SetValue => "RegSetValueExW",
+            Self::DeleteValue => "RegDeleteValueW",
+            Self::Flush => "RegFlushKey",
+            Self::DeleteKey => "RegDeleteKeyW",
+            Self::ReadSecurity => "RegGetKeySecurity",
+        }
+    }
+
+    fn access(self) -> u32 {
+        match self {
+            Self::Open(access) | Self::Create(access) => access,
+            Self::QueryValue | Self::QueryInfo | Self::Flush => KEY_QUERY_VALUE.0,
+            Self::Enumerate => KEY_ENUMERATE_SUB_KEYS.0,
+            Self::SetValue | Self::DeleteValue => KEY_SET_VALUE.0,
+            Self::DeleteKey => 0x0001_0000,
+            Self::ReadSecurity => 0x0002_0000,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OsError {
+    pub call: Call,
+    pub code: u32,
+}
+
+impl OsError {
+    pub fn log(self) -> String {
+        format!(
+            "{} (access 0x{:08x}, os error {})",
+            self.call.name(),
+            self.call.access(),
+            self.code
+        )
+    }
 }
 
 impl Error {
     pub fn denied(&self) -> bool {
-        matches!(self, Self::Os(5))
+        self.os().is_some_and(|error| error.code == 5)
+    }
+
+    pub fn os(&self) -> Option<OsError> {
+        match self {
+            Self::Os(error) => Some(*error),
+            Self::Text(_) => None,
+        }
     }
 }
 
 impl From<Error> for String {
     fn from(error: Error) -> Self {
         match error {
-            Error::Os(code) => util::message(code),
+            Error::Os(error) => tr!(
+                "taskManager.registryCallFailed",
+                api = error.call.name(),
+                error = util::message(error.code)
+            ),
             Error::Text(text) => text,
         }
     }
@@ -58,11 +135,11 @@ impl From<Error> for String {
 
 pub type RegResult<T> = std::result::Result<T, Error>;
 
-fn err(code: WIN32_ERROR) -> RegResult<()> {
+fn err(code: WIN32_ERROR, call: Call) -> RegResult<()> {
     if code.0 == 0 {
         Ok(())
     } else {
-        Err(Error::Os(code.0))
+        Err(Error::Os(OsError { call, code: code.0 }))
     }
 }
 
@@ -70,12 +147,7 @@ pub fn open(path: &str, write: bool) -> RegResult<Option<Key>> {
     open_in(
         HKEY_LOCAL_MACHINE,
         path,
-        KEY_READ
-            | if write {
-                KEY_SET_VALUE
-            } else {
-                Default::default()
-            },
+        if write { WRITE_ACCESS } else { READ_ACCESS },
     )
 }
 
@@ -93,7 +165,7 @@ fn open_in(root: HKEY, path: &str, access: REG_SAM_FLAGS) -> RegResult<Option<Ke
     if code == ERROR_FILE_NOT_FOUND {
         return Ok(None);
     }
-    err(code)?;
+    err(code, Call::Open(access.0))?;
     Ok(Some(Key(key)))
 }
 
@@ -114,21 +186,24 @@ pub fn read_value(key: &Key, name: &str) -> RegResult<Option<Value>> {
     if code == ERROR_FILE_NOT_FOUND {
         return Ok(None);
     }
-    err(code)?;
+    err(code, Call::QueryValue)?;
     if size > 16 * 1024 {
         return Err(Error::Text(tr!("taskManager.valueTooLong")));
     }
     let mut bytes = vec![0; size as usize];
-    err(unsafe {
-        RegQueryValueExW(
-            key.0,
-            PCWSTR(name.as_ptr()),
-            None,
-            Some(&mut kind),
-            Some(bytes.as_mut_ptr()),
-            Some(&mut size),
-        )
-    })?;
+    err(
+        unsafe {
+            RegQueryValueExW(
+                key.0,
+                PCWSTR(name.as_ptr()),
+                None,
+                Some(&mut kind),
+                Some(bytes.as_mut_ptr()),
+                Some(&mut size),
+            )
+        },
+        Call::QueryValue,
+    )?;
     bytes.truncate(size as usize);
     Ok(Some(Value {
         kind: kind.0,
@@ -155,7 +230,7 @@ pub fn observe(path: &str) -> RegResult<Observation> {
         )
     };
     if code != ERROR_NO_MORE_ITEMS {
-        err(code)?;
+        err(code, Call::Enumerate)?;
     }
     Ok(Observation {
         debugger: read_value(&key, "Debugger")?,
@@ -178,26 +253,29 @@ pub fn describe(path: &str) -> RegResult<Found> {
 }
 
 fn describe_in(root: HKEY, path: &str) -> RegResult<Found> {
-    let Some(key) = open_in(root, path, KEY_READ)? else {
+    let Some(key) = open_in(root, path, READ_ACCESS)? else {
         return Ok(Found::default());
     };
     let mut count = 0;
-    err(unsafe {
-        RegQueryInfoKeyW(
-            key.0,
-            None,
-            None,
-            None,
-            Some(&mut count),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-    })?;
+    err(
+        unsafe {
+            RegQueryInfoKeyW(
+                key.0,
+                None,
+                None,
+                None,
+                Some(&mut count),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        },
+        Call::QueryInfo,
+    )?;
     let mut subkeys = Vec::new();
     for index in 0..count.min(4) {
         let mut name = [0u16; 256];
@@ -217,7 +295,7 @@ fn describe_in(root: HKEY, path: &str) -> RegResult<Found> {
         if code == ERROR_NO_MORE_ITEMS {
             break;
         }
-        err(code)?;
+        err(code, Call::Enumerate)?;
         subkeys.push(String::from_utf16_lossy(&name[..len as usize]));
     }
     Ok(Found {
@@ -229,10 +307,14 @@ fn describe_in(root: HKEY, path: &str) -> RegResult<Found> {
 }
 
 pub fn write(path: &str, value: Option<&Value>) -> RegResult<()> {
-    let key = match open(path, true)? {
+    write_in(HKEY_LOCAL_MACHINE, path, value)
+}
+
+fn write_in(root: HKEY, path: &str, value: Option<&Value>) -> RegResult<()> {
+    let key = match open_in(root, path, WRITE_ACCESS)? {
         Some(key) => key,
         None if value.is_none() => return Ok(()),
-        None => create(path)?,
+        None => create_in(root, path)?,
     };
     set_debugger(&key, value)
 }
@@ -244,19 +326,22 @@ pub fn create(path: &str) -> RegResult<Key> {
 
 fn create_in(root: HKEY, path: &str) -> RegResult<Key> {
     let mut raw = HKEY::default();
-    err(unsafe {
-        RegCreateKeyExW(
-            root,
-            PCWSTR(util::wide(path).as_ptr()),
-            None,
-            None,
-            REG_OPTION_NON_VOLATILE,
-            KEY_READ | KEY_SET_VALUE,
-            None,
-            &mut raw,
-            None,
-        )
-    })?;
+    err(
+        unsafe {
+            RegCreateKeyExW(
+                root,
+                PCWSTR(util::wide(path).as_ptr()),
+                None,
+                None,
+                REG_OPTION_NON_VOLATILE,
+                WRITE_ACCESS,
+                None,
+                &mut raw,
+                None,
+            )
+        },
+        Call::Create(WRITE_ACCESS.0),
+    )?;
     Ok(Key(raw))
 }
 
@@ -275,10 +360,17 @@ fn set_debugger(key: &Key, value: Option<&Value>) -> RegResult<()> {
         },
         None => unsafe { RegDeleteValueW(key.0, PCWSTR(name.as_ptr())) },
     };
-    if code != ERROR_FILE_NOT_FOUND {
-        err(code)?;
+    if code != ERROR_FILE_NOT_FOUND || value.is_some() {
+        err(
+            code,
+            if value.is_some() {
+                Call::SetValue
+            } else {
+                Call::DeleteValue
+            },
+        )?;
     }
-    err(unsafe { RegFlushKey(key.0) })
+    err(unsafe { RegFlushKey(key.0) }, Call::Flush)
 }
 
 /// Deletes a key without subkeys; one that is gone already is fine.
@@ -287,36 +379,34 @@ pub fn delete(path: &str) -> RegResult<()> {
     if code == ERROR_FILE_NOT_FOUND {
         return Ok(());
     }
-    err(code)
+    err(code, Call::DeleteKey)
 }
 
-/// Why an administrator could not change an entry under IFEO, when the error
-/// alone does not say: its permissions forbid it, or something outside them
-/// (security software that guards the registry, a policy) refused.
+/// Whether the DACL permits the access needed by the failed call. A positive
+/// result does not identify why the API failed (handle rights, token restrictions,
+/// mandatory integrity, policy and registry filters can still differ).
 pub fn refusal(error: &Error, path: &str) -> Option<Cause> {
     if !error.denied() || !argus_core::privilege::is_elevated() {
         return None;
     }
-    Some(if write_allowed(path)? {
-        Cause::Blocked
-    } else {
-        Cause::Permissions
-    })
+    Some(
+        if access_allowed_in(HKEY_LOCAL_MACHINE, path, IFEO, error.os()?.call)? {
+            Cause::Blocked
+        } else {
+            Cause::Permissions
+        },
+    )
 }
 
-/// Whether the DACL of `path` lets this process create subkeys and set
-/// values; while `path` does not exist, IFEO's, which its entries inherit.
-/// Read-only: it never tries the write. None when it cannot tell.
-pub fn write_allowed(path: &str) -> Option<bool> {
-    write_allowed_in(HKEY_LOCAL_MACHINE, path, IFEO)
-}
-
-fn write_allowed_in(root: HKEY, path: &str, parent: &str) -> Option<bool> {
+fn access_allowed_in(root: HKEY, path: &str, parent: &str, call: Call) -> Option<bool> {
     // READ_CONTROL alone: the security descriptor is all this reads.
     let read = REG_SAM_FLAGS(0x0002_0000);
-    let key = match open_in(root, path, read).ok()? {
-        Some(key) => key,
-        None => open_in(root, parent, read).ok()??,
+    let (key, wanted) = match open_in(root, path, read).ok()? {
+        Some(key) => (key, call.access()),
+        None if matches!(call, Call::Create(_)) => {
+            (open_in(root, parent, read).ok()??, KEY_CREATE_SUB_KEY.0)
+        }
+        None => return None,
     };
     // AccessCheck needs the owner and group too.
     let parts = OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION;
@@ -327,7 +417,11 @@ fn write_allowed_in(root: HKEY, path: &str, parent: &str) -> Option<bool> {
     }
     let mut buffer = vec![0u64; (size as usize).div_ceil(8)];
     let descriptor = PSECURITY_DESCRIPTOR(buffer.as_mut_ptr().cast());
-    err(unsafe { RegGetKeySecurity(key.0, parts, Some(descriptor), &mut size) }).ok()?;
+    err(
+        unsafe { RegGetKeySecurity(key.0, parts, Some(descriptor), &mut size) },
+        Call::ReadSecurity,
+    )
+    .ok()?;
     let mut process = HANDLE::default();
     unsafe {
         OpenProcessToken(
@@ -347,7 +441,6 @@ fn write_allowed_in(root: HKEY, path: &str, parent: &str) -> Option<bool> {
         GenericExecute: KEY_EXECUTE.0,
         GenericAll: KEY_ALL_ACCESS.0,
     };
-    let wanted = (KEY_CREATE_SUB_KEY | KEY_SET_VALUE).0;
     let mut privileges = [0u64; 32];
     let mut length = size_of_val(&privileges) as u32;
     let mut granted = 0;
@@ -370,12 +463,17 @@ fn write_allowed_in(root: HKEY, path: &str, parent: &str) -> Option<bool> {
 
 pub struct Machine {
     pub dir: PathBuf,
-    /// Why the last change to taskmgr.exe's entry was refused, when it was.
+    /// The first failed change, retained if a recovery write also fails.
     pub refused: Option<Cause>,
+    pub failure: Option<OsError>,
 }
 impl Machine {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, refused: None }
+        Self {
+            dir,
+            refused: None,
+            failure: None,
+        }
     }
 
     pub fn load(&self) -> Result<Option<Journal>> {
@@ -406,10 +504,15 @@ impl Store for Machine {
     }
     fn write_debugger(&mut self, value: Option<&Value>) -> Result<()> {
         write(KEY, value).map_err(|error| {
-            self.refused = refusal(&error, KEY);
+            let cause = refusal(&error, KEY);
+            // A recovery write may also fail; retain the initiating call.
+            if self.failure.is_none() {
+                self.refused = cause;
+                self.failure = error.os();
+            }
             super::explain(
                 tr!("taskManager.entryChangeFailed", error = String::from(error)),
-                self.refused,
+                cause,
             )
         })
     }
@@ -464,7 +567,8 @@ mod tests {
             let key = open_in(HKEY_CURRENT_USER, &self.0, REG_SAM_FLAGS(0x0004_0000))
                 .unwrap()
                 .unwrap();
-            err(unsafe { RegSetKeySecurity(key.0, DACL_SECURITY_INFORMATION, descriptor.0) })
+            unsafe { RegSetKeySecurity(key.0, DACL_SECURITY_INFORMATION, descriptor.0) }
+                .ok()
                 .unwrap();
         }
     }
@@ -481,16 +585,34 @@ mod tests {
     }
 
     #[test]
-    fn write_permission_comes_from_the_dacl_of_the_key_or_its_parent() {
+    fn access_checks_match_the_operation_and_use_the_parent_only_for_creation() {
         let sid = security::current_sid().unwrap();
         let scratch = Scratch::new();
         let missing = format!(r"{}\ArgusTaskmgrProbe-missing.exe", scratch.0);
-        let allowed = || write_allowed_in(HKEY_CURRENT_USER, &missing, &scratch.0);
+        let allowed = || {
+            access_allowed_in(
+                HKEY_CURRENT_USER,
+                &missing,
+                &scratch.0,
+                Call::Create(WRITE_ACCESS.0),
+            )
+        };
         assert_eq!(allowed(), Some(true));
+        // Creating a subkey does not require setting a value on its parent.
+        scratch.permit(&format!("D:P(A;;0x4;;;{sid})"));
+        assert_eq!(allowed(), Some(true));
+        assert_eq!(
+            access_allowed_in(HKEY_CURRENT_USER, &scratch.0, &scratch.0, Call::SetValue),
+            Some(false)
+        );
+        assert_eq!(
+            access_allowed_in(HKEY_CURRENT_USER, &missing, &scratch.0, Call::SetValue),
+            None
+        );
         scratch.permit(&format!("D:P(A;;KR;;;{sid})"));
         assert_eq!(allowed(), Some(false));
         assert_eq!(
-            write_allowed_in(HKEY_CURRENT_USER, &scratch.0, &scratch.0),
+            access_allowed_in(HKEY_CURRENT_USER, &scratch.0, &scratch.0, Call::SetValue),
             Some(false)
         );
     }
@@ -504,15 +626,18 @@ mod tests {
         let key = create_in(HKEY_CURRENT_USER, &path).unwrap();
         assert_eq!(found(), Found::default());
         create_in(HKEY_CURRENT_USER, &format!(r"{path}\PerfOptions")).unwrap();
-        err(unsafe {
-            RegSetValueExW(
-                key.0,
-                PCWSTR(util::wide("UseFilter").as_ptr()),
-                None,
-                REG_DWORD,
-                Some(&0u32.to_le_bytes()),
-            )
-        })
+        err(
+            unsafe {
+                RegSetValueExW(
+                    key.0,
+                    PCWSTR(util::wide("UseFilter").as_ptr()),
+                    None,
+                    REG_DWORD,
+                    Some(&0u32.to_le_bytes()),
+                )
+            },
+            Call::SetValue,
+        )
         .unwrap();
         let empty = Value::string("");
         set_debugger(&key, Some(&empty)).unwrap();
@@ -528,14 +653,89 @@ mod tests {
     }
 
     #[test]
-    fn os_errors_keep_their_code_and_text() {
-        let error = Error::Os(5);
+    fn updating_values_does_not_require_registry_notifications() {
+        let scratch = Scratch::new();
+        let sid = security::current_sid().unwrap();
+        // Permit querying, setting, enumerating, creating and deleting, but
+        // not notifications. The owner retains security-descriptor access.
+        scratch.permit(&format!("D:P(A;CI;0x0001000f;;;{sid})"));
+        let path = format!(r"{}\probe.exe", scratch.0);
+        create_in(HKEY_CURRENT_USER, &path).unwrap();
+        let old_access = KEY_READ | KEY_SET_VALUE;
+        let old_error = open_in(HKEY_CURRENT_USER, &path, old_access).err().unwrap();
+        assert_eq!(
+            old_error.os(),
+            Some(OsError {
+                call: Call::Open(old_access.0),
+                code: 5
+            })
+        );
+        assert_eq!(
+            access_allowed_in(
+                HKEY_CURRENT_USER,
+                &path,
+                &scratch.0,
+                Call::Open(old_access.0)
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            access_allowed_in(HKEY_CURRENT_USER, &path, &scratch.0, Call::SetValue),
+            Some(true)
+        );
+        let value = Value::string("launcher.exe --probe-redirect");
+        write_in(HKEY_CURRENT_USER, &path, Some(&value)).unwrap();
+        assert_eq!(
+            describe_in(HKEY_CURRENT_USER, &path).unwrap().debugger,
+            Some(value.clone())
+        );
+        let key = open_in(HKEY_CURRENT_USER, &path, KEY_QUERY_VALUE)
+            .unwrap()
+            .unwrap();
+        assert_eq!(read_value(&key, "Debugger").unwrap(), Some(value));
+        write_in(HKEY_CURRENT_USER, &path, None).unwrap();
+        assert_eq!(read_value(&key, "Debugger").unwrap(), None);
+    }
+
+    #[test]
+    fn a_writable_dacl_does_not_explain_a_refused_write_on_a_read_only_handle() {
+        let scratch = Scratch::new();
+        let key = open_in(HKEY_CURRENT_USER, &scratch.0, KEY_QUERY_VALUE)
+            .unwrap()
+            .unwrap();
+        let error = set_debugger(&key, Some(&Value::string("launcher.exe"))).unwrap_err();
+        assert_eq!(
+            error.os(),
+            Some(OsError {
+                call: Call::SetValue,
+                code: 5
+            })
+        );
+        assert_eq!(
+            access_allowed_in(HKEY_CURRENT_USER, &scratch.0, &scratch.0, Call::SetValue),
+            Some(true)
+        );
+        assert_eq!(read_value(&key, "Debugger").unwrap(), None);
+    }
+
+    #[test]
+    fn os_errors_keep_their_call_and_code() {
+        let os = OsError {
+            call: Call::Open(WRITE_ACCESS.0),
+            code: 5,
+        };
+        let error = Error::Os(os);
         assert!(error.denied());
-        assert_eq!(String::from(error), util::message(5));
+        assert_eq!(error.os(), Some(os));
+        assert!(String::from(error).contains(os.call.name()));
+        assert_eq!(
+            serde_json::from_str::<OsError>(&serde_json::to_string(&os).unwrap()).unwrap(),
+            os
+        );
         assert!(!Error::Text("text".into()).denied());
         // A refusal is explained only for administrators.
         if !argus_core::privilege::is_elevated() {
-            assert_eq!(refusal(&Error::Os(5), KEY), None);
+            assert_eq!(refusal(&Error::Os(os), KEY), None);
         }
     }
 }

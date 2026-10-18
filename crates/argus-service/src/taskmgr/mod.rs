@@ -285,14 +285,13 @@ impl Step {
     }
 }
 
-/// Why an administrator could not change an entry under IFEO.
+/// What the DACL check establishes after an administrator's IFEO call fails.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Cause {
-    /// Its permissions allow administrators to write: something outside them
-    /// refused, usually security software that guards the registry or a policy.
+    /// The DACL permits the checked access; the reason for refusal is unknown.
     Blocked,
-    /// Its permissions do not allow administrators to write.
+    /// The DACL does not permit the access required by the failed call.
     Permissions,
 }
 
@@ -306,8 +305,10 @@ impl Cause {
 
     fn log(self) -> &'static str {
         match self {
-            Self::Blocked => "; the key's permissions allow administrators to write",
-            Self::Permissions => "; the key's permissions do not allow administrators to write",
+            Self::Blocked => {
+                "; the key DACL permits the checked access; refusal reason undetermined"
+            }
+            Self::Permissions => "; the key DACL does not permit the checked access",
         }
     }
 }
@@ -335,8 +336,14 @@ pub struct Failure {
     /// `diagnostics::failure` of the step's own error.
     reason: String,
     cause: Option<Cause>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    registry: Option<registry::OsError>,
     /// The self-test entry stayed: the classified error of its cleanup.
     kept: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kept_registry: Option<registry::OsError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kept_cause: Option<Cause>,
     /// The replacement's state, when the action is not allowed in it.
     #[serde(skip)]
     state: Option<&'static str>,
@@ -349,7 +356,10 @@ impl Failure {
             reason: argus_core::diagnostics::failure(&message).into_owned(),
             message,
             cause: None,
+            registry: None,
             kept: None,
+            kept_registry: None,
+            kept_cause: None,
             state: None,
         }
     }
@@ -369,8 +379,9 @@ impl Failure {
                 error = self.message,
                 cleanup = cleanup.message
             ),
-            cause: self.cause.or(cleanup.cause),
             kept: Some(cleanup.reason),
+            kept_registry: cleanup.registry,
+            kept_cause: cleanup.cause,
             ..self
         }
     }
@@ -383,11 +394,21 @@ impl Failure {
             Some(state) => format!("at {}: not allowed while {state}", self.step.name()),
             None => format!("at {}: {}", self.step.name(), failure(&self.reason)),
         };
+        if let Some(error) = self.registry {
+            line += &format!("; {}", error.log());
+        }
         if let Some(cause) = self.cause {
             line += cause.log();
         }
         if let Some(kept) = &self.kept {
-            line += &format!("; self-test entry kept ({})", failure(kept));
+            line += &format!("; self-test entry kept ({}", failure(kept));
+            if let Some(error) = self.kept_registry {
+                line += &format!("; {}", error.log());
+            }
+            if let Some(cause) = self.kept_cause {
+                line += cause.log();
+            }
+            line += ")";
         }
         line
     }
@@ -842,6 +863,7 @@ fn finish_enable(
     let value = replacement(&machine.dir);
     state::enable(machine, owner.into(), image.into(), value).map_err(|message| Failure {
         cause: machine.refused,
+        registry: machine.failure,
         ..Failure::new(Step::Commit, message)
     })?;
     Ok(())
@@ -1579,7 +1601,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("argus-taskmgr-{}", id().unwrap()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join(ERROR_FILE);
-        let failure = Failure::refused(Step::ProbeCreate, util::message(5), Some(Cause::Blocked));
+        let failure = Failure {
+            registry: Some(registry::OsError {
+                call: registry::Call::Create(3),
+                code: 5,
+            }),
+            ..Failure::refused(Step::ProbeCreate, util::message(5), Some(Cause::Blocked))
+        };
         fs::write(&path, serde_json::to_vec(&failure).unwrap()).unwrap();
         let read = read_failure(&path, SystemTime::now()).unwrap();
         assert_eq!(
@@ -1587,6 +1615,17 @@ mod tests {
             (Step::ProbeCreate, Some(Cause::Blocked))
         );
         assert_eq!(read.message, failure.message);
+        assert_eq!(read.registry, failure.registry);
+        // Older helpers did not include the optional API details.
+        let mut old = serde_json::to_value(&failure).unwrap();
+        old.as_object_mut().unwrap().remove("registry");
+        fs::write(&path, serde_json::to_vec(&old).unwrap()).unwrap();
+        assert!(
+            read_failure(&path, SystemTime::now())
+                .unwrap()
+                .registry
+                .is_none()
+        );
         // From an earlier run, or not written by this version's helper.
         let later = SystemTime::now() + Duration::from_secs(60);
         assert!(read_failure(&path, later).is_none());
@@ -1600,13 +1639,38 @@ mod tests {
     #[test]
     fn the_log_line_names_the_step_cause_and_code_but_never_the_text() {
         let private = format!(r"C:\Users\Someone Private\x: {}", util::message(5));
-        let failure = Failure::refused(Step::ProbeCreate, private.clone(), Some(Cause::Blocked))
-            .kept(Failure::new(Step::ProbeCleanup, private));
+        let failure = Failure {
+            registry: Some(registry::OsError {
+                call: registry::Call::Open(3),
+                code: 5,
+            }),
+            ..Failure::refused(Step::ProbeWrite, private.clone(), Some(Cause::Blocked))
+        }
+        .kept(Failure {
+            registry: Some(registry::OsError {
+                call: registry::Call::DeleteKey,
+                code: 5,
+            }),
+            ..Failure::refused(Step::ProbeCleanup, private, Some(Cause::Permissions))
+        });
+        let failure: Failure =
+            serde_json::from_slice(&serde_json::to_vec(&failure).unwrap()).unwrap();
         let line = failure.log();
-        assert!(line.starts_with(&format!("at {}:", Step::ProbeCreate.name())));
+        assert!(line.starts_with(&format!("at {}:", Step::ProbeWrite.name())));
         assert!(line.contains("(os error 5)"), "{line}");
         assert!(line.contains(Cause::Blocked.log()), "{line}");
         assert!(line.contains("self-test entry kept"), "{line}");
+        let (original, cleanup) = line.split_once("; self-test entry kept").unwrap();
+        assert!(
+            original.contains("RegOpenKeyExW (access 0x00000003, os error 5)"),
+            "{line}"
+        );
+        assert!(!original.contains(Cause::Permissions.log()), "{line}");
+        assert!(
+            cleanup.contains("RegDeleteKeyW (access 0x00010000, os error 5)"),
+            "{line}"
+        );
+        assert!(cleanup.contains(Cause::Permissions.log()), "{line}");
         assert!(!line.contains("Someone") && !line.contains('\\'), "{line}");
         let refused = Failure {
             state: Some("conflict"),

@@ -49,7 +49,11 @@ pub fn run(probe: &mut impl Probe) -> std::result::Result<(), Failure> {
     match probe.exists(&name) {
         Ok(false) => {}
         Ok(true) => return Err(failed(Step::ProbeCreate, tr!("taskManager.probeNameTaken"))),
-        Err(error) => return Err(failed(Step::ProbeCreate, error.into())),
+        Err(error) => {
+            return Err(refused(probe, Step::ProbeCreate, &name, error, |error| {
+                tr!("taskManager.selfTestFailed", error = error)
+            }));
+        }
     }
     probe.prepare(&name).map_err(|error| {
         Failure::new(
@@ -129,7 +133,7 @@ pub fn cleanup(probe: &mut impl Probe, step: Step) -> std::result::Result<(), Fa
     }
     let actual = probe
         .observe(&name)
-        .map_err(|error| Failure::new(step, text(error.into())))?;
+        .map_err(|error| refused(probe, step, &name, error, text))?;
     let debugger = probe.debugger();
     if actual.filtered || actual.debugger.as_ref().is_some_and(|d| *d != debugger) {
         return Err(Failure::new(step, text(tr!("taskManager.probeModified"))));
@@ -157,7 +161,10 @@ fn refused(
     text: impl FnOnce(String) -> String,
 ) -> Failure {
     let cause = probe.refusal(&error, name);
-    Failure::refused(step, text(error.into()), cause)
+    Failure {
+        registry: error.os(),
+        ..Failure::refused(step, text(error.into()), cause)
+    }
 }
 
 fn valid(name: &str) -> bool {
@@ -256,8 +263,13 @@ impl Probe for System {
 
 #[cfg(test)]
 mod tests {
+    use super::registry::{Call, OsError};
     use super::*;
     use std::collections::HashMap;
+
+    fn denied(call: Call) -> registry::Error {
+        registry::Error::Os(OsError { call, code: 5 })
+    }
 
     /// A machine whose files, entries and test program are a few fields.
     #[derive(Default)]
@@ -268,6 +280,7 @@ mod tests {
         refuse_create: bool,
         refuse_write: bool,
         refuse_removal: bool,
+        refuse_flush: bool,
         redirected: bool,
         cause: Option<Cause>,
     }
@@ -300,23 +313,30 @@ mod tests {
         }
         fn create(&mut self, name: &str) -> RegResult<()> {
             if self.refuse_create {
-                return Err(registry::Error::Os(5));
+                return Err(denied(Call::Create(3)));
             }
             self.entries.entry(name.into()).or_default();
             Ok(())
         }
         fn write(&mut self, name: &str, debugger: Option<&Value>) -> RegResult<()> {
             if debugger.map_or(self.refuse_removal, |_| self.refuse_write) {
-                return Err(registry::Error::Os(5));
+                return Err(denied(if debugger.is_some() {
+                    Call::SetValue
+                } else {
+                    Call::DeleteValue
+                }));
             }
             if let Some(entry) = self.entries.get_mut(name) {
                 entry.debugger = debugger.cloned();
+            }
+            if debugger.is_some() && self.refuse_flush {
+                return Err(denied(Call::Flush));
             }
             Ok(())
         }
         fn delete(&mut self, name: &str) -> RegResult<()> {
             if self.refuse_removal {
-                return Err(registry::Error::Os(5));
+                return Err(denied(Call::DeleteKey));
             }
             self.entries.remove(name);
             Ok(())
@@ -352,9 +372,9 @@ mod tests {
 
     #[test]
     fn a_refused_entry_names_its_step_and_cause_and_leaves_nothing() {
-        for (create, write, step) in [
-            (true, false, Step::ProbeCreate),
-            (false, true, Step::ProbeWrite),
+        for (create, write, step, call) in [
+            (true, false, Step::ProbeCreate, Call::Create(3)),
+            (false, true, Step::ProbeWrite, Call::SetValue),
         ] {
             let mut m = Memory {
                 refuse_create: create,
@@ -366,6 +386,7 @@ mod tests {
             let failure = run(&mut m).unwrap_err();
             assert_eq!(failure.step, step);
             assert_eq!(failure.cause, Some(Cause::Blocked));
+            assert_eq!(failure.registry, Some(OsError { call, code: 5 }));
             assert!(failure.kept.is_none());
             assert!(!m.left_anything());
         }
@@ -389,7 +410,16 @@ mod tests {
         };
         let failure = run(&mut m).unwrap_err();
         assert_eq!(failure.step, Step::ProbeRedirect);
-        assert_eq!(failure.cause, Some(Cause::Blocked));
+        assert_eq!(failure.cause, None);
+        assert_eq!(failure.registry, None);
+        assert_eq!(failure.kept_cause, Some(Cause::Blocked));
+        assert_eq!(
+            failure.kept_registry,
+            Some(OsError {
+                call: Call::DeleteValue,
+                code: 5
+            })
+        );
         assert!(failure.kept.is_some());
         assert!(m.record.is_some() && m.program.is_some() && m.entries.len() == 1);
         // The next attempt stops at the leftover rather than adding entries.
@@ -399,6 +429,40 @@ mod tests {
         m.redirected = true;
         run(&mut m).unwrap();
         assert!(!m.left_anything());
+    }
+
+    #[test]
+    fn a_flush_failure_keeps_its_call_even_when_cleanup_also_fails() {
+        for refuse_removal in [false, true] {
+            let mut m = Memory {
+                refuse_flush: true,
+                refuse_removal,
+                redirected: true,
+                ..Default::default()
+            };
+            let failure = run(&mut m).unwrap_err();
+            assert_eq!(failure.step, Step::ProbeWrite);
+            assert_eq!(
+                failure.registry,
+                Some(OsError {
+                    call: Call::Flush,
+                    code: 5
+                })
+            );
+            assert_eq!(
+                failure.kept_registry,
+                refuse_removal.then_some(OsError {
+                    call: Call::DeleteValue,
+                    code: 5
+                })
+            );
+            assert_eq!(m.left_anything(), refuse_removal);
+            if refuse_removal {
+                m.refuse_removal = false;
+                cleanup(&mut m, Step::ProbeLeftover).unwrap();
+                assert!(!m.left_anything());
+            }
+        }
     }
 
     #[test]

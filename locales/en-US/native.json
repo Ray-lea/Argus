@@ -145,10 +145,11 @@
     "probeCleanupFailed": "The startup self-test's temporary entry couldn't be removed: {error}",
     "probeKept": "{error}. {cleanup}. Argus tries to remove it again the next time the replacement is enabled or restored, or when the privileged service starts",
     "entryChangeFailed": "Couldn't change the IFEO configuration of taskmgr.exe: {error}",
+    "registryCallFailed": "{api} failed: {error}",
     "refused": {
       "withCause": "{error}. {cause}",
-      "blocked": "Argus has administrator rights and the registry key's permissions allow administrators to write, yet the change was refused. Security software that guards the registry (for example against IFEO hijacking) or a system policy usually blocks such changes; its log of blocked actions can confirm it. Argus doesn't work around this",
-      "permissions": "The registry key's permissions don't allow administrators to write; another program may have changed them"
+      "blocked": "The registry access check passed, but Windows still refused the call; the cause isn't established. Check the API and error code in the diagnostic log alongside system or security software logs",
+      "permissions": "The registry access check failed; the current token wasn't granted the access required by this call"
     },
     "notAllowed": "This operation isn't allowed in the current state; refresh and try again",
     "helperNotStarted": "Couldn't start the administrator maintenance helper",
