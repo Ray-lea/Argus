@@ -232,6 +232,15 @@ export function parseNotes(markdown: string): Block[] {
   return blocks.filter((b) => b.kind === "text" || b.items.length > 0);
 }
 
+/**
+ * Groups whose items are changes: every group but known limitations. A
+ * breaking change written by hand may be new behaviour listed nowhere else;
+ * release.mjs lists a `feat!` or `fix!` commit under both headings, and it
+ * counts twice. `other` is commits that predate the convention, lists
+ * without a heading and headings written by hand.
+ */
+const CHANGES: ReadonlySet<Category> = new Set(["breaking", "feat", "fix", "perf", "revert", "other"]);
+
 /** How many changes the blocks list. */
-export const itemCount = (blocks: Block[]) =>
-  blocks.reduce((n, b) => n + (b.kind === "group" ? b.items.length : 0), 0);
+export const changeCount = (blocks: Block[]) =>
+  blocks.reduce((n, b) => n + (b.kind === "group" && CHANGES.has(b.category) ? b.items.length : 0), 0);

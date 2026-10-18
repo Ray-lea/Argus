@@ -6,11 +6,11 @@ import { test } from "node:test";
 import {
   between,
   categoryOf,
+  changeCount,
   changelogEntries,
   compareVersions,
   firstStart,
   isPrerelease,
-  itemCount,
   parseNotes,
   spans,
   strayHeadings,
@@ -177,7 +177,7 @@ test("generated entries lose their commits and scopes", () => {
     },
     { kind: "group", category: "fix", title: "修复", items: [[{ text: "托盘菜单偶尔不响应" }]] },
   ]);
-  assert.equal(itemCount(blocks), 3);
+  assert.equal(changeCount(blocks), 3);
 });
 
 test("hand-written entries keep their leads, paragraphs and code", () => {
@@ -208,6 +208,57 @@ test("hand-written entries keep their leads, paragraphs and code", () => {
     title: "已知限制",
     items: [[{ text: "支持范围见硬件数据，运行 " }, { text: "start.bat", code: true }, { text: "。" }]],
   });
+});
+
+test("the count leaves out known limitations", () => {
+  const count = (lines: string[]) => changeCount(parseNotes(lines.join("\n")));
+  // As 0.1.0 is written: the limitations are no changes.
+  assert.equal(
+    count([
+      "Argus 的首个公开版本。",
+      "",
+      "### 功能",
+      "",
+      "- One",
+      "- Two",
+      "",
+      "### 已知限制",
+      "",
+      "- Unsigned",
+    ]),
+    2,
+  );
+  // As release.mjs writes a `feat!` commit: listed under both headings, counted twice.
+  assert.equal(
+    count([
+      "### 破坏性变更",
+      "",
+      "- 特权服务需随新版更新 ([e3cc63f](https://github.com/o/r/commit/e3cc63f))",
+      "",
+      "### 新功能",
+      "",
+      "- 进程页显示磁盘读写速率 ([e3cc63f](https://github.com/o/r/commit/e3cc63f))",
+      "",
+      "### 修复",
+      "",
+      "- Fixed (0a1b2c3)",
+      "",
+      "### 性能",
+      "",
+      "- Faster (1a2b3c4)",
+      "",
+      "### 回退",
+      "",
+      "- Reverted (2b3c4d5)",
+    ]),
+    5,
+  );
+  // Commits before the convention, lists without a heading and headings written by hand.
+  assert.equal(count(["### 其他", "", "- Old commit (3c4d5e6)"]), 1);
+  assert.equal(count(["- One", "- Two"]), 2);
+  assert.equal(count(["### 界面", "", "- One", "", "### Known issues", "", "- Two"]), 1);
+  assert.equal(count(["只有内部改动（重构、文档、构建等），没有用户可见的变化。"]), 0);
+  assert.equal(count(["### 破坏性变更", "", "- 需重新安装特权服务"]), 1);
 });
 
 test("lists without a heading and unknown headings are kept", () => {

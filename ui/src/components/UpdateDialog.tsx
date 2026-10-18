@@ -24,10 +24,10 @@ import { EASE_OUT, play, presence } from "../lib/motion";
 import {
   type Block,
   between,
+  changeCount,
   changelogEntries,
   compareVersions,
   isPrerelease,
-  itemCount,
   parseNotes,
   type Release,
   type Span,
@@ -409,7 +409,7 @@ function Entry(props: { entry: Release; open: boolean }) {
         <ChevronRight size={12} class="update-entry-chevron" />
         <span class="update-entry-version">{props.entry.version}</span>
         <span class="update-entry-date">{formatDate(props.entry.date)}</span>
-        <Show when={itemCount(blocks())}>
+        <Show when={changeCount(blocks())}>
           {(count) => (
             <span class="update-entry-count">{t("updates.dialog.changes", { count: count() })}</span>
           )}
