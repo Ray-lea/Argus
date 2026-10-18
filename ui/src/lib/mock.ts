@@ -728,6 +728,33 @@ export const privilegedService = {
   },
 };
 
+// ?service=running|outdated|stopped|unreachable starts with the service
+// installed and in that state (the disk columns' hints follow it) until it is
+// managed in Settings.
+type ServiceFixture = () => Partial<import("./types").PrivilegedServiceStatus>;
+const SERVICE_FIXTURES: Record<string, ServiceFixture> = {
+  running: () => ({}),
+  outdated: () => ({ version: "0.0.9" }),
+  stopped: () => ({ state: "stopped", version: null }),
+  unreachable: () => ({
+    version: null,
+    error:
+      mockSettings.locale === "en-US"
+        ? "The privileged service didn't respond in time; refresh the status to confirm the result"
+        : "特权服务响应超时，请刷新状态后确认操作结果",
+  }),
+};
+let serviceFixture: ServiceFixture | undefined = SERVICE_FIXTURES[query.get("service") ?? ""];
+if (serviceFixture) {
+  const { status, manage } = privilegedService;
+  serviceInstalled = true;
+  privilegedService.status = async () => ({ ...(await status()), ...serviceFixture?.() });
+  privilegedService.manage = (action) => {
+    serviceFixture = undefined;
+    return manage(action);
+  };
+}
+
 let taskManagerEnabled = false;
 export const taskManager = {
   status: async (): Promise<import("./types").TaskManagerStatus> => ({

@@ -1,5 +1,12 @@
 {
-  "diskUnavailable": "No disk reading yet. A process that has only just appeared gets one at the next refresh; if Windows does not provide these counters directly, they come from the privileged service: enable it in Settings, or update it there if its version is incompatible.",
+  "diskUnavailable": {
+    "pending": "No disk reading yet. A process that has only just appeared gets one at the next refresh.",
+    "enable": "No disk reading. Windows doesn't provide these counters directly, so they come from the privileged service, which can be enabled in Settings.",
+    "update": "No disk reading. The privileged service version doesn't match Argus; update the service in Settings.",
+    "start": "No disk reading. The privileged service is stopped; it can be started in Settings.",
+    "service": "No disk reading. Couldn't read it from the privileged service; check the service status in Settings.",
+    "unavailable": "No disk reading. Per-process disk counters can't be read right now."
+  },
   "label": "Processes",
   "total": { "one": "{count} process", "other": "{count} processes" },
   "column": {

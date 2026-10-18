@@ -1,8 +1,9 @@
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { endRow } from "../lib/actions";
 import { fmtCount, fmtCpu, fmtMem, fmtNet, fmtRate } from "../lib/format";
 import { t } from "../lib/i18n";
+import { missingDiskHint } from "../lib/privilege";
 import { sumDiskIo } from "../lib/process-io";
 import {
   type DisplayRow,
@@ -79,6 +80,8 @@ export default function ProcessTable() {
   const columns = () => (withNet() ? COLUMNS_WITH_NET : COLUMNS);
   /** How far the columns after the name are scrolled sideways (a narrow table). */
   const [shift, setShift] = createSignal(0);
+  /** The tooltip of a missing disk reading, shared by every row. */
+  const diskHint = createMemo(missingDiskHint);
 
   const virtualizer = createVirtualizer({
     get count() {
@@ -290,7 +293,7 @@ export default function ProcessTable() {
             <For each={virtualizer.getVirtualItems()}>
               {(item) => (
                 <Show when={rows()[item.index]}>
-                  {(row) => <Item row={row()} start={item.start} withNet={withNet()} />}
+                  {(row) => <Item row={row()} start={item.start} withNet={withNet()} diskHint={diskHint()} />}
                 </Show>
               )}
             </For>
@@ -314,7 +317,7 @@ export default function ProcessTable() {
 const rowId = (key: string) => `row-${key.replace(/[^\w-]/g, "_")}`;
 
 /** A process row or, while sorted by name, an "应用" / "后台进程" heading. */
-function Item(props: { row: TableRow; start: number; withNet: boolean }) {
+function Item(props: { row: TableRow; start: number; withNet: boolean; diskHint: string }) {
   const process = () => (isSection(props.row) ? undefined : props.row);
   const heading = () => (isSection(props.row) ? props.row : undefined);
   return (
@@ -322,7 +325,7 @@ function Item(props: { row: TableRow; start: number; withNet: boolean }) {
       when={process()}
       fallback={<Show when={heading()}>{(h) => <SectionHeading row={h()} start={props.start} />}</Show>}
     >
-      {(r) => <Row row={r()} start={props.start} withNet={props.withNet} />}
+      {(r) => <Row row={r()} start={props.start} withNet={props.withNet} diskHint={props.diskHint} />}
     </Show>
   );
 }
@@ -338,7 +341,7 @@ function SectionHeading(props: { row: SectionRow; start: number }) {
   );
 }
 
-function Row(props: { row: DisplayRow; start: number; withNet: boolean }) {
+function Row(props: { row: DisplayRow; start: number; withNet: boolean; diskHint: string }) {
   const r = () => props.row;
   const selected = () => selectedKey() === r().key;
   const isGroup = () => r().kind === "group";
@@ -429,7 +432,7 @@ function Row(props: { row: DisplayRow; start: number; withNet: boolean }) {
               role="gridcell"
               classList={{ dim: r()[key] == null || (r()[key] ?? 0) < 1 }}
               style={{ "--h": heatIo(r()[key] ?? 0) }}
-              title={r()[key] == null ? t("processes.diskUnavailable") : undefined}
+              title={r()[key] == null ? props.diskHint : undefined}
             >
               {r()[key] == null ? "—" : fmtRate(r()[key] ?? 0)}
             </div>

@@ -4,6 +4,7 @@ import { fmtCount, fmtCpu, fmtCpuTime, fmtDateTime, fmtMem, fmtNet, fmtRate } fr
 import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { EASE_OUT, play } from "../lib/motion";
+import { missingDiskHint } from "../lib/privilege";
 import { sumDiskIo } from "../lib/process-io";
 import { type DisplayRow, groupKey, procKey } from "../lib/rows";
 import {
@@ -376,14 +377,13 @@ export default function DetailsPanel(props: { sel: Selection }) {
 /** Disk read and write rates of a process, or the measured members of a group. */
 function DiskFacts(props: { members: ProcessRow[] }) {
   const rates = createMemo(() => sumDiskIo(props.members));
+  const missing = createMemo(missingDiskHint);
   return (
     <For each={["diskRead", "diskWrite"] as const}>
       {(key) => (
         <>
           <dt>{t(`processes.column.${key}.label`)}</dt>
-          <dd
-            title={rates()[key] == null ? t("processes.diskUnavailable") : t(`processes.column.${key}.title`)}
-          >
+          <dd title={rates()[key] == null ? missing() : t(`processes.column.${key}.title`)}>
             {rates()[key] == null ? "—" : fmtRate(rates()[key] ?? 0, false)}
           </dd>
         </>

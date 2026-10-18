@@ -1,10 +1,12 @@
-// What Argus may do beyond a standard user's rights, for the status bar: it
-// runs as administrator, or it reaches the privileged service, which does
-// what needs those rights on its behalf.
+// What Argus may do beyond a standard user's rights, for the status bar and
+// the hints that depend on it: it runs as administrator, or it reaches the
+// privileged service, which does what needs those rights on its behalf.
 
 import { createSignal } from "solid-js";
+import { t } from "./i18n";
 import { api } from "./ipc";
-import { appInfo } from "./store";
+import { hasDiskReading, missingDiskReason } from "./process-io";
+import { appInfo, snapshot } from "./store";
 import type { PrivilegedServiceStatus } from "./types";
 
 export type Privilege = "admin" | "service" | "standard";
@@ -43,3 +45,15 @@ export function watchPrivilege(): () => void {
     document.removeEventListener("visibilitychange", check);
   };
 }
+
+/** Why processes show no disk reading, from the status followed above. */
+export const missingDiskHint = () => {
+  const reason = missingDiskReason({
+    measured: hasDiskReading(snapshot()?.processes ?? []),
+    elevated: appInfo()?.elevated ?? false,
+    service: service(),
+    appVersion: appInfo()?.version ?? null,
+  });
+  // The key stays a plain template, which `i18n.mjs --unused` reads as a prefix.
+  return t(`processes.diskUnavailable.${reason}`);
+};
