@@ -51,6 +51,22 @@ fn valid_image(name: &str) -> bool {
         .and_then(|s| s.strip_suffix(".exe"))
         .is_some_and(|s| s.len() == 36 && s.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
 }
+/// Whether `path` is one of the replacement's interface copies in this
+/// build's protected folder. An Argus opened by the replacement runs one, and
+/// the uninstaller's Restart Manager check knows only the installed argus.exe.
+pub fn is_interface_copy(path: &Path) -> bool {
+    let Ok(dir) = crate::install::directory() else {
+        return false;
+    };
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(valid_image)
+        && path.parent().is_some_and(|parent| {
+            parent
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&dir.to_string_lossy())
+        })
+}
 fn replacement(dir: &Path) -> Value {
     Value::string(&format!(
         "{} --task-manager",
@@ -1340,6 +1356,25 @@ mod tests {
             replacement: Value::string("launcher.exe --task-manager"),
             phase,
         }
+    }
+
+    #[test]
+    fn interface_copies_are_named_ones_in_the_protected_folder() {
+        let dir = crate::install::directory().unwrap();
+        let copy = format!("argus-taskmgr-ui-{}.exe", id().unwrap());
+        assert!(is_interface_copy(&dir.join(&copy)));
+        // Paths read back from Windows may differ in case.
+        let upper = dir.to_string_lossy().to_uppercase();
+        assert!(is_interface_copy(&Path::new(&upper).join(&copy)));
+        assert!(!is_interface_copy(&dir.join(LAUNCHER)));
+        assert!(!is_interface_copy(
+            &dir.join("argus-taskmgr-ui-not-a-guid.exe")
+        ));
+        assert!(!is_interface_copy(&dir.join("argus.exe")));
+        assert!(!is_interface_copy(
+            &Path::new(r"C:\Program Files\Argus").join(&copy)
+        ));
+        assert!(!is_interface_copy(&dir.join("sub").join(&copy)));
     }
 
     #[test]

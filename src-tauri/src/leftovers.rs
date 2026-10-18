@@ -19,6 +19,40 @@ use argus_core::{actions, details, process};
 /// Longest wait for the leftovers to finish exiting before starting anyway.
 const WAIT: Duration = Duration::from_secs(3);
 
+/// The uninstaller runs Argus with this before it removes Argus and its data;
+/// see `close_for_uninstall`.
+pub const UNINSTALL_ARG: &str = "--argus-uninstall-close";
+
+/// Ends what would outlive an uninstall that Restart Manager, which knows only
+/// the installed argus.exe, leaves running: the task manager replacement's
+/// interface copies (one holding the single-instance lock takes the next
+/// install's first start, with the settings it holds in memory, and writes
+/// them back over deleted ones), then the WebView2 processes they or the
+/// Argus Restart Manager ended leave holding the data folder. Waits for both.
+pub fn close_for_uninstall(identifier: &str) {
+    let copies: Vec<(u32, i64)> = process::find_by(|name| {
+        name.get(..17)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("argus-taskmgr-ui-"))
+    })
+    .into_iter()
+    .filter(|p| {
+        details::image_path_of(p.pid)
+            .is_some_and(|path| argus_service::taskmgr::is_interface_copy(Path::new(&path)))
+    })
+    .map(|p| (p.pid, p.create_time))
+    .collect();
+    actions::end_and_wait(&copies, WAIT);
+    end_for(identifier);
+}
+
+/// Ends the leftovers of the WebView2 user data folder Tauri keeps in the
+/// app's local data folder (`identifier` names it).
+pub fn end_for(identifier: &str) -> usize {
+    std::env::var_os("LOCALAPPDATA").map_or(0, |dir| {
+        end(&Path::new(&dir).join(identifier).join("EBWebView"))
+    })
+}
+
 /// Ends the leftovers of `user_data` (the WebView2 user data folder); returns
 /// how many processes were ended.
 pub fn end(user_data: &Path) -> usize {

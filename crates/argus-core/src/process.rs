@@ -274,6 +274,11 @@ pub struct Found {
 
 /// Running processes whose image name is `image`, compared without case.
 pub fn find(image: &str) -> Vec<Found> {
+    find_by(|name| name.eq_ignore_ascii_case(image))
+}
+
+/// Running processes whose image name `matches`.
+pub fn find_by(matches: impl Fn(&str) -> bool) -> Vec<Found> {
     let mut buf = AlignedBuf::with_capacity(512 * 1024);
     if query_system_information(SPI_CLASS, &mut buf).is_err() {
         return Vec::new();
@@ -287,7 +292,7 @@ pub fn find(image: &str) -> Vec<Found> {
         })
         .collect();
     ProcessIter::new(&buf)
-        .filter(|e| unsafe { e.info.image_name.to_string_lossy() }.eq_ignore_ascii_case(image))
+        .filter(|e| matches(&unsafe { e.info.image_name.to_string_lossy() }))
         .map(|e| {
             let parent_pid = e.info.inherited_from_unique_process_id.0 as usize as u32;
             Found {
@@ -318,4 +323,31 @@ pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
         })
         .filter(|(pid, ..)| *pid != 0)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_child_is_found_by_its_name_with_its_path() {
+        let system = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        let image = std::path::Path::new(&system)
+            .join("System32")
+            .join("PING.EXE");
+        let mut child = std::process::Command::new(&image)
+            .args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let found = find_by(|name| name.eq_ignore_ascii_case("ping.exe"));
+        let path = crate::details::image_path_of(pid);
+        let _ = child.kill();
+        let _ = child.wait();
+        let ping = found.iter().find(|p| p.pid == pid).expect("found by name");
+        assert!(ping.parent_running);
+        assert!(path.is_some_and(|p| p.eq_ignore_ascii_case(&image.to_string_lossy())));
+        assert!(find_by(|_| false).is_empty());
+    }
 }

@@ -197,7 +197,7 @@ curl -sL https://github.com/Ray-lea/Argus/releases/latest/download/beta.json   #
 
 安装与卸载界面不使用 NSIS 的向导页面，由两部分组成：
 
-- `src-tauri/installer-template.nsi`：Tauri 的 NSIS 模板，只把安装和卸载的页面列表换成 Argus 的页面，改动处都标有 `Argus`。它由 `node scripts/nsis-template.mjs` 按已安装的 `@tauri-apps/cli` 版本从 Tauri 仓库取得模板后生成，不要手改；升级 Tauri 后重新运行，模板在替换处有变化时脚本会停止，需要对照新模板调整脚本。
+- `src-tauri/installer-template.nsi`：Tauri 的 NSIS 模板，把安装和卸载的页面列表换成 Argus 的页面，并扩展卸载时删除应用数据的一步：先结束刚关闭的 Argus 遗留的 WebView2 进程，删除后仍有残留时列出文件夹；改动处都标有 `Argus`。它由 `node scripts/nsis-template.mjs` 按已安装的 `@tauri-apps/cli` 版本从 Tauri 仓库取得模板后生成，不要手改；升级 Tauri 后重新运行，模板在替换处有变化时脚本会停止，需要对照新模板调整脚本。
 - `src-tauri/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案按语言写在文件开头的 `LangString` 中。
 
 已安装旧版本时，安装页显示“将从版本 X 升级到 Y”，覆盖安装而不先卸载（与应用内更新相同）；已安装更新的版本时按钮不可用，需先卸载。被动模式（应用内更新）只显示进度页，静默安装（`/S`）不显示界面，命令行参数与 Tauri 的安装程序相同。

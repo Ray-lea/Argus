@@ -13,8 +13,8 @@ use windows::Win32::System::SystemInformation::{
     IMAGE_FILE_MACHINE_ARMNT, IMAGE_FILE_MACHINE_I386, IMAGE_FILE_MACHINE_UNKNOWN,
 };
 use windows::Win32::System::Threading::{
-    GetPriorityClass, IsWow64Process2, OpenProcess, OpenProcessToken,
-    PROCESS_QUERY_LIMITED_INFORMATION,
+    GetPriorityClass, IsWow64Process2, OpenProcess, OpenProcessToken, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 use windows::core::{PCWSTR, PWSTR};
 
@@ -72,6 +72,24 @@ pub fn command_line_of(pid: u32) -> Option<String> {
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
     let handle = OwnedHandle(handle);
     command_line(handle.0)
+}
+
+/// One process's executable path, on its own.
+pub fn image_path_of(pid: u32) -> Option<String> {
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
+    let handle = OwnedHandle(handle);
+    let mut image = vec![0u16; 32768];
+    let mut len = image.len() as u32;
+    unsafe {
+        QueryFullProcessImageNameW(
+            handle.0,
+            PROCESS_NAME_WIN32,
+            PWSTR(image.as_mut_ptr()),
+            &mut len,
+        )
+    }
+    .ok()?;
+    Some(String::from_utf16_lossy(&image[..len as usize]))
 }
 
 fn command_line(process: HANDLE) -> Option<String> {

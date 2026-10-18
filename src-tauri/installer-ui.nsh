@@ -74,6 +74,8 @@ LangString ArgusUninstallText ${LANG_ENGLISH} "Argus ${VERSION} will be removed 
 LangString ArgusUninstallText ${LANG_SIMPCHINESE} "将从本机移除 Argus ${VERSION}。"
 LangString ArgusDeleteData ${LANG_ENGLISH} "Also delete settings, history and logs"
 LangString ArgusDeleteData ${LANG_SIMPCHINESE} "同时删除设置、历史记录与日志"
+LangString ArgusDataLeft ${LANG_ENGLISH} "Some settings, history or logs couldn't be deleted. They can be deleted by hand:"
+LangString ArgusDataLeft ${LANG_SIMPCHINESE} "部分设置、历史记录或日志未能删除，可手动删除："
 LangString ArgusUninstall ${LANG_ENGLISH} "Uninstall"
 LangString ArgusUninstall ${LANG_SIMPCHINESE} "卸载"
 LangString ArgusCancel ${LANG_ENGLISH} "Cancel"

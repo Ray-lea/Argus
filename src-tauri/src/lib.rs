@@ -106,6 +106,11 @@ pub fn run() {
         std::process::exit(code);
     }
     let context = tauri::generate_context!();
+    // Before the single-instance check: never hands over to a running Argus.
+    if std::env::args().any(|a| a == leftovers::UNINSTALL_ARG) {
+        leftovers::close_for_uninstall(&context.config().identifier);
+        std::process::exit(0);
+    }
     let _instance = match instance::acquire(
         &context.config().identifier,
         &std::env::args().collect::<Vec<_>>(),
@@ -168,12 +173,8 @@ pub fn run() {
     let start_hidden = taskmgr_start || hidden_arg;
     let updated = std::env::args().any(|a| a == updater::UPDATED_ARG);
 
-    // Before the window and its WebView exist (see leftovers.rs). Tauri keeps
-    // WebView2's data in the app's local data folder.
-    let leftovers = std::env::var_os("LOCALAPPDATA").map_or(0, |dir| {
-        let folder = std::path::Path::new(&dir).join(&context.config().identifier);
-        leftovers::end(&folder.join("EBWebView"))
-    });
+    // Before the window and its WebView exist (see leftovers.rs).
+    let leftovers = leftovers::end_for(&context.config().identifier);
 
     tauri::Builder::default()
         // Must come first: a second launch just brings the running one forward.

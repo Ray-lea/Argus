@@ -20,10 +20,9 @@
 !if "${BUNDLEID}" == "dev.argus.taskmanager"
   ; The installer already runs elevated: bring an installed privileged service
   ; to this version now, so an update needs no second administrator prompt.
-  ; The new argus.exe leaves the service alone while the task manager
-  ; replacement may be on (updating turns it off; an enabled replacement's own
-  ; files follow this version instead) and when anything fails; Argus then
-  ; offers the update when it starts. Never blocks the install.
+  ; The new argus.exe brings an enabled task manager replacement along, which
+  ; stays on; when anything fails, Argus offers the update when it starts.
+  ; Never blocks the install.
   ClearErrors
   ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
   ${IfNot} ${Errors}
@@ -42,6 +41,14 @@
   ; real uninstall, from Apps or from uninstall.exe, runs a copy from %TEMP%.
   ; Reinstalling keeps both.
   ${If} $EXEDIR != $INSTDIR
+    ; Restart Manager (CheckIfAppIsRunning) closes only $INSTDIR's argus.exe.
+    ; An Argus the task manager replacement opened is a copy in the service's
+    ; folder: left running, it keeps the single-instance lock and its settings,
+    ; so the next install's first start goes to it (no onboarding though the
+    ; data was deleted, the old settings written back). Ending it first also
+    ; lets the restore below delete it.
+    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-uninstall-close'
+
     !insertmacro ARGUS_TEXT $2 \
       "检测到已安装的 Argus 特权服务。是否一并卸载？$\r$\n$\r$\n卸载服务需要管理员授权，并将先恢复 Windows 任务管理器。选择“否”将保留该服务，服务会继续随 Windows 启动。" \
       "The Argus privileged service is installed. Uninstall it as well?$\r$\n$\r$\nUninstalling the service requires administrator permission and restores Windows Task Manager first. Choose No to keep the service; it will keep starting with Windows."
