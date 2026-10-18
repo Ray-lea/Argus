@@ -12,6 +12,7 @@ import {
   createResource,
   createSignal,
   For,
+  on,
   onCleanup,
   Show,
   untrack,
@@ -146,9 +147,10 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
     switch (state()) {
       case "available":
         return t("updates.dialog.available", { version });
+      // Fetching the manifest again (a changed installer) before the version is known.
       case "checking":
       case "downloading":
-        return t("updates.dialog.downloading", { version });
+        return version ? t("updates.dialog.downloading", { version }) : t("settings.update.status.checking");
       case "installing":
         return t("updates.dialog.installing");
       case "ready":
@@ -181,6 +183,23 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
     setStarting(false);
     if (error) setFailure(error);
   };
+  // Why the installer did not start holds for the update it was about: it
+  // stays while a changed installer is fetched again and after a declined
+  // prompt, and goes once anything else settles (an update ready again, or a
+  // new error, which then shows instead).
+  createEffect(
+    on(
+      state,
+      (now, before) => {
+        const pending = now === "installing" || now === "checking" || now === "downloading";
+        if (!pending && before !== "installing") setFailure(null);
+      },
+      { defer: true },
+    ),
+  );
+  // Above the onboarding and the file lock dialog, it takes Escape for itself
+  // (even while installing, when it stays open), as the confirmation does;
+  // a confirmation on top of it takes Escape first.
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape" || confirmRequest()) return;
     e.stopImmediatePropagation();
@@ -213,7 +232,7 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
             </div>
           </div>
 
-          <Show when={before()}>
+          <Show when={target() && before()}>
             {(version) => (
               <div class="update-versions">
                 <div class="update-version">
