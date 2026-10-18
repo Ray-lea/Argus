@@ -23,9 +23,10 @@ import {
   Show,
   untrack,
 } from "solid-js";
+import { chartLag, chartSpan } from "../lib/chart-history";
 import { t } from "../lib/i18n";
 import { balancedFrameMs, type ChartMode, chartMode } from "../lib/motion";
-import { HISTORY, intervalMs, paused, sampleSeq, sampleTimes } from "../lib/store";
+import { intervalMs, paused, sampleSeq, sampleTimes } from "../lib/store";
 
 export interface Series {
   data: () => readonly number[];
@@ -58,7 +59,7 @@ const TEXT_EVERY = 100;
  * keep the edge behind every segment that a new sample could still reshape;
  * with one, the newest visible stretch visibly re-bent on every sample.
  */
-const lag = () => 2 * intervalMs() + 250;
+const lag = () => chartLag(intervalMs());
 
 /** The mode in effect right now: paused charts hold still with the newest sample at the edge. */
 const activeMode = (): ChartMode => (paused() ? "off" : chartMode());
@@ -321,6 +322,8 @@ export function Chart(props: ChartProps) {
   let drawn: (Drawn | null)[] = [];
   /** The dots' compositor animations on a gliding trace (see glideDots). */
   let dotGlides: Animation[] = [];
+  let dotGlideQueued = false;
+  let visibleDots = "";
   /** The readout's dots, one per series, and the tip's text as last shown. */
   const dots: (HTMLSpanElement | undefined)[] = [];
   let shownText = "";
@@ -373,7 +376,7 @@ export function Chart(props: ChartProps) {
     const c = ctx;
     if (!c || w === 0 || h === 0) return;
     const interval = intervalMs();
-    const span = (HISTORY - 1) * interval;
+    const span = chartSpan(interval);
     const nextSpeed = w / span;
     const times = sampleTimes();
     const newest = times[times.length - 1];
@@ -576,10 +579,16 @@ export function Chart(props: ChartProps) {
       dot.style.visibility = r ? "" : "hidden";
       if (r) dot.style.transform = `translate(${hoverX}px, ${r.y}px)`;
     }
+    const visible = read.map((r) => (r ? "1" : "0")).join("");
+    if (visible !== visibleDots) {
+      visibleDots = visible;
+      requestDotGlide();
+    }
   };
 
   const hideReadout = () => {
     shownText = "";
+    visibleDots = "";
     stopDots();
     if (readout()) setReadout(null);
   };
@@ -649,13 +658,24 @@ export function Chart(props: ChartProps) {
     dotGlides = [];
   };
 
+  // A trace can reach a stationary pointer between redraws. Start its dots
+  // when they appear, after Solid has mounted the readout even inside a batch.
+  const requestDotGlide = () => {
+    if (hoverX === null || !readout() || dotGlideQueued) return;
+    dotGlideQueued = true;
+    queueMicrotask(() => {
+      dotGlideQueued = false;
+      glideDots(performance.now());
+    });
+  };
+
   const redraw = () => {
     const now = performance.now();
     paint(now);
     move();
     place(now);
     updateReadout(now);
-    glideDots(now);
+    requestDotGlide();
     requestWake();
   };
 
@@ -700,6 +720,7 @@ export function Chart(props: ChartProps) {
       document.removeEventListener("visibilitychange", onVisible);
       ticked.delete(ticks);
       glide?.cancel();
+      hoverX = null;
       stopDots();
     });
 
@@ -724,7 +745,7 @@ export function Chart(props: ChartProps) {
         hoverX = e.clientX - host.getBoundingClientRect().left;
         const now = performance.now();
         updateReadout(now);
-        glideDots(now);
+        requestDotGlide();
         // Starts the text updates (see ticks.next).
         if (entering) requestWake();
       }}
@@ -740,7 +761,7 @@ export function Chart(props: ChartProps) {
         {(r) => (
           <>
             <span class="chart-cursor" style={{ transform: `translateX(${r().x}px)` }} />
-            {/* Placed by updateReadout on every frame the trace moves. */}
+            {/* Positioned by updateReadout, then moved by compositor keyframes. */}
             <Index each={props.series}>
               {(s, i) => (
                 <span

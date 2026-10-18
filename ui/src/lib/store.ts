@@ -1,6 +1,7 @@
 // Application state: the live snapshot, rolling history and view preferences.
 
 import { batch, createMemo, createRoot, createSignal } from "solid-js";
+import { appendHistory, appendSampleTime } from "./chart-history";
 import { t } from "./i18n";
 import { api } from "./ipc";
 import { holdsOrder, type OrderHolds, pointerAloneHoldsOrder } from "./order-hold";
@@ -19,18 +20,7 @@ import { cpuTemperature } from "./sensors";
 import type { AppInfo, ProcessRow, ServiceInfo, Snapshot } from "./types";
 import { confirmRequest, menu, toast } from "./ui";
 
-/** Samples spanning a chart's width. */
-export const HISTORY = 60;
-/**
- * Samples kept: more than shown, because charts run two intervals behind the
- * newest sample and draw two points past the left edge (see Trace.tsx).
- */
-const KEEP = HISTORY + 8;
-
-const pushCapped = (list: number[], v: number) => {
-  if (list.length >= KEEP) list.shift();
-  list.push(v);
-};
+export { HISTORY } from "./chart-history";
 
 // ---- Live data ---------------------------------------------------------------
 
@@ -81,13 +71,9 @@ export function groupHistoryOf(key: string): ProcHistory | undefined {
   return groupHistory.get(key);
 }
 
-const pushSample = (h: ProcHistory, cpu: number, mem: number) => {
-  if (h.cpu.length >= KEEP) {
-    h.cpu.shift();
-    h.mem.shift();
-  }
-  h.cpu.push(cpu);
-  h.mem.push(mem);
+const pushSample = (h: ProcHistory, cpu: number, mem: number, keep: number) => {
+  appendHistory(h.cpu, cpu, keep);
+  appendHistory(h.mem, mem, keep);
 };
 
 const EMPTY: number[] = [];
@@ -102,7 +88,7 @@ export function series(key: string): readonly number[] {
 }
 
 /** Records every device metric the performance view can chart. */
-function recordSeries(s: Snapshot) {
+function recordSeries(s: Snapshot, keep: number) {
   const seen = new Set<string>();
   const put = (key: string, v: number) => {
     seen.add(key);
@@ -111,7 +97,7 @@ function recordSeries(s: Snapshot) {
       list = [];
       seriesHistory.set(key, list);
     }
-    pushCapped(list, v);
+    appendHistory(list, v, keep);
   };
   // Sensors can miss a reading; record a gap (NaN) so the series stays aligned
   // with the sample times, but don't start a series for a sensor that never answered.
@@ -178,10 +164,9 @@ export function ingest(s: Snapshot) {
   batch(() => {
     const first = snapshot() === null;
     const seq = historyTick() + 1;
+    const keep = appendSampleTime(times, performance.now(), intervalMs());
     setSnapshot(s);
-    recordSeries(s);
-    if (times.length >= KEEP) times.shift();
-    times.push(performance.now());
+    recordSeries(s, keep);
 
     const live = new Set<string>();
     const apps = new Map<string, { cpu: number; mem: number }>();
@@ -194,7 +179,7 @@ export function ingest(s: Snapshot) {
         procHistory.set(k, h);
         if (!first) firstSeen.set(k, seq);
       }
-      pushSample(h, p.cpu, p.privateWs);
+      pushSample(h, p.cpu, p.privateWs, keep);
       const g = groupKey(p.name);
       const sum = apps.get(g);
       if (sum) {
@@ -209,7 +194,7 @@ export function ingest(s: Snapshot) {
         h = { cpu: [], mem: [] };
         groupHistory.set(g, h);
       }
-      pushSample(h, sum.cpu, sum.mem);
+      pushSample(h, sum.cpu, sum.mem, keep);
     }
     for (const g of groupHistory.keys()) if (!apps.has(g)) groupHistory.delete(g);
     for (const [k, at] of firstSeen) if (seq - at >= FRESH_SAMPLES || !live.has(k)) firstSeen.delete(k);
