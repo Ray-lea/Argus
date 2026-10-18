@@ -732,6 +732,7 @@ fn install_package(root: &Path, migrate: bool) -> Result<()> {
             if current_plan()? != Plan::MigrateLegacy {
                 return Err(LEGACY_LAYOUT);
             }
+            legacy::protect_installation(&program_files()?)?;
             migrate_then_install(
                 || run_installer(&legacy_installer, &["-uninstall", "-silent"], true),
                 || match open(SERVICE_QUERY_STATUS) {
@@ -776,8 +777,8 @@ pub(crate) fn run_helper() -> Result<()> {
     finish_preparation(plan, || install_package(&root, migrate), start)
 }
 
-/// Called only when the settings switch is explicitly turned on. A shared
-/// driver is never uninstalled/stopped, and saved preferences never trigger UAC.
+/// Called only when the settings switch is explicitly turned on. Only this
+/// action may migrate a shared driver; saved preferences never trigger UAC.
 pub fn ensure_ready() -> std::result::Result<(), String> {
     require_service()?;
     if current_plan().map_err(message)? == Plan::Ready {
