@@ -148,3 +148,79 @@ pub fn request(operation: Operation) -> Result<Option<Reply>, String> {
         .map(Some)
         .map_err(util::message)
 }
+
+/// How the privileged service took an operation of the host.
+pub enum Routed {
+    /// No service runs for this account: the host acts with its own rights.
+    Absent,
+    /// The service speaks another protocol and refused the operation without
+    /// running it: the host may act with its own rights; where those fall
+    /// short, the service needs an update.
+    Outdated,
+    Replied(Box<Reply>),
+}
+
+/// Like `request`, telling an outdated service from a failed one. The only
+/// error after which the host may still act itself is `Outdated`.
+pub fn route(operation: Operation) -> Result<Routed, String> {
+    let Some(pid) = install::running_pid().map_err(util::message)? else {
+        return Ok(Routed::Absent);
+    };
+    match pipe::request(PIPE_NAME, pid, operation) {
+        Ok(reply) => Ok(Routed::Replied(Box::new(reply))),
+        Err(util::INCOMPATIBLE) => Ok(Routed::Outdated),
+        Err(e) => Err(util::message(e)),
+    }
+}
+
+/// What went wrong according to `status`, in fixed words for the diagnostic
+/// log (its error is translated). None without an error, and when the only
+/// one is that another account owns the service, which the log says anyway.
+/// `status` keeps no code, but its text comes from `util::message` just
+/// before; were the language switched in between, the text is classified as
+/// any other failure.
+pub fn status_issue(status: &ServiceStatus) -> Option<std::borrow::Cow<'static, str>> {
+    let error = status.error.as_deref()?;
+    if error == util::message(util::OTHER_OWNER) {
+        None
+    } else if error == util::message(util::INCOMPATIBLE) {
+        Some("incompatible protocol".into())
+    } else if error == util::message(1460) {
+        Some("timeout".into())
+    } else {
+        Some(argus_core::diagnostics::failure(error))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_issue_names_the_cause_in_fixed_words() {
+        let issue = |error: Option<String>| {
+            status_issue(&ServiceStatus {
+                state: "running",
+                authorized: true,
+                version: None,
+                error,
+            })
+            .map(|s| s.into_owned())
+        };
+        assert_eq!(issue(None), None);
+        assert_eq!(issue(Some(util::message(util::OTHER_OWNER))), None);
+        assert_eq!(
+            issue(Some(util::message(util::INCOMPATIBLE))).as_deref(),
+            Some("incompatible protocol")
+        );
+        assert_eq!(issue(Some(util::message(1460))).as_deref(), Some("timeout"));
+        assert_eq!(
+            issue(Some(util::message(109))).as_deref(),
+            Some("os error 109")
+        );
+        assert_eq!(
+            issue(Some(util::message(5))).as_deref(),
+            Some("access denied (os error 5)")
+        );
+    }
+}

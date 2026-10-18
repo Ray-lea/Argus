@@ -1,5 +1,5 @@
 {
-  "diskUnavailable": "No disk reading yet. A process that has only just appeared gets one at the next refresh; if Windows does not provide these counters directly, enable the privileged service.",
+  "diskUnavailable": "No disk reading yet. A process that has only just appeared gets one at the next refresh; if Windows does not provide these counters directly, they come from the privileged service: enable it in Settings, or update it there if its version is incompatible.",
   "label": "Processes",
   "total": { "one": "{count} process", "other": "{count} processes" },
   "column": {

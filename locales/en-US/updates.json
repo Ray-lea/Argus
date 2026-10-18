@@ -55,7 +55,7 @@
   "service": {
     "title": "Update the privileged service?",
     "body": "The privileged service is version {serviceVersion}, which doesn't match Argus {version}. Some features may not work. Updating requires administrator permission.",
-    "bodyOlder": "The privileged service is an older version that doesn't match Argus {version}. Some features may not work. Updating requires administrator permission.",
+    "bodyOlder": "The privileged service is an older version that isn't compatible with Argus {version}. Until it's updated, actions that need administrator rights (ending processes of administrators or other accounts, managing system services, closing network connections and so on) can't be completed, and data the service provides, such as per-process network traffic, isn't shown. Updating requires administrator permission.",
     "restoresTaskManager": "Updating first restores Windows Task Manager; the replacement can be turned on again in Settings afterwards.",
     "withNote": "{body} {note}",
     "confirm": "Update service",

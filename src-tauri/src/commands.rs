@@ -13,7 +13,7 @@ use argus_core::services::{ServiceAction, ServiceInfo, StartType};
 use argus_core::startup::{self, StartupItem};
 use argus_core::theme::{self, AccentColors};
 use argus_core::tr;
-use argus_service::{Operation, Reply, ServiceStatus};
+use argus_service::{Operation, Reply, Routed, ServiceStatus};
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::{Manager, State};
@@ -110,32 +110,58 @@ pub fn process_details(pid: u32, path: Option<String>) -> ProcessDetails {
     details::query(pid, path.as_deref())
 }
 
-fn privileged(state: &AppState, operation: Operation) -> Result<Option<Reply>, ActionError> {
+/// Runs `operation` in the privileged service when one runs for this account,
+/// else `local` with Argus's own rights. `replied` takes the service's answer,
+/// None for one this host does not expect.
+fn privileged<T>(
+    state: &AppState,
+    operation: Operation,
+    replied: impl FnOnce(Reply) -> Option<T>,
+    local: impl FnOnce() -> Result<T, ActionError>,
+) -> Result<T, ActionError> {
     if state.elevated {
-        return Ok(None);
+        return local();
     }
-    match argus_service::request(operation).map_err(ActionError::Os)? {
-        Some(Reply::Error(e)) => Err(e),
-        reply => Ok(reply),
+    match argus_service::route(operation).map_err(ActionError::Os)? {
+        Routed::Absent => local(),
+        Routed::Outdated => {
+            if !OUTDATED_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                log::warn!("privileged service: incompatible protocol; acting with own rights");
+            }
+            outdated(local())
+        }
+        Routed::Replied(reply) => match *reply {
+            Reply::Error(e) => Err(e),
+            reply => replied(reply).ok_or_else(|| ActionError::Os(tr!("host.serviceReply"))),
+        },
     }
 }
 
-fn privileged_done(state: &AppState, operation: Operation) -> Result<bool, ActionError> {
-    match privileged(state, operation)? {
-        Some(Reply::Done) => Ok(true),
-        None => Ok(false),
-        _ => Err(ActionError::Os(tr!("host.serviceReply"))),
-    }
+static OUTDATED_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The outdated service refused the operation without running it, so it ran
+/// here: where Argus's own rights fall short, updating the service helps.
+fn outdated<T>(result: Result<T, ActionError>) -> Result<T, ActionError> {
+    result.map_err(|e| match e {
+        ActionError::AccessDenied => ActionError::Os(tr!("service.incompatible")),
+        e => e,
+    })
+}
+
+fn done(reply: Reply) -> Option<()> {
+    matches!(reply, Reply::Done).then_some(())
 }
 
 fn terminate(state: &AppState, pid: u32, create_time: i64, force: bool) -> Result<(), ActionError> {
     if pid == std::process::id() {
         return Err(ActionError::Refused);
     }
-    if privileged_done(state, Operation::Terminate { pid, create_time })? {
-        return Ok(());
-    }
-    actions::terminate(pid, create_time, force)
+    privileged(
+        state,
+        Operation::Terminate { pid, create_time },
+        done,
+        || actions::terminate(pid, create_time, force),
+    )
 }
 
 #[tauri::command(async)]
@@ -170,19 +196,19 @@ pub fn set_priority(
     create_time: i64,
     priority: Priority,
 ) -> Result<Priority, ActionError> {
-    let result = match privileged(
+    let result = privileged(
         &state,
         Operation::Priority {
             pid,
             create_time,
             priority,
         },
-    ) {
-        Ok(Some(Reply::Priority(p))) => Ok(p),
-        Ok(None) => actions::set_priority(pid, create_time, priority),
-        Ok(_) => Err(ActionError::Os(tr!("host.serviceReply"))),
-        Err(e) => Err(e),
-    };
+        |reply| match reply {
+            Reply::Priority(p) => Some(p),
+            _ => None,
+        },
+        || actions::set_priority(pid, create_time, priority),
+    );
     state.sampler.send(Control::Refresh);
     result
 }
@@ -194,18 +220,16 @@ pub fn set_efficiency_mode(
     create_time: i64,
     on: bool,
 ) -> Result<(), ActionError> {
-    let result = match privileged_done(
+    let result = privileged(
         &state,
         Operation::Efficiency {
             pid,
             create_time,
             on,
         },
-    ) {
-        Ok(true) => Ok(()),
-        Ok(false) => actions::set_efficiency_mode(pid, create_time, on),
-        Err(e) => Err(e),
-    };
+        done,
+        || actions::set_efficiency_mode(pid, create_time, on),
+    );
     state.sampler.send(Control::Refresh);
     result
 }
@@ -630,20 +654,19 @@ pub fn control_service(
     name: String,
     action: ServiceAction,
 ) -> Result<(), ActionError> {
-    let result = match privileged_done(
+    let result = privileged(
         &state,
         Operation::ControlService {
             name: name.clone(),
             action,
         },
-    ) {
-        Ok(true) => {
+        |reply| {
+            done(reply)?;
             state.services.invalidate(&name);
-            Ok(())
-        }
-        Ok(false) => state.services.control(&name, action),
-        Err(e) => Err(e),
-    };
+            Some(())
+        },
+        || state.services.control(&name, action),
+    );
     state.sampler.send(Control::Refresh);
     result
 }
@@ -654,17 +677,19 @@ pub fn set_service_start_type(
     name: String,
     start_type: StartType,
 ) -> Result<(), ActionError> {
-    if privileged_done(
+    privileged(
         &state,
         Operation::ServiceStartType {
             name: name.clone(),
             start_type,
         },
-    )? {
-        state.services.invalidate(&name);
-        return Ok(());
-    }
-    state.services.set_start_type(&name, start_type)
+        |reply| {
+            done(reply)?;
+            state.services.invalidate(&name);
+            Some(())
+        },
+        || state.services.set_start_type(&name, start_type),
+    )
 }
 
 /// Opens the Windows Services console, for what Argus does not cover.
@@ -704,7 +729,7 @@ pub fn close_connection(
     remote_address: String,
     remote_port: u16,
 ) -> Result<(), ActionError> {
-    if privileged_done(
+    privileged(
         &state,
         Operation::CloseConnection {
             local_address: local_address.clone(),
@@ -712,10 +737,9 @@ pub fn close_connection(
             remote_address: remote_address.clone(),
             remote_port,
         },
-    )? {
-        return Ok(());
-    }
-    connections::close_tcp(&local_address, local_port, &remote_address, remote_port)
+        done,
+        || connections::close_tcp(&local_address, local_port, &remote_address, remote_port),
+    )
 }
 
 // ---- File locks -----------------------------------------------------------------

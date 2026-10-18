@@ -22,7 +22,11 @@ trait Executor: Send + 'static {
 
 struct ServiceExecutor {
     elevated: bool,
+    pipe: &'static str,
     route: Result<Option<u32>, String>,
+    /// A service process that speaks another protocol. It refuses rules
+    /// without running them, so they run here while it keeps running.
+    outdated: Option<u32>,
 }
 
 impl Executor for ServiceExecutor {
@@ -32,6 +36,9 @@ impl Executor for ServiceExecutor {
         } else {
             crate::install::running_pid().map_err(crate::util::message)
         };
+        if matches!(self.route, Ok(Some(pid)) if self.outdated == Some(pid)) {
+            self.route = Ok(None);
+        }
         match self.route {
             Ok(None) => 0,
             Err(_) => 1,
@@ -44,12 +51,12 @@ impl Executor for ServiceExecutor {
             .route
             .as_ref()
             .map_err(|e| ActionError::Os(e.clone()))?;
-        let Some(server) = server else {
+        let Some(server) = *server else {
             return rules::apply_rule(rule, pid, created);
         };
         let reply = match crate::pipe::request_with_timeout(
-            crate::PIPE_NAME,
-            *server,
+            self.pipe,
+            server,
             Operation::ApplyRule {
                 pid,
                 create_time: created,
@@ -59,6 +66,13 @@ impl Executor for ServiceExecutor {
             TIMEOUT,
         ) {
             Ok(reply) => reply,
+            // Nothing ran. The next refresh reports a local executor, so the
+            // engine checks every process again.
+            Err(crate::util::INCOMPATIBLE) => {
+                self.outdated = Some(server);
+                self.route = Ok(None);
+                return rules::apply_rule(rule, pid, created);
+            }
             Err(e) => {
                 let message = crate::util::message(e);
                 self.route = Err(message.clone());
@@ -102,7 +116,9 @@ impl RuleRunner {
     pub fn spawn(elevated: bool) -> Self {
         Self::with_executor(ServiceExecutor {
             elevated,
+            pipe: crate::PIPE_NAME,
             route: Ok(None),
+            outdated: None,
         })
     }
 
@@ -414,6 +430,31 @@ mod tests {
             assert!(Instant::now() < deadline, "worker did not finish");
             std::thread::sleep(Duration::from_millis(2));
         }
+    }
+
+    #[test]
+    fn rules_run_here_while_the_service_is_outdated() {
+        let name = crate::pipe::tests::name();
+        // Answers the rule's request (dropped) and the Ping after it; a third
+        // request would find no listener and fail.
+        let server = crate::pipe::tests::dropping_server(&name, crate::PROTOCOL - 1, 2);
+        let service = std::process::id();
+        let mut executor = ServiceExecutor {
+            elevated: false,
+            pipe: Box::leak(name.into_boxed_str()),
+            route: Ok(Some(service)),
+            outdated: None,
+        };
+        // No action: applying it here changes nothing, and succeeds.
+        let rule = ProcessRule {
+            priority: None,
+            ..rule("noop")
+        };
+        executor.apply(&rule, service, 0).unwrap();
+        assert_eq!(server.join().unwrap(), ["ApplyRule", "Ping"]);
+        assert_eq!(executor.route, Ok(None));
+        assert_eq!(executor.outdated, Some(service));
+        executor.apply(&rule, service, 0).unwrap();
     }
 
     struct FakeExecutor {

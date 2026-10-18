@@ -196,18 +196,21 @@ pub fn log_privileged_state() {
     std::thread::spawn(|| {
         match argus_service::status() {
             Ok(s) => log::info!(
-                "privileged service: {}{}{}",
+                "privileged service: {}{}{}{}",
                 s.state,
-                if s.version.is_some() {
-                    " (version available)"
-                } else {
-                    ""
+                match &s.version {
+                    Some(v) if v == env!("CARGO_PKG_VERSION") => " (same version)",
+                    Some(_) => " (other version)",
+                    None => "",
                 },
                 if s.authorized || s.state == "notInstalled" {
                     ""
                 } else {
                     ", authorized for another account"
                 },
+                argus_service::status_issue(&s)
+                    .map(|issue| format!(", error: {issue}"))
+                    .unwrap_or_default(),
             ),
             Err(e) => log::warn!(
                 "privileged service status unavailable: {}",
