@@ -48,6 +48,7 @@ import {
   updateStatus,
 } from "../lib/updates";
 import { ArrowRightIcon, ChevronRight, ExternalIcon, GlobeIcon, ShieldIcon, UpdateIcon } from "./icons";
+import ProgressBar from "./ProgressBar";
 
 const dayFmt = localized(
   (l) => new Intl.DateTimeFormat(l, { month: "long", day: "numeric", timeZone: "UTC" }),
@@ -263,17 +264,7 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
               </Show>
             </div>
             <Show when={state() === "downloading" || state() === "checking"}>
-              <Show when={progress() !== null} fallback={<div class="progress update-progress" />}>
-                <div
-                  class="progress determinate update-progress"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.round((progress() ?? 0) * 100)}
-                >
-                  <div class="progress-fill" style={{ transform: `scaleX(${progress() ?? 0})` }} />
-                </div>
-              </Show>
+              <ProgressBar value={progress()} class="update-progress" />
             </Show>
           </Show>
 

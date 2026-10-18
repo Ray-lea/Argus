@@ -116,6 +116,7 @@ import {
 import { NavPositionChoice, navPosition } from "./Nav";
 import { onboardingOpen, openOnboarding } from "./Onboarding";
 import ProcIcon from "./ProcIcon";
+import ProgressBar from "./ProgressBar";
 import Select from "./Select";
 
 const SECTIONS = [
@@ -924,11 +925,7 @@ function UpdateSettings(props: {
             <span class="update-card-line">{current()}</span>
             <span class="update-card-line">{desc()}</span>
             <Show when={state() === "downloading"}>
-              <Show when={progress() !== null} fallback={<div class="progress update-card-progress" />}>
-                <div class="progress determinate update-card-progress">
-                  <div class="progress-fill" style={{ transform: `scaleX(${progress() ?? 0})` }} />
-                </div>
-              </Show>
+              <ProgressBar value={progress()} class="update-card-progress" />
             </Show>
           </>
         }

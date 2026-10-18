@@ -1829,7 +1829,8 @@ button {
   margin-top: 12px;
 }
 
-/* A known amount: the bar fills from the left, on the compositor. */
+/* A known amount: the bar fills from the left; ProgressBar.tsx glides it to
+   each new amount on the compositor (no CSS transition: a live value). */
 .progress.determinate::after {
   content: none;
 }
@@ -1839,7 +1840,6 @@ button {
   border-radius: 2px;
   background: var(--accent);
   transform-origin: left;
-  transition: transform var(--t-slow) linear;
 }
 
 /* What changed: one section per release, the newest open. The text can be
