@@ -20,7 +20,7 @@
 
 ### 提交前检查
 
-- `start.bat check` 必须通过：TypeScript 类型检查、Biome、rustfmt 与 Clippy（`-D warnings`）。拉取请求会在 GitHub Actions 中运行同样的检查以及单元测试。
+- `start.bat check` 必须通过：TypeScript 类型检查、Biome、文案检查、前端单元测试、rustfmt 与 Clippy（`-D warnings`）。拉取请求会在 GitHub Actions 中运行同样的检查，另外运行前端构建、Rust 单元测试与第三方许可声明检查。
 - 改动界面时，按[性能基线与测量](../docs/development/performance.md)测量开销；卡顿与性能回退按缺陷处理。
 - 行为发生变化（快捷键、设置项、默认值、模块职责）时，同步更新 `docs/` 中对应的页面。
 

@@ -4,14 +4,14 @@
 
 ## 持续集成
 
-GitHub Actions 只有两个工作流，都在 Windows 上用 stable Rust（MSVC）运行：
+仓库中有两个 GitHub Actions 工作流。构建与测试在 Windows 上用 stable Rust（MSVC）运行；提交信息检查和标签核对只用 git 与 Node，在 Ubuntu 上运行。
 
 | 工作流 | 触发 | 内容 |
 |---|---|---|
-| `check.yml` | 拉取请求；在 Actions 页面手动运行；发布时调用 | 提交信息格式（仅拉取请求，含标题）、TypeScript、Biome、前端单元测试、前端构建、rustfmt、Clippy、单元测试、第三方许可声明是否最新 |
-| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；静默安装、核对卸载项、再静默卸载；生成更新清单并发布 GitHub Release |
+| `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；TypeScript、Biome、文案检查、前端单元测试、前端构建、rustfmt、Clippy、单元测试、第三方许可声明是否最新 |
+| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；为更新对话框显示的更新内容签名并校验；静默安装、核对卸载项、再静默卸载；生成更新清单并发布 GitHub Release |
 
-推送到分支不会触发检查，也没有 nightly 或定时构建。推送前在本地运行 `start.bat check`。
+推送到分支不会触发检查，也没有 nightly 或定时构建。推送前在本地运行 `start.bat check`：它包含 `check.yml` 中的 TypeScript、Biome、文案检查、前端单元测试、rustfmt 和 Clippy，不含前端构建、Rust 单元测试和许可声明检查。
 
 ## 提交信息
 
@@ -91,8 +91,9 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 ## 发布步骤
 
 1. 切到 `main`，工作区干净，`start.bat check` 通过。第一次发布前先配置[更新签名密钥](#更新签名密钥)；`tauri.conf.json` 里没有公钥时脚本会拒绝发布。
-2. 预览版本号与发布说明：`pnpm release --dry-run`。
-3. 创建发布提交和标签：
+2. 在 CI 上运行一遍检查，见[推送标签前在 CI 上检查](#推送标签前在-ci-上检查)。
+3. 预览版本号与发布说明：`pnpm release --dry-run`。
+4. 创建发布提交和标签：
 
    ```bash
    pnpm release              # 按提交推断版本
@@ -101,12 +102,27 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
    ```
 
    脚本修改四处版本号，把发布说明加到 `CHANGELOG.md` 开头，提交 `chore(release): vX.Y.Z` 并创建附注标签 `vX.Y.Z`，不会推送。仓库还没有任何标签时，默认发布当前版本号。
-4. 检查 `CHANGELOG.md`。需要润色时修改后 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 把标签移到新提交上。也可以在运行 `pnpm release` 之前先把该版本的条目写进 `CHANGELOG.md` 并提交：脚本会沿用已有条目，只更新标题中的日期（首个版本的发布说明就是这样预先写好的）。
-5. 推送分支和标签：`git push --atomic origin main vX.Y.Z`。`release.yml` 随即开始检查和构建，完成后版本出现在 GitHub Releases。
+5. 检查 `CHANGELOG.md`。润色只改正文：标题行 `## [X.Y.Z](比较链接) - YYYY-MM-DD` 由脚本生成，应用和发布工作流都按这个格式查找条目，日期后不能再有文字；`##` 只用于版本条目的标题，条目内的小节用 `###`。修改后 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 把标签移到新提交上。也可以在运行 `pnpm release` 之前先把该版本的条目写进 `CHANGELOG.md` 并提交：脚本会沿用已有条目，只把标题换成带比较链接和日期的格式（首个版本的发布说明就是这样预先写好的）。`CHANGELOG.md` 中有不是条目标题的二级标题时，脚本不改动任何文件，列出这些行。
+6. 推送前在本地核对：`node scripts/release.mjs verify vX.Y.Z`。它与发布工作流的第一步做同样的核对，读取条目的规则与应用相同；另外确认标签指向当前提交、版本文件和 `CHANGELOG.md` 没有未提交的改动。`node scripts/release.mjs notes X.Y.Z` 打印 GitHub Release 的正文。
+7. 推送分支和标签：`git push --atomic origin main vX.Y.Z`。`release.yml` 随即开始检查和构建，完成后版本出现在 GitHub Releases。
 
 推送前想撤销：`git tag -d vX.Y.Z`，然后 `git reset --hard HEAD~1`。
 
 发布工作流失败时，修复后发布新的修订版本，不要移动已经推送的标签。
+
+### 推送标签前在 CI 上检查
+
+推送标签后，`release.yml` 先运行 `check.yml`，此时失败，该版本号即作废。`start.bat check` 不含 Rust 单元测试、前端构建和许可声明检查，也不在 CI 的环境里运行（英文 Windows、管理员账户、当时最新的 stable Rust，Clippy 与测试带 `--locked`），所以先推送 `main`，对它手动运行一次 `check.yml`，通过后再运行 `pnpm release`：
+
+```bash
+git push origin main
+gh workflow run check.yml --ref main
+gh run watch    # 选择刚开始的 Check，等待结束
+```
+
+也可以在 Actions 页面选择 Check，对 `main` 运行。之后的发布提交只改版本号和 `CHANGELOG.md`，后者由第 6 步在本地核对。
+
+`release.yml` 中构建与发布的步骤只在推送标签后运行，无法预先在 CI 上检查：用 Secrets 中的私钥构建并签名安装包、为更新内容签名、静默安装与卸载、生成清单、上传 Release。这些步骤新增或修改后，第一次运行就是正式发布，推送标签后留意它们的日志；发布完成后可从 `releases/latest/download/latest.json` 取得清单，核对版本号、`argus.releaseNotes` 与 `argus.signature`。
 
 ## 发布产物
 
@@ -147,6 +163,35 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo Ray-lea/Argus
 - 清单由 `node scripts/release.mjs manifest` 生成。`notes` 取自 `CHANGELOG.md` 的对应条目，转成纯文本并去掉提交范围（`core`、`ui` 等），供 0.2 之前的版本显示；`argus.releaseNotes` 与 `argus.signature` 是上一节签名的更新内容原文及其签名，新版本的更新对话框只读这两项。
 
 应用依次尝试 GitHub 与加速代理（见[设置 → 更新](../guide/settings.md#更新)）。代理只在 GitHub 地址前加前缀，清单和安装包都不变。
+
+## 发布后发现严重问题时
+
+已升级的用户无法回到旧版本：安装程序不允许降级，应用内更新只提供比当前版本新的版本。能做的是先停止推送，再尽快发布修订版本。
+
+1. 停止推送：把有问题的版本改为 Pre-release，并把上一个稳定版设为 Latest，然后确认应用读取的清单已回到上一个版本。可在 Release 说明开头写明问题。
+
+   ```bash
+   gh release edit vX.Y.Z --prerelease
+   gh release edit vX.Y.W --latest   # 上一个稳定版
+   gh release view --json tagName    # 应为上一个稳定版
+   curl -sL https://github.com/Ray-lea/Argus/releases/latest/download/latest.json   # version 应为上一个版本
+   ```
+
+   GitHub 的最新稳定版不包括 Pre-release，`releases/latest/download/` 随之指向上一个稳定版的 `latest.json` 与 `beta.json`，旧版本检查时得到“已是最新版本”。不要只删除这两份清单：地址会返回 404，检查失败后，0.2 及之后的版本保留已下载的更新，仍可安装；下载线路为“自动”时还会改用加速代理，可能取得代理缓存的旧清单。
+2. 已下载但未安装的更新在下一次检查成功、清单不再提供更新的版本时撤下。自动检查在启动约 1 分钟后进行一次，此后每天一次；在此之前仍可安装。
+3. 下载线路为“自动”时先连接 GitHub，GitHub 可访问时不经过代理。选择“仅使用加速代理”或无法访问 GitHub 的用户取得的是代理返回的清单，代理可能缓存旧的 `latest.json`，Argus 无法清除。签名只保证安装包未被改动，不保证清单是最新的：按旧清单仍会下载有问题的版本，因为它的安装包还在 Release 上。情况严重时可删除该安装包（`gh release delete-asset vX.Y.Z Argus_X.Y.Z_x64-setup.exe`），GitHub 随即对它返回 404，但代理同样可能缓存了安装包。
+4. 修复后按正常步骤发布修订版本。新的稳定版发布后成为 Latest，两个通道都指向它；有问题的版本保持 Pre-release，标签不动。
+
+有问题的是测试版时，第 1 步不起作用：测试版本来就是 Pre-release，而 `release.yml` 发布它时已把它的清单覆盖到最新稳定版的 `beta.json`（稳定版原来的 `beta.json` 随之丢失）。改为从最新稳定版下载 `latest.json`（与该稳定版发布时的 `beta.json` 内容相同），以 `beta.json` 的名字传回，再确认测试版通道的清单已回到该稳定版：
+
+```bash
+gh release download vX.Y.W --pattern latest.json --dir rollback   # 最新稳定版
+mv rollback/latest.json rollback/beta.json
+gh release upload vX.Y.W rollback/beta.json --clobber
+curl -sL https://github.com/Ray-lea/Argus/releases/latest/download/beta.json   # version 应为该稳定版
+```
+
+此后第 2、3 步同样适用于测试版通道的用户。修复后发布新的测试版或稳定版时，`release.yml` 会再次写入 `beta.json`。
 
 ## 安装程序
 

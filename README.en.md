@@ -82,7 +82,7 @@ Get the latest version from [GitHub Releases](https://github.com/Ray-lea/Argus/r
 
 ## 🔧 Build from source
 
-Requires Rust (stable, MSVC toolchain), Node.js 22 or later, pnpm, and Visual Studio Build Tools ("Desktop development with C++"). In the repository root:
+Requires Rust (stable, MSVC toolchain), Node.js 22.18 or later (23.6 or later on 23.x), pnpm, and Visual Studio Build Tools ("Desktop development with C++"). In the repository root:
 
 ```bash
 start.bat           # development mode: instant frontend reload; Rust changes rebuild and restart automatically
