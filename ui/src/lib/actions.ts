@@ -1,11 +1,13 @@
 // User-facing process operations: confirm, run, report.
 
+import { actionFailure, endFailure, needsServiceUpdate, telling } from "./action-errors";
 import { t } from "./i18n";
 import { api } from "./ipc";
+import { SERVICE_SETTING } from "./privilege";
 import type { DisplayRow } from "./rows";
-import { markEnding, setFocusRule, setPage, snapshot } from "./store";
-import type { ActionError, PriorityClass, ProcessRow, ProcessRule } from "./types";
-import { confirm, toast } from "./ui";
+import { goToSetting, markEnding, setFocusRule, setPage, snapshot } from "./store";
+import type { PriorityClass, ProcessRow, ProcessRule } from "./types";
+import { confirm, dismissToast, toast } from "./ui";
 
 /** Display names of the priority classes; getters, so each read follows the UI language. */
 export const PRIORITY_LABEL: Readonly<Record<PriorityClass, string>> = {
@@ -50,18 +52,33 @@ export function priorityOf(basePriority: number): PriorityClass | null {
 }
 
 function errorText(e: unknown, name: string): string {
-  const err = e as ActionError;
-  switch (err?.kind) {
-    case "accessDenied":
-    case "notFound":
-    case "critical":
-    case "refused":
-      return t(`actions.error.${err.kind}`, { name });
-    case "os":
-      return t("actions.error.generic", { name, error: err.message });
-    default:
-      return t("actions.error.generic", { name, error: String(e) });
+  const { key, error } = endFailure(e);
+  return t(key, error === undefined ? { name } : { name, error });
+}
+
+/** The notice offering the service update, while one may still show. */
+let updateNotice: number | null = null;
+
+/**
+ * Reports a failure; when one of `errors` was denied while the privileged
+ * service needs an update, the notice stays longer and leads to its card.
+ * Such a notice replaces the previous one: stacked, a few of them reach past
+ * the top of a small window, and those left behind cover the card's buttons.
+ */
+function toastFailure(text: string, errors: readonly unknown[]) {
+  if (!needsServiceUpdate(errors)) {
+    toast("error", text);
+    return;
   }
+  if (updateNotice !== null) dismissToast(updateNotice);
+  updateNotice = toast("error", text, 10000, {
+    actions: [
+      {
+        label: t("settings.privilege.update"),
+        run: () => goToSetting("privilege", SERVICE_SETTING),
+      },
+    ],
+  });
 }
 
 /** Dims the row right away; it clears when the process is gone (or the attempt failed). */
@@ -127,16 +144,18 @@ export async function endRow(row: DisplayRow, skipConfirm = false) {
       () => Promise.allSettled(members.map((p) => api.kill(p.pid, p.createTime))),
       (r) => r.some((x) => x.status === "fulfilled"),
     );
-    const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    const failed = (results.filter((r) => r.status === "rejected") as PromiseRejectedResult[]).map(
+      (r) => r.reason,
+    );
     if (failed.length === 0)
       toast("success", t("actions.endGroup.done", { name: row.label, count: members.length }));
     else
-      toast(
-        "error",
+      toastFailure(
         t("actions.endGroup.partial", {
-          error: errorText(failed[0].reason, row.label),
+          error: errorText(telling(failed), row.label),
           count: failed.length,
         }),
+        failed,
       );
     return;
   }
@@ -161,7 +180,7 @@ export async function endRow(row: DisplayRow, skipConfirm = false) {
     );
     toast("success", t("actions.end.done", { name: p.name }), 2500);
   } catch (e) {
-    toast("error", errorText(e, p.name));
+    toastFailure(errorText(e, p.name), [e]);
   }
 }
 
@@ -185,12 +204,16 @@ export async function endTree(row: DisplayRow) {
       (r) => r.terminated > 0,
     );
     if (report.failed > 0) {
-      toast("error", t("actions.endTree.partial", { count: report.terminated, failed: report.failed }));
+      // The report keeps no errors, only whether a denial asks for the service's update.
+      toastFailure(
+        t("actions.endTree.partial", { count: report.terminated, failed: report.failed }),
+        report.serviceOutdated ? [{ kind: "serviceOutdated" }] : [],
+      );
     } else {
       toast("success", t("actions.endTree.done", { count: report.terminated }), 2500);
     }
   } catch (e) {
-    toast("error", errorText(e, p.name));
+    toastFailure(errorText(e, p.name), [e]);
   }
 }
 
@@ -214,17 +237,19 @@ export async function setRowPriority(row: DisplayRow, priority: PriorityClass) {
   const results = await Promise.allSettled(
     targets.map((p) => api.setPriority(p.pid, p.createTime, priority)),
   );
-  const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+  const failed = (results.filter((r) => r.status === "rejected") as PromiseRejectedResult[]).map(
+    (r) => r.reason,
+  );
   if (failed.length === targets.length) {
-    toastActionError(failed[0].reason, t("actions.priority.failed", { name: row.label }));
+    toastActionError(telling(failed), t("actions.priority.failed", { name: row.label }));
     return;
   }
   const downgraded = results.some((r) => r.status === "fulfilled" && r.value !== priority);
   if (downgraded) toast("error", t("actions.priority.downgraded"));
   else if (failed.length > 0)
-    toast(
-      "error",
+    toastFailure(
       t("actions.priority.partial", { count: targets.length - failed.length, failed: failed.length }),
+      failed,
     );
   else
     toast(
@@ -238,17 +263,19 @@ export async function setRowPriority(row: DisplayRow, priority: PriorityClass) {
 export async function setRowEfficiency(row: DisplayRow, on: boolean) {
   const targets = targetsOf(row);
   const results = await Promise.allSettled(targets.map((p) => api.setEfficiency(p.pid, p.createTime, on)));
-  const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+  const failed = (results.filter((r) => r.status === "rejected") as PromiseRejectedResult[]).map(
+    (r) => r.reason,
+  );
   const state = on ? "on" : "off";
   if (failed.length === targets.length)
-    toastActionError(failed[0].reason, t(`actions.efficiency.${state}.failed`, { name: row.label }));
+    toastActionError(telling(failed), t(`actions.efficiency.${state}.failed`, { name: row.label }));
   else if (failed.length > 0)
-    toast(
-      "error",
+    toastFailure(
       t(`actions.efficiency.${state}.partial`, {
         count: targets.length - failed.length,
         failed: failed.length,
       }),
+      failed,
     );
   else toast("success", t(`actions.efficiency.${state}.done`, { name: row.label }), 2500);
 }
@@ -301,20 +328,8 @@ export async function revealInExplorer(path: string) {
 
 /** Reports a failed operation in plain terms, e.g. "无法停止“Print Spooler”：需要管理员权限。" */
 export function toastActionError(e: unknown, what: string) {
-  const err = e as ActionError;
-  switch (err?.kind) {
-    case "accessDenied":
-      toast("error", t("actions.failed.accessDenied", { what }));
-      break;
-    case "notFound":
-      toast("error", t("actions.failed.notFound", { what }));
-      break;
-    case "os":
-      toast("error", t("actions.failed.generic", { what, error: err.message }));
-      break;
-    default:
-      toast("error", t("actions.failed.generic", { what, error: String(e) }));
-  }
+  const { key, error } = actionFailure(e);
+  toastFailure(t(key, error === undefined ? { what } : { what, error }), [e]);
 }
 
 /** Ends one process by PID (connections and file locks have no table row to act on). */
@@ -340,7 +355,7 @@ export async function endProcessByPid(pid: number, name: string, createTime?: nu
     toast("success", t("actions.end.done", { name: label }), 2500);
     return true;
   } catch (e) {
-    toast("error", errorText(e, label));
+    toastFailure(errorText(e, label), [e]);
     return false;
   }
 }

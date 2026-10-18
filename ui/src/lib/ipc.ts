@@ -177,7 +177,7 @@ export const api = {
   connections: (): Promise<Connection[]> => (mock ? mock.m3.connections() : invoke("list_connections")),
   closeConnection: (c: Connection): Promise<void> =>
     mock
-      ? Promise.reject({ kind: "accessDenied" })
+      ? Promise.reject(mock.denied())
       : invoke("close_connection", {
           localAddress: c.localAddress,
           localPort: c.localPort,

@@ -1232,9 +1232,10 @@
   gap: 8px;
 }
 
-/* A setting pointed out from elsewhere (a notice's "adjust"): an accent ring
-   that fades once. */
-.setting.located {
+/* A setting or feature card pointed out from elsewhere (a notice's "adjust"
+   or "update service"): an accent ring that fades once. */
+.setting.located,
+.feature.located {
   animation: setting-located 1.8s var(--ease-out);
 }
 

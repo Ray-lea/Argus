@@ -22,6 +22,7 @@
     "notFound": "{name} 已经退出。",
     "critical": "{name} 是系统关键进程，结束该进程会导致系统崩溃，操作已阻止。",
     "refused": "不能结束 {name}。",
+    "serviceOutdated": "没有权限结束 {name}。特权服务版本不兼容，更新服务后可重试。",
     "generic": "无法结束 {name}：{error}"
   },
   "priority": {
@@ -52,6 +53,7 @@
   "failed": {
     "accessDenied": "{what}：需要管理员权限。请以管理员身份运行 Argus 后重试。",
     "notFound": "{what}：目标已不存在。",
+    "serviceOutdated": "{what}：需要管理员权限。特权服务版本不兼容，更新服务后可重试。",
     "generic": "{what}：{error}"
   },
   "staleProcess": "进程实例信息已失效，请刷新后重试。",

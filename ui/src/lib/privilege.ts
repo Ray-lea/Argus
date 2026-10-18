@@ -11,6 +11,9 @@ import type { PrivilegedServiceStatus } from "./types";
 
 export type Privilege = "admin" | "service" | "standard";
 
+/** The privileged service's card on the settings page, `setting-<id>` (store.ts, `goToSetting`). */
+export const SERVICE_SETTING = "privilegedService";
+
 const [service, setService] = createSignal<PrivilegedServiceStatus | null>(null);
 
 /** The service runs for this account and answers. */

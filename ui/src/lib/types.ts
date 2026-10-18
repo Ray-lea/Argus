@@ -620,11 +620,15 @@ export type ActionError =
   | { kind: "notFound" }
   | { kind: "critical" }
   | { kind: "refused" }
+  /** Denied to Argus's own rights while the privileged service needs an update. */
+  | { kind: "serviceOutdated" }
   | { kind: "os"; message: string };
 
 export interface TreeKillReport {
   terminated: number;
   failed: number;
+  /** Some of the failed were denied while the privileged service needs an update (`serviceOutdated`). */
+  serviceOutdated: boolean;
 }
 
 export type ServiceState =

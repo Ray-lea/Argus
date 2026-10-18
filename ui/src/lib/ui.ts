@@ -76,19 +76,20 @@ export const [toasts, setToasts] = createSignal<Toast[]>([]);
 let toastId = 0;
 const clock = toastClock((id) => dismissToast(id));
 
-/** Shows a toast for `ms`; at most four at a time, the oldest giving way. */
+/** Shows a toast for `ms`; at most four at a time, the oldest giving way. Returns its id. */
 export function toast(
   kind: Toast["kind"],
   text: string,
   ms = 5000,
   extra: Pick<Toast, "icon" | "actions"> = {},
-) {
+): number {
   const id = ++toastId;
   // Not tracked: a toast raised from an effect must not make it follow the list.
   const list = untrack(toasts);
   for (const old of list.slice(0, Math.max(0, list.length - 3))) clock.forget(old.id);
   setToasts([...list.slice(-3), { id, kind, text, ...extra }]);
   clock.start(id, ms);
+  return id;
 }
 
 /**

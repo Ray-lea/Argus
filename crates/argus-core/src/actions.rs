@@ -33,6 +33,10 @@ pub enum ActionError {
     Critical,
     /// Refused: the System process, Idle, or Argus itself.
     Refused,
+    /// Denied to Argus's own rights, which acted because the privileged
+    /// service speaks another protocol and refused it: updating the service
+    /// lets it act again. Only the host reports it; the service never sends it.
+    ServiceOutdated,
     Os(String),
 }
 
@@ -220,6 +224,23 @@ pub fn set_efficiency_mode(pid: u32, create_time: i64, on: bool) -> Result<(), A
 pub struct TreeKillReport {
     pub terminated: u32,
     pub failed: u32,
+    /// A descendant was denied while the privileged service needs an update
+    /// (`ActionError::ServiceOutdated`), so the UI offers it. The count alone
+    /// would lose that; a denied root fails the whole call with the error.
+    pub service_outdated: bool,
+}
+
+impl TreeKillReport {
+    /// Counts how ending one descendant went.
+    fn note(&mut self, result: Result<(), ActionError>) {
+        match result {
+            Ok(()) => self.terminated += 1,
+            Err(e) => {
+                self.failed += 1;
+                self.service_outdated |= matches!(e, ActionError::ServiceOutdated);
+            }
+        }
+    }
 }
 
 /// Terminates a process and all of its descendants, deepest first.
@@ -265,12 +286,58 @@ pub fn terminate_tree_with(
 
     let mut report = TreeKillReport::default();
     for (p, c) in order.into_iter().rev() {
-        match terminate_one(p, c) {
-            Ok(()) => report.terminated += 1,
-            Err(_) => report.failed += 1,
-        }
+        report.note(terminate_one(p, c));
     }
     terminate_one(root.0, root.1)?;
     report.terminated += 1;
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn errors_keep_their_wire_form() {
+        // The UI (types.ts) and the service protocol read these tags.
+        let json = |e: ActionError| serde_json::to_string(&e).unwrap();
+        assert_eq!(
+            json(ActionError::AccessDenied),
+            r#"{"kind":"accessDenied"}"#
+        );
+        assert_eq!(json(ActionError::NotFound), r#"{"kind":"notFound"}"#);
+        assert_eq!(json(ActionError::Critical), r#"{"kind":"critical"}"#);
+        assert_eq!(json(ActionError::Refused), r#"{"kind":"refused"}"#);
+        assert_eq!(
+            json(ActionError::ServiceOutdated),
+            r#"{"kind":"serviceOutdated"}"#
+        );
+        assert_eq!(
+            json(ActionError::Os("x".into())),
+            r#"{"kind":"os","message":"x"}"#
+        );
+        assert!(matches!(
+            serde_json::from_str(r#"{"kind":"serviceOutdated"}"#),
+            Ok(ActionError::ServiceOutdated)
+        ));
+    }
+
+    #[test]
+    fn a_tree_report_keeps_whether_updating_the_service_would_help() {
+        let mut report = TreeKillReport::default();
+        report.note(Ok(()));
+        report.note(Err(ActionError::NotFound));
+        report.note(Err(ActionError::AccessDenied));
+        // Gone or denied for good: an update would not help.
+        assert!(!report.service_outdated);
+        report.note(Err(ActionError::ServiceOutdated));
+        report.note(Ok(()));
+        assert_eq!((report.terminated, report.failed), (2, 3));
+        assert!(report.service_outdated);
+        // As the UI (types.ts) reads it.
+        assert_eq!(
+            serde_json::to_string(&report).unwrap(),
+            r#"{"terminated":2,"failed":3,"serviceOutdated":true}"#
+        );
+    }
 }

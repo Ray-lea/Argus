@@ -55,7 +55,7 @@ import {
   setUiMotion,
   uiMotion,
 } from "../lib/motion";
-import { noteServiceStatus, privilege, serviceConnected } from "../lib/privilege";
+import { noteServiceStatus, privilege, SERVICE_SETTING, serviceConnected } from "../lib/privilege";
 import {
   appInfo,
   changeInterval,
@@ -193,6 +193,8 @@ type Tone = "ok" | "warn" | "off" | "busy";
  * what it reports now (and any error) beside what can be done.
  */
 function FeatureCard(props: {
+  /** `setting-<id>`, for pointing the card out from elsewhere. */
+  id?: string;
   icon: JSX.Element;
   title: string;
   desc: string;
@@ -204,7 +206,7 @@ function FeatureCard(props: {
   children?: JSX.Element;
 }) {
   return (
-    <div class="feature">
+    <div id={props.id} class="feature">
       <div class="feature-head">
         <span class="setting-icon">{props.icon}</span>
         <div class="setting-text">
@@ -401,6 +403,7 @@ function PrivilegedServiceSettings() {
   };
   return (
     <FeatureCard
+      id={`setting-${SERVICE_SETTING}`}
       icon={<ShieldIcon size={20} />}
       title={t("common.privilegedService")}
       desc={t("settings.privilege.desc")}
@@ -433,9 +436,11 @@ function PrivilegedServiceSettings() {
               </button>
             </Show>
             <Show when={s().authorized}>
+              {/* What a notice's "update service" leads to (focusLocated). */}
               <button
                 type="button"
                 class="btn"
+                data-locate
                 disabled={busy() || status.loading}
                 onClick={() => void manage("update")}
               >
@@ -1824,6 +1829,51 @@ function HotkeySetting(props: { settings: SettingsView; onSaved: (value: Setting
   );
 }
 
+/** How long focus waits for a located setting's control to become usable. */
+const LOCATE_WAIT_MS = 3000;
+
+/**
+ * Gives keyboard focus to a setting pointed out from elsewhere: its control
+ * marked `data-locate`, else its first button. A card still reading its state
+ * (the privileged service's) renders that control later or keeps it disabled
+ * meanwhile; focus then waits for it, unless the user presses a key or a
+ * pointer button first. The notice the user came from is leaving: focus must
+ * not stay in it, or it drops to the page when the notice goes.
+ */
+function focusLocated(el: HTMLElement) {
+  const usable = () => {
+    const control =
+      el.querySelector<HTMLButtonElement>("[data-locate]") ??
+      el.querySelector<HTMLButtonElement>(".setting-control button");
+    return control && !control.disabled ? control : null;
+  };
+  const ready = usable();
+  if (ready) {
+    ready.focus({ preventScroll: true });
+    return;
+  }
+  const from = document.activeElement;
+  if (from instanceof HTMLElement && from.closest(".toasts")) from.blur();
+  const start = document.activeElement;
+  const observer = new MutationObserver(() => {
+    const control = usable();
+    if (!control) return;
+    stop();
+    const at = document.activeElement;
+    if (!at || at === document.body || at === start) control.focus({ preventScroll: true });
+  });
+  const timer = setTimeout(() => stop(), LOCATE_WAIT_MS);
+  const stop = () => {
+    observer.disconnect();
+    clearTimeout(timer);
+    window.removeEventListener("keydown", stop, true);
+    window.removeEventListener("pointerdown", stop, true);
+  };
+  observer.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
+  window.addEventListener("keydown", stop, true);
+  window.addEventListener("pointerdown", stop, true);
+}
+
 export default function SettingsPage() {
   const [settings, { mutate, refetch }] = createResource(kernelRevision, () => api.settings());
   // The onboarding (opened from the about section) changes settings and may
@@ -1898,7 +1948,7 @@ export default function SettingsPage() {
       void el.offsetWidth;
       el.classList.add("located");
       setTimeout(() => el.classList.remove("located"), 2000);
-      el.querySelector<HTMLElement>(".setting-control button")?.focus({ preventScroll: true });
+      focusLocated(el);
     });
   });
 

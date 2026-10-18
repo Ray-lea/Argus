@@ -124,7 +124,20 @@ fn privileged<T>(
     if state.elevated {
         return local();
     }
-    match argus_service::route(operation).map_err(ActionError::Os)? {
+    settle(
+        argus_service::route(operation).map_err(ActionError::Os)?,
+        replied,
+        local,
+    )
+}
+
+/// What an operation comes to once the service has `routed` it.
+fn settle<T>(
+    routed: Routed,
+    replied: impl FnOnce(Reply) -> Option<T>,
+    local: impl FnOnce() -> Result<T, ActionError>,
+) -> Result<T, ActionError> {
+    match routed {
         Routed::Absent => local(),
         Routed::Outdated => {
             if !OUTDATED_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
@@ -142,10 +155,11 @@ fn privileged<T>(
 static OUTDATED_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// The outdated service refused the operation without running it, so it ran
-/// here: where Argus's own rights fall short, updating the service helps.
+/// here: where Argus's own rights fall short, updating the service helps, and
+/// the UI offers it.
 fn outdated<T>(result: Result<T, ActionError>) -> Result<T, ActionError> {
     result.map_err(|e| match e {
-        ActionError::AccessDenied => ActionError::Os(tr!("service.incompatible")),
+        ActionError::AccessDenied => ActionError::ServiceOutdated,
         e => e,
     })
 }
@@ -770,4 +784,42 @@ pub fn pick_path(app: tauri::AppHandle, folder: bool) -> Option<String> {
     picked
         .and_then(|p| p.into_path().ok())
         .map(|p| p.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn denied() -> Result<(), ActionError> {
+        Err(ActionError::AccessDenied)
+    }
+
+    #[test]
+    fn a_denial_while_the_service_is_outdated_asks_for_its_update() {
+        assert!(matches!(
+            settle(Routed::Outdated, done, denied),
+            Err(ActionError::ServiceOutdated)
+        ));
+        // Other failures and success are what they are.
+        assert!(matches!(
+            settle(Routed::Outdated, done, || Err(ActionError::NotFound)),
+            Err(ActionError::NotFound)
+        ));
+        assert!(matches!(settle(Routed::Outdated, done, || Ok(())), Ok(())));
+    }
+
+    #[test]
+    fn other_denials_stay_plain() {
+        // Without a service, updating one would not help.
+        assert!(matches!(
+            settle(Routed::Absent, done, denied),
+            Err(ActionError::AccessDenied)
+        ));
+        // The service itself was denied (a protected process, say).
+        let replied = Routed::Replied(Box::new(Reply::Error(ActionError::AccessDenied)));
+        assert!(matches!(
+            settle(replied, done, || unreachable!("acted locally")),
+            Err(ActionError::AccessDenied)
+        ));
+    }
 }

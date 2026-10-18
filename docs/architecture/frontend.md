@@ -27,7 +27,8 @@
 | `src/components/CpuTelemetry.tsx`、`src/lib/cpu-sensors.ts` | CPU 扩展读数按类别分卡片显示，并提供卡片收起时的摘要；元数据定义单位与精度；每核表格以物理核心编号保持行节点稳定，只显示有读数的列，窄窗口在表格内部横向滚动 |
 | `src/components/Expander.tsx` | 性能页的展开卡片：标题行显示实时摘要，内容只在展开时渲染，展开状态存在 localStorage |
 | `src/lib/motion.ts` | 动画偏好（界面动画、曲线动画四档）、屏幕刷新率测量、Fluent 缓动曲线与进出场辅助 |
-| `src/lib/actions.ts` | 面向用户的进程操作：确认、执行、反馈 |
+| `src/lib/actions.ts` | 面向用户的进程操作：确认、执行、反馈；特权服务版本不兼容导致权限不足时（结束进程树时也包括其中的子进程），失败提示附“更新服务”按钮，转到设置中特权服务的卡片；这样的提示同一时刻只保留最新的一条 |
+| `src/lib/action-errors.ts` | 操作失败（`ActionError`）对应的提示文案，以及是否提示更新特权服务；不依赖界面，由 `ui/tests` 中的测试直接运行 |
 | `src/lib/prefs.ts` | 存在 localStorage 的偏好（按 WebView 配置隔离，开发版与正式版各一份） |
 | `src/lib/types.ts` | 与 `argus-core` 的 serde 类型一一对应，需要保持同步 |
 | `src/styles.css`、`pages.css`、`tables.css` | 样式与设计令牌 |

@@ -5,6 +5,7 @@ import { canonical, judge, parseHotkey } from "./hotkey";
 import { type Language, type Locale, localeFor, t } from "./i18n";
 import { mockCpuSensors } from "./mock-cpu";
 import type {
+  ActionError,
   AppInfo,
   Connection,
   CpuInfo,
@@ -704,14 +705,16 @@ export const updates = {
 };
 
 // `?service=incompatible` plays a service of an older protocol, left running
-// when Argus was updated without it; updating or reinstalling it fixes that.
+// when Argus was updated without it: what it would do runs with Argus's own
+// rights, denied where those fall short, until the service is updated or
+// reinstalled.
 let serviceIncompatible = query.get("service") === "incompatible";
 let serviceInstalled = serviceIncompatible;
 export const privilegedService = {
   status: async (): Promise<import("./types").PrivilegedServiceStatus> => ({
     state: serviceInstalled ? "running" : "notInstalled",
     authorized: serviceInstalled,
-    version: serviceInstalled && !serviceIncompatible ? "0.1.0" : null,
+    version: serviceInstalled && !serviceIncompatible ? VERSION : null,
     error: serviceIncompatible
       ? mockSettings.locale === "en-US"
         ? "The privileged service version is incompatible; update the service in Settings"
@@ -728,9 +731,13 @@ export const privilegedService = {
   },
 };
 
+/** An operation the privileged service would run, denied to Argus's own rights. */
+export const denied = (): ActionError => ({ kind: serviceIncompatible ? "serviceOutdated" : "accessDenied" });
+
 // ?service=running|outdated|stopped|unreachable starts with the service
 // installed and in that state (the disk columns' hints follow it) until it is
-// managed in Settings.
+// managed in Settings. Unlike `incompatible` above, `outdated` is an older
+// version of the same protocol: it still connects.
 type ServiceFixture = () => Partial<import("./types").PrivilegedServiceStatus>;
 const SERVICE_FIXTURES: Record<string, ServiceFixture> = {
   running: () => ({}),
@@ -815,7 +822,7 @@ export async function details(pid: number, path: string | null): Promise<Process
 export async function kill(pid: number) {
   const i = procs.findIndex((p) => p.pid === pid);
   if (i < 0) throw { kind: "notFound" };
-  if (pid < 1000) throw { kind: "accessDenied" };
+  if (pid < 1000) throw denied();
   procs.splice(i, 1);
   listener?.(tick());
 }
@@ -832,7 +839,7 @@ const BASE_PRIORITY: Record<PriorityClass, number> = {
 export async function setPriority(pid: number, priority: PriorityClass): Promise<PriorityClass> {
   const p = procs.find((x) => x.pid === pid);
   if (!p) throw { kind: "notFound" };
-  if (pid < 1000) throw { kind: "accessDenied" };
+  if (pid < 1000) throw denied();
   // Like a standard user: "realtime" quietly becomes "high".
   const applied = priority === "realtime" ? "high" : priority;
   p.basePriority = BASE_PRIORITY[applied];
@@ -843,7 +850,7 @@ export async function setPriority(pid: number, priority: PriorityClass): Promise
 export async function setEfficiency(pid: number, on: boolean) {
   const p = procs.find((x) => x.pid === pid);
   if (!p) throw { kind: "notFound" };
-  if (pid < 1000) throw { kind: "accessDenied" };
+  if (pid < 1000) throw denied();
   p.efficiency = on;
   if (on) p.basePriority = BASE_PRIORITY.idle;
   else if (p.basePriority === BASE_PRIORITY.idle) p.basePriority = BASE_PRIORITY.normal;
@@ -851,6 +858,7 @@ export async function setEfficiency(pid: number, on: boolean) {
 }
 
 export async function killTree(pid: number): Promise<TreeKillReport> {
+  if (!procs.some((p) => p.pid === pid)) throw { kind: "notFound" };
   const doomed = new Set([pid]);
   for (let grew = true; grew; ) {
     grew = false;
@@ -861,10 +869,18 @@ export async function killTree(pid: number): Promise<TreeKillReport> {
       }
     }
   }
+  // As kill() does, PIDs below 1000 are denied. Like the host, the
+  // descendants go first, and a denied root then fails the whole call.
+  doomed.delete(pid);
+  const failed = [...doomed].filter((p) => p < 1000).length;
   const before = procs.length;
-  for (let i = procs.length - 1; i >= 0; i--) if (doomed.has(procs[i].pid)) procs.splice(i, 1);
+  for (let i = procs.length - 1; i >= 0; i--) {
+    const p = procs[i].pid;
+    if ((doomed.has(p) || p === pid) && p >= 1000) procs.splice(i, 1);
+  }
   listener?.(tick());
-  return { terminated: before - procs.length, failed: 0 };
+  if (pid < 1000) throw denied();
+  return { terminated: before - procs.length, failed, serviceOutdated: failed > 0 && serviceIncompatible };
 }
 
 // ---- History -----------------------------------------------------------------------
@@ -1135,12 +1151,13 @@ export const m3 = {
   controlService: async (name: string, action: "start" | "stop" | "restart") => {
     const s = mockServices?.find((x) => x.name === name);
     if (!s) throw { kind: "notFound" };
-    if (name === "WinDefend") throw { kind: "accessDenied" };
+    if (name === "WinDefend") throw denied();
     s.state = action === "stop" ? "stopped" : "running";
     s.pid = action === "stop" ? 0 : (procs.find((p) => p.name === "svchost.exe")?.pid ?? 0);
   },
   setStartType: async (name: string, startType: ServiceInfo["startType"]) => {
     const s = mockServices?.find((x) => x.name === name);
+    if (name === "WinDefend") throw denied();
     if (s) s.startType = startType;
   },
   startup: async (): Promise<StartupItem[]> => mockStartup.map((s) => ({ ...s })),

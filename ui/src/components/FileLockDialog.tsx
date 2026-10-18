@@ -1,11 +1,11 @@
 // "Who is using this file?" — opened from the toolbar or by dropping files on the window.
 
-import { createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
+import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js";
 import { endProcessByPid } from "../lib/actions";
 import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { presence } from "../lib/motion";
-import { revealProcess, snapshot } from "../lib/store";
+import { page, revealProcess, snapshot } from "../lib/store";
 import type { ActionError, Locker, LockReport } from "../lib/types";
 import { EndIcon, FolderIcon, GoToIcon, LockIcon } from "./icons";
 import ProcIcon from "./ProcIcon";
@@ -77,6 +77,10 @@ export default function FileLockDialog() {
 
 function LockDialogBody(props: { leaving: boolean }) {
   const close = () => setOpen(false);
+  // Whatever leads to another page (a notice's "update service" after ending a
+  // process here, say) leads away from this dialog too, as "show process" does:
+  // left open, it would cover what that page points out.
+  createEffect(on(page, close, { defer: true }));
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") close();
   };

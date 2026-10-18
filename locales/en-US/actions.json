@@ -37,6 +37,7 @@
     "notFound": "{name} has already exited.",
     "critical": "{name} is a critical system process. Ending it would crash Windows, so the action was blocked.",
     "refused": "{name} can't be ended.",
+    "serviceOutdated": "Couldn't end {name}: access denied. The privileged service version is incompatible; update the service and try again.",
     "generic": "Couldn't end {name}: {error}"
   },
   "priority": {
@@ -76,6 +77,7 @@
   "failed": {
     "accessDenied": "{what}: administrator rights are required. Run Argus as administrator and try again.",
     "notFound": "{what}: the target no longer exists.",
+    "serviceOutdated": "{what}: administrator rights are required. The privileged service version is incompatible; update the service and try again.",
     "generic": "{what}: {error}"
   },
   "staleProcess": "The process information is out of date. Refresh and try again.",
