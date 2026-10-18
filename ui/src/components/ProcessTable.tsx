@@ -248,7 +248,7 @@ export default function ProcessTable() {
   return (
     <div
       ref={tableEl}
-      class="table"
+      class="table process-table"
       classList={{ "with-net": withNet(), shifted: shift() > 0 }}
       style={{ "--shift": `${shift()}px` }}
       role="grid"

@@ -2,7 +2,17 @@
 // Shares the process table's look (and CSS), without its tree logic.
 
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { createEffect, createMemo, createSignal, For, type JSX, on, onMount, Show } from "solid-js";
+import {
+  type Accessor,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  on,
+  onMount,
+  Show,
+} from "solid-js";
 import { localized } from "../lib/i18n";
 import { ChevronDown, ChevronUp } from "./icons";
 
@@ -17,7 +27,8 @@ export interface Column<T> {
   title?: string;
   /** Omit for unsortable columns. */
   sortValue?: (row: T) => string | number;
-  cell: (row: T) => JSX.Element;
+  /** Read the current row inside bindings so refreshes keep the cell's DOM. */
+  cell: (row: Accessor<T>) => JSX.Element;
 }
 
 export interface SortSpec {
@@ -228,7 +239,7 @@ export default function DataTable<T>(props: Props<T>) {
                         <For each={props.columns}>
                           {(col) => (
                             <div class="cell" classList={{ start: col.align !== "end" }} role="gridcell">
-                              {col.cell(row())}
+                              {col.cell(row)}
                             </div>
                           )}
                         </For>

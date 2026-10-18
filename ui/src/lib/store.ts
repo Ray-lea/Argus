@@ -348,6 +348,10 @@ const derived = createRoot(() => {
 
   let previous: { rows: TableRow[]; opts: BuildOptions } | null = null;
   const view = createMemo<{ rows: TableRow[]; held: boolean }>(() => {
+    if (page() !== "processes") {
+      previous = null;
+      return { rows: [], held: false };
+    }
     const s = snapshot();
     if (!s) return { rows: [], held: false };
     const opts: BuildOptions = {

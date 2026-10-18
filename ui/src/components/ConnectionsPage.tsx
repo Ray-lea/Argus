@@ -5,6 +5,7 @@ import { api } from "../lib/ipc";
 import { revealProcess, snapshot } from "../lib/store";
 import type { Connection, ProcessRow } from "../lib/types";
 import { type MenuEntry, openMenu, toast } from "../lib/ui";
+import { pollWhileVisible } from "../lib/visible-poll";
 import DataTable, { type Column } from "./DataTable";
 import Indicator from "./Indicator";
 import { CopyIcon, DismissIcon, EndIcon, GoToIcon } from "./icons";
@@ -111,9 +112,7 @@ export function ConnectionControls() {
 
 export default function ConnectionsPage() {
   onMount(() => {
-    void load();
-    const timer = setInterval(() => void load(), 2000);
-    onCleanup(() => clearInterval(timer));
+    onCleanup(pollWhileVisible(() => void load(), 2000));
   });
 
   const procs = createMemo(() => new Map(snapshot()?.processes.map((p) => [p.pid, p]) ?? []));
@@ -123,14 +122,14 @@ export default function ConnectionsPage() {
     // A number is almost always a port (or PID): match it exactly, so 80 does not find 8080.
     const n = /^\d+$/.test(q) ? Number(q) : null;
     const f = filter();
-    const byPid = procs();
+    const byPid = q && n === null ? procs() : null;
     return (conns() ?? []).filter((c) => {
       if (f === "listen" && c.state !== "listen") return false;
       if (f === "established" && c.state !== "established") return false;
       if (f === "udp" && c.protocol !== "udp") return false;
       if (!q) return true;
       if (n !== null) return c.localPort === n || c.remotePort === n || c.pid === n;
-      const p = byPid.get(c.pid);
+      const p = byPid?.get(c.pid);
       return (
         c.localAddress.includes(q) ||
         (c.remoteAddress?.includes(q) ?? false) ||
@@ -158,12 +157,16 @@ export default function ConnectionsPage() {
       width: "minmax(180px, 1.1fr)",
       sortValue: (c) => procs().get(c.pid)?.name ?? "",
       cell: (c) => {
-        const p = procs().get(c.pid);
+        const p = () => procs().get(c().pid);
         return (
           <>
-            <ProcIcon proc={{ icon: p?.icon ?? null, path: p?.path ?? null }} />
-            <span class="label" title={p?.path ?? undefined}>
-              {p ? (p.description ?? p.name) : c.pid === 0 ? "System Idle Process" : t("connections.exited")}
+            <ProcIcon proc={{ icon: p()?.icon ?? null, path: p()?.path ?? null }} />
+            <span class="label" title={p()?.path ?? undefined}>
+              {p()
+                ? (p()?.description ?? p()?.name)
+                : c().pid === 0
+                  ? "System Idle Process"
+                  : t("connections.exited")}
             </span>
           </>
         );
@@ -175,7 +178,7 @@ export default function ConnectionsPage() {
       width: "72px",
       align: "end",
       sortValue: (c) => c.pid,
-      cell: (c) => <span class="dim">{c.pid}</span>,
+      cell: (c) => <span class="dim">{c().pid}</span>,
     },
     {
       id: "proto",
@@ -186,8 +189,8 @@ export default function ConnectionsPage() {
       sortValue: (c) => `${c.protocol}${c.ipv6 ? 6 : 4}`,
       cell: (c) => (
         <span>
-          {c.protocol.toUpperCase()}
-          <Show when={c.ipv6}>
+          {c().protocol.toUpperCase()}
+          <Show when={c().ipv6}>
             <span class="tag">v6</span>
           </Show>
         </span>
@@ -200,7 +203,7 @@ export default function ConnectionsPage() {
       },
       width: "minmax(130px, 0.9fr)",
       sortValue: (c) => c.localAddress,
-      cell: (c) => <span class="label mono">{c.localAddress}</span>,
+      cell: (c) => <span class="label mono">{c().localAddress}</span>,
     },
     {
       id: "lport",
@@ -210,7 +213,7 @@ export default function ConnectionsPage() {
       width: "88px",
       align: "end",
       sortValue: (c) => c.localPort,
-      cell: (c) => <span class="mono">{c.localPort}</span>,
+      cell: (c) => <span class="mono">{c().localPort}</span>,
     },
     {
       id: "remote",
@@ -219,7 +222,7 @@ export default function ConnectionsPage() {
       },
       width: "minmax(130px, 0.9fr)",
       sortValue: (c) => c.remoteAddress ?? "",
-      cell: (c) => <span class="label mono dim">{c.remoteAddress ?? ""}</span>,
+      cell: (c) => <span class="label mono dim">{c().remoteAddress ?? ""}</span>,
     },
     {
       id: "rport",
@@ -229,7 +232,7 @@ export default function ConnectionsPage() {
       width: "88px",
       align: "end",
       sortValue: (c) => c.remotePort ?? 0,
-      cell: (c) => <span class="mono dim">{c.remotePort ?? ""}</span>,
+      cell: (c) => <span class="mono dim">{c().remotePort ?? ""}</span>,
     },
     {
       id: "state",
@@ -239,8 +242,8 @@ export default function ConnectionsPage() {
       width: "96px",
       sortValue: (c) => c.state ?? "",
       cell: (c) => (
-        <span class="status" classList={{ on: c.state === "established", listen: c.state === "listen" }}>
-          {c.state ? t(`connections.state.${c.state}`) : ""}
+        <span class="status" classList={{ on: c().state === "established", listen: c().state === "listen" }}>
+          <Show when={c().state}>{(state) => t(`connections.state.${state()}`)}</Show>
         </span>
       ),
     },

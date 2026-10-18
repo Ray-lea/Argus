@@ -556,12 +556,12 @@ export default function HistoryPage() {
         sortValue: (p) => p.name,
         cell: (p) => {
           // The icon of the same program if it is still running.
-          const same = () => live().byName.get(p.name.toLowerCase());
+          const same = () => live().byName.get(p().name.toLowerCase());
           return (
             <>
               <ProcIcon proc={{ icon: same()?.icon ?? null, path: same()?.path ?? "" }} />
               <span class="label" title={same()?.description ?? undefined}>
-                {p.name}
+                {p().name}
               </span>
             </>
           );
@@ -573,7 +573,7 @@ export default function HistoryPage() {
         width: "72px",
         align: "end",
         sortValue: (p) => p.pid,
-        cell: (p) => <span class="dim">{p.pid}</span>,
+        cell: (p) => <span class="dim">{p().pid}</span>,
       },
       {
         id: "cpu",
@@ -582,7 +582,7 @@ export default function HistoryPage() {
         align: "end",
         title: t("history.column.cpuTitle"),
         sortValue: (p) => p.cpu,
-        cell: (p) => fmtCpu(p.cpu),
+        cell: (p) => fmtCpu(p().cpu),
       },
       {
         id: "mem",
@@ -591,7 +591,7 @@ export default function HistoryPage() {
         align: "end",
         title: t("history.column.memTitle"),
         sortValue: (p) => p.mem,
-        cell: (p) => fmtMem(p.mem),
+        cell: (p) => fmtMem(p().mem),
       },
       {
         id: "io",
@@ -599,7 +599,7 @@ export default function HistoryPage() {
         width: "92px",
         align: "end",
         sortValue: (p) => p.io,
-        cell: (p) => fmtRate(p.io),
+        cell: (p) => fmtRate(p().io),
       },
     ];
     if (hasNet()) {
@@ -609,7 +609,7 @@ export default function HistoryPage() {
         width: "92px",
         align: "end",
         sortValue: (p) => p.net,
-        cell: (p) => fmtNet(p.net, true),
+        cell: (p) => fmtNet(p().net, true),
       });
     }
     cols.push({
@@ -618,7 +618,7 @@ export default function HistoryPage() {
       width: "70px",
       align: "end",
       sortValue: (p) => p.gpu,
-      cell: (p) => fmtCpu(p.gpu),
+      cell: (p) => fmtCpu(p().gpu),
     });
     return cols;
   });

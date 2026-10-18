@@ -5,6 +5,7 @@ import { api } from "../lib/ipc";
 import { appInfo, refreshServices, revealProcess, services, setPage, snapshot } from "../lib/store";
 import type { ServiceInfo, ServiceStartType } from "../lib/types";
 import { type MenuEntry, openMenu, toast } from "../lib/ui";
+import { pollWhileVisible } from "../lib/visible-poll";
 import DataTable, { type Column } from "./DataTable";
 import Indicator from "./Indicator";
 import { CopyIcon, ExternalIcon, FolderIcon, GoToIcon, PlayIcon, RestartIcon, StopIcon } from "./icons";
@@ -181,9 +182,7 @@ export function ServiceActions() {
 
 export default function ServicesPage() {
   onMount(() => {
-    void refreshServices();
-    const timer = setInterval(() => void refreshServices(), 3000);
-    onCleanup(() => clearInterval(timer));
+    onCleanup(pollWhileVisible(() => void refreshServices(), 3000));
   });
 
   const procName = createMemo(() => new Map(snapshot()?.processes.map((p) => [p.pid, p.name]) ?? []));
@@ -218,8 +217,8 @@ export default function ServicesPage() {
       width: "minmax(220px, 1.3fr)",
       sortValue: (s) => s.displayName,
       cell: (s) => (
-        <span class="label strong" title={s.displayName}>
-          {s.displayName}
+        <span class="label strong" title={s().displayName}>
+          {s().displayName}
         </span>
       ),
     },
@@ -230,7 +229,7 @@ export default function ServicesPage() {
       },
       width: "minmax(110px, 0.6fr)",
       sortValue: (s) => s.name,
-      cell: (s) => <span class="label dim">{s.name}</span>,
+      cell: (s) => <span class="label dim">{s().name}</span>,
     },
     {
       id: "pid",
@@ -239,8 +238,8 @@ export default function ServicesPage() {
       align: "end",
       sortValue: (s) => s.pid,
       cell: (s) => (
-        <span class="dim" title={procName().get(s.pid)}>
-          {s.pid || ""}
+        <span class="dim" title={procName().get(s().pid)}>
+          {s().pid || ""}
         </span>
       ),
     },
@@ -252,8 +251,11 @@ export default function ServicesPage() {
       width: "104px",
       sortValue: (s) => s.state,
       cell: (s) => (
-        <span class="status" classList={{ on: s.state === "running", pending: s.state.endsWith("Pending") }}>
-          {t(`services.state.${s.state}`)}
+        <span
+          class="status"
+          classList={{ on: s().state === "running", pending: s().state.endsWith("Pending") }}
+        >
+          {t(`services.state.${s().state}`)}
         </span>
       ),
     },
@@ -265,8 +267,10 @@ export default function ServicesPage() {
       width: "160px",
       sortValue: (s) => s.startType ?? "",
       cell: (s) => (
-        <span classList={{ dim: s.startType === "manual", warn: s.startType === "disabled" }}>
-          {s.startType ? startLabel(s.startType) : "—"}
+        <span classList={{ dim: s().startType === "manual", warn: s().startType === "disabled" }}>
+          <Show when={s().startType} fallback="—">
+            {(start) => startLabel(start())}
+          </Show>
         </span>
       ),
     },
@@ -277,8 +281,8 @@ export default function ServicesPage() {
       },
       width: "minmax(200px, 1.6fr)",
       cell: (s) => (
-        <span class="label dim" title={s.description ?? ""}>
-          {s.description ?? ""}
+        <span class="label dim" title={s().description ?? ""}>
+          {s().description ?? ""}
         </span>
       ),
     },

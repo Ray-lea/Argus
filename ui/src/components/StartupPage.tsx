@@ -4,6 +4,7 @@ import { rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import type { StartupItem } from "../lib/types";
 import { type MenuEntry, openMenu, toast } from "../lib/ui";
+import { pollWhileVisible } from "../lib/visible-poll";
 import DataTable, { type Column } from "./DataTable";
 import { CopyIcon, FolderIcon } from "./icons";
 import { Loading } from "./Overlays";
@@ -59,13 +60,12 @@ export function StartupSearch() {
 
 export default function StartupPage() {
   onMount(() => {
-    void load();
+    const stop = pollWhileVisible(() => void load(), 10_000);
     // Icons and version info resolve in the background; pick them up shortly after.
-    const first = setTimeout(() => void load(), 1200);
-    const timer = setInterval(() => void load(), 10_000);
+    const first = setTimeout(() => document.visibilityState === "visible" && void load(), 1200);
     onCleanup(() => {
       clearTimeout(first);
-      clearInterval(timer);
+      stop();
     });
   });
 
@@ -93,11 +93,11 @@ export default function StartupPage() {
       sortValue: (i) => i.name,
       cell: (i) => (
         <>
-          <ProcIcon proc={{ icon: i.icon, path: i.path }} />
-          <span class="label strong" title={i.description ?? i.name}>
-            {i.name}
+          <ProcIcon proc={{ icon: i().icon, path: i().path }} />
+          <span class="label strong" title={i().description ?? i().name}>
+            {i().name}
           </span>
-          <Show when={!i.exists}>
+          <Show when={!i().exists}>
             <span class="tag warn" title={t("startup.missing.title")}>
               {t("startup.missing.label")}
             </span>
@@ -112,7 +112,7 @@ export default function StartupPage() {
       },
       width: "minmax(140px, 0.8fr)",
       sortValue: (i) => i.publisher ?? "",
-      cell: (i) => <span class="label dim">{i.publisher ?? "—"}</span>,
+      cell: (i) => <span class="label dim">{i().publisher ?? "—"}</span>,
     },
     {
       id: "state",
@@ -127,12 +127,16 @@ export default function StartupPage() {
             type="button"
             role="switch"
             class="switch small"
-            aria-checked={i.enabled}
-            aria-label={t(i.enabled ? "startup.toggle.disable" : "startup.toggle.enable", { name: i.name })}
+            aria-checked={i().enabled}
+            aria-label={t(i().enabled ? "startup.toggle.disable" : "startup.toggle.enable", {
+              name: i().name,
+            })}
             onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => setEnabled(i, !i.enabled)}
+            onClick={() => setEnabled(i(), !i().enabled)}
           />
-          <span classList={{ dim: !i.enabled }}>{t(i.enabled ? "common.enabled" : "common.disabled")}</span>
+          <span classList={{ dim: !i().enabled }}>
+            {t(i().enabled ? "common.enabled" : "common.disabled")}
+          </span>
         </span>
       ),
     },
@@ -143,7 +147,7 @@ export default function StartupPage() {
       },
       width: "minmax(150px, 0.8fr)",
       sortValue: (i) => i.location,
-      cell: (i) => <span class="label dim">{t(`startup.location.${i.location}`)}</span>,
+      cell: (i) => <span class="label dim">{t(`startup.location.${i().location}`)}</span>,
     },
     {
       id: "command",
@@ -152,8 +156,8 @@ export default function StartupPage() {
       },
       width: "minmax(220px, 1.6fr)",
       cell: (i) => (
-        <span class="label dim mono" title={i.command}>
-          {i.command}
+        <span class="label dim mono" title={i().command}>
+          {i().command}
         </span>
       ),
     },

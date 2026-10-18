@@ -999,6 +999,11 @@ button {
   outline: none;
 }
 
+/* Keep scroll damage in its own surface instead of rebuilding the page's layers. */
+.process-table .tbody {
+  will-change: transform;
+}
+
 .row {
   position: absolute;
   top: 0;
