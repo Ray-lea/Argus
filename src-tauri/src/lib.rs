@@ -111,7 +111,14 @@ pub fn run() {
         &std::env::args().collect::<Vec<_>>(),
     ) {
         Ok(Some(owner)) => owner,
-        Ok(None) => return,
+        Ok(None) => {
+            // Handed over: this start never reads the settings, where the
+            // sign-in entry is repaired. The running instance may be the
+            // interface copy that entry starts at every sign-in. No logger
+            // is set up yet, so the repair leaves no line in the log.
+            commands::autostart::repair_once(&context.package_info().name);
+            return;
+        }
         Err(_) => {
             use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
             use windows::core::PCWSTR;

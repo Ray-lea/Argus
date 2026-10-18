@@ -27,6 +27,8 @@ use crate::settings::{
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
 
+pub(crate) mod autostart;
+
 #[tauri::command(async)]
 pub fn task_manager_status() -> Result<argus_service::taskmgr::Status, String> {
     argus_service::taskmgr::status()
@@ -263,6 +265,7 @@ fn settings_view<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> SettingsView {
 
 #[tauri::command]
 pub fn get_settings(app: tauri::AppHandle) -> SettingsView {
+    autostart::repair_once(&app.package_info().name);
     settings_view(&app)
 }
 
@@ -423,12 +426,14 @@ pub fn resume_hotkey(app: tauri::AppHandle) -> SettingsView {
 pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<SettingsView, String> {
     use tauri_plugin_autostart::ManagerExt;
     let launcher = app.autolaunch();
-    if enabled {
-        launcher.enable()
+    if !enabled {
+        launcher.disable().map_err(|e| e.to_string())?;
+    } else if autostart::running_as_copy() {
+        // The plugin would name this copy of the task manager replacement.
+        autostart::enable_installed(&app.package_info().name)?;
     } else {
-        launcher.disable()
+        launcher.enable().map_err(|e| e.to_string())?;
     }
-    .map_err(|e| e.to_string())?;
     Ok(settings_view(&app))
 }
 
