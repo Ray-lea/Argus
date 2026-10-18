@@ -93,12 +93,12 @@
       "lockKey": "Caps Lock, Num Lock and Scroll Lock can't be part of a combination.",
       "needsModifier": "A combination needs Ctrl, Alt or Win (except F13–F24 and Shift+F1–F11). Other Shift-only combinations would interfere with typing in every app.",
       "reserved": "{shortcut} is used by Windows or by most apps.",
-      "taskManager": "Ctrl+Shift+Esc opens the task manager. To have it open Argus, turn on “Replace Task Manager” in Settings > Permissions.",
+      "taskManager": "Ctrl+Shift+Esc opens Task Manager. To have it open Argus, turn on “Replace Task Manager” in Settings → Permissions.",
       "editing": "{shortcut} is used for copy, paste and other editing."
     }
   },
   "privilege": {
-    "desc": "Lets Argus running as a standard user manage system processes, apply rules automatically, collect per-process network traffic, find file locks, control services and close IPv4 TCP connections. Installing and uninstalling both require administrator permission.",
+    "desc": "Lets Argus running as a standard user manage system processes, apply rules automatically, collect per-process network traffic and disk reads and writes, find file locks, control services and close IPv4 TCP connections. Installing and uninstalling both require administrator permission.",
     "statusDesc": "Argus connects to the service automatically while it runs. The network columns are hidden when network collection is unavailable; each rule shows its results below it.",
     "state": {
       "busy": "Waiting for administrator permission or working on the service…",
@@ -115,7 +115,7 @@
     "outdated": "Service version {service} doesn't match Argus {app}. Click Update service.",
     "install": {
       "title": "Enable the privileged service?",
-      "body": "Once it's installed, the current Windows account can use the background service, without asking for permission again, to:\n· end processes of any user (except critical system processes) and set their priority and efficiency mode;\n· start and stop any Windows service and change its startup type, including services of security software and Windows Update;\n· close any IPv4 TCP connection, and see the file locks and network traffic of every process;\n· read CPU sensor data and motherboard fan speeds through fixed modules when PawnIO is installed.\n\nOther programs running as a standard user under this account can use these operations too, which effectively gives the account some administrator rights. Install it only on an account that you use yourself. The service starts with Windows. Installing requires administrator permission; the service can be uninstalled in Settings later.",
+      "body": "Once it's installed, the current Windows account can use the background service, without asking for permission again, to:\n· end processes of any user (except critical system processes) and set their priority and efficiency mode;\n· start and stop any Windows service and change its startup type, including services of security software and Windows Update;\n· close any IPv4 TCP connection, and see every process's file locks, network traffic, and disk reads and writes;\n· read CPU sensor data and motherboard fan speeds through fixed modules when PawnIO is installed.\n\nOther programs running as a standard user under this account can use these operations too, which effectively gives the account some administrator rights. Install it only on an account that you use yourself. The service starts with Windows. Installing requires administrator permission; the service can be uninstalled in Settings later.",
       "action": "Install and enable"
     },
     "uninstall": {
@@ -192,7 +192,7 @@
     },
     "history": {
       "title": "Record history",
-      "on": "Records resource usage and the top processes every 5 seconds, or at the minimized or tray refresh rate when that's longer. The data stays on this PC for 7 days and can be viewed on the History page.",
+      "on": "Records resource usage and the top processes every 5 seconds, or at the minimized or tray refresh rate when that is slower. The data stays on this PC for 7 days and can be viewed on the History page.",
       "off": "Off. Existing records expire after 7 days, or can be cleared now.",
       "error": "Couldn't change the history setting: {error}",
       "saved": "Saved history",
@@ -288,8 +288,8 @@
     },
     "whatsNew": {
       "title": "Show what's new after updating",
-      "desc": "The first time the window opens after an update, it shows what the new version changed. Once closed, it doesn't come back until the next update. When this is off, a notice in the corner only says Argus was updated.",
-      "view": "This version's changes"
+      "desc": "Shows what the new version changed the first time the window opens after an update, once per version. When this is off, only a notice in the corner says that Argus was updated.",
+      "view": "See this version's changes"
     },
     "channel": {
       "label": "Update channel",

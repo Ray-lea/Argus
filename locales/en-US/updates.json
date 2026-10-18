@@ -32,7 +32,7 @@
       "other": "{count} changes"
     },
     "earlier": "Notes for earlier versions are on GitHub.",
-    "empty": "There are no release notes to show. They're on GitHub.",
+    "empty": "No release notes to show here; see the releases on GitHub.",
     "language": "Release notes are written in Chinese.",
     "hint": "Installing requires administrator permission. Argus closes briefly and reopens on the same page when the installation finishes.",
     "portable": "The portable version doesn't update automatically. Download the new version from the release page.",

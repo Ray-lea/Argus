@@ -110,7 +110,7 @@
     "found": {
       "detail": "{status} {found} Turn them off in the tool that wrote them, then refresh.",
       "join": "{first} {second}",
-      "debugger": "The IFEO key of taskmgr.exe already has the Debugger value \"{value}\", usually from another tool's Replace Task Manager option.",
+      "debugger": "The IFEO key of taskmgr.exe already has the Debugger value “{value}”, usually from another tool's “Replace Task Manager” option.",
       "emptyDebugger": "The IFEO key of taskmgr.exe has an empty Debugger value.",
       "otherDebugger": "The IFEO key of taskmgr.exe has a Debugger value that isn't text.",
       "useFilter": "The IFEO key of taskmgr.exe has a UseFilter value (IFEO filtering by program path).",
@@ -142,7 +142,7 @@
     "probeWriteFailed": "The startup self-test couldn't write the Debugger value of its temporary entry: {error}",
     "probeStartFailed": "The startup self-test couldn't run its test program: {error}",
     "probeCleanupFailed": "The startup self-test's temporary entry couldn't be removed: {error}",
-    "probeKept": "{error}; {cleanup}. It's removed again on the next enable or restore, or when the privileged service starts",
+    "probeKept": "{error}. {cleanup}. Argus tries to remove it again the next time the replacement is enabled or restored, or when the privileged service starts",
     "entryChangeFailed": "Couldn't change the IFEO configuration of taskmgr.exe: {error}",
     "refused": {
       "withCause": "{error}. {cause}",

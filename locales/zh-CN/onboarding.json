@@ -32,7 +32,7 @@
     "minimizedInterval": "最小化时的刷新间隔",
     "minimizedIntervalHint": "默认 5 秒；更短的间隔会增加后台开销。",
     "trayInterval": "后台常驻时的刷新间隔",
-    "trayIntervalHint": "隐藏到托盘后，按此间隔记录历史与执行规则。",
+    "trayIntervalHint": "隐藏到托盘后按此间隔采样；长于 5 秒时，历史记录随之变稀。",
     "hotkey": "按 {hotkey} 可随时显示或隐藏 Argus，可在设置中更改。",
     "hotkeyOff": "显示或隐藏 Argus 的全局快捷键已停用，可在设置中重新开启。"
   },
@@ -58,7 +58,7 @@
     "features": {
       "end": "结束其他用户的进程（系统关键进程除外）",
       "tune": "设置进程优先级与效率模式，并由规则自动应用",
-      "inspect": "查询所有进程的文件占用，采集每进程网络流量",
+      "inspect": "查询所有进程的文件占用，采集每进程网络流量与磁盘读写",
       "control": "控制 Windows 服务，断开网络连接",
       "sensors": "为内核传感器提供采集通道（驱动另行启用）"
     },

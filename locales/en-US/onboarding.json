@@ -32,7 +32,7 @@
     "minimizedInterval": "Refresh rate while minimized",
     "minimizedIntervalHint": "5 seconds by default; shorter intervals cost more in the background.",
     "trayInterval": "Refresh rate in the tray",
-    "trayIntervalHint": "History and rules run at this pace while Argus is in the tray.",
+    "trayIntervalHint": "How often Argus samples in the tray; above 5 seconds, history is recorded more sparsely.",
     "hotkey": "Press {hotkey} anytime to show or hide Argus. The shortcut can be changed in Settings.",
     "hotkeyOff": "The shortcut for showing or hiding Argus is turned off. It can be turned back on in Settings."
   },
@@ -58,7 +58,7 @@
     "features": {
       "end": "End other users' processes (except critical system processes)",
       "tune": "Set priority and efficiency mode, also automatically through rules",
-      "inspect": "Find file locks in every process and measure per-process network traffic",
+      "inspect": "Find file locks in every process, and measure per-process network traffic and disk reads and writes",
       "control": "Control Windows services and close network connections",
       "sensors": "Provide access to kernel sensors (the driver is enabled separately)"
     },
