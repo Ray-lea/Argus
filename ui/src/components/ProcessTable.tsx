@@ -99,6 +99,10 @@ export default function ProcessTable() {
     tableEl.addEventListener("wheel", wheel, { passive: true });
     onCleanup(() => tableEl.removeEventListener("wheel", wheel));
   });
+  // Switching pages with the keyboard removes the list from under a resting
+  // pointer, and no pointerleave follows: the order would stay held, and the
+  // status bar would keep saying so, until the pointer crossed the list again.
+  onCleanup(() => setPointerInTable(false));
 
   const totals = (key: SortKey): string => {
     const s = snapshot()?.system;

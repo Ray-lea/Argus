@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import { fmtCount, fmtGB, fmtMem, fmtUptime } from "../lib/format";
 import { t } from "../lib/i18n";
 import { privilege } from "../lib/privilege";
-import { appInfo, intervalMs, orderHeld, paused, snapshot } from "../lib/store";
+import { appInfo, intervalMs, orderHeldByPointer, paused, snapshot } from "../lib/store";
 import { ShieldIcon } from "./icons";
 
 export default function StatusBar() {
@@ -27,7 +27,7 @@ export default function StatusBar() {
           {t("shell.status.uptime")} <b>{fmtUptime(sys()?.uptimeMs ?? 0)}</b>
         </span>
       </div>
-      <Show when={orderHeld()}>
+      <Show when={orderHeldByPointer()}>
         <span title={t("shell.status.orderHeldHint")}>{t("shell.status.orderHeld")}</span>
       </Show>
       <span>

@@ -1,6 +1,6 @@
 // Context menu, confirm dialog and toasts.
 
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { batch, createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { t } from "../lib/i18n";
 import { presence } from "../lib/motion";
 import {
@@ -144,8 +144,13 @@ export function ContextMenu() {
             openSub(e.currentTarget, item.children, true);
             return;
           }
-          setMenu(null);
-          void item.run?.();
+          // One update: the confirmation an item opens takes over from the
+          // menu in holding the process list's order (store.ts, holdOrder),
+          // which would otherwise lapse in between and re-sort the rows.
+          batch(() => {
+            setMenu(null);
+            void item.run?.();
+          });
         }}
       >
         <span class="menu-icon">{item.checked ? <CheckIcon /> : item.icon ? item.icon() : null}</span>

@@ -3,6 +3,7 @@
 import { batch, createMemo, createRoot, createSignal } from "solid-js";
 import { t } from "./i18n";
 import { api } from "./ipc";
+import { holdsOrder, type OrderHolds, pointerAloneHoldsOrder } from "./order-hold";
 import { persisted } from "./prefs";
 import {
   type BuildOptions,
@@ -353,7 +354,12 @@ function keepOrder(fresh: TableRow[], previous: TableRow[]): TableRow[] {
 const derived = createRoot(() => {
   // While the user is aiming at a row (pointer over the list, menu or dialog
   // open), new data updates values in place but never reorders rows.
-  const holdOrder = createMemo(() => pointerInTable() || menu() !== null || confirmRequest() !== null);
+  const holds = (): OrderHolds => ({
+    pointer: pointerInTable(),
+    menu: menu() !== null,
+    dialog: confirmRequest() !== null,
+  });
+  const holdOrder = createMemo(() => holdsOrder(holds()));
 
   let previous: { rows: TableRow[]; opts: BuildOptions } | null = null;
   const view = createMemo<{ rows: TableRow[]; held: boolean }>(() => {
@@ -394,13 +400,16 @@ const derived = createRoot(() => {
     return { key, proc, members: proc ? [proc] : [], isGroup: false };
   });
 
-  return { rows, selection, orderHeld: () => view().held };
+  return { rows, selection, orderHeldByPointer: () => view().held && pointerAloneHoldsOrder(holds()) };
 });
 
 export const rows = derived.rows;
 export const selection = derived.selection;
-/** True while a re-sort is being held back (see holdOrder). */
-export const orderHeld = derived.orderHeld;
+/**
+ * True while the pointer over the list, and nothing else, holds back a
+ * re-sort (see holdOrder): what the status bar tells.
+ */
+export const orderHeldByPointer = derived.orderHeldByPointer;
 
 // ---- Navigation --------------------------------------------------------------------
 
