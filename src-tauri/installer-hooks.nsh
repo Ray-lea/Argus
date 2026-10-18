@@ -18,6 +18,13 @@
 
 !macro NSIS_HOOK_POSTINSTALL
 !if "${BUNDLEID}" == "dev.argus.taskmanager"
+  ; Restart Manager (CheckIfAppIsRunning) closed only $INSTDIR's argus.exe. An
+  ; Argus the task manager replacement opened, left in the tray, is a copy in
+  ; the service's folder: it would keep the single-instance lock, so every
+  ; start after the upgrade would go to the old version until it exits. The
+  ; new argus.exe ends it, which also lets the refresh below delete it.
+  ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-close-copies'
+
   ; The installer already runs elevated: bring an installed privileged service
   ; to this version now, so an update needs no second administrator prompt.
   ; The new argus.exe brings an enabled task manager replacement along, which
@@ -47,7 +54,7 @@
     ; so the next install's first start goes to it (no onboarding though the
     ; data was deleted, the old settings written back). Ending it first also
     ; lets the restore below delete it.
-    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-uninstall-close'
+    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-close-copies'
 
     !insertmacro ARGUS_TEXT $2 \
       "检测到已安装的 Argus 特权服务。是否一并卸载？$\r$\n$\r$\n卸载服务需要管理员授权，并将先恢复 Windows 任务管理器。选择“否”将保留该服务，服务会继续随 Windows 启动。" \

@@ -19,17 +19,23 @@ use argus_core::{actions, details, process};
 /// Longest wait for the leftovers to finish exiting before starting anyway.
 const WAIT: Duration = Duration::from_secs(3);
 
-/// The uninstaller runs Argus with this before it removes Argus and its data;
-/// see `close_for_uninstall`.
-pub const UNINSTALL_ARG: &str = "--argus-uninstall-close";
+/// The installer and the uninstaller run Argus with this; see `close_copies`.
+pub const CLOSE_COPIES_ARG: &str = "--argus-close-copies";
 
-/// Ends what would outlive an uninstall that Restart Manager, which knows only
-/// the installed argus.exe, leaves running: the task manager replacement's
-/// interface copies (one holding the single-instance lock takes the next
-/// install's first start, with the settings it holds in memory, and writes
-/// them back over deleted ones), then the WebView2 processes they or the
+pub fn is_close_arg(arg: &str) -> bool {
+    // Keep accepting the earlier uninstaller's maintenance command.
+    matches!(arg, CLOSE_COPIES_ARG | "--argus-uninstall-close")
+}
+
+/// Ends what Restart Manager, which the installer and the uninstaller use and
+/// which knows only the installed argus.exe, leaves running: the task manager
+/// replacement's interface copies, then the WebView2 processes they or the
 /// Argus Restart Manager ended leave holding the data folder. Waits for both.
-pub fn close_for_uninstall(identifier: &str) {
+/// A copy left running keeps the single-instance lock and its settings in
+/// memory: after an upgrade every start goes to the old version until it
+/// exits; after an uninstall that deleted the data, the next install's first
+/// start goes to it (no onboarding) and it writes the old settings back.
+pub fn close_copies(identifier: &str) {
     let copies: Vec<(u32, i64)> = process::find_by(|name| {
         name.get(..17)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("argus-taskmgr-ui-"))
@@ -95,7 +101,16 @@ fn user_data_dir(command: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::user_data_dir;
+    use super::{CLOSE_COPIES_ARG, is_close_arg, user_data_dir};
+
+    #[test]
+    fn accepts_both_installer_and_legacy_uninstaller_commands() {
+        assert!(is_close_arg(CLOSE_COPIES_ARG));
+        assert!(is_close_arg("--argus-uninstall-close"));
+        assert!(!is_close_arg("--hidden"));
+        assert!(!is_close_arg("--argus-service-refresh"));
+        assert!(!is_close_arg("--argus-close-copies-extra"));
+    }
 
     #[test]
     fn reads_the_user_data_folder() {

@@ -107,8 +107,8 @@ pub fn run() {
     }
     let context = tauri::generate_context!();
     // Before the single-instance check: never hands over to a running Argus.
-    if std::env::args().any(|a| a == leftovers::UNINSTALL_ARG) {
-        leftovers::close_for_uninstall(&context.config().identifier);
+    if std::env::args().any(|a| leftovers::is_close_arg(&a)) {
+        leftovers::close_copies(&context.config().identifier);
         std::process::exit(0);
     }
     let _instance = match instance::acquire(

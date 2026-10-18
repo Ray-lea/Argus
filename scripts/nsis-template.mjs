@@ -116,7 +116,7 @@ insertAfter(
   ; minutes and hold its data folder, which is deleted below when asked.
   \${If} $DeleteAppDataCheckboxState = 1
   \${AndIf} $UpdateMode <> 1
-    ExecWait '"$INSTDIR\\\${MAINBINARYNAME}.exe" --argus-uninstall-close'
+    ExecWait '"$INSTDIR\\\${MAINBINARYNAME}.exe" --argus-close-copies'
   \${EndIf}
 `,
 );
