@@ -540,8 +540,9 @@ pub fn set_kernel_sensors(
     if enabled {
         argus_service::driver::ensure_ready().inspect_err(|error| {
             log::warn!(
-                "kernel sensor preparation failed: {}",
-                argus_core::diagnostics::failure(error)
+                "kernel sensor preparation failed: {}; PawnIO snapshot: {}",
+                argus_core::diagnostics::failure(error),
+                argus_service::driver::diagnostic_status()
             );
         })?;
     }

@@ -9,22 +9,35 @@ use tauri::{
     plugin::{self, TauriPlugin},
 };
 use windows::Win32::Foundation::{
-    CloseHandle, ERROR_INVALID_PARAMETER, ERROR_TIMEOUT, HANDLE, HWND, LPARAM, LRESULT,
-    WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
+    CloseHandle, ERROR_INVALID_DATA, ERROR_INVALID_PARAMETER, ERROR_TIMEOUT, GetLastError, HANDLE,
+    HWND, LPARAM, LRESULT, SetLastError, WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT, WIN32_ERROR,
+    WPARAM,
+};
+use windows::Win32::Security::{
+    GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TOKEN_MANDATORY_LABEL,
+    TOKEN_QUERY, TokenIntegrityLevel,
 };
 use windows::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex, WaitForSingleObject};
+use windows::Win32::System::Threading::{
+    CreateMutexExW, GetCurrentProcess, OpenProcess, OpenProcessToken,
+    PROCESS_QUERY_LIMITED_INFORMATION, ReleaseMutex, SYNCHRONIZATION_SYNCHRONIZE,
+    WaitForSingleObject,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    AllowSetForegroundWindow, CreateWindowExW, DefWindowProcW, DestroyWindow, FindWindowW,
-    GWLP_USERDATA, GetWindowLongPtrW, GetWindowThreadProcessId, RegisterClassW, SMTO_ABORTIFHUNG,
-    SMTO_BLOCK, SMTO_ERRORONEXIT, SendMessageTimeoutW, SetWindowLongPtrW, WM_COPYDATA,
-    WM_NCDESTROY, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
+    AllowSetForegroundWindow, ChangeWindowMessageFilterEx, CreateWindowExW, DefWindowProcW,
+    DestroyWindow, FindWindowW, GWLP_USERDATA, GetWindowLongPtrW, GetWindowThreadProcessId,
+    MSGFLT_ALLOW, RegisterClassW, SMTO_ABORTIFHUNG, SMTO_BLOCK, SMTO_ERRORONEXIT,
+    SendMessageTimeoutW, SetWindowLongPtrW, WM_COPYDATA, WM_NCDESTROY, WNDCLASSW, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{Error, PCWSTR, Result};
 
 const MESSAGE: usize = 1542;
 const MAX_MESSAGE: usize = 64 * 1024;
+
+#[cfg(test)]
+mod integrity_tests;
 
 fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
@@ -52,21 +65,113 @@ impl Drop for Owner {
     }
 }
 
-pub(crate) fn acquire(id: &str, args: &[String]) -> Result<Option<Owner>> {
+#[derive(Debug)]
+pub(crate) struct Failure {
+    operation: &'static str,
+    error: Error,
+    sender_integrity: Option<u32>,
+    receiver_integrity: Option<u32>,
+    waited_ms: u64,
+}
+
+impl Failure {
+    pub fn code(&self) -> windows::core::HRESULT {
+        self.error.code()
+    }
+
+    pub fn report(&self) {
+        argus_service::taskmgr::ready::handover_failed(
+            self.operation,
+            self.error.code().0,
+            self.sender_integrity,
+            self.receiver_integrity,
+            self.waited_ms,
+        );
+    }
+
+    pub fn message(&self) -> String {
+        self.error.to_string()
+    }
+}
+
+fn integrity(process: HANDLE) -> Option<u32> {
+    let mut token = HANDLE::default();
+    unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) }.ok()?;
+    let token = Handle(token);
+    let mut data = [0u64; 16];
+    let mut size = 0;
+    unsafe {
+        GetTokenInformation(
+            token.0,
+            TokenIntegrityLevel,
+            Some(data.as_mut_ptr().cast()),
+            size_of_val(&data) as u32,
+            &mut size,
+        )
+    }
+    .ok()?;
+    let sid = unsafe { (*data.as_ptr().cast::<TOKEN_MANDATORY_LABEL>()).Label.Sid };
+    let count = unsafe { *GetSidSubAuthorityCount(sid) };
+    (count != 0).then(|| unsafe { *GetSidSubAuthority(sid, u32::from(count) - 1) })
+}
+
+fn failure(id: &str, operation: &'static str, error: Error, started: Instant) -> Failure {
+    let receiver_integrity = (|| {
+        let class = wide(&format!("{id}-sic"));
+        let title = wide(&format!("{id}-siw"));
+        let window = unsafe { FindWindowW(PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr())) }.ok()?;
+        let mut pid = 0;
+        unsafe {
+            GetWindowThreadProcessId(window, Some(&mut pid));
+        }
+        let process =
+            Handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?);
+        integrity(process.0)
+    })();
+    Failure {
+        operation,
+        error,
+        receiver_integrity,
+        sender_integrity: integrity(unsafe { GetCurrentProcess() }),
+        waited_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+    }
+}
+
+pub(crate) fn acquire(id: &str, args: &[String]) -> std::result::Result<Option<Owner>, Failure> {
     acquire_with_timeout(id, args, Duration::from_secs(12))
 }
 
-fn acquire_with_timeout(id: &str, args: &[String], timeout: Duration) -> Result<Option<Owner>> {
+fn acquire_with_timeout(
+    id: &str,
+    args: &[String],
+    timeout: Duration,
+) -> std::result::Result<Option<Owner>, Failure> {
+    let started = Instant::now();
+    let failed = |operation, error| failure(id, operation, error, started);
     let name = wide(&format!("{id}-sim"));
-    let handle = Handle(unsafe { CreateMutexW(None, false, PCWSTR(name.as_ptr())) }?);
+    // Waiting and releasing ownership need only SYNCHRONIZE. ALL_ACCESS
+    // would deny a standard process opening an elevated instance's mutex.
+    let handle = Handle(
+        unsafe {
+            CreateMutexExW(
+                None,
+                PCWSTR(name.as_ptr()),
+                Default::default(),
+                SYNCHRONIZATION_SYNCHRONIZE.0,
+            )
+        }
+        .map_err(|error| failed("CreateMutexExW", error))?,
+    );
     let class = wide(&format!("{id}-sic"));
     let title = wide(&format!("{id}-siw"));
     let cwd = std::env::current_dir().unwrap_or_default();
     let payload = format!("{}|{}\0", cwd.to_string_lossy(), args.join("|"));
     if payload.len() > MAX_MESSAGE {
-        return Err(Error::from_hresult(ERROR_INVALID_PARAMETER.to_hresult()));
+        return Err(failed(
+            "activation payload size",
+            Error::from_hresult(ERROR_INVALID_PARAMETER.to_hresult()),
+        ));
     }
-    let started = Instant::now();
     loop {
         match unsafe { WaitForSingleObject(handle.0, 0) } {
             WAIT_OBJECT_0 | WAIT_ABANDONED => {
@@ -76,7 +181,7 @@ fn acquire_with_timeout(id: &str, args: &[String], timeout: Duration) -> Result<
                 }));
             }
             WAIT_TIMEOUT => {}
-            _ => return Err(Error::from_thread()),
+            _ => return Err(failed("WaitForSingleObject", Error::from_thread())),
         }
         if let Ok(window) = unsafe { FindWindowW(PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr())) } {
             let mut pid = 0;
@@ -95,6 +200,7 @@ fn acquire_with_timeout(id: &str, args: &[String], timeout: Duration) -> Result<
             };
             let mut reply = 0usize;
             let sent = unsafe {
+                SetLastError(WIN32_ERROR(0));
                 SendMessageTimeoutW(
                     window,
                     WM_COPYDATA,
@@ -108,6 +214,12 @@ fn acquire_with_timeout(id: &str, args: &[String], timeout: Duration) -> Result<
             if sent.0 != 0 && reply == 1 {
                 return Ok(None);
             }
+            let error = if sent.0 != 0 {
+                ERROR_INVALID_DATA
+            } else {
+                let code = unsafe { GetLastError() };
+                if code.0 == 0 { ERROR_TIMEOUT } else { code }
+            };
             // A timed-out send can still be delivered later. Never replay it;
             // only retry ownership if the receiving process has exited.
             match unsafe { WaitForSingleObject(handle.0, 0) } {
@@ -117,11 +229,19 @@ fn acquire_with_timeout(id: &str, args: &[String], timeout: Duration) -> Result<
                         _thread: PhantomData,
                     }));
                 }
-                _ => return Err(Error::from_hresult(ERROR_TIMEOUT.to_hresult())),
+                _ => {
+                    return Err(failed(
+                        "SendMessageTimeoutW",
+                        Error::from_hresult(error.to_hresult()),
+                    ));
+                }
             }
         }
         if started.elapsed() >= timeout {
-            return Err(Error::from_hresult(ERROR_TIMEOUT.to_hresult()));
+            return Err(failed(
+                "receiving window discovery",
+                Error::from_hresult(ERROR_TIMEOUT.to_hresult()),
+            ));
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -213,6 +333,16 @@ fn receiver(id: &str, callback: Callback) -> Result<Receiver> {
             Box::into_raw(Box::new(callback)) as isize,
         );
     }
+    // Only this bounded activation protocol crosses UIPI, not other messages
+    // or the main window. Task-manager requests still authenticate the launcher.
+    if let Err(error) =
+        unsafe { ChangeWindowMessageFilterEx(window, WM_COPYDATA, MSGFLT_ALLOW, None) }
+    {
+        unsafe {
+            let _ = DestroyWindow(window);
+        }
+        return Err(error);
+    }
     Ok(Receiver(window.0 as isize))
 }
 
@@ -244,6 +374,7 @@ pub(crate) fn plugin<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use windows::Win32::System::Threading::CreateMutexW;
     fn name() -> String {
         format!(
             "argus-instance-test-{}-{:?}",

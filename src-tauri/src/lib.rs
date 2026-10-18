@@ -111,10 +111,8 @@ pub fn run() {
         leftovers::close_copies(&context.config().identifier);
         std::process::exit(0);
     }
-    let _instance = match instance::acquire(
-        &context.config().identifier,
-        &std::env::args().collect::<Vec<_>>(),
-    ) {
+    let launch_args = std::env::args().collect::<Vec<_>>();
+    let _instance = match instance::acquire(&context.config().identifier, &launch_args) {
         Ok(Some(owner)) => owner,
         Ok(None) => {
             // Handed over: this start never reads the settings, where the
@@ -124,13 +122,21 @@ pub fn run() {
             commands::autostart::repair_once(&context.package_info().name);
             return;
         }
-        Err(_) => {
+        Err(error) => {
+            error.report();
+            if launch_args
+                .iter()
+                .any(|arg| arg == argus_service::taskmgr::ready::ARG)
+            {
+                std::process::exit((error.code().0 as u32 & 0xffff).max(1) as i32);
+            }
             use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
             use windows::core::PCWSTR;
-            let message: Vec<u16> = argus_core::tr!("app.instanceUnavailable")
-                .encode_utf16()
-                .chain(Some(0))
-                .collect();
+            let message: Vec<u16> =
+                argus_core::tr!("app.instanceUnavailable", error = error.message())
+                    .encode_utf16()
+                    .chain(Some(0))
+                    .collect();
             let title: Vec<u16> = shell::app_title().encode_utf16().chain(Some(0)).collect();
             unsafe {
                 MessageBoxW(

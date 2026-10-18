@@ -1023,8 +1023,16 @@ fn report(result: std::result::Result<(), Failure>) -> i32 {
 /// its probe have no window to report to, and a fallback to the system Task
 /// Manager would otherwise leave no trace. Bounded; no paths or names.
 fn log_line(event: &'static str, error: &str) {
-    use std::io::Write;
     let text = argus_core::diagnostics::failure(error);
+    log_fixed(event, &text);
+}
+
+/// Only fixed labels and typed numeric fields may reach this sink.
+fn log_fixed(event: &'static str, text: &str) {
+    if cfg!(test) {
+        return;
+    }
+    use std::io::Write;
     let Some(dir) = log_dir() else { return };
     let path = dir.join("taskmgr.log");
     if fs::metadata(&path).is_ok_and(|m| m.len() > 256 * 1024) {

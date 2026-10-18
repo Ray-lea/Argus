@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 
 use argus_core::tr;
 use windows::Win32::Foundation::{
-    ERROR_SERVICE_DOES_NOT_EXIST, GENERIC_READ, GENERIC_WRITE, HANDLE, WAIT_OBJECT_0,
+    ERROR_SERVICE_DOES_NOT_EXIST, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, SetLastError,
+    WAIT_OBJECT_0, WIN32_ERROR,
 };
 use windows::Win32::Storage::FileSystem::{
     CreateDirectoryW, CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_DELETE, FILE_SHARE_READ,
@@ -60,6 +61,54 @@ enum Plan {
     Ready,
     Start,
     Install,
+}
+
+#[derive(Default)]
+struct Inspection {
+    stage: &'static str,
+    service_type: Option<u32>,
+    service_state: Option<u32>,
+    start_type: Option<u32>,
+    image_location: &'static str,
+    path_component: &'static str,
+    version: Option<(u32, u32, u32, u32)>,
+    translations: Vec<u32>,
+    original_name_matches: Option<bool>,
+    version_info_bytes: Option<u32>,
+    native_error: Option<u32>,
+}
+
+impl Inspection {
+    fn summary(&self, result: &Result<Plan>) -> String {
+        let outcome = match result {
+            Ok(Plan::Ready) => "ready".into(),
+            Ok(Plan::Start) => "start required".into(),
+            Ok(Plan::Install) => "install/update required".into(),
+            Err(code) => format!("error {code:#010x}"),
+        };
+        let version = self
+            .version
+            .map(|(a, b, c, d)| format!("{a}.{b}.{c}.{d}"))
+            .unwrap_or_else(|| "unavailable".into());
+        let translations = self
+            .translations
+            .iter()
+            .map(|pair| format!("{pair:08x}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            "stage={}; result={outcome}; native_error={:?}; service_type={:?}; service_state={:?}; start_type={:?}; image_location={}; path_component={}; file_version={version}; version_info_bytes={:?}; version_translations=[{translations}]; original_name_matches={:?}",
+            self.stage,
+            self.native_error,
+            self.service_type,
+            self.service_state,
+            self.start_type,
+            self.image_location,
+            self.path_component,
+            self.version_info_bytes,
+            self.original_name_matches
+        )
+    }
 }
 
 fn plan(installed: bool, compatible: bool, running: bool) -> Plan {
@@ -122,7 +171,13 @@ fn windows_dir() -> Result<PathBuf> {
     value.map(PathBuf::from)
 }
 
-fn image_path(raw: &str, windows: &Path, programs: &Path) -> Result<PathBuf> {
+fn image_path(
+    raw: &str,
+    windows: &Path,
+    programs: &Path,
+    trace: &mut Inspection,
+) -> Result<PathBuf> {
+    trace.stage = "driver image path syntax";
     let raw = raw.trim();
     let raw = raw
         .strip_prefix('"')
@@ -145,14 +200,22 @@ fn image_path(raw: &str, windows: &Path, programs: &Path) -> Result<PathBuf> {
                 .unwrap_or(raw),
         )
     };
-    if !path.is_absolute()
-        || path
-            .components()
-            .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
-        || path
-            .file_name()
-            .is_none_or(|n| !n.eq_ignore_ascii_case("PawnIO.sys"))
+    if !path.is_absolute() {
+        trace.image_location = "relative or unsupported prefix";
+        return Err(FOREIGN_DRIVER);
+    }
+    if path
+        .components()
+        .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
     {
+        trace.image_location = "path traversal";
+        return Err(FOREIGN_DRIVER);
+    }
+    if path
+        .file_name()
+        .is_none_or(|n| !n.eq_ignore_ascii_case("PawnIO.sys"))
+    {
+        trace.image_location = "unexpected driver filename";
         return Err(FOREIGN_DRIVER);
     }
     let path_text = path.to_string_lossy().to_ascii_lowercase();
@@ -161,9 +224,24 @@ fn image_path(raw: &str, windows: &Path, programs: &Path) -> Result<PathBuf> {
         windows.join(r"System32\DriverStore\FileRepository"),
         programs.join("PawnIO"),
     ];
-    if !allowed.iter().any(|dir| {
+    let location = allowed.iter().position(|dir| {
         path_text.starts_with(&format!("{}\\", dir.to_string_lossy().to_ascii_lowercase()))
-    }) {
+    });
+    trace.stage = "driver image location policy";
+    trace.image_location = match location {
+        Some(0) => "System32 drivers",
+        Some(1) => "DriverStore FileRepository",
+        Some(2) => "Program Files PawnIO",
+        _ if path_text.starts_with(&format!(
+            "{}\\",
+            programs.to_string_lossy().to_ascii_lowercase()
+        )) =>
+        {
+            "other Program Files location"
+        }
+        _ => "outside supported roots",
+    };
+    if location.is_none() {
         return Err(FOREIGN_DRIVER);
     }
     Ok(path)
@@ -171,7 +249,12 @@ fn image_path(raw: &str, windows: &Path, programs: &Path) -> Result<PathBuf> {
 
 /// Keep every directory below the known protected root pinned while reading
 /// the version and, for a stopped driver, until StartService finishes.
-fn pin_image(path: &Path, windows: &Path, programs: &Path) -> Result<Vec<Handle>> {
+fn pin_image(
+    path: &Path,
+    windows: &Path,
+    programs: &Path,
+    trace: &mut Inspection,
+) -> Result<Vec<Handle>> {
     let root = if path
         .to_string_lossy()
         .to_ascii_lowercase()
@@ -190,6 +273,20 @@ fn pin_image(path: &Path, windows: &Path, programs: &Path) -> Result<Vec<Handle>
     chain
         .into_iter()
         .map(|part| {
+            trace.stage = "driver path owner/ACL/reparse validation";
+            trace.path_component = if part == path {
+                "driver file"
+            } else if part == root {
+                "protected root"
+            } else if part.as_os_str().eq_ignore_ascii_case(
+                windows
+                    .join(r"System32\DriverStore\FileRepository")
+                    .as_os_str(),
+            ) {
+                "FileRepository directory"
+            } else {
+                "ancestor directory"
+            };
             security::inspect_path(part).map_err(|error| driver_path_error(part, windows, error))
         })
         .collect()
@@ -222,17 +319,27 @@ fn protect_setup_path(path: &Path) -> Result<Handle> {
     })
 }
 
-fn file_version(path: &Path) -> Result<(u32, u32, u32, u32)> {
+fn file_version(path: &Path, trace: &mut Inspection) -> Result<(u32, u32, u32, u32)> {
+    trace.stage = "GetFileVersionInfoSizeW";
     let path = wide(&path.to_string_lossy());
-    let size = unsafe { GetFileVersionInfoSizeW(PCWSTR(path.as_ptr()), None) };
+    let size = unsafe {
+        SetLastError(WIN32_ERROR(0));
+        GetFileVersionInfoSizeW(PCWSTR(path.as_ptr()), None)
+    };
+    trace.version_info_bytes = Some(size);
+    if size == 0 {
+        trace.native_error = Some(unsafe { GetLastError() }.0);
+    }
     if !(52..=1024 * 1024).contains(&size) {
         return Err(FOREIGN_DRIVER);
     }
     let mut data = vec![0u64; (size as usize).div_ceil(8)];
+    trace.stage = "GetFileVersionInfoW";
     unsafe { GetFileVersionInfoW(PCWSTR(path.as_ptr()), None, size, data.as_mut_ptr().cast()) }
         .map_err(win)?;
     let mut pointer = std::ptr::null_mut();
     let mut len = 0;
+    trace.stage = "VerQueryValueW fixed version block";
     if !unsafe { VerQueryValueW(data.as_ptr().cast(), w!(r"\"), &mut pointer, &mut len) }.as_bool()
         || len < size_of::<VS_FIXEDFILEINFO>() as u32
         || pointer.is_null()
@@ -251,8 +358,39 @@ fn file_version(path: &Path) -> Result<(u32, u32, u32, u32)> {
     if info.dwSignature != 0xfeef04bd {
         return Err(FOREIGN_DRIVER);
     }
+    trace.version = Some((
+        info.dwFileVersionMS >> 16,
+        info.dwFileVersionMS & 0xffff,
+        info.dwFileVersionLS >> 16,
+        info.dwFileVersionLS & 0xffff,
+    ));
+    let mut translation = std::ptr::null_mut();
+    let mut translation_bytes = 0;
+    if unsafe {
+        VerQueryValueW(
+            data.as_ptr().cast(),
+            w!(r"\VarFileInfo\Translation"),
+            &mut translation,
+            &mut translation_bytes,
+        )
+    }
+    .as_bool()
+        && !translation.is_null()
+        && translation_bytes <= 64
+        && translation_bytes % 4 == 0
+        && (translation as usize) >= start
+        && (translation as usize)
+            .checked_add(translation_bytes as usize)
+            .is_some_and(|end| end <= start + size as usize)
+    {
+        for index in 0..translation_bytes as usize / 4 {
+            let pair = unsafe { std::ptr::read_unaligned(translation.cast::<u32>().add(index)) };
+            trace.translations.push(pair.rotate_left(16));
+        }
+    }
     let mut original = std::ptr::null_mut();
     let mut characters = 0;
+    trace.stage = "VerQueryValueW OriginalFilename (040904b0)";
     if !unsafe {
         VerQueryValueW(
             data.as_ptr().cast(),
@@ -276,7 +414,9 @@ fn file_version(path: &Path) -> Result<(u32, u32, u32, u32)> {
     let name = String::from_utf16_lossy(original)
         .trim_end_matches('\0')
         .to_owned();
-    if !name.eq_ignore_ascii_case("PawnIO.sys") {
+    trace.original_name_matches = Some(name.eq_ignore_ascii_case("PawnIO.sys"));
+    trace.stage = "OriginalFilename identity check";
+    if trace.original_name_matches == Some(false) {
         return Err(FOREIGN_DRIVER);
     }
     Ok((
@@ -318,6 +458,12 @@ fn state(service: &Service) -> Result<SERVICE_STATUS_PROCESS> {
 }
 
 fn inspect(service: &Service) -> Result<(Plan, Vec<Handle>)> {
+    inspect_with_trace(service, &mut Inspection::default())
+}
+
+fn inspect_with_trace(service: &Service, trace: &mut Inspection) -> Result<(Plan, Vec<Handle>)> {
+    trace.service_state = state(service).ok().map(|status| status.dwCurrentState.0);
+    trace.stage = "QueryServiceConfigW buffer size";
     let mut size = 0;
     unsafe {
         let _ = QueryServiceConfigW(service.0, None, 0, &mut size);
@@ -327,25 +473,60 @@ fn inspect(service: &Service) -> Result<(Plan, Vec<Handle>)> {
     }
     let mut data = vec![0u64; (size as usize).div_ceil(8)];
     let config = data.as_mut_ptr().cast::<QUERY_SERVICE_CONFIGW>();
+    trace.stage = "QueryServiceConfigW";
     unsafe { QueryServiceConfigW(service.0, Some(config), size, &mut size) }.map_err(win)?;
     let config = unsafe { &*config };
+    trace.service_type = Some(config.dwServiceType.0);
+    trace.start_type = Some(config.dwStartType.0);
+    trace.stage = "service type validation";
     if config.dwServiceType != SERVICE_KERNEL_DRIVER {
         return Err(FOREIGN_DRIVER);
     }
+    trace.stage = "service image path decoding";
     let raw = unsafe { config.lpBinaryPathName.to_string() }.map_err(|_| FOREIGN_DRIVER)?;
     let windows = windows_dir()?;
     let programs = program_files()?;
-    let path = image_path(&raw, &windows, &programs)?;
-    let pins = pin_image(&path, &windows, &programs)?;
-    let compatible = file_version(&path)? >= MIN_VERSION;
-    Ok((
-        plan(
-            true,
-            compatible,
-            state(service)?.dwCurrentState == SERVICE_RUNNING,
+    let path = image_path(&raw, &windows, &programs, trace)?;
+    let pins = pin_image(&path, &windows, &programs, trace)?;
+    let compatible = file_version(&path, trace)? >= MIN_VERSION;
+    trace.stage = "QueryServiceStatusEx";
+    let running = state(service)?.dwCurrentState == SERVICE_RUNNING;
+    trace.stage = "inspection complete";
+    Ok((plan(true, compatible, running), pins))
+}
+
+/// A fresh, read-only failure snapshot. Every string field is a fixed category;
+/// paths, account names and version-resource strings never enter public logs.
+pub fn diagnostic_status() -> String {
+    let mut trace = Inspection {
+        stage: "OpenSCManagerW/OpenServiceW",
+        ..Default::default()
+    };
+    let result =
+        open(SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS).and_then(|service| match service {
+            Some(service) => inspect_with_trace(&service, &mut trace).map(|(plan, _)| plan),
+            None => {
+                trace.stage = "service not installed";
+                Ok(Plan::Install)
+            }
+        });
+    let service = match crate::status() {
+        Ok(status) => format!(
+            "privileged_service={}; authorized={}; service_issue={}",
+            status.state,
+            status.authorized,
+            crate::status_issue(&status).unwrap_or_else(|| "none".into())
         ),
-        pins,
-    ))
+        Err(error) => format!(
+            "privileged_service_query={}",
+            argus_core::diagnostics::failure(&error)
+        ),
+    };
+    format!(
+        "elevated={}; {service}; {}",
+        argus_core::privilege::is_elevated(),
+        trace.summary(&result)
+    )
 }
 
 fn current_plan() -> Result<Plan> {
@@ -573,6 +754,37 @@ mod tests {
     fn installed_driver_preflight() {
         let plan = current_plan().unwrap();
         assert!(matches!(plan, Plan::Ready | Plan::Start));
+        println!("{}", diagnostic_status());
+    }
+
+    #[test]
+    fn driver_diagnostics_name_the_failed_check_without_disclosing_paths() {
+        let mut trace = Inspection::default();
+        let result = image_path(
+            r"C:\Users\Private Person\Secret Folder\PawnIO.sys",
+            Path::new(r"C:\Windows"),
+            Path::new(r"C:\Program Files"),
+            &mut trace,
+        );
+        assert!(result.is_err());
+        let line = trace.summary(&Err(FOREIGN_DRIVER));
+        assert!(line.contains("image location policy") && line.contains("outside supported roots"));
+        for private in ["Private Person", "Secret Folder", "C:", "\\"] {
+            assert!(!line.contains(private));
+        }
+        let mut trace = Inspection::default();
+        assert!(
+            image_path(
+                r"C:\Program Files\Other Monitor\PawnIO.sys",
+                Path::new(r"C:\Windows"),
+                Path::new(r"C:\Program Files"),
+                &mut trace
+            )
+            .is_err()
+        );
+        let line = trace.summary(&Err(FOREIGN_DRIVER));
+        assert!(line.contains("other Program Files location"));
+        assert!(!line.contains("Other Monitor"));
     }
 
     #[test]
@@ -665,7 +877,7 @@ mod tests {
             r"%SystemRoot%\System32\DriverStore\FileRepository\pawnio.inf_amd64_a\PawnIO.sys",
             r#""C:\Program Files\PawnIO\PawnIO.sys""#,
         ] {
-            assert!(image_path(path, windows, programs).is_ok());
+            assert!(image_path(path, windows, programs, &mut Inspection::default()).is_ok());
         }
         for path in [
             r"C:\Users\Public\PawnIO.sys",
@@ -675,7 +887,7 @@ mod tests {
             r#""C:\Windows\System32\drivers\PawnIO.sys" --argument"#,
             r"C:\Program Files\PawnIO-other\PawnIO.sys",
         ] {
-            assert!(image_path(path, windows, programs).is_err());
+            assert!(image_path(path, windows, programs, &mut Inspection::default()).is_err());
         }
     }
 }

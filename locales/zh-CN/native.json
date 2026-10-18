@@ -2,7 +2,7 @@
   "app": {
     "devTitle": "Argus 开发版",
     "join": "{first}；{second}",
-    "instanceUnavailable": "已有 Argus 正在启动或退出，暂时无法接收请求。请稍后重试。"
+    "instanceUnavailable": "无法向已运行的 Argus 交接请求：{error}。详细原因已记录到日志文件夹的 taskmgr.log 中。"
   },
   "tray": {
     "show": "显示 Argus",
@@ -131,6 +131,7 @@
     "selfTestFailed": "启动自检失败：{error}",
     "uiStartFailed": "无法以发起操作的账户启动界面自检：{error}",
     "uiNotReady": "标准权限界面的就绪检查失败，未启用替换；原因记录在日志文件夹的 taskmgr.log 中",
+    "uiExited": "界面子进程在完成就绪握手前退出，退出码为 {code}",
     "probeNameTaken": "启动自检名称冲突",
     "probeUnexpectedExit": "启动器自检未能正常退出",
     "probeFallbackFailed": "原生回退自检失败",
@@ -188,7 +189,7 @@
     "download": "无法从官方发布地址下载 PawnIO 安装程序。请检查网络连接，或通过 PawnIO 官网安装后重试。",
     "packageInvalid": "PawnIO 安装程序的大小或 SHA-256 校验不符，已停止安装。",
     "signatureInvalid": "PawnIO 安装程序的 Windows 签名验证失败，已停止安装。",
-    "foreignDriver": "现有 PawnIO 服务的类型、文件位置、权限或版本信息不符合预期，未更改该服务。请通过官方安装程序检查安装。",
+    "foreignDriver": "现有 PawnIO 服务类型、驱动路径或版本标识未通过校验，未更改服务。具体校验项及驱动信息已记录到诊断日志，可通过官方安装程序修复后重试。",
     "unsafeDriverPath": "PawnIO 驱动路径的所有者、权限或链接未通过安全检查，已停止启用。请由管理员检查驱动文件及其父目录的权限。",
     "writableDriverStore": "Windows 驱动存储目录 DriverStore\\FileRepository 允许普通用户写入，已停止启用 PawnIO。请由管理员恢复此目录的权限后重试。",
     "unsafeSetupPath": "PawnIO 安装暂存目录的所有者、权限或链接未通过安全检查，已停止操作。请由管理员检查 Program Files\\Argus Sensor Setup 及其父目录的权限。",
