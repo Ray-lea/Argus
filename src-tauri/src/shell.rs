@@ -413,28 +413,38 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>, update: Option<&str>) -> tauri::Res
     }
 }
 
-/// The version the tray currently offers.
-static TRAY_UPDATE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// The version the tray currently offers. Held only to read or change it,
+/// never across a tray or menu call: off the main thread those wait for it,
+/// and the main thread takes this lock too (`apply_language` for
+/// `set_language`, `set_tray_update` for `set_update_settings`), so the two
+/// would wait for each other forever.
+static TRAY_UPDATE: Mutex<Option<String>> = Mutex::new(None);
 
 /// Offers an update in the tray (menu entry, a dot on the icon, a line in the
 /// tooltip), or stops offering one. An update kept from an earlier run can be
 /// offered before the tray exists; `build_tray` picks it up.
 pub fn set_tray_update<R: Runtime>(app: &AppHandle<R>, version: Option<&str>) {
-    let mut current = TRAY_UPDATE.lock().unwrap();
-    if current.as_deref() == version {
-        return;
+    {
+        let mut current = TRAY_UPDATE.lock().unwrap();
+        if current.as_deref() == version {
+            return;
+        }
+        *current = version.map(str::to_string);
     }
-    *current = version.map(str::to_string);
-    show_tray_update(app, version);
+    // On the main thread (at once when called there, else queued without
+    // waiting), from the offer current by then: changes in quick succession
+    // and a new tray cannot pass each other.
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || show_tray_update(&handle));
 }
 
-/// Puts the offer on the tray, if there is one yet. Called with TRAY_UPDATE
-/// held, so an offer and a new tray cannot pass each other.
-fn show_tray_update<R: Runtime>(app: &AppHandle<R>, version: Option<&str>) {
+/// Puts the current offer on the tray, if there is one yet. Main thread.
+fn show_tray_update<R: Runtime>(app: &AppHandle<R>) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
-    if let Ok(menu) = tray_menu(app, version) {
+    let version = TRAY_UPDATE.lock().unwrap().clone();
+    if let Ok(menu) = tray_menu(app, version.as_deref()) {
         let _ = tray.set_menu(Some(menu));
     }
     let icon = match version {
@@ -590,9 +600,10 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         builder = builder.icon(icon.clone());
     }
     builder.build(app)?;
-    let offered = TRAY_UPDATE.lock().unwrap();
-    if offered.is_some() {
-        show_tray_update(app, offered.as_deref());
+    // An offer that came before the tray.
+    let offered = TRAY_UPDATE.lock().unwrap().is_some();
+    if offered {
+        show_tray_update(app);
     }
     Ok(())
 }

@@ -12,6 +12,7 @@
 - 测 WebView 是否休眠：连着 CDP 时看 `visibilityState` 和 1 秒内的 `requestAnimationFrame` 回调数；不连 CDP 时看 GPU 进程与渲染进程的 CPU 时间和渲染进程的写操作次数（大致每帧一次 IPC）。启动后约 60 秒 WebView2 的浏览器进程有一次性的活动（十几秒内约 20 ms/s），比较稳定状态时把测量窗口放在这之后，或分段看；窗口显示后多久出现内容用 `PrintWindow`（`PW_RENDERFULLCONTENT`）连续截取。tao 自己记着窗口是否可见，不知道外部的显示：测试实例经外部 `SetWindowPos` 显示后，`hide_main` 里的 `hide()` 是空操作，要关到托盘需在 `WM_CLOSE` 之后再从外部 `ShowWindow(SW_HIDE)`。
 - 采样线程按探针给出的窗口状态取节拍（最小化、托盘各有设置，默认 5 秒），每次在当前状态的节拍上排下一次；不要改回“前台节拍上不满 5 秒就跳过”，那样实测为 6 秒，间隔 5 秒时偶尔 10 秒。传给服务客户端（网络、磁盘、内核传感器）判断过期的间隔取本次与上一次采样中较长的节拍（`Schedule::taken`）：回到前台的第一拍用的是上一个后台拍请求的结果，只按前台节拍判断会把它当作过期丢掉（网络列消失，磁盘读写显示“—”两拍）。测节奏时以 `--hidden` 启动发布构建，用 CDP 在页面上挂 MutationObserver 记录每次快照的时间；最小化状态用 `ShowWindow(SW_SHOWMINNOACTIVE)` 造出，不要激活窗口。
 - 窗口离开前台（`shell::went_away`）与回到前台（`shell::came_back`）由 `follow_visibility` 的子类过程按窗口状态（与采样探针相同的 `shell::window_state`）的变化调用，`came_back` 发出 `argus-restored` 并让采样线程立即采样。不要改回在 `show_main`、`Resized` 等各条显示路径里分别调用：不激活的恢复不会触发 `Focused(true)`，其他程序的 `SetWindowPos` 显示也不经过 `show_main`，当时实测恢复后要等到后台节拍的下一拍（最小化间隔 10 秒时最长约 10 秒）才出新数据，外部显示后界面也收不到 `argus-restored`。启动时隐藏的窗口由 setup 调用 `started_hidden`：任务管理器替换启动、页面就绪即显示的窗口回报的 `awayMs` 为 0（页面靠这次事件判断窗口已显示，不能不发）。
+- 托盘与菜单的调用在非主线程上会等待主线程。`TRAY_UPDATE` 只在读写值时短暂持有，托盘由 `run_on_main_thread` 在主线程上按当时的值重绘；不要在持有这把锁时调用托盘或菜单 API：主线程上的同步命令（`set_language`、`set_update_settings`）也会取这把锁，两边互等会让主线程永久挂起。
 - wry 也子类化了主窗口：WM_SIZE 时同步设置 WebView 的 bounds，再异步（`SWP_ASYNCWINDOWPOS`）调整容器窗口 `WRY_WEBVIEW` 的大小。我们的子类过程后安装、先执行。
 
 ## 调整大小时的斜线（`shell::guard_resize_seam`）
