@@ -319,11 +319,6 @@ fn write_in(root: HKEY, path: &str, value: Option<&Value>) -> RegResult<()> {
     set_debugger(&key, value)
 }
 
-/// Creates a key, or opens the one that appeared meanwhile.
-pub fn create(path: &str) -> RegResult<Key> {
-    create_in(HKEY_LOCAL_MACHINE, path)
-}
-
 fn create_in(root: HKEY, path: &str) -> RegResult<Key> {
     let mut raw = HKEY::default();
     err(

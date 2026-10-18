@@ -210,7 +210,7 @@ fn found_log(found: &registry::Found, ours: &Value) -> String {
         } else {
             match value_text(value) {
                 Some(text) if text.is_empty() => "Debugger is empty",
-                Some(_) => "Debugger names another program",
+                Some(_) => "Debugger differs from the current Argus configuration",
                 None => "Debugger is not text",
             }
         };
@@ -246,12 +246,12 @@ pub enum Step {
     ProbeLeftover,
     /// The self-test's record and test program.
     ProbeFiles,
-    /// Creating the self-test's IFEO entry.
+    /// Legacy IFEO probe steps, retained for older helper reports.
     ProbeCreate,
-    /// Writing that entry's Debugger value.
     ProbeWrite,
-    /// The normal start of the test program, which IFEO must redirect.
     ProbeRedirect,
+    /// Loading and running the standalone test program.
+    ProbeStart,
     /// The debug start that bypasses IFEO.
     ProbeBypass,
     /// Removing the self-test's entry and files afterwards.
@@ -275,6 +275,7 @@ impl Step {
             Self::ProbeCreate => "self-test entry creation",
             Self::ProbeWrite => "self-test entry write",
             Self::ProbeRedirect => "self-test redirect",
+            Self::ProbeStart => "self-test normal start",
             Self::ProbeBypass => "self-test debug start",
             Self::ProbeCleanup => "self-test cleanup",
             Self::Interface => "interface check",
@@ -338,7 +339,7 @@ pub struct Failure {
     cause: Option<Cause>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     registry: Option<registry::OsError>,
-    /// The self-test entry stayed: the classified error of its cleanup.
+    /// Files or an old probe entry stayed: the classified cleanup error.
     kept: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     kept_registry: Option<registry::OsError>,
@@ -371,7 +372,7 @@ impl Failure {
         }
     }
 
-    /// The self-test failed, and so did its cleanup: the entry stays.
+    /// The self-test failed, and so did its cleanup: artifacts stay.
     fn kept(self, cleanup: Failure) -> Self {
         Self {
             message: tr!(
@@ -401,7 +402,7 @@ impl Failure {
             line += cause.log();
         }
         if let Some(kept) = &self.kept {
-            line += &format!("; self-test entry kept ({}", failure(kept));
+            line += &format!("; self-test artifacts kept ({}", failure(kept));
             if let Some(error) = self.kept_registry {
                 line += &format!("; {}", error.log());
             }
@@ -1244,7 +1245,7 @@ mod tests {
         assert!(items[0].contains(other));
         assert_eq!(
             found_log(&found, &ours),
-            "Debugger names another program; UseFilter value; 1 subkey, PerfOptions among them"
+            "Debugger differs from the current Argus configuration; UseFilter value; 1 subkey, PerfOptions among them"
         );
         for (debugger, class, items) in [
             (ours.clone(), "Debugger names the Argus launcher", 0),
@@ -1659,8 +1660,8 @@ mod tests {
         assert!(line.starts_with(&format!("at {}:", Step::ProbeWrite.name())));
         assert!(line.contains("(os error 5)"), "{line}");
         assert!(line.contains(Cause::Blocked.log()), "{line}");
-        assert!(line.contains("self-test entry kept"), "{line}");
-        let (original, cleanup) = line.split_once("; self-test entry kept").unwrap();
+        assert!(line.contains("self-test artifacts kept"), "{line}");
+        let (original, cleanup) = line.split_once("; self-test artifacts kept").unwrap();
         assert!(
             original.contains("RegOpenKeyExW (access 0x00000003, os error 5)"),
             "{line}"
