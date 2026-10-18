@@ -1,5 +1,7 @@
 // Changelog entries (CHANGELOG.md, written by scripts/release.mjs) as the
-// update dialog shows them. No Solid and no i18n, so ui/tests can run it.
+// update dialog shows them. No Solid and no i18n: ui/tests runs it, and
+// scripts/release.mjs reads CHANGELOG.md with it, so a release publishes the
+// entries the app finds.
 
 /** What a changelog heading groups. */
 export type Category = "breaking" | "feat" | "fix" | "perf" | "revert" | "known" | "other";
@@ -112,8 +114,11 @@ export function firstStart(
 
 // ---- Changelog ---------------------------------------------------------------
 
-/** Same headings as readEntries in scripts/release.mjs: `## [1.2.0](link) - 2026-10-12`. */
+/** An entry heading as release.mjs writes it: `## [1.2.0](link) - 2026-10-12`, or without the link. */
 const ENTRY = /^## \[?([^\]\s(]+)\]?(?:\([^)]*\))? - (\d{4}-\d{2}-\d{2})[ \t]*$/gm;
+const HEADING = new RegExp(ENTRY.source);
+/** Any second-level heading. */
+const LEVEL_2 = /^ {0,3}##(?:[ \t]|$)/;
 
 /** Every entry of a changelog, in file order (newest first). */
 export function changelogEntries(markdown: string): Release[] {
@@ -124,6 +129,18 @@ export function changelogEntries(markdown: string): Release[] {
     date: m[2],
     notes: text.slice((m.index ?? 0) + m[0].length, headings[i + 1]?.index ?? text.length).trim(),
   }));
+}
+
+/**
+ * Second-level headings that are not entry headings, with their 1-based line
+ * numbers. changelogEntries reads them as part of the entry above, so a
+ * reworded entry heading silently merges two entries; release.mjs refuses them.
+ */
+export function strayHeadings(markdown: string): { line: number; text: string }[] {
+  return markdown
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .flatMap((text, i) => (LEVEL_2.test(text) && !HEADING.test(text) ? [{ line: i + 1, text }] : []));
 }
 
 // ---- Entries -----------------------------------------------------------------

@@ -6,6 +6,9 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+// The app's own changelog parser (plain TypeScript, run by Node's type
+// stripping): the workflow publishes exactly the entries the app finds.
+import { changelogEntries, strayHeadings } from "../ui/src/lib/release-notes.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -49,7 +52,9 @@ const HELP = `用法：node scripts/release.mjs <命令>
       --dry-run 只打印版本号和发布说明，不改文件。
   lint <修订范围>          检查范围内的提交信息，例如 origin/main..HEAD
   lint --message <文本>    检查一条提交信息（例如拉取请求标题）
-  verify <标签>            核对标签与各处版本号、CHANGELOG.md 条目、更新公钥（发布工作流使用）
+  verify <标签>            核对标签与各处版本号、CHANGELOG.md 条目、更新公钥；本地已有该标签时，
+                           还核对它指向当前提交、版本文件与 CHANGELOG.md 都已提交
+                           （发布工作流的第一步；推送标签前先在本地运行）
   notes <版本>             打印 CHANGELOG.md 中该版本的发布说明（发布工作流使用）
   release-notes <版本> <输出文件>
                            写出应用内更新对话框显示的更新内容：该版本及之前最近 ${NOTES_RELEASES} 个
@@ -284,40 +289,47 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * The heading of an entry for `version` written ahead of time, with any text
+ * after the dash: `pnpm release` replaces it with the dated one. Everything
+ * else reads entries with changelogEntries, which needs that date.
+ */
 const headingPattern = (version) =>
   new RegExp(`^## \\[?${escapeRegExp(version)}\\]?(?:\\([^)]*\\))? - .*$`, "m");
 
-/** Body of the changelog entry for `version`, without its heading. */
-function readNotes(version) {
-  if (!existsSync(join(root, CHANGELOG))) return null;
-  const text = read(CHANGELOG);
-  const heading = headingPattern(version).exec(text);
-  if (!heading) return null;
-  const rest = text.slice(heading.index + heading[0].length);
-  const next = /^## /m.exec(rest);
-  return (next ? rest.slice(0, next.index) : rest).trim();
-}
-
 /** Every changelog entry, newest first: version, date and body. */
 function readEntries() {
-  if (!existsSync(join(root, CHANGELOG))) return [];
-  const text = read(CHANGELOG);
-  const headings = [...text.matchAll(/^## \[?([^\]\s(]+)\]?(?:\([^)]*\))? - (\d{4}-\d{2}-\d{2})\s*$/gm)];
-  return headings.map((m, i) => ({
-    version: m[1],
-    date: m[2],
-    notes: text.slice(m.index + m[0].length, headings[i + 1]?.index ?? text.length).trim(),
-  }));
+  return existsSync(join(root, CHANGELOG)) ? changelogEntries(read(CHANGELOG)) : [];
 }
 
-function prependChangelog(section) {
-  const path = join(root, CHANGELOG);
-  const text = existsSync(path) ? read(CHANGELOG) : CHANGELOG_HEAD;
+/** Body of the changelog entry for `version`, without its heading; null when missing or empty. */
+function readNotes(version) {
+  return readEntries().find((e) => e.version === version)?.notes || null;
+}
+
+/**
+ * What keeps the entry for `version` in `text` from reaching the release, the
+ * update dialog and the app as written. Checked before the tag is pushed: the
+ * release workflow fails on the same rules only after it has started.
+ */
+function changelogProblems(text, version) {
+  const problems = strayHeadings(text).map(
+    ({ line, text: heading }) =>
+      `第 ${line} 行「${heading.trim()}」不是版本条目的标题，应用和发布工作流不会从这里分出条目。` +
+      "条目标题为 `## [版本](比较链接) - YYYY-MM-DD`（日期后不能有其他文字），条目内的小节用 `###`",
+  );
+  if (!changelogEntries(text).find((e) => e.version === version)?.notes) {
+    problems.push(`没有 ${version} 的条目，或条目没有内容`);
+  }
+  return problems;
+}
+
+function prepend(text, section) {
   const first = /^## /m.exec(text);
   const at = first ? first.index : text.length;
   const head = text.slice(0, at).trimEnd();
   const tail = text.slice(at);
-  write(CHANGELOG, `${head}\n\n${section}${tail ? `\n${tail}` : ""}`);
+  return `${head}\n\n${section}${tail ? `\n${tail}` : ""}`;
 }
 
 // --- Commands ---
@@ -352,28 +364,25 @@ function cmdBump(args) {
 
   // Notes written ahead of time (e.g. for the first release) are kept; only
   // their heading is brought up to date.
-  const written = readNotes(version);
-  const section = written
-    ? `${sectionHeading(version, prevTag)}\n\n${written}\n`
-    : renderSection(version, prevTag, commits);
+  const before = existsSync(join(root, CHANGELOG)) ? read(CHANGELOG) : null;
+  const written = before !== null && headingPattern(version).test(before);
+  const changelog = written
+    ? before.replace(headingPattern(version), () => sectionHeading(version, prevTag))
+    : prepend(before ?? CHANGELOG_HEAD, renderSection(version, prevTag, commits));
+  const problems = changelogProblems(changelog, version);
+  if (problems.length) fail(`${CHANGELOG} 需要先修改，未改动任何文件：\n  - ${problems.join("\n  - ")}`);
+  const entry = changelogEntries(changelog).find((e) => e.version === version);
   console.log(
     `版本：${formatVersion(current)} → ${version}（上一个标签：${prevTag ?? "无"}，${commits.length} 个提交）\n`,
   );
   if (written) console.log(`沿用 ${CHANGELOG} 中已写好的发布说明。\n`);
   if (dryRun) {
-    console.log(section);
+    console.log(`${sectionHeading(version, prevTag)}\n\n${entry.notes}\n`);
     return;
   }
 
   writeVersion(version);
-  if (written) {
-    write(
-      CHANGELOG,
-      read(CHANGELOG).replace(headingPattern(version), () => sectionHeading(version, prevTag)),
-    );
-  } else {
-    prependChangelog(section);
-  }
+  write(CHANGELOG, changelog);
   try {
     // Cargo.lock was edited by hand above; make sure Cargo agrees with it.
     execFileSync("cargo", ["metadata", "--locked", "--offline", "--format-version", "1"], {
@@ -388,8 +397,10 @@ function cmdBump(args) {
   // its notes written ahead of time on the same day.
   git("commit", "--quiet", "--allow-empty", "-m", `chore(release): ${tag}`);
   git("tag", "-a", tag, "-m", `Argus ${tag}`);
-  console.log(`已提交 chore(release): ${tag} 并创建标签 ${tag}。检查 ${CHANGELOG} 后推送，推送标签即开始发布：
+  console.log(`已提交 chore(release): ${tag} 并创建标签 ${tag}。检查 ${CHANGELOG}，修改后用
+git commit --amend 提交、git tag -fa ${tag} -m "Argus ${tag}" 移动标签。推送前核对，推送标签即开始发布：
 
+  node scripts/release.mjs verify ${tag}
   git push --atomic origin main ${tag}
 
 推送前撤销：git tag -d ${tag} && git reset --hard HEAD~1`);
@@ -399,8 +410,22 @@ function cmdVerify([tag]) {
   if (!tag?.startsWith("v") || !parseVersion(tag.slice(1))) fail(`标签「${tag ?? ""}」不是 v<语义化版本号>`);
   const version = readVersion();
   if (version !== tag.slice(1)) fail(`标签 ${tag} 与版本号 ${version} 不一致`);
-  if (!readNotes(version)) fail(`${CHANGELOG} 里没有 ${version} 的条目，发布请用 pnpm release`);
+  const problems = existsSync(join(root, CHANGELOG))
+    ? changelogProblems(read(CHANGELOG), version)
+    : [`没有 ${CHANGELOG}`];
+  if (problems.length)
+    fail(`${CHANGELOG} 不能用于发布 ${tag}（发布请用 pnpm release）：\n  - ${problems.join("\n  - ")}`);
   requirePubkey();
+  // Before pushing, the files checked above must be the ones the tag carries.
+  // In the workflow the checkout is the tagged commit itself, so this holds.
+  const tagged = tryGit("rev-parse", "-q", "--verify", `refs/tags/${tag}^{commit}`);
+  if (tagged && tagged !== tryGit("rev-parse", "HEAD")) {
+    fail(`标签 ${tag} 没有指向当前提交。修改发布提交后用 git tag -fa ${tag} -m "Argus ${tag}" 移动标签`);
+  }
+  const files = [CARGO_TOML, "Cargo.lock", ...VERSION_FILES, CHANGELOG];
+  const changed = tryGit("status", "--porcelain", "--", ...files);
+  if (changed)
+    fail(`以下文件有未提交的改动，标签里没有这些改动：\n${changed}\n用 git commit --amend 提交后移动标签`);
   console.log(`[通过] ${tag} 与版本号、${CHANGELOG}、更新公钥一致`);
 }
 
