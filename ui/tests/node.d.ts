@@ -2,6 +2,14 @@
 
 declare module "node:test" {
   export function test(name: string, fn: () => void | Promise<void>): void;
+  export function beforeEach(fn: () => void | Promise<void>): void;
+  export const mock: {
+    timers: {
+      enable(options?: { apis?: ("setTimeout" | "setInterval" | "Date")[]; now?: number }): void;
+      reset(): void;
+      tick(ms: number): void;
+    };
+  };
 }
 
 declare module "node:assert/strict" {

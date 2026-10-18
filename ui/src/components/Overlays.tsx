@@ -257,59 +257,81 @@ export function Toasts() {
   return (
     <div class="toasts" aria-live="polite">
       <For each={toasts()}>
-        {(item) => (
-          <div
-            class="toast"
-            classList={{
-              error: item.kind === "error",
-              success: item.kind === "success",
-              info: item.kind === "info",
-              leaving: leavingToasts().has(item.id),
-            }}
-            role="status"
-            onMouseEnter={() => holdToast(item.id, true)}
-            onMouseLeave={() => holdToast(item.id, false)}
-          >
-            {item.icon ? (
-              item.icon()
-            ) : item.kind === "error" ? (
-              <WarningIcon />
-            ) : item.kind === "info" ? (
-              <InfoIcon />
-            ) : (
-              <CheckIcon />
-            )}
-            <div class="toast-body">
-              <div class="toast-text">{item.text}</div>
-              <Show when={item.actions?.length}>
-                <div class="toast-actions">
-                  <For each={item.actions}>
-                    {(action) => (
-                      <button
-                        type="button"
-                        class="btn small"
-                        onClick={() => {
-                          dismissToast(item.id);
-                          void action.run();
-                        }}
-                      >
-                        {action.label}
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </div>
-            <button
-              type="button"
-              class="btn ghost small icon"
-              aria-label={t("common.close")}
-              onClick={() => dismissToast(item.id)}
+        {(item) => {
+          let el: HTMLDivElement | undefined;
+          // Where keyboard focus came from: it goes back there when the toast
+          // leaves with focus in it, not to the start of the page.
+          let from: HTMLElement | null = null;
+          const leaving = () => leavingToasts().has(item.id);
+          /** Focus moving between this toast and the rest of the page, not within it. */
+          const outside = (e: FocusEvent) =>
+            !(e.relatedTarget instanceof Node && el?.contains(e.relatedTarget));
+          onCleanup(() => {
+            if (el?.contains(document.activeElement) && from?.isConnected) from.focus();
+          });
+          return (
+            <div
+              ref={el}
+              class="toast"
+              classList={{
+                error: item.kind === "error",
+                success: item.kind === "success",
+                info: item.kind === "info",
+                leaving: leaving(),
+              }}
+              role="status"
+              onMouseEnter={() => holdToast(item.id, "pointer", true)}
+              onMouseLeave={() => holdToast(item.id, "pointer", false)}
+              onFocusIn={(e) => {
+                if (!outside(e)) return;
+                from = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
+                holdToast(item.id, "focus", true);
+              }}
+              onFocusOut={(e) => outside(e) && holdToast(item.id, "focus", false)}
             >
-              <DismissIcon size={12} />
-            </button>
-          </div>
-        )}
+              {item.icon ? (
+                item.icon()
+              ) : item.kind === "error" ? (
+                <WarningIcon />
+              ) : item.kind === "info" ? (
+                <InfoIcon />
+              ) : (
+                <CheckIcon />
+              )}
+              <div class="toast-body">
+                <div class="toast-text">{item.text}</div>
+                <Show when={item.actions?.length}>
+                  <div class="toast-actions">
+                    <For each={item.actions}>
+                      {(action) => (
+                        <button
+                          type="button"
+                          class="btn small"
+                          onClick={() => {
+                            // Once: a second Enter while it fades out does nothing.
+                            if (leaving()) return;
+                            dismissToast(item.id);
+                            void action.run();
+                          }}
+                        >
+                          {action.label}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </div>
+              <button
+                type="button"
+                class="btn ghost small icon"
+                aria-label={t("common.close")}
+                onClick={() => dismissToast(item.id)}
+              >
+                <DismissIcon size={12} />
+              </button>
+            </div>
+          );
+        }}
       </For>
     </div>
   );

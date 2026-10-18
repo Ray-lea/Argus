@@ -1,7 +1,8 @@
 // Transient UI surfaces: context menu, confirm dialog and toasts.
 
-import { createSignal, type JSX } from "solid-js";
+import { createSignal, type JSX, untrack } from "solid-js";
 import { uiMotion } from "./motion";
+import { type ToastHold, toastClock } from "./toast-clock";
 
 // ---- Context menu ------------------------------------------------------------
 
@@ -73,8 +74,9 @@ export interface Toast {
 }
 export const [toasts, setToasts] = createSignal<Toast[]>([]);
 let toastId = 0;
-const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const clock = toastClock((id) => dismissToast(id));
 
+/** Shows a toast for `ms`; at most four at a time, the oldest giving way. */
 export function toast(
   kind: Toast["kind"],
   text: string,
@@ -82,29 +84,24 @@ export function toast(
   extra: Pick<Toast, "icon" | "actions"> = {},
 ) {
   const id = ++toastId;
-  setToasts((list) => [...list.slice(-3), { id, kind, text, ...extra }]);
-  toastTimers.set(
-    id,
-    setTimeout(() => dismissToast(id), ms),
-  );
+  // Not tracked: a toast raised from an effect must not make it follow the list.
+  const list = untrack(toasts);
+  for (const old of list.slice(0, Math.max(0, list.length - 3))) clock.forget(old.id);
+  setToasts([...list.slice(-3), { id, kind, text, ...extra }]);
+  clock.start(id, ms);
 }
 
-/** Keeps a toast while the pointer is on it; it leaves a moment after. */
-export function holdToast(id: number, held: boolean) {
-  clearTimeout(toastTimers.get(id));
-  if (!held)
-    toastTimers.set(
-      id,
-      setTimeout(() => dismissToast(id), 2500),
-    );
-}
+/**
+ * Keeps a toast while the pointer is on it or keyboard focus is in it (its
+ * buttons); it leaves a moment after both are gone.
+ */
+export const holdToast = (id: number, why: ToastHold, held: boolean) => clock.hold(id, why, held);
 
 /** Toasts playing their exit animation. */
 export const [leavingToasts, setLeavingToasts] = createSignal<ReadonlySet<number>>(new Set());
 
 export function dismissToast(id: number) {
-  clearTimeout(toastTimers.get(id));
-  toastTimers.delete(id);
+  clock.forget(id);
   const remove = () => {
     setToasts((list) => list.filter((t) => t.id !== id));
     setLeavingToasts((set) => {

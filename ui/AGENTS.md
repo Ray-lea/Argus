@@ -40,6 +40,7 @@
 
 - 以 `--hidden` 启动时，页面画出第一帧之前 WebView 保持可见（`background.ts` 的 `reportFirstFrame` 报告后宿主才让它休眠），这段时间 `visibilityState` 为 `visible`，窗口却没有显示。要等用户看得到窗口才做的事（一次性提示、更新内容）先等 `updates.ts` 的 `shown()`，之后再按 `visibilityState` 判断。
 - 叠在其他对话框之上的对话框（确认框、更新对话框）在捕获阶段处理 Esc 并 `stopImmediatePropagation`：各对话框都在 `window` 上监听，冒泡阶段的写法会让一次 Esc 同时关掉下面的引导，并把引导记为已完成。更新对话框在确认框打开时把 Esc 让给它。托盘菜单项和“已准备就绪”提示打开的更新对话框经 `updates.ts` 的 `openUpdateDialogAfter` 等引导结束，提示本身也等引导结束后再出现。
+- 带操作按钮的提示条在指针停留或键盘焦点在其中时都不消失（`lib/toast-clock.ts`，`ui/tests` 有测试），带着焦点关闭时焦点回到进入提示条之前的元素；不要只靠 `mouseenter`/`mouseleave` 保持：键盘用户 Tab 到按钮后，提示条到时消失，焦点落回 `body`。
 - 窗口回到前台的刷新间隔提示（`background.ts`）在正显示引导、更新对话框或确认框时不出现，也让位于新版本首次显示的更新内容：是否让位在 `argus-restored` 到达时就决定（`updates.ts` 的 `welcomePending` 在 `afterStart` 读完设置后即有结果），不要等提示自己读完设置后再看对话框是否已打开：更新内容还要等页面变为可见才弹出，两者的先后没有保证。模拟数据页面的 `?restored=…` 在启动 1.5 秒后才模拟回到前台，测不出首次显示的先后。
 - 下拉框用 `components/Select.tsx`，不要写原生 `<select>`：原生弹出列表由 Windows 按经典样式绘制，与主题不符。
 - Solid 编译 `style={{ … }}` 时按字面键逐个设置，计算出的键（`[cond ? "top" : "bottom"]`）会被丢掉；两个属性都写，用值切换。
