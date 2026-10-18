@@ -190,6 +190,8 @@
     "packageInvalid": "PawnIO 安装程序的大小或 SHA-256 校验不符，已停止安装。",
     "signatureInvalid": "PawnIO 安装程序的 Windows 签名验证失败，已停止安装。",
     "foreignDriver": "现有 PawnIO 服务类型、驱动路径或版本标识未通过校验，未更改服务。具体校验项及驱动信息已记录到诊断日志，可通过官方安装程序修复后重试。",
+    "legacyLayout": "检测到旧版 PawnIO，但安装位置或卸载信息不符合官方默认安装，已停止自动迁移。请通过 Windows 的应用管理卸载旧版，再从 PawnIO 官网安装新版。",
+    "driverInUse": "PawnIO 暂时无法停止或仍被其他程序使用，升级已停止。请退出使用硬件传感器的其他程序后重试；若仍失败，请重启 Windows 后重试。",
     "unsafeDriverPath": "PawnIO 驱动路径的所有者、权限或链接未通过安全检查，已停止启用。请由管理员检查驱动文件及其父目录的权限。",
     "writableDriverStore": "Windows 驱动存储目录 DriverStore\\FileRepository 允许普通用户写入，已停止启用 PawnIO。请由管理员恢复此目录的权限后重试。",
     "unsafeSetupPath": "PawnIO 安装暂存目录的所有者、权限或链接未通过安全检查，已停止操作。请由管理员检查 Program Files\\Argus Sensor Setup 及其父目录的权限。",

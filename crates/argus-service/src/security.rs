@@ -297,6 +297,37 @@ pub(crate) fn inspect_path(path: &Path) -> std::result::Result<Handle, PathError
 }
 
 fn check_path_acl(owner: PSID, dacl: *mut ACL) -> std::result::Result<(), PathError> {
+    // Generic all/write, maximum allowed, delete, write DAC/owner, and
+    // file/directory writes (including delete-child).
+    check_acl(owner, dacl, 0x520d_0156)
+}
+
+pub(crate) fn inspect_registry_key(
+    key: windows::Win32::System::Registry::HKEY,
+) -> std::result::Result<(), PathError> {
+    let mut owner = PSID::default();
+    let mut dacl = std::ptr::null_mut::<ACL>();
+    let mut sd = PSECURITY_DESCRIPTOR::default();
+    unsafe {
+        GetSecurityInfo(
+            HANDLE(key.0),
+            windows::Win32::Security::Authorization::SE_REGISTRY_KEY,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            Some(&mut owner),
+            None,
+            Some(&mut dacl),
+            None,
+            Some(&mut sd),
+        )
+    }
+    .ok()
+    .map_err(win)?;
+    let _sd = Descriptor(sd);
+    // Registry writes are SET_VALUE/CREATE_SUB_KEY, not file write bits.
+    check_acl(owner, dacl, 0x520d_0006)
+}
+
+fn check_acl(owner: PSID, dacl: *mut ACL, write_mask: u32) -> std::result::Result<(), PathError> {
     if !trusted(&sid_string(owner)?) {
         return Err(PathError::Owner);
     }
@@ -320,9 +351,7 @@ fn check_path_acl(owner: PSID, dacl: *mut ACL) -> std::result::Result<(), PathEr
         }
         let allow = unsafe { &*ace.cast::<ACCESS_ALLOWED_ACE>() };
         let sid = PSID((&allow.SidStart as *const u32).cast_mut().cast());
-        // Generic all/write, maximum allowed, delete, write DAC/owner, and
-        // file/directory writes (including delete-child).
-        if allow.Mask & 0x520d_0156 != 0 && !trusted(&sid_string(sid)?) {
+        if allow.Mask & write_mask != 0 && !trusted(&sid_string(sid)?) {
             return Err(PathError::Writable);
         }
     }
@@ -367,6 +396,10 @@ mod tests {
     use super::*;
 
     fn inspect_acl(sddl: &str) -> std::result::Result<(), PathError> {
+        inspect_acl_mask(sddl, 0x520d_0156)
+    }
+
+    fn inspect_acl_mask(sddl: &str, mask: u32) -> std::result::Result<(), PathError> {
         let descriptor = Descriptor::new(sddl).unwrap();
         let mut owner = PSID::default();
         let mut defaulted = false.into();
@@ -382,7 +415,25 @@ mod tests {
         .unwrap();
         unsafe { GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut dacl, &mut defaulted) }
             .unwrap();
-        check_path_acl(owner, dacl)
+        check_acl(owner, dacl, mask)
+    }
+
+    #[test]
+    fn uninstall_registry_metadata_must_not_be_user_writable() {
+        assert_eq!(
+            inspect_acl_mask(
+                "O:BAG:BAD:(A;;KA;;;SY)(A;;KA;;;BA)(A;;KR;;;BU)",
+                0x520d_0006
+            ),
+            Ok(())
+        );
+        for mask in [0x2, 0x4, 0x10000, 0x40000, 0x80000, 0x10000000, 0x40000000] {
+            let sddl = format!("O:BAG:BAD:(A;;KA;;;SY)(A;;0x{mask:x};;;BU)");
+            assert_eq!(
+                inspect_acl_mask(&sddl, 0x520d_0006),
+                Err(PathError::Writable)
+            );
+        }
     }
 
     #[test]

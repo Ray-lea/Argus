@@ -190,6 +190,8 @@
     "packageInvalid": "The PawnIO installer size or SHA-256 did not match. Installation was stopped.",
     "signatureInvalid": "Windows could not verify the PawnIO installer signature. Installation was stopped.",
     "foreignDriver": "The existing PawnIO service type, driver location or version identity failed validation. The service was not changed. The failed check and driver details are in the diagnostic log; repair the installation with the official installer and retry.",
+    "legacyLayout": "An older PawnIO driver was found, but its location or uninstall information does not match the official default installation. Automatic migration was stopped. Uninstall the old version using Windows Apps, then install the latest version from the PawnIO website.",
+    "driverInUse": "PawnIO cannot stop right now or is still in use by another application. The upgrade was stopped. Close other applications that use hardware sensors and retry; if it still fails, restart Windows and retry.",
     "unsafeDriverPath": "The PawnIO driver path failed its ownership, permissions or link check. Enabling was stopped. Ask an administrator to check the driver file and its parent directories.",
     "writableDriverStore": "The Windows driver store directory DriverStore\\FileRepository allows standard users to write. PawnIO was not enabled. Ask an administrator to restore this directory's permissions, then try again.",
     "unsafeSetupPath": "The PawnIO installer staging directory failed its ownership, permissions or link check. The operation was stopped. Ask an administrator to check Program Files\\Argus Sensor Setup and its parent directory.",

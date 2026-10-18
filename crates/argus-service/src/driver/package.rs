@@ -20,14 +20,14 @@ use windows::core::PCWSTR;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Manifest {
+pub(super) struct Manifest {
     version: String,
     url: String,
     size: u64,
     sha256: String,
 }
 
-fn manifest() -> &'static Manifest {
+pub(super) fn manifest() -> &'static Manifest {
     static VALUE: OnceLock<Manifest> = OnceLock::new();
     VALUE.get_or_init(|| {
         serde_json::from_str(include_str!("../../vendor/pawnio/installer.json"))
@@ -35,8 +35,15 @@ fn manifest() -> &'static Manifest {
     })
 }
 
-fn check_bytes(bytes: &[u8]) -> Result<()> {
-    let expected = manifest();
+pub(super) fn legacy_manifest() -> &'static Manifest {
+    static VALUE: OnceLock<Manifest> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        serde_json::from_str(include_str!("../../vendor/pawnio/legacy-installer.json"))
+            .expect("embedded legacy PawnIO installer manifest")
+    })
+}
+
+fn check_bytes(bytes: &[u8], expected: &Manifest) -> Result<()> {
     if bytes.len() as u64 != expected.size
         || format!("{:x}", Sha256::digest(bytes)) != expected.sha256
     {
@@ -45,8 +52,7 @@ fn check_bytes(bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn download() -> Result<Vec<u8>> {
-    let expected = manifest();
+pub(super) fn download(expected: &Manifest) -> Result<Vec<u8>> {
     let client = reqwest::blocking::Client::builder()
         .https_only(true)
         .connect_timeout(Duration::from_secs(15))
@@ -89,27 +95,27 @@ pub(super) fn download() -> Result<Vec<u8>> {
         .take(expected.size + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| DOWNLOAD_FAILED)?;
-    check_bytes(&bytes)?;
+    check_bytes(&bytes, expected)?;
     Ok(bytes)
 }
 
 /// Pin the verified executable against replacement until its process exits.
-pub(super) fn verify(path: &Path) -> Result<File> {
+pub(super) fn verify(path: &Path, expected: &Manifest) -> Result<File> {
     let mut file = OpenOptions::new()
         .read(true)
         .share_mode(FILE_SHARE_READ.0)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0)
         .open(path)
         .map_err(io)?;
-    if file.metadata().map_err(io)?.len() != manifest().size {
+    if file.metadata().map_err(io)?.len() != expected.size {
         return Err(PACKAGE_INVALID);
     }
-    let mut bytes = Vec::with_capacity(manifest().size as usize);
+    let mut bytes = Vec::with_capacity(expected.size as usize);
     (&file)
-        .take(manifest().size + 1)
+        .take(expected.size + 1)
         .read_to_end(&mut bytes)
         .map_err(io)?;
-    check_bytes(&bytes)?;
+    check_bytes(&bytes, expected)?;
     file.rewind().map_err(io)?;
     let name = wide(&path.to_string_lossy());
     let mut info = WINTRUST_FILE_INFO {
@@ -159,13 +165,15 @@ mod tests {
     use super::*;
     #[test]
     fn rejects_truncation_and_same_size_replacement() {
-        assert!(check_bytes(&[]).is_err());
-        assert!(check_bytes(&vec![0; manifest().size as usize]).is_err());
-        assert_eq!(manifest().sha256.len(), 64);
-        assert!(manifest().size < 16 * 1024 * 1024);
-        assert_eq!(
-            reqwest::Url::parse(&manifest().url).unwrap().host_str(),
-            Some("github.com")
-        );
+        for expected in [manifest(), legacy_manifest()] {
+            assert!(check_bytes(&[], expected).is_err());
+            assert!(check_bytes(&vec![0; expected.size as usize], expected).is_err());
+            assert_eq!(expected.sha256.len(), 64);
+            assert!(expected.size < 16 * 1024 * 1024);
+            assert_eq!(
+                reqwest::Url::parse(&expected.url).unwrap().host_str(),
+                Some("github.com")
+            );
+        }
     }
 }

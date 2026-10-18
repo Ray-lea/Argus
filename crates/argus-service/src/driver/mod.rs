@@ -1,5 +1,6 @@
 //! One explicit settings action prepares the official PawnIO driver. No
 //! installer URL, executable path or service name is accepted from IPC/CLI.
+mod legacy;
 mod package;
 
 use std::fs::{self, OpenOptions};
@@ -12,8 +13,8 @@ use std::time::{Duration, Instant};
 
 use argus_core::tr;
 use windows::Win32::Foundation::{
-    ERROR_SERVICE_DOES_NOT_EXIST, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, SetLastError,
-    WAIT_OBJECT_0, WIN32_ERROR,
+    ERROR_SERVICE_DOES_NOT_EXIST, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, NTSTATUS,
+    RtlNtStatusToDosError, SetLastError, WAIT_OBJECT_0, WIN32_ERROR,
 };
 use windows::Win32::Storage::FileSystem::{
     CreateDirectoryW, CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_DELETE, FILE_SHARE_READ,
@@ -43,6 +44,7 @@ const NOT_READY: u32 = 0x2000_0105;
 const UNSAFE_DRIVER_PATH: u32 = 0x2000_0106;
 const WRITABLE_DRIVER_STORE: u32 = 0x2000_0107;
 const UNSAFE_SETUP_PATH: u32 = 0x2000_0108;
+const LEGACY_LAYOUT: u32 = 0x2000_0109;
 const REBOOT_REQUIRED: u32 = 3010;
 const MIN_VERSION: (u32, u32, u32, u32) = (2, 2, 0, 0);
 const INSTALL_ARGS: [&str; 2] = ["-install", "-silent"];
@@ -61,6 +63,7 @@ enum Plan {
     Ready,
     Start,
     Install,
+    MigrateLegacy,
 }
 
 #[derive(Default)]
@@ -76,6 +79,7 @@ struct Inspection {
     original_name_matches: Option<bool>,
     version_info_bytes: Option<u32>,
     native_error: Option<u32>,
+    legacy_driver: bool,
 }
 
 impl Inspection {
@@ -84,6 +88,7 @@ impl Inspection {
             Ok(Plan::Ready) => "ready".into(),
             Ok(Plan::Start) => "start required".into(),
             Ok(Plan::Install) => "install/update required".into(),
+            Ok(Plan::MigrateLegacy) => "legacy migration required".into(),
             Err(code) => format!("error {code:#010x}"),
         };
         let version = self
@@ -97,7 +102,7 @@ impl Inspection {
             .collect::<Vec<_>>()
             .join(",");
         format!(
-            "stage={}; result={outcome}; native_error={:?}; service_type={:?}; service_state={:?}; start_type={:?}; image_location={}; path_component={}; file_version={version}; version_info_bytes={:?}; version_translations=[{translations}]; original_name_matches={:?}",
+            "stage={}; result={outcome}; native_error={:?}; service_type={:?}; service_state={:?}; start_type={:?}; image_location={}; path_component={}; file_version={version}; version_info_bytes={:?}; version_translations=[{translations}]; original_name_matches={:?}; official_legacy_driver={}",
             self.stage,
             self.native_error,
             self.service_type,
@@ -106,7 +111,8 @@ impl Inspection {
             self.image_location,
             self.path_component,
             self.version_info_bytes,
-            self.original_name_matches
+            self.original_name_matches,
+            self.legacy_driver
         )
     }
 }
@@ -126,7 +132,7 @@ fn finish_preparation(
     install: impl FnOnce() -> Result<()>,
     start: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
-    if plan == Plan::Install {
+    if matches!(plan, Plan::Install | Plan::MigrateLegacy) {
         install()?;
     }
     start()
@@ -150,6 +156,9 @@ fn message(code: u32) -> String {
         UNSAFE_DRIVER_PATH => tr!("sensorSetup.unsafeDriverPath"),
         WRITABLE_DRIVER_STORE => tr!("sensorSetup.writableDriverStore"),
         UNSAFE_SETUP_PATH => tr!("sensorSetup.unsafeSetupPath"),
+        LEGACY_LAYOUT => tr!("sensorSetup.legacyLayout"),
+        1061 | 1062 => format!("{} {}", tr!("sensorSetup.driverInUse"), util::message(code)),
+        1072 => format!("{} {}", tr!("sensorSetup.reboot"), util::message(code)),
         REBOOT_REQUIRED | 1641 => tr!("sensorSetup.reboot"),
         _ => util::message(code),
     }
@@ -317,6 +326,19 @@ fn protect_setup_path(path: &Path) -> Result<Handle> {
             code
         }
     })
+}
+
+fn image_version(path: &Path, trace: &mut Inspection) -> Result<Option<(u32, u32, u32, u32)>> {
+    match file_version(path, trace) {
+        Ok(version) => Ok(Some(version)),
+        Err(FOREIGN_DRIVER) if trace.version_info_bytes == Some(0) => {
+            trace.stage = "legacy driver SHA-256 identity check";
+            legacy::verify_image(path)?;
+            trace.legacy_driver = true;
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn file_version(path: &Path, trace: &mut Inspection) -> Result<(u32, u32, u32, u32)> {
@@ -488,7 +510,19 @@ fn inspect_with_trace(service: &Service, trace: &mut Inspection) -> Result<(Plan
     let programs = program_files()?;
     let path = image_path(&raw, &windows, &programs, trace)?;
     let pins = pin_image(&path, &windows, &programs, trace)?;
-    let compatible = file_version(&path, trace)? >= MIN_VERSION;
+    let Some(version) = image_version(&path, trace)? else {
+        trace.stage = "legacy installation layout validation";
+        if !path
+            .as_os_str()
+            .eq_ignore_ascii_case(programs.join(r"PawnIO\PawnIO.sys").as_os_str())
+        {
+            return Err(LEGACY_LAYOUT);
+        }
+        legacy::validate_installation(&programs)?;
+        trace.stage = "inspection complete";
+        return Ok((Plan::MigrateLegacy, pins));
+    };
+    let compatible = version >= MIN_VERSION;
     trace.stage = "QueryServiceStatusEx";
     let running = state(service)?.dwCurrentState == SERVICE_RUNNING;
     trace.stage = "inspection complete";
@@ -574,7 +608,7 @@ fn start() -> Result<()> {
     let service =
         open(SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS | SERVICE_START)?.ok_or(NOT_READY)?;
     let (plan, _pins) = inspect(&service)?;
-    if plan == Plan::Install {
+    if matches!(plan, Plan::Install | Plan::MigrateLegacy) {
         return Err(NOT_READY);
     }
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -626,29 +660,96 @@ fn protected_dir(path: &Path) -> Result<Handle> {
     protect_setup_path(path)
 }
 
-fn install_package(root: &Path) -> Result<()> {
-    let bytes = package::download()?;
+fn stage_package(path: &Path, bytes: &[u8], manifest: &package::Manifest) -> Result<std::fs::File> {
+    let mut file = crate::install::new_protected_file(path)?;
+    file.write_all(bytes)
+        .and_then(|_| file.sync_all())
+        .map_err(io)?;
+    drop(file);
+    package::verify(path, manifest)
+}
+
+fn run_installer(path: &Path, args: &[&str], legacy: bool) -> Result<()> {
+    // Never kill an installer mid-operation or delete its executable while running.
+    let directory = path.parent().ok_or(87u32)?;
+    let code = Command::new(path)
+        .args(args)
+        .current_dir(directory)
+        // 2.0.1 renames removed files into TEMP, which must be on the same
+        // volume as Program Files. Only this child gets the protected TEMP.
+        .env("TEMP", directory)
+        .env("TMP", directory)
+        .creation_flags(0x08000000)
+        .status()
+        .map_err(io)?
+        .code();
+    installer_exit(normalize_installer_exit(code, legacy))
+}
+
+fn normalize_installer_exit(code: Option<i32>, legacy: bool) -> Option<i32> {
+    // 2.0.1 returns NTSTATUS, whereas 2.2.0 returns DOS errors.
+    code.map(|value| {
+        if legacy && value < 0 {
+            unsafe { RtlNtStatusToDosError(NTSTATUS(value)) as i32 }
+        } else {
+            value
+        }
+    })
+}
+
+fn migrate_then_install(
+    uninstall: impl FnOnce() -> Result<()>,
+    removed: impl FnOnce() -> Result<bool>,
+    install: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    uninstall()?;
+    if !removed()? {
+        return Err(REBOOT_REQUIRED);
+    }
+    install()
+}
+
+fn install_package(root: &Path, migrate: bool) -> Result<()> {
+    // Acquire both payloads before touching a working legacy installation.
+    let bytes = package::download(package::manifest())?;
+    let legacy_bytes = migrate
+        .then(|| package::download(package::legacy_manifest()))
+        .transpose()?;
     let id = unsafe { CoCreateGuid() }.map_err(win)?;
     let directory = root.join(format!("{id:?}"));
     let guard = protected_dir(&directory)?;
     let installer = directory.join("PawnIO_setup.exe");
+    let legacy_installer = directory.join("PawnIO_legacy_setup.exe");
     let result = (|| {
-        let mut file = crate::install::new_protected_file(&installer)?;
-        file.write_all(&bytes)
-            .and_then(|_| file.sync_all())
-            .map_err(io)?;
-        drop(file);
-        let _verified = package::verify(&installer)?;
-        // Wait for the real installer exit; never kill a driver installation
-        // mid-operation or delete its executable while it is still running.
-        let status = Command::new(&installer)
-            .args(INSTALL_ARGS)
-            .current_dir(&directory)
-            .creation_flags(0x08000000)
-            .status()
-            .map_err(io)?;
-        installer_exit(status.code())
+        let _verified = stage_package(&installer, &bytes, package::manifest())?;
+        let install = || run_installer(&installer, &INSTALL_ARGS, false);
+        if let Some(bytes) = legacy_bytes {
+            let _legacy_verified =
+                stage_package(&legacy_installer, &bytes, package::legacy_manifest())?;
+            // Other monitoring software can change the shared service while downloading.
+            // Recheck its type, full driver digest, protected path and uninstall metadata.
+            // Release driver path pins before the official uninstaller removes those files.
+            if current_plan()? != Plan::MigrateLegacy {
+                return Err(LEGACY_LAYOUT);
+            }
+            migrate_then_install(
+                || run_installer(&legacy_installer, &["-uninstall", "-silent"], true),
+                || match open(SERVICE_QUERY_STATUS) {
+                    Ok(service) => Ok(service.is_none()),
+                    Err(1072) => Ok(false),
+                    Err(error) => Err(error),
+                },
+                install,
+            )
+        } else {
+            match current_plan()? {
+                Plan::Install => install(),
+                Plan::Ready | Plan::Start => Ok(()),
+                Plan::MigrateLegacy => Err(LEGACY_LAYOUT),
+            }
+        }
     })();
+    let _ = fs::remove_file(&legacy_installer);
     let _ = fs::remove_file(&installer);
     drop(guard);
     let _ = fs::remove_dir(&directory);
@@ -670,7 +771,9 @@ pub(crate) fn run_helper() -> Result<()> {
         .share_mode(0)
         .open(root.join("install.lock"))
         .map_err(io)?;
-    finish_preparation(current_plan()?, || install_package(&root), start)
+    let plan = current_plan()?;
+    let migrate = plan == Plan::MigrateLegacy;
+    finish_preparation(plan, || install_package(&root, migrate), start)
 }
 
 /// Called only when the settings switch is explicitly turned on. A shared
@@ -735,13 +838,13 @@ fn elevate_and_prepare() -> std::result::Result<(), String> {
 
 /// Read-only verification for the developer probe; never launches the file.
 pub fn verify_installer(path: &Path) -> std::result::Result<&'static str, String> {
-    package::verify(path).map_err(message)?;
+    package::verify(path, package::manifest()).map_err(message)?;
     Ok(package::version())
 }
 
 /// Exercises the real HTTPS download and digest check without writing or running it.
 pub fn verify_installer_download() -> std::result::Result<&'static str, String> {
-    package::download().map_err(message)?;
+    package::download(package::manifest()).map_err(message)?;
     Ok(package::version())
 }
 
@@ -755,6 +858,106 @@ mod tests {
         let plan = current_plan().unwrap();
         assert!(matches!(plan, Plan::Ready | Plan::Start));
         println!("{}", diagnostic_status());
+    }
+
+    #[test]
+    #[ignore = "Read-only regression using locally extracted official installer samples"]
+    fn official_driver_samples() {
+        let root = std::env::var_os("ARGUS_PAWNIO_SAMPLES").expect("official samples directory");
+        for version in ["2.0.1", "2.1.0", "2.2.0"] {
+            let path = Path::new(&root).join(version).join("files/9/PawnIO.sys");
+            let mut trace = Inspection::default();
+            let result = image_version(&path, &mut trace);
+            println!(
+                "sample={version}; result={result:?}; {}",
+                trace.summary(&result.map(|version| if version.is_none() {
+                    Plan::MigrateLegacy
+                } else {
+                    Plan::Install
+                }))
+            );
+            assert!(
+                result.is_ok(),
+                "official {version} must be recognized for reuse or upgrade"
+            );
+            assert_eq!(result.unwrap().is_none(), version == "2.0.1");
+        }
+        let arm = Path::new(&root).join("2.0.1/files/3/PawnIO.sys");
+        assert_eq!(image_version(&arm, &mut Inspection::default()), Ok(None));
+        let unsigned = Path::new(&root).join("2.0.1/files/11/PawnIO.sys");
+        assert_eq!(
+            image_version(&unsigned, &mut Inspection::default()),
+            Err(FOREIGN_DRIVER)
+        );
+        package::verify(
+            &Path::new(&root).join("2.0.1/PawnIO_setup.exe"),
+            package::legacy_manifest(),
+        )
+        .unwrap();
+        package::verify(
+            &Path::new(&root).join("2.2.0/PawnIO_setup.exe"),
+            package::manifest(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn legacy_migration_stops_on_failure_or_pending_removal() {
+        for code in [1223, 3010, 1641, 5, 1061, 1072] {
+            assert_eq!(
+                migrate_then_install(
+                    || Err(code),
+                    || panic!("uninstall failed"),
+                    || panic!("uninstall failed"),
+                ),
+                Err(code)
+            );
+        }
+        assert_eq!(
+            migrate_then_install(
+                || Ok(()),
+                || Ok(false),
+                || panic!("old service still registered"),
+            ),
+            Err(REBOOT_REQUIRED)
+        );
+        let order = std::cell::RefCell::new(Vec::new());
+        migrate_then_install(
+            || {
+                order.borrow_mut().push("uninstall");
+                Ok(())
+            },
+            || {
+                order.borrow_mut().push("removed");
+                Ok(true)
+            },
+            || {
+                order.borrow_mut().push("install");
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(*order.borrow(), ["uninstall", "removed", "install"]);
+        assert_eq!(
+            migrate_then_install(|| Ok(()), || Ok(true), || Err(5)),
+            Err(5)
+        );
+    }
+
+    #[test]
+    fn legacy_ntstatus_is_preserved_as_a_dos_error() {
+        assert_eq!(normalize_installer_exit(Some(0), true), Some(0));
+        assert_eq!(
+            normalize_installer_exit(Some(0xc0000022u32 as i32), true),
+            Some(5)
+        );
+        assert_eq!(
+            normalize_installer_exit(Some(0xc0000022u32 as i32), false),
+            Some(0xc0000022u32 as i32)
+        );
+        for code in [3010, 1072, 1223] {
+            assert_eq!(normalize_installer_exit(Some(code), true), Some(code));
+        }
     }
 
     #[test]
