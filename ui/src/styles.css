@@ -2173,14 +2173,21 @@ html.still *::after {
   width: min(580px, calc(100vw - 32px));
 }
 
-/* Steps keep one height so the buttons stay put while paging. */
+/* Steps keep one height so the buttons stay put while paging; the tallest
+   (the background step in English) fits at the default window size. In a
+   shorter window the step scrolls: its rows keep their height rather than
+   shrinking until the text runs into their borders. */
 .onboarding-step {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: min(440px, calc(100vh - 140px));
+  height: min(540px, calc(100vh - 140px));
   overflow-y: auto;
   padding: 28px 32px 20px;
+}
+
+.onboarding-step > * {
+  flex: none;
 }
 
 .onboarding-hero {
