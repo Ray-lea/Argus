@@ -204,6 +204,7 @@ mod tests {
                 authorized: true,
                 version: None,
                 error,
+                incompatible: false,
             })
             .map(|s| s.into_owned())
         };

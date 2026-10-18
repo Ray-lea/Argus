@@ -106,6 +106,7 @@
       "unknown": "Can't read the status right now",
       "notInstalled": "Not installed",
       "connected": "Connected · {version}",
+      "incompatible": "Running, incompatible version",
       "unreachable": "Running, but can't connect right now",
       "stopped": "Stopped",
       "startPending": "Starting",
@@ -113,6 +114,7 @@
       "unavailable": "Unavailable"
     },
     "outdated": "Service version {service} doesn't match Argus {app}. Click Update service.",
+    "incompatible": "Click Update service to install the version that matches Argus; Argus then connects to it.",
     "install": {
       "title": "Enable the privileged service?",
       "body": "Once it's installed, the current Windows account can use the background service, without asking for permission again, to:\n· end processes of any user (except critical system processes) and set their priority and efficiency mode;\n· start and stop any Windows service and change its startup type, including services of security software and Windows Update;\n· close any IPv4 TCP connection, and see every process's file locks, network traffic, and disk reads and writes;\n· read CPU sensor data and motherboard fan speeds through fixed modules when PawnIO is installed.\n\nOther programs running as a standard user under this account can use these operations too, which effectively gives the account some administrator rights. Install it only on an account that you use yourself. The service starts with Windows. Installing requires administrator permission; the service can be uninstalled in Settings later.",

@@ -703,18 +703,27 @@ export const updates = {
   },
 };
 
-let serviceInstalled = false;
+// `?service=incompatible` plays a service of an older protocol, left running
+// when Argus was updated without it; updating or reinstalling it fixes that.
+let serviceIncompatible = query.get("service") === "incompatible";
+let serviceInstalled = serviceIncompatible;
 export const privilegedService = {
   status: async (): Promise<import("./types").PrivilegedServiceStatus> => ({
     state: serviceInstalled ? "running" : "notInstalled",
     authorized: serviceInstalled,
-    version: serviceInstalled ? "0.1.0" : null,
-    error: null,
+    version: serviceInstalled && !serviceIncompatible ? "0.1.0" : null,
+    error: serviceIncompatible
+      ? mockSettings.locale === "en-US"
+        ? "The privileged service version is incompatible; update the service in Settings"
+        : "特权服务版本不兼容，请在设置中更新服务"
+      : null,
+    incompatible: serviceIncompatible,
   }),
   manage: async (action: import("./types").PrivilegedServiceAction) => {
     // Stands in for the administrator prompt and the service starting.
     await new Promise((done) => setTimeout(done, 1500));
     serviceInstalled = action !== "uninstall";
+    serviceIncompatible = false;
     return privilegedService.status();
   },
 };

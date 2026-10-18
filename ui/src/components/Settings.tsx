@@ -284,10 +284,14 @@ export function chartModeOptions(): { value: ChartMode; label: string }[] {
 export function serviceState(s: PrivilegedServiceStatus | null | undefined): string {
   if (!s) return t("settings.privilege.state.unknown");
   if (s.state === "notInstalled") return t("settings.privilege.state.notInstalled");
-  if (s.state === "running")
-    return s.authorized && !s.error
-      ? t("settings.privilege.state.connected", { version: s.version ?? "" })
+  if (s.state === "running") {
+    if (s.authorized && !s.error)
+      return t("settings.privilege.state.connected", { version: s.version ?? "" });
+    // Not a failure that may pass: only updating the service reconnects.
+    return s.incompatible
+      ? t("settings.privilege.state.incompatible")
       : t("settings.privilege.state.unreachable");
+  }
   if (s.state === "stopped") return t("settings.privilege.state.stopped");
   if (s.state === "startPending") return t("settings.privilege.state.startPending");
   if (s.state === "stopPending") return t("settings.privilege.state.stopPending");
@@ -351,14 +355,17 @@ function PrivilegedServiceSettings() {
       const value = await api.managePrivilegedService(action);
       mutate(value);
       noteServiceStatus(value);
-      toast(
-        "success",
+      // A service that runs but does not connect (one of another protocol,
+      // started here) is not ready: the card says why instead.
+      const done =
         action === "uninstall"
           ? t("settings.privilege.uninstalled")
           : restores
             ? t("settings.privilege.updatedRestored")
-            : t("settings.privilege.ready"),
-      );
+            : serviceConnected(value)
+              ? t("settings.privilege.ready")
+              : null;
+      if (done) toast("success", done);
     } catch (e) {
       await refetch();
       setError(String(e));
@@ -386,6 +393,12 @@ function PrivilegedServiceSettings() {
     if (!s?.version || !app || s.version === app) return null;
     return t("settings.privilege.outdated", { service: s.version, app });
   };
+  // The state already says the version is incompatible; the service's own
+  // error, written for pages elsewhere, would only repeat it.
+  const serviceError = () => {
+    const s = status();
+    return s?.incompatible ? t("settings.privilege.incompatible") : s?.error;
+  };
   return (
     <FeatureCard
       icon={<ShieldIcon size={20} />}
@@ -394,7 +407,7 @@ function PrivilegedServiceSettings() {
       state={label()}
       tone={tone()}
       note={t("settings.privilege.statusDesc")}
-      error={error() ?? status()?.error ?? outdated()}
+      error={error() ?? serviceError() ?? outdated()}
     >
       <button type="button" class="btn" disabled={busy() || status.loading} onClick={() => void refetch()}>
         {t("settings.refreshStatus")}

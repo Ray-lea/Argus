@@ -49,6 +49,9 @@ pub struct ServiceStatus {
     pub authorized: bool,
     pub version: Option<String>,
     pub error: Option<String>,
+    /// The running service speaks another protocol (`error` says so too):
+    /// updating it is what reconnects, unlike a failure that may pass.
+    pub incompatible: bool,
 }
 
 pub(crate) fn directory() -> Result<PathBuf> {
@@ -165,6 +168,7 @@ fn inspect() -> Result<ServiceStatus> {
             authorized: false,
             version: None,
             error: None,
+            incompatible: false,
         });
     };
     let dir = directory()?;
@@ -184,19 +188,34 @@ fn inspect() -> Result<ServiceStatus> {
         authorized,
         version: None,
         error: None,
+        incompatible: false,
     };
     if s.dwCurrentState == SERVICE_RUNNING && authorized {
-        match crate::pipe::request(crate::PIPE_NAME, s.dwProcessId, crate::Operation::Ping) {
-            Ok(crate::Reply::Pong { version, .. }) => status.version = Some(version),
-            Ok(_) => status.error = Some(message(crate::util::INCOMPATIBLE)),
-            Err(e) => status.error = Some(message(e)),
-        }
+        note_ping(
+            &mut status,
+            crate::pipe::request(crate::PIPE_NAME, s.dwProcessId, crate::Operation::Ping),
+        );
     } else if !authorized {
         status.error = Some(message(OTHER_OWNER));
     } else if s.dwCurrentState == SERVICE_STOPPED && s.dwWin32ExitCode != 0 {
         status.error = Some(message(s.dwWin32ExitCode));
     }
     Ok(status)
+}
+
+/// Records what a Ping of the running service of this account answered.
+fn note_ping(status: &mut ServiceStatus, ping: Result<crate::Reply>) {
+    let code = match ping {
+        Ok(crate::Reply::Pong { version, .. }) => {
+            status.version = Some(version);
+            return;
+        }
+        // Only a service of another protocol answers a Ping otherwise.
+        Ok(_) => crate::util::INCOMPATIBLE,
+        Err(e) => e,
+    };
+    status.incompatible = code == crate::util::INCOMPATIBLE;
+    status.error = Some(message(code));
 }
 
 pub(crate) fn running_pid() -> Result<Option<u32>> {
@@ -611,4 +630,47 @@ pub fn manage(action: &str) -> std::result::Result<ServiceStatus, String> {
         }
     }
     status()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::INCOMPATIBLE;
+
+    fn pinged(ping: Result<crate::Reply>) -> ServiceStatus {
+        let mut status = ServiceStatus {
+            state: "running",
+            authorized: true,
+            version: None,
+            error: None,
+            incompatible: false,
+        };
+        note_ping(&mut status, ping);
+        status
+    }
+
+    #[test]
+    fn a_ping_tells_an_incompatible_service_from_a_failed_one() {
+        let connected = pinged(Ok(crate::Reply::Pong {
+            version: "0.2.0".into(),
+            protocol: crate::PROTOCOL,
+        }));
+        assert_eq!(connected.version.as_deref(), Some("0.2.0"));
+        assert!(connected.error.is_none() && !connected.incompatible);
+
+        // Another protocol, refused by the pipe or answered with something else.
+        for ping in [Err(INCOMPATIBLE), Ok(crate::Reply::Done)] {
+            let status = pinged(ping);
+            assert!(status.incompatible);
+            assert_eq!(status.error, Some(message(INCOMPATIBLE)));
+            assert!(status.version.is_none());
+        }
+
+        // A broken pipe or a timeout may pass: still an error, not incompatible.
+        for code in [109, 1460] {
+            let status = pinged(Err(code));
+            assert!(!status.incompatible);
+            assert_eq!(status.error, Some(message(code)));
+        }
+    }
 }

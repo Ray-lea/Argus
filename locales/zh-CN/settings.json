@@ -106,6 +106,7 @@
       "unknown": "暂时无法读取状态",
       "notInstalled": "未安装",
       "connected": "已连接 · {version}",
+      "incompatible": "正在运行，版本不兼容",
       "unreachable": "正在运行，暂时无法连接",
       "stopped": "已停止",
       "startPending": "正在启动",
@@ -113,6 +114,7 @@
       "unavailable": "暂不可用"
     },
     "outdated": "服务版本 {service} 与 Argus {app} 不一致，请单击“更新服务”。",
+    "incompatible": "单击“更新服务”安装与 Argus 一致的版本后即可连接。",
     "install": {
       "title": "启用特权服务？",
       "body": "安装后，当前 Windows 账户无需再次授权即可通过后台服务：\n· 结束任意用户的进程（系统关键进程除外），设置优先级与效率模式；\n· 启动、停止任意 Windows 服务并修改启动类型，包括安全软件和 Windows 更新相关的服务；\n· 断开任意 IPv4 TCP 连接，查询所有进程的文件占用、网络流量与磁盘读写；\n· 在 PawnIO 已安装时，通过固定模块读取 CPU 传感器数据与主板风扇转速。\n\n此账户下以标准权限运行的其他程序同样可以调用这些操作，相当于该账户获得了部分管理员权限。请只在自己使用的账户上安装。服务随 Windows 启动；安装需要管理员授权，之后可在设置中卸载。",

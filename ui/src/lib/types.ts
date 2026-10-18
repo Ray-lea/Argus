@@ -581,6 +581,8 @@ export interface PrivilegedServiceStatus {
   authorized: boolean;
   version: string | null;
   error: string | null;
+  /** The running service speaks another protocol (`error` says so too); updating it reconnects. */
+  incompatible: boolean;
 }
 
 export interface TaskManagerStatus {
