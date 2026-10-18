@@ -16,6 +16,7 @@
 //! its version is installed. Argus starts it itself, as the plugin would: the
 //! plugin can only install an update it checked during this run.
 
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -427,6 +428,55 @@ fn describe(e: &Error) -> String {
     }
 }
 
+/// What the diagnostic log records for a failed signature check.
+const SIGNATURE: &str = "signature or certificate validation failed";
+
+/// What the log records about an updater error: fixed English words, never
+/// the interface text from `describe` (in Chinese it classifies as nothing
+/// but "operation failed").
+fn cause(e: &Error) -> Cow<'static, str> {
+    match e {
+        _ if signature_error(e) => SIGNATURE.into(),
+        Error::ReleaseNotFound => "not found".into(),
+        Error::Reqwest(e) if e.is_timeout() => "timeout".into(),
+        Error::Reqwest(e) if e.is_connect() => "network error".into(),
+        // The plugin's own words for a download the server refused.
+        Error::Network(message) => match message.split_once("status: ") {
+            Some((_, status))
+                if status.len() >= 3 && status.as_bytes()[..3].iter().all(u8::is_ascii_digit) =>
+            {
+                format!("http status {}", &status[..3]).into()
+            }
+            _ => "network error".into(),
+        },
+        // The plugin's other errors are in English; only their class is kept.
+        other => argus_core::diagnostics::failure(&other.to_string()),
+    }
+}
+
+/// A source that failed: what the dialog says and what the log records.
+struct Failed {
+    shown: String,
+    logged: Cow<'static, str>,
+}
+
+impl Failed {
+    fn of(e: &Error) -> Self {
+        Self {
+            shown: describe(e),
+            logged: cause(e),
+        }
+    }
+
+    /// A source address that does not parse (a proxy written into the settings by hand).
+    fn address(shown: String) -> Self {
+        Self {
+            shown,
+            logged: "invalid update address".into(),
+        }
+    }
+}
+
 /// The failures of several sources as one message.
 fn join(failures: &[String]) -> String {
     failures
@@ -444,11 +494,17 @@ fn signature_error(e: &Error) -> bool {
 }
 
 /// Checks a minisign signature the way the updater plugin does, with the
-/// version it was signed for (`requireSignedVersion`).
-fn verify_signed(data: &[u8], signature: &str, pubkey: &str, version: &str) -> Result<(), String> {
+/// version it was signed for (`requireSignedVersion`). The error is for the
+/// log only.
+fn verify_signed(
+    data: &[u8],
+    signature: &str,
+    pubkey: &str,
+    version: &str,
+) -> Result<(), &'static str> {
     use base64::Engine;
     use minisign_verify::{PublicKey, Signature};
-    let failed = || tr!("updater.signatureFailed");
+    let failed = || SIGNATURE;
     // Tauri stores both as base64 of the minisign text files.
     let text = |base64: &str| {
         base64::engine::general_purpose::STANDARD
@@ -477,14 +533,15 @@ fn signed_notes(raw: &serde_json::Value) -> Option<SignedNotes> {
         .and_then(|value| serde_json::from_value(value.clone()).ok())
 }
 
-/// The changelog entries in signed notes, once they pass the signature.
+/// The changelog entries in signed notes, once they pass the signature. The
+/// error is for the log only.
 fn open_notes(
     notes: &SignedNotes,
     pubkey: &str,
     version: &str,
-) -> Result<Vec<ReleaseEntry>, String> {
+) -> Result<Vec<ReleaseEntry>, &'static str> {
     if notes.release_notes.len() > MAX_NOTES_BYTES {
-        return Err(tr!("updater.signatureFailed"));
+        return Err(SIGNATURE);
     }
     verify_signed(
         notes.release_notes.as_bytes(),
@@ -493,9 +550,9 @@ fn open_notes(
         version,
     )?;
     let payload: NotesPayload =
-        serde_json::from_str(&notes.release_notes).map_err(|e| e.to_string())?;
+        serde_json::from_str(&notes.release_notes).map_err(|_| "invalid or unsupported data")?;
     if payload.version != version {
-        return Err(tr!("updater.signatureFailed"));
+        return Err(SIGNATURE);
     }
     let mut releases = payload.releases;
     releases.truncate(MAX_RELEASES);
@@ -516,10 +573,7 @@ fn notes_for(
         Some(signed) => match open_notes(signed, pubkey, version) {
             Ok(releases) => (Some(releases), plain),
             Err(e) => {
-                log::warn!(
-                    "release notes rejected: {}",
-                    argus_core::diagnostics::failure(&e)
-                );
+                log::warn!("release notes rejected: {e}");
                 (None, None)
             }
         },
@@ -530,16 +584,16 @@ async fn find(
     app: &AppHandle,
     manifest: &str,
     source: Option<&str>,
-) -> Result<Option<Update>, String> {
+) -> Result<Option<Update>, Failed> {
     app.updater_builder()
-        .endpoints(vec![via(manifest, source)?])
-        .map_err(|e| describe(&e))?
+        .endpoints(vec![via(manifest, source).map_err(Failed::address)?])
+        .map_err(|e| Failed::of(&e))?
         .timeout(MANIFEST_TIMEOUT)
         .build()
-        .map_err(|e| describe(&e))?
+        .map_err(|e| Failed::of(&e))?
         .check()
         .await
-        .map_err(|e| describe(&e))
+        .map_err(|e| Failed::of(&e))
 }
 
 /// Checks the chosen channel and downloads a newer release. Does nothing while
@@ -593,7 +647,9 @@ async fn check_once(app: &AppHandle, generation: u64) {
     let settings = app.state::<SettingsStore>().get();
     let sources = sources(settings.update_route, &settings.update_proxy);
     let manifest = manifest_url(settings.update_channel);
+    // What each source said: for the dialog, and (`causes`) for the log.
     let mut failures = Vec::new();
+    let mut causes = Vec::new();
     let mut found = None;
     for (index, source) in sources.iter().enumerate() {
         match find(app, &manifest, source.as_deref()).await {
@@ -601,20 +657,20 @@ async fn check_once(app: &AppHandle, generation: u64) {
                 found = Some((index, update));
                 break;
             }
-            Err(e) => failures.push(tr!(
-                "updater.sourceFailed",
-                source = label(source.as_deref()),
-                error = e
-            )),
+            Err(e) => {
+                failures.push(tr!(
+                    "updater.sourceFailed",
+                    source = label(source.as_deref()),
+                    error = e.shown
+                ));
+                causes.push(e.logged);
+            }
         }
     }
 
     let now = now_ms();
     let Some((index, update)) = found else {
-        log::warn!(
-            "update check failed: {}",
-            argus_core::diagnostics::failure(&failures.join("; "))
-        );
+        log::warn!("update check failed: {}", causes.join("; "));
         update_found(app, generation, |inner| {
             inner.next_check = now + RETRY_AFTER_MS;
             // A downloaded update can still be installed.
@@ -701,12 +757,15 @@ async fn check_once(app: &AppHandle, generation: u64) {
         .collect();
     order.dedup();
     failures.clear();
+    causes.clear();
     for source in order {
         let mut attempt = update.clone();
         attempt.download_url = match via(&original, source.as_deref()) {
             Ok(url) => url,
             Err(e) => {
-                failures.push(e);
+                let e = Failed::address(e);
+                failures.push(e.shown);
+                causes.push(e.logged);
                 continue;
             }
         };
@@ -762,17 +821,23 @@ async fn check_once(app: &AppHandle, generation: u64) {
                         return;
                     }
                     Err(e) => {
+                        // An io error keeps its code in any language.
+                        causes.push(
+                            format!("not kept: {}", argus_core::diagnostics::failure(&e)).into(),
+                        );
                         failures.push(tr!("updater.saveFailed", error = e));
                         break;
                     }
                 }
             }
             Err(e) => {
+                let failed = Failed::of(&e);
                 failures.push(tr!(
                     "updater.sourceFailed",
                     source = label(source.as_deref()),
-                    error = describe(&e)
+                    error = failed.shown
                 ));
+                causes.push(failed.logged);
                 // A bad artifact is bad from every source.
                 if signature_error(&e) {
                     break;
@@ -780,10 +845,7 @@ async fn check_once(app: &AppHandle, generation: u64) {
             }
         }
     }
-    log::warn!(
-        "update download failed: {}",
-        argus_core::diagnostics::failure(&failures.join("; "))
-    );
+    log::warn!("update download failed: {}", causes.join("; "));
     update_found(app, generation, |inner| {
         inner.next_check = now + RETRY_AFTER_MS;
         match previous.take().filter(|_| inner.ready.is_some()) {
@@ -893,17 +955,15 @@ fn restore(app: &AppHandle) {
     let path = dir.join(&pending.file);
     let key = pubkey(app);
     let size = match fs::read(&path)
-        .map_err(|e| e.to_string())
+        .map_err(|e| argus_core::diagnostics::failure(&e.to_string()))
         .and_then(|bytes| {
             verify_signed(&bytes, &pending.signature, &key, &pending.version)
                 .map(|_| bytes.len() as u64)
+                .map_err(Cow::from)
         }) {
         Ok(size) => size,
         Err(e) => {
-            log::warn!(
-                "kept update dropped: {}",
-                argus_core::diagnostics::failure(&e)
-            );
+            log::warn!("kept update dropped: {e}");
             discard(app);
             return;
         }
@@ -986,12 +1046,9 @@ pub fn install(app: &AppHandle) -> Result<(), InstallError> {
             log::warn!("kept update changed on disk; downloading it again");
             InstallError::failed(tr!("updater.keptChanged"))
         }
-        Failure::Other(message) => {
-            log::error!(
-                "could not start the update installer: {}",
-                argus_core::diagnostics::failure(message)
-            );
-            InstallError::failed(tr!("updater.installerFailed", error = message))
+        Failure::Other { shown, logged } => {
+            log::error!("could not start the update installer: {logged}");
+            InstallError::failed(tr!("updater.installerFailed", error = shown))
         }
     };
     let changed = matches!(failure, Failure::Changed);
@@ -1012,7 +1069,30 @@ enum Failure {
     Cancelled,
     /// The kept installer no longer passes the signature.
     Changed,
-    Other(String),
+    /// What the dialog says, and what the log records.
+    Other {
+        shown: String,
+        logged: Cow<'static, str>,
+    },
+}
+
+impl Failure {
+    /// An io error's text carries its code ("(os error 5)") in any language.
+    fn io(e: &std::io::Error) -> Self {
+        let shown = e.to_string();
+        Self::Other {
+            logged: argus_core::diagnostics::failure(&shown),
+            shown,
+        }
+    }
+
+    /// A Windows error's message is in the system's language; its code is not.
+    fn system(e: &windows::core::Error) -> Self {
+        Self::Other {
+            shown: e.message(),
+            logged: argus_core::diagnostics::failure(&format!("{:#010x}", e.code().0 as u32)),
+        }
+    }
 }
 
 /// Checks the kept installer once more and runs it the way the updater plugin
@@ -1039,11 +1119,11 @@ fn launch(app: &AppHandle, ready: &Ready) -> Failure {
     {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Failure::Changed,
-        Err(e) => return Failure::Other(e.to_string()),
+        Err(e) => return Failure::io(&e),
     };
     let mut bytes = Vec::new();
     if let Err(e) = file.read_to_end(&mut bytes) {
-        return Failure::Other(e.to_string());
+        return Failure::io(&e);
     }
     if verify_signed(&bytes, &ready.signature, &pubkey(app), &ready.version).is_err() {
         return Failure::Changed;
@@ -1065,7 +1145,7 @@ fn launch(app: &AppHandle, ready: &Ready) -> Failure {
         return if e.code() == ERROR_CANCELLED.to_hresult() {
             Failure::Cancelled
         } else {
-            Failure::Other(e.message())
+            Failure::system(&e)
         };
     }
     drop(file);
@@ -1213,6 +1293,62 @@ mod tests {
         let found = signed_notes(&manifest).unwrap();
         assert_eq!(found.release_notes, NOTES);
         assert!(signed_notes(&serde_json::json!({ "version": "1.2.3" })).is_none());
+    }
+
+    #[test]
+    fn the_log_gets_fixed_words_in_any_interface_language() {
+        // The dialog's text (`describe`) is in the interface language; the log
+        // classifies the error itself.
+        for (error, logged) in [
+            (Error::MissingSignedVersion, SIGNATURE),
+            (
+                Error::SignedVersionMismatch {
+                    signed: "1.2.3".into(),
+                    announced: "1.2.4".into(),
+                },
+                SIGNATURE,
+            ),
+            (Error::ReleaseNotFound, "not found"),
+            (
+                Error::Network(
+                    "Download request failed with status: 503 Service Unavailable".into(),
+                ),
+                "http status 503",
+            ),
+            (
+                Error::Network("Download request failed with status: 404 Not Found".into()),
+                "http status 404",
+            ),
+            (Error::Network("status: 50".into()), "network error"),
+            (Error::Network("connection reset".into()), "network error"),
+        ] {
+            assert_eq!(cause(&error), logged);
+        }
+        assert_eq!(
+            verify_signed(DATA, DATA_SIG, TEST_KEY, "1.2.4"),
+            Err(SIGNATURE)
+        );
+        let altered = SignedNotes {
+            release_notes: NOTES.replace("A fix", "A fiX"),
+            signature: NOTES_SIG.into(),
+        };
+        assert_eq!(
+            open_notes(&altered, TEST_KEY, "1.2.3").err(),
+            Some(SIGNATURE)
+        );
+
+        // An installer that did not start: its error code, never the system's
+        // message around it.
+        let Failure::Other { logged, .. } = Failure::io(&std::io::Error::from_raw_os_error(5))
+        else {
+            panic!("an io error is another failure");
+        };
+        assert_eq!(logged, "access denied (os error 5)");
+        let e = windows::core::Error::from_hresult(windows::core::HRESULT(0x8007_0002_u32 as i32));
+        let Failure::Other { logged, .. } = Failure::system(&e) else {
+            panic!("a Windows error is another failure");
+        };
+        assert_eq!(logged, "not found (os error 2)");
     }
 
     fn ready(version: &str) -> Inner {
