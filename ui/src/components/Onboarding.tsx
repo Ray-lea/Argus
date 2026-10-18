@@ -16,6 +16,7 @@ import {
   Show,
   Switch,
 } from "solid-js";
+import { plainEscape } from "../lib/escape";
 import { type Language, LOCALES, rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { changeKernelSensors, kernelBusy, kernelError, kernelRevision } from "../lib/kernel-setup";
@@ -134,8 +135,10 @@ function OnboardingDialog(props: { leaving: boolean }) {
     }),
   );
 
+  // Closing counts as done: an Esc still held from Ctrl+Shift+Esc (the task
+  // manager replacement opening Argus) must not do it.
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") close();
+    if (plainEscape(e)) close();
   };
   window.addEventListener("keydown", onKey);
   onCleanup(() => window.removeEventListener("keydown", onKey));
