@@ -13,6 +13,7 @@ use windows::Win32::Storage::FileSystem::{
     FILE_FLAGS_AND_ATTRIBUTES, GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
 use windows::Win32::UI::Shell::{SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 use windows::core::PCWSTR;
@@ -24,6 +25,7 @@ use crate::util::wide;
 pub struct FileMeta {
     pub description: Option<Arc<str>>,
     pub company: Option<Arc<str>>,
+    pub windows_component: bool,
     /// Index into the icon table, served to the UI as a PNG.
     pub icon: Option<u32>,
 }
@@ -80,7 +82,13 @@ impl MetaStore {
         self.inner.read().unwrap().icons.get(id as usize).cloned()
     }
 
-    fn insert(&self, path: &str, version: VersionInfo, icon_png: Option<Vec<u8>>) {
+    fn insert(
+        &self,
+        path: &str,
+        version: VersionInfo,
+        icon_png: Option<Vec<u8>>,
+        system_root: &str,
+    ) {
         let key = path.to_lowercase();
         let mut inner = self.inner.write().unwrap();
         let icon = icon_png.map(|png| {
@@ -88,6 +96,7 @@ impl MetaStore {
             (inner.icons.len() - 1) as u32
         });
         let meta = FileMeta {
+            windows_component: windows_component(path, &version, system_root),
             description: version.description.map(Into::into),
             company: version.company.map(Into::into),
             icon,
@@ -102,13 +111,58 @@ fn worker(store: Weak<MetaStore>, rx: Receiver<String>) {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
     }
+    let system_root = windows_directory();
     while let Ok(path) = rx.recv() {
         let version = version_info(&path);
         let icon = extract_icon_png(&path);
         match store.upgrade() {
-            Some(store) => store.insert(&path, version, icon),
+            Some(store) => store.insert(&path, version, icon, &system_root),
             None => return,
         }
+    }
+}
+
+fn windows_directory() -> String {
+    let mut directory = vec![0; 260];
+    let mut len = unsafe { GetWindowsDirectoryW(Some(&mut directory)) } as usize;
+    if len >= directory.len() && len < 32_768 {
+        directory.resize(len + 1, 0);
+        len = unsafe { GetWindowsDirectoryW(Some(&mut directory)) } as usize;
+    }
+    if len > 0 && len < directory.len() {
+        String::from_utf16_lossy(&directory[..len])
+    } else {
+        String::new()
+    }
+}
+
+/// A display category, not a signature check or permission to terminate a process.
+fn windows_component(path: &str, version: &VersionInfo, system_root: &str) -> bool {
+    if system_root.is_empty()
+        || !version
+            .company
+            .as_deref()
+            .is_some_and(|v| v.eq_ignore_ascii_case("Microsoft Corporation"))
+        || !version.product_name.as_deref().is_some_and(|v| {
+            v.replace('®', "")
+                .eq_ignore_ascii_case("Microsoft Windows Operating System")
+        })
+    {
+        return false;
+    }
+    let path = path.replace('/', "\\").to_lowercase();
+    let root = format!("{}\\", system_root.trim_end_matches('\\').to_lowercase());
+    let Some(relative) = path.strip_prefix(&root) else {
+        return false;
+    };
+    // Third-party drivers and temp installers can also live under Windows.
+    // Require OS version metadata and an OS component location together.
+    match relative.split_once('\\') {
+        None => !relative.is_empty(),
+        Some((dir, _)) => matches!(
+            dir,
+            "system32" | "syswow64" | "systemapps" | "winsxs" | "servicing"
+        ),
     }
 }
 
@@ -320,4 +374,64 @@ fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
         writer.write_image_data(rgba).ok()?;
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod category_tests {
+    use super::*;
+
+    fn windows_version() -> VersionInfo {
+        VersionInfo {
+            company: Some("Microsoft Corporation".into()),
+            product_name: Some("Microsoft® Windows® Operating System".into()),
+            ..VersionInfo::default()
+        }
+    }
+
+    #[test]
+    fn os_metadata_requires_a_component_location_in_the_actual_windows_directory() {
+        let version = windows_version();
+        for path in [
+            r"D:\WinNT\explorer.exe",
+            r"d:\WINNT\System32\svchost.exe",
+            r"D:\WinNT\SysWOW64\dllhost.exe",
+            r"D:\WinNT\SystemApps\Shell\ShellExperienceHost.exe",
+            r"D:\WinNT\WinSxS\component\worker.exe",
+        ] {
+            assert!(windows_component(path, &version, r"D:\WinNT"), "{path}");
+        }
+        for path in [
+            r"C:\Windows\System32\svchost.exe",
+            r"D:\WinNT-copy\System32\svchost.exe",
+            r"D:\Apps\svchost.exe",
+            r"D:\WinNT\Temp\setup.exe",
+            r"D:\WinNT\Installer\setup.exe",
+        ] {
+            assert!(!windows_component(path, &version, r"D:\WinNT"), "{path}");
+        }
+        assert!(!windows_component(r"D:\WinNT\explorer.exe", &version, ""));
+    }
+
+    #[test]
+    fn third_party_drivers_and_other_microsoft_products_are_not_windows_components() {
+        let path = r"C:\Windows\System32\service.exe";
+        for (company, product) in [
+            ("Realtek", "Realtek HD Audio Universal Service"),
+            ("Microsoft Corporation", "Microsoft Edge WebView2"),
+            ("Microsoft Corporation", "Microsoft Office"),
+            ("Example", "Microsoft Windows Operating System"),
+        ] {
+            let version = VersionInfo {
+                company: Some(company.into()),
+                product_name: Some(product.into()),
+                ..VersionInfo::default()
+            };
+            assert!(!windows_component(path, &version, r"C:\Windows"));
+        }
+        assert!(!windows_component(
+            path,
+            &VersionInfo::default(),
+            r"C:\Windows"
+        ));
+    }
 }

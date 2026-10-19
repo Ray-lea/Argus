@@ -244,6 +244,7 @@ mod tests {
             company: None,
             icon: None,
             web_view: None,
+            windows_process: false,
             cpu: 0.0,
             cpu_time: 0,
             private_ws: 0,

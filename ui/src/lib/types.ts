@@ -45,6 +45,7 @@ export interface ProcessRow {
   efficiency: boolean;
   /** Owns a taskbar window, which puts it under "Apps". */
   appWindow: boolean;
+  windowsProcess: boolean;
 }
 
 export interface WebViewInfo {

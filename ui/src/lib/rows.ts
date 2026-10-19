@@ -4,6 +4,7 @@ import { localized, t } from "./i18n";
 import { applicationKey, procKey } from "./process-identity";
 import { compareDiskRate, sumDiskIo } from "./process-io";
 import { processDetail, processTitle, webViewRole, webViewTitle } from "./process-label";
+import { type ProcessSection, processSections } from "./process-sections";
 import type { ProcessRow } from "./types";
 
 export type ViewMode = "apps" | "tree" | "list";
@@ -54,12 +55,14 @@ export interface DisplayRow {
   efficiency: number;
   /** Owns a taskbar window (a group: any member does), which files it under "Apps". */
   app: boolean;
+  windows: boolean;
 }
 
-/** A heading that splits the name-sorted list into apps and background processes. */
+/** A heading that splits the name-sorted list by process category. */
 export interface SectionRow {
   key: string;
   kind: "section";
+  section: ProcessSection;
   label: string;
   /** Entries under the heading: apps and groups, not their expanded members. */
   count: number;
@@ -109,6 +112,7 @@ function procRow(p: ProcessRow, depth: number, label: string, detail: string | n
     suspended: p.suspended,
     efficiency: p.efficiency ? 1 : 0,
     app: p.appWindow,
+    windows: p.windowsProcess,
   };
 }
 
@@ -217,31 +221,13 @@ export function buildRows(procs: readonly ProcessRow[], opts: BuildOptions): Tab
   return opts.sort.key === "name" && opts.mode !== "tree" ? sections(rows) : rows;
 }
 
-/** Splits rows into apps and background processes; a row's expanded members follow it. */
+/** Expanded members stay beside their group's heading and do not inflate its count. */
 function sections(rows: DisplayRow[]): TableRow[] {
-  const apps: DisplayRow[] = [];
-  const background: DisplayRow[] = [];
-  let into = background;
-  let appCount = 0;
-  for (const row of rows) {
-    if (row.depth === 0) {
-      into = row.app ? apps : background;
-      if (row.app) appCount++;
-    }
-    into.push(row);
-  }
   const out: TableRow[] = [];
-  if (apps.length) {
+  for (const { section, count, rows: members } of processSections(rows)) {
     out.push(
-      { key: "s:apps", kind: "section", label: t("processes.section.apps"), count: appCount },
-      ...apps,
-    );
-  }
-  if (background.length) {
-    const count = rows.filter((r) => r.depth === 0).length - appCount;
-    out.push(
-      { key: "s:background", kind: "section", label: t("processes.section.background"), count },
-      ...background,
+      { key: `s:${section}`, kind: "section", section, label: t(`processes.section.${section}`), count },
+      ...members,
     );
   }
   return out;
@@ -364,6 +350,7 @@ function buildApps(
       suspended: members.every((p) => p.suspended),
       efficiency: members.filter((p) => p.efficiency).length,
       app: members.some((p) => p.appWindow),
+      windows: members.every((p) => p.windowsProcess),
     };
     let busiest = 0;
     for (const p of members) {

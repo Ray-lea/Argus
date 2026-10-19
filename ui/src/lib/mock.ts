@@ -141,6 +141,7 @@ function add(
     suspended: false,
     efficiency: false,
     appWindow: false,
+    windowsProcess: o.pid === 4 || o.ppid === 4 || (o.dir?.startsWith("C:\\Windows") ?? false),
     load: o.load ?? 0,
     baseMem: (o.mem ?? 8) * MB,
     ioLevel: o.io ?? 0,

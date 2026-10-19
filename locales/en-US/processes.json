@@ -51,7 +51,8 @@
   "netRates": "Send {sent}, receive {received}",
   "section": {
     "apps": "Apps",
-    "background": "Background processes"
+    "background": "Background processes",
+    "windows": "Windows processes"
   },
   "servicesSummary": "{names} and others ({count} services)",
   "pidExited": "PID {pid} has already exited.",

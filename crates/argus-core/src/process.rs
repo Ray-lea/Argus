@@ -78,6 +78,18 @@ pub struct ProcessRow {
     pub efficiency: bool,
     /// Owns a taskbar window, which puts it under "Apps" (see `app_windows`).
     pub app_window: bool,
+    /// Windows component identity for display grouping, not an action safety check.
+    pub windows_process: bool,
+}
+
+fn kernel_process(pid: u32, parent: u32, name: &str, has_path: bool) -> bool {
+    pid == 4
+        || (!has_path
+            && parent == 4
+            && matches!(
+                name,
+                "Registry" | "MemCompression" | "Memory Compression" | "Secure System"
+            ))
 }
 
 struct Tracked {
@@ -288,6 +300,8 @@ impl ProcessTracker {
                 suspended,
                 efficiency: entry.handle.as_ref().is_some_and(|h| efficiency_mode(h.0)),
                 app_window: false,
+                windows_process: meta.is_some_and(|m| m.windows_component)
+                    || kernel_process(pid, entry.parent, &entry.name, entry.path.is_some()),
             });
         }
         // A retained handle keeps the old instance queryable after exit and PID
@@ -476,6 +490,15 @@ pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn only_kernel_owned_imageless_instances_use_the_special_system_category() {
+        assert!(kernel_process(4, 0, "System", false));
+        assert!(kernel_process(120, 4, "Registry", false));
+        assert!(kernel_process(124, 4, "MemCompression", false));
+        assert!(!kernel_process(120, 4, "Registry", true));
+        assert!(!kernel_process(120, 8, "Registry", false));
+        assert!(!kernel_process(120, 4, "service.exe", false));
+    }
     use std::os::windows::process::CommandExt;
 
     #[test]

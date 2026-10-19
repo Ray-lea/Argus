@@ -42,7 +42,8 @@
   "netRates": "发送 {sent}，接收 {received}",
   "section": {
     "apps": "应用",
-    "background": "后台进程"
+    "background": "后台进程",
+    "windows": "Windows 进程"
   },
   "servicesSummary": "{names} 等 {count} 个服务",
   "pidExited": "PID {pid} 已经退出。",
