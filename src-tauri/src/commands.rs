@@ -63,6 +63,8 @@ pub struct AppInfo {
     version: &'static str,
     elevated: bool,
     accent: Option<AccentColors>,
+    /// Whether the native window supplies a Mica backdrop.
+    mica: bool,
     /// Relaunched by the installer of an update.
     updated: bool,
     /// Started by the task manager replacement: the system may be struggling,
@@ -78,6 +80,7 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         elevated: state.elevated,
         accent: theme::accent_colors(),
+        mica: shell::supports_mica(),
         updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
         task_manager: state.task_manager_start,
         locale: argus_core::i18n::locale(),

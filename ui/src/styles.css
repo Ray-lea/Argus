@@ -18,6 +18,7 @@
   --accent: #0067c0;
   --on-accent: #ffffff;
   --ink: #1b1c22;
+  --window-bg: #f3f3f3;
   --ink-2: #5b5f6d;
   --ink-3: #8e92a0;
   --layer: rgb(255 255 255 / 0.5);
@@ -65,6 +66,7 @@
     --accent: #4cc2ff;
     --on-accent: #00213b;
     --ink: #f1f2f6;
+    --window-bg: #202020;
     --ink-2: #a9adbb;
     --ink-3: #6f7384;
     --layer: rgb(255 255 255 / 0.035);
@@ -121,8 +123,12 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Inside Tauri the window itself paints Mica. */
+/* Windows 10 has no Mica: keep an opaque, theme-aware window surface. */
 html.tauri body {
+  background: var(--window-bg);
+}
+
+html.mica body {
   background: transparent;
 }
 

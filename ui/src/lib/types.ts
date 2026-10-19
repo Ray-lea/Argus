@@ -568,6 +568,8 @@ export interface AppInfo {
   version: string;
   elevated: boolean;
   accent: AccentColors | null;
+  /** Whether the native window supplies a Mica backdrop. */
+  mica: boolean;
   /** Relaunched by the installer of an update. */
   updated: boolean;
   /** Started by the task manager replacement: the system may be struggling. */

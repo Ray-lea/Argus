@@ -149,6 +149,22 @@ pub fn toggle_main<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// Mica starts with Windows 11; extending the frame on Windows 10 exposes
+/// the desktop through the WebView instead of providing a window backdrop.
+pub fn supports_mica() -> bool {
+    use windows::Win32::Foundation::NTSTATUS;
+    use windows::Win32::System::SystemInformation::OSVERSIONINFOW;
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn RtlGetVersion(info: *mut OSVERSIONINFOW) -> NTSTATUS;
+    }
+    let mut info = OSVERSIONINFOW {
+        dwOSVersionInfoSize: size_of::<OSVERSIONINFOW>() as u32,
+        ..Default::default()
+    };
+    unsafe { RtlGetVersion(&mut info).is_ok() && info.dwBuildNumber >= 22000 }
+}
+
 /// Lets the Mica backdrop show through the whole client area.
 ///
 /// Tauri's `transparent: true` would do this with the legacy blur-behind API,
@@ -166,6 +182,9 @@ pub fn toggle_main<R: Runtime>(app: &AppHandle<R>) {
 pub fn extend_backdrop<R: Runtime>(w: &WebviewWindow<R>) {
     use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
     use windows::Win32::UI::Controls::MARGINS;
+    if !supports_mica() {
+        return;
+    }
     if let Ok(hwnd) = w.hwnd() {
         let margins = MARGINS {
             cxLeftWidth: i32::MAX,
@@ -205,6 +224,9 @@ const SEAM_SETTLE_MS: u32 = 300;
 /// only in the corner anti-aliasing, by a few levels on a few pixels, but costs
 /// it a little more per frame, so the region is not kept on.
 pub fn guard_resize_seam<R: Runtime>(w: &WebviewWindow<R>) {
+    if !supports_mica() {
+        return;
+    }
     let Ok(hwnd) = w.hwnd() else { return };
     let hwnd = hwnd.0 as isize;
     let _ = w.with_webview(move |wv| unsafe {

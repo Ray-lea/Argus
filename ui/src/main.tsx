@@ -34,6 +34,7 @@ window.addEventListener("unhandledrejection", (e) => {
 
 // Know the language before the first render, so no text shows in the wrong one.
 const info = await api.appInfo().catch(() => null);
+document.documentElement.classList.toggle("mica", inTauri && info?.mica === true);
 setLocale(info?.locale ?? localeFor(navigator.language));
 setAppInfo(info);
 

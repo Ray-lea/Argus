@@ -606,6 +606,7 @@ export const appInfo = async (): Promise<AppInfo> => ({
   version: VERSION,
   elevated: false,
   accent: null,
+  mica: false,
   // ?updated plays the first start after an update.
   updated: query.has("updated"),
   // ?taskmgr plays a start by the task manager replacement.
