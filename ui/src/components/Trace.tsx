@@ -26,7 +26,7 @@ import {
 import { chartLag, chartSpan } from "../lib/chart-history";
 import { t } from "../lib/i18n";
 import { balancedFrameMs, type ChartMode, chartMode } from "../lib/motion";
-import { intervalMs, paused, sampleSeq, sampleTimes } from "../lib/store";
+import { intervalMs, paused, pausedSince, sampleSeq, sampleTimes } from "../lib/store";
 
 export interface Series {
   data: () => readonly number[];
@@ -60,9 +60,6 @@ const TEXT_EVERY = 100;
  * with one, the newest visible stretch visibly re-bent on every sample.
  */
 const lag = () => chartLag(intervalMs());
-
-/** The mode in effect right now: paused charts hold still with the newest sample at the edge. */
-const activeMode = (): ChartMode => (paused() ? "off" : chartMode());
 
 // ---- Shared timer (pixel mode, and the readouts on its charts) ---------------------
 
@@ -107,7 +104,8 @@ function requestWake() {
 
 createRoot(() => {
   createEffect(() => {
-    activeMode();
+    chartMode();
+    paused();
     requestWake();
   });
 });
@@ -315,6 +313,8 @@ export function Chart(props: ChartProps) {
   let speed = 0;
   let mode: ChartMode = "off";
   let glide: Animation | null = null;
+  /** The displayed frame, not the newest sample hidden beyond the right edge. */
+  let frozen: { edge: number; at: number; shift: number } | null = null;
   /** Balanced mode: the shared grid the glide steps on (see move). */
   let grid = { start: 0, step: 0, steps: 0 };
   let hoverX: number | null = null;
@@ -362,6 +362,7 @@ export function Chart(props: ChartProps) {
 
   /** Leftward shift of the track at `now` as the compositor draws it, device pixels. */
   const shift = (now: number) => {
+    if (frozen) return frozen.shift;
     if (anchor === null) return 0;
     if (mode === "pixel") return shown;
     if (mode === "fluid") return Math.min(margin, Math.max(0, now - zeroAt) * speed);
@@ -380,20 +381,20 @@ export function Chart(props: ChartProps) {
     const nextSpeed = w / span;
     const times = sampleTimes();
     const newest = times[times.length - 1];
-    const nextMode = activeMode();
+    const nextMode = chartMode();
 
     // Where the right edge is now, moved back so that the canvas origin falls on
     // a whole device pixel of the time axis. Every redraw then rasterizes each
     // point and dash at the same sub-pixel phase; otherwise antialiased edges
     // (short dashes most visibly) change width once per sample. The motion
     // starts slightly ahead to make up the difference.
-    const exact = nextMode === "off" ? (newest ?? now) : now - lag();
+    const exact = frozen?.edge ?? (nextMode === "off" ? (newest ?? now) : now - lag());
     mode = nextMode;
     speed = nextSpeed;
     left = Math.floor((exact - span) * speed) / speed;
     anchor = left + span;
     zeroAt = now - (exact - anchor);
-    const width = w + (mode === "off" ? 0 : Math.ceil((lag() + interval) * speed));
+    const width = w + (mode === "off" ? (frozen ? 1 : 0) : Math.ceil((lag() + interval) * speed));
     if (canvas.width !== width || canvas.height !== h) {
       canvas.width = width;
       canvas.height = h;
@@ -493,6 +494,11 @@ export function Chart(props: ChartProps) {
     shown = 0;
     grid = { start: 0, step: 0, steps: 0 };
     track.style.transform = "translateX(0)";
+    if (frozen && anchor !== null) {
+      frozen.shift = (frozen.edge - anchor) * speed;
+      track.style.transform = `translateX(${-frozen.shift / dpr}px)`;
+      return;
+    }
     if (mode !== "fluid" && mode !== "balanced") return;
     // At any instant the shift must equal (now - zeroAt) * speed: exactly the
     // time axis, so the next drawing lines up with this one.
@@ -524,7 +530,7 @@ export function Chart(props: ChartProps) {
 
   /** Pixel mode: shifts the track to where the right edge is at `now`, in whole device pixels. */
   const place = (now: number) => {
-    if (mode !== "pixel" || anchor === null) return;
+    if (frozen || mode !== "pixel" || anchor === null) return;
     const px = Math.min(margin, Math.floor(Math.max(0, now - lag() - anchor) * speed));
     if (px !== shown) {
       shown = px;
@@ -561,11 +567,11 @@ export function Chart(props: ChartProps) {
       return;
     }
     // Age of the time under the cursor. A moving trace keeps a fixed age at a
-    // fixed point, counted from now; a still one (off, paused) moves a sample
-    // at a time, so count from the newest sample. Counting a moving trace from
-    // the newest sample would climb back a second at every sample.
+    // fixed point, counted from now. Pausing holds that reference too; off
+    // mode counts from the newest sample. Counting a moving trace from the
+    // newest sample would climb back a second at every sample.
     const times = sampleTimes();
-    const reference = mode === "off" ? times[times.length - 1] : now;
+    const reference = frozen?.at ?? (mode === "off" ? times[times.length - 1] : now);
     const ago = fmtAgo(Math.max(0, (reference - at) / 1000));
     const flip = hoverX > b.w / 2;
     const text = [hoverX, flip, b.w, ago, ...points.map((p) => format(p.v))].join("|");
@@ -602,7 +608,7 @@ export function Chart(props: ChartProps) {
    */
   const glideDots = (now: number) => {
     stopDots();
-    if (hoverX === null || !readout() || anchor === null || speed === 0) return;
+    if (frozen || hoverX === null || !readout() || anchor === null || speed === 0) return;
     const times: number[] = [];
     const shifts: number[] = [];
     if (mode === "fluid") {
@@ -671,6 +677,31 @@ export function Chart(props: ChartProps) {
 
   const redraw = () => {
     const now = performance.now();
+    if (paused() && !frozen) {
+      const times = sampleTimes();
+      const newest = times[times.length - 1] ?? now;
+      if (anchor !== null && speed > 0) {
+        // Read the compositor's displayed frame once. Repainting in off mode
+        // instead would advance to the newest sample and visibly jump.
+        const px = -new DOMMatrixReadOnly(getComputedStyle(track).transform).m41 * dpr;
+        frozen = {
+          edge: anchor + px / speed,
+          at: mode === "off" ? newest : Number(document.timeline.currentTime ?? now),
+          shift: px,
+        };
+        glide?.cancel();
+        glide = null;
+        track.style.transform = `translateX(${-px / dpr}px)`;
+        stopDots();
+        updateReadout(now);
+        requestWake();
+        return;
+      }
+      const at = pausedSince() ?? now;
+      frozen = { edge: chartMode() === "off" ? newest : at - lag(), at, shift: 0 };
+    } else if (!paused()) {
+      frozen = null;
+    }
     paint(now);
     move();
     place(now);
@@ -681,6 +712,7 @@ export function Chart(props: ChartProps) {
 
   const ticks: Ticked = {
     next(now) {
+      if (frozen) return Number.POSITIVE_INFINITY;
       // Fluid and balanced readouts: the text keeps up with the trace (the dots glide).
       const text =
         hoverX !== null && (mode === "fluid" || mode === "balanced") ? TEXT_EVERY : Number.POSITIVE_INFINITY;
@@ -689,7 +721,7 @@ export function Chart(props: ChartProps) {
       if (px >= margin) return Number.POSITIVE_INFINITY;
       return (Math.floor(px) + 1 - px) / speed + 0.5;
     },
-    pixelSpeed: () => (mode === "pixel" ? speed : 0),
+    pixelSpeed: () => (!frozen && mode === "pixel" ? speed : 0),
     tick(now) {
       place(now);
       if (hoverX !== null) updateReadout(now);
@@ -728,7 +760,8 @@ export function Chart(props: ChartProps) {
       sampleSeq();
       for (const s of props.series) s.data();
       props.max();
-      activeMode();
+      chartMode();
+      paused();
       intervalMs();
       untrack(redraw);
     });

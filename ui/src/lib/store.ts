@@ -237,8 +237,12 @@ const [effectivePaused, setEffectivePaused] = createSignal(false);
 export const paused = effectivePaused;
 export const manualPaused = () => pauseState().manual;
 export const controlPaused = () => pauseState().control;
+let pauseStarted = 0;
+/** Also anchors charts mounted after pausing, such as when switching devices. */
+export const pausedSince = () => (paused() ? pauseStarted : null);
 const pause = refreshPause(
   (state) => {
+    if (state.paused && !paused()) pauseStarted = performance.now();
     batch(() => {
       setPauseState(state);
       setEffectivePaused(state.paused);
