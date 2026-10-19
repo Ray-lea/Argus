@@ -8,7 +8,7 @@
 
 ## 环境要求
 
-- Windows 11 x64
+- Windows 11 x64 开发环境；程序运行兼容范围见 [README](../../README.md#-系统要求)
 - Rust（stable，`x86_64-pc-windows-msvc` 工具链）
 - Node.js 22.18 及以上（23.x 需 23.6 及以上；需要默认开启的 TypeScript 类型剥离：`pnpm test:ui`、`pnpm commitlint` 与发布脚本直接运行 `.ts` 文件）与 pnpm
 - Visual Studio Build Tools（“使用 C++ 的桌面开发”，含 Windows SDK）

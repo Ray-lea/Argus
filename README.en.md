@@ -10,7 +10,7 @@
 
 [![Latest release](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases&sort=semver&label=release&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Downloads](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=downloads&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4)](#-system-requirements)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20x64-0078D4)](#-system-requirements)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
 [![Rust](https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org/)
@@ -57,10 +57,10 @@ If Argus is useful to you, please consider giving it a star on GitHub. It is the
 | 🕘 | **History** | Resource charts for the last 7 days; click any moment to see the busiest processes at that time. |
 | 📌 | **System tray** | Show or hide the window with the global shortcut Ctrl+Alt+Esc (which can be changed or turned off); it uses very little while hidden, and the refresh rates while minimized and in the tray can be set separately. |
 | 🔄 | **In-app updates** | New versions download in the background and are announced in the title bar, with everything that changed since your version shown before installing; after updating, Argus shows what the new version changed the first time its window opens. Stable and beta channels, with optional GitHub proxies; only updates that pass signature verification are installed. |
-| 🎨 | **Native look** | Mica background and the system accent color; dark and light themes follow Windows by default or can be chosen in Settings. |
+| 🎨 | **Native look** | Mica on Windows 11 and a solid background on Windows 10; the system accent color and light or dark theme follow Windows by default, with a theme override in Settings. |
 | 🌍 | **Languages** | English and Simplified Chinese, following the Windows display language by default; a welcome guide sets up the essentials on first start. |
 | 👤 | **No administrator rights needed** | See the path and resource usage of every process as a standard user. |
-| 🛡️ | **Optional privileged service** | After a single administrator approval, Argus running as a standard user can also manage system processes, apply rules automatically, measure per-process network traffic (and disk reads and writes on Windows 11 versions before 24H2), control services and close connections; it can be uninstalled in Settings. |
+| 🛡️ | **Optional privileged service** | After a single administrator approval, Argus running as a standard user can also manage system processes, apply rules automatically, measure per-process network traffic (and disk reads and writes on Windows 10 and Windows 11 versions before 24H2), control services and close connections; it can be uninstalled in Settings. |
 
 ## 📦 Download
 
@@ -77,8 +77,10 @@ Get the latest version from [GitHub Releases](https://github.com/Ray-lea/Argus/r
 
 ## 💻 System requirements
 
-- Windows 11 x64
+- Windows 10 22H2 (build 19045) or Windows 11, both x64
 - WebView2 Runtime (included in Windows 11)
+
+See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (Chinese) for data permissions and kernel sensor requirements on each system.
 
 ## 🔧 Build from source
 

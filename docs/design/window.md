@@ -6,6 +6,8 @@
 
 现在由 `windowEffects` 提供 Mica，再用 `DwmExtendFrameIntoClientArea` 把它延伸到客户区，只让 WebView 背景透明（`backgroundColor: #00000000`）。边框只从左边缘向内延伸，宽度超过任何窗口，覆盖整个客户区；不用四周 `-1` 的写法，原因见下文的[最大化](#最大化)。窗口本身保持不透明，拖动开销与普通窗口持平，外观不变。实现在 `src-tauri/src/shell.rs` 的 `extend_backdrop`。
 
+Windows 10 不提供 Mica。宿主通过 `RtlGetVersion` 判断系统是否达到 Windows 11 的内部版本 22000；Windows 10 不延伸客户区，也不安装仅用于 Windows 11 圆角的缩放防护。页面在首次渲染前读取宿主的 `mica` 标记：支持时使用透明背景，否则使用随主题切换的实色背景。仅以“运行在 Tauri 内”判断透明会使 Windows 10 的桌面壁纸透入窗口；浅色背景为 `#f3f3f3`，深色为 `#202020`。
+
 ## 调整大小时的斜线
 
 **现象**：调整窗口大小（尤其是慢慢放大）时，客户区对角线上偶尔闪过一条亮线。

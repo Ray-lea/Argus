@@ -10,7 +10,7 @@
 
 [![最新版本](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases&sort=semver&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![下载量](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
-[![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%2011%20x64-0078D4)](#-系统要求)
+[![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%2010%20%2F%2011%20x64-0078D4)](#-系统要求)
 [![许可证](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
 [![Rust](https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org/)
@@ -57,10 +57,10 @@ Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS �
 | 🕘 | **历史回溯** | 最近 7 天的资源曲线，单击任意时刻即可查看当时占用最高的进程。 |
 | 📌 | **常驻托盘** | 通过全局快捷键 Ctrl+Alt+Esc（可更改或停用）显示或隐藏窗口；隐藏时资源占用极低，最小化与后台常驻时的刷新间隔可分别设置。 |
 | 🔄 | **应用内更新** | 新版本在后台下载，就绪后在标题栏提示，安装前可查看当前版本之后的全部更新内容，更新后首次打开窗口时显示新版本的变化；提供稳定版与测试版两个通道，可选 GitHub 加速代理；仅安装通过签名校验的版本。 |
-| 🎨 | **原生外观** | Mica 背景与系统强调色，深色、浅色主题默认跟随系统，也可在设置中指定。 |
+| 🎨 | **原生外观** | Windows 11 使用 Mica 背景，Windows 10 使用实色背景；系统强调色与深色、浅色主题默认跟随系统，也可在设置中指定主题。 |
 | 🌍 | **多语言** | 简体中文与英文界面，默认跟随 Windows 显示语言；首次启动时引导完成常用设置。 |
 | 👤 | **无需管理员权限** | 以标准用户身份即可查看全部进程的路径与资源占用。 |
-| 🛡️ | **可选特权服务** | 经一次管理员授权后，以标准权限运行的界面同样可以管理系统进程、自动应用规则、统计每进程网络流量（Windows 11 24H2 之前的系统上还包括磁盘读写）、控制服务及断开连接；可在设置中卸载。 |
+| 🛡️ | **可选特权服务** | 经一次管理员授权后，以标准权限运行的界面同样可以管理系统进程、自动应用规则、统计每进程网络流量（Windows 10 和 Windows 11 24H2 之前的版本上还包括磁盘读写）、控制服务及断开连接；可在设置中卸载。 |
 
 ## 📦 下载
 
@@ -77,8 +77,10 @@ Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS �
 
 ## 💻 系统要求
 
-- Windows 11 x64
+- Windows 10 22H2（内部版本 19045）或 Windows 11，均为 x64
 - WebView2 运行时（Windows 11 已内置）
+
+不同系统的数据权限与内核传感器要求见[兼容范围](docs/guide/hardware-data.md#系统兼容范围)。
 
 ## 🔧 从源码构建
 
