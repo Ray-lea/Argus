@@ -4,7 +4,7 @@ import { batch, createMemo, createRoot, createSignal } from "solid-js";
 import { appendHistory, appendSampleTime } from "./chart-history";
 import { t } from "./i18n";
 import { api } from "./ipc";
-import { holdsOrder, type OrderHolds, pointerAloneHoldsOrder } from "./order-hold";
+import { holdsOrder, keepOrder, type OrderHolds, pointerAloneHoldsOrder } from "./order-hold";
 import { persisted } from "./prefs";
 import { applicationKey, applicationMembers, canGroup } from "./process-identity";
 import { type PauseState, refreshPause } from "./refresh-pause";
@@ -345,22 +345,6 @@ const sameView = (a: BuildOptions, b: BuildOptions) =>
   a.query === b.query &&
   a.expanded === b.expanded &&
   a.collapsed === b.collapsed;
-
-/**
- * Reorders fresh rows to follow the previous order. Rows that are new keep
- * their place right after the row that precedes them in the fresh list, which
- * keeps children inside their expanded parent.
- */
-function keepOrder(fresh: TableRow[], previous: TableRow[]): TableRow[] {
-  const rank = new Map(previous.map((r, i) => [r.key, i]));
-  let last = -1;
-  const ranked = fresh.map((row) => {
-    last = rank.get(row.key) ?? last + 1e-3;
-    return { row, rank: last };
-  });
-  ranked.sort((a, b) => a.rank - b.rank);
-  return ranked.map((r) => r.row);
-}
 
 const derived = createRoot(() => {
   // While the user is aiming at a row (pointer over the list, menu or dialog

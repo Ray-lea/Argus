@@ -2,12 +2,36 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { holdsOrder, type OrderHolds, pointerAloneHoldsOrder } from "../src/lib/order-hold.ts";
+import { holdsOrder, keepOrder, type OrderHolds, pointerAloneHoldsOrder } from "../src/lib/order-hold.ts";
 
 /** Every combination of the three holds. */
 const all: OrderHolds[] = [false, true].flatMap((pointer) =>
   [false, true].flatMap((menu) => [false, true].map((dialog) => ({ pointer, menu, dialog }))),
 );
+
+test("a late category change cannot leave a Windows process below the background heading", () => {
+  const row = (key: string) => ({ key, kind: key.startsWith("s:") ? "section" : "process" });
+  const before = ["s:apps", "app", "s:background", "moving", "bg", "s:windows", "os"].map(row);
+  const after = ["s:apps", "app", "s:background", "bg", "s:windows", "moving", "os"].map(row);
+  assert.deepEqual(keepOrder(after, before), after);
+  assert.deepEqual(
+    keepOrder(
+      after.filter((r) => !["bg", "s:background"].includes(r.key)),
+      before,
+    ),
+    after.filter((r) => !["bg", "s:background"].includes(r.key)),
+  );
+});
+
+test("held numeric order and newly expanded members still follow their previous anchors", () => {
+  const row = (key: string) => ({ key, kind: "process" });
+  const before = ["a", "b", "c"].map(row);
+  const fresh = ["c", "b", "a", "child"].map(row);
+  assert.deepEqual(
+    keepOrder(fresh, before).map((r) => r.key),
+    ["a", "child", "b", "c"],
+  );
+});
 
 test("the pointer, a menu or a dialog each hold the order; nothing lets rows re-sort", () => {
   assert.equal(holdsOrder({ pointer: false, menu: false, dialog: false }), false);
