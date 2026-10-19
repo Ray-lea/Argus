@@ -46,7 +46,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 - 提交信息用 Conventional Commits：`<type>(<scope>)!: <中文描述>`。type 只用 feat、fix、perf、refactor、docs、style、test、build、ci、chore、revert；scope 按模块用 core、service、host、ui，跨模块时省略。提交前用 `pnpm commitlint --message "<首行>"` 自查。
 - 按改动的实际性质选 type，不要一律写 feat 或 chore：type 决定下一个版本号和发布说明。修复卡顿或视觉瑕疵是 fix，纯性能改进是 perf，只改文档是 docs。一次改动跨几类时按类拆成几个提交。
-- 首行写用户能看懂的变化，它会原样进入 `CHANGELOG.md` 和 GitHub Release；实现细节和测量数据写在正文。
+- 首行写用户能看懂的变化，它会原样进入 `CHANGELOG.md` 和 GitHub Release；正文补充原因、影响与必要的实现细节。常规检查、测试或构建通过等结果不写入提交信息；性能验证只保留简短结论或关键对照数据，不罗列测试过程、原始资料存放位置或代理工作说明。
 - 不兼容的改动（设置或历史数据格式、特权服务 IPC 协议、删除功能或快捷键、命令行参数）在冒号前加 `!`，并写 `BREAKING CHANGE:` 页脚。
 - 版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`src-tauri/tauri.conf.json` 里的版本，也不要手写 `CHANGELOG.md` 的版本条目。只在用户要求发布时运行它；推送 `v*` 标签就是正式发布，同样要等用户明确要求。
 - CI 只由拉取请求、手动运行和 `v*` 标签触发：不要加 push 触发的检查、nightly 或定时构建；Rust 用 stable，不用 nightly 工具链。`.github/workflows/check.yml` 把 `pnpm check` 拆成了单独的步骤，改一边要同步另一边。
@@ -63,7 +63,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 方法见 `docs/development/performance.md`，要点：
 
 - 改动可能影响渲染开销时（动画、曲线、持续更新的元素、模糊或阴影等效果、合成层）量 WebView 的开销；静态的布局和文案不必每次做完整的 A/B，验证与改动的范围相称即可。开发机上常有其他负载，CPU 占用的 A/B 对比不可信；用 CDP 跟踪统计帧数、重绘次数，并累加 GPU 进程与渲染进程合成线程的耗时。
-- 测量结果写在提交正文和给用户的回复里，不追加到 `docs/`：文档只保留基线、方法和有依据的设计结论。
+- 性能验证在提交正文中只保留简短结论或关键对照数据，详细结果按需在回复中说明，不追加到 `docs/`：文档只保留基线、方法和有依据的设计结论。
 - WebView2 在窗口被完全挡住时停止渲染。后台测量时用 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=<端口> --disable-features=CalculateNativeWinOcclusion"` 启动发布构建，按上一节放到最底层；先确认 `requestAnimationFrame` 在跑，启动后等约 25 秒再测，配置之间交替测量（单次相差约 2%）。
 - 连着 CDP 时页面的 `visibilityState` 照常跟随窗口（隐藏、最小化时为 `hidden`，不渲染帧），可以用 CDP 判断隐藏状态下的行为。隐藏的内嵌浏览器预览不渲染帧，不要在那里判断动画。
 
