@@ -44,7 +44,7 @@ impl Collector {
     pub fn new(meta: Arc<MetaStore>) -> Self {
         let system = SystemTracker::new();
         let mut processes = ProcessTracker::new(meta);
-        processes.sample(system.logical_cpus());
+        processes.sample(system.logical_cpus(), system.precise_idle_fraction());
         Self {
             system,
             processes,
@@ -67,7 +67,10 @@ impl Collector {
 
     pub fn sample(&mut self) -> Snapshot {
         let mut system = self.system.sample();
-        let mut processes = self.processes.sample(self.system.logical_cpus());
+        let mut processes = self.processes.sample(
+            self.system.logical_cpus(),
+            self.system.precise_idle_fraction(),
+        );
         let hardware = self.hardware.sample();
         self.attach_gpu_usage(&mut processes, &hardware);
         if self

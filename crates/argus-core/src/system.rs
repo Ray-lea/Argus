@@ -12,7 +12,8 @@ use windows::Win32::System::Threading::{
     ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, GetActiveProcessorGroupCount,
 };
 
-use crate::nt::{NtQuerySystemInformationEx, SystemProcessorPerformanceInformation as Times};
+use crate::cpu::{IdleTimes, PROCESSOR_IDLE};
+use crate::nt::SystemProcessorPerformanceInformation as Times;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -20,7 +21,7 @@ use std::collections::BTreeMap;
 pub struct SystemStats {
     /// Total CPU usage, 0–100.
     pub cpu: f32,
-    /// Portion of `cpu` spent in kernel mode, 0–100.
+    /// Kernel portion reported by the Windows time counters, bounded by `cpu`.
     pub cpu_kernel: f32,
     /// Dense (group, processor) order; None until a valid interval is available.
     pub cores: Vec<Option<f32>>,
@@ -44,11 +45,18 @@ pub struct SystemStats {
 }
 
 type Address = (u16, u8);
-type Readings = Vec<(Address, Option<Times>)>;
+type Readings = Vec<(Address, Option<CpuReading>)>;
+
+#[derive(Clone, Copy)]
+struct CpuReading {
+    times: Times,
+    idle: Option<i64>,
+}
 
 pub(crate) struct SystemTracker {
     logical_cpus: u32,
-    previous: BTreeMap<Address, Times>,
+    previous: BTreeMap<Address, CpuReading>,
+    precise_idle_fraction: Option<f64>,
 }
 
 impl SystemTracker {
@@ -56,6 +64,7 @@ impl SystemTracker {
         let mut tracker = Self {
             logical_cpus: unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) }.max(1),
             previous: BTreeMap::new(),
+            precise_idle_fraction: None,
         };
         tracker.update_cpu(read_cores());
         tracker
@@ -65,22 +74,31 @@ impl SystemTracker {
         self.logical_cpus
     }
 
+    pub fn precise_idle_fraction(&self) -> Option<f64> {
+        self.precise_idle_fraction
+    }
+
     fn update_cpu(&mut self, readings: Readings) -> SystemStats {
         let mut stats = SystemStats::default();
         let mut next = BTreeMap::new();
-        let (mut busy, mut kernel, mut total) = (0_i64, 0_i64, 0_i64);
+        let (mut idle, mut kernel, mut total) = (0_u128, 0_u128, 0_u128);
         let mut complete = !readings.is_empty();
+        let mut precise = complete;
+        self.precise_idle_fraction = None;
         for (address, now) in readings {
+            precise &= now
+                .zip(self.previous.get(&address))
+                .is_some_and(|(n, p)| n.idle.is_some() && p.idle.is_some());
             let delta = now
                 .zip(self.previous.get(&address))
                 .and_then(|(n, p)| interval(n, *p));
             stats
                 .cores
-                .push(delta.map(|(b, _, t)| b as f32 / t as f32 * 100.));
-            if let Some((b, k, t)) = delta {
-                busy += b;
-                kernel += k;
-                total += t;
+                .push(delta.map(|(i, _, t)| usage(i as u128, t as u128)));
+            if let Some((i, k, t)) = delta {
+                idle += i as u128;
+                kernel += k as u128;
+                total += t as u128;
             } else {
                 complete = false;
             }
@@ -89,9 +107,14 @@ impl SystemTracker {
             }
         }
         if complete && total > 0 {
+            self.precise_idle_fraction =
+                precise.then_some((idle as f64 / total as f64).clamp(0., 1.));
             // Weight groups by elapsed processor time, not by their CPU count or percentage.
-            stats.cpu = (busy as f64 / total as f64 * 100.) as f32;
-            stats.cpu_kernel = (kernel as f64 / total as f64 * 100.) as f32;
+            stats.cpu = usage(idle, total);
+            // The independent idle counter cannot recover the missing user/kernel
+            // split. Keep the observed kernel time; do not label missed user work
+            // as kernel work by subtracting the new idle value from KernelTime.
+            stats.cpu_kernel = ((kernel as f64 / total as f64 * 100.) as f32).min(stats.cpu);
         }
         self.previous = next;
         self.logical_cpus = stats.cores.len() as u32;
@@ -131,24 +154,26 @@ impl SystemTracker {
     }
 }
 
-fn read_group(group: u16, count: usize) -> Option<Vec<Times>> {
+fn read_group(group: u16, count: usize) -> Option<Vec<CpuReading>> {
     if !(1..=64).contains(&count) {
         return None;
     }
-    let mut values = vec![Times::default(); count];
-    let bytes = (size_of::<Times>() * count) as u32;
-    let mut returned = 0;
-    let status = unsafe {
-        NtQuerySystemInformationEx(
-            SPPI_CLASS,
-            (&group as *const u16).cast(),
-            2,
-            values.as_mut_ptr().cast(),
-            bytes,
-            &mut returned,
-        )
-    };
-    (status.0 >= 0 && returned == bytes).then_some(values)
+    let mut idle = [IdleTimes::default(); 64];
+    let mut times = [Times::default(); 64];
+    // Query back to back: both are cumulative 100 ns counters, but the legacy
+    // IdleTime can include short bursts of real work on supported Windows builds.
+    let has_idle = unsafe { crate::cpu::read_group(PROCESSOR_IDLE, group, &mut idle[..count]) };
+    if !unsafe { crate::cpu::read_group(SPPI_CLASS, group, &mut times[..count]) } {
+        return None;
+    }
+    Some(
+        (0..count)
+            .map(|i| CpuReading {
+                times: times[i],
+                idle: has_idle.then_some(idle[i].idle),
+            })
+            .collect(),
+    )
 }
 
 fn read_cores() -> Readings {
@@ -166,33 +191,119 @@ fn read_cores() -> Readings {
     readings
 }
 
-fn interval(now: Times, prev: Times) -> Option<(i64, i64, i64)> {
-    let idle = now.idle_time.checked_sub(prev.idle_time)?;
-    let kernel = now.kernel_time.checked_sub(prev.kernel_time)?;
-    let user = now.user_time.checked_sub(prev.user_time)?;
+fn interval(now: CpuReading, prev: CpuReading) -> Option<(i64, i64, i64)> {
+    let legacy_idle = now.times.idle_time.checked_sub(prev.times.idle_time)?;
+    let kernel = now.times.kernel_time.checked_sub(prev.times.kernel_time)?;
+    let user = now.times.user_time.checked_sub(prev.times.user_time)?;
     let total = kernel.checked_add(user)?;
-    if idle < 0 || kernel < idle || user < 0 || total <= 0 {
+    if legacy_idle < 0 || kernel < legacy_idle || user < 0 || total <= 0 {
         return None;
     }
-    Some((total - idle, kernel - idle, total))
+    let idle = match (now.idle, prev.idle) {
+        (Some(n), Some(p)) if n >= 0 && p >= 0 => n.checked_sub(p)?,
+        (Some(n), _) | (_, Some(n)) if n < 0 => return None,
+        // Use a pair from one source, including during recovery from a failed query.
+        _ => legacy_idle,
+    };
+    (idle >= 0).then_some((idle, kernel - legacy_idle, total))
+}
+
+fn usage(idle: u128, total: u128) -> f32 {
+    // The total time is tick-quantized, while the independent idle counter is
+    // precise. Small boundary skew can put idle just above total on an idle CPU.
+    (total.saturating_sub(idle) as f64 / total as f64 * 100.) as f32
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn times(idle: i64, kernel: i64, user: i64) -> Times {
-        Times {
-            idle_time: idle,
-            kernel_time: kernel,
-            user_time: user,
-            ..Default::default()
+    fn times(idle: i64, kernel: i64, user: i64) -> CpuReading {
+        CpuReading {
+            times: Times {
+                idle_time: idle,
+                kernel_time: kernel,
+                user_time: user,
+                ..Default::default()
+            },
+            idle: None,
         }
+    }
+    fn precise(legacy_idle: i64, kernel: i64, user: i64, idle: i64) -> CpuReading {
+        CpuReading {
+            idle: Some(idle),
+            ..times(legacy_idle, kernel, user)
+        }
+    }
+
+    #[test]
+    fn short_bursts_are_not_idle_and_are_not_invented_kernel_time() {
+        let mut tracker = SystemTracker {
+            logical_cpus: 4,
+            previous: BTreeMap::new(),
+            precise_idle_fraction: None,
+        };
+        tracker.update_cpu(
+            (0..4)
+                .map(|p| ((0, p), Some(precise(0, 0, 0, 0))))
+                .collect(),
+        );
+        // One-second native readings from the reproduction: the legacy source
+        // reports complete idleness on the two processors doing short bursts.
+        let idle = [10_000_000, 10_000_000, 6_669_211, 6_875_819];
+        let result = tracker.update_cpu(
+            idle.into_iter()
+                .enumerate()
+                .map(|(p, idle)| ((0, p as u8), Some(precise(10_000_000, 10_000_000, 0, idle))))
+                .collect(),
+        );
+        assert!((result.cpu - 16.137425).abs() < 0.00001);
+        assert!((result.cores[2].unwrap() - 33.30789).abs() < 0.00001);
+        assert!((result.cores[3].unwrap() - 31.24181).abs() < 0.00001);
+        assert_eq!(result.cpu_kernel, 0.);
+    }
+
+    #[test]
+    fn idle_query_recovery_does_not_mix_counter_origins_and_resets_reprime() {
+        let mut tracker = SystemTracker {
+            logical_cpus: 1,
+            previous: BTreeMap::new(),
+            precise_idle_fraction: None,
+        };
+        let sample = |tracker: &mut SystemTracker, r| tracker.update_cpu(vec![((0, 0), Some(r))]);
+        sample(&mut tracker, precise(100, 100, 0, 1000));
+        assert_eq!(sample(&mut tracker, times(150, 200, 0)).cpu, 50.);
+        assert_eq!(sample(&mut tracker, precise(200, 300, 0, 1200)).cpu, 50.);
+        assert_eq!(sample(&mut tracker, precise(250, 400, 0, 1225)).cpu, 75.);
+        assert_eq!(sample(&mut tracker, precise(300, 500, 0, 10)).cores, [None]);
+        assert_eq!(sample(&mut tracker, precise(350, 600, 0, 60)).cpu, 50.);
+    }
+
+    #[test]
+    fn quantized_total_is_clamped_per_core_but_summed_before_clamping() {
+        let mut tracker = SystemTracker {
+            logical_cpus: 2,
+            previous: BTreeMap::new(),
+            precise_idle_fraction: None,
+        };
+        tracker.update_cpu(vec![
+            ((0, 0), Some(precise(0, 0, 0, 0))),
+            ((1, 0), Some(precise(0, 0, 0, 0))),
+        ]);
+        let result = tracker.update_cpu(vec![
+            ((0, 0), Some(precise(100, 100, 0, 101))),
+            ((1, 0), Some(precise(100, 100, 0, 99))),
+        ]);
+        assert_eq!(result.cores, [Some(0.), Some(1.)]);
+        assert_eq!(result.cpu, 0.);
+        assert!(interval(precise(100, 100, 0, -1), precise(0, 0, 0, 0)).is_none());
+        assert!(interval(precise(0, i64::MAX, 1, 0), precise(0, 0, 0, 0)).is_none());
     }
     #[test]
     fn unequal_groups_are_dense_and_totals_are_time_weighted() {
         let mut tracker = SystemTracker {
             logical_cpus: 80,
             previous: BTreeMap::new(),
+            precise_idle_fraction: None,
         };
         let addresses: Vec<_> = (0..48)
             .map(|p| (0, p))
@@ -230,6 +341,7 @@ mod tests {
         let mut tracker = SystemTracker {
             logical_cpus: 2,
             previous: BTreeMap::new(),
+            precise_idle_fraction: None,
         };
         tracker.update_cpu(vec![
             ((0, 0), Some(times(0, 0, 0))),
@@ -251,7 +363,11 @@ mod tests {
             readings.len(),
             unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) } as usize
         );
-        assert!(readings.iter().all(|(_, value)| value.is_some()));
+        assert!(
+            readings
+                .iter()
+                .all(|(_, value)| value.is_some_and(|v| v.idle.is_some()))
+        );
         assert!(read_group(u16::MAX, 1).is_none());
     }
 }

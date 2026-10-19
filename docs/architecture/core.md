@@ -8,10 +8,11 @@
 |---|---|
 | `collector.rs` | 把系统与进程采样合成一份快照，并给每个进程附上 GPU 占用和是否拥有任务栏窗口 |
 | `app_windows.rs` | 用 `EnumWindows` 找出拥有任务栏窗口的进程（可见、无所有者、不是工具窗口，排除桌面与任务栏本身），界面据此分出“应用”与“后台进程”。打包应用的外框窗口归到其中核心窗口所属的进程；被 DWM 隐藏的窗口不算，但其他虚拟桌面上的窗口算。每次约 0.3–0.7 ms |
-| `process.rs` | 一次 `NtQuerySystemInformation(SystemProcessInformation)` 拿到全部进程与线程，按与上一次采样的差量计算 CPU 与 I/O 速率；每个进程实例打开一次查询句柄并缓存，用来读取效率模式（全部进程约 0.5 ms） |
+| `process.rs` | 一次 `NtQuerySystemInformation(SystemProcessInformation)` 拿到全部进程与线程，按周期计数差量计算 CPU、按字节差量计算 I/O 速率；复用进程表，每个实例缓存一个查询句柄，用于效率模式与退出后的最终周期读数，并校验创建时间防止 PID 复用 |
 | `paths.rs` | 用 `SystemProcessIdInformation` 取映像路径：不需要打开进程、没有访问检查，非管理员也能拿到受保护进程和其他用户进程的路径，再把 NT 路径映射回 DOS 路径 |
 | `meta.rs` | 在后台线程解析文件描述、公司名和图标（PNG），按路径缓存 |
 | `system.rs` | 总 CPU（含内核时间）、每个逻辑处理器的 CPU、内存、提交、缓存 |
+| `cpu.rs` | 按处理器组读取独立空闲计数与周期计数，校验处理器时钟与原生计数的单位、连续性和分母；异常时重新建立基线或回退时间计数 |
 | `details.rs` | 按需查询单个进程：命令行、用户、完整性级别、架构、优先级、版本 |
 | `services.rs` | 通过服务控制管理器（SCM）：一次 `EnumServicesStatusExW` 取得全部服务状态；启动类型、路径、描述每个服务要三次 RPC，所以缓存起来偶尔刷新；名称与描述按界面语言从 MUI 读取；启停服务、修改启动类型 |
 | `startup.rs` | 注册表 Run 键与启动文件夹（解析 .lnk）；启用 / 禁用写 `StartupApproved`，与系统任务管理器用同一个开关，可以还原 |
@@ -29,6 +30,12 @@
 | `theme.rs` | 系统个性化颜色（强调色） |
 | `i18n.rs` | 原生层的文案：编译时嵌入 `locales/*/native.json`，`tr!` 按当前语言查找；进程级语言默认取父进程通过 `ARGUS_LOCALE` 传入的值，否则为 Windows 显示语言，宿主再按设置覆盖 |
 | `nt.rs` | `windows` crate 没有（完整）提供的原生结构，布局按 phnt 头文件的 x64 版本 |
+
+## CPU 占用
+
+整体与各逻辑处理器的占用使用 `SystemProcessorIdleInformation` 的独立空闲时间，以及 `SystemProcessorPerformanceInformation` 的总时间差量。部分系统的旧 `IdleTime` 会把短时运行也计入空闲，不能单独依赖该值。处理器按 `(group, processor)` 配对；整体占用先合计原始时间再换算，避免将各核量化误差截断后累加。来源缺失时只使用同一来源的成对读数，计数重置或分组变化时重新建立基线。内核占用保留 Windows 时间计数器实际报告的内核运行量，不把新旧空闲时间的差额归为内核工作。
+
+进程占用使用 `SystemProcessInformation.CycleTime` 差量，分母为经过校验的处理器时钟增量乘以全机逻辑处理器数。仅在 Windows 选择无内核切换的 QPC 时基、周期单位与独立空闲计数或完整原生周期总量相符时使用；同时检查时钟速率、计数单调性、采样间隔和处理器数量。该分母覆盖采样间隔内创建并退出的进程，不能用本轮可见进程的周期之和替代。无法确认时基或某条进程计数失效时回退原有时间差量；累计 CPU 时间继续使用 Windows 的用户态与内核态时间，不从占用率反算。上述采集不需要管理员权限或内核驱动。
 
 ## hardware/
 

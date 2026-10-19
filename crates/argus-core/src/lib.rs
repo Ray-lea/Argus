@@ -10,6 +10,7 @@ pub mod actions;
 pub mod app_windows;
 pub mod collector;
 pub mod connections;
+mod cpu;
 pub mod details;
 pub mod diagnostics;
 pub mod disk_process;

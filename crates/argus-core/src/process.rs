@@ -4,20 +4,22 @@
 //! process and thread with their counters, which is far cheaper than Toolhelp,
 //! PDH or WMI. Rates are computed from deltas against the previous sample.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::sync::Arc;
 use std::time::Instant;
 
 use serde::Serialize;
 use windows::Wdk::System::SystemInformation::SystemProcessInformation as SPI_CLASS;
-use windows::Win32::Foundation::HANDLE;
+use windows::Win32::Foundation::{FILETIME, HANDLE};
 use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
 use windows::Win32::System::Threading::{
-    GetProcessInformation, OpenProcess, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+    GetProcessInformation, GetProcessTimes, OpenProcess, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
     PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
     PROCESS_QUERY_LIMITED_INFORMATION, ProcessPowerThrottling,
 };
+use windows::Win32::System::WindowsProgramming::QueryProcessCycleTime;
 
+use crate::cpu::{CycleBudget, CycleClock, SystemCycles};
 use crate::meta::{FileMeta, MetaStore};
 use crate::nt::{
     ProcessEntry, ProcessIter, THREAD_STATE_WAITING, WAIT_REASON_SUSPENDED,
@@ -76,10 +78,12 @@ pub struct ProcessRow {
 }
 
 struct Tracked {
+    seen: bool,
     name: Arc<str>,
     path: Option<Arc<str>>,
     meta: Option<Arc<FileMeta>>,
     cpu_ticks: i64,
+    cpu_cycles: u64,
     io: [i64; 3],
     disk: Option<(u64, u64)>,
     /// Query handle, opened once per process instance (None when access is
@@ -90,11 +94,14 @@ struct Tracked {
 pub(crate) struct ProcessTracker {
     buf: AlignedBuf,
     tracked: HashMap<(u32, i64), Tracked>,
+    generation: bool,
     paths: PathResolver,
     meta: Arc<MetaStore>,
     last_instant: Option<Instant>,
     last_systime: i64,
     native_disk: bool,
+    previous_cycles: Option<SystemCycles>,
+    cycle_clock: CycleClock,
 }
 
 impl ProcessTracker {
@@ -102,20 +109,39 @@ impl ProcessTracker {
         Self {
             buf: AlignedBuf::with_capacity(512 * 1024),
             tracked: HashMap::new(),
+            generation: false,
             paths: PathResolver::new(),
             meta,
             last_instant: None,
             last_systime: 0,
             native_disk: crate::disk_process::standard_supported(),
+            previous_cycles: None,
+            cycle_clock: CycleClock::new(),
         }
     }
 
-    pub fn sample(&mut self, logical_cpus: u32) -> Vec<ProcessRow> {
+    pub fn sample(
+        &mut self,
+        logical_cpus: u32,
+        precise_idle_fraction: Option<f64>,
+    ) -> Vec<ProcessRow> {
         let now = Instant::now();
         let systime = filetime_ticks(unsafe { GetSystemTimePreciseAsFileTime() });
+        let cycles = SystemCycles::read(logical_cpus);
+        let clock = self.cycle_clock.sample(logical_cpus);
         let Ok(returned) = query_system_information(SPI_CLASS, &mut self.buf) else {
+            // The process baselines still span the failed interval. Re-prime the
+            // cycle budget before using it again, so both sides cover one window.
+            self.previous_cycles = None;
+            self.cycle_clock.clear();
             return Vec::new();
         };
+        let system_delta = cycles
+            .as_ref()
+            .zip(self.previous_cycles.as_ref())
+            .and_then(|(n, p)| n.delta(p));
+        let mut budget = CycleBudget::new(system_delta.map(|d| d.total()));
+        self.previous_cycles = cycles;
         let elapsed = self
             .last_instant
             .map(|t| now.duration_since(t).as_secs_f64());
@@ -124,8 +150,9 @@ impl ProcessTracker {
         self.last_systime = systime;
 
         let capacity_ticks = elapsed.map(|s| s * 1e7 * logical_cpus as f64);
-        let mut next = HashMap::with_capacity(self.tracked.len() + 32);
+        self.generation = !self.generation;
         let mut rows = Vec::with_capacity(self.tracked.len() + 32);
+        let mut cycle_deltas = Vec::with_capacity(self.tracked.len() + 32);
 
         for ProcessEntry { info: p, threads } in ProcessIter::new(&self.buf) {
             let pid = p.unique_process_id.0 as usize as u32;
@@ -144,35 +171,35 @@ impl ProcessTracker {
                 .then(|| crate::disk_process::standard_counters(&self.buf, returned, p))
                 .flatten();
 
-            let (mut entry, prev) = match self.tracked.remove(&key) {
-                Some(t) => {
-                    let prev = (t.cpu_ticks, t.io, t.disk);
+            let (entry, prev) = match self.tracked.entry(key) {
+                Entry::Occupied(slot) => {
+                    let t = slot.into_mut();
+                    let prev = (t.cpu_ticks, t.cpu_cycles, t.io, t.disk);
                     (t, Some(prev))
                 }
-                None => {
+                Entry::Vacant(slot) => {
                     let name: Arc<str> = unsafe { p.image_name.to_string_lossy() }.into();
                     let path = self.paths.image_path(pid).map(Arc::from);
                     // Started since the last sample: everything it consumed is new.
                     let started = elapsed.is_some() && p.create_time > prev_systime;
-                    let prev = started.then_some((0, [0; 3], Some((0, 0))));
+                    let prev = started.then_some((0, 0, [0; 3], Some((0, 0))));
                     (
-                        Tracked {
+                        slot.insert(Tracked {
+                            seen: self.generation,
                             name,
                             path,
                             meta: None,
                             cpu_ticks,
+                            cpu_cycles: p.cycle_time,
                             io,
                             disk,
-                            handle: unsafe {
-                                OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
-                            }
-                            .ok()
-                            .map(OwnedHandle),
-                        },
+                            handle: query_handle(pid, p.create_time),
+                        }),
                         prev,
                     )
                 }
             };
+            entry.seen = self.generation;
             if entry.meta.is_none()
                 && let Some(path) = &entry.path
             {
@@ -180,17 +207,23 @@ impl ProcessTracker {
             }
 
             let (cpu, rates) = match (prev, capacity_ticks, elapsed) {
-                (Some((pc, pio, _)), Some(cap), Some(secs)) if cap > 0.0 => {
+                (Some((pc, _, pio, _)), Some(cap), Some(secs)) if cap > 0.0 => {
                     let cpu = ((cpu_ticks - pc).max(0) as f64 / cap * 100.0).min(100.0) as f32;
                     let rate = |i: usize| ((io[i] - pio[i]).max(0) as f64 / secs) as u64;
                     (cpu, [rate(0), rate(1), rate(2)])
                 }
                 _ => (0.0, [0; 3]),
             };
+            let delta = prev
+                .and_then(|(_, previous, _, _)| p.cycle_time.checked_sub(previous))
+                .filter(|_| p.cycle_time != 0 || cpu_ticks == 0);
+            budget.add(delta);
+            cycle_deltas.push(delta);
             entry.cpu_ticks = cpu_ticks;
+            entry.cpu_cycles = p.cycle_time;
             entry.io = io;
             let disk_rates = crate::disk_process::interval_rates(
-                prev.and_then(|(_, _, disk)| disk),
+                prev.and_then(|(_, _, _, disk)| disk),
                 disk,
                 elapsed,
             );
@@ -234,11 +267,64 @@ impl ProcessTracker {
                 efficiency: entry.handle.as_ref().is_some_and(|h| efficiency_mode(h.0)),
                 app_window: false,
             });
-            next.insert(key, entry);
         }
-        self.tracked = next;
+        // A retained handle keeps the old instance queryable after exit and PID
+        // reuse. Include its last interval before releasing the handle. Never
+        // subtract sums of cumulative process counters: exits can make them fall.
+        self.tracked.retain(|_, removed| {
+            if removed.seen == self.generation {
+                return true;
+            }
+            budget.add(
+                removed
+                    .handle
+                    .as_ref()
+                    .and_then(|handle| process_cycles(handle.0))
+                    .and_then(|last| last.checked_sub(removed.cpu_cycles)),
+            );
+            false
+        });
+        // Reuse the steady-state table without retaining a process storm's peak.
+        let reserve = self.tracked.len() + 32;
+        if self.tracked.capacity() > reserve * 2 {
+            self.tracked.shrink_to(reserve);
+        }
+        if let Some(capacity) = self.cycle_clock.capacity(
+            clock,
+            &budget,
+            system_delta.map(|d| d.idle),
+            precise_idle_fraction,
+        ) {
+            for (row, delta) in rows.iter_mut().zip(cycle_deltas) {
+                if let Some(delta) = delta
+                    && delta as f64 <= capacity * 1.03
+                {
+                    row.cpu = (delta as f64 / capacity * 100.).clamp(0., 100.) as f32;
+                }
+            }
+        }
         rows
     }
+}
+
+fn process_cycles(process: HANDLE) -> Option<u64> {
+    let mut cycles = 0;
+    unsafe { QueryProcessCycleTime(process, &mut cycles) }
+        .is_ok()
+        .then_some(cycles)
+}
+
+fn query_handle(pid: u32, create_time: i64) -> Option<OwnedHandle> {
+    let handle =
+        OwnedHandle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?);
+    let (mut created, mut exited, mut kernel, mut user) = (
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+    );
+    unsafe { GetProcessTimes(handle.0, &mut created, &mut exited, &mut kernel, &mut user) }.ok()?;
+    (filetime_ticks(created) == create_time).then_some(handle)
 }
 
 /// Whether efficiency mode is explicitly on (about 1 µs per process with a
@@ -328,6 +414,46 @@ pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::windows::process::CommandExt;
+
+    #[test]
+    fn query_handle_checks_process_identity_and_retains_final_cycles() {
+        use std::os::windows::io::AsRawHandle;
+        let system = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        let image = std::path::Path::new(&system)
+            .join("System32")
+            .join("PING.EXE");
+        let mut child = std::process::Command::new(image)
+            .args(["-n", "30", "127.0.0.1"])
+            .creation_flags(0x0800_0000)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut created = FILETIME::default();
+        let mut exited = FILETIME::default();
+        let mut kernel = FILETIME::default();
+        let mut user = FILETIME::default();
+        unsafe {
+            GetProcessTimes(
+                HANDLE(child.as_raw_handle()),
+                &mut created,
+                &mut exited,
+                &mut kernel,
+                &mut user,
+            )
+        }
+        .unwrap();
+        let identity = filetime_ticks(created);
+        let matched = query_handle(child.id(), identity);
+        let wrong_instance = query_handle(child.id(), identity + 1);
+        let before = matched.as_ref().and_then(|h| process_cycles(h.0));
+        let _ = child.kill();
+        child.wait().unwrap();
+        // The fixture is stopped before assertions, even when a native query failed.
+        assert!(wrong_instance.is_none());
+        let final_cycles = process_cycles(matched.unwrap().0).unwrap();
+        assert!(final_cycles >= before.unwrap());
+    }
 
     #[test]
     fn a_child_is_found_by_its_name_with_its_path() {
@@ -337,6 +463,7 @@ mod tests {
             .join("PING.EXE");
         let mut child = std::process::Command::new(&image)
             .args(["-n", "30", "127.0.0.1"])
+            .creation_flags(0x0800_0000)
             .stdout(std::process::Stdio::null())
             .spawn()
             .unwrap();
