@@ -145,7 +145,7 @@ pub enum DiskFailure {
     Query(i32),
     /// The kernel reported more data than the buffer holds.
     Length,
-    /// A record's offset to the next is not 8-byte aligned.
+    /// A record's offset to the next is not UTF-16 aligned.
     Misaligned,
     /// A record, its thread array or its disk counters end past the data.
     Truncated,
@@ -213,7 +213,9 @@ fn decode(bytes: &[u8]) -> Result<Vec<DiskCounter>, DiskFailure> {
         let record = if next == 0 {
             remaining
         } else {
-            if !next.is_multiple_of(8) {
+            // Windows 10 packs the variable UTF-16 tail without padding the
+            // next record to 8 bytes. Numeric fields below are read as bytes.
+            if !next.is_multiple_of(2) {
                 return Err(DiskFailure::Misaligned);
             }
             remaining.get(..next).ok_or(Truncated)?
@@ -385,6 +387,21 @@ mod tests {
             .unwrap()
             .contains("999999")
         );
+    }
+
+    #[test]
+    fn full_records_can_follow_unpadded_utf16_tails() {
+        for tail in [2, 4, 6] {
+            let mut bytes = record(17, 1, 4096, 8192);
+            bytes.extend(vec![0; tail]);
+            let length = bytes.len() as u32;
+            bytes[..4].copy_from_slice(&length.to_le_bytes());
+            bytes.extend(record(19, 2, 1024, 2048));
+            assert_eq!(
+                decode(&bytes).unwrap(),
+                [(17, 1000, 4096, 8192), (19, 1000, 1024, 2048)]
+            );
+        }
     }
 
     #[test]
