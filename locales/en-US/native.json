@@ -196,6 +196,9 @@
     "writableDriverStore": "The Windows driver store directory DriverStore\\FileRepository allows standard users to write. PawnIO was not enabled. Ask an administrator to restore this directory's permissions, then try again.",
     "unsafeSetupPath": "The PawnIO installer staging directory failed its ownership, permissions or link check. The operation was stopped. Ask an administrator to check Program Files\\Argus Sensor Setup and its parent directory.",
     "notReady": "PawnIO is not running correctly. Kernel sensors remain off. Check the driver status or system messages and try again.",
-    "reboot": "PawnIO installation requires a Windows restart. Restart Windows, then enable kernel sensors again."
+    "deviceDisabled": "The PawnIO device is disabled in Windows. Kernel sensors remain off. Enable PawnIO in Device Manager and try again.",
+    "cancelled": "Administrator permission was canceled; kernel sensors remain off.",
+    "startTimeout": "Timed out waiting for PawnIO to become ready. Kernel sensors remain off. Check the driver device status or system messages and try again.",
+    "reboot": "A Windows restart is required to finish configuring the PawnIO device. Restart Windows, then enable kernel sensors again."
   }
 }

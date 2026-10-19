@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use windows::Win32::System::Registry::*;
 use windows::core::{PCWSTR, PWSTR};
 
-use super::{FOREIGN_DRIVER, LEGACY_LAYOUT};
+use super::{FOREIGN_DRIVER, Inspection, LEGACY_LAYOUT};
 use crate::security;
 use crate::util::{Result, io, wide};
 
@@ -42,15 +42,23 @@ const IMAGES: [(u64, &str); 2] = [
     ),
 ];
 
-pub(super) fn verify_image(path: &Path) -> Result<()> {
+pub(super) fn verify_image(path: &Path, trace: &mut Inspection) -> Result<()> {
     let file = File::open(path).map_err(io)?;
     let size = file.metadata().map_err(io)?.len();
-    let Some((_, expected)) = IMAGES.iter().find(|(length, _)| *length == size) else {
+    trace.legacy_image_bytes = Some(size);
+    // Bound failure diagnostics too; known official images are below 1 MiB.
+    if size > 1024 * 1024 {
         return Err(FOREIGN_DRIVER);
-    };
+    }
     let mut bytes = Vec::with_capacity(size as usize);
     file.take(size + 1).read_to_end(&mut bytes).map_err(io)?;
-    if bytes.len() as u64 != size || format!("{:x}", Sha256::digest(&bytes)) != *expected {
+    let hash = format!("{:x}", Sha256::digest(&bytes));
+    trace.legacy_image_sha256 = Some(hash.clone());
+    if bytes.len() as u64 != size
+        || !IMAGES
+            .iter()
+            .any(|(length, expected)| *length == size && *expected == hash)
+    {
         return Err(FOREIGN_DRIVER);
     }
     Ok(())
@@ -462,7 +470,7 @@ mod tests {
             windows::Win32::System::Com::CoCreateGuid().unwrap()
         }));
         std::fs::write(&path, vec![0u8; IMAGES[1].0 as usize]).unwrap();
-        let result = verify_image(&path);
+        let result = verify_image(&path, &mut Inspection::default());
         std::fs::remove_file(path).unwrap();
         assert_eq!(result, Err(FOREIGN_DRIVER));
     }

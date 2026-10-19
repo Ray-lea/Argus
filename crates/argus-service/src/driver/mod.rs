@@ -1,5 +1,6 @@
 //! One explicit settings action prepares the official PawnIO driver. No
 //! installer URL, executable path or service name is accepted from IPC/CLI.
+mod device;
 mod legacy;
 mod package;
 
@@ -45,6 +46,7 @@ const UNSAFE_DRIVER_PATH: u32 = 0x2000_0106;
 const WRITABLE_DRIVER_STORE: u32 = 0x2000_0107;
 const UNSAFE_SETUP_PATH: u32 = 0x2000_0108;
 const LEGACY_LAYOUT: u32 = 0x2000_0109;
+const DEVICE_DISABLED: u32 = 0x2000_010a;
 const REBOOT_REQUIRED: u32 = 3010;
 const MIN_VERSION: (u32, u32, u32, u32) = (2, 2, 0, 0);
 const INSTALL_ARGS: [&str; 2] = ["-install", "-silent"];
@@ -80,6 +82,9 @@ struct Inspection {
     version_info_bytes: Option<u32>,
     native_error: Option<u32>,
     legacy_driver: bool,
+    legacy_image_bytes: Option<u64>,
+    legacy_image_sha256: Option<String>,
+    device: Option<device::State>,
 }
 
 impl Inspection {
@@ -102,7 +107,7 @@ impl Inspection {
             .collect::<Vec<_>>()
             .join(",");
         format!(
-            "stage={}; result={outcome}; native_error={:?}; service_type={:?}; service_state={:?}; start_type={:?}; image_location={}; path_component={}; file_version={version}; version_info_bytes={:?}; version_translations=[{translations}]; original_name_matches={:?}; official_legacy_driver={}",
+            "stage={}; result={outcome}; native_error={:?}; service_type={:?}; service_state={:?}; start_type={:?}; image_location={}; path_component={}; file_version={version}; version_info_bytes={:?}; version_translations=[{translations}]; original_name_matches={:?}; official_legacy_driver={}; legacy_image_bytes={:?}; legacy_image_sha256={:?}; pnp={:?}",
             self.stage,
             self.native_error,
             self.service_type,
@@ -112,7 +117,10 @@ impl Inspection {
             self.path_component,
             self.version_info_bytes,
             self.original_name_matches,
-            self.legacy_driver
+            self.legacy_driver,
+            self.legacy_image_bytes,
+            self.legacy_image_sha256,
+            self.device
         )
     }
 }
@@ -157,6 +165,9 @@ fn message(code: u32) -> String {
         WRITABLE_DRIVER_STORE => tr!("sensorSetup.writableDriverStore"),
         UNSAFE_SETUP_PATH => tr!("sensorSetup.unsafeSetupPath"),
         LEGACY_LAYOUT => tr!("sensorSetup.legacyLayout"),
+        DEVICE_DISABLED => tr!("sensorSetup.deviceDisabled"),
+        1223 => tr!("sensorSetup.cancelled"),
+        1460 => tr!("sensorSetup.startTimeout"),
         1061 | 1062 => format!("{} {}", tr!("sensorSetup.driverInUse"), util::message(code)),
         1072 => format!("{} {}", tr!("sensorSetup.reboot"), util::message(code)),
         REBOOT_REQUIRED | 1641 => tr!("sensorSetup.reboot"),
@@ -333,7 +344,7 @@ fn image_version(path: &Path, trace: &mut Inspection) -> Result<Option<(u32, u32
         Ok(version) => Ok(Some(version)),
         Err(FOREIGN_DRIVER) if trace.version_info_bytes == Some(0) => {
             trace.stage = "legacy driver SHA-256 identity check";
-            legacy::verify_image(path)?;
+            legacy::verify_image(path, trace)?;
             trace.legacy_driver = true;
             Ok(None)
         }
@@ -525,12 +536,17 @@ fn inspect_with_trace(service: &Service, trace: &mut Inspection) -> Result<(Plan
     let compatible = version >= MIN_VERSION;
     trace.stage = "QueryServiceStatusEx";
     let running = state(service)?.dwCurrentState == SERVICE_RUNNING;
+    if compatible {
+        trace.stage = "PnP device state";
+        trace.device = Some(device::inspect()?);
+        trace.device.as_ref().unwrap().check(running)?;
+    }
     trace.stage = "inspection complete";
     Ok((plan(true, compatible, running), pins))
 }
 
-/// A fresh, read-only failure snapshot. Every string field is a fixed category;
-/// paths, account names and version-resource strings never enter public logs.
+/// A fresh, read-only failure snapshot. Text is a fixed category or hexadecimal
+/// image identity; paths, accounts and version-resource strings stay private.
 pub fn diagnostic_status() -> String {
     let mut trace = Inspection {
         stage: "OpenSCManagerW/OpenServiceW",

@@ -196,6 +196,9 @@
     "writableDriverStore": "Windows 驱动存储目录 DriverStore\\FileRepository 允许普通用户写入，已停止启用 PawnIO。请由管理员恢复此目录的权限后重试。",
     "unsafeSetupPath": "PawnIO 安装暂存目录的所有者、权限或链接未通过安全检查，已停止操作。请由管理员检查 Program Files\\Argus Sensor Setup 及其父目录的权限。",
     "notReady": "PawnIO 尚未正常运行，内核传感器保持关闭。请检查驱动状态或系统提示后重试。",
-    "reboot": "PawnIO 安装需要重启 Windows 才能完成。请重启后再次开启内核传感器。"
+    "deviceDisabled": "PawnIO 设备已在 Windows 中禁用，内核传感器保持关闭。请在设备管理器中启用 PawnIO 后重试。",
+    "cancelled": "已取消管理员授权，内核传感器保持关闭。",
+    "startTimeout": "等待 PawnIO 就绪超时，内核传感器保持关闭。请检查驱动设备状态或系统提示后重试。",
+    "reboot": "PawnIO 的设备配置需要重启 Windows 才能完成。请重启后再次开启内核传感器。"
   }
 }
