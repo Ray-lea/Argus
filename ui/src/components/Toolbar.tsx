@@ -1,21 +1,22 @@
 import { createEffect, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
 import logo from "../../../src-tauri/icons/logo-small.svg?url";
 import { locale, t } from "../lib/i18n";
-import { api } from "../lib/ipc";
 import type { ViewMode } from "../lib/rows";
 import {
   changeInterval,
+  controlPaused,
   detailsOpen,
   INTERVALS,
   intervalMs,
+  manualPaused,
   page,
   paused,
   query,
   selection,
   setDetailsOpen,
-  setPaused,
   setQuery,
   setViewMode,
+  togglePause,
   viewMode,
 } from "../lib/store";
 import { openMenu, toast } from "../lib/ui";
@@ -130,11 +131,14 @@ export default function Toolbar() {
     );
     onCleanup(fitter.dispose);
   });
-  const togglePause = () => {
-    const next = !paused();
-    setPaused(next);
-    void api.setPaused(next);
-  };
+  const pauseLabel = () =>
+    controlPaused()
+      ? manualPaused()
+        ? t("shell.resumeAfterControl")
+        : t("shell.keepPaused")
+      : paused()
+        ? t("shell.resume")
+        : t("shell.pause");
   // Refresh rate and pause drive the 1 s sampler behind these two pages only.
   const sampled = () => page() === "processes" || page() === "performance";
   // The pane needs a selected row. With none, asking for it says so instead of
@@ -224,8 +228,8 @@ export default function Toolbar() {
             type="button"
             class="btn icon"
             aria-pressed={paused()}
-            title={paused() ? t("shell.resume") : t("shell.pause")}
-            aria-label={paused() ? t("shell.resume") : t("shell.pause")}
+            title={pauseLabel()}
+            aria-label={pauseLabel()}
             onClick={togglePause}
           >
             <Show when={paused()} fallback={<PauseIcon />}>

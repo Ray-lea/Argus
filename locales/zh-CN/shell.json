@@ -57,6 +57,9 @@
   },
   "pause": "暂停刷新",
   "resume": "继续刷新",
+  "keepPaused": "保持暂停（松开 Ctrl 后仍暂停）",
+  "resumeAfterControl": "取消手动暂停（松开 Ctrl 后继续）",
+  "pauseError": "无法更改刷新状态：{error}",
   "fileLock": {
     "title": "查找文件占用（也可将文件拖放到窗口）",
     "label": "查找占用文件的进程"

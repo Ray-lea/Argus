@@ -6,6 +6,7 @@ import { t } from "./i18n";
 import { api } from "./ipc";
 import { holdsOrder, type OrderHolds, pointerAloneHoldsOrder } from "./order-hold";
 import { persisted } from "./prefs";
+import { type PauseState, refreshPause } from "./refresh-pause";
 import {
   type BuildOptions,
   buildRows,
@@ -227,7 +228,27 @@ export const [viewMode, setViewMode] = persisted<ViewMode>("view", "apps");
 export const [sort, setSort] = persisted<SortState>("sort", { key: "cpu", desc: true });
 export const [intervalMs, setIntervalMs] = persisted<number>("interval", 1000);
 export const [detailsOpen, setDetailsOpen] = persisted<boolean>("details", true);
-export const [paused, setPaused] = createSignal(false);
+const [pauseState, setPauseState] = createSignal<PauseState>({
+  manual: false,
+  control: false,
+  paused: false,
+});
+const [effectivePaused, setEffectivePaused] = createSignal(false);
+export const paused = effectivePaused;
+export const manualPaused = () => pauseState().manual;
+export const controlPaused = () => pauseState().control;
+const pause = refreshPause(
+  (state) => {
+    batch(() => {
+      setPauseState(state);
+      setEffectivePaused(state.paused);
+    });
+  },
+  api.setPaused,
+  (error) => toast("error", t("shell.pauseError", { error: String(error) })),
+);
+export const setControlPaused = pause.setControl;
+export const togglePause = pause.toggleManual;
 /** A rule the settings page should scroll to and highlight once (set from the process menu). */
 export const [focusRule, setFocusRule] = createSignal<string | null>(null);
 export const [query, setQuery] = createSignal("");

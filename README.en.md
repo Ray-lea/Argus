@@ -99,8 +99,9 @@ For the browser preview, checks, packaging the installer and cleaning caches, se
 |---|---|
 | Switch pages | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>7</kbd> |
 | Search processes | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
+| Temporarily pause updates | Hold <kbd>Ctrl</kbd>; release to resume (Processes and Performance) |
 | Open details | <kbd>Enter</kbd> |
-| End task | <kbd>Delete</kbd> (<kbd>Shift</kbd>+<kbd>Delete</kbd> skips the confirmation) |
+| End task | <kbd>Alt</kbd>+<kbd>E</kbd> or <kbd>Delete</kbd> (<kbd>Shift</kbd>+<kbd>Delete</kbd> skips the confirmation) |
 | Show or hide the window (global) | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
 The [user guide](docs/guide/README.md) covers everything else.

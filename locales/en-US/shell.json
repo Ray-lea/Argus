@@ -57,6 +57,9 @@
   },
   "pause": "Pause updates",
   "resume": "Resume updates",
+  "keepPaused": "Keep paused after releasing Ctrl",
+  "resumeAfterControl": "Resume when Ctrl is released",
+  "pauseError": "Could not change the update state: {error}",
   "fileLock": {
     "title": "Find what's using a file (or drop files onto the window)",
     "label": "Find processes using a file"

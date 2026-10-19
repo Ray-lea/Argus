@@ -15,19 +15,26 @@ import StatusBar from "./components/StatusBar";
 import Toolbar, { focusSearch } from "./components/Toolbar";
 import UpdateDialog from "./components/UpdateDialog";
 import Vitals from "./components/Vitals";
+import { endRow } from "./lib/actions";
 import { reportFirstFrame, watchRestores } from "./lib/background";
 import { t } from "./lib/i18n";
 import { api, inTauri, subscribe } from "./lib/ipc";
 import { EASE_OUT, play } from "./lib/motion";
 import { watchPrivilege } from "./lib/privilege";
+import { isSection } from "./lib/rows";
+import { controlPauseHeld, endProcessShortcut } from "./lib/shortcuts";
 import {
   appInfo,
   detailsOpen,
+  ending,
   ingest,
   intervalMs,
   type Page,
   page,
   refreshServices,
+  rows,
+  selectedKey,
+  setControlPaused,
   setPage,
   snapshot,
 } from "./lib/store";
@@ -45,6 +52,10 @@ const pageIndex = (p: Page) => PAGES.findIndex((x) => x.page === p);
 
 export default function App() {
   const [dragging, setDragging] = createSignal(false);
+  const sampledPage = () => page() === "processes" || page() === "performance";
+  createEffect(() => {
+    if (!sampledPage()) setControlPaused(false);
+  });
 
   // The new page slides in from the side of its entry in the navigation (from
   // below for a page further down the pane, from the right for a tab further
@@ -66,7 +77,21 @@ export default function App() {
   );
 
   onMount(() => {
+    const blocked = () => document.querySelector('[aria-modal="true"], [role="menu"], [role="listbox"]');
+    const releaseControl = () => setControlPaused(false);
+    const onControl = (e: KeyboardEvent) =>
+      setControlPaused(sampledPage() && !blocked() && controlPauseHeld(e));
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") releaseControl();
+    };
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || blocked()) return;
+      if (page() === "processes" && endProcessShortcut(e) && !isTyping(e)) {
+        e.preventDefault();
+        const row = rows().find((r) => r.key === selectedKey());
+        if (row && !isSection(row) && !ending().has(row.key)) void endRow(row);
+        return;
+      }
       const target = PAGES.find((p) => p.key === e.key);
       if (e.ctrlKey && !e.altKey && target) {
         e.preventDefault();
@@ -80,6 +105,10 @@ export default function App() {
     const scheme = matchMedia("(prefers-color-scheme: dark)");
     const onScheme = () => applyAccent(appInfo()?.accent ?? null);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onControl, true);
+    window.addEventListener("keyup", onControl, true);
+    window.addEventListener("blur", releaseControl);
+    document.addEventListener("visibilitychange", onVisibility);
     scheme.addEventListener("change", onScheme);
 
     // Service hosts in the process list are labelled with what they run; the
@@ -91,6 +120,11 @@ export default function App() {
 
     onCleanup(() => {
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onControl, true);
+      window.removeEventListener("keyup", onControl, true);
+      window.removeEventListener("blur", releaseControl);
+      document.removeEventListener("visibilitychange", onVisibility);
+      releaseControl();
       scheme.removeEventListener("change", onScheme);
       clearInterval(servicesTimer);
     });
