@@ -133,7 +133,7 @@
   },
   "taskManager": {
     "title": "Replace Task Manager",
-    "desc": "Makes Ctrl+Shift+Esc and other Task Manager shortcuts open Argus. Off by default; the standalone recovery tool doesn't depend on the interface or the service. Replacement is turned off before the privileged service is updated or uninstalled.",
+    "desc": "Makes Ctrl+Shift+Esc and other Task Manager shortcuts open Argus. Off by default; the standalone recovery tool doesn't depend on the interface or the service. Updating the privileged service also updates the replacement and keeps it enabled; uninstalling the service restores Windows Task Manager.",
     "confirm": {
       "title": "Replace Task Manager?",
       "body": "Ctrl+Shift+Esc and other ways of opening Task Manager will open Argus. The change applies to the whole PC; other accounts still open Windows Task Manager. Turning it on requires administrator permission; if Argus fails to start, the built-in Task Manager is opened instead. Keep the standalone recovery tool so the change can be undone if the interface or the service can't run."

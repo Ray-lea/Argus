@@ -373,8 +373,8 @@ function PrivilegedServiceSettings() {
     if (s?.state === "notInstalled") return "off";
     return serviceConnected(s) ? "ok" : "warn";
   };
-  // The installer updates the service along with Argus, except while the task
-  // manager replacement is on or when that failed.
+  // The installer updates the service and an enabled replacement together;
+  // portable updates or a failed installer refresh leave a mismatch here.
   const outdated = () => {
     const s = status();
     const app = appInfo()?.version;
