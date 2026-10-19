@@ -5,8 +5,10 @@
 //! no paths, user or machine names, command lines or addresses.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::{fs::File, io::Read};
 
 use argus_core::{Snapshot, hardware::GpuPowerSource};
+use sha2::{Digest, Sha256};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Security::{
     GetTokenInformation, TOKEN_ELEVATION_TYPE, TOKEN_QUERY, TokenElevationType,
@@ -216,16 +218,38 @@ fn network_step(without: u32, available: bool) -> (u32, Option<u32>) {
     }
 }
 
+fn executable_fingerprint() -> std::io::Result<String> {
+    let mut image = File::open(std::env::current_exe()?)?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let bytes = image.read(&mut buffer)?;
+        if bytes == 0 {
+            return Ok(format!("{:x}", hash.finalize()));
+        }
+        hash.update(&buffer[..bytes]);
+    }
+}
+
 /// The privileged service and the task manager replacement, as Argus finds
 /// them at start. Both checks can take a moment, so this runs on its own thread.
 pub fn log_privileged_state() {
     std::thread::spawn(|| {
+        // Test packages can share a release number. Hash the running image,
+        // including a task-manager copy, off the UI and sampling threads.
+        match executable_fingerprint() {
+            Ok(hash) => log::info!("running binary: sha256={hash}"),
+            Err(error) => log::warn!(
+                "running binary fingerprint unavailable: os error {:?}",
+                error.raw_os_error()
+            ),
+        }
         match argus_service::status() {
             Ok(s) => log::info!(
                 "privileged service: {}{}{}{}",
                 s.state,
                 match &s.version {
-                    Some(v) if v == env!("CARGO_PKG_VERSION") => " (same version)",
+                    Some(v) if v == env!("CARGO_PKG_VERSION") => " (same release version)",
                     Some(_) => " (other version)",
                     None => "",
                 },
