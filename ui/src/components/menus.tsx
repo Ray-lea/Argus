@@ -12,6 +12,7 @@ import {
   setRowPriority,
 } from "../lib/actions";
 import { t } from "../lib/i18n";
+import { applicationMembers } from "../lib/process-identity";
 import type { DisplayRow } from "../lib/rows";
 import { setDetailsOpen, snapshot, toggleRow } from "../lib/store";
 import type { PriorityClass } from "../lib/types";
@@ -24,9 +25,8 @@ const PRIORITIES: PriorityClass[] = ["realtime", "high", "aboveNormal", "normal"
 /** The priority every process of the row shares, or null if they differ. */
 function currentPriority(row: DisplayRow): PriorityClass | null {
   if (row.kind !== "group") return priorityOf(row.proc.basePriority);
-  const name = row.proc.name.toLowerCase();
   const classes = new Set(
-    (snapshot()?.processes ?? []).filter((p) => p.name.toLowerCase() === name).map((p) => p.basePriority),
+    applicationMembers(snapshot()?.processes ?? [], row.key).map((p) => p.basePriority),
   );
   return classes.size === 1 ? priorityOf([...classes][0]) : null;
 }

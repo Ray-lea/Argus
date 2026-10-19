@@ -4,6 +4,7 @@ import { endRow } from "../lib/actions";
 import { fmtCount, fmtCpu, fmtMem, fmtNet, fmtRate } from "../lib/format";
 import { t } from "../lib/i18n";
 import { missingDiskHint } from "../lib/privilege";
+import { processRowId as rowId } from "../lib/process-identity";
 import { sumDiskIo } from "../lib/process-io";
 import {
   type DisplayRow,
@@ -314,8 +315,6 @@ export default function ProcessTable() {
   );
 }
 
-const rowId = (key: string) => `row-${key.replace(/[^\w-]/g, "_")}`;
-
 /** A process row or, while sorted by name, an "应用" / "后台进程" heading. */
 function Item(props: { row: TableRow; start: number; withNet: boolean; diskHint: string }) {
   const process = () => (isSection(props.row) ? undefined : props.row);
@@ -383,7 +382,7 @@ function Row(props: { row: DisplayRow; start: number; withNet: boolean; diskHint
           </button>
         </Show>
         <ProcIcon proc={r().proc} />
-        <span class="label" title={r().proc.path ?? r().proc.name}>
+        <span class="label" title={`${r().label}\n${r().proc.path ?? r().proc.name}`}>
           {r().label}
         </span>
         <Show when={isGroup()}>

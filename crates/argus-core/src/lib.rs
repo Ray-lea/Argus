@@ -33,8 +33,10 @@ pub mod startup;
 pub mod system;
 pub mod theme;
 mod util;
+mod webview;
 
 pub use collector::{Collector, Snapshot};
 pub use meta::MetaStore;
 pub use process::ProcessRow;
 pub use system::SystemStats;
+pub use webview::{WebViewInfo, WebViewRole};

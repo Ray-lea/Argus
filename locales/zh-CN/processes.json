@@ -8,6 +8,20 @@
     "unavailable": "暂无磁盘读数：暂时无法读取每个进程的磁盘计数。"
   },
   "label": "进程",
+  "serviceHost": "服务主机：{names}",
+  "webView": {
+    "host": "WebView2：{name}",
+    "role": {
+      "browser": "浏览器进程",
+      "renderer": "渲染进程",
+      "gpu": "GPU 进程",
+      "network": "网络服务",
+      "storage": "存储服务",
+      "audio": "音频服务",
+      "utility": "辅助进程",
+      "crashpad": "崩溃处理进程"
+    }
+  },
   "total": "{count} 个进程",
   "column": {
     "name": { "label": "名称", "title": "按名称排序" },

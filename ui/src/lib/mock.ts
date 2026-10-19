@@ -107,12 +107,14 @@ function add(
 ): MockProc {
   if (o.pid === undefined) nextPid += 4 + Math.floor(Math.random() * 300);
   const pid = o.pid ?? nextPid;
+  const inheritedPath =
+    o.dir === undefined ? procs.find((p) => p.pid === o.ppid && p.name === name)?.path : undefined;
   const p: MockProc = {
     pid,
     ppid: o.ppid ?? 0,
     createTime: BOOT + procs.length * 900 + Math.floor(Math.random() * 600),
     name,
-    path: description === null ? null : `${o.dir ?? "C:\\Program Files\\App"}\\${name}`,
+    path: description === null ? null : (inheritedPath ?? `${o.dir ?? "C:\\Program Files\\App"}\\${name}`),
     description: fromWindows(description),
     company,
     icon: null,
@@ -227,13 +229,30 @@ function seed() {
       mem: 40 + Math.random() * 160,
     });
   const argus = add("argus.exe", "Argus", null, { ppid: explorer.pid, mem: 34, load: 0.3 });
-  for (let i = 0; i < 5; i++)
-    add("msedgewebview2.exe", "Microsoft Edge WebView2", ms, {
-      ppid: argus.pid,
-      mem: 20 + Math.random() * 60,
-      load: i === 0 ? 0.6 : 0,
-      gpu: i === 0 ? 2 : 0,
+  for (const host of [argus, search]) {
+    const browser = add("msedgewebview2.exe", "Microsoft Edge WebView2", ms, {
+      ppid: host.pid,
+      mem: 30,
+      dir: "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\Runtime",
     });
+    browser.webView = {
+      browserPid: browser.pid,
+      browserCreateTime: browser.createTime,
+      hostName: host.name,
+      hostDescription: host.description,
+      hostIcon: host.icon,
+      role: "browser",
+    };
+    for (const role of ["renderer", "gpu", "network", "storage", "crashpad"] as const) {
+      const child = add("msedgewebview2.exe", "Microsoft Edge WebView2", ms, {
+        ppid: browser.pid,
+        mem: 20 + Math.random() * 60,
+        load: role === "renderer" ? 0.6 : 0,
+        gpu: role === "gpu" ? 2 : 0,
+      });
+      child.webView = { ...browser.webView, role };
+    }
+  }
   const spotify = add("Spotify.exe", "Spotify", "Spotify Ltd", {
     ppid: explorer.pid,
     mem: 210,

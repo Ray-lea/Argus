@@ -8,6 +8,20 @@
     "unavailable": "No disk reading. Per-process disk counters can't be read right now."
   },
   "label": "Processes",
+  "serviceHost": "Service host: {names}",
+  "webView": {
+    "host": "WebView2: {name}",
+    "role": {
+      "browser": "Browser process",
+      "renderer": "Renderer process",
+      "gpu": "GPU process",
+      "network": "Network service",
+      "storage": "Storage service",
+      "audio": "Audio service",
+      "utility": "Utility process",
+      "crashpad": "Crash handler"
+    }
+  },
   "total": { "one": "{count} process", "other": "{count} processes" },
   "column": {
     "name": { "label": "Name", "title": "Sort by name" },

@@ -661,6 +661,7 @@ mod tests {
             description: None,
             company: None,
             icon: None,
+            web_view: None,
             cpu,
             cpu_time: 0,
             private_ws: mem,

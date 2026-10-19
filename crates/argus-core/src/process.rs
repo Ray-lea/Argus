@@ -27,6 +27,7 @@ use crate::nt::{
 };
 use crate::paths::PathResolver;
 use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, ticks_to_unix_ms};
+use crate::webview::{self, Instance, WebViewInfo};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +41,8 @@ pub struct ProcessRow {
     pub description: Option<Arc<str>>,
     pub company: Option<Arc<str>>,
     pub icon: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub web_view: Option<Arc<WebViewInfo>>,
     /// Percent of total machine capacity, 0–100.
     pub cpu: f32,
     /// Total CPU time consumed, ms.
@@ -79,6 +82,8 @@ pub struct ProcessRow {
 
 struct Tracked {
     seen: bool,
+    parent: u32,
+    session: u32,
     name: Arc<str>,
     path: Option<Arc<str>>,
     meta: Option<Arc<FileMeta>>,
@@ -89,11 +94,14 @@ struct Tracked {
     /// Query handle, opened once per process instance (None when access is
     /// denied, which is final for that instance).
     handle: Option<OwnedHandle>,
+    web_view: Option<Box<webview::State>>,
 }
 
 pub(crate) struct ProcessTracker {
     buf: AlignedBuf,
     tracked: HashMap<(u32, i64), Tracked>,
+    by_pid: HashMap<u32, i64>,
+    webviews: Vec<(usize, Instance)>,
     generation: bool,
     paths: PathResolver,
     meta: Arc<MetaStore>,
@@ -109,6 +117,8 @@ impl ProcessTracker {
         Self {
             buf: AlignedBuf::with_capacity(512 * 1024),
             tracked: HashMap::new(),
+            by_pid: HashMap::new(),
+            webviews: Vec::new(),
             generation: false,
             paths: PathResolver::new(),
             meta,
@@ -153,6 +163,7 @@ impl ProcessTracker {
         self.generation = !self.generation;
         let mut rows = Vec::with_capacity(self.tracked.len() + 32);
         let mut cycle_deltas = Vec::with_capacity(self.tracked.len() + 32);
+        self.webviews.clear();
 
         for ProcessEntry { info: p, threads } in ProcessIter::new(&self.buf) {
             let pid = p.unique_process_id.0 as usize as u32;
@@ -180,12 +191,17 @@ impl ProcessTracker {
                 Entry::Vacant(slot) => {
                     let name: Arc<str> = unsafe { p.image_name.to_string_lossy() }.into();
                     let path = self.paths.image_path(pid).map(Arc::from);
+                    let runtime =
+                        webview::is_webview(&name).then(|| Box::new(webview::State::default()));
+                    self.by_pid.insert(pid, p.create_time);
                     // Started since the last sample: everything it consumed is new.
                     let started = elapsed.is_some() && p.create_time > prev_systime;
                     let prev = started.then_some((0, 0, [0; 3], Some((0, 0))));
                     (
                         slot.insert(Tracked {
                             seen: self.generation,
+                            parent: p.inherited_from_unique_process_id.0 as usize as u32,
+                            session: p.session_id,
                             name,
                             path,
                             meta: None,
@@ -194,12 +210,17 @@ impl ProcessTracker {
                             io,
                             disk,
                             handle: query_handle(pid, p.create_time),
+                            web_view: runtime,
                         }),
                         prev,
                     )
                 }
             };
             entry.seen = self.generation;
+            if let Some(runtime) = entry.web_view.as_mut() {
+                runtime.query(entry.handle.as_ref().map(|h| h.0));
+                self.webviews.push((rows.len(), key));
+            }
             if entry.meta.is_none()
                 && let Some(path) = &entry.path
             {
@@ -243,6 +264,7 @@ impl ProcessTracker {
                 description: meta.and_then(|m| m.description.clone()),
                 company: meta.and_then(|m| m.company.clone()),
                 icon: meta.and_then(|m| m.icon),
+                web_view: None,
                 cpu,
                 cpu_time: (cpu_ticks / 10_000) as u64,
                 private_ws: p.working_set_private_size as u64,
@@ -271,7 +293,7 @@ impl ProcessTracker {
         // A retained handle keeps the old instance queryable after exit and PID
         // reuse. Include its last interval before releasing the handle. Never
         // subtract sums of cumulative process counters: exits can make them fall.
-        self.tracked.retain(|_, removed| {
+        self.tracked.retain(|key, removed| {
             if removed.seen == self.generation {
                 return true;
             }
@@ -282,12 +304,51 @@ impl ProcessTracker {
                     .and_then(|handle| process_cycles(handle.0))
                     .and_then(|last| last.checked_sub(removed.cpu_cycles)),
             );
+            if self.by_pid.get(&key.0) == Some(&key.1) {
+                self.by_pid.remove(&key.0);
+            }
             false
         });
         // Reuse the steady-state table without retaining a process storm's peak.
         let reserve = self.tracked.len() + 32;
         if self.tracked.capacity() > reserve * 2 {
             self.tracked.shrink_to(reserve);
+        }
+        if self.by_pid.capacity() > reserve * 2 {
+            self.by_pid.shrink_to(reserve);
+        }
+        for i in 0..self.webviews.len() {
+            let (index, key) = self.webviews[i];
+            let get = |pid| {
+                let created = *self.by_pid.get(&pid)?;
+                let entry = self.tracked.get(&(pid, created))?;
+                Some(webview::Node {
+                    instance: (pid, created),
+                    parent: entry.parent,
+                    session: entry.session,
+                    name: &entry.name,
+                    path: entry.path.as_ref(),
+                    runtime: entry.web_view.as_deref(),
+                })
+            };
+            let context = webview::resolve(get(key.0).unwrap(), get);
+            if context.browser != key
+                && let Some(browser) = self.tracked.get_mut(&context.browser)
+                && let Some(runtime) = browser.web_view.as_mut()
+            {
+                runtime.learn_context(&context);
+            }
+            let runtime = self
+                .tracked
+                .get_mut(&key)
+                .unwrap()
+                .web_view
+                .as_mut()
+                .unwrap();
+            rows[index].web_view = Some(runtime.view(context, &self.meta));
+        }
+        if self.webviews.capacity() > (self.webviews.len() + 8) * 2 {
+            self.webviews.shrink_to(self.webviews.len() + 8);
         }
         if let Some(capacity) = self.cycle_clock.capacity(
             clock,
@@ -414,6 +475,7 @@ pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use std::os::windows::process::CommandExt;
 
     #[test]

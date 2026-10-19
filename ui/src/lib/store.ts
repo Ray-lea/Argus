@@ -6,12 +6,12 @@ import { t } from "./i18n";
 import { api } from "./ipc";
 import { holdsOrder, type OrderHolds, pointerAloneHoldsOrder } from "./order-hold";
 import { persisted } from "./prefs";
+import { applicationKey, applicationMembers, canGroup } from "./process-identity";
 import { type PauseState, refreshPause } from "./refresh-pause";
 import {
   type BuildOptions,
   buildRows,
   type DisplayRow,
-  groupKey,
   procKey,
   type SortState,
   type TableRow,
@@ -181,7 +181,8 @@ export function ingest(s: Snapshot) {
         if (!first) firstSeen.set(k, seq);
       }
       pushSample(h, p.cpu, p.privateWs, keep);
-      const g = groupKey(p.name);
+      if (!canGroup(p)) continue;
+      const g = applicationKey(p);
       const sum = apps.get(g);
       if (sum) {
         sum.cpu += p.cpu;
@@ -402,8 +403,7 @@ const derived = createRoot(() => {
     const s = snapshot();
     if (!key || !s) return null;
     if (key.startsWith("g:")) {
-      const name = key.slice(2);
-      const members = s.processes.filter((p) => p.name.toLowerCase() === name);
+      const members = applicationMembers(s.processes, key);
       const proc = members.reduce<ProcessRow | null>(
         (a, b) => (!a || b.createTime < a.createTime ? b : a),
         null,
@@ -442,9 +442,9 @@ export function revealProcess(pid: number) {
     setPage("processes");
     setQuery("");
     if (viewMode() === "apps") {
-      const name = proc.name.toLowerCase();
-      if (s.processes.filter((p) => p.name.toLowerCase() === name).length > 1) {
-        setExpanded((set) => new Set(set).add(groupKey(proc.name)));
+      const key = applicationKey(proc);
+      if (applicationMembers(s.processes, key).length > 1) {
+        setExpanded((set) => new Set(set).add(key));
       }
     } else if (viewMode() === "tree") {
       const byPid = new Map(s.processes.map((p) => [p.pid, p]));

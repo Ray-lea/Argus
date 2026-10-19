@@ -47,6 +47,11 @@
     }
   },
   "addRuleFailed": "无法添加规则：{error}",
+  "ruleScope": {
+    "title": "为所有同名进程添加规则？",
+    "body": "规则按可执行文件名 {name} 匹配，会作用于所有同名进程，不限于当前宿主或安装路径。",
+    "confirm": "继续设置规则"
+  },
   "copied": "已复制{what}。",
   "copyFailed": "无法访问剪贴板，{what}未复制。",
   "revealFailed": "无法打开文件位置：{error}",

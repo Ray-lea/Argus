@@ -13,6 +13,7 @@ export interface ProcessRow {
   description: string | null;
   company: string | null;
   icon: number | null;
+  webView?: WebViewInfo;
   /** Percent of total machine capacity. */
   cpu: number;
   /** Total CPU time, ms. */
@@ -44,6 +45,15 @@ export interface ProcessRow {
   efficiency: boolean;
   /** Owns a taskbar window, which puts it under "Apps". */
   appWindow: boolean;
+}
+
+export interface WebViewInfo {
+  browserPid: number;
+  browserCreateTime: number;
+  hostName: string | null;
+  hostDescription: string | null;
+  hostIcon: number | null;
+  role: "browser" | "renderer" | "gpu" | "network" | "storage" | "audio" | "utility" | "crashpad" | "unknown";
 }
 
 export interface SystemStats {

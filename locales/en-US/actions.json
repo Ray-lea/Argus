@@ -71,6 +71,11 @@
     }
   },
   "addRuleFailed": "Couldn't add a rule: {error}",
+  "ruleScope": {
+    "title": "Add a rule for all processes with this name?",
+    "body": "Rules match the executable name {name}. The rule will apply to all processes with this name, across hosts and installation paths.",
+    "confirm": "Continue to rule settings"
+  },
   "copied": "Copied {what}.",
   "copyFailed": "Couldn't access the clipboard, so the {what} wasn't copied.",
   "revealFailed": "Couldn't open the file location: {error}",

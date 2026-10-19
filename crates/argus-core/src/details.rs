@@ -92,7 +92,7 @@ pub fn image_path_of(pid: u32) -> Option<String> {
     Some(String::from_utf16_lossy(&image[..len as usize]))
 }
 
-fn command_line(process: HANDLE) -> Option<String> {
+pub(crate) fn command_line(process: HANDLE) -> Option<String> {
     let mut buf = AlignedBuf::with_capacity(1024);
     for _ in 0..3 {
         let mut needed = 0u32;
@@ -107,6 +107,9 @@ fn command_line(process: HANDLE) -> Option<String> {
         };
         match status.0 {
             STATUS_INFO_LENGTH_MISMATCH | STATUS_BUFFER_TOO_SMALL | STATUS_BUFFER_OVERFLOW => {
+                if needed > 128 * 1024 {
+                    return None;
+                }
                 buf.grow_to(needed as usize + 16);
             }
             s if s < 0 => return None,

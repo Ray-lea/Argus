@@ -557,6 +557,7 @@ mod tests {
             description: None,
             company: None,
             icon: None,
+            web_view: None,
             cpu: 0.0,
             cpu_time: 0,
             private_ws: 0,

@@ -6,7 +6,8 @@ import { api } from "../lib/ipc";
 import { EASE_OUT, play } from "../lib/motion";
 import { missingDiskHint } from "../lib/privilege";
 import { sumDiskIo } from "../lib/process-io";
-import { type DisplayRow, groupKey, procKey } from "../lib/rows";
+import { processTitle } from "../lib/process-label";
+import { type DisplayRow, procKey } from "../lib/rows";
 import {
   groupHistoryOf,
   procHistoryOf,
@@ -31,11 +32,11 @@ const archName = (arch: ProcessDetails["architecture"] | undefined) =>
 /** Rebuilds a DisplayRow for actions shared with the table and context menu. */
 function asRow(sel: Selection, proc: ProcessRow): DisplayRow {
   return {
-    key: sel.isGroup ? groupKey(proc.name) : procKey(proc),
+    key: sel.key,
     kind: sel.isGroup ? "group" : "process",
     depth: 0,
     proc,
-    label: proc.description ?? proc.name,
+    label: processTitle(proc),
     detail: null,
     count: sel.members.length,
     cpu: 0,
@@ -152,7 +153,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
               <div class="details-head">
                 <ProcIcon proc={proc()} size={32} />
                 <div>
-                  <div class="details-title">{proc().description ?? proc().name}</div>
+                  <div class="details-title">{processTitle(proc())}</div>
                   <div class="details-subtitle">
                     {proc().name}
                     <Show when={props.sel.isGroup}>

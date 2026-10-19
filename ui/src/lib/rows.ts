@@ -1,7 +1,9 @@
 // Turns a flat process snapshot into the rows the table renders, for each view mode.
 
 import { localized, t } from "./i18n";
+import { applicationKey, procKey } from "./process-identity";
 import { compareDiskRate, sumDiskIo } from "./process-io";
+import { processDetail, processTitle, webViewRole, webViewTitle } from "./process-label";
 import type { ProcessRow } from "./types";
 
 export type ViewMode = "apps" | "tree" | "list";
@@ -79,8 +81,7 @@ export interface BuildOptions {
   hosted?: ReadonlyMap<number, readonly string[]>;
 }
 
-export const procKey = (p: ProcessRow) => `${p.pid}:${p.createTime}`;
-export const groupKey = (name: string) => `g:${name.toLowerCase()}`;
+export { procKey } from "./process-identity";
 export const ioTotal = (p: ProcessRow) => p.ioRead + p.ioWrite + p.ioOther;
 
 function procRow(p: ProcessRow, depth: number, label: string, detail: string | null): DisplayRow {
@@ -162,6 +163,9 @@ function matcher(
     (p.description?.toLowerCase().includes(q) ?? false) ||
     (p.company?.toLowerCase().includes(q) ?? false) ||
     (p.path?.toLowerCase().includes(q) ?? false) ||
+    (p.webView?.hostName?.toLowerCase().includes(q) ?? false) ||
+    (p.webView?.hostDescription?.toLowerCase().includes(q) ?? false) ||
+    (webViewRole(p)?.toLowerCase().includes(q) ?? false) ||
     (hosted?.get(p.pid)?.some((s) => s.toLowerCase().includes(q)) ?? false);
 }
 
@@ -172,6 +176,11 @@ export function summarizeServices(names: readonly string[]): string {
   return t("processes.servicesSummary", { names: names.slice(0, 2).join(separator), count: names.length });
 }
 
+function serviceTitle(p: ProcessRow, hosted?: ReadonlyMap<number, readonly string[]>): string | null {
+  const names = p.name.toLowerCase() === "svchost.exe" ? hosted?.get(p.pid) : undefined;
+  return names?.length ? t("processes.serviceHost", { names: summarizeServices(names) }) : null;
+}
+
 export function buildRows(procs: readonly ProcessRow[], opts: BuildOptions): TableRow[] {
   const cmp = comparator(opts.sort);
   const match = matcher(opts.query, opts.hosted);
@@ -180,14 +189,17 @@ export function buildRows(procs: readonly ProcessRow[], opts: BuildOptions): Tab
     case "list":
       rows = procs
         .filter((p) => !match || match(p))
-        .map((p) => procRow(p, 0, p.name, p.description))
+        .map((p) => {
+          const service = serviceTitle(p, opts.hosted);
+          return procRow(p, 0, service ?? webViewTitle(p) ?? p.name, service ? p.name : processDetail(p));
+        })
         .sort(cmp);
       break;
     case "tree":
-      rows = buildTree(procs, cmp, match, opts.collapsed);
+      rows = buildTree(procs, cmp, match, opts.collapsed, opts.hosted);
       break;
     case "apps":
-      rows = buildApps(procs, cmp, match, opts.query.trim().toLowerCase(), opts.expanded);
+      rows = buildApps(procs, cmp, match, opts.query.trim().toLowerCase(), opts.expanded, opts.hosted);
       break;
   }
   // A service host's description ("Host Process for Windows Services") says
@@ -195,7 +207,9 @@ export function buildRows(procs: readonly ProcessRow[], opts: BuildOptions): Tab
   if (opts.hosted?.size) {
     for (const row of rows) {
       const names = row.kind === "process" ? opts.hosted.get(row.proc.pid) : undefined;
-      if (names && !(opts.mode === "apps" && row.depth === 0)) row.detail = summarizeServices(names);
+      if (names?.length && row.proc.name.toLowerCase() === "svchost.exe") {
+        row.detail = row.proc.name;
+      } else if (names && !(opts.mode === "apps" && row.depth === 0)) row.detail = summarizeServices(names);
     }
   }
   // Like Windows Task Manager: sorted by name, apps come first under their own
@@ -238,6 +252,7 @@ function buildTree(
   cmp: (a: DisplayRow, b: DisplayRow) => number,
   match: ((p: ProcessRow) => boolean) | null,
   collapsed: ReadonlySet<string>,
+  hosted?: ReadonlyMap<number, readonly string[]>,
 ): DisplayRow[] {
   const byPid = new Map(procs.map((p) => [p.pid, p]));
   const children = new Map<string, ProcessRow[]>();
@@ -273,7 +288,13 @@ function buildTree(
   const seen = new Set<string>();
   const walk = (list: ProcessRow[], depth: number) => {
     const level = list.filter(visible).map((p) => {
-      const row = procRow(p, depth, p.name, p.description);
+      const service = serviceTitle(p, hosted);
+      const row = procRow(
+        p,
+        depth,
+        service ?? webViewTitle(p) ?? p.name,
+        service ? p.name : processDetail(p),
+      );
       row.expandable = (children.get(row.key)?.length ?? 0) > 0;
       row.expanded = row.expandable && (match !== null || !collapsed.has(row.key));
       return row;
@@ -296,30 +317,30 @@ function buildApps(
   match: ((p: ProcessRow) => boolean) | null,
   query: string,
   expanded: ReadonlySet<string>,
+  hosted?: ReadonlyMap<number, readonly string[]>,
 ): DisplayRow[] {
   const groups = new Map<string, ProcessRow[]>();
   for (const p of procs) {
-    const k = p.name.toLowerCase();
+    const k = applicationKey(p);
     const list = groups.get(k);
     if (list) list.push(p);
     else groups.set(k, [p]);
   }
 
   const top: { row: DisplayRow; members: ProcessRow[] }[] = [];
-  for (const [name, members] of groups) {
+  for (const [key, members] of groups) {
     const rep = members.reduce((a, b) => (b.createTime < a.createTime ? b : a));
-    const label = rep.description ?? rep.name;
-    const detail = rep.description ? rep.name : null;
+    const label = serviceTitle(rep, hosted) ?? processTitle(rep);
+    const detail = rep.description || rep.webView ? rep.name : null;
     let shown = members;
-    if (match && !label.toLowerCase().includes(query) && !name.includes(query)) {
+    if (match && !label.toLowerCase().includes(query) && !rep.name.toLowerCase().includes(query)) {
       shown = members.filter(match);
       if (shown.length === 0) continue;
     }
     if (members.length === 1) {
-      top.push({ row: procRow(rep, 0, label, detail), members: [] });
+      top.push({ row: procRow(rep, 0, label, rep.webView ? processDetail(rep) : detail), members: [] });
       continue;
     }
-    const key = groupKey(name);
     const row: DisplayRow = {
       key,
       kind: "group",
@@ -368,7 +389,11 @@ function buildApps(
   for (const { row, members } of top) {
     out.push(row);
     if (row.kind === "group" && row.expanded) {
-      out.push(...members.map((p) => procRow(p, 1, p.name, null)).sort(cmp));
+      out.push(
+        ...members
+          .map((p) => procRow(p, 1, webViewRole(p) ?? p.name, p.webView ? processTitle(p) : null))
+          .sort(cmp),
+      );
     }
   }
   return out;

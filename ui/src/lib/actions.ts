@@ -4,6 +4,7 @@ import { actionFailure, endFailure, needsServiceUpdate, telling } from "./action
 import { t } from "./i18n";
 import { api } from "./ipc";
 import { SERVICE_SETTING } from "./privilege";
+import { applicationMembers, broadRuleScope } from "./process-identity";
 import type { DisplayRow } from "./rows";
 import { goToSetting, markEnding, setFocusRule, setPage, snapshot } from "./store";
 import type { PriorityClass, ProcessRow, ProcessRule } from "./types";
@@ -96,8 +97,7 @@ async function whileEnding<T>(key: string, run: () => Promise<T>, ok: (result: T
 }
 
 function groupMembers(row: DisplayRow): ProcessRow[] {
-  const name = row.proc.name.toLowerCase();
-  return snapshot()?.processes.filter((p) => p.name.toLowerCase() === name) ?? [];
+  return applicationMembers(snapshot()?.processes ?? [], row.key);
 }
 
 function descendantCount(root: ProcessRow): number {
@@ -128,11 +128,15 @@ function descendantCount(root: ProcessRow): number {
 export async function endRow(row: DisplayRow, skipConfirm = false) {
   if (row.kind === "group") {
     const members = groupMembers(row);
+    if (members.length === 0) {
+      toast("error", t("actions.staleProcess"));
+      return;
+    }
     if (
       !skipConfirm &&
       !(await confirm({
         title: t("actions.end.title", { name: row.label }),
-        body: t("actions.endGroup.body", { name: row.proc.name, count: members.length }),
+        body: t("actions.endGroup.body", { name: row.label, count: members.length }),
         confirmLabel: t("actions.endAll"),
         danger: true,
       }))
@@ -234,6 +238,10 @@ export async function setRowPriority(row: DisplayRow, priority: PriorityClass) {
     return;
   }
   const targets = targetsOf(row);
+  if (targets.length === 0) {
+    toast("error", t("actions.staleProcess"));
+    return;
+  }
   const results = await Promise.allSettled(
     targets.map((p) => api.setPriority(p.pid, p.createTime, priority)),
   );
@@ -262,6 +270,10 @@ export async function setRowPriority(row: DisplayRow, priority: PriorityClass) {
 /** Turns efficiency mode on or off for a process, or for every process in an app group. */
 export async function setRowEfficiency(row: DisplayRow, on: boolean) {
   const targets = targetsOf(row);
+  if (targets.length === 0) {
+    toast("error", t("actions.staleProcess"));
+    return;
+  }
   const results = await Promise.allSettled(targets.map((p) => api.setEfficiency(p.pid, p.createTime, on)));
   const failed = (results.filter((r) => r.status === "rejected") as PromiseRejectedResult[]).map(
     (r) => r.reason,
@@ -290,6 +302,15 @@ export async function addRuleFor(row: DisplayRow) {
     const settings = await api.settings();
     let rule = settings.rules.find((r) => r.name.toLowerCase() === name.toLowerCase());
     if (!rule) {
+      if (
+        broadRuleScope(row.proc, snapshot()?.processes ?? []) &&
+        !(await confirm({
+          title: t("actions.ruleScope.title"),
+          body: t("actions.ruleScope.body", { name }),
+          confirmLabel: t("actions.ruleScope.confirm"),
+        }))
+      )
+        return;
       const priority = priorityOf(row.proc.basePriority);
       const created: ProcessRule = {
         id: crypto.randomUUID(),
