@@ -1029,24 +1029,49 @@ button {
   background: var(--hover);
 }
 
-/* "应用" and "后台进程" while the list is sorted by name. */
+/* Process categories while the list is sorted by name. */
 .section-row {
   position: absolute;
   top: 0;
   left: 4px;
   right: 4px;
   display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  height: 30px;
-  padding: 0 0 5px 12px;
+  align-items: center;
+  height: 40px;
+  padding: 6px 0;
+  color: var(--accent);
+  font-size: 15px;
   font-weight: 600;
   contain: layout style;
 }
 
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  width: 100%;
+  padding: 0 12px;
+  line-height: 22px;
+}
+
+.section-label {
+  flex: none;
+}
+
 .section-row .section-count {
-  color: var(--ink-3);
+  flex: none;
+  color: var(--ink-2);
+  font-size: 12px;
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-divider {
+  flex: 1;
+  align-self: center;
+  height: 1px;
+  margin-left: 9px;
+  background: var(--stroke);
 }
 
 /* A process that just started: tinted for a few samples, then fading out in
@@ -1178,6 +1203,8 @@ button {
 }
 
 .detail {
+  flex: 1 1 0;
+  min-width: 0;
   overflow: hidden;
   color: var(--ink-3);
   text-overflow: ellipsis;

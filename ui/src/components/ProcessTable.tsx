@@ -36,6 +36,7 @@ import { processMenu } from "./menus";
 import ProcIcon from "./ProcIcon";
 
 const ROW_HEIGHT = 30;
+const SECTION_HEIGHT = 40;
 const MB = 1024 * 1024;
 
 /** Scroll position kept while another page is open. */
@@ -83,13 +84,24 @@ export default function ProcessTable() {
   const [shift, setShift] = createSignal(0);
   /** The tooltip of a missing disk reading, shared by every row. */
   const diskHint = createMemo(missingDiskHint);
+  // Only membership/order changes invalidate the virtual layout; live values do not.
+  const rowKeys = createMemo(() => rows().map((r) => r.key), [] as string[], {
+    equals: (a, b) => a.length === b.length && a.every((key, i) => key === b[i]),
+  });
 
   const virtualizer = createVirtualizer({
     get count() {
-      return rows().length;
+      return rowKeys().length;
     },
     getScrollElement: () => scrollEl,
-    estimateSize: () => ROW_HEIGHT,
+    get getItemKey() {
+      const keys = rowKeys();
+      return (index: number) => keys[index];
+    },
+    get estimateSize() {
+      const keys = rowKeys();
+      return (index: number) => (keys[index].startsWith("s:") ? SECTION_HEIGHT : ROW_HEIGHT);
+    },
     overscan: 12,
   });
 
@@ -315,7 +327,7 @@ export default function ProcessTable() {
   );
 }
 
-/** A process row or, while sorted by name, an "应用" / "后台进程" heading. */
+/** A process row or, while sorted by name, a process category heading. */
 function Item(props: { row: TableRow; start: number; withNet: boolean; diskHint: string }) {
   const process = () => (isSection(props.row) ? undefined : props.row);
   const heading = () => (isSection(props.row) ? props.row : undefined);
@@ -331,10 +343,20 @@ function Item(props: { row: TableRow; start: number; withNet: boolean; diskHint:
 
 function SectionHeading(props: { row: SectionRow; start: number }) {
   return (
-    <div role="row" class="section-row" style={{ transform: `translateY(${props.start}px)` }}>
-      <span role="rowheader">
-        {props.row.label}
-        <span class="section-count"> ({props.row.count})</span>
+    <div
+      role="row"
+      class="section-row"
+      data-section={props.row.section}
+      style={{ transform: `translateY(${props.start}px)` }}
+    >
+      <span
+        role="rowheader"
+        class="section-heading"
+        aria-label={`${props.row.label} (${fmtCount(props.row.count)})`}
+      >
+        <span class="section-label">{props.row.label}</span>
+        <span class="section-count">({fmtCount(props.row.count)})</span>
+        <span class="section-divider" aria-hidden="true" />
       </span>
     </div>
   );
