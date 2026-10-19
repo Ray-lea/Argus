@@ -442,37 +442,39 @@ export default function Performance() {
 
   return (
     <div ref={page} class="perf page" style={{ "--perf-side": `${side()}px` }}>
-      <nav class="dev-list" aria-label={t("performance.devices")}>
-        <Indicator selector="[aria-current='true']" track={current} class="dev-mark" />
-        <For each={keys()}>
-          {(key) => {
-            const d = () => deviceMap().get(key);
-            const max = easedMax(() => d()?.max() ?? 1);
-            return (
-              <Show when={d()}>
-                {(dev) => (
-                  <button
-                    type="button"
-                    class="dev"
-                    aria-current={current() === key ? "true" : undefined}
-                    onClick={() => setPerfDevice(key)}
-                  >
-                    <div style={{ "min-width": 0 }}>
-                      <div class="dev-title" title={dev().title}>
-                        {dev().title}
+      <div class="perf-side">
+        <nav class="dev-list" aria-label={t("performance.devices")}>
+          <Indicator selector="[aria-current='true']" track={current} class="dev-mark" />
+          <For each={keys()}>
+            {(key) => {
+              const d = () => deviceMap().get(key);
+              const max = easedMax(() => d()?.max() ?? 1);
+              return (
+                <Show when={d()}>
+                  {(dev) => (
+                    <button
+                      type="button"
+                      class="dev"
+                      aria-current={current() === key ? "true" : undefined}
+                      onClick={() => setPerfDevice(key)}
+                    >
+                      <div style={{ "min-width": 0 }}>
+                        <div class="dev-title" title={dev().title}>
+                          {dev().title}
+                        </div>
+                        <div class="dev-sub">{dev().sub}</div>
                       </div>
-                      <div class="dev-sub">{dev().sub}</div>
-                    </div>
-                    <div class="dev-trace" style={{ "--c": `var(${dev().colorVar})` }}>
-                      <Chart series={dev().series} max={max} />
-                    </div>
-                  </button>
-                )}
-              </Show>
-            );
-          }}
-        </For>
-      </nav>
+                      <div class="dev-trace" style={{ "--c": `var(${dev().colorVar})` }}>
+                        <Chart series={dev().series} max={max} />
+                      </div>
+                    </button>
+                  )}
+                </Show>
+              );
+            }}
+          </For>
+        </nav>
+      </div>
       <Splitter width={side()} onResize={(w) => setSide(clampSide(w))} onCommit={() => saveSide(side())} />
 
       <section class="perf-detail" aria-live="off">

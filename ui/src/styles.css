@@ -15,6 +15,7 @@
 
 :root {
   color-scheme: light dark;
+  --scrollbar-size: 10px;
   --accent: #0067c0;
   --on-accent: #ffffff;
   --ink: #1b1c22;
@@ -148,8 +149,8 @@ button {
    or track that widens under the pointer, as in Fluent. Areas that need more
    only add to this (e.g. a track margin), never restyle the thumb. */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
 
 ::-webkit-scrollbar-track,
@@ -727,6 +728,7 @@ button {
   z-index: 70;
   min-width: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .select-option {
@@ -922,13 +924,12 @@ button {
   translate: calc(-1 * var(--shift));
 }
 
-/* Has a scrollbar only when the columns do not fit: their narrowest widths
-   (604 px, 696 px with the network column) plus the header's 18 px padding.
-   The width needs a 1 px tall box to count as overflow; the margin takes the
-   pixel back, so a table that fits keeps its height. */
+/* Reserve the horizontal rail even when the columns fit, so a new network
+   column or a changed filter cannot take height away from the visible rows.
+   The width needs a 1 px tall box; the margin takes just that pixel back. */
 .hscroll {
   margin-top: -1px;
-  overflow-x: auto;
+  overflow-x: scroll;
   overflow-y: hidden;
 }
 
@@ -1255,6 +1256,7 @@ button {
   min-height: 0;
   padding: 14px 16px 16px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .details-head {
@@ -1860,6 +1862,7 @@ button {
   margin: 16px -8px 0;
   padding: 0 8px;
   overflow: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
 }
 
@@ -2194,6 +2197,7 @@ html.still *::after {
   gap: 12px;
   height: min(540px, calc(100vh - 140px));
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 28px 32px 20px;
 }
 

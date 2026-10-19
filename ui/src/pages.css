@@ -223,11 +223,18 @@
   background: var(--accent);
 }
 
+.perf-side {
+  min-width: 0;
+  min-height: 0;
+  container-type: inline-size;
+}
+
 .dev-list {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  height: 100%;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -237,6 +244,10 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 76px;
+  /* The outer container keeps this width when the scrollbar appears. An
+     empty stable gutter on the animated list would repaint on each frame
+     driven by a main-thread animation, including refresh-rate measurement. */
+  width: calc(100cqw - var(--scrollbar-size));
   gap: 10px;
   align-items: center;
   padding: 8px 8px 8px 12px;
@@ -326,6 +337,7 @@
   min-height: 0;
   padding: 16px 20px 20px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 /* Keeps the thumb clear of the card's rounded corners. */
@@ -699,7 +711,7 @@
 }
 
 .cpu-core-scroll {
-  overflow-x: auto;
+  overflow-x: scroll;
 }
 
 .cpu-core-table {
@@ -1104,6 +1116,7 @@
 .settings {
   margin: 0 12px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   container-type: inline-size;
 }
 
@@ -1531,7 +1544,7 @@
   display: flex;
   flex-direction: column;
   width: min(780px, calc(100vw - 48px));
-  max-height: min(760px, calc(100dvh - 48px));
+  height: min(760px, calc(100dvh - 48px));
 }
 
 .shortcut-header {
@@ -1570,8 +1583,10 @@
 }
 
 .shortcut-body {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding-top: 20px;
 }
 
@@ -1766,6 +1781,7 @@
   margin: 0;
   padding: 12px 14px;
   overflow: auto;
+  scrollbar-gutter: stable;
   border: 1px solid var(--stroke);
   border-radius: 6px;
   background: var(--layer);

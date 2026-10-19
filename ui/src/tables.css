@@ -267,6 +267,7 @@
 .lock-dialog > .dialog-body {
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .lock-dialog > .dialog-footer {
@@ -288,6 +289,7 @@
   max-height: 260px;
   margin-top: 8px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .locker {
