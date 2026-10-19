@@ -118,6 +118,7 @@ import { onboardingOpen, openOnboarding } from "./Onboarding";
 import ProcIcon from "./ProcIcon";
 import ProgressBar from "./ProgressBar";
 import Select from "./Select";
+import ShortcutHelp from "./ShortcutHelp";
 
 const SECTIONS = [
   { id: "language", icon: GlobeIcon },
@@ -2057,6 +2058,13 @@ export default function SettingsPage() {
                 <section id="settings-hotkey" class="settings-section">
                   <h2>{t("settings.sections.hotkey")}</h2>
                   <HotkeySetting settings={s()} onSaved={mutate} />
+                  <Setting
+                    icon={<KeyboardIcon size={20} />}
+                    title={t("settings.shortcuts.title")}
+                    desc={t("settings.shortcuts.desc")}
+                  >
+                    <ShortcutHelp settings={s()} />
+                  </Setting>
                 </section>
 
                 <section id="settings-privilege" class="settings-section">

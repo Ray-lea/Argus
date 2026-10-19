@@ -1526,6 +1526,236 @@
   text-align: right;
 }
 
+/* Keyboard shortcuts, opened from settings. */
+.dialog.shortcut-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(780px, calc(100vw - 48px));
+  max-height: min(760px, calc(100dvh - 48px));
+}
+
+.shortcut-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.shortcut-header > div {
+  flex: 1;
+}
+.shortcut-header .dialog-title {
+  margin: 0 0 4px;
+}
+.shortcut-header p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.shortcut-header > .btn {
+  align-self: flex-start;
+}
+.shortcut-emblem {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.shortcut-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 20px;
+}
+
+.shortcut-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.shortcut-card {
+  padding: 14px 16px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--layer);
+}
+.shortcut-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.shortcut-card-title > svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.shortcut-card p {
+  margin: 9px 0 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.shortcut-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.shortcut-disabled {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.shortcut-keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.shortcut-chord {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.shortcut-keys kbd {
+  display: inline-flex;
+  min-width: 24px;
+  height: 25px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border: 1px solid var(--stroke-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--control);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1;
+}
+.shortcut-plus,
+.shortcut-separator {
+  color: var(--ink-3);
+  font-size: 10px;
+}
+.shortcut-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 20px 0 10px;
+}
+.shortcut-section-heading h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.shortcut-pages {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin-bottom: 20px;
+}
+.shortcut-pages > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+}
+.shortcut-pages > div > svg {
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+.shortcut-pages > div > .shortcut-keys {
+  margin-left: auto;
+}
+.shortcut-group {
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  margin-top: 8px;
+}
+.shortcut-group summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.shortcut-group summary > svg {
+  color: var(--ink-2);
+  flex-shrink: 0;
+}
+.shortcut-group summary > svg:last-child {
+  margin-left: auto;
+}
+.shortcut-group[open] summary > svg:last-child {
+  transform: rotate(180deg);
+}
+.shortcut-group summary:hover {
+  background: var(--layer);
+}
+.shortcut-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 20px;
+  margin: 0;
+  padding: 4px 14px 16px;
+  align-items: center;
+  font-size: 12px;
+}
+.shortcut-list :is(dt, dd) {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.shortcut-list dt {
+  color: var(--ink-2);
+}
+.shortcut-list dd {
+  justify-self: end;
+}
+.shortcut-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  color: var(--ink-2);
+  font-size: 11px;
+}
+.shortcut-note > .shortcut-keys {
+  flex-shrink: 0;
+}
+.shortcut-footnote {
+  margin: 12px 0 0;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.shortcut-dialog .dialog-footer {
+  flex-shrink: 0;
+  align-items: center;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.shortcut-footer-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
 /* License text, opened from the about section. */
 .dialog.license-dialog {
   width: min(720px, calc(100vw - 48px));

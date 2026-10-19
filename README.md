@@ -104,6 +104,8 @@ start.bat build     # 发布构建，生成 target\release\argus.exe
 | 结束进程 | <kbd>Alt</kbd>+<kbd>E</kbd> 或 <kbd>Delete</kbd>（<kbd>Shift</kbd>+<kbd>Delete</kbd> 跳过确认） |
 | 显示或隐藏窗口（全局） | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
+完整说明可在“设置 → 快捷键 → 查看快捷键”中查看。
+
 完整的操作说明参见[使用指南](docs/guide/README.md)。
 
 ## 📚 文档

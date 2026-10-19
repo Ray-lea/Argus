@@ -104,6 +104,8 @@ For the browser preview, checks, packaging the installer and cleaning caches, se
 | End task | <kbd>Alt</kbd>+<kbd>E</kbd> or <kbd>Delete</kbd> (<kbd>Shift</kbd>+<kbd>Delete</kbd> skips the confirmation) |
 | Show or hide the window (global) | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
+The full reference is available in Settings → Keyboard shortcuts → View shortcuts.
+
 The [user guide](docs/guide/README.md) covers everything else.
 
 ## 📚 Documentation
