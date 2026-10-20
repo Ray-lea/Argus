@@ -78,10 +78,10 @@ Get the latest version from [GitHub Releases](https://github.com/Ray-lea/Argus/r
 
 ## 💻 System requirements
 
-- Windows 10 22H2 (build 19045) or Windows 11, both x64
+- Windows 10 version 22H2 (build 19045) or later, including Windows 11; x64 only
 - WebView2 Runtime (included in Windows 11)
 
-See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (Chinese) for data permissions and kernel sensor requirements on each system.
+See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (Chinese) for tested Windows versions, feature differences and permission requirements.
 
 ## 🔧 Build from source
 

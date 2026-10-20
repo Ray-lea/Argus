@@ -78,10 +78,10 @@ Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS �
 
 ## 💻 系统要求
 
-- Windows 10 22H2（内部版本 19045）或 Windows 11，均为 x64
+- Windows 10 22H2（内部版本 19045）及以上版本，包括 Windows 11；仅支持 x64 架构
 - WebView2 运行时（Windows 11 已内置）
 
-不同系统的数据权限与内核传感器要求见[兼容范围](docs/guide/hardware-data.md#系统兼容范围)。
+已验证的系统版本、功能差异与权限要求见[兼容范围](docs/guide/hardware-data.md#系统兼容范围)。
 
 ## 🔧 从源码构建
 
