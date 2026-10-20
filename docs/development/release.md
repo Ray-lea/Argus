@@ -138,6 +138,8 @@ gh run watch    # 选择刚开始的 Check，等待结束
 
 ## 更新签名密钥
 
+Windows Authenticode 的测试接入见 [Windows 代码签名](signing.md)。测试签名工作流独立于正式发布；以下密钥仍用于应用内更新验证，与 Windows 代码签名证书分开管理。
+
 应用内更新只安装用这把密钥签名的安装包，签名同时覆盖版本号（插件的 `requireSignedVersion`）。这与代码签名无关，消除不了 SmartScreen 提示。
 
 第一次配置时，在维护者本机生成密钥（会提示设置密码），把私钥和密码存进仓库的 Actions Secrets。PowerShell 默认禁止运行脚本，`pnpm` 会解析到被拦下的 `pnpm.ps1`，所以这里写 `pnpm.cmd`：

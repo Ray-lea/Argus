@@ -23,6 +23,7 @@ docs/
 - [构建与缓存](development/build.md)：缓存优化、链接器与工具链
 - [性能基线与测量](development/performance.md)
 - [提交与发布](development/release.md)：持续集成、提交信息规范、版本号、发布步骤、更新签名与通道、发布后发现严重问题时的处理
+- [Windows 代码签名](development/signing.md)：SignPath 测试配置、签名顺序与产物验证
 - [多语言](development/i18n.md)：文案目录、界面与 Rust 中的用法、检查、增加语言、术语表
 
 ## 架构

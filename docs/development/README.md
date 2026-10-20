@@ -3,6 +3,7 @@
 - [构建与缓存](build.md)
 - [性能基线与测量](performance.md)
 - [提交与发布](release.md)
+- [Windows 代码签名](signing.md)
 - [多语言](i18n.md)
 - 代码结构见[架构](../architecture/README.md)
 
