@@ -11,6 +11,7 @@ import type {
   PrivilegedServiceAction,
   PrivilegedServiceStatus,
   ProcessDetails,
+  ProcessIdentity,
   ProcessRule,
   RuleStats,
   ServiceInfo,
@@ -42,6 +43,9 @@ export const api = {
     mock
       ? Promise.resolve("C:\\Program Files\\Example\\app.exe")
       : invoke("pick_path", { folder: false, task: true }),
+  desktopShell: (): Promise<ProcessIdentity | null> => (mock ? mock.desktopShell() : invoke("desktop_shell")),
+  restartExplorer: (pid: number, createTime: number): Promise<void> =>
+    mock ? mock.restartExplorer(pid, createTime) : invoke("restart_explorer", { pid, createTime }),
   runTask: (command: string, elevated: boolean): Promise<void> =>
     mock ? mock.runTask(command, elevated) : invoke("run_task", { command, elevated }),
   appInfo: (): Promise<AppInfo> => (mock ? mock.appInfo() : invoke("app_info")),

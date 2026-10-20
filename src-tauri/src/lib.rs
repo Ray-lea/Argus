@@ -1,6 +1,7 @@
 mod caption;
 mod commands;
 mod diagnostics;
+mod explorer;
 mod hotkey;
 mod instance;
 mod leftovers;
@@ -93,6 +94,9 @@ pub struct AppState {
 }
 
 pub fn run() {
+    if let Some(code) = explorer::run_mode() {
+        std::process::exit(code);
+    }
     if let Some(code) = tasks::run_mode() {
         std::process::exit(code);
     }
@@ -349,6 +353,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::run_task,
+            commands::desktop_shell,
+            commands::restart_explorer,
             commands::subscribe,
             commands::set_interval,
             commands::set_paused,

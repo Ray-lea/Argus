@@ -17,6 +17,17 @@ export interface TaskError {
   code: number;
 }
 
+export interface ProcessIdentity {
+  pid: number;
+  createTime: number;
+}
+
+export interface ExplorerError {
+  kind: "stale" | "unsupported" | "permission" | "prepare" | "shutdown" | "restore" | "busy";
+  code: number;
+  shellMissing: boolean;
+}
+
 export interface ProcessRow {
   pid: number;
   ppid: number;

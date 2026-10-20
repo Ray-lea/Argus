@@ -541,6 +541,19 @@ export async function runTask(command: string, elevated: boolean): Promise<void>
   if (elevated && query.get("task") === "cancelled") throw { kind: "cancelled", code: 1223 };
 }
 
+export async function desktopShell() {
+  const proc = procs.find((p) => p.name === "explorer.exe");
+  return proc ? { pid: proc.pid, createTime: proc.createTime } : null;
+}
+
+export async function restartExplorer(pid: number, createTime: number): Promise<void> {
+  const shell = await desktopShell();
+  if (!shell || shell.pid !== pid || shell.createTime !== createTime)
+    throw { kind: "stale", code: 1168, shellMissing: !shell };
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  if (query.get("explorer") === "failed") throw { kind: "restore", code: 1460, shellMissing: true };
+}
+
 /** The version the mock app runs. */
 export const VERSION = "0.1.0";
 const resolve = (language: Language): Locale =>

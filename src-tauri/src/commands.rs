@@ -30,6 +30,16 @@ use crate::{AppState, HistoryDir, shell};
 pub(crate) mod autostart;
 
 #[tauri::command(async)]
+pub fn desktop_shell() -> Option<crate::explorer::Identity> {
+    crate::explorer::current()
+}
+
+#[tauri::command(async)]
+pub fn restart_explorer(pid: u32, create_time: i64) -> Result<(), crate::explorer::RestartError> {
+    crate::explorer::restart(pid, create_time)
+}
+
+#[tauri::command(async)]
 pub fn run_task(
     app: tauri::AppHandle,
     command: String,

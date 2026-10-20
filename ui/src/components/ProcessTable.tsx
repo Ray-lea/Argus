@@ -30,9 +30,8 @@ import {
   toggleRow,
   viewMode,
 } from "../lib/store";
-import { openMenu } from "../lib/ui";
 import { ChevronDown, ChevronRight, ChevronUp, LeafIcon } from "./icons";
-import { processMenu } from "./menus";
+import { openProcessMenu } from "./menus";
 import ProcIcon from "./ProcIcon";
 
 const ROW_HEIGHT = 30;
@@ -387,7 +386,7 @@ function Row(props: { row: DisplayRow; start: number; withNet: boolean; diskHint
         if (e.button === 0 || e.button === 2) setSelectedKey(r().key);
       }}
       onDblClick={() => (r().expandable ? toggleRow(r()) : setDetailsOpen(true))}
-      onContextMenu={(e) => openMenu(e, processMenu(r()))}
+      onContextMenu={(e) => openProcessMenu(e, r())}
     >
       <div class="cell name" role="gridcell" style={{ "padding-left": `${6 + r().depth * 20}px` }}>
         <Show when={r().expandable} fallback={<span class="twisty-spacer" />}>

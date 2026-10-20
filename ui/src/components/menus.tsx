@@ -11,13 +11,24 @@ import {
   setRowEfficiency,
   setRowPriority,
 } from "../lib/actions";
+import { restartExplorer, restartingExplorer } from "../lib/explorer";
 import { t } from "../lib/i18n";
+import { api } from "../lib/ipc";
 import { applicationMembers } from "../lib/process-identity";
 import type { DisplayRow } from "../lib/rows";
 import { setDetailsOpen, snapshot, toggleRow } from "../lib/store";
-import type { PriorityClass } from "../lib/types";
-import type { MenuEntry } from "../lib/ui";
-import { BranchEndIcon, CopyIcon, EndIcon, FolderIcon, GaugeIcon, InfoIcon, LeafIcon } from "./icons";
+import type { PriorityClass, ProcessIdentity } from "../lib/types";
+import { type MenuEntry, menu, openMenu, setMenu } from "../lib/ui";
+import {
+  BranchEndIcon,
+  CopyIcon,
+  EndIcon,
+  FolderIcon,
+  GaugeIcon,
+  InfoIcon,
+  LeafIcon,
+  RestartIcon,
+} from "./icons";
 
 /** Task Manager's order, highest first. */
 const PRIORITIES: PriorityClass[] = ["realtime", "high", "aboveNormal", "normal", "belowNormal", "idle"];
@@ -31,7 +42,7 @@ function currentPriority(row: DisplayRow): PriorityClass | null {
   return classes.size === 1 ? priorityOf([...classes][0]) : null;
 }
 
-export function processMenu(row: DisplayRow): MenuEntry[] {
+export function processMenu(row: DisplayRow, shell?: ProcessIdentity): MenuEntry[] {
   const isGroup = row.kind === "group";
   const path = row.proc.path;
   const priority = currentPriority(row);
@@ -47,6 +58,13 @@ export function processMenu(row: DisplayRow): MenuEntry[] {
   ];
   if (!isGroup)
     items.push({ label: t("common.endProcessTree"), icon: () => <BranchEndIcon />, run: () => endTree(row) });
+  if (shell)
+    items.push({
+      label: restartingExplorer() ? t("tasks.explorer.restarting") : t("tasks.explorer.restart"),
+      icon: () => <RestartIcon />,
+      disabled: restartingExplorer(),
+      run: () => restartExplorer(shell),
+    });
   items.push(
     "separator",
     {
@@ -100,4 +118,29 @@ export function processMenu(row: DisplayRow): MenuEntry[] {
     },
   );
   return items;
+}
+
+/** Resolve the desktop owner only when its menu opens, without adding work to sampling. */
+export function openProcessMenu(event: MouseEvent, row: DisplayRow) {
+  const items = processMenu(row);
+  openMenu(event, items);
+  const members =
+    row.kind === "group" ? applicationMembers(snapshot()?.processes ?? [], row.key) : [row.proc];
+  if (!members.some((p) => p.name.toLowerCase() === "explorer.exe")) return;
+  void api
+    .desktopShell()
+    .then((shell) => {
+      if (
+        !shell ||
+        menu()?.items !== items ||
+        !members.some((p) => p.pid === shell.pid && p.createTime === shell.createTime)
+      )
+        return;
+      setMenu((current) =>
+        current?.items === items ? { ...current, items: processMenu(row, shell) } : current,
+      );
+    })
+    .catch(() => {
+      /* The ordinary process actions remain available. */
+    });
 }

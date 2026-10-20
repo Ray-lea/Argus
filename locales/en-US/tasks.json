@@ -12,6 +12,23 @@
   "waiting": "Waiting for Windows to finish starting the task or request authorization.",
   "started": "New task submitted.",
   "code": "Error code: {code}",
+  "explorer": {
+    "title": "Restart Windows Explorer",
+    "restart": "Restart",
+    "confirm": "The desktop and taskbar will briefly disappear. Explorer windows and file operations in progress may be affected.",
+    "restarting": "Restarting Windows Explorer…",
+    "done": "Windows Explorer restarted. The desktop and taskbar are ready.",
+    "recover": "Run Windows Explorer",
+    "error": {
+      "stale": "Windows Explorer has exited or changed. Refresh the list and try again.",
+      "unsupported": "This Explorer instance does not support a safe restart. It was not closed.",
+      "permission": "The current desktop's Explorer could not be accessed. It was not closed.",
+      "prepare": "The Explorer restart environment could not be prepared. It was not closed.",
+      "shutdown": "Windows Explorer did not finish restarting. Try again shortly.",
+      "restore": "Windows Explorer has not recovered. Choose Run Windows Explorer to open it again.",
+      "busy": "Windows Explorer is already restarting. Try again shortly."
+    }
+  },
   "error": {
     "invalid": "Enter a valid app name, path or command, up to 8192 characters.",
     "cancelled": "Windows authorization was canceled. The task was not started.",
