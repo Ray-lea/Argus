@@ -6,32 +6,12 @@
 // view (never at start: Argus is often opened to deal with a busy system) and
 // the onboarding is over.
 
-import {
-  createEffect,
-  createMemo,
-  createResource,
-  createSignal,
-  For,
-  on,
-  onCleanup,
-  Show,
-  untrack,
-} from "solid-js";
+import { createEffect, createResource, createSignal, on, onCleanup, Show, untrack } from "solid-js";
 import { fmtCache } from "../lib/format";
-import { locale, localized, t } from "../lib/i18n";
+import { t } from "../lib/i18n";
 import { api, inTauri } from "../lib/ipc";
-import { EASE_OUT, play, presence } from "../lib/motion";
-import {
-  type Block,
-  between,
-  changeCount,
-  changelogEntries,
-  compareVersions,
-  isPrerelease,
-  parseNotes,
-  type Release,
-  type Span,
-} from "../lib/release-notes";
+import { presence } from "../lib/motion";
+import { changelogEntries, compareVersions, isPrerelease } from "../lib/release-notes";
 import { appInfo } from "../lib/store";
 import type { InstallError } from "../lib/types";
 import { confirmRequest, toast } from "../lib/ui";
@@ -48,22 +28,9 @@ import {
   updateDialogQueued,
   updateStatus,
 } from "../lib/updates";
-import { ArrowRightIcon, ChevronRight, ExternalIcon, GlobeIcon, ShieldIcon, UpdateIcon } from "./icons";
+import { ExternalIcon, GlobeIcon, ShieldIcon, UpdateIcon } from "./icons";
 import ProgressBar from "./ProgressBar";
-
-const dayFmt = localized(
-  (l) => new Intl.DateTimeFormat(l, { month: "long", day: "numeric", timeZone: "UTC" }),
-);
-const fullFmt = localized(
-  (l) => new Intl.DateTimeFormat(l, { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }),
-);
-
-/** A `YYYY-MM-DD` changelog date; the year only when it is not this one. */
-function formatDate(date: string): string {
-  const ms = Date.parse(`${date}T00:00:00Z`);
-  if (Number.isNaN(ms)) return date;
-  return (new Date(ms).getUTCFullYear() === new Date().getFullYear() ? dayFmt() : fullFmt()).format(ms);
-}
+import ReleaseNotes, { formatDate, UpdateVersions } from "./ReleaseNotes";
 
 /** `busy`: the onboarding, which the notice and the dialog it opens wait for. */
 export default function UpdateDialog(props: { busy: () => boolean }) {
@@ -121,23 +88,9 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
     () => !offer || undefined,
     async () => changelogEntries((await import("../../../CHANGELOG.md?raw")).default),
   );
-  /** The entries to show, newest first. */
-  const entries = createMemo<Release[]>(() => {
-    if (offer) {
-      const list = updateStatus()?.releases;
-      return list ? between(list, current(), target()) : [];
-    }
-    const all = changelog();
-    return all ? between(all, from, current()) : [];
-  });
-  /** Releases in between that the entries do not reach. */
-  const earlier = () => {
-    const list = offer ? updateStatus()?.releases : changelog();
-    const since = offer ? current() : from;
-    return !!list?.length && !!since && list.every((r) => compareVersions(r.version, since) > 0);
-  };
+  const releases = () => (offer ? updateStatus()?.releases : changelog());
   const released = () => {
-    const entry = entries().find((e) => compareVersions(e.version, target()) === 0);
+    const entry = releases()?.find((e) => compareVersions(e.version, target()) === 0);
     return entry ? formatDate(entry.date) : null;
   };
 
@@ -232,25 +185,7 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
             </div>
           </div>
 
-          <Show when={target() && before()}>
-            {(version) => (
-              <div class="update-versions">
-                <div class="update-version">
-                  <span class="update-version-label">
-                    {offer ? t("updates.dialog.current") : t("updates.dialog.previous")}
-                  </span>
-                  <span class="update-version-number">{version()}</span>
-                </div>
-                <ArrowRightIcon class="update-arrow" />
-                <div class="update-version next">
-                  <span class="update-version-label">
-                    {offer ? t("updates.dialog.next") : t("updates.dialog.current")}
-                  </span>
-                  <span class="update-version-number">{target()}</span>
-                </div>
-              </div>
-            )}
-          </Show>
+          <UpdateVersions from={before()} to={target()} installed={!offer} />
 
           <Show when={offer}>
             <div class="update-facts">
@@ -287,29 +222,13 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
             </Show>
           </Show>
 
-          <div class="update-notes">
-            <Show
-              when={entries().length > 0}
-              fallback={
-                <Show when={offer || changelog.state === "ready"}>
-                  <Show
-                    when={offer && updateStatus()?.notes}
-                    fallback={<p class="update-quiet">{t("updates.dialog.empty")}</p>}
-                  >
-                    {(notes) => <p class="update-plain">{notes()}</p>}
-                  </Show>
-                </Show>
-              }
-            >
-              <For each={entries()}>{(entry, i) => <Entry entry={entry} open={i() === 0} />}</For>
-              <Show when={earlier()}>
-                <p class="update-quiet">{t("updates.dialog.earlier")}</p>
-              </Show>
-              <Show when={!locale().startsWith("zh")}>
-                <p class="update-quiet">{t("updates.dialog.language")}</p>
-              </Show>
-            </Show>
-          </div>
+          <ReleaseNotes
+            releases={releases()}
+            from={before()}
+            to={target()}
+            notes={offer ? updateStatus()?.notes : null}
+            loading={!offer && changelog.loading}
+          />
 
           <Show when={canInstall()}>
             <p class="update-hint">{t("updates.dialog.hint")}</p>
@@ -380,83 +299,5 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
         </div>
       </div>
     </div>
-  );
-}
-
-/** One release: its version, date and size of change; the newest starts open. */
-function Entry(props: { entry: Release; open: boolean }) {
-  const blocks = createMemo(() => parseNotes(props.entry.notes));
-  const [open, setOpen] = createSignal(props.open);
-  let body: HTMLDivElement | undefined;
-  const toggle = () => {
-    const next = !open();
-    setOpen(next);
-    if (next)
-      queueMicrotask(() =>
-        play(
-          body,
-          [
-            { opacity: 0, transform: "translateY(-4px)" },
-            { opacity: 1, transform: "none" },
-          ],
-          { duration: 180, easing: EASE_OUT },
-        ),
-      );
-  };
-  return (
-    <section class="update-entry" classList={{ open: open() }}>
-      <button type="button" class="update-entry-head" aria-expanded={open()} onClick={toggle}>
-        <ChevronRight size={12} class="update-entry-chevron" />
-        <span class="update-entry-version">{props.entry.version}</span>
-        <span class="update-entry-date">{formatDate(props.entry.date)}</span>
-        <Show when={changeCount(blocks())}>
-          {(count) => (
-            <span class="update-entry-count">{t("updates.dialog.changes", { count: count() })}</span>
-          )}
-        </Show>
-      </button>
-      <Show when={open()}>
-        <div ref={body} class="update-entry-body">
-          <For each={blocks()}>{(block) => <BlockView block={block} />}</For>
-        </div>
-      </Show>
-    </section>
-  );
-}
-
-function BlockView(props: { block: Block }) {
-  const block = props.block;
-  if (block.kind === "text")
-    return (
-      <p class="update-text">
-        <Spans spans={block.spans} />
-      </p>
-    );
-  // Known headings in the reader's language; others as written.
-  const tag =
-    block.title && (block.category === "other" ? block.title : t(`updates.category.${block.category}`));
-  return (
-    <div class="update-group" data-category={block.category}>
-      <Show when={tag}>
-        <span class="update-tag">{tag}</span>
-      </Show>
-      <ul class="update-items">
-        <For each={block.items}>
-          {(item) => (
-            <li>
-              <Spans spans={item} />
-            </li>
-          )}
-        </For>
-      </ul>
-    </div>
-  );
-}
-
-function Spans(props: { spans: Span[] }) {
-  return (
-    <For each={props.spans}>
-      {(s) => (s.code ? <code>{s.text}</code> : s.strong ? <strong>{s.text}</strong> : s.text)}
-    </For>
   );
 }

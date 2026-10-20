@@ -4,6 +4,7 @@
   "readyToast": "Argus {version} is ready to install",
   "availableToast": "Argus {version} is available",
   "view": "View",
+  "openDialog": "Open in dialog",
   "button": {
     "title": "Argus {version} is ready. Click to see what's new and install it",
     "availableTitle": "Argus {version} is available. Click to see what's new"

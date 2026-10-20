@@ -56,6 +56,7 @@ import {
   uiMotion,
 } from "../lib/motion";
 import { noteServiceStatus, privilege, SERVICE_SETTING, serviceConnected } from "../lib/privilege";
+import { compareVersions, isPrerelease } from "../lib/release-notes";
 import {
   appInfo,
   changeInterval,
@@ -117,6 +118,7 @@ import { NavPositionChoice, navPosition } from "./Nav";
 import { onboardingOpen, openOnboarding } from "./Onboarding";
 import ProcIcon from "./ProcIcon";
 import ProgressBar from "./ProgressBar";
+import ReleaseNotes, { formatDate, UpdateVersions } from "./ReleaseNotes";
 import Select from "./Select";
 import ShortcutHelp from "./ShortcutHelp";
 
@@ -916,7 +918,18 @@ function UpdateSettings(props: {
     }
     return t("settings.update.detail.source");
   };
-  const offered = () => state() === "ready" || state() === "available" || state() === "downloading";
+  const offered = () =>
+    state() === "ready" || state() === "available" || state() === "downloading" || state() === "installing";
+  const notesSubtitle = () => {
+    const version = status()?.version ?? "";
+    const released = status()?.releases?.find((entry) => compareVersions(entry.version, version) === 0);
+    return [
+      t(isPrerelease(version) ? "updates.dialog.beta" : "updates.dialog.stable"),
+      released?.date ? t("updates.dialog.released", { date: formatDate(released.date) }) : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
   const proxyChoice = () => (draft() !== null ? "custom" : props.settings.updateProxy);
 
   return (
@@ -936,11 +949,6 @@ function UpdateSettings(props: {
         }
         error={state() === "error" || state() === "ready" ? status()?.error : null}
       >
-        <Show when={offered()}>
-          <button type="button" class="btn" onClick={openUpdateDialog}>
-            {t("settings.update.viewNotes")}
-          </button>
-        </Show>
         <Show when={state() === "ready"}>
           <button type="button" class="btn accent" disabled={installing()} onClick={install}>
             {t("settings.update.restart")}
@@ -965,6 +973,39 @@ function UpdateSettings(props: {
           </button>
         </Show>
       </Setting>
+      <Show when={offered() && status()?.version}>
+        {(version) => (
+          <section class="update-release-card" aria-labelledby="update-inline-title">
+            <div class="update-release-body">
+              <div class="update-head">
+                <img class="update-logo" src="/logo.svg" alt="" width="40" height="40" />
+                <div class="update-head-text">
+                  <h3 id="update-inline-title" class="dialog-title">
+                    {t("updates.dialog.installed", { version: version() })}
+                  </h3>
+                  <div class="update-sub">{notesSubtitle()}</div>
+                </div>
+              </div>
+              <UpdateVersions from={appInfo()?.version ?? null} to={version()} />
+              <ReleaseNotes
+                releases={status()?.releases}
+                from={appInfo()?.version ?? null}
+                to={version()}
+                notes={status()?.notes}
+              />
+            </div>
+            <div class="update-release-footer">
+              <button type="button" class="btn ghost" onClick={() => void api.openReleasePage(version())}>
+                <ExternalIcon />
+                {t("updates.dialog.github")}
+              </button>
+              <button type="button" class="btn" onClick={openUpdateDialog}>
+                {t("updates.openDialog")}
+              </button>
+            </div>
+          </section>
+        )}
+      </Show>
       <Setting
         icon={<TimerIcon size={20} />}
         title={t("settings.update.auto.title")}

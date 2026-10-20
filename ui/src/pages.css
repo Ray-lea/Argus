@@ -1419,6 +1419,26 @@
   display: block;
 }
 
+.update-release-card {
+  margin: 4px 0;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--layer);
+}
+
+.update-release-body {
+  padding: 20px 24px 18px;
+}
+
+.update-release-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--stroke);
+}
+
 .update-card-line:empty {
   display: none;
 }

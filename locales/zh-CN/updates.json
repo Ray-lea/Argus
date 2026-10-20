@@ -4,6 +4,7 @@
   "readyToast": "Argus {version} 已准备就绪",
   "availableToast": "发现新版本 {version}",
   "view": "查看",
+  "openDialog": "在弹窗中查看",
   "button": {
     "title": "Argus {version} 已准备就绪。单击查看更新内容并安装",
     "availableTitle": "发现新版本 {version}。单击查看更新内容"

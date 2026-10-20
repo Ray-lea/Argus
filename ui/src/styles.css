@@ -2015,6 +2015,8 @@ button {
   overflow: auto;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .update-entry + .update-entry {
@@ -2139,19 +2141,14 @@ button {
   font-size: 12px;
 }
 
-.update-quiet,
-.update-plain {
+.update-quiet {
   margin: 10px 8px 0;
   color: var(--ink-2);
   font-size: 12px;
 }
 
-.update-plain {
-  color: var(--ink);
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-line;
-  user-select: text;
+.update-notes-fallback {
+  padding-left: 8px;
 }
 
 .update-hint,
