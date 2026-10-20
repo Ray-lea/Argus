@@ -12,6 +12,7 @@
     "tooltip": "CPU {cpu}%  内存 {memory}%"
   },
   "host": {
+    "webViewProfileFailed": "无法准备界面启动环境，Argus 未启动。可尝试以当前登录账户的普通权限启动。详细原因已记录到日志。错误码：{code}",
     "serviceReply": "特权服务返回了无法识别的结果，请更新服务",
     "fileMissing": "文件不存在",
     "samplerStalled": "采样线程没有响应",

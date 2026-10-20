@@ -12,6 +12,7 @@
     "tooltip": "CPU {cpu}%  Memory {memory}%"
   },
   "host": {
+    "webViewProfileFailed": "Argus could not prepare its interface startup environment and did not start. Try starting it with standard permissions as the signed-in account. Details were recorded in the log. Error code: {code}",
     "serviceReply": "The privileged service returned an unrecognized result; update the service",
     "fileMissing": "The file doesn't exist",
     "samplerStalled": "The sampling thread isn't responding",

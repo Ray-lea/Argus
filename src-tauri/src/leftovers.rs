@@ -49,6 +49,9 @@ pub fn close_copies(identifier: &str) {
     .collect();
     actions::end_and_wait(&copies, WAIT);
     end_for(identifier);
+    if let Ok(Some(profile)) = crate::webview_profile::existing(identifier) {
+        end(&profile.directory.join("EBWebView"));
+    }
 }
 
 /// Ends the leftovers of the WebView2 user data folder Tauri keeps in the

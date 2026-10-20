@@ -10,6 +10,7 @@ mod settings;
 mod shell;
 mod tasks;
 mod updater;
+mod webview_profile;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -113,7 +114,7 @@ pub fn run() {
     if let Some(code) = argus_service::run_mode() {
         std::process::exit(code);
     }
-    let context = tauri::generate_context!();
+    let mut context = tauri::generate_context!();
     // Before the single-instance check: never hands over to a running Argus.
     if std::env::args().any(|a| leftovers::is_close_arg(&a)) {
         leftovers::close_copies(&context.config().identifier);
@@ -162,6 +163,8 @@ pub fn run() {
     if elevated {
         privilege::enable_debug_privilege();
     }
+    let browser_profile = webview_profile::prepare(&context.config().identifier);
+    let profile_ready = browser_profile.is_ok();
 
     // Start sampling before the webview exists so the first snapshot is ready
     // (with meaningful CPU deltas) by the time the UI subscribes.
@@ -173,7 +176,9 @@ pub fn run() {
             move || {
                 let mut collector = Collector::new(meta);
                 // Needs administrator rights; otherwise the column stays hidden.
-                collector.enable_process_network(NETWORK_SESSION);
+                if profile_ready {
+                    collector.enable_process_network(NETWORK_SESSION);
+                }
                 collector
             }
         },
@@ -187,8 +192,26 @@ pub fn run() {
     let start_hidden = taskmgr_start || hidden_arg;
     let updated = std::env::args().any(|a| a == updater::UPDATED_ARG);
 
+    let custom_window = if matches!(&browser_profile, Ok(None)) {
+        None
+    } else {
+        context
+            .config_mut()
+            .app
+            .windows
+            .iter_mut()
+            .find(|w| w.label == "main")
+            .map(|window| {
+                let original = window.clone();
+                window.create = false;
+                original
+            })
+    };
     // Before the window and its WebView exist (see leftovers.rs).
-    let leftovers = leftovers::end_for(&context.config().identifier);
+    let leftovers = match &browser_profile {
+        Ok(Some(profile)) => leftovers::end(&profile.directory.join("EBWebView")),
+        _ => leftovers::end_for(&context.config().identifier),
+    };
 
     tauri::Builder::default()
         // Must come first: a second launch just brings the running one forward.
@@ -245,6 +268,29 @@ pub fn run() {
             let settings = SettingsStore::load(config);
             argus_core::i18n::set_locale(settings.get().language.resolve());
             diagnostics::log_environment(elevated);
+            if let Some(config) = custom_window {
+                match browser_profile {
+                    Ok(Some(profile)) => {
+                        log::info!("WebView2: isolated profile for a different desktop account");
+                        tauri::WebviewWindowBuilder::from_config(app, &config)?
+                            .data_directory(profile.directory.clone())
+                            .build()?;
+                        app.manage(profile);
+                    }
+                    Err(error) => {
+                        log::error!(
+                            "WebView2 profile preparation failed at {}; code=0x{:08X}",
+                            error.stage,
+                            error.code
+                        );
+                        error.report();
+                        // Tauri panics on setup errors. This failure is already reported;
+                        // no network trace was started, so exit without a second error.
+                        std::process::exit(1);
+                    }
+                    Ok(None) => unreachable!(),
+                }
+            }
             diagnostics::log_privileged_state();
             app.state::<AppState>()
                 .rules
