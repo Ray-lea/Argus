@@ -14,29 +14,43 @@ import SearchBox from "./SearchBox";
 const [query, setQuery] = createSignal("");
 const [selected, setSelected] = createSignal<string | null>(null);
 const [items, setItems] = createSignal<StartupItem[] | null>(null);
+const [pending, setPending] = createSignal<ReadonlySet<string>>(new Set());
+let generation = 0;
 
-async function load() {
+async function load(force = false) {
+  if (pending().size && !force) return;
+  const request = ++generation;
   try {
-    setItems(await api.startup());
+    const next = await api.startup();
+    if (request === generation) setItems(next);
   } catch (e) {
-    toastActionError(e, t("startup.loadFailed"));
+    if (request === generation) toastActionError(e, t("startup.loadFailed"));
   }
 }
 
 async function setEnabled(item: StartupItem, enabled: boolean) {
+  if (item.blocked || pending().has(item.id)) return;
+  setPending((current) => new Set([...current, item.id]));
+  ++generation;
   try {
     await api.setStartupEnabled(item.id, enabled);
     toast("success", t(enabled ? "startup.done.enable" : "startup.done.disable", { name: item.name }), 2500);
   } catch (e) {
     toastActionError(e, t(enabled ? "startup.failed.enable" : "startup.failed.disable", { name: item.name }));
   }
-  await load();
+  await load(true);
+  setPending((current) => {
+    const next = new Set(current);
+    next.delete(item.id);
+    return next;
+  });
 }
 
 function startupMenu(item: StartupItem): MenuEntry[] {
   return [
     {
       label: t(item.enabled ? "common.disable" : "common.enable"),
+      disabled: !!item.blocked || pending().has(item.id),
       run: () => setEnabled(item, !item.enabled),
     },
     "separator",
@@ -49,9 +63,14 @@ function startupMenu(item: StartupItem): MenuEntry[] {
     {
       label: t("startup.menu.copyCommand"),
       icon: () => <CopyIcon />,
+      disabled: !item.command,
       run: () => copyText(item.command, t("startup.copied.command")),
     },
   ];
+}
+
+function blockedTitle(item: StartupItem) {
+  return item.blocked ? t(`startup.blocked.${item.blocked}`) : undefined;
 }
 
 export function StartupSearch() {
@@ -76,6 +95,7 @@ export default function StartupPage() {
     return all.filter(
       (i) =>
         i.name.toLowerCase().includes(q) ||
+        (i.entry?.toLowerCase().includes(q) ?? false) ||
         (i.publisher?.toLowerCase().includes(q) ?? false) ||
         i.command.toLowerCase().includes(q),
     );
@@ -94,10 +114,10 @@ export default function StartupPage() {
       cell: (i) => (
         <>
           <ProcIcon proc={{ icon: i().icon, path: i().path }} />
-          <span class="label strong" title={i().description ?? i().name}>
+          <span class="label strong" title={[i().name, i().entry].filter(Boolean).join("\n")}>
             {i().name}
           </span>
-          <Show when={!i().exists}>
+          <Show when={!i().exists && i().path}>
             <span class="tag warn" title={t("startup.missing.title")}>
               {t("startup.missing.label")}
             </span>
@@ -122,12 +142,14 @@ export default function StartupPage() {
       width: "116px",
       sortValue: (i) => (i.enabled ? 1 : 0),
       cell: (i) => (
-        <span class="switch-cell">
+        <span class="switch-cell" title={blockedTitle(i())}>
           <button
             type="button"
             role="switch"
             class="switch small"
             aria-checked={i().enabled}
+            disabled={!!i().blocked || pending().has(i().id)}
+            aria-description={blockedTitle(i())}
             aria-label={t(i().enabled ? "startup.toggle.disable" : "startup.toggle.enable", {
               name: i().name,
             })}
@@ -135,7 +157,13 @@ export default function StartupPage() {
             onClick={() => setEnabled(i(), !i().enabled)}
           />
           <span classList={{ dim: !i().enabled }}>
-            {t(i().enabled ? "common.enabled" : "common.disabled")}
+            {t(
+              i().blocked === "unavailable"
+                ? "startup.unavailable"
+                : i().enabled
+                  ? "common.enabled"
+                  : "common.disabled",
+            )}
           </span>
         </span>
       ),

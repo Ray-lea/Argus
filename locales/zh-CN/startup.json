@@ -4,7 +4,8 @@
     "hklmRun": "注册表（所有用户）",
     "hklmRun32": "注册表（所有用户，32 位）",
     "userFolder": "启动文件夹（当前用户）",
-    "commonFolder": "启动文件夹（所有用户）"
+    "commonFolder": "启动文件夹（所有用户）",
+    "package": "应用包（当前用户）"
   },
   "loadFailed": "无法读取启动项",
   "done": {
@@ -34,6 +35,11 @@
     "enable": "启用 {name}",
     "disable": "禁用 {name}"
   },
+  "blocked": {
+    "managed": "此应用不允许手动更改该启动任务。",
+    "unavailable": "暂时无法读取此启动项的状态，未进行更改。"
+  },
+  "unavailable": "无法读取",
   "title": "启动项",
   "loading": "正在读取启动项…",
   "noMatch": "没有匹配的启动项",

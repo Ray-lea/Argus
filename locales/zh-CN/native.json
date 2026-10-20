@@ -11,6 +11,11 @@
     "updateReady": "新版本 {version} 已就绪",
     "tooltip": "CPU {cpu}%  内存 {memory}%"
   },
+  "startup": {
+    "managed": "此应用不允许手动更改该启动任务。",
+    "unavailable": "无法确认此启动项的状态，未进行更改。",
+    "changed": "启动项状态已发生变化，请刷新后重试。"
+  },
   "host": {
     "webViewProfileFailed": "无法准备界面启动环境，Argus 未启动。可尝试以当前登录账户的普通权限启动。详细原因已记录到日志。错误码：{code}",
     "restoreDesktopForWebView": "Windows 资源管理器未运行，无法初始化管理员界面。是否先以当前桌面账户的普通权限恢复资源管理器，再继续启动 Argus？选择“否”将取消本次启动。",

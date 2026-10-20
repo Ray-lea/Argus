@@ -1,6 +1,7 @@
-//! Programs that start at logon: registry Run keys and Startup folders, with
-//! the same enabled/disabled switch Task Manager uses (`StartupApproved`), so
-//! disabling is reversible and shows up identically in both tools.
+//! Programs that start at logon: Run keys, Startup folders and packaged tasks.
+//! Each source retains its own identity and Windows enabled/disabled state.
+
+mod packaged;
 
 use std::path::Path;
 
@@ -87,14 +88,18 @@ pub struct StartupItem {
     /// `<location>|<entry>`; pass back to [`set_enabled`].
     pub id: String,
     pub name: String,
+    /// Original registry value, shortcut name or packaged task identifier.
+    pub entry: String,
     pub command: String,
     /// Executable the command runs, when it could be resolved.
     pub path: Option<String>,
-    /// `hkcuRun` | `hklmRun` | `hklmRun32` | `userFolder` | `commonFolder`
+    /// Run key, Startup folder or `package`.
     pub location: &'static str,
     /// Applies to all users (needs administrator rights to change).
     pub machine: bool,
     pub enabled: bool,
+    /// `managed` or `unavailable`; None when the switch can be changed.
+    pub blocked: Option<&'static str>,
     /// False when the target executable no longer exists.
     pub exists: bool,
     pub publisher: Option<String>,
@@ -146,12 +151,19 @@ pub fn list(meta: &MetaStore) -> Vec<StartupItem> {
             };
             out.push(StartupItem {
                 id: format!("{}|{}", loc.id, name),
-                name: display_name(&name),
+                name: display_name(
+                    &name,
+                    loc.folder.is_some(),
+                    description.as_deref(),
+                    path.as_deref(),
+                ),
+                entry: name,
                 command,
                 path,
                 location: loc.id,
                 machine: loc.root == HKEY_LOCAL_MACHINE,
                 enabled,
+                blocked: None,
                 exists,
                 publisher,
                 description,
@@ -159,12 +171,31 @@ pub fn list(meta: &MetaStore) -> Vec<StartupItem> {
             });
         }
     }
+    out.extend(packaged::list(meta));
     out
 }
 
-/// Startup folder entries are file names; show them without `.lnk`.
-fn display_name(entry: &str) -> String {
-    entry.strip_suffix(".lnk").unwrap_or(entry).to_owned()
+fn display_name(
+    entry: &str,
+    shortcut: bool,
+    description: Option<&str>,
+    path: Option<&str>,
+) -> String {
+    if shortcut {
+        return if entry.to_ascii_lowercase().ends_with(".lnk") {
+            entry[..entry.len() - 4].to_owned()
+        } else {
+            entry.to_owned()
+        };
+    }
+    description
+        .filter(|s| !s.trim().is_empty())
+        .map(str::to_owned)
+        .or_else(|| {
+            path.and_then(|p| Path::new(p).file_name())
+                .map(|s| s.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| entry.to_owned())
 }
 
 fn registry_entries(root: HKEY, path: &str) -> Vec<(String, String, Option<String>)> {
@@ -331,6 +362,9 @@ fn is_enabled(approved: &Key, name: &str) -> bool {
 /// entry itself.
 pub fn set_enabled(id: &str, enabled: bool) -> Result<(), ActionError> {
     let (loc_id, name) = id.split_once('|').ok_or(ActionError::NotFound)?;
+    if loc_id == "package" {
+        return packaged::set_enabled(name, enabled);
+    }
     let loc = LOCATIONS
         .iter()
         .find(|l| l.id == loc_id)
@@ -366,4 +400,40 @@ pub fn set_enabled(id: &str, enabled: bool) -> Result<(), ActionError> {
     let value = wide(name);
     unsafe { RegSetValueExW(key.0, PCWSTR(value.as_ptr()), None, REG_BINARY, Some(&data)) }.ok()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn startup_names_prefer_program_metadata_without_losing_shortcut_names() {
+        assert_eq!(
+            display_name(
+                "MicrosoftEdgeAutoLaunch_random",
+                false,
+                Some("Microsoft Edge"),
+                Some(r"C:\Apps\msedge.exe")
+            ),
+            "Microsoft Edge"
+        );
+        assert_eq!(
+            display_name("internal-id", false, None, Some(r"C:\Apps\Example.exe")),
+            "Example.exe"
+        );
+        assert_eq!(
+            display_name(
+                "Launch hidden.LNK",
+                true,
+                Some("Example"),
+                Some(r"C:\Apps\Example.exe")
+            ),
+            "Launch hidden"
+        );
+        assert_eq!(display_name("Value.lnk", false, None, None), "Value.lnk");
+        assert_eq!(
+            display_name("Missing app", false, Some(" "), None),
+            "Missing app"
+        );
+    }
 }

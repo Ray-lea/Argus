@@ -700,12 +700,14 @@ export interface ServiceInfo {
 export interface StartupItem {
   id: string;
   name: string;
+  entry: string;
   command: string;
   path: string | null;
-  location: "hkcuRun" | "hklmRun" | "hklmRun32" | "userFolder" | "commonFolder";
+  location: "hkcuRun" | "hklmRun" | "hklmRun32" | "userFolder" | "commonFolder" | "package";
   /** Applies to all users; changing it needs administrator rights. */
   machine: boolean;
   enabled: boolean;
+  blocked: "managed" | "unavailable" | null;
   exists: boolean;
   publisher: string | null;
   description: string | null;

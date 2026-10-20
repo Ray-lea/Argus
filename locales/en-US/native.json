@@ -11,6 +11,11 @@
     "updateReady": "Version {version} is ready",
     "tooltip": "CPU {cpu}%  Memory {memory}%"
   },
+  "startup": {
+    "managed": "This app does not allow manual changes to this startup task.",
+    "unavailable": "The state of this startup task could not be confirmed. No changes were made.",
+    "changed": "The startup task state has changed. Refresh and try again."
+  },
   "host": {
     "webViewProfileFailed": "Argus could not prepare its interface startup environment and did not start. Try starting it with standard permissions as the signed-in account. Details were recorded in the log. Error code: {code}",
     "restoreDesktopForWebView": "Windows Explorer is not running, so the administrator interface cannot initialize. Restore Explorer with the current desktop account's standard permissions and continue starting Argus? Choosing No cancels this startup.",

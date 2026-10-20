@@ -18,6 +18,10 @@ homepage = "https://github.com/Ray-lea/Argus"
 # check it with `cargo tree -p argus -i windows -e features` after upgrading Tauri.
 windows = { version = "0.62.2", features = [
   # argus-core and the host
+  "ApplicationModel",
+  "Data_Xml_Dom",
+  "Management_Deployment",
+  "Storage_Search",
   "UI_ViewManagement",
   "Wdk_Foundation",
   "Wdk_Storage_FileSystem",

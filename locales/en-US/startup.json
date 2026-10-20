@@ -4,7 +4,8 @@
     "hklmRun": "Registry (all users)",
     "hklmRun32": "Registry (all users, 32-bit)",
     "userFolder": "Startup folder (current user)",
-    "commonFolder": "Startup folder (all users)"
+    "commonFolder": "Startup folder (all users)",
+    "package": "App package (current user)"
   },
   "loadFailed": "Couldn't read startup apps",
   "done": {
@@ -34,6 +35,11 @@
     "enable": "Enable {name}",
     "disable": "Disable {name}"
   },
+  "blocked": {
+    "managed": "This app does not allow manual changes to this startup task.",
+    "unavailable": "The state of this startup task could not be read. No changes were made."
+  },
+  "unavailable": "Unavailable",
   "title": "Startup apps",
   "loading": "Reading startup apps…",
   "noMatch": "No matching startup apps",
