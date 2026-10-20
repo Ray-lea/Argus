@@ -61,6 +61,7 @@ If Argus is useful to you, please consider giving it a star on GitHub. It is the
 | 🌍 | **Languages** | English and Simplified Chinese, following the Windows display language by default; a welcome guide sets up the essentials on first start. |
 | 👤 | **No administrator rights needed** | See the path and resource usage of every process as a standard user. |
 | 🛡️ | **Optional privileged service** | After a single administrator approval, Argus running as a standard user can also manage system processes, apply rules automatically, measure per-process network traffic (and disk reads and writes on Windows 10 and Windows 11 versions before 24H2), control services and close connections; it can be uninstalled in Settings. |
+| 🪟 | **Tasks and desktop** | Run new tasks from any page, optionally as administrator, or restart the current desktop's Windows Explorer. |
 
 ## 📦 Download
 

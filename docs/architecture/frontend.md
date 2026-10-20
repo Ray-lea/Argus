@@ -19,6 +19,8 @@
 | `src/components/ShortcutHelp.tsx` | 设置页的快捷键说明弹窗，显示当前全局快捷键及页面、进程列表和历史曲线的按键；保持弹窗内键盘焦点，关闭后回到打开按钮 |
 | `src/lib/chart-history.ts` | 实时曲线的时间跨度、显示延迟与历史保留：按时间窗口保留采样，所有序列与时间戳一同裁剪；额外刷新、较快的后台采样或刷新间隔变化不会提前删除仍在窗口内的数据；不依赖界面，由 `ui/tests` 中的测试直接运行 |
 | `src/lib/ipc.ts` | 与宿主通信 |
+| `src/components/NewTaskDialog.tsx`、`src/lib/task-command.ts` | 各页面共用的新任务弹窗与输入校验：浏览文件、启动参数、管理员选项，失败与取消授权后保留输入，弹窗内保持键盘焦点 |
+| `src/lib/explorer.ts`、`src/components/menus.tsx` | 打开资源管理器右键菜单时按需核对桌面实例，提供重启确认、进度及恢复入口，不增加采样工作 |
 | `src/lib/i18n.ts` | 文案查找（`t`、`rich`）、当前语言信号、按语言缓存的 `Intl` 对象；文案在仓库根目录的 `locales/`，见[多语言](../development/i18n.md) |
 | `src/lib/language.ts`、`src/lib/keys.ts` | 切换语言（保存到原生设置后应用宿主解析的结果）；快捷键的显示名称与错误说明 |
 | `src/lib/hotkey.ts`、`src/lib/hotkey-table.json` | 全局快捷键的规则与录制：键表和不允许的组合（与原生侧共用）、解析与判定（允许、需确认、拒绝）、按键事件到组合的纯函数 `record`；不依赖界面，由 `ui/tests` 中的测试直接运行，见[全局快捷键](../design/hotkey.md) |

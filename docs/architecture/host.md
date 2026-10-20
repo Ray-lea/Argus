@@ -18,12 +18,25 @@
 | `updater.rs` | 应用内更新：后台线程在启动 1 分钟后、之后每天检查一次；按通道读取最新稳定版 Release 上的 `latest.json` 或 `beta.json`，按线路直连 GitHub 或在地址前加代理前缀，失败时换下一个来源；发现新版本立即下载（插件校验签名和签名中的版本号）。清单中的更新内容（`argus.releaseNotes`，`CHANGELOG.md` 条目）以同一公钥验签并核对版本号后才交给界面。下载的安装包连同版本、签名与更新内容存入 `%LOCALAPPDATA%\<标识>\updates`，启动时重新验签后直接恢复为可安装，版本已安装、换了通道或验签失败时删除；已有可安装的更新时，后台检查不改变其状态。检查进行中切换通道时，已下载的更新随即删除，这次检查的结果作废，结束后按新通道重新检查；安装程序启动期间（等待管理员授权时）检查与切换通道都不改变状态。安装由用户触发：在只读共享锁定文件的状态下再验签一次，由 Argus 自己以 `/P /UPDATE /R /ARGS --updated` 启动安装程序后退出（插件只能安装本次运行检查到的更新），管理员授权被取消时返回 `cancelled`。状态通过 `update-status` 事件推给界面；可安装时托盘图标加强调色圆点、悬停提示与菜单增加对应项，菜单项发出 `argus-show-update` 打开更新对话框 |
 | `commands.rs` | IPC 命令；标准权限下将手动进程操作、服务控制和断开连接交给已授权且运行中的特权服务，未安装、未授权或停止时按本地权限执行；服务协议版本不兼容、请求在执行前被拒绝时同样按本地权限执行，权限不足时返回 `ActionError::ServiceOutdated`（不是 `AccessDenied`），界面据此提示更新服务；服务已接受请求后出错不自动重试。开机启动项（`commands/autostart.rs`）：以任务管理器替换的界面副本运行时写入已安装的 `argus.exe`（找不到时拒绝并说明），已安装的 Argus 或界面副本首次读取设置时，以及再次启动、转交给已在运行的实例后，把指向界面副本的启动项改回已安装的 `argus.exe`，保留参数和“启动应用”中的启用状态；`argus://` 协议提供进程图标 |
 
+`tasks.rs` 在专用 STA 线程中通过 `ShellExecuteExW` 运行用户输入的任务，保留参数原文，使用系统文件关联及 UAC。管理员实例的普通权限启动由受限令牌助手完成，不依赖 Explorer 或特权服务；助手在 Tauri、单实例和设置初始化前退出。日志只记录失败阶段和错误码。
+
+`explorer.rs` 按桌面窗口、系统映像路径、会话、PID 与创建时间核对资源管理器，通过 Restart Manager 查询可重启性后关闭、重新启动，并等待新桌面和任务栏就绪。管理员实例先以原桌面用户的令牌启动助手，再执行关闭，避免无法恢复时先丢失桌面；部分关闭失败后仍执行恢复，必要时以同一普通用户再次启动系统 Explorer。
+
+## WebView2 的账户与数据目录
+
+普通权限和同账户提权启动使用原有浏览器目录。以其他管理员账户启动时，WebView2 降权后的账户与宿主不同；`webview_profile.rs` 查询当前桌面账户，在其 LocalAppData 下为该构建、启动账户、会话和桌面准备独立浏览器目录。目录以桌面账户的权限创建，最终目录不得为重解析点；解析实际路径后持有目录读取句柄，防止路径在使用期间被替换。WebView2 保留自动降权；设置、历史和日志仍使用宿主账户的目录。
+
+跨账户窗口在日志和界面语言就绪后创建。目录准备失败时显示本地化提示，日志记录启动环境、失败阶段与原始错误码；不会为失败的启动建立进程网络采集会话。异常退出后的清理和安装维护命令均识别该浏览器目录，维护命令只检查已有目录。
+
+资源管理器已退出时，WebView2 的管理员界面初始化会返回 `0x80070490`。`webview_recovery.rs` 先询问是否恢复桌面，确认后按窗口站的登录 SID 和当前会话查找普通权限令牌，以原桌面账户启动系统 Explorer，并核对恢复后的身份；取消时结束本次启动。此路径只用于交互式默认桌面，不修改 WebView2 的降权行为。
+
 ## IPC 命令
 
 | 用途 | 命令 |
 |---|---|
 | 应用与快照 | `app_info`（含解析后的界面语言、系统是否支持 Mica、是否由更新安装程序重新启动、是否由任务管理器替换启动）、`subscribe`、`set_interval`、`set_paused`、`refresh` |
 | 进程 | `process_details`、`kill_process`、`kill_process_tree`、`set_priority`、`set_efficiency_mode`、`reveal_in_explorer` |
+| 任务启动与桌面 | `run_task`、`desktop_shell`（按需查询当前桌面实例）、`restart_explorer`（核对 PID 与创建时间后重启） |
 | 设置与窗口 | `get_settings`、`set_language`、`set_theme`、`complete_onboarding`、`set_whats_new`（更新后是否显示更新内容）、`note_version_seen`（记下当前版本的首次启动已处理，更新内容不再显示）、`set_close_to_tray`、`set_background_intervals`（最小化与后台常驻时的刷新间隔，只接受设置页提供的几档，立即生效）、`set_hotkey`（同时开启快捷键）、`set_hotkey_enabled`（开关，保留组合）、`suspend_hotkey` / `resume_hotkey`（录制快捷键期间暂停，结束或重试时重新注册）、`set_autostart`、`set_kernel_sensors`、`open_sensor_driver_page`（固定官方地址）、`open_log_dir`、`quit`、`set_caption_button`（页面最大化按钮的位置）、`page_painted`（页面画出了第一份数据，隐藏的窗口此后可以让 WebView 休眠）、`log_ui_error` |
 | 特权服务 | `privileged_service_status`、`manage_privileged_service`（`install` / `start` / `update` / `uninstall`，显式操作才请求管理员授权） |
 | 更新 | `update_status`、`check_update`（在后台检查并下载，立即返回）、`install_update`（启动安装程序后 Argus 退出；未启动时返回 `{ cancelled, message }`）、`set_update_settings`、`open_release_page`（免安装版及更新对话框的“在 GitHub 上查看”） |
