@@ -11,6 +11,7 @@ mod shell;
 mod tasks;
 mod updater;
 mod webview_profile;
+mod webview_recovery;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -163,7 +164,23 @@ pub fn run() {
     if elevated {
         privilege::enable_debug_privilege();
     }
-    let browser_profile = webview_profile::prepare(&context.config().identifier);
+    let browser_profile = if webview_recovery::needed(elevated) {
+        if let Some(config) = std::env::var_os("APPDATA") {
+            let settings = SettingsStore::load(
+                std::path::Path::new(&config)
+                    .join(&context.config().identifier)
+                    .join("settings.json"),
+            );
+            argus_core::i18n::set_locale(settings.get().language.resolve());
+        }
+        match webview_recovery::restore() {
+            Ok(true) => webview_profile::prepare(&context.config().identifier),
+            Ok(false) => return,
+            Err(error) => Err(error),
+        }
+    } else {
+        webview_profile::prepare(&context.config().identifier)
+    };
     let profile_ready = browser_profile.is_ok();
 
     // Start sampling before the webview exists so the first snapshot is ready
