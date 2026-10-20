@@ -70,6 +70,7 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: target/signpath/helpers-signed
       - name: Verify and embed signed helpers
+        timeout-minutes: 3
         run: |
           ./scripts/verify-signpath.ps1 -Directory target/signpath/helpers-signed
           node scripts/signpath.mjs apply-helpers
@@ -101,6 +102,7 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: target/signpath/application-signed
       - name: Verify application and build installer
+        timeout-minutes: 5
         run: |
           ./scripts/verify-signpath.ps1 -Directory target/signpath/application-signed
           node scripts/signpath.mjs build-installer
@@ -124,6 +126,7 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: target/signpath/installer-signed
       - name: Verify installer
+        timeout-minutes: 3
         run: |
           ./scripts/verify-signpath.ps1 -Directory target/signpath/installer-signed
           node scripts/signpath.mjs collect
@@ -169,3 +172,14 @@ jobs:
           path: target/signpath/artifacts/*
           if-no-files-found: error
           retention-days: 14
+      - name: Preserve returned test signatures on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signpath-diagnostics-${{ github.run_id }}
+          path: |
+            target/signpath/*-signed/*.exe
+            target/signpath/test-certificate.cer
+            target/signpath/signatures.json
+          if-no-files-found: ignore
+          retention-days: 7

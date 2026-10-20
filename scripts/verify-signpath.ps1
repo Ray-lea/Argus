@@ -15,10 +15,18 @@ if ($files.Count -eq 0) { throw "No signed executables were returned." }
 
 $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certificatePath)
 # Preflight fetched this public certificate from the selected SignPath policy.
-# Trust it only on this ephemeral runner, before validating Authenticode.
-Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+# CurrentUser\Root can display a native confirmation dialog in unattended
+# sessions. The hosted Windows runner is already an administrator.
+$principal = [System.Security.Principal.WindowsPrincipal]::new([System.Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "The isolated Windows runner must already have administrator rights."
+}
+Write-Output "Importing the pinned test certificate on the isolated runner."
+Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\LocalMachine\Root -Confirm:$false | Out-Null
+Write-Output "Test certificate imported."
 
 foreach ($file in $files) {
+    Write-Output "Checking Authenticode: $($file.Name)"
     $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
     if ($null -eq $signature.SignerCertificate) { throw "Missing signature: $($file.Name)" }
     $signer = $signature.SignerCertificate
