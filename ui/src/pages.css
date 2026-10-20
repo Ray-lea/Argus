@@ -864,9 +864,11 @@
 /* ---- History page ---------------------------------------------------------- */
 
 .history {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(min-content, 1fr);
   gap: 10px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 /* Labels on the left, one chart per row; the two columns share row heights. */
@@ -1068,13 +1070,18 @@
 /* The processes of one moment: header, table, footer. */
 .history-moment {
   display: grid;
-  flex: 1;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Keep three process rows usable; short windows scroll the whole page. */
+  grid-template-rows: auto minmax(144px, 1fr) auto;
   min-height: 0;
   margin: 0 12px;
   border: 1px solid var(--stroke);
   border-radius: 8px;
   background: var(--layer);
+}
+
+.history-moment > .table {
+  /* The virtual list's full height must not become the page's minimum. */
+  contain: size;
 }
 
 .history-moment-head {
