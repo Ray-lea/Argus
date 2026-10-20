@@ -54,7 +54,7 @@ export default function Caption() {
         tabIndex={-1}
         title={t("shell.caption.minimize")}
         aria-label={t("shell.caption.minimize")}
-        onClick={() => void win().then((w) => w.minimize())}
+        onClick={() => void api.minimize()}
       >
         {GLYPH.minimize}
       </button>

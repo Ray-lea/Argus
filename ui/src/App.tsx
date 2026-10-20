@@ -20,7 +20,7 @@ import { endRow } from "./lib/actions";
 import { reportFirstFrame, watchRestores } from "./lib/background";
 import { t } from "./lib/i18n";
 import { api, inTauri, subscribe } from "./lib/ipc";
-import { EASE_OUT, play } from "./lib/motion";
+import { EASE_OUT, play, uiMotion } from "./lib/motion";
 import { watchPrivilege } from "./lib/privilege";
 import { isSection } from "./lib/rows";
 import { controlPauseHeld, endProcessShortcut } from "./lib/shortcuts";
@@ -54,6 +54,7 @@ const pageIndex = (p: Page) => PAGES.findIndex((x) => x.page === p);
 export default function App() {
   const [dragging, setDragging] = createSignal(false);
   const sampledPage = () => page() === "processes" || page() === "performance";
+  createEffect(() => void api.setWindowMotion(uiMotion()));
   createEffect(() => {
     if (!sampledPage()) setControlPaused(false);
   });

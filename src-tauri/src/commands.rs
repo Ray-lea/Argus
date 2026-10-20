@@ -29,6 +29,16 @@ use crate::{AppState, HistoryDir, shell};
 
 pub(crate) mod autostart;
 
+#[tauri::command]
+pub fn set_window_motion(window: tauri::WebviewWindow, enabled: bool) {
+    crate::window_motion::set_enabled(&window, enabled);
+}
+
+#[tauri::command]
+pub fn minimize_main(window: tauri::WebviewWindow) {
+    crate::window_motion::minimize(&window);
+}
+
 #[tauri::command(async)]
 pub fn desktop_shell() -> Option<crate::explorer::Identity> {
     crate::explorer::current()

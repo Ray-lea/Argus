@@ -91,6 +91,9 @@ export const api = {
   /** Where the caption's maximize button is (CSS px, `right` from the window's right edge). */
   setCaptionButton: (rect: { right: number; top: number; width: number; height: number }): Promise<void> =>
     mock ? Promise.resolve() : invoke("set_caption_button", { rect }),
+  setWindowMotion: (enabled: boolean): Promise<void> =>
+    mock ? Promise.resolve() : invoke("set_window_motion", { enabled }),
+  minimize: (): Promise<void> => (mock ? Promise.resolve() : invoke("minimize_main")),
   completeOnboarding: (version: number): Promise<SettingsView> =>
     mock ? mock.settings.update({ onboarding: version }) : invoke("complete_onboarding", { version }),
   /** Whether the first start of a new version shows what it changed. */

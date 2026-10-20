@@ -12,6 +12,7 @@ mod tasks;
 mod updater;
 mod webview_profile;
 mod webview_recovery;
+mod window_motion;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -379,6 +380,7 @@ pub fn run() {
                 shell::extend_backdrop(&window);
                 caption::install(&window, app.handle());
                 shell::guard_resize_seam(&window);
+                window_motion::install(&window);
                 hotkey::init(app.handle(), &window);
                 if start_hidden {
                     shell::started_hidden(shown_when_ready);
@@ -433,6 +435,8 @@ pub fn run() {
             commands::set_theme,
             commands::set_caption_button,
             commands::page_painted,
+            commands::set_window_motion,
+            commands::minimize_main,
             diagnostics::log_ui_error,
             commands::complete_onboarding,
             commands::set_whats_new,

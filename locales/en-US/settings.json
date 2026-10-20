@@ -189,7 +189,7 @@
   "motion": {
     "ui": {
       "title": "Interface animations",
-      "desc": "Transitions when switching pages and opening menus and dialogs, and the sliding selection marker. Follows the Windows Animation effects setting by default."
+      "desc": "Window fades, page and dialog transitions, and the sliding selection marker. Follows the Windows Animation effects setting by default."
     },
     "chart": {
       "title": "Chart animations",

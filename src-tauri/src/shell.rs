@@ -19,7 +19,9 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CombineRgn, CreateRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
 };
-use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+use windows::Win32::UI::Shell::{
+    DefSubclassProc, GetWindowSubclass, RemoveWindowSubclass, SetWindowSubclass,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowRect, IsIconic, IsWindowVisible, KillTimer, SWP_NOSIZE, SetTimer, WINDOWPOS,
     WM_NCDESTROY, WM_WINDOWPOSCHANGED, WM_WINDOWPOSCHANGING,
@@ -43,15 +45,14 @@ pub fn app_title() -> String {
 
 pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.unminimize();
-        let _ = w.show();
+        crate::window_motion::show(&w);
         let _ = w.set_focus();
     }
     crate::hotkey::retry_failed(app);
 }
 
 pub fn hide_main<R: Runtime>(w: &WebviewWindow<R>) {
-    let _ = w.hide();
+    crate::window_motion::hide(w);
     // The settings page cannot end a hotkey recording it can no longer see.
     crate::hotkey::resume_if_suspended(w.app_handle());
 }
@@ -59,6 +60,13 @@ pub fn hide_main<R: Runtime>(w: &WebviewWindow<R>) {
 /// What the window is doing, as the sampling cadence and the WebView's sleep
 /// see it.
 pub fn window_state(hwnd: HWND) -> WindowState {
+    if crate::window_motion::changing_visibility() {
+        return match VIEW.load(Ordering::Relaxed) {
+            state if state == WindowState::Shown as u8 => WindowState::Shown,
+            state if state == WindowState::Minimized as u8 => WindowState::Minimized,
+            _ => WindowState::Hidden,
+        };
+    }
     unsafe {
         if !IsWindowVisible(hwnd).as_bool() {
             WindowState::Hidden
@@ -142,7 +150,7 @@ pub fn toggle_main<R: Runtime>(app: &AppHandle<R>) {
     let visible = w.is_visible().unwrap_or(false);
     let minimized = w.is_minimized().unwrap_or(false);
     let focused = w.is_focused().unwrap_or(false);
-    if visible && !minimized && focused {
+    if visible && !minimized && focused && !crate::window_motion::is_leaving() {
         hide_main(&w);
     } else {
         show_main(app);
@@ -388,16 +396,37 @@ unsafe extern "system" fn visibility_proc(
     }
     let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
     // After the window's own handling, which gives the WebView its new size.
-    if msg == WM_WINDOWPOSCHANGED {
-        let follower = unsafe { &*follower };
-        sync_visibility(hwnd, &follower.controller);
-        // The WebView is awake by now when the window came back.
-        let state = window_state(hwnd);
-        if VIEW.swap(state as u8, Ordering::Relaxed) != state as u8 {
-            (follower.moved)(state);
-        }
+    if msg == WM_WINDOWPOSCHANGED && !crate::window_motion::changing_visibility() {
+        follow_change(hwnd, unsafe { &*follower });
     }
     result
+}
+
+/// On the window thread, after a group of native calls settles. Intermediate
+/// style changes must not put WebView2 to sleep or report a second restoration.
+pub fn resync_visibility(hwnd: HWND) {
+    let mut data = 0;
+    if unsafe {
+        GetWindowSubclass(
+            hwnd,
+            Some(visibility_proc),
+            VISIBILITY_SUBCLASS,
+            Some(&mut data),
+        )
+    }
+    .as_bool()
+    {
+        follow_change(hwnd, unsafe { &*(data as *const Follower) });
+    }
+}
+
+fn follow_change(hwnd: HWND, follower: &Follower) {
+    sync_visibility(hwnd, &follower.controller);
+    // The WebView is awake by now when the window came back.
+    let state = window_state(hwnd);
+    if VIEW.swap(state as u8, Ordering::Relaxed) != state as u8 {
+        (follower.moved)(state);
+    }
 }
 
 fn sync_visibility(hwnd: HWND, controller: &ICoreWebView2Controller) {
