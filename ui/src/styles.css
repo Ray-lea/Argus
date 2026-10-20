@@ -1665,6 +1665,130 @@ button {
   min-width: 96px;
 }
 
+.new-task-dialog {
+  width: min(540px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: var(--window-bg);
+  backdrop-filter: none;
+}
+
+.new-task-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 26px 24px 0;
+}
+
+.new-task-emblem {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  background: var(--layer-strong);
+  color: var(--accent);
+}
+
+.new-task-header > div {
+  flex: 1;
+  min-width: 0;
+}
+.new-task-header .dialog-title {
+  margin-bottom: 5px;
+}
+.new-task-header p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.new-task-header > button {
+  margin: -8px -8px 0 0;
+}
+.new-task-body {
+  padding: 22px 24px 8px;
+}
+.new-task-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.new-task-input {
+  display: flex;
+  gap: 8px;
+}
+.new-task-input > input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 11px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 400;
+}
+.new-task-input > button {
+  flex: none;
+}
+
+.new-task-input > input::placeholder {
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+
+.new-task-input > input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.new-task-privilege {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 20px;
+  cursor: pointer;
+}
+.new-task-privilege > input {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.new-task-privilege-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.new-task-privilege-title svg {
+  color: var(--ink-2);
+}
+.new-task-hint {
+  display: block;
+  min-height: 36px;
+  margin-top: 3px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.new-task-feedback {
+  min-height: 62px;
+  padding-top: 8px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.new-task-feedback.error {
+  color: var(--danger);
+}
+.new-task-code {
+  display: block;
+  font-size: 11px;
+}
+
 .toasts {
   position: fixed;
   right: 20px;

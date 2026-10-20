@@ -7,6 +7,7 @@ mod leftovers;
 mod sampler;
 mod settings;
 mod shell;
+mod tasks;
 mod updater;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -92,6 +93,9 @@ pub struct AppState {
 }
 
 pub fn run() {
+    if let Some(code) = tasks::run_mode() {
+        std::process::exit(code);
+    }
     #[cfg(not(debug_assertions))]
     let assets = Some((
         include_bytes!("../../target/release/argus-taskmgr-launcher.exe").as_slice(),
@@ -344,6 +348,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::run_task,
             commands::subscribe,
             commands::set_interval,
             commands::set_paused,

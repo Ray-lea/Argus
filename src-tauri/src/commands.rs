@@ -30,6 +30,19 @@ use crate::{AppState, HistoryDir, shell};
 pub(crate) mod autostart;
 
 #[tauri::command(async)]
+pub fn run_task(
+    app: tauri::AppHandle,
+    command: String,
+    elevated: bool,
+) -> Result<(), crate::tasks::TaskError> {
+    let owner = app
+        .get_webview_window("main")
+        .and_then(|w| w.hwnd().ok())
+        .map_or(0, |h| h.0 as usize);
+    crate::tasks::launch(owner, command, elevated)
+}
+
+#[tauri::command(async)]
 pub fn task_manager_status() -> Result<argus_service::taskmgr::Status, String> {
     argus_service::taskmgr::status()
 }
@@ -775,7 +788,7 @@ pub fn find_lockers(paths: Vec<String>) -> Result<LockReport, ActionError> {
 
 /// Native file or folder picker.
 #[tauri::command(async)]
-pub fn pick_path(app: tauri::AppHandle, folder: bool) -> Option<String> {
+pub fn pick_path(app: tauri::AppHandle, folder: bool, task: Option<bool>) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
     let dialog = app.dialog().file();
     let picked = if folder {
@@ -783,7 +796,13 @@ pub fn pick_path(app: tauri::AppHandle, folder: bool) -> Option<String> {
             .set_title(tr!("host.pickFolder"))
             .blocking_pick_folder()
     } else {
-        dialog.set_title(tr!("host.pickFile")).blocking_pick_file()
+        dialog
+            .set_title(if task.unwrap_or(false) {
+                tr!("host.pickTask")
+            } else {
+                tr!("host.pickFile")
+            })
+            .blocking_pick_file()
     };
     picked
         .and_then(|p| p.into_path().ok())

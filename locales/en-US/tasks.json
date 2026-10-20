@@ -1,0 +1,26 @@
+{
+  "title": "Run new task",
+  "description": "Open an app, folder or document. Startup arguments are supported.",
+  "command": "Open",
+  "placeholder": "explorer.exe or an app path",
+  "browse": "Browse…",
+  "administrator": "Run as administrator",
+  "administratorHint": "Requires Windows authorization. Canceling it leaves the task unstarted.",
+  "standardHint": "When unchecked, the task runs with standard permissions.",
+  "run": "Run",
+  "running": "Starting…",
+  "waiting": "Waiting for Windows to finish starting the task or request authorization.",
+  "started": "New task submitted.",
+  "code": "Error code: {code}",
+  "error": {
+    "invalid": "Enter a valid app name, path or command, up to 8192 characters.",
+    "cancelled": "Windows authorization was canceled. The task was not started.",
+    "notFound": "The app or path could not be found. Check the input or choose Browse.",
+    "accessDenied": "Windows denied the launch. Check the access permissions.",
+    "standardUnavailable": "The standard-permission launch environment could not be prepared.",
+    "elevationRequired": "This app requires administrator permissions. Select Run as administrator and retry.",
+    "noAssociation": "No application is associated with this item.",
+    "busy": "Another launch request is still in progress. Try again shortly.",
+    "os": "Windows could not start this task."
+  }
+}

@@ -68,6 +68,12 @@ export const PlayIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const RunTaskIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8.5 13H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v3M2 6h11M12 9v5M9.5 11.5h5" />
+  </Svg>
+);
+
 export const ShieldIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M8 1.8 13 3.6v3.9c0 3.1-2.1 5.5-5 6.7-2.9-1.2-5-3.6-5-6.7V3.6Z" />

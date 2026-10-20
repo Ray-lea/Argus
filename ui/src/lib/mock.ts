@@ -535,6 +535,12 @@ function mockHardware(cpu: number, io: number): Hardware {
 
 // `?lang=en-US` previews a language, `?onboarding` the onboarding.
 const query = new URLSearchParams(location.search);
+export async function runTask(command: string, elevated: boolean): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  if (command.toLowerCase() === "missing.exe") throw { kind: "notFound", code: 2 };
+  if (elevated && query.get("task") === "cancelled") throw { kind: "cancelled", code: 1223 };
+}
+
 /** The version the mock app runs. */
 export const VERSION = "0.1.0";
 const resolve = (language: Language): Locale =>

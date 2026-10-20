@@ -1,0 +1,26 @@
+{
+  "title": "运行新任务",
+  "description": "打开应用、文件夹或文档，也可输入启动参数。",
+  "command": "打开",
+  "placeholder": "explorer.exe 或程序路径",
+  "browse": "浏览…",
+  "administrator": "以管理员身份运行",
+  "administratorHint": "需要 Windows 授权；取消授权后不会运行。",
+  "standardHint": "未勾选时，以普通权限运行。",
+  "run": "运行",
+  "running": "正在启动…",
+  "waiting": "正在等待 Windows 完成启动或授权。",
+  "started": "已提交新任务。",
+  "code": "错误码：{code}",
+  "error": {
+    "invalid": "请输入有效的程序名称、路径或命令，最多 8192 个字符。",
+    "cancelled": "已取消 Windows 授权，任务未启动。",
+    "notFound": "找不到指定的程序或路径，请检查输入或通过“浏览”选择。",
+    "accessDenied": "Windows 拒绝了本次启动，请检查访问权限。",
+    "standardUnavailable": "无法准备普通权限的启动环境。",
+    "elevationRequired": "此程序需要管理员权限，可勾选“以管理员身份运行”后重试。",
+    "noAssociation": "没有可打开此项目的关联应用。",
+    "busy": "另一项启动请求仍在进行，请稍后再试。",
+    "os": "Windows 未能启动此任务。"
+  }
+}

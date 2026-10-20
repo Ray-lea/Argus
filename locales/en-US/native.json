@@ -17,6 +17,7 @@
     "samplerStalled": "The sampling thread isn't responding",
     "pickFolder": "Select a folder to check",
     "pickFile": "Select a file to check",
+    "pickTask": "Choose an app or file to run",
     "invalidInterval": "This refresh interval isn't supported",
     "autostartNotInstalled": "This window was opened by the Task Manager replacement and no installed Argus was found, so starting at sign-in can't be turned on here. Quit Argus, run it directly, then turn this on."
   },

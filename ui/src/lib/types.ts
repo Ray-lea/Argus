@@ -3,6 +3,20 @@
 import type { HotkeyIssue } from "./hotkey";
 import type { Language, Locale } from "./i18n";
 
+export interface TaskError {
+  kind:
+    | "invalid"
+    | "cancelled"
+    | "notFound"
+    | "accessDenied"
+    | "standardUnavailable"
+    | "elevationRequired"
+    | "noAssociation"
+    | "busy"
+    | "os";
+  code: number;
+}
+
 export interface ProcessRow {
   pid: number;
   ppid: number;

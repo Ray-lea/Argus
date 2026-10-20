@@ -17,6 +17,7 @@ import services from "../../../locales/zh-CN/services.json";
 import settings from "../../../locales/zh-CN/settings.json";
 import shell from "../../../locales/zh-CN/shell.json";
 import startup from "../../../locales/zh-CN/startup.json";
+import tasks from "../../../locales/zh-CN/tasks.json";
 import updates from "../../../locales/zh-CN/updates.json";
 
 const source = {
@@ -34,6 +35,7 @@ const source = {
   settings,
   shell,
   startup,
+  tasks,
   updates,
 };
 

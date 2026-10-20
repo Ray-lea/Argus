@@ -34,10 +34,12 @@ import {
   PanelIcon,
   PauseIcon,
   PlayIcon,
+  RunTaskIcon,
   TreeIcon,
   UpdateIcon,
 } from "./icons";
 import { navExpanded, navPosition } from "./Nav";
+import { openNewTask } from "./NewTaskDialog";
 import SearchBox from "./SearchBox";
 import Select from "./Select";
 import { ServiceActions, ServiceControls, ServiceSearch } from "./ServicesPage";
@@ -207,6 +209,17 @@ export default function Toolbar() {
       </Switch>
 
       <div class="toolbar-end" data-tauri-drag-region>
+        <button
+          id="run-new-task"
+          type="button"
+          class="btn"
+          title={t("tasks.title")}
+          aria-label={t("tasks.title")}
+          onClick={(event) => openNewTask("", event.currentTarget)}
+        >
+          <RunTaskIcon />
+          <span class="btn-text">{t("tasks.title")}</span>
+        </button>
         <Show when={page() === "services"}>
           <ServiceActions />
         </Show>

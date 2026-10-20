@@ -38,6 +38,12 @@ export async function subscribe(onSnapshot: (s: Snapshot) => void): Promise<void
 }
 
 export const api = {
+  pickTaskFile: (): Promise<string | null> =>
+    mock
+      ? Promise.resolve("C:\\Program Files\\Example\\app.exe")
+      : invoke("pick_path", { folder: false, task: true }),
+  runTask: (command: string, elevated: boolean): Promise<void> =>
+    mock ? mock.runTask(command, elevated) : invoke("run_task", { command, elevated }),
   appInfo: (): Promise<AppInfo> => (mock ? mock.appInfo() : invoke("app_info")),
   setInterval: (ms: number): Promise<void> => (mock ? mock.setInterval(ms) : invoke("set_interval", { ms })),
   setPaused: (paused: boolean): Promise<void> =>

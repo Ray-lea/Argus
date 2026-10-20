@@ -4,6 +4,7 @@ import { DetailsHost } from "./components/DetailsPanel";
 import FileLockDialog, { DropOverlay, openFileLock } from "./components/FileLockDialog";
 import HistoryPage from "./components/HistoryPage";
 import Nav, { navExpanded, navPosition, PAGES } from "./components/Nav";
+import NewTaskDialog from "./components/NewTaskDialog";
 import Onboarding, { maybeOpenOnboarding, onboardingOpen } from "./components/Onboarding";
 import { ConfirmDialog, ContextMenu, Toasts } from "./components/Overlays";
 import Performance from "./components/Performance";
@@ -224,6 +225,7 @@ export default function App() {
       <StatusBar />
       <ContextMenu />
       <FileLockDialog />
+      <NewTaskDialog />
       <Onboarding />
       <UpdateDialog busy={onboardingOpen} />
       <ConfirmDialog />
