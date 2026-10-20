@@ -1,0 +1,10 @@
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="argus.exe" product-name="Argus">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="uninstall.exe" product-name="Argus">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

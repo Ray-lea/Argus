@@ -1,0 +1,10 @@
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="argus-taskmgr-launcher.exe">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="argus-taskmgr-recover.exe">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

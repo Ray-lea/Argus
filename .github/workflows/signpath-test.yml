@@ -1,0 +1,171 @@
+# Test certificates only. This workflow does not publish releases or updates.
+name: SignPath test signing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: signpath-test
+  cancel-in-progress: false
+
+env:
+  SIGNPATH_ORGANIZATION_ID: 82b3b085-ac3e-4e09-a287-9d29857fb8a6
+  SIGNPATH_PROJECT_SLUG: Argus
+  SIGNPATH_POLICY_SLUG: test-signing
+
+jobs:
+  sign:
+    name: Build, test-sign and verify
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11
+      - name: Check signing configuration and pin the test certificate
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: node scripts/signpath-preflight.mjs
+      # Every signed binary comes from this clean GitHub-hosted build.
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default stable-x86_64-pc-windows-msvc
+      - run: pnpm install --frozen-lockfile
+      - name: Build task manager helpers
+        run: cargo build -p argus-service --bins --release --locked
+      - name: Stage helpers
+        run: node scripts/signpath.mjs prepare
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: helpers
+        with:
+          name: unsigned-helpers
+          path: target/signpath/helpers-unsigned/*.exe
+          if-no-files-found: error
+          retention-days: 7
+      - name: Sign helpers
+        id: signed-helpers
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: windows-helpers
+          github-artifact-id: ${{ steps.helpers.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: target/signpath/helpers-signed
+      - name: Verify and embed signed helpers
+        run: |
+          ./scripts/verify-signpath.ps1 -Directory target/signpath/helpers-signed
+          node scripts/signpath.mjs apply-helpers
+      - name: Build application
+        # Do not rebuild the helpers after they have been signed.
+        run: pnpm tauri build --ci --no-bundle --config target/signpath/build-config.json
+      - name: Prepare NSIS bundle metadata
+        # Tauri writes its bundle marker before the main executable is signed.
+        run: pnpm tauri bundle --ci --bundles nsis --no-sign
+      - name: Capture application and uninstaller
+        run: node scripts/signpath.mjs prepare-application
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: application
+        with:
+          name: unsigned-application
+          path: target/signpath/application-unsigned/*.exe
+          if-no-files-found: error
+          retention-days: 7
+      - name: Sign application and uninstaller
+        id: signed-application
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: windows-application
+          github-artifact-id: ${{ steps.application.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: target/signpath/application-signed
+      - name: Verify application and build installer
+        run: |
+          ./scripts/verify-signpath.ps1 -Directory target/signpath/application-signed
+          node scripts/signpath.mjs build-installer
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: installer
+        with:
+          name: unsigned-installer
+          path: target/signpath/installer-unsigned/*.exe
+          if-no-files-found: error
+          retention-days: 7
+      - name: Sign installer
+        id: signed-installer
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: windows-installer
+          github-artifact-id: ${{ steps.installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: target/signpath/installer-signed
+      - name: Verify installer
+        run: |
+          ./scripts/verify-signpath.ps1 -Directory target/signpath/installer-signed
+          node scripts/signpath.mjs collect
+      - name: Install and uninstall on the isolated runner
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = (Get-ChildItem target/signpath/installer-signed/*-setup.exe).FullName
+          $dir = Join-Path $env:RUNNER_TEMP "argus-signpath-smoke"
+          $process = Start-Process $setup -ArgumentList "/S", "/D=$dir" -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          foreach ($name in "argus.exe", "uninstall.exe") {
+            $installed = Join-Path $dir $name
+            $expected = Join-Path "target/signpath/application-signed" $name
+            if ((Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $expected).Hash) {
+              throw "Installed file differs from signed input: $name"
+            }
+            if ((Get-AuthenticodeSignature -LiteralPath $installed).Status -ne "Valid") {
+              throw "Installed signature is invalid: $name"
+            }
+          }
+          Start-Process (Join-Path $dir "uninstall.exe") -ArgumentList "/S" -WindowStyle Hidden -Wait
+          $key = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Argus"
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path $key) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+          if ((Test-Path $key) -or (Test-Path (Join-Path $dir "argus.exe"))) { throw "Uninstall did not complete" }
+      - name: Collect verification report
+        env:
+          HELPERS_REQUEST_URL: ${{ steps.signed-helpers.outputs.signing-request-web-url }}
+          APPLICATION_REQUEST_URL: ${{ steps.signed-application.outputs.signing-request-web-url }}
+          INSTALLER_REQUEST_URL: ${{ steps.signed-installer.outputs.signing-request-web-url }}
+        run: |
+          Copy-Item target/signpath/signatures.json,target/signpath/test-certificate.cer target/signpath/artifacts/
+          @"
+          ## Test signing
+          - Helpers: $env:HELPERS_REQUEST_URL
+          - Application and uninstaller: $env:APPLICATION_REQUEST_URL
+          - Installer: $env:INSTALLER_REQUEST_URL
+          - Source: $env:GITHUB_SHA
+          "@ | Add-Content $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Argus-signpath-test-${{ github.sha }}
+          path: target/signpath/artifacts/*
+          if-no-files-found: error
+          retention-days: 14

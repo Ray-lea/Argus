@@ -14,7 +14,8 @@
     "format": "biome format --write ui locales",
     "i18n": "node scripts/i18n.mjs",
     "test:ui": "node --test \"ui/tests/*.test.ts\"",
-    "check": "pnpm typecheck && pnpm lint && pnpm i18n && pnpm test:ui && cargo fmt --all --check && cargo clippy --workspace --all-targets --target-dir target/rust-analyzer -- -D warnings",
+    "test:signing": "node --test scripts/tests/signpath.test.mjs",
+    "check": "pnpm typecheck && pnpm lint && pnpm i18n && pnpm test:ui && pnpm test:signing && cargo fmt --all --check && cargo clippy --workspace --all-targets --target-dir target/rust-analyzer -- -D warnings",
     "commitlint": "node scripts/release.mjs lint",
     "release": "node scripts/release.mjs bump",
     "tauri": "tauri"
