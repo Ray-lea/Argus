@@ -10,6 +10,7 @@ import {
   Show,
   Switch,
 } from "solid-js";
+import { coreGridColumns } from "../lib/core-grid";
 import {
   fmtCache,
   fmtCapacity,
@@ -24,6 +25,7 @@ import {
   netParts,
   rateParts,
 } from "../lib/format";
+import { gridReflow } from "../lib/grid-reflow";
 import { rich, t } from "../lib/i18n";
 import { EASE_OUT, play } from "../lib/motion";
 import { persisted } from "../lib/prefs";
@@ -148,8 +150,11 @@ function fitColumns(
  * height the view leaves it: rows stretch (CSS), the column count follows the
  * area. Minimum cell size and gap come from the grid's CSS.
  */
-function fitGrid(el: HTMLElement, count: () => number) {
+function fitGrid(el: HTMLElement, count: () => number, chooseColumns?: typeof coreGridColumns) {
   let size = { width: 0, height: 0 };
+  let columns = 0;
+  let previousCount = 0;
+  const reflow = chooseColumns ? gridReflow(el) : null;
   const fit = () => {
     if (!size.width || !size.height) return;
     const style = getComputedStyle(el);
@@ -157,8 +162,30 @@ function fitGrid(el: HTMLElement, count: () => number) {
       width: Number.parseFloat(style.getPropertyValue("--cell-w")),
       height: Number.parseFloat(style.getPropertyValue("--cell-h")),
     };
-    const cols = fitColumns(count(), size.width, size.height, cell, Number.parseFloat(style.columnGap) || 0);
-    el.style.setProperty("--cols", String(cols));
+    const total = count();
+    const sameCount = total === previousCount;
+    const gap = Number.parseFloat(style.columnGap) || 0;
+    const cols = chooseColumns
+      ? chooseColumns(
+          {
+            count: total,
+            ...size,
+            cellWidth: cell.width,
+            cellHeight: cell.height,
+            headerHeight: Number.parseFloat(style.getPropertyValue("--cell-head")) || 0,
+            gap,
+          },
+          sameCount ? columns : 0,
+        )
+      : fitColumns(total, size.width, size.height, cell, gap);
+    previousCount = total;
+    if (!sameCount) reflow?.cancel();
+    if (cols === columns) return;
+    const animate = columns > 0 && sameCount;
+    columns = cols;
+    const apply = () => el.style.setProperty("--cols", String(cols));
+    if (reflow && animate) reflow.change(apply);
+    else apply();
   };
   // Layout sizes: the view's settle animation scales the grid for a moment.
   const observer = new ResizeObserver(([entry]) => {
@@ -699,7 +726,7 @@ function CpuView() {
             }
           >
             <div class="perf-grow">
-              <div class="chart-grid cores" ref={(el) => fitGrid(el, () => shown().length)}>
+              <div class="chart-grid cores" ref={(el) => fitGrid(el, () => shown().length, coreGridColumns)}>
                 <For each={shown()}>
                   {(i) => {
                     const eff = () => hybrid() && efficient(i);
@@ -711,7 +738,7 @@ function CpuView() {
                     };
                     return (
                       <div
-                        class="chart-frame core-cell"
+                        class="core-cell"
                         style={{ "--c": `var(${color()})` }}
                         title={`${t(
                           hybrid()
@@ -722,27 +749,31 @@ function CpuView() {
                           { index: i, core: cpu().threads[i]?.core ?? "?" },
                         )}${temperature() !== undefined ? `\n${t("common.resource.temperature")}: ${Math.round(temperature() ?? 0)} °C` : ""}`}
                       >
-                        <span class="chart-cell-label">
-                          <Show when={hybrid()}>
-                            <i class="core-kind">{eff() ? "E" : "P"}</i>
+                        <div class="core-cell-head">
+                          <span class="chart-cell-label">
+                            <Show when={hybrid()}>
+                              <i class="core-kind">{eff() ? "E" : "P"}</i>
+                            </Show>
+                            {i} <b>{sys().cores[i] == null ? "—" : `${Math.round(sys().cores[i] ?? 0)}%`}</b>
+                          </span>
+                          <Show when={mhz() > 0}>
+                            <span class="chart-cell-note">{fmtGHz(mhz())}</span>
                           </Show>
-                          {i} <b>{sys().cores[i] == null ? "—" : `${Math.round(sys().cores[i] ?? 0)}%`}</b>
-                        </span>
-                        <Show when={mhz() > 0}>
-                          <span class="chart-cell-note">{fmtGHz(mhz())}</span>
-                        </Show>
-                        <Chart
-                          series={[
-                            {
-                              data: () => {
-                                const thread = cpu().threads[i];
-                                return thread ? series(`core.${thread.group}.${thread.processor}`) : [];
+                        </div>
+                        <div class="chart-frame">
+                          <Chart
+                            series={[
+                              {
+                                data: () => {
+                                  const thread = cpu().threads[i];
+                                  return thread ? series(`core.${thread.group}.${thread.processor}`) : [];
+                                },
+                                colorVar: color(),
                               },
-                              colorVar: color(),
-                            },
-                          ]}
-                          max={() => 100}
-                        />
+                            ]}
+                            max={() => 100}
+                          />
+                        </div>
                       </div>
                     );
                   }}

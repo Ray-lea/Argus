@@ -557,7 +557,57 @@
 
 .chart-grid.cores {
   --cell-w: 150px;
-  --cell-h: 56px;
+  --cell-h: 80px;
+  --cell-head: 22px;
+}
+
+.core-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  border-radius: 4px;
+  transform-origin: top left;
+}
+
+/* Rectangular clipping only while cards move, without a persistent layer or mask. */
+.chart-grid.cores.reflowing {
+  overflow: clip;
+}
+
+.core-cell.grid-moving {
+  background: var(--window-bg);
+  will-change: transform;
+}
+
+.core-cell-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: var(--cell-head);
+  padding: 0 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--c) 16%, transparent);
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--c) 5%, transparent);
+}
+
+.core-cell-head :is(.chart-cell-label, .chart-cell-note) {
+  position: static;
+  white-space: nowrap;
+}
+
+.core-cell-head .chart-cell-label b {
+  font-weight: 600;
+}
+
+.core-cell > .chart-frame {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0 0 3px 3px;
 }
 
 .chart-pair {
