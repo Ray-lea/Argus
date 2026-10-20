@@ -12,9 +12,10 @@
 //! byte, then records, each starting with a tag byte:
 //! - `1` name: index u16, length u8, UTF-8 bytes;
 //! - `2` frame: time i64 (Unix ms), CPU f32, CPU peak f32, GPU f32, memory used
-//!   u64, memory total u64, disk u64 (B/s), network u64 (B/s), entry count u8,
-//!   then per entry: name u16, PID u32, CPU f32, memory u32 (KiB), I/O u32
-//!   (B/s), GPU f32, network u32 (B/s).
+//!   u64, memory total u64, disk u64 (B/s), network u64 (B/s), battery f32
+//!   (percent, -1 when absent), battery rate f32 (mW, NaN when unknown),
+//!   entry count u8, then per entry: name u16, PID u32, CPU f32, memory u32
+//!   (KiB), I/O u32 (B/s), GPU f32, network u32 (B/s).
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -33,10 +34,10 @@ pub const FRAME_MS: i64 = 5_000;
 /// Days of history kept.
 pub const KEEP_DAYS: i64 = 7;
 
-const MAGIC: &[u8; 5] = b"ARGH\x01";
+const MAGIC: &[u8; 5] = b"ARGH\x02";
 const TAG_NAME: u8 = 1;
 const TAG_FRAME: u8 = 2;
-const FRAME_HEAD: usize = 8 + 4 * 3 + 8 * 4 + 1;
+const FRAME_HEAD: usize = 8 + 4 * 3 + 8 * 4 + 4 * 2 + 1;
 const ENTRY: usize = 2 + 4 + 4 + 4 + 4 + 4 + 4;
 const DAY_MS: i64 = 86_400_000;
 
@@ -58,6 +59,12 @@ pub struct HistoryPoint {
     pub disk: u64,
     /// Bytes per second, all adapters.
     pub net: u64,
+    /// Battery charge, percent, averaged over the frame; None on machines
+    /// without a battery (or in frames recorded while it was absent).
+    pub battery: Option<f32>,
+    /// Battery power flow, mW (positive while charging), averaged over the
+    /// frame; None when no battery reports a rate.
+    pub battery_rate: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -115,6 +122,10 @@ struct Window {
     mem_total: u64,
     disk: f64,
     net: f64,
+    battery: f64,
+    battery_n: u32,
+    battery_rate: f64,
+    battery_rate_n: u32,
     procs: HashMap<(u32, i64), ProcAcc>,
 }
 
@@ -173,6 +184,27 @@ impl HistoryRecorder {
             .map(|d| d.read + d.write)
             .sum::<u64>() as f64;
         w.net += s.hardware.nics.iter().map(|n| n.rx + n.tx).sum::<u64>() as f64;
+        // Across batteries the level is averaged and the flows summed, so a
+        // single battery (the common case) is exact; partial rates (only some
+        // batteries reporting) keep their sum.
+        let mut battery = 0.0f64;
+        let mut rate = 0.0f64;
+        let mut has_rate = false;
+        for b in &s.hardware.batteries {
+            battery += b.percent as f64;
+            if let Some(r) = b.rate {
+                rate += r as f64;
+                has_rate = true;
+            }
+        }
+        if !s.hardware.batteries.is_empty() {
+            w.battery += battery / s.hardware.batteries.len() as f64;
+            w.battery_n += 1;
+        }
+        if has_rate {
+            w.battery_rate += rate;
+            w.battery_rate_n += 1;
+        }
         for p in &s.processes {
             let acc = w
                 .procs
@@ -245,6 +277,11 @@ impl HistoryRecorder {
         buf.extend_from_slice(&w.mem_total.to_le_bytes());
         buf.extend_from_slice(&((w.disk / n) as u64).to_le_bytes());
         buf.extend_from_slice(&((w.net / n) as u64).to_le_bytes());
+        // -1 and NaN stand in for absence: levels are 0–100, rates are finite.
+        let battery = (w.battery_n > 0).then_some(w.battery / w.battery_n as f64);
+        buf.extend_from_slice(&(battery.map_or(-1.0, |v| v as f32)).to_le_bytes());
+        let rate = (w.battery_rate_n > 0).then_some(w.battery_rate / w.battery_rate_n as f64);
+        buf.extend_from_slice(&(rate.map_or(f32::NAN, |v| v as f32)).to_le_bytes());
         buf.push(indices.len() as u8);
         let clamp = |v: f64| v.clamp(0.0, u32::MAX as f64) as u32;
         for (index, p) in indices {
@@ -431,8 +468,16 @@ fn parse(
                     mem_total: u64_at(28),
                     disk: u64_at(36),
                     net: u64_at(44),
+                    battery: {
+                        let v = f32_at(52);
+                        (v >= 0.0).then_some(v)
+                    },
+                    battery_rate: {
+                        let v = f32_at(56);
+                        v.is_finite().then_some(v)
+                    },
                 };
-                let count = b[52] as usize;
+                let count = b[60] as usize;
                 let end = at + 1 + FRAME_HEAD + count * ENTRY;
                 if end > bytes.len() {
                     break;
@@ -563,6 +608,10 @@ pub fn series(dir: &Path, from: i64, to: i64, buckets: usize) -> Vec<HistoryPoin
         mem_total: u64,
         disk: f64,
         net: f64,
+        battery: f64,
+        battery_n: u32,
+        battery_rate: f64,
+        battery_rate_n: u32,
     }
     let mut acc = vec![Acc::default(); buckets];
     let span = (to - from) as f64;
@@ -586,6 +635,14 @@ pub fn series(dir: &Path, from: i64, to: i64, buckets: usize) -> Vec<HistoryPoin
                 a.mem_total = p.mem_total;
                 a.disk += p.disk as f64;
                 a.net += p.net as f64;
+                if let Some(v) = p.battery {
+                    a.battery += v as f64;
+                    a.battery_n += 1;
+                }
+                if let Some(v) = p.battery_rate {
+                    a.battery_rate += v as f64;
+                    a.battery_rate_n += 1;
+                }
             }
             true
         });
@@ -603,6 +660,9 @@ pub fn series(dir: &Path, from: i64, to: i64, buckets: usize) -> Vec<HistoryPoin
                 mem_total: a.mem_total,
                 disk: (a.disk / n) as u64,
                 net: (a.net / n) as u64,
+                battery: (a.battery_n > 0).then_some((a.battery / a.battery_n as f64) as f32),
+                battery_rate: (a.battery_rate_n > 0)
+                    .then_some((a.battery_rate / a.battery_rate_n as f64) as f32),
             }
         })
         .collect()
@@ -703,6 +763,95 @@ mod tests {
             processes: procs,
             process_network: false,
         }
+    }
+
+    fn battery(percent: f32, rate: Option<i32>) -> crate::hardware::BatteryStats {
+        crate::hardware::BatteryStats {
+            info: std::sync::Arc::new(crate::hardware::BatteryInfo {
+                id: "0".to_string(),
+                name: String::new(),
+                manufacturer: String::new(),
+                serial: String::new(),
+                chemistry: String::new(),
+                designed_capacity: None,
+                full_capacity: None,
+                cycle_count: None,
+                manufactured: None,
+            }),
+            percent,
+            capacity: None,
+            rate,
+            voltage: None,
+            state: if rate.is_some_and(|r| r < 0) {
+                "discharging"
+            } else {
+                "charging"
+            },
+            plugged_in: false,
+            critical: false,
+            remaining: None,
+            temperature: None,
+        }
+    }
+
+    #[test]
+    fn records_battery_level_and_rate() {
+        let dir = temp_dir("battery");
+        let base = 20_737 * DAY_MS + 3_600_000;
+        let mut rec = HistoryRecorder::new(dir.clone());
+        // Frame A: 40% drawing 10 W; frame B: 50% charging 5 W.
+        for i in 0..10 {
+            let mut s = snapshot(base + i * 1000, 5.0, Vec::new());
+            let (pct, rate) = if i < 5 {
+                (40.0, Some(-10_000))
+            } else {
+                (50.0, Some(5_000))
+            };
+            s.hardware.batteries.push(battery(pct, rate));
+            rec.record(&s);
+        }
+        // A machine without a battery writes frames without battery data.
+        // (The sample at +15 s only closes frame C; frames need a successor.)
+        for i in 10..16 {
+            rec.record(&snapshot(base + i * 1000, 5.0, Vec::new()));
+        }
+        drop(rec);
+        let m = moment(&dir, base + 1_000).unwrap();
+        assert_eq!(m.system.battery, Some(40.0));
+        assert_eq!(m.system.battery_rate, Some(-10_000.0));
+        let m = moment(&dir, base + 6_000).unwrap();
+        assert_eq!(m.system.battery, Some(50.0));
+        assert_eq!(m.system.battery_rate, Some(5_000.0));
+        // The battery-less frames keep both absent.
+        let m = moment(&dir, base + 12_000).unwrap();
+        assert_eq!(m.system.battery, None);
+        assert_eq!(m.system.battery_rate, None);
+        // Buckets carry the average of the frames that had a battery.
+        let points = series(&dir, base, base + 15_000, 3);
+        assert_eq!(points[0].battery, Some(40.0));
+        assert_eq!(points[1].battery, Some(50.0));
+        assert_eq!(points[2].battery, None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn averages_multiple_batteries() {
+        let dir = temp_dir("batteries");
+        let base = 20_737 * DAY_MS;
+        let mut rec = HistoryRecorder::new(dir.clone());
+        // Six one-second samples: the first frame is complete and written.
+        for i in 0..6 {
+            let mut s = snapshot(base + i * 1000, 5.0, Vec::new());
+            // Two batteries: 20% drawing 8 W, 80% with an unknown rate.
+            s.hardware.batteries.push(battery(20.0, Some(-8_000)));
+            s.hardware.batteries.push(battery(80.0, None));
+            rec.record(&s);
+        }
+        drop(rec);
+        let m = moment(&dir, base).unwrap();
+        assert_eq!(m.system.battery, Some(50.0));
+        assert_eq!(m.system.battery_rate, Some(-8_000.0));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

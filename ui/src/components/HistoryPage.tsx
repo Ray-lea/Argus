@@ -108,9 +108,11 @@ function niceCeil(v: number): number {
 }
 
 interface Metric {
-  resource: "cpu" | "memory" | "disk" | "network" | "gpu";
+  resource: "cpu" | "memory" | "disk" | "network" | "gpu" | "battery";
   colorVar: string;
   value: (p: HistoryPoint) => number;
+  /** Missing measurements leave a gap and have no readout or cursor dot. */
+  available?: (p: HistoryPoint) => boolean;
   /** Drawn faintly above the value: CPU's highest one-second sample. */
   peak?: (p: HistoryPoint) => number;
   max: (points: HistoryPoint[]) => number;
@@ -125,6 +127,9 @@ const niceRate = (v: number) => (v <= MB ? Math.min(MB, niceCeil(v / KB) * KB) :
 
 /** Scales are round numbers: "20 MB/s" rather than "20.0 MB/s". */
 const round = (label: string) => label.replace(/\.0+ /, " ");
+
+/** Watts below ten keep a decimal, as on the performance page. */
+const fmtW = (v: number) => (v < 10 ? v.toFixed(1) : String(Math.round(v)));
 
 const highest = (points: HistoryPoint[], value: (p: HistoryPoint) => number) =>
   points.reduce((m, p) => Math.max(m, value(p)), 0);
@@ -185,6 +190,22 @@ const METRICS: Metric[] = [
     value: (p) => p.gpu,
     max: () => 100,
     format: (p) => `${fmtCpu(p.gpu)}%`,
+  },
+  {
+    resource: "battery",
+    colorVar: "--bat",
+    value: (p) => p.battery ?? 0,
+    available: (p) => p.battery !== null,
+    max: () => 100,
+    format: (p) => `${Math.round(p.battery ?? 0)}%`,
+    // The power flow ties the drain to what the other charts were doing.
+    detail: (p) => {
+      const r = p.batteryRate;
+      if (r === null || r === 0) return "";
+      return t(r > 0 ? "history.metric.charging" : "history.metric.discharging", {
+        value: `${fmtW(Math.abs(r) / 1000)} W`,
+      });
+    },
   },
 ];
 
@@ -261,6 +282,10 @@ function HistoryChart(props: {
   const [size, setSize] = createSignal({ w: 0, h: 0 });
   const max = createMemo(() => Math.max(1e-9, props.metric.max(props.view.points)));
   const y = (v: number, h: number) => TOP_PAD + (1 - Math.min(1, Math.max(0, v / max()))) * (h - TOP_PAD);
+  const cursor = () => {
+    const p = props.cursor;
+    return p && (props.metric.available?.(p) ?? true) ? p : null;
+  };
 
   onMount(() => {
     const ro = new ResizeObserver(() => setSize({ w: box.clientWidth, h: box.clientHeight }));
@@ -305,9 +330,17 @@ function HistoryChart(props: {
 
     // Runs of points without gaps.
     const runs: HistoryPoint[][] = [];
+    let run: HistoryPoint[] | undefined;
     view.points.forEach((p, i) => {
-      if (i > 0 && view.joined[i - 1]) runs[runs.length - 1].push(p);
-      else runs.push([p]);
+      if (metric.available && !metric.available(p)) {
+        run = undefined;
+        return;
+      }
+      if (!run || !view.joined[i - 1]) {
+        run = [];
+        runs.push(run);
+      }
+      run.push(p);
     });
     const trace = (run: HistoryPoint[], value: (p: HistoryPoint) => number) => {
       const path = new Path2D();
@@ -350,7 +383,7 @@ function HistoryChart(props: {
     <div ref={box} class="history-chart" style={{ "--c": `var(${props.metric.colorVar})` }}>
       <canvas ref={canvas} />
       <Show when={props.metric.scale}>{(scale) => <span class="history-scale">{scale()(max())}</span>}</Show>
-      <Show when={props.cursor}>
+      <Show when={cursor()}>
         {(p) => (
           <span
             class="chart-dot"
@@ -451,6 +484,12 @@ export default function HistoryPage() {
     series.latest ?? { from: now() - range().ms, to: now(), step: FRAME, points: [], ts: [], joined: [] };
   const tickList = createMemo(() => ticks(view().from, view().to, range().tick));
 
+  /** Battery charts appear only where battery data was recorded. */
+  const metrics = createMemo(() => {
+    const hasBattery = view().points.some((p) => p.battery !== null);
+    return hasBattery ? METRICS : METRICS.filter((m) => m.resource !== "battery");
+  });
+
   /** The point drawn at `ts`, unless `ts` falls in a gap. */
   const shownAt = (ts: number) => {
     const v = view();
@@ -482,6 +521,10 @@ export default function HistoryPage() {
   const readout = () => {
     const ts = readTs();
     return ts === null ? view().points.at(-1) : shownAt(ts);
+  };
+  const readoutFor = (metric: Metric) => {
+    const p = readout();
+    return p && (metric.available?.(p) ?? true) ? p : undefined;
   };
   const cursor = () => {
     const ts = readTs();
@@ -629,13 +672,13 @@ export default function HistoryPage() {
     <div class="page history">
       <section class="history-graphs" aria-label={t("history.systemHistory")}>
         <div class="history-labels">
-          <For each={METRICS}>
+          <For each={metrics()}>
             {(m) => (
               <div class="history-label" style={{ "--c": `var(${m.colorVar})` }}>
                 <span>{t(`common.resource.${m.resource}`)}</span>
                 <Show
-                  when={readout()}
-                  fallback={<b class="dim">{readTs() === null ? "—" : t("history.noData")}</b>}
+                  when={readoutFor(m)}
+                  fallback={<b class="dim">{readTs() === null && !readout() ? "—" : t("history.noData")}</b>}
                 >
                   {(p) => (
                     <>
@@ -650,7 +693,7 @@ export default function HistoryPage() {
         </div>
 
         <div ref={plot} class="history-plot">
-          <For each={METRICS}>
+          <For each={metrics()}>
             {(m) => <HistoryChart view={view()} metric={m} ticks={tickList()} cursor={cursor()} />}
           </For>
           <div class="history-axis" aria-hidden="true">

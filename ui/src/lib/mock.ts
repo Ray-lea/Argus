@@ -940,8 +940,18 @@ const level = (ts: number) => {
   const spike = Math.sin(ts / 97_000) > 0.97 ? 35 : 0;
   return 6 + 30 * day + 8 * Math.sin(ts / 600_000) + spike;
 };
+/** Charges 18–20 h, drains through the rest of the day, never fully. */
+const battery = (ts: number, cpu: number): { level: number; rate: number } => {
+  const h = new Date(ts).getHours() + new Date(ts).getMinutes() / 60;
+  if (h >= 18 && h < 20) {
+    return { level: 30 + ((h - 18) / 2) * 65, rate: 45_000 };
+  }
+  const drain = -9_000 - Math.min(90, cpu) * 260 - Math.sin(ts / 300_000) * 1_500;
+  return { level: Math.max(22, 95 - ((h - 7) / 11) * 73), rate: Math.round(drain) };
+};
 const point = (ts: number): HistoryPoint => {
   const cpu = Math.max(1, level(ts));
+  const bat = battery(ts, cpu);
   return {
     ts,
     cpu,
@@ -951,6 +961,8 @@ const point = (ts: number): HistoryPoint => {
     memTotal: 32 * GB,
     disk: cpu * 180_000,
     net: cpu * 60_000,
+    battery: bat.level,
+    batteryRate: bat.rate,
   };
 };
 

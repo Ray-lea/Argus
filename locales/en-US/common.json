@@ -33,6 +33,7 @@
     "disk": "Disk",
     "network": "Network",
     "gpu": "GPU",
+    "battery": "Battery",
     "temperature": "Temperature"
   },
   "languageSystem": "Same as Windows",
