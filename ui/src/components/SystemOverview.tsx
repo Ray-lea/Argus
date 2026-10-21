@@ -3,7 +3,8 @@
 // (select a row to see it here; the toolbar's button at the top right hides
 // the panel).
 
-import { For, type JSX, Show } from "solid-js";
+import { createEffect, For, type JSX, Show } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import { fmtCapacity, fmtGB, fmtGHz, fmtLinkSpeed } from "../lib/format";
 import { rich, t } from "../lib/i18n";
 import { setPage, setPerfDevice, snapshot } from "../lib/store";
@@ -127,10 +128,12 @@ function parts(hw: Hardware, memTotal: number): Part[] {
 }
 
 export default function SystemOverview() {
-  const list = () => {
+  const [list, setList] = createStore<Part[]>([]);
+  createEffect(() => {
     const s = snapshot();
-    return s ? parts(s.hardware, s.system.memTotal) : [];
-  };
+    // Preserve each device's button, hover state and keyboard focus between samples.
+    setList(reconcile(s ? parts(s.hardware, s.system.memTotal) : [], { key: "device" }));
+  });
   const open = (device: string) => {
     setPerfDevice(device);
     setPage("performance");
@@ -162,13 +165,12 @@ export default function SystemOverview() {
       </ul>
 
       <div class="overview-parts">
-        <For each={list()}>
+        <For each={list}>
           {(part) => (
             <button
               type="button"
               class="overview-part"
               style={{ "--c": `var(${part.colorVar})` }}
-              title={t("details.overview.open")}
               onClick={() => open(part.device)}
             >
               <span class="overview-icon">{part.icon({ size: 16 })}</span>

@@ -98,11 +98,11 @@ export default function ProcessTable() {
   /** How far the columns after the name are scrolled sideways (a narrow table). */
   const [shift, setShift] = createSignal(0);
   /**
-   * Focused by a click, not the keyboard. Being an editing target (see
+   * Pointer or automatic focus, not keyboard navigation. Being an editing target (see
    * composeIntoSearch) the list matches :focus-visible however it got focus;
    * the focus ring goes by this instead.
    */
-  const [pointerFocus, setPointerFocus] = createSignal(false);
+  const [pointerFocus, setPointerFocus] = createSignal(true);
   /** The tooltip of a missing disk reading, shared by every row. */
   const diskHint = createMemo(missingDiskHint);
   // Only membership/order changes invalidate the virtual layout; live values do not.
@@ -127,6 +127,27 @@ export default function ProcessTable() {
   });
 
   onMount(() => {
+    // Keep input modality across window blur/restore and focus moves within the grid.
+    const onPointer = () => setPointerFocus(true);
+    const onKeyboard = (e: KeyboardEvent) => {
+      if (
+        e.isComposing ||
+        e.key === "Process" ||
+        e.altKey ||
+        e.ctrlKey ||
+        e.metaKey ||
+        ["Shift", "Control", "Alt", "Meta"].includes(e.key)
+      ) {
+        return;
+      }
+      setPointerFocus(false);
+    };
+    window.addEventListener("pointerdown", onPointer, true);
+    window.addEventListener("keydown", onKeyboard, true);
+    onCleanup(() => {
+      window.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("keydown", onKeyboard, true);
+    });
     onCleanup(composeIntoSearch(tableEl));
     // Typing (an input method's too) reaches the search from wherever focus
     // rests on the page; see list-focus.ts.
@@ -320,8 +341,6 @@ export default function ProcessTable() {
       aria-label={t("processes.label")}
       aria-activedescendant={selectedKey() ? rowId(selectedKey() as string) : undefined}
       onKeyDown={onKeyDown}
-      onPointerDown={() => setPointerFocus(true)}
-      onBlur={() => setPointerFocus(false)}
     >
       <div class="thead cols" role="row">
         {header(COLUMNS[0])}

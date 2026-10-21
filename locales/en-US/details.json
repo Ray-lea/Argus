@@ -6,7 +6,6 @@
     "title": "This PC",
     "selectTip": "Click an app or process in the list to see its details here; click it again to deselect it.",
     "closeTip": "The details pane stays open; hide it with {icon} at the top right.",
-    "open": "View on the Performance page",
     "cpu": "Processor",
     "cores": { "one": "{count} core", "other": "{count} cores" },
     "hybrid": " ({performance} P-cores + {efficiency} E-cores)",

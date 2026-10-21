@@ -6,7 +6,6 @@
     "title": "本机配置",
     "selectTip": "在列表中单击应用或进程，即可在此查看其详细信息；再次单击取消选中。",
     "closeTip": "详细信息面板默认常驻，单击右上角的 {icon} 可收起。",
-    "open": "在“性能”页查看",
     "cpu": "处理器",
     "cores": "{count} 核",
     "hybrid": "（{performance} 性能核 + {efficiency} 能效核）",
