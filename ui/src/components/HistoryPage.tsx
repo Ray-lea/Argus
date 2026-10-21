@@ -35,8 +35,13 @@ const DAY = 24 * HOUR;
 const FRAME = 5_000;
 const KB = 1024;
 const MB = 1024 * KB;
-/** Headroom (CSS px) so a line at full scale is not clipped. */
-const TOP_PAD = 3;
+/** Line width, CSS px. */
+const LINE = 1.5;
+/**
+ * Headroom (CSS px): half the line, so a line at full scale lies against the
+ * top edge, whole and with no gap above it.
+ */
+const TOP_PAD = LINE / 2;
 /** Chart border (CSS px): the plot area starts inside it. */
 const BORDER = 1;
 
@@ -374,7 +379,7 @@ function HistoryChart(props: {
         ctx.stroke(trace(run, metric.peak));
       }
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.5 * dpr;
+      ctx.lineWidth = LINE * dpr;
       ctx.stroke(line);
     }
   });

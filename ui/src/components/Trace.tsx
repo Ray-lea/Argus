@@ -47,8 +47,13 @@ interface ChartProps {
   format?: (v: number) => string;
 }
 
-/** Headroom (CSS px) so a line at full scale is not clipped. */
-const TOP_PAD = 3;
+/** Line width, CSS px. */
+const LINE = 1.5;
+/**
+ * Headroom (CSS px): half the line, so a line at full scale lies against the
+ * top edge, whole and with no gap above it.
+ */
+const TOP_PAD = LINE / 2;
 /** How often a hover tip's text follows a trace gliding under the cursor, ms. */
 const TEXT_EVERY = 100;
 
@@ -405,7 +410,7 @@ export function Chart(props: ChartProps) {
     setBox({ w: w / dpr });
 
     c.clearRect(0, 0, width, h);
-    const top = Math.round(TOP_PAD * dpr);
+    const top = TOP_PAD * dpr;
     const rangeY = h - top;
     const max = Math.max(props.max(), 1e-9);
     drawn = props.series.map(() => null);
@@ -457,7 +462,7 @@ export function Chart(props: ChartProps) {
         c.fill(area);
       }
       c.strokeStyle = col;
-      c.lineWidth = 1.5 * dpr;
+      c.lineWidth = LINE * dpr;
       c.lineJoin = "round";
       if (s.dashed) {
         // Dashes run along the curve, so they keep their length on steep

@@ -31,7 +31,7 @@ start.bat clean            # 清理增量编译缓存与发布产物，保留调
 start.bat clean all        # 清空全部 Rust 构建缓存
 ```
 
-`start.bat ui` 的页面地址加 `?lang=en-US` 可预览英文界面，加 `?onboarding` 会打开首次启动引导。
+`start.bat ui` 的页面地址加 `?lang=en-US` 可预览英文界面，加 `?onboarding` 会打开首次启动引导，加 `?battery=100` 会把模拟电池固定在该电量（便于查看满刻度的曲线）。
 
 `start.bat` 首次运行会自动安装前端依赖；每次启动前会结束上次会话残留的 Vite（占着 5173 端口）和开发版进程。对应的 pnpm 脚本是 `pnpm app`、`pnpm dev`、`pnpm check` 和 `pnpm tauri build`。
 

@@ -469,7 +469,9 @@ const GPU_INFO: GpuInfo = {
 
 function mockHardware(cpu: number, io: number): Hardware {
   const g3d = wave(28, 14);
-  batteryPct = Math.max(5, batteryPct - 0.02);
+  // `?battery=100` holds the charge there, e.g. to see a trace at full scale.
+  const held = Number(query.get("battery"));
+  batteryPct = query.has("battery") && Number.isFinite(held) ? held : Math.max(5, batteryPct - 0.02);
   return {
     cpu: CPU_INFO,
     cpuMhz: Math.round(2400 * (1 + cpu / 120) + Math.random() * 300),
