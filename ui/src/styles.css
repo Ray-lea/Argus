@@ -1240,6 +1240,14 @@ button {
   outline-offset: -1px;
 }
 
+/* The process list takes input methods (an editing target), so it matches
+   :focus-visible after a click too: there the ring waits for the keyboard. */
+.process-table.pointer-focus:focus-visible,
+.process-table.pointer-focus:focus-visible .row.selected,
+.process-table.pointer-focus:focus-visible .section-row.selected::after {
+  outline: none;
+}
+
 .cell {
   display: flex;
   align-items: center;

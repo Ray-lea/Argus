@@ -6,6 +6,7 @@ import { t } from "../lib/i18n";
 import { missingDiskHint } from "../lib/privilege";
 import { processRowId as rowId } from "../lib/process-identity";
 import { sumDiskIo } from "../lib/process-io";
+import { composeIntoSearch } from "../lib/process-search";
 import {
   type DisplayRow,
   isSection,
@@ -95,6 +96,12 @@ export default function ProcessTable() {
   const columns = () => (withNet() ? COLUMNS_WITH_NET : COLUMNS);
   /** How far the columns after the name are scrolled sideways (a narrow table). */
   const [shift, setShift] = createSignal(0);
+  /**
+   * Focused by a click, not the keyboard. Being an editing target (see
+   * composeIntoSearch) the list matches :focus-visible however it got focus;
+   * the focus ring goes by this instead.
+   */
+  const [pointerFocus, setPointerFocus] = createSignal(false);
   /** The tooltip of a missing disk reading, shared by every row. */
   const diskHint = createMemo(missingDiskHint);
   // Only membership/order changes invalidate the virtual layout; live values do not.
@@ -119,6 +126,7 @@ export default function ProcessTable() {
   });
 
   onMount(() => {
+    onCleanup(composeIntoSearch(tableEl));
     tableRef = tableEl;
     onCleanup(() => {
       if (tableRef === tableEl) tableRef = undefined;
@@ -185,6 +193,8 @@ export default function ProcessTable() {
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.target !== e.currentTarget) return; // keys on header buttons keep their own meaning
+    // Keys an input method is composing with (Enter commits, arrows pick).
+    if (e.isComposing || e.key === "Process") return;
     const list = rows();
     const i = list.findIndex((r) => r.key === selectedKey());
     const found = i >= 0 ? list[i] : undefined;
@@ -280,7 +290,7 @@ export default function ProcessTable() {
     <div
       ref={tableEl}
       class="table process-table"
-      classList={{ "with-net": withNet(), shifted: shift() > 0 }}
+      classList={{ "with-net": withNet(), shifted: shift() > 0, "pointer-focus": pointerFocus() }}
       style={{ "--shift": `${shift()}px` }}
       role="grid"
       tabIndex={0}
@@ -288,6 +298,8 @@ export default function ProcessTable() {
       aria-label={t("processes.label")}
       aria-activedescendant={selectedKey() ? rowId(selectedKey() as string) : undefined}
       onKeyDown={onKeyDown}
+      onPointerDown={() => setPointerFocus(true)}
+      onBlur={() => setPointerFocus(false)}
     >
       <div class="thead cols" role="row">
         {header(COLUMNS[0])}

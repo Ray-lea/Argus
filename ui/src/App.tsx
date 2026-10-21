@@ -14,7 +14,7 @@ import ServicesPage from "./components/ServicesPage";
 import SettingsPage from "./components/Settings";
 import StartupPage from "./components/StartupPage";
 import StatusBar from "./components/StatusBar";
-import Toolbar, { focusSearch, typeIntoSearch } from "./components/Toolbar";
+import Toolbar from "./components/Toolbar";
 import UpdateDialog from "./components/UpdateDialog";
 import Vitals from "./components/Vitals";
 import { endRow } from "./lib/actions";
@@ -23,6 +23,7 @@ import { t } from "./lib/i18n";
 import { api, inTauri, subscribe } from "./lib/ipc";
 import { EASE_OUT, play, uiMotion } from "./lib/motion";
 import { watchPrivilege } from "./lib/privilege";
+import { focusSearch, typeIntoSearch } from "./lib/process-search";
 import { isSection } from "./lib/rows";
 import { controlPauseHeld, endProcessShortcut, startsSearch } from "./lib/shortcuts";
 import {

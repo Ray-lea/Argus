@@ -1,6 +1,7 @@
 import { createEffect, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
 import logo from "../../../src-tauri/icons/logo-small.svg?url";
 import { locale, t } from "../lib/i18n";
+import { forgetReturn, leaveSearch, preedit, setSearchInput } from "../lib/process-search";
 import type { ViewMode } from "../lib/rows";
 import {
   changeInterval,
@@ -51,43 +52,6 @@ const MODES: { mode: ViewMode; icon: typeof AppsIcon }[] = [
   { mode: "tree", icon: TreeIcon },
   { mode: "list", icon: ListIcon },
 ];
-
-let searchInput: HTMLInputElement | undefined;
-/** What had focus before the process search took it: Esc goes back there. */
-let returnFocus: HTMLElement | null = null;
-
-function rememberFocus() {
-  const active = document.activeElement;
-  returnFocus =
-    active instanceof HTMLElement && active !== document.body && active !== searchInput ? active : null;
-}
-
-function leaveSearch() {
-  if (returnFocus?.isConnected) returnFocus.focus();
-  returnFocus = null;
-}
-
-export function focusSearch() {
-  rememberFocus();
-  searchInput?.focus();
-  searchInput?.select();
-}
-
-/**
- * Starts the process search with `text` typed outside any text field. It goes
- * after what the box already holds, so a stray key costs no filter, and the
- * typing carries on in the box. False when the box is not there.
- */
-export function typeIntoSearch(text: string): boolean {
-  const input = searchInput;
-  if (!input?.isConnected) return false;
-  rememberFocus();
-  const next = query() + text;
-  setQuery(next);
-  input.focus();
-  input.setSelectionRange(next.length, next.length);
-  return true;
-}
 
 /** Levels of `fitToolbar`, set as `data-compact` (styles.css). */
 const COMPACT_LEVELS = 3;
@@ -220,14 +184,12 @@ export default function Toolbar() {
       <Switch>
         <Match when={page() === "processes"}>
           <SearchBox
-            ref={(el) => {
-              searchInput = el;
-            }}
-            value={query()}
+            ref={setSearchInput}
+            value={query() + preedit()}
             onInput={setQuery}
             onEscape={leaveSearch}
             onNavigate={() => {
-              returnFocus = null;
+              forgetReturn();
               focusProcessTable();
             }}
             placeholder={t("shell.search.processes")}
