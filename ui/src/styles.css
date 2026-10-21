@@ -1418,12 +1418,49 @@ button {
   color: var(--ink-2);
 }
 
+/* A pane's resize handle (Splitter.tsx), placed by its caller: a grip that
+   shows on hover, under keyboard focus and while dragging. */
+.splitter {
+  position: absolute;
+  z-index: 1;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.splitter::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 2px;
+  height: 32px;
+  margin-top: -16px;
+  border-radius: 1px;
+  background: var(--stroke-strong);
+  opacity: 0;
+}
+
+.splitter:hover::after,
+.splitter:focus-visible::after {
+  opacity: 1;
+}
+
+.splitter.dragging::after {
+  opacity: 1;
+  background: var(--accent);
+}
+
 /* ---- Details panel --------------------------------------------------------- */
 
+/* Open by default; its width comes from the splitter on its left edge (and
+   never takes more than about half a narrow window). */
 .details {
+  position: relative;
   display: flex;
   flex-direction: column;
-  width: 348px;
+  max-width: 45vw;
   min-height: 0;
   border-left: 1px solid var(--stroke);
   /* The workspace does not clip (see .vitals), so the panel rounds its own corners. */
@@ -1444,6 +1481,25 @@ button {
     opacity: 0;
     transform: translateY(6px);
   }
+}
+
+.details-splitter {
+  top: 0;
+  bottom: 0;
+  left: -5px;
+}
+
+/* What the panel shows: the selected row's details, or this computer's parts. */
+.details-body,
+.details > .overview {
+  animation: fade-up var(--t-med) var(--ease-out);
+}
+
+.details-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .details-scroll {
@@ -1472,6 +1528,107 @@ button {
 .details-subtitle {
   margin-top: 2px;
   color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+/* ---- This computer, with nothing selected (SystemOverview.tsx) ---- */
+
+.overview .details-head {
+  align-items: center;
+}
+
+.overview-tips {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--stroke-strong);
+  border-radius: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+  list-style: none;
+}
+
+.overview-tips li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.overview-tips li > svg {
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+/* The toolbar's button, as it looks there. */
+.overview-key {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  margin: 0 2px;
+  border: 1px solid var(--stroke);
+  border-radius: 4px;
+  background: var(--control);
+  color: var(--ink);
+  vertical-align: -4px;
+}
+
+.overview-parts {
+  display: grid;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.overview-part {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  transition: background-color var(--t-fast) linear;
+}
+
+.overview-part:hover {
+  background: var(--hover);
+}
+
+.overview-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  color: color-mix(in srgb, var(--c) 75%, var(--ink));
+}
+
+.overview-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.overview-kind {
+  color: var(--ink-2);
+  font-size: 11px;
+}
+
+.overview-name {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.overview-detail {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 

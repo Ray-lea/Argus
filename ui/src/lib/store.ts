@@ -231,7 +231,12 @@ export const [cpuMode, setCpuMode] = persisted<"overall" | "logical">("cpuMode",
 export const [viewMode, setViewMode] = persisted<ViewMode>("view", "apps");
 export const [sort, setSort] = persisted<SortState>("sort", { key: "cpu", desc: true });
 export const [intervalMs, setIntervalMs] = persisted<number>("interval", 1000);
-export const [detailsOpen, setDetailsOpen] = persisted<boolean>("details", true);
+/**
+ * The processes page's details panel, shown by default. Kept under a new name
+ * since the panel became resident (it used to show only with a row selected):
+ * hiding it then does not hide it now.
+ */
+export const [detailsOpen, setDetailsOpen] = persisted<boolean>("detailsPanel", true);
 /** Process categories folded under their headings (sorted by name). */
 export const [collapsedSections, setCollapsedSections] = persisted<ProcessSection[]>("collapsedSections", []);
 

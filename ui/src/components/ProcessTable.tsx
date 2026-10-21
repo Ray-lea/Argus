@@ -468,6 +468,20 @@ function SectionHeading(props: { row: SectionRow; start: number; withNet: boolea
   );
 }
 
+/**
+ * A click on the selected row deselects it. On a row a double-click expands,
+ * only once the double-click's time has passed, so that the double-click
+ * leaves it selected.
+ */
+const DOUBLE_CLICK_MS = 300;
+let pendingDeselect = 0;
+/** The row a left press began on, and whether it was selected then: releasing it there deselects it. */
+let press: { key: string; wasSelected: boolean } | null = null;
+const cancelDeselect = () => {
+  clearTimeout(pendingDeselect);
+  pendingDeselect = 0;
+};
+
 function Row(props: { row: DisplayRow; start: number; withNet: boolean; diskHint: string }) {
   const r = () => props.row;
   const selected = () => selectedKey() === r().key;
@@ -490,9 +504,39 @@ function Row(props: { row: DisplayRow; start: number; withNet: boolean; diskHint
       }}
       style={{ transform: `translateY(${props.start}px)` }}
       onMouseDown={(e) => {
-        if (e.button === 0 || e.button === 2) setSelectedKey(r().key);
+        // The context menu acts on the row: a right press always selects it.
+        if (e.button === 2) setSelectedKey(r().key);
+        if (e.button !== 0) return;
+        // The second press of a double-click changes nothing, and selects no word
+        // (the list is editable, for the input method: see process-search.ts).
+        if (e.detail > 1) {
+          e.preventDefault();
+          return;
+        }
+        cancelDeselect();
+        press = { key: r().key, wasSelected: selected() };
+        if (!press.wasSelected) setSelectedKey(r().key);
       }}
-      onDblClick={() => (r().expandable ? toggleRow(r()) : setDetailsOpen(true))}
+      onMouseUp={(e) => {
+        const pressed = press;
+        press = null;
+        if (e.button !== 0 || e.detail !== 1 || pressed?.key !== r().key || !pressed.wasSelected) return;
+        if (!r().expandable) {
+          setSelectedKey(null);
+          return;
+        }
+        const key = r().key;
+        pendingDeselect = window.setTimeout(() => {
+          pendingDeselect = 0;
+          if (selectedKey() === key) setSelectedKey(null);
+        }, DOUBLE_CLICK_MS);
+      }}
+      onDblClick={() => {
+        if (!r().expandable) return;
+        cancelDeselect();
+        setSelectedKey(r().key);
+        toggleRow(r());
+      }}
       onContextMenu={(e) => openProcessMenu(e, r())}
     >
       <div class="cell name" role="gridcell" style={{ "padding-left": `${6 + r().depth * 20}px` }}>

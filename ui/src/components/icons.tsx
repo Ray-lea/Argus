@@ -461,3 +461,65 @@ export const SettingsIcon = (p: IconProps) => (
     <circle cx="8" cy="8" r="2" />
   </Svg>
 );
+
+/** This computer. */
+export const ComputerIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2" y="2.5" width="12" height="8.5" rx="1.2" />
+    <path d="M6 14h4M8 11v3" />
+  </Svg>
+);
+
+export const ChipIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="4.5" y="4.5" width="7" height="7" rx="1" />
+    <rect x="6.5" y="6.5" width="3" height="3" rx=".4" />
+    <path d="M6.5 2v2.5M9.5 2v2.5M6.5 11.5V14M9.5 11.5V14M2 6.5h2.5M2 9.5h2.5M11.5 6.5H14M11.5 9.5H14" />
+  </Svg>
+);
+
+export const MemoryIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M1.5 5h13v5.5h-13Z" />
+    <path d="M4 7.2v1.3M6.7 7.2v1.3M9.3 7.2v1.3M12 7.2v1.3M3.5 10.5V12M6 10.5V12M10 10.5V12M12.5 10.5V12" />
+  </Svg>
+);
+
+export const GpuIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="1.5" y="4" width="11" height="7.5" rx="1" />
+    <circle cx="7" cy="7.75" r="2" />
+    <path d="M12.5 6h2M12.5 9.5h2M3.5 11.5v2" />
+  </Svg>
+);
+
+export const DiskIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2" y="4" width="12" height="8" rx="1.5" />
+    <path d="M2 9.2h12" />
+    <circle cx="11.6" cy="10.6" r=".45" fill="currentColor" />
+  </Svg>
+);
+
+export const NetworkIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="6" y="2" width="4" height="3.5" rx=".6" />
+    <rect x="1.8" y="10.5" width="4" height="3.5" rx=".6" />
+    <rect x="10.2" y="10.5" width="4" height="3.5" rx=".6" />
+    <path d="M8 5.5V8M3.8 10.5V8h8.4v2.5" />
+  </Svg>
+);
+
+export const BatteryIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="1.5" y="4.5" width="11.5" height="7" rx="1.5" />
+    <path d="M14.5 7v2M4 7v2M6.5 7v2" />
+  </Svg>
+);
+
+/** A click: the pointer. */
+export const PointerIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 2.5 12 8l-3.7.8 2.1 3.9-1.5.8-2.1-3.9L4 12Z" />
+  </Svg>
+);

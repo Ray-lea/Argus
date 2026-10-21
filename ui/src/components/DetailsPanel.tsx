@@ -1,10 +1,11 @@
-import { createEffect, createMemo, createResource, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, on, Show } from "solid-js";
 import { copyText, endRow, endTree, PRIORITY_LABEL, priorityOf, revealInExplorer } from "../lib/actions";
 import { rateCeiling } from "../lib/chart-scale";
 import { fmtCount, fmtCpu, fmtCpuTime, fmtDateTime, fmtMem, fmtNet, fmtRate } from "../lib/format";
 import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { EASE_OUT, play } from "../lib/motion";
+import { persisted } from "../lib/prefs";
 import { missingDiskHint } from "../lib/privilege";
 import { sumDiskIo } from "../lib/process-io";
 import { processTitle } from "../lib/process-label";
@@ -23,6 +24,8 @@ import type { PriorityClass, ProcessDetails, ProcessRow } from "../lib/types";
 import { CopyIcon, DismissIcon, FolderIcon, InfoIcon } from "./icons";
 import ProcIcon from "./ProcIcon";
 import { showService } from "./ServicesPage";
+import Splitter from "./Splitter";
+import SystemOverview from "./SystemOverview";
 import Trace from "./Trace";
 
 const integrityName = (level: ProcessDetails["integrity"] | undefined) =>
@@ -106,7 +109,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
   // Another process selected: its details settle in where the last ones were.
   // The selection object is rebuilt on every sample; only a different key
   // (memo-compared) means another process.
-  let panel!: HTMLElement;
+  let panel!: HTMLDivElement;
   const key = createMemo(() => props.sel.key);
   createEffect(
     on(
@@ -125,7 +128,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
   );
 
   return (
-    <aside ref={panel} class="details" aria-label={t("details.label")}>
+    <div ref={panel} class="details-body" role="region" aria-label={t("details.label")}>
       <Show
         when={props.sel.proc}
         fallback={
@@ -170,8 +173,8 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 <button
                   type="button"
                   class="btn ghost small icon"
-                  title={t("details.close")}
-                  aria-label={t("details.close")}
+                  title={t("details.deselect")}
+                  aria-label={t("details.deselect")}
                   onClick={() => setSelectedKey(null)}
                 >
                   <DismissIcon size={14} />
@@ -378,7 +381,7 @@ export default function DetailsPanel(props: { sel: Selection }) {
           </>
         )}
       </Show>
-    </aside>
+    </div>
   );
 }
 
@@ -513,6 +516,37 @@ function GroupFacts(props: { members: ProcessRow[] }) {
 }
 
 /** Wrapper that keeps the panel out of the layout until something is selected. */
+const WIDTH_INITIAL = 348;
+const WIDTH_MIN = 300;
+const WIDTH_MAX = 560;
+const clampWidth = (width: number) =>
+  Number.isFinite(width) ? Math.round(Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, width))) : WIDTH_INITIAL;
+const [savedWidth, saveWidth] = persisted("detailsWidth", WIDTH_INITIAL);
+
+/**
+ * The details panel, open unless the toolbar's button hides it: the selected
+ * row, or with none this computer's parts. Its left edge sets its width.
+ */
 export function DetailsHost(props: { open: boolean }) {
-  return <Show when={props.open && selection()}>{(sel) => <DetailsPanel sel={sel()} />}</Show>;
+  const [width, setWidth] = createSignal(clampWidth(savedWidth()));
+  return (
+    <Show when={props.open}>
+      <aside class="details" style={{ width: `${width()}px` }} aria-label={t("shell.details.label")}>
+        <Splitter
+          width={width()}
+          min={WIDTH_MIN}
+          max={WIDTH_MAX}
+          initial={WIDTH_INITIAL}
+          grows={-1}
+          label={t("details.resize")}
+          class="details-splitter"
+          onResize={(w) => setWidth(clampWidth(w))}
+          onCommit={() => saveWidth(width())}
+        />
+        <Show when={selection()} fallback={<SystemOverview />}>
+          {(sel) => <DetailsPanel sel={sel()} />}
+        </Show>
+      </aside>
+    </Show>
+  );
 }

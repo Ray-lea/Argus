@@ -67,8 +67,7 @@
   "details": {
     "label": "Details pane",
     "show": "Show details",
-    "hide": "Hide details",
-    "noSelection": "Nothing is selected. Click an app or process in the list to see its details."
+    "hide": "Hide details"
   },
   "search": {
     "processes": "Search name, PID, path or service",

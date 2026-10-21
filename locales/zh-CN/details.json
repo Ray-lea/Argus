@@ -1,6 +1,26 @@
 {
   "label": "进程详细信息",
-  "close": "关闭详细信息",
+  "deselect": "取消选中",
+  "resize": "调整详细信息面板宽度",
+  "overview": {
+    "title": "本机配置",
+    "selectTip": "在列表中单击应用或进程，即可在此查看其详细信息；再次单击取消选中。",
+    "closeTip": "详细信息面板默认常驻，单击右上角的 {icon} 可收起。",
+    "open": "在“性能”页查看",
+    "cpu": "处理器",
+    "cores": "{count} 核",
+    "hybrid": "（{performance} 性能核 + {efficiency} 能效核）",
+    "threads": "{count} 线程",
+    "base": "基准 {speed}",
+    "slots": "已用插槽 {used} / {total}",
+    "disk": "存储",
+    "gpu": "显卡",
+    "vram": "{size} 专用显存",
+    "sharedMemory": "使用共享内存",
+    "battery": "电池",
+    "designed": "设计容量 {capacity}",
+    "health": "健康度 {percent}%"
+  },
   "exited": {
     "title": "进程已退出",
     "hint": "选择列表中的其他进程查看详细信息。"

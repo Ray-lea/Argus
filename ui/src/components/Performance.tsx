@@ -71,6 +71,7 @@ import {
 import Indicator from "./Indicator";
 import { ChevronDown, ChevronUp } from "./icons";
 import Select from "./Select";
+import Splitter from "./Splitter";
 import { Chart, type Series } from "./Trace";
 
 const MB = 1024 * 1024;
@@ -339,7 +340,8 @@ const diskTitle = (d: DiskStats) =>
     ? t("performance.disk.titleVolumes", { index: d.info.index, volumes: d.info.volumes.join(" ") })
     : t("performance.disk.title", { index: d.info.index });
 
-const diskKind = (d: DiskStats) => {
+/** A disk's medium and bus, e.g. "SSD (NVMe)". */
+export const diskKind = (d: DiskStats) => {
   const bus =
     d.info.bus === "nvme" ? "NVMe" : d.info.bus === "usb" ? "USB" : d.info.bus === "sata" ? "SATA" : "";
   const media =
@@ -438,69 +440,6 @@ const SIDE_MIN = 200;
 const SIDE_MAX = 440;
 const [savedSide, saveSide] = persisted("perfSideWidth", SIDE_DEFAULT);
 
-/**
- * The handle between the device list and the detail: drag it, use the arrow
- * keys, or double-click to go back to the default width. The width is only
- * saved when a drag ends.
- */
-function Splitter(props: { width: number; onResize: (width: number) => void; onCommit: () => void }) {
-  const [dragging, setDragging] = createSignal(false);
-  const begin = (e: PointerEvent) => {
-    if (e.button !== 0) return;
-    const handle = e.currentTarget as HTMLElement;
-    handle.setPointerCapture(e.pointerId);
-    setDragging(true);
-    const startX = e.clientX;
-    const start = props.width;
-    let next = start;
-    let frame = 0;
-    const move = (m: PointerEvent) => {
-      next = start + m.clientX - startX;
-      // One layout per frame, however fast the pointer reports.
-      frame ||= requestAnimationFrame(() => {
-        frame = 0;
-        props.onResize(next);
-      });
-    };
-    const end = () => {
-      cancelAnimationFrame(frame);
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("lostpointercapture", end);
-      props.onResize(next);
-      props.onCommit();
-      setDragging(false);
-    };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("lostpointercapture", end);
-  };
-  const key = (e: KeyboardEvent) => {
-    const step = e.key === "ArrowLeft" ? -16 : e.key === "ArrowRight" ? 16 : 0;
-    if (step === 0 && e.key !== "Home" && e.key !== "End") return;
-    e.preventDefault();
-    props.onResize(e.key === "Home" ? SIDE_MIN : e.key === "End" ? SIDE_MAX : props.width + step);
-    props.onCommit();
-  };
-  return (
-    <div
-      class="perf-splitter"
-      classList={{ dragging: dragging() }}
-      role="separator"
-      tabIndex={0}
-      aria-orientation="vertical"
-      aria-label={t("performance.resizeList")}
-      aria-valuemin={SIDE_MIN}
-      aria-valuemax={SIDE_MAX}
-      aria-valuenow={props.width}
-      onPointerDown={begin}
-      onKeyDown={key}
-      onDblClick={() => {
-        props.onResize(SIDE_DEFAULT);
-        props.onCommit();
-      }}
-    />
-  );
-}
-
 export default function Performance() {
   const sys = () => snapshot()?.system;
   const hw = () => snapshot()?.hardware;
@@ -579,7 +518,17 @@ export default function Performance() {
           </For>
         </nav>
       </div>
-      <Splitter width={side()} onResize={(w) => setSide(clampSide(w))} onCommit={() => saveSide(side())} />
+      <Splitter
+        width={side()}
+        min={SIDE_MIN}
+        max={SIDE_MAX}
+        initial={SIDE_DEFAULT}
+        grows={1}
+        label={t("performance.resizeList")}
+        class="perf-splitter"
+        onResize={(w) => setSide(clampSide(w))}
+        onCommit={() => saveSide(side())}
+      />
 
       <section class="perf-detail" aria-live="off">
         <div ref={detail} class="perf-scroll">
