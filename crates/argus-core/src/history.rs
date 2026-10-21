@@ -364,7 +364,14 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
     let path = day_path(dir, day);
     let mut names = HashMap::new();
     let mut valid = 0u64;
-    if let Ok(bytes) = fs::read(&path)
+    // Only a missing file starts empty: truncating after a transient read
+    // failure would erase the day recorded so far.
+    let existing = match fs::read(&path) {
+        Ok(bytes) => Some(bytes),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e),
+    };
+    if let Some(bytes) = existing
         && bytes.starts_with(MAGIC)
     {
         let mut table = Vec::new();
