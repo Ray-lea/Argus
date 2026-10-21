@@ -155,6 +155,13 @@ fn split_command(
     if !valid(command) {
         return Err(TaskError::code("validate", 87));
     }
+    // Win32 path normalization drops trailing spaces and dots, so "code ."
+    // would otherwise match a folder named "code" and lose its argument.
+    let existing = |path: &str| {
+        let last = path.rsplit(['\\', '/']).next().unwrap_or(path);
+        let normalized = matches!(last, "." | "..") || !last.ends_with([' ', '.']);
+        normalized.then(|| existing(path)).flatten()
+    };
     if let Some(rest) = command.strip_prefix('"') {
         let end = rest.find('"').ok_or_else(|| TaskError::code("quote", 87))?;
         if end == 0 {
@@ -508,6 +515,20 @@ mod tests {
             "\"C:\\path with spaces\\\\\""
         );
         assert_eq!(quote("a\"b"), "\"a\\\"b\"");
+    }
+    #[test]
+    fn trailing_dots_and_spaces_stay_arguments() {
+        // The probe sees what Win32 would open after stripping the tail.
+        let probe = |p: &str| match p.trim_end_matches([' ', '.']) {
+            "code" => Some(Existing::Other),
+            r"C:\Tools\app.exe" => Some(Existing::File),
+            _ => None,
+        };
+        assert_eq!(split_command("code .", probe).unwrap(), ("code", "."));
+        assert_eq!(
+            split_command(r"C:\Tools\app.exe .", probe).unwrap(),
+            (r"C:\Tools\app.exe", ".")
+        );
     }
     #[test]
     fn missing_paths_never_fall_back_to_a_shorter_program() {
