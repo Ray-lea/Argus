@@ -89,11 +89,15 @@ interface CompositionTarget extends EventTarget {
 }
 type Editable = HTMLElement & { editContext: CompositionTarget | null };
 
+/** A composition ending this soon after a click was ended by it. */
+const CLICK_ENDS_COMPOSITION_MS = 500;
+
 /**
  * Lets an input method type into the search from `el` (the process list).
- * Input methods only compose in an editable element, so without this the
- * first key in the list would arrive as a bare letter. An EditContext makes
- * the list one without changing what it is: plain keys still reach it (and
+ * Input methods only compose in an editable element: elsewhere Chromium
+ * hands them a read-only document, and they swallow the first key (see
+ * list-focus.ts, which keeps focus on the list). An EditContext makes the
+ * list editable without changing what it is: plain keys still reach it (and
  * App.tsx), while a composition shows in the search box as it goes, its
  * window opening under the box, and moves there once committed. Returns
  * the cleanup; does nothing where EditContext is missing.
@@ -107,6 +111,11 @@ export function composeIntoSearch(el: HTMLElement): () => void {
   // No on-screen keyboard just for focusing the list on a touch screen.
   el.setAttribute("virtualkeyboardpolicy", "manual");
   let composing = false;
+  /** When the last click during a composition came: a click can end one. */
+  let clickedAt = Number.NEGATIVE_INFINITY;
+  const onPointerDown = () => {
+    if (composing) clickedAt = performance.now();
+  };
   const take = () => {
     const text = context.text;
     context.updateText(0, text.length, "");
@@ -123,6 +132,7 @@ export function composeIntoSearch(el: HTMLElement): () => void {
   };
   const onStart = () => {
     composing = true;
+    clickedAt = Number.NEGATIVE_INFINITY;
     place();
   };
   const onUpdate = () => {
@@ -145,19 +155,24 @@ export function composeIntoSearch(el: HTMLElement): () => void {
     composing = false;
     const text = take();
     setPreedit("");
-    // Once the method is done with the list, and only if the list still has
-    // focus: a click elsewhere also ends a composition.
-    if (/[\p{L}\p{N}]/u.test(text)) {
-      setTimeout(() => {
-        if (document.activeElement === el) typeIntoSearch(text);
-      });
-    }
+    if (!/[\p{L}\p{N}]/u.test(text)) return;
+    // Text the box was showing stays in it, as a composition stays in the
+    // field it was typed in. Typing carries on in the box once the method is
+    // done with the list, unless a click just now or focus moving elsewhere
+    // ended the composition: focus stays where that put it.
+    const carryOn = performance.now() - clickedAt > CLICK_ENDS_COMPOSITION_MS;
+    setTimeout(() => {
+      if (carryOn && document.activeElement === el) typeIntoSearch(text);
+      else setQuery(query() + text);
+    });
   };
+  window.addEventListener("pointerdown", onPointerDown, true);
   context.addEventListener("compositionstart", onStart);
   context.addEventListener("textupdate", onUpdate);
   context.addEventListener("characterboundsupdate", onBounds);
   context.addEventListener("compositionend", onEnd);
   return () => {
+    window.removeEventListener("pointerdown", onPointerDown, true);
     context.removeEventListener("compositionstart", onStart);
     context.removeEventListener("textupdate", onUpdate);
     context.removeEventListener("characterboundsupdate", onBounds);

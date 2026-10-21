@@ -3,6 +3,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { endRow } from "../lib/actions";
 import { fmtCount, fmtCpu, fmtMem, fmtNet, fmtRate } from "../lib/format";
 import { t } from "../lib/i18n";
+import { holdListFocus } from "../lib/list-focus";
 import { missingDiskHint } from "../lib/privilege";
 import { processRowId as rowId } from "../lib/process-identity";
 import { sumDiskIo } from "../lib/process-io";
@@ -127,6 +128,14 @@ export default function ProcessTable() {
 
   onMount(() => {
     onCleanup(composeIntoSearch(tableEl));
+    // Typing (an input method's too) reaches the search from wherever focus
+    // rests on the page; see list-focus.ts.
+    onCleanup(
+      holdListFocus(tableEl, () => {
+        setPointerFocus(true);
+        tableEl.focus({ preventScroll: true });
+      }),
+    );
     tableRef = tableEl;
     onCleanup(() => {
       if (tableRef === tableEl) tableRef = undefined;
