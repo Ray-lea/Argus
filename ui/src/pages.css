@@ -578,14 +578,15 @@
   min-height: calc(var(--stack, 1) * var(--cell-h) + (var(--stack, 1) - 1) * var(--gap));
 }
 
+/* A small chart's card: its header, then the chart in its own frame. No frame
+   around the two: the frame's top edge is the chart's 100%, as on the large
+   charts, and a line above the header would read as one. */
 .core-cell,
 .engine-cell {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
-  border-radius: 4px;
   transform-origin: top left;
 }
 
@@ -594,8 +595,10 @@
   overflow: clip;
 }
 
+/* A moving card covers what it passes over, header and chart, in the color of
+   the view's card under it (--layer over the window), so it shows no patch. */
 .grid-moving {
-  background: var(--window-bg);
+  background: linear-gradient(var(--layer), var(--layer)), var(--window-bg);
   will-change: transform;
 }
 
@@ -605,15 +608,15 @@
   position: absolute;
   z-index: -1;
   margin: 0;
-  background: var(--window-bg);
   pointer-events: none;
   transform-origin: 50% 50%;
 }
 
-/* A card's header, above the curve rather than on it: what the card charts on
-   the left (a core's P / E tag, number and clock; an engine's name, a choice),
-   its load on the right, over the newest point. The chart's grid starts below
-   it; no bar or divider of its own. */
+/* A card's header, above the chart's frame and outside it, flush with its
+   edges like a large chart's labels: what the card charts on the left (a
+   core's P / E tag, number and clock; an engine's name, a choice), its load
+   on the right, over the newest point. Closer to its own chart than to the
+   one above. */
 .cell-head {
   display: flex;
   flex: none;
@@ -621,7 +624,7 @@
   justify-content: space-between;
   gap: 8px;
   height: var(--cell-head);
-  padding: 0 7px 0 6px;
+  padding: 0 1px 3px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -687,8 +690,6 @@
 .engine-cell > .chart-frame {
   flex: 1;
   min-height: 0;
-  border: 0;
-  border-radius: 0 0 3px 3px;
 }
 
 .chart-pair {
