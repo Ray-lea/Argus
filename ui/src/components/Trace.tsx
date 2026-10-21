@@ -10,14 +10,15 @@
 //  - pixel: one shared timer moves every chart a whole device pixel at a time.
 // A hover readout's cursor stays under the pointer while the curve flows past:
 // its dots ride the curve (on the compositor too, while the canvas glides) and
-// its text follows ten times a second.
+// its text follows ten times a second. A new top (an auto-scaled chart's) is
+// eased to over a moment instead of jumping, the drawing repainted in place.
 
 import {
   createEffect,
-  createMemo,
   createRoot,
   createSignal,
   Index,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -42,6 +43,11 @@ export interface Series {
 interface ChartProps {
   series: Series[];
   max: () => number;
+  /**
+   * What the chart shows, where that can change under it (the details panel's
+   * process): another subject's top applies at once instead of easing over.
+   */
+  identity?: () => unknown;
   class?: string;
   /** Formats values for the hover readout; charts without it are decorative. */
   format?: (v: number) => string;
@@ -56,6 +62,10 @@ const LINE = 1.5;
 const TOP_PAD = LINE / 2;
 /** How often a hover tip's text follows a trace gliding under the cursor, ms. */
 const TEXT_EVERY = 100;
+/** How long a chart takes to ease to a new top, ms. */
+const RESCALE_MS = 420;
+/** Pixel mode repaints a rescale a few times a second, as it moves. */
+const PIXEL_RESCALE_STEP = 1000 / 15;
 
 /**
  * How far behind "now" the right edge runs. The spline's bend at a point
@@ -340,6 +350,14 @@ export function Chart(props: ChartProps) {
    * the new leftmost point.
    */
   const dashPhases: Map<number, number>[] = [];
+  /**
+   * The top the curve is drawn against: props.max, or on the way to it from
+   * the one before (see rescale).
+   */
+  let scale = { from: 0, to: 0, start: 0 };
+  let rescaleFrame = 0;
+  /** The balanced-grid or pixel step a rescale last repainted on. */
+  let rescaleSlot = -1;
   /** Visible width, CSS px. */
   const [box, setBox] = createSignal({ w: 0 });
   const [readout, setReadout] = createSignal<Readout | null>(null);
@@ -378,6 +396,14 @@ export function Chart(props: ChartProps) {
     return 0;
   };
 
+  /** The top drawn against at `now`, easing out, in proportion: a tenfold change looks as even as a double. */
+  const scaleAt = (now: number) => {
+    const { from, to, start } = scale;
+    const p = (now - start) / RESCALE_MS;
+    if (from === to || !(from > 0) || p >= 1) return to;
+    return from * (to / from) ** (1 - (1 - Math.max(0, p)) ** 3);
+  };
+
   const paint = (now: number) => {
     const c = ctx;
     if (!c || w === 0 || h === 0) return;
@@ -408,11 +434,18 @@ export function Chart(props: ChartProps) {
     }
     margin = width - w;
     setBox({ w: w / dpr });
+    draw(now);
+  };
 
-    c.clearRect(0, 0, width, h);
+  /** Draws the series on the time axis `paint` laid out, against the top at `now`. */
+  const draw = (now: number) => {
+    const c = ctx;
+    if (!c || w === 0 || h === 0) return;
+    const times = sampleTimes();
+    c.clearRect(0, 0, canvas.width, h);
     const top = TOP_PAD * dpr;
     const rangeY = h - top;
-    const max = Math.max(props.max(), 1e-9);
+    const max = Math.max(scaleAt(now), 1e-9);
     drawn = props.series.map(() => null);
     props.series.forEach((s, si) => {
       const data = s.data();
@@ -490,6 +523,43 @@ export function Chart(props: ChartProps) {
         c.stroke(line);
       }
     });
+  };
+
+  /**
+   * A new top: eased to over RESCALE_MS when charts move, repainting the
+   * drawing in place (the track keeps gliding), at the pace of the chart mode.
+   * Without motion, before the first drawing, or for another subject (`jump`),
+   * it applies at once.
+   */
+  const rescale = (target: number, jump: boolean) => {
+    const next = Math.max(target, 1e-9);
+    const now = performance.now();
+    if (next === scale.to && (!jump || scaleAt(now) === next)) return;
+    const ease = !jump && chartMode() !== "off" && anchor !== null && document.visibilityState === "visible";
+    scale = { from: ease ? scaleAt(now) : next, to: next, start: now };
+    if (!ease) {
+      cancelAnimationFrame(rescaleFrame);
+      rescaleFrame = 0;
+      redraw();
+      return;
+    }
+    if (!rescaleFrame) rescaleFrame = requestAnimationFrame(rescaleTick);
+  };
+
+  const rescaleTick = (now: number) => {
+    rescaleFrame = 0;
+    const done = now - scale.start >= RESCALE_MS;
+    const step = mode === "fluid" ? 0 : mode === "balanced" ? balancedFrameMs() : PIXEL_RESCALE_STEP;
+    const slot = step > 0 ? Math.floor(now / step) : -1;
+    if (done || step === 0 || slot !== rescaleSlot) {
+      rescaleSlot = slot;
+      draw(now);
+      if (hoverX !== null) {
+        updateReadout(now);
+        glideDots(now);
+      }
+    }
+    if (!done) rescaleFrame = requestAnimationFrame(rescaleTick);
   };
 
   /** Starts the track moving from where the fresh drawing sits. */
@@ -735,6 +805,8 @@ export function Chart(props: ChartProps) {
 
   onMount(() => {
     ctx = canvas.getContext("2d");
+    const first = Math.max(untrack(props.max), 1e-9);
+    scale = { from: first, to: first, start: 0 };
     fit();
     const ro = new ResizeObserver(() => {
       if (fit()) untrack(redraw);
@@ -757,6 +829,7 @@ export function Chart(props: ChartProps) {
       document.removeEventListener("visibilitychange", onVisible);
       ticked.delete(ticks);
       glide?.cancel();
+      cancelAnimationFrame(rescaleFrame);
       hoverX = null;
       stopDots();
     });
@@ -764,12 +837,23 @@ export function Chart(props: ChartProps) {
     createEffect(() => {
       sampleSeq();
       for (const s of props.series) s.data();
-      props.max();
       chartMode();
       paused();
       intervalMs();
       untrack(redraw);
     });
+    let subject = untrack(() => props.identity?.());
+    createEffect(
+      on(
+        [props.max, () => props.identity?.()],
+        ([top, id]) =>
+          untrack(() => {
+            rescale(top, id !== subject);
+            subject = id;
+          }),
+        { defer: true },
+      ),
+    );
   });
 
   return (
@@ -841,26 +925,16 @@ export function Chart(props: ChartProps) {
 export default function Trace(props: {
   data: () => readonly number[];
   max: () => number;
+  identity?: () => unknown;
   colorVar: string;
   class?: string;
 }) {
   return (
-    <Chart class={props.class} max={props.max} series={[{ data: props.data, colorVar: props.colorVar }]} />
+    <Chart
+      class={props.class}
+      max={props.max}
+      identity={props.identity}
+      series={[{ data: props.data, colorVar: props.colorVar }]}
+    />
   );
-}
-
-/**
- * Smooths an auto-scaling ceiling: it rises at once (nothing is clipped) but
- * comes down over a few samples, so a spike leaving the window doesn't make
- * the whole chart jump. When `identity` changes (another process), it resets.
- */
-export function easedMax(target: () => number, identity?: () => unknown): () => number {
-  let last: unknown;
-  return createMemo((prev: number | undefined): number => {
-    const next = target();
-    const id = identity?.();
-    const reset = id !== last;
-    last = id;
-    return prev === undefined || reset || next >= prev ? next : prev + (next - prev) * 0.3;
-  }, undefined);
 }

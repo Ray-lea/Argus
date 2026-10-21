@@ -13,6 +13,7 @@ import {
   Show,
 } from "solid-js";
 import { copyText } from "../lib/actions";
+import { rateCeiling, rateCeilingLabel } from "../lib/chart-scale";
 import { fmtCpu, fmtGB, fmtMem, fmtNet, fmtRate, netUnit } from "../lib/format";
 import { joins, nearest, pointAt } from "../lib/history-gaps";
 import { localized, rich, t } from "../lib/i18n";
@@ -105,13 +106,6 @@ export function HistoryControls() {
 
 // ---- Scales and formats -----------------------------------------------------------
 
-/** The next 1, 2 or 5 times a power of ten at or above `v`. */
-function niceCeil(v: number): number {
-  const p = 10 ** Math.floor(Math.log10(v));
-  const m = v / p;
-  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
-}
-
 interface Metric {
   resource: "cpu" | "memory" | "disk" | "network" | "gpu" | "battery";
   colorVar: string;
@@ -126,12 +120,6 @@ interface Metric {
   format: (p: HistoryPoint) => string;
   detail?: (p: HistoryPoint) => string;
 }
-
-/** A round byte rate at or above `v`, in the unit fmtRate shows it in. */
-const niceRate = (v: number) => (v <= MB ? Math.min(MB, niceCeil(v / KB) * KB) : niceCeil(v / MB) * MB);
-
-/** Scales are round numbers: "20 MB/s" rather than "20.0 MB/s". */
-const round = (label: string) => label.replace(/\.0+ /, " ");
 
 /** Watts below ten keep a decimal, as on the performance page. */
 const fmtW = (v: number) => (v < 10 ? v.toFixed(1) : String(Math.round(v)));
@@ -165,14 +153,16 @@ const METRICS: Metric[] = [
     resource: "disk",
     colorVar: "--io",
     value: (p) => p.disk,
+    // Round tops, as on the performance page: "8 MB/s".
     max: (points) =>
-      niceRate(
+      rateCeiling(
         Math.max(
           MB,
           highest(points, (p) => p.disk),
         ),
+        "bytes",
       ),
-    scale: (max) => round(fmtRate(max)),
+    scale: (max) => rateCeilingLabel(max, "bytes"),
     format: (p) => fmtRate(p.disk, false),
   },
   {
@@ -180,13 +170,15 @@ const METRICS: Metric[] = [
     colorVar: "--net",
     value: (p) => p.net,
     // Round in the unit shown; at least 1 Mbps or 100 KB/s.
-    max: (points) => {
-      const top = highest(points, (p) => p.net);
-      return netUnit() === "bits"
-        ? niceCeil(Math.max(125_000, top) * 8) / 8
-        : niceRate(Math.max(100 * KB, top));
-    },
-    scale: (max) => round(fmtNet(max)),
+    max: (points) =>
+      rateCeiling(
+        Math.max(
+          netUnit() === "bits" ? 125_000 : 100 * KB,
+          highest(points, (p) => p.net),
+        ),
+        netUnit(),
+      ),
+    scale: (max) => rateCeilingLabel(max, netUnit()),
     format: (p) => fmtNet(p.net),
   },
   {

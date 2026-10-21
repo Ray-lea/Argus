@@ -1,10 +1,11 @@
-import { createEffect, Index, type JSX, Show, untrack } from "solid-js";
-import { fmtGB, fmtNet, netParts, rateParts } from "../lib/format";
+import { createEffect, createMemo, Index, type JSX, Show, untrack } from "solid-js";
+import { type RateUnit, rateCeiling } from "../lib/chart-scale";
+import { fmtGB, fmtNet, netParts, netUnit, rateParts } from "../lib/format";
 import { t } from "../lib/i18n";
 import { balancedFrameMs, chartMode } from "../lib/motion";
 import { intervalMs, paused, series, setPage, setPerfDevice, snapshot } from "../lib/store";
 import type { DiskStats, GpuStats } from "../lib/types";
-import Trace, { easedMax } from "./Trace";
+import Trace from "./Trace";
 
 const MB = 1024 * 1024;
 
@@ -111,9 +112,11 @@ export default function Vitals() {
   const netRx = () => hw()?.nics.reduce((a, n) => a + n.rx, 0) ?? 0;
   const netTx = () => hw()?.nics.reduce((a, n) => a + n.tx, 0) ?? 0;
   const gpu = () => hw()?.gpus.reduce<GpuStats | null>((a, g) => (!a || g.util > a.util ? g : a), null);
-  const autoMax = (key: string, floor: number) => easedMax(() => Math.max(floor, ...series(key)) * 1.2);
-  const diskMax = autoMax("disk.total", MB);
-  const netMax = autoMax("net.total", 128 * 1024);
+  // Round tops in the unit each rate is shown in (lib/chart-scale.ts); the charts ease between them.
+  const top = (key: string, floor: number, unit: () => RateUnit) =>
+    createMemo(() => rateCeiling(Math.max(floor, ...series(key)), unit()));
+  const diskMax = top("disk.total", MB, () => "bytes");
+  const netMax = top("net.total", 128 * 1024, netUnit);
 
   return (
     <section class="vitals" classList={{ "no-gpu": !gpu() }} aria-label={t("processes.vitals.label")}>

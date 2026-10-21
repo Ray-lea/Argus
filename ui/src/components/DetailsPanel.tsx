@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createResource, For, on, Show } from "solid-js";
 import { copyText, endRow, endTree, PRIORITY_LABEL, priorityOf, revealInExplorer } from "../lib/actions";
+import { rateCeiling } from "../lib/chart-scale";
 import { fmtCount, fmtCpu, fmtCpuTime, fmtDateTime, fmtMem, fmtNet, fmtRate } from "../lib/format";
 import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
@@ -22,7 +23,7 @@ import type { PriorityClass, ProcessDetails, ProcessRow } from "../lib/types";
 import { CopyIcon, DismissIcon, FolderIcon, InfoIcon } from "./icons";
 import ProcIcon from "./ProcIcon";
 import { showService } from "./ServicesPage";
-import Trace, { easedMax } from "./Trace";
+import Trace from "./Trace";
 
 const integrityName = (level: ProcessDetails["integrity"] | undefined) =>
   level ? t(`details.integrityLevel.${level}`) : "—";
@@ -98,10 +99,9 @@ export default function DetailsPanel(props: { sel: Selection }) {
     const pids = new Set(props.sel.members.map((p) => p.pid));
     return services().filter((sv) => pids.has(sv.pid));
   };
-  const memMax = easedMax(
-    () => Math.max(...(history()?.mem ?? [1])) * 1.25,
-    () => props.sel.key,
-  );
+  // A round top in KB, MB or GB, as for transfer rates (lib/chart-scale.ts). The
+  // chart eases between tops; another process's applies at once.
+  const memMax = createMemo(() => rateCeiling(Math.max(...(history()?.mem ?? [1])), "bytes"));
 
   // Another process selected: its details settle in where the last ones were.
   // The selection object is rebuilt on every sample; only a different key
@@ -187,7 +187,13 @@ export default function DetailsPanel(props: { sel: Selection }) {
                 <div class="mini-chart">
                   <div class="vital-label">{t("common.resource.memory")}</div>
                   <div class="mini-value">{fmtMem(mem())}</div>
-                  <Trace class="trace" data={() => history()?.mem ?? []} max={memMax} colorVar="--mem" />
+                  <Trace
+                    class="trace"
+                    data={() => history()?.mem ?? []}
+                    max={memMax}
+                    identity={key}
+                    colorVar="--mem"
+                  />
                 </div>
               </div>
 

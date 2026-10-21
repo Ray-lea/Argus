@@ -10,6 +10,7 @@ import {
   Show,
   Switch,
 } from "solid-js";
+import { type RateUnit, rateCeiling, rateCeilingLabel, roundCeiling } from "../lib/chart-scale";
 import { coreGridColumns } from "../lib/core-grid";
 import {
   fmtCache,
@@ -23,13 +24,14 @@ import {
   fmtNetAlt,
   fmtRate,
   netParts,
+  netUnit,
   rateParts,
 } from "../lib/format";
 import { type EngineChoice, shownEngines, withCount, withEngine } from "../lib/gpu-engines";
 import { gridReflow } from "../lib/grid-reflow";
 import { rich, t } from "../lib/i18n";
 import { memoryComposition } from "../lib/memory-composition";
-import { EASE_OUT, play } from "../lib/motion";
+import { chartMotion, EASE_OUT, play } from "../lib/motion";
 import { persisted } from "../lib/prefs";
 import { cpuTemperature, hasCpuDieTemperature } from "../lib/sensors";
 import {
@@ -60,7 +62,7 @@ import Expander from "./Expander";
 import Indicator from "./Indicator";
 import { ChevronDown, ChevronUp } from "./icons";
 import Select from "./Select";
-import { Chart, easedMax, type Series } from "./Trace";
+import { Chart, type Series } from "./Trace";
 
 const MB = 1024 * 1024;
 
@@ -69,11 +71,15 @@ const now = () => snapshot() as Snapshot;
 
 // ---- Building blocks ---------------------------------------------------------
 
-/** Auto-scaling ceiling for rate charts, with a floor so idle devices stay flat. */
-const rawMax = (floor: number, ...keys: string[]) =>
-  Math.max(floor, ...keys.flatMap((k) => series(k)).filter(Number.isFinite)) * 1.15;
-/** The same, easing down after a spike instead of jumping. Create once per view. */
-const autoMax = (floor: number, ...keys: string[]) => easedMax(() => rawMax(floor, ...keys));
+/** The highest point of the series, at least `floor` so an idle device stays flat. */
+const peak = (floor: number, ...keys: string[]) =>
+  Math.max(floor, ...keys.flatMap((k) => series(k)).filter(Number.isFinite));
+/** A round top for a rate chart, in the unit its label shows; the chart eases between tops. */
+const rateTop = (unit: () => RateUnit, floor: number, ...keys: string[]) =>
+  createMemo(() => rateCeiling(peak(floor, ...keys), unit()));
+/** The same for watts. */
+const wattTop = (floor: number, ...keys: string[]) => createMemo(() => roundCeiling(peak(floor, ...keys)));
+const bytes = (): RateUnit => "bytes";
 
 const pct = (v: number) => `${Math.round(v)}%`;
 const gb = (v: number) => `${fmtGB(v)} GB`;
@@ -84,6 +90,24 @@ function spanLabel() {
   return secs >= 120
     ? t("performance.span.minutes", { count: secs / 60 })
     : t("performance.span.seconds", { count: secs });
+}
+
+/** A chart's top; a new one fades in while the curve eases to it. */
+function ScaleLabel(props: { text: string }) {
+  let el!: HTMLSpanElement;
+  // Worked out again on every sample (memory sizes come with each snapshot):
+  // only a different text fades in.
+  const text = createMemo(() => props.text);
+  createEffect(
+    on(
+      text,
+      () => {
+        if (chartMotion()) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: EASE_OUT });
+      },
+      { defer: true },
+    ),
+  );
+  return <span ref={el}>{text()}</span>;
 }
 
 function ChartBox(props: {
@@ -100,7 +124,7 @@ function ChartBox(props: {
     <div class="chart-box">
       <div class="chart-labels">
         <span>{props.label}</span>
-        <span>{props.max}</span>
+        <ScaleLabel text={props.max} />
       </div>
       <div class={`chart-frame ${props.size}`} style={{ "--c": `var(${props.colorVar})` }}>
         <Chart series={props.series} max={props.scale} format={props.format} />
@@ -324,7 +348,7 @@ function devices(sys: SystemStats, hw: Hardware): Device[] {
         { data: () => series(`${k}.rx`), colorVar: "--net" },
         { data: () => series(`${k}.tx`), colorVar: "--net", dashed: true, fill: 0 },
       ],
-      max: () => rawMax(16 * 1024, `${k}.rx`, `${k}.tx`),
+      max: () => rateCeiling(peak(16 * 1024, `${k}.rx`, `${k}.tx`), netUnit()),
     });
   }
   hw.gpus.forEach((g, i) => {
@@ -478,7 +502,7 @@ export default function Performance() {
           <For each={keys()}>
             {(key) => {
               const d = () => deviceMap().get(key);
-              const max = easedMax(() => d()?.max() ?? 1);
+              const max = createMemo(() => d()?.max() ?? 1);
               return (
                 <Show when={d()}>
                   {(dev) => (
@@ -578,7 +602,7 @@ function CpuView() {
           [],
       ),
   );
-  const powerMax = autoMax(5, "cpu.pkgW", "cpu.coresW");
+  const powerMax = wattTop(5, "cpu.pkgW", "cpu.coresW");
   /** Mean clock of the P or E cores, MHz. */
   const meanMhz = (eff: boolean) => {
     const list = cpu()
@@ -891,7 +915,7 @@ function CpuView() {
               <Show when={hw().power.package !== null}>
                 <ChartBox
                   label={t("performance.cpu.power")}
-                  max={watts(powerMax())}
+                  max={`${powerMax()} W`}
                   colorVar="--cpu"
                   size="small"
                   scale={powerMax}
@@ -1154,7 +1178,7 @@ function MemoryView() {
 function DiskView(props: { index: number }) {
   const disk = () => now().hardware.disks.find((d) => d.info.index === props.index);
   const k = () => `disk.${props.index}`;
-  const rateMax = autoMax(MB, `${k()}.read`, `${k()}.write`);
+  const rateMax = rateTop(bytes, MB, `${k()}.read`, `${k()}.write`);
   return (
     <Show when={disk()} fallback={<p class="empty">{t("performance.disk.removed")}</p>}>
       {(d) => (
@@ -1172,7 +1196,7 @@ function DiskView(props: { index: number }) {
           <div class="perf-grow section-gap">
             <ChartBox
               label={t("performance.disk.transferRate")}
-              max={fmtRate(rateMax())}
+              max={rateCeilingLabel(rateMax(), "bytes")}
               colorVar="--io"
               size="half"
               scale={rateMax}
@@ -1279,7 +1303,7 @@ function Addresses(props: { list: string[] }) {
 function NicView(props: { id: string }) {
   const nic = () => now().hardware.nics.find((n) => n.info.id === props.id);
   const k = () => `nic.${props.id}`;
-  const scale = autoMax(64 * 1024, `${k()}.rx`, `${k()}.tx`);
+  const scale = rateTop(netUnit, 64 * 1024, `${k()}.rx`, `${k()}.tx`);
 
   return (
     <Show when={nic()} fallback={<p class="empty">{t("performance.network.disconnected")}</p>}>
@@ -1288,7 +1312,7 @@ function NicView(props: { id: string }) {
           <Head title={n().info.name} model={n().info.description} />
           <ChartBox
             label={t("performance.network.throughput")}
-            max={fmtNet(scale())}
+            max={rateCeilingLabel(scale(), netUnit())}
             colorVar="--net"
             size="main"
             scale={scale}
@@ -1581,7 +1605,7 @@ function batterySub(b: BatteryStats): string {
 function BatteryView(props: { id: string }) {
   const bat = () => now().hardware.batteries.find((b) => b.info.id === props.id);
   const k = `bat.${props.id}`;
-  const powerMax = autoMax(5, `${k}.w`);
+  const powerMax = wattTop(5, `${k}.w`);
 
   return (
     <Show when={bat()} fallback={<p class="empty">{t("performance.battery.removed")}</p>}>
@@ -1613,7 +1637,7 @@ function BatteryView(props: { id: string }) {
               <div class="perf-grow section-gap">
                 <ChartBox
                   label={flow()}
-                  max={watts(powerMax())}
+                  max={`${powerMax()} W`}
                   colorVar="--bat"
                   size="half"
                   scale={powerMax}
