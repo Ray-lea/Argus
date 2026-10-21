@@ -53,6 +53,12 @@ cargo run -p argus-core --example app_windows --release     # 归入“应用”
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 ```
 
+## 排查崩溃
+
+- 发布版没有控制台。崩溃后先看“事件查看器 → Windows 日志 → 应用程序”中来源为 Application Error、事件 ID 1000 的记录，以及 `%LOCALAPPDATA%\CrashDumps` 中的转储。
+- 加载失败后几分钟到几小时才发生、栈上只有线程池帧和 `ControlLib.dll_unloaded` 的崩溃，来自卸载后仍留有回调的第三方 SDK：`ControlLib.dll`（Intel IGCL）注册的 ETW 提供程序不随 `ctlClose` 与卸载注销，曾让没有 Intel 显卡的电脑崩溃，现在用 `Library::pin` 让它常驻。
+- 微信输入法等程序注入的 CrashRpt 会先截获异常，弹出 “Error launching CrashSender.exe”；这类弹窗不是 Argus 自己的。
+
 ## 应用图标
 
 应用图标由两个 SVG 生成：`ui/public/logo.svg` 用于 48 px 及以上的尺寸，也是关于页和 README 中的标志；`src-tauri/icons/logo-small.svg` 用于 16–32 px，眼睛更大、线条更粗，在任务栏和托盘中仍可辨认。修改其中任一文件后运行：
