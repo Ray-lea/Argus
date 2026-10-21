@@ -227,16 +227,58 @@ pub fn allow_process_query(owner: &str) -> Result<()> {
 /// Pin the directory against renaming, reject reparse points, and refuse any
 /// owner/allow ACE that could let an unprivileged account replace service code.
 pub fn protect_directory(path: &Path) -> Result<Handle> {
-    inspect_path(path).map_err(PathError::code)
+    let mut trace = PathInspection::default();
+    inspect_path_with(path, &mut trace).map_err(|error| {
+        argus_core::diagnostics::warn(
+            "protected path rejected",
+            format!(
+                "{}; path={}; check={trace:?}",
+                argus_core::diagnostics::code(error.code()),
+                argus_core::diagnostics::path(path)
+            ),
+        );
+        error.code()
+    })
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PathError {
     Os(u32),
     ReparsePoint,
     Owner,
     Permissions,
     Writable,
+}
+
+/// Facts from the handle/ACE that actually failed; never account names or
+/// arbitrary security-descriptor text. Callers supply the affected path.
+#[derive(Debug, Default)]
+pub(crate) struct PathInspection {
+    pub stage: &'static str,
+    pub reason: Option<PathError>,
+    pub owner: &'static str,
+    pub attributes: Option<u32>,
+    pub ace_index: Option<u16>,
+    pub ace_type: Option<u8>,
+    pub ace_flags: Option<u8>,
+    pub access_mask: Option<u32>,
+    pub trustee: &'static str,
+}
+
+fn principal_name(sid: &str) -> &'static str {
+    match sid {
+        "S-1-5-18" => "SYSTEM",
+        "S-1-5-32-544" => "Administrators",
+        "S-1-5-32-545" => "Users",
+        "S-1-1-0" => "Everyone",
+        "S-1-5-11" => "Authenticated Users",
+        "S-1-5-13" => "Terminal Server User",
+        "S-1-3-0" => "Creator Owner",
+        "S-1-15-2-1" => "All Application Packages",
+        "S-1-15-2-2" => "All Restricted Application Packages",
+        value if trusted(value) => "TrustedInstaller",
+        _ => "other account or group",
+    }
 }
 
 impl PathError {
@@ -254,8 +296,21 @@ impl From<u32> for PathError {
     }
 }
 
-pub(crate) fn inspect_path(path: &Path) -> std::result::Result<Handle, PathError> {
+pub(crate) fn inspect_path_with(
+    path: &Path,
+    trace: &mut PathInspection,
+) -> std::result::Result<Handle, PathError> {
+    let result = inspect_path_inner(path, trace);
+    trace.reason = result.as_ref().err().copied();
+    result
+}
+
+fn inspect_path_inner(
+    path: &Path,
+    trace: &mut PathInspection,
+) -> std::result::Result<Handle, PathError> {
     let path = wide(&path.to_string_lossy());
+    trace.stage = "CreateFileW (READ_CONTROL | FILE_READ_ATTRIBUTES, open reparse point)";
     let h = unsafe {
         CreateFileW(
             PCWSTR(path.as_ptr()),
@@ -270,13 +325,16 @@ pub(crate) fn inspect_path(path: &Path) -> std::result::Result<Handle, PathError
     .map_err(win)?;
     let handle = Handle(h);
     let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    trace.stage = "GetFileInformationByHandle";
     unsafe { GetFileInformationByHandle(h, &mut info) }.map_err(win)?;
+    trace.attributes = Some(info.dwFileAttributes);
     if info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
         return Err(PathError::ReparsePoint);
     }
     let mut owner = PSID::default();
     let mut dacl = std::ptr::null_mut::<ACL>();
     let mut sd = PSECURITY_DESCRIPTOR::default();
+    trace.stage = "GetSecurityInfo (owner and DACL)";
     unsafe {
         GetSecurityInfo(
             h,
@@ -292,22 +350,18 @@ pub(crate) fn inspect_path(path: &Path) -> std::result::Result<Handle, PathError
     .ok()
     .map_err(win)?;
     let _sd = Descriptor(sd);
-    check_path_acl(owner, dacl)?;
+    check_acl_with(owner, dacl, 0x520d_0156, trace)?;
     Ok(handle)
-}
-
-fn check_path_acl(owner: PSID, dacl: *mut ACL) -> std::result::Result<(), PathError> {
-    // Generic all/write, maximum allowed, delete, write DAC/owner, and
-    // file/directory writes (including delete-child).
-    check_acl(owner, dacl, 0x520d_0156)
 }
 
 pub(crate) fn inspect_registry_key(
     key: windows::Win32::System::Registry::HKEY,
+    trace: &mut PathInspection,
 ) -> std::result::Result<(), PathError> {
     let mut owner = PSID::default();
     let mut dacl = std::ptr::null_mut::<ACL>();
     let mut sd = PSECURITY_DESCRIPTOR::default();
+    trace.stage = "GetSecurityInfo (registry owner and DACL)";
     unsafe {
         GetSecurityInfo(
             HANDLE(key.0),
@@ -324,20 +378,37 @@ pub(crate) fn inspect_registry_key(
     .map_err(win)?;
     let _sd = Descriptor(sd);
     // Registry writes are SET_VALUE/CREATE_SUB_KEY, not file write bits.
-    check_acl(owner, dacl, 0x520d_0006)
+    let result = check_acl_with(owner, dacl, 0x520d_0006, trace);
+    trace.reason = result.as_ref().err().copied();
+    result
 }
 
-fn check_acl(owner: PSID, dacl: *mut ACL, write_mask: u32) -> std::result::Result<(), PathError> {
-    if !trusted(&sid_string(owner)?) {
+fn check_acl_with(
+    owner: PSID,
+    dacl: *mut ACL,
+    write_mask: u32,
+    trace: &mut PathInspection,
+) -> std::result::Result<(), PathError> {
+    trace.stage = "owner SID validation";
+    let owner = sid_string(owner)?;
+    trace.owner = principal_name(&owner);
+    if !trusted(&owner) {
         return Err(PathError::Owner);
     }
+    trace.stage = "DACL presence";
     if dacl.is_null() {
         return Err(PathError::Permissions);
     }
     for index in 0..unsafe { (*dacl).AceCount } {
+        trace.stage = "GetAce";
+        trace.ace_index = Some(index);
         let mut ace: *mut c_void = std::ptr::null_mut();
         unsafe { GetAce(dacl, u32::from(index), &mut ace) }.map_err(win)?;
         let header = unsafe { &*ace.cast::<ACE_HEADER>() };
+        trace.ace_type = Some(header.AceType);
+        trace.ace_flags = Some(header.AceFlags);
+        trace.access_mask = None;
+        trace.trustee = "";
         // Inherit-only entries do not apply to this object. Service files are
         // created with their own protected DACL, not the parent's template.
         if header.AceFlags & 0x08 != 0 {
@@ -347,12 +418,19 @@ fn check_acl(owner: PSID, dacl: *mut ACL, write_mask: u32) -> std::result::Resul
             continue;
         } // Deny ACEs cannot grant write access.
         if header.AceType != 0 {
+            trace.stage = "unsupported ACE type";
             return Err(PathError::Permissions);
         }
         let allow = unsafe { &*ace.cast::<ACCESS_ALLOWED_ACE>() };
         let sid = PSID((&allow.SidStart as *const u32).cast_mut().cast());
-        if allow.Mask & write_mask != 0 && !trusted(&sid_string(sid)?) {
-            return Err(PathError::Writable);
+        trace.stage = "allow ACE write permissions";
+        trace.access_mask = Some(allow.Mask);
+        if allow.Mask & write_mask != 0 {
+            let sid = sid_string(sid)?;
+            trace.trustee = principal_name(&sid);
+            if !trusted(&sid) {
+                return Err(PathError::Writable);
+            }
         }
     }
     Ok(())
@@ -400,6 +478,14 @@ mod tests {
     }
 
     fn inspect_acl_mask(sddl: &str, mask: u32) -> std::result::Result<(), PathError> {
+        inspect_acl_details(sddl, mask, &mut PathInspection::default())
+    }
+
+    fn inspect_acl_details(
+        sddl: &str,
+        mask: u32,
+        trace: &mut PathInspection,
+    ) -> std::result::Result<(), PathError> {
         let descriptor = Descriptor::new(sddl).unwrap();
         let mut owner = PSID::default();
         let mut defaulted = false.into();
@@ -415,7 +501,45 @@ mod tests {
         .unwrap();
         unsafe { GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut dacl, &mut defaulted) }
             .unwrap();
-        check_acl(owner, dacl, mask)
+        check_acl_with(owner, dacl, mask, trace)
+    }
+
+    #[test]
+    fn unsafe_acl_diagnostics_identify_the_exact_owner_or_grant() {
+        let mut trace = PathInspection::default();
+        assert_eq!(
+            inspect_acl_details(
+                "O:BAG:BAD:(A;;FA;;;SY)(A;OICIID;FA;;;WD)",
+                0x520d_0156,
+                &mut trace
+            ),
+            Err(PathError::Writable)
+        );
+        assert_eq!(trace.owner, "Administrators");
+        assert_eq!(trace.trustee, "Everyone");
+        assert_eq!(trace.ace_index, Some(1));
+        assert_eq!(trace.access_mask, Some(0x1f01ff));
+        assert_eq!(trace.ace_flags, Some(0x13));
+        let mut trace = PathInspection::default();
+        assert_eq!(
+            inspect_acl_details("O:BUG:BUD:(A;;FR;;;BU)", 0x520d_0156, &mut trace),
+            Err(PathError::Owner)
+        );
+        assert_eq!(trace.owner, "Users");
+        assert_eq!(trace.stage, "owner SID validation");
+    }
+
+    #[test]
+    fn missing_path_preserves_the_api_and_native_failure() {
+        let path = std::env::temp_dir().join(format!(
+            "argus-missing-{:?}",
+            unsafe { windows::Win32::System::Com::CoCreateGuid() }.unwrap()
+        ));
+        let mut trace = PathInspection::default();
+        let error = inspect_path_with(&path, &mut trace).err().unwrap();
+        assert!(matches!(error, PathError::Os(2 | 3)));
+        assert_eq!(trace.reason, Some(error));
+        assert!(trace.stage.starts_with("CreateFileW"));
     }
 
     #[test]

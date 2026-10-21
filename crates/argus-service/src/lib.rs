@@ -2,6 +2,7 @@
 //! operations. Driver access is restricted to fixed, read-only sensor snapshots.
 
 mod background;
+mod diagnostics;
 mod disk;
 pub mod driver;
 mod handles;
@@ -18,6 +19,7 @@ mod util;
 use argus_core::tr;
 
 pub use background::{NetworkClient, RuleRunner};
+pub use diagnostics::ServiceDiagnostics;
 pub use disk::DiskClient;
 pub use install::{ServiceStatus, manage, status};
 pub use network::NetworkFrame;
@@ -48,20 +50,25 @@ const PROTOCOL: u32 = 9;
 pub fn run_mode() -> Option<i32> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        Some(driver::MANAGE_ARG) if args.len() == 1 => {
-            Some(driver::run_helper().map_or_else(|code| code as i32, |_| 0))
-        }
+        Some(driver::MANAGE_ARG) if args.len() == 1 => Some(diagnostics::helper(
+            "sensor driver helper",
+            driver::run_helper,
+        )),
         Some(handles::WORKER_ARG) if args.len() == 2 => Some(handles::worker(&args[1]) as i32),
         Some(SERVICE_ARG) if args.len() == 1 => {
+            argus_core::diagnostics::capture_helper_failures();
             Some(server::dispatch().map_or_else(|e| e as i32, |_| 0))
         }
         Some(INSTALL_ARG) if args.len() == 3 => {
-            Some(install::run_helper(&args[1], &args[2]).map_or_else(|e| e as i32, |_| 0))
+            Some(diagnostics::helper("privileged service helper", || {
+                install::run_helper(&args[1], &args[2])
+            }))
         }
         Some(REMOVE_ARG) if args.len() == 1 => Some(remove_for_uninstall()),
-        Some(REFRESH_ARG) if args.len() == 1 => {
-            Some(install::refresh().map_or_else(|e| e as i32, |_| 0))
-        }
+        Some(REFRESH_ARG) if args.len() == 1 => Some(diagnostics::helper(
+            "installer service refresh",
+            install::refresh,
+        )),
         Some(
             SERVICE_ARG
             | INSTALL_ARG
@@ -141,7 +148,12 @@ pub fn find_handle_lockers(paths: Vec<String>) -> argus_core::handles::HandleRep
 /// None means no service is installed. Once connected, never retry a mutation
 /// locally: a lost reply does not tell us whether the operation already ran.
 pub fn request(operation: Operation) -> Result<Option<Reply>, String> {
-    let Some(pid) = install::running_pid().map_err(util::message)? else {
+    let Some(pid) = util::stage(
+        "privileged operation service lookup",
+        install::running_pid(),
+    )
+    .map_err(util::message)?
+    else {
         return Ok(None);
     };
     pipe::request(PIPE_NAME, pid, operation)
@@ -176,10 +188,12 @@ pub fn route(operation: Operation) -> Result<Routed, String> {
 /// What went wrong according to `status`, in fixed words for the diagnostic
 /// log (its error is translated). None without an error, and when the only
 /// one is that another account owns the service, which the log says anyway.
-/// `status` keeps no code, but its text comes from `util::message` just
-/// before; were the language switched in between, the text is classified as
-/// any other failure.
+/// Prefer the original numeric result over localized text. The text fallback
+/// supports callers that construct a status without a native result.
 pub fn status_issue(status: &ServiceStatus) -> Option<std::borrow::Cow<'static, str>> {
+    if let Some(code) = status.error_code {
+        return (code != util::OTHER_OWNER).then(|| argus_core::diagnostics::code(code).into());
+    }
     let error = status.error.as_deref()?;
     if error == util::message(util::OTHER_OWNER) {
         None
@@ -205,6 +219,7 @@ mod tests {
                 version: None,
                 error,
                 incompatible: false,
+                error_code: None,
             })
             .map(|s| s.into_owned())
         };

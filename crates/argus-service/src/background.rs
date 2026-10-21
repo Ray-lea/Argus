@@ -324,18 +324,34 @@ pub struct NetworkClient {
 
 impl NetworkClient {
     pub fn spawn() -> Self {
-        Self::with_reader(|| {
-            let pid = crate::install::running_pid().ok()??;
-            match crate::pipe::request_with_timeout(
-                crate::PIPE_NAME,
-                pid,
-                Operation::NetworkSnapshot,
-                TIMEOUT,
+        let mut diagnostics = crate::diagnostics::Probe::default();
+        Self::with_reader(move || {
+            let pid = crate::util::stage("network service lookup", crate::install::running_pid())
+                .ok()??;
+            match crate::util::stage(
+                "network snapshot request",
+                crate::pipe::request_with_timeout(
+                    crate::PIPE_NAME,
+                    pid,
+                    Operation::NetworkSnapshot,
+                    TIMEOUT,
+                ),
             )
             .ok()?
             {
-                Reply::Network(frame) => frame,
-                _ => None,
+                Reply::Network(frame) => {
+                    if frame.is_none() {
+                        diagnostics.collect(pid);
+                    }
+                    frame
+                }
+                _ => {
+                    argus_core::diagnostics::warn(
+                        "network snapshot request",
+                        "unexpected reply type",
+                    );
+                    None
+                }
             }
         })
     }

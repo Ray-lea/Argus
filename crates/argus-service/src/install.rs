@@ -52,6 +52,8 @@ pub struct ServiceStatus {
     /// The running service speaks another protocol (`error` says so too):
     /// updating it is what reconnects, unlike a failure that may pass.
     pub incompatible: bool,
+    #[serde(skip)]
+    pub(crate) error_code: Option<u32>,
 }
 
 pub(crate) fn directory() -> Result<PathBuf> {
@@ -80,9 +82,12 @@ pub(crate) fn owner(dir: &Path) -> Result<String> {
 }
 
 fn scm(access: u32) -> Result<Service> {
-    unsafe { OpenSCManagerW(None, None, access) }
-        .map(Service)
-        .map_err(win)
+    crate::util::stage(
+        "service OpenSCManagerW",
+        unsafe { OpenSCManagerW(None, None, access) }
+            .map(Service)
+            .map_err(win),
+    )
 }
 
 fn open(manager: &Service, access: u32) -> Result<Option<Service>> {
@@ -95,7 +100,7 @@ fn open(manager: &Service, access: u32) -> Result<Option<Service>> {
     } {
         Ok(h) => Ok(Some(Service(h))),
         Err(e) if e.code() == ERROR_SERVICE_DOES_NOT_EXIST.to_hresult() => Ok(None),
-        Err(e) => Err(win(e)),
+        Err(e) => crate::util::stage("service OpenServiceW", Err(win(e))),
     }
 }
 
@@ -113,7 +118,13 @@ fn query(service: &Service) -> Result<SERVICE_STATUS_PROCESS> {
             &mut needed,
         )
     }
-    .map_err(win)?;
+    .map_err(win)
+    .inspect_err(|code| {
+        argus_core::diagnostics::warn(
+            "service QueryServiceStatusEx",
+            argus_core::diagnostics::code(*code),
+        )
+    })?;
     Ok(status)
 }
 
@@ -157,7 +168,7 @@ fn binary(service: &Service, dir: &Path) -> Result<PathBuf> {
 }
 
 pub fn status() -> std::result::Result<ServiceStatus, String> {
-    inspect().map_err(message)
+    crate::util::stage("privileged service status", inspect()).map_err(message)
 }
 
 fn inspect() -> Result<ServiceStatus> {
@@ -169,6 +180,7 @@ fn inspect() -> Result<ServiceStatus> {
             version: None,
             error: None,
             incompatible: false,
+            error_code: None,
         });
     };
     let dir = directory()?;
@@ -189,6 +201,7 @@ fn inspect() -> Result<ServiceStatus> {
         version: None,
         error: None,
         incompatible: false,
+        error_code: None,
     };
     if s.dwCurrentState == SERVICE_RUNNING && authorized {
         note_ping(
@@ -196,8 +209,18 @@ fn inspect() -> Result<ServiceStatus> {
             crate::pipe::request(crate::PIPE_NAME, s.dwProcessId, crate::Operation::Ping),
         );
     } else if !authorized {
+        status.error_code = Some(OTHER_OWNER);
         status.error = Some(message(OTHER_OWNER));
     } else if s.dwCurrentState == SERVICE_STOPPED && s.dwWin32ExitCode != 0 {
+        status.error_code = Some(s.dwWin32ExitCode);
+        argus_core::diagnostics::warn(
+            "privileged service stopped",
+            format!(
+                "{}; service_specific_exit={}",
+                argus_core::diagnostics::code(s.dwWin32ExitCode),
+                s.dwServiceSpecificExitCode
+            ),
+        );
         status.error = Some(message(s.dwWin32ExitCode));
     }
     Ok(status)
@@ -215,6 +238,7 @@ fn note_ping(status: &mut ServiceStatus, ping: Result<crate::Reply>) {
         Err(e) => e,
     };
     status.incompatible = code == crate::util::INCOMPATIBLE;
+    status.error_code = Some(code);
     status.error = Some(message(code));
 }
 
@@ -242,6 +266,17 @@ fn wait(service: &Service, wanted: SERVICE_STATUS_CURRENT_STATE) -> Result<()> {
             return Ok(());
         }
         if wanted == SERVICE_RUNNING && s.dwCurrentState == SERVICE_STOPPED {
+            argus_core::diagnostics::warn(
+                "service stopped while starting",
+                format!(
+                    "state={}; win32_exit={}; service_specific_exit={}; checkpoint={}; wait_hint={}",
+                    s.dwCurrentState.0,
+                    s.dwWin32ExitCode,
+                    s.dwServiceSpecificExitCode,
+                    s.dwCheckPoint,
+                    s.dwWaitHint
+                ),
+            );
             return Err(if s.dwWin32ExitCode == 0 {
                 1067
             } else {
@@ -249,6 +284,18 @@ fn wait(service: &Service, wanted: SERVICE_STATUS_CURRENT_STATE) -> Result<()> {
             });
         }
         if Instant::now() >= deadline {
+            argus_core::diagnostics::warn(
+                "service state transition timed out",
+                format!(
+                    "wanted={}; actual={}; win32_exit={}; service_specific_exit={}; checkpoint={}; wait_hint={}",
+                    wanted.0,
+                    s.dwCurrentState.0,
+                    s.dwWin32ExitCode,
+                    s.dwServiceSpecificExitCode,
+                    s.dwCheckPoint,
+                    s.dwWaitHint
+                ),
+            );
             return Err(1460);
         }
         std::thread::sleep(Duration::from_millis(100));
@@ -259,7 +306,10 @@ fn start(service: &Service) -> Result<()> {
     if query(service)?.dwCurrentState == SERVICE_RUNNING {
         return Ok(());
     }
-    unsafe { StartServiceW(service.0, None) }.map_err(win)?;
+    crate::util::stage(
+        "service StartServiceW",
+        unsafe { StartServiceW(service.0, None) }.map_err(win),
+    )?;
     wait(service, SERVICE_RUNNING)
 }
 
@@ -285,7 +335,10 @@ fn stop(service: &Service) -> Result<()> {
         SERVICE_STOP_PENDING => {}
         _ => {
             let mut s = SERVICE_STATUS::default();
-            unsafe { ControlService(service.0, SERVICE_CONTROL_STOP, &mut s) }.map_err(win)?;
+            crate::util::stage(
+                "service ControlService STOP",
+                unsafe { ControlService(service.0, SERVICE_CONTROL_STOP, &mut s) }.map_err(win),
+            )?;
         }
     }
     wait(service, SERVICE_STOPPED)?;
@@ -302,35 +355,49 @@ fn command(path: &Path) -> Vec<u16> {
 }
 
 fn set_binary(service: &Service, path: &Path) -> Result<()> {
-    unsafe {
-        ChangeServiceConfigW(
-            service.0,
-            SERVICE_WIN32_OWN_PROCESS,
-            SERVICE_START_TYPE(SERVICE_NO_CHANGE),
-            SERVICE_ERROR(SERVICE_NO_CHANGE),
-            PCWSTR(command(path).as_ptr()),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-    }
-    .map_err(win)
+    crate::util::file_stage(
+        "service ChangeServiceConfigW",
+        path,
+        unsafe {
+            ChangeServiceConfigW(
+                service.0,
+                SERVICE_WIN32_OWN_PROCESS,
+                SERVICE_START_TYPE(SERVICE_NO_CHANGE),
+                SERVICE_ERROR(SERVICE_NO_CHANGE),
+                PCWSTR(command(path).as_ptr()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        .map_err(win),
+    )
 }
 
 fn copy_binary(dir: &Path) -> Result<PathBuf> {
+    crate::util::file_stage("service executable copy", dir, copy_binary_inner(dir))
+}
+
+fn copy_binary_inner(dir: &Path) -> Result<PathBuf> {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| 87u32)?
         .as_nanos();
     let path = dir.join(format!("argus-service-{}-{stamp}.exe", std::process::id()));
-    let mut source = fs::File::open(std::env::current_exe().map_err(io)?).map_err(io)?;
+    let source_path = std::env::current_exe().map_err(io)?;
+    let mut source = crate::util::file_stage(
+        "service source executable open",
+        &source_path,
+        fs::File::open(&source_path).map_err(io),
+    )?;
     let mut dest = new_protected_file(&path)?;
     let result = std::io::copy(&mut source, &mut dest).and_then(|_| dest.sync_all());
     drop(dest);
     if let Err(e) = result {
+        argus_core::diagnostics::file_failure("service executable copy and flush", &path, &e);
         let _ = fs::remove_file(&path);
         return Err(io(e));
     }
@@ -350,7 +417,17 @@ pub(crate) fn new_protected_file(path: &Path) -> Result<fs::File> {
             None,
         )
     }
-    .map_err(win)?;
+    .map_err(win)
+    .inspect_err(|code| {
+        argus_core::diagnostics::warn(
+            "protected file CreateFileW",
+            format!(
+                "{}; path={}",
+                argus_core::diagnostics::code(*code),
+                argus_core::diagnostics::path(path)
+            ),
+        )
+    })?;
     Ok(unsafe { fs::File::from_raw_handle(h.0) })
 }
 
@@ -414,7 +491,13 @@ fn install_or_update(
                         None,
                     )
                 }
-                .map_err(win)?,
+                .map_err(win)
+                .inspect_err(|code| {
+                    argus_core::diagnostics::warn(
+                        "service CreateServiceW",
+                        argus_core::diagnostics::code(*code),
+                    )
+                })?,
             );
             let mut desc_text = wide(&tr!("service.description"));
             let desc = SERVICE_DESCRIPTIONW {
@@ -493,7 +576,17 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
         .truncate(false)
         .share_mode(0)
         .open(dir.join(LOCK_FILE))
-        .map_err(io)?;
+        .map_err(io)
+        .inspect_err(|code| {
+            argus_core::diagnostics::warn(
+                "service management lock",
+                format!(
+                    "{}; path={}",
+                    argus_core::diagnostics::code(*code),
+                    argus_core::diagnostics::path(&dir.join(LOCK_FILE))
+                ),
+            )
+        })?;
     let result = match action {
         "install" | "update" => {
             if action == "update" && existing.is_none() {
@@ -590,15 +683,23 @@ pub fn manage(action: &str) -> std::result::Result<ServiceStatus, String> {
         }
     }
     let _busy = Busy;
-    let sid = security::current_sid().map_err(message)?;
+    let sid = crate::util::stage(
+        "service management current account",
+        security::current_sid(),
+    )
+    .map_err(message)?;
     if argus_core::privilege::is_elevated() {
-        run_helper(action, &sid).map_err(message)?;
+        crate::util::stage("service management helper", run_helper(action, &sid))
+            .map_err(message)?;
     } else {
-        let exe = wide(
-            &std::env::current_exe()
-                .map_err(|e| e.to_string())?
-                .to_string_lossy(),
-        );
+        let executable = std::env::current_exe().map_err(|error| {
+            argus_core::diagnostics::warn(
+                "service helper executable",
+                argus_core::diagnostics::io(&error),
+            );
+            error.to_string()
+        })?;
+        let exe = wide(&executable.to_string_lossy());
         let parameters = wide(&format!("{} {action} {sid}", crate::INSTALL_ARG));
         let verb = wide("runas");
         let working = directory()
@@ -617,7 +718,12 @@ pub fn manage(action: &str) -> std::result::Result<ServiceStatus, String> {
             nShow: SW_HIDE.0,
             ..Default::default()
         };
-        unsafe { ShellExecuteExW(&mut info) }.map_err(|e| message(win(e)))?;
+        crate::util::file_stage(
+            "service ShellExecuteExW (UAC)",
+            &executable,
+            unsafe { ShellExecuteExW(&mut info) }.map_err(win),
+        )
+        .map_err(message)?;
         if info.hProcess == HANDLE::default() {
             return Err(message(6));
         }
@@ -626,7 +732,12 @@ pub fn manage(action: &str) -> std::result::Result<ServiceStatus, String> {
             return Err(message(6));
         }
         let mut exit = 0;
-        unsafe { GetExitCodeProcess(process.0, &mut exit) }.map_err(|e| message(win(e)))?;
+        crate::util::stage(
+            "service GetExitCodeProcess",
+            unsafe { GetExitCodeProcess(process.0, &mut exit) }.map_err(win),
+        )
+        .map_err(message)?;
+        crate::diagnostics::collect("privileged service elevated operation", process.0, exit);
         if exit != 0 {
             return Err(message(exit));
         }
@@ -646,6 +757,7 @@ mod tests {
             version: None,
             error: None,
             incompatible: false,
+            error_code: None,
         };
         note_ping(&mut status, ping);
         status
@@ -656,6 +768,7 @@ mod tests {
         let connected = pinged(Ok(crate::Reply::Pong {
             version: "0.2.0".into(),
             protocol: crate::PROTOCOL,
+            diagnostics: None,
         }));
         assert_eq!(connected.version.as_deref(), Some("0.2.0"));
         assert!(connected.error.is_none() && !connected.incompatible);

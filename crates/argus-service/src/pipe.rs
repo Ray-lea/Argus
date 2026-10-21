@@ -124,11 +124,26 @@ fn receive<T: Frame>(pipe: HANDLE, stop: Option<HANDLE>, deadline: Instant) -> R
     transfer(pipe, &mut header, false, stop, deadline)?;
     let len = u32::from_le_bytes(header) as usize;
     if len == 0 || len > T::LIMIT {
+        argus_core::diagnostics::warn(
+            "service IPC frame rejected",
+            format!("length={len}; limit={}", T::LIMIT),
+        );
         return Err(87);
     }
     let mut data = vec![0; len];
     transfer(pipe, &mut data, false, stop, deadline)?;
-    serde_json::from_slice(&data).map_err(|_| 87)
+    serde_json::from_slice(&data).map_err(|error| {
+        argus_core::diagnostics::warn(
+            "service IPC JSON rejected",
+            format!(
+                "category={:?}; line={}; column={}; bytes={len}",
+                error.classify(),
+                error.line(),
+                error.column()
+            ),
+        );
+        87
+    })
 }
 
 fn send<T: Frame>(pipe: HANDLE, value: &T, stop: Option<HANDLE>, deadline: Instant) -> Result<()> {
@@ -192,10 +207,14 @@ fn exchange(
     operation: Operation,
     timeout: Duration,
 ) -> Result<Reply> {
-    let pipe = connect(name)?;
+    let pipe = crate::util::stage("service pipe connect", connect(name))?;
     let mut actual_pid = 0;
     unsafe { GetNamedPipeServerProcessId(pipe.0, &mut actual_pid) }.map_err(win)?;
     if actual_pid != expected_pid || unsafe { WaitForSingleObject(process.0, 0) } == WAIT_OBJECT_0 {
+        argus_core::diagnostics::warn(
+            "service pipe identity rejected",
+            format!("expected_pid={expected_pid}; actual_pid={actual_pid}"),
+        );
         return Err(5);
     }
     let deadline = Instant::now() + timeout;
@@ -215,11 +234,25 @@ fn exchange(
         None,
         deadline,
     )?;
-    let reply = receive(pipe.0, None, deadline)?;
+    let reply = crate::util::stage(
+        "service pipe receive reply",
+        receive(pipe.0, None, deadline),
+    )?;
     if let Reply::Pong { protocol, .. } = &reply
         && *protocol != crate::PROTOCOL
     {
+        argus_core::diagnostics::warn(
+            "service protocol mismatch",
+            format!("expected={}; actual={protocol}", crate::PROTOCOL),
+        );
         return Err(INCOMPATIBLE);
+    }
+    if let Reply::Pong {
+        diagnostics: Some(report),
+        ..
+    } = &reply
+    {
+        crate::diagnostics::import(report, expected_pid);
     }
     Ok(reply)
 }
@@ -581,6 +614,7 @@ pub(crate) mod tests {
                     let pong = Reply::Pong {
                         version: "0.0.0".into(),
                         protocol,
+                        diagnostics: None,
                     };
                     send(client.0, &pong, None, Instant::now() + READ_TIMEOUT).unwrap();
                 }

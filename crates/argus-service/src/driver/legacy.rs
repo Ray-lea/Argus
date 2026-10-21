@@ -109,15 +109,45 @@ fn installation_matches(location: &str, version: &str, expected: &Path) -> bool 
 fn validate_key(key: HKEY, programs: &Path) -> Result<()> {
     // Default Uninstall ACLs include Terminal Server User write access. The
     // elevated helper replaces this record with a protected copy before use.
-    match security::inspect_registry_key(key) {
+    let mut trace = security::PathInspection::default();
+    match security::inspect_registry_key(key, &mut trace) {
         Ok(()) | Err(security::PathError::Writable) => {}
-        Err(_) => return Err(LEGACY_LAYOUT),
+        Err(error) => {
+            argus_core::diagnostics::warn(
+                "PawnIO legacy uninstall key security",
+                format!("reason={error:?}; key={UNINSTALL:?}; check={trace:?}"),
+            );
+            return Err(LEGACY_LAYOUT);
+        }
     }
-    if !installation_matches(
-        &string(key, "InstallLocation").map_err(|_| LEGACY_LAYOUT)?,
-        &string(key, "DisplayVersion").map_err(|_| LEGACY_LAYOUT)?,
-        &programs.join("PawnIO"),
-    ) {
+    let location = crate::util::stage(
+        "PawnIO legacy InstallLocation read",
+        string(key, "InstallLocation"),
+    )
+    .map_err(|_| LEGACY_LAYOUT)?;
+    let version = crate::util::stage(
+        "PawnIO legacy DisplayVersion read",
+        string(key, "DisplayVersion"),
+    )
+    .map_err(|_| LEGACY_LAYOUT)?;
+    if !installation_matches(&location, &version, &programs.join("PawnIO")) {
+        let version = if version.len() <= 32
+            && version
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || byte == b'.')
+        {
+            version.as_str()
+        } else {
+            "invalid version format"
+        };
+        argus_core::diagnostics::warn(
+            "PawnIO legacy installation identity",
+            format!(
+                "key={UNINSTALL:?}; version={version}; location={}; expected_location={}",
+                argus_core::diagnostics::path(Path::new(&location)),
+                argus_core::diagnostics::path(&programs.join("PawnIO"))
+            ),
+        );
         return Err(LEGACY_LAYOUT);
     }
     Ok(())
@@ -150,6 +180,10 @@ fn values(key: HKEY) -> Result<Vec<Value>> {
     .ok()
     .map_err(crate::util::win)?;
     if children != 0 {
+        argus_core::diagnostics::warn(
+            "PawnIO legacy uninstall record",
+            format!("unexpected_subkeys={children}"),
+        );
         return Err(LEGACY_LAYOUT);
     }
     let mut values = Vec::new();
@@ -292,7 +326,14 @@ pub(super) fn protect_installation(programs: &Path) -> Result<()> {
             &descriptor,
             |key, copy| {
                 if copy {
-                    security::inspect_registry_key(key).map_err(|_| LEGACY_LAYOUT)?;
+                    let mut trace = security::PathInspection::default();
+                    security::inspect_registry_key(key, &mut trace).map_err(|error| {
+                        argus_core::diagnostics::warn(
+                            "PawnIO migrated uninstall key security",
+                            format!("reason={error:?}; key={UNINSTALL:?}; check={trace:?}"),
+                        );
+                        LEGACY_LAYOUT
+                    })?;
                 }
                 validate_key(key, programs)
             },

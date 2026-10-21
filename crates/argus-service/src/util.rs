@@ -44,6 +44,29 @@ pub fn win(e: windows::core::Error) -> u32 {
     }
 }
 
+#[track_caller]
+pub fn stage<T>(name: &'static str, result: Result<T>) -> Result<T> {
+    if let Err(code) = &result {
+        argus_core::diagnostics::warn(name, argus_core::diagnostics::code(*code));
+    }
+    result
+}
+
+#[track_caller]
+pub fn file_stage<T>(name: &'static str, path: &std::path::Path, result: Result<T>) -> Result<T> {
+    if let Err(code) = &result {
+        argus_core::diagnostics::warn(
+            name,
+            format!(
+                "{}; path={}",
+                argus_core::diagnostics::code(*code),
+                argus_core::diagnostics::path(path)
+            ),
+        );
+    }
+    result
+}
+
 pub fn io(e: std::io::Error) -> u32 {
     e.raw_os_error().unwrap_or(31) as u32
 }

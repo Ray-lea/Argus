@@ -59,6 +59,12 @@ impl SensorMonitor {
                     }
                     let _ = request.send(frame.clone());
                 }
+            })
+            .inspect_err(|error| {
+                argus_core::diagnostics::warn(
+                    "sensor service worker creation",
+                    argus_core::diagnostics::io(error),
+                )
             });
         Self { tx }
     }
@@ -88,22 +94,45 @@ pub struct SensorClient {
 
 impl SensorClient {
     pub fn spawn() -> Self {
-        Self::with_reader(|| {
-            let reply = crate::install::running_pid()
-                .ok()
-                .flatten()
-                .and_then(|pid| {
-                    crate::pipe::request_with_timeout(
-                        crate::PIPE_NAME,
-                        pid,
-                        Operation::SensorSnapshot {},
-                        Duration::from_secs(2),
-                    )
-                    .ok()
-                });
+        let mut diagnostics = crate::diagnostics::Probe::default();
+        Self::with_reader(move || {
+            let pid = crate::util::stage("sensor service lookup", crate::install::running_pid());
+            let Ok(Some(pid)) = pid else {
+                argus_core::diagnostics::warn(
+                    "kernel sensors unavailable",
+                    "no running, authorized service",
+                );
+                return CpuSensors::unavailable(SensorState::ServiceUnavailable);
+            };
+            let reply = crate::util::stage(
+                "sensor snapshot request",
+                crate::pipe::request_with_timeout(
+                    crate::PIPE_NAME,
+                    pid,
+                    Operation::SensorSnapshot {},
+                    Duration::from_secs(2),
+                ),
+            );
             match reply {
-                Some(Reply::Sensors(frame)) => frame,
-                _ => CpuSensors::unavailable(SensorState::ServiceUnavailable),
+                Ok(Reply::Sensors(frame)) => {
+                    if !matches!(frame.state, SensorState::Ready | SensorState::Pending) {
+                        argus_core::diagnostics::warn(
+                            "kernel sensors unavailable",
+                            format!("state={:?}", frame.state),
+                        );
+                        diagnostics.collect(pid);
+                    }
+                    frame
+                }
+                other => {
+                    if other.is_ok() {
+                        argus_core::diagnostics::warn(
+                            "sensor snapshot request",
+                            "unexpected reply type",
+                        );
+                    }
+                    CpuSensors::unavailable(SensorState::ServiceUnavailable)
+                }
             }
         })
     }
@@ -121,6 +150,12 @@ impl SensorClient {
                         *cache = Some((Instant::now(), frame));
                     }
                 }
+            })
+            .inspect_err(|error| {
+                argus_core::diagnostics::warn(
+                    "sensor client worker creation",
+                    argus_core::diagnostics::io(error),
+                )
             });
         Self {
             tx,

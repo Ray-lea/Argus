@@ -85,6 +85,9 @@ struct Inspection {
     legacy_image_bytes: Option<u64>,
     legacy_image_sha256: Option<String>,
     device: Option<device::State>,
+    image_path: Option<PathBuf>,
+    failed_path: Option<PathBuf>,
+    path_check: Option<security::PathInspection>,
 }
 
 impl Inspection {
@@ -106,7 +109,7 @@ impl Inspection {
             .map(|pair| format!("{pair:08x}"))
             .collect::<Vec<_>>()
             .join(",");
-        format!(
+        let mut summary = format!(
             "stage={}; result={outcome}; native_error={:?}; service_type={:?}; service_state={:?}; start_type={:?}; image_location={}; path_component={}; file_version={version}; version_info_bytes={:?}; version_translations=[{translations}]; original_name_matches={:?}; official_legacy_driver={}; legacy_image_bytes={:?}; legacy_image_sha256={:?}; pnp={:?}",
             self.stage,
             self.native_error,
@@ -121,7 +124,17 @@ impl Inspection {
             self.legacy_image_bytes,
             self.legacy_image_sha256,
             self.device
-        )
+        );
+        if let Some(path) = &self.image_path {
+            summary += &format!("; image_path={}", argus_core::diagnostics::path(path));
+        }
+        if let Some(path) = &self.failed_path {
+            summary += &format!("; failed_path={}", argus_core::diagnostics::path(path));
+        }
+        if let Some(check) = &self.path_check {
+            summary += &format!("; path_check={check:?}");
+        }
+        summary
     }
 }
 
@@ -239,6 +252,7 @@ fn image_path(
         return Err(FOREIGN_DRIVER);
     }
     let path_text = path.to_string_lossy().to_ascii_lowercase();
+    trace.image_path = Some(path.clone());
     let allowed = [
         windows.join(r"System32\drivers"),
         windows.join(r"System32\DriverStore\FileRepository"),
@@ -307,7 +321,12 @@ fn pin_image(
             } else {
                 "ancestor directory"
             };
-            security::inspect_path(part).map_err(|error| driver_path_error(part, windows, error))
+            let mut check = security::PathInspection::default();
+            security::inspect_path_with(part, &mut check).map_err(|error| {
+                trace.failed_path = Some(part.to_owned());
+                trace.path_check = Some(check);
+                driver_path_error(part, windows, error)
+            })
         })
         .collect()
 }
@@ -580,10 +599,26 @@ pub fn diagnostic_status() -> String {
 }
 
 fn current_plan() -> Result<Plan> {
-    let Some(service) = open(SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS)? else {
+    let Some(service) = util::stage(
+        "PawnIO OpenServiceW",
+        open(SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS),
+    )?
+    else {
         return Ok(Plan::Install);
     };
-    inspect(&service).map(|(plan, _)| plan)
+    let mut trace = Inspection::default();
+    let result = inspect_with_trace(&service, &mut trace).map(|(plan, _)| plan);
+    if let Err(code) = &result {
+        argus_core::diagnostics::warn(
+            "PawnIO precheck failed",
+            format!(
+                "{}; {}",
+                argus_core::diagnostics::code(*code),
+                trace.summary(&Err(*code))
+            ),
+        );
+    }
+    result
 }
 
 /// A fixed version IOCTL only: this neither loads a module nor starts a driver.
@@ -600,6 +635,9 @@ pub(crate) fn device_version() -> Option<u32> {
                 None,
             )
         }
+        .inspect_err(|error| {
+            argus_core::diagnostics::windows_failure("PawnIO version device open", error)
+        })
         .ok()?,
     );
     let mut version = 0u32;
@@ -616,21 +654,30 @@ pub(crate) fn device_version() -> Option<u32> {
             None,
         )
     }
+    .inspect_err(|error| {
+        argus_core::diagnostics::windows_failure("PawnIO version DeviceIoControl", error)
+    })
     .ok()?;
+    if returned != 4 {
+        argus_core::diagnostics::warn(
+            "PawnIO version response",
+            format!("expected_bytes=4; returned_bytes={returned}"),
+        );
+    }
     (returned == 4).then_some(version)
 }
 
 fn start() -> Result<()> {
     let service =
         open(SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS | SERVICE_START)?.ok_or(NOT_READY)?;
-    let (plan, _pins) = inspect(&service)?;
+    let (plan, _pins) = util::stage("PawnIO startup precheck", inspect(&service))?;
     if matches!(plan, Plan::Install | Plan::MigrateLegacy) {
         return Err(NOT_READY);
     }
     let deadline = Instant::now() + Duration::from_secs(30);
     let mut attempted = false;
     loop {
-        let status = state(&service)?;
+        let status = util::stage("PawnIO QueryServiceStatusEx", state(&service))?;
         if status.dwCurrentState == SERVICE_RUNNING
             && device_version().is_some_and(|v| v >= 0x0002_0200)
         {
@@ -641,6 +688,10 @@ fn start() -> Result<()> {
                 if let Err(error) = unsafe { StartServiceW(service.0, None) } {
                     let code = win(error);
                     if code != 1056 {
+                        argus_core::diagnostics::warn(
+                            "PawnIO StartServiceW",
+                            argus_core::diagnostics::code(code),
+                        );
                         return Err(code);
                     }
                 }
@@ -654,6 +705,17 @@ fn start() -> Result<()> {
             });
         }
         if Instant::now() >= deadline {
+            argus_core::diagnostics::warn(
+                "PawnIO startup timeout",
+                format!(
+                    "state={}; win32_exit={}; service_exit={}; checkpoint={}; wait_hint_ms={}",
+                    status.dwCurrentState.0,
+                    status.dwWin32ExitCode,
+                    status.dwServiceSpecificExitCode,
+                    status.dwCheckPoint,
+                    status.dwWaitHint
+                ),
+            );
             return Err(1460);
         }
         std::thread::sleep(Duration::from_millis(100));
@@ -677,29 +739,57 @@ fn protected_dir(path: &Path) -> Result<Handle> {
 }
 
 fn stage_package(path: &Path, bytes: &[u8], manifest: &package::Manifest) -> Result<std::fs::File> {
-    let mut file = crate::install::new_protected_file(path)?;
-    file.write_all(bytes)
-        .and_then(|_| file.sync_all())
-        .map_err(io)?;
+    let mut file = util::file_stage(
+        "PawnIO staging file creation",
+        path,
+        crate::install::new_protected_file(path),
+    )?;
+    util::file_stage(
+        "PawnIO staging write/sync",
+        path,
+        file.write_all(bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(io),
+    )?;
     drop(file);
-    package::verify(path, manifest)
+    util::file_stage(
+        "PawnIO staged package verification",
+        path,
+        package::verify(path, manifest),
+    )
 }
 
 fn run_installer(path: &Path, args: &[&str], legacy: bool) -> Result<()> {
     // Never kill an installer mid-operation or delete its executable while running.
     let directory = path.parent().ok_or(87u32)?;
-    let code = Command::new(path)
-        .args(args)
-        .current_dir(directory)
-        // 2.0.1 renames removed files into TEMP, which must be on the same
-        // volume as Program Files. Only this child gets the protected TEMP.
-        .env("TEMP", directory)
-        .env("TMP", directory)
-        .creation_flags(0x08000000)
-        .status()
-        .map_err(io)?
-        .code();
-    installer_exit(normalize_installer_exit(code, legacy))
+    let code = util::file_stage(
+        "PawnIO installer process",
+        path,
+        Command::new(path)
+            .args(args)
+            .current_dir(directory)
+            // 2.0.1 renames removed files into TEMP, which must be on the same
+            // volume as Program Files. Only this child gets the protected TEMP.
+            .env("TEMP", directory)
+            .env("TMP", directory)
+            .creation_flags(0x08000000)
+            .status()
+            .map_err(io),
+    )?
+    .code();
+    let result = installer_exit(normalize_installer_exit(code, legacy));
+    if let Err(error) = result {
+        argus_core::diagnostics::warn(
+            "PawnIO installer exit",
+            format!(
+                "legacy={legacy}; raw_exit={:?}; {}; path={}",
+                code.map(|v| format!("0x{:08x}", v as u32)),
+                argus_core::diagnostics::code(error),
+                argus_core::diagnostics::path(path)
+            ),
+        );
+    }
+    result
 }
 
 fn normalize_installer_exit(code: Option<i32>, legacy: bool) -> Option<i32> {
@@ -778,16 +868,24 @@ pub(crate) fn run_helper() -> Result<()> {
         return Err(5);
     }
     let programs = program_files()?;
-    let _parent = protect_setup_path(&programs)?;
+    let _parent = util::file_stage(
+        "PawnIO setup parent",
+        &programs,
+        protect_setup_path(&programs),
+    )?;
     let root = programs.join("Argus Sensor Setup");
-    let _root = protected_dir(&root)?;
-    let _lock = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .share_mode(0)
-        .open(root.join("install.lock"))
-        .map_err(io)?;
+    let _root = util::file_stage("PawnIO setup directory", &root, protected_dir(&root))?;
+    let _lock = util::file_stage(
+        "PawnIO setup lock",
+        &root.join("install.lock"),
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .share_mode(0)
+            .open(root.join("install.lock"))
+            .map_err(io),
+    )?;
     let plan = current_plan()?;
     let migrate = plan == Plan::MigrateLegacy;
     finish_preparation(plan, || install_package(&root, migrate), start)
@@ -810,6 +908,15 @@ pub fn ensure_ready() -> std::result::Result<(), String> {
 fn require_service() -> std::result::Result<(), String> {
     let service = crate::status()?;
     if service.state != "running" || !service.authorized || service.error.is_some() {
+        argus_core::diagnostics::warn(
+            "kernel sensor service prerequisite",
+            format!(
+                "state={}; authorized={}; issue={}",
+                service.state,
+                service.authorized,
+                crate::status_issue(&service).as_deref().unwrap_or("none")
+            ),
+        );
         return Err(tr!("sensorSetup.serviceRequired"));
     }
     Ok(())
@@ -836,7 +943,11 @@ fn elevate_and_prepare() -> std::result::Result<(), String> {
             nShow: SW_HIDE.0,
             ..Default::default()
         };
-        unsafe { ShellExecuteExW(&mut info) }.map_err(|e| message(win(e)))?;
+        util::stage(
+            "PawnIO ShellExecuteExW (UAC)",
+            unsafe { ShellExecuteExW(&mut info) }.map_err(win),
+        )
+        .map_err(message)?;
         if info.hProcess == HANDLE::default() {
             return Err(message(6));
         }
@@ -845,7 +956,12 @@ fn elevate_and_prepare() -> std::result::Result<(), String> {
             return Err(message(6));
         }
         let mut code = 0;
-        unsafe { GetExitCodeProcess(process.0, &mut code) }.map_err(|e| message(win(e)))?;
+        util::stage(
+            "PawnIO GetExitCodeProcess",
+            unsafe { GetExitCodeProcess(process.0, &mut code) }.map_err(win),
+        )
+        .map_err(message)?;
+        crate::diagnostics::collect("PawnIO elevated preparation", process.0, code);
         if code != 0 {
             return Err(message(code));
         }
@@ -978,7 +1094,7 @@ mod tests {
     }
 
     #[test]
-    fn driver_diagnostics_name_the_failed_check_without_disclosing_paths() {
+    fn driver_diagnostics_keep_the_rejected_path_but_not_scm_arguments() {
         let mut trace = Inspection::default();
         let result = image_path(
             r"C:\Users\Private Person\Secret Folder\PawnIO.sys",
@@ -989,9 +1105,8 @@ mod tests {
         assert!(result.is_err());
         let line = trace.summary(&Err(FOREIGN_DRIVER));
         assert!(line.contains("image location policy") && line.contains("outside supported roots"));
-        for private in ["Private Person", "Secret Folder", "C:", "\\"] {
-            assert!(!line.contains(private));
-        }
+        assert!(line.contains("Private Person") && line.contains("Secret Folder"));
+        assert!(line.contains("image_path="));
         let mut trace = Inspection::default();
         assert!(
             image_path(
@@ -1004,7 +1119,18 @@ mod tests {
         );
         let line = trace.summary(&Err(FOREIGN_DRIVER));
         assert!(line.contains("other Program Files location"));
-        assert!(!line.contains("Other Monitor"));
+        assert!(line.contains("Other Monitor"));
+        let mut trace = Inspection::default();
+        assert!(
+            image_path(
+                r#""C:\Program Files\PawnIO\PawnIO.sys" --password secret"#,
+                Path::new(r"C:\Windows"),
+                Path::new(r"C:\Program Files"),
+                &mut trace
+            )
+            .is_err()
+        );
+        assert!(!trace.summary(&Err(FOREIGN_DRIVER)).contains("secret"));
     }
 
     #[test]

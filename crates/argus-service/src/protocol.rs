@@ -95,6 +95,8 @@ pub enum Reply {
     Pong {
         version: String,
         protocol: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        diagnostics: Option<crate::ServiceDiagnostics>,
     },
     Done,
     Network(Option<crate::NetworkFrame>),
@@ -194,6 +196,7 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
             return Reply::Pong {
                 version: crate::VERSION.into(),
                 protocol: crate::PROTOCOL,
+                diagnostics: crate::diagnostics::snapshot(),
             };
         }
         // A client cannot ask the broker to bypass the host's self-protection.

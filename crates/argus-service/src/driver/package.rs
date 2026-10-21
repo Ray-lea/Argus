@@ -44,9 +44,27 @@ pub(super) fn legacy_manifest() -> &'static Manifest {
 }
 
 fn check_bytes(bytes: &[u8], expected: &Manifest) -> Result<()> {
-    if bytes.len() as u64 != expected.size
-        || format!("{:x}", Sha256::digest(bytes)) != expected.sha256
-    {
+    if bytes.len() as u64 != expected.size {
+        argus_core::diagnostics::warn(
+            "PawnIO package length",
+            format!(
+                "version={}; expected={}; actual={}",
+                expected.version,
+                expected.size,
+                bytes.len()
+            ),
+        );
+        return Err(PACKAGE_INVALID);
+    }
+    let digest = format!("{:x}", Sha256::digest(bytes));
+    if digest != expected.sha256 {
+        argus_core::diagnostics::warn(
+            "PawnIO package digest",
+            format!(
+                "version={}; expected={}; actual={digest}",
+                expected.version, expected.sha256
+            ),
+        );
         return Err(PACKAGE_INVALID);
     }
     Ok(())
@@ -78,25 +96,53 @@ pub(super) fn download(expected: &Manifest) -> Result<Vec<u8>> {
         }))
         .user_agent(concat!("Argus/", env!("CARGO_PKG_VERSION")))
         .build()
-        .map_err(|_| DOWNLOAD_FAILED)?;
+        .map_err(|error| download_error("PawnIO HTTP client", &error))?;
     let response = client
         .get(&expected.url)
         .send()
         .and_then(|r| r.error_for_status())
-        .map_err(|_| DOWNLOAD_FAILED)?;
+        .map_err(|error| download_error("PawnIO HTTP request", &error))?;
     if response
         .content_length()
         .is_some_and(|size| size != expected.size)
     {
+        argus_core::diagnostics::warn(
+            "PawnIO HTTP content length",
+            format!(
+                "version={}; expected={}; actual={:?}",
+                expected.version,
+                expected.size,
+                response.content_length()
+            ),
+        );
         return Err(PACKAGE_INVALID);
     }
     let mut bytes = Vec::with_capacity(expected.size as usize);
     response
         .take(expected.size + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| DOWNLOAD_FAILED)?;
+        .map_err(|error| {
+            argus_core::diagnostics::warn("PawnIO HTTP body", argus_core::diagnostics::io(&error));
+            DOWNLOAD_FAILED
+        })?;
     check_bytes(&bytes, expected)?;
     Ok(bytes)
+}
+
+fn download_error(stage: &'static str, error: &reqwest::Error) -> u32 {
+    argus_core::diagnostics::warn(
+        stage,
+        format!(
+            "status={:?}; timeout={}; connect={}; redirect={}; body={}; causes={}",
+            error.status().map(|s| s.as_u16()),
+            error.is_timeout(),
+            error.is_connect(),
+            error.is_redirect(),
+            error.is_body(),
+            argus_core::diagnostics::error_chain(error)
+        ),
+    );
+    DOWNLOAD_FAILED
 }
 
 /// Pin the verified executable against replacement until its process exits.
@@ -151,6 +197,14 @@ pub(super) fn verify(path: &Path, expected: &Manifest) -> Result<File> {
         );
     }
     if result != 0 {
+        argus_core::diagnostics::warn(
+            "PawnIO WinVerifyTrust",
+            format!(
+                "{}; path={}",
+                argus_core::diagnostics::code(result as u32),
+                argus_core::diagnostics::path(path)
+            ),
+        );
         return Err(SIGNATURE_INVALID);
     }
     Ok(file)

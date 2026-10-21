@@ -34,7 +34,10 @@ const INTEL: &[u8] = include_bytes!("../../vendor/pawnio/IntelMSR.bin");
 const AMD_OLD: &[u8] = include_bytes!("../../vendor/pawnio/AMDFamily10.bin");
 const AMD_ZEN: &[u8] = include_bytes!("../../vendor/pawnio/AMDFamily17.bin");
 
-struct Module(Handle);
+struct Module {
+    handle: Handle,
+    reported_read_failure: std::cell::Cell<bool>,
+}
 impl Module {
     fn open(blob: &[u8]) -> Result<Self, SensorState> {
         let handle = unsafe {
@@ -49,7 +52,13 @@ impl Module {
             )
         }
         .map(Handle)
-        .map_err(|_| SensorState::DriverUnavailable)?;
+        .map_err(|error| {
+            argus_core::diagnostics::warn(
+                "PawnIO device CreateFileW",
+                argus_core::diagnostics::code(crate::util::win(error)),
+            );
+            SensorState::DriverUnavailable
+        })?;
         let mut returned = 0;
         unsafe {
             DeviceIoControl(
@@ -63,8 +72,21 @@ impl Module {
                 None,
             )
         }
-        .map_err(|_| SensorState::ModuleRejected)?;
-        Ok(Self(handle))
+        .map_err(|error| {
+            argus_core::diagnostics::warn(
+                "PawnIO module load",
+                format!(
+                    "{}; module_bytes={}",
+                    argus_core::diagnostics::code(crate::util::win(error)),
+                    blob.len()
+                ),
+            );
+            SensorState::ModuleRejected
+        })?;
+        Ok(Self {
+            handle,
+            reported_read_failure: std::cell::Cell::new(false),
+        })
     }
 
     fn read(&self, function: &[u8], input: &[u64]) -> Option<u64> {
@@ -84,7 +106,7 @@ impl Module {
         let mut returned = 0;
         let result = unsafe {
             DeviceIoControl(
-                self.0.0,
+                self.handle.0,
                 EXECUTE,
                 Some(request.as_ptr().cast()),
                 (32 + input.len() * 8) as u32,
@@ -94,7 +116,25 @@ impl Module {
                 None,
             )
         };
-        result.is_ok() && returned as usize == std::mem::size_of_val(output)
+        let valid = result.is_ok() && returned as usize == std::mem::size_of_val(output);
+        // Optional registers can be absent. Keep the first failed probe per
+        // module, not a log entry for every register on every sample.
+        if !valid && !self.reported_read_failure.replace(true) {
+            let error = result
+                .err()
+                .map(crate::util::win)
+                .map(argus_core::diagnostics::code);
+            argus_core::diagnostics::warn(
+                "PawnIO module read",
+                format!(
+                    "result={}; function={}; returned_bytes={returned}; expected_bytes={}",
+                    error.as_deref().unwrap_or("unexpected output size"),
+                    String::from_utf8_lossy(function),
+                    std::mem::size_of_val(output)
+                ),
+            );
+        }
+        valid
     }
 
     fn msr(&self, register: u32) -> Option<u64> {
