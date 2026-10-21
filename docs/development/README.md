@@ -4,14 +4,16 @@
 - [性能基线与测量](performance.md)
 - [提交与发布](release.md)
 - [Windows 代码签名](signing.md)
+- [依赖与安全维护](security.md)
 - [多语言](i18n.md)
 - 代码结构见[架构](../architecture/README.md)
 
 ## 环境要求
 
 - Windows 11 x64 开发环境；程序运行兼容范围见 [README](../../README.md#-系统要求)
-- Rust（stable，`x86_64-pc-windows-msvc` 工具链）
-- Node.js 22.18 及以上（23.x 需 23.6 及以上；需要默认开启的 TypeScript 类型剥离：`pnpm test:ui`、`pnpm commitlint` 与发布脚本直接运行 `.ts` 文件）与 pnpm
+- Rust 1.99.1 及以上（stable，`x86_64-pc-windows-msvc` 工具链）
+- Node.js 26.12.1 及以上的 26.x，或 24.22.1 及以上的 24.x LTS；CI 按 `.node-version` 使用 26.12.1。`pnpm test:ui`、`pnpm commitlint` 与发布脚本直接运行 `.ts` 文件，需要默认开启的 TypeScript 类型剥离
+- pnpm 12.14.0，由 `package.json` 的 `packageManager` 固定；保留锁文件并使用 `pnpm install --frozen-lockfile` 安装依赖。`devEngines.runtime` 让 pnpm 为项目准备并使用 Node.js 26.12.1，不改变其他项目的全局 Node.js
 - Visual Studio Build Tools（“使用 C++ 的桌面开发”，含 Windows SDK）
 - WebView2 运行时（Windows 11 自带）
 

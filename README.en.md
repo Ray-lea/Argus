@@ -85,7 +85,7 @@ See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (Chinese) fo
 
 ## 🔧 Build from source
 
-Requires Rust (stable, MSVC toolchain), Node.js 22.18 or later (23.6 or later on 23.x), pnpm, and Visual Studio Build Tools ("Desktop development with C++"). In the repository root:
+Requires Rust 1.99.1 or later on the stable MSVC toolchain, Node.js 26.x from 26.12.1 (24.x LTS from 24.22.1 is also supported), pnpm 12.14.0, and Visual Studio Build Tools ("Desktop development with C++"). In the repository root:
 
 ```bash
 start.bat           # development mode: instant frontend reload; Rust changes rebuild and restart automatically

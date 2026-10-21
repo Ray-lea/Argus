@@ -85,7 +85,7 @@ Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS �
 
 ## 🔧 从源码构建
 
-需要 Rust（stable，MSVC 工具链）、Node.js 22.18 及以上版本（23.x 需 23.6 及以上）、pnpm，以及 Visual Studio Build Tools（“使用 C++ 的桌面开发”）。在仓库根目录运行：
+需要 Rust 1.99.1 及以上的 stable MSVC 工具链、Node.js 26.12.1 及以上的 26.x 版本（也支持 24.22.1 及以上的 24.x LTS）、pnpm 12.14.0，以及 Visual Studio Build Tools（“使用 C++ 的桌面开发”）。在仓库根目录运行：
 
 ```bash
 start.bat           # 开发模式：前端即时热更新，Rust 代码修改后自动重新编译并重启

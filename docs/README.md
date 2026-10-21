@@ -25,6 +25,7 @@ docs/
 - [提交与发布](development/release.md)：持续集成、提交信息规范、版本号、发布步骤、更新签名与通道、发布后发现严重问题时的处理
 - [Windows 代码签名](development/signing.md)：SignPath 测试配置、签名顺序与产物验证
 - [多语言](development/i18n.md)：文案目录、界面与 Rust 中的用法、检查、增加语言、术语表
+- [依赖与安全维护](development/security.md)：工具链版本、漏洞检查、WebView 防御与上游修复边界
 
 ## 架构
 

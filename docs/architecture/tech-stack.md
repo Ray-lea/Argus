@@ -19,7 +19,7 @@ Argus 是只运行在 Windows 上的桌面程序：采集与系统操作由 Rust
 
 - **Rust**：stable，`x86_64-pc-windows-msvc` 工具链，edition 2024，工作区解析器 3。仓库目录上设有 `rustup override`，原因见[构建与缓存](../development/build.md#链接器与工具链)。发布构建使用 fat LTO、单个代码生成单元、`panic = "abort"` 并去除符号；开发构建只保留行号调试信息，依赖以 `opt-level = 2` 编译，使开发版保持流畅。
 - **TypeScript**：`tsc --noEmit` 只做类型检查，打包由 Vite 完成。
-- **Node.js 与 pnpm**：Node.js 需要默认开启的 TypeScript 类型剥离，前端单元测试与发布脚本直接运行 `.ts` 文件；包管理用 pnpm。辅助脚本一律用 Node 编写，不依赖 Python 或 .NET。
+- **Node.js 与 pnpm**：Node.js 需要默认开启的 TypeScript 类型剥离，前端单元测试与发布脚本直接运行 `.ts` 文件；包管理用 pnpm 12，版本由 `packageManager` 固定，CI 的 Node.js 版本由 `.node-version` 指定。辅助脚本一律用 Node 编写，不依赖 Python 或 .NET。
 - **C++ 构建工具**：Visual Studio Build Tools（含 Windows SDK），供 MSVC 链接使用。
 
 版本要求见[环境与命令](../development/README.md#环境要求)。
@@ -59,6 +59,7 @@ Argus 是只运行在 Windows 上的桌面程序：采集与系统操作由 Rust
 ## 宿主：src-tauri
 
 - **Tauri 2**：窗口由 tao 管理，网页由 wry 交给 WebView2 渲染。`webview2-com` 用于调用 Tauri 未封装的 WebView2 接口，例如窗口隐藏到托盘时调低 WebView2 的内存目标。
+- **页面边界**：`webview_policy.rs` 只允许应用自身来源的页面导航，开发版另允许配置中的开发服务器来源；CSP 禁止嵌入页面、插件对象、基址修改和表单提交。外部链接经宿主在系统浏览器中打开，详见[依赖与安全维护](../development/security.md)。
 - **Tauri 插件**：`autostart`（开机启动）、`dialog`（选择文件）、`log`（诊断日志）、`updater`（应用内更新：用 Schannel 而不用 rustls，以使用系统证书库，包括企业代理安装的根证书；更新包即 NSIS 安装程序）。
 - **自行实现的部分**：单实例（以持有的互斥体为准）、全局快捷键（`RegisterHotKey`）、标题栏按钮与窗口动画、WebView2 数据目录与崩溃恢复、采样线程（经 Tauri Channel 推送快照）、设置（应用配置目录中的 JSON 文件）。
 - **更新校验**：`minisign-verify` 校验签名，`semver` 比较版本，`sha2` 与 `base64` 用于核对已下载的安装包和签名过的更新内容。
