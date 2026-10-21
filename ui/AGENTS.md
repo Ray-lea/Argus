@@ -40,7 +40,7 @@
 
 ## 其他
 
-- 进程列表挂有 EditContext（`lib/process-search.ts`），让输入法在列表获得焦点时即可组字。它因此成为编辑目标：鼠标单击后也匹配 `:focus-visible`，列表的焦点框改由 `.pointer-focus` 控制，不要去掉这层判断；列表的按键处理要跳过组字中的按键（`isComposing`、`Process`）。无头 Edge 里用 CDP 的 `Input.imeSetComposition` 和 `Input.insertText` 模拟输入法。
+- 进程列表挂有 EditContext（`lib/process-search.ts`），让输入法在列表获得焦点时即可组字；`lib/list-focus.ts` 让焦点在进程页上不落到空处或单击过的按钮上。焦点在不可编辑的元素上时，Chromium 给 TSF 只读的空文档（`TSFTextStore::RequestLock` 对它返回失败），微软拼音等会吞掉第一个键，页面收不到 keydown。列表因此是编辑目标：鼠标单击后也匹配 `:focus-visible`，焦点框改由 `.pointer-focus` 控制，不要去掉这层判断；列表的按键处理要跳过组字中的按键（`isComposing`、`Process`）。组字期间不要改 EditContext 的文字或选区（`updateText`、`updateSelection` 会取消组字），也不要让输入类型变化：浏览器收到的状态里 node_id、类型、模式或标志一变，Windows 上就会取消组字。无头 Edge 里用 CDP 的 `Input.imeSetComposition` 和 `Input.insertText` 模拟组字，它不经过 TSF；浏览器侧收到的输入状态用 `ime` 类别的跟踪事件 `TextInputManager::UpdateTextInputState` 核对（类型 15 为可编辑，0 为不可编辑，`changed` 为真即会取消组字）。
 - 以 `--hidden` 启动时，页面画出第一帧之前 WebView 保持可见（`background.ts` 的 `reportFirstFrame` 报告后宿主才让它休眠），这段时间 `visibilityState` 为 `visible`，窗口却没有显示。要等用户看得到窗口才做的事（一次性提示、更新内容）先等 `updates.ts` 的 `shown()`，之后再按 `visibilityState` 判断。
 - 关闭后会保存结果的界面（首次启动引导）只认 `escape.ts` 的 `plainEscape`：任务管理器替换由 Ctrl+Shift+Esc 打开 Argus，按住的 Esc 以自动重复、带修饰键的按键事件送到新窗口。
 - 叠在其他对话框之上的对话框（确认框、更新对话框）在捕获阶段处理 Esc 并 `stopImmediatePropagation`：各对话框都在 `window` 上监听，冒泡阶段的写法会让一次 Esc 同时关掉下面的引导，并把引导记为已完成。更新对话框在确认框打开时把 Esc 让给它。托盘菜单项和“已准备就绪”提示打开的更新对话框经 `updates.ts` 的 `openUpdateDialogAfter` 等引导结束，提示本身也等引导结束后再出现。
