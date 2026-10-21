@@ -961,6 +961,7 @@ function CpuView() {
                       const eff = () => hybrid() && efficient(i);
                       const color = () => (eff() ? "--cpu-e" : "--cpu");
                       const mhz = () => hw().coreMhz[i] ?? 0;
+                      const load = () => sys().cores[i];
                       const temperature = () => {
                         const thread = cpu().threads[i];
                         return thread && coreTemperatures().get(`${thread.group},${thread.processor}`);
@@ -979,16 +980,21 @@ function CpuView() {
                           )}${temperature() !== undefined ? `\n${t("common.resource.temperature")}: ${Math.round(temperature() ?? 0)} °C` : ""}`}
                         >
                           <div class="core-cell-head">
-                            <span class="chart-cell-label">
+                            <span class="core-id">
                               <Show when={hybrid()}>
                                 <i class="core-kind">{eff() ? "E" : "P"}</i>
                               </Show>
-                              {i}{" "}
-                              <b>{sys().cores[i] == null ? "—" : `${Math.round(sys().cores[i] ?? 0)}%`}</b>
+                              <span class="core-index">{i}</span>
+                              <Show when={mhz() > 0}>
+                                <span class="core-clock">{fmtGHz(mhz())}</span>
+                              </Show>
                             </span>
-                            <Show when={mhz() > 0}>
-                              <span class="chart-cell-note">{fmtGHz(mhz())}</span>
-                            </Show>
+                            <span class="core-load">
+                              <Show when={load() != null} fallback="—">
+                                {Math.round(load() ?? 0)}
+                                <small>%</small>
+                              </Show>
+                            </span>
                           </div>
                           <div class="chart-frame">
                             <Chart

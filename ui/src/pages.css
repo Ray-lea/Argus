@@ -529,22 +529,6 @@
   flex: none;
 }
 
-/* P / E tag on a logical processor. */
-.core-kind {
-  display: inline-block;
-  min-width: 14px;
-  margin-right: 5px;
-  padding: 0 3px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--c) 22%, transparent);
-  color: var(--ink);
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 600;
-  line-height: 14px;
-  text-align: center;
-}
-
 .chart-cell-note {
   position: absolute;
   top: 3px;
@@ -600,26 +584,69 @@
   will-change: transform;
 }
 
+/* A card's header, above the curve rather than on it: the core (P / E tag,
+   number) and its clock on the left, its load on the right, over the newest
+   point. The chart's grid starts below it; no bar or divider of its own. */
 .core-cell-head {
   display: flex;
   flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   height: var(--cell-head);
-  padding: 0 6px;
-  border-bottom: 1px solid color-mix(in srgb, var(--c) 16%, transparent);
-  border-radius: 3px 3px 0 0;
-  background: color-mix(in srgb, var(--c) 5%, transparent);
-}
-
-.core-cell-head :is(.chart-cell-label, .chart-cell-note) {
-  position: static;
+  padding: 0 7px 0 6px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.core-cell-head .chart-cell-label b {
+.core-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* P / E tag in the core's color (mixed toward the text color to stay legible). */
+.core-kind {
+  flex: none;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  color: color-mix(in srgb, var(--c) 70%, var(--ink));
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+
+.core-index {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.core-clock {
+  overflow: hidden;
+  margin-left: 2px;
+  color: var(--ink-2);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.core-load {
+  flex: none;
+  color: var(--ink);
+  font-size: 13px;
   font-weight: 600;
+}
+
+.core-load small {
+  margin-left: 1px;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-weight: 400;
 }
 
 .core-cell > .chart-frame {
