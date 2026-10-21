@@ -42,6 +42,60 @@
   color: var(--ink-2);
 }
 
+/* The user's note, right after the name: a tinted chip with a note glyph, in
+   the accent rather than the ink, so it reads as theirs and not as data. It
+   takes only the room the name leaves (sized from zero, at most its text), so
+   the name keeps all of its letters until the note is down to its glyph and
+   one character. */
+.row-note {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 4px;
+  min-width: 40px;
+  max-width: max-content;
+  height: 20px;
+  margin-left: -2px;
+  padding: 0 7px 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  color: color-mix(in srgb, var(--accent) 72%, var(--ink));
+  font-size: 12px;
+}
+
+.row-note svg {
+  flex: none;
+}
+
+.row-note-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row.selected .row-note {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Pinned rows: a pin at the end of the first cell, a line under the last. */
+.row-pin {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  color: var(--ink-2);
+}
+
+/* Above the rows, so a selected or hovered row does not hide it. */
+.pin-divider {
+  position: absolute;
+  top: -1px;
+  left: 12px;
+  right: 12px;
+  z-index: 1;
+  height: 1px;
+  background: var(--stroke-strong);
+  pointer-events: none;
+}
+
 /* Status with a leading dot: grey when idle, green running, amber in transition. */
 .status {
   display: inline-flex;
@@ -198,6 +252,16 @@
 .member-value {
   color: var(--ink-2);
   text-align: right;
+}
+
+/* ---- Note dialog ----------------------------------------------------------- */
+
+.note-target {
+  margin: -4px 0 16px;
+  overflow: hidden;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- File-lock dialog ------------------------------------------------------ */

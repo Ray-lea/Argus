@@ -39,5 +39,16 @@
   "languageSystem": "Same as Windows",
   "keys": {
     "space": "Space"
+  },
+  "marks": {
+    "pin": "Pin to top",
+    "unpin": "Unpin",
+    "pinned": "Pinned",
+    "addNote": "Add note",
+    "editNote": "Edit note",
+    "deleteNote": "Delete note",
+    "note": "Note",
+    "placeholder": "What this is for, in a few words",
+    "save": "Save"
   }
 }

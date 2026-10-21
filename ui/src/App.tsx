@@ -9,6 +9,7 @@ import Onboarding, { maybeOpenOnboarding, onboardingOpen } from "./components/On
 import { ConfirmDialog, ContextMenu, Toasts } from "./components/Overlays";
 import Performance from "./components/Performance";
 import ProcessTable from "./components/ProcessTable";
+import NoteDialog from "./components/RowMarks";
 import ServicesPage from "./components/ServicesPage";
 import SettingsPage from "./components/Settings";
 import StartupPage from "./components/StartupPage";
@@ -227,6 +228,7 @@ export default function App() {
       <ContextMenu />
       <FileLockDialog />
       <NewTaskDialog />
+      <NoteDialog />
       <Onboarding />
       <UpdateDialog busy={onboardingOpen} />
       <ConfirmDialog />

@@ -57,5 +57,9 @@
   "noMatch": "没有匹配的连接",
   "noMatchPort": "没有匹配的连接：没有程序在使用端口 {port}",
   "clearFilter": "清除筛选",
-  "note": "每 2 秒刷新一次。双击某行可转到对应进程。"
+  "note": "每 2 秒刷新一次。双击某行可转到对应进程。",
+  "markTarget": {
+    "local": "{name} · 本地端口 {port}",
+    "remote": "{name} · 远程 {endpoint}"
+  }
 }

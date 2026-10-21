@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { copyText, revealInExplorer, toastActionError } from "../lib/actions";
 import { rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
+import { rowMarks } from "../lib/marks";
 import { appInfo, refreshServices, revealProcess, services, setPage, snapshot } from "../lib/store";
 import type { ServiceInfo, ServiceStartType } from "../lib/types";
 import { type MenuEntry, openMenu, toast } from "../lib/ui";
@@ -10,6 +11,7 @@ import DataTable, { type Column } from "./DataTable";
 import Indicator from "./Indicator";
 import { CopyIcon, ExternalIcon, FolderIcon, GoToIcon, PlayIcon, RestartIcon, StopIcon } from "./icons";
 import { Loading } from "./Overlays";
+import { markMenu, NoteBadge, PinMark } from "./RowMarks";
 import SearchBox from "./SearchBox";
 
 type Filter = "all" | "running" | "stopped";
@@ -19,6 +21,9 @@ const [filter, setFilter] = createSignal<Filter>("all");
 const [selected, setSelected] = createSignal<string | null>(null);
 /** Services with an action in flight; their buttons wait for it. */
 const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
+const marks = rowMarks("services");
+/** Service names are case-insensitive. */
+const markKey = (s: ServiceInfo) => s.name.toLowerCase();
 
 const startLabel = (type: ServiceStartType) => t(`services.startType.${type}`);
 
@@ -105,6 +110,8 @@ function serviceMenu(s: ServiceInfo): MenuEntry[] {
       icon: () => <CopyIcon />,
       run: () => copyText(s.name, t("services.copied.name")),
     },
+    "separator",
+    ...markMenu(marks, markKey(s), s.displayName),
   ];
 }
 
@@ -198,7 +205,8 @@ export default function ServicesPage() {
         String(s.pid) === q ||
         s.name.toLowerCase().includes(q) ||
         s.displayName.toLowerCase().includes(q) ||
-        (s.description?.toLowerCase().includes(q) ?? false)
+        (s.description?.toLowerCase().includes(q) ?? false) ||
+        (marks.note(markKey(s))?.toLowerCase().includes(q) ?? false)
       );
     });
   });
@@ -217,9 +225,13 @@ export default function ServicesPage() {
       width: "minmax(220px, 1.3fr)",
       sortValue: (s) => s.displayName,
       cell: (s) => (
-        <span class="label strong" title={s().displayName}>
-          {s().displayName}
-        </span>
+        <>
+          <span class="label strong" title={s().displayName}>
+            {s().displayName}
+          </span>
+          <NoteBadge note={marks.note(markKey(s()))} />
+          <PinMark pinned={marks.pinned(markKey(s()))} />
+        </>
       ),
     },
     {
@@ -300,6 +312,7 @@ export default function ServicesPage() {
         selected={selected()}
         onSelect={setSelected}
         onContextMenu={(s, e) => openMenu(e, serviceMenu(s))}
+        pinned={(s) => marks.pinned(markKey(s))}
         onActivate={(s) => s.pid && revealProcess(s.pid)}
         empty={
           services().length === 0 ? (

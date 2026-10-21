@@ -2,6 +2,8 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { copyText, endProcessByPid, toastActionError } from "../lib/actions";
 import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
+import { rowMarks } from "../lib/marks";
+import { connectionMark, connectionSide, listeningPorts } from "../lib/row-marks";
 import { revealProcess, snapshot } from "../lib/store";
 import type { Connection, ProcessRow } from "../lib/types";
 import { type MenuEntry, openMenu, toast } from "../lib/ui";
@@ -11,6 +13,7 @@ import Indicator from "./Indicator";
 import { CopyIcon, DismissIcon, EndIcon, GoToIcon } from "./icons";
 import { Loading } from "./Overlays";
 import ProcIcon from "./ProcIcon";
+import { markMenu, NoteBadge, PinMark } from "./RowMarks";
 import SearchBox from "./SearchBox";
 
 type Filter = "all" | "listen" | "established" | "udp";
@@ -19,6 +22,7 @@ const [query, setQuery] = createSignal("");
 const [filter, setFilter] = createSignal<Filter>("all");
 const [selected, setSelected] = createSignal<string | null>(null);
 const [conns, setConns] = createSignal<Connection[] | null>(null);
+const marks = rowMarks("connections");
 
 const FILTERS: Filter[] = ["all", "listen", "established", "udp"];
 
@@ -37,8 +41,20 @@ async function load() {
   }
 }
 
-function connectionMenu(c: Connection, proc: ProcessRow | undefined): MenuEntry[] {
+function connectionMenu(
+  c: Connection,
+  proc: ProcessRow | undefined,
+  listening: ReadonlySet<string>,
+): MenuEntry[] {
   const name = proc?.name ?? `PID ${c.pid}`;
+  const program = proc?.description ?? name;
+  const target =
+    connectionSide(c, listening) === "local"
+      ? t("connections.markTarget.local", { name: program, port: c.localPort })
+      : t("connections.markTarget.remote", {
+          name: program,
+          endpoint: endpoint(c.remoteAddress ?? "", c.remotePort, c.ipv6),
+        });
   const closable = c.protocol === "tcp" && !c.ipv6 && c.state === "established";
   return [
     {
@@ -83,6 +99,8 @@ function connectionMenu(c: Connection, proc: ProcessRow | undefined): MenuEntry[
         c.remoteAddress &&
         copyText(endpoint(c.remoteAddress, c.remotePort, c.ipv6), t("connections.copied.remote")),
     },
+    "separator",
+    ...markMenu(marks, connectionMark(c, proc?.name, listening), target),
   ];
 }
 
@@ -116,6 +134,16 @@ export default function ConnectionsPage() {
   });
 
   const procs = createMemo(() => new Map(snapshot()?.processes.map((p) => [p.pid, p]) ?? []));
+  const listening = createMemo(() => listeningPorts(conns() ?? []));
+  const markOf = (c: Connection) => connectionMark(c, procs().get(c.pid)?.name, listening());
+  const noteOf = (c: Connection) => {
+    const key = markOf(c);
+    return key === null ? undefined : marks.note(key);
+  };
+  const pinned = (c: Connection) => {
+    const key = markOf(c);
+    return key !== null && marks.pinned(key);
+  };
 
   const rows = createMemo(() => {
     const q = query().trim().toLowerCase();
@@ -134,7 +162,8 @@ export default function ConnectionsPage() {
         c.localAddress.includes(q) ||
         (c.remoteAddress?.includes(q) ?? false) ||
         (p?.name.toLowerCase().includes(q) ?? false) ||
-        (p?.description?.toLowerCase().includes(q) ?? false)
+        (p?.description?.toLowerCase().includes(q) ?? false) ||
+        (noteOf(c)?.toLowerCase().includes(q) ?? false)
       );
     });
   });
@@ -168,6 +197,8 @@ export default function ConnectionsPage() {
                   ? "System Idle Process"
                   : t("connections.exited")}
             </span>
+            <NoteBadge note={noteOf(c())} />
+            <PinMark pinned={pinned(c())} />
           </>
         );
       },
@@ -260,7 +291,8 @@ export default function ConnectionsPage() {
         initialSort={{ id: "lport", desc: false }}
         selected={selected()}
         onSelect={setSelected}
-        onContextMenu={(c, e) => openMenu(e, connectionMenu(c, procs().get(c.pid)))}
+        onContextMenu={(c, e) => openMenu(e, connectionMenu(c, procs().get(c.pid), listening()))}
+        pinned={pinned}
         onActivate={(c) => revealProcess(c.pid)}
         empty={
           conns() === null ? (

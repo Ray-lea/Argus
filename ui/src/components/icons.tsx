@@ -319,6 +319,31 @@ export const TrashIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** A row pinned to the top of its table. */
+export const PinIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5.5 2.5h5" />
+    <path d="M6.5 2.5v3.8L4.5 9.5h7l-2-3.2V2.5" />
+    <path d="M8 9.5v4" />
+  </Svg>
+);
+
+export const UnpinIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5.5 2.5h5" />
+    <path d="M6.5 2.5v3.8L4.5 9.5h7l-2-3.2V2.5" />
+    <path d="M8 9.5v4M2.5 2.5l11 11" />
+  </Svg>
+);
+
+/** The user's note on a row: a sticky note with a folded corner. */
+export const NoteIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.5 2.5h9c.6 0 1 .4 1 1V10L10 13.5H3.5c-.6 0-1-.4-1-1v-9c0-.6.4-1 1-1Z" />
+    <path d="M13.5 10H11c-.6 0-1 .4-1 1v2.5" />
+  </Svg>
+);
+
 /** What a version changed: a page, a spark at its corner. */
 export const NotesIcon = (p: IconProps) => (
   <Svg {...p}>

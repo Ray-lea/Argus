@@ -14,6 +14,7 @@ import {
   Show,
 } from "solid-js";
 import { localized } from "../lib/i18n";
+import { pinnedFirst } from "../lib/row-marks";
 import { ChevronDown, ChevronUp } from "./icons";
 
 const ROW_HEIGHT = 30;
@@ -50,6 +51,8 @@ interface Props<T> {
   /** Double click or Enter. */
   onActivate?: (row: T) => void;
   rowClass?: (row: T) => Record<string, boolean>;
+  /** Pinned rows come first, sorted among themselves; a line ends them. */
+  pinned?: (row: T) => boolean;
   empty?: JSX.Element;
 }
 
@@ -63,7 +66,7 @@ export default function DataTable<T>(props: Props<T>) {
   const [sort, setSort] = createSignal<SortSpec | null>(props.initialSort ?? null);
   const template = () => props.columns.map((c) => c.width).join(" ");
 
-  const sorted = createMemo(() => {
+  const ordered = createMemo(() => {
     const s = sort();
     const col = s && props.columns.find((c) => c.id === s.id);
     if (!s || !col?.sortValue) return props.rows;
@@ -77,6 +80,19 @@ export default function DataTable<T>(props: Props<T>) {
         typeof va === "number" && typeof vb === "number" ? va - vb : text.compare(String(va), String(vb));
       return dir * c;
     });
+  });
+  const sorted = createMemo(() => {
+    const pinned = props.pinned;
+    return pinned ? pinnedFirst(ordered(), pinned) : ordered();
+  });
+  /** How many pinned rows lead the list; 0 when none do, or nothing follows them. */
+  const pinnedCount = createMemo(() => {
+    const pinned = props.pinned;
+    const list = sorted();
+    if (!pinned) return 0;
+    let n = 0;
+    while (n < list.length && pinned(list[n])) n++;
+    return n < list.length ? n : 0;
   });
 
   const virtualizer = createVirtualizer({
@@ -213,6 +229,13 @@ export default function DataTable<T>(props: Props<T>) {
             role="presentation"
             style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}
           >
+            <Show when={pinnedCount() > 0}>
+              <div
+                class="pin-divider"
+                aria-hidden="true"
+                style={{ transform: `translateY(${pinnedCount() * ROW_HEIGHT}px)` }}
+              />
+            </Show>
             <For each={virtualizer.getVirtualItems()}>
               {(item) => (
                 <Show when={sorted()[item.index]}>
@@ -224,7 +247,11 @@ export default function DataTable<T>(props: Props<T>) {
                         role="row"
                         aria-selected={props.selected === key()}
                         class="row"
-                        classList={{ selected: props.selected === key(), ...props.rowClass?.(row()) }}
+                        classList={{
+                          selected: props.selected === key(),
+                          pinned: props.pinned?.(row()) ?? false,
+                          ...props.rowClass?.(row()),
+                        }}
                         style={{
                           display: "grid",
                           "grid-template-columns": template(),

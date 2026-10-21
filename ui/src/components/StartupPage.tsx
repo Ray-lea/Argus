@@ -2,6 +2,7 @@ import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { copyText, revealInExplorer, toastActionError } from "../lib/actions";
 import { rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
+import { rowMarks } from "../lib/marks";
 import type { StartupItem } from "../lib/types";
 import { type MenuEntry, openMenu, toast } from "../lib/ui";
 import { pollWhileVisible } from "../lib/visible-poll";
@@ -9,6 +10,7 @@ import DataTable, { type Column } from "./DataTable";
 import { CopyIcon, FolderIcon } from "./icons";
 import { Loading } from "./Overlays";
 import ProcIcon from "./ProcIcon";
+import { markMenu, NoteBadge, PinMark } from "./RowMarks";
 import SearchBox from "./SearchBox";
 
 const [query, setQuery] = createSignal("");
@@ -16,6 +18,7 @@ const [selected, setSelected] = createSignal<string | null>(null);
 const [items, setItems] = createSignal<StartupItem[] | null>(null);
 const [pending, setPending] = createSignal<ReadonlySet<string>>(new Set());
 let generation = 0;
+const marks = rowMarks("startup");
 
 async function load(force = false) {
   if (pending().size && !force) return;
@@ -66,6 +69,8 @@ function startupMenu(item: StartupItem): MenuEntry[] {
       disabled: !item.command,
       run: () => copyText(item.command, t("startup.copied.command")),
     },
+    "separator",
+    ...markMenu(marks, item.id, item.name),
   ];
 }
 
@@ -97,7 +102,8 @@ export default function StartupPage() {
         i.name.toLowerCase().includes(q) ||
         (i.entry?.toLowerCase().includes(q) ?? false) ||
         (i.publisher?.toLowerCase().includes(q) ?? false) ||
-        i.command.toLowerCase().includes(q),
+        i.command.toLowerCase().includes(q) ||
+        (marks.note(i.id)?.toLowerCase().includes(q) ?? false),
     );
   });
 
@@ -117,11 +123,13 @@ export default function StartupPage() {
           <span class="label strong" title={[i().name, i().entry].filter(Boolean).join("\n")}>
             {i().name}
           </span>
+          <NoteBadge note={marks.note(i().id)} />
           <Show when={!i().exists && i().path}>
             <span class="tag warn" title={t("startup.missing.title")}>
               {t("startup.missing.label")}
             </span>
           </Show>
+          <PinMark pinned={marks.pinned(i().id)} />
         </>
       ),
     },
@@ -205,6 +213,7 @@ export default function StartupPage() {
         onContextMenu={(i, e) => openMenu(e, startupMenu(i))}
         onActivate={(i) => setEnabled(i, !i.enabled)}
         rowClass={(i) => ({ off: !i.enabled })}
+        pinned={(i) => marks.pinned(i.id)}
         empty={items() === null ? <Loading text={t("startup.loading")} /> : t("startup.noMatch")}
       />
       <footer class="page-foot">

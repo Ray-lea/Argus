@@ -57,5 +57,9 @@
   "noMatch": "No matching connections",
   "noMatchPort": "No matching connections: no program is using port {port}",
   "clearFilter": "Clear filters",
-  "note": "Updates every 2 seconds. Double-click a row to go to its process."
+  "note": "Updates every 2 seconds. Double-click a row to go to its process.",
+  "markTarget": {
+    "local": "{name} · local port {port}",
+    "remote": "{name} · remote {endpoint}"
+  }
 }

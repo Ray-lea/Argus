@@ -39,5 +39,16 @@
   "languageSystem": "跟随系统",
   "keys": {
     "space": "空格"
+  },
+  "marks": {
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "pinned": "已置顶",
+    "addNote": "添加备注",
+    "editNote": "编辑备注",
+    "deleteNote": "删除备注",
+    "note": "备注",
+    "placeholder": "简要说明此项的用途",
+    "save": "保存"
   }
 }
