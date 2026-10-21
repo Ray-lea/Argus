@@ -10,6 +10,7 @@ mod settings;
 mod shell;
 mod tasks;
 mod updater;
+mod webview_policy;
 mod webview_profile;
 mod webview_recovery;
 mod window_motion;
@@ -247,6 +248,7 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(webview_policy::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Before setup: a second launch reaches show_main (and the hotkey's
         // retry) as soon as the window exists, before setup has run.
