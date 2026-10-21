@@ -36,7 +36,12 @@ pub fn message(code: u32) -> String {
 }
 
 pub fn win(e: windows::core::Error) -> u32 {
-    e.code().0 as u32 & 0xffff
+    let code = e.code().0 as u32;
+    if code >> 16 == 0x8007 {
+        code & 0xffff
+    } else {
+        code
+    }
 }
 
 pub fn io(e: std::io::Error) -> u32 {
@@ -56,6 +61,27 @@ impl Drop for Handle {
             unsafe {
                 let _ = CloseHandle(self.0);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn non_win32_hresult_is_not_misreported_as_access_denied() {
+        for (hresult, expected) in [
+            (0x80070005u32, 5),
+            (0x80070715, 1813),
+            (0x80004005, 0x80004005),
+            (0xc0000022, 0xc0000022),
+        ] {
+            assert_eq!(
+                win(windows::core::Error::from_hresult(windows::core::HRESULT(
+                    hresult as i32
+                ))),
+                expected
+            );
         }
     }
 }

@@ -47,7 +47,7 @@ impl From<windows::core::Error> for ActionError {
         } else if e.code() == ERROR_INVALID_PARAMETER.to_hresult() {
             ActionError::NotFound
         } else {
-            ActionError::Os(e.message())
+            ActionError::Os(e.to_string())
         }
     }
 }

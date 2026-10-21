@@ -8,7 +8,7 @@ use std::os::windows::io::AsRawHandle;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
-use windows::Win32::Foundation::{HANDLE, HLOCAL, LocalFree};
+use windows::Win32::Foundation::{GetLastError, HANDLE, HLOCAL, LocalFree};
 use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
 use windows::Win32::Security::{
     ImpersonateLoggedOnUser, RevertToSelf, TOKEN_DUPLICATE, TOKEN_IMPERSONATE, TOKEN_QUERY,
@@ -200,17 +200,25 @@ fn lock_directory(path: &Path) -> Result<(File, PathBuf), ProfileError> {
             code: 267,
         });
     }
+    // The final path resolves ancestor junctions. Keep the lease until the webview closes.
+    Ok((file, final_directory(handle)?))
+}
+
+fn final_directory(handle: HANDLE) -> Result<PathBuf, ProfileError> {
     let mut buffer = vec![0u16; 32768];
     let len = unsafe { GetFinalPathNameByHandleW(handle, &mut buffer, VOLUME_NAME_DOS) } as usize;
     if len == 0 || len >= buffer.len() {
         return Err(ProfileError {
             stage: "browser directory final path",
-            code: 3,
+            code: if len == 0 {
+                unsafe { GetLastError() }.0
+            } else {
+                122
+            },
         });
     }
     let final_path = OsString::from_wide(&buffer[..len]);
-    // The final path resolves ancestor junctions. Keep the lease until the webview closes.
-    Ok((file, PathBuf::from(final_path)))
+    Ok(PathBuf::from(final_path))
 }
 
 fn resolve(identifier: &str, create: bool) -> Result<Option<Profile>, ProfileError> {
@@ -296,6 +304,14 @@ fn worker(identifier: &str, create: bool) -> Result<Option<Profile>, ProfileErro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn final_path_query_keeps_the_native_failure_instead_of_reporting_not_found() {
+        let error = final_directory(windows::Win32::Foundation::INVALID_HANDLE_VALUE).unwrap_err();
+        assert_eq!(error.code, 6);
+        assert_eq!(error.stage, "browser directory final path");
+    }
+
     #[test]
     fn profile_is_isolated_by_host_account_session_and_desktop() {
         let key = profile_key("S-1-5-21-1-2-3-1000", 1, "Default");
