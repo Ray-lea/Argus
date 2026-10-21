@@ -54,7 +54,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 更新签名公钥在 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`。不要生成新密钥替换它（已安装的版本只认旧公钥，用户会收不到更新），不要关掉 `requireSignedVersion`；私钥只在 GitHub Secrets 和维护者本机，不要读取或要求用户提供。测试签名流程用 scratchpad 里临时生成的密钥。
 - 工作流里的 action 固定到提交 SHA，行尾注释对应的版本号；升级时用 `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` 解析新标签（附注标签还要再解一层），不要改回版本标签。
 - 增删或升级依赖后运行 `node scripts/notices.mjs` 并提交 `THIRD-PARTY-NOTICES.txt`，CI 会检查它是否最新。
-- 日志（`%LOCALAPPDATA%\<标识>\logs\diagnostics\argus.log`）会附在公开的缺陷报告里：只记录启动信息与操作失败的原因，不要写入进程命令行、文件路径、用户名等个人信息。
+- 日志（`%LOCALAPPDATA%\<标识>\logs\diagnostics\argus.log`）会附在公开的缺陷报告里：记录启动信息、失败阶段、原始错误码及必要的实际路径。路径仅限直接参与失败的文件、目录或注册表键，用 `diagnostics::path` 限长并转义；不从任意错误文本提取路径。不要写入进程命令行、凭据、URL 参数、账户名、文件内容或未经筛选的异常原文。重复失败用 `diagnostics::warn` 限频，不用会耗尽的全局次数上限。
 - 加速代理预设写在 `src-tauri/src/updater.rs` 和 `ui/src/components/Settings.tsx` 两处，改一处同步另一处；加入新的代理前，用真实的 Release 文件实测它返回的内容与直连逐字节一致。
 - 不要在开发机上运行打包出来的安装程序：它会覆盖已安装 Argus 的卸载项和快捷方式。安装与卸载靠 `release.yml` 的静默安装测试和用户在虚拟机里的检查；卸载钩子的分支逻辑可以用 Tauri 下载的 makensis（`target/.tauri/NSIS`）编一个替换了服务注册表项和 Program Files 路径的测试包，只写 scratchpad。
 
