@@ -9,9 +9,11 @@ import {
   onCleanup,
   Show,
   Switch,
+  untrack,
 } from "solid-js";
 import { type RateUnit, rateCeiling, rateCeilingLabel, roundCeiling } from "../lib/chart-scale";
 import { coreGridColumns } from "../lib/core-grid";
+import { ENGINE_LAYOUTS, type EngineLayout, type GridPlan, planGrid, samePlan } from "../lib/engine-grid";
 import {
   fmtCache,
   fmtCapacity,
@@ -27,7 +29,15 @@ import {
   netUnit,
   rateParts,
 } from "../lib/format";
-import { type EngineChoice, shownEngines, withCount, withEngine } from "../lib/gpu-engines";
+import {
+  type EngineChoice,
+  isSmart,
+  shownEngines,
+  wasBusy,
+  withCount,
+  withEngine,
+  withSmart,
+} from "../lib/gpu-engines";
 import { gridReflow } from "../lib/grid-reflow";
 import { rich, t } from "../lib/i18n";
 import { memoryComposition } from "../lib/memory-composition";
@@ -136,81 +146,39 @@ function ChartBox(props: {
   );
 }
 
-/** Width to height a small chart reads best at. */
-const CELL_ASPECT = 1.5;
-
 /**
- * Columns for `count` small charts filling a `width` × `height` area: of the
- * arrangements whose rows fit the height, the one with the largest cells
- * (measured at CELL_ASPECT); when none fits (a short window), as many columns
- * as the minimum cell width allows, so the grid is as short as it can be.
+ * Keeps the logical processors' grid filling the height the view leaves it:
+ * rows stretch (CSS), the column count follows the area (lib/core-grid.ts).
+ * Minimum cell size and gap come from the grid's CSS.
  */
-function fitColumns(
-  count: number,
-  width: number,
-  height: number,
-  cell: { width: number; height: number },
-  gap: number,
-) {
-  let best = 0;
-  let bestSize = 0;
-  let widest = 1;
-  for (let cols = 1; cols <= count; cols++) {
-    const w = (width - (cols - 1) * gap) / cols;
-    if (cols > 1 && w < cell.width) break;
-    widest = cols;
-    const rows = Math.ceil(count / cols);
-    const h = (height - (rows - 1) * gap) / rows;
-    if (h < cell.height - 0.5) continue;
-    const size = Math.min(w / CELL_ASPECT, h);
-    if (size > bestSize) {
-      bestSize = size;
-      best = cols;
-    }
-  }
-  return best || widest;
-}
-
-/**
- * Keeps a grid of small charts (logical processors, GPU engines) filling the
- * height the view leaves it: rows stretch (CSS), the column count follows the
- * area. Minimum cell size and gap come from the grid's CSS.
- */
-function fitGrid(el: HTMLElement, count: () => number, chooseColumns?: typeof coreGridColumns) {
+function fitGrid(el: HTMLElement, count: () => number, chooseColumns: typeof coreGridColumns) {
   let size = { width: 0, height: 0 };
   let columns = 0;
   let previousCount = 0;
-  const reflow = chooseColumns ? gridReflow(el) : null;
+  const reflow = gridReflow(el);
   const fit = () => {
     if (!size.width || !size.height) return;
     const style = getComputedStyle(el);
-    const cell = {
-      width: Number.parseFloat(style.getPropertyValue("--cell-w")),
-      height: Number.parseFloat(style.getPropertyValue("--cell-h")),
-    };
     const total = count();
     const sameCount = total === previousCount;
-    const gap = Number.parseFloat(style.columnGap) || 0;
-    const cols = chooseColumns
-      ? chooseColumns(
-          {
-            count: total,
-            ...size,
-            cellWidth: cell.width,
-            cellHeight: cell.height,
-            headerHeight: Number.parseFloat(style.getPropertyValue("--cell-head")) || 0,
-            gap,
-          },
-          sameCount ? columns : 0,
-        )
-      : fitColumns(total, size.width, size.height, cell, gap);
+    const cols = chooseColumns(
+      {
+        count: total,
+        ...size,
+        cellWidth: Number.parseFloat(style.getPropertyValue("--cell-w")),
+        cellHeight: Number.parseFloat(style.getPropertyValue("--cell-h")),
+        headerHeight: Number.parseFloat(style.getPropertyValue("--cell-head")) || 0,
+        gap: Number.parseFloat(style.columnGap) || 0,
+      },
+      sameCount ? columns : 0,
+    );
     previousCount = total;
-    if (!sameCount) reflow?.cancel();
+    if (!sameCount) reflow.cancel();
     if (cols === columns) return;
     const animate = columns > 0 && sameCount;
     columns = cols;
     const apply = () => el.style.setProperty("--cols", String(cols));
-    if (reflow && animate) reflow.change(apply);
+    if (animate) reflow.change(apply);
     else apply();
   };
   // Layout sizes: the view's settle animation scales the grid for a moment.
@@ -221,6 +189,67 @@ function fitGrid(el: HTMLElement, count: () => number, chooseColumns?: typeof co
   observer.observe(el);
   createEffect(on(count, fit, { defer: true }));
   onCleanup(() => observer.disconnect());
+}
+
+/**
+ * Lays out the GPU's engine charts (lib/engine-grid.ts) in the area the view
+ * leaves them, each in the place the plan gives it, and carries each change
+ * through the grid's transition (lib/grid-reflow.ts): another arrangement as
+ * the area changes, and through `change`, another layout or engines coming
+ * and going.
+ */
+function engineGrid(el: HTMLElement, count: () => number, layout: () => EngineLayout) {
+  const reflow = gridReflow(el);
+  let size = { width: 0, height: 0 };
+  let plan: GridPlan | null = null;
+  /** The plan for the grid as it is now. */
+  const fresh = () => {
+    if (!size.width || !size.height) return null;
+    const style = getComputedStyle(el);
+    return planGrid(
+      layout(),
+      count(),
+      size.width,
+      size.height,
+      {
+        width: Number.parseFloat(style.getPropertyValue("--cell-w")),
+        height: Number.parseFloat(style.getPropertyValue("--cell-h")),
+      },
+      Number.parseFloat(style.columnGap) || 0,
+    );
+  };
+  /** Gives the grid its tracks and each chart its place: the charts can change while the plan stays. */
+  const place = (p: GridPlan | null) => {
+    if (!p) return;
+    plan = p;
+    el.style.setProperty("--cols", String(p.columns));
+    el.style.setProperty("--rows", String(p.rows));
+    el.style.setProperty("--stack", String(p.stack));
+    const cells = [...el.children].filter((cell) => !cell.classList.contains("grid-leaving"));
+    cells.forEach((cell, i) => {
+      const at = p.cells[i];
+      (cell as HTMLElement).style.gridArea = at
+        ? `${at.row} / ${at.column} / span ${at.rows} / span ${at.columns}`
+        : "";
+    });
+  };
+  const observer = new ResizeObserver(([entry]) => {
+    size = { width: entry.contentRect.width, height: entry.contentRect.height };
+    const p = fresh();
+    if (!p || (plan && samePlan(plan, p))) return;
+    if (plan) reflow.change(() => place(p));
+    else place(p);
+  });
+  observer.observe(el);
+  onCleanup(() => observer.disconnect());
+  return {
+    /** Runs `update` (which changes the charts) and the layout that follows as one transition. */
+    change: (update?: () => void) =>
+      reflow.change(() => {
+        update?.();
+        place(fresh());
+      }),
+  };
 }
 
 function Stat(props: { label: string; value: JSX.Element; unit?: string; note?: string }) {
@@ -979,7 +1008,7 @@ function CpuView() {
                             { index: i, core: cpu().threads[i]?.core ?? "?" },
                           )}${temperature() !== undefined ? `\n${t("common.resource.temperature")}: ${Math.round(temperature() ?? 0)} °C` : ""}`}
                         >
-                          <div class="core-cell-head">
+                          <div class="cell-head">
                             <span class="core-id">
                               <Show when={hybrid()}>
                                 <i class="core-kind">{eff() ? "E" : "P"}</i>
@@ -989,7 +1018,7 @@ function CpuView() {
                                 <span class="core-clock">{fmtGHz(mhz())}</span>
                               </Show>
                             </span>
-                            <span class="core-load">
+                            <span class="cell-load">
                               <Show when={load() != null} fallback="—">
                                 {Math.round(load() ?? 0)}
                                 <small>%</small>
@@ -1461,6 +1490,97 @@ function NicView(props: { id: string }) {
  * adapter LUID, which changes at every boot.
  */
 const [engineChoices, setEngineChoices] = persisted<Record<string, EngineChoice>>("gpuEngines", {});
+/** How the engine charts are laid out, the same for every GPU. */
+const [engineLayout, setEngineLayout] = persisted<EngineLayout>("gpuLayout", "grid");
+const layoutOf = (): EngineLayout => (ENGINE_LAYOUTS.includes(engineLayout()) ? engineLayout() : "grid");
+
+/** The engine charts' part of the height they share with the memory charts. */
+const SHARE_DEFAULT = 0.6;
+const SHARE_MIN = 0.3;
+const SHARE_MAX = 0.85;
+const clampShare = (v: number) =>
+  Number.isFinite(v) ? Math.min(SHARE_MAX, Math.max(SHARE_MIN, v)) : SHARE_DEFAULT;
+const [savedShare, saveShare] = persisted("gpuEngineShare", SHARE_DEFAULT);
+
+/**
+ * The handle between the engine charts and the memory charts: drag it, use
+ * the arrow keys, or double-click for the default. It sets the engines' part
+ * of the height, so the split follows the window; saved when a drag ends.
+ */
+function ShareSplitter(props: { share: number; onResize: (share: number) => void; onCommit: () => void }) {
+  const [dragging, setDragging] = createSignal(false);
+  let handle!: HTMLDivElement;
+  /**
+   * Sets `share` and saves the split as laid out: the charts' minimum heights
+   * can stop it short, and the share kept (and stepped from by the arrow
+   * keys) is then the one on screen.
+   */
+  const settle = (share: number) => {
+    props.onResize(share);
+    const above = handle.previousElementSibling?.getBoundingClientRect().height ?? 0;
+    const below = handle.nextElementSibling?.getBoundingClientRect().height ?? 0;
+    const seen = above / (above + below);
+    if (Math.abs(seen - share) > 0.01) props.onResize(clampShare(seen));
+    props.onCommit();
+  };
+  const begin = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    const above = handle.previousElementSibling?.getBoundingClientRect().height ?? 0;
+    const total = above + (handle.nextElementSibling?.getBoundingClientRect().height ?? 0);
+    if (!(total > 0)) return;
+    handle.setPointerCapture(e.pointerId);
+    setDragging(true);
+    const startY = e.clientY;
+    let next = props.share;
+    let frame = 0;
+    const move = (m: PointerEvent) => {
+      next = clampShare((above + m.clientY - startY) / total);
+      // One layout per frame, however fast the pointer reports.
+      frame ||= requestAnimationFrame(() => {
+        frame = 0;
+        props.onResize(next);
+      });
+    };
+    const end = () => {
+      cancelAnimationFrame(frame);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("lostpointercapture", end);
+      settle(next);
+      setDragging(false);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("lostpointercapture", end);
+  };
+  const key = (e: KeyboardEvent) => {
+    const step = e.key === "ArrowUp" ? -0.05 : e.key === "ArrowDown" ? 0.05 : 0;
+    if (step === 0 && e.key !== "Home" && e.key !== "End") return;
+    e.preventDefault();
+    settle(e.key === "Home" ? SHARE_MIN : e.key === "End" ? SHARE_MAX : clampShare(props.share + step));
+  };
+  return (
+    <div
+      ref={handle}
+      class="share-splitter"
+      classList={{ dragging: dragging() }}
+      role="separator"
+      tabIndex={0}
+      aria-orientation="horizontal"
+      aria-label={t("performance.gpu.resize")}
+      aria-valuemin={Math.round(SHARE_MIN * 100)}
+      aria-valuemax={Math.round(SHARE_MAX * 100)}
+      aria-valuenow={Math.round(props.share * 100)}
+      onPointerDown={begin}
+      onKeyDown={key}
+      onDblClick={() => settle(SHARE_DEFAULT)}
+    />
+  );
+}
+
+/** What the engine list shows: smart display, or that many charts. */
+type EngineDisplay = "smart" | number;
+
+const sameList = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
 
 function GpuView(props: { id: string }) {
   const gpus = () => now().hardware.gpus;
@@ -1469,68 +1589,119 @@ function GpuView(props: { id: string }) {
   const k = () => `gpu.${props.id}`;
   const engines = () => gpu()?.info.engines ?? [];
   const choice = () => engineChoices()[gpu()?.info.name ?? ""];
-  const shown = () => shownEngines(engines(), choice());
+  /** Smart display: an engine counts while its chart shows any work. */
+  const busy = (name: string) => wasBusy(series(`${k()}.e${engines().indexOf(name)}`));
+  const shown = createMemo(() => shownEngines(engines(), choice(), busy), [], { equals: sameList });
   const choose = (next: EngineChoice) => {
     const model = gpu()?.info.name;
     if (model) setEngineChoices({ ...engineChoices(), [model]: next });
   };
-  const countOptions = () =>
-    engines().map((_, i) => ({
-      value: i + 1,
+  const display = (): EngineDisplay => (isSmart(choice()) ? "smart" : shown().length);
+  const displayOptions = () => [
+    { value: "smart" as EngineDisplay, label: t("performance.gpu.engineSmart") },
+    ...engines().map((_, i) => ({
+      value: (i + 1) as EngineDisplay,
       label:
         i + 1 === engines().length
           ? t("performance.gpu.engineCountAll", { count: i + 1 })
           : t("performance.gpu.engineCountOption", { count: i + 1 }),
-    }));
+    })),
+  ];
+  const setDisplay = (value: EngineDisplay) =>
+    choose(
+      value === "smart" ? withSmart(engines(), choice()) : withCount(engines(), choice(), value, cells()),
+    );
   const engineOptions = () => engines().map((e) => ({ value: e, label: e }));
+
+  // The charts on screen follow `shown` through the grid's transition: those
+  // that stay glide to their new places, new ones grow in, and ones taken out
+  // fade where they were. Run after Solid has settled, so the grid's DOM
+  // changes at once and can be measured on both sides.
+  const [cells, setCells] = createSignal<string[]>(untrack(shown));
+  let grid: ReturnType<typeof engineGrid> | undefined;
+  createEffect(
+    on(shown, (list) => queueMicrotask(() => (grid ? grid.change(() => setCells(list)) : setCells(list))), {
+      defer: true,
+    }),
+  );
+  createEffect(on(layoutOf, () => queueMicrotask(() => grid?.change()), { defer: true }));
+  const [share, setShare] = createSignal(clampShare(savedShare()));
 
   return (
     <Show when={gpu()} fallback={<p class="empty">{t("performance.gpu.notFound")}</p>}>
       {(g) => (
-        <div class="perf-main">
+        <div class="perf-main gpu-view" style={{ "--engine-share": String(share()) }}>
           <Head title={`GPU ${index()}`} model={g().info.name} />
           <Show when={engines().length > 1}>
             <div class="perf-toolbar">
-              <Select<number>
-                value={shown().length}
-                options={countOptions()}
+              <Select<EngineDisplay>
+                value={display()}
+                options={displayOptions()}
                 label={t("performance.gpu.engineCount")}
-                onChange={(n) => choose(withCount(engines(), choice(), n))}
+                title={isSmart(choice()) ? t("performance.gpu.engineSmartTitle") : undefined}
+                onChange={setDisplay}
               />
+              <div class="segmented" role="group" aria-label={t("performance.gpu.layout")}>
+                <Indicator selector="[aria-pressed='true']" track={layoutOf} class="seg-thumb" />
+                <For each={ENGINE_LAYOUTS}>
+                  {(layout) => (
+                    <button
+                      type="button"
+                      title={t(`performance.gpu.layoutTitles.${layout}`)}
+                      aria-pressed={layoutOf() === layout}
+                      onClick={() => setEngineLayout(layout)}
+                    >
+                      {t(`performance.gpu.layouts.${layout}`)}
+                    </button>
+                  )}
+                </For>
+              </div>
             </div>
           </Show>
           <div class="chart-labels">
             <span>{t("performance.gpu.engineUtilization")}</span>
             <span>100%</span>
           </div>
-          <div class="chart-grid" ref={(el) => fitGrid(el, () => shown().length)}>
+          <div
+            class="chart-grid engines"
+            ref={(el) => (grid = engineGrid(el, () => cells().length, layoutOf))}
+          >
             {/* Keyed by engine: a chart that moves to another place keeps its trace. */}
-            <For each={shown()}>
+            <For each={cells()}>
               {(name, slot) => {
                 const e = () => engines().indexOf(name);
                 return (
-                  <div class="chart-frame engine-cell" style={{ "--c": "var(--gpu)" }}>
-                    <span class="chart-cell-label">
+                  <div class="engine-cell" style={{ "--c": "var(--gpu)" }}>
+                    <div class="cell-head">
                       <Select<string>
                         class="compact"
                         value={name}
                         options={engineOptions()}
                         label={t("performance.gpu.engineType")}
-                        onChange={(next) => choose(withEngine(engines(), choice(), slot(), next))}
+                        onChange={(next) => choose(withEngine(engines(), choice(), slot(), next, cells()))}
                       />
-                      <b>{Math.round(g().engines[e()] ?? 0)}%</b>
-                    </span>
-                    <Chart
-                      series={[{ data: () => series(`${k()}.e${e()}`), colorVar: "--gpu" }]}
-                      max={() => 100}
-                    />
+                      <span class="cell-load">
+                        {Math.round(g().engines[e()] ?? 0)}
+                        <small>%</small>
+                      </span>
+                    </div>
+                    <div class="chart-frame">
+                      <Chart
+                        series={[{ data: () => series(`${k()}.e${e()}`), colorVar: "--gpu" }]}
+                        max={() => 100}
+                      />
+                    </div>
                   </div>
                 );
               }}
             </For>
           </div>
-
-          <div class="chart-pair section-gap">
+          <ShareSplitter
+            share={share()}
+            onResize={(v) => setShare(clampShare(v))}
+            onCommit={() => saveShare(share())}
+          />
+          <div class="chart-pair">
             <ChartBox
               label={t("performance.gpu.dedicatedMemory")}
               max={`${fmtGB(g().info.dedicatedTotal)} GB`}

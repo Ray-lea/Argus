@@ -367,13 +367,47 @@
   flex: 1 1 0;
 }
 
-/* GPU: the engines take more of the height than the memory charts. */
-.perf-main > .chart-grid {
-  flex: 3 1 0;
+/* GPU: the engine charts and the memory charts share the height as the
+   splitter between them sets (--engine-share, the engines' part). */
+.gpu-view > .chart-grid {
+  flex: var(--engine-share, 0.6) 1 0;
 }
 
-.perf-main > .chart-pair {
-  flex: 2 1 0;
+.gpu-view > .chart-pair {
+  flex: calc(1 - var(--engine-share, 0.6)) 1 0;
+}
+
+/* The handle between them (ShareSplitter): a grip that shows it can be dragged. */
+.share-splitter {
+  position: relative;
+  flex: none;
+  height: 18px;
+  cursor: row-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.share-splitter::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 40px;
+  height: 2px;
+  margin-left: -20px;
+  border-radius: 1px;
+  background: var(--stroke-strong);
+  opacity: 0.45;
+}
+
+.share-splitter:hover::after,
+.share-splitter:focus-visible::after {
+  opacity: 1;
+}
+
+.share-splitter.dragging::after {
+  opacity: 1;
+  background: var(--accent);
 }
 
 .perf-head {
@@ -501,44 +535,6 @@
   }
 }
 
-.chart-cell-label {
-  position: absolute;
-  top: 3px;
-  left: 6px;
-  z-index: 1;
-  color: var(--ink-2);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.chart-cell-label b {
-  margin-left: 4px;
-  color: var(--ink);
-  font-weight: 400;
-}
-
-/* A GPU engine chart's label is the choice of engine, then its usage. */
-.engine-cell > .chart-cell-label {
-  display: flex;
-  align-items: center;
-  top: 2px;
-  max-width: calc(100% - 12px);
-}
-
-.engine-cell > .chart-cell-label b {
-  flex: none;
-}
-
-.chart-cell-note {
-  position: absolute;
-  top: 3px;
-  right: 6px;
-  z-index: 1;
-  color: var(--ink-2);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
 .perf-note {
   max-width: 72ch;
   margin: 18px 0 0;
@@ -547,8 +543,8 @@
 }
 
 /* Small charts (GPU engines, logical processors): rows stretch to the grid's
-   height, and fitGrid (Performance.tsx) sets the column count for its area;
-   until it has, columns fill the width. */
+   height, and fitGrid / engineGrid (Performance.tsx) set the column count for
+   its area; until they have, columns fill the width. */
 .chart-grid {
   --cell-w: 118px;
   --cell-h: 64px;
@@ -564,7 +560,26 @@
   --cell-head: 22px;
 }
 
-.core-cell {
+/* The GPU's engine charts (lib/engine-grid.ts): --cols × --rows equal tracks,
+   each chart placed (grid-area) so that they fill them; at least as tall as
+   the most charts stacked in a column (--stack) need. Charts taken out stay
+   in the grid, absolutely placed under the others, while they fade: the grid
+   is their containing block and stacking context. */
+.chart-grid.engines {
+  --cell-w: 150px;
+  --cell-h: 76px;
+  --cell-head: 22px;
+  --gap: 6px;
+  position: relative;
+  isolation: isolate;
+  grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--rows, 1), minmax(0, 1fr));
+  gap: var(--gap);
+  min-height: calc(var(--stack, 1) * var(--cell-h) + (var(--stack, 1) - 1) * var(--gap));
+}
+
+.core-cell,
+.engine-cell {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -575,19 +590,31 @@
 }
 
 /* Rectangular clipping only while cards move, without a persistent layer or mask. */
-.chart-grid.cores.reflowing {
+.chart-grid.reflowing {
   overflow: clip;
 }
 
-.core-cell.grid-moving {
+.grid-moving {
   background: var(--window-bg);
   will-change: transform;
 }
 
-/* A card's header, above the curve rather than on it: the core (P / E tag,
-   number) and its clock on the left, its load on the right, over the newest
-   point. The chart's grid starts below it; no bar or divider of its own. */
-.core-cell-head {
+/* A card taken out (lib/grid-reflow.ts), shown where it was while it fades,
+   under the cards moving in. */
+.grid-leaving {
+  position: absolute;
+  z-index: -1;
+  margin: 0;
+  background: var(--window-bg);
+  pointer-events: none;
+  transform-origin: 50% 50%;
+}
+
+/* A card's header, above the curve rather than on it: what the card charts on
+   the left (a core's P / E tag, number and clock; an engine's name, a choice),
+   its load on the right, over the newest point. The chart's grid starts below
+   it; no bar or divider of its own. */
+.cell-head {
   display: flex;
   flex: none;
   align-items: center;
@@ -635,21 +662,29 @@
   text-overflow: ellipsis;
 }
 
-.core-load {
+/* The engine shown, a choice: as large as a core's number. */
+.engine-cell .cell-head .select.compact {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cell-load {
   flex: none;
   color: var(--ink);
   font-size: 13px;
   font-weight: 600;
 }
 
-.core-load small {
+.cell-load small {
   margin-left: 1px;
   color: var(--ink-2);
   font-size: 10.5px;
   font-weight: 400;
 }
 
-.core-cell > .chart-frame {
+.core-cell > .chart-frame,
+.engine-cell > .chart-frame {
   flex: 1;
   min-height: 0;
   border: 0;

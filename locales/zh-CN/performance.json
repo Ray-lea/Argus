@@ -312,10 +312,20 @@
     "powerLimit": "功耗上限",
     "maxTemperature": "最高温度",
     "engines": "引擎",
-    "engineCount": "显示的引擎数量",
+    "engineCount": "显示的引擎",
     "engineCountOption": "{count} 个引擎",
     "engineCountAll": "全部 {count} 个引擎",
     "engineType": "图中显示的引擎",
+    "engineSmart": "智能显示",
+    "engineSmartTitle": "仅显示曲线时间范围内有占用的引擎",
+    "layout": "引擎图布局",
+    "layouts": { "grid": "网格", "focus": "焦点", "rows": "列表" },
+    "layoutTitles": {
+      "grid": "引擎图均匀排列",
+      "focus": "放大第一个引擎，其余排在旁边",
+      "rows": "每个引擎占一整行，便于对照时间"
+    },
+    "resize": "调整引擎图高度",
     "maxCoreClock": "最高核心频率",
     "powerSource": "功耗来源",
     "sources": {

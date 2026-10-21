@@ -331,6 +331,16 @@
     "engineCountOption": { "one": "{count} engine", "other": "{count} engines" },
     "engineCountAll": "All {count} engines",
     "engineType": "Engine in this chart",
+    "engineSmart": "Smart",
+    "engineSmartTitle": "Only the engines busy within the charts' time span",
+    "layout": "Engine chart layout",
+    "layouts": { "grid": "Grid", "focus": "Focus", "rows": "List" },
+    "layoutTitles": {
+      "grid": "Engine charts in an even grid",
+      "focus": "The first engine large, the others beside it",
+      "rows": "One row per engine, easy to compare over time"
+    },
+    "resize": "Resize the engine charts",
     "maxCoreClock": "Max core clock",
     "powerSource": "Power source",
     "sources": {
