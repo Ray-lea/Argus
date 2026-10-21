@@ -137,8 +137,8 @@ Issues and pull requests are welcome; please read the [contributing guide](.gith
 
 - [x] **M0–M3**: processes, performance, services, startup apps, network connections and file locks
 - [x] Languages, the welcome guide and in-app updates
-- [ ] **M4**: per-process GPU usage and disk reads and writes, priority and efficiency mode rules, and history are done; per-process network traffic through ETW is in progress
-- [ ] **M5**: the optional privileged service, rules and network collection through it, and file locks by handle are done; [Task Manager replacement](docs/architecture/task-manager.md) (Chinese) is in progress
+- [x] **M4**: per-process GPU usage, disk reads and writes, and network traffic through ETW; priority and efficiency mode rules; history
+- [ ] **M5**: the optional privileged service, rules and network collection through it, file locks by handle, and [Task Manager replacement](docs/architecture/task-manager.md) (Chinese) are done; consumer hardware coverage keeps expanding
 - [x] Optional CPU kernel sensors: per-core readings, effective clocks, voltage and power limits, with automatic setup of the official PawnIO driver; AMD/Intel GPU telemetry; [hardware coverage](docs/guide/hardware-data.md) (Chinese)
 - [ ] More keyboard shortcuts: telling left and right modifiers apart, and combinations of modifiers only or of two ordinary keys
 
