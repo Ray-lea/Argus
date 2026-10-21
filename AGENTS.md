@@ -43,6 +43,8 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 规范与流程见 `docs/development/release.md`，这里只列容易做错的地方。
 
+- 改动通过 `start.bat check` 后可直接提交到当前分支，不必先征得用户同意；推送、打标签和发布仍要等用户明确要求。
+
 - 提交信息用 Conventional Commits，格式与 type 见 `docs/development/release.md`；scope 按模块用 core、service、host、ui，跨模块时省略。提交前用 `pnpm commitlint --message "<首行>"` 自查，它检查格式与 type，不检查 scope。
 - 按改动的实际性质选 type，不要一律写 feat 或 chore：type 决定下一个版本号和发布说明。修复卡顿或视觉瑕疵是 fix，纯性能改进是 perf，只改文档是 docs。一次改动跨几类时按类拆成几个提交。
 - 首行写用户能看懂的变化，它会原样进入 `CHANGELOG.md` 和 GitHub Release；正文补充原因、影响与必要的实现细节。常规检查、测试或构建通过等结果不写入提交信息；性能验证只保留简短结论或关键对照数据，不罗列测试过程、原始资料存放位置或代理工作说明。
