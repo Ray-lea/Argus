@@ -1,4 +1,5 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke as nativeInvoke } from "@tauri-apps/api/core";
+import { ErrorGate, errorReport } from "./error-report";
 import type { Language } from "./i18n";
 import type {
   AppInfo,
@@ -30,6 +31,25 @@ import type {
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 const mock = inTauri ? null : await import("./mock");
+const errors = new ErrorGate();
+
+function reportError(event: string, report: ReturnType<typeof errorReport>, command?: string) {
+  const payload = { event, ...report, command };
+  if (inTauri && errors.admit(JSON.stringify(payload), performance.now())) {
+    void nativeInvoke("log_ui_error", payload).catch(() => {});
+  }
+}
+
+function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  // Captures failures before a caller handles them or falls back to defaults.
+  // No arguments are logged: they can contain commands, paths or credentials.
+  return nativeInvoke<T>(command, args).catch((error) => {
+    const report = errorReport(error, window.location.origin);
+    if (!report.frames.length) report.frames = errorReport(new Error(), window.location.origin).frames;
+    reportError("ipc", report, command);
+    throw error;
+  });
+}
 
 export async function subscribe(onSnapshot: (s: Snapshot) => void): Promise<void> {
   if (mock) return mock.subscribe(onSnapshot);
@@ -70,23 +90,13 @@ export const api = {
     mock ? mock.settings.update({ language }) : invoke("set_language", { language }),
   setTheme: (theme: Theme): Promise<SettingsView> =>
     mock ? mock.settings.update({ theme }) : invoke("set_theme", { theme }),
-  /** Only a fixed category leaves the page; messages and stacks may contain private data. */
-  logError: (event: "uncaught" | "unhandledRejection", error: unknown): void => {
-    const name = error instanceof Error ? error.name : "Unknown";
-    const category = [
-      "TypeError",
-      "RangeError",
-      "ReferenceError",
-      "SyntaxError",
-      "URIError",
-      "EvalError",
-      "AbortError",
-      "NetworkError",
-      "Error",
-    ].includes(name)
-      ? name
-      : "Unknown";
-    if (!mock) void invoke("log_ui_error", { event, category }).catch(() => {});
+  /** Includes validated own-script positions, never the message or raw stack. */
+  logError: (
+    event: "uncaught" | "unhandledRejection",
+    error: unknown,
+    location?: { url: string; line: number; column: number },
+  ): void => {
+    if (!mock) reportError(event, errorReport(error, window.location.origin, location));
   },
   /** Where the caption's maximize button is (CSS px, `right` from the window's right edge). */
   setCaptionButton: (rect: { right: number; top: number; width: number; height: number }): Promise<void> =>

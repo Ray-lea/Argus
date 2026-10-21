@@ -1,8 +1,8 @@
 //! What the log records for bug reports, beyond operation failures: the
 //! environment at start, which sensors this PC offers (once, after the first
 //! sample), the state of the privileged features, and errors the page did not
-//! handle. The log is attached to public reports, so nothing personal goes in:
-//! no paths, user or machine names, command lines or addresses.
+//! handle. Reviewed failure paths are explicit fields; raw errors, command
+//! arguments, account names, machine names and network addresses are excluded.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::{fs::File, io::Read};
@@ -277,32 +277,130 @@ pub fn log_privileged_state() {
     });
 }
 
-/// Errors from the page are capped per session: a broken render loop must not
-/// fill the log.
-static UI_ERRORS: AtomicU32 = AtomicU32::new(0);
-const UI_ERRORS_MAX: u32 = 20;
+#[derive(serde::Deserialize, Debug)]
+pub struct ErrorFrame {
+    file: String,
+    line: u32,
+    column: u32,
+}
+
+fn frame_location(frame: &ErrorFrame) -> Option<String> {
+    let file = &frame.file;
+    let script =
+        (file.starts_with("assets/") && file.matches('/').count() == 1 && file.ends_with(".js"))
+            || (file.starts_with("src/") && (file.ends_with(".ts") || file.ends_with(".tsx")));
+    (script
+        && file.len() <= 180
+        && file
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/_-.".contains(&b))
+        && file.split('/').all(|part| !matches!(part, "" | "." | ".."))
+        && (1..=1_000_000).contains(&frame.line)
+        && frame.column <= 10_000_000)
+        .then(|| format!("{}:{}:{}", file, frame.line, frame.column))
+}
 
 #[tauri::command]
-pub fn log_ui_error(event: String, category: String) {
-    let n = UI_ERRORS.fetch_add(1, Ordering::Relaxed);
-    if n < UI_ERRORS_MAX {
-        let event = if event == "unhandledRejection" {
-            "unhandled rejection"
-        } else {
-            "uncaught exception"
-        };
-        log::error!(
-            "page: {event}: {} (payload omitted)",
-            argus_core::diagnostics::exception(&category)
-        );
-    } else if n == UI_ERRORS_MAX {
-        log::error!("page: more errors this session are not logged");
-    }
+pub fn log_ui_error(
+    event: String,
+    category: String,
+    frames: Option<Vec<ErrorFrame>>,
+    native_code: Option<u32>,
+    action_kind: Option<String>,
+    value_type: Option<String>,
+    command: Option<String>,
+) {
+    let event = match event.as_str() {
+        "ipc" => "page IPC failure",
+        "unhandledRejection" => "page unhandled rejection",
+        _ => "page uncaught exception",
+    };
+    let frames: Vec<_> = frames
+        .unwrap_or_default()
+        .iter()
+        .take(5)
+        .filter_map(frame_location)
+        .collect();
+    let action = action_kind
+        .as_deref()
+        .filter(|kind| {
+            matches!(
+                *kind,
+                "accessDenied" | "notFound" | "critical" | "refused" | "serviceOutdated" | "os"
+            )
+        })
+        .unwrap_or("none");
+    let value_type = value_type
+        .as_deref()
+        .filter(|value| {
+            matches!(
+                *value,
+                "null"
+                    | "undefined"
+                    | "object"
+                    | "string"
+                    | "number"
+                    | "boolean"
+                    | "bigint"
+                    | "symbol"
+                    | "function"
+            )
+        })
+        .unwrap_or("unknown");
+    let command = command
+        .as_deref()
+        .filter(|command| {
+            !command.is_empty()
+                && command.len() <= 64
+                && command.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+        })
+        .unwrap_or("none");
+    argus_core::diagnostics::warn(
+        event,
+        format!(
+            "category={}; value_type={value_type}; action_kind={action}; command={command}; native={}; frames={frames:?}",
+            argus_core::diagnostics::exception(&category),
+            native_code
+                .map(argus_core::diagnostics::code)
+                .unwrap_or_else(|| "none".into())
+        ),
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frontend_frames_are_validated_again_at_the_native_boundary() {
+        for file in ["assets/index-a1.js", "src/lib/ipc.ts", "src/main.tsx"] {
+            assert!(
+                frame_location(&ErrorFrame {
+                    file: file.into(),
+                    line: 42,
+                    column: 3
+                })
+                .is_some()
+            );
+        }
+        for file in [
+            "C:/Users/Private/a.js",
+            "src/../private.ts",
+            "src//bad.ts",
+            "assets/a.js?secret",
+            "assets/a.js\nforged",
+            "https://tauri.localhost/assets/a.js",
+        ] {
+            assert!(
+                frame_location(&ErrorFrame {
+                    file: file.into(),
+                    line: 42,
+                    column: 3
+                })
+                .is_none()
+            );
+        }
+    }
 
     #[test]
     fn per_process_network_is_reported_when_it_turns_up() {

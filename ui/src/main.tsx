@@ -26,7 +26,7 @@ import.meta.hot?.on("vite:beforeUpdate", () => {
   hotSwapped = true;
 });
 window.addEventListener("error", (e) => {
-  if (!hotSwapped) api.logError("uncaught", e.error);
+  if (!hotSwapped) api.logError("uncaught", e.error, { url: e.filename, line: e.lineno, column: e.colno });
 });
 window.addEventListener("unhandledrejection", (e) => {
   if (!hotSwapped) api.logError("unhandledRejection", e.reason);
