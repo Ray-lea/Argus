@@ -680,6 +680,23 @@ const MOCK_RELEASES = [
       "",
       "- 托盘常驻时的唤醒次数减少一半 ([c3d4e5f](https://github.com/Ray-lea/Argus/commit/c3d4e5f))",
     ].join("\n"),
+    translations: {
+      "en-US": [
+        "### Features",
+        "",
+        "- Once a new version is ready, an update button in the title bar shows what each version changed",
+        "- Queue length is collected for each disk",
+        "",
+        "### Fixes",
+        "",
+        "- Fixed a crash after running for a while on PCs without an Intel graphics adapter",
+        "- Two overlapping sets of buttons no longer appear in the top-right corner of a maximized window",
+        "",
+        "### Performance",
+        "",
+        "- Half as many wake-ups while running in the tray",
+      ].join("\n"),
+    },
   },
   {
     version: "0.1.1",
@@ -687,7 +704,13 @@ const MOCK_RELEASES = [
     notes:
       "### 修复\n\n- **ui:** 窗口最大化时贴着屏幕顶边也能拖动 ([3240521](https://github.com/Ray-lea/Argus/commit/3240521))",
   },
-  { version: "0.1.0", date: "2026-10-16", notes: "Argus 的首个公开版本。" },
+  // 0.1.1 has no translation: an English reader gets it in Chinese, with a note.
+  {
+    version: "0.1.0",
+    date: "2026-10-16",
+    notes: "Argus 的首个公开版本。",
+    translations: { "en-US": "The first public release of Argus." },
+  },
 ];
 const offeredAtStart = new URLSearchParams(location.search).get("update") === "ready";
 let updateStatus: UpdateStatus = {

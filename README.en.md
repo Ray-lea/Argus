@@ -121,7 +121,7 @@ The documentation is in Chinese.
 | [Design](docs/design/README.md) | Design principles, chart animation, window appearance |
 | [Roadmap](docs/roadmap.md) | Done and planned features |
 | [Known issues](docs/known-issues.md) | Limitations of the current version |
-| [Changelog](CHANGELOG.md) | Changes in each version |
+| [Changelog](CHANGELOG.en.md) | Changes in each version |
 
 ## 💬 Community
 

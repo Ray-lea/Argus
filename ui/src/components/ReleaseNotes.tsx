@@ -9,6 +9,7 @@ import {
   compareVersions,
   parseNotes,
   type Release,
+  readable,
   type Span,
 } from "../lib/release-notes";
 import { ArrowRightIcon, ChevronRight } from "./icons";
@@ -60,14 +61,16 @@ export default function ReleaseNotes(props: {
 }) {
   // Progress events can carry new objects for unchanged releases. Keep each
   // entry mounted so reading position and expanded sections survive them.
-  const entries = createMemo<Release[]>(
+  const entries = createMemo<ReturnType<typeof readable>[]>(
     (previous) =>
-      between(props.releases ?? [], props.from, props.to).map(
-        (entry) =>
-          previous.find(
-            (old) => old.version === entry.version && old.date === entry.date && old.notes === entry.notes,
-          ) ?? entry,
-      ),
+      between(props.releases ?? [], props.from, props.to)
+        .map((entry) => readable(entry, locale()))
+        .map(
+          (entry) =>
+            previous.find(
+              (old) => old.version === entry.version && old.date === entry.date && old.notes === entry.notes,
+            ) ?? entry,
+        ),
     [],
   );
   const earlier = () =>
@@ -97,7 +100,7 @@ export default function ReleaseNotes(props: {
         <Show when={earlier()}>
           <p class="update-quiet">{t("updates.dialog.earlier")}</p>
         </Show>
-        <Show when={!locale().startsWith("zh")}>
+        <Show when={entries().some((entry) => entry.untranslated)}>
           <p class="update-quiet">{t("updates.dialog.language")}</p>
         </Show>
       </Show>

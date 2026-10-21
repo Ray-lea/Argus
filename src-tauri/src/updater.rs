@@ -17,6 +17,7 @@
 //! plugin can only install an update it checked during this run.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -65,6 +66,10 @@ pub struct ReleaseEntry {
     pub date: String,
     /// The entry's Markdown.
     pub notes: String,
+    /// The entry in other languages, by locale (`en-US`: CHANGELOG.en.md).
+    /// Notes signed before 0.3 have none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub translations: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -1334,6 +1339,24 @@ mod tests {
         let found = signed_notes(&manifest).unwrap();
         assert_eq!(found.release_notes, NOTES);
         assert!(signed_notes(&serde_json::json!({ "version": "1.2.3" })).is_none());
+    }
+
+    #[test]
+    fn release_notes_carry_their_translations() {
+        let payload: NotesPayload = serde_json::from_str(
+            r#"{"version":"1.2.3","releases":[
+                {"version":"1.2.3","date":"2026-10-21","notes":"- 修复","translations":{"en-US":"- A fix"}},
+                {"version":"1.2.2","date":"2026-10-12","notes":"- 旧版"}
+            ]}"#,
+        )
+        .unwrap();
+        assert_eq!(payload.releases[0].translations["en-US"], "- A fix");
+        // Notes signed before translations existed still read.
+        assert!(payload.releases[1].translations.is_empty());
+        // The interface gets them; an entry without any has no field for them.
+        let sent = serde_json::to_value(&payload.releases).unwrap();
+        assert_eq!(sent[0]["translations"]["en-US"], "- A fix");
+        assert!(sent[1].get("translations").is_none());
     }
 
     #[test]

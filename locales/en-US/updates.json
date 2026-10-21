@@ -34,7 +34,7 @@
     },
     "earlier": "Notes for earlier versions are on GitHub.",
     "empty": "No release notes to show here; see the releases on GitHub.",
-    "language": "Release notes are written in Chinese.",
+    "language": "Some of these release notes are only available in Chinese.",
     "hint": "Installing requires administrator permission. Argus closes briefly and reopens on the same page when the installation finishes.",
     "portable": "The portable version doesn't update automatically. Download the new version from the release page.",
     "github": "View on GitHub",

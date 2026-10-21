@@ -11,7 +11,7 @@ import { fmtCache } from "../lib/format";
 import { t } from "../lib/i18n";
 import { api, inTauri } from "../lib/ipc";
 import { presence } from "../lib/motion";
-import { changelogEntries, compareVersions, isPrerelease } from "../lib/release-notes";
+import { changelogEntries, compareVersions, isPrerelease, withTranslation } from "../lib/release-notes";
 import { appInfo } from "../lib/store";
 import type { InstallError } from "../lib/types";
 import { confirmRequest, toast } from "../lib/ui";
@@ -83,10 +83,17 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
   const target = () => (offer ? (updateStatus()?.version ?? "") : current());
   const busy = () => starting() || state() === "installing";
 
-  // What an installed version changed comes with the app, loaded when asked for.
+  // What an installed version changed comes with the app, loaded when asked
+  // for: CHANGELOG.md, with CHANGELOG.en.md as its English translation.
   const [changelog] = createResource(
     () => !offer || undefined,
-    async () => changelogEntries((await import("../../../CHANGELOG.md?raw")).default),
+    async () => {
+      const [source, english] = await Promise.all([
+        import("../../../CHANGELOG.md?raw"),
+        import("../../../CHANGELOG.en.md?raw"),
+      ]);
+      return withTranslation(changelogEntries(source.default), "en-US", changelogEntries(english.default));
+    },
   );
   const releases = () => (offer ? updateStatus()?.releases : changelog());
   const released = () => {

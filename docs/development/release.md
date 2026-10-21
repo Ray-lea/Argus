@@ -1,6 +1,6 @@
 # 提交与发布
 
-提交信息遵循 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/zh-hans/v1.0.0/)，版本号遵循[语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。版本号、`CHANGELOG.md` 和 GitHub Release 都由提交信息生成，所以提交信息的格式直接决定发布说明。
+提交信息遵循 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/zh-hans/v1.0.0/)，版本号遵循[语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。版本号、`CHANGELOG.md` 和 GitHub Release 都由提交信息生成，所以提交信息的格式直接决定发布说明。英文版 `CHANGELOG.en.md` 与 `CHANGELOG.md` 逐条对应，发布时由中文条目翻译而来。
 
 ## 持续集成
 
@@ -9,7 +9,7 @@
 | 工作流 | 触发 | 内容 |
 |---|---|---|
 | `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；TypeScript、Biome、文案检查、前端单元测试、前端构建、rustfmt、Clippy、单元测试、第三方许可声明是否最新 |
-| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；为更新对话框显示的更新内容签名并校验；静默安装、核对卸载项、再静默卸载；生成更新清单并发布 GitHub Release |
+| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md`、已译完的 `CHANGELOG.en.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；为更新对话框显示的更新内容签名并校验；静默安装、核对卸载项、再静默卸载；生成更新清单并发布 GitHub Release |
 
 推送到分支不会触发检查，也没有 nightly 或定时构建。推送前在本地运行 `start.bat check`：它包含 `check.yml` 中的 TypeScript、Biome、文案检查、前端单元测试、rustfmt 和 Clippy，不含前端构建、Rust 单元测试和许可声明检查。
 
@@ -93,7 +93,7 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 
 1. 切到 `main`，工作区干净，`start.bat check` 通过。第一次发布前先配置[更新签名密钥](#更新签名密钥)；`tauri.conf.json` 里没有公钥时脚本会拒绝发布。
 2. 在 CI 上运行一遍检查，见[推送标签前在 CI 上检查](#推送标签前在-ci-上检查)。
-3. 预览版本号与发布说明：`pnpm release --dry-run`。
+3. 预览版本号与中英文发布说明：`pnpm release --dry-run`。英文条目没有预先写好时，显示的是待译的草稿。
 4. 创建发布提交和标签：
 
    ```bash
@@ -102,9 +102,9 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
    pnpm release 1.0.0-beta.1 # 或指定版本
    ```
 
-   脚本修改四处版本号，把发布说明加到 `CHANGELOG.md` 开头，提交 `chore(release): vX.Y.Z` 并创建附注标签 `vX.Y.Z`，不会推送。仓库还没有任何标签时，默认发布当前版本号。
-5. 检查 `CHANGELOG.md`。润色只改正文：标题行 `## [X.Y.Z](比较链接) - YYYY-MM-DD` 由脚本生成，应用和发布工作流都按这个格式查找条目，日期后不能再有文字；`##` 只用于版本条目的标题，条目内的小节用 `###`。修改后 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 把标签移到新提交上。也可以在运行 `pnpm release` 之前先把该版本的条目写进 `CHANGELOG.md` 并提交：脚本会沿用已有条目，只把标题换成带比较链接和日期的格式（首个版本的发布说明就是这样预先写好的）。`CHANGELOG.md` 中有不是条目标题的二级标题时，脚本不改动任何文件，列出这些行。
-6. 推送前在本地核对：`node scripts/release.mjs verify vX.Y.Z`。它与发布工作流的第一步做同样的核对，读取条目的规则与应用相同；另外确认标签指向当前提交、版本文件和 `CHANGELOG.md` 没有未提交的改动。`node scripts/release.mjs notes X.Y.Z` 打印 GitHub Release 的正文。
+   脚本修改四处版本号，把发布说明加到 `CHANGELOG.md` 开头，把由它生成的英文草稿加到 `CHANGELOG.en.md` 开头（小节标题已是英文，条目仍是中文），提交 `chore(release): vX.Y.Z` 并创建附注标签 `vX.Y.Z`，不会推送。仓库还没有任何标签时，默认发布当前版本号。
+5. 检查 `CHANGELOG.md`。润色只改正文：标题行 `## [X.Y.Z](比较链接) - YYYY-MM-DD` 由脚本生成，应用和发布工作流都按这个格式查找条目，日期后不能再有文字；`##` 只用于版本条目的标题，条目内的小节用 `###`。然后把 `CHANGELOG.en.md` 中的草稿译成英文：与中文条目逐条对应，标题行同样不改，用词与界面的英文文案（`locales/en-US`）一致；之后润色中文时同步修改英文。修改后 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 把标签移到新提交上。也可以在运行 `pnpm release` 之前先把该版本的条目写进 `CHANGELOG.md` 和 `CHANGELOG.en.md` 并提交：脚本会沿用已有条目，只把标题换成带比较链接和日期的格式（首个版本的发布说明就是这样预先写好的）。两份文件中有不是条目标题的二级标题时，脚本不改动任何文件，列出这些行。
+6. 推送前在本地核对：`node scripts/release.mjs verify vX.Y.Z`。它与发布工作流的第一步做同样的核对，读取条目的规则与应用相同：英文条目缺失、仍含中文（链接地址除外）或日期与中文条目不同时不通过；另外确认标签指向当前提交、版本文件和两份更新日志没有未提交的改动。`node scripts/release.mjs notes X.Y.Z` 打印 GitHub Release 的正文：先是“简体中文”一节，后是“English”一节。
 7. 推送分支和标签：`git push --atomic origin main vX.Y.Z`。`release.yml` 随即开始检查和构建，完成后版本出现在 GitHub Releases。
 
 推送前想撤销：`git tag -d vX.Y.Z`，然后 `git reset --hard HEAD~1`。
@@ -155,7 +155,7 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo Ray-lea/Argus
 
 本地构建（`start.bat build installer`）不生成更新签名，不需要私钥；发布工作流用 `--config` 打开 `createUpdaterArtifacts`，签名后用 `node scripts/release.mjs check-signature` 以 `tauri.conf.json` 中的公钥校验，Secrets 里的私钥与公钥不配对时在发布前失败。
 
-更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `CHANGELOG.md` 条目（JSON），`pnpm tauri signer sign --app-version <版本>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。`signer sign` 只接受私钥文本本身，`TAURI_SIGNING_PRIVATE_KEY` 须保存私钥内容而不是文件路径。应用只显示验签通过且版本号一致的更新内容。
+更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `CHANGELOG.md` 条目（JSON），每个条目以 `translations` 附上 `CHANGELOG.en.md` 中同一版本的英文译文（0.3 之前的版本忽略这个字段），`pnpm tauri signer sign --app-version <版本>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。`signer sign` 只接受私钥文本本身，`TAURI_SIGNING_PRIVATE_KEY` 须保存私钥内容而不是文件路径。应用只显示验签通过且版本号一致的更新内容，并按界面语言选用译文；没有译文的版本显示中文，列表下方加以说明。
 
 ## 更新通道
 

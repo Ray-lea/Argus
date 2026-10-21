@@ -8,7 +8,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // The app's own changelog parser (plain TypeScript, run by Node's type
 // stripping): the workflow publishes exactly the entries the app finds.
-import { changelogEntries, strayHeadings } from "../ui/src/lib/release-notes.ts";
+import { changelogEntries, strayHeadings, withTranslation } from "../ui/src/lib/release-notes.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -19,23 +19,36 @@ const HEADER =
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$/;
 
-// Changelog sections in order. Other types (refactor, docs, ci, ...) are internal
-// and stay out of the release notes.
+// Changelog sections in order, with their headings in CHANGELOG.md and
+// CHANGELOG.en.md. Other types (refactor, docs, ci, ...) are internal and stay
+// out of the release notes.
 const SECTIONS = [
-  ["breaking", "破坏性变更"],
-  ["feat", "新功能"],
-  ["fix", "修复"],
-  ["perf", "性能"],
-  ["revert", "回退"],
-  ["other", "其他"], // commits that predate the convention
+  ["breaking", "破坏性变更", "Breaking changes"],
+  ["feat", "新功能", "Features"],
+  ["fix", "修复", "Fixes"],
+  ["perf", "性能", "Performance"],
+  ["revert", "回退", "Reverts"],
+  ["known", "已知限制", "Known issues"], // written by hand
+  ["other", "其他", "Other"], // commits that predate the convention
 ];
 
 const CHANGELOG = "CHANGELOG.md";
+/** The English translation of CHANGELOG.md, entry for entry. */
+const CHANGELOG_EN = "CHANGELOG.en.md";
+const ENGLISH = "en-US";
 /** Changelog entries the update dialog can show: the release and the ones before it. */
 const NOTES_RELEASES = 15;
 const CHANGELOG_HEAD = `# 更新日志
 
+简体中文 | [English](${CHANGELOG_EN})
+
 Argus 各版本的用户可见变更。版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)；本文件由 \`pnpm release\` 根据 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 提交信息生成，发布说明取自对应条目。
+`;
+const CHANGELOG_EN_HEAD = `# Changelog
+
+[简体中文](${CHANGELOG}) | English
+
+User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This is the English edition of [${CHANGELOG}](${CHANGELOG}): \`pnpm release\` adds each release to both files, and the English entry is translated from the Chinese one before the release is published. The release notes on GitHub and in the app come from these entries.
 `;
 
 const CARGO_TOML = "Cargo.toml";
@@ -47,18 +60,18 @@ const JSON_VERSION = /^( {2}"version": ")([^"]+)(")/m;
 const HELP = `用法：node scripts/release.mjs <命令>
 
   bump [major|minor|patch|<版本>] [--dry-run]
-      计算下一个版本，更新版本号与 CHANGELOG.md，提交并打标签（不推送）。
-      不指定级别时按上一个标签以来的提交推断；没有任何标签时发布当前版本。
-      --dry-run 只打印版本号和发布说明，不改文件。
+      计算下一个版本，更新版本号与 CHANGELOG.md，在 CHANGELOG.en.md 写入待译的英文条目，
+      提交并打标签（不推送）。不指定级别时按上一个标签以来的提交推断；没有任何标签时发布当前版本。
+      --dry-run 只打印版本号和两份发布说明，不改文件。
   lint <修订范围>          检查范围内的提交信息，例如 origin/main..HEAD
   lint --message <文本>    检查一条提交信息（例如拉取请求标题）
-  verify <标签>            核对标签与各处版本号、CHANGELOG.md 条目、更新公钥；本地已有该标签时，
-                           还核对它指向当前提交、版本文件与 CHANGELOG.md 都已提交
-                           （发布工作流的第一步；推送标签前先在本地运行）
-  notes <版本>             打印 CHANGELOG.md 中该版本的发布说明（发布工作流使用）
+  verify <标签>            核对标签与各处版本号、CHANGELOG.md 条目、CHANGELOG.en.md 中已译完的英文
+                           条目、更新公钥；本地已有该标签时，还核对它指向当前提交、版本文件与两份
+                           更新日志都已提交（发布工作流的第一步；推送标签前先在本地运行）
+  notes <版本>             打印 GitHub Release 的正文：该版本的中文与英文发布说明（发布工作流使用）
   release-notes <版本> <输出文件>
                            写出应用内更新对话框显示的更新内容：该版本及之前最近 ${NOTES_RELEASES} 个
-                           版本的 CHANGELOG.md 条目（JSON，发布工作流签名后放进清单）
+                           版本的条目，附英文译文（JSON，发布工作流签名后放进清单）
   manifest <版本> <安装包> <签名文件> [<更新内容> <更新内容的签名文件>]
                            打印应用内更新读取的清单 JSON（发布工作流使用）
   check-signature <版本> <文件> <签名文件>
@@ -307,6 +320,51 @@ function readNotes(version) {
   return readEntries().find((e) => e.version === version)?.notes || null;
 }
 
+/** CHANGELOG.en.md's entries, newest first. */
+function readEnglishEntries() {
+  return existsSync(join(root, CHANGELOG_EN)) ? changelogEntries(read(CHANGELOG_EN)) : [];
+}
+
+/**
+ * The English entry to translate, drafted from the Chinese one: the same
+ * items, with the generated section headings already in English. `verify`
+ * refuses it while any Chinese is left.
+ */
+function englishDraft(notes) {
+  return notes.replace(/^(#{3,6}[ \t]+)(.+?)[ \t]*$/gm, (line, hashes, title) => {
+    const section = SECTIONS.find(([, zh]) => zh === title);
+    return section ? `${hashes}${section[2]}` : line;
+  });
+}
+
+const CHINESE = /[　-〿㐀-䶿一-鿿豈-﫿＀-￯]/;
+
+/**
+ * What keeps CHANGELOG.en.md's entry for `version` (in `text`) from going out
+ * beside the Chinese entry `zh`: missing, dated differently, or, when it must
+ * be `translated`, Chinese still in it. Link targets do not count: the anchor
+ * of a page in Chinese is Chinese.
+ */
+function translationProblems(text, version, zh, { translated = true } = {}) {
+  const problems = strayHeadings(text).map(
+    ({ line, text: heading }) =>
+      `${CHANGELOG_EN} 第 ${line} 行「${heading.trim()}」不是版本条目的标题。条目标题与 ${CHANGELOG} 相同，条目内的小节用 \`###\``,
+  );
+  const entry = changelogEntries(text).find((e) => e.version === version);
+  if (!entry?.notes) return [...problems, `${CHANGELOG_EN} 没有 ${version} 的条目，或条目没有内容`];
+  if (zh && entry.date !== zh.date) {
+    problems.push(`${CHANGELOG_EN} 中 ${version} 的日期 ${entry.date} 与 ${CHANGELOG} 中的 ${zh.date} 不同`);
+  }
+  const chinese = entry.notes.split("\n").filter((line) => CHINESE.test(line.replace(/\]\([^)]*\)/g, "]")));
+  if (translated && chinese.length) {
+    const sample = chinese.slice(0, 3).map((line) => (line.length > 60 ? `${line.slice(0, 60)}…` : line));
+    problems.push(
+      `${CHANGELOG_EN} 中 ${version} 的条目还有 ${chinese.length} 行未译成英文，例如：\n      ${sample.join("\n      ")}`,
+    );
+  }
+  return problems;
+}
+
 /**
  * What keeps the entry for `version` in `text` from reaching the release, the
  * update dialog and the app as written. Checked before the tag is pushed: the
@@ -372,17 +430,37 @@ function cmdBump(args) {
   const problems = changelogProblems(changelog, version);
   if (problems.length) fail(`${CHANGELOG} 需要先修改，未改动任何文件：\n  - ${problems.join("\n  - ")}`);
   const entry = changelogEntries(changelog).find((e) => e.version === version);
+
+  // The English entry: kept when written ahead of time, else drafted from the
+  // Chinese one, to be translated before the tag is pushed.
+  const beforeEn = existsSync(join(root, CHANGELOG_EN)) ? read(CHANGELOG_EN) : null;
+  const writtenEn = beforeEn !== null && headingPattern(version).test(beforeEn);
+  const changelogEn = writtenEn
+    ? beforeEn.replace(headingPattern(version), () => sectionHeading(version, prevTag))
+    : prepend(
+        beforeEn ?? CHANGELOG_EN_HEAD,
+        `${sectionHeading(version, prevTag)}\n\n${englishDraft(entry.notes)}\n`,
+      );
+  const problemsEn = translationProblems(changelogEn, version, entry, { translated: false });
+  if (problemsEn.length) fail(`${CHANGELOG_EN} 需要先修改，未改动任何文件：\n  - ${problemsEn.join("\n  - ")}`);
+  const english = changelogEntries(changelogEn).find((e) => e.version === version);
+  const untranslated = translationProblems(changelogEn, version, entry).length > 0;
+
   console.log(
     `版本：${formatVersion(current)} → ${version}（上一个标签：${prevTag ?? "无"}，${commits.length} 个提交）\n`,
   );
   if (written) console.log(`沿用 ${CHANGELOG} 中已写好的发布说明。\n`);
+  if (writtenEn) console.log(`沿用 ${CHANGELOG_EN} 中已写好的英文发布说明。\n`);
   if (dryRun) {
     console.log(`${sectionHeading(version, prevTag)}\n\n${entry.notes}\n`);
+    console.log(`${CHANGELOG_EN}${untranslated ? "（待译）" : ""}：\n`);
+    console.log(`${sectionHeading(version, prevTag)}\n\n${english.notes}\n`);
     return;
   }
 
   writeVersion(version);
   write(CHANGELOG, changelog);
+  write(CHANGELOG_EN, changelogEn);
   try {
     // Cargo.lock was edited by hand above; make sure Cargo agrees with it.
     execFileSync("cargo", ["metadata", "--locked", "--offline", "--format-version", "1"], {
@@ -392,13 +470,17 @@ function cmdBump(args) {
   } catch {
     fail("Cargo.lock 与清单不一致。版本文件已修改，未提交；用 git restore . 撤销");
   }
-  git("add", CARGO_TOML, "Cargo.lock", ...VERSION_FILES, CHANGELOG);
+  git("add", CARGO_TOML, "Cargo.lock", ...VERSION_FILES, CHANGELOG, CHANGELOG_EN);
   // Empty when nothing changed: a first release of the current version with
   // its notes written ahead of time on the same day.
   git("commit", "--quiet", "--allow-empty", "-m", `chore(release): ${tag}`);
   git("tag", "-a", tag, "-m", `Argus ${tag}`);
-  console.log(`已提交 chore(release): ${tag} 并创建标签 ${tag}。检查 ${CHANGELOG}，修改后用
-git commit --amend 提交、git tag -fa ${tag} -m "Argus ${tag}" 移动标签。推送前核对，推送标签即开始发布：
+  const translate = untranslated
+    ? `\n先把 ${CHANGELOG_EN} 中 ${version} 的条目译成英文，与中文条目一一对应，否则 verify 不通过。`
+    : "";
+  console.log(`已提交 chore(release): ${tag} 并创建标签 ${tag}。检查 ${CHANGELOG} 与 ${CHANGELOG_EN}，修改后用
+git commit --amend 提交、git tag -fa ${tag} -m "Argus ${tag}" 移动标签。${translate}
+推送前核对，推送标签即开始发布：
 
   node scripts/release.mjs verify ${tag}
   git push --atomic origin main ${tag}
@@ -415,6 +497,11 @@ function cmdVerify([tag]) {
     : [`没有 ${CHANGELOG}`];
   if (problems.length)
     fail(`${CHANGELOG} 不能用于发布 ${tag}（发布请用 pnpm release）：\n  - ${problems.join("\n  - ")}`);
+  const zh = readEntries().find((e) => e.version === version);
+  const problemsEn = existsSync(join(root, CHANGELOG_EN))
+    ? translationProblems(read(CHANGELOG_EN), version, zh)
+    : [`没有 ${CHANGELOG_EN}`];
+  if (problemsEn.length) fail(`${CHANGELOG_EN} 不能用于发布 ${tag}：\n  - ${problemsEn.join("\n  - ")}`);
   requirePubkey();
   // Before pushing, the files checked above must be the ones the tag carries.
   // In the workflow the checkout is the tagged commit itself, so this holds.
@@ -422,11 +509,11 @@ function cmdVerify([tag]) {
   if (tagged && tagged !== tryGit("rev-parse", "HEAD")) {
     fail(`标签 ${tag} 没有指向当前提交。修改发布提交后用 git tag -fa ${tag} -m "Argus ${tag}" 移动标签`);
   }
-  const files = [CARGO_TOML, "Cargo.lock", ...VERSION_FILES, CHANGELOG];
+  const files = [CARGO_TOML, "Cargo.lock", ...VERSION_FILES, CHANGELOG, CHANGELOG_EN];
   const changed = tryGit("status", "--porcelain", "--", ...files);
   if (changed)
     fail(`以下文件有未提交的改动，标签里没有这些改动：\n${changed}\n用 git commit --amend 提交后移动标签`);
-  console.log(`[通过] ${tag} 与版本号、${CHANGELOG}、更新公钥一致`);
+  console.log(`[通过] ${tag} 与版本号、${CHANGELOG}、${CHANGELOG_EN}、更新公钥一致`);
 }
 
 /** Without it the released app can verify, and therefore install, no update. */
@@ -434,10 +521,12 @@ function requirePubkey() {
   if (!JSON.parse(read(TAURI_CONF)).plugins?.updater?.pubkey) fail(`${TAURI_CONF} 没有配置更新签名公钥`);
 }
 
+/** The GitHub release's text: the Chinese notes, then the English ones when there are any. */
 function cmdNotes([version]) {
   const notes = version && readNotes(version);
   if (!notes) fail(`${CHANGELOG} 里没有 ${version ?? "（未指定版本）"} 的条目`);
-  console.log(notes);
+  const english = readEnglishEntries().find((e) => e.version === version)?.notes;
+  console.log(english ? `## 简体中文\n\n${notes}\n\n## English\n\n${english}` : notes);
 }
 
 /**
@@ -458,14 +547,15 @@ function plainNotes(markdown) {
 /**
  * The notes the update dialog shows, as one JSON text: the entries of
  * `version` and the releases before it, so someone skipping versions sees
- * every change. The release workflow signs the file as written, bound to the
+ * every change, each with its English translation (`translations`, which
+ * versions before 0.3 ignore). The release workflow signs the file as written, bound to the
  * version, and the manifest carries it verbatim; the app shows nothing that
  * fails the signature.
  */
 function cmdReleaseNotes([version, output]) {
   if (!version || !output) fail("用法：release-notes <版本> <输出文件>");
   const target = parseVersion(version) ?? fail(`「${version}」不是有效的语义化版本号`);
-  const entries = readEntries();
+  const entries = withTranslation(readEntries(), ENGLISH, readEnglishEntries());
   if (!entries.some((e) => e.version === version)) fail(`${CHANGELOG} 里没有 ${version} 的条目`);
   const releases = entries
     .filter((e) => {
@@ -474,7 +564,8 @@ function cmdReleaseNotes([version, output]) {
     })
     .slice(0, NOTES_RELEASES);
   writeFileSync(output, JSON.stringify({ version, releases }));
-  console.log(`已写出 ${output}：${releases.map((e) => e.version).join("、")}`);
+  const translated = releases.filter((e) => e.translations?.[ENGLISH]).length;
+  console.log(`已写出 ${output}：${releases.map((e) => e.version).join("、")}，其中 ${translated} 个附英文译文`);
 }
 
 /** The manifest the in-app updater reads (latest.json and beta.json). */

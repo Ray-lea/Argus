@@ -12,8 +12,10 @@ import {
   firstStart,
   isPrerelease,
   parseNotes,
+  readable,
   spans,
   strayHeadings,
+  withTranslation,
 } from "../src/lib/release-notes.ts";
 
 test("versions follow SemVer precedence", () => {
@@ -274,4 +276,38 @@ test("lists without a heading and unknown headings are kept", () => {
     { text: " c " },
     { text: "d", code: true },
   ]);
+});
+
+test("each reader gets the notes in their language, Chinese when untranslated", () => {
+  const zh = changelogEntries(
+    [
+      "# 更新日志",
+      "",
+      "## [1.1.0](x) - 2026-10-21",
+      "",
+      "### 修复",
+      "",
+      "- 一处修复",
+      "",
+      "## 1.0.0 - 2026-10-01",
+      "",
+      "首个版本。",
+    ].join("\n"),
+  );
+  const en = changelogEntries(
+    ["# Changelog", "", "## [1.1.0](x) - 2026-10-21", "", "### Fixes", "", "- A fix"].join("\n"),
+  );
+  const english = "### Fixes\n\n- A fix";
+  const [latest, first] = withTranslation(zh, "en-US", en);
+  assert.deepEqual(latest.translations, { "en-US": english });
+  assert.equal(first.translations, undefined);
+
+  assert.deepEqual(readable(latest, "en-US"), { ...latest, notes: english, untranslated: false });
+  // Any English locale reads the English notes; Chinese readers the originals.
+  assert.equal(readable(latest, "en-GB").notes, english);
+  assert.equal(readable(latest, "zh-CN").notes, latest.notes);
+  assert.equal(readable(latest, "zh-CN").untranslated, false);
+  // An entry nobody translated reads as written, marked for the note under the list.
+  assert.deepEqual(readable(first, "en-US"), { ...first, untranslated: true });
+  assert.equal(readable(first, "zh-CN").untranslated, false);
 });

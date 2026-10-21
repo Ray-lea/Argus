@@ -1,5 +1,7 @@
 # 更新日志
 
+简体中文 | [English](CHANGELOG.en.md)
+
 Argus 各版本的用户可见变更。版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)；本文件由 `pnpm release` 根据 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 提交信息生成，发布说明取自对应条目。
 
 ## [0.2.0](https://github.com/Ray-lea/Argus/compare/v0.1.0...v0.2.0) - 2026-10-18

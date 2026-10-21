@@ -562,6 +562,8 @@ export interface ReleaseEntry {
   version: string;
   date: string;
   notes: string;
+  /** The body in other languages, by locale (`en-US`); absent in notes signed before 0.3. */
+  translations?: Record<string, string>;
 }
 
 /** Why an update was not installed; `cancelled` is no failure. */

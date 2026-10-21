@@ -21,7 +21,10 @@ export type Block =
 export interface Release {
   version: string;
   date: string;
+  /** In the changelog's own language, Simplified Chinese. */
   notes: string;
+  /** The body in other languages, by locale (`en-US`: CHANGELOG.en.md). */
+  translations?: Record<string, string>;
 }
 
 // The headings release.mjs writes (SECTIONS) and the ones written by hand.
@@ -129,6 +132,33 @@ export function changelogEntries(markdown: string): Release[] {
     date: m[2],
     notes: text.slice((m.index ?? 0) + m[0].length, headings[i + 1]?.index ?? text.length).trim(),
   }));
+}
+
+/**
+ * `entries` with the body of the same version in `translated` (another
+ * language's changelog, e.g. CHANGELOG.en.md) as their `locale` translation.
+ */
+export function withTranslation(entries: Release[], locale: string, translated: Release[]): Release[] {
+  return entries.map((entry) => {
+    const notes = translated.find((other) => other.version === entry.version)?.notes;
+    return notes ? { ...entry, translations: { ...entry.translations, [locale]: notes } } : entry;
+  });
+}
+
+const language = (locale: string) => locale.split("-")[0].toLowerCase();
+
+/**
+ * `release` as a reader of `locale` gets it: the translation into their
+ * language, else the body as written, which is `untranslated` for anyone not
+ * reading Chinese.
+ */
+export function readable(release: Release, locale: string): Release & { untranslated: boolean } {
+  const lang = language(locale);
+  if (lang === "zh") return { ...release, untranslated: false };
+  const translations = Object.entries(release.translations ?? {});
+  const notes = (translations.find(([key]) => key.toLowerCase() === locale.toLowerCase()) ??
+    translations.find(([key]) => language(key) === lang))?.[1];
+  return notes ? { ...release, notes, untranslated: false } : { ...release, untranslated: true };
 }
 
 /**
