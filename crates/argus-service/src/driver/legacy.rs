@@ -52,7 +52,10 @@ pub(super) fn verify_image(path: &Path, trace: &mut Inspection) -> Result<()> {
     }
     let mut bytes = Vec::with_capacity(size as usize);
     file.take(size + 1).read_to_end(&mut bytes).map_err(io)?;
-    let hash = format!("{:x}", Sha256::digest(&bytes));
+    let hash = Sha256::digest(&bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     trace.legacy_image_sha256 = Some(hash.clone());
     if bytes.len() as u64 != size
         || !IMAGES

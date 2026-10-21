@@ -225,7 +225,11 @@ fn executable_fingerprint() -> std::io::Result<String> {
     loop {
         let bytes = image.read(&mut buffer)?;
         if bytes == 0 {
-            return Ok(format!("{:x}", hash.finalize()));
+            return Ok(hash
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect());
         }
         hash.update(&buffer[..bytes]);
     }

@@ -5,6 +5,7 @@ members = ["crates/argus-core", "crates/argus-service", "src-tauri"]
 [workspace.package]
 version = "0.2.0"
 edition = "2024"
+rust-version = "1.99.1"
 license = "AGPL-3.0-or-later"
 authors = ["Argus contributors"]
 repository = "https://github.com/Ray-lea/Argus"

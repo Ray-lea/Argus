@@ -56,7 +56,10 @@ fn check_bytes(bytes: &[u8], expected: &Manifest) -> Result<()> {
         );
         return Err(PACKAGE_INVALID);
     }
-    let digest = format!("{:x}", Sha256::digest(bytes));
+    let digest = Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     if digest != expected.sha256 {
         argus_core::diagnostics::warn(
             "PawnIO package digest",
@@ -217,6 +220,18 @@ pub(super) fn version() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn accepts_the_pinned_sha256_for_unchanged_bytes() {
+        let expected = Manifest {
+            version: "test".into(),
+            url: "https://example.invalid/setup.exe".into(),
+            size: 3,
+            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
+        };
+        assert!(check_bytes(b"abc", &expected).is_ok());
+        assert!(check_bytes(b"abd", &expected).is_err());
+    }
+
     #[test]
     fn rejects_truncation_and_same_size_replacement() {
         for expected in [manifest(), legacy_manifest()] {
