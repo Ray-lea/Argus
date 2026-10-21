@@ -545,9 +545,17 @@ button {
   background: var(--layer-strong);
 }
 
-/* Room for the clear button only while there is something to clear. */
+/* Room for the clear button only while there is something to clear. A box
+   that filters its list wears the accent, as the list does (.filtered). */
 .search.filled input {
   padding-right: 34px;
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  border-bottom-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--control));
+}
+
+.search.filled > svg {
+  color: var(--accent);
 }
 
 .search .clear {
@@ -869,6 +877,42 @@ button {
   border: 1px solid var(--stroke);
   border-radius: 8px;
   background: var(--layer);
+  transition:
+    border-color var(--t-med) linear,
+    box-shadow var(--t-med) linear;
+}
+
+/* A search narrows the process list: an accent ring around it and an accent
+   header (with a funnel before the count) tell at a glance, without words. */
+.workspace.filtered {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.workspace.filtered .process-table > .thead {
+  border-bottom-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  border-top-left-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* The header reaches the card's right corner too while the details are closed. */
+.workspace.filtered:not(:has(> .details)) .process-table > .thead {
+  border-top-right-radius: 7px;
+}
+
+.filter-mark {
+  display: inline-flex;
+  margin-right: 6px;
+  color: var(--accent);
+  vertical-align: -1px;
+  animation: filter-in var(--t-slow) var(--ease-out);
+}
+
+@keyframes filter-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
 }
 
 .table {

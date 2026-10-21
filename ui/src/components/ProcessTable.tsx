@@ -33,7 +33,7 @@ import {
   toggleSection,
   viewMode,
 } from "../lib/store";
-import { ChevronDown, ChevronRight, ChevronUp, LeafIcon } from "./icons";
+import { ChevronDown, ChevronRight, ChevronUp, FilterIcon, LeafIcon } from "./icons";
 import { openProcessMenu } from "./menus";
 import ProcIcon from "./ProcIcon";
 
@@ -283,7 +283,20 @@ export default function ProcessTable() {
       aria-sort={sort().key === col.key ? (sort().desc ? "descending" : "ascending") : "none"}
       onClick={() => onSort(col)}
     >
-      <span class="th-total">{totals(col.key) || " "}</span>
+      <span class="th-total">
+        {/* A search narrows the list: said by the ring around it (styles.css) and this. */}
+        <Show when={col.key === "name" && query().trim()}>
+          <span
+            class="filter-mark"
+            role="img"
+            title={t("processes.filtered")}
+            aria-label={t("processes.filtered")}
+          >
+            <FilterIcon size={13} />
+          </span>
+        </Show>
+        {totals(col.key) || " "}
+      </span>
       <span class="th-label">
         {t(`processes.column.${col.key}.label`)}
         <Show when={sort().key === col.key}>

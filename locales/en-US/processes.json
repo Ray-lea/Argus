@@ -23,6 +23,7 @@
     }
   },
   "total": { "one": "{count} process", "other": "{count} processes" },
+  "filtered": "The list is filtered by the search",
   "column": {
     "name": { "label": "Name", "title": "Sort by name" },
     "pid": { "label": "PID", "title": "Process ID" },

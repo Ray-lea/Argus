@@ -23,6 +23,7 @@
     }
   },
   "total": "{count} 个进程",
+  "filtered": "列表已按搜索内容筛选",
   "column": {
     "name": { "label": "名称", "title": "按名称排序" },
     "pid": { "label": "PID", "title": "进程 ID" },

@@ -319,6 +319,13 @@ export const TrashIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** A list narrowed down by a search. */
+export const FilterIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.5 3.5h11l-4.25 5v4.25l-2.5 1.25V8.5Z" />
+  </Svg>
+);
+
 /** A row pinned to the top of its table. */
 export const PinIcon = (p: IconProps) => (
   <Svg {...p}>

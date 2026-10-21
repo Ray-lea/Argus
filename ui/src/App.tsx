@@ -34,6 +34,7 @@ import {
   intervalMs,
   type Page,
   page,
+  query,
   refreshServices,
   rows,
   selectedKey,
@@ -55,6 +56,27 @@ const pageIndex = (p: Page) => PAGES.findIndex((x) => x.page === p);
 
 export default function App() {
   const [dragging, setDragging] = createSignal(false);
+  /** A search narrows the process list: an accent ring around it says so (.workspace.filtered). */
+  const filtering = () => query().trim() !== "";
+  let workspace: HTMLElement | undefined;
+  // The ring arrives with one pulse, so the change is noticed.
+  createEffect(
+    on(
+      filtering,
+      (active, was) => {
+        // `was` is undefined on the first change after the deferred start.
+        if (!active || was) return;
+        const ring = (spread: number, alpha: number) =>
+          `0 0 0 ${spread}px color-mix(in srgb, var(--accent) ${alpha}%, transparent)`;
+        play(
+          workspace,
+          [{ boxShadow: ring(0, 45) }, { boxShadow: ring(9, 0), offset: 0.6 }, { boxShadow: ring(3, 16) }],
+          { duration: 650, easing: "ease-out" },
+        );
+      },
+      { defer: true },
+    ),
+  );
   const sampledPage = () => page() === "processes" || page() === "performance";
   createEffect(() => void api.setWindowMotion(uiMotion()));
   createEffect(() => {
@@ -191,7 +213,12 @@ export default function App() {
         <Match when={page() === "processes"}>
           <div class="page proc-page">
             <Vitals />
-            <main class="workspace">
+            <main
+              ref={workspace}
+              class="workspace"
+              classList={{ filtered: filtering() }}
+              aria-description={filtering() ? t("processes.filtered") : undefined}
+            >
               <Show
                 when={snapshot()}
                 fallback={
