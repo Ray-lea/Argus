@@ -58,6 +58,8 @@ export default function ReleaseNotes(props: {
   to: string;
   notes?: string | null;
   loading?: boolean;
+  /** Every release open, not just the newest (the dialog, which has the room). */
+  openAll?: boolean;
 }) {
   // Progress events can carry new objects for unchanged releases. Keep each
   // entry mounted so reading position and expanded sections survive them.
@@ -96,7 +98,9 @@ export default function ReleaseNotes(props: {
           </Show>
         }
       >
-        <For each={entries()}>{(item, index) => <Entry entry={item} open={index() === 0} />}</For>
+        <For each={entries()}>
+          {(item, index) => <Entry entry={item} open={props.openAll || index() === 0} />}
+        </For>
         <Show when={earlier()}>
           <p class="update-quiet">{t("updates.dialog.earlier")}</p>
         </Show>
@@ -108,7 +112,7 @@ export default function ReleaseNotes(props: {
   );
 }
 
-/** One release: its version, date and size of change; the newest starts open. */
+/** One release: its version, date and size of change; starts open or closed as asked. */
 function Entry(props: { entry: Release; open: boolean }) {
   const blocks = createMemo(() => parseNotes(props.entry.notes));
   const [open, setOpen] = createSignal(props.open);

@@ -2214,8 +2214,28 @@ button {
   }
 }
 
+/* As tall as the window allows: the head, versions and hints keep their
+   height, what changed takes the rest (and scrolls only past its own). */
 .dialog.update-dialog {
-  width: min(560px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+}
+
+.update-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.update-body > * {
+  flex: none;
+}
+
+.update-dialog .update-footer {
+  flex: none;
 }
 
 .update-head {
@@ -2331,8 +2351,8 @@ button {
   transform-origin: left;
 }
 
-/* What changed: one section per release, the newest open. The text can be
-   selected and copied. */
+/* What changed: one section per release. The text can be selected and
+   copied. In the settings card, a box of its own height. */
 .update-notes {
   max-height: min(42vh, 360px);
   margin: 16px -8px 0;
@@ -2342,6 +2362,18 @@ button {
   overscroll-behavior: contain;
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+/* In the dialog, framed, it fills the height the dialog has left. */
+.update-dialog .update-notes {
+  flex: 0 1 auto;
+  min-height: 140px;
+  max-height: none;
+  margin: 16px 0 0;
+  padding: 6px 2px 8px 6px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--layer);
 }
 
 .update-entry + .update-entry {

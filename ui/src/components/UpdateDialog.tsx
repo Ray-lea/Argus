@@ -235,6 +235,7 @@ function Body(props: { state: UpdateDialogState; leaving: boolean }) {
             to={target()}
             notes={offer ? updateStatus()?.notes : null}
             loading={!offer && changelog.loading}
+            openAll
           />
 
           <Show when={canInstall()}>
