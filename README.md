@@ -115,7 +115,7 @@ start.bat build     # 发布构建，生成 target\release\argus.exe
 |---|---|
 | [使用指南](docs/guide/README.md) | 界面与操作、常驻与快捷键、设置、硬件数据的来源与限制 |
 | [开发指南](docs/development/README.md) | 环境与命令、构建与缓存、性能基线与测量 |
-| [架构](docs/architecture/README.md) | 分层与数据流、各模块职责 |
+| [架构](docs/architecture/README.md) | 分层与数据流、技术栈、各模块职责 |
 | [设计](docs/design/README.md) | 设计原则、曲线动画、窗口外观 |
 | [路线图](docs/roadmap.md) | 已完成与计划中的功能 |
 | [已知问题](docs/known-issues.md) | 当前版本的限制 |

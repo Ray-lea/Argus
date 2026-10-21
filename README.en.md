@@ -117,7 +117,7 @@ The documentation is in Chinese.
 |---|---|
 | [User guide](docs/guide/README.md) | Interface and operations, tray and shortcuts, settings, where hardware data comes from |
 | [Development guide](docs/development/README.md) | Environment and commands, builds and caches, performance baselines and measurement |
-| [Architecture](docs/architecture/README.md) | Layers and data flow, module responsibilities |
+| [Architecture](docs/architecture/README.md) | Layers and data flow, tech stack, module responsibilities |
 | [Design](docs/design/README.md) | Design principles, chart animation, window appearance |
 | [Roadmap](docs/roadmap.md) | Done and planned features |
 | [Known issues](docs/known-issues.md) | Limitations of the current version |

@@ -4,7 +4,7 @@
 docs/
 ├── guide/            使用指南：界面与操作、常驻与快捷键、设置、硬件数据
 ├── development/      开发指南：环境与命令、构建与缓存、性能基线与测量、提交与发布、多语言
-├── architecture/     架构：分层与数据流、采集层、Tauri 宿主、前端
+├── architecture/     架构：分层与数据流、技术栈、采集层、Tauri 宿主、前端
 ├── design/           设计：设计原则、曲线动画、窗口外观、全局快捷键
 ├── roadmap.md        路线图
 └── known-issues.md   已知问题
@@ -29,6 +29,7 @@ docs/
 ## 架构
 
 - [总览](architecture/README.md)：分层、数据流、设计取向
+- [技术栈](architecture/tech-stack.md)：各层的语言、框架、依赖与平台接口，检查、构建与发布工具
 - [采集层 argus-core](architecture/core.md)
 - [Tauri 宿主](architecture/host.md)
 - [特权服务](architecture/privileged-service.md)：安装、授权边界、IPC 与验证

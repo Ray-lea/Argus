@@ -7,6 +7,7 @@ src-tauri/          Tauri 2 宿主：采样线程、托盘与窗口、设置、I
 ui/                 SolidJS + TypeScript + Tailwind v4 前端
 ```
 
+- [技术栈](tech-stack.md)：各层的语言、框架、依赖与平台接口，检查、构建与发布工具
 - [采集层 argus-core](core.md)
 - [Tauri 宿主](host.md)
 - [特权服务](privileged-service.md)
