@@ -309,6 +309,10 @@
     "powerLimit": "功耗上限",
     "maxTemperature": "最高温度",
     "engines": "引擎",
+    "engineCount": "显示的引擎数量",
+    "engineCountOption": "{count} 个引擎",
+    "engineCountAll": "全部 {count} 个引擎",
+    "engineType": "图中显示的引擎",
     "maxCoreClock": "最高核心频率",
     "powerSource": "功耗来源",
     "sources": {

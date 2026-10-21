@@ -510,6 +510,18 @@
   font-weight: 400;
 }
 
+/* A GPU engine chart's label is the choice of engine, then its usage. */
+.engine-cell > .chart-cell-label {
+  display: flex;
+  align-items: center;
+  top: 2px;
+  max-width: calc(100% - 12px);
+}
+
+.engine-cell > .chart-cell-label b {
+  flex: none;
+}
+
 /* P / E tag on a logical processor. */
 .core-kind {
   display: inline-block;

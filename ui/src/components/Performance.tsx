@@ -25,6 +25,7 @@ import {
   netParts,
   rateParts,
 } from "../lib/format";
+import { type EngineChoice, shownEngines, withCount, withEngine } from "../lib/gpu-engines";
 import { gridReflow } from "../lib/grid-reflow";
 import { rich, t } from "../lib/i18n";
 import { memoryComposition } from "../lib/memory-composition";
@@ -58,6 +59,7 @@ import {
 import Expander from "./Expander";
 import Indicator from "./Indicator";
 import { ChevronDown, ChevronUp } from "./icons";
+import Select from "./Select";
 import { Chart, easedMax, type Series } from "./Trace";
 
 const MB = 1024 * 1024;
@@ -1357,34 +1359,77 @@ function NicView(props: { id: string }) {
 
 // ---- GPU ---------------------------------------------------------------------
 
+/**
+ * Which engines each GPU charts, keyed by model: the id comes from the
+ * adapter LUID, which changes at every boot.
+ */
+const [engineChoices, setEngineChoices] = persisted<Record<string, EngineChoice>>("gpuEngines", {});
+
 function GpuView(props: { id: string }) {
   const gpus = () => now().hardware.gpus;
   const gpu = () => gpus().find((g) => g.info.id === props.id);
   const index = () => gpus().findIndex((g) => g.info.id === props.id);
   const k = () => `gpu.${props.id}`;
+  const engines = () => gpu()?.info.engines ?? [];
+  const choice = () => engineChoices()[gpu()?.info.name ?? ""];
+  const shown = () => shownEngines(engines(), choice());
+  const choose = (next: EngineChoice) => {
+    const model = gpu()?.info.name;
+    if (model) setEngineChoices({ ...engineChoices(), [model]: next });
+  };
+  const countOptions = () =>
+    engines().map((_, i) => ({
+      value: i + 1,
+      label:
+        i + 1 === engines().length
+          ? t("performance.gpu.engineCountAll", { count: i + 1 })
+          : t("performance.gpu.engineCountOption", { count: i + 1 }),
+    }));
+  const engineOptions = () => engines().map((e) => ({ value: e, label: e }));
 
   return (
     <Show when={gpu()} fallback={<p class="empty">{t("performance.gpu.notFound")}</p>}>
       {(g) => (
         <div class="perf-main">
           <Head title={`GPU ${index()}`} model={g().info.name} />
+          <Show when={engines().length > 1}>
+            <div class="perf-toolbar">
+              <Select<number>
+                value={shown().length}
+                options={countOptions()}
+                label={t("performance.gpu.engineCount")}
+                onChange={(n) => choose(withCount(engines(), choice(), n))}
+              />
+            </div>
+          </Show>
           <div class="chart-labels">
             <span>{t("performance.gpu.engineUtilization")}</span>
             <span>100%</span>
           </div>
-          <div class="chart-grid" ref={(el) => fitGrid(el, () => g().info.engines.length)}>
-            <For each={g().info.engines}>
-              {(name, i) => (
-                <div class="chart-frame engine-cell" style={{ "--c": "var(--gpu)" }}>
-                  <span class="chart-cell-label">
-                    {name} <b>{Math.round(g().engines[i()] ?? 0)}%</b>
-                  </span>
-                  <Chart
-                    series={[{ data: () => series(`${k()}.e${i()}`), colorVar: "--gpu" }]}
-                    max={() => 100}
-                  />
-                </div>
-              )}
+          <div class="chart-grid" ref={(el) => fitGrid(el, () => shown().length)}>
+            {/* Keyed by engine: a chart that moves to another place keeps its trace. */}
+            <For each={shown()}>
+              {(name, slot) => {
+                const e = () => engines().indexOf(name);
+                return (
+                  <div class="chart-frame engine-cell" style={{ "--c": "var(--gpu)" }}>
+                    <span class="chart-cell-label">
+                      <Select<string>
+                        class="compact"
+                        value={name}
+                        options={engineOptions()}
+                        label={t("performance.gpu.engineType")}
+                        onChange={(next) => choose(withEngine(engines(), choice(), slot(), next))}
+                      />
+                      <b>{Math.round(g().engines[e()] ?? 0)}%</b>
+                    </span>
+                    <Chart
+                      series={[{ data: () => series(`${k()}.e${e()}`), colorVar: "--gpu" }]}
+                      max={() => 100}
+                    />
+                  </div>
+                );
+              }}
             </For>
           </div>
 

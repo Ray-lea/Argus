@@ -324,6 +324,10 @@
     "powerLimit": "Power limit",
     "maxTemperature": "Max temperature",
     "engines": "Engines",
+    "engineCount": "Engines shown",
+    "engineCountOption": { "one": "{count} engine", "other": "{count} engines" },
+    "engineCountAll": "All {count} engines",
+    "engineType": "Engine in this chart",
     "maxCoreClock": "Max core clock",
     "powerSource": "Power source",
     "sources": {

@@ -703,6 +703,38 @@ button {
   opacity: 0.5;
 }
 
+/* A choice inside a chart label: the label's size and color, a face only on
+   hover, as wide as the current choice (names differ a lot in length). */
+.select.compact {
+  gap: 2px;
+  min-width: 0;
+  height: 18px;
+  margin-left: -4px;
+  padding: 0 2px 0 4px;
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+}
+
+.select.compact:hover:not(:disabled),
+.select.compact[aria-expanded="true"] {
+  background: var(--control-hover);
+}
+
+.select.compact .select-value {
+  min-width: 0;
+}
+
+.select.compact .select-value > span:not(.current) {
+  display: none;
+}
+
+.select.compact .select-value > span.current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* All labels share one cell, so the width is that of the longest. */
 .select-value {
   display: grid;
