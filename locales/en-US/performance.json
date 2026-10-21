@@ -30,7 +30,14 @@
     },
     "graph": "CPU graph",
     "overall": "Overall",
-    "logical": "Logical processors",
+    "logical": "Logical",
+    "modeTitle": {
+      "overall": "Utilization of all logical processors together",
+      "logical": "One chart per logical processor"
+    },
+    "pages": "CPU pages",
+    "page": { "overview": "Overview", "details": "Details" },
+    "filterShort": { "p": "P-cores", "e": "E-cores" },
     "utilizationChart": "% Utilization",
     "total": "Total",
     "kernel": "Kernel",
@@ -92,10 +99,6 @@
     "instructions": "Instruction sets",
     "microcode": "Microcode revision",
     "sectionInfo": "Processor details",
-    "instructionCount": {
-      "one": "{count} instruction set",
-      "other": "{count} instruction sets"
-    },
     "telemetryTitle": "Internal sensors",
     "telemetryPower": "Power and limits",
     "telemetryVoltage": "Voltage and current",

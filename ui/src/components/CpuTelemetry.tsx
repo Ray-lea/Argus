@@ -1,6 +1,6 @@
 // The CPU view's sections of driver readings (grouped readings, per-core and
 // idle tables, package limits, the motherboard's sensor chip) and the one-line
-// summaries their expanders show while closed.
+// summaries beside their titles on the details page.
 import { createMemo, For, Show } from "solid-js";
 import { CPU_METRICS } from "../lib/cpu-sensors";
 import { localized, t } from "../lib/i18n";

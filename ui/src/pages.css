@@ -346,8 +346,7 @@
 }
 
 /* A view's first screen: the card's height less the scroller's padding (16 +
-   20). Its charts grow into the height left over; anything after it (the
-   CPU's expanders) starts below the fold. */
+   20). Its charts grow into the height left over. */
 .perf-main {
   display: flex;
   flex-direction: column;
@@ -383,6 +382,14 @@
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+}
+
+/* The title and what follows it (the CPU view's page switch). */
+.perf-head-start {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
 }
 
 .perf-title {
@@ -460,9 +467,9 @@
   min-height: 64px;
 }
 
-/* Charts in an expander sit below the first screen and keep their height. */
-.expander-body .chart-frame.small {
-  height: clamp(96px, 20cqh, 220px);
+/* Charts in a details card keep their height. */
+.cpu-card .chart-frame.small {
+  height: clamp(110px, 22cqh, 220px);
 }
 
 /* Short cards: the captions move inside the frame, as on the small cells. */
@@ -664,6 +671,11 @@
   align-content: start;
 }
 
+/* The CPU's live figures and specs under its charts, side by side where they fit. */
+.cpu-stats {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+
 .stat-label {
   color: var(--ink-2);
   font-size: 12px;
@@ -708,13 +720,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Instruction sets as tags under their label. */
 .cpu-instructions {
-  line-height: 1.55;
-  font-size: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
 }
 
-.cpu-stats {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+.cpu-instructions span {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .cpu-instructions-label,
@@ -732,8 +752,8 @@
   min-width: 0;
 }
 
-/* Stacked groups in one expander (idle states: Windows, then per core). */
-.expander-body > .cpu-sensor-group + .cpu-sensor-group {
+/* Stacked groups in one card (idle states: Windows, then per core). */
+.cpu-card > .cpu-sensor-group + .cpu-sensor-group {
   margin-top: 20px;
 }
 
@@ -853,79 +873,70 @@
   margin-top: 18px;
 }
 
-/* ---- Expanders (less used CPU details) -------------------------------------- */
+/* ---- CPU details ------------------------------------------------------------ */
 
-.perf-more {
+/* The CPU's details page: cards that stay open, one under another. */
+.cpu-details {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 22px;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.expander {
+/* Two short cards side by side where they fit, matching heights; a lone one
+   takes the whole row. */
+.cpu-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 12px;
+}
+
+.cpu-card {
+  min-width: 0;
+  padding: 14px 16px 16px;
   border: 1px solid var(--stroke);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--layer);
 }
 
-.expander-head {
-  display: grid;
-  grid-template-columns: 12px max-content minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 42px;
-  padding: 8px 14px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  text-align: left;
+.cpu-card.alert {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
-.expander-head:hover {
-  background: var(--hover);
+.cpu-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 12px;
 }
 
-.expander-chevron {
-  color: var(--ink-2);
-  transition: transform var(--t-fast) var(--ease-out, ease-out);
-}
-
-.expander.open .expander-chevron {
-  transform: rotate(90deg);
-}
-
-.expander-title {
+.cpu-card-head h3 {
+  flex: none;
+  margin: 0;
+  font-size: 14px;
   font-weight: 600;
-  white-space: nowrap;
 }
 
-.expander-title small {
+.cpu-card-head small {
   margin-left: 6px;
   color: var(--ink-2);
   font-size: 12px;
   font-weight: 400;
 }
 
-.expander-summary {
+.cpu-card-summary {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   color: var(--ink-2);
   font-size: 12px;
-  font-variant-numeric: tabular-nums;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.expander.alert .expander-summary {
+.cpu-card-summary.alert {
   color: var(--danger);
-}
-
-/* Indented to the title, past the chevron. */
-.expander-body {
-  padding: 12px 14px 16px 36px;
-  border-top: 1px solid var(--stroke);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Address lists (network) ----------------------------------------------- */

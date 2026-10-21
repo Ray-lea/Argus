@@ -595,7 +595,8 @@ button {
   color: var(--ink);
 }
 
-.segmented button[aria-pressed="true"] {
+.segmented button[aria-pressed="true"],
+.segmented button[aria-selected="true"] {
   background: transparent;
   color: var(--ink);
 }
