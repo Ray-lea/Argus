@@ -438,8 +438,15 @@ fn cause(e: &Error) -> Cow<'static, str> {
     match e {
         _ if signature_error(e) => SIGNATURE.into(),
         Error::ReleaseNotFound => "not found".into(),
-        Error::Reqwest(e) if e.is_timeout() => "timeout".into(),
-        Error::Reqwest(e) if e.is_connect() => "network error".into(),
+        Error::Reqwest(e) => format!(
+            "http_status={:?}; timeout={}; connect={}; body={}; causes={}",
+            e.status().map(|s| s.as_u16()),
+            e.is_timeout(),
+            e.is_connect(),
+            e.is_body(),
+            argus_core::diagnostics::error_chain(e)
+        )
+        .into(),
         // The plugin's own words for a download the server refused.
         Error::Network(message) => match message.split_once("status: ") {
             Some((_, status))
@@ -879,7 +886,10 @@ fn file_name(version: &str) -> Option<String> {
 fn keep(app: &AppHandle, mut pending: Pending, bytes: &[u8]) -> Result<Ready, String> {
     let dir = updates_dir(app).ok_or_else(|| tr!("updater.noDataFolder"))?;
     let name = file_name(&pending.version).ok_or_else(|| tr!("updater.invalidVersion"))?;
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        argus_core::diagnostics::file_failure("update cache directory creation", &dir, &e);
+        e.to_string()
+    })?;
     let path = dir.join(&name);
     write_new(&path, bytes)?;
     pending.file = name.clone();
@@ -904,9 +914,22 @@ fn keep(app: &AppHandle, mut pending: Pending, bytes: &[u8]) -> Result<Ready, St
 /// Writes through a temporary name, so a crash leaves no half file behind.
 fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let partial = path.with_extension("partial");
+    let mut stage = "update cache write temporary file";
     fs::write(&partial, bytes)
-        .and_then(|_| fs::rename(&partial, path))
+        .and_then(|_| {
+            stage = "update cache replace file";
+            fs::rename(&partial, path)
+        })
         .map_err(|e| {
+            argus_core::diagnostics::warn(
+                stage,
+                format!(
+                    "{}; temporary_path={}; destination_path={}",
+                    argus_core::diagnostics::io(&e),
+                    argus_core::diagnostics::path(&partial),
+                    argus_core::diagnostics::path(path)
+                ),
+            );
             let _ = fs::remove_file(&partial);
             e.to_string()
         })
@@ -915,8 +938,11 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
 /// Removes the kept installer. Right after an update the old installer may
 /// still be running for a moment; the next start tries again.
 fn discard(app: &AppHandle) {
-    if let Some(dir) = updates_dir(app) {
-        let _ = fs::remove_dir_all(dir);
+    if let Some(dir) = updates_dir(app)
+        && let Err(error) = fs::remove_dir_all(&dir)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        argus_core::diagnostics::file_failure("update cache cleanup", &dir, &error);
     }
 }
 
@@ -955,7 +981,10 @@ fn restore(app: &AppHandle) {
     let path = dir.join(&pending.file);
     let key = pubkey(app);
     let size = match fs::read(&path)
-        .map_err(|e| argus_core::diagnostics::failure(&e.to_string()))
+        .map_err(|e| {
+            argus_core::diagnostics::file_failure("kept update read", &path, &e);
+            Cow::Owned(argus_core::diagnostics::io(&e))
+        })
         .and_then(|bytes| {
             verify_signed(&bytes, &pending.signature, &key, &pending.version)
                 .map(|_| bytes.len() as u64)
@@ -1119,10 +1148,14 @@ fn launch(app: &AppHandle, ready: &Ready) -> Failure {
     {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Failure::Changed,
-        Err(e) => return Failure::io(&e),
+        Err(e) => {
+            argus_core::diagnostics::file_failure("update installer open", &ready.path, &e);
+            return Failure::io(&e);
+        }
     };
     let mut bytes = Vec::new();
     if let Err(e) = file.read_to_end(&mut bytes) {
+        argus_core::diagnostics::file_failure("update installer read", &ready.path, &e);
         return Failure::io(&e);
     }
     if verify_signed(&bytes, &ready.signature, &pubkey(app), &ready.version).is_err() {
@@ -1145,6 +1178,14 @@ fn launch(app: &AppHandle, ready: &Ready) -> Failure {
         return if e.code() == ERROR_CANCELLED.to_hresult() {
             Failure::Cancelled
         } else {
+            argus_core::diagnostics::warn(
+                "update installer ShellExecuteExW",
+                format!(
+                    "{}; path={}",
+                    argus_core::diagnostics::code(e.code().0 as u32),
+                    argus_core::diagnostics::path(&ready.path)
+                ),
+            );
             Failure::system(&e)
         };
     }

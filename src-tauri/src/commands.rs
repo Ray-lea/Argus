@@ -157,14 +157,40 @@ fn privileged<T>(
     replied: impl FnOnce(Reply) -> Option<T>,
     local: impl FnOnce() -> Result<T, ActionError>,
 ) -> Result<T, ActionError> {
+    let operation = match &operation {
+        Operation::Terminate { .. } => ("terminate process", operation),
+        Operation::Priority { .. } => ("set process priority", operation),
+        Operation::Efficiency { .. } => ("set process efficiency", operation),
+        Operation::ControlService { .. } => ("control Windows service", operation),
+        Operation::ServiceStartType { .. } => ("set service start type", operation),
+        Operation::CloseConnection { .. } => ("close TCP connection", operation),
+        _ => ("privileged operation", operation),
+    };
     if state.elevated {
-        return local();
+        return action_result(operation.0, "local elevated", local());
     }
-    settle(
-        argus_service::route(operation).map_err(ActionError::Os)?,
-        replied,
-        local,
-    )
+    let routed = argus_service::route(operation.1).map_err(ActionError::Os);
+    let routed = action_result(operation.0, "service routing", routed)?;
+    let source = match &routed {
+        Routed::Absent => "local fallback (no service)",
+        Routed::Outdated => "local fallback (incompatible service)",
+        Routed::Replied(_) => "privileged service",
+    };
+    action_result(operation.0, source, settle(routed, replied, local))
+}
+
+fn action_result<T>(
+    operation: &'static str,
+    source: &'static str,
+    result: Result<T, ActionError>,
+) -> Result<T, ActionError> {
+    if let Err(error) = &result {
+        argus_core::diagnostics::warn(
+            operation,
+            format!("source={source}; {}", error.diagnostic()),
+        );
+    }
+    result
 }
 
 /// What an operation comes to once the service has `routed` it.
@@ -575,10 +601,13 @@ pub fn set_kernel_sensors(
     let _change = Change;
     if enabled {
         argus_service::driver::ensure_ready().inspect_err(|error| {
-            log::warn!(
-                "kernel sensor preparation failed: {}; PawnIO snapshot: {}",
-                argus_core::diagnostics::failure(error),
-                argus_service::driver::diagnostic_status()
+            argus_core::diagnostics::warn(
+                "kernel sensor preparation failed",
+                format!(
+                    "{}; PawnIO state after failure: {}",
+                    argus_core::diagnostics::failure(error),
+                    argus_service::driver::diagnostic_status()
+                ),
             );
         })?;
     }
@@ -595,8 +624,14 @@ pub fn clear_history(state: State<'_, AppState>, dir: State<'_, HistoryDir>) -> 
     let (tx, rx) = std::sync::mpsc::channel();
     state.sampler.send(Control::ClearHistory(dir.0.clone(), tx));
     match rx.recv_timeout(Duration::from_secs(10)) {
-        Ok(result) => result.map_err(|e| e.to_string()),
-        Err(_) => Err(tr!("host.samplerStalled")),
+        Ok(result) => result.map_err(|e| {
+            argus_core::diagnostics::file_failure("history clear", &dir.0, &e);
+            e.to_string()
+        }),
+        Err(error) => {
+            argus_core::diagnostics::warn("history clear", format!("sampler_reply={error:?}"));
+            Err(tr!("host.samplerStalled"))
+        }
     }
 }
 
@@ -701,7 +736,7 @@ pub fn open_log_dir(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command(async)]
 pub fn list_services(state: State<'_, AppState>) -> Result<Vec<ServiceInfo>, ActionError> {
-    state.services.list()
+    action_result("list Windows services", "local", state.services.list())
 }
 
 #[tauri::command(async)]
@@ -767,7 +802,15 @@ pub fn list_startup(state: State<'_, AppState>) -> Vec<StartupItem> {
 
 #[tauri::command(async)]
 pub fn set_startup_enabled(id: String, enabled: bool) -> Result<(), ActionError> {
-    startup::set_enabled(&id, enabled)
+    action_result(
+        if enabled {
+            "enable startup item"
+        } else {
+            "disable startup item"
+        },
+        "local",
+        startup::set_enabled(&id, enabled),
+    )
 }
 
 // ---- Connections ----------------------------------------------------------------
@@ -803,7 +846,11 @@ pub fn close_connection(
 #[tauri::command(async)]
 pub fn find_lockers(paths: Vec<String>) -> Result<LockReport, ActionError> {
     let base = filelock::find_lockers(&paths);
-    LockReport::combine(base, argus_service::find_handle_lockers(paths))
+    action_result(
+        "find file locks",
+        "Restart Manager and handle scan",
+        LockReport::combine(base, argus_service::find_handle_lockers(paths)),
+    )
 }
 
 /// Native file or folder picker.

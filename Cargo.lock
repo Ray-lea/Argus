@@ -91,6 +91,7 @@ dependencies = [
 name = "argus-core"
 version = "0.2.0"
 dependencies = [
+ "log",
  "png 0.18.1",
  "serde",
  "serde_json",

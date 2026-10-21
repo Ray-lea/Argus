@@ -220,11 +220,22 @@ fn package_tasks(package: &Package) -> windows::core::Result<Vec<PackagedItem>> 
         }
     }
     let root = Path::new(&executable_root);
-    let Ok(xml) = std::fs::read_to_string(&manifest) else {
+    let Ok(xml) = std::fs::read_to_string(&manifest).inspect_err(|error| {
+        crate::diagnostics::file_failure("startup package manifest read", &manifest, error)
+    }) else {
         return Ok(Vec::new());
     };
     let mut out = Vec::new();
-    for task in tasks(&xml)? {
+    for task in tasks(&xml).inspect_err(|error| {
+        crate::diagnostics::warn(
+            "startup package manifest parse",
+            format!(
+                "{}; path={}",
+                crate::diagnostics::code(error.code().0 as u32),
+                crate::diagnostics::path(&manifest)
+            ),
+        )
+    })? {
         let path = executable_path(root, &task.executable);
         let exists = path.as_deref().is_some_and(|p| Path::new(p).is_file());
         let command = path
@@ -284,8 +295,11 @@ fn package_tasks(package: &Package) -> windows::core::Result<Vec<PackagedItem>> 
 
 pub(super) fn list(meta: &MetaStore) -> Vec<StartupItem> {
     let _apartment = Apartment::new();
-    let Ok(packages) =
-        PackageManager::new().and_then(|m| m.FindPackagesByUserSecurityId(&HSTRING::new()))
+    let Ok(packages) = PackageManager::new()
+        .and_then(|m| m.FindPackagesByUserSecurityId(&HSTRING::new()))
+        .inspect_err(|error| {
+            crate::diagnostics::windows_failure("startup package enumeration", error)
+        })
     else {
         return Vec::new();
     };
@@ -296,7 +310,12 @@ pub(super) fn list(meta: &MetaStore) -> Vec<StartupItem> {
         if let Ok(name) = package.Id().and_then(|id| id.FullName()) {
             present.insert(name.to_string());
         }
-        for PackagedItem { mut item, kind } in package_tasks(&package).unwrap_or_default() {
+        for PackagedItem { mut item, kind } in package_tasks(&package)
+            .inspect_err(|error| {
+                crate::diagnostics::windows_failure("startup package metadata", error)
+            })
+            .unwrap_or_default()
+        {
             if !seen.insert(item.id.clone()) {
                 continue;
             }
@@ -398,7 +417,10 @@ fn state(family: &str, task: &str, kind: TaskKind) -> (bool, Option<&'static str
     };
     match read() {
         Ok(enabled) => (enabled, (!kind.user_configurable).then_some("managed")),
-        Err(_) => (false, Some("unavailable")),
+        Err(error) => {
+            crate::diagnostics::windows_failure("startup package state read", &error);
+            (false, Some("unavailable"))
+        }
     }
 }
 
@@ -493,6 +515,10 @@ pub(super) fn set_enabled(identity: &str, enabled: bool) -> Result<(), ActionErr
         .ok()?;
     }
     if read_dword(&key, "State")? != Some(value) {
+        crate::diagnostics::warn(
+            "startup package state verification",
+            "stored state differs after write",
+        );
         return Err(ActionError::Os(crate::tr!("startup.changed")));
     }
     Ok(())

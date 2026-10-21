@@ -49,12 +49,14 @@ unsafe extern "system" {
 pub struct ProfileError {
     pub stage: &'static str,
     pub code: u32,
+    pub path: Option<PathBuf>,
 }
 impl ProfileError {
     fn win(stage: &'static str, error: windows::core::Error) -> Self {
         let code = error.code().0 as u32;
         Self {
             stage,
+            path: None,
             code: if code & 0xffff0000 == 0x80070000 {
                 code & 0xffff
             } else {
@@ -65,8 +67,14 @@ impl ProfileError {
     fn io(stage: &'static str, error: std::io::Error) -> Self {
         Self {
             stage,
+            path: None,
             code: error.raw_os_error().unwrap_or(31) as u32,
         }
+    }
+
+    fn at(mut self, path: &Path) -> Self {
+        self.path = Some(path.to_owned());
+        self
     }
 
     pub fn report(&self) {
@@ -117,6 +125,7 @@ fn open_token(process: HANDLE, impersonate: bool) -> Result<Handle, ProfileError
 
 fn user(token: HANDLE) -> Result<String, ProfileError> {
     let data = token_buffer(token, TokenUser).map_err(|e| ProfileError {
+        path: None,
         stage: "TokenUser",
         code: e.code,
     })?;
@@ -176,6 +185,10 @@ fn known_folder(token: HANDLE) -> Result<PathBuf, ProfileError> {
 }
 
 fn lock_directory(path: &Path) -> Result<(File, PathBuf), ProfileError> {
+    lock_directory_inner(path).map_err(|error| error.at(path))
+}
+
+fn lock_directory_inner(path: &Path) -> Result<(File, PathBuf), ProfileError> {
     let file = OpenOptions::new()
         .read(true)
         // Attribute-only access does not enforce directory sharing restrictions.
@@ -190,12 +203,14 @@ fn lock_directory(path: &Path) -> Result<(File, PathBuf), ProfileError> {
         .map_err(|e| ProfileError::win("browser directory attributes", e))?;
     if info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
         return Err(ProfileError {
+            path: None,
             stage: "browser directory reparse point",
             code: 4390,
         });
     }
     if info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 == 0 {
         return Err(ProfileError {
+            path: None,
             stage: "browser path is not a directory",
             code: 267,
         });
@@ -209,6 +224,7 @@ fn final_directory(handle: HANDLE) -> Result<PathBuf, ProfileError> {
     let len = unsafe { GetFinalPathNameByHandleW(handle, &mut buffer, VOLUME_NAME_DOS) } as usize;
     if len == 0 || len >= buffer.len() {
         return Err(ProfileError {
+            path: None,
             stage: "browser directory final path",
             code: if len == 0 {
                 unsafe { GetLastError() }.0
@@ -240,15 +256,18 @@ fn resolve(identifier: &str, create: bool) -> Result<Option<Profile>, ProfileErr
         return Ok(None);
     }
     let session = token_buffer(own.0, TokenSessionId).map_err(|e| ProfileError {
+        path: None,
         stage: "host session",
         code: e.code,
     })?[0] as u32;
     let desktop_session = token_buffer(desktop.0, TokenSessionId).map_err(|e| ProfileError {
+        path: None,
         stage: "desktop session",
         code: e.code,
     })?[0] as u32;
     if session != desktop_session {
         return Err(ProfileError {
+            path: None,
             stage: "desktop session mismatch",
             code: 5,
         });
@@ -265,7 +284,7 @@ fn resolve(identifier: &str, create: bool) -> Result<Option<Profile>, ProfileErr
     if create {
         // Creation runs with the browser account's rights, including redirected folder paths.
         std::fs::create_dir_all(&directory)
-            .map_err(|e| ProfileError::io("create browser directory", e))?;
+            .map_err(|e| ProfileError::io("create browser directory", e).at(&directory))?;
     } else if !directory.exists() {
         return Ok(None);
     }
@@ -296,6 +315,7 @@ fn worker(identifier: &str, create: bool) -> Result<Option<Profile>, ProfileErro
         .map_err(|e| ProfileError::io("browser profile worker", e))?
         .join()
         .unwrap_or(Err(ProfileError {
+            path: None,
             stage: "browser profile worker",
             code: 31,
         }))
@@ -312,6 +332,17 @@ mod tests {
         assert_eq!(error.stage, "browser directory final path");
     }
 
+    #[test]
+    fn profile_directory_failures_retain_the_actual_path_before_logging_starts() {
+        let path = std::env::temp_dir().join(format!(
+            "argus-profile-missing-{:?}",
+            unsafe { windows::Win32::System::Com::CoCreateGuid() }.unwrap()
+        ));
+        let error = lock_directory(&path).err().unwrap();
+        assert_eq!(error.path.as_deref(), Some(path.as_path()));
+        assert!(matches!(error.code, 2 | 3));
+        assert_eq!(error.stage, "open browser directory");
+    }
     #[test]
     fn profile_is_isolated_by_host_account_session_and_desktop() {
         let key = profile_key("S-1-5-21-1-2-3-1000", 1, "Default");

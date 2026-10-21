@@ -52,6 +52,19 @@ impl From<windows::core::Error> for ActionError {
     }
 }
 
+impl ActionError {
+    pub fn diagnostic(&self) -> std::borrow::Cow<'static, str> {
+        match self {
+            Self::AccessDenied => "access denied".into(),
+            Self::NotFound => "target exited or identity changed".into(),
+            Self::Critical => "critical process requires confirmation".into(),
+            Self::Refused => "operation refused by policy".into(),
+            Self::ServiceOutdated => "privileged service protocol incompatible".into(),
+            Self::Os(message) => crate::diagnostics::failure(message),
+        }
+    }
+}
+
 /// Opens the process instance identified by `pid` + `create_time` (Unix ms;
 /// 0 skips the identity check), so a reused PID is never acted on.
 fn open_instance(
@@ -59,11 +72,24 @@ fn open_instance(
     create_time: i64,
     access: PROCESS_ACCESS_RIGHTS,
 ) -> Result<OwnedHandle, ActionError> {
-    let handle = unsafe { OpenProcess(access | PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }?;
+    let handle = unsafe { OpenProcess(access | PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+        .inspect_err(|error| {
+            crate::diagnostics::warn(
+                "process action OpenProcess",
+                format!(
+                    "{}; pid={pid}; access=0x{:08x}",
+                    crate::diagnostics::code(error.code().0 as u32),
+                    (access | PROCESS_QUERY_LIMITED_INFORMATION).0
+                ),
+            )
+        })?;
     let handle = OwnedHandle(handle);
     if create_time != 0 {
         let (mut created, mut exited, mut kernel, mut user) = Default::default();
-        unsafe { GetProcessTimes(handle.0, &mut created, &mut exited, &mut kernel, &mut user) }?;
+        unsafe { GetProcessTimes(handle.0, &mut created, &mut exited, &mut kernel, &mut user) }
+            .inspect_err(|error| {
+                crate::diagnostics::windows_failure("process action GetProcessTimes", error)
+            })?;
         let created: FILETIME = created;
         if ticks_to_unix_ms(filetime_ticks(created)) != create_time {
             return Err(ActionError::NotFound);

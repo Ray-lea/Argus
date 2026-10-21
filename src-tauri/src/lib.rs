@@ -55,7 +55,7 @@ fn logger(path: std::path::PathBuf) -> tauri::plugin::TauriPlugin<tauri::Wry> {
             file_name: Some("argus".into()),
         }))
         .max_file_size(1024 * 1024)
-        .rotation_strategy(RotationStrategy::KeepOne)
+        .rotation_strategy(RotationStrategy::KeepSome(3))
         .timezone_strategy(TimezoneStrategy::UseLocal)
         // Third-party log payloads have not passed Argus's privacy boundary.
         .filter(|record| record.target().starts_with("argus"))
@@ -72,7 +72,8 @@ fn log_panics() {
     std::panic::set_hook(Box::new(move |info| {
         if let Some(location) = info.location() {
             log::error!(
-                "panic at line {}, column {} (payload and file omitted)",
+                "panic at {}:{}, column {} (payload omitted)",
+                argus_core::diagnostics::source_file(location.file()),
                 location.line(),
                 location.column()
             );
@@ -297,9 +298,14 @@ pub fn run() {
                     }
                     Err(error) => {
                         log::error!(
-                            "WebView2 profile preparation failed at {}; code=0x{:08X}",
+                            "WebView2 profile preparation failed at {}; code=0x{:08X}; path={}",
                             error.stage,
-                            error.code
+                            error.code,
+                            error
+                                .path
+                                .as_deref()
+                                .map(argus_core::diagnostics::path)
+                                .unwrap_or_else(|| "unavailable".into())
                         );
                         error.report();
                         // Tauri panics on setup errors. This failure is already reported;

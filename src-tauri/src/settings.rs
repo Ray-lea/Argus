@@ -272,8 +272,9 @@ fn read(path: &Path) -> Option<Settings> {
             }
             Err(e) => {
                 log::warn!(
-                    "settings: not read ({}), using defaults",
-                    argus_core::diagnostics::failure(&e.to_string())
+                    "settings: not read ({}), path={}, using defaults",
+                    argus_core::diagnostics::io(&e),
+                    argus_core::diagnostics::path(path)
                 );
                 return None;
             }
@@ -293,12 +294,24 @@ fn read(path: &Path) -> Option<Settings> {
                 "not valid"
             };
             log::warn!(
-                "settings: {} bytes, {kind} ({:?} error at line {}), using defaults",
+                "settings: {} bytes, {kind} ({:?} error at line {}, column {}), path={}, using defaults",
                 bytes.len(),
                 e.classify(),
-                e.line()
+                e.line(),
+                e.column(),
+                argus_core::diagnostics::path(path)
             );
-            let _ = std::fs::rename(path, path.with_extension("json.bad"));
+            if let Err(error) = std::fs::rename(path, path.with_extension("json.bad")) {
+                argus_core::diagnostics::warn(
+                    "preserve invalid settings",
+                    format!(
+                        "{}; source={}; destination={}",
+                        argus_core::diagnostics::io(&error),
+                        argus_core::diagnostics::path(path),
+                        argus_core::diagnostics::path(&path.with_extension("json.bad"))
+                    ),
+                );
+            }
             None
         }
     }
@@ -308,16 +321,38 @@ fn read(path: &Path) -> Option<Settings> {
 /// the old one, so a crash, a forced restart or a power cut leaves the old
 /// settings or the new ones, never an empty or cut-off file.
 fn write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut stage = "create settings directory";
+    let result = write_with_stage(path, bytes, &mut stage);
+    if let Err(error) = &result {
+        argus_core::diagnostics::warn(
+            stage,
+            format!(
+                "{}; path={}",
+                argus_core::diagnostics::io(error),
+                argus_core::diagnostics::path(path)
+            ),
+        );
+    }
+    result
+}
+
+fn write_with_stage(path: &Path, bytes: &[u8], stage: &mut &'static str) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let partial = path.with_extension("json.partial");
+    *stage = "create temporary settings file";
     let result = std::fs::File::create(&partial)
         .and_then(|mut file| {
+            *stage = "write temporary settings file";
             file.write_all(bytes)?;
+            *stage = "flush settings file";
             file.sync_all()
         })
-        .and_then(|_| std::fs::rename(&partial, path));
+        .and_then(|_| {
+            *stage = "replace settings file";
+            std::fs::rename(&partial, path)
+        });
     if result.is_err() {
         let _ = std::fs::remove_file(&partial);
     }

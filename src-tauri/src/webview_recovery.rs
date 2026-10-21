@@ -40,6 +40,7 @@ unsafe extern "system" {
 fn failure(stage: &'static str, error: windows::core::Error) -> ProfileError {
     let code = error.code().0 as u32;
     ProfileError {
+        path: None,
         stage,
         code: if code & 0xffff0000 == 0x80070000 {
             code & 0xffff
@@ -54,6 +55,7 @@ fn data(
     class: windows::Win32::Security::TOKEN_INFORMATION_CLASS,
 ) -> Result<Vec<usize>, ProfileError> {
     token_buffer(token, class).map_err(|e| ProfileError {
+        path: None,
         stage: "desktop recovery token",
         code: e.code,
     })
@@ -96,6 +98,7 @@ fn desktop_token() -> Result<Handle, ProfileError> {
         || !object_name(desktop)?.eq_ignore_ascii_case("Default")
     {
         return Err(ProfileError {
+            path: None,
             stage: "desktop recovery requires the interactive desktop",
             code: 50,
         });
@@ -119,6 +122,7 @@ fn desktop_token() -> Result<Handle, ProfileError> {
     }
     if needed == 0 {
         return Err(ProfileError {
+            path: None,
             stage: "desktop recovery logon SID absent",
             code: 1168,
         });
@@ -163,6 +167,7 @@ fn desktop_token() -> Result<Handle, ProfileError> {
         }
     }
     Err(ProfileError {
+        path: None,
         stage: "desktop recovery account unavailable",
         code: 1168,
     })
@@ -216,6 +221,7 @@ pub fn restore() -> Result<bool, ProfileError> {
     let len = unsafe { GetWindowsDirectoryW(Some(&mut directory)) } as usize;
     if len == 0 || len >= directory.len() {
         return Err(ProfileError {
+            path: None,
             stage: "desktop recovery Windows directory",
             code: 3,
         });
@@ -265,6 +271,7 @@ pub fn restore() -> Result<bool, ProfileError> {
                 return Ok(true);
             }
             return Err(ProfileError {
+                path: None,
                 stage: "desktop recovery identity mismatch",
                 code: 5,
             });
@@ -272,6 +279,7 @@ pub fn restore() -> Result<bool, ProfileError> {
         std::thread::sleep(Duration::from_millis(100));
     }
     Err(ProfileError {
+        path: None,
         stage: "desktop recovery timed out",
         code: 1460,
     })

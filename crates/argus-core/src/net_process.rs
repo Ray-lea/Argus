@@ -14,7 +14,9 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, ERROR_SUCCESS};
+use windows::Win32::Foundation::{
+    ERROR_ALREADY_EXISTS, ERROR_CANCELLED, ERROR_SUCCESS, GetLastError,
+};
 use windows::Win32::System::Diagnostics::Etw::{
     CONTROLTRACE_HANDLE, CloseTrace, ControlTraceW, EVENT_CONTROL_CODE_ENABLE_PROVIDER,
     EVENT_RECORD, EVENT_TRACE_CONTROL_STOP, EVENT_TRACE_LOGFILEW, EVENT_TRACE_PROPERTIES,
@@ -58,6 +60,16 @@ impl NetworkTracker {
             status = unsafe { StartTraceW(&mut session, PCWSTR(name.as_ptr()), props.as_mut()) };
         }
         if status != ERROR_SUCCESS {
+            // A standard user's local trace may be denied; the host can still
+            // obtain the same counters from its authorized service.
+            crate::diagnostics::warn(
+                "network ETW StartTraceW",
+                format!(
+                    "{}; elevated={}; service_fallback_possible=true",
+                    crate::diagnostics::code(status.0),
+                    crate::privilege::is_elevated()
+                ),
+            );
             return None;
         }
         let enabled = unsafe {
@@ -73,6 +85,10 @@ impl NetworkTracker {
             )
         };
         if enabled != ERROR_SUCCESS {
+            crate::diagnostics::warn(
+                "network ETW EnableTraceEx2",
+                crate::diagnostics::code(enabled.0),
+            );
             stop_session(session_name);
             return None;
         }
@@ -89,6 +105,8 @@ impl NetworkTracker {
         logfile.Anonymous2.EventRecordCallback = Some(on_event);
         let trace = unsafe { OpenTraceW(&mut logfile) };
         if trace.Value == INVALID_TRACE {
+            let error = unsafe { GetLastError() };
+            crate::diagnostics::warn("network ETW OpenTraceW", crate::diagnostics::code(error.0));
             stop_session(session_name);
             return None;
         }
@@ -98,10 +116,20 @@ impl NetworkTracker {
             match std::thread::Builder::new()
                 .name("argus-etw".into())
                 .spawn(move || unsafe {
-                    let _ = ProcessTrace(&[PROCESSTRACE_HANDLE { Value: handle }], None, None);
+                    let result = ProcessTrace(&[PROCESSTRACE_HANDLE { Value: handle }], None, None);
+                    if result != ERROR_SUCCESS && result != ERROR_CANCELLED {
+                        crate::diagnostics::warn(
+                            "network ETW ProcessTrace",
+                            crate::diagnostics::code(result.0),
+                        );
+                    }
                 }) {
                 Ok(thread) => thread,
-                Err(_) => {
+                Err(error) => {
+                    crate::diagnostics::warn(
+                        "network ETW worker creation",
+                        crate::diagnostics::io(&error),
+                    );
                     unsafe {
                         let _ = CloseTrace(trace);
                     }

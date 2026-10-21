@@ -165,7 +165,13 @@ impl HistoryRecorder {
         if self.window.samples > 0 && slot != self.window.start {
             let window = std::mem::take(&mut self.window);
             // Losing a frame (disk full, folder gone) is not worth failing a sample over.
-            let _ = self.write(&window);
+            if let Err(error) = self.write(&window) {
+                crate::diagnostics::file_failure(
+                    "history frame write",
+                    &day_path(&self.dir, window.start.div_euclid(DAY_MS)),
+                    &error,
+                );
+            }
         }
         let w = &mut self.window;
         if w.samples == 0 {
@@ -389,8 +395,10 @@ fn prune(dir: &Path, today: i64) {
         return;
     };
     for entry in entries.flatten() {
-        if day_of(&entry.file_name()).is_some_and(|d| d <= today - KEEP_DAYS) {
-            let _ = fs::remove_file(entry.path());
+        if day_of(&entry.file_name()).is_some_and(|d| d <= today - KEEP_DAYS)
+            && let Err(error) = fs::remove_file(entry.path())
+        {
+            crate::diagnostics::file_failure("history retention cleanup", &entry.path(), &error);
         }
     }
 }
@@ -530,7 +538,14 @@ fn days(dir: &Path) -> Vec<i64> {
 }
 
 fn read_day(dir: &Path, day: i64) -> Option<Vec<u8>> {
-    let bytes = fs::read(day_path(dir, day)).ok()?;
+    let path = day_path(dir, day);
+    let bytes = fs::read(&path)
+        .inspect_err(|error| {
+            if error.kind() != io::ErrorKind::NotFound {
+                crate::diagnostics::file_failure("history read", &path, error);
+            }
+        })
+        .ok()?;
     bytes.starts_with(MAGIC).then_some(bytes)
 }
 

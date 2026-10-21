@@ -125,8 +125,19 @@ fn open_key(
 ) -> Option<Key> {
     let w = wide(path);
     let mut key = HKEY::default();
-    (unsafe { RegOpenKeyExW(root, PCWSTR(w.as_ptr()), None, access, &mut key) } == ERROR_SUCCESS)
-        .then_some(Key(key))
+    let result = unsafe { RegOpenKeyExW(root, PCWSTR(w.as_ptr()), None, access, &mut key) };
+    if result != ERROR_SUCCESS && result.0 != 2 {
+        crate::diagnostics::warn(
+            "startup RegOpenKeyExW",
+            format!(
+                "{}; machine={}; key={}",
+                crate::diagnostics::code(result.0),
+                root == HKEY_LOCAL_MACHINE,
+                crate::diagnostics::path(Path::new(path))
+            ),
+        );
+    }
+    (result == ERROR_SUCCESS).then_some(Key(key))
 }
 
 pub fn list(meta: &MetaStore) -> Vec<StartupItem> {
@@ -395,10 +406,16 @@ pub fn set_enabled(id: &str, enabled: bool) -> Result<(), ActionError> {
             None,
         )
     };
-    r.ok()?;
+    r.ok().inspect_err(|error| {
+        crate::diagnostics::windows_failure("startup RegCreateKeyExW", error)
+    })?;
     let key = Key(key);
     let value = wide(name);
-    unsafe { RegSetValueExW(key.0, PCWSTR(value.as_ptr()), None, REG_BINARY, Some(&data)) }.ok()?;
+    unsafe { RegSetValueExW(key.0, PCWSTR(value.as_ptr()), None, REG_BINARY, Some(&data)) }
+        .ok()
+        .inspect_err(|error| {
+            crate::diagnostics::windows_failure("startup RegSetValueExW", error)
+        })?;
     Ok(())
 }
 

@@ -378,7 +378,7 @@
     },
     "log": {
       "title": "Log",
-      "desc": "Records system versions, sensor availability, privileged feature status and fixed error categories. Raw error messages, stacks, file paths, command lines and user names are excluded. Stored locally and rotated at 1 MB. Use this entry to locate diagnostic logs for bug reports.",
+      "desc": "Records the runtime environment, feature status, failed steps, error codes and actual paths of related files or folders. Stored locally, with up to 1 MB per file and 3 previous logs. Command lines, credentials and file contents are excluded. Use this entry to locate diagnostic logs for bug reports.",
       "open": "Open log folder"
     }
   },
