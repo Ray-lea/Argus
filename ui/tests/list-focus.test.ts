@@ -11,6 +11,7 @@ const state = (change: Partial<FocusState>): FocusState => ({
   pointerDown: false,
   selecting: false,
   afterClick: false,
+  enteringPage: false,
   ...change,
 });
 
@@ -24,10 +25,16 @@ test("a button keeps keyboard focus, but not focus a click left on it", () => {
   assert.equal(reclaimsFocus(state({ holder: "control", afterClick: true })), true);
 });
 
+test("entering the page hands navigation focus to the list even when pointerup preceded mounting", () => {
+  assert.equal(reclaimsFocus(state({ holder: "control", enteringPage: true })), true);
+  // Once on the page, Tab can still move to and stay on its buttons.
+  assert.equal(reclaimsFocus(state({ holder: "control", enteringPage: false })), false);
+});
+
 test("the list itself and text fields keep focus", () => {
-  for (const afterClick of [false, true]) {
-    assert.equal(reclaimsFocus(state({ holder: "list", afterClick })), false);
-    assert.equal(reclaimsFocus(state({ holder: "text", afterClick })), false);
+  for (const handoff of [{}, { afterClick: true }, { enteringPage: true }]) {
+    assert.equal(reclaimsFocus(state({ holder: "list", ...handoff })), false);
+    assert.equal(reclaimsFocus(state({ holder: "text", ...handoff })), false);
   }
 });
 
@@ -37,4 +44,12 @@ test("nothing moves while another window, a popup, a pressed pointer or a text s
   assert.equal(reclaimsFocus(state({ pointerDown: true })), false);
   assert.equal(reclaimsFocus(state({ selecting: true, afterClick: true })), false);
   assert.equal(reclaimsFocus(state({ holder: "control", afterClick: true, popupOpen: true })), false);
+  for (const guard of [
+    { windowFocused: false },
+    { popupOpen: true },
+    { pointerDown: true },
+    { selecting: true },
+  ]) {
+    assert.equal(reclaimsFocus(state({ holder: "control", enteringPage: true, ...guard })), false);
+  }
 });

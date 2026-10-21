@@ -21,13 +21,15 @@ export interface FocusState {
   selecting: boolean;
   /** Checked right after a click: a button the click focused gives it back. */
   afterClick: boolean;
+  /** The page has just opened: hand focus from navigation to its content. */
+  enteringPage: boolean;
 }
 
-/** Whether the list should take focus back. Text fields and keyboard focus on a button keep it. */
+/** Text fields keep focus; buttons keep it during keyboard navigation within the page. */
 export function reclaimsFocus(s: FocusState): boolean {
   if (!s.windowFocused || s.popupOpen || s.pointerDown || s.selecting) return false;
   if (s.holder === "nothing") return true;
-  return s.holder === "control" && s.afterClick;
+  return s.holder === "control" && (s.afterClick || s.enteringPage);
 }
 
 function holderOf(el: Element | null, list: HTMLElement): FocusHolder {
@@ -54,7 +56,7 @@ function holderOf(el: Element | null, list: HTMLElement): FocusHolder {
 export function holdListFocus(list: HTMLElement, focus: () => void): () => void {
   let pointerDown = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const check = (afterClick: boolean) => {
+  const check = (afterClick: boolean, enteringPage = false) => {
     clearTimeout(timer);
     // After the event's default actions and handlers: a click has done what
     // it does, a closing menu has let go of focus.
@@ -68,6 +70,7 @@ export function holdListFocus(list: HTMLElement, focus: () => void): () => void 
         pointerDown,
         selecting: !!selection && !selection.isCollapsed,
         afterClick,
+        enteringPage,
       };
       if (reclaimsFocus(state)) focus();
     });
@@ -96,8 +99,10 @@ export function holdListFocus(list: HTMLElement, focus: () => void): () => void 
   document.addEventListener("focusout", onFocusOut);
   window.addEventListener("focus", onWindowFocus);
   window.addEventListener("blur", onWindowBlur);
-  // The page just opened.
-  check(false);
+  // Navigation mounts this list in its click handler, after pointerup has
+  // already fired. Explicitly hand off its focus rather than waiting for a
+  // release this instance never saw; keyboard page switches need it too.
+  check(false, true);
   return () => {
     clearTimeout(timer);
     window.removeEventListener("pointerdown", onPointerDown, true);
