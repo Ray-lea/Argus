@@ -7,13 +7,16 @@ import { api } from "./ipc";
 import { holdsOrder, keepOrder, type OrderHolds, pointerAloneHoldsOrder } from "./order-hold";
 import { persisted } from "./prefs";
 import { applicationKey, applicationMembers, canGroup } from "./process-identity";
+import { type ProcessSection, withSection } from "./process-sections";
 import { type PauseState, refreshPause } from "./refresh-pause";
 import {
   type BuildOptions,
   buildRows,
   type DisplayRow,
   procKey,
+  type SectionRow,
   type SortState,
+  sectionOf,
   type TableRow,
   type ViewMode,
 } from "./rows";
@@ -229,6 +232,13 @@ export const [viewMode, setViewMode] = persisted<ViewMode>("view", "apps");
 export const [sort, setSort] = persisted<SortState>("sort", { key: "cpu", desc: true });
 export const [intervalMs, setIntervalMs] = persisted<number>("interval", 1000);
 export const [detailsOpen, setDetailsOpen] = persisted<boolean>("details", true);
+/** Process categories folded under their headings (sorted by name). */
+export const [collapsedSections, setCollapsedSections] = persisted<ProcessSection[]>("collapsedSections", []);
+
+/** Folds or unfolds a category heading. */
+export function toggleSection(row: SectionRow, fold = !row.collapsed) {
+  if (row.toggleable) setCollapsedSections(withSection(collapsedSections(), row.section, fold));
+}
 const [pauseState, setPauseState] = createSignal<PauseState>({
   manual: false,
   control: false,
@@ -344,7 +354,8 @@ const sameView = (a: BuildOptions, b: BuildOptions) =>
   a.sort.desc === b.sort.desc &&
   a.query === b.query &&
   a.expanded === b.expanded &&
-  a.collapsed === b.collapsed;
+  a.collapsed === b.collapsed &&
+  a.collapsedSections === b.collapsedSections;
 
 const derived = createRoot(() => {
   // While the user is aiming at a row (pointer over the list, menu or dialog
@@ -370,6 +381,7 @@ const derived = createRoot(() => {
       query: query(),
       expanded: expanded(),
       collapsed: collapsed(),
+      collapsedSections: collapsedSections(),
       hosted: hostedServices(),
     };
     const fresh = buildRows(s.processes, opts);
@@ -385,7 +397,8 @@ const derived = createRoot(() => {
   const selection = createMemo<Selection | null>(() => {
     const key = selectedKey();
     const s = snapshot();
-    if (!key || !s) return null;
+    // A category heading selected with the keyboard is no process.
+    if (!key || !s || key.startsWith("s:")) return null;
     if (key.startsWith("g:")) {
       const members = applicationMembers(s.processes, key);
       const proc = members.reduce<ProcessRow | null>(
@@ -437,6 +450,19 @@ export function revealProcess(pid: number) {
         ancestors.add(procKey(p));
       }
       setCollapsed((set) => new Set([...set].filter((k) => !ancestors.has(k))));
+    }
+    // Unfold the category heading it is under.
+    if (collapsedSections().length) {
+      const unfolded = buildRows(s.processes, {
+        mode: viewMode(),
+        sort: sort(),
+        query: "",
+        expanded: expanded(),
+        collapsed: collapsed(),
+        collapsedSections: [],
+      });
+      const section = sectionOf(unfolded, procKey(proc)) ?? sectionOf(unfolded, applicationKey(proc));
+      if (section) setCollapsedSections(withSection(collapsedSections(), section, false));
     }
     setSelectedKey(procKey(proc));
     setDetailsOpen(true);

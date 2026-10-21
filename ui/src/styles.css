@@ -1061,49 +1061,132 @@ button {
   background: var(--hover);
 }
 
-/* Process categories while the list is sorted by name. */
+/* Process categories while the list is sorted by name: a heading that folds
+   its rows away, with the category's totals in the resource columns. The
+   space above parts it from the category before; hover and selection cover
+   only the heading itself, as tall as a row. */
 .section-row {
   position: absolute;
   top: 0;
   left: 4px;
   right: 4px;
-  display: flex;
-  align-items: center;
   height: 40px;
-  padding: 6px 0;
-  color: var(--accent);
-  font-size: 15px;
-  font-weight: 600;
+  align-items: end;
   contain: layout style;
+}
+
+.section-row::after {
+  content: "";
+  position: absolute;
+  inset: 10px 0 0;
+  z-index: -1;
+  border-radius: 6px;
+  transition: background-color var(--t-fast) linear;
+}
+
+.section-row:not(.locked):hover::after {
+  background: var(--hover);
+}
+
+.section-row.selected::after {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.table:focus-visible .section-row.selected::after {
+  outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.section-row.selected::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 .section-heading {
   display: flex;
-  align-items: baseline;
-  gap: 7px;
-  width: 100%;
-  padding: 0 12px;
-  line-height: 22px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px 0 6px;
+}
+
+.section-chevron {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-2);
+}
+
+.section-chevron svg {
+  transform: rotate(90deg);
+  transition: transform var(--t-med) var(--ease-move);
+}
+
+.section-row.collapsed .section-chevron svg {
+  transform: none;
+}
+
+/* While searching every match shows: the heading cannot fold. */
+.section-row.locked .section-chevron {
+  opacity: 0.4;
 }
 
 .section-label {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
 }
 
-.section-row .section-count {
+.section-count {
   flex: none;
-  color: var(--ink-2);
-  font-size: 12px;
-  font-weight: 400;
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: color-mix(in srgb, var(--accent) 78%, var(--ink));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
+/* Fades out toward the totals. */
 .section-divider {
   flex: 1;
-  align-self: center;
+  min-width: 0;
   height: 1px;
-  margin-left: 9px;
-  background: var(--stroke);
+  margin-left: 4px;
+  background: linear-gradient(to right, var(--stroke-strong), transparent);
+}
+
+.section-row .cell {
+  height: 30px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* Folded, the totals stand in for the rows. */
+.section-row.collapsed .cell {
+  color: var(--ink-2);
+}
+
+.table.shifted .section-row > .metrics {
+  align-self: end;
+  height: 30px;
 }
 
 /* A process that just started: tinted for a few samples, then fading out in

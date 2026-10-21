@@ -40,6 +40,7 @@ import {
 } from "./icons";
 import { navExpanded, navPosition } from "./Nav";
 import { openNewTask } from "./NewTaskDialog";
+import { focusProcessTable } from "./ProcessTable";
 import SearchBox from "./SearchBox";
 import Select from "./Select";
 import { ServiceActions, ServiceControls, ServiceSearch } from "./ServicesPage";
@@ -52,10 +53,40 @@ const MODES: { mode: ViewMode; icon: typeof AppsIcon }[] = [
 ];
 
 let searchInput: HTMLInputElement | undefined;
+/** What had focus before the process search took it: Esc goes back there. */
+let returnFocus: HTMLElement | null = null;
+
+function rememberFocus() {
+  const active = document.activeElement;
+  returnFocus =
+    active instanceof HTMLElement && active !== document.body && active !== searchInput ? active : null;
+}
+
+function leaveSearch() {
+  if (returnFocus?.isConnected) returnFocus.focus();
+  returnFocus = null;
+}
 
 export function focusSearch() {
+  rememberFocus();
   searchInput?.focus();
   searchInput?.select();
+}
+
+/**
+ * Starts the process search with `text` typed outside any text field. It goes
+ * after what the box already holds, so a stray key costs no filter, and the
+ * typing carries on in the box. False when the box is not there.
+ */
+export function typeIntoSearch(text: string): boolean {
+  const input = searchInput;
+  if (!input?.isConnected) return false;
+  rememberFocus();
+  const next = query() + text;
+  setQuery(next);
+  input.focus();
+  input.setSelectionRange(next.length, next.length);
+  return true;
 }
 
 /** Levels of `fitToolbar`, set as `data-compact` (styles.css). */
@@ -194,6 +225,11 @@ export default function Toolbar() {
             }}
             value={query()}
             onInput={setQuery}
+            onEscape={leaveSearch}
+            onNavigate={() => {
+              returnFocus = null;
+              focusProcessTable();
+            }}
             placeholder={t("shell.search.processes")}
           />
         </Match>

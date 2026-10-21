@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { processSections } from "../src/lib/process-sections.ts";
+import { folded, processSections, sectionTotals, withSection } from "../src/lib/process-sections.ts";
 
 const row = (id: string, app = false, windows = false, depth = 0) => ({ id, app, windows, depth });
 
@@ -50,4 +50,50 @@ test("filtered empty categories disappear, including a completely empty result",
     processSections([row("os", false, true)]).map((g) => g.section),
     ["windows"],
   );
+});
+
+const measured = (depth: number, values: Partial<Parameters<typeof sectionTotals>[0][number]> = {}) => ({
+  depth,
+  cpu: 1,
+  mem: 100,
+  io: 10,
+  diskRead: null,
+  diskWrite: null,
+  gpu: 40,
+  netSent: 1,
+  netReceived: 2,
+  threads: 3,
+  handles: 4,
+  ...values,
+});
+
+test("a heading sums its top-level rows, whose groups already include their members", () => {
+  const totals = sectionTotals([
+    measured(0, { diskRead: 5 }),
+    measured(1, { cpu: 50, diskRead: 99 }),
+    measured(0),
+    measured(0, { gpu: 30 }),
+  ]);
+  assert.deepEqual(totals, {
+    cpu: 3,
+    mem: 300,
+    io: 30,
+    diskRead: 5,
+    diskWrite: null,
+    gpu: 100,
+    net: 9,
+    threads: 9,
+    handles: 12,
+  });
+});
+
+test("folded headings stay folded until unfolded, except while searching", () => {
+  let collapsed = withSection([], "windows", true);
+  collapsed = withSection(collapsed, "apps", true);
+  assert.deepEqual(collapsed, ["apps", "windows"]);
+  assert.equal(folded(collapsed, "apps", false), true);
+  assert.equal(folded(collapsed, "background", false), false);
+  assert.equal(folded(collapsed, "apps", true), false);
+  assert.deepEqual(withSection(collapsed, "apps", false), ["windows"]);
+  assert.deepEqual(withSection(collapsed, "apps", true), ["apps", "windows"]);
 });

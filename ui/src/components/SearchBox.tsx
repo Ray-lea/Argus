@@ -20,6 +20,10 @@ export default function SearchBox(props: {
   onInput: (value: string) => void;
   placeholder: string;
   ref?: (el: HTMLInputElement) => void;
+  /** After Esc has cleared the box and left it. */
+  onEscape?: () => void;
+  /** ↓ moves on to the results. */
+  onNavigate?: () => void;
 }) {
   let box!: HTMLLabelElement;
   let input!: HTMLInputElement;
@@ -44,9 +48,16 @@ export default function SearchBox(props: {
         value={props.value}
         onInput={(e) => props.onInput(e.currentTarget.value)}
         onKeyDown={(e) => {
+          // Keys inside an input method's composition (Esc cancels it, ↓
+          // picks a candidate) are the input method's.
+          if (e.isComposing) return;
           if (e.key === "Escape") {
             props.onInput("");
             e.currentTarget.blur();
+            props.onEscape?.();
+          } else if (e.key === "ArrowDown" && props.onNavigate) {
+            e.preventDefault();
+            props.onNavigate();
           }
         }}
       />

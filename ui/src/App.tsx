@@ -14,7 +14,7 @@ import ServicesPage from "./components/ServicesPage";
 import SettingsPage from "./components/Settings";
 import StartupPage from "./components/StartupPage";
 import StatusBar from "./components/StatusBar";
-import Toolbar, { focusSearch } from "./components/Toolbar";
+import Toolbar, { focusSearch, typeIntoSearch } from "./components/Toolbar";
 import UpdateDialog from "./components/UpdateDialog";
 import Vitals from "./components/Vitals";
 import { endRow } from "./lib/actions";
@@ -24,7 +24,7 @@ import { api, inTauri, subscribe } from "./lib/ipc";
 import { EASE_OUT, play, uiMotion } from "./lib/motion";
 import { watchPrivilege } from "./lib/privilege";
 import { isSection } from "./lib/rows";
-import { controlPauseHeld, endProcessShortcut } from "./lib/shortcuts";
+import { controlPauseHeld, endProcessShortcut, startsSearch } from "./lib/shortcuts";
 import {
   appInfo,
   detailsOpen,
@@ -103,6 +103,9 @@ export default function App() {
         e.preventDefault();
         setPage("processes");
         queueMicrotask(focusSearch);
+      } else if (page() === "processes" && startsSearch(e) && !isTyping(e) && typeIntoSearch(e.key)) {
+        // Typed into the search box instead of reaching the list.
+        e.preventDefault();
       }
     };
     const scheme = matchMedia("(prefers-color-scheme: dark)");
@@ -258,5 +261,8 @@ function cleanupLater(setup: Promise<() => void>) {
 
 function isTyping(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;
-  return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+  return (
+    !!t &&
+    (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)
+  );
 }

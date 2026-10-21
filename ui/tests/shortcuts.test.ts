@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { KeyPress } from "../src/lib/escape.ts";
 import { type PauseState, refreshPause } from "../src/lib/refresh-pause.ts";
-import { controlPauseHeld, endProcessShortcut } from "../src/lib/shortcuts.ts";
+import { controlPauseHeld, endProcessShortcut, startsSearch } from "../src/lib/shortcuts.ts";
 
 const turn = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const press = (change: Partial<KeyPress> = {}): KeyPress => ({
@@ -157,4 +157,36 @@ test("Ctrl flags cover both sides and lost keyups without treating AltGr as a ho
   for (const change of [{ ctrlKey: false }, { altKey: true }, { metaKey: true }, { isComposing: true }]) {
     assert.equal(controlPauseHeld({ ...ctrl, ...change }), false);
   }
+});
+
+test("typing a letter or digit outside a text field starts a search, and nothing else does", () => {
+  const typed = (change: Partial<KeyPress>) => startsSearch(press({ altKey: false, ...change }));
+  for (const key of ["c", "C", "7", "é", "ж"]) assert.equal(typed({ key }), true, key);
+  assert.equal(typed({ key: "A", shiftKey: true }), true);
+  // Keys with a meaning of their own, and punctuation pressed by accident.
+  for (const key of [
+    " ",
+    "/",
+    "+",
+    "-",
+    "*",
+    ".",
+    "Enter",
+    "Escape",
+    "Tab",
+    "F5",
+    "ArrowDown",
+    "Dead",
+    "Process",
+    "Unidentified",
+  ])
+    assert.equal(typed({ key }), false, key);
+  // Shortcuts, AltGr (Ctrl+Alt), held keys, compositions and keys already handled.
+  assert.equal(typed({ key: "e", altKey: true }), false);
+  assert.equal(typed({ key: "f", ctrlKey: true }), false);
+  assert.equal(typed({ key: "q", ctrlKey: true, altKey: true }), false);
+  assert.equal(typed({ key: "r", metaKey: true }), false);
+  assert.equal(typed({ key: "a", repeat: true }), false);
+  assert.equal(typed({ key: "n", isComposing: true }), false);
+  assert.equal(typed({ key: "a", defaultPrevented: true }), false);
 });

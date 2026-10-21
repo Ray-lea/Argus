@@ -45,6 +45,7 @@
     "background": "后台进程",
     "windows": "Windows 进程"
   },
+  "sectionSearching": "搜索时显示全部匹配项，清除搜索后可折叠",
   "servicesSummary": "{names} 等 {count} 个服务",
   "pidExited": "PID {pid} 已经退出。",
   "priority": {

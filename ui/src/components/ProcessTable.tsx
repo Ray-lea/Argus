@@ -28,6 +28,7 @@ import {
   snapshot,
   sort,
   toggleRow,
+  toggleSection,
   viewMode,
 } from "../lib/store";
 import { ChevronDown, ChevronRight, ChevronUp, LeafIcon } from "./icons";
@@ -40,6 +41,19 @@ const MB = 1024 * 1024;
 
 /** Scroll position kept while another page is open. */
 let savedScroll = 0;
+/** The mounted table, for moving focus to it from the search box. */
+let tableRef: HTMLDivElement | undefined;
+
+/** Focuses the process list, selecting its first process when nothing in it is selected. */
+export function focusProcessTable() {
+  if (!tableRef?.isConnected) return;
+  const list = rows();
+  if (!list.some((r) => r.key === selectedKey())) {
+    const first = list.find((r) => !isSection(r));
+    if (first) setSelectedKey(first.key);
+  }
+  tableRef.focus();
+}
 
 interface Column {
   /** Also names the header's label and tooltip (`processes.column.<key>`). */
@@ -105,6 +119,10 @@ export default function ProcessTable() {
   });
 
   onMount(() => {
+    tableRef = tableEl;
+    onCleanup(() => {
+      if (tableRef === tableEl) tableRef = undefined;
+    });
     scrollEl.scrollTop = savedScroll;
     // Sideways wheel and touchpad gestures over the table drive its scrollbar.
     // Passive, so vertical scrolling never waits for this page's main thread.
@@ -156,18 +174,11 @@ export default function ProcessTable() {
     setSort(cur.key === col.key ? { key: col.key, desc: !cur.desc } : { key: col.key, desc: col.descFirst });
   };
 
-  /** Selects the row at `index`, or the nearest process past a heading in direction `dir`. */
-  const select = (index: number, dir: 1 | -1 = 1) => {
+  /** Selects the row at `index`, a process or a category heading. */
+  const select = (index: number) => {
     const list = rows();
     if (list.length === 0) return;
-    const start = Math.max(0, Math.min(list.length - 1, index));
-    const step = (d: number) => {
-      let j = start;
-      while (j >= 0 && j < list.length && isSection(list[j])) j += d;
-      return j >= 0 && j < list.length ? j : -1;
-    };
-    const i = step(dir) >= 0 ? step(dir) : step(-dir);
-    if (i < 0) return;
+    const i = Math.max(0, Math.min(list.length - 1, index));
     setSelectedKey(list[i].key);
     virtualizer.scrollToIndex(i, { align: "auto" });
   };
@@ -178,36 +189,41 @@ export default function ProcessTable() {
     const i = list.findIndex((r) => r.key === selectedKey());
     const found = i >= 0 ? list[i] : undefined;
     const row = found && !isSection(found) ? found : undefined;
+    const heading = found && isSection(found) ? found : undefined;
     const page = Math.max(1, Math.floor(scrollEl.clientHeight / ROW_HEIGHT) - 1);
     switch (e.key) {
       case "ArrowDown":
         select(i + 1);
         break;
       case "ArrowUp":
-        select(i < 0 ? 0 : i - 1, -1);
+        select(i < 0 ? 0 : i - 1);
         break;
       case "PageDown":
         select(i + page);
         break;
       case "PageUp":
-        select(i - page, -1);
+        select(i - page);
         break;
       case "Home":
         select(0);
         break;
       case "End":
-        select(list.length - 1, -1);
+        select(list.length - 1);
         break;
       case "ArrowRight":
-        if (row?.expandable && !row.expanded) toggleRow(row);
+        if (heading?.collapsed) toggleSection(heading, false);
+        else if (heading) select(i + 1);
+        else if (row?.expandable && !row.expanded) toggleRow(row);
         else if (row?.expanded) select(i + 1);
         break;
       case "ArrowLeft":
-        if (row?.expanded) toggleRow(row);
-        else if (row && row.depth > 0) {
+        if (heading) toggleSection(heading, true);
+        else if (row?.expanded) toggleRow(row);
+        else if (row) {
+          // Up to the row it belongs under: a parent, or the category heading.
           for (let j = i - 1; j >= 0; j--) {
             const above = list[j];
-            if (!isSection(above) && above.depth < row.depth) {
+            if (isSection(above) || above.depth < row.depth) {
               select(j);
               break;
             }
@@ -215,7 +231,10 @@ export default function ProcessTable() {
         }
         break;
       case "Enter":
-        if (row) setDetailsOpen(true);
+      case " ":
+        if (heading) toggleSection(heading);
+        else if (row && e.key === "Enter") setDetailsOpen(true);
+        else return;
         break;
       case "Delete":
         if (row) void endRow(row, e.shiftKey);
@@ -333,30 +352,84 @@ function Item(props: { row: TableRow; start: number; withNet: boolean; diskHint:
   return (
     <Show
       when={process()}
-      fallback={<Show when={heading()}>{(h) => <SectionHeading row={h()} start={props.start} />}</Show>}
+      fallback={
+        <Show when={heading()}>
+          {(h) => <SectionHeading row={h()} start={props.start} withNet={props.withNet} />}
+        </Show>
+      }
     >
       {(r) => <Row row={r()} start={props.start} withNet={props.withNet} diskHint={props.diskHint} />}
     </Show>
   );
 }
 
-function SectionHeading(props: { row: SectionRow; start: number }) {
+/**
+ * A category heading: click (or ← → Enter on the keyboard) folds its rows
+ * away; the resource columns show the category's totals either way.
+ */
+function SectionHeading(props: { row: SectionRow; start: number; withNet: boolean }) {
+  const r = () => props.row;
+  const total = () => r().totals;
+  const disk = (value: number | null) => (value == null ? "—" : fmtRate(value));
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the grid handles the keys (← → Enter on the selected heading).
     <div
+      id={rowId(r().key)}
       role="row"
-      class="section-row"
-      data-section={props.row.section}
+      class="section-row cols"
+      classList={{
+        collapsed: r().collapsed,
+        locked: !r().toggleable,
+        selected: selectedKey() === r().key,
+      }}
+      data-section={r().section}
+      aria-expanded={!r().collapsed}
+      aria-selected={selectedKey() === r().key}
+      aria-disabled={!r().toggleable || undefined}
+      title={r().toggleable ? undefined : t("processes.sectionSearching")}
       style={{ transform: `translateY(${props.start}px)` }}
+      onClick={() => toggleSection(r())}
     >
-      <span
-        role="rowheader"
-        class="section-heading"
-        aria-label={`${props.row.label} (${fmtCount(props.row.count)})`}
-      >
-        <span class="section-label">{props.row.label}</span>
-        <span class="section-count">({fmtCount(props.row.count)})</span>
+      <div role="rowheader" class="section-heading" aria-label={`${r().label} (${fmtCount(r().count)})`}>
+        <span class="section-chevron" aria-hidden="true">
+          <ChevronRight size={12} />
+        </span>
+        <span class="section-label">{r().label}</span>
+        <span class="section-count">{fmtCount(r().count)}</span>
         <span class="section-divider" aria-hidden="true" />
-      </span>
+      </div>
+      <div class="metrics" role="presentation">
+        <div class="cell opt2" role="gridcell" />
+        <div class="cell" role="gridcell">
+          {fmtCpu(total().cpu)}
+        </div>
+        <div class="cell" role="gridcell">
+          {fmtMem(total().mem)}
+        </div>
+        <div class="cell" role="gridcell">
+          {disk(total().diskRead)}
+        </div>
+        <div class="cell" role="gridcell">
+          {disk(total().diskWrite)}
+        </div>
+        <div class="cell opt2" role="gridcell">
+          {fmtRate(total().io)}
+        </div>
+        <div class="cell" role="gridcell">
+          {fmtCpu(total().gpu)}
+        </div>
+        <Show when={props.withNet}>
+          <div class="cell" role="gridcell">
+            {fmtNet(total().net, true)}
+          </div>
+        </Show>
+        <div class="cell opt" role="gridcell">
+          {fmtCount(total().threads)}
+        </div>
+        <div class="cell opt" role="gridcell">
+          {fmtCount(total().handles)}
+        </div>
+      </div>
     </div>
   );
 }

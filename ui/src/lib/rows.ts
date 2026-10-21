@@ -4,7 +4,13 @@ import { localized, t } from "./i18n";
 import { applicationKey, procKey } from "./process-identity";
 import { compareDiskRate, sumDiskIo } from "./process-io";
 import { processDetail, processTitle, webViewRole, webViewTitle } from "./process-label";
-import { type ProcessSection, processSections } from "./process-sections";
+import {
+  folded,
+  type ProcessSection,
+  processSections,
+  type SectionTotals,
+  sectionTotals,
+} from "./process-sections";
 import type { ProcessRow } from "./types";
 
 export type ViewMode = "apps" | "tree" | "list";
@@ -66,6 +72,11 @@ export interface SectionRow {
   label: string;
   /** Entries under the heading: apps and groups, not their expanded members. */
   count: number;
+  /** Its rows are folded away under it. */
+  collapsed: boolean;
+  /** False while searching: every match shows, so the heading cannot fold. */
+  toggleable: boolean;
+  totals: SectionTotals;
 }
 
 export type TableRow = DisplayRow | SectionRow;
@@ -80,6 +91,8 @@ export interface BuildOptions {
   expanded: ReadonlySet<string>;
   /** Collapsed nodes in "tree" mode (expanded by default). */
   collapsed: ReadonlySet<string>;
+  /** Category headings folded while sorted by name. */
+  collapsedSections: readonly ProcessSection[];
   /** Services running in each process, shown in place of the generic description. */
   hosted?: ReadonlyMap<number, readonly string[]>;
 }
@@ -218,19 +231,42 @@ export function buildRows(procs: readonly ProcessRow[], opts: BuildOptions): Tab
   }
   // Like Windows Task Manager: sorted by name, apps come first under their own
   // heading. Other sorts and the tree keep one list.
-  return opts.sort.key === "name" && opts.mode !== "tree" ? sections(rows) : rows;
+  return opts.sort.key === "name" && opts.mode !== "tree"
+    ? sections(rows, opts.collapsedSections, opts.query.trim() !== "")
+    : rows;
 }
 
-/** Expanded members stay beside their group's heading and do not inflate its count. */
-function sections(rows: DisplayRow[]): TableRow[] {
+/**
+ * Expanded members stay beside their group's heading and do not inflate its
+ * count. A folded heading keeps its count and totals, without its rows.
+ */
+function sections(rows: DisplayRow[], collapsed: readonly ProcessSection[], searching: boolean): TableRow[] {
   const out: TableRow[] = [];
   for (const { section, count, rows: members } of processSections(rows)) {
-    out.push(
-      { key: `s:${section}`, kind: "section", section, label: t(`processes.section.${section}`), count },
-      ...members,
-    );
+    const fold = folded(collapsed, section, searching);
+    out.push({
+      key: `s:${section}`,
+      kind: "section",
+      section,
+      label: t(`processes.section.${section}`),
+      count,
+      collapsed: fold,
+      toggleable: !searching,
+      totals: sectionTotals(members),
+    });
+    if (!fold) out.push(...members);
   }
   return out;
+}
+
+/** The section whose heading the row `key` comes under in `rows`, if any. */
+export function sectionOf(rows: readonly TableRow[], key: string): ProcessSection | null {
+  let section: ProcessSection | null = null;
+  for (const row of rows) {
+    if (isSection(row)) section = row.section;
+    else if (row.key === key) return section;
+  }
+  return null;
 }
 
 function buildTree(
