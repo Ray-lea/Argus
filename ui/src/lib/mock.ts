@@ -314,6 +314,8 @@ function tick(): Snapshot {
   cpu = Math.min(100, cpu);
   const memTotal = 32 * GB;
   const memUsed = Math.min(memTotal * 0.95, mem + 6 * GB);
+  const standby = Math.min(7.4 * GB, memTotal - memUsed);
+  const modified = 256 * MB;
   return {
     seq: Math.floor(elapsed++),
     timestamp: Date.now(),
@@ -330,7 +332,8 @@ function tick(): Snapshot {
       memAvailable: memTotal - memUsed,
       commitUsed: memUsed * 1.25,
       commitLimit: memTotal * 1.5,
-      cached: 7.4 * GB,
+      cached: standby + modified,
+      memoryLists: { modified, standby, free: memTotal - memUsed - standby },
       kernelPaged: 640 * MB,
       kernelNonpaged: 310 * MB,
       processCount: procs.length,

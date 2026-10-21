@@ -3,6 +3,7 @@
 use std::mem::size_of;
 
 use serde::Serialize;
+use windows::Wdk::System::SystemInformation::NtQuerySystemInformation;
 use windows::Wdk::System::SystemInformation::SystemProcessorPerformanceInformation as SPPI_CLASS;
 use windows::Win32::System::ProcessStatus::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
 use windows::Win32::System::SystemInformation::{
@@ -32,6 +33,8 @@ pub struct SystemStats {
     pub commit_used: u64,
     pub commit_limit: u64,
     pub cached: u64,
+    /// Disjoint memory lists; None when the native query is unavailable.
+    pub memory_lists: Option<MemoryLists>,
     pub kernel_paged: u64,
     pub kernel_nonpaged: u64,
     pub process_count: u32,
@@ -42,6 +45,58 @@ pub struct SystemStats {
     pub io_read: u64,
     pub io_write: u64,
     pub io_other: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryLists {
+    pub modified: u64,
+    pub standby: u64,
+    /// Free and zeroed pages can both be immediately reused.
+    pub free: u64,
+}
+
+impl MemoryLists {
+    fn from_native(
+        lists: &crate::nt::SystemMemoryListInformation,
+        page: u64,
+        total: u64,
+    ) -> Option<Self> {
+        if page == 0 || total == 0 {
+            return None;
+        }
+        let modified = (lists.modified_page_count as u64).checked_mul(page)?;
+        let standby = lists
+            .page_count_by_priority
+            .iter()
+            .try_fold(0_u64, |sum, count| sum.checked_add(*count as u64))?
+            .checked_mul(page)?;
+        let free = (lists.free_page_count as u64)
+            .checked_add(lists.zero_page_count as u64)?
+            .checked_mul(page)?;
+        (modified.checked_add(standby)?.checked_add(free)? <= total).then_some(Self {
+            modified,
+            standby,
+            free,
+        })
+    }
+}
+
+fn memory_lists(page: u64, total: u64) -> Option<MemoryLists> {
+    let mut lists = crate::nt::SystemMemoryListInformation::default();
+    let mut returned = 0;
+    let status = unsafe {
+        NtQuerySystemInformation(
+            crate::nt::SYSTEM_MEMORY_LIST_INFORMATION,
+            (&mut lists as *mut crate::nt::SystemMemoryListInformation).cast(),
+            size_of_val(&lists) as u32,
+            &mut returned,
+        )
+    };
+    if status.is_err() || returned as usize != size_of_val(&lists) {
+        return None;
+    }
+    MemoryLists::from_native(&lists, page, total)
 }
 
 type Address = (u16, u8);
@@ -145,6 +200,12 @@ impl SystemTracker {
                 s.commit_used = pi.CommitTotal as u64 * page;
                 s.commit_limit = pi.CommitLimit as u64 * page;
                 s.cached = pi.SystemCache as u64 * page;
+                s.memory_lists = memory_lists(page, s.mem_total);
+                if let Some(lists) = s.memory_lists {
+                    // Cached memory includes modified pages, while available
+                    // memory includes only standby, free and zeroed pages.
+                    s.cached = lists.standby + lists.modified;
+                }
                 s.kernel_paged = pi.KernelPaged as u64 * page;
                 s.kernel_nonpaged = pi.KernelNonpaged as u64 * page;
             }
@@ -217,6 +278,42 @@ fn usage(idle: u128, total: u128) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn memory_lists_are_disjoint_and_pagefile_modified_pages_are_not_counted_twice() {
+        let lists = crate::nt::SystemMemoryListInformation {
+            zero_page_count: 20,
+            free_page_count: 10,
+            modified_page_count: 5,
+            modified_no_write_page_count: 1,
+            page_count_by_priority: [1, 2, 3, 4, 5, 6, 7, 8],
+            modified_page_count_page_file: 4,
+            ..Default::default()
+        };
+        let value = MemoryLists::from_native(&lists, 4096, 100 * 4096).unwrap();
+        assert_eq!(
+            value,
+            MemoryLists {
+                modified: 5 * 4096,
+                standby: 36 * 4096,
+                free: 30 * 4096
+            }
+        );
+    }
+
+    #[test]
+    fn incomplete_or_overflowing_memory_lists_are_not_presented_as_real_values() {
+        let mut lists = crate::nt::SystemMemoryListInformation::default();
+        assert!(MemoryLists::from_native(&lists, 0, 4096).is_none());
+        assert!(MemoryLists::from_native(&lists, 4096, 0).is_none());
+        lists.modified_page_count = 2;
+        assert!(MemoryLists::from_native(&lists, 4096, 4096).is_none());
+        lists.modified_page_count = usize::MAX;
+        assert!(MemoryLists::from_native(&lists, 4096, u64::MAX).is_none());
+        lists.modified_page_count = 0;
+        lists.page_count_by_priority = [usize::MAX; 8];
+        assert!(MemoryLists::from_native(&lists, 4096, u64::MAX).is_none());
+    }
     fn times(idle: i64, kernel: i64, user: i64) -> CpuReading {
         CpuReading {
             times: Times {

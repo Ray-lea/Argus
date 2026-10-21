@@ -800,8 +800,7 @@
   border-radius: 4px;
 }
 
-/* Each fill is a full-width layer scaled (and for "cached", moved past
-   "used"), so an update costs no layout. */
+/* Full-width fills translate and scale, so a sample does not change layout. */
 .mem-bar > span {
   position: absolute;
   inset: 0;
@@ -813,7 +812,11 @@
   background: color-mix(in srgb, var(--mem) 55%, transparent);
 }
 
-.mem-bar .cached {
+.mem-bar .modified {
+  background: color-mix(in srgb, var(--mem) 90%, transparent);
+}
+
+.mem-bar .standby {
   background: color-mix(in srgb, var(--mem) 20%, transparent);
 }
 

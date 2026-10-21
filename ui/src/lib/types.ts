@@ -94,6 +94,7 @@ export interface SystemStats {
   commitUsed: number;
   commitLimit: number;
   cached: number;
+  memoryLists: { modified: number; standby: number; free: number } | null;
   kernelPaged: number;
   kernelNonpaged: number;
   processCount: number;

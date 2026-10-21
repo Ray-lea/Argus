@@ -25,6 +25,23 @@ pub const STATUS_BUFFER_OVERFLOW: i32 = 0x8000_0005_u32 as i32;
 pub const SYSTEM_PROCESS_ID_INFORMATION: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(88);
 pub const SYSTEM_EXTENDED_HANDLE_INFORMATION: SYSTEM_INFORMATION_CLASS =
     SYSTEM_INFORMATION_CLASS(64);
+pub const SYSTEM_MEMORY_LIST_INFORMATION: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(80);
+
+#[repr(C)]
+#[derive(Default)]
+pub struct SystemMemoryListInformation {
+    pub zero_page_count: usize,
+    pub free_page_count: usize,
+    pub modified_page_count: usize,
+    pub modified_no_write_page_count: usize,
+    pub bad_page_count: usize,
+    pub page_count_by_priority: [usize; 8],
+    pub repurposed_pages_by_priority: [usize; 8],
+    pub modified_page_count_page_file: usize,
+}
+
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<SystemMemoryListInformation>() == 176);
 
 #[repr(C)]
 #[derive(Clone, Copy)]

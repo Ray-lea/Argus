@@ -27,6 +27,7 @@ import {
 } from "../lib/format";
 import { gridReflow } from "../lib/grid-reflow";
 import { rich, t } from "../lib/i18n";
+import { memoryComposition } from "../lib/memory-composition";
 import { EASE_OUT, play } from "../lib/motion";
 import { persisted } from "../lib/prefs";
 import { cpuTemperature, hasCpuDieTemperature } from "../lib/sensors";
@@ -1013,9 +1014,39 @@ function CpuView() {
 function MemoryView() {
   const sys = () => now().system;
   const mem = () => now().hardware.memory;
-  const frac = (v: number) => Math.max(0, Math.min(1, v / sys().memTotal));
-  const cachedShown = () => Math.min(sys().cached, sys().memAvailable);
+  const composition = createMemo(() => memoryComposition(sys()));
+  const frac = (v: number | null) => Math.max(0, Math.min(1, (v ?? 0) / Math.max(1, sys().memTotal)));
+  const value = (bytes: number | null) => (bytes === null ? "—" : fmtMem(bytes));
+  const usedLabel = () => t("performance.memory.legendInUse", { value: value(composition().used) });
+  const modifiedLabel = () =>
+    t("performance.memory.legendModified", { value: value(composition().modified) });
+  const standbyLabel = () => t("performance.memory.legendStandby", { value: value(composition().standby) });
+  const freeLabel = () => t("performance.memory.legendFree", { value: value(composition().free) });
   const reserved = () => Math.max(0, mem().installed - sys().memTotal);
+  let heldLegend: HTMLElement[] = [];
+  const releaseLegend = () => {
+    for (const item of heldLegend) {
+      for (const property of ["width", "min-width", "flex-shrink", "white-space"]) {
+        item.style.removeProperty(property);
+      }
+    }
+    heldLegend = [];
+  };
+  const holdLegend = (event: PointerEvent & { currentTarget: HTMLDivElement }) => {
+    if (!(event.target instanceof HTMLElement) || event.target.tagName !== "I") return;
+    releaseLegend();
+    heldLegend = [...event.currentTarget.children] as HTMLElement[];
+    const widths = heldLegend.map((item) => item.getBoundingClientRect().width);
+    // Keep the existing layout while a tooltip is open. A digit/unit change
+    // in an earlier reading must not move the icon away from the pointer.
+    heldLegend.forEach((item, index) => {
+      item.style.width = `${widths[index]}px`;
+      item.style.minWidth = "0";
+      item.style.flexShrink = "0";
+      item.style.whiteSpace = "nowrap";
+    });
+  };
+  onCleanup(releaseLegend);
 
   return (
     <div class="perf-main">
@@ -1033,30 +1064,58 @@ function MemoryView() {
         series={[{ data: () => series("mem"), colorVar: "--mem" }]}
       />
 
-      <div class="mem-bar" role="img" aria-label={t("performance.memory.composition")}>
-        <span class="used" style={{ "--f": frac(sys().memUsed) }} />
-        <span class="cached" style={{ "--u": frac(sys().memUsed), "--f": frac(cachedShown()) }} />
+      <div
+        class="mem-bar"
+        role="img"
+        aria-label={`${t("performance.memory.composition")}: ${usedLabel()}, ${modifiedLabel()}, ${standbyLabel()}, ${freeLabel()}`}
+      >
+        <span class="used" style={{ "--f": frac(composition().used) }} />
+        <span
+          class="modified"
+          style={{ "--u": frac(composition().used), "--f": frac(composition().modified) }}
+        />
+        <span
+          class="standby"
+          style={{
+            "--u": frac(composition().used + (composition().modified ?? 0)),
+            "--f": frac(composition().standby),
+          }}
+        />
       </div>
-      <div class="mem-legend">
+      <div class="mem-legend" onPointerOver={holdLegend} onPointerOut={releaseLegend}>
         <span>
-          <i style={{ background: "color-mix(in srgb, var(--mem) 55%, transparent)" }} />
-          {t("performance.memory.legendInUse", { value: fmtGB(sys().memUsed) })}
+          <i
+            style={{ background: "color-mix(in srgb, var(--mem) 55%, transparent)" }}
+            title={t("performance.memory.inUseDescription")}
+          />
+          {usedLabel()}
         </span>
         <span>
-          <i style={{ background: "color-mix(in srgb, var(--mem) 20%, transparent)" }} />
-          {t("performance.memory.legendCached", { value: fmtGB(cachedShown()) })}
+          <i
+            style={{ background: "color-mix(in srgb, var(--mem) 90%, transparent)" }}
+            title={t("performance.memory.modifiedDescription")}
+          />
+          {modifiedLabel()}
         </span>
         <span>
-          <i style={{ border: "1px solid var(--stroke-strong)" }} />
-          {t("performance.memory.legendFree", {
-            value: fmtGB(Math.max(0, sys().memAvailable - cachedShown())),
-          })}
+          <i
+            style={{ background: "color-mix(in srgb, var(--mem) 20%, transparent)" }}
+            title={t("performance.memory.standbyDescription")}
+          />
+          {standbyLabel()}
+        </span>
+        <span>
+          <i
+            style={{ border: "1px solid var(--stroke-strong)" }}
+            title={t("performance.memory.freeDescription")}
+          />
+          {freeLabel()}
         </span>
       </div>
 
       <div class="perf-stats">
         <div class="stat-grid">
-          <Stat label={t("performance.memory.inUse")} value={fmtGB(sys().memUsed)} unit="GB" />
+          <Stat label={t("performance.memory.inUse")} value={fmtGB(composition().used)} unit="GB" />
           <Stat label={t("performance.memory.available")} value={fmtGB(sys().memAvailable)} unit="GB" />
           <Stat
             label={t("performance.memory.committed")}
