@@ -105,6 +105,7 @@ import {
   PulseIcon,
   ShieldIcon,
   SparkleIcon,
+  StarIcon,
   StorageIcon,
   ThemeIcon,
   TimerIcon,
@@ -140,6 +141,8 @@ export function openSettings(section: SectionId, item?: string) {
   goToSetting(section, item);
 }
 
+/** Where Settings > About says the project lives (the host opens it: updater.rs). */
+const HOMEPAGE = "github.com/Ray-lea/Argus";
 /** The feedback group (Settings > About; the invitation link is in commands.rs). */
 const QQ_GROUP = "453803497";
 const THEMES: Theme[] = ["system", "light", "dark"];
@@ -2238,6 +2241,18 @@ export default function SettingsPage() {
                       </button>
                     </div>
                   </div>
+                  <Setting
+                    icon={<StarIcon size={20} />}
+                    title={t("settings.about.homepage.title")}
+                    desc={rich("settings.about.homepage.desc", {
+                      url: <span class="about-url selectable">{HOMEPAGE}</span>,
+                    })}
+                  >
+                    <button type="button" class="btn accent" onClick={() => void api.openHomepage()}>
+                      <ExternalIcon />
+                      {t("settings.about.homepage.open")}
+                    </button>
+                  </Setting>
                   <Setting
                     icon={<SparkleIcon size={20} />}
                     title={t("settings.about.onboarding.title")}

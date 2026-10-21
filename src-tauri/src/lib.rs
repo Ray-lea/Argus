@@ -475,6 +475,7 @@ pub fn run() {
             commands::open_release_page,
             commands::open_log_dir,
             commands::open_community,
+            commands::open_homepage,
             commands::open_sensor_driver_page,
             commands::set_kernel_sensors,
             commands::list_services,

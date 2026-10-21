@@ -353,6 +353,11 @@
     "standard": "Running as a standard user. Information and actions for some system processes are limited.",
     "whatsNew": "What's new",
     "quit": "Exit Argus",
+    "homepage": {
+      "title": "Project page",
+      "desc": "Source code, issues and every release are at {url}. If you find Argus useful, a star on the project page helps it grow.",
+      "open": "Visit project page"
+    },
     "onboarding": {
       "title": "Welcome guide",
       "desc": "Go through the essential settings and tips again.",

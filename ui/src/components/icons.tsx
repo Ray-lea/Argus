@@ -517,6 +517,12 @@ export const BatteryIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const StarIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m8 1.9 1.85 3.75 4.15.6-3 2.92.71 4.13L8 11.35l-3.71 1.95.71-4.13-3-2.92 4.15-.6Z" />
+  </Svg>
+);
+
 /** A click: the pointer. */
 export const PointerIcon = (p: IconProps) => (
   <Svg {...p}>

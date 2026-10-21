@@ -182,6 +182,8 @@ export const api = {
     mock ? mock.setKernelSensors(enabled) : invoke("set_kernel_sensors", { enabled }),
   /** The QQ group's invitation, in the default browser. */
   openCommunity: (): Promise<void> => (mock ? Promise.resolve() : invoke("open_community")),
+  /** The project's page on GitHub, in the default browser. */
+  openHomepage: (): Promise<void> => (mock ? Promise.resolve() : invoke("open_homepage")),
 
   services: (): Promise<ServiceInfo[]> => (mock ? mock.m3.services() : invoke("list_services")),
   controlService: (name: string, action: "start" | "stop" | "restart"): Promise<void> =>

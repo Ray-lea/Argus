@@ -30,7 +30,8 @@ use tauri_plugin_updater::{Error, Update, UpdaterExt};
 
 use crate::settings::{SettingsStore, UpdateChannel, UpdateRoute};
 
-const REPO: &str = "https://github.com/Ray-lea/Argus";
+/// The project's page on GitHub: releases live under it, and Settings > About links to it.
+pub(crate) const REPO: &str = "https://github.com/Ray-lea/Argus";
 /// Public GitHub proxies that served release downloads byte for byte when
 /// they were picked (2026-10). They come and go; users can enter their own.
 pub const PROXY_PRESETS: [&str; 3] = [
