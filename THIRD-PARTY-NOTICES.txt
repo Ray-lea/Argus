@@ -191,7 +191,7 @@ Rust 组件（238 个）
   time-core 0.1.9（MIT OR Apache-2.0）https://github.com/time-rs/time
   tinystr 0.8.4（Unicode-3.0）https://github.com/unicode-org/icu4x
   tinyvec 1.13.3（Zlib OR Apache-2.0 OR MIT）https://github.com/Lokathor/tinyvec
-  tokio 1.54.0（MIT）https://github.com/tokio-rs/tokio
+  tokio 1.54.1（MIT）https://github.com/tokio-rs/tokio
   tokio-native-tls 0.3.1（MIT）https://github.com/tokio-rs/tls
   tokio-util 0.7.20（MIT）https://github.com/tokio-rs/tokio
   toml 1.1.8+spec-1.1.0（MIT OR Apache-2.0）https://github.com/toml-rs/toml
@@ -571,7 +571,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-适用于：@tanstack/solid-virtual 3.13.48、@tanstack/virtual-core 3.19.6、@tauri-apps/api 2.12.4、auto-launch 0.6.0、bs58 0.5.1、cfb 0.14.0、crc32fast 1.5.3、fdeflate 0.3.7、infer 0.22.0、json-patch 4.2.0、jsonptr 0.7.1、miniz_oxide 0.8.9、miniz_oxide 0.9.1、muda 0.20.0、precomputed-hash 0.1.1、raw-window-handle 0.6.2、rfd 0.16.0、schemars 0.8.22、schemars 0.9.0、schemars 1.2.3、serialize-to-javascript 0.1.2、simd-adler32 0.3.10、solid-js 1.9.17、tauri 2.12.5、tauri-plugin-autostart 2.7.0、tauri-plugin-dialog 2.8.3、tauri-plugin-fs 2.7.1、tauri-plugin-log 2.10.1、tauri-plugin-updater 2.14.0、tauri-runtime 2.12.2、tauri-runtime-wry 2.12.3、tauri-utils 2.10.2、tokio 1.54.0、tokio-util 0.7.20、tray-icon 0.25.1、urlpattern 0.6.0、web-time 1.1.0、window-vibrancy 0.8.1、wry 0.57.0
+适用于：@tanstack/solid-virtual 3.13.48、@tanstack/virtual-core 3.19.6、@tauri-apps/api 2.12.4、auto-launch 0.6.0、bs58 0.5.1、cfb 0.14.0、crc32fast 1.5.3、fdeflate 0.3.7、infer 0.22.0、json-patch 4.2.0、jsonptr 0.7.1、miniz_oxide 0.8.9、miniz_oxide 0.9.1、muda 0.20.0、precomputed-hash 0.1.1、raw-window-handle 0.6.2、rfd 0.16.0、schemars 0.8.22、schemars 0.9.0、schemars 1.2.3、serialize-to-javascript 0.1.2、simd-adler32 0.3.10、solid-js 1.9.17、tauri 2.12.5、tauri-plugin-autostart 2.7.0、tauri-plugin-dialog 2.8.3、tauri-plugin-fs 2.7.1、tauri-plugin-log 2.10.1、tauri-plugin-updater 2.14.0、tauri-runtime 2.12.2、tauri-runtime-wry 2.12.3、tauri-utils 2.10.2、tokio 1.54.1、tokio-util 0.7.20、tray-icon 0.25.1、urlpattern 0.6.0、web-time 1.1.0、window-vibrancy 0.8.1、wry 0.57.0
 ================================================================================
 
 Copyright (c) [2021] [Marvin Countryman]
