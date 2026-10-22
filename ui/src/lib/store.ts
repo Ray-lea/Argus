@@ -1,7 +1,7 @@
 // Application state: the live snapshot, rolling history and view preferences.
 
 import { batch, createMemo, createRoot, createSignal } from "solid-js";
-import { appendHistory, appendSampleTime } from "./chart-history";
+import { appendHistory, appendSampleTime, sampleTime } from "./chart-history";
 import { t } from "./i18n";
 import { api } from "./ipc";
 import { holdsOrder, keepOrder, type OrderHolds, pointerAloneHoldsOrder } from "./order-hold";
@@ -45,7 +45,7 @@ const [historyTick, setHistoryTick] = createSignal(0);
 /** Counts snapshots; charts redraw when it changes. */
 export const sampleSeq = historyTick;
 
-/** When each kept sample arrived (`performance.now()`, the charts' clock), oldest first. */
+/** When each kept sample was taken, on the charts' `performance.now()` clock, oldest first. */
 export function sampleTimes(): readonly number[] {
   historyTick();
   return times;
@@ -168,7 +168,8 @@ export function ingest(s: Snapshot) {
   batch(() => {
     const first = snapshot() === null;
     const seq = historyTick() + 1;
-    const keep = appendSampleTime(times, performance.now(), intervalMs());
+    const at = sampleTime(s.timestamp, Date.now(), performance.now());
+    const keep = appendSampleTime(times, at, intervalMs());
     setSnapshot(s);
     recordSeries(s, keep);
 

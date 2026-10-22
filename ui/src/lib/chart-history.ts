@@ -5,6 +5,16 @@ export const chartSpan = (interval: number): number => (HISTORY - 1) * interval;
 export const chartLag = (interval: number): number => 2 * interval + 250;
 
 /**
+ * Project the sample's Unix timestamp onto the animation clock. IPC can queue
+ * snapshots while the WebView is hidden or busy; their arrival times would
+ * squeeze that history into a burst of spikes when delivery resumes.
+ * Use the current wall/animation clock pair, not a startup wall-clock offset.
+ */
+export function sampleTime(timestamp: number, wallNow: number, now: number): number {
+  return now - (wallNow - timestamp);
+}
+
+/**
  * Keep the visible time window, not a fixed number of samples: refreshes on
  * demand and a faster background cadence can put extra samples in that window.
  * Three intervals cover the canvas's pixel alignment and redraw slack; two

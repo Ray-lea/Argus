@@ -1,6 +1,55 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { appendHistory, appendSampleTime, chartLag, chartSpan, HISTORY } from "../src/lib/chart-history.ts";
+import {
+  appendHistory,
+  appendSampleTime,
+  chartLag,
+  chartSpan,
+  HISTORY,
+  sampleTime,
+} from "../src/lib/chart-history.ts";
+
+test("queued snapshots keep their sampling intervals when delivered in a burst", () => {
+  const epoch = 1_800_000_000_000;
+  const times: number[] = [];
+  const values: number[] = [];
+  // Six background samples spanning 25 s arrive within 25 ms on restore.
+  for (let i = 0; i < 6; i++) {
+    const received = 40_000 + i * 5;
+    const at = sampleTime(epoch + 10_000 + i * 5000, epoch + received, received);
+    appendHistory(values, i, appendSampleTime(times, at, 1000));
+  }
+  assert.deepEqual(times, [10_000, 15_000, 20_000, 25_000, 30_000, 35_000]);
+  assert.deepEqual(values, [0, 1, 2, 3, 4, 5]);
+  const at = sampleTime(epoch + 41_000, epoch + 41_025, 41_025);
+  appendSampleTime(times, at, 1000);
+  assert.equal(times.at(-1), 41_000);
+});
+
+test("old queued data ages out of the visible window when fresh samples arrive", () => {
+  const epoch = 1_800_000_000_000;
+  const times: number[] = [];
+  const values: number[] = [];
+  for (let i = 0; i <= 120; i++) {
+    const received = 600_000 + i * 2;
+    const at = sampleTime(epoch + i * 5000, epoch + received, received);
+    appendHistory(values, i, appendSampleTime(times, at, 1000));
+  }
+  assert.equal(times.at(-1), 600_000);
+  assert.ok(times.length < 20);
+  assert.ok(times[0] < 600_000 - chartSpan(1000) - chartLag(1000));
+  assert.deepEqual(
+    values.map((i) => i * 5000),
+    times,
+  );
+});
+
+test("sample age uses the current clock pair after a system clock adjustment", () => {
+  const epoch = 1_800_000_000_000;
+  for (const adjustment of [-3_600_000, 0, 3_600_000]) {
+    assert.equal(sampleTime(epoch + adjustment + 5000, epoch + adjustment + 5025, 5025), 5000);
+  }
+});
 
 test("regular sampling covers the delayed chart and keeps bounded history", () => {
   const times: number[] = [];
