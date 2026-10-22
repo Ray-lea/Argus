@@ -4,6 +4,62 @@
 
 User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This is the English edition of [CHANGELOG.md](CHANGELOG.md): `pnpm release` adds each release to both files, and the English entry is translated from the Chinese one before the release is published. The release notes on GitHub and in the app come from these entries.
 
+## [0.3.0](https://github.com/Ray-lea/Argus/compare/v0.2.0...v0.3.0) - 2026-10-22
+
+This release adds Run new task, Windows Explorer restart and copying PC specifications, improves process groups and performance views, and fixes Windows 10 compatibility issues.
+
+### Breaking changes
+
+- **History**: After upgrading, the History page starts with new recordings. The old file for the current day is replaced. To keep old recordings, [back up the history folder](https://github.com/Ray-lea/Argus/blob/main/docs/guide/README.md#历史) first.
+
+### Upgrading
+
+- **Installed version**: Upgrading through the installer or in-app updates also updates the privileged service and Task Manager replacement files.
+- **Portable version**: Exit the old version before replacing the executable. If the privileged service is installed, click Update service in Settings → Permissions and approve the request.
+
+### Features
+
+- **Run new task**: A new toolbar button opens programs, folders, documents or URLs, with an option to run as administrator.
+- **Restart Windows Explorer**: Right-click Windows Explorer on the Processes page and choose Restart.
+- **Keyboard shortcuts**: Hold Ctrl to pause refresh and release it to resume. On the Processes page, Alt+E ends the selected process. Settings now includes a shortcut reference.
+- **Process groups**: The Apps view has Apps, Background processes and Windows processes sections, with collapsible headings and resource totals.
+- **Quick search**: Start typing on the Processes page to search, including with a Chinese input method. Active filters are highlighted in the accent color.
+- **PC specifications**: The details pane stays open and can be resized. With no process selected, it shows hardware specifications that can be hidden or copied as text.
+- **CPU page**: Overview and Details views organize the information. Processor charts rearrange smoothly as the window changes size.
+- **GPU page**: Active engines appear automatically. Engines, chart layout and chart height can also be selected manually.
+- **Memory composition**: Adds modified memory. Hover over each legend icon for an explanation.
+- **Battery history**: The History page adds battery charge and charge or discharge power alongside resource usage.
+- **Pins and notes**: Right-click entries on the Services, Startup and Connections pages to pin them or add notes.
+- **Window animations**: Minimizing, restoring and showing or hiding from the tray use an in-place fade.
+- **Release notes**: Settings and the update dialog share the same layout, support English notes and use the available window height.
+- **Diagnostic logs**: Include the failed step, error codes, relevant paths and CPU and GPU models to help with bug reports.
+- **About**: Adds a link to the project homepage.
+
+### Fixes
+
+- **CPU usage**: Fixes low readings for overall, per-processor and per-process CPU usage during brief workloads.
+- **Windows 10**: Fixes desktop wallpaper showing through Argus, blank Windows Settings windows and missing per-process disk read and write data.
+- **Task Manager replacement**: Fixes setup failures and incorrect messages about Argus starting or exiting in some environments. Adds guidance for security software blocks.
+- **Kernel sensors**: Fixes detection and upgrades of older PawnIO versions, and enabled status being shown when the driver is unavailable or faulty.
+- **Startup apps**: Adds packaged apps and their enable and disable controls, and corrects names and status.
+- **Startup**: Fixes Argus failing to open when another administrator account authorizes elevation or Windows Explorer has exited.
+- **Process identification**: Fixes WebView2 app attribution, unrelated programs with the same name being grouped together and incorrect groups while sorting is paused.
+- **Chinese input**: Fixes the first character being lost after returning to the Processes page.
+- **Charts**: Fixes the left edge being progressively cut off, hover dot stutter and charts jumping while paused. Smooths changes to the chart scale.
+- **Page layout**: Fixes pages and dialogs shifting when scrollbars appear.
+- **History storage**: Fixes existing data being lost when reading the current day's recording fails.
+- **Security**: Updates underlying components and tightens restrictions on loading external content in the embedded page.
+
+### Performance
+
+- Improves process list scrolling and reduces repeated background refreshes and their resource usage.
+
+### Known issues
+
+- **Code signing**: A production certificate is being arranged. Windows SmartScreen may show an “unknown publisher” warning on first launch.
+
+Thanks to @kostyanp95 for contributing battery history support.
+
 ## [0.2.0](https://github.com/Ray-lea/Argus/compare/v0.1.0...v0.2.0) - 2026-10-18
 
 This release adds disk read and write rates for each process and separate refresh rates for when the window is minimized and when it is in the tray, improves in-app updates and shortcut settings, and fixes several problems, including a crash after running for a while on some PCs. If the privileged service is installed, read "Breaking changes" first.
