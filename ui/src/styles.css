@@ -1537,6 +1537,11 @@ button {
   align-items: center;
 }
 
+.overview-actions {
+  display: flex;
+  gap: 2px;
+}
+
 .overview-tips {
   display: grid;
   gap: 6px;
@@ -1579,6 +1584,10 @@ button {
   display: grid;
   gap: 4px;
   margin-top: 16px;
+}
+
+.overview-parts[hidden] {
+  display: none;
 }
 
 .overview-part {

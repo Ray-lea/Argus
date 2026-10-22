@@ -116,6 +116,19 @@ export const CopyIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const EyeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M1.5 8s2.5-4.5 6.5-4.5 6.5 4.5 6.5 4.5-2.5 4.5-6.5 4.5S1.5 8 1.5 8Z" />
+    <circle cx="8" cy="8" r="2" />
+  </Svg>
+);
+
+export const EyeOffIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m2 2 12 12M6.5 3.7A6 6 0 0 1 8 3.5c4 0 6.5 4.5 6.5 4.5a13 13 0 0 1-2 2.5M10 12.2a6 6 0 0 1-2 .3C4 12.5 1.5 8 1.5 8a13 13 0 0 1 2.6-3M6.6 6.6a2 2 0 0 0 2.8 2.8" />
+  </Svg>
+);
+
 export const DismissIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="m4 4 8 8M12 4l-8 8" />

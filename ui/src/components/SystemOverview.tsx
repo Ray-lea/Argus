@@ -3,17 +3,22 @@
 // (select a row to see it here; the toolbar's button at the top right hides
 // the panel).
 
-import { createEffect, For, type JSX, Show } from "solid-js";
+import { createEffect, createUniqueId, For, type JSX, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import { copyText } from "../lib/actions";
 import { fmtCapacity, fmtGB, fmtGHz, fmtLinkSpeed } from "../lib/format";
 import { rich, t } from "../lib/i18n";
+import { persisted } from "../lib/prefs";
 import { setPage, setPerfDevice, snapshot } from "../lib/store";
 import type { Hardware } from "../lib/types";
 import {
   BatteryIcon,
   ChipIcon,
   ComputerIcon,
+  CopyIcon,
   DiskIcon,
+  EyeIcon,
+  EyeOffIcon,
   GpuIcon,
   MemoryIcon,
   NetworkIcon,
@@ -21,6 +26,8 @@ import {
   PointerIcon,
 } from "./icons";
 import { diskKind } from "./Performance";
+
+const [partsVisible, setPartsVisible] = persisted("overviewHardwareVisible", true);
 
 interface Part {
   /** The device on the performance page. */
@@ -129,6 +136,7 @@ function parts(hw: Hardware, memTotal: number): Part[] {
 
 export default function SystemOverview() {
   const [list, setList] = createStore<Part[]>([]);
+  const partsId = createUniqueId();
   createEffect(() => {
     const s = snapshot();
     // Preserve each device's button, hover state and keyboard focus between samples.
@@ -138,11 +146,48 @@ export default function SystemOverview() {
     setPerfDevice(device);
     setPage("performance");
   };
+  const copy = () => {
+    const text = [
+      t("details.overview.title"),
+      ...list.map((part) =>
+        [t("details.overview.copyPart", { kind: part.kind, name: part.name }), part.detail]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+    ].join("\n\n");
+    void copyText(text, t("details.overview.copyWhat"));
+  };
+  const visibilityLabel = () => t(partsVisible() ? "details.overview.hide" : "details.overview.show");
   return (
     <div class="details-scroll overview">
       <div class="details-head">
         <ComputerIcon size={32} />
         <div class="details-title">{t("details.overview.title")}</div>
+        <div class="overview-actions">
+          <button
+            type="button"
+            class="btn ghost small icon"
+            title={t("details.overview.copy")}
+            aria-label={t("details.overview.copy")}
+            disabled={list.length === 0}
+            onClick={copy}
+          >
+            <CopyIcon />
+          </button>
+          <button
+            type="button"
+            class="btn ghost small icon"
+            title={visibilityLabel()}
+            aria-label={visibilityLabel()}
+            aria-expanded={partsVisible()}
+            aria-controls={partsId}
+            onClick={() => setPartsVisible(!partsVisible())}
+          >
+            <Show when={partsVisible()} fallback={<EyeOffIcon />}>
+              <EyeIcon />
+            </Show>
+          </button>
+        </div>
       </div>
 
       <ul class="overview-tips">
@@ -164,7 +209,7 @@ export default function SystemOverview() {
         </li>
       </ul>
 
-      <div class="overview-parts">
+      <div class="overview-parts" id={partsId} hidden={!partsVisible()}>
         <For each={list}>
           {(part) => (
             <button
