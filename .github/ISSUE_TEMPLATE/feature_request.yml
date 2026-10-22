@@ -21,3 +21,14 @@ body:
     attributes:
       label: 其他方案 / Alternatives
       description: 考虑过的其他做法，或目前的变通办法。/ Other approaches considered, or the current workaround.
+  - type: textarea
+    id: hardware
+    attributes:
+      label: 本机配置 / PC specifications
+      description: |
+        涉及硬件或性能的建议可填写此项。在“进程”页取消选中应用或进程，单击右侧“本机配置”标题旁的“复制配置为文字”按钮，将内容粘贴到此处。面板已收起时，先单击窗口右上角的详细信息面板按钮。
+        For hardware or performance suggestions, deselect any app or process on the Processes page, click “Copy PC specifications as text” beside “This PC” in the right pane, and paste the result here. If the pane is hidden, open it with the details pane button at the top right of the window.
+      placeholder: 旧版本无复制按钮时，可手动填写。/ Enter the specifications manually if the button is unavailable in an older version.
+      render: text
+    validations:
+      required: false

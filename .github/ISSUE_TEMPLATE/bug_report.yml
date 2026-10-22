@@ -43,6 +43,17 @@ body:
         - label: 已安装特权服务 / The privileged service is installed
         - label: 已启用系统任务管理器替换 / Task Manager replacement is enabled
   - type: textarea
+    id: hardware
+    attributes:
+      label: 本机配置 / PC specifications
+      description: |
+        在“进程”页取消选中应用或进程，单击右侧“本机配置”标题旁的“复制配置为文字”按钮，将内容粘贴到此处。面板已收起时，先单击窗口右上角的详细信息面板按钮。
+        On the Processes page, deselect any app or process, click “Copy PC specifications as text” beside “This PC” in the right pane, and paste the result here. If the pane is hidden, open it with the details pane button at the top right of the window.
+      placeholder: 软件无法启动或旧版本无复制按钮时，可手动填写 CPU、内存与显卡等配置。/ If Argus cannot start or the button is unavailable in an older version, enter the CPU, memory, graphics and other specifications manually.
+      render: text
+    validations:
+      required: false
+  - type: textarea
     id: description
     attributes:
       label: 问题描述 / What happened
