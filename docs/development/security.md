@@ -24,6 +24,7 @@ pnpm check:security
 | Node.js | 升级到 26.12.1；兼容的 LTS 下限为 24.22.1，覆盖当天发布的 TLS 校验、DNS、Brotli 等安全修复。Node.js 用于开发与构建，不随 Argus 分发。见 [Node.js 安全公告](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases) |
 | Rust | 升级到 1.99.1，修复 x86_64 上 FFI `bool` 返回值的误编译，最低版本同步进入工作区。见 [官方发布说明](https://blog.rust-lang.org/2026/10/15/Rust-1.99.1/) |
 | Tauri | 使用 2.12.5；9 月披露的 Channel 数据访问控制漏洞在 2.11.6 已修复，当前版本不在受影响范围。见 [GHSA-w28w-mhc8-qvjv](https://github.com/tauri-apps/tauri/security/advisories/GHSA-w28w-mhc8-qvjv) |
+| Tokio | 使用 1.54.1。上游撤回 1.54.0，并修复计时器并发访问时的数据竞争与释放后使用问题；该依赖经 Tauri 与网络请求组件进入 Windows 产物。见 [1.54.1 发布说明](https://github.com/tokio-rs/tokio/releases/tag/tokio-1.54.1)、[上游修复](https://github.com/tokio-rs/tokio/pull/8692) |
 | Vite | 8.3.4 已包含 10 月 6 日的文件访问与跨源脚本修复；10 月 21 日的查询参数绕过仅涉及 6.4.4。见 [官方安全公告](https://github.com/vitejs/vite/security/advisories) |
 | npm 与 Rust 依赖 | 升级后的完整锁文件审计未发现漏洞条目。RustSec 仍提示 `glib 0.18.5` 的健全性问题及 `proc-macro-error 1.0.4` 停止维护；两者均不在 `x86_64-pc-windows-msvc` 的依赖树中，不编入 Windows 产物。见 [GLib 公告](https://rustsec.org/advisories/RUSTSEC-2024-0429.html)、[维护状态公告](https://rustsec.org/advisories/RUSTSEC-2024-0370.html) |
 | PawnIO | 官方安装包仍为 2.2.0，固定模块仍为 0.2.11；保留签名、完整文件 SHA-256、目录权限检查及固定模块接口，不安装其他驱动或扩大硬件操作范围。见 [安装包发布](https://github.com/namazso/PawnIO.Setup/releases)、[模块发布](https://github.com/namazso/PawnIO.Modules/releases) |

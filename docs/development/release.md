@@ -4,7 +4,7 @@
 
 ## 持续集成
 
-仓库中有两个 GitHub Actions 工作流。构建与测试在 Windows 上用 stable Rust（MSVC）运行；提交信息检查和标签核对只用 git 与 Node，在 Ubuntu 上运行。
+检查与正式发布由以下 GitHub Actions 工作流负责，另有独立的 [SignPath 测试签名工作流](signing.md#测试工作流)。构建与测试在 Windows 上用 stable Rust（MSVC）运行；提交信息检查和标签核对只用 git 与 Node，在 Ubuntu 上运行。
 
 | 工作流 | 触发 | 内容 |
 |---|---|---|
