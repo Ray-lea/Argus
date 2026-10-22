@@ -4,6 +4,24 @@
     "join": "{first}；{second}",
     "instanceUnavailable": "无法向已运行的 Argus 交接请求：{error}。详细原因已记录到日志文件夹的 taskmgr.log 中。"
   },
+  "installer": {
+    "title": "Argus 安装",
+    "occupied": "以下程序正在占用 Argus 程序文件：",
+    "unknownLocker": "Argus 程序文件仍被占用，Windows 暂未提供占用进程信息。",
+    "accessDenied": "Windows 拒绝访问程序文件。请检查文件属性、目录权限及安全软件提示。",
+    "mappedFile": "Argus 程序文件仍被内存映射占用。请退出相关程序，或保存工作并重启电脑后重试。",
+    "diskFull": "磁盘剩余空间不足，无法写入程序文件。释放空间后可重试。",
+    "copyFailed": "程序文件更新失败。可根据错误代码和诊断日志检查文件与安装目录。",
+    "unsafeTarget": "目标程序文件是链接或文件夹，已停止更新。请检查安装位置后重试。",
+    "restartRequired": "Windows 暂时无法释放程序文件。可保存工作并重启电脑后安装。",
+    "checkFailed": "Windows 未能完成程序文件检查。具体失败步骤已记录到日志。",
+    "unknownProcess": "未知进程",
+    "moreProcesses": "另有 {count} 个进程，详见日志。",
+    "retryHint": "释放文件占用或处理上述原因后，单击“重试”继续安装；单击“取消”退出安装。",
+    "errorCode": "错误代码：{code}",
+    "logPath": "诊断日志：{path}",
+    "logFailed": "日志写入失败，错误代码：{code}"
+  },
   "tray": {
     "show": "显示 Argus",
     "quit": "退出",

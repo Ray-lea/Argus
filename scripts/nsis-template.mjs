@@ -1,6 +1,6 @@
 // Regenerates src-tauri/installer-template.nsi from Tauri's NSIS template for
-// the installed @tauri-apps/cli: the installer's and uninstaller's page lists
-// are replaced by the pages in src-tauri/installer-ui.nsh, and deleting the
+// the installed @tauri-apps/cli. installer-ui.nsh supplies the pages, and
+// installer.rs handles executable replacement with diagnostics and retry. Deleting the
 // app's data first ends the WebView2 processes of the Argus just closed and
 // then says what is left; the rest is Tauri's. Run after upgrading Tauri; it
 // stops if the template has changed where it is changed. See docs/development/release.md.
@@ -136,6 +136,51 @@ insertAfter(
     \${EndIf}
 `,
 );
+
+// The upstream check closes every process using argus.exe and loses the
+// original failure code. The new binary's installer mode closes only verified
+// Argus instances and copies its payload with native diagnostics and retry.
+// Extraction is private to NSIS; it never enters Argus's single-instance/UI path.
+const runningCheck = '  !insertmacro CheckIfAppIsRunning "$INSTDIR\\${MAINBINARYNAME}.exe" "${PRODUCTNAME}"\n';
+if (text.split(runningCheck).length !== 3) throw new Error("Tauri's running-app checks changed");
+text = text.replace(runningCheck, `  ; Argus: diagnose file holders and retry before modifying installed files.
+  !insertmacro ARGUS_TEXT $2 "正在准备程序文件…" "Preparing the program file…"
+  DetailPrint "$2"
+  SetDetailsPrint none
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File "/oname=argus-installer.exe" "\${MAINBINARYSRCPATH}"
+  SetOutPath "$INSTDIR"
+  StrCpy $1 "interactive"
+  IfSilent 0 +2
+    StrCpy $1 "silent"
+  argus_prepare_retry:
+    SetDetailsPrint none
+    ClearErrors
+    ExecWait '\"$PLUGINSDIR\\argus-installer.exe\" --argus-installer-copy \"$INSTDIR\\\${MAINBINARYNAME}.exe\" $HWNDPARENT $LANGUAGE $1' $0
+    \${If} \${Errors}
+      System::Call 'kernel32::GetLastError() i .r0'
+      \${If} $0 = 0
+        StrCpy $0 1
+      \${EndIf}
+    \${EndIf}
+    SetDetailsPrint both
+    \${If} $0 != 0
+      \${If} $0 != 1223
+        !insertmacro ARGUS_TEXT $2 "程序文件更新未完成。错误代码：$0。可重试或退出安装。" "The program file update did not complete. Error code: $0. Retry or exit setup."
+        DetailPrint "$2"
+        IfSilent argus_prepare_quit 0
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$2" IDRETRY argus_prepare_retry
+      \${EndIf}
+      argus_prepare_quit:
+      SetErrorLevel $0
+      Quit
+    \${EndIf}
+`);
+
+const mainFile = '  ; Copy main executable\n  File "${MAINBINARYSRCPATH}"\n';
+if (text.split(mainFile).length !== 2) throw new Error("Tauri's main executable extraction changed");
+text = text.replace(mainFile, '  ; Argus: the installer helper has copied the executable, with retry and native error logging.\n');
 
 const header = `; Argus's NSIS template: Tauri's template (tauri-cli ${cli}) with the installer's
 ; and uninstaller's pages replaced and deleting the app's data extended; every

@@ -4,6 +4,24 @@
     "join": "{first}; {second}",
     "instanceUnavailable": "Couldn't pass the request to the running Argus instance: {error}. Details are in taskmgr.log in the log folder."
   },
+  "installer": {
+    "title": "Argus Setup",
+    "occupied": "These programs are using the Argus program file:",
+    "unknownLocker": "The Argus program file is still in use. Windows has not identified the process holding it.",
+    "accessDenied": "Windows denied access to the program file. Check its file attributes, directory permissions and any security software alerts.",
+    "mappedFile": "The Argus program file is still memory-mapped. Exit the program using it, or save your work and restart the PC before retrying.",
+    "diskFull": "There is not enough free disk space to write the program file. Free up space and retry.",
+    "copyFailed": "The program file could not be updated. Check the files and installation directory using the error code and diagnostic log.",
+    "unsafeTarget": "The program file path points to a link or folder. The update was stopped. Check the installation location and retry.",
+    "restartRequired": "Windows cannot release the program file at this time. Save your work and restart the PC before installing.",
+    "checkFailed": "Windows could not complete the program file check. The failed step was recorded in the log.",
+    "unknownProcess": "Unknown process",
+    "moreProcesses": "{count} more processes are listed in the log.",
+    "retryHint": "Release the file or resolve the cause above, then click Retry to continue. Click Cancel to exit setup.",
+    "errorCode": "Error code: {code}",
+    "logPath": "Diagnostic log: {path}",
+    "logFailed": "The log could not be written. Error code: {code}"
+  },
   "tray": {
     "show": "Show Argus",
     "quit": "Exit",

@@ -402,10 +402,41 @@ Section Install
     !insertmacro NSIS_HOOK_PREINSTALL
   !endif
 
-  !insertmacro CheckIfAppIsRunning "$INSTDIR\${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  ; Argus: diagnose file holders and retry before modifying installed files.
+  !insertmacro ARGUS_TEXT $2 "正在准备程序文件…" "Preparing the program file…"
+  DetailPrint "$2"
+  SetDetailsPrint none
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File "/oname=argus-installer.exe" "${MAINBINARYSRCPATH}"
+  SetOutPath "$INSTDIR"
+  StrCpy $1 "interactive"
+  IfSilent 0 +2
+    StrCpy $1 "silent"
+  argus_prepare_retry:
+    SetDetailsPrint none
+    ClearErrors
+    ExecWait '"$PLUGINSDIR\argus-installer.exe" --argus-installer-copy "$INSTDIR\${MAINBINARYNAME}.exe" $HWNDPARENT $LANGUAGE $1' $0
+    ${If} ${Errors}
+      System::Call 'kernel32::GetLastError() i .r0'
+      ${If} $0 = 0
+        StrCpy $0 1
+      ${EndIf}
+    ${EndIf}
+    SetDetailsPrint both
+    ${If} $0 != 0
+      ${If} $0 != 1223
+        !insertmacro ARGUS_TEXT $2 "程序文件更新未完成。错误代码：$0。可重试或退出安装。" "The program file update did not complete. Error code: $0. Retry or exit setup."
+        DetailPrint "$2"
+        IfSilent argus_prepare_quit 0
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$2" IDRETRY argus_prepare_retry
+      ${EndIf}
+      argus_prepare_quit:
+      SetErrorLevel $0
+      Quit
+    ${EndIf}
 
-  ; Copy main executable
-  File "${MAINBINARYSRCPATH}"
+  ; Argus: the installer helper has copied the executable, with retry and native error logging.
 
   ; Copy resources
   {{#each resources_dirs}}

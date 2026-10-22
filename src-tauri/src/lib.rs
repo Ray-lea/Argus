@@ -3,6 +3,7 @@ mod commands;
 mod diagnostics;
 mod explorer;
 mod hotkey;
+mod installer;
 mod instance;
 mod leftovers;
 mod sampler;
@@ -99,6 +100,9 @@ pub struct AppState {
 }
 
 pub fn run() {
+    if let Some(code) = installer::run_mode() {
+        std::process::exit(code);
+    }
     if let Some(code) = explorer::run_mode() {
         std::process::exit(code);
     }
