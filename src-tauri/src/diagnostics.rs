@@ -132,6 +132,21 @@ static HARDWARE_LOGGED: AtomicBool = AtomicBool::new(false);
 /// Samples so far without per-process network; `u32::MAX` once it was there.
 static WITHOUT_NETWORK: AtomicU32 = AtomicU32::new(0);
 
+/// Reviewed model fields only, not arbitrary error text or device instance IDs.
+/// Registry descriptions can contain control characters, so keep each label
+/// bounded and escaped before including it in the shareable startup log.
+fn hardware_label(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        return "unavailable".into();
+    }
+    value
+        .chars()
+        .take(128)
+        .flat_map(char::escape_default)
+        .collect()
+}
+
 /// Which sensors this PC offers, from the first sample: the usual answer to
 /// "why is there no temperature / power on my machine". Runs for every sample:
 /// per-process network comes from the privileged service or the ETW session,
@@ -160,7 +175,11 @@ pub fn log_hardware_once(s: &Snapshot) {
         (None, None) => "none",
     };
     log::info!(
-        "cpu: {} logical; temperature: {temperature}; RAPL power: {power}; clock: {}",
+        "cpu: model=\"{}\"; family={}; model_id={}; stepping={}; {} logical; temperature: {temperature}; RAPL power: {power}; clock: {}",
+        hardware_label(&hw.cpu.name),
+        hw.cpu.family,
+        hw.cpu.model,
+        hw.cpu.stepping,
         hw.cpu.logical,
         if hw.core_mhz.is_empty() {
             "total only"
@@ -183,8 +202,9 @@ pub fn log_hardware_once(s: &Snapshot) {
             "none"
         };
         log::info!(
-            "gpu: {}; temperature: {}; power: {power}; clock: {}",
+            "gpu: {}; model=\"{}\"; temperature: {}; power: {power}; clock: {}",
             index,
+            hardware_label(&g.info.name),
             if g.temperature.is_some() {
                 "yes"
             } else {
@@ -374,6 +394,18 @@ pub fn log_ui_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hardware_labels_are_bounded_and_cannot_forge_log_lines() {
+        assert_eq!(hardware_label("  Example CPU  "), "Example CPU");
+        assert_eq!(hardware_label(&"x".repeat(129)).len(), 128);
+        let label = hardware_label("GPU\n\r\t\"\\\u{202e}");
+        assert!(!label.chars().any(char::is_control));
+        assert!(label.contains("\\n"));
+        assert!(label.contains("\\\""));
+        assert!(label.contains("\\u{202e}"));
+        assert!(!hardware_label(" \t ").is_empty());
+    }
 
     #[test]
     fn frontend_frames_are_validated_again_at_the_native_boundary() {
