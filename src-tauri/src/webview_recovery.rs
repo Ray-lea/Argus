@@ -91,7 +91,7 @@ fn object_name(object: *mut std::ffi::c_void) -> Result<String, ProfileError> {
 }
 
 /// Match the window station's logon SID, not a process name or the foreground window.
-fn desktop_token() -> Result<Handle, ProfileError> {
+pub(crate) fn desktop_token() -> Result<Handle, ProfileError> {
     let station = unsafe { GetProcessWindowStation() };
     let desktop = unsafe { GetThreadDesktop(GetCurrentThreadId()) };
     if !object_name(station)?.eq_ignore_ascii_case("WinSta0")

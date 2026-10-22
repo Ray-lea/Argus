@@ -13,12 +13,20 @@ use std::time::Duration;
 
 use argus_core::{diagnostics, tr};
 use windows::Win32::Foundation::{
-    ERROR_MORE_DATA, ERROR_SUCCESS, FILETIME, GENERIC_READ, GENERIC_WRITE, HANDLE, HWND,
+    ERROR_MORE_DATA, ERROR_SUCCESS, FILETIME, GENERIC_READ, GENERIC_WRITE, HANDLE, HLOCAL, HWND,
+    LocalFree,
 };
 use windows::Win32::Globalization::{CSTR_EQUAL, CompareStringOrdinal};
+use windows::Win32::Security::Authorization::{
+    EXPLICIT_ACCESS_W, GRANT_ACCESS, GetSecurityInfo, SE_FILE_OBJECT, SetEntriesInAclW,
+    SetSecurityInfo, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
+};
+use windows::Win32::Security::{
+    DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, TOKEN_USER, TokenUser,
+};
 use windows::Win32::Storage::FileSystem::{
-    FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, ReOpenFile,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAGS_AND_ATTRIBUTES, FILE_GENERIC_READ, FILE_SHARE_DELETE,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL, ReOpenFile, WRITE_DAC,
 };
 use windows::Win32::System::Com::CoCreateGuid;
 use windows::Win32::System::RestartManager::{
@@ -35,7 +43,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PCWSTR, PWSTR};
 
-use crate::tasks::{Handle, wide};
+use crate::tasks::{Handle, token_buffer, wide};
 
 const ARG: &str = "--argus-installer-copy";
 const MAX_LOCKERS: usize = 4096;
@@ -74,6 +82,91 @@ struct Journal {
     error: Option<u32>,
 }
 
+/// A cross-account elevation writes to the administrator's Temp directory.
+/// Grant only the interactive desktop account read access to this new file;
+/// keep the inherited DACL and never change permissions on its parent folder.
+fn share_log_with_desktop(file: &File) -> Result<(), Failure> {
+    let desktop = crate::webview_recovery::desktop_token().map_err(|error| Failure {
+        stage: "installer log desktop account",
+        code: error.code,
+    })?;
+    let data = token_buffer(desktop.0, TokenUser).map_err(|error| Failure {
+        stage: "installer log TokenUser",
+        code: error.code,
+    })?;
+    let user = unsafe { &*data.as_ptr().cast::<TOKEN_USER>() };
+    let access = Handle(
+        unsafe {
+            ReOpenFile(
+                HANDLE(file.as_raw_handle()),
+                READ_CONTROL.0 | WRITE_DAC.0,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                FILE_FLAGS_AND_ATTRIBUTES(0),
+            )
+        }
+        .map_err(|error| Failure::win("installer log ReOpenFile(permissions)", error))?,
+    );
+    let handle = access.0;
+    let mut old_acl = std::ptr::null_mut();
+    let mut descriptor = PSECURITY_DESCRIPTOR::default();
+    unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            Some(&mut old_acl),
+            None,
+            Some(&mut descriptor),
+        )
+    }
+    .ok()
+    .map_err(|error| Failure::win("installer log GetSecurityInfo", error))?;
+    // A null DACL already permits reads; replacing it would restrict existing access.
+    if old_acl.is_null() {
+        let _ = unsafe { LocalFree(Some(HLOCAL(descriptor.0))) };
+        return Ok(());
+    }
+    let access = EXPLICIT_ACCESS_W {
+        grfAccessPermissions: FILE_GENERIC_READ.0,
+        grfAccessMode: GRANT_ACCESS,
+        Trustee: TRUSTEE_W {
+            TrusteeForm: TRUSTEE_IS_SID,
+            TrusteeType: TRUSTEE_IS_USER,
+            ptstrName: PWSTR(user.User.Sid.0.cast()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut acl = std::ptr::null_mut();
+    let result = unsafe { SetEntriesInAclW(Some(&[access]), Some(old_acl), &mut acl) }
+        .ok()
+        .map_err(|error| Failure::win("installer log SetEntriesInAclW", error))
+        .and_then(|()| {
+            unsafe {
+                SetSecurityInfo(
+                    handle,
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION,
+                    None,
+                    None,
+                    Some(acl),
+                    None,
+                )
+            }
+            .ok()
+            .map_err(|error| Failure::win("installer log SetSecurityInfo", error))
+        });
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(descriptor.0)));
+        if !acl.is_null() {
+            let _ = LocalFree(Some(HLOCAL(acl.cast())));
+        }
+    }
+    result
+}
+
 impl Journal {
     fn new() -> Self {
         let result = (|| {
@@ -89,6 +182,7 @@ impl Journal {
                 .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0)
                 .open(&path)
                 .map_err(|error| error.raw_os_error().unwrap_or(1) as u32)?;
+            let access = share_log_with_desktop(&file);
             let reader = unsafe {
                 ReOpenFile(
                     HANDLE(file.as_raw_handle()),
@@ -103,14 +197,21 @@ impl Journal {
             // pinned when an elevated retry reopens it for writing.
             let reader = unsafe { File::from_raw_handle(reader.0) };
             drop(file);
-            Ok::<_, u32>((reader, path))
+            Ok::<_, u32>((reader, path, access))
         })();
         match result {
-            Ok((file, path)) => Self {
-                file: Some(file),
-                path: Some(path),
-                error: None,
-            },
+            Ok((file, path, access)) => {
+                let mut log = Self {
+                    file: Some(file),
+                    path: Some(path),
+                    error: None,
+                };
+                match access {
+                    Ok(()) => log.event("log access: desktop account read permission granted"),
+                    Err(failure) => log.result(failure.stage, failure.code),
+                }
+                log
+            }
             Err(code) => Self {
                 file: None,
                 path: None,
