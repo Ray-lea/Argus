@@ -13,6 +13,8 @@
 
 推送到分支不会触发检查，也没有 nightly 或定时构建。推送前在本地运行 `start.bat check`：它包含 `check.yml` 中的 TypeScript、Biome、文案检查、前端单元测试、rustfmt 和 Clippy，不含前端构建、Rust 单元测试和许可声明检查。
 
+需要单独取得未签名的离线安装包时，在 Actions 页面手动运行 `Check`，选择包含改动的分支并勾选 `build_offline_installer`。该模式在 Windows 上构建 NSIS 安装包、确认其中包含 WebView2 离线安装器，然后上传保留 7 天的 `argus-offline-installer` 工作流产物；不创建版本标签、更新签名或 GitHub Release。未勾选时仍运行原有检查。
+
 ## 提交信息
 
 ```text
@@ -129,12 +131,14 @@ gh run watch    # 选择刚开始的 Check，等待结束
 
 | 文件 | 说明 |
 |---|---|
-| `Argus_<版本>_x64-setup.exe` | NSIS 安装程序：为所有用户安装到 Program Files（需要管理员授权）、按 Windows 显示语言使用简体中文或英文界面、不允许降级；单页安装界面，已安装旧版本时原地升级；卸载时询问是否一并卸载特权服务，并做任务管理器恢复检查。界面见[安装程序](#安装程序) |
-| `Argus_<版本>_x64.exe` | 免安装版主程序（即 `argus.exe`）。与安装版使用相同的设置、历史和开机启动项，数据同样在 `%APPDATA%`、`%LOCALAPPDATA%`，不能应用内更新。放在标准用户可写的文件夹时，安装特权服务存在被替换提权的风险，见[设置 → 权限](../guide/settings.md#权限) |
+| `Argus_<版本>_x64-setup.exe` | NSIS 安装程序：内含 WebView2 Evergreen 完整安装器，缺少运行时时可离线安装；为所有用户安装到 Program Files（需要管理员授权）、按 Windows 显示语言使用简体中文或英文界面、不允许降级；单页安装界面，已安装旧版本时原地升级；卸载时询问是否一并卸载特权服务，并做任务管理器恢复检查。界面见[安装程序](#安装程序) |
+| `Argus_<版本>_x64.exe` | 免安装版主程序（即 `argus.exe`），需系统预先安装 WebView2 运行时。与安装版使用相同的设置、历史和开机启动项，数据同样在 `%APPDATA%`、`%LOCALAPPDATA%`，不能应用内更新。放在标准用户可写的文件夹时，安装特权服务存在被替换提权的风险，见[设置 → 权限](../guide/settings.md#权限) |
 | `SHA256SUMS.txt` | 上面两个文件的 SHA-256，可用 `sha256sum -c SHA256SUMS.txt` 校验 |
 | `latest.json`、`beta.json` | 应用内更新的清单，只在稳定版上，见[更新通道](#更新通道) |
 
 带预发布后缀的版本标记为 Pre-release。程序没有代码签名，首次运行时 Windows SmartScreen 会提示“未知发布者”。
+
+安装包使用 Tauri 的 `offlineInstaller` 模式：构建机在打包时获取 WebView2 Evergreen 完整安装器，并将其封装进 NSIS 安装包；目标机器缺少 WebView2 时，安装程序直接使用包内文件。安装包体积因此增加约 127 MB。此前已发布的安装包不受此配置影响。
 
 ## 更新签名密钥
 

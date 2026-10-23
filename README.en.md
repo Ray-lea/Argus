@@ -69,8 +69,8 @@ Get the latest version from [GitHub Releases](https://github.com/Ray-lea/Argus/r
 
 | File | Description |
 |---|---|
-| `Argus_<version>_x64-setup.exe` | **Installer (recommended).** Installs for all users into Program Files; installing and updating require administrator permission. Supports in-app updates. |
-| `Argus_<version>_x64.exe` | **Portable version.** Runs directly and shares settings and data with the installed version; no automatic updates. |
+| `Argus_<version>_x64-setup.exe` | **Installer (recommended).** Includes the WebView2 Runtime for offline installation. Installs for all users into Program Files; installing and updating require administrator permission. Supports in-app updates. |
+| `Argus_<version>_x64.exe` | **Portable version.** Requires an existing WebView2 Runtime installation. Runs directly and shares settings and data with the installed version; no automatic updates. |
 | `SHA256SUMS.txt` | SHA-256 checksums of the files above. |
 
 > [!NOTE]
@@ -79,7 +79,7 @@ Get the latest version from [GitHub Releases](https://github.com/Ray-lea/Argus/r
 ## 💻 System requirements
 
 - Windows 10 version 22H2 (build 19045) or later, including Windows 11; x64 only
-- WebView2 Runtime (included in Windows 11)
+- WebView2 Runtime (included in Windows 11; installed offline by the installer if missing)
 
 See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (Chinese) for tested Windows versions, feature differences and permission requirements.
 

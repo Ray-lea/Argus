@@ -69,8 +69,8 @@ Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS �
 
 | 文件 | 说明 |
 |---|---|
-| `Argus_<版本>_x64-setup.exe` | **安装版（推荐）**。为所有用户安装到 Program Files，安装与更新需要管理员授权；支持应用内更新。 |
-| `Argus_<版本>_x64.exe` | **免安装版**。直接运行，与安装版共用设置与数据，不支持自动更新。 |
+| `Argus_<版本>_x64-setup.exe` | **安装版（推荐）**。内含 WebView2 运行时，可在离线环境安装；为所有用户安装到 Program Files，安装与更新需要管理员授权；支持应用内更新。 |
+| `Argus_<版本>_x64.exe` | **免安装版**。直接运行，需系统已安装 WebView2 运行时；与安装版共用设置与数据，不支持自动更新。 |
 | `SHA256SUMS.txt` | 上述文件的 SHA-256 校验值。 |
 
 > [!NOTE]
@@ -79,7 +79,7 @@ Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS �
 ## 💻 系统要求
 
 - Windows 10 22H2（内部版本 19045）及以上版本，包括 Windows 11；仅支持 x64 架构
-- WebView2 运行时（Windows 11 已内置）
+- WebView2 运行时（Windows 11 已内置；安装版在缺少时离线安装）
 
 已验证的系统版本、功能差异与权限要求见[兼容范围](docs/guide/hardware-data.md#系统兼容范围)。
 

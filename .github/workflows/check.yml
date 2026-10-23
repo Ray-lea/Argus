@@ -5,6 +5,11 @@ name: Check
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      build_offline_installer:
+        description: Build and upload the offline Windows installer
+        type: boolean
+        default: false
   workflow_call:
 
 permissions:
@@ -44,6 +49,7 @@ jobs:
 
   check:
     name: Lint, test and build
+    if: github.event_name != 'workflow_dispatch' || !inputs.build_offline_installer
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
@@ -97,3 +103,45 @@ jobs:
       # After the builds above, which download the crate sources it reads.
       - name: Third-party notices
         run: node scripts/notices.mjs --check
+
+  offline-installer:
+    name: Build offline Windows installer
+    if: github.event_name == 'workflow_dispatch' && inputs.build_offline_installer
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 12.14.0
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
+          rustup default stable-x86_64-pc-windows-msvc
+      - run: pnpm install --frozen-lockfile
+      - name: Build NSIS installer
+        run: pnpm tauri build
+      - name: Verify bundled WebView2 installer
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $listing = & 7z l -slt $setup
+          if ($LASTEXITCODE -ne 0) { throw "7-Zip could not inspect $setup" }
+          if (-not ($listing | Select-String -SimpleMatch "MicrosoftEdgeWebView2RuntimeInstaller.exe")) {
+            throw "The installer does not contain the WebView2 offline runtime installer"
+          }
+          Get-FileHash $setup -Algorithm SHA256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: argus-offline-installer
+          path: target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 7
