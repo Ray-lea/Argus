@@ -35,6 +35,7 @@
     "changed": "The startup task state has changed. Refresh and try again."
   },
   "host": {
+    "desktopShellTerminate": "Desktop Explorer cannot be ended directly. Use Restart instead.",
     "webViewProfileFailed": "Argus could not prepare its interface startup environment and did not start. Try starting it with standard permissions as the signed-in account. Details were recorded in the log. Error code: {code}",
     "restoreDesktopForWebView": "Windows Explorer is not running, so the administrator interface cannot initialize. Restore Explorer with the current desktop account's standard permissions and continue starting Argus? Choosing No cancels this startup.",
     "serviceReply": "The privileged service returned an unrecognized result; update the service",

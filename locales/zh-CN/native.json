@@ -35,6 +35,7 @@
     "changed": "启动项状态已发生变化，请刷新后重试。"
   },
   "host": {
+    "desktopShellTerminate": "无法直接结束桌面资源管理器，请使用“重新启动”。",
     "webViewProfileFailed": "无法准备界面启动环境，Argus 未启动。可尝试以当前登录账户的普通权限启动。详细原因已记录到日志。错误码：{code}",
     "restoreDesktopForWebView": "Windows 资源管理器未运行，无法初始化管理员界面。是否先以当前桌面账户的普通权限恢复资源管理器，再继续启动 Argus？选择“否”将取消本次启动。",
     "serviceReply": "特权服务返回了无法识别的结果，请更新服务",

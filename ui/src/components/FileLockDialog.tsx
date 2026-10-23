@@ -2,12 +2,13 @@
 
 import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js";
 import { endProcessByPid } from "../lib/actions";
+import { restartExplorer, restartingExplorer } from "../lib/explorer";
 import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { presence } from "../lib/motion";
 import { page, revealProcess, snapshot } from "../lib/store";
-import type { ActionError, Locker, LockReport } from "../lib/types";
-import { EndIcon, FolderIcon, GoToIcon, LockIcon } from "./icons";
+import type { ActionError, Locker, LockReport, ProcessIdentity } from "../lib/types";
+import { EndIcon, FolderIcon, GoToIcon, LockIcon, RestartIcon } from "./icons";
 import ProcIcon from "./ProcIcon";
 
 type State =
@@ -19,6 +20,7 @@ type State =
 const [open, setOpen] = createSignal(false);
 const [paths, setPaths] = createSignal<string[]>([]);
 const [state, setState] = createSignal<State>({ kind: "idle" });
+const [desktopShell, setDesktopShell] = createSignal<ProcessIdentity | null>(null);
 let searchVersion = 0;
 
 /** Kinds worth a tag; windowed apps and the rest go without. */
@@ -33,8 +35,14 @@ async function search() {
   const selectedPaths = [...paths()];
   setState({ kind: "searching" });
   try {
-    const report = await api.findLockers(selectedPaths);
-    if (version === searchVersion) setState({ kind: "done", report });
+    const [report, shell] = await Promise.all([
+      api.findLockers(selectedPaths),
+      api.desktopShell().catch(() => null),
+    ]);
+    if (version === searchVersion) {
+      setDesktopShell(shell);
+      setState({ kind: "done", report });
+    }
   } catch (e) {
     if (version !== searchVersion) return;
     const err = e as ActionError;
@@ -163,6 +171,8 @@ function LockDialogBody(props: { leaving: boolean }) {
                         <For each={report().lockers}>
                           {(l) => {
                             const proc = () => procOf(l);
+                            const isShell = () =>
+                              desktopShell()?.pid === l.pid && desktopShell()?.createTime === l.createTime;
                             return (
                               <div class="locker">
                                 <ProcIcon proc={{ icon: proc()?.icon ?? null, path: proc()?.path ?? null }} />
@@ -205,14 +215,26 @@ function LockDialogBody(props: { leaving: boolean }) {
                                 </button>
                                 <button
                                   type="button"
-                                  class="btn small danger"
-                                  disabled={l.createTime <= 0}
+                                  class="btn small"
+                                  classList={{ danger: !isShell() }}
+                                  disabled={l.createTime <= 0 || (isShell() && restartingExplorer())}
                                   onClick={async () => {
-                                    if (await endProcessByPid(l.pid, l.appName, l.createTime)) await search();
+                                    const done = isShell()
+                                      ? await restartExplorer({ pid: l.pid, createTime: l.createTime })
+                                      : await endProcessByPid(l.pid, l.appName, l.createTime);
+                                    if (done) await search();
                                   }}
                                 >
-                                  <EndIcon size={14} />
-                                  {t("fileLock.end")}
+                                  <Show when={isShell()} fallback={<EndIcon size={14} />}>
+                                    <RestartIcon size={14} />
+                                  </Show>
+                                  {isShell()
+                                    ? t(
+                                        restartingExplorer()
+                                          ? "tasks.explorer.restarting"
+                                          : "tasks.explorer.restart",
+                                      )
+                                    : t("fileLock.end")}
                                 </button>
                               </div>
                             );

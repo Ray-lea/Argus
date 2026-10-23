@@ -17,7 +17,7 @@ const ERRORS: Record<ExplorerError["kind"], MessageKey> = {
 };
 
 export async function restartExplorer(shell: ProcessIdentity) {
-  if (restartingExplorer()) return;
+  if (restartingExplorer()) return false;
   if (
     !(await confirm({
       title: t("tasks.explorer.title"),
@@ -25,12 +25,13 @@ export async function restartExplorer(shell: ProcessIdentity) {
       confirmLabel: t("tasks.explorer.restart"),
     }))
   )
-    return;
+    return false;
   setRestartingExplorer(true);
   const pending = toast("info", t("tasks.explorer.restarting"), 60000);
   try {
     await api.restartExplorer(shell.pid, shell.createTime);
     toast("success", t("tasks.explorer.done"));
+    return true;
   } catch (value) {
     const error = value as Partial<ExplorerError> | null;
     const key = error?.kind && Object.hasOwn(ERRORS, error.kind) ? ERRORS[error.kind] : ERRORS.prepare;
@@ -50,6 +51,7 @@ export async function restartExplorer(shell: ProcessIdentity) {
           }
         : {},
     );
+    return false;
   } finally {
     dismissToast(pending);
     setRestartingExplorer(false);

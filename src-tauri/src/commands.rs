@@ -234,6 +234,7 @@ fn terminate(state: &AppState, pid: u32, create_time: i64, force: bool) -> Resul
     if pid == std::process::id() {
         return Err(ActionError::Refused);
     }
+    crate::explorer::check_termination(pid)?;
     privileged(
         state,
         Operation::Terminate { pid, create_time },
@@ -260,6 +261,7 @@ pub fn kill_process_tree(
     pid: u32,
     create_time: i64,
 ) -> Result<TreeKillReport, ActionError> {
+    crate::explorer::check_termination(pid)?;
     let result = actions::terminate_tree_with(pid, create_time, |pid, created| {
         terminate(&state, pid, created, false)
     });

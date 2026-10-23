@@ -1,53 +1,43 @@
-//! Restart only the current desktop shell. A helper keeps the shell's own identity.
+//! Restart only the current desktop shell, retaining its account and desktop.
+
+mod process;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use windows::Win32::Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS, FILETIME, HANDLE};
+use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, WAIT_FAILED, WAIT_OBJECT_0, WPARAM};
 use windows::Win32::Security::{
-    DuplicateTokenEx, EqualSid, SecurityImpersonation, TOKEN_ADJUST_DEFAULT,
-    TOKEN_ADJUST_SESSIONID, TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE, TOKEN_ELEVATION, TOKEN_QUERY,
-    TOKEN_USER, TokenElevation, TokenPrimary, TokenSessionId, TokenUser,
-};
-use windows::Win32::System::Environment::CreateEnvironmentBlock;
-use windows::Win32::System::RestartManager::{
-    CCH_RM_SESSION_KEY, RM_PROCESS_INFO, RM_UNIQUE_PROCESS, RmEndSession, RmExplorer, RmGetList,
-    RmRegisterResources, RmRestart, RmShutdown, RmShutdownOnlyRegistered, RmStartSession,
+    EqualSid, TOKEN_DUPLICATE, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER, TokenElevation,
+    TokenSessionId, TokenUser,
 };
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
 use windows::Win32::System::Threading::{
-    CREATE_NO_WINDOW, CREATE_PROCESS_LOGON_FLAGS, CREATE_UNICODE_ENVIRONMENT,
-    CreateProcessWithTokenW, GetCurrentProcess, GetExitCodeProcess, GetProcessTimes, INFINITE,
-    OpenProcess, OpenProcessToken, PROCESS_INFORMATION, PROCESS_NAME_WIN32,
-    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW, STARTUPINFOW,
+    GetProcessTimes, OpenProcess, OpenProcessToken, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, QueryFullProcessImageNameW,
     WaitForSingleObject,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GetShellWindow, GetWindowThreadProcessId, IsWindowVisible,
+    FindWindowW, GetShellWindow, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
+    SMTO_ABORTIFHUNG, SMTO_BLOCK, SendMessageTimeoutW, WM_NULL,
 };
 use windows::core::{PCWSTR, PWSTR, w};
 
-use crate::tasks::{Environment, Handle, quote, token_buffer, wide};
+use crate::tasks::{Handle, token_buffer};
 
 const HELPER: &str = "--argus-restart-explorer";
+const EXIT_EXPLORER: u32 = 0x5B4;
 static RESTARTING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy)]
 enum Stage {
-    Validate,
-    Token,
-    Environment,
-    HelperLaunch,
-    HelperResult,
-    SessionStart,
-    Register,
-    Resources,
-    Shutdown,
-    Restart,
-    Recovery,
-    DesktopReady,
-    Image,
+    Validate = 0,
+    Token = 1,
+    Environment = 2,
+    Spawn = 3,
+    Shutdown = 8,
+    Restart = 9,
+    DesktopReady = 11,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -103,49 +93,6 @@ impl RestartError {
         }
         0x60000000 | ((self.kind as u32) << 20) | ((self.stage as u32) << 16) | self.code
     }
-    fn from_exit(code: u32) -> Self {
-        let kind = if code & 0xff000000 == 0x60000000 {
-            match (code >> 20) & 0xf {
-                1 => ErrorKind::Stale,
-                2 => ErrorKind::Unsupported,
-                3 => ErrorKind::Permission,
-                4 => ErrorKind::Prepare,
-                5 => ErrorKind::Shutdown,
-                6 => ErrorKind::Restore,
-                7 => ErrorKind::Busy,
-                _ => ErrorKind::Prepare,
-            }
-        } else {
-            ErrorKind::Prepare
-        };
-        Self::new(
-            kind,
-            if code & 0xff000000 == 0x60000000 {
-                code & 0xffff
-            } else {
-                code
-            },
-        )
-        .at(if code & 0xff000000 == 0x60000000 {
-            match (code >> 16) & 0xf {
-                0 => Stage::Validate,
-                1 => Stage::Token,
-                2 => Stage::Environment,
-                3 => Stage::HelperLaunch,
-                4 => Stage::HelperResult,
-                5 => Stage::SessionStart,
-                6 => Stage::Register,
-                7 => Stage::Resources,
-                8 => Stage::Shutdown,
-                9 => Stage::Restart,
-                10 => Stage::Recovery,
-                11 => Stage::DesktopReady,
-                _ => Stage::Image,
-            }
-        } else {
-            Stage::HelperResult
-        })
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -157,15 +104,8 @@ pub struct Identity {
 
 struct Shell {
     identity: Identity,
-    started: FILETIME,
     process: Handle,
     path: String,
-}
-struct Session(u32);
-impl Drop for Session {
-    fn drop(&mut self) {
-        let _ = unsafe { RmEndSession(self.0) };
-    }
 }
 struct Restarting;
 impl Drop for Restarting {
@@ -201,8 +141,14 @@ fn inspect() -> Result<Shell, RestartError> {
         return Err(RestartError::new(ErrorKind::Stale, 1168));
     }
     let process = Handle(
-        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
-            .map_err(|e| RestartError::win(ErrorKind::Permission, e))?,
+        unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+                false,
+                pid,
+            )
+        }
+        .map_err(|e| RestartError::win(ErrorKind::Permission, e))?,
     );
     let (mut started, mut ended, mut kernel, mut user) = Default::default();
     unsafe { GetProcessTimes(process.0, &mut started, &mut ended, &mut kernel, &mut user) }
@@ -232,7 +178,6 @@ fn inspect() -> Result<Shell, RestartError> {
     }
     Ok(Shell {
         identity,
-        started,
         process,
         path,
     })
@@ -240,6 +185,16 @@ fn inspect() -> Result<Shell, RestartError> {
 
 pub fn current() -> Option<Identity> {
     inspect().ok().map(|s| s.identity)
+}
+
+/// All UI termination routes share this check before reaching a privileged backend.
+pub fn check_termination(pid: u32) -> Result<(), argus_core::actions::ActionError> {
+    if pid != 0 && pid == shell_pid() {
+        return Err(argus_core::actions::ActionError::Os(argus_core::tr!(
+            "host.desktopShellTerminate"
+        )));
+    }
+    Ok(())
 }
 
 fn token(process: HANDLE, duplicate: bool) -> Result<Handle, RestartError> {
@@ -293,24 +248,54 @@ fn verify_tokens(shell: HANDLE, own: HANDLE, same_user: bool) -> Result<(), Rest
     Ok(())
 }
 
-fn ready(old: Identity) -> bool {
-    let Some(shell) = current() else { return false };
-    if shell == old {
-        return false;
-    }
+fn taskbar(pid: u32) -> Option<HWND> {
     let Ok(taskbar) = (unsafe { FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) }) else {
-        return false;
+        return None;
     };
-    let mut pid = 0;
-    unsafe { GetWindowThreadProcessId(taskbar, Some(&mut pid)) };
-    pid == shell.pid && unsafe { IsWindowVisible(taskbar) }.as_bool()
+    let mut owner = 0;
+    unsafe { GetWindowThreadProcessId(taskbar, Some(&mut owner)) };
+    (owner == pid && unsafe { IsWindowVisible(taskbar) }.as_bool()).then_some(taskbar)
+}
+
+fn responsive(window: HWND) -> bool {
+    !window.0.is_null()
+        && unsafe {
+            SendMessageTimeoutW(
+                window,
+                WM_NULL,
+                WPARAM(0),
+                LPARAM(0),
+                SMTO_ABORTIFHUNG | SMTO_BLOCK,
+                1000,
+                None,
+            )
+        }
+        .0 != 0
+}
+
+fn ready(old: Identity) -> Option<Identity> {
+    let shell = current()?;
+    (shell != old
+        && responsive(unsafe { GetShellWindow() })
+        && taskbar(shell.pid).is_some_and(responsive)
+        && current() == Some(shell))
+    .then_some(shell)
 }
 
 fn wait_ready(old: Identity, timeout: Duration) -> bool {
     let until = Instant::now() + timeout;
+    let mut candidate: Option<(Identity, Instant)> = None;
     loop {
-        if ready(old) {
-            return true;
+        match ready(old) {
+            Some(shell) => match candidate {
+                Some((previous, since)) if previous == shell => {
+                    if since.elapsed() >= Duration::from_secs(1) {
+                        return true;
+                    }
+                }
+                _ => candidate = Some((shell, Instant::now())),
+            },
+            None => candidate = None,
         }
         if Instant::now() >= until {
             return false;
@@ -319,148 +304,44 @@ fn wait_ready(old: Identity, timeout: Duration) -> bool {
     }
 }
 
-fn restart_standard(shell: Shell) -> Result<(), RestartError> {
-    let shell_token = token(shell.process.0, false)?;
-    let own_token = token(unsafe { GetCurrentProcess() }, false)?;
-    verify_tokens(shell_token.0, own_token.0, true)?;
-    let mut key = [0u16; CCH_RM_SESSION_KEY as usize + 1];
-    let mut handle = 0;
-    let result = unsafe { RmStartSession(&mut handle, None, PWSTR(key.as_mut_ptr())) };
-    if result != ERROR_SUCCESS {
-        return Err(RestartError::new(ErrorKind::Prepare, result.0).at(Stage::SessionStart));
+fn restart_shell(shell: Shell) -> Result<(), RestartError> {
+    let old = shell.identity;
+    let tray = taskbar(old.pid).ok_or_else(|| RestartError::new(ErrorKind::Unsupported, 50))?;
+    if !responsive(unsafe { GetShellWindow() }) || !responsive(tray) {
+        return Err(RestartError::new(ErrorKind::Shutdown, 1460).at(Stage::Shutdown));
     }
-    let session = Session(handle);
-    let target = RM_UNIQUE_PROCESS {
-        dwProcessId: shell.identity.pid,
-        ProcessStartTime: shell.started,
-    };
-    let result = unsafe { RmRegisterResources(session.0, None, Some(&[target]), None) };
-    if result != ERROR_SUCCESS {
-        return Err(RestartError::new(ErrorKind::Prepare, result.0).at(Stage::Register));
-    }
-    let mut infos: [RM_PROCESS_INFO; 2] = unsafe { std::mem::zeroed() };
-    let (mut needed, mut count, mut reasons) = (0, infos.len() as u32, 0);
-    let result = unsafe {
-        RmGetList(
-            session.0,
-            &mut needed,
-            &mut count,
-            Some(infos.as_mut_ptr()),
-            &mut reasons,
-        )
-    };
-    if result != ERROR_SUCCESS && result != ERROR_MORE_DATA {
-        return Err(RestartError::new(ErrorKind::Prepare, result.0).at(Stage::Resources));
-    }
-    if result != ERROR_SUCCESS
-        || count != 1
-        || reasons != 0
-        || infos[0].Process.dwProcessId != shell.identity.pid
-        || infos[0].Process.ProcessStartTime != shell.started
-        || infos[0].ApplicationType != RmExplorer
-        || !infos[0].bRestartable.as_bool()
-    {
-        return Err(RestartError::new(ErrorKind::Unsupported, 50).at(Stage::Resources));
-    }
-    if current() != Some(shell.identity) {
+    let prepared = process::Prepared::new(&shell)?;
+    if current() != Some(old) || taskbar(old.pid) != Some(tray) {
         return Err(RestartError::new(ErrorKind::Stale, 1168));
     }
-    let shutdown = unsafe { RmShutdown(session.0, RmShutdownOnlyRegistered.0 as u32, None) };
-    // Restart is required even when shutdown only partly succeeded.
-    let restart = unsafe { RmRestart(session.0, None, None) };
-    if wait_ready(shell.identity, Duration::from_secs(10)) {
-        return Ok(());
+    log::info!(
+        "Explorer restart: replacement prepared; old_pid={}",
+        old.pid
+    );
+    // Explorer's own Exit Explorer request (also used by ExplorerPatcher's
+    // ExitExplorer) avoids Restart Manager's session-ending notifications.
+    unsafe { PostMessageW(Some(tray), EXIT_EXPLORER, WPARAM(0), LPARAM(0)) }
+        .map_err(|e| RestartError::win(ErrorKind::Shutdown, e).at(Stage::Shutdown))?;
+    // An exit code or a vanished window is not proof that teardown finished.
+    // Do not start another shell while the old process is still shutting down.
+    match unsafe { WaitForSingleObject(shell.process.0, 30_000) } {
+        WAIT_OBJECT_0 => {}
+        WAIT_FAILED => {
+            let error = RestartError::win(ErrorKind::Shutdown, windows::core::Error::from_thread());
+            return Err(error.at(Stage::Shutdown));
+        }
+        _ => return Err(RestartError::new(ErrorKind::Shutdown, 1460).at(Stage::Shutdown)),
     }
-    if shell_pid() != 0 {
-        return Err(RestartError::new(
-            ErrorKind::Shutdown,
-            if shutdown.0 != 0 { shutdown.0 } else { 1460 },
-        )
-        .at(Stage::Shutdown));
+    drop(shell);
+    prepared.start()?;
+    if !wait_ready(old, Duration::from_secs(15)) {
+        return Err(RestartError::new(ErrorKind::Restore, 1460).at(Stage::DesktopReady));
     }
-    // The same standard user owns this worker. Never fall back to an elevated shell.
-    if let Err(error) = crate::tasks::launch(0, quote(&shell.path), false) {
-        return Err(RestartError::new(ErrorKind::Restore, error.code).at(Stage::Recovery));
-    }
-    if wait_ready(shell.identity, Duration::from_secs(15)) {
-        return Ok(());
-    }
-    Err(RestartError::new(
-        ErrorKind::Restore,
-        if restart.0 != 0 { restart.0 } else { 1460 },
-    )
-    .at(Stage::DesktopReady))
-}
-
-fn restart_as_shell(shell: Shell) -> Result<(), RestartError> {
-    let shell_token = token(shell.process.0, true)?;
-    let own_token = token(unsafe { GetCurrentProcess() }, false)?;
-    verify_tokens(shell_token.0, own_token.0, false)?;
-    let mut primary = HANDLE::default();
-    unsafe {
-        DuplicateTokenEx(
-            shell_token.0,
-            // Secondary Logon also requires these two rights on the duplicated token.
-            TOKEN_QUERY
-                | TOKEN_DUPLICATE
-                | TOKEN_ASSIGN_PRIMARY
-                | TOKEN_ADJUST_DEFAULT
-                | TOKEN_ADJUST_SESSIONID,
-            None,
-            SecurityImpersonation,
-            TokenPrimary,
-            &mut primary,
-        )
-    }
-    .map_err(|e| RestartError::win(ErrorKind::Permission, e))?;
-    let primary = Handle(primary);
-    let mut environment = std::ptr::null_mut();
-    unsafe { CreateEnvironmentBlock(&mut environment, Some(primary.0), false) }
-        .map_err(|e| RestartError::win(ErrorKind::Prepare, e).at(Stage::Environment))?;
-    let environment = Environment(environment);
-    let exe = std::env::current_exe()
-        .map_err(|e| RestartError::new(ErrorKind::Prepare, e.raw_os_error().unwrap_or(2) as u32))?;
-    let exe = exe.to_string_lossy();
-    let mut line = wide(&format!(
-        "{} {HELPER} {} {}",
-        quote(&exe),
-        shell.identity.pid,
-        shell.identity.create_time
-    ));
-    let exe = wide(&exe);
-    let mut desktop = wide("WinSta0\\Default");
-    let startup = STARTUPINFOW {
-        cb: size_of::<STARTUPINFOW>() as u32,
-        lpDesktop: PWSTR(desktop.as_mut_ptr()),
-        ..Default::default()
-    };
-    let mut process = PROCESS_INFORMATION::default();
-    // Start before shutting anything down; inaccessible binaries or tokens leave the desktop intact.
-    unsafe {
-        CreateProcessWithTokenW(
-            primary.0,
-            CREATE_PROCESS_LOGON_FLAGS(0),
-            PCWSTR(exe.as_ptr()),
-            Some(PWSTR(line.as_mut_ptr())),
-            CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
-            Some(environment.0),
-            PCWSTR::null(),
-            &startup,
-            &mut process,
-        )
-    }
-    .map_err(|e| RestartError::win(ErrorKind::Prepare, e).at(Stage::HelperLaunch))?;
-    let child = Handle(process.hProcess);
-    drop(Handle(process.hThread));
-    unsafe { WaitForSingleObject(child.0, INFINITE) };
-    let mut code = 0;
-    unsafe { GetExitCodeProcess(child.0, &mut code) }
-        .map_err(|e| RestartError::win(ErrorKind::Prepare, e))?;
-    if code == 0 {
-        Ok(())
-    } else {
-        Err(RestartError::from_exit(code))
-    }
+    log::info!(
+        "Explorer restart: desktop and taskbar responsive; new_pid={}",
+        shell_pid()
+    );
+    Ok(())
 }
 
 pub fn restart(pid: u32, create_time: i64) -> Result<(), RestartError> {
@@ -473,11 +354,7 @@ pub fn restart(pid: u32, create_time: i64) -> Result<(), RestartError> {
         if shell.identity != (Identity { pid, create_time }) {
             return Err(RestartError::new(ErrorKind::Stale, 1168));
         }
-        if argus_core::privilege::is_elevated() {
-            restart_as_shell(shell)
-        } else {
-            restart_standard(shell)
-        }
+        restart_shell(shell)
     })();
     if let Err(error) = &result {
         log::warn!(
@@ -510,6 +387,67 @@ pub fn run_mode() -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn termination_policy_protects_the_current_desktop_process() {
+        let shell = shell_pid();
+        if shell != 0 {
+            assert!(matches!(
+                check_termination(shell),
+                Err(argus_core::actions::ActionError::Os(_))
+            ));
+        }
+        assert!(check_termination(u32::MAX).is_ok());
+    }
+
+    #[test]
+    fn a_window_must_answer_messages_before_it_is_ready() {
+        use std::sync::mpsc;
+        use windows::Win32::System::Threading::GetCurrentThreadId;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow, DispatchMessageW, GetMessageW, MSG, PostThreadMessageW,
+            WM_QUIT, WS_POPUP,
+        };
+        let (created_tx, created_rx) = mpsc::channel();
+        let (pump_tx, pump_rx) = mpsc::channel();
+        let thread = std::thread::spawn(move || unsafe {
+            let window = CreateWindowExW(
+                Default::default(),
+                w!("STATIC"),
+                PCWSTR::null(),
+                WS_POPUP,
+                0,
+                0,
+                0,
+                0,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+            created_tx
+                .send((window.0 as usize, GetCurrentThreadId()))
+                .unwrap();
+            pump_rx.recv().unwrap();
+            let mut message = MSG::default();
+            while GetMessageW(&mut message, None, 0, 0).as_bool() {
+                DispatchMessageW(&message);
+            }
+            DestroyWindow(window).unwrap();
+        });
+        let (window, owner) = created_rx.recv().unwrap();
+        let window = HWND(window as *mut _);
+        let blocked = responsive(window);
+        pump_tx.send(()).unwrap();
+        let pumping = responsive(window);
+        unsafe { PostThreadMessageW(owner, WM_QUIT, WPARAM(0), LPARAM(0)) }.unwrap();
+        thread.join().unwrap();
+        assert!(!blocked);
+        assert!(pumping);
+        assert!(!responsive(HWND::default()));
+    }
+
     #[test]
     fn helper_errors_preserve_stage_and_native_code() {
         for kind in [
@@ -521,11 +459,14 @@ mod tests {
             ErrorKind::Restore,
             ErrorKind::Busy,
         ] {
-            let original = RestartError::new(kind, 1223);
-            let restored = RestartError::from_exit(original.exit_code());
-            assert_eq!(restored.kind as u32, kind as u32);
-            assert_eq!(restored.code, 1223);
+            let original = RestartError::new(kind, 1223).at(Stage::Shutdown);
+            assert_eq!((original.exit_code() >> 20) & 0xf, kind as u32);
+            assert_eq!((original.exit_code() >> 16) & 0xf, Stage::Shutdown as u32);
+            assert_eq!(original.exit_code() & 0xffff, 1223);
         }
-        assert_eq!(RestartError::from_exit(0xc0000142).code, 0xc0000142);
+        assert_eq!(
+            RestartError::new(ErrorKind::Prepare, 0xc0000142).exit_code(),
+            0xc0000142
+        );
     }
 }
