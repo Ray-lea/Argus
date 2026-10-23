@@ -26,6 +26,7 @@
     "i18n": "node scripts/i18n.mjs",
     "test": "node --test \"scripts/tests/*.test.mjs\" \"scripts/tests/*.test.ts\"",
     "test:signing": "node --test scripts/tests/signpath.test.mjs",
+    "test:startup": "node scripts/test-dev-startup.mjs",
     "check": "pnpm lint && pnpm i18n && pnpm check:generated && pnpm test && cargo fmt --all --check && cargo clippy --workspace --all-targets --target-dir target/rust-analyzer -- -D warnings && cargo test --workspace --target-dir target/rust-analyzer",
     "check:security": "pnpm audit --audit-level low && cargo audit",
     "commitlint": "node scripts/release.mjs lint",

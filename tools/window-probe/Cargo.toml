@@ -15,4 +15,4 @@ anyhow = "1"
 png = { version = "0.18", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["Win32_System_Diagnostics_ToolHelp", "Win32_System_Kernel"] }
+windows = { workspace = true, features = ["Win32_System_Diagnostics_ToolHelp", "Win32_System_Kernel", "Win32_System_StationsAndDesktops"] }

@@ -37,8 +37,238 @@ use windows::{
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
 }
+/// Read-only inspection includes hidden windows; it never changes focus or visibility.
+pub fn inspect(pid: u32) -> Result<()> {
+    struct Inspection {
+        pid: u32,
+        windows: Vec<serde_json::Value>,
+    }
+    unsafe extern "system" fn enumerate(hwnd: HWND, data: LPARAM) -> BOOL {
+        let inspection = unsafe { &mut *(data.0 as *mut Inspection) };
+        let mut pid = 0;
+        let thread = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        if pid != inspection.pid {
+            return true.into();
+        }
+        let mut title = [0u16; 256];
+        let mut class = [0u16; 128];
+        let nt = unsafe { GetWindowTextW(hwnd, &mut title) } as usize;
+        let nc = unsafe { GetClassNameW(hwnd, &mut class) } as usize;
+        let mut rect = RECT::default();
+        let mut placement = WINDOWPLACEMENT {
+            length: size_of::<WINDOWPLACEMENT>() as u32,
+            ..Default::default()
+        };
+        unsafe {
+            let _ = GetWindowRect(hwnd, &mut rect);
+            let _ = GetWindowPlacement(hwnd, &mut placement);
+        }
+        let responsive = unsafe {
+            SendMessageTimeoutW(
+                hwnd,
+                WM_NULL,
+                Default::default(),
+                Default::default(),
+                SMTO_ABORTIFHUNG | SMTO_BLOCK,
+                100,
+                None,
+            )
+        }
+        .0 != 0;
+        inspection.windows.push(serde_json::json!({"hwnd":hwnd.0 as usize,"thread":thread,"title":String::from_utf16_lossy(&title[..nt]),"class":String::from_utf16_lossy(&class[..nc]),"visible":unsafe{IsWindowVisible(hwnd).as_bool()},"minimized":unsafe{IsIconic(hwnd).as_bool()},"responsive":responsive,"showCommand":placement.showCmd,"rect":[rect.left,rect.top,rect.right,rect.bottom]}));
+        true.into()
+    }
+    let mut inspection = Inspection {
+        pid,
+        windows: vec![],
+    };
+    unsafe {
+        EnumWindows(
+            Some(enumerate),
+            LPARAM((&mut inspection as *mut Inspection) as isize),
+        )?;
+    }
+    println!("{}", serde_json::to_string_pretty(&inspection.windows)?);
+    Ok(())
+}
 fn ticks(t: FILETIME) -> u64 {
     (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime)
+}
+
+/// Test normal startup on an inactive desktop, without forcing a window to show.
+pub fn startup(args: &[String]) -> Result<()> {
+    use windows::Win32::System::StationsAndDesktops::*;
+    use windows::core::PWSTR;
+    anyhow::ensure!(!args.is_empty(), "startup requires an executable");
+    struct Desktop(HDESK);
+    impl Drop for Desktop {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = CloseDesktop(self.0);
+            }
+        }
+    }
+    struct ThreadDesktop(HDESK);
+    impl Drop for ThreadDesktop {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = SetThreadDesktop(self.0);
+            }
+        }
+    }
+    struct Process(PROCESS_INFORMATION);
+    impl Drop for Process {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = CloseHandle(self.0.hThread);
+                let _ = CloseHandle(self.0.hProcess);
+            }
+        }
+    }
+    let name = format!("ArgusStartup-{}-{}", std::process::id(), crate::unix_ms());
+    let desktop = Desktop(unsafe {
+        CreateDesktopW(
+            PCWSTR(wide(&name).as_ptr()),
+            PCWSTR::null(),
+            None,
+            Default::default(),
+            DESKTOP_CREATEWINDOW.0
+                | DESKTOP_ENUMERATE.0
+                | DESKTOP_READOBJECTS.0
+                | DESKTOP_WRITEOBJECTS.0
+                | DESKTOP_HOOKCONTROL.0,
+            None,
+        )?
+    });
+    let original = unsafe { GetThreadDesktop(GetCurrentThreadId())? };
+    let mut desktop_name = wide(&format!("WinSta0\\{name}"));
+    let quote = |value: &str| {
+        let mut out = String::from("\"");
+        let mut slashes = 0;
+        for ch in value.chars() {
+            if ch == '\\' {
+                slashes += 1;
+                continue;
+            }
+            out.extend(std::iter::repeat_n(
+                '\\',
+                if ch == '"' { slashes * 2 + 1 } else { slashes },
+            ));
+            slashes = 0;
+            out.push(ch);
+        }
+        out.extend(std::iter::repeat_n('\\', slashes * 2));
+        out.push('"');
+        out
+    };
+    let mut command = wide(
+        &args
+            .iter()
+            .map(|arg| quote(arg))
+            .collect::<Vec<_>>()
+            .join(" "),
+    );
+    let startup = STARTUPINFOW {
+        cb: size_of::<STARTUPINFOW>() as u32,
+        lpDesktop: PWSTR(desktop_name.as_mut_ptr()),
+        ..Default::default()
+    };
+    let mut information = PROCESS_INFORMATION::default();
+    unsafe {
+        CreateProcessW(
+            PCWSTR(wide(&args[0]).as_ptr()),
+            Some(PWSTR(command.as_mut_ptr())),
+            None,
+            None,
+            false,
+            CREATE_NO_WINDOW | CREATE_SUSPENDED,
+            None,
+            PCWSTR::null(),
+            &startup,
+            &mut information,
+        )?;
+    }
+    let process = Process(information);
+    let job = Arc::new(Job(unsafe { CreateJobObjectW(None, PCWSTR::null())? }));
+    let limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+        BasicLimitInformation: JOBOBJECT_BASIC_LIMIT_INFORMATION {
+            LimitFlags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    unsafe {
+        SetInformationJobObject(
+            job.0,
+            JobObjectExtendedLimitInformation,
+            (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        )?;
+        if let Err(error) = AssignProcessToJobObject(job.0, process.0.hProcess) {
+            let _ = TerminateProcess(process.0.hProcess, 1);
+            return Err(error.into());
+        }
+    }
+    let monitor = ForegroundMonitor::start(process.0.dwProcessId, job.clone());
+    let restore = ThreadDesktop(original);
+    unsafe {
+        SetThreadDesktop(desktop.0)?;
+        ResumeThread(process.0.hThread);
+    }
+    let started = Instant::now();
+    let mut last = None;
+    let mut windows = Vec::new();
+    loop {
+        if unsafe { WaitForSingleObject(process.0.hProcess, 50) }
+            == windows::Win32::Foundation::WAIT_OBJECT_0
+        {
+            break;
+        }
+        anyhow::ensure!(
+            started.elapsed() < Duration::from_secs(120),
+            "isolated startup timeout"
+        );
+        anyhow::ensure!(
+            !monitor.violated.load(Ordering::Relaxed),
+            "test took foreground"
+        );
+        for pid in job.pids()? {
+            let mut search = Search {
+                pid,
+                hwnd: HWND::default(),
+            };
+            unsafe {
+                let _ = EnumWindows(Some(find), LPARAM((&mut search as *mut Search) as isize));
+            }
+            if search.hwnd.0.is_null() {
+                continue;
+            }
+            let visible = unsafe { IsWindowVisible(search.hwnd).as_bool() };
+            let state = (pid, visible);
+            if last != Some(state) {
+                let event = serde_json::json!({"pid":pid,"visible":visible,"atMs":started.elapsed().as_millis()});
+                println!("{event}");
+                windows.push(event);
+                last = Some(state);
+            }
+        }
+    }
+    let mut code = 0;
+    unsafe {
+        GetExitCodeProcess(process.0.hProcess, &mut code)?;
+    }
+    let violated = monitor.violated.load(Ordering::Relaxed);
+    drop(restore);
+    drop(monitor);
+    println!(
+        "{}",
+        serde_json::json!({"event":"startup-result","exitCode":code,"foregroundViolations":usize::from(violated),"windows":windows})
+    );
+    anyhow::ensure!(
+        code == 0 && !violated,
+        "isolated startup did not exit cleanly"
+    );
+    Ok(())
 }
 
 struct Job(windows::Win32::Foundation::HANDLE);

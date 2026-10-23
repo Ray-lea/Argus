@@ -29,8 +29,10 @@ if (mode === "dev") {
     lastHash = "",
     timer;
   const watchers = [];
+  const stopping = new WeakSet();
   async function stop() {
     if (!application || application.exitCode !== null) return true;
+    stopping.add(application);
     application.stdin.write('{"exit":true}\n');
     for (let n = 0; n < 160 && application.exitCode === null; n++) await sleep(50);
     return application.exitCode !== null;
@@ -67,13 +69,28 @@ if (mode === "dev") {
       copyFileSync(executable, image);
       application = spawn(image, [...launchArgs, "--control-stdin"], {
         cwd: root,
-        windowsHide: true,
+        // windowsHide also sets SW_HIDE for GUI windows; Argus handles --hidden itself.
+        windowsHide: false,
         stdio: ["pipe", "inherit", "inherit"],
       });
-      application.stdin.on("error", () => {});
-      application.on("error", (error) => console.error(error.message));
+      const child = application;
+      child.stdin.on("error", () => {});
+      child.once("spawn", () => {
+        console.log(`GPUI 进程已启动（PID ${child.pid}）。${once ? "" : "正在监听文件变更。"}`);
+      });
+      child.once("error", (error) => {
+        console.error(`GPUI 启动失败：${error.message}`);
+        if (once) process.exitCode = 1;
+      });
+      child.once("exit", (code, signal) => {
+        if (!closed && !stopping.has(child)) {
+          const detail = signal ? `信号 ${signal}` : `退出码 ${code}`;
+          const report = code === 0 ? console.log : console.error;
+          report(`GPUI 进程已退出（${detail}）。${once ? "" : "修改源文件后将重新启动。"}`);
+        }
+        if (once) process.exitCode = code ?? 1;
+      });
       lastHash = hash;
-      if (once) application.on("exit", (code) => process.exit(code ?? 1));
     } finally {
       building = false;
       if (queued && !closed) {

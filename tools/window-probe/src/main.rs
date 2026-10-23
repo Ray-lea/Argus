@@ -20,6 +20,10 @@ fn main() -> anyhow::Result<()> {
         #[cfg(windows)]
         Some("run") => windows::run(&args[1..])?,
         #[cfg(windows)]
+        Some("inspect") => windows::inspect(args[1].parse()?)?,
+        #[cfg(windows)]
+        Some("startup") => windows::startup(&args[1..])?,
+        #[cfg(windows)]
         Some("latency") => latency::run(&args[1], args.get(2).map_or(Ok(20), |s| s.parse())?)?,
         #[cfg(all(windows, feature = "capture"))]
         Some("capture") => windows::capture(args[1].parse()?, &args[2])?,
