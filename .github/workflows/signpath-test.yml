@@ -76,10 +76,12 @@ jobs:
           node scripts/signpath.mjs apply-helpers
       - name: Build application
         # Do not rebuild the helpers after they have been signed.
-        run: pnpm tauri build --ci --no-bundle --config target/signpath/build-config.json
+        run: node scripts/build.mjs --skip-helpers
+      - name: Install NSIS
+        run: choco install nsis --version=3.13 -y --no-progress
       - name: Prepare NSIS bundle metadata
-        # Tauri writes its bundle marker before the main executable is signed.
-        run: pnpm tauri bundle --ci --bundles nsis --no-sign
+        # Render the native installer before the main executable is signed.
+        run: node scripts/build.mjs --bundle-only
       - name: Capture application and uninstaller
         run: node scripts/signpath.mjs prepare-application
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

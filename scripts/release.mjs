@@ -8,7 +8,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // The app's own changelog parser (plain TypeScript, run by Node's type
 // stripping): the workflow publishes exactly the entries the app finds.
-import { changelogEntries, strayHeadings, withTranslation } from "../ui/src/lib/release-notes.ts";
+import { changelogEntries, strayHeadings, withTranslation } from "./lib/release-notes.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -52,7 +52,7 @@ User-visible changes in each Argus release. Versions follow [Semantic Versioning
 `;
 
 const CARGO_TOML = "Cargo.toml";
-const VERSION_FILES = ["package.json", "src-tauri/tauri.conf.json"];
+const VERSION_FILES = ["package.json", "resources/app.json"];
 const CARGO_VERSION = /(\[workspace\.package\][^[]*?\nversion = ")([^"]+)(")/;
 // Top-level key only: these files are indented with two spaces.
 const JSON_VERSION = /^( {2}"version": ")([^"]+)(")/m;
@@ -75,9 +75,9 @@ const HELP = `用法：node scripts/release.mjs <命令>
   manifest <版本> <安装包> <签名文件> [<更新内容> <更新内容的签名文件>]
                            打印应用内更新读取的清单 JSON（发布工作流使用）
   check-signature <版本> <文件> <签名文件>
-                           用 tauri.conf.json 中的公钥校验更新签名及其中的版本号（发布工作流使用）`;
+                           用 resources/app.json 中的公钥校验更新签名及其中的版本号（发布工作流使用）`;
 
-const TAURI_CONF = "src-tauri/tauri.conf.json";
+const APP_CONF = "resources/app.json";
 
 function fail(message) {
   console.error(`[错误] ${message}`);
@@ -518,7 +518,7 @@ function cmdVerify([tag]) {
 
 /** Without it the released app can verify, and therefore install, no update. */
 function requirePubkey() {
-  if (!JSON.parse(read(TAURI_CONF)).plugins?.updater?.pubkey) fail(`${TAURI_CONF} 没有配置更新签名公钥`);
+  if (!JSON.parse(read(APP_CONF)).updater?.pubkey) fail(`${APP_CONF} 没有配置更新签名公钥`);
 }
 
 /** The GitHub release's text: the Chinese notes, then the English ones when there are any. */
@@ -605,7 +605,7 @@ function cmdCheckSignature([version, file, signature]) {
   // Tauri stores both as base64 of the minisign text files.
   const lines = (base64) => Buffer.from(base64.trim(), "base64").toString("utf8").split("\n");
   const pubkey =
-    JSON.parse(read(TAURI_CONF)).plugins?.updater?.pubkey || fail(`${TAURI_CONF} 没有配置更新签名公钥`);
+    JSON.parse(read(APP_CONF)).updater?.pubkey || fail(`${APP_CONF} 没有配置更新签名公钥`);
   // Public key: algorithm (2) + key id (8) + Ed25519 key (32).
   const pk = Buffer.from(lines(pubkey)[1], "base64");
   // Signature: algorithm (2) + key id (8) + Ed25519 signature (64), then the
@@ -618,7 +618,7 @@ function cmdCheckSignature([version, file, signature]) {
     format: "jwk",
   });
   if (sig.length !== 74 || !sig.subarray(2, 10).equals(pk.subarray(2, 10))) {
-    fail(`签名使用的密钥与 ${TAURI_CONF} 中的公钥不同`);
+    fail(`签名使用的密钥与 ${APP_CONF} 中的公钥不同`);
   }
   const data = readFileSync(file);
   // "ED" signs the BLAKE2b-512 hash of the file, legacy "Ed" the file itself.
@@ -629,7 +629,7 @@ function cmdCheckSignature([version, file, signature]) {
   if (!verify(null, signedComment, key, Buffer.from(globalLine, "base64")))
     fail("签名中的可信注释没有通过校验");
   if (!comment.split("\t").includes(`version:${version}`)) fail(`签名中的版本不是 ${version}：${comment}`);
-  console.log(`[通过] 签名来自 ${TAURI_CONF} 中的公钥，版本为 ${version}`);
+  console.log(`[通过] 签名来自 ${APP_CONF} 中的公钥，版本为 ${version}`);
 }
 
 const [command, ...args] = process.argv.slice(2);

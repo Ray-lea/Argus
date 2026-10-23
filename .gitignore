@@ -1,13 +1,9 @@
 # Rust
 /target/
 
-# Node / Vite
+# Development tools
 node_modules/
-/dist/
 *.local
-
-# Tauri
-/src-tauri/gen/schemas/
 
 # Editors / OS
 .vscode/*
@@ -16,3 +12,4 @@ node_modules/
 .idea/
 .DS_Store
 Thumbs.db
+/.migration-archive/

@@ -67,14 +67,19 @@ jobs:
       - name: Version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      # Builds the embedded task manager helpers, the frontend, argus.exe and the
+      # Builds the embedded task manager helpers, the native argus.exe and the
       # NSIS installer, and signs the installer for the in-app updater. Local
       # builds leave the updater artifacts off, so they need no key.
+      - name: Install NSIS
+        run: choco install nsis --version=3.13 -y --no-progress
       - name: Build
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          ARGUS_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          ARGUS_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          node scripts/build.mjs --installer
+          setup=$(ls target/release/bundle/nsis/*-setup.exe)
+          cargo run --locked -p argus-update-signer -- "$VERSION" "$setup"
 
       # A secret that does not match the public key would ship an update that
       # every installed copy rejects.
@@ -87,11 +92,11 @@ jobs:
       # the version like the installer.
       - name: Sign the release notes
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          ARGUS_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          ARGUS_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           node scripts/release.mjs release-notes "$VERSION" release-notes.json
-          pnpm tauri signer sign --app-version "$VERSION" release-notes.json
+          cargo run --locked -p argus-update-signer -- "$VERSION" release-notes.json
           node scripts/release.mjs check-signature "$VERSION" release-notes.json release-notes.json.sig
 
       # PowerShell, not bash: Git Bash rewrites /S and /D=... into paths.

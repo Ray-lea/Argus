@@ -1,5 +1,28 @@
 {
+  "prototype": {
+    "title": "Argus 原型",
+    "processes": "进程",
+    "cores": "逻辑处理器",
+    "cpu": "CPU",
+    "memory": "内存",
+    "name": "名称",
+    "pid": "PID",
+    "read": "读取",
+    "write": "写入",
+    "gpu": "GPU",
+    "threads": "线程",
+    "live": "实时采集",
+    "replay": "采样回放",
+    "fluid": "流畅",
+    "off": "关闭动画",
+    "count": "进程数",
+    "unavailable": "—",
+    "seconds": "秒",
+    "replayRequired": "此平台的原生采集适配器尚未实现，请选择采样回放文件"
+  },
   "app": {
+    "invalidRequest": "请求参数无效。",
+    "windowUnavailable": "主窗口尚未就绪。",
     "devTitle": "Argus 开发版",
     "join": "{first}；{second}",
     "instanceUnavailable": "无法向已运行的 Argus 交接请求：{error}。详细原因已记录到日志文件夹的 taskmgr.log 中。"

@@ -50,5 +50,9 @@
     "note": "备注",
     "placeholder": "简要说明此项的用途",
     "save": "保存"
+  },
+  "languageName": {
+    "zhCN": "简体中文",
+    "enUS": "English"
   }
 }

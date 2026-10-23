@@ -1,4 +1,5 @@
 {
+  "missing": "—",
   "uptime": {
     "days": "{days} 天 {hours} 小时",
     "hours": "{hours} 小时 {minutes} 分",

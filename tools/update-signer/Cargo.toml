@@ -1,0 +1,16 @@
+[package]
+name = "argus-update-signer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow = "1"
+base64 = "0.23.1"
+minisign = "0.10"
+semver = "1"
+
+[dev-dependencies]
+minisign-verify = "0.3"

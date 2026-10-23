@@ -120,19 +120,20 @@ for (const [locale, namespaces] of catalogs) {
 
 // ---- Code ----------------------------------------------------------------------------
 
-const rustDirs = ["src-tauri/src", "crates/argus-core/src", "crates/argus-service/src"];
+const rustDirs = ["src-gpui/src", "crates/argus-core/src", "crates/argus-service/src", "crates/argus-app/src"];
 const rustFiles = rustDirs.flatMap((d) => walk(join(root, d))).filter((f) => f.endsWith(".rs"));
-const uiFiles = walk(join(root, "ui/src")).filter((f) => /\.tsx?$/.test(f));
+const uiFiles = [];
 
 // Rust lookups: tr!("key") and tr!("key", name = value, …).
 const native = source.get("native") ?? new Map();
+const application = new Map([...source].filter(([ns]) => ns !== "native").flatMap(([ns, keys]) => [...keys].map(([key, value]) => [`${ns}.${key}`, value])));
 for (const file of rustFiles) {
   const text = readFileSync(file, "utf8");
   for (const m of text.matchAll(/\btr!\(\s*"([^"]+)"((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)/g)) {
     const [, key, rest] = m;
     const line = text.slice(0, m.index).split("\n").length;
     const where = `${rel(file)}:${line}`;
-    const template = native.get(key);
+    const template = native.get(key) ?? (rel(file).startsWith("src-gpui/") ? application.get(key) : undefined);
     if (template === undefined) {
       error(where, `tr!("${key}") is not in locales/${SOURCE}/native.json`);
       continue;
@@ -143,8 +144,18 @@ for (const file of rustFiles) {
   }
 }
 
+// Native view adapters also look up labels without placeholders.
+for (const file of rustFiles.filter((file) => rel(file).startsWith("src-gpui/src/frontend"))) {
+  const text = readFileSync(file, "utf8");
+  for (const match of text.matchAll(/\blabel\(\s*"([\w.]+)"\s*\)/g)) {
+    const key = match[1];
+    if (!native.has(key) && !application.has(key)) error(rel(file), `unknown native view label: ${key}`);
+    else if (placeholders(native.get(key) ?? application.get(key)).size) error(rel(file), `label needs formatted arguments: ${key}`);
+  }
+}
+
 // Text written into the code instead of a catalog.
-const exempt = new Set(["ui/src/lib/mock.ts"]);
+const exempt = new Set();
 for (const file of [...rustFiles, ...uiFiles]) {
   const name = rel(file);
   if (exempt.has(name)) continue;

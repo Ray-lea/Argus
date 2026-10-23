@@ -1,0 +1,18 @@
+[package]
+name = "argus-window-probe"
+version.workspace = true
+edition.workspace = true
+publish = false
+license.workspace = true
+
+[features]
+capture = ["dep:png", "windows/Graphics_Capture", "windows/Graphics_DirectX_Direct3D11", "windows/Win32_Graphics_Direct3D", "windows/Win32_Graphics_Direct3D11", "windows/Win32_Graphics_Dxgi_Common", "windows/Win32_System_WinRT_Graphics_Capture", "windows/Win32_System_WinRT_Direct3D11"]
+
+[dependencies]
+
+serde_json = "1"
+anyhow = "1"
+png = { version = "0.18", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_System_Diagnostics_ToolHelp", "Win32_System_Kernel"] }

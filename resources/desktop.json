@@ -1,0 +1,13 @@
+{
+  "onboardingVersion": 1,
+  "onboardingSteps": [
+    "welcome",
+    "display",
+    "background",
+    "update",
+    "privilege",
+    "sensors",
+    "taskManager",
+    "tips"
+  ]
+}

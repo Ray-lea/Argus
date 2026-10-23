@@ -1,0 +1,960 @@
+use super::*;
+use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
+use gpui_kit::component::{ActiveTheme, WindowExt, dialog::Dialog};
+
+#[derive(Clone)]
+pub(super) struct Modal {
+    pub kind: String,
+    pub args: Value,
+    pub title: String,
+    pub body: String,
+    pub error: Option<String>,
+}
+impl Desktop {
+    pub(in crate::frontend) fn open_popup(
+        &mut self,
+        items: Vec<MenuItem>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let owner = cx.entity().downgrade();
+        let focus = self.focus.clone();
+        let interval = self.interval;
+        let menu = PopupMenu::build(window, cx, move |mut menu, _, _| {
+            menu = menu.action_context(focus);
+            for item in items {
+                let owner = owner.clone();
+                let action = item.action;
+                let checked = matches!(action,Action::Interval(ms)if ms==interval);
+                menu = menu.item(
+                    PopupMenuItem::new(item.label)
+                        .disabled(item.disabled)
+                        .checked(checked)
+                        .on_click(move |_, window, cx| {
+                            let owner = owner.clone();
+                            let action = action.clone();
+                            window.defer(cx, move |window, cx| {
+                                let _ = owner.update(cx, |this, cx| this.act(action, window, cx));
+                            });
+                        }),
+                );
+            }
+            menu
+        });
+        let subscription = cx.subscribe_in(&menu, window, |this, menu, _: &DismissEvent, _, cx| {
+            if this
+                .popup
+                .as_ref()
+                .is_some_and(|popup| popup.menu.entity_id() == menu.entity_id())
+            {
+                this.popup = None;
+                this.rebuild_rows(false, cx);
+                cx.notify();
+            }
+        });
+        menu.focus_handle(cx).focus(window, cx);
+        self.popup = Some(Popup {
+            menu,
+            position: window.mouse_position(),
+            _subscription: subscription,
+        });
+    }
+    pub(in crate::frontend) fn row_menu(&self, row: &Row) -> Vec<MenuItem> {
+        if row.section.is_some() {
+            return vec![MenuItem::new(
+                label(if row.expanded {
+                    "common.collapse"
+                } else {
+                    "common.expand"
+                }),
+                Action::Fold(row.key.clone()),
+            )];
+        }
+        let mut items = vec![];
+        match self.page.as_str() {
+            "processes" => {
+                if self.data.get("desktopShell").is_some_and(|shell| {
+                    shell["pid"] == row.raw["pid"] && shell["createTime"] == row.raw["createTime"]
+                }) {
+                    items.push(MenuItem::new(
+                        label("tasks.explorer.restart"),
+                        Action::Dialog("restartExplorer".into(), row.raw.clone()),
+                    ));
+                }
+                let args = json!({"members":row.members,"name":row.title});
+                items.push(MenuItem::new(
+                    label("common.endProcess"),
+                    Action::Dialog("end".into(), args.clone()),
+                ));
+                items.push(MenuItem::new(
+                    label("common.endProcessTree"),
+                    Action::Dialog("endTree".into(), args.clone()),
+                ));
+                let priorities = [
+                    "idle",
+                    "belowNormal",
+                    "normal",
+                    "aboveNormal",
+                    "high",
+                    "realtime",
+                ]
+                .into_iter()
+                .map(|priority| {
+                    MenuItem::new(
+                        label(&format!("processes.priority.{priority}")),
+                        Action::Dialog(
+                            "priority".into(),
+                            json!({"members":row.members,"name":row.title,"priority":priority}),
+                        ),
+                    )
+                })
+                .collect();
+                items.push(MenuItem::new(
+                    label("processes.menu.setPriority"),
+                    Action::Popup(priorities),
+                ));
+                items.push(MenuItem::new(label("common.efficiencyMode"),Action::Dialog("efficiency".into(),json!({"members":row.members,"name":row.title,"on":!boolean(&row.raw,"efficiency")}))));
+                items.push(MenuItem::new(
+                    label("processes.menu.addRule"),
+                    Action::Dialog("ruleScope".into(), json!({"name":text(&row.raw,"name")})),
+                ));
+                items.push(MenuItem::new(
+                    label("processes.menu.details"),
+                    Action::Select(row.key.clone()),
+                ));
+            }
+            "services" => {
+                for (action, key) in [
+                    ("start", "common.start"),
+                    ("stop", "common.stop"),
+                    ("restart", "common.restart"),
+                ] {
+                    items.push(MenuItem::new(
+                        label(key),
+                        Action::Invoke(
+                            "control_service".into(),
+                            json!({"name":text(&row.raw,"name"),"action":action}),
+                        ),
+                    ));
+                }
+                for start_type in ["auto", "autoDelayed", "manual", "disabled"] {
+                    items.push(MenuItem::new(
+                        label(&format!("services.startType.{start_type}")),
+                        Action::Invoke(
+                            "set_service_start_type".into(),
+                            json!({"name":text(&row.raw,"name"),"startType":start_type}),
+                        ),
+                    ));
+                }
+            }
+            "startup" => items.push(MenuItem::new(
+                label(if boolean(&row.raw, "enabled") {
+                    "common.disable"
+                } else {
+                    "common.enable"
+                }),
+                Action::Invoke(
+                    "set_startup_enabled".into(),
+                    json!({"id":row.raw["id"],"enabled":!boolean(&row.raw,"enabled")}),
+                ),
+            )),
+            "network" => {
+                if text(&row.raw, "protocol") == "tcp" && text(&row.raw, "state") == "established" {
+                    items.push(MenuItem::new(
+                        label("connections.menu.close"),
+                        Action::Dialog("closeConnection".into(), row.raw.clone()),
+                    ));
+                }
+                items.push(MenuItem::new(
+                    label("common.goToProcess"),
+                    Action::Preference("revealProcess".into(), row.raw.clone()),
+                ));
+            }
+            _ => {}
+        }
+        if let Some(path) = row.raw["path"].as_str().filter(|p| !p.is_empty()) {
+            items.push(MenuItem::new(
+                label("common.openFileLocation"),
+                Action::Invoke("reveal_in_explorer".into(), json!({"path":path})),
+            ));
+            items.push(MenuItem::new(
+                label("common.copyPath"),
+                Action::Copy(path.into()),
+            ));
+        }
+        items.push(MenuItem::new(
+            label("common.copyName"),
+            Action::Copy(row.title.clone()),
+        ));
+        if let Some(key) = &row.mark_key {
+            items.push(MenuItem::new(
+                label("common.marks.addNote"),
+                Action::Dialog("note".into(), json!({"key":key,"name":row.title})),
+            ));
+            let pinned = boolean(&self.marks()[key], "pinned");
+            items.push(MenuItem::new(
+                label(if pinned {
+                    "common.marks.unpin"
+                } else {
+                    "common.marks.pin"
+                }),
+                Action::Preference("pin".into(), json!(key)),
+            ));
+        }
+        items
+    }
+    pub(in crate::frontend) fn open_selected_action(
+        &mut self,
+        kind: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(row) = self
+            .selected
+            .get(&self.page)
+            .and_then(|key| self.rows.iter().find(|r| &r.key == key))
+            .filter(|r| r.section.is_none())
+        {
+            self.open_dialog(
+                kind,
+                json!({"members":row.members,"name":row.title}),
+                window,
+                cx,
+            );
+        }
+    }
+    pub(in crate::frontend) fn form(
+        &mut self,
+        key: &str,
+        value: &str,
+        placeholder: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let value = value.to_owned();
+        let placeholder = label(placeholder);
+        self.forms.insert(
+            key.into(),
+            cx.new(|cx| {
+                let mut state = InputState::new(window, cx).placeholder(placeholder);
+                state.set_value(value, window, cx);
+                state
+            }),
+        );
+    }
+    pub(in crate::frontend) fn open_dialog(
+        &mut self,
+        kind: &str,
+        args: Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.popup = None;
+        self.forms.clear();
+        let name = text(&args, "name");
+        let members = values(&args["members"]);
+        let pid = members
+            .first()
+            .map(|p| p["pid"].to_string())
+            .unwrap_or_default();
+        let (title, body) = match kind {
+            "end" => (
+                tr!("actions.end.title", name = name),
+                if members.len() > 1 {
+                    tr!("actions.endGroup.body", name = name, count = members.len())
+                } else {
+                    tr!("actions.end.body", pid = pid)
+                },
+            ),
+            "endTree" => (
+                tr!("actions.endTree.title", name = name),
+                tr!("actions.end.body", pid = pid),
+            ),
+            "priority" => (
+                label("processes.menu.setPriority"),
+                if text(&args, "priority") == "realtime" {
+                    tr!("actions.priority.confirmBody")
+                } else {
+                    label(&format!("processes.priority.{}", text(&args, "priority")))
+                },
+            ),
+            "efficiency" => (
+                label("common.efficiencyMode"),
+                label(if boolean(&args, "on") {
+                    "common.on"
+                } else {
+                    "common.off"
+                }),
+            ),
+            "task" => (label("tasks.title"), label("tasks.description")),
+            "restartExplorer" => (
+                label("tasks.explorer.title"),
+                label("tasks.explorer.confirm"),
+            ),
+            "filelock" => (label("fileLock.title"), label("fileLock.intro")),
+            "hotkey" => (
+                label("settings.hotkey.title"),
+                label("settings.hotkey.desc"),
+            ),
+            "ruleScope" => (
+                label("actions.ruleScope.title"),
+                tr!("actions.ruleScope.body", name = name),
+            ),
+            "rule" => (
+                label("processes.menu.addRule"),
+                label("settings.rules.desc"),
+            ),
+            "note" => (label("common.marks.note"), name.into()),
+            "privilege" => {
+                let uninstall = text(&args, "action") == "uninstall";
+                let prefix = if uninstall {
+                    "settings.privilege.uninstall"
+                } else {
+                    "settings.privilege.install"
+                };
+                (
+                    label(&format!("{prefix}.title")),
+                    label(&format!("{prefix}.body")),
+                )
+            }
+            "taskmgr" => (
+                label("settings.taskManager.confirm.title"),
+                label("settings.taskManager.confirm.body"),
+            ),
+            "sensors" => (
+                label("settings.sensors.title"),
+                label("settings.sensors.desc"),
+            ),
+            "clearHistory" => (
+                label("settings.data.history.confirm.title"),
+                tr!(
+                    "settings.data.history.confirm.body",
+                    size = theme::bytes(
+                        self.data
+                            .get("historyUsage")
+                            .map(|v| number(v, "bytes"))
+                            .unwrap_or(0.),
+                        false
+                    )
+                ),
+            ),
+            "closeConnection" => (
+                label("connections.menu.close"),
+                format!(
+                    "{}:{} → {}:{}",
+                    text(&args, "localAddress"),
+                    args["localPort"],
+                    text(&args, "remoteAddress"),
+                    args["remotePort"]
+                ),
+            ),
+            "proxy" => (
+                label("settings.update.custom.title"),
+                label("settings.update.custom.desc"),
+            ),
+            "update" => (
+                label("settings.update.restart"),
+                label("settings.update.detail.ready"),
+            ),
+            "license" => (
+                label("settings.about.license.title"),
+                include_str!("../../../LICENSE").into(),
+            ),
+            "notices" => (
+                label("settings.about.notices.dialog"),
+                include_str!("../../../THIRD-PARTY-NOTICES.txt").into(),
+            ),
+            "shortcuts" => (
+                label("settings.shortcuts.title"),
+                ["search", "pause", "end", "inputHint"]
+                    .map(|key| label(&format!("settings.shortcuts.{key}")))
+                    .join("\n\n"),
+            ),
+            "onboarding" => (
+                label("settings.about.onboarding.title"),
+                label("settings.about.tagline"),
+            ),
+            "whatsnew" => (
+                tr!(
+                    "updates.dialog.installed",
+                    version = env!("CARGO_PKG_VERSION")
+                ),
+                welcome::current_notes(),
+            ),
+            _ => return,
+        };
+        match kind {
+            "task" => self.form("value", "", "tasks.placeholder", window, cx),
+            "filelock" => self.form("value", "", "common.path", window, cx),
+            "hotkey" => {
+                self.form(
+                    "value",
+                    text(&args, "hotkey"),
+                    "settings.hotkey.recording",
+                    window,
+                    cx,
+                );
+                self.request("suspend_hotkey", json!({}), None, window, cx);
+            }
+            "rule" => self.form("value", name, "settings.rules.placeholder", window, cx),
+            "proxy" => self.form(
+                "value",
+                text(&args, "updateProxy"),
+                "settings.update.custom.label",
+                window,
+                cx,
+            ),
+            "note" => self.form(
+                "value",
+                text(&self.marks()[text(&args, "key")], "note"),
+                "common.marks.placeholder",
+                window,
+                cx,
+            ),
+            _ => {}
+        }
+        self.modal = Some(Modal {
+            kind: kind.into(),
+            args,
+            title,
+            body,
+            error: None,
+        });
+        let owner = cx.entity().downgrade();
+        window.close_dialog(cx);
+        window.open_dialog(cx, move |dialog, window, cx| {
+            if let Some(owner) = owner.upgrade() {
+                owner.update(cx, |this, cx| this.dialog_view(dialog, window, cx))
+            } else {
+                dialog
+            }
+        });
+        if let Some(input) = self.forms.get("value") {
+            input.update(cx, |state, cx| state.focus(window, cx));
+        }
+        cx.notify();
+    }
+    pub(in crate::frontend) fn dialog_view(
+        &self,
+        dialog: Dialog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Dialog {
+        let Some(modal) = &self.modal else {
+            return dialog;
+        };
+        if modal.kind == "onboarding" {
+            return self.onboarding_dialog(
+                dialog.bg(self.palette.layer_strong.opacity(1.)),
+                window,
+                cx,
+            );
+        }
+        let mut content = div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .when(modal.kind != "whatsnew", |d| d.child(modal.body.clone()))
+            .when(modal.kind == "whatsnew", |d| {
+                d.child(gpui_kit::component::text::TextView::markdown(
+                    "release-notes",
+                    modal.body.clone(),
+                ))
+            });
+        if modal.kind == "update" {
+            let status = self.data.get("updates").unwrap_or(&Value::Null);
+            content = content.child(gpui_kit::component::text::TextView::markdown(
+                "update-release-notes",
+                welcome::update_notes(status),
+            ));
+            if let Some(error) = status["error"].as_str() {
+                content = content.child(
+                    div()
+                        .text_color(self.palette.danger)
+                        .child(error.to_owned()),
+                );
+            }
+        }
+        if let Some(error) = &modal.error {
+            content = content.child(div().text_color(self.palette.danger).child(error.clone()));
+        }
+        if let Some(input) = self.forms.get("value") {
+            if modal.kind == "hotkey" {
+                content = content.child(
+                    div()
+                        .id("hotkey-recorder")
+                        .track_focus(&input.read(cx).focus_handle(cx))
+                        .p_4()
+                        .border_1()
+                        .border_color(self.palette.stroke)
+                        .child(input.read(cx).value().to_string())
+                        .capture_key_down(cx.listener(Self::record_hotkey))
+                        .on_key_up(cx.listener(|this, _: &KeyUpEvent, window, cx| {
+                            if this
+                                .modal
+                                .as_ref()
+                                .is_some_and(|m| m.args["recorded"].as_bool() == Some(true))
+                            {
+                                this.confirm_dialog(window, cx);
+                            }
+                        })),
+                );
+            } else {
+                content = content.child(Input::new(input));
+            }
+        }
+        if modal.kind == "task" {
+            content = content
+                .child(self.button(
+                    "task-browse",
+                    label("tasks.browse"),
+                    None,
+                    Action::Invoke("pick_path".into(), json!({"folder":false,"task":true})),
+                    false,
+                    cx,
+                ))
+                .child(self.button(
+                    "task-elevated",
+                    label("tasks.administrator"),
+                    None,
+                    Action::Preference(
+                        "dialog.elevated".into(),
+                        json!(!boolean(&modal.args, "elevated")),
+                    ),
+                    boolean(&modal.args, "elevated"),
+                    cx,
+                ));
+        }
+        if modal.kind == "filelock" {
+            content = content.child(div().flex().gap_2().children(
+                [(false, "fileLock.pickFile"), (true, "fileLock.pickFolder")].map(
+                    |(folder, key)| {
+                        self.button(
+                            key,
+                            label(key),
+                            None,
+                            Action::Invoke("pick_path".into(), json!({"folder":folder})),
+                            false,
+                            cx,
+                        )
+                    },
+                ),
+            ));
+            if let Some(report) = self.data.get("lockers") {
+                content = content.child(tr!(
+                    "fileLock.found",
+                    count = values(&report["lockers"]).len()
+                ));
+                for locker in values(&report["lockers"]) {
+                    content = content.child(self.button(
+                        format!("locker-{}", model::identity(locker)),
+                        format!("{} · {}", text(locker, "appName"), locker["pid"]),
+                        None,
+                        Action::Preference("revealProcess".into(), locker.clone()),
+                        false,
+                        cx,
+                    ));
+                }
+                if report["handles"]["denied"].as_u64().unwrap_or(0) > 0 {
+                    content = content.child(label("fileLock.serviceHint"));
+                }
+            }
+        }
+        if modal.kind == "rule" {
+            for (field, options) in [
+                (
+                    "priority",
+                    vec![
+                        "idle",
+                        "belowNormal",
+                        "normal",
+                        "aboveNormal",
+                        "high",
+                        "realtime",
+                    ],
+                ),
+                ("efficiency", vec!["keep", "on", "off"]),
+            ] {
+                let mut choices = div().flex().flex_wrap().gap_1();
+                for value in options {
+                    let label = if field == "priority" {
+                        label(&format!("processes.priority.{value}"))
+                    } else {
+                        label(&format!("settings.rules.efficiency.{value}"))
+                    };
+                    choices = choices.child(self.button(
+                        format!("rule-{field}-{value}"),
+                        label,
+                        None,
+                        Action::Preference(format!("dialog.{field}"), json!(value)),
+                        text(&modal.args, field) == value,
+                        cx,
+                    ));
+                }
+                content = content.child(choices);
+            }
+        }
+        let owner = cx.entity().downgrade();
+        let confirm_owner = owner.clone();
+        dialog
+            .bg(self.palette.layer_strong.opacity(1.))
+            .title(modal.title.clone())
+            .overlay_closable(false)
+            .child(content)
+            .on_ok(move |_, window, cx| {
+                let _ = confirm_owner.update(cx, |this, cx| this.confirm_dialog(window, cx));
+                false
+            })
+            .footer(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(self.button(
+                        "dialog-cancel",
+                        label("common.cancel"),
+                        None,
+                        Action::CloseOverlay,
+                        false,
+                        cx,
+                    ))
+                    .child(
+                        self.button(
+                            "dialog-confirm",
+                            label(match modal.kind.as_str() {
+                                "task" => "tasks.run",
+                                "update" => {
+                                    if self
+                                        .data
+                                        .get("updates")
+                                        .is_some_and(|s| text(s, "state") == "ready")
+                                    {
+                                        "settings.update.restart"
+                                    } else {
+                                        "settings.update.download"
+                                    }
+                                }
+                                "filelock" => "fileLock.recheck",
+                                "end" | "endTree" => "common.endProcess",
+                                "license" | "notices" | "shortcuts" | "onboarding" | "whatsnew" => {
+                                    "common.close"
+                                }
+                                _ => "common.marks.save",
+                            }),
+                            None,
+                            Action::Confirm,
+                            true,
+                            cx,
+                        ),
+                    ),
+            )
+            .on_close(move |_, window, cx| {
+                let _ = owner.update(cx, |this, cx| {
+                    this.modal = None;
+                    this.request("resume_hotkey", json!({}), Some("settings"), window, cx);
+                    cx.notify();
+                });
+            })
+    }
+    pub(in crate::frontend) fn confirm_dialog(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(modal) = self.modal.clone() else {
+            return;
+        };
+        let value = self
+            .forms
+            .get("value")
+            .map(|v| v.read(cx).value().to_string())
+            .unwrap_or_default();
+        let args = &modal.args;
+        match modal.kind.as_str() {
+            "restartExplorer" => self.request(
+                "restart_explorer",
+                json!({"pid":args["pid"],"createTime":args["createTime"]}),
+                None,
+                window,
+                cx,
+            ),
+            "end" | "endTree" | "priority" | "efficiency" => {
+                for member in values(&args["members"]) {
+                    let mut payload =
+                        json!({"pid":member["pid"],"createTime":member["createTime"]});
+                    let command = match modal.kind.as_str() {
+                        "end" => {
+                            payload["force"] = json!(false);
+                            "kill_process"
+                        }
+                        "endTree" => "kill_process_tree",
+                        "priority" => {
+                            payload["priority"] = args["priority"].clone();
+                            "set_priority"
+                        }
+                        _ => {
+                            payload["on"] = args["on"].clone();
+                            "set_efficiency_mode"
+                        }
+                    };
+                    self.request(command, payload, None, window, cx);
+                }
+            }
+            "task" => {
+                self.request(
+                    "run_task",
+                    json!({"command":value,"elevated":boolean(args,"elevated")}),
+                    None,
+                    window,
+                    cx,
+                );
+                return;
+            }
+            "filelock" => {
+                let paths = value
+                    .lines()
+                    .filter(|p| !p.trim().is_empty())
+                    .map(str::trim)
+                    .collect::<Vec<_>>();
+                if paths.is_empty() {
+                    return;
+                }
+                self.request(
+                    "find_lockers",
+                    json!({"paths":paths}),
+                    Some("lockers"),
+                    window,
+                    cx,
+                );
+                return;
+            }
+            "hotkey" => self.request(
+                "set_hotkey",
+                json!({"hotkey":value}),
+                Some("settings"),
+                window,
+                cx,
+            ),
+            "privilege" => self.request(
+                "manage_privileged_service",
+                json!({"action":args["action"]}),
+                Some("privilege"),
+                window,
+                cx,
+            ),
+            "taskmgr" => self.request(
+                "manage_task_manager",
+                json!({"action":args["action"]}),
+                Some("taskmgr"),
+                window,
+                cx,
+            ),
+            "sensors" => self.request(
+                "set_kernel_sensors",
+                json!({"enabled":args["enabled"]}),
+                Some("settings"),
+                window,
+                cx,
+            ),
+            "clearHistory" => self.request("clear_history", json!({}), None, window, cx),
+            "closeConnection" => self.request("close_connection", args.clone(), None, window, cx),
+            "update" => {
+                let status = self.data.get("updates").cloned().unwrap_or(Value::Null);
+                match text(&status, "state") {
+                    "ready" => self.request("install_update", json!({}), None, window, cx),
+                    "available" => self.request(
+                        "open_release_page",
+                        json!({"version":status["version"]}),
+                        None,
+                        window,
+                        cx,
+                    ),
+                    _ => return,
+                }
+            }
+            "proxy" => self.preference("updateProxy", json!(value), window, cx),
+            "note" => self.set_mark(
+                text(args, "key"),
+                "note",
+                json!(
+                    value
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .chars()
+                        .take(80)
+                        .collect::<String>()
+                ),
+                cx,
+            ),
+            "ruleScope" => {
+                self.open_dialog("rule", args.clone(), window, cx);
+                return;
+            }
+            "rule" => {
+                if value.trim().is_empty() {
+                    return;
+                }
+                let mut rules = values(&self.data["settings"]["rules"]).to_vec();
+                let id = args["id"].as_str().map(str::to_owned).unwrap_or_else(|| {
+                    format!(
+                        "native-{}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    )
+                });
+                rules.retain(|r| r["id"] != id);
+                rules.push(json!({"id":id,"name":value.trim(),"enabled":args["enabled"].as_bool().unwrap_or(true),"priority":args["priority"],"efficiency":args["efficiency"].as_bool().or_else(||match text(args,"efficiency"){"on"=>Some(true),"off"=>Some(false),_=>None})}));
+                self.request(
+                    "set_rules",
+                    json!({"rules":rules}),
+                    Some("settings"),
+                    window,
+                    cx,
+                );
+            }
+            _ => {}
+        }
+        self.act(Action::CloseOverlay, window, cx);
+    }
+    pub(in crate::frontend) fn command_completed(
+        &mut self,
+        command: &str,
+        value: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            "complete_onboarding" => self.welcome_checked = false,
+            "pick_path" => {
+                if let Some(path) = value.as_str()
+                    && let Some(input) = self.forms.get("value")
+                {
+                    let value = if self.modal.as_ref().is_some_and(|m| m.kind == "task") {
+                        format!("\"{path}\"")
+                    } else {
+                        path.into()
+                    };
+                    input.update(cx, |state, cx| state.set_value(value, window, cx));
+                }
+            }
+            "run_task" => {
+                self.act(Action::CloseOverlay, window, cx);
+                self.toast = Some((label("tasks.started"), Instant::now()));
+            }
+            "set_theme" => {
+                let saved = self.host.state::<crate::settings::SettingsStore>().get();
+                self.set_theme(crate::platform::is_dark(saved.theme), window, cx);
+            }
+            "privileged_service_status" => {
+                self.data.insert("privilege".into(), value.clone());
+            }
+            "control_service"
+            | "set_service_start_type"
+            | "set_startup_enabled"
+            | "close_connection" => self.poll_page(window, cx),
+            _ => {}
+        }
+    }
+    pub(in crate::frontend) fn render_overlays(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let mut elements = vec![];
+        if let Some(popup) = &self.popup {
+            elements.push(
+                deferred(
+                    anchored().child(
+                        div()
+                            .w(window.bounds().size.width)
+                            .h(window.bounds().size.height)
+                            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+                            .child(
+                                anchored()
+                                    .position(popup.position)
+                                    .snap_to_window_with_margin(window.rem_size() / 2.)
+                                    .child(popup.menu.clone()),
+                            ),
+                    ),
+                )
+                .with_priority(gpui_kit::base::POPUP_PRIORITY)
+                .into_any_element(),
+            );
+        }
+        if let Some((text, _)) = &self.toast {
+            elements.push(
+                div()
+                    .absolute()
+                    .bottom_4()
+                    .right_4()
+                    .max_w_96()
+                    .bg(self.palette.layer_strong)
+                    .text_color(self.palette.ink)
+                    .border_1()
+                    .border_color(self.palette.stroke)
+                    .rounded(cx.theme().radius)
+                    .p_4()
+                    .child(text.clone())
+                    .into_any_element(),
+            );
+        }
+        elements
+    }
+    fn record_hotkey(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
+        let key = event.keystroke.key.as_str();
+        if event.is_held || matches!(key, "control" | "ctrl" | "alt" | "shift" | "cmd" | "win") {
+            return;
+        }
+        if key == "escape"
+            && !event.keystroke.modifiers.control
+            && !event.keystroke.modifiers.alt
+            && !event.keystroke.modifiers.platform
+        {
+            self.act(Action::CloseOverlay, window, cx);
+            return;
+        }
+        if key == "backspace" {
+            self.request(
+                "set_hotkey_enabled",
+                json!({"enabled":false}),
+                Some("settings"),
+                window,
+                cx,
+            );
+            self.act(Action::CloseOverlay, window, cx);
+            return;
+        }
+        let mods = event.keystroke.modifiers;
+        let mut parts = Vec::new();
+        for (enabled, name) in [
+            (mods.control, "Ctrl"),
+            (mods.alt, "Alt"),
+            (mods.shift, "Shift"),
+            (mods.platform, "Win"),
+        ] {
+            if enabled {
+                parts.push(name.to_owned());
+            }
+        }
+        parts.push(match key {
+            "escape" => "Escape".into(),
+            "enter" => "Enter".into(),
+            "space" => "Space".into(),
+            "backspace" => "Backspace".into(),
+            "pageup" => "PageUp".into(),
+            "pagedown" => "PageDown".into(),
+            other => other.to_ascii_uppercase(),
+        });
+        if let Some(input) = self.forms.get("value") {
+            input.update(cx, |state, cx| state.set_value(parts.join("+"), window, cx));
+        }
+        if let Some(modal) = &mut self.modal {
+            modal.args["recorded"] = json!(true);
+        }
+        window.refresh();
+    }
+}

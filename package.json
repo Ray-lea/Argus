@@ -16,34 +16,22 @@
     }
   },
   "scripts": {
-    "app": "tauri dev --config src-tauri/tauri.dev.conf.json --additional-watch-folders crates",
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "lint": "biome check ui locales",
-    "format": "biome format --write ui locales",
+    "app": "node scripts/desktop.mjs dev",
+    "dev": "node scripts/desktop.mjs dev",
+    "build": "node scripts/build.mjs",
+    "bundle": "node scripts/build.mjs --installer",
+    "check:generated": "node scripts/native-dispatch.mjs --check",
+    "lint": "biome check locales resources",
+    "format": "biome format --write locales resources",
     "i18n": "node scripts/i18n.mjs",
-    "test:ui": "node --test \"ui/tests/*.test.ts\"",
+    "test": "node --test \"scripts/tests/*.test.mjs\" \"scripts/tests/*.test.ts\"",
     "test:signing": "node --test scripts/tests/signpath.test.mjs",
-    "check": "pnpm typecheck && pnpm lint && pnpm i18n && pnpm test:ui && pnpm test:signing && cargo fmt --all --check && cargo clippy --workspace --all-targets --target-dir target/rust-analyzer -- -D warnings",
+    "check": "pnpm lint && pnpm i18n && pnpm check:generated && pnpm test && cargo fmt --all --check && cargo clippy --workspace --all-targets --target-dir target/rust-analyzer -- -D warnings && cargo test --workspace --target-dir target/rust-analyzer",
     "check:security": "pnpm audit --audit-level low && cargo audit",
     "commitlint": "node scripts/release.mjs lint",
-    "release": "node scripts/release.mjs bump",
-    "tauri": "tauri"
-  },
-  "dependencies": {
-    "@tanstack/solid-virtual": "^3.13.48",
-    "@tauri-apps/api": "^2.12.4",
-    "solid-js": "^1.9.17"
+    "release": "node scripts/release.mjs bump"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
-    "@tailwindcss/vite": "^4.3.3",
-    "@tauri-apps/cli": "^2.12.3",
-    "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.4",
-    "vite-plugin-solid": "^2.11.14"
+    "@biomejs/biome": "^2.5.15"
   }
 }

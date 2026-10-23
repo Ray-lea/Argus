@@ -50,5 +50,9 @@
     "note": "Note",
     "placeholder": "What this is for, in a few words",
     "save": "Save"
+  },
+  "languageName": {
+    "zhCN": "Chinese (Simplified)",
+    "enUS": "English"
   }
 }

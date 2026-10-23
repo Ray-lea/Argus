@@ -1,0 +1,17 @@
+[
+  { "field": "clockMhz", "label": "performance.cpu.columnClock", "unit": "MHz", "digits": 0 },
+  { "field": "effectiveMhz", "label": "performance.cpu.columnEffective", "unit": "MHz", "digits": 0 },
+  { "field": "celsius", "label": "performance.cpu.columnTemperature", "unit": "°C", "digits": 1 },
+  { "field": "distanceToLimit", "label": "performance.cpu.columnHeadroom", "unit": "°C", "digits": 1 },
+  { "field": "watts", "label": "performance.cpu.columnPower", "unit": "W", "digits": 1 },
+  { "field": "vid", "label": "performance.cpu.columnVid", "unit": "V", "digits": 3 },
+  { "field": "voltage", "label": "performance.cpu.columnVoltage", "unit": "V", "digits": 3 },
+  { "field": "multiplier", "label": "performance.cpu.columnMultiplier", "unit": "×", "digits": 2 },
+  { "field": "c0Percent", "label": "performance.cpu.columnActivity", "unit": "%", "digits": 1 },
+  { "field": "smuC0Percent", "label": "performance.cpu.columnSmuC0", "unit": "%", "digits": 1 },
+  { "field": "c1Percent", "label": "performance.cpu.columnC1", "unit": "%", "digits": 1 },
+  { "field": "c6Percent", "label": "performance.cpu.columnC6", "unit": "%", "digits": 1 },
+  { "field": "osC1Percent", "label": "performance.cpu.columnOsC1", "unit": "%", "digits": 1 },
+  { "field": "osC2Percent", "label": "performance.cpu.columnOsC2", "unit": "%", "digits": 1 },
+  { "field": "osC3Percent", "label": "performance.cpu.columnOsC3", "unit": "%", "digits": 1 }
+]

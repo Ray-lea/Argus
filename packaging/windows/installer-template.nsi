@@ -1,0 +1,653 @@
+; Native Argus installer. Adapted from the MIT/Apache-2.0 Tauri NSIS template.
+; See LICENSE-TAURI-MIT and LICENSE-TAURI-APACHE in this directory.
+Unicode true
+ManifestDPIAware true
+; Add in `dpiAwareness` `PerMonitorV2` to manifest for Windows 10 1607+ (note this should not affect lower versions since they should be able to ignore this and pick up `dpiAware` `true` set by `ManifestDPIAware true`)
+; Currently undocumented on NSIS's website but is in the Docs folder of source tree, see
+; https://github.com/kichik/nsis/blob/5fc0b87b819a9eec006df4967d08e522ddd651c9/Docs/src/attributes.but#L286-L300
+; https://github.com/tauri-apps/tauri/pull/10106
+ManifestDPIAwareness PerMonitorV2
+
+!if "{{compression}}" == "none"
+  SetCompress off
+!else
+  ; Set the compression algorithm. We default to LZMA.
+  SetCompressor /SOLID "{{compression}}"
+!endif
+
+; Keep above !include to stay ahead of any plugin command
+; see https://github.com/tauri-apps/tauri/pull/15422#discussion_r3289239624
+
+
+!include MUI2.nsh
+!include FileFunc.nsh
+!include x64.nsh
+!include WordFunc.nsh
+!include "utils.nsh"
+!include "FileAssociation.nsh"
+!include "Win\COM.nsh"
+!include "Win\Propkey.nsh"
+!include "Win\RestartManager.nsh"
+!include "StrFunc.nsh"
+${StrCase}
+${StrLoc}
+
+!include "{{installer_hooks}}"
+
+
+!define MANUFACTURER "{{manufacturer}}"
+!define PRODUCTNAME "{{product_name}}"
+!define VERSION "{{version}}"
+!define VERSIONWITHBUILD "{{version_with_build}}"
+!define HOMEPAGE "{{homepage}}"
+!define INSTALLMODE "{{install_mode}}"
+!define LICENSE "{{license}}"
+!define INSTALLERICON "{{installer_icon}}"
+!define SIDEBARIMAGE "{{sidebar_image}}"
+!define HEADERIMAGE "{{header_image}}"
+!define UNINSTALLERICON "{{uninstaller_icon}}"
+!define UNINSTALLERHEADERIMAGE "{{uninstaller_header_image}}"
+!define MAINBINARYNAME "{{main_binary_name}}"
+!define MAINBINARYSRCPATH "{{main_binary_path}}"
+!define BUNDLEID "{{bundle_id}}"
+!define COPYRIGHT "{{copyright}}"
+!define OUTFILE "{{out_file}}"
+!define ARCH "{{arch}}"
+!define ADDITIONALPLUGINSPATH "{{additional_plugins_path}}"
+!define ALLOWDOWNGRADES "{{allow_downgrades}}"
+!define DISPLAYLANGUAGESELECTOR "{{display_language_selector}}"
+!define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCTNAME}"
+!define MANUKEY "Software\${MANUFACTURER}"
+!define MANUPRODUCTKEY "${MANUKEY}\${PRODUCTNAME}"
+!define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
+!define ESTIMATEDSIZE "{{estimated_size}}"
+!define STARTMENUFOLDER "{{start_menu_folder}}"
+
+Var PassiveMode
+Var UpdateMode
+Var NoShortcutMode
+Var WixMode
+Var OldMainBinaryName
+
+Name "${PRODUCTNAME}"
+BrandingText "${COPYRIGHT}"
+OutFile "${OUTFILE}"
+
+; We don't actually use this value as default install path,
+; it's just for nsis to append the product name folder in the directory selector
+; https://nsis.sourceforge.io/Reference/InstallDir
+!define PLACEHOLDER_INSTALL_DIR "placeholder\${PRODUCTNAME}"
+InstallDir "${PLACEHOLDER_INSTALL_DIR}"
+
+VIProductVersion "${VERSIONWITHBUILD}"
+VIAddVersionKey "ProductName" "${PRODUCTNAME}"
+VIAddVersionKey "FileDescription" "${PRODUCTNAME}"
+VIAddVersionKey "LegalCopyright" "${COPYRIGHT}"
+VIAddVersionKey "FileVersion" "${VERSION}"
+VIAddVersionKey "ProductVersion" "${VERSION}"
+
+
+; Uninstaller signing command
+!if "${UNINSTALLERSIGNCOMMAND}" != ""
+  !uninstfinalize '${UNINSTALLERSIGNCOMMAND}'
+!endif
+
+; Handle install mode, `perUser`, `perMachine` or `both`
+!if "${INSTALLMODE}" == "perMachine"
+  RequestExecutionLevel admin
+!endif
+
+!if "${INSTALLMODE}" == "currentUser"
+  RequestExecutionLevel user
+!endif
+
+!if "${INSTALLMODE}" == "both"
+  !define MULTIUSER_MUI
+  !define MULTIUSER_INSTALLMODE_INSTDIR "${PRODUCTNAME}"
+  !define MULTIUSER_INSTALLMODE_COMMANDLINE
+  !if "${ARCH}" == "x64"
+    !define MULTIUSER_USE_PROGRAMFILES64
+  !else if "${ARCH}" == "arm64"
+    !define MULTIUSER_USE_PROGRAMFILES64
+  !endif
+  !define MULTIUSER_INSTALLMODE_DEFAULT_REGISTRY_KEY "${UNINSTKEY}"
+  !define MULTIUSER_INSTALLMODE_DEFAULT_REGISTRY_VALUENAME "CurrentUser"
+  !define MULTIUSER_INSTALLMODEPAGE_SHOWUSERNAME
+  !define MULTIUSER_INSTALLMODE_FUNCTION RestorePreviousInstallLocation
+  !define MULTIUSER_EXECUTIONLEVEL Highest
+  !include MultiUser.nsh
+!endif
+
+; Installer icon
+!if "${INSTALLERICON}" != ""
+  !define MUI_ICON "${INSTALLERICON}"
+!endif
+
+; Installer sidebar image
+!if "${SIDEBARIMAGE}" != ""
+  !define MUI_WELCOMEFINISHPAGE_BITMAP "${SIDEBARIMAGE}"
+!endif
+
+; Enable header images for installer and uninstaller pages when either image is configured.
+!if "${HEADERIMAGE}" != ""
+  !define MUI_HEADERIMAGE
+!else if "${UNINSTALLERHEADERIMAGE}" != ""
+  !define MUI_HEADERIMAGE
+!endif
+
+; Installer header image
+!if "${HEADERIMAGE}" != ""
+  !define MUI_HEADERIMAGE_BITMAP "${HEADERIMAGE}"
+!endif
+
+; Uninstaller header image
+!if "${UNINSTALLERHEADERIMAGE}" != ""
+  !define MUI_HEADERIMAGE_UNBITMAP "${UNINSTALLERHEADERIMAGE}"
+!endif
+
+; Uninstaller icon
+!if "${UNINSTALLERICON}" != ""
+  !define MUI_UNICON "${UNINSTALLERICON}"
+!endif
+
+; Define registry key to store installer language
+!define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
+!define MUI_LANGDLL_REGISTRY_KEY "${MANUPRODUCTKEY}"
+!define MUI_LANGDLL_REGISTRY_VALUENAME "Installer Language"
+
+; Installer pages, must be ordered as they appear
+; Argus: one page to install or upgrade, the progress page and a finish page,
+; drawn by installer-ui.nsh, replace the welcome, license, install mode,
+; reinstall, directory and finish pages. An existing installation is upgraded
+; in place, as the updater does, never uninstalled first.
+!define MUI_CUSTOMFUNCTION_GUIINIT ArgusGuiInit
+AutoCloseWindow true
+
+; 1. Install or upgrade (Argus)
+Page custom ArgusPageMain ArgusPageMainLeave
+
+; 2. Start menu shortcut page
+Var AppStartMenuFolder
+!if "${STARTMENUFOLDER}" != ""
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+  !define MUI_STARTMENUPAGE_DEFAULTFOLDER "${STARTMENUFOLDER}"
+!else
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE Skip
+!endif
+!insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder
+
+; 3. Installation page (Argus: restyled)
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW ArgusPageProgress
+!insertmacro MUI_PAGE_INSTFILES
+
+; 4. Finish page (Argus)
+Page custom ArgusPageFinish ArgusPageFinishLeave
+
+Function RunMainBinary
+  ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-launch-installed'
+FunctionEnd
+
+; Uninstaller Pages
+; Argus: a confirmation page (with the "delete app data" choice), the progress
+; page and a done page, drawn by installer-ui.nsh, replace the confirm page.
+!define MUI_CUSTOMFUNCTION_UNGUIINIT un.ArgusGuiInit
+Var DeleteAppDataCheckboxState
+
+; 1. Confirm uninstall page (Argus)
+UninstPage custom un.ArgusPageConfirm un.ArgusPageConfirmLeave
+
+; 2. Uninstalling Page (Argus: restyled)
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ArgusPageProgress
+!insertmacro MUI_UNPAGE_INSTFILES
+
+; 3. Done page (Argus)
+UninstPage custom un.ArgusPageDone
+
+;Languages
+!insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "SimpChinese"
+!insertmacro MUI_RESERVEFILE_LANGDLL
+!include "English.nsh"
+!include "SimpChinese.nsh"
+; Argus: the pages; ARGUS_DIR is defined by installer-hooks.nsh.
+!include "${ARGUS_DIR}\installer-ui.nsh"
+
+Function .onInit
+  InitPluginsDir
+  File "/oname=$PLUGINSDIR\argus-version.exe" "${MAINBINARYSRCPATH}"
+  ${GetOptions} $CMDLINE "/P" $PassiveMode
+  ${IfNot} ${Errors}
+    StrCpy $PassiveMode 1
+  ${EndIf}
+
+  ${GetOptions} $CMDLINE "/NS" $NoShortcutMode
+  ${IfNot} ${Errors}
+    StrCpy $NoShortcutMode 1
+  ${EndIf}
+
+  ${GetOptions} $CMDLINE "/UPDATE" $UpdateMode
+  ${IfNot} ${Errors}
+    StrCpy $UpdateMode 1
+  ${EndIf}
+
+  !if "${DISPLAYLANGUAGESELECTOR}" == "true"
+    !insertmacro MUI_LANGDLL_DISPLAY
+  !endif
+
+  !insertmacro SetContext
+
+  ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
+    ; Set default install location
+    !if "${INSTALLMODE}" == "perMachine"
+      ${If} ${RunningX64}
+        !if "${ARCH}" == "x64"
+          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
+        !else if "${ARCH}" == "arm64"
+          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
+        !else
+          StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
+        !endif
+      ${Else}
+        StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
+      ${EndIf}
+    !else if "${INSTALLMODE}" == "currentUser"
+      StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
+    !endif
+
+    Call RestorePreviousInstallLocation
+  ${EndIf}
+
+
+  !if "${INSTALLMODE}" == "both"
+    !insertmacro MULTIUSER_INIT
+  !endif
+
+  ; Abort downgrades if they are disabled, in the modes that skip the reinstall page choice:
+  ; silent, passive and update
+  !if "${ALLOWDOWNGRADES}" == "false"
+  ${If} ${Silent}
+  ${OrIf} $PassiveMode = 1
+  ${OrIf} $UpdateMode = 1
+    ReadRegStr $R0 SHCTX "${UNINSTKEY}" "DisplayVersion"
+    ExecWait '"$PLUGINSDIR\argus-version.exe" --argus-compare-version "$R0"' $R0
+    ${If} $R0 = 2
+      StrCpy $R0 -1
+    ${EndIf}
+    ; If downgrading
+    ${If} $R0 = -1
+      ${If} ${Silent}
+        System::Call 'kernel32::AttachConsole(i -1)i.r0'
+        ${If} $0 <> 0
+          System::Call 'kernel32::GetStdHandle(i -11)i.r0'
+          System::call 'kernel32::SetConsoleTextAttribute(i r0, i 0x0004)' ; set red color
+          FileWrite $0 "$(silentDowngrades)"
+        ${EndIf}
+      ${Else}
+        MessageBox MB_ICONSTOP "$(silentDowngrades)"
+      ${EndIf}
+      Abort
+    ${EndIf}
+  ${EndIf}
+  !endif
+FunctionEnd
+
+
+Section Install
+  SetOutPath $INSTDIR
+
+  !ifmacrodef NSIS_HOOK_PREINSTALL
+    !insertmacro NSIS_HOOK_PREINSTALL
+  !endif
+
+  ; Argus: diagnose file holders and retry before modifying installed files.
+  !insertmacro ARGUS_TEXT $2 "正在准备程序文件…" "Preparing the program file…"
+  DetailPrint "$2"
+  SetDetailsPrint none
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File "/oname=argus-installer.exe" "${MAINBINARYSRCPATH}"
+  SetOutPath "$INSTDIR"
+  StrCpy $1 "interactive"
+  IfSilent 0 +2
+    StrCpy $1 "silent"
+  argus_prepare_retry:
+    SetDetailsPrint none
+    ClearErrors
+    ExecWait '"$PLUGINSDIR\argus-installer.exe" --argus-installer-copy "$INSTDIR\${MAINBINARYNAME}.exe" $HWNDPARENT $LANGUAGE $1' $0
+    ${If} ${Errors}
+      System::Call 'kernel32::GetLastError() i .r0'
+      ${If} $0 = 0
+        StrCpy $0 1
+      ${EndIf}
+    ${EndIf}
+    SetDetailsPrint both
+    ${If} $0 != 0
+      ${If} $0 != 1223
+        !insertmacro ARGUS_TEXT $2 "程序文件更新未完成。错误代码：$0。可重试或退出安装。" "The program file update did not complete. Error code: $0. Retry or exit setup."
+        DetailPrint "$2"
+        IfSilent argus_prepare_quit 0
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$2" IDRETRY argus_prepare_retry
+      ${EndIf}
+      argus_prepare_quit:
+      SetErrorLevel $0
+      Quit
+    ${EndIf}
+
+  ; Argus: the installer helper has copied the executable, with retry and native error logging.
+
+  ; Copy resources
+
+
+
+  ; Copy external binaries
+
+
+  ; Create file associations
+
+
+  ; Register deep links
+
+
+  ; Create uninstaller
+  WriteUninstaller "$INSTDIR\uninstall.exe"
+
+  ; Save $INSTDIR in registry for future installations
+  WriteRegStr SHCTX "${MANUPRODUCTKEY}" "" $INSTDIR
+
+  !if "${INSTALLMODE}" == "both"
+    ; Save install mode to be selected by default for the next installation such as updating
+    ; or when uninstalling
+    WriteRegStr SHCTX "${UNINSTKEY}" $MultiUser.InstallMode 1
+  !endif
+
+  ; Remove old main binary if it doesn't match new main binary name
+  ReadRegStr $OldMainBinaryName SHCTX "${UNINSTKEY}" "MainBinaryName"
+  ${If} $OldMainBinaryName != ""
+  ${AndIf} $OldMainBinaryName != "${MAINBINARYNAME}.exe"
+    Delete "$INSTDIR\$OldMainBinaryName"
+  ${EndIf}
+
+  ; Save current MAINBINARYNAME for future updates
+  WriteRegStr SHCTX "${UNINSTKEY}" "MainBinaryName" "${MAINBINARYNAME}.exe"
+
+  ; Registry information for add/remove programs
+  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayName" "${PRODUCTNAME}"
+  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayIcon" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\""
+  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
+  WriteRegStr SHCTX "${UNINSTKEY}" "Publisher" "${MANUFACTURER}"
+  WriteRegStr SHCTX "${UNINSTKEY}" "InstallLocation" "$\"$INSTDIR$\""
+  WriteRegStr SHCTX "${UNINSTKEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+  WriteRegDWORD SHCTX "${UNINSTKEY}" "NoModify" "1"
+  WriteRegDWORD SHCTX "${UNINSTKEY}" "NoRepair" "1"
+
+  ${GetSize} "$INSTDIR" "/M=uninstall.exe /S=0K /G=0" $0 $1 $2
+  IntOp $0 $0 + ${ESTIMATEDSIZE}
+  IntFmt $0 "0x%08X" $0
+  WriteRegDWORD SHCTX "${UNINSTKEY}" "EstimatedSize" "$0"
+
+  !if "${HOMEPAGE}" != ""
+    WriteRegStr SHCTX "${UNINSTKEY}" "URLInfoAbout" "${HOMEPAGE}"
+    WriteRegStr SHCTX "${UNINSTKEY}" "URLUpdateInfo" "${HOMEPAGE}"
+    WriteRegStr SHCTX "${UNINSTKEY}" "HelpLink" "${HOMEPAGE}"
+  !endif
+
+  ; Create start menu shortcut
+  !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
+    Call CreateOrUpdateStartMenuShortcut
+  !insertmacro MUI_STARTMENU_WRITE_END
+
+  ; Create desktop shortcut for silent and passive installers
+  ; because finish page will be skipped
+  ${If} $PassiveMode = 1
+  ${OrIf} ${Silent}
+    Call CreateOrUpdateDesktopShortcut
+  ${EndIf}
+
+  !ifmacrodef NSIS_HOOK_POSTINSTALL
+    !insertmacro NSIS_HOOK_POSTINSTALL
+  !endif
+
+  ; Auto close this page for passive mode
+  ${If} $PassiveMode = 1
+    SetAutoClose true
+  ${EndIf}
+SectionEnd
+
+Function .onInstSuccess
+  ; Check for `/R` flag only in silent and passive installers because
+  ; GUI installer has a toggle for the user to (re)start the app
+  ${If} $PassiveMode = 1
+  ${OrIf} ${Silent}
+    ${GetOptions} $CMDLINE "/R" $R0
+    ${IfNot} ${Errors}
+      ${GetOptions} $CMDLINE "/ARGS" $R0
+      ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-launch-installed $R0'
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+Function un.onInit
+  !insertmacro SetContext
+
+  !if "${INSTALLMODE}" == "both"
+    !insertmacro MULTIUSER_UNINIT
+  !endif
+
+  !insertmacro MUI_UNGETLANGUAGE
+
+  ${GetOptions} $CMDLINE "/P" $PassiveMode
+  ${IfNot} ${Errors}
+    StrCpy $PassiveMode 1
+  ${EndIf}
+
+  ${GetOptions} $CMDLINE "/UPDATE" $UpdateMode
+  ${IfNot} ${Errors}
+    StrCpy $UpdateMode 1
+  ${EndIf}
+FunctionEnd
+
+Section Uninstall
+
+  !ifmacrodef NSIS_HOOK_PREUNINSTALL
+    !insertmacro NSIS_HOOK_PREUNINSTALL
+  !endif
+
+  !insertmacro CheckIfAppIsRunning "$INSTDIR\${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+
+  ; Close verified task manager interface copies before removing their files.
+  ${If} $DeleteAppDataCheckboxState = 1
+  ${AndIf} $UpdateMode <> 1
+    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-close-copies'
+  ${EndIf}
+
+  ; Delete the app directory and its content from disk
+  ; Copy main executable
+  Delete "$INSTDIR\${MAINBINARYNAME}.exe"
+
+  ; Delete resources
+
+
+  ; Delete external binaries
+
+
+  ; Delete app associations
+
+
+  ; Delete deep links
+
+
+
+  ; Delete uninstaller
+  Delete "$INSTDIR\uninstall.exe"
+
+
+  RMDir "$INSTDIR"
+
+  ; Remove shortcuts if not updating
+  ${If} $UpdateMode <> 1
+    !insertmacro DeleteAppUserModelId
+
+    ; Remove start menu shortcut
+    !insertmacro MUI_STARTMENU_GETFOLDER Application $AppStartMenuFolder
+    !insertmacro IsShortcutTarget "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    Pop $0
+    ${If} $0 = 1
+      !insertmacro UnpinShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+      Delete "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+      RMDir "$SMPROGRAMS\$AppStartMenuFolder"
+    ${EndIf}
+    !insertmacro IsShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    Pop $0
+    ${If} $0 = 1
+      !insertmacro UnpinShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+      Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+    ${EndIf}
+
+    ; Remove desktop shortcuts
+    !insertmacro IsShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    Pop $0
+    ${If} $0 = 1
+      !insertmacro UnpinShortcut "$DESKTOP\${PRODUCTNAME}.lnk"
+      Delete "$DESKTOP\${PRODUCTNAME}.lnk"
+    ${EndIf}
+  ${EndIf}
+
+  ; Remove registry information for add/remove programs
+  !if "${INSTALLMODE}" == "both"
+    DeleteRegKey SHCTX "${UNINSTKEY}"
+  !else if "${INSTALLMODE}" == "perMachine"
+    DeleteRegKey HKLM "${UNINSTKEY}"
+  !else
+    DeleteRegKey HKCU "${UNINSTKEY}"
+  !endif
+
+  ; Removes the Autostart entry for ${PRODUCTNAME} from the HKCU Run key if it exists.
+  ; This ensures the program does not launch automatically after uninstallation if it exists.
+  ; If it doesn't exist, it does nothing.
+  ; We do this when not updating (to preserve the registry value on updates)
+  ${If} $UpdateMode <> 1
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+  ${EndIf}
+
+  ; Delete app data if the checkbox is selected
+  ; and if not updating
+  ${If} $DeleteAppDataCheckboxState = 1
+  ${AndIf} $UpdateMode <> 1
+    ; Clear the install location $INSTDIR from registry
+    DeleteRegKey SHCTX "${MANUPRODUCTKEY}"
+    DeleteRegKey /ifempty SHCTX "${MANUKEY}"
+
+    ; Clear the install language from registry
+    DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
+    DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
+    DeleteRegKey /ifempty HKCU "${MANUKEY}"
+
+    SetShellVarContext current
+    RmDir /r "$APPDATA\${BUNDLEID}"
+    RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
+
+    ; Argus: say what is left rather than appear to have deleted it.
+    StrCpy $R0 ""
+    ${If} ${FileExists} "$APPDATA\${BUNDLEID}\*.*"
+      StrCpy $R0 "$R0$\r$\n$APPDATA\${BUNDLEID}"
+    ${EndIf}
+    ${If} ${FileExists} "$LOCALAPPDATA\${BUNDLEID}\*.*"
+      StrCpy $R0 "$R0$\r$\n$LOCALAPPDATA\${BUNDLEID}"
+    ${EndIf}
+    ${If} $R0 != ""
+      MessageBox MB_OK|MB_ICONEXCLAMATION "$(ArgusDataLeft)$\r$\n$R0" /SD IDOK
+    ${EndIf}
+  ${EndIf}
+
+  !ifmacrodef NSIS_HOOK_POSTUNINSTALL
+    !insertmacro NSIS_HOOK_POSTUNINSTALL
+  !endif
+
+  ; Auto close if passive mode or updating
+  ${If} $PassiveMode = 1
+  ${OrIf} $UpdateMode = 1
+    SetAutoClose true
+  ${EndIf}
+SectionEnd
+
+Function RestorePreviousInstallLocation
+  ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
+  StrCmp $4 "" +2 0
+    StrCpy $INSTDIR $4
+FunctionEnd
+
+Function Skip
+  Abort
+FunctionEnd
+
+Function SkipIfPassive
+  ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
+FunctionEnd
+Function un.SkipIfPassive
+  ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
+FunctionEnd
+
+Function CreateOrUpdateStartMenuShortcut
+  ; We used to use product name as MAINBINARYNAME
+  ; migrate old shortcuts to target the new MAINBINARYNAME
+  StrCpy $R0 0
+
+  !insertmacro IsShortcutTarget "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\$OldMainBinaryName"
+  Pop $0
+  ${If} $0 = 1
+    !insertmacro SetShortcutTarget "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    StrCpy $R0 1
+  ${EndIf}
+
+  !insertmacro IsShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\$OldMainBinaryName"
+  Pop $0
+  ${If} $0 = 1
+    !insertmacro SetShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    StrCpy $R0 1
+  ${EndIf}
+
+  ${If} $R0 = 1
+    Return
+  ${EndIf}
+
+  ; Skip creating shortcut if in update mode or no shortcut mode
+  ; but always create if migrating from wix
+  ${If} $WixMode = 0
+    ${If} $UpdateMode = 1
+    ${OrIf} $NoShortcutMode = 1
+      Return
+    ${EndIf}
+  ${EndIf}
+
+  !if "${STARTMENUFOLDER}" != ""
+    CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
+    CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+  !else
+    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+  !endif
+FunctionEnd
+
+Function CreateOrUpdateDesktopShortcut
+  ; We used to use product name as MAINBINARYNAME
+  ; migrate old shortcuts to target the new MAINBINARYNAME
+  !insertmacro IsShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\$OldMainBinaryName"
+  Pop $0
+  ${If} $0 = 1
+    !insertmacro SetShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    Return
+  ${EndIf}
+
+  ; Skip creating shortcut if in update mode or no shortcut mode
+  ; but always create if migrating from wix
+  ${If} $WixMode = 0
+    ${If} $UpdateMode = 1
+    ${OrIf} $NoShortcutMode = 1
+      Return
+    ${EndIf}
+  ${EndIf}
+
+  CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+  !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
+FunctionEnd

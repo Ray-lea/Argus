@@ -1,5 +1,5 @@
-// Regenerates the app icons in src-tauri/icons from the two logo sources:
-// ui/public/logo.svg for 48 px and up, src-tauri/icons/logo-small.svg (bigger
+// Regenerates the app icons in resources/icons from the two logo sources:
+// resources/logo.svg for 48 px and up, resources/icons/logo-small.svg (bigger
 // eye, heavier strokes) for 16–32 px, where the full logo stops reading.
 // SVGs are rasterized by headless Microsoft Edge at each exact size.
 // Usage: node scripts/icons.mjs
@@ -11,9 +11,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const icons = join(root, "src-tauri", "icons");
+const icons = join(root, "resources", "icons");
 const sources = {
-  full: join(root, "ui", "public", "logo.svg"),
+  full: join(root, "resources", "logo.svg"),
   small: join(icons, "logo-small.svg"),
 };
 const SMALL_MAX = 32;

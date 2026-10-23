@@ -1,0 +1,7 @@
+{
+  "chartSamples": 60,
+  "chartLagIntervals": 2,
+  "chartLagSlackMs": 250,
+  "balancedTargetHz": 60,
+  "fallbackRefreshHz": 60
+}

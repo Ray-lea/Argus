@@ -1,0 +1,405 @@
+//! Native views share the existing sampling and application services.
+mod assets;
+mod backend;
+mod charts;
+mod dialogs;
+mod layout;
+mod model;
+mod motion;
+mod pages;
+mod prefs;
+mod tables;
+mod theme;
+mod welcome;
+use crate::{AppState, Options, native_runtime::Host};
+use argus_core::tr;
+use gpui_kit::base::Button;
+use gpui_kit::component::{
+    ThemeMode, TitleBar,
+    input::{Input, InputEvent, InputState},
+};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+use model::{Row, boolean, number, text, values};
+use serde_json::{Value, json};
+use std::{
+    cell::{Cell, RefCell},
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use theme::{Palette, icon, label};
+const PAGES: [(&str, &str); 7] = [
+    ("processes", "ProcessesIcon"),
+    ("performance", "PulseIcon"),
+    ("services", "ServicesIcon"),
+    ("startup", "PowerIcon"),
+    ("network", "GlobeIcon"),
+    ("history", "HistoryIcon"),
+    ("settings", "SettingsIcon"),
+];
+#[derive(Clone)]
+enum Action {
+    Page(String),
+    View(String),
+    Select(String),
+    Fold(String),
+    Details,
+    Pause,
+    Refresh,
+    Interval(u64),
+    Device(String),
+    CpuMode(String),
+    Invoke(String, Value),
+    Dialog(String, Value),
+    Popup(Vec<MenuItem>),
+    Preference(String, Value),
+    Copy(String),
+    CloseOverlay,
+    Confirm,
+}
+#[derive(Clone)]
+struct MenuItem {
+    label: String,
+    action: Action,
+    disabled: bool,
+}
+impl MenuItem {
+    fn new(label: impl Into<String>, action: Action) -> Self {
+        Self {
+            label: label.into(),
+            action,
+            disabled: false,
+        }
+    }
+}
+struct Popup {
+    menu: Entity<gpui_kit::component::menu::PopupMenu>,
+    position: Point<Pixels>,
+    _subscription: Subscription,
+}
+struct Pending {
+    command: String,
+    cache: Option<String>,
+    args: Value,
+}
+type TablePair = (
+    Entity<gpui_kit::component::table::TableState<tables::NativeTable>>,
+    Entity<tables::TableFrame>,
+);
+struct Desktop {
+    table: Option<Entity<gpui_kit::component::table::TableState<tables::NativeTable>>>,
+    table_frame: Option<Entity<tables::TableFrame>>,
+    tables: HashMap<String, TablePair>,
+    sorts: HashMap<String, (String, bool)>,
+    queries: HashMap<String, String>,
+    host: Host,
+    options: Options,
+    sequence: u64,
+    palette: Palette,
+    snapshot: Value,
+    timeline: model::Timeline,
+    chart_clock: Rc<RefCell<motion::Clock>>,
+    chart_views: RefCell<HashMap<String, Entity<charts::ChartView>>>,
+    active_charts: RefCell<HashSet<String>>,
+    chart_tick_queued: bool,
+    chart_frame: u64,
+    page: String,
+    query: String,
+    search: Entity<InputState>,
+    focus: FocusHandle,
+    subscriptions: Vec<Subscription>,
+    prefs: prefs::Prefs,
+    view: String,
+    sort: String,
+    descending: bool,
+    expanded: HashSet<String>,
+    collapsed: HashSet<String>,
+    sections: HashSet<String>,
+    rows: Arc<Vec<Row>>,
+    list: ListState,
+    selected: HashMap<String, String>,
+    data: HashMap<String, Value>,
+    pending: HashMap<u64, Pending>,
+    next_request: u64,
+    nav_top: bool,
+    nav_expanded: bool,
+    details_open: bool,
+    details_width: f32,
+    device: String,
+    cpu_mode: String,
+    cpu_page: String,
+    interval: u64,
+    paused: bool,
+    control_paused: bool,
+    pointer_in_table: bool,
+    held_order: bool,
+    horizontal: f32,
+    drag: Option<(String, Point<Pixels>, f32)>,
+    popup: Option<Popup>,
+    modal: Option<dialogs::Modal>,
+    toast: Option<(String, Instant)>,
+    last_poll: Instant,
+    filters: HashMap<String, String>,
+    forms: HashMap<String, Entity<InputState>>,
+    first_frame: bool,
+    welcome_checked: bool,
+    history_range: String,
+    history_metric: String,
+    history_cursor: Option<i64>,
+    settings_section: String,
+}
+impl Desktop {
+    fn new(host: Host, options: Options, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let prefs = prefs::Prefs::load(
+            host.path()
+                .app_config_dir()
+                .expect("application config")
+                .join("preferences.json"),
+        );
+        let search =
+            cx.new(|cx| InputState::new(window, cx).placeholder(tr!("shell.search.processes")));
+        let settings =
+            crate::dispatch::invoke(&host, "get_settings", json!({})).unwrap_or(Value::Null);
+        let info = crate::dispatch::invoke(&host, "app_info", json!({})).unwrap_or(Value::Null);
+        let palette = Palette::current(cx);
+        let saved_sort: Value = prefs.get("sort", json!({"key":"cpu","desc":true}));
+        let mut this = Self {
+            host: host.clone(),
+            options: options.clone(),
+            sequence: 0,
+            palette,
+            snapshot: Value::Null,
+            timeline: model::Timeline::new(),
+            chart_clock: Rc::new(RefCell::new(motion::Clock::new(motion::Mode::Off))),
+            chart_views: RefCell::new(HashMap::new()),
+            active_charts: RefCell::new(HashSet::new()),
+            chart_tick_queued: false,
+            chart_frame: 0,
+            page: if options.page.is_empty() {
+                prefs.get("page", "processes".into())
+            } else {
+                options.page.clone()
+            },
+            query: String::new(),
+            search: search.clone(),
+            focus: cx.focus_handle(),
+            subscriptions: Vec::new(),
+            view: prefs.get("view", "apps".into()),
+            sort: saved_sort["key"].as_str().unwrap_or("cpu").into(),
+            descending: saved_sort["desc"].as_bool().unwrap_or(true),
+            expanded: HashSet::new(),
+            collapsed: HashSet::new(),
+            sections: prefs
+                .get::<Vec<String>>("collapsedSections", vec![])
+                .into_iter()
+                .collect(),
+            rows: Arc::new(vec![]),
+            table: None,
+            table_frame: None,
+            tables: HashMap::new(),
+            sorts: HashMap::new(),
+            queries: HashMap::new(),
+            list: ListState::new(0, ListAlignment::Top, px(360.)),
+            selected: HashMap::new(),
+            data: HashMap::from([("settings".into(), settings), ("info".into(), info)]),
+            pending: HashMap::new(),
+            next_request: 0,
+            nav_top: prefs.get::<String>("navPosition", "top".into()) == "top",
+            nav_expanded: prefs.get("navExpanded", false),
+            details_open: prefs.get("detailsPanel", true),
+            details_width: prefs.get("detailsWidth", 320.),
+            device: prefs.get("perfDevice", "cpu".into()),
+            cpu_mode: prefs.get("cpuMode", "overall".into()),
+            cpu_page: prefs.get("cpuPage", "overview".into()),
+            interval: prefs.get("interval", 1000),
+            paused: false,
+            control_paused: false,
+            pointer_in_table: false,
+            held_order: false,
+            horizontal: 0.,
+            drag: None,
+            popup: None,
+            modal: None,
+            toast: None,
+            last_poll: Instant::now() - Duration::from_secs(10),
+            filters: HashMap::new(),
+            forms: HashMap::new(),
+            first_frame: false,
+            welcome_checked: false,
+            history_range: "1h".into(),
+            history_metric: "cpu".into(),
+            history_cursor: None,
+            settings_section: "language".into(),
+            prefs,
+        };
+        this.subscriptions.push(
+            cx.subscribe_in(&search, window, |this, _, event, window, cx| match event {
+                InputEvent::Change => {
+                    this.query = this.search.read(cx).value().to_string();
+                    this.rebuild_rows(false, cx);
+                    cx.notify();
+                }
+                InputEvent::PressEnter { .. } => {
+                    this.focus.focus(window, cx);
+                }
+                _ => {}
+            }),
+        );
+        if let Some(path) = &options.fixture {
+            match std::fs::read(path)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            {
+                Some(fixture) => {
+                    if let Some(data) = fixture.as_object() {
+                        for (key, value) in data {
+                            this.data.insert(key.clone(), value.clone());
+                        }
+                    }
+                    for snapshot in values(&fixture["snapshots"]) {
+                        this.accept_snapshot(snapshot.clone(), cx);
+                    }
+                    if let Some(snapshot) = fixture.get("snapshot") {
+                        this.accept_snapshot(snapshot.clone(), cx);
+                    }
+                }
+                None => log::warn!("fixture unavailable"),
+            }
+        }
+        this.request(
+            "set_interval",
+            json!({"ms":this.interval}),
+            None,
+            window,
+            cx,
+        );
+        let receiver = host.notifications();
+        cx.spawn_in(window, async move |this, cx| {
+            while receiver.recv().await.is_ok() {
+                if this
+                    .update_in(cx, |this, window, cx| this.notifications(window, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        cx.spawn_in(window, async move |this, cx| {
+            loop {
+                smol::Timer::after(Duration::from_millis(250)).await;
+                if this
+                    .update_in(cx, |this, window, cx| {
+                        if this.host.exit_code().is_some() {
+                            cx.quit();
+                            return;
+                        }
+                        if this
+                            .toast
+                            .as_ref()
+                            .is_some_and(|(_, at)| at.elapsed() > Duration::from_secs(5))
+                        {
+                            this.toast = None;
+                            cx.notify();
+                        }
+                        if this.host.get_window("main").is_some_and(|w| {
+                            w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
+                        }) && this.last_poll.elapsed() >= Duration::from_secs(2)
+                        {
+                            this.last_poll = Instant::now();
+                            this.poll_page(window, cx);
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        if options.test || options.control_stdin {
+            let host = host.clone();
+            let test = options.test;
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+                    if let Ok(value) = serde_json::from_str::<Value>(&line) {
+                        if value["exit"].as_bool() == Some(true) {
+                            host.exit(0);
+                        } else if test {
+                            let _ = host.emit("test-control", value);
+                        }
+                    }
+                }
+            });
+        }
+        this.poll_page(window, cx);
+        if this.page != "processes" {
+            this.sort = "name".into();
+            this.descending = false;
+        }
+        this.change_placeholder(window, cx);
+        this.apply_motion(cx);
+        this
+    }
+}
+pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
+    gpui_kit::application()
+        .with_assets(assets::Assets)
+        .run(move |cx| {
+            gpui_kit::init(cx);
+            let opts = WindowOptions {
+                window_bounds: Some(WindowBounds::centered(
+                    size(px(options.width), px(options.height)),
+                    cx,
+                )),
+                focus: !options.hidden && !options.test,
+                show: !options.hidden,
+                app_id: Some(options.identifier.clone()),
+                window_min_size: Some(size(
+                    px(argus_app::config::manifest()["window"]["minWidth"]
+                        .as_f64()
+                        .expect("minimum width") as f32),
+                    px(argus_app::config::manifest()["window"]["minHeight"]
+                        .as_f64()
+                        .expect("minimum height") as f32),
+                )),
+                inactive_frame_interval: None,
+                window_background: if crate::platform::supports_backdrop() {
+                    WindowBackgroundAppearance::MicaBackdrop
+                } else {
+                    WindowBackgroundAppearance::Opaque
+                },
+                ..TitleBar::window_options()
+            };
+            let owner = host.clone();
+            gpui_kit::open_window(opts, cx, move |window, cx| {
+                window.set_window_title(&argus_app::config::app_title());
+                let saved = host.state::<crate::settings::SettingsStore>().get();
+                theme::apply(
+                    if crate::platform::is_dark(saved.theme) {
+                        ThemeMode::Dark
+                    } else {
+                        ThemeMode::Light
+                    },
+                    window,
+                    cx,
+                );
+                let view = cx.new(|cx| Desktop::new(host.clone(), options.clone(), window, cx));
+                // Apply platform integration after the component root is constructed.
+                window.defer(cx, move |window, cx| {
+                    crate::platform::attach_window(&host, &options, window, cx);
+                });
+                view
+            })
+            .expect("create native window");
+            cx.on_app_quit(move |_| {
+                owner.exit(0);
+                async {}
+            })
+            .detach();
+        });
+    Ok(())
+}

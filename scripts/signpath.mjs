@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { findNsis } from "./bundle.mjs";
 import { pathToFileURL } from "node:url";
 
 const root = resolve(import.meta.dirname, "..");
@@ -85,7 +86,7 @@ function embeddedHelpers(main) {
 function once(text, pattern, replacement) {
   const matches = text.match(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`));
   if (matches?.length !== 1) throw new Error(`Unexpected NSIS template near ${pattern}`);
-  return text.replace(pattern, replacement);
+  return text.replace(pattern, () => replacement);
 }
 
 function nsis(mode, output) {
@@ -94,16 +95,12 @@ function nsis(mode, output) {
   if (!text.includes('!define UNINSTALLERSIGNCOMMAND ""')) throw new Error("Unexpected NSIS signing command");
   const command = `"${process.execPath}" "${join(root, "scripts", "signpath.mjs")}" uninstaller "%1"`;
   if (command.includes("'") || output.includes('"')) throw new Error("Unsupported build path quoting");
-  text = once(text, /^!define OUTFILE ".*"$/m, `!define OUTFILE "${output.replaceAll("$", "$$")}"`);
+  text = once(text, /^!define OUTFILE ".*"$/m, `!define OUTFILE "${output.replaceAll("$", () => "$")}"`);
   text = once(text, /; Uninstaller signing command/,
-    `!uninstfinalize '${command.replaceAll("$", "$$")}' = 0\n\n; Uninstaller signing command`);
+    `!uninstfinalize '${command.replaceAll("$", () => "$")}' = 0\n\n; Uninstaller signing command`);
   const script = join(dirname(rendered), "signpath-installer.nsi");
   writeFileSync(script, text.replaceAll("\r\n", "\n"));
-  const compiler = [
-    join(process.env.LOCALAPPDATA ?? "", "tauri", "NSIS", "makensis.exe"),
-    join(root, "target", ".tauri", "NSIS", "makensis.exe"),
-  ].find(existsSync);
-  if (!compiler) throw new Error("Tauri's NSIS compiler is missing");
+  const compiler = findNsis();
   execFileSync(compiler, ["/V2", script], {
     cwd: dirname(rendered), windowsHide: true, stdio: "inherit",
     env: { ...process.env, ARGUS_SIGNPATH_UNINSTALLER_MODE: mode },
@@ -130,10 +127,6 @@ function uninstaller(file) {
 
 function prepare() {
   directory("");
-  json("build-config.json", {
-    build: { beforeBuildCommand: "pnpm build" },
-    bundle: { createUpdaterArtifacts: false },
-  });
   for (const name of helpers) {
     const file = join(release, name);
     if (peHeaders(bytes(file)).certificateSize !== 0) throw new Error(`Expected unsigned ${name}`);
@@ -162,7 +155,7 @@ function buildInstaller() {
   embeddedHelpers(bytes(join(stage, "application-signed", "argus.exe")));
   copy(join(stage, "application-signed", "argus.exe"), join(release, "argus.exe"));
   writeFileSync(join(stage, "uninstaller-applied.json"), "");
-  // Reuse Tauri's rendered script directly: another bundle pass would patch
+  // Reuse the rendered script directly: another build would replace
   // argus.exe and invalidate its signature.
   nsis("apply", join(directory("installer-unsigned"), installer));
   if (readJson("uninstaller-applied.json").sha256 !== hash(bytes(join(stage, "application-signed", "uninstall.exe")))) {

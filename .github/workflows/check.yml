@@ -75,19 +75,14 @@ jobs:
           cargo audit
 
       # The steps of `pnpm check`, split so a failure names the tool. Keep in sync with package.json.
-      - name: TypeScript
-        run: pnpm typecheck
       - name: Biome
         run: pnpm lint
       - name: Translations
         run: pnpm i18n
-      - name: UI tests
-        run: pnpm test:ui
-      - name: Signing pipeline tests
-        run: pnpm test:signing
-      # Before Clippy: Tauri's context macro reads the built frontend.
-      - name: Frontend build
-        run: pnpm build
+      - name: Generated native adapters
+        run: pnpm check:generated
+      - name: Script tests
+        run: pnpm test
       - name: rustfmt
         run: cargo fmt --all --check
       - name: Clippy

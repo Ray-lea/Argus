@@ -95,6 +95,23 @@ fn flatten(prefix: &str, value: serde_json::Value, out: &mut HashMap<String, Str
 const UNSET: u8 = u8::MAX;
 static CURRENT: AtomicU8 = AtomicU8::new(UNSET);
 
+static APPLICATION_CATALOGS: [OnceLock<HashMap<String, String>>; 2] =
+    [OnceLock::new(), OnceLock::new()];
+
+/// Registers additional application catalogs without coupling collectors or
+/// service executables to a particular user interface.
+pub fn register_catalog(locale: Locale, sections: &[(&str, &str)]) {
+    APPLICATION_CATALOGS[locale as usize].get_or_init(|| {
+        let mut map = HashMap::new();
+        for (namespace, json) in sections {
+            if let Ok(value) = serde_json::from_str(json) {
+                flatten(namespace, value, &mut map);
+            }
+        }
+        map
+    });
+}
+
 /// Set on a child process's command to have it use the parent's locale.
 pub const ENV: &str = "ARGUS_LOCALE";
 
@@ -129,7 +146,18 @@ pub fn text_in(locale: Locale, key: &str) -> String {
 
 /// The text for `key` with each `{name}` replaced; use [`tr!`](crate::tr).
 pub fn format(key: &str, args: &[(&str, &dyn Display)]) -> String {
-    render(lookup(locale(), key), args)
+    let current = locale();
+    if let Some(map) = APPLICATION_CATALOGS[current as usize].get() {
+        let singular = args
+            .iter()
+            .find(|(name, _)| *name == "count")
+            .is_some_and(|(_, value)| value.to_string() == "1");
+        let variant = format!("{key}.{}", if singular { "one" } else { "other" });
+        if let Some(template) = map.get(&variant) {
+            return render(template, args);
+        }
+    }
+    render(lookup(current, key), args)
 }
 
 fn render(template: &str, args: &[(&str, &dyn Display)]) -> String {
@@ -160,7 +188,17 @@ fn lookup(locale: Locale, key: &str) -> &str {
     locale
         .catalog()
         .get(key)
+        .or_else(|| {
+            APPLICATION_CATALOGS[locale as usize]
+                .get()
+                .and_then(|map| map.get(key).or_else(|| map.get(&format!("{key}.other"))))
+        })
         .or_else(|| Locale::SOURCE.catalog().get(key))
+        .or_else(|| {
+            APPLICATION_CATALOGS[Locale::SOURCE as usize]
+                .get()
+                .and_then(|map| map.get(key))
+        })
         .map_or(key, String::as_str)
 }
 
