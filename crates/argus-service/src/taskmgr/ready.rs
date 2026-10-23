@@ -396,7 +396,9 @@ mod tests {
             created: parts[2].parse().unwrap(),
             probe: true,
         };
-        let completion = complete_with(request, &std::env::current_exe().unwrap()).unwrap();
+        let expected =
+            std::path::PathBuf::from(std::env::var_os("ARGUS_READY_FIXTURE_LAUNCHER").unwrap());
+        let completion = complete_with(request, &expected).unwrap();
         assert!(!completion.should_show());
         completion.acknowledge();
     }
@@ -421,7 +423,24 @@ mod tests {
         let ready = create("ready");
         let commit = create("commit");
         let done = create("done");
+        // A Cargo target directory may be a junction. Use the parent's reported
+        // image name, not the child's launch spelling of the same executable.
+        let mut image = [0u16; 32768];
+        let mut image_len = image.len() as u32;
+        unsafe {
+            QueryFullProcessImageNameW(
+                GetCurrentProcess(),
+                PROCESS_NAME_WIN32,
+                PWSTR(image.as_mut_ptr()),
+                &mut image_len,
+            )
+            .unwrap();
+        }
         let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .env(
+                "ARGUS_READY_FIXTURE_LAUNCHER",
+                String::from_utf16_lossy(&image[..image_len as usize]),
+            )
             .args([
                 "--exact",
                 "taskmgr::ready::tests::ready_fixture",
