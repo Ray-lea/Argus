@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="ui/public/logo.svg" width="112" height="112" alt="Argus logo">
+<img src="resources/logo.svg" width="112" height="112" alt="Argus logo">
 
 # Argus
 
@@ -14,8 +14,6 @@
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
 [![Rust](https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
-[![SolidJS](https://img.shields.io/badge/SolidJS-1.9-2C4F7C?logo=solid&logoColor=white)](https://www.solidjs.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 [Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community)
@@ -31,7 +29,7 @@
 
 <br>
 
-Argus reads Windows' native interfaces directly from Rust, with an interface built on Tauri 2 and SolidJS. Processes, performance, services, startup apps, network connections and the last 7 days of history share one window, and the charts move smoothly at the display's refresh rate; resident in the system tray, it uses about 1% of one CPU core. It is named after Argus Panoptes, the hundred-eyed giant of Greek myth.
+Argus reads Windows' native interfaces directly from Rust, with an interface built on GPUI Kit native components. Processes, performance, services, startup apps, network connections and the last 7 days of history share one window, and the charts move smoothly at the display's refresh rate. It is named after Argus Panoptes, the hundred-eyed giant of Greek myth.
 
 ## ⭐ Star history
 
@@ -79,7 +77,7 @@ Get the latest version from [GitHub Releases](https://github.com/Ray-lea/Argus/r
 ## 💻 System requirements
 
 - Windows 10 version 22H2 (build 19045) or later, including Windows 11; x64 only
-- WebView2 Runtime (included in Windows 11)
+- A graphics device and driver supporting DirectX 11
 
 See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (Chinese) for tested Windows versions, feature differences and permission requirements.
 
@@ -92,7 +90,7 @@ start.bat           # development mode: instant frontend reload; Rust changes re
 start.bat build     # release build: target\release\argus.exe
 ```
 
-For the browser preview, checks, packaging the installer and cleaning caches, see the [development guide](docs/development/README.md) (in Chinese).
+For the checks, packaging the installer and cleaning caches, see the [development guide](docs/development/README.md) (in Chinese).
 
 ## 🔑 Keyboard shortcuts
 
@@ -150,11 +148,10 @@ Argus is built on the following open-source projects, with thanks:
 
 | Project | Used for |
 |---|---|
-| [Tauri](https://tauri.app/) and its plugins | App host, tray, start at sign-in and in-app updates |
+| [GPUI Kit](https://gpui-kit.com/) | Native desktop components, windows, tables and charts |
 | [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/), [webview2-com](https://github.com/wravery/webview2-rs) | Rendering the interface |
 | [windows-rs](https://github.com/microsoft/windows-rs) | Rust bindings for Windows' native interfaces |
-| [SolidJS](https://www.solidjs.com/), [TanStack Virtual](https://tanstack.com/virtual) | UI framework and virtual scrolling for long lists |
-| [Vite](https://vite.dev/), [Tailwind CSS](https://tailwindcss.com/), [TypeScript](https://www.typescriptlang.org/), [Biome](https://biomejs.dev/) | Frontend build, styling and linting |
+| [Biome](https://biomejs.dev/), [NSIS](https://nsis.sourceforge.io/) | Development checks and Windows packaging |
 | [serde](https://serde.rs/), [reqwest](https://github.com/seanmonstar/reqwest) and other Rust crates | Serialization, HTTP and other groundwork |
 | [PawnIO](https://pawnio.eu/), [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) | Signed driver and modules behind the optional kernel sensors |
 | [ZenStates-Core](https://github.com/irusanov/ZenStates-Core), [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), [GNR-SMU](https://github.com/Kyworn/gnr-smu) | CPU register layouts such as AMD SMU tables |

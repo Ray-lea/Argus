@@ -15,7 +15,6 @@
 
 ## 运行
 
-- 刚启动的前 20 秒左右，WebView2 首次渲染与图标解码的开销较高，之后回落到[性能基线](development/performance.md)的数值。
 
 ## 开发
 

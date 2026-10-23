@@ -8,10 +8,10 @@
 
 | 工作流 | 触发 | 内容 |
 |---|---|---|
-| `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；TypeScript、Biome、文案检查、前端单元测试、前端构建、rustfmt、Clippy、单元测试、第三方许可声明是否最新 |
+| `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；Biome、文案检查、生成代码检查、脚本测试、rustfmt、Clippy、Rust 测试、第三方许可声明是否最新 |
 | `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md`、已译完的 `CHANGELOG.en.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；为更新对话框显示的更新内容签名并校验；静默安装、核对卸载项、再静默卸载；生成更新清单并发布 GitHub Release |
 
-推送到分支不会触发检查，也没有 nightly 或定时构建。推送前在本地运行 `start.bat check`：它包含 `check.yml` 中的 TypeScript、Biome、文案检查、前端单元测试、rustfmt 和 Clippy，不含前端构建、Rust 单元测试和许可声明检查。
+推送到分支不会触发检查，也没有 nightly 或定时构建。推送前在本地运行 `start.bat check`：它包含文案、脚本测试、生成代码检查、rustfmt、Clippy 与 Rust 测试，许可声明另由 node scripts/notices.mjs --check 检查。
 
 ## 提交信息
 
@@ -48,8 +48,8 @@
 |---|---|
 | `core` | `crates/argus-core` |
 | `service` | `crates/argus-service` |
-| `host` | `src-tauri` |
-| `ui` | `ui` |
+| `host` | `src-gpui` |
+| `ui` | `src-gpui/src/frontend` |
 | `deps` | 依赖升级（配合 `build`） |
 
 示例：
@@ -58,7 +58,7 @@
 feat(ui): 进程页支持按列筛选
 fix(host): 修复调整窗口大小时闪现的对角线白线
 perf(core): 进程快照复用缓冲区
-build(deps): 升级 Tauri
+build(deps): 升级 GPUI Kit
 docs: 补充特权服务的验证步骤
 ```
 
@@ -87,11 +87,11 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 - 有 `feat`：次版本号加一。
 - 其他：修订号加一。
 
-1.0.0 和预发布版本需要显式指定。版本号写在 `Cargo.toml`（工作区）、`Cargo.lock`、`package.json` 和 `src-tauri/tauri.conf.json` 四处，由发布脚本统一修改，不要手改。
+1.0.0 和预发布版本需要显式指定。版本号写在 `Cargo.toml`（工作区）、`Cargo.lock`、`package.json` 和 `resources/app.json` 四处，由发布脚本统一修改，不要手改。
 
 ## 发布步骤
 
-1. 切到 `main`，工作区干净，`start.bat check` 通过。第一次发布前先配置[更新签名密钥](#更新签名密钥)；`tauri.conf.json` 里没有公钥时脚本会拒绝发布。
+1. 切到 `main`，工作区干净，`start.bat check` 通过。第一次发布前先配置[更新签名密钥](#更新签名密钥)；`resources/app.json` 里没有公钥时脚本会拒绝发布。
 2. 在 CI 上运行一遍检查，见[推送标签前在 CI 上检查](#推送标签前在-ci-上检查)。
 3. 预览版本号与中英文发布说明：`pnpm release --dry-run`。英文条目没有预先写好时，显示的是待译的草稿。
 4. 创建发布提交和标签：
@@ -140,22 +140,13 @@ gh run watch    # 选择刚开始的 Check，等待结束
 
 Windows Authenticode 的测试接入见 [Windows 代码签名](signing.md)。测试签名工作流独立于正式发布；以下密钥仍用于应用内更新验证，与 Windows 代码签名证书分开管理。
 
-应用内更新只安装用这把密钥签名的安装包，签名同时覆盖版本号（插件的 `requireSignedVersion`）。这与代码签名无关，消除不了 SmartScreen 提示。
+应用内更新只安装用这把密钥签名的安装包，签名同时覆盖版本号（requireSignedVersion 与安装前版本校验）。这与代码签名无关，消除不了 SmartScreen 提示。
 
-第一次配置时，在维护者本机生成密钥（会提示设置密码），把私钥和密码存进仓库的 Actions Secrets。PowerShell 默认禁止运行脚本，`pnpm` 会解析到被拦下的 `pnpm.ps1`，所以这里写 `pnpm.cmd`：
+仓库继续使用现有发布密钥、公钥与 Actions Secrets，迁移不生成新密钥。发布工作流将已有 Secrets 映射为 ARGUS_SIGNING_PRIVATE_KEY 与 ARGUS_SIGNING_PRIVATE_KEY_PASSWORD，仅在签名工具进程内读取；私钥不得写进命令行或日志。
 
-```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.tauri" | Out-Null
-pnpm.cmd tauri signer generate -w "$env:USERPROFILE\.tauri\argus-updater.key"
-gh secret set TAURI_SIGNING_PRIVATE_KEY --repo Ray-lea/Argus --body (Get-Content -Raw "$env:USERPROFILE\.tauri\argus-updater.key").Trim()
-gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo Ray-lea/Argus
-```
+本地构建（`start.bat build installer`）不生成更新签名，不需要私钥；发布工作流使用 argus-update-signer 为最终安装包签名，签名后用 `node scripts/release.mjs check-signature` 以 `resources/app.json` 中的公钥校验，Secrets 里的私钥与公钥不配对时在发布前失败。
 
-再把 `argus-updater.key.pub` 的内容填进 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey` 并提交。私钥和密码要离线备份：丢失后只能换一把新密钥，而已安装的版本只认旧公钥，用户必须手动下载新版本重新安装一次。
-
-本地构建（`start.bat build installer`）不生成更新签名，不需要私钥；发布工作流用 `--config` 打开 `createUpdaterArtifacts`，签名后用 `node scripts/release.mjs check-signature` 以 `tauri.conf.json` 中的公钥校验，Secrets 里的私钥与公钥不配对时在发布前失败。
-
-更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `CHANGELOG.md` 条目（JSON），每个条目以 `translations` 附上 `CHANGELOG.en.md` 中同一版本的英文译文（0.3 之前的版本忽略这个字段），`pnpm tauri signer sign --app-version <版本>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。`signer sign` 只接受私钥文本本身，`TAURI_SIGNING_PRIVATE_KEY` 须保存私钥内容而不是文件路径。应用只显示验签通过且版本号一致的更新内容，并按界面语言选用译文；没有译文的版本显示中文，列表下方加以说明。
+更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `CHANGELOG.md` 条目（JSON），每个条目以 `translations` 附上 `CHANGELOG.en.md` 中同一版本的英文译文（0.3 之前的版本忽略这个字段），`cargo run -p argus-update-signer -- <版本> <文件>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。签名工具接收既有 Base64 私钥文本，环境变量须保存密钥内容而不是文件路径。应用只显示验签通过且版本号一致的更新内容，并按界面语言选用译文；没有译文的版本显示中文，列表下方加以说明。
 
 ## 更新通道
 
@@ -200,10 +191,10 @@ curl -sL https://github.com/Ray-lea/Argus/releases/latest/download/beta.json   #
 
 安装与卸载界面不使用 NSIS 的向导页面，由两部分组成：
 
-- `src-tauri/installer-template.nsi`：Tauri 的 NSIS 模板，使用 Argus 的安装与卸载页面，通过主程序的内部安装模式处理文件复制，并扩展卸载时的数据清理：先结束遗留的 WebView2 进程，删除后仍有残留时列出文件夹；改动处都标有 `Argus`。它由 `node scripts/nsis-template.mjs` 按已安装的 `@tauri-apps/cli` 版本从 Tauri 仓库取得模板后生成，不要手改；升级 Tauri 后重新运行，模板在替换处有变化时脚本会停止，需要对照新模板调整脚本。
-- `src-tauri/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案按语言写在文件开头的 `LangString` 中。
+- `packaging/windows/installer-template.nsi`：原生 NSIS 模板，保留已有安装与卸载页面、服务刷新和数据清理流程。scripts/bundle.mjs 注入 resources/app.json 的元数据与当前构建路径；修改模板后直接重新打包。
+- `packaging/windows/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案按语言写在文件开头的 `LangString` 中。
 
-已安装旧版本时，安装页显示“将从版本 X 升级到 Y”，覆盖安装而不先卸载（与应用内更新相同）；已安装更新的版本时按钮不可用，需先卸载。被动模式（应用内更新）只显示进度页，静默安装（`/S`）不显示界面，命令行参数与 Tauri 的安装程序相同。
+已安装旧版本时，安装页显示“将从版本 X 升级到 Y”，覆盖安装而不先卸载（与应用内更新相同）；已安装更新的版本时按钮不可用，需先卸载。被动模式（应用内更新）只显示进度页，静默安装（`/S`）不显示界面，保留 /P、/UPDATE、/R、/ARGS 与 /S 参数。
 
 覆盖程序前，安装器从自身解出新版程序，以内部安装模式检查并复制主程序。检查通过进程路径和创建时间确认当前安装目录中的 Argus 实例，再单独请求其退出。其他程序阻止更新时，弹窗显示可查询到的占用进程及原始错误码。复制阶段的共享冲突和内存映射占用同样进入诊断与重试流程；Windows 未提供占用者信息时保留具体失败原因。释放占用后可单击“重试”；占用尚未解除时取消，原有程序文件保持不变。静默模式遇到占用时以非零错误码退出。
 

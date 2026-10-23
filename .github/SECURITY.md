@@ -25,7 +25,7 @@
 - **系统任务管理器替换**（`crates/argus-service/src/taskmgr`）：通过映像劫持（IFEO）的 Debugger 值接管 `taskmgr.exe` 的启动入口，并在受保护目录中安装启动器与恢复程序。
 - **管理员维护助手**：特权服务与任务管理器替换在安装、更新、卸载时以管理员权限运行的助手程序。
 - **应用内更新**：安装包必须带有与内置公钥匹配的签名，并且签名中的版本号与更新清单一致。能够绕过这一校验的问题属于漏洞。
-- **安装与卸载程序**（`src-tauri/installer-hooks.nsh`）。
+- **安装与卸载程序**（`packaging/windows/installer-hooks.nsh`）。
 
 ## 不在范围内
 

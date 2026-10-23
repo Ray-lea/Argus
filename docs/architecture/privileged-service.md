@@ -1,6 +1,6 @@
 # 特权服务
 
-`crates/argus-service` 提供可选的 Windows 服务；设置入口见[权限](../guide/settings.md#权限)。服务以 LocalSystem 运行，不创建窗口或 WebView。目前承接手动进程操作、自动规则中的操作、按需每进程网络、磁盘读写与 CPU 内核传感器采集、句柄查询、服务控制和断开 IPv4 TCP 连接；其他采集仍在 Tauri 宿主执行。
+`crates/argus-service` 提供可选的 Windows 服务；设置入口见[权限](../guide/settings.md#权限)。服务以 LocalSystem 运行，不创建窗口或 WebView。目前承接手动进程操作、自动规则中的操作、按需每进程网络、磁盘读写与 CPU 内核传感器采集、句柄查询、服务控制和断开 IPv4 TCP 连接；其他采集仍在 原生宿主执行。
 
 ## 模块
 
@@ -22,7 +22,7 @@
 
 ## 安装与授权
 
-服务名称为 `ArgusPrivileged`，开发版为 `ArgusPrivilegedDev`。宿主仅在设置页的明确操作后通过 `ShellExecuteExW` 的 `runas` 请求管理员授权；取消 UAC 时不退出界面，也不更改服务。助手在 Tauri 和单实例插件之前处理参数，避免被已运行的界面吞掉。
+服务名称为 `ArgusPrivileged`，开发版为 `ArgusPrivilegedDev`。宿主仅在设置页的明确操作后通过 `ShellExecuteExW` 的 `runas` 请求管理员授权；取消 UAC 时不退出界面，也不更改服务。助手在原生窗口和单实例处理之前处理参数，避免被已运行的界面吞掉。
 
 助手把自身程序复制到系统已知文件夹 Program Files 下的 `Argus Privileged`（开发版为 `Argus Privileged Dev`），以带引号的绝对路径注册自动启动的 LocalSystem 服务。目录、可执行文件和 `owner.sid` 的所有者为 Administrators，只有 Administrators 与 SYSTEM 可写；拒绝目录重解析点、不可信所有者和其他账户的写入权限。不依赖安装目录或免安装版所在的位置，复制操作不覆盖已有文件。
 
@@ -52,7 +52,7 @@
 
 `FindHandles` 是只读请求，使用同一套账户与完整性级别校验。服务不可用或只读请求失败时，宿主可以安全地改用本地查询，同时保留服务错误；它不会为一次查询触发 UAC。已安装旧版服务的用户需在设置中更新服务。
 
-每次扫描启动自身程序的辅助模式，在 Tauri、单实例插件与采样器初始化之前分流。子进程先等待一个启动字节，父进程将它放入关闭即终止的 Job 后才放行；Job 限制为一个进程、256 MiB 私有内存。子进程不创建窗口，工作目录固定为系统目录，避免自己制造待查目录的占用。
+每次扫描启动自身程序的辅助模式，在原生窗口、单实例与采样器初始化之前分流。子进程先等待一个启动字节，父进程将它放入关闭即终止的 Job 后才放行；Job 限制为一个进程、256 MiB 私有内存。子进程不创建窗口，工作目录固定为系统目录，避免自己制造待查目录的占用。
 
 `argus-core::handles` 用 `NtQuerySystemInformation(SystemExtendedHandleInformation)` 读取句柄表，并根据自己持有的 NUL 句柄动态识别 File 类型索引。结构布局参考 [phnt](https://github.com/winsiderss/phnt/blob/master/ntexapi.h)，读取前检查返回长度与条目数。源进程打开后核对创建时间，再用 `DuplicateHandle` 复制句柄；复核类型、排除管道和设备后，以 `NtQueryObject` 读取名称。只关闭复制件，不关闭来源句柄。
 

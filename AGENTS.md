@@ -3,13 +3,12 @@
 给在本仓库工作的 AI 代理看的规则与经验。面向人的说明在 `README.md` 和 `docs/`（索引：`docs/README.md`），这里不重复。子目录的 AGENTS.md 补充各自的规则：
 
 - `crates/argus-core/AGENTS.md`：采集层
-- `src-tauri/AGENTS.md`：宿主、窗口与 WebView2
-- `ui/AGENTS.md`：前端、动画与曲线
+- `src-gpui/AGENTS.md`：原生宿主、窗口与界面
 - `docs/AGENTS.md`：文档的组织与写法
 
 ## 项目
 
-Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接口，不用 WMI）+ Tauri 2 宿主 + SolidJS 前端。目标是流畅、美观、现代、信息丰富；卡顿和性能回退按缺陷处理，而不是打磨项。进度见 `docs/roadmap.md`。
+Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接口，不用 WMI）+ GPUI Kit 原生界面与宿主。目标是流畅、美观、现代、信息丰富；卡顿和性能回退按缺陷处理，而不是打磨项。进度见 `docs/roadmap.md`。
 
 ## 硬性约束
 
@@ -22,20 +21,20 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 开发机通常有人在同时使用。
 
-- 不要把窗口调到前台、抢焦点，也不要截取整个桌面或用桌面复制录屏，那会拍到与项目无关的内容。要看 Argus，只抓它自己的窗口（Windows.Graphics.Capture 的窗口捕获，被挡住也能录），或者通过 CDP 截取页面。
-- 测试实例用 `--config` 换一个标识的发布构建（配置文件内容如 `{"identifier":"dev.argus.taskmanager.test"}`），测完删除该标识在 `%APPDATA%` 和 `%LOCALAPPDATA%` 下的目录。不换标识的发布构建与已安装的 Argus 共用单实例锁和设置：安装版正在运行时会转交给它，没在运行时会读写真实的设置。
-- 测试实例一律带 `--hidden` 启动，主窗口创建后用 `SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 不激活地显示在最底层，并全程监视前台（每 50 ms 查一次 `GetForegroundWindow`，前台不应落到测试进程或它的 WebView2 进程）。不要正常启动后再放到最底层：setup 显示窗口时已经激活了它，事后放到最底层也还不回前台，后台进程没有权限把前台交还原来的窗口。主窗口按进程 ID、窗口类 `Tauri Window` 和标题（发布版为 `Argus`）枚举顶层窗口查找，隐藏时也能找到；只按标题可能拿到同一进程弹出的消息框，`Process.MainWindowHandle` 可能拿到单实例插件的 6×6 辅助窗口。
-- 再次启动、快捷键、托盘和任务管理器替换的 `task_manager_ready` 都经 `shell::show_main` 激活窗口；拿不到前台时 tao 的 `set_focus` 会用 `SendInput` 模拟按一下 Alt，这个按键落在用户正在用的窗口里。不要在用户的桌面上触发这些路径（包括经 CDP 调用命令、向主窗口发 `WM_HOTKEY`）。要测显示后的激活与键盘焦点，用 `CreateDesktop` 另建一个桌面（不要 `SwitchDesktop`），`CreateProcess` 的 `lpDesktop` 设为 `WinSta0\<名称>`，WebView2 进程随之在那里启动：那里的窗口拿不到用户桌面的前台，`SendInput` 也被拒绝。查询和发消息的线程先 `SetThreadDesktop` 过去，用 `GetGUIThreadInfo` 看激活窗口与键盘焦点窗口，用 CDP 看 `document.hasFocus()`，按键用 `PostMessage` 发给焦点窗口；CDP 的按键事件不经过系统的键盘焦点，窗口没有焦点时也会送进页面，并让 `document.hasFocus()` 变成真。单实例只在本桌面查找原实例的消息窗口，找不到就等 12 秒后弹出消息框，所以这类测试尤其不能用发布版的标识。
+- 不要把窗口调到前台、抢焦点，也不要截取整个桌面或用桌面复制录屏，那会拍到与项目无关的内容。要看 Argus，只抓它自己的窗口（Windows.Graphics.Capture 的窗口捕获，被挡住也能录）。
+- 测试实例用 `--test --identifier dev.argus.taskmanager.test` 指定独立标识的发布构建，测完删除该标识在 `%APPDATA%` 和 `%LOCALAPPDATA%` 下的目录。不换标识的发布构建与已安装的 Argus 共用单实例锁和设置：安装版正在运行时会转交给它，没在运行时会读写真实的设置。
+- 测试实例一律带 `--hidden` 启动，主窗口创建后用 `SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 不激活地显示在最底层，并全程监视前台（每 50 ms 查一次 `GetForegroundWindow`，前台不应落到测试进程或其子进程）。不要正常启动后再放到最底层：setup 显示窗口时已经激活了它，事后放到最底层也还不回前台，后台进程没有权限把前台交还原来的窗口。主窗口按进程 ID、窗口类 `Zed::Window` 和标题（发布版为 `Argus`）枚举顶层窗口查找，隐藏时也能找到；只按标题可能拿到同一进程弹出的消息框，`Process.MainWindowHandle` 可能拿到单实例插件的 6×6 辅助窗口。
+- 再次启动、快捷键、托盘和任务管理器替换都会请求激活窗口，不要在正在使用的桌面上自动触发这些路径。需要验证系统焦点时，用 CreateDesktop 创建独立桌面，不调用 SwitchDesktop，测试进程的 lpDesktop 指向独立桌面；通过 GetGUIThreadInfo 和窗口消息验证。
 - 不要改机器上真实的系统设置（启动项、服务等）。需要测试这些功能时用临时条目，测完清理。
 - 不要结束开发者自己启动的开发实例（`start.bat` 启动的 `target\debug\argus.exe`）。
-- 自己启动的实例用完就关，尤其是开了远程调试端口的：端口可以驱动应用里的 Tauri 命令。
+- 自己启动的实例用完就关；测试控制仅使用隔离标识。
 - 不要强杀 Argus 后几秒内立刻重启：单实例插件会放进第二个实例。
 
 ## 命令
 
 - 改完代码必须通过 `start.bat check`（即 `pnpm check`），包含的步骤见 `docs/development/README.md`。
-- 前端单元测试（`pnpm test:ui`）由 node 直接运行 `ui/tests/*.test.ts`（类型剥离，不经打包）：被测模块只能用可擦除的 TypeScript 语法，相对导入写 `.ts` 扩展名，JSON 用 `with { type: "json" }` 导入，不能依赖 Solid、`import.meta.glob` 或 `i18n.ts`。`ui/src/lib/release-notes.ts` 还由 `scripts/release.mjs` 直接导入（发布工作流的第一步就用它读取 `CHANGELOG.md`），同样受这些限制。
-- `pnpm tauri build --no-bundle`（即 `start.bat build`）：发布构建，只改了本项目代码时约 3 分钟（全量约 6 分钟）。
+- 脚本测试由 Node 直接运行 scripts/tests；release-notes.ts 保持可擦除的 TypeScript 语法，不依赖界面运行时。
+- start.bat build 构建原生发行 EXE，start.bat build installer 使用 NSIS 打包。
 - 在部分代理沙箱里 cmd 不会在当前目录查找批处理文件，用绝对路径运行 `start.bat`。
 - 改链接器、工具链或 `RUSTFLAGS` 会让整个依赖缓存失效（重建时长见 `docs/development/build.md`），不要随手试。
 
@@ -49,24 +48,23 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 按改动的实际性质选 type，不要一律写 feat 或 chore：type 决定下一个版本号和发布说明。修复卡顿或视觉瑕疵是 fix，纯性能改进是 perf，只改文档是 docs。一次改动跨几类时按类拆成几个提交。
 - 首行写用户能看懂的变化，它会原样进入 `CHANGELOG.md` 和 GitHub Release；正文补充原因、影响与必要的实现细节。常规检查、测试或构建通过等结果不写入提交信息；性能验证只保留简短结论或关键对照数据，不罗列测试过程、原始资料存放位置或代理工作说明。
 - 不兼容的改动（设置或历史数据格式、特权服务 IPC 协议、删除功能或快捷键、命令行参数）在冒号前加 `!`，并写 `BREAKING CHANGE:` 页脚。
-- 版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`src-tauri/tauri.conf.json` 里的版本，也不要手写 `CHANGELOG.md`、`CHANGELOG.en.md` 的版本条目。只在用户要求发布时运行它；推送 `v*` 标签就是正式发布，同样要等用户明确要求。
+- 版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`resources/app.json` 里的版本，也不要手写 `CHANGELOG.md`、`CHANGELOG.en.md` 的版本条目。只在用户要求发布时运行它；推送 `v*` 标签就是正式发布，同样要等用户明确要求。
 - 发布说明有中英两份：`CHANGELOG.md` 和逐条对应的 `CHANGELOG.en.md`。`pnpm release` 在英文文件中写入由中文条目生成的草稿，推送标签前要把它译成英文，润色中文时同步修改英文，用词与 `locales/en-US` 的界面文案一致；`verify` 会拒绝仍含中文或日期与中文条目不同的英文条目。GitHub Release 正文含两种语言，应用按界面语言显示，缺译文的版本显示中文。
 - 不要给 CI 加 push 触发的检查、nightly 或定时构建（现有的触发方式见 `release.md`）；Rust 用 stable，不用 nightly 工具链。`.github/workflows/check.yml` 把 `pnpm check` 拆成了单独的步骤，改一边要同步另一边。
 - 改了 `scripts/release.mjs` 后先用 `pnpm release --dry-run` 看结果，再在临时克隆里走一遍完整发布（把克隆的推送地址设成无效值）；不要在真实仓库里打测试标签。
-- 更新签名公钥在 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`。不要生成新密钥替换它（已安装的版本只认旧公钥，用户会收不到更新），不要关掉 `requireSignedVersion`；私钥只在 GitHub Secrets 和维护者本机，不要读取或要求用户提供。测试签名流程用 scratchpad 里临时生成的密钥。
+- 更新签名公钥在 `resources/app.json` 的 `updater.pubkey`。不要生成新密钥替换它（已安装的版本只认旧公钥，用户会收不到更新），不要关掉 `requireSignedVersion`；私钥只在 GitHub Secrets 和维护者本机，不要读取或要求用户提供。测试签名流程用 scratchpad 里临时生成的密钥。
 - 工作流里的 action 固定到提交 SHA，行尾注释对应的版本号；升级时用 `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` 解析新标签（附注标签还要再解一层），不要改回版本标签。
 - 增删或升级依赖后运行 `node scripts/notices.mjs` 并提交 `THIRD-PARTY-NOTICES.txt`，CI 会检查它是否最新。
 - 日志（`%LOCALAPPDATA%\<标识>\logs\diagnostics\argus.log`）会附在公开的缺陷报告里：记录启动信息、失败阶段、原始错误码及必要的实际路径。路径仅限直接参与失败的文件、目录或注册表键，用 `diagnostics::path` 限长并转义；不从任意错误文本提取路径。不要写入进程命令行、凭据、URL 参数、账户名、文件内容或未经筛选的异常原文。重复失败用 `diagnostics::warn` 限频，不用会耗尽的全局次数上限。
-- 加速代理预设写在 `src-tauri/src/updater.rs` 和 `ui/src/components/Settings.tsx` 两处，改一处同步另一处；加入新的代理前，用真实的 Release 文件实测它返回的内容与直连逐字节一致。
-- 不要在开发机上运行打包出来的安装程序：它会覆盖已安装 Argus 的卸载项和快捷方式。安装与卸载靠 `release.yml` 的静默安装测试和用户在虚拟机里的检查；卸载钩子的分支逻辑可以用 Tauri 下载的 makensis（`target/.tauri/NSIS`）编一个替换了服务注册表项和 Program Files 路径的测试包，只写 scratchpad。
+- 加速代理预设写在 `src-gpui/src/updater.rs` 和 `src-gpui/src/frontend/pages/settings.rs` 两处，改一处同步另一处；加入新的代理前，用真实的 Release 文件实测它返回的内容与直连逐字节一致。
+- 不要在开发机上运行打包出来的安装程序：它会覆盖已安装 Argus 的卸载项和快捷方式。安装与卸载靠 `release.yml` 的静默安装测试和用户在虚拟机里的检查；卸载钩子的分支逻辑可以用 NSIS 的 makensis编一个替换了服务注册表项和 Program Files 路径的测试包，只写 scratchpad。
 
 ## 性能测量
 
 方法与测量条件（启动参数、等待时间、交替测量）见 `docs/development/performance.md`，要点：
 
-- 改动可能影响渲染开销时（动画、曲线、持续更新的元素、模糊或阴影等效果、合成层）量 WebView 的开销；静态的布局和文案不必每次做完整的 A/B，验证与改动的范围相称即可。开发机上常有其他负载，CPU 占用的 A/B 对比不可信；用 CDP 跟踪统计帧数、重绘次数，并累加 GPU 进程与渲染进程合成线程的耗时。
+- 改动可能影响渲染开销时，使用窗口探针测量实际呈现帧率、CPU、GPU 与内存；其他桌面负载会干扰读数。静态布局与文案变更只做相应范围的验证。
 - 详细的测量结果按需在回复中说明，不追加到 `docs/`：文档只保留基线、方法和有依据的设计结论。
-- 隐藏的内嵌浏览器预览不渲染帧，不要在那里判断动画。
 
 ## 约定
 

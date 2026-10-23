@@ -1,27 +1,24 @@
 # 架构
 
-```
-crates/argus-core   Rust 采集与操作层，不依赖任何 UI
-crates/argus-service 可选的 Windows 特权服务、生命周期管理与本地 IPC
-src-tauri/          Tauri 2 宿主：采样线程、托盘与窗口、设置、IPC 命令
-ui/                 SolidJS + TypeScript + Tailwind v4 前端
-```
+Argus 采用 Rust 采集层、应用服务层与 GPUI Kit 原生界面。可执行文件不创建浏览器或 WebView 子进程。
 
-- [技术栈](tech-stack.md)：各层的语言、框架、依赖与平台接口，检查、构建与发布工具
-- [采集层 argus-core](core.md)
-- [Tauri 宿主](host.md)
+| 目录 | 职责 |
+|---|---|
+| `crates/argus-core` | Windows 原生采集、数据模型、历史记录与系统操作 |
+| `crates/argus-service` | 可选特权服务、固定传感器模块与任务管理器辅助程序 |
+| `crates/argus-app` | 采样调度、设置、界面偏好、任务启动和安装辅助 |
+| `src-gpui` | GPUI 视图、窗口生命周期、托盘、快捷键和更新 |
+| `resources` | 应用元数据、图标、主题、动画参数与硬件指标定义 |
+| `tools` | 独立窗口捕获探针和发布签名工具 |
+
+采样线程按设置的前台、最小化或托盘节拍采集完整快照。界面仅保留最新快照；曲线以采集时间维护历史，绘制节拍与采集节拍分离。详细信息、文件占用和系统操作通过本地 Rust 命令适配器按需执行；耗时任务不占用 UI 线程。
+
+系统操作继续校验 PID 与创建时间。硬件特权访问仅走现有服务与固定 PawnIO 模块，缺失值保留为未知。设置与历史数据沿用原有 Rust 持久化层。
+
+- [技术栈](tech-stack.md)
+- [采集层](core.md)
+- [原生宿主](host.md)
+- [原生界面](frontend.md)
 - [特权服务](privileged-service.md)
-- [系统任务管理器替换](task-manager.md)：独立启动器、恢复记录与原生回退
-- [前端](frontend.md)
-
-## 数据流
-
-采样线程按固定节拍调用 `argus-core` 采集一份完整快照（默认每 1 秒，可设为 0.5–5 秒；窗口最小化或隐藏到托盘时按各自设置的间隔，可设为 0.5–30 秒，默认 5 秒），经 Tauri Channel 把整份快照推送给前端。前端保存一段滚动历史，据此绘制表格、概况带和曲线。
-
-采集成本高、只在需要时才用的数据（单个进程的详细信息、服务配置、文件占用等）由前端通过 IPC 命令按需查询。
-
-## 设计取向
-
-- 只用 NT 原生接口和 Win32 API，不用 WMI：一次 `NtQuerySystemInformation` 就能拿到全部进程和线程的计数器，比 Toolhelp、PDH、WMI 便宜得多。
-- 标准用户权限下尽量拿到完整数据，例如不打开进程也能取得映像路径；拿不到的数据如实标出，不报错。
-- `argus-core` 不依赖 UI，数据模型可序列化。手动管理操作、自动规则中的优先级与效率模式操作，以及每进程网络与磁盘读写采集可由 `argus-service` 在服务进程中执行；其余采集仍在宿主运行。规则匹配与服务通信使用独立宿主线程，采样线程不等待 RPC。
+- [任务管理器替换](task-manager.md)
+- [平台边界](../development/gpui.md)

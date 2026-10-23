@@ -1,6 +1,6 @@
 # 全局快捷键
 
-显示或隐藏 Argus 的全局快捷键由 `src-tauri/src/hotkey.rs` 在主窗口上调用 Windows 的 `RegisterHotKey` 注册，录制在设置页完成（`ui/src/lib/hotkey.ts` 的 `record`）。可用的键和不允许的组合写在 `ui/src/lib/hotkey-table.json`，原生侧与设置页共用，两边的测试读取同一份用例（`ui/tests/hotkey-cases.json`）。用法见[设置](../guide/settings.md#快捷键)。
+显示或隐藏 Argus 的全局快捷键由 `src-gpui/src/hotkey.rs` 在主窗口上调用 Windows 的 `RegisterHotKey` 注册，录制在设置页完成（`src-gpui/src/frontend/dialogs.rs` 的 `record_hotkey`）。可用的键和不允许的组合写在 `resources/hotkey-table.json`，原生侧与设置页共用，测试读取统一用例（`src-gpui/tests/hotkey-cases.json`）。用法见[设置](../guide/settings.md#快捷键)。
 
 ## RegisterHotKey 的行为
 

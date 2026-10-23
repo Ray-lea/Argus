@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="ui/public/logo.svg" width="112" height="112" alt="Argus 标志">
+<img src="resources/logo.svg" width="112" height="112" alt="Argus 标志">
 
 # Argus
 
@@ -14,8 +14,6 @@
 [![许可证](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
 [![Rust](https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
-[![SolidJS](https://img.shields.io/badge/SolidJS-1.9-2C4F7C?logo=solid&logoColor=white)](https://www.solidjs.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 [特性](#-特性) · [下载](#-下载) · [从源码构建](#-从源码构建) · [快捷键](#-快捷键) · [文档](#-文档) · [交流与反馈](#-交流与反馈)
@@ -31,7 +29,7 @@
 
 <br>
 
-Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS 构建界面。进程、性能、服务、启动项、网络连接以及最近 7 天的历史记录集中在同一窗口中，曲线随屏幕刷新率连续流动；常驻托盘时约占用单个 CPU 核心的 1%。名称取自希腊神话中的百眼巨人阿尔戈斯（Argus Panoptes）。
+Argus 通过 Rust 直接读取 Windows 原生接口，以 GPUI Kit 原生组件构建界面。进程、性能、服务、启动项、网络连接以及最近 7 天的历史记录集中在同一窗口中，曲线随屏幕刷新率连续流动。名称取自希腊神话中的百眼巨人阿尔戈斯（Argus Panoptes）。
 
 ## ⭐ Star 趋势
 
@@ -79,7 +77,7 @@ Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS �
 ## 💻 系统要求
 
 - Windows 10 22H2（内部版本 19045）及以上版本，包括 Windows 11；仅支持 x64 架构
-- WebView2 运行时（Windows 11 已内置）
+- 支持 DirectX 11 的图形设备与驱动
 
 已验证的系统版本、功能差异与权限要求见[兼容范围](docs/guide/hardware-data.md#系统兼容范围)。
 
@@ -88,11 +86,11 @@ Argus 通过 Rust 直接读取 Windows 原生接口，以 Tauri 2 与 SolidJS �
 需要 Rust 1.99.1 及以上的 stable MSVC 工具链、Node.js 26.12.1 及以上的 26.x 版本（也支持 24.22.1 及以上的 24.x LTS）、pnpm 12.14.0，以及 Visual Studio Build Tools（“使用 C++ 的桌面开发”）。在仓库根目录运行：
 
 ```bash
-start.bat           # 开发模式：前端即时热更新，Rust 代码修改后自动重新编译并重启
+start.bat           # 开发模式：Rust 与资源文件修改后自动编译并重启，编译失败时保留当前实例
 start.bat build     # 发布构建，生成 target\release\argus.exe
 ```
 
-浏览器预览、检查、打包安装程序和清理缓存等其他命令，参见[开发指南](docs/development/README.md)。
+检查、打包安装程序和清理缓存等其他命令，参见[开发指南](docs/development/README.md)。
 
 ## 🔑 快捷键
 
@@ -148,11 +146,10 @@ Argus 构建于以下开源项目之上，在此致谢：
 
 | 项目 | 用途 |
 |---|---|
-| [Tauri](https://tauri.app/) 及其插件 | 应用宿主、托盘、开机启动与应用内更新 |
+| [GPUI Kit](https://gpui-kit.com/) | 原生桌面组件、窗口、表格与曲线 |
 | [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)、[webview2-com](https://github.com/wravery/webview2-rs) | 界面渲染 |
 | [windows-rs](https://github.com/microsoft/windows-rs) | Windows 原生接口的 Rust 绑定 |
-| [SolidJS](https://www.solidjs.com/)、[TanStack Virtual](https://tanstack.com/virtual) | 界面框架与长列表虚拟滚动 |
-| [Vite](https://vite.dev/)、[Tailwind CSS](https://tailwindcss.com/)、[TypeScript](https://www.typescriptlang.org/)、[Biome](https://biomejs.dev/) | 前端构建、样式与代码检查 |
+| [Biome](https://biomejs.dev/)、[NSIS](https://nsis.sourceforge.io/) | 开发检查与 Windows 打包 |
 | [serde](https://serde.rs/)、[reqwest](https://github.com/seanmonstar/reqwest) 等 Rust crate | 序列化、网络请求等基础功能 |
 | [PawnIO](https://pawnio.eu/)、[PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) | 可选内核传感器使用的签名驱动与模块 |
 | [ZenStates-Core](https://github.com/irusanov/ZenStates-Core)、[LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)、[GNR-SMU](https://github.com/Kyworn/gnr-smu) | AMD SMU 表等 CPU 寄存器布局 |
