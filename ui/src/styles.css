@@ -1285,6 +1285,11 @@ button {
   outline-offset: -1px;
 }
 
+/* EditContext routes composition to the search box; the list has no text caret. */
+.process-table {
+  caret-color: transparent;
+}
+
 /* The process list takes input methods (an editing target), so it matches
    :focus-visible after a click too: there the ring waits for the keyboard. */
 .process-table.pointer-focus:focus-visible,
