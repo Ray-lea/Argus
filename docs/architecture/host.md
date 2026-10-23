@@ -6,7 +6,7 @@
 
 `native_runtime.rs` 提供进程内状态、通知合并和主线程调度；`commands.rs` 连接应用服务与现有系统能力。耗时命令在工作线程执行，界面通过有界通知更新。没有跨浏览器 IPC。
 
-配置目录保存 settings.json 与 preferences.json，本地数据目录保存历史、更新文件和诊断日志。发布版标识来自 resources/app.json，开发版追加 .devbuild；测试使用显式的独立标识。
+配置目录保存 settings.json 与 preferences.json，本地数据目录保存历史、更新文件和诊断日志。发布版标识来自 resources/app.json，开发版追加 .devbuild 与稳定的工作区指纹，不同工作区独立保存设置与单实例锁；测试也可显式指定独立标识。
 
 更新保持原有下载、取消、版本状态转换和安装前再次验签。公钥在 resources/app.json，签名必须绑定清单版本；release-notes 同样验签。安装器沿用现有服务刷新、任务管理器恢复和文件占用处理。
 

@@ -81,7 +81,7 @@ impl Options {
         let fixture = value("--fixture").map(PathBuf::from);
         let identifier = value("--identifier").unwrap_or_else(|| {
             if cfg!(debug_assertions) {
-                format!("{}.devbuild", argus_app::config::identifier())
+                argus_app::config::development_identifier(env!("CARGO_MANIFEST_DIR"))
             } else {
                 argus_app::config::identifier().into()
             }
