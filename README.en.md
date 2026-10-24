@@ -60,6 +60,7 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 | 🎨 | **Native look** | Features Mica backdrop on Windows 11 and a clean solid background on Windows 10; the system accent color and light or dark theme follow Windows by default, with a theme override in Settings. |
 | 🌍 | **Languages** | Available in English and Simplified Chinese, following the Windows display language by default; includes a welcome guide on first launch to configure essential settings. |
 | 👤 | **No administrator rights needed** | View executable paths and resource usage across all processes as a standard user. |
+| 🔐 | **Optional administrator startup** | Authorize once in Settings or during the welcome guide to launch Argus as administrator from sign-in, shortcuts, and Task Manager entry points; can be turned off at any time. |
 | 🛡️ | **Optional privileged service** | After a one-time administrator approval, Argus running as a standard user can also manage system processes, apply rules automatically, control services, close connections, and measure per-process network traffic (as well as disk reads and writes on Windows 10 and Windows 11 prior to 24H2); can be uninstalled anytime in Settings. |
 | 🪟 | **Tasks and desktop** | Run new tasks from any page (optionally as administrator), or restart the current desktop's Windows Explorer. |
 

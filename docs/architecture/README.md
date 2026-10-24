@@ -11,6 +11,7 @@ ui/                 SolidJS + TypeScript + Tailwind v4 前端
 - [采集层 argus-core](core.md)
 - [Tauri 宿主](host.md)
 - [特权服务](privileged-service.md)
+- [管理员启动](administrator-startup.md)：一次授权、统一入口与权限交接
 - [系统任务管理器替换](task-manager.md)：独立启动器、恢复记录与原生回退
 - [前端](frontend.md)
 
