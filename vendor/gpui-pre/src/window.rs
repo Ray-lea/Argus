@@ -1077,6 +1077,7 @@ pub(crate) struct PaintIndex {
     mouse_listeners_index: usize,
     input_handlers_index: usize,
     cursor_styles_index: usize,
+    window_control_hitboxes_index: usize,
     accessed_element_states_index: usize,
     tab_handle_index: usize,
     line_layout_index: LineLayoutIndex,
@@ -1964,7 +1965,7 @@ impl Window {
             let mut cx = cx.to_async();
             move || {
                 handle
-                    .update(&mut cx, |_, window, cx| window.bounds_changed(cx))
+                    .update(&mut cx, |_, window, cx| window.position_changed(cx))
                     .log_err();
             }
         }));
@@ -2052,12 +2053,8 @@ impl Window {
             Box::new(move || {
                 handle
                     .update(&mut cx, |_, window, _cx| {
-                        for (area, hitbox) in &window.rendered_frame.window_control_hitboxes {
-                            if window.mouse_hit_test.ids.contains(&hitbox.id) {
-                                return Some(*area);
-                            }
-                        }
-                        None
+                        // Non-client hit tests can precede the next mouse-move/frame.
+                        window.window_control_area_at(window.platform_window.mouse_position())
                     })
                     .log_err()
                     .unwrap_or(None)
@@ -2783,11 +2780,26 @@ impl Window {
         })
     }
 
-    /// Notify the window that its bounds have changed.
+    /// Notify position observers without invalidating unchanged local geometry.
+    fn position_changed(&mut self, cx: &mut App) {
+        if self.scale_factor != self.platform_window.scale_factor()
+            || self.viewport_size != self.platform_window.content_size()
+        {
+            self.bounds_changed(cx);
+            return;
+        }
+        // The platform already updated its screen origin. Local layout and
+        // paint caches remain valid while only the window's position changes.
+        self.mouse_position = self.platform_window.mouse_position();
+        self.bounds_observers
+            .clone()
+            .retain(&(), |callback| callback(self, cx));
+    }
+
+    /// Refresh size-dependent state and invalidate local layout and paint.
     ///
-    /// This updates internal state like `viewport_size` and `scale_factor` from
-    /// the platform window, then notifies observers. Normally called automatically
-    /// by the platform's resize callback, but exposed publicly for test infrastructure.
+    /// Normally called by the platform resize callback; also exposed for explicit
+    /// hidden-start viewport synchronization and test infrastructure.
     pub fn bounds_changed(&mut self, cx: &mut App) {
         self.scale_factor = self.platform_window.scale_factor();
         self.viewport_size = self.platform_window.content_size();
@@ -4052,6 +4064,7 @@ impl Window {
             mouse_listeners_index: self.next_frame.mouse_listeners.len(),
             input_handlers_index: self.next_frame.input_handlers.len(),
             cursor_styles_index: self.next_frame.cursor_styles.len(),
+            window_control_hitboxes_index: self.next_frame.window_control_hitboxes.len(),
             accessed_element_states_index: self.next_frame.accessed_element_states.len(),
             tab_handle_index: self.next_frame.tab_stops.paint_index(),
             line_layout_index: self.text_system.layout_index(),
@@ -4059,6 +4072,14 @@ impl Window {
     }
 
     pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
+        // Native caption controls are paint registrations too. A cached title
+        // bar must keep moving and responding to native window controls.
+        self.next_frame.window_control_hitboxes.extend(
+            self.rendered_frame.window_control_hitboxes
+                [range.start.window_control_hitboxes_index..range.end.window_control_hitboxes_index]
+                .iter()
+                .cloned(),
+        );
         // Cached elements still exist in the frame even when their paint methods don't run.
         #[cfg(any(test, feature = "test-support"))]
         for (selector, bounds) in &self.rendered_frame.debug_bounds_records
@@ -5314,6 +5335,22 @@ impl Window {
     pub fn insert_window_control_hitbox(&mut self, area: WindowControlArea, hitbox: Hitbox) {
         self.invalidator.debug_assert_paint();
         self.next_frame.window_control_hitboxes.push((area, hitbox));
+    }
+
+    /// Return the native window control under a point in local window coordinates.
+    pub fn window_control_area_at(&self, position: Point<Pixels>) -> Option<WindowControlArea> {
+        let hit_test = self.rendered_frame.hit_test(position);
+        self.rendered_frame.window_control_hitboxes.iter()
+            .find(|(_, hitbox)| hit_test.ids.contains(&hitbox.id))
+            .map(|(area, _)| *area)
+    }
+
+    /// Return native control regions from the most recently presented scene.
+    #[cfg(feature = "profiler")]
+    pub fn window_control_regions(&self) -> Vec<(WindowControlArea, Bounds<Pixels>)> {
+        self.rendered_frame.window_control_hitboxes.iter()
+            .map(|(area, hitbox)| (*area, hitbox.bounds))
+            .collect()
     }
 
     /// Sets the key context for the current element. This context will be used to translate
