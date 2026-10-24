@@ -56,7 +56,8 @@ pub fn set_administrator_mode(
 ) -> Result<argus_service::admin::Status, String> {
     let id = &app.config().identifier;
     let old_source = argus_service::admin::source(id);
-    let pending = if !enabled && argus_core::privilege::is_elevated() && !defer {
+    let restart = enabled || argus_service::admin::can_drop_elevation()?;
+    let pending = if !enabled && restart && !defer {
         Some(argus_service::admin::prepare(
             id,
             &restart_args(&app),
@@ -80,7 +81,7 @@ pub fn set_administrator_mode(
     crate::commands::autostart::follow_admin(&app, old_source.as_deref());
     if defer {
         *DEFERRED.lock().unwrap() = Some(enabled);
-    } else if enabled || argus_core::privilege::is_elevated() {
+    } else if restart {
         let prepared = match pending {
             Some(prepared) => prepared,
             None => argus_service::admin::prepare(id, &restart_args(&app), enabled)?,
@@ -104,7 +105,7 @@ fn restart_args(app: &tauri::AppHandle) -> Vec<String> {
 pub fn apply_administrator_mode(app: tauri::AppHandle) -> Result<(), String> {
     let desired = DEFERRED.lock().unwrap().take();
     if let Some(enabled) = desired
-        && (enabled || argus_core::privilege::is_elevated())
+        && (enabled || argus_service::admin::can_drop_elevation()?)
     {
         argus_service::admin::prepare(&app.config().identifier, &restart_args(&app), enabled)?
             .commit()?;

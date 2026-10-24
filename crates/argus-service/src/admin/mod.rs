@@ -172,9 +172,10 @@ pub fn eligible() -> bool {
     if argus_core::privilege::is_elevated() {
         return true;
     }
-    let Ok(token) = own_token() else {
-        return false;
-    };
+    elevation_type().is_ok_and(|kind| kind == TokenElevationTypeLimited)
+}
+fn elevation_type() -> Result<TOKEN_ELEVATION_TYPE> {
+    let token = own_token()?;
     let mut kind = TOKEN_ELEVATION_TYPE::default();
     let mut size = 0;
     unsafe {
@@ -186,8 +187,16 @@ pub fn eligible() -> bool {
             &mut size,
         )
     }
-    .is_ok()
-        && kind == TokenElevationTypeLimited
+    .map_err(win)?;
+    Ok(kind)
+}
+/// Unsplit administrators (for example, with UAC off) already have their
+/// account's default rights; revocation must not wait for an impossible
+/// non-elevated bootstrap. Query failures still stop the switch before mutation.
+pub fn can_drop_elevation() -> std::result::Result<bool, String> {
+    elevation_type()
+        .map(|kind| kind == TokenElevationTypeFull)
+        .map_err(util::message)
 }
 pub fn status(id: &str) -> Status {
     let mut value = Status {
@@ -604,38 +613,58 @@ fn refresh(id: &str, remove: bool) -> Result<()> {
         security::validate_sid(&sid)?;
         let dir = directory(id, &sid)?;
         let pin = security::protect_directory(&dir)?;
-        let authorized = grant(id, &sid)?.is_some();
-        // Existing protected records are the only authority for maintenance;
-        // an installer cannot create a new grant for a different account.
-        read_launch(&dir)?;
         if remove {
+            // Revocation must also work after a failed first installation or a
+            // partially completed uninstall. Neither record is needed to
+            // identify this account's task and our fixed runtime filenames.
             task::Scheduler::new()?.remove(id, &sid)?;
-            for file in fs::read_dir(&dir).map_err(io)? {
-                let file = file.map_err(io)?;
-                let name = file.file_name();
-                let name = name.to_str().ok_or(13u32)?;
-                if image_name(name)
-                    || matches!(
-                        name,
-                        "grant.json"
-                            | "launch.json"
-                            | "argus-launcher.exe"
-                            | "argus.ico"
-                            | "install.lock"
-                    )
-                {
-                    fs::remove_file(file.path()).map_err(io)?;
-                }
-            }
+            remove_runtime_files(&dir)?;
             drop(pin);
             fs::remove_dir(&dir).map_err(io)?;
         } else {
+            let authorized = grant(id, &sid)?.is_some();
+            // Existing protected records are the only authority for maintenance;
+            // an installer cannot create a new grant for a different account.
+            if !authorized && !dir.join("launch.json").exists() {
+                continue;
+            }
+            read_launch(&dir)?;
             install_inner(id, &sid, authorized, true)?;
         }
     }
     drop(guard);
     if remove {
         fs::remove_dir(&root).map_err(io)?;
+    }
+    Ok(())
+}
+
+fn runtime_file(name: &str) -> bool {
+    image_name(name)
+        || matches!(
+            name,
+            "grant.json" | "launch.json" | "argus-launcher.exe" | "argus.ico" | "install.lock"
+        )
+        || [
+            ("launcher-", ".exe"),
+            ("icon-", ".ico"),
+            ("grant-", ".json"),
+            ("launch-", ".json"),
+        ]
+        .iter()
+        .any(|(prefix, suffix)| {
+            name.strip_prefix(prefix)
+                .and_then(|s| s.strip_suffix(suffix))
+                .is_some_and(ticket::valid_guid)
+        })
+}
+fn remove_runtime_files(dir: &Path) -> Result<()> {
+    for file in fs::read_dir(dir).map_err(io)? {
+        let file = file.map_err(io)?;
+        if file.file_name().to_str().is_some_and(runtime_file) {
+            // Never recurse into an unexpected directory or follow a link.
+            fs::remove_file(file.path()).map_err(io)?;
+        }
     }
     Ok(())
 }
@@ -670,5 +699,50 @@ mod tests {
         assert!(image_name(
             "argus-admin-12345678-1234-1234-1234-123456789abc.exe"
         ));
+    }
+    #[test]
+    fn incomplete_runtime_cleanup_keeps_unknown_files_and_needs_no_records() {
+        let dir = std::env::temp_dir().join(format!("argus-cleanup-{}", guid().unwrap()));
+        fs::create_dir(&dir).unwrap();
+        let nonce = guid().unwrap();
+        for name in [
+            "install.lock".into(),
+            "grant.json".into(),
+            format!("argus-admin-{nonce}.exe"),
+            format!("launcher-{nonce}.exe"),
+            format!("icon-{nonce}.ico"),
+            format!("grant-{nonce}.json"),
+            format!("launch-{nonce}.json"),
+            "launcher-unknown.exe".into(),
+        ] {
+            fs::write(dir.join(name), b"incomplete").unwrap();
+        }
+        remove_runtime_files(&dir).unwrap();
+        let remaining: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(remaining, ["launcher-unknown.exe"]);
+        fs::remove_file(dir.join("launcher-unknown.exe")).unwrap();
+        fs::remove_dir(dir).unwrap();
+    }
+    #[test]
+    fn interrupted_runtime_cleanup_can_be_retried_after_a_file_is_released() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = std::env::temp_dir().join(format!("argus-cleanup-{}", guid().unwrap()));
+        fs::create_dir(&dir).unwrap();
+        let path = dir.join("argus-launcher.exe");
+        fs::write(&path, b"held image").unwrap();
+        let held = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&path)
+            .unwrap();
+        assert_eq!(remove_runtime_files(&dir), Err(32));
+        assert!(path.exists());
+        drop(held);
+        remove_runtime_files(&dir).unwrap();
+        remove_runtime_files(&dir).unwrap();
+        fs::remove_dir(dir).unwrap();
     }
 }
