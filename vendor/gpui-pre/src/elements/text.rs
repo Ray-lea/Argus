@@ -630,6 +630,28 @@ struct TextLayoutInner {
     bounds: Option<Bounds<Pixels>>,
 }
 
+impl TextLayoutInner {
+    fn cached_size(
+        &self,
+        wrap_width: Option<Pixels>,
+        truncate_width: Option<Pixels>,
+        line_clamp: Option<usize>,
+    ) -> Option<Size<Pixels>> {
+        let size = self.size?;
+        let same_constraints =
+            wrap_width == self.wrap_width && truncate_width == self.truncate_width;
+        let fits_unwrapped = line_clamp.is_none()
+            && self.truncate_width.is_none()
+            && self
+                .lines
+                .iter()
+                .all(|line| line.wrap_boundaries.is_empty())
+            && wrap_width.is_none_or(|width| width >= size.width)
+            && truncate_width.is_none_or(|width| width >= size.width);
+        (same_constraints || fits_unwrapped).then_some(size)
+    }
+}
+
 impl TextLayout {
     fn layout(
         &self,
@@ -683,36 +705,30 @@ impl TextLayout {
                         (None, "".into(), TruncateFrom::End)
                     };
 
-                // Only use cached layout if:
-                // 1. We have a cached size
-                // 2. wrap_width matches (or both are None)
-                // 3. truncate_width is None (if truncate_width is Some, we need to re-layout
-                //    because the previous layout may have been computed without truncation)
-                // 4. the cached layout was not truncated (a truncated layout answers an
-                //    unconstrained probe with the truncated size, which poisons intrinsic
-                //    sizing with whatever width some earlier measure pass happened to use)
+                // Include truncation in the cache key. Repeated constrained probes
+                // do not need to shape the same ellipsis again. An honest unwrapped
+                // measurement also fits wider constraints without any reshaping.
                 if let Some(text_layout) = element_state.0.borrow().as_ref()
-                    && let Some(size) = text_layout.size
-                    && (wrap_width.is_none() || wrap_width == text_layout.wrap_width)
-                    && truncate_width.is_none()
-                    && text_layout.truncate_width.is_none()
+                    && let Some(size) =
+                        text_layout.cached_size(wrap_width, truncate_width, text_style.line_clamp)
                 {
                     return size;
                 }
 
-                let mut line_wrapper = cx.text_system().line_wrapper(text_style.font(), font_size);
                 let (text, runs) = if let Some(truncate_width) = truncate_width {
                     if let Some(max_lines) = text_style.line_clamp
                         && let Some(wrap_width) = wrap_width
                     {
-                        line_wrapper.truncate_wrapped_line(
-                            text.clone(),
-                            wrap_width,
-                            max_lines,
-                            &truncation_affix,
-                            &runs,
-                            truncate_from,
-                        )
+                        cx.text_system()
+                            .line_wrapper(text_style.font(), font_size)
+                            .truncate_wrapped_line(
+                                text.clone(),
+                                wrap_width,
+                                max_lines,
+                                &truncation_affix,
+                                &runs,
+                                truncate_from,
+                            )
                     } else if let Some(unclipped) = window
                         .text_system()
                         .shape_text(text.clone(), font_size, &runs, None, None)
@@ -729,13 +745,15 @@ impl TextLayout {
                         // already measured untruncated this frame.
                         (text.clone(), Cow::Borrowed(&*runs))
                     } else {
-                        line_wrapper.truncate_line(
-                            text.clone(),
-                            truncate_width,
-                            &truncation_affix,
-                            &runs,
-                            truncate_from,
-                        )
+                        cx.text_system()
+                            .line_wrapper(text_style.font(), font_size)
+                            .truncate_line(
+                                text.clone(),
+                                truncate_width,
+                                &truncation_affix,
+                                &runs,
+                                truncate_from,
+                            )
                     }
                 } else {
                     (text.clone(), Cow::Borrowed(&*runs))
@@ -1316,6 +1334,95 @@ impl IntoElement for InteractiveText {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn measured_text(
+        wrap_width: Option<Pixels>,
+        truncate_width: Option<Pixels>,
+    ) -> TextLayoutInner {
+        TextLayoutInner {
+            len: 10,
+            lines: smallvec::smallvec![WrappedLine {
+                layout: Arc::new(WrappedLineLayout::default()),
+                decoration_runs: Vec::new(),
+                text: "0123456789".into(),
+            }],
+            line_height: crate::px(16.),
+            wrap_width,
+            truncate_width,
+            size: Some(crate::size(crate::px(80.), crate::px(16.))),
+            bounds: None,
+        }
+    }
+
+    #[test]
+    fn text_measurement_reuses_identical_truncation_only() {
+        let layout = measured_text(None, Some(crate::px(80.)));
+        assert_eq!(
+            layout.cached_size(None, Some(crate::px(80.)), None),
+            layout.size
+        );
+        assert!(layout.cached_size(None, None, None).is_none());
+        assert!(
+            layout
+                .cached_size(None, Some(crate::px(100.)), None)
+                .is_none()
+        );
+        assert!(
+            layout
+                .cached_size(None, Some(crate::px(60.)), None)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn text_measurement_reuses_unwrapped_text_only_when_it_fits() {
+        let layout = measured_text(None, None);
+        assert_eq!(
+            layout.cached_size(Some(crate::px(80.)), Some(crate::px(80.)), None),
+            layout.size
+        );
+        assert_eq!(
+            layout.cached_size(Some(crate::px(120.)), None, None),
+            layout.size
+        );
+        assert!(
+            layout
+                .cached_size(Some(crate::px(79.)), None, None)
+                .is_none()
+        );
+        assert!(
+            layout
+                .cached_size(None, Some(crate::px(79.)), None)
+                .is_none()
+        );
+        assert!(
+            layout
+                .cached_size(Some(crate::px(120.)), None, Some(1))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn text_measurement_does_not_reuse_wrapped_intrinsic_size() {
+        let mut layout = measured_text(Some(crate::px(80.)), None);
+        Arc::get_mut(&mut layout.lines[0].layout)
+            .unwrap()
+            .wrap_boundaries
+            .push(crate::WrapBoundary {
+                run_ix: 0,
+                glyph_ix: 4,
+            });
+        assert_eq!(
+            layout.cached_size(Some(crate::px(80.)), None, None),
+            layout.size
+        );
+        assert!(layout.cached_size(None, None, None).is_none());
+        assert!(
+            layout
+                .cached_size(Some(crate::px(120.)), None, None)
+                .is_none()
+        );
+    }
 
     #[test]
     fn test_into_element_for() {

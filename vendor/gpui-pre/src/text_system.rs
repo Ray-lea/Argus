@@ -765,7 +765,10 @@ impl WindowTextSystem {
         let mut process_line = |line_text: SharedString, line_start, line_end| {
             font_runs.clear();
 
-            let mut decoration_runs = <Vec<DecorationRun>>::with_capacity(32);
+            // Most labels have one style run. Reserve for the actual upper bound,
+            // rather than allocating 32 decorations for every measurement probe.
+            let mut decoration_runs =
+                <Vec<DecorationRun>>::with_capacity(runs.size_hint().1.unwrap_or(0).min(32));
             let mut run_start = line_start;
             while run_start < line_end {
                 let Some(run) = runs.peek_mut() else {
