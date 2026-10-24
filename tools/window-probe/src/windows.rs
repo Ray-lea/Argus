@@ -629,7 +629,7 @@ pub fn run(args: &[String]) -> Result<()> {
         .args(&args[1..])
         .creation_flags(0x08000000)
         .stdin(Stdio::piped())
-        .stdout(Stdio::null())
+        .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
         .context("launch owned test")?;
@@ -796,6 +796,26 @@ pub fn run(args: &[String]) -> Result<()> {
                 if command == "watch" {
                     observer = Some(crate::frames::Observer::start(search.hwnd));
                 }
+                if command == "begin-move" || command == "end-move" {
+                    let message = if command == "begin-move" {
+                        WM_ENTERSIZEMOVE
+                    } else {
+                        WM_EXITSIZEMOVE
+                    };
+                    let _ = SendMessageTimeoutW(
+                        search.hwnd,
+                        message,
+                        windows::Win32::Foundation::WPARAM(0),
+                        LPARAM(0),
+                        SMTO_ABORTIFHUNG,
+                        1000,
+                        None,
+                    );
+                    println!(
+                        "{}",
+                        serde_json::json!({"event":command,"atMs":start.elapsed().as_secs_f64()*1000.})
+                    );
+                }
                 if command == "hide" {
                     let _ = ShowWindow(search.hwnd, SW_HIDE);
                 }
@@ -833,6 +853,27 @@ pub fn run(args: &[String]) -> Result<()> {
                         "{}",
                         serde_json::json!({"event":"resized","width":client.right,"height":client.bottom})
                     );
+                }
+                if let Some(value) = command.strip_prefix("move ") {
+                    let delta: Vec<i32> = value
+                        .split_whitespace()
+                        .map(str::parse)
+                        .collect::<std::result::Result<_, _>>()?;
+                    anyhow::ensure!(
+                        delta.len() == 2 && delta.iter().all(|d| d.abs() <= 32),
+                        "bounded owned-window movement required"
+                    );
+                    let mut rect = RECT::default();
+                    GetWindowRect(search.hwnd, &mut rect)?;
+                    SetWindowPos(
+                        search.hwnd,
+                        Some(HWND_BOTTOM),
+                        rect.left + delta[0],
+                        rect.top + delta[1],
+                        0,
+                        0,
+                        SWP_NOACTIVATE | SWP_NOSIZE,
+                    )?;
                 }
             }
         }
