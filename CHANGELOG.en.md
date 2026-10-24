@@ -4,7 +4,26 @@
 
 User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This is the English edition of [CHANGELOG.md](CHANGELOG.md): `pnpm release` adds each release to both files, and the English entry is translated from the Chinese one before the release is published. The release notes on GitHub and in the app come from these entries.
 
+## [0.3.2](https://github.com/Ray-lea/Argus/compare/v0.3.1...v0.3.2) - 2026-10-23
+
+This release replaces the withdrawn v0.3.1. It fixes installed copies being incorrectly detected as portable when launched through administrator startup or Task Manager entry points, which prevented in-app updates.
+
+### Upgrading
+
+- If an installed copy says that the portable version cannot update automatically, download and run the installer from this release page. There is no need to uninstall Argus first. After upgrading, administrator startup and Task Manager entry points retain in-app update support.
+
+### Fixes
+
+- **Installed updates**: Correctly identifies administrator and Task Manager replacement copies, restoring update checking, downloading and installation.
+- **Portable detection**: A nearby uninstaller no longer causes a portable copy to be detected as installed. Portable copies still receive updates through manual downloads from the release page.
+
+### Included changes
+
+- Includes v0.3.1's administrator startup after a one-time authorization, plus fixes for Windows Explorer restart, CPU usage statistics, charts after restoring the window, the process list caret and update installation.
+
 ## [0.3.1](https://github.com/Ray-lea/Argus/compare/v0.3.0...v0.3.1) - 2026-10-23
+
+**This release was withdrawn. Its features and fixes are included in v0.3.2.**
 
 This release adds administrator startup after a one-time authorization across sign-in, shortcuts and Task Manager entry points, and fixes Windows Explorer restart, CPU usage and update installation issues.
 

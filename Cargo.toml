@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/argus-core", "crates/argus-service", "src-tauri"]
 
 [workspace.package]
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 rust-version = "1.99.1"
 license = "AGPL-3.0-or-later"
