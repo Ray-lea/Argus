@@ -287,14 +287,18 @@ impl PlatformTextSystem for DirectWriteTextSystem {
     }
 
     fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout {
-        self.state
+        crate::frame_trace::record(12, text.len() as u64);
+        let layout = self
+            .state
             .write()
             .layout_line(&self.components, text, font_size, runs)
             .log_err()
             .unwrap_or(LineLayout {
                 font_size,
                 ..Default::default()
-            })
+            });
+        crate::frame_trace::record(13, 0);
+        layout
     }
 
     fn recommended_rendering_mode(

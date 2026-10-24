@@ -822,6 +822,30 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.options.fixture.is_some()
+            && let Some(time) = control["chartTime"]
+                .as_f64()
+                .filter(|time| time.is_finite())
+        {
+            self.chart_clock.borrow_mut().pause_at(time);
+            if let Some(layer) = self.chart_layer.clone() {
+                window.on_next_frame(move |window, cx| {
+                    layer.update(cx, |layer, cx| {
+                        let before = layer.fast_frames;
+                        layer.advance(window, cx);
+                        println!(
+                            "{}",
+                            json!({"event":"ui-chart-step","retained":layer.fast_frames>before})
+                        );
+                    });
+                });
+            }
+            return;
+        }
+        if self.options.fixture.is_some() && control["fullPaint"].as_bool() == Some(true) {
+            window.refresh();
+            return;
+        }
         if control["exit"].as_bool() == Some(true) {
             self.host.exit(0);
             return;
@@ -852,6 +876,44 @@ impl Desktop {
             });
         }
         if let Some(label) = control["inspectLayout"].as_str() {
+            if std::env::var_os("ARGUS_GPUI_VIEW_TRACE").is_some() {
+                use gpui_kit::gpui::profiler::{self, FrameEvent, FrameTimingCollector};
+                let collector = self.frame_trace.get_or_insert_with(|| {
+                    profiler::set_trace_enabled(true);
+                    FrameTimingCollector::new()
+                });
+                let mut draws = collector
+                    .collect_unseen()
+                    .into_iter()
+                    .filter_map(|event| match event {
+                        FrameEvent::Draw(frame) => Some(frame),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                draws.sort_by_key(|frame| std::cmp::Reverse(frame.draw_duration()));
+                println!(
+                    "{}",
+                    json!({"event":"ui-draw-phases","label":label,"draws":draws.len(),"slowest":draws.iter().take(12).map(|frame|json!({"totalUs":frame.draw_duration().as_micros(),"requestUs":frame.phases.request_layout.as_micros(),"prepaintUs":frame.phases.prepaint.as_micros(),"paintUs":frame.phases.paint.as_micros(),"invalidations":frame.invalidations})).collect::<Vec<_>>()})
+                );
+                use profiler::journal::{ForegroundEvent, ForegroundJournalEntry};
+                let journal = self
+                    .view_trace
+                    .get_or_insert_with(|| cx.foreground_journal().collector());
+                let mut views = journal
+                    .collect_unseen()
+                    .entries
+                    .into_iter()
+                    .filter_map(|entry| match entry {
+                        ForegroundJournalEntry::Event(ForegroundEvent::View(view)) => Some(view),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                views.sort_by_key(|view| std::cmp::Reverse(view.self_duration));
+                println!(
+                    "{}",
+                    json!({"event":"ui-view-phases","label":label,"slowest":views.iter().take(16).map(|view|json!({"name":view.name,"phase":view.phase.as_str(),"selfUs":view.self_duration.as_micros(),"elapsedUs":view.end.duration_since(view.start).as_micros()})).collect::<Vec<_>>()})
+                );
+            }
             println!(
                 "{}",
                 json!({"event":"ui-conditions","label":label,"processes":self.snapshot["system"]["processCount"],"intervalMs":self.interval,"dpiScale":window.scale_factor(),"gpus":values(&self.snapshot["hardware"]["gpus"]).iter().map(|gpu|json!({"id":gpu["info"]["id"],"clockMhz":gpu["clockMhz"],"clockMaxMhz":gpu["clockMaxMhz"],"boardPowerWatts":gpu["boardPower"]})).collect::<Vec<_>>()})

@@ -1319,6 +1319,7 @@ impl WindowsWindowInner {
 
     #[inline]
     fn draw_window(&self, handle: HWND, force_render: bool) -> Option<isize> {
+        crate::frame_trace::record(1, u64::from(force_render));
         let Some(_guard) = self.state.draw_coordinator.try_begin_draw() else {
             log::debug!("deferring re-entrant draw of window {handle:?}");
             if force_render {
@@ -1369,6 +1370,7 @@ impl WindowsWindowInner {
 
         self.state.callbacks.request_frame.set(Some(request_frame));
         self.update_ime_enabled(handle);
+        crate::frame_trace::record(2, 0);
 
         Some(0)
     }

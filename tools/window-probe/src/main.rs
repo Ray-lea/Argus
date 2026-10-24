@@ -2,6 +2,8 @@
 mod frames;
 #[cfg(windows)]
 mod latency;
+#[cfg(feature = "capture")]
+mod pixels;
 #[cfg(all(windows, target_arch = "x86_64"))]
 mod stacks;
 #[cfg(windows)]
@@ -17,6 +19,8 @@ fn unix_ms() -> i64 {
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
+        #[cfg(feature = "capture")]
+        Some("compare") => pixels::compare(&args[1], &args[2])?,
         #[cfg(windows)]
         Some("run") => windows::run(&args[1..])?,
         #[cfg(windows)]

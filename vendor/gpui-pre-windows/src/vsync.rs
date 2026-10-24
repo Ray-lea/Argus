@@ -49,13 +49,19 @@ impl VSyncProvider {
         // Sleep() if it returns before that. This could happen during normal
         // operation for the first call after the vsync thread becomes non-idle,
         // but it shouldn't happen often.
-        if !wait_succeeded || elapsed < VSYNC_INTERVAL_THRESHOLD {
+        let source = if !wait_succeeded || elapsed < VSYNC_INTERVAL_THRESHOLD {
             log::trace!("VSyncProvider::wait_for_vsync() took less time than expected");
             std::thread::sleep(self.interval);
             FrameRequestSource::LocalSchedule
         } else {
             FrameRequestSource::NativeCallback
-        }
+        };
+        crate::frame_trace::record(
+            0,
+            elapsed.as_micros() as u64 * 2
+                + u64::from(matches!(source, FrameRequestSource::LocalSchedule)),
+        );
+        source
     }
 }
 

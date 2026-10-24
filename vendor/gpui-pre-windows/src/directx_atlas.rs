@@ -95,6 +95,7 @@ impl AtlasBackend for DirectXAtlasTextures {
         size: Size<DevicePixels>,
         bytes: &[u8],
     ) -> anyhow::Result<AtlasTile> {
+        crate::frame_trace::record(10, bytes.len() as u64);
         let tile = self
             .allocate(size, kind)
             .ok_or_else(|| anyhow::anyhow!("failed to allocate"))?;
@@ -102,6 +103,7 @@ impl AtlasBackend for DirectXAtlasTextures {
             .texture(tile.texture_id)
             .ok_or_else(|| anyhow::anyhow!("allocated tile refers to a missing texture"))?;
         texture.upload(&self.device_context, tile.bounds, bytes);
+        crate::frame_trace::record(11, bytes.len() as u64);
         Ok(tile)
     }
 

@@ -569,6 +569,7 @@ impl DirectXRenderer {
 
     #[inline]
     fn present(&mut self) -> Result<()> {
+        crate::frame_trace::record(3, 0);
         let resources = self.resources.as_ref().expect("resources missing");
         let parameters = resources
             .present_dirty
@@ -584,6 +585,7 @@ impl DirectXRenderer {
                 .swap_chain
                 .Present1(1, DXGI_PRESENT(0), &parameters)
         };
+        crate::frame_trace::record(4, u64::from(result.is_ok()));
         result.ok().context("Presenting swap chain failed")
     }
 
@@ -666,6 +668,7 @@ impl DirectXRenderer {
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
+        crate::frame_trace::record(6, u64::from(scene.animated_order.is_some()));
         if self.skip_draws {
             // skip drawing this frame, we just recovered from a device lost event
             // and so likely do not have the textures anymore that are required for drawing

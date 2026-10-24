@@ -64,6 +64,9 @@ impl Clock {
             self.pause = None;
         }
     }
+    pub fn pause_at(&mut self, time: f64) {
+        self.pause = Some(time);
+    }
     pub fn moving(&self) -> bool {
         self.mode != Mode::Off
             && self.pause.is_none()

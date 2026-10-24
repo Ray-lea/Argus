@@ -54,6 +54,11 @@ const result = {
   sha256: createHash("sha256").update(readFileSync(executable)).digest("hex"),
   logicalProcessors: availableParallelism(),
   seconds,
+  instrumentation: {
+    frameTrace: !!process.env.ARGUS_GPUI_FRAME_TRACE,
+    viewTrace: !!process.env.ARGUS_GPUI_VIEW_TRACE,
+    prefixCompositionDisabled: !!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION,
+  },
   events: [],
   summaries: [],
 };
@@ -149,6 +154,7 @@ async function connectWebview() {
     return result.result?.value;
   };
   cdp = { request, evaluate, close: () => socket.close() };
+  result.webview = await request("Browser.getVersion");
   for (let i = 0; i < 300 && !(await evaluate('!!document.querySelector(".app")')); i++) await sleep(200);
   await evaluate(
     `for (const [key,value] of Object.entries({page:"processes",perfDevice:"cpu",cpuMode:"overall","motion.chartMode":"fluid",interval:1000,detailsPanel:true,navPosition:"top"})) localStorage.setItem("argus."+key,JSON.stringify(value));`,
@@ -202,6 +208,8 @@ const sum = (rows, field) => rows.reduce((total, row) => total + row[field], 0);
 const quantile = (sorted, q) => sorted[Math.floor((sorted.length - 1) * q)] ?? 0;
 function summarize(tag, before, after) {
   const ms = after.atMs - before.atMs;
+  const uiBefore = before.threads?.find((t) => t.pid === shown.pid && t.tid === shown.uiThread);
+  const uiAfter = after.threads?.find((t) => t.pid === shown.pid && t.tid === shown.uiThread && t.created === uiBefore?.created);
   const frames = result.events
     .filter((e) => e.event === "sample" && e.atMs >= before.atMs && e.atMs <= after.atMs)
     .flatMap((e) => e.capture?.times100ns ?? []);
@@ -211,6 +219,7 @@ function summarize(tag, before, after) {
     .filter((v) => v > 0)
     .sort((a, b) => a - b);
   const engines = {};
+  const cadence = quantile(gaps, 0.5);
   for (const [key, value] of Object.entries(after.gpu?.gpuTime100ns ?? {})) {
     const engine = key.replace(/^pid_\d+_/, "");
     const delta = Math.max(0, value - (before.gpu?.gpuTime100ns?.[key] ?? value));
@@ -219,6 +228,7 @@ function summarize(tag, before, after) {
   return {
     tag,
     durationMs: ms,
+    uiThreadCpuMsPerSecond: uiBefore && uiAfter ? ((uiAfter.cpuMs-uiBefore.cpuMs)/ms)*1000 : null,
     cpuMsPerSecond: ((sum(after.processes, "cpuMs") - sum(before.processes, "cpuMs")) / ms) * 1000,
     cpuPercent:
       (((sum(after.processes, "cpuMs") - sum(before.processes, "cpuMs")) / ms) * 100) /
@@ -231,6 +241,8 @@ function summarize(tag, before, after) {
     frameP50Ms: quantile(gaps, 0.5),
     frameP95Ms: quantile(gaps, 0.95),
     frameP99Ms: quantile(gaps, 0.99),
+    frameMaxMs: gaps.at(-1) ?? 0,
+    missedRefreshes: cadence > 0 ? gaps.reduce((n, gap) => n + Math.max(0, Math.round(gap / cadence) - 1), 0) : 0,
     longFrames50Ms: gaps.filter((v) => v > 50).length,
   };
 }

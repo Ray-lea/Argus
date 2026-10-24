@@ -9,6 +9,8 @@ process.chdir(root);
 const label = process.argv[2] ?? `smoke-${Date.now()}`;
 if (!/^[a-z0-9-]+$/.test(label)) throw Error("Invalid test label");
 const live = process.argv.includes("--live");
+const retained = process.argv.includes("--retained");
+assert(!(live && retained), "retained comparisons require a fixed fixture");
 const output = resolve("target/native-validation", label);
 mkdirSync(output, { recursive: true });
 const metadata = JSON.parse(readFileSync("resources/app.json"));
@@ -57,7 +59,7 @@ const child = spawn(
     "180",
     ...(live ? [] : ["--fixture", resolve(output, "fixture.json")]),
   ],
-  { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },
+  { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}) } },
 );
 const events = [];
 let error = "",
@@ -84,8 +86,8 @@ createInterface({ input: child.stdout }).on("line", (line) => {
   }
 });
 const send = (control) => child.stdin.write(`app ${JSON.stringify(control)}\n`);
-const capture = (name, keepPointer = false) => {
-  send({ pointerOutside: !keepPointer, inspectLayout: name });
+const capture = (name, keepPointer = false, inspect = true) => {
+  if (inspect) send({ pointerOutside: !keepPointer, inspectLayout: name });
   const result = spawnSync(probe, ["capture", String(shown.pid), resolve(output, `${name}.png`)], {
     windowsHide: true,
     encoding: "utf8",
@@ -141,6 +143,50 @@ try {
     child.stdin.write("show\n");
     await sleep(4500);
     capture("restored-performance");
+  } else if (retained) {
+    for (const [name, state] of [
+      ["processes", { page: "processes" }],
+      ["overall", { page: "performance", cpuMode: "overall" }],
+      ["logical", { page: "performance", cpuMode: "logical" }],
+    ]) {
+      send({ ...state, pointerOutside: true });
+      await sleep(1500);
+      for (const [index, offset] of [50, 200, 700].entries()) {
+        // The first retained presentation builds the static prefix; the second reuses it.
+        send({ chartTime: fixture.snapshot.timestamp + offset - 1 });
+        await sleep(150);
+        send({ chartTime: fixture.snapshot.timestamp + offset });
+        await sleep(250);
+        const before = `${name}-${index}-retained`, after = `${name}-${index}-full`;
+        const animated = `${name}-${index}-animated`;
+        capture(animated, false, false);
+        // Compare an ordinary parent redraw separately from retained animation.
+        send({ inspectLayout: `${before}-reuse` });
+        await sleep(250);
+        capture(before, false, false);
+        send({ fullPaint: true });
+        await sleep(250);
+        capture(after, false, false);
+        for (const picture of [animated, before]) {
+        const compared = spawnSync(probe, ["compare", resolve(output, `${picture}.png`), resolve(output, `${after}.png`)], {
+          windowsHide: true, encoding: "utf8", timeout: 20000,
+        });
+        assert.equal(compared.status, 0, compared.stderr);
+        const difference = JSON.parse(compared.stdout);
+        events.push({ event: "pixel-comparison", label: picture, ...difference });
+        // Replayed rasterization and shader/fixed-function blending may round a
+        // UNORM8 channel by one code value; larger changes indicate a real regression.
+        assert(difference.maxChannelDelta <= 1,
+          `${picture}: retained rendering differs from a full paint: ${compared.stdout}`);
+        }
+      }
+    }
+    const steps = events.filter((event) => event.event === "ui-chart-step");
+    assert.equal(steps.length, 18);
+    assert(steps.every((event) => event.retained), "comparison did not exercise retained presentation");
+    if (!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION)
+      assert(events.some((event) => event.event === "gpu-scene-cache" && event.composed),
+        "comparison did not exercise prefix composition");
   } else {
     for (const page of [
       "processes",
@@ -221,7 +267,7 @@ for (const event of events.filter((e) => e.event === "ui-caption" && !e.label.en
   assert(event.actionsAreClient, `${event.label}: toolbar controls were classified as draggable caption`);
   assert(event.minimize && event.maximize && event.close, `${event.label}: native caption controls were lost`);
 }
-if (!live) {
+if (!live && !retained) {
   for (const [label, sort, descending] of [["sorted-name", "name", false], ["sorted-name-reversed", "name", true], ["sorted-cpu", "cpu", true]]) {
     const state = events.find((event) => event.event === "ui-render-counts" && event.label === label);
     assert(state && state.sort === sort && state.descending === descending, `${label}: clicking the full header did not sort`);

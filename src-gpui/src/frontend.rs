@@ -138,6 +138,8 @@ struct Desktop {
     page_epoch: u64,
     render_count: u64,
     work: WorkCounters,
+    frame_trace: Option<gpui_kit::gpui::profiler::FrameTimingCollector>,
+    view_trace: Option<gpui_kit::gpui::profiler::journal::ForegroundJournalCollector>,
     snapshot_pending: bool,
     rows_epoch: u64,
     header_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
@@ -233,6 +235,8 @@ impl Desktop {
             page_epoch: 0,
             render_count: 0,
             work: WorkCounters::default(),
+            frame_trace: None,
+            view_trace: None,
             snapshot_pending: false,
             rows_epoch: 0,
             header_bounds: Rc::new(RefCell::new(HashMap::new())),
@@ -480,6 +484,7 @@ struct DesktopRoot {
     desktop: Entity<Desktop>,
     charts: Entity<charts::ChartLayer>,
 }
+
 impl Render for DesktopRoot {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()

@@ -811,7 +811,7 @@ pub fn run(args: &[String]) -> Result<()> {
                     GetClientRect(search.hwnd, &mut rect)?;
                     println!(
                         "{}",
-                        serde_json::json!({"event":"shown","pid":search.pid,"hwnd":search.hwnd.0 as usize,"width":rect.right,"height":rect.bottom,"atMs":start.elapsed().as_millis()})
+                        serde_json::json!({"event":"shown","pid":search.pid,"uiThread":GetWindowThreadProcessId(search.hwnd,None),"hwnd":search.hwnd.0 as usize,"width":rect.right,"height":rect.bottom,"atMs":start.elapsed().as_millis()})
                     );
                 }
             }

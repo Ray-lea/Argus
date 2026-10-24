@@ -147,7 +147,7 @@ impl ChartLayer {
             fast_frames: 0,
         }
     }
-    fn advance(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn advance(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let clock = self.clock.borrow();
         let now = clock.end(Instant::now());
         let changed = if clock.mode == motion::Mode::Pixel {

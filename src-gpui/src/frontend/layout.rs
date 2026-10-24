@@ -529,6 +529,9 @@ impl Desktop {
 }
 impl Render for Desktop {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let render_started = (self.options.test
+            && std::env::var_os("ARGUS_GPUI_VIEW_TRACE").is_some())
+        .then(Instant::now);
         self.render_count = self.render_count.wrapping_add(1);
         self.active_charts.borrow_mut().clear();
         let p = self.palette;
@@ -558,7 +561,7 @@ impl Render for Desktop {
             );
         let overlays = self.render_overlays(window, cx);
         self.schedule_chart_tick(window, cx);
-        div()
+        let result = div()
             .id("argus-root")
             .relative()
             .size_full()
@@ -608,7 +611,14 @@ impl Render for Desktop {
             .child(toolbar)
             .when(self.nav_top, |d| d.child(self.navigation(true, window, cx)))
             .child(body)
-            .children(overlays)
+            .children(overlays);
+        if let Some(render_started) = render_started {
+            println!(
+                "{}",
+                json!({"event":"ui-render-cost","micros":render_started.elapsed().as_micros(),"page":self.page})
+            );
+        }
+        result
     }
 }
 

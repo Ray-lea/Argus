@@ -1415,6 +1415,16 @@ impl WindowProfiler {
             phases: std::mem::take(&mut self.draw_phases),
         };
         let draw_duration = frame_timing.draw_duration();
+        static PHASE_TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *PHASE_TRACE.get_or_init(|| std::env::var_os("ARGUS_GPUI_FRAME_TRACE").is_some()) {
+            println!(
+                "{{\"event\":\"frame-phases\",\"totalUs\":{},\"layoutUs\":{},\"prepaintUs\":{},\"paintUs\":{}}}",
+                draw_duration.as_micros(),
+                frame_timing.phases.request_layout.as_micros(),
+                frame_timing.phases.prepaint.as_micros(),
+                frame_timing.phases.paint.as_micros(),
+            );
+        }
         if !journal::power_interrupted_since(draw_start) {
             self.record_draw_timing(frame_timing);
         }
