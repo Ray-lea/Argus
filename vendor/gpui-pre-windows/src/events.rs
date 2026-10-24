@@ -1333,6 +1333,9 @@ impl WindowsWindowInner {
             unsafe { ValidateRect(Some(handle), None).ok().log_err() };
             return Some(0);
         };
+        // Acknowledge this paint before drawing. A vsync that invalidates the
+        // window during drawing must remain pending for the next WM_PAINT.
+        unsafe { ValidateRect(Some(handle), None).ok().log_err() };
         let mut request_frame = self.state.callbacks.request_frame.take()?;
 
         self.state.direct_manipulation.update();
@@ -1366,7 +1369,6 @@ impl WindowsWindowInner {
 
         self.state.callbacks.request_frame.set(Some(request_frame));
         self.update_ime_enabled(handle);
-        unsafe { ValidateRect(Some(handle), None).ok().log_err() };
 
         Some(0)
     }

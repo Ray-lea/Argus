@@ -422,7 +422,7 @@ impl DirectXRenderer {
         let result = unsafe {
             resources
                 .swap_chain
-                .Present1(0, DXGI_PRESENT(0), &parameters)
+                .Present1(1, DXGI_PRESENT(0), &parameters)
         };
         result.ok().context("Presenting swap chain failed")
     }
