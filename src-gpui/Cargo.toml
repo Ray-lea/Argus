@@ -21,6 +21,8 @@ gpui-kit = { version = "=0.8.0", features = ["profiler"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
+tiny-skia = "0.11.4"
+image = { version = "0.25.10", default-features = false }
 windows.workspace = true
 raw-window-handle = "0.6"
 smol = "2"

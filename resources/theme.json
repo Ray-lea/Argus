@@ -29,7 +29,8 @@
     "coreMinWidth": 128,
     "coreMinHeight": 60,
     "coreEnterScale": 0.96,
-    "chartStrokeWidth": 1.5
+    "chartStrokeWidth": 1.5,
+    "chartRasterScale": 2
   },
   "fonts": {
     "windows": ["Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],

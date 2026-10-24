@@ -100,6 +100,15 @@ type TablePair = (
     Entity<gpui_kit::component::table::TableState<tables::NativeTable>>,
     Entity<tables::TableFrame>,
 );
+#[derive(Default)]
+struct WorkCounters {
+    serialize_us: u64,
+    timeline_us: u64,
+    rows_us: u64,
+    rows_max_us: u64,
+    row_builds: u64,
+    background_group_us: u64,
+}
 struct Desktop {
     table: Option<Entity<gpui_kit::component::table::TableState<tables::NativeTable>>>,
     table_frame: Option<Entity<tables::TableFrame>>,
@@ -114,7 +123,7 @@ struct Desktop {
     timeline: model::Timeline,
     chart_clock: Rc<RefCell<motion::Clock>>,
     chart_entries: RefCell<HashMap<String, charts::ChartEntry>>,
-    chart_views: Rc<RefCell<HashMap<String, Entity<charts::ChartView>>>>,
+    chart_layer: Option<Entity<charts::ChartLayer>>,
     active_charts: Rc<RefCell<HashSet<String>>>,
     chart_placements: charts::Placements,
     page_opacity: Rc<Cell<f32>>,
@@ -128,6 +137,9 @@ struct Desktop {
     page: String,
     page_epoch: u64,
     render_count: u64,
+    work: WorkCounters,
+    snapshot_pending: bool,
+    rows_epoch: u64,
     header_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
     toolbar_regions: Rc<RefCell<[Bounds<Pixels>; 2]>>,
     navigation_regions: Rc<RefCell<[Bounds<Pixels>; PAGES.len() + 1]>>,
@@ -202,7 +214,7 @@ impl Desktop {
             timeline: model::Timeline::new(),
             chart_clock: Rc::new(RefCell::new(motion::Clock::new(motion::Mode::Off))),
             chart_entries: RefCell::new(HashMap::new()),
-            chart_views: Rc::new(RefCell::new(HashMap::new())),
+            chart_layer: None,
             active_charts: Rc::new(RefCell::new(HashSet::new())),
             chart_placements: Rc::new(RefCell::new(HashMap::new())),
             page_opacity: Rc::new(Cell::new(1.)),
@@ -220,6 +232,9 @@ impl Desktop {
             },
             page_epoch: 0,
             render_count: 0,
+            work: WorkCounters::default(),
+            snapshot_pending: false,
+            rows_epoch: 0,
             header_bounds: Rc::new(RefCell::new(HashMap::new())),
             toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 2])),
             navigation_regions: Rc::new(RefCell::new([Bounds::default(); PAGES.len() + 1])),
@@ -441,17 +456,15 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                     crate::platform::attach_window(&host, &options, window, cx);
                 });
                 let placements = view.read(cx).chart_placements.clone();
-                let views = view.read(cx).chart_views.clone();
                 let clock = view.read(cx).chart_clock.clone();
                 let active = view.read(cx).active_charts.clone();
                 let opacity = view.read(cx).page_opacity.clone();
+                let charts =
+                    cx.new(|_| charts::ChartLayer::new(placements, clock, active, opacity));
+                view.update(cx, |desktop, _| desktop.chart_layer = Some(charts.clone()));
                 cx.new(|_| DesktopRoot {
                     desktop: view,
-                    placements,
-                    views,
-                    clock,
-                    active,
-                    opacity,
+                    charts,
                 })
             })
             .expect("create native window");
@@ -465,11 +478,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
 }
 struct DesktopRoot {
     desktop: Entity<Desktop>,
-    placements: charts::Placements,
-    views: Rc<RefCell<HashMap<String, Entity<charts::ChartView>>>>,
-    clock: Rc<RefCell<motion::Clock>>,
-    active: Rc<RefCell<HashSet<String>>>,
-    opacity: Rc<Cell<f32>>,
+    charts: Entity<charts::ChartLayer>,
 }
 impl Render for DesktopRoot {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -481,12 +490,6 @@ impl Render for DesktopRoot {
                     .clone()
                     .cached(StyleRefinement::default().size_full()),
             )
-            .child(charts::layer(
-                self.placements.clone(),
-                self.views.clone(),
-                self.clock.clone(),
-                self.active.clone(),
-                self.opacity.clone(),
-            ))
+            .child(self.charts.clone())
     }
 }

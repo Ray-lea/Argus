@@ -149,6 +149,7 @@ pub struct Row {
     pub key: String,
     pub raw: Value,
     pub title: String,
+    sort_name: String,
     pub detail: String,
     pub members: Vec<Value>,
     pub depth: usize,
@@ -168,6 +169,7 @@ impl Row {
         };
         Self {
             key: identity(&raw),
+            sort_name: title.to_lowercase(),
             title,
             detail,
             members: vec![raw.clone()],
@@ -201,17 +203,12 @@ impl Row {
                     .sum(),
             );
         }
-        let readings: Vec<_> = self
+        let total = self
             .members
             .iter()
             .filter_map(|p| p[key].as_f64())
-            .collect();
-        if readings.is_empty() {
-            None
-        } else {
-            let total: f64 = readings.iter().sum();
-            Some(if key == "gpu" { total.min(100.) } else { total })
-        }
+            .reduce(|sum, value| sum + value);
+        total.map(|value| if key == "gpu" { value.min(100.) } else { value })
     }
 }
 pub struct ProcessOptions<'a> {
@@ -239,7 +236,7 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
     };
     let compare = |a: &Row, b: &Row| {
         let order = match options.sort {
-            "name" => a.title.to_lowercase().cmp(&b.title.to_lowercase()),
+            "name" => a.sort_name.cmp(&b.sort_name),
             "pid" => number(&a.raw, "pid").total_cmp(&number(&b.raw, "pid")),
             key => match (a.metric(key), b.metric(key)) {
                 (Some(a), Some(b)) => {
@@ -262,20 +259,17 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
             order
         };
         order
-            .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+            .then_with(|| a.sort_name.cmp(&b.sort_name))
             .then_with(|| a.key.cmp(&b.key))
     };
     let mut top = Vec::new();
     if options.mode == "apps" {
-        let mut groups: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+        let mut groups: BTreeMap<String, Vec<&Value>> = BTreeMap::new();
         for p in processes {
-            groups
-                .entry(application_key(p))
-                .or_default()
-                .push(p.clone());
+            groups.entry(application_key(p)).or_default().push(p);
         }
         for (key, mut members) in groups {
-            if !members.iter().any(matches) {
+            if !members.iter().any(|process| matches(process)) {
                 continue;
             }
             members.sort_by(|a, b| number(a, "createTime").total_cmp(&number(b, "createTime")));
@@ -288,7 +282,7 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
                     members
                         .iter()
                         .filter(|p| matches(p))
-                        .cloned()
+                        .map(|process| (**process).clone())
                         .collect::<Vec<_>>(),
                 )
             } else {
@@ -296,7 +290,7 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
             };
             if members.len() > 1 {
                 row.key = key;
-                row.members = members;
+                row.members = members.into_iter().cloned().collect();
                 row.expandable = true;
                 row.expanded = options.expanded.contains(&row.key)
                     || shown
@@ -344,6 +338,7 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
                 let mut row = Row::process(p, 0);
                 if row.raw["webView"].is_null() {
                     row.title = text(&row.raw, "name").into();
+                    row.sort_name = row.title.to_lowercase();
                     row.detail = text(&row.raw, "description").into();
                 } else if let Some(role) = web_role(&row.raw) {
                     row.detail = format!("{} · {role}", text(&row.raw, "name"));
@@ -485,6 +480,7 @@ fn append_groups(
                 .map(|p| {
                     let mut row = Row::process(p, 1);
                     row.title = web_role(&row.raw).unwrap_or_else(|| text(&row.raw, "name").into());
+                    row.sort_name = row.title.to_lowercase();
                     row.detail = if row.raw["webView"].is_null() {
                         String::new()
                     } else {
@@ -668,6 +664,34 @@ impl Timeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn expanded_members_sort_by_their_displayed_names() {
+        let processes = vec![
+            json!({"pid":1,"createTime":1,"name":"zeta.exe","description":"Product","path":"C:/App.exe"}),
+            json!({"pid":2,"createTime":2,"name":"alpha.exe","description":"Product","path":"C:/App.exe"}),
+        ];
+        let empty = HashSet::new();
+        let expanded = HashSet::from([application_key(&processes[0])]);
+        let rows = process_rows(
+            &processes,
+            ProcessOptions {
+                mode: "apps",
+                query: "",
+                sort: "name",
+                descending: false,
+                expanded: &expanded,
+                collapsed: &empty,
+                sections: &empty,
+            },
+        );
+        let members = rows.iter().filter(|row| row.depth == 1).collect::<Vec<_>>();
+        assert_eq!(members.len(), 2);
+        assert!(
+            members
+                .windows(2)
+                .all(|pair| pair[0].title.to_lowercase() <= pair[1].title.to_lowercase())
+        );
+    }
     #[test]
     fn expanded_apps_distinguish_members_and_bound_gpu_totals() {
         let processes = vec![

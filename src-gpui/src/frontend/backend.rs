@@ -103,6 +103,26 @@ impl Desktop {
         }
         match result {
             Ok(value) => {
+                // Polling keeps external state current; identical read results do
+                // not invalidate the process table or the rest of the desktop.
+                if matches!(
+                    pending.command.as_str(),
+                    "desktop_shell"
+                        | "list_services"
+                        | "list_startup"
+                        | "list_connections"
+                        | "history_usage"
+                        | "task_manager_status"
+                        | "privileged_service_status"
+                        | "update_status"
+                        | "rule_stats"
+                ) && pending
+                    .cache
+                    .as_ref()
+                    .is_some_and(|key| self.data.get(key) == Some(&value))
+                {
+                    return;
+                }
                 if pending.command == "history_series" {
                     self.data.insert(
                         "historyWindow".into(),
@@ -142,6 +162,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let mut changed = false;
         for event in self.host.drain() {
             match event.name.as_str() {
                 "command-response" => self.complete(
@@ -155,12 +176,16 @@ impl Desktop {
                     cx,
                 ),
                 "update-status" => {
+                    changed |= self.data.get("updates") != Some(&event.value);
                     self.data.insert("updates".into(), event.value);
                 }
                 "argus-theme" => {
                     self.set_theme(event.value.as_bool().unwrap_or(false), window, cx);
                 }
-                "argus-language" => self.change_placeholder(window, cx),
+                "argus-language" => {
+                    self.change_placeholder(window, cx);
+                    changed = true;
+                }
                 "argus-blur" => self.set_control_paused(false, window, cx),
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
                 "argus-taskmgr-ready" => {
@@ -178,27 +203,66 @@ impl Desktop {
             let latest = self.host.state::<crate::Latest>().0.read().unwrap().clone();
             if let Some(snapshot) = latest
                 && snapshot.seq != self.sequence
+                && !self.snapshot_pending
             {
-                self.sequence = snapshot.seq;
-                if !self.options.test {
-                    crate::shell::set_tray_tooltip(
-                        &self.host,
-                        &crate::shell::tray_tooltip(&tr!(
-                            "tray.tooltip",
-                            cpu = format!("{:.0}", snapshot.system.cpu),
-                            memory = format!(
-                                "{:.0}",
-                                snapshot.system.mem_used as f64
-                                    / snapshot.system.mem_total.max(1) as f64
-                                    * 100.
-                            )
-                        )),
-                    );
-                }
-                self.accept_snapshot(
-                    serde_json::to_value(snapshot.as_ref()).expect("snapshot model"),
-                    cx,
+                self.snapshot_pending = true;
+                let epoch = self.rows_epoch;
+                let locale = argus_core::i18n::locale();
+                let processes = self.page == "processes";
+                let options = (
+                    self.view.clone(),
+                    self.query.clone(),
+                    self.sort.clone(),
+                    self.descending,
+                    self.expanded.clone(),
+                    self.collapsed.clone(),
+                    self.sections.clone(),
                 );
+                let task = cx.background_executor().spawn(async move {
+                    let start = Instant::now();
+                    let model = serde_json::to_value(snapshot.as_ref()).expect("snapshot model");
+                    let serialize_us = start.elapsed().as_micros() as u64;
+                    let start = Instant::now();
+                    let rows = processes.then(|| {
+                        model::process_rows(
+                            values(&model["processes"]),
+                            model::ProcessOptions {
+                                mode: &options.0,
+                                query: &options.1,
+                                sort: &options.2,
+                                descending: options.3,
+                                expanded: &options.4,
+                                collapsed: &options.5,
+                                sections: &options.6,
+                            },
+                        )
+                    });
+                    (
+                        model,
+                        rows,
+                        serialize_us,
+                        start.elapsed().as_micros() as u64,
+                    )
+                });
+                cx.spawn_in(window, async move |this, cx| {
+                    let (model, rows, serialize_us, group_us) = task.await;
+                    let _ = this.update_in(cx, |this, window, cx| {
+                        this.snapshot_pending = false;
+                        this.work.serialize_us += serialize_us;
+                        this.work.background_group_us += group_us;
+                        let rows =
+                            if epoch == this.rows_epoch && locale == argus_core::i18n::locale() {
+                                rows
+                            } else {
+                                None
+                            };
+                        this.accept_snapshot_prepared(model, rows, cx);
+                        // Pick up the newest source sequence without accumulating a UI queue.
+                        this.notifications(window, cx);
+                        cx.notify();
+                    });
+                })
+                .detach();
             }
         }
         if !self.snapshot.is_null() && !self.first_frame {
@@ -208,9 +272,19 @@ impl Desktop {
             }
         }
         self.check_welcome(window, cx);
-        cx.notify();
+        if changed {
+            cx.notify();
+        }
     }
     pub(in crate::frontend) fn accept_snapshot(&mut self, snapshot: Value, cx: &mut Context<Self>) {
+        self.accept_snapshot_prepared(snapshot, None, cx);
+    }
+    fn accept_snapshot_prepared(
+        &mut self,
+        snapshot: Value,
+        rows: Option<Vec<Row>>,
+        cx: &mut Context<Self>,
+    ) {
         self.chart_clock.borrow_mut().accept(
             number(&snapshot, "timestamp"),
             self.interval as f64,
@@ -222,12 +296,17 @@ impl Desktop {
                 * 1000.,
         );
         self.sequence = snapshot["seq"].as_u64().unwrap_or(self.sequence + 1);
+        let start = Instant::now();
         self.timeline.push(&snapshot, self.interval as f64);
+        self.work.timeline_us += start.elapsed().as_micros() as u64;
         self.snapshot = snapshot;
-        self.rebuild_rows(
-            self.pointer_in_table || self.popup.is_some() || self.modal.is_some(),
-            cx,
-        );
+        if matches!(self.page.as_str(), "processes" | "network") {
+            self.rebuild_rows_prepared(
+                self.pointer_in_table || self.popup.is_some() || self.modal.is_some(),
+                rows,
+                cx,
+            );
+        }
     }
     pub(in crate::frontend) fn poll_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match self.page.as_str() {
@@ -742,7 +821,53 @@ impl Desktop {
             self.host.exit(0);
             return;
         }
+        if control["pointerOutside"].as_bool() == Some(true) {
+            window.defer(cx, |window, cx| {
+                window.dispatch_event(
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position: point(px(-1.), px(-1.)),
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+            });
+        }
+        if let Some(id) = control["hoverChart"].as_str()
+            && let Some(position) = self.chart_center(id)
+        {
+            // Dispatch after releasing Desktop; hover listeners may update it.
+            window.defer(cx, move |window, cx| {
+                window.dispatch_event(
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position,
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+            });
+        }
         if let Some(label) = control["inspectLayout"].as_str() {
+            println!(
+                "{}",
+                json!({"event":"ui-conditions","label":label,"processes":self.snapshot["system"]["processCount"],"intervalMs":self.interval,"dpiScale":window.scale_factor(),"gpus":values(&self.snapshot["hardware"]["gpus"]).iter().map(|gpu|json!({"id":gpu["info"]["id"],"clockMhz":gpu["clockMhz"],"clockMaxMhz":gpu["clockMaxMhz"],"boardPowerWatts":gpu["boardPower"]})).collect::<Vec<_>>()})
+            );
+            let fast_frames = self
+                .chart_layer
+                .as_ref()
+                .map_or(0, |layer| layer.read(cx).fast_frames);
+            println!(
+                "{}",
+                json!({"event":"ui-retained-frames","label":label,"fastFrames":fast_frames})
+            );
+            println!(
+                "{}",
+                json!({"event":"ui-work","label":label,"serializeUs":self.work.serialize_us,"backgroundGroupUs":self.work.background_group_us,"timelineUs":self.work.timeline_us,"rowsUs":self.work.rows_us,"rowsMaxUs":self.work.rows_max_us,"rowBuilds":self.work.row_builds})
+            );
+            let (builds, micros) = charts::raster_metrics();
+            println!(
+                "{}",
+                json!({"event":"ui-chart-work","label":label,"rasterBuilds":builds,"rasterMicros":micros})
+            );
             let frames = window.frame_duration_snapshot();
             let controls = window.window_control_regions();
             let control_matches = |area| {

@@ -289,6 +289,9 @@ impl Desktop {
                                 cursor: active_cursor.map(|at| at as f64),
                                 geometry_start: start,
                                 measured_width: Rc::new(Cell::new(1.)),
+                                live_clock: None,
+                                image_surface: Default::default(),
+                                bar_surfaces: Default::default(),
                             }),
                     ),
             );

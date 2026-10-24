@@ -1,8 +1,12 @@
 //! Time-series adapter for GPUI's native plot primitives. Unknown samples remain gaps.
 use super::*;
+mod raster;
+pub(super) fn raster_metrics() -> (u64, u64) {
+    raster::metrics()
+}
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::component::plot::{
-    PathCaches, Plot, PlotElement, ShapeKey,
+    Plot, PlotElement,
     tooltip::{CrossLine, Tooltip, TooltipState},
 };
 #[derive(Clone, Copy)]
@@ -24,6 +28,7 @@ pub struct Series {
     pub color: Hsla,
     pub format: MetricFormat,
     geometry: Arc<Vec<Vec<(f64, f64)>>>,
+    geometry_key: u64,
 }
 impl Series {
     pub(in crate::frontend) fn new(
@@ -46,12 +51,14 @@ impl Series {
         } else {
             Vec::new()
         });
+        let geometry_key = raster::geometry_key(&geometry);
         Self {
             name,
             points: Arc::new(points),
             color,
             format,
             geometry,
+            geometry_key,
         }
     }
 }
@@ -91,15 +98,17 @@ pub struct TimePlot {
     pub cursor: Option<f64>,
     pub geometry_start: f64,
     pub measured_width: Rc<Cell<f32>>,
+    pub live_clock: Option<Rc<RefCell<motion::Clock>>>,
+    pub image_surface: Rc<RefCell<Option<raster::ImageSurface>>>,
+    pub bar_surfaces: Rc<RefCell<Vec<BarSurface>>>,
+}
+pub(in crate::frontend) struct BarSurface {
+    handle: Option<PaintedPrimitive>,
+    bounds: Bounds<Pixels>,
 }
 pub(super) struct ChartEntry {
     plot: Rc<RefCell<TimePlot>>,
     revision: ChartRevision,
-}
-pub(super) struct ChartView {
-    plot: Rc<RefCell<TimePlot>>,
-    clock: Rc<RefCell<motion::Clock>>,
-    last_end: f64,
 }
 #[derive(Clone)]
 pub(super) struct Placement {
@@ -109,81 +118,173 @@ pub(super) struct Placement {
 }
 pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
 
-// Keep animated chart entities beside the cached desktop, not below it, and never
-// read or update ChartView entities during Desktop::render so GPUI's accessed-entity
-// tracking never invalidates Desktop on 165 Hz chart frames.
-pub(super) fn layer(
+// One animation entity owns all plot surfaces. Layout still belongs to Desktop;
+// chart frames reuse its measured rectangles and never build a flex subtree.
+pub(super) struct ChartLayer {
     placements: Placements,
-    views: Rc<RefCell<HashMap<String, Entity<ChartView>>>>,
     clock: Rc<RefCell<motion::Clock>>,
     active: Rc<RefCell<HashSet<String>>>,
     opacity: Rc<Cell<f32>>,
-) -> impl IntoElement {
-    canvas(
-        move |bounds, window, cx| {
-            let placements = placements.borrow();
-            let mut views = views.borrow_mut();
-            let mut elements = Vec::new();
-            for key in active.borrow().iter() {
+    last_end: f64,
+    pixel_ends: HashMap<String, f64>,
+    pub(super) fast_frames: u64,
+}
+impl ChartLayer {
+    pub(super) fn new(
+        placements: Placements,
+        clock: Rc<RefCell<motion::Clock>>,
+        active: Rc<RefCell<HashSet<String>>>,
+        opacity: Rc<Cell<f32>>,
+    ) -> Self {
+        Self {
+            placements,
+            clock,
+            active,
+            opacity,
+            last_end: f64::NAN,
+            pixel_ends: HashMap::new(),
+            fast_frames: 0,
+        }
+    }
+    fn advance(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let clock = self.clock.borrow();
+        let now = clock.end(Instant::now());
+        let changed = if clock.mode == motion::Mode::Pixel {
+            let placements = self.placements.borrow();
+            let mut changed = false;
+            for key in self.active.borrow().iter() {
                 let Some(placement) = placements.get(key) else {
                     continue;
                 };
-                let clip = placement
-                    .bounds
-                    .intersect(&placement.mask)
-                    .intersect(&bounds);
-                if clip.size.width <= px(0.) || clip.size.height <= px(0.) {
-                    continue;
-                }
-                let plot = placement.plot.clone();
-                let view = if let Some(view) = views.get(key) {
-                    if !Rc::ptr_eq(&view.read(cx).plot, &plot) {
-                        view.update(cx, |v, _| v.plot = plot);
-                    }
-                    view.clone()
-                } else {
-                    let clock = clock.clone();
-                    let view = cx.new(|_| ChartView {
-                        plot,
-                        clock,
-                        last_end: f64::NAN,
-                    });
-                    views.insert(key.clone(), view.clone());
-                    view
-                };
-                elements.push(
-                    div()
-                        .absolute()
-                        .left(clip.left() - bounds.left())
-                        .top(clip.top() - bounds.top())
-                        .w(clip.size.width)
-                        .h(clip.size.height)
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .absolute()
-                                .left(placement.bounds.left() - clip.left())
-                                .top(placement.bounds.top() - clip.top())
-                                .w(placement.bounds.size.width)
-                                .h(placement.bounds.size.height)
-                                .child(view),
-                        ),
-                );
+                let plot = placement.plot.borrow();
+                let end = plot_end(&plot, &clock, now);
+                changed |= self.pixel_ends.insert(key.clone(), end) != Some(end);
             }
-            let mut element = div()
-                .size_full()
-                .opacity(opacity.get())
-                .children(elements)
-                .into_any_element();
-            element.layout_as_root(bounds.size.into(), window, cx);
-            element.prepaint_at(bounds.origin, window, cx);
-            element
-        },
-        |_, mut element, window, cx| element.paint(window, cx),
-    )
-    .absolute()
-    .inset_0()
+            changed
+        } else {
+            self.last_end != now
+        };
+        self.last_end = now;
+        if changed {
+            let placements = self.placements.borrow();
+            let fast = self.active.borrow().iter().all(|key| {
+                let Some(placement) = placements.get(key) else {
+                    return true;
+                };
+                let clip = placement.bounds.intersect(&placement.mask);
+                if clip.is_empty() {
+                    return true;
+                }
+                let plot = placement.plot.borrow();
+                if plot.interactive && clip.contains(&window.mouse_position()) {
+                    return false;
+                }
+                let end = plot_end(&plot, &clock, now);
+                if plot.bars {
+                    let surfaces = plot.bar_surfaces.borrow();
+                    if surfaces.len() != plot.series.len() {
+                        return false;
+                    }
+                    surfaces.iter().zip(&plot.series).all(|(surface, series)| {
+                        let Some(handle) = surface.handle else {
+                            return false;
+                        };
+                        let value = sample_at(&series.points, end).unwrap_or(0.);
+                        let height =
+                            surface.bounds.size.height * (value / 100.).clamp(0., 1.) as f32;
+                        let bounds = Bounds::new(
+                            point(surface.bounds.left(), surface.bounds.bottom() - height),
+                            size(surface.bounds.size.width, height),
+                        );
+                        window.update_painted_bounds(&handle, bounds)
+                    })
+                } else {
+                    plot.image_surface.borrow().as_ref().is_some_and(|surface| {
+                        surface.translate(&plot, placement.bounds, end, window)
+                    })
+                }
+            });
+            if fast {
+                self.fast_frames = self.fast_frames.wrapping_add(1);
+            } else {
+                cx.notify();
+            }
+        }
+    }
 }
+fn plot_end(plot: &TimePlot, clock: &motion::Clock, now: f64) -> f64 {
+    if clock.mode == motion::Mode::Pixel {
+        let step = (plot.end - plot.start) / f64::from(plot.measured_width.get().max(1.));
+        plot.geometry_start + ((now - plot.geometry_start) / step).floor() * step
+    } else {
+        now
+    }
+}
+impl Render for ChartLayer {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let placements = self.placements.clone();
+        let clock = self.clock.clone();
+        let active = self.active.clone();
+        div()
+            .absolute()
+            .inset_0()
+            .opacity(self.opacity.get())
+            .child(
+                canvas(
+                    move |bounds, window, cx| {
+                        let placements = placements.borrow();
+                        let clock = clock.borrow();
+                        let now = clock.end(Instant::now());
+                        let mut elements = Vec::new();
+                        for key in active.borrow().iter() {
+                            let Some(placement) = placements.get(key) else {
+                                continue;
+                            };
+                            let clip = placement
+                                .bounds
+                                .intersect(&placement.mask)
+                                .intersect(&bounds);
+                            if clip.size.width <= px(0.) || clip.size.height <= px(0.) {
+                                continue;
+                            }
+                            let mut plot = placement.plot.borrow().clone();
+                            let span = plot.end - plot.start;
+                            plot.end = plot_end(&plot, &clock, now);
+                            plot.start = plot.end - span;
+                            let mut element = plot.into_any_element();
+                            window.with_content_mask(
+                                Some(ContentMask { bounds: clip }),
+                                |window| {
+                                    element.layout_as_root(
+                                        placement.bounds.size.into(),
+                                        window,
+                                        cx,
+                                    );
+                                    element.prepaint_at(placement.bounds.origin, window, cx);
+                                },
+                            );
+                            elements.push((element, clip));
+                        }
+                        elements
+                    },
+                    |bounds, elements, window, cx| {
+                        // Keep the animated overlay after the static page so
+                        // renderers can retain the page's exact pixels.
+                        window.paint_layer(bounds, |window| {
+                            for (mut element, clip) in elements {
+                                window.with_content_mask(
+                                    Some(ContentMask { bounds: clip }),
+                                    |window| element.paint(window, cx),
+                                );
+                            }
+                        });
+                    },
+                )
+                .size_full(),
+            )
+    }
+}
+
 #[derive(PartialEq)]
 struct ChartRevision {
     sequence: u64,
@@ -195,37 +296,6 @@ struct ChartRevision {
     paused: bool,
     interactive: bool,
     network_bits: bool,
-}
-impl Render for ChartView {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let mut plot = self.plot.borrow().clone();
-        let clock = self.clock.borrow();
-        let span = plot.end - plot.start;
-        let mut end = clock.end(Instant::now());
-        if clock.mode == motion::Mode::Pixel {
-            let step = span / f64::from(plot.measured_width.get().max(1.));
-            end = plot.geometry_start + ((end - plot.geometry_start) / step).floor() * step;
-        }
-        plot.end = end;
-        plot.start = end - span;
-        plot
-    }
-}
-impl ChartView {
-    fn advance(&mut self, cx: &mut Context<Self>) {
-        let clock = self.clock.borrow();
-        let plot = self.plot.borrow();
-        let mut end = clock.end(Instant::now());
-        if clock.mode == motion::Mode::Pixel {
-            let step = (plot.end - plot.start) / f64::from(plot.measured_width.get().max(1.));
-            end = plot.geometry_start + ((end - plot.geometry_start) / step).floor() * step;
-        }
-        drop(plot);
-        if end != self.last_end {
-            self.last_end = end;
-            cx.notify();
-        }
-    }
 }
 impl IntoElement for TimePlot {
     type Element = PlotElement<Self>;
@@ -269,12 +339,9 @@ impl Plot for TimePlot {
         let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
         let start = self.start;
-        let geometry_start = self.geometry_start;
         let span = (self.end - self.start).max(1.);
-        let min = self.min;
-        let scale = (self.max - self.min).max(f64::EPSILON);
-        let fill = self.fill;
         if self.bars {
+            let mut surfaces = Vec::with_capacity(self.series.len());
             let step = width / self.series.len().max(1) as f32;
             for (index, series) in self.series.iter().enumerate() {
                 let value = sample_at(&series.points, self.end);
@@ -287,14 +354,20 @@ impl Plot for TimePlot {
                     ),
                     series.color.opacity(0.12),
                 ));
-                if let Some(value) = value {
-                    let h = px((value / 100.).clamp(0., 1.) as f32 * height);
-                    window.paint_quad(gpui_kit::gpui::fill(
-                        Bounds::new(point(x, bounds.bottom() - h), size(bar_width, h)),
-                        series.color,
-                    ));
-                }
+                let h = px((value.unwrap_or(0.) / 100.).clamp(0., 1.) as f32 * height);
+                let region =
+                    Bounds::new(point(x, bounds.top()), size(bar_width, bounds.size.height));
+                let handle = window.paint_animated_rect(
+                    Bounds::new(point(x, bounds.bottom() - h), size(bar_width, h)),
+                    region,
+                    series.color,
+                );
+                surfaces.push(BarSurface {
+                    handle,
+                    bounds: region,
+                });
             }
+            *self.bar_surfaces.borrow_mut() = surfaces;
             return;
         }
         if self.interactive {
@@ -334,13 +407,6 @@ impl Plot for TimePlot {
                 }
             }
         }
-        let drawing_bounds = Bounds::new(
-            point(
-                bounds.origin.x + px(((geometry_start - start) / span) as f32 * width),
-                bounds.origin.y,
-            ),
-            bounds.size,
-        );
         if let Some(owner) = self.selection.clone() {
             let end = self.end;
             let hover_owner = owner.clone();
@@ -375,53 +441,7 @@ impl Plot for TimePlot {
                 }
             });
         }
-        let caches = PathCaches::for_paint(ElementId::Name(self.id.clone()), window, cx);
-        caches.update(cx, |cache, _| {
-            let mut index = 0;
-            let stroke = theme::dimension("chartStrokeWidth");
-            for (series_index, series) in self.series.iter().enumerate() {
-                for run in series.geometry.iter() {
-                    let points = run
-                        .iter()
-                        .map(|&(at, value)| {
-                            (
-                                (at - geometry_start) / span * width as f64,
-                                height as f64
-                                    - (value - min) / scale
-                                        * (height - f32::from(stroke) / 2.) as f64,
-                            )
-                        })
-                        .collect::<Vec<_>>();
-                    let mut key = ShapeKey::new((height.to_bits(), f32::from(stroke).to_bits()));
-                    for &(x, y) in &points {
-                        key.point(point(px(x as f32), px(y as f32)));
-                    }
-                    let (area_cache, line_cache) = cache.slot_pair(index);
-                    if fill
-                        && series_index == 0
-                        && let Some(path) =
-                            area_cache.get(key.finish(), drawing_bounds.origin, || {
-                                curve_path(&points, stroke, Some(height))
-                            })
-                    {
-                        window.paint_path(
-                            path,
-                            gpui_kit::gpui::linear_gradient(
-                                180.,
-                                gpui_kit::gpui::linear_color_stop(series.color.opacity(0.22), 0.),
-                                gpui_kit::gpui::linear_color_stop(series.color.opacity(0.02), 1.),
-                            ),
-                        );
-                    }
-                    if let Some(path) = line_cache.get(key.finish(), drawing_bounds.origin, || {
-                        curve_path(&points, stroke, None)
-                    }) {
-                        window.paint_path(path, series.color);
-                    }
-                    index += 1;
-                }
-            }
-        });
+        raster::paint(self, bounds, window, cx);
         if let Some(cursor) = self
             .cursor
             .filter(|at| *at >= self.start && *at <= self.end)
@@ -439,9 +459,18 @@ impl Plot for TimePlot {
         bounds: Bounds<Pixels>,
         _cx: &App,
     ) -> Option<TooltipState> {
-        let at = self.start
-            + (f32::from(position.x) / f32::from(bounds.size.width).max(1.)) as f64
-                * (self.end - self.start);
+        let span = (self.end - self.start).max(1.);
+        let end = self
+            .live_clock
+            .as_ref()
+            .map(|clock| {
+                let clock = clock.borrow();
+                plot_end(self, &clock, clock.end(Instant::now()))
+            })
+            .unwrap_or(self.end);
+        let start = end - span;
+        let at =
+            start + (f32::from(position.x) / f32::from(bounds.size.width).max(1.)) as f64 * span;
         let first = self.series.first()?;
         let index = first
             .points
@@ -451,10 +480,7 @@ impl Plot for TimePlot {
             .0;
         let datum = first.points[index];
         let value = datum.1?;
-        let x = px(
-            ((datum.0 - self.start) / (self.end - self.start).max(1.)) as f32
-                * f32::from(bounds.size.width),
-        );
+        let x = px(((datum.0 - start) / span) as f32 * f32::from(bounds.size.width));
         let y = bounds.size.height
             - px(
                 ((value - self.min) / (self.max - self.min).max(f64::EPSILON)) as f32
@@ -476,6 +502,14 @@ impl Plot for TimePlot {
     ) -> Option<AnyElement> {
         let first = self.series.first()?;
         let (at, _) = *first.points.get(state.index)?;
+        let end = self
+            .live_clock
+            .as_ref()
+            .map(|clock| {
+                let clock = clock.borrow();
+                plot_end(self, &clock, clock.end(Instant::now()))
+            })
+            .unwrap_or(self.end);
         let rows = self
             .series
             .iter()
@@ -489,7 +523,7 @@ impl Plot for TimePlot {
         let mut tooltip = Tooltip::new(cursor, bounds.size)
             .title(tr!(
                 "performance.chart.ago",
-                seconds = format!("{:.1}", (self.end - at) / 1000.)
+                seconds = format!("{:.1}", (end - at) / 1000.)
             ))
             .cross_line(CrossLine::new(state.cross_line));
         for (color, name, value) in rows {
@@ -500,6 +534,12 @@ impl Plot for TimePlot {
     }
 }
 impl Desktop {
+    pub(in crate::frontend) fn chart_center(&self, id: &str) -> Option<Point<Pixels>> {
+        self.chart_placements
+            .borrow()
+            .get(id)
+            .map(|placement| placement.bounds.center())
+    }
     fn chart_frame(
         &self,
         plot_rc: Rc<RefCell<TimePlot>>,
@@ -697,6 +737,15 @@ impl Desktop {
             cursor: None,
             geometry_start: start,
             measured_width: width,
+            live_clock: Some(self.chart_clock.clone()),
+            image_surface: entries
+                .get(id)
+                .map(|entry| entry.plot.borrow().image_surface.clone())
+                .unwrap_or_default(),
+            bar_surfaces: entries
+                .get(id)
+                .map(|entry| entry.plot.borrow().bar_surfaces.clone())
+                .unwrap_or_default(),
         };
         let plot_rc = if let Some(entry) = entries.get_mut(id) {
             *entry.plot.borrow_mut() = plot;
@@ -773,21 +822,18 @@ impl Desktop {
                 .round()
                 .max(1.) as u64;
                 if this.chart_frame.is_multiple_of(every) {
-                    this.animate_charts(cx);
+                    this.animate_charts(window, cx);
                 }
                 this.schedule_chart_tick(window, cx);
             });
         });
     }
-    fn animate_charts(&mut self, cx: &mut Context<Self>) {
+    fn animate_charts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.chart_clock.borrow().moving() {
             return;
         }
-        let views = self.chart_views.borrow();
-        for key in self.active_charts.borrow().iter() {
-            if let Some(view) = views.get(key) {
-                view.update(cx, |view, cx| view.advance(cx));
-            }
+        if let Some(layer) = &self.chart_layer {
+            layer.update(cx, |layer, cx| layer.advance(window, cx));
         }
     }
 }
@@ -832,47 +878,6 @@ fn curve_tangents(points: &[(f64, f64)]) -> Vec<f64> {
         }
     }
     tangent
-}
-
-fn curve_path(
-    points: &[(f64, f64)],
-    stroke: Pixels,
-    baseline: Option<f32>,
-) -> Option<Path<Pixels>> {
-    if points.len() < 2 {
-        return None;
-    }
-    let tangent = curve_tangents(points);
-    let mut path = if baseline.is_some() {
-        PathBuilder::fill()
-    } else {
-        PathBuilder::stroke(stroke)
-    };
-    let first = point(px(points[0].0 as f32), px(points[0].1 as f32));
-    if let Some(base) = baseline {
-        path.move_to(point(first.x, px(base)));
-        path.line_to(first);
-    } else {
-        path.move_to(first);
-    }
-    for i in 0..points.len() - 1 {
-        let (x, y) = points[i];
-        let (next_x, next_y) = points[i + 1];
-        let third = (next_x - x) / 3.;
-        path.cubic_bezier_to(
-            point(px(next_x as f32), px(next_y as f32)),
-            point(px((x + third) as f32), px((y + tangent[i] * third) as f32)),
-            point(
-                px((next_x - third) as f32),
-                px((next_y - tangent[i + 1] * third) as f32),
-            ),
-        );
-    }
-    if let Some(base) = baseline {
-        path.line_to(point(px(points.last()?.0 as f32), px(base)));
-        path.close();
-    }
-    path.build().ok()
 }
 
 #[cfg(test)]

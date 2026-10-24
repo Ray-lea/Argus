@@ -789,7 +789,19 @@ impl TableDelegate for NativeTable {
 }
 impl Desktop {
     pub(in crate::frontend) fn rebuild_rows(&mut self, hold: bool, cx: &mut Context<Self>) {
-        let mut rows = if self.page == "processes" {
+        self.rebuild_rows_prepared(hold, None, cx);
+    }
+    pub(in crate::frontend) fn rebuild_rows_prepared(
+        &mut self,
+        hold: bool,
+        prepared: Option<Vec<Row>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.rows_epoch = self.rows_epoch.wrapping_add(1);
+        let started = Instant::now();
+        let mut rows = if let Some(rows) = prepared {
+            rows
+        } else if self.page == "processes" {
             model::process_rows(
                 values(&self.snapshot["processes"]),
                 model::ProcessOptions {
@@ -1002,9 +1014,45 @@ impl Desktop {
             self.list.reset_with_uniform_height(rows.len(), px(30.));
         }
         self.rows = Arc::new(rows);
+        // Apply data before rendering. Updating TableState from table_view
+        // invalidates its parent during paint and rebuilds Desktop twice per sample.
+        if let Some(table) = &self.table {
+            let rows = self.rows.clone();
+            let page = self.page.clone();
+            let network = boolean(&self.snapshot, "processNetwork");
+            let sort = (self.sort.as_str(), self.descending);
+            let selected = self
+                .selected
+                .get(&page)
+                .and_then(|key| rows.iter().position(|row| &row.key == key));
+            table.update(cx, |state, cx| {
+                let available = state.delegate().available;
+                if available <= px(0.) {
+                    return;
+                }
+                if state
+                    .delegate_mut()
+                    .configure(&page, rows, network, available, sort, cx)
+                {
+                    state.refresh(cx);
+                }
+                if selected != state.selected_row() {
+                    if let Some(index) = selected {
+                        state.set_selected_row(index, cx);
+                    } else {
+                        state.clear_selection(cx);
+                    }
+                }
+                cx.notify();
+            });
+        }
         if let Some(frame) = &self.table_frame {
             frame.update(cx, |_, cx| cx.notify());
         }
+        let elapsed = started.elapsed().as_micros() as u64;
+        self.work.rows_us += elapsed;
+        self.work.rows_max_us = self.work.rows_max_us.max(elapsed);
+        self.work.row_builds += 1;
     }
     pub(in crate::frontend) fn table_view(
         &mut self,
