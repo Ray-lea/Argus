@@ -272,11 +272,33 @@ fn pubkey(app: &AppHandle) -> String {
         .to_string()
 }
 
+fn is_portable() -> bool {
+    // The bundler stamps the installed image. That stamp survives administrator
+    // and Task Manager copies, which have no adjacent uninstaller. The separate
+    // portable asset remains unstamped, even beside another app's uninstaller.
+    !matches!(
+        tauri::utils::platform::bundle_type(),
+        Some(tauri::utils::config::BundleType::Nsis)
+    )
+}
+
+/// Read-only package smoke check, before single-instance routing or a WebView.
+/// Exit 0 means an installer image; exit 1 means a portable image.
+pub fn run_mode() -> Option<i32> {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    args.first()
+        .is_some_and(|a| a == "--argus-updater-check")
+        .then(|| {
+            if args.len() == 1 {
+                i32::from(is_portable())
+            } else {
+                87
+            }
+        })
+}
+
 pub fn init(app: &AppHandle) {
-    // The installer puts uninstall.exe beside argus.exe; the standalone exe has none.
-    let portable = !std::env::current_exe()
-        .map(|exe| exe.with_file_name("uninstall.exe").exists())
-        .unwrap_or(false);
+    let portable = is_portable();
     let disabled = if cfg!(debug_assertions) {
         Some(tr!("updater.devBuild"))
     } else if pubkey(app).is_empty() {

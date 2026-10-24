@@ -101,6 +101,9 @@ pub struct AppState {
 }
 
 pub fn run() {
+    if let Some(code) = updater::run_mode() {
+        std::process::exit(code);
+    }
     argus_service::admin::configure_support(!tauri::is_dev() && !cfg!(debug_assertions));
     if let Some(code) = installer::run_mode() {
         std::process::exit(code);

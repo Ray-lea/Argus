@@ -111,6 +111,28 @@ jobs:
           $entry = Get-ItemProperty $key
           if ($entry.DisplayVersion -ne $env:VERSION) { throw "卸载项的版本是 $($entry.DisplayVersion)" }
           if ($entry.Publisher -ne "Argus contributors") { throw "卸载项的发布者是 $($entry.Publisher)" }
+          # The actual installed image must still support updates when moved to
+          # an administrator/Task Manager runtime without an uninstaller.
+          function Assert-UpdateKind($exe, $expected) {
+            $probe = Start-Process $exe -ArgumentList "--argus-updater-check" -WindowStyle Hidden -PassThru
+            if (-not $probe.WaitForExit(30000)) { $probe.Kill(); throw "更新安装类型检查超时：$exe" }
+            if ($probe.ExitCode -ne $expected) { throw "更新安装类型错误：$exe（$($probe.ExitCode)）" }
+          }
+          Assert-UpdateKind (Join-Path $dir "argus.exe") 0
+          $copies = Join-Path $env:RUNNER_TEMP "argus-update-copies"
+          New-Item -ItemType Directory -Path $copies -Force | Out-Null
+          foreach ($prefix in "argus-admin", "argus-taskmgr-ui") {
+            $copy = Join-Path $copies "$prefix-$([guid]::NewGuid()).exe"
+            Copy-Item (Join-Path $dir "argus.exe") $copy
+            Assert-UpdateKind $copy 0
+          }
+          # A nearby uninstaller must not turn the portable download into an
+          # installed image. No probe opens a window or changes machine state.
+          $portable = Join-Path $copies "argus-portable.exe"
+          Copy-Item "target/release/argus.exe" $portable
+          Assert-UpdateKind $portable 1
+          Copy-Item (Join-Path $dir "uninstall.exe") (Join-Path $copies "uninstall.exe")
+          Assert-UpdateKind $portable 1
           # The uninstaller hands over to a copy in %TEMP% and returns at once.
           Start-Process (Join-Path $dir "uninstall.exe") -ArgumentList "/S" -Wait
           $deadline = (Get-Date).AddSeconds(60)
