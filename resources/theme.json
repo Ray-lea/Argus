@@ -1,5 +1,36 @@
 {
   "fontSize": 13,
+  "heat": {
+    "opacity": 0.34,
+    "percent": { "minimum": 1, "full": 40 },
+    "memory": { "minimum": 209715200, "full": 2147483648 },
+    "rate": { "minimum": 1048576, "logScale": 2 }
+  },
+  "layout": {
+    "unit": 16,
+    "toolbarHeight": 56,
+    "navigationHeight": 32,
+    "navigationIndicatorWidth": 16,
+    "navigationIndicatorHeight": 3,
+    "searchWidth": 360,
+    "controlHeight": 32,
+    "statusHeight": 28,
+    "vitalsHeight": 128,
+    "figureSize": 34,
+    "metricSize": 20,
+    "pageTitleSize": 26,
+    "deviceRailWidth": 244,
+    "settingsRailWidth": 208,
+    "settingsMaxWidth": 1120,
+    "detailsWidth": 344,
+    "chartMinHeight": 168,
+    "chartGridRows": 4,
+    "chartGridColumns": 6,
+    "coreMinWidth": 128,
+    "coreMinHeight": 60,
+    "coreEnterScale": 0.96,
+    "chartStrokeWidth": 1.5
+  },
   "fonts": {
     "windows": ["Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],
     "macos": [".SystemUIFont"]

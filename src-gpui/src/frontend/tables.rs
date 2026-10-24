@@ -1,5 +1,6 @@
 //! Native virtual tables share one column model and preserve process-instance identity.
 use super::*;
+use gpui_kit::base::ElementExt;
 use gpui_kit::component::{
     ActiveTheme, Sizable,
     menu::{PopupMenu, PopupMenuItem},
@@ -11,15 +12,17 @@ enum CellKind {
     Text,
     Count,
     Pid,
+    Port,
     Percent,
     Memory,
     Rate,
     Name,
+    Protocol,
+    ConnectionState,
     ServiceState,
     StartType,
     Enabled,
     StartupLocation,
-    Endpoint,
 }
 #[derive(Clone)]
 struct Field {
@@ -53,20 +56,30 @@ fn fields(page: &str, network: bool) -> Vec<Field> {
             ("command", "common.command", CellKind::Text),
         ],
         "network" => vec![
-            ("name", "common.name", CellKind::Name),
-            ("protocol", "connections.column.protocol", CellKind::Text),
-            (
-                "local",
-                "connections.column.localAddress",
-                CellKind::Endpoint,
-            ),
-            (
-                "remote",
-                "connections.column.remoteAddress",
-                CellKind::Endpoint,
-            ),
-            ("state", "common.status", CellKind::Text),
+            ("name", "connections.column.process", CellKind::Name),
             ("pid", "processes.column.pid.label", CellKind::Pid),
+            (
+                "protocol",
+                "connections.column.protocol",
+                CellKind::Protocol,
+            ),
+            (
+                "localAddress",
+                "connections.column.localAddress",
+                CellKind::Text,
+            ),
+            ("localPort", "connections.column.localPort", CellKind::Port),
+            (
+                "remoteAddress",
+                "connections.column.remoteAddress",
+                CellKind::Text,
+            ),
+            (
+                "remotePort",
+                "connections.column.remotePort",
+                CellKind::Port,
+            ),
+            ("state", "common.status", CellKind::ConnectionState),
         ],
         _ => vec![
             ("name", "processes.column.name.label", CellKind::Name),
@@ -155,28 +168,24 @@ fn cell(row: &Row, field: &Field) -> String {
             "common.disabled"
         }),
         CellKind::StartupLocation => label(&format!("startup.location.{}", text(raw, "location"))),
-        CellKind::Endpoint => {
-            let address = text(
-                raw,
-                if field.key == "local" {
-                    "localAddress"
-                } else {
-                    "remoteAddress"
-                },
-            );
-            let port = &raw[if field.key == "local" {
-                "localPort"
+        CellKind::Protocol => {
+            let proto = text(raw, "protocol").to_uppercase();
+            if boolean(raw, "ipv6") {
+                format!("{proto} v6")
             } else {
-                "remotePort"
-            }];
-            if address.is_empty() {
+                proto
+            }
+        }
+        CellKind::Port => raw[field.key]
+            .as_u64()
+            .map(|v| v.to_string())
+            .unwrap_or_else(missing),
+        CellKind::ConnectionState => {
+            let state = text(raw, "state");
+            if state.is_empty() {
                 missing()
-            } else if port.is_null() {
-                address.into()
-            } else if boolean(raw, "ipv6") {
-                format!("[{address}]:{port}")
             } else {
-                format!("{address}:{port}")
+                label(&format!("connections.state.{state}"))
             }
         }
     }
@@ -188,7 +197,6 @@ pub(super) struct NativeTable {
     fields: Vec<Field>,
     columns: Vec<Column>,
     icons: HashMap<u32, Arc<Image>>,
-    maxima: HashMap<&'static str, f64>,
     available: Pixels,
 }
 pub(super) struct TableFrame {
@@ -207,6 +215,7 @@ impl Render for TableFrame {
                     },
             )
             .bordered(false)
+            .fixed_cols_border(false)
             .stripe(false)
     }
 }
@@ -219,7 +228,6 @@ impl NativeTable {
             fields: vec![],
             columns: vec![],
             icons: HashMap::new(),
-            maxima: HashMap::new(),
             available: px(0.),
         }
     }
@@ -244,18 +252,6 @@ impl NativeTable {
                 fields.retain(|field| field.key != optional);
             }
         }
-        self.maxima = fields
-            .iter()
-            .map(|field| {
-                (
-                    field.key,
-                    self.rows
-                        .iter()
-                        .filter_map(|row| row.metric(field.key))
-                        .fold(0., f64::max),
-                )
-            })
-            .collect();
         if self.page == page
             && self.available == available
             && self
@@ -293,6 +289,7 @@ impl NativeTable {
                     .max(text_width(&field.label) + em * 2.);
                 let column = Column::new(field.key, field.label.clone())
                     .width(width)
+                    .paddings(Edges::all(px(0.)))
                     .sort(if field.key == sort.0 {
                         if sort.1 {
                             ColumnSort::Descending
@@ -308,6 +305,7 @@ impl NativeTable {
                     field.kind,
                     CellKind::Count
                         | CellKind::Pid
+                        | CellKind::Port
                         | CellKind::Percent
                         | CellKind::Memory
                         | CellKind::Rate
@@ -376,6 +374,7 @@ impl TableDelegate for NativeTable {
         let field = &self.fields[index];
         let mut cell = div()
             .size_full()
+            .px_2()
             .flex()
             .flex_col()
             .justify_center()
@@ -387,10 +386,17 @@ impl TableDelegate for NativeTable {
             let app = owner.read(cx);
             let sys = &app.snapshot["system"];
             let total = match field.key {
-                "name" => tr!(
-                    "processes.total",
-                    count = number(sys, "processCount") as usize
-                ),
+                "name" => {
+                    let count = tr!(
+                        "processes.total",
+                        count = number(sys, "processCount") as usize
+                    );
+                    if app.query.is_empty() {
+                        count
+                    } else {
+                        format!("{count} · {}", label("processes.filtered"))
+                    }
+                }
                 "cpu" => format!("{}%", theme::cpu(number(sys, "cpu"))),
                 "mem" => format!(
                     "{}%",
@@ -406,20 +412,103 @@ impl TableDelegate for NativeTable {
                     )
                 ),
                 key if matches!(key, "diskRead" | "diskWrite" | "io" | "net") => {
-                    let mut sum = None;
-                    for process in values(&app.snapshot["processes"]) {
-                        if let Some(value) = Row::process(process.clone(), 0).metric(key) {
-                            sum = Some(sum.unwrap_or(0.) + value);
+                    let hardware = &app.snapshot["hardware"];
+                    match key {
+                        "diskRead" => values(&hardware["disks"])
+                            .iter()
+                            .filter_map(|d| d["read"].as_f64())
+                            .reduce(|a, b| a + b)
+                            .map(|v| theme::bytes(v, true))
+                            .unwrap_or_else(|| label("format.missing")),
+                        "diskWrite" => values(&hardware["disks"])
+                            .iter()
+                            .filter_map(|d| d["write"].as_f64())
+                            .reduce(|a, b| a + b)
+                            .map(|v| theme::bytes(v, true))
+                            .unwrap_or_else(|| label("format.missing")),
+                        "io" => values(&hardware["disks"])
+                            .iter()
+                            .map(|d| {
+                                let r = d["read"].as_f64().unwrap_or(0.);
+                                let w = d["write"].as_f64().unwrap_or(0.);
+                                r + w
+                            })
+                            .reduce(|a, b| a + b)
+                            .map(|v| theme::bytes(v, true))
+                            .unwrap_or_else(|| label("format.missing")),
+                        "net" => {
+                            let rx = values(&hardware["nics"])
+                                .iter()
+                                .map(|n| number(n, "rx"))
+                                .sum::<f64>();
+                            let tx = values(&hardware["nics"])
+                                .iter()
+                                .map(|n| number(n, "tx"))
+                                .sum::<f64>();
+                            let bits = app.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
+                            theme::network(rx + tx, bits)
                         }
+                        _ => String::new(),
                     }
-                    sum.map(|value| theme::bytes(value, true))
-                        .unwrap_or_else(|| label("format.missing"))
                 }
                 _ => String::new(),
             };
             cell = cell.child(div().text_color(cx.theme().foreground).child(total));
         }
-        cell.child(div().text_xs().child(field.label.clone()))
+        let owner = self.owner.clone();
+        let key = field.key.to_owned();
+        let sort = owner
+            .upgrade()
+            .map(|owner| {
+                let app = owner.read(cx);
+                (app.sort == key, app.descending)
+            })
+            .unwrap_or_default();
+        let label = div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .text_xs()
+            .when(sort.0, |d| {
+                d.font_weight(FontWeight::SEMIBOLD)
+                    .text_color(cx.theme().foreground)
+            })
+            .child(field.label.clone())
+            .when(sort.0, |d| {
+                d.child(
+                    icon(
+                        if sort.1 { "ChevronDown" } else { "ChevronUp" },
+                        cx.theme().foreground,
+                    )
+                    .size_3(),
+                )
+            });
+        let hover = cx.theme().table_hover;
+        let header_bounds = owner
+            .upgrade()
+            .map(|owner| owner.read(cx).header_bounds.clone());
+        let measured_key = key.clone();
+        Button::new(("column-sort", index))
+            .size_full()
+            .min_w_0()
+            .rounded_none()
+            .cursor_pointer()
+            .bg(gpui_kit::gpui::transparent_black())
+            .on_prepaint(move |bounds, _, _| {
+                if let Some(headers) = &header_bounds {
+                    headers.borrow_mut().insert(measured_key.clone(), bounds);
+                }
+            })
+            .hover(move |s| s.bg(hover))
+            .accessibility_label(field.label.clone())
+            .child(cell.child(label))
+            .on_click(move |_, window, cx| {
+                let owner = owner.clone();
+                let key = key.clone();
+                window.defer(cx, move |window, cx| {
+                    let _ = owner.update(cx, |this, cx| this.act(Action::Sort(key), window, cx));
+                });
+            })
     }
     fn render_td(
         &mut self,
@@ -428,7 +517,20 @@ impl TableDelegate for NativeTable {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
-        let row = self.rows[row_index].clone();
+        if column == 0
+            && let Some(id) = self.rows[row_index].raw["icon"]
+                .as_u64()
+                .map(|id| id as u32)
+            && !self.icons.contains_key(&id)
+            && let Some(owner) = self.owner.upgrade()
+            && let Some(png) = owner.read(cx).host.state::<AppState>().meta.icon_png(id)
+        {
+            self.icons.insert(
+                id,
+                Arc::new(Image::from_bytes(ImageFormat::Png, png.to_vec())),
+            );
+        }
+        let row = &self.rows[row_index];
         let field = &self.fields[column];
         let value = if field.key == "net" {
             let bits = self.owner.upgrade().is_some_and(|owner| {
@@ -448,43 +550,35 @@ impl TableDelegate for NativeTable {
                 })
                 .unwrap_or_else(|| label("format.missing"))
         } else {
-            cell(&row, field)
+            cell(row, field)
         };
         let owner = self.owner.clone();
         let mut element = div()
             .text_size(cx.theme().font_size)
             .size_full()
+            .px_2()
             .flex()
             .items_center()
             .gap_2()
+            .py_0()
             .overflow_hidden();
         if self.page == "processes"
+            && row.section.is_none()
             && matches!(
                 field.kind,
                 CellKind::Percent | CellKind::Memory | CellKind::Rate
             )
             && let Some(value) = row.metric(field.key)
         {
-            let relative = value / self.maxima.get(field.key).copied().unwrap_or(1.).max(1.);
             element = element.bg(Palette::current(cx)
                 .heat
-                .opacity((relative * 0.36).clamp(0., 0.36) as f32));
+                .opacity(theme::heat_alpha(field.key, value)));
         }
         if column == 0 {
-            if let Some(id) = row.raw["icon"].as_u64().map(|id| id as u32) {
-                if !self.icons.contains_key(&id)
-                    && let Some(owner) = self.owner.upgrade()
-                    && let Some(png) = owner.read(cx).host.state::<AppState>().meta.icon_png(id)
-                {
-                    self.icons.insert(
-                        id,
-                        Arc::new(Image::from_bytes(ImageFormat::Png, png.to_vec())),
-                    );
-                }
-                if let Some(image) = self.icons.get(&id) {
-                    element = element.child(img(image.clone()).size_4().flex_shrink_0());
-                }
-            }
+            let process_icon = row.raw["icon"]
+                .as_u64()
+                .map(|id| id as u32)
+                .and_then(|id| self.icons.get(&id).cloned());
             if row.expandable {
                 let key = row.key.clone();
                 element = element.child(
@@ -506,38 +600,146 @@ impl TableDelegate for NativeTable {
                             });
                         }),
                 );
+            } else if self.page == "processes" {
+                element = element.child(div().w_4().flex_shrink_0());
             }
-            if !row.raw["icon"].is_number() && row.section.is_none() {
-                element = element.child(icon("ProcessesIcon", cx.theme().muted_foreground));
+            if row.section.is_none() {
+                element = element.child(div().w_4().h_4().flex_shrink_0().child(
+                    if let Some(image) = process_icon {
+                        img(image).size_4().into_any_element()
+                    } else {
+                        icon(
+                            if self.page == "processes" {
+                                "AppIcon"
+                            } else if self.page == "services" {
+                                "ServicesIcon"
+                            } else {
+                                "PowerIcon"
+                            },
+                            cx.theme().muted_foreground,
+                        )
+                        .into_any_element()
+                    },
+                ));
             }
             element = element
-                .pl(px(row.depth as f32 * f32::from(cx.theme().font_size)))
+                .pl(px(8.) + px(row.depth as f32 * f32::from(cx.theme().font_size)))
                 .when(row.section.is_some() || row.members.len() > 1, |d| {
                     d.font_weight(FontWeight::SEMIBOLD)
                 })
-                .child(div().truncate().child(value));
+                .child(
+                    div()
+                        .min_w_0()
+                        .when(!row.detail.is_empty(), |d| d.max_w(relative(0.7)))
+                        .truncate()
+                        .child(value),
+                );
             if row.members.len() > 1 && row.section.is_none() {
                 element = element.child(
                     div()
                         .text_color(cx.theme().muted_foreground)
-                        .child(format!("({})", row.members.len())),
+                        .bg(cx.theme().secondary)
+                        .rounded_full()
+                        .px_2()
+                        .text_xs()
+                        .flex_shrink_0()
+                        .child(row.members.len().to_string()),
                 );
+            }
+            if row.section.is_some() {
+                let p = Palette::current(cx);
+                element =
+                    element
+                        .text_sm()
+                        .child(
+                            div()
+                                .px_2()
+                                .rounded_full()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .bg(p.accent.opacity(0.14))
+                                .text_color(p.accent)
+                                .child(row.raw["entryCount"].to_string()),
+                        )
+                        .child(div().flex_1().h(px(1.)).ml_1().bg(
+                            gpui_kit::gpui::linear_gradient(
+                                90.,
+                                gpui_kit::gpui::linear_color_stop(p.stroke, 0.),
+                                gpui_kit::gpui::linear_color_stop(p.stroke.opacity(0.), 1.),
+                            ),
+                        ));
             }
             if !row.detail.is_empty() {
                 element = element.child(
                     div()
                         .text_color(cx.theme().muted_foreground)
                         .truncate()
-                        .child(row.detail),
+                        .font_weight(FontWeight::NORMAL)
+                        .child(row.detail.clone()),
                 );
             }
+            if self.page == "startup" && boolean(&row.raw, "missing") {
+                let p = Palette::current(cx);
+                element = element.child(
+                    div()
+                        .px_2()
+                        .rounded_full()
+                        .text_xs()
+                        .bg(p.danger.opacity(0.14))
+                        .text_color(p.danger)
+                        .flex_shrink_0()
+                        .child(label("startup.missing.label")),
+                );
+            }
+        } else if matches!(field.kind, CellKind::Enabled) {
+            let enabled = boolean(&row.raw, "enabled");
+            let id = row.raw["id"].clone();
+            let p = Palette::current(cx);
+            element = element.child(
+                Button::new(("startup-toggle", row_index))
+                    .px_2()
+                    .py_0()
+                    .h_5()
+                    .rounded_full()
+                    .text_xs()
+                    .bg(if enabled {
+                        p.accent.opacity(0.16)
+                    } else {
+                        p.control
+                    })
+                    .text_color(if enabled { p.accent } else { p.muted })
+                    .child(value)
+                    .on_click(move |_, window, cx| {
+                        let owner = owner.clone();
+                        let id = id.clone();
+                        window.defer(cx, move |window, cx| {
+                            let _ = owner.update(cx, |this, cx| {
+                                this.act(
+                                    Action::Invoke(
+                                        "set_startup_enabled".into(),
+                                        json!({"id": id, "enabled": !enabled}),
+                                    ),
+                                    window,
+                                    cx,
+                                )
+                            });
+                        });
+                    }),
+            );
         } else {
             element = element
+                .when(row.section.is_some(), |d| {
+                    d.text_xs().text_color(Palette::current(cx).faint)
+                })
+                .when(row.metric(field.key) == Some(0.), |d| {
+                    d.text_color(Palette::current(cx).faint)
+                })
                 .when(
                     matches!(
                         field.kind,
                         CellKind::Count
                             | CellKind::Pid
+                            | CellKind::Port
                             | CellKind::Percent
                             | CellKind::Memory
                             | CellKind::Rate
@@ -552,13 +754,9 @@ impl TableDelegate for NativeTable {
         &mut self,
         index: usize,
         _window: &mut Window,
-        cx: &mut Context<TableState<Self>>,
+        _cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
-        div()
-            .id(("native-row", index))
-            .when(self.rows[index].section.is_some(), |d| {
-                d.bg(cx.theme().table_head)
-            })
+        div().id(("native-row", index))
     }
     fn context_menu(
         &mut self,
@@ -575,6 +773,7 @@ impl TableDelegate for NativeTable {
                 menu = menu.item(
                     PopupMenuItem::new(item.label)
                         .disabled(item.disabled)
+                        .checked(item.checked)
                         .on_click(move |_, window, cx| {
                             let owner = owner.clone();
                             let action = action.clone();
@@ -634,9 +833,12 @@ impl Desktop {
                         return true;
                     }
                     if self.page == "network" {
-                        if let Ok(port) = query.parse::<u16>() {
-                            return row["localPort"].as_u64() == Some(port.into())
-                                || row["remotePort"].as_u64() == Some(port.into());
+                        if let Ok(num) = query.parse::<u64>()
+                            && (row["localPort"].as_u64() == Some(num)
+                                || row["remotePort"].as_u64() == Some(num)
+                                || row["pid"].as_u64() == Some(num))
+                        {
+                            return true;
                         }
                         let name = values(&self.snapshot["processes"])
                             .iter()
@@ -672,11 +874,21 @@ impl Desktop {
                                 text(&row.raw, "remoteAddress"),
                                 row.raw["remotePort"]
                             );
-                            row.title = values(&self.snapshot["processes"])
-                                .iter()
-                                .find(|p| p["pid"] == row.raw["pid"])
-                                .map(model::title)
-                                .unwrap_or_else(|| format!("PID {}", row.raw["pid"]));
+                            row.title = if row.raw["pid"].as_u64() == Some(0) {
+                                "System Idle Process".into()
+                            } else {
+                                values(&self.snapshot["processes"])
+                                    .iter()
+                                    .find(|p| p["pid"] == row.raw["pid"])
+                                    .map(model::title)
+                                    .unwrap_or_else(|| {
+                                        format!(
+                                            "PID {} ({})",
+                                            row.raw["pid"],
+                                            label("connections.exited")
+                                        )
+                                    })
+                            };
                             if let Some(process) = values(&self.snapshot["processes"])
                                 .iter()
                                 .find(|p| p["pid"] == row.raw["pid"])
@@ -801,7 +1013,12 @@ impl Desktop {
     ) -> AnyElement {
         if self.table.is_none() {
             let owner = cx.entity().downgrade();
-            let table = cx.new(|cx| TableState::new(NativeTable::new(owner), window, cx));
+            let table = cx.new(|cx| {
+                TableState::new(NativeTable::new(owner), window, cx)
+                    .col_selectable(false)
+                    .sortable(false)
+                    .col_movable(false)
+            });
             self.subscriptions.push(cx.subscribe_in(
                 &table,
                 window,
@@ -815,6 +1032,14 @@ impl Desktop {
                         if let Some(row) = this.rows.get(*index) {
                             let action = if this.page == "processes" {
                                 Action::Fold(row.key.clone())
+                            } else if this.page == "startup" {
+                                Action::Invoke(
+                                    "set_startup_enabled".into(),
+                                    json!({
+                                        "id": row.raw["id"],
+                                        "enabled": !boolean(&row.raw, "enabled")
+                                    }),
+                                )
                             } else {
                                 Action::Preference("revealProcess".into(), row.raw.clone())
                             };
@@ -845,6 +1070,7 @@ impl Desktop {
         let network = boolean(&self.snapshot, "processNetwork");
         let sort = (self.sort.as_str(), self.descending);
         let available = window.viewport_size().width
+            - px(24.)
             - px(if self.page == "processes" && self.details_open {
                 self.details_width
             } else {

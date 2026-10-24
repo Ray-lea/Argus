@@ -11,6 +11,7 @@ mod prefs;
 mod tables;
 mod theme;
 mod welcome;
+mod widgets;
 use crate::{AppState, Options, native_runtime::Host};
 use argus_core::tr;
 use gpui_kit::base::Button;
@@ -41,6 +42,7 @@ const PAGES: [(&str, &str); 7] = [
 ];
 #[derive(Clone)]
 enum Action {
+    Sort(String),
     Page(String),
     View(String),
     Select(String),
@@ -64,6 +66,7 @@ struct MenuItem {
     label: String,
     action: Action,
     disabled: bool,
+    checked: bool,
 }
 impl MenuItem {
     fn new(label: impl Into<String>, action: Action) -> Self {
@@ -71,7 +74,16 @@ impl MenuItem {
             label: label.into(),
             action,
             disabled: false,
+            checked: false,
         }
+    }
+    fn checked(mut self, checked: bool) -> Self {
+        self.checked = checked;
+        self
+    }
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 }
 struct Popup {
@@ -101,11 +113,24 @@ struct Desktop {
     snapshot: Value,
     timeline: model::Timeline,
     chart_clock: Rc<RefCell<motion::Clock>>,
-    chart_views: RefCell<HashMap<String, Entity<charts::ChartView>>>,
-    active_charts: RefCell<HashSet<String>>,
+    chart_entries: RefCell<HashMap<String, charts::ChartEntry>>,
+    chart_views: Rc<RefCell<HashMap<String, Entity<charts::ChartView>>>>,
+    active_charts: Rc<RefCell<HashSet<String>>>,
+    chart_placements: charts::Placements,
+    page_opacity: Rc<Cell<f32>>,
     chart_tick_queued: bool,
     chart_frame: u64,
+    grid_bounds: RefCell<HashMap<String, Bounds<Pixels>>>,
+    core_grid_size: Rc<Cell<Size<Pixels>>>,
+    settings_scroll: ScrollHandle,
+    device_scroll: ScrollHandle,
+    settings_target: Option<usize>,
     page: String,
+    page_epoch: u64,
+    render_count: u64,
+    header_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
+    toolbar_regions: Rc<RefCell<[Bounds<Pixels>; 2]>>,
+    navigation_regions: Rc<RefCell<[Bounds<Pixels>; PAGES.len() + 1]>>,
     query: String,
     search: Entity<InputState>,
     focus: FocusHandle,
@@ -127,6 +152,7 @@ struct Desktop {
     nav_expanded: bool,
     details_open: bool,
     details_width: f32,
+    perf_sidebar_width: f32,
     device: String,
     cpu_mode: String,
     cpu_page: String,
@@ -141,6 +167,7 @@ struct Desktop {
     modal: Option<dialogs::Modal>,
     toast: Option<(String, Instant)>,
     last_poll: Instant,
+    last_select: Option<(String, Instant)>,
     filters: HashMap<String, String>,
     forms: HashMap<String, Entity<InputState>>,
     first_frame: bool,
@@ -148,6 +175,7 @@ struct Desktop {
     history_range: String,
     history_metric: String,
     history_cursor: Option<i64>,
+    history_hover: Option<i64>,
     settings_section: String,
 }
 impl Desktop {
@@ -173,15 +201,28 @@ impl Desktop {
             snapshot: Value::Null,
             timeline: model::Timeline::new(),
             chart_clock: Rc::new(RefCell::new(motion::Clock::new(motion::Mode::Off))),
-            chart_views: RefCell::new(HashMap::new()),
-            active_charts: RefCell::new(HashSet::new()),
+            chart_entries: RefCell::new(HashMap::new()),
+            chart_views: Rc::new(RefCell::new(HashMap::new())),
+            active_charts: Rc::new(RefCell::new(HashSet::new())),
+            chart_placements: Rc::new(RefCell::new(HashMap::new())),
+            page_opacity: Rc::new(Cell::new(1.)),
             chart_tick_queued: false,
             chart_frame: 0,
+            grid_bounds: RefCell::new(HashMap::new()),
+            core_grid_size: Rc::new(Cell::new(size(px(0.), px(0.)))),
+            settings_scroll: ScrollHandle::new(),
+            device_scroll: ScrollHandle::new(),
+            settings_target: None,
             page: if options.page.is_empty() {
                 prefs.get("page", "processes".into())
             } else {
                 options.page.clone()
             },
+            page_epoch: 0,
+            render_count: 0,
+            header_bounds: Rc::new(RefCell::new(HashMap::new())),
+            toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 2])),
+            navigation_regions: Rc::new(RefCell::new([Bounds::default(); PAGES.len() + 1])),
             query: String::new(),
             search: search.clone(),
             focus: cx.focus_handle(),
@@ -209,7 +250,11 @@ impl Desktop {
             nav_top: prefs.get::<String>("navPosition", "top".into()) == "top",
             nav_expanded: prefs.get("navExpanded", false),
             details_open: prefs.get("detailsPanel", true),
-            details_width: prefs.get("detailsWidth", 320.),
+            details_width: prefs.get("detailsWidth", f32::from(theme::dimension("detailsWidth"))),
+            perf_sidebar_width: prefs.get(
+                "perfSidebarWidth",
+                f32::from(theme::dimension("deviceRailWidth")),
+            ),
             device: prefs.get("perfDevice", "cpu".into()),
             cpu_mode: prefs.get("cpuMode", "overall".into()),
             cpu_page: prefs.get("cpuPage", "overview".into()),
@@ -224,6 +269,7 @@ impl Desktop {
             modal: None,
             toast: None,
             last_poll: Instant::now() - Duration::from_secs(10),
+            last_select: None,
             filters: HashMap::new(),
             forms: HashMap::new(),
             first_frame: false,
@@ -231,6 +277,7 @@ impl Desktop {
             history_range: "1h".into(),
             history_metric: "cpu".into(),
             history_cursor: None,
+            history_hover: None,
             settings_section: "language".into(),
             prefs,
         };
@@ -350,6 +397,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
         .with_assets(assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
+            theme::install_surface(cx);
             let opts = WindowOptions {
                 window_bounds: Some(WindowBounds::centered(
                     size(px(options.width), px(options.height)),
@@ -392,7 +440,19 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 window.defer(cx, move |window, cx| {
                     crate::platform::attach_window(&host, &options, window, cx);
                 });
-                view
+                let placements = view.read(cx).chart_placements.clone();
+                let views = view.read(cx).chart_views.clone();
+                let clock = view.read(cx).chart_clock.clone();
+                let active = view.read(cx).active_charts.clone();
+                let opacity = view.read(cx).page_opacity.clone();
+                cx.new(|_| DesktopRoot {
+                    desktop: view,
+                    placements,
+                    views,
+                    clock,
+                    active,
+                    opacity,
+                })
             })
             .expect("create native window");
             cx.on_app_quit(move |_| {
@@ -402,4 +462,31 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
             .detach();
         });
     Ok(())
+}
+struct DesktopRoot {
+    desktop: Entity<Desktop>,
+    placements: charts::Placements,
+    views: Rc<RefCell<HashMap<String, Entity<charts::ChartView>>>>,
+    clock: Rc<RefCell<motion::Clock>>,
+    active: Rc<RefCell<HashSet<String>>>,
+    opacity: Rc<Cell<f32>>,
+}
+impl Render for DesktopRoot {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .relative()
+            .size_full()
+            .child(
+                self.desktop
+                    .clone()
+                    .cached(StyleRefinement::default().size_full()),
+            )
+            .child(charts::layer(
+                self.placements.clone(),
+                self.views.clone(),
+                self.clock.clone(),
+                self.active.clone(),
+                self.opacity.clone(),
+            ))
+    }
 }

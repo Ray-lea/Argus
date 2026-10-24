@@ -2,10 +2,20 @@
 use super::*;
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::component::plot::{
-    Curve, PathCaches, Plot, PlotElement,
-    shape::{Area, Line},
+    PathCaches, Plot, PlotElement, ShapeKey,
     tooltip::{CrossLine, Tooltip, TooltipState},
 };
+#[derive(Clone, Copy)]
+pub(super) enum ChartHeight {
+    Fixed(Pixels),
+    Fill,
+    Compact,
+}
+impl From<Pixels> for ChartHeight {
+    fn from(value: Pixels) -> Self {
+        Self::Fixed(value)
+    }
+}
 
 #[derive(Clone)]
 pub struct Series {
@@ -13,6 +23,37 @@ pub struct Series {
     pub points: Arc<Vec<(f64, Option<f64>)>>,
     pub color: Hsla,
     pub format: MetricFormat,
+    geometry: Arc<Vec<Vec<(f64, f64)>>>,
+}
+impl Series {
+    pub(in crate::frontend) fn new(
+        name: String,
+        points: Vec<(f64, Option<f64>)>,
+        color: Hsla,
+        format: MetricFormat,
+    ) -> Self {
+        Self::with_geometry(name, points, color, format, true)
+    }
+    pub(in crate::frontend) fn with_geometry(
+        name: String,
+        points: Vec<(f64, Option<f64>)>,
+        color: Hsla,
+        format: MetricFormat,
+        compute_geometry: bool,
+    ) -> Self {
+        let geometry = Arc::new(if compute_geometry {
+            segments(&points)
+        } else {
+            Vec::new()
+        });
+        Self {
+            name,
+            points: Arc::new(points),
+            color,
+            format,
+            geometry,
+        }
+    }
 }
 #[derive(Clone, Copy)]
 pub enum MetricFormat {
@@ -24,7 +65,7 @@ pub enum MetricFormat {
     Unit(&'static str, usize),
 }
 impl MetricFormat {
-    fn value(self, value: f64) -> String {
+    pub(in crate::frontend) fn value(self, value: f64) -> String {
         match self {
             Self::Percent => format!("{}%", theme::cpu(value)),
             Self::Memory => theme::memory(value),
@@ -45,16 +86,103 @@ pub struct TimePlot {
     pub min: f64,
     pub interactive: bool,
     pub fill: bool,
+    pub bars: bool,
     pub selection: Option<WeakEntity<Desktop>>,
     pub cursor: Option<f64>,
     pub geometry_start: f64,
     pub measured_width: Rc<Cell<f32>>,
 }
+pub(super) struct ChartEntry {
+    plot: Rc<RefCell<TimePlot>>,
+    revision: ChartRevision,
+}
 pub(super) struct ChartView {
-    plot: TimePlot,
+    plot: Rc<RefCell<TimePlot>>,
     clock: Rc<RefCell<motion::Clock>>,
     last_end: f64,
-    revision: ChartRevision,
+}
+#[derive(Clone)]
+pub(super) struct Placement {
+    bounds: Bounds<Pixels>,
+    mask: Bounds<Pixels>,
+    plot: Rc<RefCell<TimePlot>>,
+}
+pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
+
+// Keep animated chart entities beside the cached desktop, not below it, and never
+// read or update ChartView entities during Desktop::render so GPUI's accessed-entity
+// tracking never invalidates Desktop on 165 Hz chart frames.
+pub(super) fn layer(
+    placements: Placements,
+    views: Rc<RefCell<HashMap<String, Entity<ChartView>>>>,
+    clock: Rc<RefCell<motion::Clock>>,
+    active: Rc<RefCell<HashSet<String>>>,
+    opacity: Rc<Cell<f32>>,
+) -> impl IntoElement {
+    canvas(
+        move |bounds, window, cx| {
+            let placements = placements.borrow();
+            let mut views = views.borrow_mut();
+            let mut elements = Vec::new();
+            for key in active.borrow().iter() {
+                let Some(placement) = placements.get(key) else {
+                    continue;
+                };
+                let clip = placement
+                    .bounds
+                    .intersect(&placement.mask)
+                    .intersect(&bounds);
+                if clip.size.width <= px(0.) || clip.size.height <= px(0.) {
+                    continue;
+                }
+                let plot = placement.plot.clone();
+                let view = if let Some(view) = views.get(key) {
+                    if !Rc::ptr_eq(&view.read(cx).plot, &plot) {
+                        view.update(cx, |v, _| v.plot = plot);
+                    }
+                    view.clone()
+                } else {
+                    let clock = clock.clone();
+                    let view = cx.new(|_| ChartView {
+                        plot,
+                        clock,
+                        last_end: f64::NAN,
+                    });
+                    views.insert(key.clone(), view.clone());
+                    view
+                };
+                elements.push(
+                    div()
+                        .absolute()
+                        .left(clip.left() - bounds.left())
+                        .top(clip.top() - bounds.top())
+                        .w(clip.size.width)
+                        .h(clip.size.height)
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .absolute()
+                                .left(placement.bounds.left() - clip.left())
+                                .top(placement.bounds.top() - clip.top())
+                                .w(placement.bounds.size.width)
+                                .h(placement.bounds.size.height)
+                                .child(view),
+                        ),
+                );
+            }
+            let mut element = div()
+                .size_full()
+                .opacity(opacity.get())
+                .children(elements)
+                .into_any_element();
+            element.layout_as_root(bounds.size.into(), window, cx);
+            element.prepaint_at(bounds.origin, window, cx);
+            element
+        },
+        |_, mut element, window, cx| element.paint(window, cx),
+    )
+    .absolute()
+    .inset_0()
 }
 #[derive(PartialEq)]
 struct ChartRevision {
@@ -70,7 +198,7 @@ struct ChartRevision {
 }
 impl Render for ChartView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let mut plot = self.plot.clone();
+        let mut plot = self.plot.borrow().clone();
         let clock = self.clock.borrow();
         let span = plot.end - plot.start;
         let mut end = clock.end(Instant::now());
@@ -86,13 +214,13 @@ impl Render for ChartView {
 impl ChartView {
     fn advance(&mut self, cx: &mut Context<Self>) {
         let clock = self.clock.borrow();
+        let plot = self.plot.borrow();
         let mut end = clock.end(Instant::now());
         if clock.mode == motion::Mode::Pixel {
-            let step = (self.plot.end - self.plot.start)
-                / f64::from(self.plot.measured_width.get().max(1.));
-            end =
-                self.plot.geometry_start + ((end - self.plot.geometry_start) / step).floor() * step;
+            let step = (plot.end - plot.start) / f64::from(plot.measured_width.get().max(1.));
+            end = plot.geometry_start + ((end - plot.geometry_start) / step).floor() * step;
         }
+        drop(plot);
         if end != self.last_end {
             self.last_end = end;
             cx.notify();
@@ -146,6 +274,66 @@ impl Plot for TimePlot {
         let min = self.min;
         let scale = (self.max - self.min).max(f64::EPSILON);
         let fill = self.fill;
+        if self.bars {
+            let step = width / self.series.len().max(1) as f32;
+            for (index, series) in self.series.iter().enumerate() {
+                let value = sample_at(&series.points, self.end);
+                let x = bounds.origin.x + px(index as f32 * step);
+                let bar_width = px((step * 0.65).max(1.));
+                window.paint_quad(gpui_kit::gpui::fill(
+                    Bounds::new(
+                        point(x, bounds.origin.y),
+                        size(bar_width, bounds.size.height),
+                    ),
+                    series.color.opacity(0.12),
+                ));
+                if let Some(value) = value {
+                    let h = px((value / 100.).clamp(0., 1.) as f32 * height);
+                    window.paint_quad(gpui_kit::gpui::fill(
+                        Bounds::new(point(x, bounds.bottom() - h), size(bar_width, h)),
+                        series.color,
+                    ));
+                }
+            }
+            return;
+        }
+        if self.interactive {
+            let color = self
+                .series
+                .first()
+                .map(|s| s.color)
+                .unwrap_or(cx.theme().border);
+            for (count, vertical) in [
+                (
+                    theme::design()["layout"]["chartGridRows"].as_u64().unwrap(),
+                    false,
+                ),
+                (
+                    theme::design()["layout"]["chartGridColumns"]
+                        .as_u64()
+                        .unwrap(),
+                    true,
+                ),
+            ] {
+                for index in 1..count {
+                    let fraction = index as f32 / count as f32;
+                    let origin = if vertical {
+                        point(bounds.left() + px(width * fraction), bounds.top())
+                    } else {
+                        point(bounds.left(), bounds.top() + px(height * fraction))
+                    };
+                    let size = if vertical {
+                        size(px(1.), bounds.size.height)
+                    } else {
+                        size(bounds.size.width, px(1.))
+                    };
+                    window.paint_quad(gpui_kit::gpui::fill(
+                        Bounds::new(origin, size),
+                        color.opacity(0.16),
+                    ));
+                }
+            }
+        }
         let drawing_bounds = Bounds::new(
             point(
                 bounds.origin.x + px(((geometry_start - start) / span) as f32 * width),
@@ -155,6 +343,21 @@ impl Plot for TimePlot {
         );
         if let Some(owner) = self.selection.clone() {
             let end = self.end;
+            let hover_owner = owner.clone();
+            window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+                if phase == DispatchPhase::Bubble && bounds.contains(&event.position) {
+                    let fraction = (f32::from(event.position.x - bounds.origin.x)
+                        / f32::from(bounds.size.width).max(1.))
+                    .clamp(0., 1.) as f64;
+                    let hovered = Some((start + (end - start) * fraction) as i64);
+                    let _ = hover_owner.update(cx, |this, cx| {
+                        if this.history_hover != hovered {
+                            this.history_hover = hovered;
+                            cx.notify();
+                        }
+                    });
+                }
+            });
             window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
                 if phase == DispatchPhase::Bubble
                     && event.button == MouseButton::Left
@@ -172,37 +375,50 @@ impl Plot for TimePlot {
                 }
             });
         }
-        let caches = PathCaches::for_paint("argus-series", window, cx);
+        let caches = PathCaches::for_paint(ElementId::Name(self.id.clone()), window, cx);
         caches.update(cx, |cache, _| {
             let mut index = 0;
-            for series in &self.series {
-                for run in segments(&series.points) {
-                    let x =
-                        move |p: &(f64, f64)| Some(((p.0 - geometry_start) / span) as f32 * width);
-                    let y =
-                        move |p: &(f64, f64)| Some(height - ((p.1 - min) / scale) as f32 * height);
-                    if fill {
-                        let (area_cache, line_cache) = cache.slot_pair(index);
-                        Area::new()
-                            .data(run.clone())
-                            .x(x)
-                            .y1(y)
-                            .y0(height - ((-min / scale) as f32 * height).clamp(0., height))
-                            .curve(Curve::Linear)
-                            .fill(series.color.opacity(0.15))
-                            .stroke(series.color)
-                            .paint_cached(&drawing_bounds, area_cache, line_cache, window);
-                        index += 1;
-                    } else {
-                        Line::new()
-                            .data(run)
-                            .x(x)
-                            .y(y)
-                            .curve(Curve::Linear)
-                            .stroke(series.color)
-                            .paint_cached(&drawing_bounds, cache.slot(index), window);
-                        index += 1;
+            let stroke = theme::dimension("chartStrokeWidth");
+            for (series_index, series) in self.series.iter().enumerate() {
+                for run in series.geometry.iter() {
+                    let points = run
+                        .iter()
+                        .map(|&(at, value)| {
+                            (
+                                (at - geometry_start) / span * width as f64,
+                                height as f64
+                                    - (value - min) / scale
+                                        * (height - f32::from(stroke) / 2.) as f64,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    let mut key = ShapeKey::new((height.to_bits(), f32::from(stroke).to_bits()));
+                    for &(x, y) in &points {
+                        key.point(point(px(x as f32), px(y as f32)));
                     }
+                    let (area_cache, line_cache) = cache.slot_pair(index);
+                    if fill
+                        && series_index == 0
+                        && let Some(path) =
+                            area_cache.get(key.finish(), drawing_bounds.origin, || {
+                                curve_path(&points, stroke, Some(height))
+                            })
+                    {
+                        window.paint_path(
+                            path,
+                            gpui_kit::gpui::linear_gradient(
+                                180.,
+                                gpui_kit::gpui::linear_color_stop(series.color.opacity(0.22), 0.),
+                                gpui_kit::gpui::linear_color_stop(series.color.opacity(0.02), 1.),
+                            ),
+                        );
+                    }
+                    if let Some(path) = line_cache.get(key.finish(), drawing_bounds.origin, || {
+                        curve_path(&points, stroke, None)
+                    }) {
+                        window.paint_path(path, series.color);
+                    }
+                    index += 1;
                 }
             }
         });
@@ -284,15 +500,125 @@ impl Plot for TimePlot {
     }
 }
 impl Desktop {
+    fn chart_frame(
+        &self,
+        plot_rc: Rc<RefCell<TimePlot>>,
+        height: ChartHeight,
+        interactive: bool,
+    ) -> AnyElement {
+        let plot = plot_rc.borrow();
+        let id = plot.id.to_string();
+        let placements = self.chart_placements.clone();
+        let placed_plot = plot_rc.clone();
+        let placeholder = canvas(
+            move |bounds, window, _| {
+                placements.borrow_mut().insert(
+                    id.clone(),
+                    Placement {
+                        bounds,
+                        mask: window.content_mask().bounds,
+                        plot: placed_plot.clone(),
+                    },
+                );
+            },
+            |_, _, _, _| {},
+        )
+        .size_full();
+        let color = plot
+            .series
+            .first()
+            .map(|s| s.color)
+            .unwrap_or(self.palette.accent);
+        let axes = interactive
+            && match height {
+                ChartHeight::Fill => true,
+                ChartHeight::Compact => false,
+                ChartHeight::Fixed(height) => height >= theme::dimension("chartMinHeight"),
+            };
+        let flexible = !matches!(height, ChartHeight::Fixed(_));
+        let mut frame = div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .when(flexible, |d| d.flex_1())
+            .when(!flexible, |d| d.flex_shrink_0());
+        if axes {
+            frame = frame.child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .text_xs()
+                    .text_color(self.palette.muted)
+                    .child(
+                        plot.series
+                            .first()
+                            .map(|s| s.name.clone())
+                            .unwrap_or_default(),
+                    )
+                    .child(
+                        plot.series
+                            .first()
+                            .map(|s| s.format.value(plot.max))
+                            .unwrap_or_default(),
+                    ),
+            );
+        }
+        frame = frame.child(
+            div()
+                .w_full()
+                .overflow_hidden()
+                .map(|d| match height {
+                    ChartHeight::Fixed(height) => d.h(height),
+                    ChartHeight::Fill => d.flex_1().min_h(theme::dimension("chartMinHeight")),
+                    ChartHeight::Compact => d.flex_1().min_h(px(24.)),
+                })
+                .when(interactive, |d| {
+                    d.border_1().border_color(color.opacity(0.35)).rounded_sm()
+                })
+                .child(placeholder),
+        );
+        if axes {
+            frame = frame.child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .text_xs()
+                    .text_color(self.palette.muted)
+                    .child(tr!(
+                        "performance.span.seconds",
+                        count = ((plot.end - plot.start) / 1000.).round() as u64
+                    ))
+                    .child(label("performance.chart.latest")),
+            );
+            if plot.series.len() > 1 {
+                frame = frame.child(div().flex().gap_4().mt_1().children(plot.series.iter().map(
+                    |s| {
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .text_xs()
+                            .text_color(self.palette.muted)
+                            .child(div().w_3().h(px(2.)).bg(s.color))
+                            .child(s.name.clone())
+                    },
+                )));
+            }
+        }
+        drop(plot);
+        frame.into_any_element()
+    }
     pub(in crate::frontend) fn chart(
         &self,
         id: &str,
         keys: &[(&str, Hsla)],
         maximum: Option<f64>,
-        height: Pixels,
+        height: impl Into<ChartHeight>,
         interactive: bool,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) -> AnyElement {
+        let height = height.into();
         let revision = ChartRevision {
             sequence: self.sequence,
             keys: keys
@@ -308,15 +634,10 @@ impl Desktop {
             network_bits: self.prefs.get::<String>("netUnit", "bytes".into()) == "bits",
         };
         self.active_charts.borrow_mut().insert(id.into());
-        if let Some(view) = self.chart_views.borrow().get(id)
-            && view.read(cx).revision == revision
+        if let Some(entry) = self.chart_entries.borrow().get(id)
+            && entry.revision == revision
         {
-            return div()
-                .h(height)
-                .w_full()
-                .overflow_hidden()
-                .child(view.clone().cached(StyleRefinement::default().size_full()))
-                .into_any_element();
+            return self.chart_frame(entry.plot.clone(), height, interactive);
         }
         let end = number(&self.snapshot, "timestamp");
         let span = self.interval as f64
@@ -325,25 +646,27 @@ impl Desktop {
                 .expect("chart samples")
                 - 1.);
         let start = end - span;
+        let bars = keys.len() > 1 && keys.iter().all(|(key, _)| key.starts_with("system.cores."));
         let series = keys
             .iter()
-            .map(|(key, color)| Series {
-                name: series_name(&self.snapshot, key),
-                points: Arc::new(
+            .map(|(key, color)| {
+                Series::with_geometry(
+                    series_name(&self.snapshot, key),
                     self.timeline
                         .samples
                         .get(&model::series_key(&self.snapshot, key))
                         .map(|p| p.iter().copied().collect())
                         .unwrap_or_default(),
-                ),
-                color: *color,
-                format: if key.contains(".nics.") || *key == "totals.network" {
-                    MetricFormat::Network(
-                        self.prefs.get::<String>("netUnit", "bytes".into()) == "bits",
-                    )
-                } else {
-                    series_format(key)
-                },
+                    *color,
+                    if key.contains(".nics.") || *key == "totals.network" {
+                        MetricFormat::Network(
+                            self.prefs.get::<String>("netUnit", "bytes".into()) == "bits",
+                        )
+                    } else {
+                        series_format(key)
+                    },
+                    !bars,
+                )
             })
             .collect::<Vec<_>>();
         let observed = series
@@ -355,10 +678,10 @@ impl Desktop {
             .iter()
             .flat_map(|s| s.points.iter().filter_map(|p| p.1))
             .fold(0., f64::min);
-        let mut views = self.chart_views.borrow_mut();
-        let width = views
+        let mut entries = self.chart_entries.borrow_mut();
+        let width = entries
             .get(id)
-            .map(|view| view.read(cx).plot.measured_width.clone())
+            .map(|entry| entry.plot.borrow().measured_width.clone())
             .unwrap_or_else(|| Rc::new(Cell::new(1.)));
         let plot = TimePlot {
             id: id.to_owned().into(),
@@ -368,37 +691,31 @@ impl Desktop {
             max,
             min,
             interactive,
-            fill: keys.len() == 1,
+            fill: true,
+            bars,
             selection: None,
             cursor: None,
             geometry_start: start,
             measured_width: width,
         };
-        let view = if let Some(view) = views.get(id) {
-            view.update(cx, |view, cx| {
-                view.plot = plot;
-                view.revision = revision;
-                cx.notify();
-            });
-            view.clone()
+        let plot_rc = if let Some(entry) = entries.get_mut(id) {
+            *entry.plot.borrow_mut() = plot;
+            entry.revision = revision;
+            entry.plot.clone()
         } else {
-            let clock = self.chart_clock.clone();
-            let view = cx.new(|_| ChartView {
-                plot,
-                clock,
-                last_end: f64::NAN,
-                revision,
-            });
-            views.insert(id.into(), view.clone());
-            view
+            let plot_rc = Rc::new(RefCell::new(plot));
+            entries.insert(
+                id.into(),
+                ChartEntry {
+                    plot: plot_rc.clone(),
+                    revision,
+                },
+            );
+            plot_rc
         };
+        drop(entries);
         self.active_charts.borrow_mut().insert(id.into());
-        div()
-            .h(height)
-            .w_full()
-            .overflow_hidden()
-            .child(view.cached(StyleRefinement::default().size_full()))
-            .into_any_element()
+        self.chart_frame(plot_rc, height, interactive)
     }
     pub(in crate::frontend) fn apply_motion(&mut self, cx: &mut Context<Self>) {
         let system = crate::platform::system_motion();
@@ -473,6 +790,119 @@ impl Desktop {
             }
         }
     }
+}
+
+fn sample_at(points: &[(f64, Option<f64>)], at: f64) -> Option<f64> {
+    let right = points.partition_point(|p| p.0 < at);
+    if right == 0 {
+        return points.first().and_then(|p| p.1);
+    }
+    let before = points[right - 1];
+    let Some(after) = points.get(right) else {
+        return before.1;
+    };
+    before
+        .1
+        .zip(after.1)
+        .map(|(a, b)| a + (b - a) * ((at - before.0) / (after.0 - before.0).max(1.)).clamp(0., 1.))
+}
+// Shape-preserving Hermite interpolation is prepared only when samples change.
+// Native plot paths keep the original timestamps and never bridge unknown runs.
+fn curve_tangents(points: &[(f64, f64)]) -> Vec<f64> {
+    if points.len() < 2 {
+        return vec![0.; points.len()];
+    }
+    let spans = points
+        .windows(2)
+        .map(|pair| (pair[1].0 - pair[0].0).max(f64::EPSILON))
+        .collect::<Vec<_>>();
+    let slopes = points
+        .windows(2)
+        .zip(&spans)
+        .map(|(pair, span)| (pair[1].1 - pair[0].1) / span)
+        .collect::<Vec<_>>();
+    let mut tangent = vec![0.; points.len()];
+    tangent[0] = slopes[0];
+    tangent[points.len() - 1] = slopes[slopes.len() - 1];
+    for index in 1..points.len() - 1 {
+        if slopes[index - 1] * slopes[index] > 0. {
+            let left = 2. * spans[index] + spans[index - 1];
+            let right = spans[index] + 2. * spans[index - 1];
+            tangent[index] = (left + right) / (left / slopes[index - 1] + right / slopes[index]);
+        }
+    }
+    tangent
+}
+
+fn curve_path(
+    points: &[(f64, f64)],
+    stroke: Pixels,
+    baseline: Option<f32>,
+) -> Option<Path<Pixels>> {
+    if points.len() < 2 {
+        return None;
+    }
+    let tangent = curve_tangents(points);
+    let mut path = if baseline.is_some() {
+        PathBuilder::fill()
+    } else {
+        PathBuilder::stroke(stroke)
+    };
+    let first = point(px(points[0].0 as f32), px(points[0].1 as f32));
+    if let Some(base) = baseline {
+        path.move_to(point(first.x, px(base)));
+        path.line_to(first);
+    } else {
+        path.move_to(first);
+    }
+    for i in 0..points.len() - 1 {
+        let (x, y) = points[i];
+        let (next_x, next_y) = points[i + 1];
+        let third = (next_x - x) / 3.;
+        path.cubic_bezier_to(
+            point(px(next_x as f32), px(next_y as f32)),
+            point(px((x + third) as f32), px((y + tangent[i] * third) as f32)),
+            point(
+                px((next_x - third) as f32),
+                px((next_y - tangent[i + 1] * third) as f32),
+            ),
+        );
+    }
+    if let Some(base) = baseline {
+        path.line_to(point(px(points.last()?.0 as f32), px(base)));
+        path.close();
+    }
+    path.build().ok()
+}
+
+#[cfg(test)]
+fn smooth_run(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    if points.len() < 2 {
+        return points.to_vec();
+    }
+    let tangent = curve_tangents(points);
+    let spans = points
+        .windows(2)
+        .map(|pair| pair[1].0 - pair[0].0)
+        .collect::<Vec<_>>();
+    let subdivisions = 12;
+    let mut geometry = Vec::with_capacity((points.len() - 1) * subdivisions + 1);
+    for index in 0..points.len() - 1 {
+        let (x, y) = points[index];
+        let (end_x, end_y) = points[index + 1];
+        for step in 0..subdivisions {
+            let t = step as f64 / subdivisions as f64;
+            let t2 = t * t;
+            let t3 = t2 * t;
+            let value = (2. * t3 - 3. * t2 + 1.) * y
+                + (t3 - 2. * t2 + t) * spans[index] * tangent[index]
+                + (-2. * t3 + 3. * t2) * end_y
+                + (t3 - t2) * spans[index] * tangent[index + 1];
+            geometry.push((x + (end_x - x) * t, value.clamp(y.min(end_y), y.max(end_y))));
+        }
+    }
+    geometry.push(*points.last().unwrap());
+    geometry
 }
 
 pub(super) fn series_format(key: &str) -> MetricFormat {
@@ -552,7 +982,33 @@ pub(in crate::frontend) fn nice_max(value: f64) -> f64 {
 }
 #[cfg(test)]
 mod tests {
-    use super::{nice_max, segments};
+    use super::{nice_max, sample_at, segments, smooth_run};
+    #[test]
+    fn smoothing_preserves_peaks_and_uneven_sample_times() {
+        let points = [(0., 0.), (10., 100.), (37., 20.), (40., 20.), (100., 80.)];
+        let curve = smooth_run(&points);
+        for point in points {
+            assert!(curve.contains(&point));
+        }
+        for (at, value) in curve {
+            let right = points.partition_point(|p| p.0 < at).min(points.len() - 1);
+            let left = right.saturating_sub(1);
+            assert!(value >= points[left].1.min(points[right].1) - 1e-8);
+            assert!(value <= points[left].1.max(points[right].1) + 1e-8);
+        }
+    }
+    #[test]
+    fn animated_core_bars_do_not_fill_unknown_samples() {
+        let points = [
+            (0., Some(0.)),
+            (10., Some(100.)),
+            (20., None),
+            (30., Some(20.)),
+        ];
+        assert_eq!(sample_at(&points, 5.), Some(50.));
+        assert_eq!(sample_at(&points, 15.), None);
+        assert_eq!(sample_at(&points, 25.), None);
+    }
     #[test]
     pub(in crate::frontend) fn unavailable_readings_split_the_line() {
         let runs = segments(&[(1., Some(2.)), (2., None), (3., Some(4.))]);

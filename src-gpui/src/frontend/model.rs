@@ -5,6 +5,35 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 pub fn number(value: &Value, key: &str) -> f64 {
     value.get(key).and_then(Value::as_f64).unwrap_or(0.)
 }
+pub fn core_grid_columns(
+    count: usize,
+    width: f32,
+    height: f32,
+    minimum_width: f32,
+    minimum_height: f32,
+    gap: f32,
+) -> usize {
+    let limit = (((width + gap) / (minimum_width + gap)).floor() as usize)
+        .max(1)
+        .min(count.max(1));
+    let mut best = limit;
+    let mut best_score = 0.;
+    for columns in 1..=limit {
+        let rows = count.div_ceil(columns).max(1);
+        let cell_width = (width - gap * (columns - 1) as f32) / columns as f32;
+        let cell_height = (height - gap * (rows - 1) as f32) / rows as f32;
+        if cell_height + 0.5 < minimum_height {
+            continue;
+        }
+        let empty = 1. - count as f32 / (rows * columns) as f32;
+        let score = (cell_width / 1.8).min(cell_height - 20.) * (1. - empty * 0.15);
+        if score > best_score {
+            best = columns;
+            best_score = score;
+        }
+    }
+    best
+}
 pub fn text<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or("")
 }
@@ -110,6 +139,11 @@ pub fn title(p: &Value) -> String {
         description.to_owned()
     }
 }
+fn web_role(p: &Value) -> Option<String> {
+    let role = text(&p["webView"], "role");
+    (!role.is_empty() && role != "unknown")
+        .then(|| argus_core::i18n::text(&format!("processes.webView.role.{role}")))
+}
 #[derive(Clone)]
 pub struct Row {
     pub key: String,
@@ -175,7 +209,8 @@ impl Row {
         if readings.is_empty() {
             None
         } else {
-            Some(readings.iter().sum())
+            let total: f64 = readings.iter().sum();
+            Some(if key == "gpu" { total.min(100.) } else { total })
         }
     }
 }
@@ -305,7 +340,16 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
                 }
             })
             .cloned()
-            .map(|p| Row::process(p, 0))
+            .map(|p| {
+                let mut row = Row::process(p, 0);
+                if row.raw["webView"].is_null() {
+                    row.title = text(&row.raw, "name").into();
+                    row.detail = text(&row.raw, "description").into();
+                } else if let Some(role) = web_role(&row.raw) {
+                    row.detail = format!("{} · {role}", text(&row.raw, "name"));
+                }
+                row
+            })
             .collect();
     }
     top.sort_by(compare);
@@ -411,6 +455,7 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
             heading.section = Some(section.into());
             heading.title = argus_core::i18n::text(&format!("processes.section.{section}"));
             heading.members = grouped.iter().flat_map(|r| r.members.clone()).collect();
+            heading.raw["entryCount"] = json!(grouped.len());
             heading.expandable = true;
             heading.expanded = !options.sections.contains(section) || !query.is_empty();
             let expanded = heading.expanded;
@@ -437,7 +482,16 @@ fn append_groups(
                 .unwrap_or(&row.members)
                 .iter()
                 .cloned()
-                .map(|p| Row::process(p, 1))
+                .map(|p| {
+                    let mut row = Row::process(p, 1);
+                    row.title = web_role(&row.raw).unwrap_or_else(|| text(&row.raw, "name").into());
+                    row.detail = if row.raw["webView"].is_null() {
+                        String::new()
+                    } else {
+                        title(&row.raw)
+                    };
+                    row
+                })
                 .collect();
             children.sort_by(compare);
             children
@@ -496,7 +550,6 @@ impl Timeline {
         if last.is_some_and(|previous| now < previous) {
             self.samples.clear();
         }
-        let mut seen = HashSet::new();
         fn flatten(prefix: &str, value: &Value, out: &mut Vec<(String, Option<f64>)>) {
             match value {
                 Value::Number(n) => out.push((prefix.into(), n.as_f64())),
@@ -508,13 +561,18 @@ impl Timeline {
                 }
                 Value::Object(o) => {
                     for (k, v) in o {
+                        if matches!(k.as_str(), "info" | "threads" | "boardSensors" | "limits")
+                            || (prefix == "hardware.cpuSensors" && k == "cores")
+                        {
+                            continue;
+                        }
                         flatten(&format!("{prefix}.{k}"), v, out)
                     }
                 }
                 _ => {}
             }
         }
-        let mut metrics = Vec::new();
+        let mut metrics = Vec::with_capacity(128);
         flatten("system", &snapshot["system"], &mut metrics);
         flatten("hardware", &snapshot["hardware"], &mut metrics);
         for (key, _) in &mut metrics {
@@ -548,22 +606,14 @@ impl Timeline {
                     .reduce(f64::max),
             ),
         ]);
-        let mut groups: HashMap<String, (f64, f64)> = HashMap::new();
-        for p in values(&snapshot["processes"]) {
-            let key = identity(p);
-            metrics.push((format!("process.{key}.cpu"), p["cpu"].as_f64()));
-            metrics.push((format!("process.{key}.mem"), p["privateWs"].as_f64()));
-            let sum = groups.entry(application_key(p)).or_default();
-            sum.0 += number(p, "cpu");
-            sum.1 += number(p, "privateWs");
-        }
-        for (key, (cpu, mem)) in groups {
-            metrics.push((format!("group.{key}.cpu"), Some(cpu)));
-            metrics.push((format!("group.{key}.mem"), Some(mem)));
-        }
         let oldest = now - interval * 64. - 250.;
-        for (key, value) in metrics {
-            seen.insert(key.clone());
+        let tracked_keys: HashSet<String> = self
+            .samples
+            .keys()
+            .filter(|k| k.starts_with("process.") || k.starts_with("group."))
+            .cloned()
+            .collect();
+        let mut record = |key: String, value: Option<f64>| {
             if value.is_some() || self.samples.contains_key(&key) {
                 let list = self.samples.entry(key).or_default();
                 if let Some(previous) = list.back().map(|p| p.0)
@@ -576,9 +626,35 @@ impl Timeline {
                     list.pop_front();
                 }
             }
+        };
+        for (key, value) in metrics {
+            record(key, value);
         }
-        self.samples.retain(|key, list| {
-            if !seen.contains(key) {
+        let mut groups: HashMap<String, (f64, f64)> = HashMap::new();
+        // Only record process/group historical series if they are already tracked (e.g. active in details view)
+        if !tracked_keys.is_empty() {
+            for p in values(&snapshot["processes"]) {
+                let key = identity(p);
+                let cpu_key = format!("process.{key}.cpu");
+                if tracked_keys.contains(&cpu_key) {
+                    record(cpu_key, p["cpu"].as_f64());
+                    record(format!("process.{key}.mem"), p["privateWs"].as_f64());
+                }
+                let app_key = application_key(p);
+                let group_cpu_key = format!("group.{app_key}.cpu");
+                if tracked_keys.contains(&group_cpu_key) {
+                    let sum = groups.entry(app_key).or_default();
+                    sum.0 += number(p, "cpu");
+                    sum.1 += number(p, "privateWs");
+                }
+            }
+            for (key, (cpu, mem)) in groups {
+                record(format!("group.{key}.cpu"), Some(cpu));
+                record(format!("group.{key}.mem"), Some(mem));
+            }
+        }
+        self.samples.retain(|_, list| {
+            if list.back().map(|p| p.0) != Some(now) {
                 list.push_back((now, None));
                 while list.len() > 2 && list[1].0 < oldest {
                     list.pop_front();
@@ -592,6 +668,33 @@ impl Timeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn expanded_apps_distinguish_members_and_bound_gpu_totals() {
+        let processes = vec![
+            json!({"pid":1,"createTime":1,"name":"app.exe","description":"Product","path":"C:/app.exe","gpu":70}),
+            json!({"pid":2,"createTime":2,"name":"app.exe","description":"Product","path":"C:/app.exe","gpu":50}),
+        ];
+        let empty = HashSet::new();
+        let expanded = HashSet::from([application_key(&processes[0])]);
+        let rows = process_rows(
+            &processes,
+            ProcessOptions {
+                mode: "apps",
+                query: "",
+                sort: "cpu",
+                descending: true,
+                expanded: &expanded,
+                collapsed: &empty,
+                sections: &empty,
+            },
+        );
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].metric("gpu"), Some(100.));
+        assert_eq!(rows[1].title, text(&rows[1].raw, "name"));
+        assert!(rows[1].detail.is_empty());
+        assert_eq!(rows[1].depth, 1);
+        assert_ne!(rows[1].key, rows[2].key);
+    }
     #[test]
     fn shared_hosts_never_merge_unrelated_instances() {
         let a = json!({"pid":1,"createTime":1,"name":"node.exe","path":"C:/node.exe"});

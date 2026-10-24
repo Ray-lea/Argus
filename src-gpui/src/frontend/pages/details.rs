@@ -28,9 +28,30 @@ impl Desktop {
                 .unwrap_or(Value::Null);
             body = body.child(
                 div()
-                    .text_lg()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(row.title.clone()),
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_lg()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(row.title.clone()),
+                    )
+                    .child(
+                        self.button(
+                            "deselect-process",
+                            "",
+                            Some("CloseIcon"),
+                            Action::Select(String::new()),
+                            false,
+                            cx,
+                        )
+                        .accessibility_label(label("details.deselect")),
+                    ),
             );
             if row.members.len() > 1 {
                 body = body.child(tr!("details.group.count", count = row.members.len()));
@@ -113,6 +134,17 @@ impl Desktop {
                     true,
                     cx,
                 ));
+            if !info.is_null() && boolean(&info, "accessDenied") {
+                body = body.child(
+                    div()
+                        .p_2()
+                        .rounded_md()
+                        .bg(self.palette.control)
+                        .text_xs()
+                        .text_color(self.palette.muted)
+                        .child(label("details.noAccess")),
+                );
+            }
             for (key, field) in [
                 ("details.user", "user"),
                 ("details.section.commandLine", "commandLine"),
@@ -159,8 +191,48 @@ impl Desktop {
                         cx,
                     ));
             }
-            for member in &row.members {
-                if row.members.len() > 1 {
+            if row.members.len() == 1
+                && let Some(pid) = row.raw["pid"].as_u64().filter(|pid| *pid != 0)
+            {
+                let hosted: Vec<_> = self
+                    .data
+                    .get("services")
+                    .map(values)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter(|s| s["pid"].as_u64() == Some(pid))
+                    .collect();
+                if !hosted.is_empty() {
+                    body = body.child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(self.palette.muted)
+                            .child(tr!("details.services", count = hosted.len())),
+                    );
+                    for service in hosted {
+                        let svc_name = text(service, "name").to_owned();
+                        let display = text(service, "displayName").to_owned();
+                        body = body.child(self.button(
+                            format!("hosted-svc-{svc_name}"),
+                            format!("{display} ({svc_name})"),
+                            None,
+                            Action::Preference("goToService".into(), json!(svc_name)),
+                            false,
+                            cx,
+                        ));
+                    }
+                }
+            }
+            if row.members.len() > 1 {
+                body = body.child(
+                    div()
+                        .text_xs()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(self.palette.muted)
+                        .child(tr!("details.group.members", count = row.members.len())),
+                );
+                for member in &row.members {
                     body = body.child(self.button(
                         format!("member-{}", model::identity(member)),
                         format!("{} · {}", model::title(member), member["pid"]),
@@ -191,6 +263,8 @@ impl Desktop {
         }
         div()
             .flex()
+            .h_full()
+            .bg(self.palette.layer)
             .border_l_1()
             .border_color(self.palette.stroke)
             .child(
@@ -241,18 +315,24 @@ impl Desktop {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(label("details.overview.title")),
                     )
-                    .child(self.button(
-                        "copy-hardware",
-                        label("details.overview.copy"),
-                        None,
-                        Action::Copy(copied),
-                        false,
-                        cx,
-                    )),
+                    .child(
+                        self.button(
+                            "copy-hardware",
+                            "",
+                            Some("CopyIcon"),
+                            Action::Copy(copied),
+                            false,
+                            cx,
+                        )
+                        .accessibility_label(label("details.overview.copy")),
+                    ),
             )
             .child(
                 div()
-                    .text_sm()
+                    .p_3()
+                    .rounded_lg()
+                    .bg(self.palette.control)
+                    .text_xs()
                     .text_color(self.palette.muted)
                     .child(label("details.overview.selectTip")),
             )
@@ -263,7 +343,7 @@ impl Desktop {
                 } else {
                     "details.overview.show"
                 }),
-                None,
+                Some(if visible { "EyeOffIcon" } else { "EyeIcon" }),
                 Action::Preference("overviewHardwareVisible".into(), json!(!visible)),
                 false,
                 cx,
@@ -271,19 +351,38 @@ impl Desktop {
         if visible {
             for device in devices {
                 let detail = match device.kind {
-                    "cpu" => [
-                        tr!("details.overview.cores", count = hardware["cpu"]["cores"]),
-                        tr!(
-                            "details.overview.threads",
-                            count = hardware["cpu"]["logical"]
-                        ),
-                        tr!(
-                            "details.overview.base",
-                            speed =
-                                format!("{:.2} GHz", number(&hardware["cpu"], "baseMhz") / 1000.)
-                        ),
-                    ]
-                    .join(" · "),
+                    "cpu" => {
+                        let p_cores = number(&hardware["cpu"], "performanceCores") as u64;
+                        let e_cores = number(&hardware["cpu"], "efficiencyCores") as u64;
+                        let cores_text = if p_cores > 0 && e_cores > 0 {
+                            format!(
+                                "{}{}",
+                                tr!("details.overview.cores", count = hardware["cpu"]["cores"]),
+                                tr!(
+                                    "details.overview.hybrid",
+                                    performance = p_cores,
+                                    efficiency = e_cores
+                                )
+                            )
+                        } else {
+                            tr!("details.overview.cores", count = hardware["cpu"]["cores"])
+                        };
+                        [
+                            cores_text,
+                            tr!(
+                                "details.overview.threads",
+                                count = hardware["cpu"]["logical"]
+                            ),
+                            tr!(
+                                "details.overview.base",
+                                speed = format!(
+                                    "{:.2} GHz",
+                                    number(&hardware["cpu"], "baseMhz") / 1000.
+                                )
+                            ),
+                        ]
+                        .join(" · ")
+                    }
                     "memory" => [
                         text(&hardware["memory"], "kind").to_owned(),
                         tr!(
@@ -305,13 +404,15 @@ impl Desktop {
                                 .join(" ")
                         )
                     }
-                    "gpu" => tr!(
-                        "details.overview.vram",
-                        size = theme::memory(number(
-                            &hardware["gpus"][device.index]["info"],
-                            "dedicatedTotal"
-                        ))
-                    ),
+                    "gpu" => {
+                        let vram =
+                            number(&hardware["gpus"][device.index]["info"], "dedicatedTotal");
+                        if vram > 0. {
+                            tr!("details.overview.vram", size = theme::memory(vram))
+                        } else {
+                            label("details.overview.sharedMemory")
+                        }
+                    }
                     "network" => {
                         let info = &hardware["nics"][device.index]["info"];
                         if text(info, "kind") == "virtual" {
@@ -324,7 +425,27 @@ impl Desktop {
                         )
                     }
                     "battery" => {
-                        text(&hardware["batteries"][device.index]["info"], "manufacturer").into()
+                        let info = &hardware["batteries"][device.index]["info"];
+                        let mut parts = vec![text(info, "manufacturer").to_owned()];
+                        let designed = number(info, "designedWh");
+                        let full = number(info, "fullWh");
+                        if designed > 0. {
+                            parts.push(tr!(
+                                "details.overview.designed",
+                                capacity = format!("{designed:.1} Wh")
+                            ));
+                            if full > 0. {
+                                parts.push(tr!(
+                                    "details.overview.health",
+                                    percent = format!("{:.0}", (full / designed * 100.).min(100.))
+                                ));
+                            }
+                        }
+                        parts
+                            .into_iter()
+                            .filter(|s| !s.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" · ")
                     }
                     _ => String::new(),
                 };
@@ -348,8 +469,20 @@ impl Desktop {
                     .w_full()
                     .items_start()
                     .justify_start()
-                    .px_0()
-                    .child(icon(glyph, device.color))
+                    .px_1()
+                    .py_3()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .size_8()
+                            .rounded_lg()
+                            .bg(device.color.opacity(0.14))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icon(glyph, device.color)),
+                    )
                     .child(
                         div()
                             .flex_1()
@@ -365,7 +498,8 @@ impl Desktop {
                             )
                             .child(
                                 div()
-                                    .text_sm()
+                                    .text_size(cx.theme().font_size)
+                                    .text_color(self.palette.ink)
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(device.model),
                             )

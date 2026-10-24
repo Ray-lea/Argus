@@ -349,9 +349,27 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         match action {
+            Action::Sort(key) => {
+                self.descending = if self.sort == key {
+                    !self.descending
+                } else {
+                    key != "name" && key != "displayName"
+                };
+                self.sort = key;
+                self.sorts
+                    .insert(self.page.clone(), (self.sort.clone(), self.descending));
+                if self.page == "processes" {
+                    self.prefs
+                        .set("sort", json!({"key":self.sort,"desc":self.descending}));
+                }
+                self.rebuild_rows(false, cx);
+            }
             Action::Page(page) => {
                 if !PAGES.iter().any(|p| p.0 == page) {
                     return;
+                }
+                if self.page != page {
+                    self.page_epoch = self.page_epoch.wrapping_add(1);
                 }
                 self.sorts
                     .insert(self.page.clone(), (self.sort.clone(), self.descending));
@@ -390,18 +408,43 @@ impl Desktop {
                 self.rebuild_rows(false, cx);
             }
             Action::Select(key) => {
-                self.selected.insert(self.page.clone(), key.clone());
-                if self.page == "processes"
-                    && let Some(row) = self.rows.iter().find(|r| r.key == key)
+                if key.is_empty()
+                    || (self.page == "processes"
+                        && self.selected.get(&self.page) == Some(&key)
+                        && self.last_select.as_ref().is_some_and(|(prev, at)| {
+                            prev == &key && at.elapsed() > Duration::from_millis(300)
+                        }))
                 {
-                    let raw = row.raw.clone();
-                    self.request(
-                        "process_details",
-                        json!({"pid":raw["pid"],"path":raw["path"]}),
-                        Some(&format!("details:{key}")),
-                        window,
-                        cx,
-                    );
+                    self.selected.remove(&self.page);
+                    self.last_select = None;
+                } else {
+                    self.selected.insert(self.page.clone(), key.clone());
+                    self.last_select = Some((key.clone(), Instant::now()));
+                    if self.page == "processes"
+                        && let Some(row) = self.rows.iter().find(|r| r.key == key)
+                    {
+                        let prefix = if row.members.len() > 1 {
+                            format!("group.{}", row.key)
+                        } else {
+                            format!("process.{}", row.key)
+                        };
+                        self.timeline
+                            .samples
+                            .entry(format!("{prefix}.cpu"))
+                            .or_default();
+                        self.timeline
+                            .samples
+                            .entry(format!("{prefix}.mem"))
+                            .or_default();
+                        let raw = row.raw.clone();
+                        self.request(
+                            "process_details",
+                            json!({"pid":raw["pid"],"path":raw["path"]}),
+                            Some(&format!("details:{key}")),
+                            window,
+                            cx,
+                        );
+                    }
                 }
             }
             Action::Fold(key) => {
@@ -454,7 +497,9 @@ impl Desktop {
             Action::Device(device) => {
                 self.device = device;
                 self.prefs.set("perfDevice", &self.device);
-                self.page = "performance".into();
+                if self.page != "performance" {
+                    self.act(Action::Page("performance".into()), window, cx);
+                }
             }
             Action::CpuMode(mode) => {
                 if mode == "details" {
@@ -594,9 +639,37 @@ impl Desktop {
             };
             if let Some(row) = self.rows.get(index) {
                 self.act(Action::Select(row.key.clone()), window, cx);
-                self.list.scroll_to_reveal_item(index);
+                if let Some(table) = &self.table {
+                    table.update(cx, |state, cx| state.scroll_to_row(index, cx));
+                }
             }
             cx.stop_propagation();
+        } else if matches!(key, "left" | "right") && self.page == "processes" {
+            if let Some(index) = self
+                .selected
+                .get(&self.page)
+                .and_then(|selected| self.rows.iter().position(|row| &row.key == selected))
+            {
+                let row = self.rows[index].clone();
+                if row.expandable && row.expanded == (key == "left") {
+                    self.act(Action::Fold(row.key), window, cx);
+                } else {
+                    let next = if key == "right" && row.expanded {
+                        self.rows.get(index + 1)
+                    } else if key == "left" {
+                        self.rows[..index]
+                            .iter()
+                            .rev()
+                            .find(|parent| parent.depth < row.depth)
+                    } else {
+                        None
+                    };
+                    if let Some(next) = next {
+                        self.act(Action::Select(next.key.clone()), window, cx);
+                    }
+                }
+                cx.stop_propagation();
+            }
         } else if key == "enter"
             && let Some(key) = self.selected.get(&self.page)
         {
@@ -618,6 +691,11 @@ impl Desktop {
             && !m.platform
             && key.chars().count() == 1
         {
+            if key == "/" {
+                self.search.update(cx, |state, cx| state.focus(window, cx));
+                cx.stop_propagation();
+                return;
+            }
             self.search.update(cx, |state, cx| {
                 state.set_value(key.to_owned(), window, cx);
                 state.focus(window, cx);
@@ -664,8 +742,120 @@ impl Desktop {
             self.host.exit(0);
             return;
         }
+        if let Some(label) = control["inspectLayout"].as_str() {
+            let frames = window.frame_duration_snapshot();
+            let controls = window.window_control_regions();
+            let control_matches = |area| {
+                controls
+                    .iter()
+                    .find(|(kind, _)| *kind == area)
+                    .is_some_and(|(_, bounds)| {
+                        window.window_control_area_at(bounds.center()) == Some(area)
+                    })
+            };
+            let drag_points = controls
+                .iter()
+                .filter(|(area, _)| *area == WindowControlArea::Drag)
+                .map(|(_, bounds)| {
+                    (0..(f32::from(bounds.size.width) / 8.) as usize)
+                        .filter(|index| {
+                            window.window_control_area_at(point(
+                                bounds.left() + px(*index as f32 * 8.),
+                                bounds.center().y,
+                            )) == Some(WindowControlArea::Drag)
+                        })
+                        .count()
+                })
+                .sum::<usize>();
+            let actions_are_client = window
+                .window_control_area_at(self.toolbar_regions.borrow()[1].center())
+                .is_none();
+            println!(
+                "{}",
+                json!({"event":"ui-caption","label":label,"registered":controls.len(),"dragPoints":drag_points,"actionsAreClient":actions_are_client,
+                "minimize":control_matches(WindowControlArea::Min),"maximize":control_matches(WindowControlArea::Max),"close":control_matches(WindowControlArea::Close)})
+            );
+            println!(
+                "{}",
+                json!({"event":"ui-frame-duration","label":label,
+                "drawP50Ms":frames.draw_duration_histogram.value_at_quantile(0.5) as f64/1e6,
+                "drawP95Ms":frames.draw_duration_histogram.value_at_quantile(0.95) as f64/1e6,
+                "drawP99Ms":frames.draw_duration_histogram.value_at_quantile(0.99) as f64/1e6,
+                "drawMaxMs":frames.draw_duration_histogram.max() as f64/1e6})
+            );
+            println!(
+                "{}",
+                json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
+                "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),
+                "performanceScrollY":f32::from(self.device_scroll.max_offset().y),
+                "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()})
+            );
+        }
+        if self.options.fixture.is_some()
+            && let Some(key) = control["clickHeader"].as_str()
+            && let Some(bounds) = self.header_bounds.borrow().get(key).copied()
+        {
+            // Exercise the real hit target, away from the text and sort indicator.
+            let position = point(
+                bounds.left() + bounds.size.width * 0.15,
+                bounds.top() + bounds.size.height * 0.25,
+            );
+            window.defer(cx, move |window, cx| {
+                window.dispatch_event(
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position,
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+                window.dispatch_event(
+                    PlatformInput::MouseDown(MouseDownEvent {
+                        position,
+                        button: MouseButton::Left,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+                window.dispatch_event(
+                    PlatformInput::MouseUp(MouseUpEvent {
+                        position,
+                        button: MouseButton::Left,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+                window.dispatch_event(
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position: point(px(-1.), px(-1.)),
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+            });
+        }
         if let Some(section) = control["settingsSection"].as_str() {
-            self.settings_section = section.into();
+            self.preference("settingsSection", json!(section), window, cx);
+        }
+        if let Some(label) = control["inspectLayout"].as_str() {
+            println!(
+                "{}",
+                json!({"event":"ui-render-counts","label":label,"desktop":self.render_count,"chartTicks":self.chart_frame,"sort":self.sort,"descending":self.descending})
+            );
+        }
+        if let Some(key) = control["sort"].as_str() {
+            self.act(Action::Sort(key.into()), window, cx);
+        }
+        if let Some(index) = control["foldRow"].as_u64()
+            && let Some(row) = self.rows.get(index as usize)
+        {
+            self.act(Action::Fold(row.key.clone()), window, cx);
+        }
+        for key in ["navPosition", "navExpanded", "coreFilter", "uiMotion"] {
+            if let Some(value) = control.get(key) {
+                self.preference(key, value.clone(), window, cx);
+            }
         }
         if let Some(mode) = control["motion"].as_str() {
             self.preference("motion.chartMode", json!(mode), window, cx);

@@ -25,7 +25,8 @@ impl Desktop {
             for item in items {
                 let owner = owner.clone();
                 let action = item.action;
-                let checked = matches!(action,Action::Interval(ms)if ms==interval);
+                let checked =
+                    item.checked || matches!(action, Action::Interval(ms) if ms == interval);
                 menu = menu.item(
                     PopupMenuItem::new(item.label)
                         .disabled(item.disabled)
@@ -90,6 +91,12 @@ impl Desktop {
                     label("common.endProcessTree"),
                     Action::Dialog("endTree".into(), args.clone()),
                 ));
+                let current_priority = self
+                    .data
+                    .get(&format!("details:{}", row.key))
+                    .and_then(|info| info["priorityClass"].as_str())
+                    .or_else(|| row.raw["priorityClass"].as_str())
+                    .unwrap_or_default();
                 let priorities = [
                     "idle",
                     "belowNormal",
@@ -107,44 +114,68 @@ impl Desktop {
                             json!({"members":row.members,"name":row.title,"priority":priority}),
                         ),
                     )
+                    .checked(current_priority == priority)
                 })
                 .collect();
                 items.push(MenuItem::new(
                     label("processes.menu.setPriority"),
                     Action::Popup(priorities),
                 ));
-                items.push(MenuItem::new(label("common.efficiencyMode"),Action::Dialog("efficiency".into(),json!({"members":row.members,"name":row.title,"on":!boolean(&row.raw,"efficiency")}))));
+                items.push(
+                    MenuItem::new(
+                        label("common.efficiencyMode"),
+                        Action::Dialog(
+                            "efficiency".into(),
+                            json!({"members":row.members,"name":row.title,"on":!boolean(&row.raw,"efficiency")}),
+                        ),
+                    )
+                    .checked(boolean(&row.raw, "efficiency")),
+                );
                 items.push(MenuItem::new(
                     label("processes.menu.addRule"),
                     Action::Dialog("ruleScope".into(), json!({"name":text(&row.raw,"name")})),
                 ));
+                if row.members.len() == 1 {
+                    items.push(MenuItem::new(
+                        label("processes.menu.copyPid"),
+                        Action::Copy(row.raw["pid"].to_string()),
+                    ));
+                }
                 items.push(MenuItem::new(
                     label("processes.menu.details"),
                     Action::Select(row.key.clone()),
                 ));
             }
             "services" => {
-                for (action, key) in [
-                    ("start", "common.start"),
-                    ("stop", "common.stop"),
-                    ("restart", "common.restart"),
+                let state = text(&row.raw, "state");
+                for (action, key, disabled) in [
+                    ("start", "common.start", state == "running"),
+                    ("stop", "common.stop", state == "stopped"),
+                    ("restart", "common.restart", state == "stopped"),
                 ] {
-                    items.push(MenuItem::new(
-                        label(key),
-                        Action::Invoke(
-                            "control_service".into(),
-                            json!({"name":text(&row.raw,"name"),"action":action}),
-                        ),
-                    ));
+                    items.push(
+                        MenuItem::new(
+                            label(key),
+                            Action::Invoke(
+                                "control_service".into(),
+                                json!({"name":text(&row.raw,"name"),"action":action}),
+                            ),
+                        )
+                        .disabled(disabled),
+                    );
                 }
+                let current_start = text(&row.raw, "startType");
                 for start_type in ["auto", "autoDelayed", "manual", "disabled"] {
-                    items.push(MenuItem::new(
-                        label(&format!("services.startType.{start_type}")),
-                        Action::Invoke(
-                            "set_service_start_type".into(),
-                            json!({"name":text(&row.raw,"name"),"startType":start_type}),
-                        ),
-                    ));
+                    items.push(
+                        MenuItem::new(
+                            label(&format!("services.startType.{start_type}")),
+                            Action::Invoke(
+                                "set_service_start_type".into(),
+                                json!({"name":text(&row.raw,"name"),"startType":start_type}),
+                            ),
+                        )
+                        .checked(current_start == start_type),
+                    );
                 }
             }
             "startup" => items.push(MenuItem::new(
@@ -463,6 +494,80 @@ impl Desktop {
             });
         if modal.kind == "update" {
             let status = self.data.get("updates").unwrap_or(&Value::Null);
+            let current_ver = text(&self.data["info"], "version");
+            let next_ver = text(status, "version");
+            if !next_ver.is_empty() {
+                content = content.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .text_xs()
+                        .child(
+                            div()
+                                .px_2()
+                                .py_0p5()
+                                .rounded_full()
+                                .bg(self.palette.control)
+                                .text_color(self.palette.muted)
+                                .child(format!(
+                                    "{}: {current_ver}",
+                                    label("updates.dialog.current")
+                                )),
+                        )
+                        .child("→")
+                        .child(
+                            div()
+                                .px_2()
+                                .py_0p5()
+                                .rounded_full()
+                                .bg(self.palette.accent.opacity(0.16))
+                                .text_color(self.palette.accent)
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(format!("{}: {next_ver}", label("updates.dialog.next"))),
+                        )
+                        .when(text(status, "state") == "ready", |d| {
+                            d.child(
+                                div()
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_full()
+                                    .bg(self.palette.cpu.opacity(0.16))
+                                    .text_color(self.palette.cpu)
+                                    .child(label("updates.dialog.verified")),
+                            )
+                        }),
+                );
+            }
+            if text(status, "state") == "downloading" {
+                let received = number(status, "received");
+                let total = number(status, "total");
+                let ratio = if total > 0. {
+                    (received / total).clamp(0., 1.) as f32
+                } else {
+                    0.
+                };
+                content = content.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(div().text_xs().text_color(self.palette.muted).child(tr!(
+                            "updates.dialog.progress",
+                            received = theme::bytes(received, false),
+                            total = theme::bytes(total, false)
+                        )))
+                        .child(
+                            div()
+                                .w_full()
+                                .h_2()
+                                .rounded_full()
+                                .overflow_hidden()
+                                .bg(self.palette.stroke)
+                                .child(div().h_full().w(relative(ratio)).bg(self.palette.accent)),
+                        ),
+                );
+            }
             content = content.child(gpui_kit::component::text::TextView::markdown(
                 "update-release-notes",
                 welcome::update_notes(status),
@@ -513,17 +618,23 @@ impl Desktop {
                     false,
                     cx,
                 ))
-                .child(self.button(
-                    "task-elevated",
-                    label("tasks.administrator"),
-                    None,
-                    Action::Preference(
-                        "dialog.elevated".into(),
-                        json!(!boolean(&modal.args, "elevated")),
-                    ),
-                    boolean(&modal.args, "elevated"),
-                    cx,
-                ));
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(label("tasks.administrator"))
+                        .child(self.switch(
+                            "task-elevated",
+                            label("tasks.administrator"),
+                            boolean(&modal.args, "elevated"),
+                            Action::Preference(
+                                "dialog.elevated".into(),
+                                json!(!boolean(&modal.args, "elevated")),
+                            ),
+                            cx,
+                        )),
+                );
         }
         if modal.kind == "filelock" {
             content = content.child(div().flex().gap_2().children(
@@ -541,22 +652,121 @@ impl Desktop {
                 ),
             ));
             if let Some(report) = self.data.get("lockers") {
-                content = content.child(tr!(
-                    "fileLock.found",
-                    count = values(&report["lockers"]).len()
-                ));
-                for locker in values(&report["lockers"]) {
-                    content = content.child(self.button(
-                        format!("locker-{}", model::identity(locker)),
-                        format!("{} · {}", text(locker, "appName"), locker["pid"]),
-                        None,
-                        Action::Preference("revealProcess".into(), locker.clone()),
-                        false,
-                        cx,
-                    ));
+                let lockers = values(&report["lockers"]);
+                content = content.child(if lockers.is_empty() {
+                    label("fileLock.none")
+                } else {
+                    tr!("fileLock.found", count = lockers.len())
+                });
+                for locker in lockers {
+                    let kind = text(locker, "kind");
+                    let handles_count = locker["handleCount"].as_u64().unwrap_or(0);
+                    let svc_name = text(locker, "serviceName");
+                    content = content.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .p_2()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(self.palette.stroke)
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .min_w_0()
+                                    .flex_1()
+                                    .child(icon("AppIcon", self.palette.muted).size_4())
+                                    .child(div().truncate().font_weight(FontWeight::MEDIUM).child(
+                                        format!(
+                                            "{} · PID {}",
+                                            text(locker, "appName"),
+                                            locker["pid"]
+                                        ),
+                                    ))
+                                    .when(!kind.is_empty() && kind != "unknown", |d| {
+                                        d.child(
+                                            div()
+                                                .px_1p5()
+                                                .rounded_full()
+                                                .text_xs()
+                                                .bg(self.palette.control)
+                                                .text_color(self.palette.muted)
+                                                .child(label(&format!("fileLock.kind.{kind}"))),
+                                        )
+                                    })
+                                    .when(!svc_name.is_empty(), |d| {
+                                        d.child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(self.palette.muted)
+                                                .child(tr!("fileLock.service", name = svc_name)),
+                                        )
+                                    })
+                                    .when(handles_count > 0, |d| {
+                                        d.child(
+                                            div().text_xs().text_color(self.palette.muted).child(
+                                                tr!("fileLock.handleCount", count = handles_count),
+                                            ),
+                                        )
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .flex_shrink_0()
+                                    .child(
+                                        self.button(
+                                            format!("locker-{}", model::identity(locker)),
+                                            label("fileLock.showProcess"),
+                                            None,
+                                            Action::Preference(
+                                                "revealProcess".into(),
+                                                locker.clone(),
+                                            ),
+                                            false,
+                                            cx,
+                                        )
+                                        .min_h_0()
+                                        .h_6()
+                                        .text_xs(),
+                                    )
+                                    .child(
+                                        self.button(
+                                            format!("locker-end-{}", model::identity(locker)),
+                                            label("fileLock.end"),
+                                            None,
+                                            Action::Invoke(
+                                                "kill_process".into(),
+                                                json!({
+                                                    "pid": locker["pid"],
+                                                    "createTime": locker["createTime"],
+                                                    "force": false
+                                                }),
+                                            ),
+                                            false,
+                                            cx,
+                                        )
+                                        .min_h_0()
+                                        .h_6()
+                                        .text_xs()
+                                        .text_color(self.palette.danger),
+                                    ),
+                            ),
+                    );
                 }
                 if report["handles"]["denied"].as_u64().unwrap_or(0) > 0 {
-                    content = content.child(label("fileLock.serviceHint"));
+                    content = content.child(
+                        div()
+                            .text_xs()
+                            .text_color(self.palette.muted)
+                            .child(label("fileLock.serviceHint")),
+                    );
                 }
             }
         }
@@ -610,14 +820,19 @@ impl Desktop {
                     .flex()
                     .justify_end()
                     .gap_2()
-                    .child(self.button(
-                        "dialog-cancel",
-                        label("common.cancel"),
-                        None,
-                        Action::CloseOverlay,
-                        false,
-                        cx,
-                    ))
+                    .child(
+                        self.button(
+                            "dialog-cancel",
+                            label("common.cancel"),
+                            None,
+                            Action::CloseOverlay,
+                            false,
+                            cx,
+                        )
+                        .border_1()
+                        .border_color(self.palette.stroke)
+                        .bg(self.palette.control),
+                    )
                     .child(
                         self.button(
                             "dialog-confirm",
@@ -645,7 +860,14 @@ impl Desktop {
                             Action::Confirm,
                             true,
                             cx,
-                        ),
+                        )
+                        .bg(if matches!(modal.kind.as_str(), "end" | "endTree") {
+                            self.palette.danger
+                        } else {
+                            self.palette.accent
+                        })
+                        .text_color(cx.theme().primary_foreground)
+                        .min_w_20(),
                     ),
             )
             .on_close(move |_, window, cx| {
@@ -850,6 +1072,11 @@ impl Desktop {
             }
             "privileged_service_status" => {
                 self.data.insert("privilege".into(), value.clone());
+            }
+            "kill_process" => {
+                if self.modal.as_ref().is_some_and(|m| m.kind == "filelock") {
+                    self.confirm_dialog(window, cx);
+                }
             }
             "control_service"
             | "set_service_start_type"

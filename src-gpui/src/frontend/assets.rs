@@ -33,6 +33,19 @@ gpui_kit::assets::icon_assets!(
         Monitor,
         Battery,
         RefreshCw,
+        Globe,
+        Keyboard,
+        Shield,
+        Sparkles,
+        Info,
+        Copy,
+        Eye,
+        EyeOff,
+        AppWindow,
+        SunMoon,
+        Database,
+        Zap,
+        Search,
         Circle
     ]
 );

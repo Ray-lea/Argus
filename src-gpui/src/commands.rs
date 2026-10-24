@@ -638,9 +638,6 @@ pub fn open_release_page(version: String) -> Result<(), String> {
     updater::open_release_page(&version)
 }
 
-/// The invitation to the QQ group for feedback and discussion.
-const COMMUNITY_URL: &str = "https://qm.qq.com/q/97YqJAQRNK";
-
 pub fn open_sensor_driver_page() -> Result<(), String> {
     std::process::Command::new("explorer.exe")
         .arg("https://pawnio.eu/")
@@ -661,7 +658,11 @@ pub fn open_homepage() -> Result<(), String> {
 /// Opens the group invitation in the default browser, which hands it to QQ.
 pub fn open_community() -> Result<(), String> {
     std::process::Command::new("explorer.exe")
-        .arg(COMMUNITY_URL)
+        .arg(
+            argus_app::config::manifest()["community"]["url"]
+                .as_str()
+                .expect("community URL"),
+        )
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())

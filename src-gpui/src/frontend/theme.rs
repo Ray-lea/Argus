@@ -30,8 +30,20 @@ impl Palette {
         Self {
             ink: colors.foreground,
             muted: colors.muted_foreground,
-            faint: colors.muted_foreground,
-            background: theme.tokens.background.color,
+            faint: parse_color(
+                design()[if theme.mode == ThemeMode::Dark {
+                    "dark"
+                } else {
+                    "light"
+                }]["ink-3"]
+                    .as_str()
+                    .unwrap(),
+            ),
+            background: if crate::platform::supports_backdrop() {
+                colors.background.opacity(0.)
+            } else {
+                colors.background
+            },
             layer: colors.group_box,
             layer_strong: colors.popover,
             stroke: colors.border,
@@ -108,20 +120,24 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
             .to_owned()
             .into();
     }
-    tokens.shadow.sm.clear();
-    tokens.shadow.md.clear();
-    tokens.shadow.lg.clear();
     theme.apply_semantic_tokens(&tokens);
     theme.colors.group_box = color("layer");
     theme.colors.list_hover = color("hover");
     theme.colors.table = color("layer");
-    theme.colors.table_head = color("layer");
+    theme.colors.table_head = color("layer").opacity(0.);
     theme.colors.table_head_foreground = color("ink-2");
     theme.colors.table_hover = color("hover");
-    theme.colors.table_row_border = color("stroke");
+    theme.colors.table_row_border = color("stroke").opacity(0.);
+    theme.colors.tab_foreground = color("ink-2");
+    theme.colors.tab_active_foreground = color("ink");
+    theme.colors.tab_active = color("control-checked");
+    theme.colors.tab_bar = color("control");
+    theme.colors.tab_bar_segmented = color("window-bg").blend(color("control"));
+    theme.colors.switch = color("ink-3");
+    theme.colors.switch_thumb = color("window-bg");
     theme.colors.table_even = color("layer");
     theme.colors.title_bar = color("window-bg").opacity(0.);
-    theme.colors.title_bar_border = color("stroke");
+    theme.colors.title_bar_border = color("stroke").opacity(0.);
     theme.colors.chart_1 = color("cpu");
     theme.colors.chart_2 = color("mem");
     theme.colors.chart_3 = color("io");
@@ -129,17 +145,69 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     theme.colors.chart_5 = color("gpu");
     theme.colors.chart_bullish = color("bat");
     theme.tokens = theme.colors.into();
-    if crate::platform::supports_backdrop() {
-        let theme = Theme::global_mut(cx);
-        theme.tokens.background = theme.tokens.background.opacity(0.).into();
-    }
     Theme::sync_base(cx);
 }
-fn design() -> &'static serde_json::Value {
+pub fn install_surface(cx: &mut App) {
+    gpui_kit::base::Root::register_plugin(cx, |_, _| ProductSurface);
+}
+struct ProductSurface;
+impl Render for ProductSurface {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+impl gpui_kit::base::RootPlugin for ProductSurface {
+    fn prepare(&mut self, window: &mut Window, _: &mut Context<Self>) {
+        window.set_rem_size(dimension("unit"));
+    }
+    fn style(&self, surface: &mut Stateful<Div>, _: &mut Window, _: &mut App) {
+        if crate::platform::supports_backdrop() {
+            use gpui_kit::gpui::Refineable;
+            surface
+                .style()
+                .refine(&StyleRefinement::default().bg(gpui_kit::gpui::transparent_black()));
+        }
+    }
+}
+pub fn design() -> &'static serde_json::Value {
     static DESIGN: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
     DESIGN.get_or_init(|| {
         serde_json::from_str(include_str!("../../../resources/theme.json")).expect("product theme")
     })
+}
+pub fn dimension(key: &str) -> Pixels {
+    px(design()["layout"][key].as_f64().expect("layout token") as f32)
+}
+pub fn heat_alpha(field: &str, value: f64) -> f32 {
+    let heat = &design()["heat"];
+    let kind = match field {
+        "cpu" | "gpu" => "percent",
+        "mem" => "memory",
+        _ => "rate",
+    };
+    let rule = &heat[kind];
+    let minimum = rule["minimum"].as_f64().expect("heat threshold");
+    if value < minimum || !value.is_finite() {
+        return 0.;
+    }
+    let level = if kind == "rate" {
+        (value / minimum + 1.).log10() / rule["logScale"].as_f64().unwrap()
+    } else {
+        value / rule["full"].as_f64().unwrap()
+    };
+    (level.clamp(0., 1.) * heat["opacity"].as_f64().unwrap()) as f32
+}
+pub fn transition() -> gpui_kit::base::motion::Transition {
+    gpui_kit::base::motion::Transition::new(motion_duration())
+}
+pub fn motion_duration() -> std::time::Duration {
+    let milliseconds = design()["light"]["t-med"]
+        .as_str()
+        .expect("motion duration")
+        .trim_end_matches("ms")
+        .parse()
+        .expect("motion milliseconds");
+    std::time::Duration::from_millis(milliseconds)
 }
 fn parse_color(css: &str) -> Hsla {
     if let Some(hex) = css.strip_prefix('#') {
@@ -161,7 +229,7 @@ fn parse_color(css: &str) -> Hsla {
     }
     .into()
 }
-pub fn icon(name: &str, color: Hsla) -> impl IntoElement {
+pub fn icon(name: &str, color: Hsla) -> Icon {
     let icon = match name {
         "ProcessesIcon" => IconName::LayoutList,
         "PulseIcon" => IconName::Activity,
@@ -192,6 +260,21 @@ pub fn icon(name: &str, color: Hsla) -> impl IntoElement {
         "GpuIcon" => IconName::Monitor,
         "BatteryIcon" => IconName::Battery,
         "RefreshIcon" => IconName::RefreshCw,
+        "LanguageIcon" => IconName::Globe,
+        "KeyboardIcon" => IconName::Keyboard,
+        "ShieldIcon" => IconName::Shield,
+        "MotionIcon" => IconName::Sparkles,
+        "InfoIcon" => IconName::Info,
+        "CopyIcon" => IconName::Copy,
+        "EyeIcon" => IconName::Eye,
+        "EyeOffIcon" => IconName::EyeOff,
+        "AppIcon" => IconName::AppWindow,
+        "ThemeIcon" => IconName::SunMoon,
+        "DataIcon" => IconName::Database,
+        "RulesIcon" => IconName::Zap,
+        "SearchIcon" => IconName::Search,
+        "ExternalLinkIcon" => IconName::ExternalLink,
+        "FolderIcon" => IconName::FolderOpen,
         _ => IconName::Circle,
     };
     Icon::new(icon).size_4().text_color(color)

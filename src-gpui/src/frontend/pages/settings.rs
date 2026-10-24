@@ -1,6 +1,7 @@
 use super::*;
+use gpui_kit::component::scroll::{ScrollableElement, ScrollbarAxis};
 
-const SECTIONS: [&str; 9] = [
+pub(super) const SECTIONS: [&str; 9] = [
     "language",
     "startup",
     "hotkey",
@@ -11,6 +12,28 @@ const SECTIONS: [&str; 9] = [
     "update",
     "about",
 ];
+fn section_icon(section: &str) -> &'static str {
+    match section {
+        "language" => "LanguageIcon",
+        "startup" => "PowerIcon",
+        "hotkey" => "KeyboardIcon",
+        "privilege" => "ShieldIcon",
+        "motion" => "MotionIcon",
+        "data" => "DataIcon",
+        "rules" => "RulesIcon",
+        "update" => "DownloadIcon",
+        _ => "InfoIcon",
+    }
+}
+fn setting_icon(title: &str) -> &'static str {
+    if title.contains("theme") {
+        "ThemeIcon"
+    } else if title.contains("navigation") {
+        "PanelIcon"
+    } else {
+        section_icon(title.split('.').nth(1).unwrap_or_default())
+    }
+}
 impl Desktop {
     pub(in crate::frontend) fn settings_group(
         &self,
@@ -19,25 +42,44 @@ impl Desktop {
         controls: impl IntoElement,
         cx: &Context<Self>,
     ) -> AnyElement {
+        self.settings_group_text(title, label(description), controls, cx)
+    }
+    fn settings_group_text(
+        &self,
+        title: &str,
+        description: String,
+        controls: impl IntoElement,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         div()
             .flex()
-            .flex_col()
-            .gap_3()
+            .flex_wrap()
+            .items_center()
+            .gap_5()
             .p_4()
             .border_1()
             .border_color(self.palette.stroke)
             .rounded(cx.theme().radius)
             .bg(self.palette.layer)
-            .child(div().font_weight(FontWeight::SEMIBOLD).child(label(title)))
-            .when(!description.is_empty(), |d| {
-                d.child(
-                    div()
-                        .text_sm()
-                        .text_color(self.palette.muted)
-                        .child(label(description)),
-                )
-            })
-            .child(controls)
+            .child(icon(setting_icon(title), self.palette.muted).size_5())
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_48()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(div().font_weight(FontWeight::MEDIUM).child(label(title)))
+                    .when(!description.is_empty(), |d| {
+                        d.child(
+                            div()
+                                .text_xs()
+                                .text_color(self.palette.muted)
+                                .child(description),
+                        )
+                    }),
+            )
+            .child(div().flex_shrink_0().max_w_96().child(controls))
             .into_any_element()
     }
     pub(in crate::frontend) fn setting_toggle(
@@ -48,19 +90,13 @@ impl Desktop {
         argument: &str,
         cx: &Context<Self>,
     ) -> AnyElement {
-        self.button(
+        self.switch(
             id.to_owned(),
-            label(if value {
-                "settings.toggle.on"
-            } else {
-                "settings.toggle.off"
-            }),
-            None,
-            Action::Invoke(command.into(), json!({argument:!value})),
+            id.to_owned(),
             value,
+            Action::Invoke(command.into(), json!({argument:!value})),
             cx,
         )
-        .into_any_element()
     }
     pub(in crate::frontend) fn setting_choices(
         &self,
@@ -70,25 +106,25 @@ impl Desktop {
         command: Option<&str>,
         cx: &Context<Self>,
     ) -> AnyElement {
-        div()
-            .flex()
-            .flex_wrap()
-            .gap_2()
-            .children(options.iter().map(|(value, name)| {
-                self.button(
-                    format!("{key}-{value}"),
-                    name.clone(),
-                    None,
-                    if let Some(command) = command {
-                        Action::Invoke(command.into(), json!({key:value}))
-                    } else {
-                        Action::Preference(key.into(), json!(value))
-                    },
-                    selected == *value,
-                    cx,
-                )
-            }))
-            .into_any_element()
+        self.segments(
+            format!("setting-{key}"),
+            options
+                .iter()
+                .map(|(value, name)| {
+                    (
+                        name.clone(),
+                        None,
+                        if let Some(command) = command {
+                            Action::Invoke(command.into(), json!({key:value}))
+                        } else {
+                            Action::Preference(key.into(), json!(value))
+                        },
+                        selected == *value,
+                    )
+                })
+                .collect(),
+            cx,
+        )
     }
     pub(in crate::frontend) fn settings_view(
         &mut self,
@@ -100,7 +136,7 @@ impl Desktop {
             self.settings_section = SECTIONS[0].into();
         }
         let nav = div()
-            .w_48()
+            .w(theme::dimension("settingsRailWidth"))
             .flex_shrink_0()
             .flex()
             .flex_col()
@@ -109,27 +145,105 @@ impl Desktop {
                 self.button(
                     format!("settings-{section}"),
                     label(&format!("settings.sections.{section}")),
-                    None,
+                    Some(section_icon(section)),
                     Action::Preference("settingsSection".into(), json!(section)),
                     self.settings_section == section,
                     cx,
                 )
+                .justify_start()
+                .relative()
+                .h_10()
+                .when(self.settings_section == section, |b| {
+                    b.child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .w_1()
+                            .h_4()
+                            .rounded_full()
+                            .bg(self.palette.accent),
+                    )
+                })
             }));
-        let mut body = div()
+        let sections = SECTIONS
+            .into_iter()
+            .map(|section| self.settings_section_view(section, &settings, window, cx))
+            .collect::<Vec<_>>();
+        let body = div()
             .id("settings-content")
             .flex_1()
             .min_w_0()
+            .min_h_0()
             .overflow_y_scroll()
+            .track_scroll(&self.settings_scroll)
             .flex()
             .flex_col()
-            .gap_4()
-            .px_6()
-            .pb_6();
-        body = body.child(div().text_2xl().child(label(&format!(
-            "settings.sections.{}",
-            self.settings_section
-        ))));
-        match self.settings_section.as_str() {
+            .gap_7()
+            .pl_6()
+            .pr_2()
+            .pb_8()
+            .children(sections)
+            .on_scroll_wheel(cx.listener(|this, _, window, cx| {
+                let owner = cx.entity().downgrade();
+                window.on_next_frame(move |_, cx| {
+                    let _ = owner.update(cx, |this, cx| {
+                        let index = this.settings_scroll.top_item().min(SECTIONS.len() - 1);
+                        if this.settings_section != SECTIONS[index] {
+                            this.settings_section = SECTIONS[index].into();
+                            cx.notify();
+                        }
+                    });
+                });
+                let _ = this;
+            }));
+        let body = body.scrollbar(&self.settings_scroll, ScrollbarAxis::Vertical);
+        if let Some(index) = self.settings_target.take() {
+            let owner = cx.entity().downgrade();
+            window.on_next_frame(move |_, cx| {
+                let _ = owner.update(cx, |this, cx| {
+                    this.settings_scroll.scroll_to_top_of_item(index);
+                    cx.notify();
+                });
+            });
+        }
+        div()
+            .size_full()
+            .min_h_0()
+            .px_3()
+            .py_2()
+            .flex()
+            .justify_center()
+            .child(
+                div()
+                    .flex()
+                    .w_full()
+                    .max_w(theme::dimension("settingsMaxWidth"))
+                    .min_h_0()
+                    .child(nav)
+                    .child(body),
+            )
+            .into_any_element()
+    }
+    fn settings_section_view(
+        &mut self,
+        section: &str,
+        settings: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut body = div()
+            .id(format!("section-{section}"))
+            .flex()
+            .flex_col()
+            .flex_shrink_0()
+            .gap_1()
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .py_2()
+                    .child(label(&format!("settings.sections.{section}"))),
+            );
+        match section {
             "language" => {
                 let languages = [
                     ("system", label("common.languageSystem")),
@@ -141,7 +255,7 @@ impl Desktop {
                     "settings.language.desc",
                     self.setting_choices(
                         "language",
-                        text(&settings, "language"),
+                        text(settings, "language"),
                         &languages,
                         Some("set_language"),
                         cx,
@@ -155,7 +269,7 @@ impl Desktop {
                     "settings.theme.desc",
                     self.setting_choices(
                         "theme",
-                        text(&settings, "theme"),
+                        text(settings, "theme"),
                         &themes,
                         Some("set_theme"),
                         cx,
@@ -185,7 +299,7 @@ impl Desktop {
                     body = body.child(self.settings_group(
                         &format!("settings.startup.{key}.title"),
                         &format!("settings.startup.{key}.desc"),
-                        self.setting_toggle(field, boolean(&settings, field), command, arg, cx),
+                        self.setting_toggle(field, boolean(settings, field), command, arg, cx),
                         cx,
                     ));
                 }
@@ -200,14 +314,14 @@ impl Desktop {
                             .gap_2()
                             .child(self.setting_toggle(
                                 "hotkeyEnabled",
-                                boolean(&settings, "hotkeyEnabled"),
+                                boolean(settings, "hotkeyEnabled"),
                                 "set_hotkey_enabled",
                                 "enabled",
                                 cx,
                             ))
                             .child(self.button(
                                 "hotkey-edit",
-                                text(&settings, "hotkey").to_owned(),
+                                text(settings, "hotkey").to_owned(),
                                 None,
                                 Action::Dialog("hotkey".into(), settings.clone()),
                                 false,
@@ -279,29 +393,53 @@ impl Desktop {
                         cx,
                     ),
                 );
+                let taskmgr = self.data.get("taskmgr").cloned().unwrap_or(Value::Null);
+                let tm_state = taskmgr["state"].as_str().unwrap_or("disabled");
+                let tm_status_label = {
+                    let k = format!("settings.taskManager.state.{tm_state}");
+                    let l = label(&k);
+                    if l == k {
+                        label("settings.taskManager.unknown")
+                    } else {
+                        l
+                    }
+                };
                 body = body.child(
                     self.settings_group(
                         "settings.taskManager.title",
                         "settings.taskManager.desc",
                         div()
                             .flex()
+                            .flex_col()
                             .gap_2()
-                            .child(self.button(
-                                "taskmgr-enable",
-                                label("settings.taskManager.enable"),
-                                None,
-                                Action::Dialog("taskmgr".into(), json!({"action":"enable"})),
-                                false,
-                                cx,
-                            ))
-                            .child(self.button(
-                                "taskmgr-restore",
-                                label("settings.taskManager.restore"),
-                                None,
-                                Action::Dialog("taskmgr".into(), json!({"action":"restore"})),
-                                false,
-                                cx,
-                            )),
+                            .child(self.property("common.status", tm_status_label))
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap_2()
+                                    .child(self.button(
+                                        "taskmgr-enable",
+                                        label("settings.taskManager.enable"),
+                                        None,
+                                        Action::Dialog(
+                                            "taskmgr".into(),
+                                            json!({"action":"enable"}),
+                                        ),
+                                        false,
+                                        cx,
+                                    ))
+                                    .child(self.button(
+                                        "taskmgr-restore",
+                                        label("settings.taskManager.restore"),
+                                        None,
+                                        Action::Dialog(
+                                            "taskmgr".into(),
+                                            json!({"action":"restore"}),
+                                        ),
+                                        false,
+                                        cx,
+                                    )),
+                            ),
                         cx,
                     ),
                 );
@@ -310,7 +448,7 @@ impl Desktop {
                     "settings.sensors.desc",
                     self.button(
                         "sensors",
-                        label(if boolean(&settings, "kernelSensors") {
+                        label(if boolean(settings, "kernelSensors") {
                             "common.on"
                         } else {
                             "common.off"
@@ -318,9 +456,9 @@ impl Desktop {
                         None,
                         Action::Dialog(
                             "sensors".into(),
-                            json!({"enabled":!boolean(&settings,"kernelSensors")}),
+                            json!({"enabled":!boolean(settings,"kernelSensors")}),
                         ),
-                        boolean(&settings, "kernelSensors"),
+                        boolean(settings, "kernelSensors"),
                         cx,
                     ),
                     cx,
@@ -442,20 +580,46 @@ impl Desktop {
                     ),
                     cx,
                 ));
+                let usage = self
+                    .data
+                    .get("historyUsage")
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let history_size_note = if usage.is_null() {
+                    label("settings.data.history.counting")
+                } else if number(&usage, "bytes") <= 0. {
+                    label("settings.data.history.empty")
+                } else if let Some(oldest) = usage["oldestTs"].as_i64().filter(|t| *t > 0) {
+                    tr!(
+                        "settings.data.history.sizeSince",
+                        size = theme::bytes(number(&usage, "bytes"), false),
+                        date = theme::timestamp(oldest)
+                    )
+                } else {
+                    tr!(
+                        "settings.data.history.size",
+                        size = theme::bytes(number(&usage, "bytes"), false)
+                    )
+                };
+                let history_desc = format!(
+                    "{} {}",
+                    label(if boolean(settings, "history") {
+                        "settings.data.history.on"
+                    } else {
+                        "settings.data.history.off"
+                    }),
+                    history_size_note
+                );
                 body = body.child(
-                    self.settings_group(
+                    self.settings_group_text(
                         "settings.data.history.title",
-                        if boolean(&settings, "history") {
-                            "settings.data.history.on"
-                        } else {
-                            "settings.data.history.off"
-                        },
+                        history_desc,
                         div()
                             .flex()
                             .gap_2()
                             .child(self.setting_toggle(
                                 "history",
-                                boolean(&settings, "history"),
+                                boolean(settings, "history"),
                                 "set_history_enabled",
                                 "enabled",
                                 cx,
@@ -488,25 +652,71 @@ impl Desktop {
                         false,
                         cx,
                     ));
+                let rule_stats = self.data.get("ruleStats").cloned().unwrap_or(Value::Null);
                 for rule in values(&settings["rules"]) {
                     let id = text(rule, "id");
+                    let enabled = boolean(rule, "enabled");
+                    let priority_str = rule["priority"]
+                        .as_str()
+                        .filter(|s| !s.is_empty())
+                        .map(|p| {
+                            tr!(
+                                "settings.rules.priority.option",
+                                priority = label(&format!("processes.priority.{p}"))
+                            )
+                        })
+                        .unwrap_or_else(|| label("settings.rules.priority.keep"));
+                    let eff_str = match rule["efficiency"].as_bool() {
+                        Some(true) => label("settings.rules.efficiency.on"),
+                        Some(false) => label("settings.rules.efficiency.off"),
+                        None => label("settings.rules.efficiency.keep"),
+                    };
+                    let stat_summary = if !enabled {
+                        label("settings.rules.summary.disabled")
+                    } else if rule["priority"].is_null() && rule["efficiency"].is_null() {
+                        label("settings.rules.summary.noAction")
+                    } else if let Some(st) = values(&rule_stats)
+                        .iter()
+                        .find(|s| text(s, "id") == id || text(s, "name") == text(rule, "name"))
+                    {
+                        let applied = st["applied"].as_u64().unwrap_or(0);
+                        let denied = st["denied"].as_u64().unwrap_or(0);
+                        let failed = st["failed"].as_u64().unwrap_or(0);
+                        let mut parts = Vec::new();
+                        if applied > 0 {
+                            parts.push(tr!("settings.rules.summary.applied", count = applied));
+                        }
+                        if denied > 0 {
+                            parts.push(tr!("settings.rules.summary.denied", count = denied));
+                        }
+                        if failed > 0 {
+                            parts.push(tr!("settings.rules.summary.failed", count = failed));
+                        }
+                        if parts.is_empty() {
+                            label("settings.rules.summary.notSeen")
+                        } else {
+                            tr!(
+                                "settings.rules.summary.sentence",
+                                parts = parts.join(&label("settings.rules.summary.separator"))
+                            )
+                        }
+                    } else {
+                        label("settings.rules.summary.notSeen")
+                    };
+                    let desc = format!("{priority_str} · {eff_str}\n{stat_summary}");
                     body = body.child(
-                        self.settings_group(
+                        self.settings_group_text(
                             text(rule, "name"),
-                            "",
+                            desc,
                             div()
                                 .flex()
+                                .items_center()
                                 .gap_2()
-                                .child(self.button(
+                                .child(self.switch(
                                     format!("rule-toggle-{id}"),
-                                    label(if boolean(rule, "enabled") {
-                                        "settings.rules.disable"
-                                    } else {
-                                        "settings.rules.enable"
-                                    }),
-                                    None,
+                                    tr!("settings.rules.toggle", name = text(rule, "name")),
+                                    enabled,
                                     Action::Preference("ruleToggle".into(), json!(id)),
-                                    false,
                                     cx,
                                 ))
                                 .child(self.button(
@@ -538,7 +748,7 @@ impl Desktop {
                         version = text(&self.data["info"], "version"),
                         channel = label(&format!(
                             "settings.update.channel.{}",
-                            text(&settings, "updateChannel")
+                            text(settings, "updateChannel")
                         ))
                     ))
                     .child(self.property(
@@ -578,19 +788,14 @@ impl Desktop {
                 body = body.child(self.settings_group(
                     "settings.update.auto.title",
                     "settings.update.auto.desc",
-                    self.button(
+                    self.switch(
                         "update-auto",
-                        label(if boolean(&settings, "updateCheck") {
-                            "common.on"
-                        } else {
-                            "common.off"
-                        }),
-                        None,
+                        label("settings.update.auto.title"),
+                        boolean(settings, "updateCheck"),
                         Action::Preference(
                             "updateCheck".into(),
-                            json!(!boolean(&settings, "updateCheck")),
+                            json!(!boolean(settings, "updateCheck")),
                         ),
-                        boolean(&settings, "updateCheck"),
                         cx,
                     ),
                     cx,
@@ -606,7 +811,7 @@ impl Desktop {
                     body = body.child(self.settings_group(
                         &format!("settings.update.{namespace}.label"),
                         &format!("settings.update.{namespace}.desc"),
-                        self.setting_choices(field, text(&settings, field), &choices, None, cx),
+                        self.setting_choices(field, text(settings, field), &choices, None, cx),
                         cx,
                     ));
                 }
@@ -615,7 +820,7 @@ impl Desktop {
                     "settings.update.proxy.fallback",
                     self.button(
                         "proxy-edit",
-                        text(&settings, "updateProxy").to_owned(),
+                        text(settings, "updateProxy").to_owned(),
                         None,
                         Action::Dialog("proxy".into(), settings.clone()),
                         false,
@@ -628,7 +833,7 @@ impl Desktop {
                     "settings.update.whatsNew.desc",
                     self.setting_toggle(
                         "whatsNew",
-                        boolean(&settings, "whatsNew"),
+                        boolean(settings, "whatsNew"),
                         "set_whats_new",
                         "enabled",
                         cx,
@@ -637,62 +842,147 @@ impl Desktop {
                 ));
             }
             "about" => {
+                let manifest = argus_app::config::manifest();
+                let privilege = self.data.get("privilege").unwrap_or(&Value::Null);
                 body = body
-                    .child(div().text_3xl().child(argus_app::config::product_name()))
-                    .child(text(&self.data["info"], "version").to_owned())
-                    .child(label("settings.about.tagline"));
-                for (id, key, command) in [
-                    ("homepage", "settings.about.homepage.open", "open_homepage"),
-                    (
-                        "community",
-                        "settings.about.community.join",
-                        "open_community",
-                    ),
-                    ("log", "settings.about.log.open", "open_log_dir"),
-                ] {
-                    body = body.child(self.button(
-                        id,
-                        label(key),
-                        None,
-                        Action::Invoke(command.into(), json!({})),
-                        false,
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_5()
+                            .py_3()
+                            .child(img("argus/logo.svg").size_16())
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_baseline()
+                                            .gap_3()
+                                            .child(
+                                                div()
+                                                    .text_3xl()
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .child(argus_app::config::product_name()),
+                                            )
+                                            .child(div().text_color(self.palette.muted).child(
+                                                text(&self.data["info"], "version").to_owned(),
+                                            )),
+                                    )
+                                    .child(label("settings.about.tagline"))
+                                    .child(div().text_xs().text_color(self.palette.muted).child(
+                                        label(if boolean(&self.data["info"], "elevated") {
+                                            "settings.about.admin"
+                                        } else if text(privilege, "state") == "running" {
+                                            "settings.about.service"
+                                        } else {
+                                            "settings.about.standard"
+                                        }),
+                                    )),
+                            )
+                            .child(self.button(
+                                "whatsnew",
+                                label("settings.about.whatsNew"),
+                                None,
+                                Action::Dialog("whatsnew".into(), Value::Null),
+                                false,
+                                cx,
+                            )),
+                    )
+                    .child(self.settings_group_text(
+                        "settings.about.homepage.title",
+                        tr!(
+                            "settings.about.homepage.desc",
+                            url = text(manifest, "homepage")
+                        ),
+                        self.button(
+                            "homepage",
+                            label("settings.about.homepage.open"),
+                            Some("ExternalLinkIcon"),
+                            Action::Invoke("open_homepage".into(), json!({})),
+                            false,
+                            cx,
+                        ),
                         cx,
-                    ));
-                }
+                    ))
+                    .child(
+                        self.settings_group_text(
+                            "settings.about.community.title",
+                            tr!(
+                                "settings.about.community.desc",
+                                group = text(&manifest["community"], "group")
+                            ),
+                            div()
+                                .flex()
+                                .gap_2()
+                                .child(self.button(
+                                    "copy-community",
+                                    label("settings.about.community.copy"),
+                                    Some("CopyIcon"),
+                                    Action::Copy(text(&manifest["community"], "group").into()),
+                                    false,
+                                    cx,
+                                ))
+                                .child(self.button(
+                                    "community",
+                                    label("settings.about.community.join"),
+                                    Some("ExternalLinkIcon"),
+                                    Action::Invoke("open_community".into(), json!({})),
+                                    false,
+                                    cx,
+                                )),
+                            cx,
+                        ),
+                    );
                 for (id, key) in [
-                    ("whatsnew", "settings.about.whatsNew"),
                     ("license", "settings.about.license.view"),
                     ("notices", "settings.about.notices.view"),
                     ("onboarding", "settings.about.onboarding.open"),
                 ] {
-                    body = body.child(self.button(
-                        id,
-                        label(key),
-                        None,
-                        Action::Dialog(id.into(), Value::Null),
-                        false,
+                    body = body.child(self.settings_group(
+                        &format!("settings.about.{id}.title"),
+                        &format!("settings.about.{id}.desc"),
+                        self.button(
+                            id,
+                            label(key),
+                            None,
+                            Action::Dialog(id.into(), Value::Null),
+                            false,
+                            cx,
+                        ),
                         cx,
                     ));
                 }
-                body = body.child(self.button(
-                    "quit",
-                    label("settings.about.quit"),
-                    None,
-                    Action::Invoke("quit".into(), json!({})),
-                    false,
-                    cx,
-                ));
+                body = body
+                    .child(self.settings_group(
+                        "settings.about.log.title",
+                        "settings.about.log.desc",
+                        self.button(
+                            "log",
+                            label("settings.about.log.open"),
+                            Some("FolderIcon"),
+                            Action::Invoke("open_log_dir".into(), json!({})),
+                            false,
+                            cx,
+                        ),
+                        cx,
+                    ))
+                    .child(div().flex().justify_end().child(self.button(
+                        "quit",
+                        label("settings.about.quit"),
+                        None,
+                        Action::Invoke("quit".into(), json!({})),
+                        false,
+                        cx,
+                    )));
             }
             _ => {}
         }
-        div()
-            .flex_1()
-            .min_h_0()
-            .px_3()
-            .flex()
-            .child(nav)
-            .child(body)
-            .into_any_element()
+        body.into_any_element()
     }
     pub(in crate::frontend) fn service_status(&self, status: &Value) -> String {
         if text(status, "state") == "running"

@@ -1,5 +1,6 @@
 //! Application layout uses the native component rhythm and theme roles.
 use super::*;
+use gpui_kit::base::ElementExt;
 use gpui_kit::component::ActiveTheme;
 impl Desktop {
     pub(in crate::frontend) fn set_theme(
@@ -37,20 +38,100 @@ impl Desktop {
         let p = self.palette;
         Button::new(id.into())
             .text_size(cx.theme().font_size)
+            .min_h(theme::dimension("controlHeight"))
+            .flex_shrink_0()
             .px_3()
-            .py_2()
+            .py_1()
             .gap_2()
             .rounded(cx.theme().radius)
-            .text_color(if selected { p.ink } else { p.muted })
+            .text_color(p.ink)
             .when(selected, |b| b.bg(p.control))
             .hover(move |s| s.bg(p.hover).text_color(p.ink))
             .accessibility_label(text.clone())
-            .when_some(glyph, |b, name| b.child(icon(name, p.muted)))
+            .when_some(glyph, |b, name| {
+                b.child(icon(name, if selected { p.accent } else { p.muted }))
+            })
             .when(!text.is_empty(), |b| b.child(text))
             .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
     }
-    pub(in crate::frontend) fn navigation(&self, top: bool, cx: &Context<Self>) -> AnyElement {
+    pub(in crate::frontend) fn navigation(
+        &self,
+        top: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if top {
+            let p = self.palette;
+            let selected = PAGES
+                .iter()
+                .position(|page| page.0 == self.page)
+                .unwrap_or(0);
+            let regions = *self.navigation_regions.borrow();
+            let marker_width = theme::dimension("navigationIndicatorWidth");
+            let marker_x = gpui_kit::base::motion::transition(
+                "page-navigation-indicator",
+                regions[selected + 1].center().x - regions[0].left() - marker_width / 2.,
+                theme::transition(),
+                window,
+                cx,
+            );
+            let owner = cx.entity().downgrade();
+            let tabs = gpui_kit::base::Tabs::new("page-navigation")
+                .relative()
+                .flex()
+                .gap_1()
+                .h(theme::dimension("navigationHeight"))
+                .on_prepaint(track_region(
+                    0,
+                    self.navigation_regions.clone(),
+                    owner.clone(),
+                ))
+                .children(PAGES.iter().enumerate().map(|(index, (page, _))| {
+                    let name = label(&format!("shell.page.{page}"));
+                    gpui_kit::base::Tab::new(("page", index))
+                        .selected(index == selected)
+                        .set_position(index + 1, PAGES.len())
+                        .accessibility_label(name.clone())
+                        .px_2()
+                        .h_full()
+                        .cursor_pointer()
+                        .text_color(self.palette.muted)
+                        .rounded_md()
+                        .hover(move |style| style.bg(p.hover).text_color(p.ink))
+                        .when(index == selected, |tab| {
+                            tab.text_color(self.palette.ink)
+                                .font_weight(FontWeight::SEMIBOLD)
+                        })
+                        .child(name)
+                        .on_prepaint(track_region(
+                            index + 1,
+                            self.navigation_regions.clone(),
+                            owner.clone(),
+                        ))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.act(Action::Page((*page).into()), window, cx);
+                        }))
+                }))
+                .when(regions[selected + 1].size.width > px(0.), |tabs| {
+                    tabs.child(
+                        div()
+                            .absolute()
+                            .bottom_0()
+                            .left(marker_x)
+                            .w(marker_width)
+                            .h(theme::dimension("navigationIndicatorHeight"))
+                            .rounded_full()
+                            .bg(self.palette.accent),
+                    )
+                });
+            return div()
+                .px_4()
+                .pb(px(6.))
+                .flex_shrink_0()
+                .child(tabs)
+                .into_any_element();
+        }
         let mut nav = div()
             .flex()
             .flex_shrink_0()
@@ -91,6 +172,19 @@ impl Desktop {
                     page == self.page,
                     cx,
                 )
+                .relative()
+                .justify_start()
+                .when(page == self.page, |b| {
+                    b.child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .w_1()
+                            .h_4()
+                            .rounded_full()
+                            .bg(self.palette.accent),
+                    )
+                })
                 .role(Role::Tab)
                 .accessibility_label(name),
             );
@@ -103,39 +197,67 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let mut controls = div().flex().items_center().gap_2().flex_shrink_0();
+        let mut controls = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .flex_shrink_0()
+            .occlude();
         if self.page == "processes" {
-            for (mode, glyph) in [
-                ("apps", "AppsIcon"),
-                ("tree", "TreeIcon"),
-                ("list", "ListIcon"),
-            ] {
-                controls = controls.child(
-                    self.button(
-                        format!("view-{mode}"),
-                        if window.viewport_size().width >= window.rem_size() * 80. {
-                            label(&format!("shell.viewMode.{mode}.label"))
-                        } else {
-                            String::new()
-                        },
-                        Some(glyph),
-                        Action::View(mode.into()),
-                        self.view == mode,
-                        cx,
-                    )
-                    .accessibility_label(label(&format!("shell.viewMode.{mode}.label")))
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(label(&format!(
-                            "shell.viewMode.{mode}.label"
-                        )))
-                        .build(window, cx)
-                    }),
-                );
-            }
+            controls = controls.child(
+                self.segments(
+                    "process-view",
+                    [
+                        ("apps", "AppsIcon"),
+                        ("tree", "TreeIcon"),
+                        ("list", "ListIcon"),
+                    ]
+                    .into_iter()
+                    .map(|(mode, glyph)| {
+                        (
+                            if window.viewport_size().width >= window.rem_size() * 64. {
+                                label(&format!("shell.viewMode.{mode}.label"))
+                            } else {
+                                String::new()
+                            },
+                            Some(glyph),
+                            Action::View(mode.into()),
+                            self.view == mode,
+                        )
+                    })
+                    .collect(),
+                    cx,
+                ),
+            );
         } else {
             controls = controls.child(self.page_controls(window, cx));
         }
-        let mut trailing = div().flex().items_center().gap_1().flex_shrink_0();
+        let sampled = matches!(self.page.as_str(), "processes" | "performance");
+        let mut trailing = div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .flex_shrink_0()
+            .occlude()
+            .child(
+                self.button(
+                    "task",
+                    if window.viewport_size().width > px(1100.) {
+                        label("tasks.title")
+                    } else {
+                        String::new()
+                    },
+                    Some("RunTaskIcon"),
+                    Action::Dialog("task".into(), json!({})),
+                    false,
+                    cx,
+                )
+                .border_1()
+                .border_color(p.stroke)
+                .bg(p.control)
+                .accessibility_label(label("tasks.title")),
+            );
+
         let intervals = [500, 1000, 2000, 5000]
             .into_iter()
             .map(|ms| {
@@ -145,17 +267,24 @@ impl Desktop {
                 )
             })
             .collect();
-        trailing = trailing.child(self.button(
-            "interval",
-            tr!(
-                "shell.interval.option",
-                seconds = self.interval as f64 / 1000.
-            ),
-            Some("ChevronDown"),
-            Action::Popup(intervals),
-            false,
-            cx,
-        ));
+        if sampled {
+            trailing = trailing.child(
+                self.button(
+                    "interval",
+                    tr!(
+                        "shell.interval.option",
+                        seconds = self.interval as f64 / 1000.
+                    ),
+                    Some("ChevronDown"),
+                    Action::Popup(intervals),
+                    false,
+                    cx,
+                )
+                .border_1()
+                .border_color(p.stroke)
+                .bg(p.control),
+            );
+        }
         for (id, key, glyph, action) in [
             (
                 "pause",
@@ -166,12 +295,6 @@ impl Desktop {
                 },
                 if self.paused { "PlayIcon" } else { "PauseIcon" },
                 Action::Pause,
-            ),
-            (
-                "task",
-                "tasks.title",
-                "RunTaskIcon",
-                Action::Dialog("task".into(), json!({})),
             ),
             (
                 "lock",
@@ -186,67 +309,123 @@ impl Desktop {
                 Action::Details,
             ),
         ] {
-            if id == "details" && self.page != "processes" {
+            if (id == "details" && self.page != "processes") || (id == "pause" && !sampled) {
                 continue;
             }
             trailing = trailing.child(
-                self.button(id, "", Some(glyph), action, false, cx)
-                    .accessibility_label(label(key))
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(label(key)).build(window, cx)
-                    }),
+                self.button(
+                    id,
+                    String::new(),
+                    Some(glyph),
+                    action,
+                    (id == "pause" && self.paused) || (id == "details" && self.details_open),
+                    cx,
+                )
+                .border_1()
+                .border_color(p.stroke)
+                .bg(p.control)
+                .accessibility_label(label(key))
+                .tooltip(move |window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(label(key)).build(window, cx)
+                }),
             );
         }
-        if self
+        if let Some(updates) = self
             .data
             .get("updates")
-            .is_some_and(|s| matches!(text(s, "state"), "ready" | "available" | "downloading"))
+            .filter(|s| matches!(text(s, "state"), "ready" | "available" | "downloading"))
         {
+            let ver = text(updates, "version");
             trailing = trailing.child(
                 self.button(
                     "update-status",
-                    "",
+                    ver.to_owned(),
                     Some("DownloadIcon"),
                     Action::Dialog("update".into(), json!({})),
                     false,
                     cx,
                 )
+                .border_1()
+                .border_color(p.accent.opacity(0.45))
+                .bg(p.accent.opacity(0.14))
+                .text_color(p.accent)
                 .accessibility_label(label("settings.update.check")),
             );
         }
-        let search = div().flex_1().min_w_0().max_w_96().when(
-            matches!(
-                self.page.as_str(),
-                "processes" | "services" | "startup" | "network"
-            ),
-            |d| d.child(Input::new(&self.search).cleanable(true)),
-        );
-        TitleBar::new()
-            .h_auto()
+        let owner = cx.entity().downgrade();
+        let start = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .flex_shrink_0()
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap_3()
-                    .py_2()
-                    .flex_1()
-                    .min_w_0()
+                    .gap_2()
+                    .text_color(p.ink)
+                    .child(img("argus/logo.svg").size_5())
+                    .child(argus_app::config::app_title()),
+            )
+            .child(controls)
+            .on_prepaint(track_region(0, self.toolbar_regions.clone(), owner.clone()));
+        let trailing = trailing.on_prepaint(track_region(1, self.toolbar_regions.clone(), owner));
+        let mut toolbar = div()
+            .relative()
+            .w_full()
+            .h(theme::dimension("toolbarHeight"))
+            .flex_shrink_0()
+            .child(
+                TitleBar::new()
+                    .h(theme::dimension("toolbarHeight"))
+                    .bg(p.background)
+                    .border_0()
                     .child(
                         div()
+                            .size_full()
                             .flex()
                             .items_center()
+                            .justify_between()
+                            .px_1()
                             .gap_2()
-                            .text_color(p.ink)
-                            .child(img("argus/logo.svg").size_5())
-                            .child(argus_app::config::app_title()),
-                    )
-                    .child(controls)
-                    .child(div().flex_1())
-                    .child(search)
-                    .child(div().flex_1())
-                    .child(trailing),
-            )
-            .into_any_element()
+                            .child(start)
+                            .child(div().flex_1())
+                            .child(trailing),
+                    ),
+            );
+        if matches!(
+            self.page.as_str(),
+            "processes" | "services" | "startup" | "network"
+        ) {
+            let regions = *self.toolbar_regions.borrow();
+            let left = regions[0].right() + px(8.);
+            let right = regions[1].left() - px(8.);
+            if right > left {
+                let width = (right - left).min(theme::dimension("searchWidth"));
+                let centered = (window.viewport_size().width - width) / 2.;
+                let x = centered.max(left).min(right - width);
+                toolbar = toolbar.child(
+                    div()
+                        .absolute()
+                        .left(x)
+                        .top(
+                            (theme::dimension("toolbarHeight") - theme::dimension("controlHeight"))
+                                / 2.,
+                        )
+                        .h(theme::dimension("controlHeight"))
+                        .w(width)
+                        .flex()
+                        .items_center()
+                        .occlude()
+                        .child(
+                            Input::new(&self.search)
+                                .cleanable(true)
+                                .prefix(icon("SearchIcon", p.muted)),
+                        ),
+                );
+            }
+        }
+        toolbar.into_any_element()
     }
     pub(in crate::frontend) fn statusbar(&self, cx: &Context<Self>) -> AnyElement {
         let p = self.palette;
@@ -286,7 +465,7 @@ impl Desktop {
             );
         }
         div()
-            .py_2()
+            .h(theme::dimension("statusHeight"))
             .px_4()
             .flex_shrink_0()
             .flex()
@@ -305,18 +484,27 @@ impl Desktop {
                     seconds = self.interval as f64 / 1000.
                 )
             }))
-            .child(self.button(
-                "privilege-badge",
-                label(if boolean(&self.data["info"], "elevated") {
-                    "shell.elevation.admin"
-                } else {
-                    "shell.elevation.standard"
-                }),
-                None,
-                Action::Page("settings".into()),
-                false,
-                cx,
-            ))
+            .child(
+                self.button(
+                    "privilege-badge",
+                    label(if boolean(&self.data["info"], "elevated") {
+                        "shell.elevation.admin"
+                    } else {
+                        "shell.elevation.standard"
+                    }),
+                    None,
+                    Action::Page("settings".into()),
+                    false,
+                    cx,
+                )
+                .min_h_0()
+                .h_5()
+                .py_0()
+                .border_1()
+                .border_color(p.stroke)
+                .rounded_full()
+                .text_xs(),
+            )
             .into_any_element()
     }
     pub(in crate::frontend) fn mouse_move(
@@ -325,18 +513,23 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some((kind, origin, start)) = &self.drag
-            && kind == "details"
-        {
-            let em = f32::from(window.rem_size());
-            self.details_width = (*start - f32::from(event.position.x - origin.x))
-                .clamp(em * 12., f32::from(window.viewport_size().width) * 0.45);
-            cx.notify();
+        if let Some((kind, origin, start)) = &self.drag {
+            if kind == "details" {
+                let em = f32::from(window.rem_size());
+                self.details_width = (*start - f32::from(event.position.x - origin.x))
+                    .clamp(em * 12., f32::from(window.viewport_size().width) * 0.45);
+                cx.notify();
+            } else if kind == "perf-sidebar" {
+                self.perf_sidebar_width =
+                    (*start + f32::from(event.position.x - origin.x)).clamp(180., 360.);
+                cx.notify();
+            }
         }
     }
 }
 impl Render for Desktop {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.render_count = self.render_count.wrapping_add(1);
         self.active_charts.borrow_mut().clear();
         let p = self.palette;
         let toolbar = self.toolbar(window, cx);
@@ -346,7 +539,9 @@ impl Render for Desktop {
             .flex_1()
             .min_h_0()
             .flex()
-            .when(!self.nav_top, |d| d.child(self.navigation(false, cx)))
+            .when(!self.nav_top, |d| {
+                d.child(self.navigation(false, window, cx))
+            })
             .child(
                 div()
                     .flex_1()
@@ -354,7 +549,11 @@ impl Render for Desktop {
                     .min_h_0()
                     .flex()
                     .flex_col()
-                    .child(content)
+                    .child(div().flex_1().min_h_0().child(self.enter(
+                        ("page-enter", self.page_epoch),
+                        content,
+                        cx,
+                    )))
                     .child(footer),
             );
         let overlays = self.render_overlays(window, cx);
@@ -396,17 +595,36 @@ impl Render for Desktop {
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
-                    if let Some((kind, _, _)) = this.drag.take()
-                        && kind == "details"
-                    {
-                        this.prefs.set("detailsWidth", this.details_width);
+                    if let Some((kind, _, _)) = this.drag.take() {
+                        if kind == "details" {
+                            this.prefs.set("detailsWidth", this.details_width);
+                        } else if kind == "perf-sidebar" {
+                            this.prefs.set("perfSidebarWidth", this.perf_sidebar_width);
+                        }
                     }
                     cx.notify();
                 }),
             )
             .child(toolbar)
-            .when(self.nav_top, |d| d.child(self.navigation(true, cx)))
+            .when(self.nav_top, |d| d.child(self.navigation(true, window, cx)))
             .child(body)
             .children(overlays)
+    }
+}
+
+fn track_region<const N: usize>(
+    index: usize,
+    regions: Rc<RefCell<[Bounds<Pixels>; N]>>,
+    owner: WeakEntity<Desktop>,
+) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
+    move |bounds, window, cx| {
+        if regions.borrow()[index] == bounds {
+            return;
+        }
+        regions.borrow_mut()[index] = bounds;
+        let owner = owner.clone();
+        window.defer(cx, move |_, cx| {
+            let _ = owner.update(cx, |_, cx| cx.notify());
+        });
     }
 }
