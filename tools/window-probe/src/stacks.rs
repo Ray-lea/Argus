@@ -29,6 +29,8 @@ impl Drop for Handle {
     }
 }
 struct Resume(HANDLE);
+#[repr(C, align(16))]
+struct AlignedContext(CONTEXT);
 impl Drop for Resume {
     fn drop(&mut self) {
         unsafe {
@@ -83,7 +85,16 @@ fn sample(pid: u32, main: u32, path: &str, stop: &AtomicBool) -> anyhow::Result<
                 | SYMOPT_FAIL_CRITICAL_ERRORS
                 | SYMOPT_NO_PROMPTS,
         );
-        SymInitializeW(process.0, w!(""), true)?;
+        let symbols = std::path::Path::new(path)
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
+        let search: Vec<u16> = symbols
+            .as_os_str()
+            .to_string_lossy()
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        SymInitializeW(process.0, PCWSTR(search.as_ptr()), true)?;
     }
     let snapshot = Handle(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)? });
     let mut entry = THREADENTRY32 {
@@ -145,31 +156,33 @@ fn sample(pid: u32, main: u32, path: &str, stop: &AtomicBool) -> anyhow::Result<
                 continue;
             }
             let resume = Resume(thread.0);
-            let mut context = CONTEXT {
+            let mut context = AlignedContext(CONTEXT {
                 ContextFlags: CONTEXT_FULL_AMD64,
                 ..Default::default()
-            };
+            });
             let mut addresses = Vec::new();
-            if unsafe { GetThreadContext(thread.0, &mut context) }.is_ok() {
+            let context_result = unsafe { GetThreadContext(thread.0, &mut context.0) };
+            let context_error = context_result.as_ref().err().map(|error| error.code().0);
+            if context_result.is_ok() {
                 let mut frame = STACKFRAME64 {
                     AddrPC: ADDRESS64 {
-                        Offset: context.Rip,
+                        Offset: context.0.Rip,
                         Mode: AddrModeFlat,
                         ..Default::default()
                     },
                     AddrStack: ADDRESS64 {
-                        Offset: context.Rsp,
+                        Offset: context.0.Rsp,
                         Mode: AddrModeFlat,
                         ..Default::default()
                     },
                     AddrFrame: ADDRESS64 {
-                        Offset: context.Rbp,
+                        Offset: context.0.Rbp,
                         Mode: AddrModeFlat,
                         ..Default::default()
                     },
                     ..Default::default()
                 };
-                addresses.push(context.Rip);
+                addresses.push(context.0.Rip);
                 for _ in 0..15 {
                     if !unsafe {
                         StackWalk64(
@@ -177,7 +190,7 @@ fn sample(pid: u32, main: u32, path: &str, stop: &AtomicBool) -> anyhow::Result<
                             process.0,
                             thread.0,
                             &mut frame,
-                            (&mut context as *mut CONTEXT).cast(),
+                            (&mut context.0 as *mut CONTEXT).cast(),
                             None,
                             Some(unwind_table),
                             Some(module_base),
@@ -207,7 +220,7 @@ fn sample(pid: u32, main: u32, path: &str, stop: &AtomicBool) -> anyhow::Result<
             writeln!(
                 out,
                 "{}",
-                serde_json::json!({"unixMs":at,"thread":name,"tid":tid,"pauseMs":pause_ms,"frames":frames})
+                serde_json::json!({"unixMs":at,"thread":name,"tid":tid,"pauseMs":pause_ms,"contextError":context_error,"frames":frames})
             )?;
         }
         out.flush()?;

@@ -376,7 +376,10 @@ unsafe extern "system" fn find(hwnd: HWND, data: LPARAM) -> BOOL {
     });
     if String::from_utf16_lossy(&title[..nt])
         .starts_with(metadata["productName"].as_str().expect("product name"))
-        && String::from_utf16_lossy(&class[..nc]) == "Zed::Window"
+        && matches!(
+            String::from_utf16_lossy(&class[..nc]).as_ref(),
+            "Zed::Window" | "Tauri Window"
+        )
     {
         search.hwnd = hwnd;
         return false.into();
@@ -564,6 +567,53 @@ impl Drop for Gpu {
     }
 }
 
+fn thread_times(pids: &HashSet<u32>) -> Result<Vec<serde_json::Value>> {
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)? };
+    let mut entry = THREADENTRY32 {
+        dwSize: size_of::<THREADENTRY32>() as u32,
+        ..Default::default()
+    };
+    let mut out = Vec::new();
+    unsafe {
+        if Thread32First(snapshot, &mut entry).is_ok() {
+            loop {
+                if pids.contains(&entry.th32OwnerProcessID)
+                    && let Ok(handle) =
+                        OpenThread(THREAD_QUERY_LIMITED_INFORMATION, false, entry.th32ThreadID)
+                {
+                    let (mut created, mut exited, mut kernel, mut user) = (
+                        FILETIME::default(),
+                        FILETIME::default(),
+                        FILETIME::default(),
+                        FILETIME::default(),
+                    );
+                    if GetThreadTimes(handle, &mut created, &mut exited, &mut kernel, &mut user)
+                        .is_ok()
+                    {
+                        let name = GetThreadDescription(handle)
+                            .ok()
+                            .map(|description| {
+                                let name = description.to_string().unwrap_or_default();
+                                let _ = windows::Win32::Foundation::LocalFree(Some(
+                                    windows::Win32::Foundation::HLOCAL(description.0.cast()),
+                                ));
+                                name
+                            })
+                            .unwrap_or_default();
+                        out.push(serde_json::json!({"pid":entry.th32OwnerProcessID,"tid":entry.th32ThreadID,"name":name,"created":ticks(created),"cpuMs":(ticks(kernel)+ticks(user)) as f64/10000.}));
+                    }
+                    let _ = CloseHandle(handle);
+                }
+                if Thread32Next(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snapshot);
+    }
+    Ok(out)
+}
+
 fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
     let pids = job.pids()?;
     let mut processes = Vec::new();
@@ -602,7 +652,9 @@ fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
             }
         }
     }
-    Ok(serde_json::json!({"processes":processes,"gpu":gpu.map(|gpu|gpu.sample(&pids))}))
+    Ok(
+        serde_json::json!({"processes":processes,"gpu":gpu.map(|gpu|gpu.sample(&pids)),"threads":gpu.map(|_|thread_times(&pids)).transpose()?}),
+    )
 }
 
 pub fn run(args: &[String]) -> Result<()> {

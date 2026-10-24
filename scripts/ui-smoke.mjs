@@ -39,9 +39,11 @@ if (!live) {
   fixture.snapshot.seq = samples;
   writeFileSync(resolve(output, "fixture.json"), JSON.stringify(fixture));
 }
-const probe = resolve("target/release/argus-window-probe.exe");
+const probeFlag = process.argv.indexOf("--probe");
+const probe = resolve(probeFlag >= 0 ? process.argv[probeFlag + 1] : "target/release/argus-window-probe.exe");
 const executable = resolve(output, "argus.exe");
-copyFileSync(resolve(process.argv.includes("--dev") ? "target/debug/argus.exe" : "target/release/argus.exe"), executable);
+const executableFlag = process.argv.indexOf("--executable");
+copyFileSync(resolve(executableFlag >= 0 ? process.argv[executableFlag + 1] : process.argv.includes("--dev") ? "target/debug/argus.exe" : "target/release/argus.exe"), executable);
 const child = spawn(
   probe,
   [
@@ -82,8 +84,8 @@ createInterface({ input: child.stdout }).on("line", (line) => {
   }
 });
 const send = (control) => child.stdin.write(`app ${JSON.stringify(control)}\n`);
-const capture = (name) => {
-  send({ inspectLayout: name });
+const capture = (name, keepPointer = false) => {
+  send({ pointerOutside: !keepPointer, inspectLayout: name });
   const result = spawnSync(probe, ["capture", String(shown.pid), resolve(output, `${name}.png`)], {
     windowsHide: true,
     encoding: "utf8",
@@ -97,11 +99,33 @@ try {
   if (!shown) throw Error(`Window unavailable: ${error}`);
   await sleep(2500);
   if (live) {
+    if (process.argv.includes("--exercise-updates")) {
+      for (let step=0;step<80;step++) {
+        send({page:"processes",query:step%2?"argus":"__argus_snapshot_no_match__",view:step%2?"apps":"tree",sort:step%2?"cpu":"mem"});
+        await sleep(25);
+      }
+      send({query:"__argus_snapshot_no_match__",view:"tree",sort:"mem"});
+      await sleep(2500);
+      capture("empty-query");
+      send({query:"",view:"apps",sort:"cpu"});
+    }
     send({ page: "performance", motion: process.argv.includes("--fluid") ? "fluid" : "balanced" });
     child.stdin.write("watch\n");
     send({ inspectLayout: "live-begin" });
     await sleep(18000);
     capture("live-performance");
+    if (process.argv.includes("--exercise-updates")) {
+      send({hoverChart:"cpu-overall-plot"});
+      await sleep(1000);
+      capture("hovered-performance",true);
+      send({pointerOutside:true});
+      child.stdin.write(`size ${metadata.window.minWidth} ${metadata.window.minHeight}\n`);
+      await sleep(1800);
+      capture("live-narrow");
+      child.stdin.write(`size ${metadata.window.width} ${metadata.window.height}\n`);
+      await sleep(1800);
+      capture("live-resized");
+    }
     if (process.argv.includes("--move")) {
       child.stdin.write("begin-move\n");
       for (let step = 0; step < 120; step++) {
