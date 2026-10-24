@@ -23,6 +23,7 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
             // already borrowed. Refresh GPUI's viewport after that callback returns.
             window.bounds_changed(cx);
         }
+        crate::shell::restore_window_state(host, &native, options);
         crate::shell::follow_visibility(&native);
         crate::shell::apply_theme(
             host,
@@ -40,7 +41,7 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
             let _ = crate::shell::build_tray(host);
         }
         if options.hidden {
-            crate::shell::started_hidden(false);
+            crate::shell::started_hidden(host.state::<AppState>().task_manager_start);
         }
     }
     if let Err(error) = crate::instance::install(host, |app, args| {

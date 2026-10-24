@@ -151,7 +151,10 @@ pub fn run() -> anyhow::Result<()> {
     let _owner = match instance::acquire(&options.identifier, &std::env::args().collect::<Vec<_>>())
     {
         Ok(Some(owner)) => owner,
-        Ok(None) => return Ok(()),
+        Ok(None) => {
+            commands::autostart::repair_once(argus_app::config::product_name());
+            return Ok(());
+        }
         Err(error) => {
             error.report();
             return Err(anyhow::anyhow!(
@@ -233,14 +236,37 @@ pub fn run() -> anyhow::Result<()> {
     state.sampler.send(saved.background_intervals());
     state.sampler.send(Control::Subscribe(Channel::new({
         let host = host.clone();
+        let test = options.test;
         move |snapshot: Snapshot| {
             diagnostics::log_hardware_once(&snapshot);
+            if !test {
+                let mem = snapshot.system.mem_used as f64 / snapshot.system.mem_total.max(1) as f64
+                    * 100.;
+                shell::set_tray_tooltip(
+                    &host,
+                    &shell::tray_tooltip(&argus_core::tr!(
+                        "tray.tooltip",
+                        cpu = format!("{:.0}", snapshot.system.cpu),
+                        memory = format!("{mem:.0}")
+                    )),
+                );
+            }
             *host.state::<Latest>().0.write().unwrap() = Some(Arc::new(snapshot));
             host.wake();
             Ok(())
         }
     })));
     drop(state);
+    if task_manager_start && !options.test {
+        let host = host.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(15));
+            if !TASKMGR_COMPLETED.load(Ordering::Acquire) {
+                log::error!("task manager launch timed out before first frame");
+                host.exit(1);
+            }
+        });
+    }
     updater::init(&host);
     options.hidden |= updater::take_relaunch_hidden(&host);
     if let Some(seconds) = options.stop_after {

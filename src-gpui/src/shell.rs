@@ -13,7 +13,7 @@ use std::time::Instant;
 use windows::{
     Win32::{
         Foundation::*,
-        Graphics::Dwm::*,
+        Graphics::{Dwm::*, Gdi::*},
         System::LibraryLoader::GetModuleHandleW,
         UI::{Shell::*, WindowsAndMessaging::*},
     },
@@ -23,7 +23,115 @@ static HOST: OnceLock<Host> = OnceLock::new();
 static VIEW: AtomicU8 = AtomicU8::new(WindowState::Hidden as u8);
 static AWAY: Mutex<Option<(bool, Option<Instant>)>> = Mutex::new(None);
 static UPDATE: Mutex<Option<String>> = Mutex::new(None);
+static BADGE_ICON: Mutex<Option<isize>> = Mutex::new(None);
 const TRAY_MESSAGE: u32 = WM_APP + 82;
+const BADGE_COLOR: [u8; 4] = [0x38, 0xBD, 0xF8, 0xFF];
+
+pub fn draw_badge(rgba: &mut [u8], size: u32, color: [u8; 4]) {
+    if size < 12 || rgba.len() < (size * size * 4) as usize {
+        return;
+    }
+    let s = size as f32;
+    let cx = s * 0.76;
+    let cy = s * 0.76;
+    let r_inner = (s * 0.19).max(2.0);
+    let r_outer = r_inner + (s * 0.06).max(1.0);
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 + 0.5 - cx;
+            let dy = y as f32 + 0.5 - cy;
+            let dist = (dx * dx + dy * dy).sqrt();
+            if dist > r_outer + 0.5 {
+                continue;
+            }
+            let outer_cov = (r_outer + 0.5 - dist).clamp(0.0, 1.0);
+            let inner_cov = (r_inner + 0.5 - dist).clamp(0.0, 1.0);
+            let ring_cov = (outer_cov - inner_cov).clamp(0.0, 1.0);
+            let src_r = (color[0] as f32 * inner_cov + 15.0 * ring_cov) / outer_cov.max(1e-5);
+            let src_g = (color[1] as f32 * inner_cov + 23.0 * ring_cov) / outer_cov.max(1e-5);
+            let src_b = (color[2] as f32 * inner_cov + 42.0 * ring_cov) / outer_cov.max(1e-5);
+            let src_a = (color[3] as f32 / 255.0) * outer_cov;
+            let idx = ((y * size + x) * 4) as usize;
+            let dst_a = rgba[idx + 3] as f32 / 255.0;
+            let out_a = src_a + dst_a * (1.0 - src_a);
+            if out_a > 0.0 {
+                rgba[idx] = ((src_r * src_a + rgba[idx] as f32 * dst_a * (1.0 - src_a)) / out_a)
+                    .round() as u8;
+                rgba[idx + 1] = ((src_g * src_a + rgba[idx + 1] as f32 * dst_a * (1.0 - src_a))
+                    / out_a)
+                    .round() as u8;
+                rgba[idx + 2] = ((src_b * src_a + rgba[idx + 2] as f32 * dst_a * (1.0 - src_a))
+                    / out_a)
+                    .round() as u8;
+                rgba[idx + 3] = (out_a * 255.0).round() as u8;
+            }
+        }
+    }
+}
+
+unsafe fn base_tray_icon() -> windows::core::Result<HICON> {
+    unsafe {
+        LoadIconW(Some(GetModuleHandleW(None)?.into()), PCWSTR(1usize as _))
+            .or_else(|_| LoadIconW(None, IDI_APPLICATION))
+    }
+}
+
+unsafe fn create_badged_icon(base: HICON) -> Option<HICON> {
+    unsafe {
+        let size = GetSystemMetrics(SM_CXSMICON).max(16) as u32;
+        let dc = CreateCompatibleDC(None);
+        if dc.is_invalid() {
+            return None;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: size as i32,
+                biHeight: -(size as i32),
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits = std::ptr::null_mut();
+        let Ok(color_bmp) = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            return None;
+        };
+        if bits.is_null() {
+            let _ = DeleteObject(color_bmp.into());
+            let _ = DeleteDC(dc);
+            return None;
+        }
+        let old = SelectObject(dc, color_bmp.into());
+        let _ = DrawIconEx(dc, 0, 0, base, size as i32, size as i32, 0, None, DI_NORMAL);
+        let slice = std::slice::from_raw_parts_mut(bits.cast::<u8>(), (size * size * 4) as usize);
+        for px in slice.as_chunks_mut::<4>().0 {
+            px.swap(0, 2);
+        }
+        draw_badge(slice, size, BADGE_COLOR);
+        for px in slice.as_chunks_mut::<4>().0 {
+            px.swap(0, 2);
+        }
+        let _ = SelectObject(dc, old);
+        let _ = DeleteDC(dc);
+        let mask_bmp = CreateBitmap(size as i32, size as i32, 1, 1, None);
+        let icon_info = ICONINFO {
+            fIcon: windows::core::BOOL(1),
+            xHotspot: 0,
+            yHotspot: 0,
+            hbmMask: mask_bmp,
+            hbmColor: color_bmp,
+        };
+        let icon = CreateIconIndirect(&icon_info).ok();
+        let _ = DeleteObject(mask_bmp.into());
+        let _ = DeleteObject(color_bmp.into());
+        icon
+    }
+}
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
 }
@@ -207,6 +315,11 @@ pub fn shutdown(app: &Host) {
             let _ = Shell_NotifyIconW(NIM_DELETE, &data);
         }
     }
+    if let Some(raw) = BADGE_ICON.lock().unwrap().take() {
+        unsafe {
+            let _ = DestroyIcon(HICON(raw as _));
+        }
+    }
 }
 pub fn set_tray_tooltip(app: &Host, text: &str) {
     if let Some(mut data) = tray_data(app) {
@@ -221,7 +334,98 @@ pub fn set_tray_tooltip(app: &Host, text: &str) {
 }
 pub fn set_tray_update(app: &Host, version: Option<&str>) {
     *UPDATE.lock().unwrap() = version.map(str::to_owned);
+    if let Some(mut data) = tray_data(app)
+        && let Ok(base) = unsafe { base_tray_icon() }
+    {
+        data.uFlags = NIF_ICON;
+        if version.is_some() {
+            let mut slot = BADGE_ICON.lock().unwrap();
+            let icon = slot
+                .map(|raw| HICON(raw as _))
+                .or_else(|| {
+                    let created = unsafe { create_badged_icon(base) }?;
+                    *slot = Some(created.0 as isize);
+                    Some(created)
+                })
+                .unwrap_or(base);
+            data.hIcon = icon;
+        } else {
+            data.hIcon = base;
+        }
+        unsafe {
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &data);
+        }
+    }
     let _ = app.emit("argus-tray-update", version);
+}
+pub fn save_window_state(app: &Host, hwnd: HWND) {
+    let Ok(dir) = app.path().app_config_dir() else {
+        return;
+    };
+    let mut placement = WINDOWPLACEMENT {
+        length: size_of::<WINDOWPLACEMENT>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetWindowPlacement(hwnd, &mut placement) }.is_err() {
+        return;
+    }
+    let rect = placement.rcNormalPosition;
+    let width = rect.right - rect.left;
+    let height = rect.bottom - rect.top;
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    let state = serde_json::json!({
+        "x": rect.left,
+        "y": rect.top,
+        "width": width,
+        "height": height,
+        "maximized": placement.showCmd == SW_SHOWMAXIMIZED.0 as u32,
+    });
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(dir.join("window-state.json"), state.to_string());
+}
+pub fn restore_window_state(app: &Host, native: &NativeWindow, options: &crate::Options) {
+    if options.test || options.hidden {
+        return;
+    }
+    let Ok(dir) = app.path().app_config_dir() else {
+        return;
+    };
+    let Ok(bytes) = std::fs::read(dir.join("window-state.json")) else {
+        return;
+    };
+    let Ok(state) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return;
+    };
+    let (Some(x), Some(y), Some(w), Some(h)) = (
+        state["x"].as_i64().map(|v| v as i32),
+        state["y"].as_i64().map(|v| v as i32),
+        state["width"].as_i64().map(|v| v as i32),
+        state["height"].as_i64().map(|v| v as i32),
+    ) else {
+        return;
+    };
+    if w < 400 || h < 300 {
+        return;
+    }
+    let rect = RECT {
+        left: x,
+        top: y,
+        right: x + w,
+        bottom: y + h,
+    };
+    let Ok(hwnd) = native.hwnd() else {
+        return;
+    };
+    unsafe {
+        if !MonitorFromRect(&rect, MONITOR_DEFAULTTONULL).is_invalid() {
+            let _ = SetWindowPos(hwnd, None, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        if state["maximized"].as_bool() == Some(true) {
+            let _ = ShowWindow(hwnd, SW_MAXIMIZE);
+        }
+    }
 }
 fn tray_menu(app: &Host, hwnd: HWND) {
     unsafe {
@@ -279,7 +483,11 @@ unsafe extern "system" fn procedure(
             }
             return LRESULT(0);
         }
+        if message == WM_EXITSIZEMOVE {
+            save_window_state(app, hwnd);
+        }
         if message == WM_CLOSE {
+            save_window_state(app, hwnd);
             if app.state::<SettingsStore>().get().close_to_tray {
                 if let Some(window) = app.get_window("main") {
                     hide_main(&window);
