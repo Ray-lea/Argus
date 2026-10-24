@@ -285,6 +285,7 @@ impl Desktop {
                                 interactive: true,
                                 fill: true,
                                 bars: false,
+                                background_separate: false,
                                 selection: Some(cx.entity().downgrade()),
                                 cursor: active_cursor.map(|at| at as f64),
                                 geometry_start: start,

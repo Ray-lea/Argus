@@ -403,6 +403,7 @@ mod tests {
             interactive: false,
             fill: false,
             bars: false,
+            background_separate: false,
             selection: None,
             cursor: None,
             geometry_start: 0.,

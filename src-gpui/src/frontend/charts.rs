@@ -94,6 +94,7 @@ pub struct TimePlot {
     pub interactive: bool,
     pub fill: bool,
     pub bars: bool,
+    pub(in crate::frontend) background_separate: bool,
     pub selection: Option<WeakEntity<Desktop>>,
     pub cursor: Option<f64>,
     pub geometry_start: f64,
@@ -251,6 +252,13 @@ impl Render for ChartLayer {
                             let span = plot.end - plot.start;
                             plot.end = plot_end(&plot, &clock, now);
                             plot.start = plot.end - span;
+                            let step = f32::from(placement.bounds.size.width)
+                                / plot.series.len().max(1) as f32;
+                            // Keep interleaved painting when densely packed bars could overlap after pixel snapping.
+                            plot.background_separate = !plot.bars
+                                || (step - f32::from(bar_width(step))) * window.scale_factor()
+                                    >= 1.;
+                            let background = plot.clone();
                             let mut element = plot.into_any_element();
                             window.with_content_mask(
                                 Some(ContentMask { bounds: clip }),
@@ -263,15 +271,24 @@ impl Render for ChartLayer {
                                     element.prepaint_at(placement.bounds.origin, window, cx);
                                 },
                             );
-                            elements.push((element, clip));
+                            elements.push((element, clip, background, placement.bounds));
                         }
                         elements
                     },
                     |bounds, elements, window, cx| {
-                        // Keep the animated overlay after the static page so
-                        // renderers can retain the page's exact pixels.
+                        // Grids and bar tracks are static, even though their data moves.
+                        // Paint every backdrop before the shared animated layer.
+                        for (_, clip, plot, bounds) in &elements {
+                            if !plot.background_separate {
+                                continue;
+                            }
+                            window
+                                .with_content_mask(Some(ContentMask { bounds: *clip }), |window| {
+                                    plot.paint_base(*bounds, window, cx)
+                                });
+                        }
                         window.paint_layer(bounds, |window| {
-                            for (mut element, clip) in elements {
+                            for (mut element, clip, _, _) in elements {
                                 window.with_content_mask(
                                     Some(ContentMask { bounds: clip }),
                                     |window| element.paint(window, cx),
@@ -318,35 +335,18 @@ fn segments(points: &[(f64, Option<f64>)]) -> Vec<Vec<(f64, f64)>> {
     }
     runs
 }
-impl Plot for TimePlot {
-    fn prepaint(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        window: &mut Window,
-        _cx: &mut App,
-    ) -> Vec<AnyElement> {
-        self.measured_width
-            .set(f32::from(bounds.size.width) * window.scale_factor());
-        vec![]
-    }
-    fn id(&self) -> Option<ElementId> {
-        Some(self.id.clone().into())
-    }
-    fn interactive(&self) -> bool {
-        self.interactive
-    }
-    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+fn bar_width(step: f32) -> Pixels {
+    px((step * 0.65).max(1.))
+}
+impl TimePlot {
+    fn paint_base(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
-        let start = self.start;
-        let span = (self.end - self.start).max(1.);
         if self.bars {
-            let mut surfaces = Vec::with_capacity(self.series.len());
             let step = width / self.series.len().max(1) as f32;
             for (index, series) in self.series.iter().enumerate() {
-                let value = sample_at(&series.points, self.end);
                 let x = bounds.origin.x + px(index as f32 * step);
-                let bar_width = px((step * 0.65).max(1.));
+                let bar_width = bar_width(step);
                 window.paint_quad(gpui_kit::gpui::fill(
                     Bounds::new(
                         point(x, bounds.origin.y),
@@ -354,20 +354,7 @@ impl Plot for TimePlot {
                     ),
                     series.color.opacity(0.12),
                 ));
-                let h = px((value.unwrap_or(0.) / 100.).clamp(0., 1.) as f32 * height);
-                let region =
-                    Bounds::new(point(x, bounds.top()), size(bar_width, bounds.size.height));
-                let handle = window.paint_animated_rect(
-                    Bounds::new(point(x, bounds.bottom() - h), size(bar_width, h)),
-                    region,
-                    series.color,
-                );
-                surfaces.push(BarSurface {
-                    handle,
-                    bounds: region,
-                });
             }
-            *self.bar_surfaces.borrow_mut() = surfaces;
             return;
         }
         if self.interactive {
@@ -406,6 +393,59 @@ impl Plot for TimePlot {
                     ));
                 }
             }
+        }
+    }
+}
+impl Plot for TimePlot {
+    fn prepaint(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        _cx: &mut App,
+    ) -> Vec<AnyElement> {
+        self.measured_width
+            .set(f32::from(bounds.size.width) * window.scale_factor());
+        vec![]
+    }
+    fn id(&self) -> Option<ElementId> {
+        Some(self.id.clone().into())
+    }
+    fn interactive(&self) -> bool {
+        self.interactive
+    }
+    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        if !self.background_separate && !self.bars {
+            self.paint_base(bounds, window, cx);
+        }
+        let width = f32::from(bounds.size.width);
+        let height = f32::from(bounds.size.height);
+        let start = self.start;
+        let span = (self.end - self.start).max(1.);
+        if self.bars {
+            let mut surfaces = Vec::with_capacity(self.series.len());
+            let step = width / self.series.len().max(1) as f32;
+            for (index, series) in self.series.iter().enumerate() {
+                let value = sample_at(&series.points, self.end);
+                let x = bounds.origin.x + px(index as f32 * step);
+                let bar_width = bar_width(step);
+                let h = px((value.unwrap_or(0.) / 100.).clamp(0., 1.) as f32 * height);
+                let region =
+                    Bounds::new(point(x, bounds.top()), size(bar_width, bounds.size.height));
+                if !self.background_separate {
+                    window.paint_quad(gpui_kit::gpui::fill(region, series.color.opacity(0.12)));
+                }
+                let handle = window.paint_animated_rect(
+                    Bounds::new(point(x, bounds.bottom() - h), size(bar_width, h)),
+                    region,
+                    series.color,
+                );
+                surfaces.push(BarSurface {
+                    handle,
+                    bounds: region,
+                });
+            }
+            *self.bar_surfaces.borrow_mut() = surfaces;
+            return;
         }
         if let Some(owner) = self.selection.clone() {
             let end = self.end;
@@ -733,6 +773,7 @@ impl Desktop {
             interactive,
             fill: true,
             bars,
+            background_separate: false,
             selection: None,
             cursor: None,
             geometry_start: start,

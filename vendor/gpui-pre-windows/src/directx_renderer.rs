@@ -73,8 +73,11 @@ pub(crate) struct DirectXRendererDevices {
 
 struct DirectXResources {
     prefix: Option<ID3D11Texture2D>,
+    prefix_view: Option<ID3D11ShaderResourceView>,
+    compose_prefix: bool,
+    restore_regions: Vec<RECT>,
     prefix_key: Option<(u64, usize, bool)>,
-    present_dirty: Option<RECT>,
+    present_dirty: Option<Vec<RECT>>,
     // Direct3D rendering objects
     swap_chain: IDXGISwapChain1,
     render_target: Option<ID3D11Texture2D>,
@@ -144,12 +147,20 @@ fn suffix_damage(
     batches: &[PrimitiveBatch],
     width: u32,
     height: u32,
-) -> Option<RECT> {
-    let mut region: Option<Bounds<ScaledPixels>> = None;
+) -> Option<Vec<RECT>> {
+    let mut regions = Vec::new();
     let mut include = |bounds: Bounds<ScaledPixels>, mask: ContentMask<ScaledPixels>| {
         let clipped = bounds.intersect(&mask.bounds);
         if !clipped.is_empty() {
-            region = Some(region.map_or(clipped, |old| old.union(&clipped)));
+            let rect = RECT {
+                left: (clipped.left().as_f32().floor() as i32 - 1).clamp(0, width as i32),
+                top: (clipped.top().as_f32().floor() as i32 - 1).clamp(0, height as i32),
+                right: (clipped.right().as_f32().ceil() as i32 + 1).clamp(0, width as i32),
+                bottom: (clipped.bottom().as_f32().ceil() as i32 + 1).clamp(0, height as i32),
+            };
+            if rect.right > rect.left && rect.bottom > rect.top {
+                merge_damage(&mut regions, rect);
+            }
         }
     };
     for batch in batches {
@@ -190,14 +201,33 @@ fn suffix_damage(
             }
         }
     }
-    let bounds = region?;
-    let rect = RECT {
-        left: (bounds.left().as_f32().floor() as i32 - 1).clamp(0, width as i32),
-        top: (bounds.top().as_f32().floor() as i32 - 1).clamp(0, height as i32),
-        right: (bounds.right().as_f32().ceil() as i32 + 1).clamp(0, width as i32),
-        bottom: (bounds.bottom().as_f32().ceil() as i32 + 1).clamp(0, height as i32),
-    };
-    (rect.right > rect.left && rect.bottom > rect.top).then_some(rect)
+    (!regions.is_empty()).then_some(regions)
+}
+
+// Keep distant charts separate, but combine aligned strips to avoid a GPU copy
+// for every core chart. Merge overlaps before restoring and blending the suffix.
+fn merge_damage(regions: &mut Vec<RECT>, mut rect: RECT) {
+    let mut index = 0;
+    while index < regions.len() {
+        let other = regions[index];
+        if (rect.left <= other.right
+            && other.left <= rect.right
+            && rect.top <= other.bottom
+            && other.top <= rect.bottom)
+            || (rect.top == other.top && rect.bottom == other.bottom)
+            || (rect.left == other.left && rect.right == other.right)
+        {
+            regions.swap_remove(index);
+            rect.left = rect.left.min(other.left);
+            rect.top = rect.top.min(other.top);
+            rect.right = rect.right.max(other.right);
+            rect.bottom = rect.bottom.max(other.bottom);
+            index = 0;
+        } else {
+            index += 1;
+        }
+    }
+    regions.push(rect);
 }
 
 fn batch_last_order(scene: &Scene, batch: &PrimitiveBatch) -> DrawOrder {
@@ -219,7 +249,117 @@ fn batch_last_order(scene: &Scene, batch: &PrimitiveBatch) -> DrawOrder {
     }
 }
 
+// A single sprite can restore its own background while painting. Only disjoint
+// masks are eligible: overlapping layers must retain the ordinary blend order.
+struct PrefixComposition {
+    dirty: Vec<RECT>,
+    restore: Vec<RECT>,
+}
+fn independent_sprite_regions(
+    scene: &Scene,
+    batches: &[PrimitiveBatch],
+    width: u32,
+    height: u32,
+) -> Option<PrefixComposition> {
+    let mut regions: Vec<RECT> = Vec::new();
+    let mut quads = Vec::new();
+    let mut images = Vec::new();
+    for batch in batches {
+        if let PrimitiveBatch::Quads(range) = batch {
+            quads.push(PrimitiveBatch::Quads(range.clone()));
+            continue;
+        }
+        let PrimitiveBatch::PolychromeSprites { range, .. } = batch else {
+            return None;
+        };
+        for sprite in &scene.polychrome_sprites[range.clone()] {
+            if !sprite.bounds.size.width.as_f32().is_finite()
+                || !sprite.bounds.size.height.as_f32().is_finite()
+                || sprite.bounds.size.width.as_f32() <= 0.
+                || sprite.bounds.size.height.as_f32() <= 0.
+            {
+                return None;
+            }
+            let mask = sprite.content_mask.bounds;
+            let rect = RECT {
+                left: (mask.left().as_f32().floor() as i32).clamp(0, width as i32),
+                top: (mask.top().as_f32().floor() as i32).clamp(0, height as i32),
+                right: (mask.right().as_f32().ceil() as i32).clamp(0, width as i32),
+                bottom: (mask.bottom().as_f32().ceil() as i32).clamp(0, height as i32),
+            };
+            if rect.left >= rect.right || rect.top >= rect.bottom {
+                continue;
+            }
+            if (rect.right - rect.left) as f32 > sprite.bounds.size.width.as_f32().ceil()
+                || (rect.bottom - rect.top) as f32 > sprite.bounds.size.height.as_f32().ceil()
+            {
+                return None;
+            }
+            if regions.iter().any(|other| {
+                rect.left < other.right
+                    && other.left < rect.right
+                    && rect.top < other.bottom
+                    && other.top < rect.bottom
+            }) {
+                return None;
+            }
+            regions.push(rect);
+            images.push((rect, sprite.order));
+        }
+    }
+    if regions.is_empty() {
+        return None;
+    }
+    let mut remaining_quads = Vec::new();
+    for batch in quads {
+        let PrimitiveBatch::Quads(range) = batch else {
+            unreachable!()
+        };
+        for index in range {
+            let Some(damage) = suffix_damage(
+                scene,
+                &[PrimitiveBatch::Quads(index..index + 1)],
+                width,
+                height,
+            ) else {
+                continue;
+            };
+            let covered = damage.iter().all(|rect| {
+                images.iter().any(|(image, order)| {
+                    *order < scene.quads[index].order
+                        && image.left <= rect.left
+                        && image.top <= rect.top
+                        && image.right >= rect.right
+                        && image.bottom >= rect.bottom
+                })
+            });
+            // A later bar drawn over a restored chart needs no second background
+            // copy. Earlier or partly-overlapping content uses the normal path.
+            if !covered {
+                remaining_quads.push(PrimitiveBatch::Quads(index..index + 1));
+            }
+        }
+    }
+    let restore = suffix_damage(scene, &remaining_quads, width, height).unwrap_or_default();
+    if restore.iter().any(|quad| {
+        regions.iter().any(|image| {
+            quad.left < image.right
+                && image.left < quad.right
+                && quad.top < image.bottom
+                && image.top < quad.bottom
+        })
+    }) {
+        return None;
+    }
+    regions.extend_from_slice(&restore);
+    Some(PrefixComposition {
+        dirty: regions,
+        restore,
+    })
+}
+
 struct DirectXRenderPipelines {
+    uploaded_revision: Option<u64>,
     shadow_pipeline: PipelineState<Shadow>,
     quad_pipeline: PipelineState<Quad>,
     path_rasterization_pipeline: PipelineState<PathRasterizationSprite>,
@@ -231,6 +371,8 @@ struct DirectXRenderPipelines {
 }
 
 struct DirectXGlobalElements {
+    replacement_blend: ID3D11BlendState,
+    last_params: Option<GlobalParams>,
     global_params_buffer: Option<ID3D11Buffer>,
     batch_params: BatchConstants,
     sampler: Option<ID3D11SamplerState>,
@@ -337,25 +479,30 @@ impl DirectXRenderer {
         self.atlas.clone()
     }
 
-    fn pre_draw(&self, clear_color: &[f32; 4], reuse_prefix: bool) -> Result<()> {
+    fn pre_draw(&mut self, clear_color: &[f32; 4], reuse_prefix: bool) -> Result<()> {
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
             .devices
             .as_ref()
             .expect("devices missing")
             .device_context;
-        update_buffer(
-            device_context,
-            self.globals.global_params_buffer.as_ref().unwrap(),
-            &[GlobalParams {
-                gamma_ratios: self.font_info.gamma_ratios,
-                viewport_size: [resources.viewport.Width, resources.viewport.Height],
-                grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
-                subpixel_enhanced_contrast: self.font_info.subpixel_enhanced_contrast,
-                is_bgr: self.font_info.is_bgr as u32,
-                _pad: [0; 3],
-            }],
-        )?;
+        let params = GlobalParams {
+            gamma_ratios: self.font_info.gamma_ratios,
+            viewport_size: [resources.viewport.Width, resources.viewport.Height],
+            grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
+            subpixel_enhanced_contrast: self.font_info.subpixel_enhanced_contrast,
+            is_bgr: self.font_info.is_bgr as u32,
+            compose_prefix: resources.compose_prefix as u32,
+            _pad: [0; 2],
+        };
+        if self.globals.last_params != Some(params) {
+            update_buffer(
+                device_context,
+                self.globals.global_params_buffer.as_ref().unwrap(),
+                &[params],
+            )?;
+            self.globals.last_params = Some(params);
+        }
         unsafe {
             if reuse_prefix {
                 let target = resources
@@ -363,29 +510,36 @@ impl DirectXRenderer {
                     .as_ref()
                     .context("render target missing")?;
                 let prefix = resources.prefix.as_ref().context("scene prefix missing")?;
-                if let Some(rect) = resources.present_dirty {
-                    let region = D3D11_BOX {
-                        left: rect.left as u32,
-                        top: rect.top as u32,
-                        front: 0,
-                        right: rect.right as u32,
-                        bottom: rect.bottom as u32,
-                        back: 1,
-                    };
-                    device_context.CopySubresourceRegion(
-                        target,
-                        0,
-                        region.left,
-                        region.top,
-                        0,
-                        prefix,
-                        0,
-                        Some(&region),
-                    );
+                let regions = if resources.compose_prefix {
+                    Some(resources.restore_regions.as_slice())
+                } else {
+                    resources.present_dirty.as_deref()
+                };
+                if let Some(rects) = regions {
+                    for rect in rects {
+                        let region = D3D11_BOX {
+                            left: rect.left as u32,
+                            top: rect.top as u32,
+                            front: 0,
+                            right: rect.right as u32,
+                            bottom: rect.bottom as u32,
+                            back: 1,
+                        };
+                        device_context.CopySubresourceRegion(
+                            target,
+                            0,
+                            region.left,
+                            region.top,
+                            0,
+                            prefix,
+                            0,
+                            Some(&region),
+                        );
+                    }
                 } else {
                     device_context.CopyResource(target, prefix);
                 }
-            } else {
+            } else if !reuse_prefix {
                 device_context.ClearRenderTargetView(
                     resources
                         .render_target_view
@@ -403,6 +557,12 @@ impl DirectXRenderer {
                 .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params.legacy)));
             device_context
                 .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
+            let prefix = if resources.compose_prefix {
+                resources.prefix_view.clone()
+            } else {
+                None
+            };
+            device_context.PSSetShaderResources(2, Some(slice::from_ref(&prefix)));
         }
         Ok(())
     }
@@ -413,9 +573,9 @@ impl DirectXRenderer {
         let parameters = resources
             .present_dirty
             .as_ref()
-            .map(|rect| DXGI_PRESENT_PARAMETERS {
-                DirtyRectsCount: 1,
-                pDirtyRects: rect as *const RECT as *mut RECT,
+            .map(|rects| DXGI_PRESENT_PARAMETERS {
+                DirtyRectsCount: rects.len() as u32,
+                pDirtyRects: rects.as_ptr() as *mut RECT,
                 ..Default::default()
             })
             .unwrap_or_default();
@@ -554,11 +714,21 @@ impl DirectXRenderer {
                 .resources
                 .as_ref()
                 .is_some_and(|r| r.prefix_key == prefix_key);
-        self.resources
-            .as_mut()
-            .context("resources missing")?
-            .present_dirty = if reuse_prefix && partial {
-            suffix_damage(
+        static COMPOSE: OnceLock<bool> = OnceLock::new();
+        let composed = if reuse_prefix
+            && partial
+            && *COMPOSE
+                .get_or_init(|| std::env::var_os("ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION").is_none())
+            && batches[prefix_end.expect("prefix end")..]
+                .iter()
+                .all(|batch| match batch {
+                    PrimitiveBatch::PolychromeSprites { texture_id, .. } => {
+                        self.atlas.get_texture_view(*texture_id).is_some()
+                    }
+                    PrimitiveBatch::Quads(_) => true,
+                    _ => false,
+                }) {
+            independent_sprite_regions(
                 scene,
                 &batches[prefix_end.expect("prefix end")..],
                 self.width,
@@ -567,19 +737,54 @@ impl DirectXRenderer {
         } else {
             None
         };
+        self.resources
+            .as_mut()
+            .context("resources missing")?
+            .compose_prefix = composed.is_some();
+        self.resources
+            .as_mut()
+            .context("resources missing")?
+            .restore_regions = composed
+            .as_ref()
+            .map(|plan| plan.restore.clone())
+            .unwrap_or_default();
+        self.resources
+            .as_mut()
+            .context("resources missing")?
+            .present_dirty = if reuse_prefix && partial {
+            composed.map(|plan| plan.dirty).or_else(|| {
+                suffix_damage(
+                    scene,
+                    &batches[prefix_end.expect("prefix end")..],
+                    self.width,
+                    self.height,
+                )
+            })
+        } else {
+            None
+        };
         static DIAGNOSTICS: OnceLock<bool> = OnceLock::new();
         if *DIAGNOSTICS.get_or_init(|| std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some()) {
             static FRAMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            static COMPOSED: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
             let frame = FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if frame < 3 || frame.is_multiple_of(400) {
+            let composed = self.resources.as_ref().is_some_and(|r| r.compose_prefix);
+            let changed = COMPOSED.swap(composed, std::sync::atomic::Ordering::Relaxed) != composed;
+            if frame < 3 || frame.is_multiple_of(400) || changed {
                 let area = self
                     .resources
                     .as_ref()
-                    .and_then(|r| r.present_dirty)
-                    .map(|r| (r.right - r.left) * (r.bottom - r.top))
+                    .and_then(|r| r.present_dirty.as_ref())
+                    .map(|rects| {
+                        rects
+                            .iter()
+                            .map(|r| (r.right - r.left) * (r.bottom - r.top))
+                            .sum::<i32>()
+                    })
                     .unwrap_or(0);
                 println!(
-                    "{{\"event\":\"gpu-scene-cache\",\"frame\":{frame},\"revision\":{},\"animated\":{},\"reused\":{reuse_prefix},\"prefixBatches\":{},\"batches\":{},\"dirtyArea\":{area}}}",
+                    "{{\"event\":\"gpu-scene-cache\",\"frame\":{frame},\"revision\":{},\"animated\":{},\"reused\":{reuse_prefix},\"composed\":{composed},\"prefixBatches\":{},\"batches\":{},\"dirtyArea\":{area}}}",
                     scene.paint_revision,
                     scene.animated_order.is_some(),
                     prefix_end.unwrap_or(0),
@@ -665,11 +870,16 @@ impl DirectXRenderer {
             if resources.prefix.is_none() {
                 let mut desc = D3D11_TEXTURE2D_DESC::default();
                 target.GetDesc(&mut desc);
-                desc.BindFlags = 0;
+                desc.BindFlags = D3D11_BIND_SHADER_RESOURCE.0 as u32;
                 desc.MiscFlags = 0;
                 devices
                     .device
                     .CreateTexture2D(&desc, None, Some(&mut resources.prefix))?;
+                devices.device.CreateShaderResourceView(
+                    resources.prefix.as_ref().context("prefix texture")?,
+                    None,
+                    Some(&mut resources.prefix_view),
+                )?;
             }
             // CopyResource accepts a bound render target, so the copy does not
             // require changing output-merger bindings between batches.
@@ -807,7 +1017,11 @@ impl DirectXRenderer {
     fn upload_scene_buffers(&mut self, scene: &Scene) -> Result<()> {
         let devices = self.devices.as_ref().context("devices missing")?;
 
-        if !scene.shadows.is_empty() {
+        // Only quad and color-sprite bounds can change during retained animation.
+        // New scenes and recreated GPU buffers always upload the complete data.
+        let reuse_static = scene.paint_revision != 0
+            && self.pipelines.uploaded_revision == Some(scene.paint_revision);
+        if !reuse_static && !scene.shadows.is_empty() {
             self.pipelines.shadow_pipeline.update_buffer(
                 &devices.device,
                 &devices.device_context,
@@ -815,7 +1029,10 @@ impl DirectXRenderer {
             )?;
         }
 
-        if !scene.quads.is_empty() {
+        let moving_quads = scene
+            .animated_order
+            .is_some_and(|order| scene.quads.last().is_some_and(|quad| quad.order >= order));
+        if !scene.quads.is_empty() && (!reuse_static || moving_quads) {
             self.pipelines.quad_pipeline.update_buffer(
                 &devices.device,
                 &devices.device_context,
@@ -823,7 +1040,7 @@ impl DirectXRenderer {
             )?;
         }
 
-        if !scene.underlines.is_empty() {
+        if !reuse_static && !scene.underlines.is_empty() {
             self.pipelines.underline_pipeline.update_buffer(
                 &devices.device,
                 &devices.device_context,
@@ -831,7 +1048,7 @@ impl DirectXRenderer {
             )?;
         }
 
-        if !scene.monochrome_sprites.is_empty() {
+        if !reuse_static && !scene.monochrome_sprites.is_empty() {
             self.pipelines.mono_sprites.update_buffer(
                 &devices.device,
                 &devices.device_context,
@@ -839,7 +1056,7 @@ impl DirectXRenderer {
             )?;
         }
 
-        if !scene.subpixel_sprites.is_empty() {
+        if !reuse_static && !scene.subpixel_sprites.is_empty() {
             self.pipelines.subpixel_sprites.update_buffer(
                 &devices.device,
                 &devices.device_context,
@@ -855,6 +1072,7 @@ impl DirectXRenderer {
             )?;
         }
 
+        self.pipelines.uploaded_revision = Some(scene.paint_revision);
         Ok(())
     }
 
@@ -1024,6 +1242,7 @@ impl DirectXRenderer {
             slice::from_ref(&self.globals.sampler),
             start as u32,
             len as u32,
+            None,
         )
     }
 
@@ -1047,6 +1266,7 @@ impl DirectXRenderer {
             slice::from_ref(&self.globals.sampler),
             start as u32,
             len as u32,
+            None,
         )
     }
 
@@ -1070,6 +1290,10 @@ impl DirectXRenderer {
             slice::from_ref(&self.globals.sampler),
             start as u32,
             len as u32,
+            self.resources
+                .as_ref()
+                .is_some_and(|r| r.compose_prefix)
+                .then_some(&self.globals.replacement_blend),
         )
     }
 
@@ -1163,6 +1387,9 @@ impl DirectXResources {
         Ok(Self {
             swap_chain,
             prefix: None,
+            prefix_view: None,
+            compose_prefix: false,
+            restore_regions: Vec::new(),
             prefix_key: None,
             present_dirty: None,
             render_target: Some(render_target),
@@ -1183,6 +1410,9 @@ impl DirectXResources {
         height: u32,
     ) -> Result<()> {
         self.prefix = None;
+        self.prefix_view = None;
+        self.compose_prefix = false;
+        self.restore_regions.clear();
         self.prefix_key = None;
         self.present_dirty = None;
         let (
@@ -1265,6 +1495,7 @@ impl DirectXRenderPipelines {
         )?;
 
         Ok(Self {
+            uploaded_revision: None,
             shadow_pipeline,
             quad_pipeline,
             path_rasterization_pipeline,
@@ -1302,6 +1533,18 @@ impl DirectComposition {
 
 impl DirectXGlobalElements {
     pub fn new(device: &ID3D11Device) -> Result<Self> {
+        let mut replacement_blend = None;
+        let mut replace = D3D11_BLEND_DESC::default();
+        replace.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+        replace.RenderTarget[0].DestBlend = D3D11_BLEND_ZERO;
+        replace.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+        replace.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+        replace.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+        replace.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        replace.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8;
+        unsafe {
+            device.CreateBlendState(&replace, Some(&mut replacement_blend))?;
+        }
         let global_params_buffer = create_constant_buffer::<GlobalParams>(device)?;
         let batch_params = BatchConstants::new(device)?;
 
@@ -1324,6 +1567,8 @@ impl DirectXGlobalElements {
         };
 
         Ok(Self {
+            last_params: None,
+            replacement_blend: replacement_blend.context("replacement blend state")?,
             global_params_buffer,
             batch_params,
             sampler,
@@ -1331,7 +1576,7 @@ impl DirectXGlobalElements {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
 struct GlobalParams {
     gamma_ratios: [f32; 4],
@@ -1339,7 +1584,8 @@ struct GlobalParams {
     grayscale_enhanced_contrast: f32,
     subpixel_enhanced_contrast: f32,
     is_bgr: u32,
-    _pad: [u32; 3],
+    compose_prefix: u32,
+    _pad: [u32; 2],
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -1640,6 +1886,7 @@ impl<T> PipelineState<T> {
         sampler: &[Option<ID3D11SamplerState>],
         first_instance: u32,
         instance_count: u32,
+        blend: Option<&ID3D11BlendState>,
     ) -> Result<()> {
         anyhow::ensure!(
             first_instance as usize + instance_count as usize <= self.buffer_size,
@@ -1653,7 +1900,7 @@ impl<T> PipelineState<T> {
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
             &self.vertex,
             &self.fragment,
-            &self.blend_state,
+            blend.unwrap_or(&self.blend_state),
         );
         unsafe {
             device_context.PSSetSamplers(0, Some(sampler));
@@ -2099,7 +2346,7 @@ pub(crate) mod shader_resources {
     #[cfg(debug_assertions)]
     use windows::{
         Win32::Graphics::Direct3D::{
-            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
+            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCompileFromFile},
             ID3DBlob,
         },
         core::{HSTRING, PCSTR},
@@ -2244,7 +2491,7 @@ pub(crate) mod shader_resources {
                 include_handler,
                 entry_point,
                 target_cstr,
-                D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+                D3DCOMPILE_DEBUG | D3DCOMPILE_OPTIMIZATION_LEVEL3,
                 0,
                 &mut compile_blob,
                 Some(&mut error_blob),

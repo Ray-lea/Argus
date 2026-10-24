@@ -6,7 +6,8 @@ cbuffer GlobalParams: register(b0) {
     float grayscale_enhanced_contrast;
     float subpixel_enhanced_contrast;
     uint is_bgr;
-    uint3 global_pad;
+    uint compose_prefix;
+    uint2 global_pad;
 };
 
 cbuffer BatchParams: register(b1) {
@@ -15,6 +16,7 @@ cbuffer BatchParams: register(b1) {
 };
 
 Texture2D<float4> t_sprite: register(t0);
+Texture2D<float4> t_prefix: register(t2);
 SamplerState s_sprite: register(s0);
 
 struct SubpixelSpriteFragmentOutput {
@@ -1224,14 +1226,14 @@ struct PolychromeSprite {
 struct PolychromeSpriteVertexOutput {
     nointerpolation uint sprite_id: TEXCOORD0;
     float4 position: SV_Position;
-    float2 tile_position: POSITION;
+    nointerpolation float2 atlas_size: TEXCOORD1;
     float4 clip_distance: SV_ClipDistance;
 };
 
 struct PolychromeSpriteFragmentInput {
     nointerpolation uint sprite_id: TEXCOORD0;
     float4 position: SV_Position;
-    float2 tile_position: POSITION;
+    nointerpolation float2 atlas_size: TEXCOORD1;
 };
 
 StructuredBuffer<PolychromeSprite> poly_sprites: register(t1);
@@ -1240,14 +1242,21 @@ PolychromeSpriteVertexOutput polychrome_sprite_vertex(uint vertex_id: SV_VertexI
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     uint sprite_id = batch_start_index + instance_id;
     PolychromeSprite sprite = poly_sprites[sprite_id];
-    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
+    Bounds drawing_bounds = sprite.bounds;
+    if (compose_prefix != 0u) {
+        drawing_bounds.origin = max(floor(sprite.content_mask.origin), float2(0.0, 0.0));
+        drawing_bounds.size = min(ceil(sprite.content_mask.origin + sprite.content_mask.size), global_viewport_size) - drawing_bounds.origin;
+    }
+    float4 device_position = to_device_position(unit_vertex, drawing_bounds);
     float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds,
                                                     sprite.content_mask);
-    float2 tile_position = to_tile_position(unit_vertex, sprite.tile);
+    if (compose_prefix != 0u) clip_distance = float4(1.0, 1.0, 1.0, 1.0);
+    float2 atlas_size;
+    t_sprite.GetDimensions(atlas_size.x, atlas_size.y);
 
     PolychromeSpriteVertexOutput output;
     output.position = device_position;
-    output.tile_position = tile_position;
+    output.atlas_size = atlas_size;
     output.sprite_id = sprite_id;
     output.clip_distance = clip_distance;
     return output;
@@ -1255,7 +1264,16 @@ PolychromeSpriteVertexOutput polychrome_sprite_vertex(uint vertex_id: SV_VertexI
 
 float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Target {
     PolychromeSprite sprite = poly_sprites[input.sprite_id];
-    float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
+    float4 prefix = float4(0.0, 0.0, 0.0, 0.0);
+    if (compose_prefix != 0u) {
+        prefix = t_prefix.Load(int3(input.position.xy, 0));
+        if (any(input.position.xy < sprite.bounds.origin) || any(input.position.xy >= sprite.bounds.origin + sprite.bounds.size)
+            || any(input.position.xy < sprite.content_mask.origin) || any(input.position.xy >= sprite.content_mask.origin + sprite.content_mask.size)) return prefix;
+    }
+    // Use the same pixel-space mapping for ordinary and background-restoring draws.
+    float2 unit = (input.position.xy - sprite.bounds.origin) / sprite.bounds.size;
+    float2 tile_position = (float2(sprite.tile.bounds.origin) + unit * float2(sprite.tile.bounds.size)) / input.atlas_size;
+    float4 sample = t_sprite.Sample(s_sprite, tile_position);
     float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 
     float4 color = sample;
@@ -1264,5 +1282,10 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
         color = float4(grayscale, sample.a);
     }
     color.a *= sprite.opacity * saturate(0.5 - distance);
+    if (compose_prefix != 0u) {
+        // Match the existing straight-alpha RGB and additive-alpha blend state.
+        precise float4 composed_color = float4(color.rgb * color.a + prefix.rgb * (1.0 - color.a), saturate(color.a + prefix.a));
+        return composed_color;
+    }
     return color;
 }
