@@ -39,6 +39,10 @@ impl From<bool> for PaddedBool32 {
 #[derive(Default)]
 #[expect(missing_docs)]
 pub struct Scene {
+    /// Unique identity for a complete paint, preserved by bounds-only animation.
+    pub paint_revision: u64,
+    /// Earliest draw order that can change without a complete paint.
+    pub animated_order: Option<DrawOrder>,
     pub(crate) paint_operations: Vec<PaintOperation>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<DrawOrder>,
@@ -55,6 +59,9 @@ pub struct Scene {
 #[expect(missing_docs)]
 impl Scene {
     pub fn clear(&mut self) {
+        static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        self.paint_revision = REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.animated_order = None;
         self.paint_operations.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();

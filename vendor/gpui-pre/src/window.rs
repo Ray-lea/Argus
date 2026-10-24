@@ -1213,6 +1213,49 @@ enum InputModality {
     Touch,
 }
 
+/// A decorative primitive whose layout and hit boxes remain fixed. Handles are
+/// valid only until the next full window draw; callers redraw on a failed update.
+#[derive(Clone, Copy)]
+pub struct PaintedPrimitive {
+    window_id: WindowId,
+    generation: u64,
+    operation: usize,
+    layer: Bounds<ScaledPixels>,
+    image: Option<(crate::ImageId, usize)>,
+    background: Option<Background>,
+}
+impl PaintedPrimitive {
+    fn find_index(&self, scene: &Scene) -> Option<usize> {
+        use crate::scene::{PaintOperation, Primitive};
+        match scene.paint_operations.get(self.operation)? {
+            PaintOperation::Primitive(Primitive::PolychromeSprite(value)) => {
+                let mut hits = scene
+                    .polychrome_sprites
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, sprite)| {
+                        sprite.order == value.order
+                            && sprite.tile == value.tile
+                            && sprite.bounds == value.bounds
+                            && sprite.content_mask.bounds == value.content_mask.bounds
+                    });
+                let first = hits.next()?.0;
+                hits.next().is_none().then_some(first)
+            }
+            PaintOperation::Primitive(Primitive::Quad(value)) => {
+                let mut hits = scene.quads.iter().enumerate().filter(|(_, quad)| {
+                    quad.order == value.order
+                        && quad.bounds == value.bounds
+                        && quad.content_mask.bounds == value.content_mask.bounds
+                });
+                let first = hits.next()?.0;
+                hits.next().is_none().then_some(first)
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Holds the state for a specific window.
 pub struct Window {
     pub(crate) handle: AnyWindowHandle,
@@ -1274,6 +1317,8 @@ pub struct Window {
         SubscriberSet<(), Box<dyn FnMut(WindowVisibility, &mut Window, &mut App) -> bool>>,
     hovered: Rc<Cell<bool>>,
     pub(crate) needs_present: Rc<Cell<bool>>,
+    painted_primitive_indices: FxHashMap<usize, Option<usize>>,
+    paint_generation: u64,
     /// Tracks recent input event timestamps to determine if input is arriving at a high rate.
     /// Used to selectively enable VRR optimization only when input rate exceeds 60fps.
     pub(crate) input_rate_tracker: Rc<RefCell<InputRateTracker>>,
@@ -2169,6 +2214,8 @@ impl Window {
             visibility_observers: SubscriberSet::new(),
             hovered,
             needs_present,
+            painted_primitive_indices: FxHashMap::default(),
+            paint_generation: 0,
             input_rate_tracker,
             #[cfg(feature = "profiler")]
             window_profiler: profiler::WindowProfiler::new(handle.window_id())?,
@@ -3433,6 +3480,8 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        self.painted_primitive_indices.clear();
+        self.paint_generation = self.paint_generation.wrapping_add(1);
         // Drain every draw in profiler builds so a previous frame's
         // first-invalidation timestamp can't be attributed to this one.
         #[cfg(feature = "profiler")]
@@ -4075,8 +4124,8 @@ impl Window {
         // Native caption controls are paint registrations too. A cached title
         // bar must keep moving and responding to native window controls.
         self.next_frame.window_control_hitboxes.extend(
-            self.rendered_frame.window_control_hitboxes
-                [range.start.window_control_hitboxes_index..range.end.window_control_hitboxes_index]
+            self.rendered_frame.window_control_hitboxes[range.start.window_control_hitboxes_index
+                ..range.end.window_control_hitboxes_index]
                 .iter()
                 .cloned(),
         );
@@ -5169,6 +5218,223 @@ impl Window {
         Ok(())
     }
 
+    /// Paint a complete image at fractional device coordinates, clipped by the
+    /// current content mask. Animated raster layers must retain their subpixel
+    /// position instead of snapping bounds or rounding a cropped atlas tile.
+    pub fn paint_image_subpixel(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+    ) -> Result<Option<PaintedPrimitive>> {
+        self.invalidator.debug_assert_paint();
+        let params = RenderImageParams {
+            image_id: data.id,
+            frame_index,
+        };
+        let tile = self
+            .sprite_atlas
+            .get_or_insert_with(params.into(), &mut || {
+                Ok(Some((
+                    data.size(frame_index),
+                    Cow::Borrowed(data.as_bytes(frame_index).expect("valid image frame")),
+                )))
+            })?
+            .expect("image tile");
+        let content_mask = self.snapped_content_mask();
+        let sprite = PolychromeSprite {
+            order: 0,
+            pad: 0,
+            grayscale: false.into(),
+            bounds: bounds.scale(self.scale_factor()),
+            content_mask,
+            corner_radii: Corners::default(),
+            tile,
+            opacity: self.element_opacity(),
+        };
+        // Reserve the full clip region so subsequent translations cannot change
+        // this image's ordering relative to other primitives.
+        let region = self.content_mask().bounds;
+        let layer = self.cover_bounds(region);
+        let handle = self.paint_layer(region, |window| {
+            let operation = window.next_frame.scene.len();
+            window.next_frame.scene.insert_primitive(sprite);
+            (window.next_frame.scene.len() == operation + 1).then_some(PaintedPrimitive {
+                window_id: window.handle.window_id(),
+                generation: window.paint_generation,
+                operation,
+                layer,
+                image: Some((data.id, frame_index)),
+                background: None,
+            })
+        });
+        Ok(handle)
+    }
+
+    /// Paint an antialiased, sharp solid rectangle in a fixed animation region.
+    /// Empty rectangles retain an invisible primitive, allowing a bar to grow
+    /// again without changing scene ordering or introducing a nonzero reading.
+    pub fn paint_animated_rect(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        region: Bounds<Pixels>,
+        color: Hsla,
+    ) -> Option<PaintedPrimitive> {
+        use crate::scene::{PaintOperation, Primitive};
+        let layer = self.cover_bounds(region.intersect(&self.content_mask().bounds));
+        let requested = self.snap_bounds(bounds);
+        self.paint_layer(region, |window| {
+            let operation = window.next_frame.scene.len();
+            window.paint_quad(crate::fill(region, color));
+            if window.next_frame.scene.len() != operation + 1 {
+                return None;
+            }
+            let scene = &mut window.next_frame.scene;
+            let Some(PaintOperation::Primitive(Primitive::Quad(recorded))) =
+                scene.paint_operations.get_mut(operation)
+            else {
+                return None;
+            };
+            let background = recorded.background;
+            let quad = scene.quads.last_mut()?;
+            if requested.is_empty() {
+                quad.background = background.opacity(0.);
+            } else {
+                quad.bounds = requested;
+            }
+            *recorded = *quad;
+            Some(PaintedPrimitive {
+                window_id: window.handle.window_id(),
+                generation: window.paint_generation,
+                operation,
+                layer,
+                image: None,
+                background: Some(background),
+            })
+        })
+    }
+
+    /// Update a decorative image translation or bar extent in an otherwise clean
+    /// scene from an `on_next_frame` callback. Dirty views, expired handles, image
+    /// resizes, and movement outside the reserved region require a full redraw.
+    pub fn update_painted_bounds(
+        &mut self,
+        handle: &PaintedPrimitive,
+        bounds: Bounds<Pixels>,
+    ) -> bool {
+        use crate::scene::{PaintOperation, Primitive};
+        if handle.window_id != self.handle.window_id()
+            || handle.generation != self.paint_generation
+            || self.invalidator.is_dirty()
+        {
+            return false;
+        }
+        if ![
+            bounds.left(),
+            bounds.top(),
+            bounds.size.width,
+            bounds.size.height,
+        ]
+        .iter()
+        .all(|value| f32::from(*value).is_finite())
+            || bounds.size.width < px(0.)
+            || bounds.size.height < px(0.)
+        {
+            return false;
+        }
+        let tile = if let Some((image_id, frame_index)) = handle.image {
+            let params = RenderImageParams {
+                image_id,
+                frame_index,
+            };
+            let Ok(Some(tile)) = self
+                .sprite_atlas
+                .get_or_insert_with(params.into(), &mut || Ok(None))
+            else {
+                return false;
+            };
+            Some(tile)
+        } else {
+            None
+        };
+        let scene = &self.rendered_frame.scene;
+        let Some(index) = *self
+            .painted_primitive_indices
+            .entry(handle.operation)
+            .or_insert_with(|| handle.find_index(scene))
+        else {
+            return false;
+        };
+        let requested = if tile.is_some() {
+            bounds.scale(self.scale_factor())
+        } else {
+            self.snap_bounds(bounds)
+        };
+        let scene = &mut self.rendered_frame.scene;
+        let Some(PaintOperation::Primitive(recorded)) =
+            scene.paint_operations.get_mut(handle.operation)
+        else {
+            return false;
+        };
+        let fits = |bounds: Bounds<ScaledPixels>, mask: Bounds<ScaledPixels>| {
+            let clipped = bounds.intersect(&mask);
+            !clipped.is_empty()
+                && clipped.left() >= handle.layer.left()
+                && clipped.top() >= handle.layer.top()
+                && clipped.right() <= handle.layer.right()
+                && clipped.bottom() <= handle.layer.bottom()
+        };
+        let changed = match (recorded, tile) {
+            (Primitive::PolychromeSprite(recorded), Some(tile)) => {
+                let Some(sprite) = scene.polychrome_sprites.get_mut(index) else {
+                    return false;
+                };
+                if sprite.tile != tile
+                    || recorded.tile != tile
+                    || sprite.bounds.size != requested.size
+                    || !fits(requested, sprite.content_mask.bounds)
+                {
+                    return false;
+                }
+                let changed = sprite.bounds != requested;
+                sprite.bounds = requested;
+                recorded.bounds = requested;
+                changed
+            }
+            (Primitive::Quad(recorded), None) => {
+                let Some(quad) = scene.quads.get_mut(index) else {
+                    return false;
+                };
+                let Some(background) = handle.background else {
+                    return false;
+                };
+                let target = if requested.is_empty() {
+                    handle.layer
+                } else {
+                    requested
+                };
+                if !fits(target, quad.content_mask.bounds) {
+                    return false;
+                }
+                quad.bounds = target;
+                quad.background = background.opacity(if requested.is_empty() { 0. } else { 1. });
+                *recorded = *quad;
+                true
+            }
+            _ => return false,
+        };
+        let order = match &scene.paint_operations[handle.operation] {
+            PaintOperation::Primitive(Primitive::PolychromeSprite(sprite)) => sprite.order,
+            PaintOperation::Primitive(Primitive::Quad(quad)) => quad.order,
+            _ => return false,
+        };
+        scene.animated_order = Some(scene.animated_order.map_or(order, |old| old.min(order)));
+        if changed {
+            self.needs_present.set(true);
+        }
+        true
+    }
+
     /// Paint a surface into the scene for the next frame at the current z-index.
     ///
     /// This method should only be called as part of the paint phase of element drawing.
@@ -5340,7 +5606,9 @@ impl Window {
     /// Return the native window control under a point in local window coordinates.
     pub fn window_control_area_at(&self, position: Point<Pixels>) -> Option<WindowControlArea> {
         let hit_test = self.rendered_frame.hit_test(position);
-        self.rendered_frame.window_control_hitboxes.iter()
+        self.rendered_frame
+            .window_control_hitboxes
+            .iter()
             .find(|(_, hitbox)| hit_test.ids.contains(&hitbox.id))
             .map(|(area, _)| *area)
     }
@@ -5348,7 +5616,9 @@ impl Window {
     /// Return native control regions from the most recently presented scene.
     #[cfg(feature = "profiler")]
     pub fn window_control_regions(&self) -> Vec<(WindowControlArea, Bounds<Pixels>)> {
-        self.rendered_frame.window_control_hitboxes.iter()
+        self.rendered_frame
+            .window_control_hitboxes
+            .iter()
             .map(|(area, hitbox)| (*area, hitbox.bounds))
             .collect()
     }
