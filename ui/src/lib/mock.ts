@@ -6,6 +6,7 @@ import { type Language, type Locale, localeFor, t } from "./i18n";
 import { mockCpuSensors } from "./mock-cpu";
 import type {
   ActionError,
+  AdministratorStatus,
   AppInfo,
   Connection,
   CpuInfo,
@@ -1317,5 +1318,28 @@ export const m3 = {
       },
       restartError: null,
     };
+  },
+};
+
+const administratorValue: AdministratorStatus = {
+  supported: true,
+  enabled: false,
+  ready: false,
+  elevated: false,
+  eligible: new URLSearchParams(location.search).get("admin") !== "standard",
+  error: null,
+};
+export const administrator = {
+  async status(): Promise<AdministratorStatus> {
+    return { ...administratorValue };
+  },
+  async set(enabled: boolean, defer: boolean): Promise<AdministratorStatus> {
+    administratorValue.enabled = enabled;
+    administratorValue.ready = enabled;
+    if (!defer) administratorValue.elevated = enabled;
+    return { ...administratorValue };
+  },
+  async apply(): Promise<void> {
+    administratorValue.elevated = administratorValue.enabled;
   },
 };

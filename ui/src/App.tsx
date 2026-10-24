@@ -30,6 +30,7 @@ import {
   appInfo,
   detailsOpen,
   ending,
+  goToSetting,
   ingest,
   intervalMs,
   type Page,
@@ -43,7 +44,8 @@ import {
   snapshot,
 } from "./lib/store";
 import type { AccentColors } from "./lib/types";
-import { afterStart, openUpdateDialogAfter, watchUpdates } from "./lib/updates";
+import { confirmRequest, toast } from "./lib/ui";
+import { afterStart, openUpdateDialogAfter, shown, updateDialog, watchUpdates } from "./lib/updates";
 
 function applyAccent(accent: AccentColors | null) {
   if (!accent) return;
@@ -55,6 +57,17 @@ function applyAccent(accent: AccentColors | null) {
 const pageIndex = (p: Page) => PAGES.findIndex((x) => x.page === p);
 
 export default function App() {
+  const [administratorWarning, setAdministratorWarning] = createSignal<string | null>(null);
+  createEffect(() => {
+    const warning = administratorWarning();
+    if (!warning || onboardingOpen() || updateDialog() || confirmRequest()) return;
+    setAdministratorWarning(null);
+    toast("error", warning, 15000, {
+      actions: [
+        { label: t("settings.administrator.title"), run: () => goToSetting("privilege", "administrator") },
+      ],
+    });
+  });
   const [dragging, setDragging] = createSignal(false);
   /** A search narrows the process list: an accent ring around it says so (.workspace.filtered). */
   const filtering = () => query().trim() !== "";
@@ -197,6 +210,15 @@ export default function App() {
     onCleanup(watchPrivilege());
     // What a new version changed waits for the onboarding, which decides first.
     void maybeOpenOnboarding().then(() => afterStart(info, onboardingOpen));
+    void api
+      .administratorStatus()
+      .then(async (status) => {
+        if (status.error && !status.elevated) {
+          await shown();
+          setAdministratorWarning(status.error);
+        }
+      })
+      .catch(() => {});
   });
 
   return (

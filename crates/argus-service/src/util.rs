@@ -15,6 +15,7 @@ pub const TASK_MANAGER_CONFLICT: u32 = 0x2000_0006;
 /// An enabled replacement could not be brought to the new build, so the
 /// service update stopped before changing the service.
 pub const TASK_MANAGER_FOLLOW: u32 = 0x2000_0007;
+pub const ADMIN_OUTDATED: u32 = 0x2000_0008;
 
 pub fn message(code: u32) -> String {
     match code {
@@ -25,6 +26,7 @@ pub fn message(code: u32) -> String {
         TASK_MANAGER_ACTIVE => tr!("service.taskManagerActive"),
         TASK_MANAGER_CONFLICT => tr!("service.taskManagerConflict"),
         TASK_MANAGER_FOLLOW => tr!("service.taskManagerFollow"),
+        ADMIN_OUTDATED => tr!("admin.outdated"),
         1223 => tr!("service.canceled"),
         1460 => tr!("service.timeout"),
         _ => tr!(

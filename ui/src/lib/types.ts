@@ -772,3 +772,11 @@ export interface LockReport {
   handles: HandleSummary | null;
   restartError: string | null;
 }
+export interface AdministratorStatus {
+  supported: boolean;
+  enabled: boolean;
+  ready: boolean;
+  elevated: boolean;
+  eligible: boolean;
+  error: string | null;
+}

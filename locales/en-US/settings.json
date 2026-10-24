@@ -394,5 +394,21 @@
     "driver": "PawnIO website",
     "error": "Could not change kernel sensor settings",
     "preparing": "Preparing the driver. Complete the administrator prompt if shown; the first installation downloads a package."
+  },
+  "administrator": {
+    "development": "Persistent administrator authorization is unavailable with development hot reload. Use a release build.",
+    "title": "Run as administrator",
+    "allow": "Allow running as administrator",
+    "desc": "Authorize once to run Argus as administrator from sign-in, shortcuts, and Task Manager entry points.",
+    "authorized": "Authorized",
+    "off": "Off",
+    "busy": "Working",
+    "repair": "Repair authorization",
+    "currentAdmin": "Current process: administrator",
+    "currentStandard": "Current process: standard permissions",
+    "restart": "Argus restarts after switching, keeping settings and history.",
+    "afterOnboarding": "Continue setup after authorizing. Argus restarts with the selected permissions when setup finishes.",
+    "standardAccount": "This account has no administrator identity, so automatic administrator startup is unavailable. The privileged service can perform supported administrative actions.",
+    "scope": "This authorization only starts Argus and stores no password. The privileged service and hardware sensor permissions remain separate. Windows may restrict files dragged from standard applications; use Choose file instead."
   }
 }

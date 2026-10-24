@@ -59,7 +59,7 @@ import {
 } from "./icons";
 import { NavPositionChoice } from "./Nav";
 import Select from "./Select";
-import { BackgroundIntervalSelect, chartModeOptions, serviceState } from "./Settings";
+import { AdministratorSettings, BackgroundIntervalSelect, chartModeOptions, serviceState } from "./Settings";
 
 /**
  * The onboarding a start shows if the settings record an older one. Raise it
@@ -84,6 +84,7 @@ const STEPS = [
   "display",
   "background",
   "update",
+  "administrator",
   "privilege",
   "sensors",
   "taskManager",
@@ -102,6 +103,7 @@ export default function Onboarding() {
 
 function OnboardingDialog(props: { leaving: boolean }) {
   const [index, setIndex] = createSignal(0);
+  const [administratorBusy, setAdministratorBusy] = createSignal(false);
   const [settings, { mutate }] = createResource(kernelRevision, () => api.settings().catch(() => null));
   let stepEl: HTMLDivElement | undefined;
   let primary: HTMLButtonElement | undefined;
@@ -110,9 +112,14 @@ function OnboardingDialog(props: { leaving: boolean }) {
   const last = () => index() === STEPS.length - 1;
 
   const close = () => {
-    if (props.leaving) return;
-    setOpen(false);
-    void api.completeOnboarding(ONBOARDING_VERSION).catch(() => {});
+    if (props.leaving || administratorBusy()) return;
+    void api
+      .completeOnboarding(ONBOARDING_VERSION)
+      .then(async () => {
+        setOpen(false);
+        await api.applyAdministratorMode();
+      })
+      .catch((error) => toast("error", t("onboarding.saveFailed", { error: String(error) })));
   };
   const go = (delta: number) => setIndex((i) => Math.min(STEPS.length - 1, Math.max(0, i + delta)));
 
@@ -228,6 +235,14 @@ function OnboardingDialog(props: { leaving: boolean }) {
                 error={serviceError()}
                 onManage={(action) => void manageService(action)}
               />
+            </Match>
+            <Match when={step() === "administrator"}>
+              <Heading
+                icon={<ShieldIcon size={22} />}
+                title={t("settings.administrator.title")}
+                body={t("onboarding.administrator")}
+              />
+              <AdministratorSettings onboarding onBusy={setAdministratorBusy} />
             </Match>
             <Match when={step() === "taskManager"}>
               <TaskManager

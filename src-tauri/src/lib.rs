@@ -1,3 +1,4 @@
+mod admin;
 mod caption;
 mod commands;
 mod diagnostics;
@@ -100,6 +101,7 @@ pub struct AppState {
 }
 
 pub fn run() {
+    argus_service::admin::configure_support(!tauri::is_dev() && !cfg!(debug_assertions));
     if let Some(code) = installer::run_mode() {
         std::process::exit(code);
     }
@@ -123,12 +125,18 @@ pub fn run() {
         std::process::exit(code);
     }
     let mut context = tauri::generate_context!();
+    if let Some(code) = argus_service::admin::run_mode(&context.config().identifier) {
+        std::process::exit(code);
+    }
     // Before the single-instance check: never hands over to a running Argus.
     if std::env::args().any(|a| leftovers::is_close_arg(&a)) {
         leftovers::close_copies(&context.config().identifier);
         std::process::exit(0);
     }
     let launch_args = std::env::args().collect::<Vec<_>>();
+    if admin::route(&context.config().identifier, &launch_args) {
+        return;
+    }
     let _instance = match instance::acquire(&context.config().identifier, &launch_args) {
         Ok(Some(owner)) => owner,
         Ok(None) => {
@@ -240,11 +248,20 @@ pub fn run() {
     tauri::Builder::default()
         // Must come first: a second launch just brings the running one forward.
         .plugin(instance::plugin(|app, args| {
+            if !argus_core::privilege::is_elevated()
+                && argus_service::admin::trusted_handoff(&app.config().identifier, &args)
+            {
+                app.exit(0);
+                return;
+            }
+            argus_service::admin::acknowledge(&args);
             if argus_service::taskmgr::ready::queue(&args) {
                 let _ = app.emit("argus-taskmgr-ready", ());
             } else {
                 TASKMGR_COMPLETED.store(true, Ordering::Release);
-                shell::show_main(app)
+                if !args.iter().any(|arg| arg == "--hidden") {
+                    shell::show_main(app)
+                }
             }
         }))
         .plugin(tauri_plugin_autostart::init(
@@ -388,6 +405,7 @@ pub fn run() {
                     .sampler
                     .send(Control::SetWindowProbe(Box::new(probe)));
                 window.set_title(&shell::app_title())?;
+                argus_service::admin::window_relaunch(&app.config().identifier, window.hwnd()?);
                 shell::apply_theme(app.handle(), app.state::<SettingsStore>().get().theme);
                 shell::extend_backdrop(&window);
                 caption::install(&window, app.handle());
@@ -451,6 +469,9 @@ pub fn run() {
             commands::minimize_main,
             diagnostics::log_ui_error,
             commands::complete_onboarding,
+            admin::administrator_status,
+            admin::set_administrator_mode,
+            admin::apply_administrator_mode,
             commands::set_whats_new,
             commands::note_version_seen,
             commands::privileged_service_status,

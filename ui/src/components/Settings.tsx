@@ -497,6 +497,69 @@ function KernelSensorSettings(props: { enabled: boolean; onSaved: (value: Settin
   );
 }
 
+export function AdministratorSettings(props: { onboarding?: boolean; onBusy?: (busy: boolean) => void }) {
+  const [status, { refetch, mutate }] = createResource(() => api.administratorStatus());
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+  const change = async (enabled: boolean, repair = false) => {
+    if (busy()) return;
+    setBusy(true);
+    props.onBusy?.(true);
+    setError(null);
+    try {
+      mutate(await api.setAdministratorMode(enabled, !!props.onboarding, repair));
+    } catch (e) {
+      setError(String(e));
+      void refetch();
+    } finally {
+      setBusy(false);
+      props.onBusy?.(false);
+    }
+  };
+  const label = () =>
+    t(
+      `settings.administrator.${busy() || status.loading ? "busy" : status()?.enabled ? (status()?.ready ? "authorized" : "repair") : "off"}`,
+    );
+  return (
+    <FeatureCard
+      id="setting-administrator"
+      icon={<ShieldIcon size={20} />}
+      title={t("settings.administrator.title")}
+      desc={t("settings.administrator.desc")}
+      state={label()}
+      tone={busy() || status.loading ? "busy" : status()?.ready ? "ok" : status()?.enabled ? "warn" : "off"}
+      note={
+        <>
+          <div>{t(`settings.administrator.${status()?.elevated ? "currentAdmin" : "currentStandard"}`)}</div>
+          <div>{t(`settings.administrator.${props.onboarding ? "afterOnboarding" : "restart"}`)}</div>
+          <Show when={status() && !status()?.supported}>
+            <div>{t("settings.administrator.development")}</div>
+          </Show>
+          <Show when={status()?.supported && !status()?.eligible}>
+            <div>{t("settings.administrator.standardAccount")}</div>
+          </Show>
+        </>
+      }
+      error={error() ?? status()?.error ?? (status.error ? String(status.error) : null)}
+      footer={t("settings.administrator.scope")}
+    >
+      <Show when={status()?.supported && status()?.enabled && (!status()?.ready || status()?.error)}>
+        <button type="button" class="btn" disabled={busy()} onClick={() => void change(true, true)}>
+          {t("settings.administrator.repair")}
+        </button>
+      </Show>
+      <ToggleSwitch
+        label={t("settings.administrator.allow")}
+        checked={status()?.enabled ?? false}
+        disabled={
+          busy() || status.loading || !status()?.eligible || (!status()?.supported && !status()?.enabled)
+        }
+        onChange={(enabled) => void change(enabled)}
+      />
+    </FeatureCard>
+  );
+}
+
 function TaskManagerSettings() {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -2113,6 +2176,7 @@ export default function SettingsPage() {
 
                 <section id="settings-privilege" class="settings-section">
                   <h2>{t("settings.sections.privilege")}</h2>
+                  <AdministratorSettings />
                   <PrivilegedServiceSettings />
                   <KernelSensorSettings enabled={s().kernelSensors} onSaved={mutate} />
                   <TaskManagerSettings />

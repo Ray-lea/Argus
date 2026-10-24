@@ -2,6 +2,7 @@ import { Channel, invoke as nativeInvoke } from "@tauri-apps/api/core";
 import { ErrorGate, errorReport } from "./error-report";
 import type { Language } from "./i18n";
 import type {
+  AdministratorStatus,
   AppInfo,
   Connection,
   HistoryMoment,
@@ -114,6 +115,14 @@ export const api = {
     mock ? mock.settings.update({ seenVersion: mock.VERSION }) : invoke("note_version_seen"),
   privilegedServiceStatus: (): Promise<PrivilegedServiceStatus> =>
     mock ? mock.privilegedService.status() : invoke("privileged_service_status"),
+  administratorStatus: (): Promise<AdministratorStatus> =>
+    mock ? mock.administrator.status() : invoke("administrator_status"),
+  setAdministratorMode: (enabled: boolean, defer: boolean, repair = false): Promise<AdministratorStatus> =>
+    mock
+      ? mock.administrator.set(enabled, defer)
+      : invoke("set_administrator_mode", { enabled, defer, repair }),
+  applyAdministratorMode: (): Promise<void> =>
+    mock ? mock.administrator.apply() : invoke("apply_administrator_mode"),
   managePrivilegedService: (action: PrivilegedServiceAction): Promise<PrivilegedServiceStatus> =>
     mock ? mock.privilegedService.manage(action) : invoke("manage_privileged_service", { action }),
   taskManagerStatus: (): Promise<TaskManagerStatus> =>

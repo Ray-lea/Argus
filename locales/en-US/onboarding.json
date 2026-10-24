@@ -99,5 +99,6 @@
     "drop": "Drop a file or folder onto the window to find the processes using it",
     "history": "The History page keeps the last 7 days of resource usage and the busiest processes at each moment",
     "reopen": "This guide can be reopened anytime from Settings → About."
-  }
+  },
+  "administrator": "Allow Argus to run automatically as administrator to manage other users’ processes and startup items. Off by default; Windows requests authorization when first enabled."
 }

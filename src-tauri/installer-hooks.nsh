@@ -24,6 +24,7 @@
   ; start after the upgrade would go to the old version until it exits. The
   ; new argus.exe ends it, which also lets the refresh below delete it.
   ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-close-copies'
+  ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-admin-refresh'
 
   ; The installer already runs elevated: bring an installed privileged service
   ; to this version now, so an update needs no second administrator prompt.
@@ -55,6 +56,14 @@
     ; data was deleted, the old settings written back). Ending it first also
     ; lets the restore below delete it.
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-close-copies'
+    ClearErrors
+    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-admin-remove' $0
+    ${If} ${Errors}
+    ${OrIf} $0 != 0
+      !insertmacro ARGUS_TEXT $2 "请先在 Argus 设置中关闭管理员运行，再卸载。" "Turn off administrator startup in Argus settings before uninstalling."
+      MessageBox MB_OK|MB_ICONSTOP "$2" /SD IDOK
+      Abort
+    ${EndIf}
 
     !insertmacro ARGUS_TEXT $2 \
       "检测到已安装的 Argus 特权服务。是否一并卸载？$\r$\n$\r$\n卸载服务需要管理员授权，并将先恢复 Windows 任务管理器。选择“否”将保留该服务，服务会继续随 Windows 启动。" \

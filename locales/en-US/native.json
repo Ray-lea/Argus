@@ -227,5 +227,12 @@
     "cancelled": "Administrator permission was canceled; kernel sensors remain off.",
     "startTimeout": "Timed out waiting for PawnIO to become ready. Kernel sensors remain off. Check the driver device status or system messages and try again.",
     "reboot": "A Windows restart is required to finish configuring the PawnIO device. Restart Windows, then enable kernel sensors again."
+  },
+  "admin": {
+    "development": "Persistent administrator authorization is unavailable with development hot reload. Use a release build.",
+    "outdated": "The administrator startup copy needs an update. Quit Argus, open the new executable, then select Repair authorization.",
+    "standardAccount": "This account has no administrator identity, so automatic administrator startup is unavailable. The privileged service can perform supported administrative actions.",
+    "fallback": "Automatic administrator startup did not finish. Argus is running with standard permissions. Repair authorization in Settings.",
+    "notReady": "Administrator startup authorization is not ready."
   }
 }

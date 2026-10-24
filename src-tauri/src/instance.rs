@@ -165,7 +165,8 @@ fn acquire_with_timeout(
     let class = wide(&format!("{id}-sic"));
     let title = wide(&format!("{id}-siw"));
     let cwd = std::env::current_dir().unwrap_or_default();
-    let payload = format!("{}|{}\0", cwd.to_string_lossy(), args.join("|"));
+    let original_payload = format!("{}|{}\0", cwd.to_string_lossy(), args.join("|"));
+    let payload = &original_payload;
     if payload.len() > MAX_MESSAGE {
         return Err(failed(
             "activation payload size",
@@ -193,6 +194,22 @@ fn acquire_with_timeout(
                     let _ = AllowSetForegroundWindow(pid);
                 }
             }
+            let switching = argus_core::privilege::is_elevated()
+                && std::env::current_exe().is_ok_and(|p| argus_service::admin::is_copy(&p, id))
+                && unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+                    .map(Handle)
+                    .is_ok_and(|p| integrity(p.0).is_some_and(|level| level < 0x3000));
+            let switch_payload;
+            let payload = if switching {
+                switch_payload = format!(
+                    "{}|{}\0",
+                    cwd.to_string_lossy(),
+                    argus_service::admin::handoff_args().join("|")
+                );
+                &switch_payload
+            } else {
+                payload
+            };
             let packet = COPYDATASTRUCT {
                 dwData: MESSAGE,
                 cbData: payload.len() as u32,
@@ -212,6 +229,26 @@ fn acquire_with_timeout(
                 )
             };
             if sent.0 != 0 && reply == 1 {
+                if switching {
+                    // The old host accepted a verified bootstrap. It must fully
+                    // exit before this process opens the shared WebView profile.
+                    let deadline = Instant::now() + timeout;
+                    while Instant::now() < deadline {
+                        match unsafe { WaitForSingleObject(handle.0, 50) } {
+                            WAIT_OBJECT_0 | WAIT_ABANDONED => {
+                                return Ok(Some(Owner {
+                                    handle,
+                                    _thread: PhantomData,
+                                }));
+                            }
+                            _ => {}
+                        }
+                    }
+                    return Err(failed(
+                        "administrator handoff exit",
+                        Error::from_hresult(ERROR_TIMEOUT.to_hresult()),
+                    ));
+                }
                 return Ok(None);
             }
             let error = if sent.0 != 0 {

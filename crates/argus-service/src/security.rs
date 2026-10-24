@@ -122,9 +122,35 @@ pub fn current_sid() -> Result<String> {
     token_user(Handle(token).0)
 }
 
+/// Task Scheduler may normalize a principal SID to its local account name.
+pub(crate) fn account_sid(name: &str) -> Result<String> {
+    if validate_sid(name).is_ok() {
+        return Ok(name.into());
+    }
+    let mut bytes = [0u64; 32];
+    let mut size = size_of_val(&bytes) as u32;
+    let mut domain = [0u16; 256];
+    let mut domain_size = domain.len() as u32;
+    let mut kind = SID_NAME_USE::default();
+    let sid = PSID(bytes.as_mut_ptr().cast());
+    unsafe {
+        LookupAccountNameW(
+            None,
+            PCWSTR(wide(name).as_ptr()),
+            Some(sid),
+            &mut size,
+            Some(PWSTR(domain.as_mut_ptr())),
+            &mut domain_size,
+            &mut kind,
+        )
+    }
+    .map_err(win)?;
+    sid_string(sid)
+}
+
 /// A sandboxed process of the owner (restricted or AppContainer token) runs
 /// with less than the owner's rights and must not borrow them from the service.
-fn sandboxed(token: HANDLE) -> Result<bool> {
+pub(crate) fn sandboxed(token: HANDLE) -> Result<bool> {
     // The bindings map the BOOL to a Result: Ok means restricted.
     if unsafe { IsTokenRestricted(token) }.is_ok() {
         return Ok(true);

@@ -400,6 +400,7 @@ pub fn set_caption_button(rect: ButtonRect) {
 #[tauri::command]
 pub fn page_painted(window: tauri::WebviewWindow) {
     shell::painted(&window);
+    crate::admin::painted();
 }
 
 /// Records that the onboarding of `version` was completed or skipped.
@@ -506,6 +507,8 @@ pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<SettingsVie
     let launcher = app.autolaunch();
     if !enabled {
         launcher.disable().map_err(|e| e.to_string())?;
+    } else if let Some(path) = argus_service::admin::launcher(&app.config().identifier) {
+        autostart::enable_admin(&app, &path)?;
     } else if autostart::running_as_copy() {
         // The plugin would name this copy of the task manager replacement.
         autostart::enable_installed(&app.package_info().name)?;
