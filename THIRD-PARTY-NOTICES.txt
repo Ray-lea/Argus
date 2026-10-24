@@ -8,7 +8,7 @@ Argus 静态链接了 Rust 标准库，其许可证为 MIT OR Apache-2.0，
 
 本文件由 scripts/notices.mjs 生成，请勿手动编辑。
 
-Rust 组件（408 个）
+Rust 组件（407 个）
   accesskit 0.24.1（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
   accesskit_consumer 0.38.0（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
   accesskit_windows 0.34.0（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
@@ -309,7 +309,6 @@ Rust 组件（408 个）
   svgtypes 0.16.1（Apache-2.0 OR MIT）https://github.com/linebender/svgtypes
   sync_wrapper 1.0.2（Apache-2.0）https://github.com/Actyx/sync_wrapper
   sysinfo 0.31.4（MIT）https://github.com/GuillaumeGomez/sysinfo
-  taffy 0.13.0（MIT）https://github.com/DioxusLabs/taffy
   taffy 0.14.0（MIT）https://github.com/DioxusLabs/taffy
   tendril 0.4.3（MIT/Apache-2.0）https://github.com/servo/tendril
   thiserror 2.0.21（MIT OR Apache-2.0）https://github.com/dtolnay/thiserror
@@ -7278,7 +7277,6 @@ authorization of the copyright holder.
   rust-i18n-support 4.2.4（MIT）https://github.com/longbridge/rust-i18n
   seahash 4.1.0（MIT）https://gitlab.redox-os.org/redox-os/seahash
   svg_fmt 0.4.5（MIT/Apache-2.0）https://github.com/nical/rust_debug
-  taffy 0.13.0（MIT）https://github.com/DioxusLabs/taffy
   taffy 0.14.0（MIT）https://github.com/DioxusLabs/taffy
   zune-core 0.4.12（MIT OR Apache-2.0 OR Zlib）https://crates.io/crates/zune-core
   zune-inflate 0.2.54（MIT OR Apache-2.0 OR Zlib）https://crates.io/crates/zune-inflate

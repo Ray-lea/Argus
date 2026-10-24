@@ -1013,7 +1013,7 @@ impl Desktop {
         if rows.len() != self.rows.len() {
             self.list.reset_with_uniform_height(rows.len(), px(30.));
         }
-        self.rows = Arc::new(rows);
+        let previous_rows = std::mem::replace(&mut self.rows, Arc::new(rows));
         // Apply data before rendering. Updating TableState from table_view
         // invalidates its parent during paint and rebuilds Desktop twice per sample.
         if let Some(table) = &self.table {
@@ -1048,6 +1048,12 @@ impl Desktop {
         }
         if let Some(frame) = &self.table_frame {
             frame.update(cx, |_, cx| cx.notify());
+        }
+        // Retain old rows until delegates release them, then reclaim the value trees off-thread.
+        if !previous_rows.is_empty() {
+            cx.background_executor()
+                .spawn(async move { drop(previous_rows) })
+                .detach();
         }
         let elapsed = started.elapsed().as_micros() as u64;
         self.work.rows_us += elapsed;

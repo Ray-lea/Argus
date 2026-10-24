@@ -62,6 +62,7 @@ mod tab_stop;
 mod taffy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
+mod text_style_stack;
 mod text_system;
 mod util;
 mod view;

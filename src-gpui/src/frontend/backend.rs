@@ -299,7 +299,12 @@ impl Desktop {
         let start = Instant::now();
         self.timeline.push(&snapshot, self.interval as f64);
         self.work.timeline_us += start.elapsed().as_micros() as u64;
-        self.snapshot = snapshot;
+        let previous = std::mem::replace(&mut self.snapshot, snapshot);
+        if !previous.is_null() {
+            cx.background_executor()
+                .spawn(async move { drop(previous) })
+                .detach();
+        }
         if matches!(self.page.as_str(), "processes" | "network") {
             self.rebuild_rows_prepared(
                 self.pointer_in_table || self.popup.is_some() || self.modal.is_some(),

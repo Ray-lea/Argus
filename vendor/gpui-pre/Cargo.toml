@@ -327,7 +327,7 @@ version = "=0.3.9"
 package = "gpui-pre-sum-tree"
 
 [dependencies.taffy]
-version = "0.13.0"
+version = "0.14.0"
 features = [
     "std",
     "taffy_tree",

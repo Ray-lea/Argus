@@ -41,7 +41,6 @@ use objc2_core_foundation::CFRetained;
 use objc2_core_video::CVPixelBuffer;
 use parking_lot::RwLock;
 use raw_window_handle::{HandleError, HasDisplayHandle, HasWindowHandle};
-use refineable::Refineable;
 use scheduler::Instant;
 use slotmap::SlotMap;
 use smallvec::SmallVec;
@@ -1025,7 +1024,7 @@ pub(crate) struct DeferredDraw {
     priority: usize,
     parent_node: DispatchNodeId,
     element_id_stack: ElementIdStack,
-    text_style_stack: Vec<TextStyleRefinement>,
+    text_style_stack: crate::text_style_stack::TextStyleStack,
     content_mask: Option<ContentMask<Pixels>>,
     rem_size: Pixels,
     element: Option<AnyElement>,
@@ -1279,7 +1278,7 @@ pub struct Window {
     layout_engine: Option<TaffyLayoutEngine>,
     pub(crate) root: Option<AnyView>,
     pub(crate) element_id_stack: ElementIdStack,
-    pub(crate) text_style_stack: Vec<TextStyleRefinement>,
+    pub(crate) text_style_stack: crate::text_style_stack::TextStyleStack,
     pub(crate) rendered_entity_stack: Vec<EntityId>,
     pub(crate) element_offset_stack: Vec<Point<Pixels>>,
     pub(crate) element_opacity: f32,
@@ -2181,7 +2180,7 @@ impl Window {
             layout_engine: Some(TaffyLayoutEngine::new()),
             root: None,
             element_id_stack: ElementIdStack::default(),
-            text_style_stack: Vec::new(),
+            text_style_stack: Default::default(),
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
             content_mask_stack: Vec::new(),
@@ -2509,11 +2508,7 @@ impl Window {
 
     /// The current text style. Which is composed of all the style refinements provided to `with_text_style`.
     pub fn text_style(&self) -> TextStyle {
-        let mut style = TextStyle::default();
-        for refinement in &self.text_style_stack {
-            style.refine(refinement);
-        }
-        style
+        self.text_style_stack.current()
     }
 
     /// Check if the platform window is maximized.
