@@ -6,6 +6,7 @@ import { createInterface } from "node:readline";
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 import assert from "node:assert/strict";
+import { summarizeFrames } from "./perf-frames.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -42,18 +43,22 @@ writeFileSync(
 const probe = resolve(flag("--probe", "target/rust-analyzer/debug/argus-window-probe.exe"));
 const seconds = Number(flag("--seconds", 20));
 const warmup = Number(flag("--warmup", 25));
+const captureCycles = Number(flag("--capture-cycles", 0));
+assert(Number.isInteger(captureCycles) && captureCycles >= 0 && captureCycles <= 100, "invalid capture cycle count");
 const phases = flag(
   "--phases",
   "processes:fluid,processes:off,performance:fluid,logical:fluid,settings:off,hidden:off",
 ).split(",");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const result = {
+  measurementVersion: 3,
   label,
   identifier,
   renderer: tauri ? "tauri" : "gpui",
   sha256: createHash("sha256").update(readFileSync(executable)).digest("hex"),
   logicalProcessors: availableParallelism(),
   seconds,
+  captureCycles,
   instrumentation: {
     frameTrace: !!process.env.ARGUS_GPUI_FRAME_TRACE,
     viewTrace: !!process.env.ARGUS_GPUI_VIEW_TRACE,
@@ -61,6 +66,7 @@ const result = {
   },
   events: [],
   summaries: [],
+  invalidStructuredLines: 0,
 };
 const port = Number(flag("--port", 9489));
 const child = spawn(
@@ -105,11 +111,21 @@ createInterface({ input: child.stdout }).on("line", (line) => {
     result.events.push(event);
     if (event.event === "shown") shown = event;
   } catch {
+    if (line.trimStart().startsWith("{")) result.invalidStructuredLines++;
     stderr += line;
   }
 });
 const send = (command) => child.stdin.write(`${command}\n`);
 const app = (value) => send(`app ${JSON.stringify(value)}`);
+async function stopWatching() {
+  const previous = result.events.filter((event) => event.event === "unwatched").length;
+  send("unwatch");
+  for (let i = 0; i < 200 && !exited; i++) {
+    if (result.events.filter((event) => event.event === "unwatched").length > previous) return true;
+    await sleep(50);
+  }
+  return false;
+}
 let cdp;
 async function connectWebview() {
   let endpoint;
@@ -205,21 +221,12 @@ async function mark(tag) {
   throw Error(`Missing mark ${tag}: ${stderr}`);
 }
 const sum = (rows, field) => rows.reduce((total, row) => total + row[field], 0);
-const quantile = (sorted, q) => sorted[Math.floor((sorted.length - 1) * q)] ?? 0;
 function summarize(tag, before, after) {
-  const ms = after.atMs - before.atMs;
+  const ms = (after.qpc100ns - before.qpc100ns) / 10000;
   const uiBefore = before.threads?.find((t) => t.pid === shown.pid && t.tid === shown.uiThread);
   const uiAfter = after.threads?.find((t) => t.pid === shown.pid && t.tid === shown.uiThread && t.created === uiBefore?.created);
-  const frames = result.events
-    .filter((e) => e.event === "sample" && e.atMs >= before.atMs && e.atMs <= after.atMs)
-    .flatMap((e) => e.capture?.times100ns ?? []);
-  const gaps = frames
-    .slice(1)
-    .map((v, i) => (v - frames[i]) / 10000)
-    .filter((v) => v > 0)
-    .sort((a, b) => a - b);
+  const frames = summarizeFrames(result.events, before.qpc100ns, after.qpc100ns);
   const engines = {};
-  const cadence = quantile(gaps, 0.5);
   for (const [key, value] of Object.entries(after.gpu?.gpuTime100ns ?? {})) {
     const engine = key.replace(/^pid_\d+_/, "");
     const delta = Math.max(0, value - (before.gpu?.gpuTime100ns?.[key] ?? value));
@@ -237,13 +244,7 @@ function summarize(tag, before, after) {
     gpuEngines: engines,
     privateMiB: sum(after.processes, "privateBytes") / 1048576,
     workingSetMiB: sum(after.processes, "workingSet") / 1048576,
-    presentedFps: frames.length > 1 ? (frames.length - 1) / ((frames.at(-1) - frames[0]) / 1e7) : 0,
-    frameP50Ms: quantile(gaps, 0.5),
-    frameP95Ms: quantile(gaps, 0.95),
-    frameP99Ms: quantile(gaps, 0.99),
-    frameMaxMs: gaps.at(-1) ?? 0,
-    missedRefreshes: cadence > 0 ? gaps.reduce((n, gap) => n + Math.max(0, Math.round(gap / cadence) - 1), 0) : 0,
-    longFrames50Ms: gaps.filter((v) => v > 50).length,
+    ...frames,
   };
 }
 try {
@@ -251,17 +252,39 @@ try {
   assert(shown, `Window unavailable: ${stderr}`);
   if (tauri) await connectWebview();
   send("size 1240 800");
+  for (let i = 0; i < 200 && !result.events.some((event) => event.event === "resized") && !exited; i++)
+    await sleep(50);
+  result.client = result.events.findLast((event) => event.event === "resized");
+  assert(result.client?.width === 1240 && result.client?.height === 800, "client size mismatch");
   send("watch");
   await state("processes", "fluid");
   console.log(`Warmup ${warmup}s: ${label}`);
   await sleep(warmup * 1000);
+  for (let cycle = 0; cycle < captureCycles; cycle++) {
+    assert(await stopWatching(), "capture cycle teardown failed");
+    send("watch");
+    await sleep(150);
+  }
+  if (tauri) {
+    result.viewport = await cdp.evaluate("({width:innerWidth,height:innerHeight,scale:devicePixelRatio})");
+    assert.equal(result.viewport.width * result.viewport.scale, 1240, "WebView physical width mismatch");
+    assert.equal(result.viewport.height * result.viewport.scale, 800, "WebView physical height mismatch");
+  }
   for (const [index, phase] of phases.entries()) {
     const [page, motion] = phase.split(":");
     if (page === "hidden") send("hide");
     else await state(page, motion);
-    await sleep(2500);
     const tag = `${index}-${page}-${motion}`;
     if (!tauri) app({ pointerOutside: true, inspectLayout: `${tag}-begin` });
+    // Inspection invalidates the test UI. Let it settle before the timing mark.
+    await sleep(2500);
+    if (!tauri) {
+      const layout = result.events.findLast((event) => event.event === "ui-layout" && event.label === `${tag}-begin`);
+      const conditions = result.events.findLast((event) => event.event === "ui-conditions" && event.label === `${tag}-begin`);
+      assert(layout && conditions, "native viewport inspection missing");
+      assert.equal(layout.width * conditions.dpiScale, 1240, "native physical width mismatch");
+      assert.equal(layout.height * conditions.dpiScale, 800, "native physical height mismatch");
+    }
     const before = await mark(`${tag}-begin`);
     await sleep(seconds * 1000);
     const after = await mark(`${tag}-end`);
@@ -282,6 +305,7 @@ try {
 } finally {
   writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
   if (!exited) {
+    result.captureClosedBeforeExit = await stopWatching();
     if (tauri && cdp) await cdp.evaluate("window.__TAURI_INTERNALS__.invoke('quit')").catch(() => {});
     else app({ exit: true });
     send("stop");
@@ -293,6 +317,8 @@ try {
   writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
 }
 assert.equal(result.exitCode, 0, stderr);
+assert.equal(result.invalidStructuredLines, 0, "measurement stream contained corrupted JSON lines");
+assert(result.captureClosedBeforeExit, "capture teardown did not complete before window shutdown");
 assert(!result.events.some((event) => event.event === "focusViolation"), "focus isolation failed");
 assert(
   result.events.filter((event) => event.capture).every((event) => !event.capture.error),

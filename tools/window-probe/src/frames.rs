@@ -33,6 +33,7 @@ struct State {
     times: Vec<i64>,
     error: Option<String>,
     ready: bool,
+    closing: bool,
 }
 pub struct Observer {
     state: Arc<Mutex<State>>,
@@ -109,11 +110,16 @@ fn observe(hwnd: HWND, state: &Arc<Mutex<State>>, stop: &AtomicBool) -> windows:
         Direct3D11CaptureFramePool,
         windows::core::IInspectable,
     >::new(move |sender, _| {
+        // Teardown waits for an active callback before closing native capture
+        // objects. Queued callbacks must not touch an already closing pool.
+        let mut state = observed.lock().unwrap();
+        if state.closing {
+            return Ok(());
+        }
         if let Some(pool) = sender.as_ref() {
             while let Ok(frame) = pool.TryGetNextFrame() {
                 let timestamp = frame.SystemRelativeTime()?.Duration;
                 frame.Close()?;
-                let mut state = observed.lock().unwrap();
                 state.count += 1;
                 if state.times.len() < 20_000 {
                     state.times.push(timestamp);
@@ -129,8 +135,9 @@ fn observe(hwnd: HWND, state: &Arc<Mutex<State>>, stop: &AtomicBool) -> windows:
     while !stop.load(Ordering::Relaxed) {
         std::thread::sleep(Duration::from_millis(50));
     }
-    session.Close()?;
+    state.lock().unwrap().closing = true;
     pool.RemoveFrameArrived(token)?;
+    session.Close()?;
     pool.Close()?;
     Ok(())
 }

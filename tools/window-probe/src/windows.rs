@@ -657,7 +657,25 @@ fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
     )
 }
 
+fn qpc_time_100ns() -> Result<i64> {
+    let (mut counter, mut frequency) = (0, 0);
+    unsafe {
+        QueryPerformanceFrequency(&mut frequency)?;
+        QueryPerformanceCounter(&mut counter)?;
+    }
+    Ok((counter as i128 * 10_000_000 / frequency as i128) as i64)
+}
+
 pub fn run(args: &[String]) -> Result<()> {
+    // Keep the MTA alive for the whole probe. WinRT caches agile factories;
+    // ending the only initialized worker apartment can unload their DLL while
+    // cached factory pointers or native callbacks still refer to it.
+    #[cfg(feature = "capture")]
+    unsafe {
+        windows::Win32::System::WinRT::RoInitialize(
+            windows::Win32::System::WinRT::RO_INIT_MULTITHREADED,
+        )?;
+    }
     anyhow::ensure!(
         args.len() >= 2 && args.iter().any(|a| a == "--hidden"),
         "owned test must start hidden"
@@ -681,11 +699,22 @@ pub fn run(args: &[String]) -> Result<()> {
         .args(&args[1..])
         .creation_flags(0x08000000)
         .stdin(Stdio::piped())
-        .stdout(Stdio::inherit())
+        .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
         .context("launch owned test")?;
     let root = child.id();
+    let app_output = child.stdout.take().context("owned test stdout")?;
+    std::thread::spawn(move || {
+        // One process owns the output pipe. Forward complete application lines
+        // under the same stdout lock used for frame samples and phase markers.
+        for line in std::io::BufReader::new(app_output)
+            .lines()
+            .map_while(std::result::Result::ok)
+        {
+            println!("{line}");
+        }
+    });
     let start = Instant::now();
     use std::os::windows::io::AsRawHandle;
     if let Err(error) = unsafe {
@@ -817,10 +846,19 @@ pub fn run(args: &[String]) -> Result<()> {
             }
             while let Ok(command) = rx.try_recv() {
                 if let Some(tag) = command.strip_prefix("mark ") {
+                    let at_ms = start.elapsed().as_secs_f64() * 1000.;
+                    let qpc = qpc_time_100ns()?;
                     let mut value = sample(&job, Some(&gpu))?;
                     value["event"] = "mark".into();
                     value["tag"] = tag.into();
-                    value["atMs"] = serde_json::json!(start.elapsed().as_secs_f64() * 1000.);
+                    value["atMs"] = at_ms.into();
+                    value["qpc100ns"] = qpc.into();
+                    #[cfg(feature = "capture")]
+                    if let Some(observer) = &observer {
+                        // Drain the last partial batch as well. WGC timestamps use
+                        // the same QPC-based 100 ns clock as the measurement marks.
+                        value["capture"] = observer.sample();
+                    }
                     println!("{value}");
                     io::stdout().flush()?;
                     continue;
@@ -836,6 +874,8 @@ pub fn run(args: &[String]) -> Result<()> {
                     continue;
                 }
                 if command == "stop" {
+                    #[cfg(feature = "capture")]
+                    drop(observer.take());
                     let _ = PostMessageW(
                         Some(search.hwnd),
                         WM_CLOSE,
@@ -847,6 +887,12 @@ pub fn run(args: &[String]) -> Result<()> {
                 #[cfg(feature = "capture")]
                 if command == "watch" {
                     observer = Some(crate::frames::Observer::start(search.hwnd));
+                }
+                #[cfg(feature = "capture")]
+                if command == "unwatch" {
+                    drop(observer.take());
+                    println!("{}", serde_json::json!({"event":"unwatched"}));
+                    io::stdout().flush()?;
                 }
                 if command == "begin-move" || command == "end-move" {
                     let message = if command == "begin-move" {
@@ -889,18 +935,31 @@ pub fn run(args: &[String]) -> Result<()> {
                         .collect::<std::result::Result<_, _>>()?;
                     let mut client = RECT::default();
                     let mut outer = RECT::default();
+                    // Custom caption implementations can change non-client
+                    // insets on the first resize. Reconcile against the actual
+                    // client rectangle instead of assuming the old insets hold.
+                    for _ in 0..4 {
+                        GetClientRect(search.hwnd, &mut client)?;
+                        if client.right == size[0] && client.bottom == size[1] {
+                            break;
+                        }
+                        GetWindowRect(search.hwnd, &mut outer)?;
+                        SetWindowPos(
+                            search.hwnd,
+                            Some(HWND_BOTTOM),
+                            0,
+                            0,
+                            size[0] + outer.right - outer.left - client.right,
+                            size[1] + outer.bottom - outer.top - client.bottom,
+                            SWP_NOACTIVATE | SWP_NOMOVE,
+                        )?;
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
                     GetClientRect(search.hwnd, &mut client)?;
-                    GetWindowRect(search.hwnd, &mut outer)?;
-                    SetWindowPos(
-                        search.hwnd,
-                        Some(HWND_BOTTOM),
-                        0,
-                        0,
-                        size[0] + outer.right - outer.left - client.right,
-                        size[1] + outer.bottom - outer.top - client.bottom,
-                        SWP_NOACTIVATE | SWP_NOMOVE,
-                    )?;
-                    GetClientRect(search.hwnd, &mut client)?;
+                    anyhow::ensure!(
+                        client.right == size[0] && client.bottom == size[1],
+                        "owned client size did not settle at the requested dimensions"
+                    );
                     println!(
                         "{}",
                         serde_json::json!({"event":"resized","width":client.right,"height":client.bottom})
@@ -942,11 +1001,15 @@ pub fn run(args: &[String]) -> Result<()> {
             measured = Instant::now();
         }
         if closing.is_some_and(|at: Instant| at.elapsed() > Duration::from_secs(8)) {
+            #[cfg(feature = "capture")]
+            drop(observer.take());
             child.kill()?;
             child.wait()?;
             break;
         }
         if start.elapsed() > Duration::from_secs(600) {
+            #[cfg(feature = "capture")]
+            drop(observer.take());
             child.kill()?;
             child.wait()?;
             anyhow::bail!("owned test timeout");

@@ -23,7 +23,12 @@ pub fn compare(left: &str, right: &str) -> anyhow::Result<()> {
     );
     let mut changed = 0;
     let mut maximum = 0;
-    for (left, right) in before.chunks_exact(3).zip(after.chunks_exact(3)) {
+    for (left, right) in before
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .zip(after.as_chunks::<3>().0)
+    {
         let delta = left
             .iter()
             .zip(right)

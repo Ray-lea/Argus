@@ -29,12 +29,23 @@ struct NodeContext {
     measure: NodeMeasureFn,
 }
 pub struct TaffyLayoutEngine {
+    stats: Option<LayoutStats>,
     taffy: TaffyTree<NodeContext>,
     absolute_layout_bounds: FxHashMap<LayoutId, Bounds<Pixels>>,
     /// Unrounded absolute border-box top-left per-node coordinate in device pixels.
     absolute_outer_origins: FxHashMap<LayoutId, Point<f32>>,
     computed_layouts: FxHashSet<LayoutId>,
     layout_bounds_scratch_space: Vec<LayoutId>,
+}
+
+#[derive(Default)]
+struct LayoutStats {
+    nodes: u64,
+    roots: u64,
+    compute_us: u128,
+    measure_us: u128,
+    measures: u64,
+    bounds_us: u128,
 }
 
 const EXPECT_MESSAGE: &str = "we should avoid taffy layout errors by construction if possible";
@@ -44,6 +55,7 @@ impl TaffyLayoutEngine {
         let mut taffy = TaffyTree::new();
         taffy.disable_rounding();
         TaffyLayoutEngine {
+            stats: std::env::var_os("ARGUS_GPUI_FRAME_TRACE").map(|_| LayoutStats::default()),
             taffy,
             absolute_layout_bounds: FxHashMap::default(),
             absolute_outer_origins: FxHashMap::default(),
@@ -53,10 +65,24 @@ impl TaffyLayoutEngine {
     }
 
     pub fn clear(&mut self) {
+        let started = self.stats.as_ref().map(|_| std::time::Instant::now());
         self.taffy.clear();
         self.absolute_layout_bounds.clear();
         self.absolute_outer_origins.clear();
         self.computed_layouts.clear();
+        if let (Some(stats), Some(started)) = (self.stats.as_mut(), started) {
+            println!(
+                "{{\"event\":\"layout-work\",\"nodes\":{},\"roots\":{},\"computeUs\":{},\"measureUs\":{},\"measures\":{},\"boundsUs\":{},\"clearUs\":{}}}",
+                stats.nodes,
+                stats.roots,
+                stats.compute_us,
+                stats.measure_us,
+                stats.measures,
+                stats.bounds_us,
+                started.elapsed().as_micros()
+            );
+            *stats = LayoutStats::default();
+        }
     }
 
     pub fn request_layout(
@@ -66,6 +92,9 @@ impl TaffyLayoutEngine {
         scale_factor: f32,
         children: &[LayoutId],
     ) -> LayoutId {
+        if let Some(stats) = self.stats.as_mut() {
+            stats.nodes += 1;
+        }
         let taffy_style = style.to_taffy(rem_size, scale_factor);
 
         if children.is_empty() {
@@ -95,6 +124,9 @@ impl TaffyLayoutEngine {
         ) -> Size<Pixels>
         + 'static,
     ) -> LayoutId {
+        if let Some(stats) = self.stats.as_mut() {
+            stats.nodes += 1;
+        }
         let taffy_style = style.to_taffy(rem_size, scale_factor);
         let measure = Box::new(measure) as Box<MeasureFn>;
         #[cfg(feature = "stacker")]
@@ -191,6 +223,9 @@ impl TaffyLayoutEngine {
         window: &mut Window,
         cx: &mut App,
     ) {
+        let started = self.stats.as_ref().map(|_| std::time::Instant::now());
+        let mut measure_us = 0;
+        let mut measures = 0;
         // Leaving this here until we have a better instrumentation approach.
         // println!("Laying out {} children", self.count_all_children(id)?);
         // println!("Max layout depth: {}", self.max_depth(0, id)?);
@@ -264,18 +299,29 @@ impl TaffyLayoutEngine {
                                 untransform(available_space.height),
                             );
 
+                            let measure_start = started.map(|_| std::time::Instant::now());
                             let measured_size: Size<Pixels> = (node_context.measure)(
                                 known_dimensions,
                                 available_space,
                                 window,
                                 cx,
                             );
+                            if let Some(start) = measure_start {
+                                measure_us += start.elapsed().as_micros();
+                                measures += 1;
+                            }
                             snap_measured_size_to_device_pixels(measured_size, scale_factor).into()
                         },
                     )
                 },
             )
             .expect(EXPECT_MESSAGE);
+        if let (Some(stats), Some(started)) = (self.stats.as_mut(), started) {
+            stats.roots += 1;
+            stats.compute_us += started.elapsed().as_micros();
+            stats.measure_us += measure_us;
+            stats.measures += measures;
+        }
     }
 
     // Pixel snapping
@@ -354,6 +400,15 @@ impl TaffyLayoutEngine {
     // 1dp residual into descendants.
 
     pub fn layout_bounds(&mut self, id: LayoutId, scale_factor: f32) -> Bounds<Pixels> {
+        let started = self.stats.as_ref().map(|_| std::time::Instant::now());
+        let result = self.layout_bounds_inner(id, scale_factor);
+        if let (Some(stats), Some(started)) = (self.stats.as_mut(), started) {
+            stats.bounds_us += started.elapsed().as_micros();
+        }
+        result
+    }
+
+    fn layout_bounds_inner(&mut self, id: LayoutId, scale_factor: f32) -> Bounds<Pixels> {
         if let Some(layout) = self.absolute_layout_bounds.get(&id).cloned() {
             return layout;
         }
@@ -366,7 +421,7 @@ impl TaffyLayoutEngine {
         let absolute_outer_origin = match parent {
             Some(parent_id) => {
                 let parent_id = LayoutId::from(parent_id);
-                self.layout_bounds(parent_id, scale_factor);
+                self.layout_bounds_inner(parent_id, scale_factor);
                 let parent_origin = *self
                     .absolute_outer_origins
                     .get(&parent_id)
