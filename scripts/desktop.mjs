@@ -104,7 +104,7 @@ if (mode === "dev") {
     timer = setTimeout(() => void build(), 250);
   };
   if (!once)
-    for (const path of ["src-gpui", "crates", "resources", "locales", "build-support"]) {
+    for (const path of ["src-gpui", "crates", "resources", "locales", "build-support", "vendor"]) {
       watchers.push(
         watch(resolve(path), { recursive: true }, (_event, file) => {
           if (file && !String(file).includes("target")) schedule();

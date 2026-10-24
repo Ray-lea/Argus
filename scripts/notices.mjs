@@ -71,7 +71,7 @@ function crates() {
   }
   return [...seen]
     .map((id) => packages.get(id))
-    .filter((p) => p.source !== null)
+    .filter((p) => p.source !== null || !metadata.workspace_members.includes(p.id))
     .map((p) => ({
       name: p.name,
       version: p.version,

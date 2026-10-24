@@ -2,6 +2,10 @@
 resolver = "3"
 members = ["crates/argus-core", "crates/argus-service", "crates/argus-app", "src-gpui", "tools/window-probe", "tools/update-signer"]
 default-members = ["src-gpui"]
+exclude = ["vendor/gpui-pre"]
+
+[patch.crates-io]
+gpui-pre = { path = "vendor/gpui-pre" }
 
 [workspace.package]
 version = "0.3.0"
