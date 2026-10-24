@@ -28,6 +28,7 @@
 
 ## 应用内更新（`updater.rs`）
 
+- 安装类型取 Tauri 打包时写入程序的 `bundle_type` 标记，不看当前程序旁是否有 `uninstall.exe`：管理员启动和任务管理器替换使用的副本没有卸载程序，但仍属于安装版。发布检查通过只读的 `--argus-updater-check` 助手验证实际安装文件、改名后的副本以及免安装下载；免安装文件旁有卸载程序时也必须保持免安装类型。实际权限切换测试还要核对 `update_status.portable`，不能只看管理员令牌和窗口。
 - `updater::install` 会阻塞并查询窗口状态，不要在主线程（托盘菜单回调、非 async 命令）里直接调用。托盘的更新菜单项只打开更新对话框，安装由对话框或设置页发起。
 - 插件只负责检查和下载（下载时验签）。下载好的安装包存在 `%LOCALAPPDATA%\<标识>\updates`，由 `updater::launch` 自己启动：先以只读共享打开文件、再验签，然后用 `ShellExecuteExW` 带 `/P /UPDATE /R /ARGS --updated` 运行，成功后停止 ETW 会话、`std::process::exit`（不经过 `RunEvent::Exit`，退出前要做的事放在这里）。参数里不要沿用当前启动参数：通过任务管理器替换启动的 Argus 带着一次性的握手参数，原样重启后会在 15 秒后退出。管理员授权被取消时 `ShellExecuteExW` 返回 `ERROR_CANCELLED`，按 `cancelled` 返回，不当作错误。
 - 检查要等清单和下载，期间状态可能已被别处改变，写入结果前要核对（`Inner::current`）：`reset`（切换通道）递增代号，进行中的检查丢弃结果并按新通道重查；`installing` 只由 `install` 自己结束，检查与 `reset` 都不改动它（安装程序等待管理员授权时，安静检查曾把状态改成另一个版本的下载，取消授权后显示与实际安装的版本不一致，下载失败时还会卡在 installing）。改这些转换后运行 `updater` 的单元测试。
