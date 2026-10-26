@@ -17,6 +17,7 @@ import {
 } from "solid-js";
 import { Portal } from "solid-js/web";
 import { copyText, PRIORITY_LABEL } from "../lib/actions";
+import { fontSize, setFontSize, setUiScale, uiScale } from "../lib/appearance";
 import {
   type Away,
   BACKGROUND_INTERVALS,
@@ -93,9 +94,11 @@ import {
   DismissIcon,
   DocumentIcon,
   ExternalIcon,
+  FontSizeIcon,
   GlobeIcon,
   HistoryIcon,
   InfoIcon,
+  InterfaceScaleIcon,
   KeyboardIcon,
   MinimizeIcon,
   NavSideIcon,
@@ -2133,6 +2136,68 @@ export default function SettingsPage() {
                     desc={t("settings.navigation.desc")}
                   >
                     <NavPositionChoice label={t("settings.navigation.title")} />
+                  </Setting>
+                  <Setting
+                    id="setting-ui-scale"
+                    icon={<InterfaceScaleIcon size={20} />}
+                    title={t("settings.appearance.scaleTitle")}
+                    desc={t("settings.appearance.scaleDesc")}
+                  >
+                    <label class="appearance-number">
+                      <input
+                        type="number"
+                        min="80"
+                        max="150"
+                        step="1"
+                        value={uiScale()}
+                        aria-label={t("settings.appearance.scaleTitle")}
+                        onChange={(e) => {
+                          const n = e.currentTarget.valueAsNumber;
+                          setUiScale(Number.isFinite(n) ? Math.round(Math.max(80, Math.min(150, n))) : 100);
+                          e.currentTarget.value = String(uiScale());
+                        }}
+                      />
+                      <span>%</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="btn"
+                      disabled={uiScale() === 100}
+                      onClick={() => setUiScale(100)}
+                    >
+                      {t("settings.appearance.reset")}
+                    </button>
+                  </Setting>
+                  <Setting
+                    id="setting-font-size"
+                    icon={<FontSizeIcon size={20} />}
+                    title={t("settings.appearance.fontTitle")}
+                    desc={t("settings.appearance.fontDesc")}
+                  >
+                    <label class="appearance-number">
+                      <input
+                        type="number"
+                        min="11"
+                        max="20"
+                        step="1"
+                        value={fontSize()}
+                        aria-label={t("settings.appearance.fontTitle")}
+                        onChange={(e) => {
+                          const n = e.currentTarget.valueAsNumber;
+                          setFontSize(Number.isFinite(n) ? Math.round(Math.max(11, Math.min(20, n))) : 13);
+                          e.currentTarget.value = String(fontSize());
+                        }}
+                      />
+                      <span>px</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="btn"
+                      disabled={fontSize() === 13}
+                      onClick={() => setFontSize(13)}
+                    >
+                      {t("settings.appearance.reset")}
+                    </button>
                   </Setting>
                 </section>
 

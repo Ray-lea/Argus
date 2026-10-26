@@ -426,6 +426,19 @@ export const ThemeIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const InterfaceScaleIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="6.75" cy="6.75" r="4.75" />
+    <path d="M10.25 10.25 14 14M4.5 6.75H9M6.75 4.5V9" />
+  </Svg>
+);
+
+export const FontSizeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m1.5 12.5 3.25-9 3.25 9M2.7 9h4.1m2.7 3.5 2.25-6 2.25 6M10.4 10h2.7" />
+  </Svg>
+);
+
 // ---- Navigation pane ----------------------------------------------------------------
 
 /** The navigation as a pane on the left. */

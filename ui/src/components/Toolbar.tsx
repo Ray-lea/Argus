@@ -1,5 +1,6 @@
 import { createEffect, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
 import logo from "../../../src-tauri/icons/logo-small.svg?url";
+import { fontSize } from "../lib/appearance";
 import { locale, t } from "../lib/i18n";
 import { forgetReturn, leaveSearch, preedit, setSearchInput } from "../lib/process-search";
 import type { ViewMode } from "../lib/rows";
@@ -53,7 +54,7 @@ const MODES: { mode: ViewMode; icon: typeof AppsIcon }[] = [
 ];
 
 /** Levels of `fitToolbar`, set as `data-compact` (styles.css). */
-const COMPACT_LEVELS = 3;
+const COMPACT_LEVELS = 4;
 
 /**
  * Keeps the title row inside the window. When its controls overflow it sheds
@@ -121,7 +122,7 @@ export default function Toolbar() {
     // After every effect of the change has run: the search box sets its width
     // in one of its own.
     createEffect(
-      on([page, locale, navExpanded, navPosition, showsLatest, updateButtonVersion], () =>
+      on([page, locale, fontSize, navExpanded, navPosition, showsLatest, updateButtonVersion], () =>
         queueMicrotask(fitter.refit),
       ),
     );

@@ -28,14 +28,28 @@ export default function Caption() {
 
   onMount(async () => {
     if (!inTauri) return;
-    const r = maximize.getBoundingClientRect();
-    void api.setCaptionButton({
-      right: document.documentElement.clientWidth - r.right,
-      top: r.top,
-      width: r.width,
-      height: r.height,
-    });
     const [w, { listen }] = await Promise.all([win(), import("@tauri-apps/api/event")]);
+    const report = async () => {
+      const scale = await w.scaleFactor();
+      if (disposed) return;
+      const r = maximize.getBoundingClientRect();
+      const zoom = devicePixelRatio / scale;
+      void api.setCaptionButton({
+        right: (window.innerWidth - r.right) * zoom,
+        top: r.top * zoom,
+        width: r.width * zoom,
+        height: r.height * zoom,
+      });
+    };
+    if (disposed) return;
+    const observer = new ResizeObserver(() => void report());
+    observer.observe(maximize);
+    window.addEventListener("resize", report);
+    cleanups.push(() => {
+      observer.disconnect();
+      window.removeEventListener("resize", report);
+    });
+    void report();
     const sync = async () => setMaximized(await w.isMaximized());
     const stops = await Promise.all([
       w.onResized(() => void sync()),

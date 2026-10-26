@@ -101,6 +101,8 @@
 
 .nav.top .nav-items {
   flex-direction: row;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 2px;
 }
 
@@ -269,7 +271,7 @@
 .dev-sub {
   overflow: hidden;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -400,7 +402,7 @@
 .perf-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: calc(26rem / 13);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -408,7 +410,7 @@
 .perf-model {
   overflow: hidden;
   color: var(--ink-2);
-  font-size: 15px;
+  font-size: calc(15rem / 13);
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -427,7 +429,7 @@
   gap: 12px;
   margin: 2px 0;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-variant-numeric: tabular-nums;
 }
 
@@ -489,7 +491,7 @@
     left: 7px;
     z-index: 1;
     margin: 0;
-    font-size: 11px;
+    font-size: calc(11rem / 13);
     pointer-events: none;
     /* Keeps the captions readable where the trace runs under them. */
     text-shadow:
@@ -510,7 +512,7 @@
   max-width: 72ch;
   margin: 18px 0 0;
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 /* Small charts (GPU engines, logical processors): rows stretch to the grid's
@@ -615,7 +617,7 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--c) 16%, transparent);
   color: color-mix(in srgb, var(--c) 70%, var(--ink));
-  font-size: 10px;
+  font-size: calc(10rem / 13);
   font-style: normal;
   font-weight: 700;
   line-height: 15px;
@@ -624,7 +626,7 @@
 
 .core-index {
   color: var(--ink);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-weight: 500;
 }
 
@@ -632,28 +634,28 @@
   overflow: hidden;
   margin-left: 2px;
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   text-overflow: ellipsis;
 }
 
 /* The engine shown, a choice: as large as a core's number. */
 .engine-cell .cell-head .select.compact {
   color: var(--ink);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-weight: 500;
 }
 
 .cell-load {
   flex: none;
   color: var(--ink);
-  font-size: 13px;
+  font-size: calc(13rem / 13);
   font-weight: 600;
 }
 
 .cell-load small {
   margin-left: 1px;
   color: var(--ink-2);
-  font-size: 10.5px;
+  font-size: calc(10.5rem / 13);
   font-weight: 400;
 }
 
@@ -674,7 +676,7 @@
   gap: 16px;
   margin-top: 6px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .legend span::before {
@@ -712,12 +714,12 @@
 
 .stat-label {
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .stat-value {
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: calc(20rem / 13);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -725,14 +727,14 @@
 .stat-value small {
   margin-left: 2px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: calc(13rem / 13);
 }
 
 /* The same figure in another unit (network rates in bytes and bits). */
 .stat-note {
   margin-top: 1px;
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-variant-numeric: tabular-nums;
 }
 
@@ -767,7 +769,7 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   line-height: 16px;
 }
 
@@ -793,13 +795,13 @@
 
 .cpu-sensor-group h3 {
   margin: 0 0 12px;
-  font-size: 13px;
+  font-size: calc(13rem / 13);
   font-weight: 600;
 }
 
 .cpu-sensor-group small {
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   font-weight: 400;
 }
 
@@ -812,18 +814,18 @@
 
 .cpu-sensor-values dt {
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
 }
 
 .cpu-sensor-values dd {
   margin: 2px 0 0;
-  font-size: 16px;
+  font-size: calc(16rem / 13);
 }
 
 .cpu-sensor-status {
   margin-bottom: 12px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .cpu-core-scroll {
@@ -833,7 +835,7 @@
 .cpu-core-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   white-space: nowrap;
 }
 
@@ -891,7 +893,7 @@
   gap: 18px;
   margin-top: 6px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .mem-legend i {
@@ -947,14 +949,14 @@
 .cpu-card-head h3 {
   flex: none;
   margin: 0;
-  font-size: 14px;
+  font-size: calc(14rem / 13);
   font-weight: 600;
 }
 
 .cpu-card-head small {
   margin-left: 6px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-weight: 400;
 }
 
@@ -963,7 +965,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -980,7 +982,7 @@
   align-items: center;
   gap: 4px;
   margin-top: 2px;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 /* ---- History page ---------------------------------------------------------- */
@@ -1035,7 +1037,7 @@
   align-items: center;
   gap: 6px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .history-label span::before {
@@ -1048,7 +1050,7 @@
 
 .history-label b {
   overflow: hidden;
-  font-size: 15px;
+  font-size: calc(15rem / 13);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
@@ -1061,7 +1063,7 @@
 
 .history-label small {
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1101,7 +1103,7 @@
   top: 3px;
   right: 6px;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
@@ -1111,7 +1113,7 @@
   flex: none;
   height: var(--axis);
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1136,7 +1138,7 @@
 
 .history-empty small {
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 /* Takes the pointer and the keyboard for the whole plot; the charts below only draw. */
@@ -1175,7 +1177,7 @@
   border: 1px solid var(--stroke-strong);
   border-radius: 4px;
   background: var(--tip);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   font-variant-numeric: tabular-nums;
   line-height: 18px;
   white-space: nowrap;
@@ -1216,14 +1218,14 @@
 
 .history-moment-head h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: calc(14rem / 13);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .history-moment-head span {
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 /* ---- Settings page --------------------------------------------------------- */
@@ -1309,7 +1311,7 @@
 
 .settings-section h2 {
   margin: 28px 0 10px;
-  font-size: 14px;
+  font-size: calc(14rem / 13);
   font-weight: 600;
 }
 
@@ -1347,13 +1349,13 @@
 .setting-desc {
   margin-top: 2px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .setting-error {
   margin-top: 4px;
   color: var(--danger);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .setting-control {
@@ -1411,13 +1413,13 @@
   flex: 1;
   min-width: 0;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .feature-foot {
   padding: 0 16px 12px 52px;
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   overflow-wrap: anywhere;
 }
 
@@ -1483,7 +1485,7 @@
   border: 1px solid var(--stroke);
   border-radius: 13px;
   background: var(--layer-strong);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   white-space: nowrap;
 }
 
@@ -1579,7 +1581,7 @@
 
 .about-name {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: calc(18rem / 13);
   font-weight: 600;
 }
 
@@ -1587,7 +1589,7 @@
   margin-left: 8px;
   color: var(--ink-2);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: calc(13rem / 13);
   font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
@@ -1596,7 +1598,7 @@
 .about-url {
   color: var(--ink);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .keycaps {
@@ -1612,7 +1614,7 @@
   border-radius: 4px;
   background: var(--control);
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .keycaps .pending,
@@ -1709,7 +1711,7 @@
 .shortcut-header p {
   margin: 0;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 .shortcut-header > .btn {
   align-self: flex-start;
@@ -1750,7 +1752,7 @@
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-  font-size: 13px;
+  font-size: calc(13rem / 13);
   font-weight: 600;
 }
 .shortcut-card-title > svg {
@@ -1760,18 +1762,18 @@
 .shortcut-card p {
   margin: 9px 0 0;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   line-height: 1.6;
 }
 .shortcut-badge {
   margin-left: auto;
-  font-size: 10px;
+  font-size: calc(10rem / 13);
   font-weight: 400;
   color: var(--ink-3);
 }
 .shortcut-disabled {
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 .shortcut-keys {
   display: inline-flex;
@@ -1798,13 +1800,13 @@
   background: var(--control);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   line-height: 1;
 }
 .shortcut-plus,
 .shortcut-separator {
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: calc(10rem / 13);
 }
 .shortcut-section-heading {
   display: flex;
@@ -1814,7 +1816,7 @@
 }
 .shortcut-section-heading h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: calc(13rem / 13);
   font-weight: 600;
 }
 .shortcut-pages {
@@ -1828,7 +1830,7 @@
   align-items: center;
   gap: 7px;
   min-width: 0;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 .shortcut-pages > div > svg {
   color: var(--ink-3);
@@ -1849,7 +1851,7 @@
   padding: 12px 14px;
   list-style: none;
   cursor: pointer;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-weight: 600;
 }
 .shortcut-group summary > svg {
@@ -1872,7 +1874,7 @@
   margin: 0;
   padding: 4px 14px 16px;
   align-items: center;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 .shortcut-list :is(dt, dd) {
   margin: 0;
@@ -1890,7 +1892,7 @@
   gap: 12px;
   margin-top: 16px;
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
 }
 .shortcut-note > .shortcut-keys {
   flex-shrink: 0;
@@ -1898,7 +1900,7 @@
 .shortcut-footnote {
   margin: 12px 0 0;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
 }
 .shortcut-dialog .dialog-footer {
   flex-shrink: 0;
@@ -1912,7 +1914,7 @@
   gap: 8px;
   margin-right: auto;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
 }
 
 /* License text, opened from the about section. */
@@ -1931,7 +1933,7 @@
   background: var(--layer);
   color: var(--ink-2);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -1940,4 +1942,20 @@
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.appearance-number {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.appearance-number input {
+  width: 4.5em;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--stroke);
+  border-radius: 4px;
+  background: var(--control);
+  color: var(--ink);
+  font: inherit;
 }

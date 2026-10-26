@@ -410,5 +410,13 @@
     "afterOnboarding": "Continue setup after authorizing. Argus restarts with the selected permissions when setup finishes.",
     "standardAccount": "This account has no administrator identity, so automatic administrator startup is unavailable. The privileged service can perform supported administrative actions.",
     "scope": "This authorization only starts Argus and stores no password. The privileged service and hardware sensor permissions remain separate. Windows may restrict files dragged from standard applications; use Choose file instead."
+  },
+  "appearance": {
+    "scaleTitle": "Interface scale",
+    "scaleDesc": "Resize text, icons and controls from 80% to 150% (default: 100%). Changes apply immediately and are saved automatically.",
+    "fontTitle": "Font size",
+    "fontDesc": "Base font size: 11–20 px (default: 13 px). Headings and secondary text scale proportionally. Combines with interface scaling.",
+    "reset": "Reset",
+    "saveFailed": "Could not save interface preferences. Check that the configuration folder is writable."
   }
 }

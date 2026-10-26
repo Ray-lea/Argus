@@ -30,7 +30,7 @@
 
 .mono {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .tag.warn {
@@ -60,7 +60,7 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--accent) 11%, transparent);
   color: color-mix(in srgb, var(--accent) 72%, var(--ink));
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .row-note svg {
@@ -136,7 +136,7 @@
   padding: 7px 14px;
   border-top: 1px solid var(--stroke);
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .page-foot .link {
@@ -222,7 +222,7 @@
 
 .svc-item .dim {
   flex: none;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 /* An app group's processes in the details panel: PID, CPU, memory. */
@@ -307,7 +307,7 @@
 .path-dir {
   overflow: hidden;
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -371,14 +371,14 @@
 }
 
 .locker-name .dim {
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .dialog-hint {
   flex: 1;
   align-self: center;
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .drop-overlay {
@@ -391,7 +391,7 @@
   border-radius: 12px;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--ink);
-  font-size: 16px;
+  font-size: calc(16rem / 13);
   text-align: center;
   pointer-events: none;
   animation: fade-in var(--t-med) linear;

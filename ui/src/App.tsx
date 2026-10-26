@@ -18,10 +18,12 @@ import Toolbar from "./components/Toolbar";
 import UpdateDialog from "./components/UpdateDialog";
 import Vitals from "./components/Vitals";
 import { endRow } from "./lib/actions";
+import { followAppearance } from "./lib/appearance";
 import { reportFirstFrame, watchRestores } from "./lib/background";
 import { t } from "./lib/i18n";
 import { api, inTauri, subscribe } from "./lib/ipc";
 import { EASE_OUT, play, uiMotion } from "./lib/motion";
+import { preferenceSaveFailed } from "./lib/prefs";
 import { watchPrivilege } from "./lib/privilege";
 import { focusSearch, typeIntoSearch } from "./lib/process-search";
 import { isSection } from "./lib/rows";
@@ -57,6 +59,10 @@ function applyAccent(accent: AccentColors | null) {
 const pageIndex = (p: Page) => PAGES.findIndex((x) => x.page === p);
 
 export default function App() {
+  followAppearance();
+  createEffect(() => {
+    if (preferenceSaveFailed()) toast("error", t("settings.appearance.saveFailed"));
+  });
   const [administratorWarning, setAdministratorWarning] = createSignal<string | null>(null);
   createEffect(() => {
     const warning = administratorWarning();

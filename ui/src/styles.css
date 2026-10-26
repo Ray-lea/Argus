@@ -114,7 +114,7 @@ body,
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: calc(13rem / 13);
   line-height: 1.4;
   color: var(--ink);
   background: var(--fallback-bg);
@@ -273,6 +273,7 @@ button {
 
 .vital {
   position: relative;
+  container-type: inline-size;
   min-width: 0;
   padding: 11px 16px 0;
   border: 0;
@@ -308,7 +309,7 @@ button {
 
 .vital-label {
   flex: none;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   color: var(--ink-2);
 }
 
@@ -324,7 +325,7 @@ button {
 
 .vital-value {
   font-family: var(--font-display);
-  font-size: 34px;
+  font-size: clamp(16px, 33cqw, calc(34rem / 13));
   font-weight: 330;
   line-height: 1.1;
   letter-spacing: -0.01em;
@@ -334,7 +335,7 @@ button {
 .vital-unit {
   margin-left: 2px;
   font-family: var(--font-display);
-  font-size: 15px;
+  font-size: clamp(9px, 15cqw, calc(15rem / 13));
   font-weight: 400;
   color: var(--ink-2);
 }
@@ -343,7 +344,7 @@ button {
 .vital-sub {
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
@@ -438,7 +439,7 @@ button {
   gap: 10px;
   min-width: calc(var(--nav-width) - 8px);
   padding-left: 4px;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   white-space: nowrap;
 }
 
@@ -469,7 +470,7 @@ button {
   background: transparent;
   color: var(--ink);
   font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
-  font-size: 10px;
+  font-size: calc(10rem / 13);
   line-height: 1;
   transition: background-color var(--t-fast) linear;
 }
@@ -852,20 +853,35 @@ button {
    page without controls gets no gap), reaching under the caption buttons to
    the window edge. The rows are as far apart as the toolbar's padding: the
    second starts where the caption buttons end. */
-.toolbar[data-compact="3"] {
+.toolbar:is([data-compact="3"], [data-compact="4"]) {
   row-gap: 10px;
 }
 
-.toolbar[data-compact="3"] > .toolbar-start {
+.toolbar:is([data-compact="3"], [data-compact="4"]) > .toolbar-start {
   display: contents;
 }
 
-.toolbar[data-compact="3"] .brand {
+.toolbar:is([data-compact="3"], [data-compact="4"]) .brand {
   grid-area: start;
 }
 
 .toolbar[data-compact="3"] .page-controls {
   grid-area: 2 / 1 / 3 / -1;
+}
+
+/* At large text/zoom, the full-width search moves below the caption row. */
+.toolbar[data-compact="4"] {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "start end";
+}
+
+.toolbar[data-compact="4"] > .search {
+  grid-area: 2 / 1 / 3 / -1;
+}
+
+.toolbar[data-compact="4"] .page-controls {
+  grid-area: 3 / 1 / 4 / -1;
+  flex-wrap: wrap;
 }
 
 /* ---- Process table --------------------------------------------------------- */
@@ -1054,7 +1070,7 @@ button {
 
 .th-total {
   font-family: var(--font-display);
-  font-size: 15px;
+  font-size: calc(15rem / 13);
   line-height: 1.25;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -1065,7 +1081,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   color: var(--ink-2);
   white-space: nowrap;
 }
@@ -1190,7 +1206,7 @@ button {
   min-width: 0;
   overflow: hidden;
   color: var(--ink);
-  font-size: 14px;
+  font-size: calc(14rem / 13);
   font-weight: 600;
   text-overflow: ellipsis;
 }
@@ -1202,7 +1218,7 @@ button {
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: color-mix(in srgb, var(--accent) 78%, var(--ink));
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   font-weight: 600;
   line-height: 18px;
   text-align: center;
@@ -1221,7 +1237,7 @@ button {
 .section-row .cell {
   height: 30px;
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 /* Folded, the totals stand in for the rows. */
@@ -1390,7 +1406,7 @@ button {
   border-radius: 999px;
   background: var(--hover);
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   line-height: 17px;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -1402,7 +1418,7 @@ button {
   border: 1px solid var(--stroke-strong);
   border-radius: 999px;
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
   line-height: 16px;
 }
 
@@ -1524,7 +1540,7 @@ button {
 
 .details-title {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: calc(18rem / 13);
   font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -1555,7 +1571,7 @@ button {
   border: 1px dashed var(--stroke-strong);
   border-radius: 6px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   line-height: 1.5;
   list-style: none;
 }
@@ -1631,7 +1647,7 @@ button {
 
 .overview-kind {
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: calc(11rem / 13);
 }
 
 .overview-name {
@@ -1641,7 +1657,7 @@ button {
 
 .overview-detail {
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -1669,7 +1685,7 @@ button {
 
 .mini-value {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: calc(18rem / 13);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1680,7 +1696,7 @@ button {
 
 .section-title {
   margin: 20px 0 6px;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -1721,7 +1737,7 @@ button {
   border-radius: 6px;
   background: var(--layer);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   line-height: 1.5;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -1746,7 +1762,7 @@ button {
   border-radius: 6px;
   background: var(--hover);
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .note svg {
@@ -1772,7 +1788,7 @@ button {
   align-items: center;
   gap: 20px;
   padding: 6px 16px 8px;
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   color: var(--ink-3);
   white-space: nowrap;
 }
@@ -1913,7 +1929,7 @@ button {
 .menu-item .hint {
   margin-left: auto;
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .menu-sep {
@@ -1979,7 +1995,7 @@ button {
 .dialog-title {
   margin: 0 0 10px;
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: calc(20rem / 13);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -2042,7 +2058,7 @@ button {
 .new-task-header p {
   margin: 0;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   line-height: 1.6;
 }
 .new-task-header > button {
@@ -2066,7 +2082,7 @@ button {
   height: 36px;
   padding: 0 11px;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: calc(13rem / 13);
   font-weight: 400;
 }
 .new-task-input > button {
@@ -2110,14 +2126,14 @@ button {
   min-height: 36px;
   margin-top: 3px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   line-height: 1.5;
 }
 .new-task-feedback {
   min-height: 62px;
   padding-top: 8px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   line-height: 1.5;
 }
 .new-task-feedback.error {
@@ -2125,7 +2141,7 @@ button {
 }
 .new-task-code {
   display: block;
-  font-size: 11px;
+  font-size: calc(11rem / 13);
 }
 
 .toasts {
@@ -2275,7 +2291,7 @@ button {
 .update-sub {
   margin-top: 2px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 /* From this version to the next: two tiles, the new one in the accent. */
@@ -2305,13 +2321,13 @@ button {
 
 .update-version-label {
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .update-version-number {
   overflow-wrap: anywhere;
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: calc(20rem / 13);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -2330,7 +2346,7 @@ button {
   gap: 6px 16px;
   margin-top: 12px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .update-facts:empty {
@@ -2374,7 +2390,7 @@ button {
   overflow: auto;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
-  font-size: 13px;
+  font-size: calc(13rem / 13);
   overflow-wrap: anywhere;
 }
 
@@ -2433,7 +2449,7 @@ button {
 .update-entry-date,
 .update-entry-count {
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .update-entry-count {
@@ -2485,7 +2501,7 @@ button {
   border-radius: 10px;
   background: color-mix(in srgb, var(--tone) 14%, transparent);
   color: var(--tone);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-weight: 600;
   user-select: none;
 }
@@ -2509,13 +2525,13 @@ button {
   border-radius: 3px;
   background: var(--layer-strong);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .update-quiet {
   margin: 10px 8px 0;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .update-notes-fallback {
@@ -2526,7 +2542,7 @@ button {
 .update-failure {
   margin: 14px 0 0;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .update-failure {
@@ -2617,7 +2633,7 @@ html.still *::after {
   border: 1px solid var(--stroke-strong);
   border-radius: 6px;
   background: var(--tip);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
@@ -2736,7 +2752,7 @@ html.still *::after {
 
 .dialog-title.onboarding-welcome-title {
   margin: 0;
-  font-size: 24px;
+  font-size: calc(24rem / 13);
   text-align: center;
 }
 
@@ -2773,7 +2789,7 @@ html.still *::after {
 .onboarding-hint {
   margin-top: 2px;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
 }
 
 .onboarding-state {
@@ -2797,7 +2813,7 @@ html.still *::after {
 .onboarding-note {
   margin: 0;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: calc(12rem / 13);
   line-height: 1.9;
 }
 
@@ -2854,4 +2870,12 @@ html.still *::after {
 .onboarding-dots span.current {
   width: 18px;
   background: var(--accent);
+}
+
+/* Font size changes text only; WebView zoom scales the entire interface. */
+html {
+  font-size: 13px;
+}
+.caption button {
+  font-size: 10px;
 }

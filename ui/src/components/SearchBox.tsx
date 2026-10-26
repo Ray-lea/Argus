@@ -1,4 +1,5 @@
 import { createEffect, Show } from "solid-js";
+import { fontSize } from "../lib/appearance";
 import { t } from "../lib/i18n";
 import { DismissIcon, SearchIcon } from "./icons";
 
@@ -30,6 +31,7 @@ export default function SearchBox(props: {
   // Never narrower than the placeholder: a toolbar short of room sheds labels
   // elsewhere first (see fitToolbar) instead of cutting the hint off.
   createEffect(() => {
+    fontSize();
     const width = Math.ceil(textWidth(input, props.placeholder)) + CHROME_PX;
     box.style.setProperty("--fit", `${width}px`);
   });
