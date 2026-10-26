@@ -1219,6 +1219,7 @@ fn launch(app: &AppHandle, ready: &Ready) -> Failure {
     }
     drop(file);
     // std::process::exit skips RunEvent::Exit.
+    crate::window_state::flush();
     crate::stop_network_session();
     log::logger().flush();
     std::process::exit(0);

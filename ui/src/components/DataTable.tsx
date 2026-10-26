@@ -2,18 +2,9 @@
 // Shares the process table's look (and CSS), without its tree logic.
 
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import {
-  type Accessor,
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  type JSX,
-  on,
-  onMount,
-  Show,
-} from "solid-js";
+import { type Accessor, createEffect, createMemo, For, type JSX, on, onMount, Show } from "solid-js";
 import { localized } from "../lib/i18n";
+import { persisted } from "../lib/prefs";
 import { pinnedFirst } from "../lib/row-marks";
 import { ChevronDown, ChevronUp } from "./icons";
 
@@ -63,7 +54,19 @@ const scrollMemory = new Map<string, number>();
 
 export default function DataTable<T>(props: Props<T>) {
   let scrollEl!: HTMLDivElement;
-  const [sort, setSort] = createSignal<SortSpec | null>(props.initialSort ?? null);
+  const [sort, setSort] = persisted<SortSpec | null>(
+    `tableSort.${props.id}`,
+    props.initialSort ?? null,
+    (value): value is SortSpec | null =>
+      value === null ||
+      (typeof value === "object" &&
+        value !== null &&
+        "id" in value &&
+        typeof value.id === "string" &&
+        "desc" in value &&
+        typeof value.desc === "boolean" &&
+        props.columns.some((column) => column.id === value.id && !!column.sortValue)),
+  );
   const template = () => props.columns.map((c) => c.width).join(" ");
 
   const ordered = createMemo(() => {

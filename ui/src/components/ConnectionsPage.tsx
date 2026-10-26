@@ -3,6 +3,7 @@ import { copyText, endProcessByPid, toastActionError } from "../lib/actions";
 import { t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { rowMarks } from "../lib/marks";
+import { persisted } from "../lib/prefs";
 import { connectionMark, connectionSide, listeningPorts } from "../lib/row-marks";
 import { revealProcess, snapshot } from "../lib/store";
 import type { Connection, ProcessRow } from "../lib/types";
@@ -19,7 +20,11 @@ import SearchBox from "./SearchBox";
 type Filter = "all" | "listen" | "established" | "udp";
 
 const [query, setQuery] = createSignal("");
-const [filter, setFilter] = createSignal<Filter>("all");
+const [filter, setFilter] = persisted<Filter>(
+  "connections.filter",
+  "all",
+  (v): v is Filter => v === "all" || v === "listen" || v === "established" || v === "udp",
+);
 const [selected, setSelected] = createSignal<string | null>(null);
 const [conns, setConns] = createSignal<Connection[] | null>(null);
 const marks = rowMarks("connections");

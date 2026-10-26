@@ -45,6 +45,7 @@ pub fn app_title() -> String {
 
 pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
+        crate::window_state::prepare_show(&w);
         crate::window_motion::show(&w);
         let _ = w.set_focus();
     }

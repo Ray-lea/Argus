@@ -320,7 +320,7 @@ fn read(path: &Path) -> Option<Settings> {
 /// Writes through a temporary file that reaches the disk before it replaces
 /// the old one, so a crash, a forced restart or a power cut leaves the old
 /// settings or the new ones, never an empty or cut-off file.
-fn write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut stage = "create settings directory";
     let result = write_with_stage(path, bytes, &mut stage);
     if let Err(error) = &result {

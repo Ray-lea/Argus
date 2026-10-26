@@ -7,6 +7,7 @@ mod hotkey;
 mod installer;
 mod instance;
 mod leftovers;
+mod preferences;
 mod sampler;
 mod settings;
 mod shell;
@@ -16,6 +17,7 @@ mod webview_policy;
 mod webview_profile;
 mod webview_recovery;
 mod window_motion;
+mod window_state;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -311,6 +313,9 @@ pub fn run() {
             }
             let config = app.path().app_config_dir()?.join("settings.json");
             let settings = SettingsStore::load(config);
+            app.manage(preferences::Preferences::load(
+                app.path().app_config_dir()?.join("preferences.json"),
+            ));
             argus_core::i18n::set_locale(settings.get().language.resolve());
             diagnostics::log_environment(elevated);
             if let Some(config) = custom_window {
@@ -414,10 +419,13 @@ pub fn run() {
                 caption::install(&window, app.handle());
                 shell::guard_resize_seam(&window);
                 window_motion::install(&window);
+                window_state::install(&window);
+                preferences::apply_zoom(app.handle());
                 hotkey::init(app.handle(), &window);
                 if start_hidden {
                     shell::started_hidden(shown_when_ready);
                 } else {
+                    window_state::prepare_show(&window);
                     window.show()?;
                     window.set_focus()?;
                 }
@@ -449,6 +457,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            preferences::load_ui_preferences,
+            preferences::save_ui_preference,
             commands::app_info,
             commands::run_task,
             commands::desktop_shell,
@@ -522,6 +532,9 @@ pub fn run() {
         .build(context)
         .expect("error while building Argus")
         .run(|_app, event| {
+            if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+                window_state::flush();
+            }
             // Trace sessions outlive their process, and threads get no chance
             // to clean up on exit, so stop it here.
             if let tauri::RunEvent::Exit = event {

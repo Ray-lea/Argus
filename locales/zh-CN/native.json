@@ -45,7 +45,8 @@
     "pickFile": "选择要检查的文件",
     "pickTask": "选择要运行的程序或文件",
     "invalidInterval": "不支持此刷新间隔",
-    "autostartNotInstalled": "此窗口由任务管理器替换打开，未找到已安装的 Argus，无法在此开启开机启动。请退出 Argus，直接运行 Argus 后再开启。"
+    "autostartNotInstalled": "此窗口由任务管理器替换打开，未找到已安装的 Argus，无法在此开启开机启动。请退出 Argus，直接运行 Argus 后再开启。",
+    "savePreferencesFailed": "无法保存界面偏好。"
   },
   "updater": {
     "devBuild": "开发版不检查更新。",

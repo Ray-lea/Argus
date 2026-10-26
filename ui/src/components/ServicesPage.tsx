@@ -3,6 +3,7 @@ import { copyText, revealInExplorer, toastActionError } from "../lib/actions";
 import { rich, t } from "../lib/i18n";
 import { api } from "../lib/ipc";
 import { rowMarks } from "../lib/marks";
+import { persisted } from "../lib/prefs";
 import { appInfo, refreshServices, revealProcess, services, setPage, snapshot } from "../lib/store";
 import type { ServiceInfo, ServiceStartType } from "../lib/types";
 import { type MenuEntry, openMenu, toast } from "../lib/ui";
@@ -17,7 +18,11 @@ import SearchBox from "./SearchBox";
 type Filter = "all" | "running" | "stopped";
 
 const [query, setQuery] = createSignal("");
-const [filter, setFilter] = createSignal<Filter>("all");
+const [filter, setFilter] = persisted<Filter>(
+  "services.filter",
+  "all",
+  (v): v is Filter => v === "all" || v === "running" || v === "stopped",
+);
 const [selected, setSelected] = createSignal<string | null>(null);
 /** Services with an action in flight; their buttons wait for it. */
 const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());

@@ -2,6 +2,7 @@ import { render } from "solid-js/web";
 import App from "./App";
 import { localeFor, setLocale } from "./lib/i18n";
 import { api, inTauri } from "./lib/ipc";
+import { initializePreferences } from "./lib/prefs";
 import { setAppInfo } from "./lib/store";
 import "./styles.css";
 import "./pages.css";
@@ -33,6 +34,7 @@ window.addEventListener("unhandledrejection", (e) => {
 });
 
 // Know the language before the first render, so no text shows in the wrong one.
+await initializePreferences();
 const info = await api.appInfo().catch(() => null);
 document.documentElement.classList.toggle("mica", inTauri && info?.mica === true);
 setLocale(info?.locale ?? localeFor(navigator.language));
