@@ -6,16 +6,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, WAIT_FAILED, WAIT_OBJECT_0, WPARAM};
+use windows::Win32::Foundation::{
+    HANDLE, HWND, LPARAM, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
+};
 use windows::Win32::Security::{
     EqualSid, TOKEN_DUPLICATE, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER, TokenElevation,
     TokenSessionId, TokenUser,
 };
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
 use windows::Win32::System::Threading::{
-    GetProcessTimes, OpenProcess, OpenProcessToken, PROCESS_NAME_WIN32,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, QueryFullProcessImageNameW,
-    WaitForSingleObject,
+    GetProcessId, GetProcessTimes, OpenProcess, OpenProcessToken, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, GetShellWindow, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
@@ -38,6 +40,7 @@ enum Stage {
     Shutdown = 8,
     Restart = 9,
     DesktopReady = 11,
+    ForceShutdown = 12,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -135,7 +138,7 @@ fn system_explorer() -> Result<String, RestartError> {
     ))
 }
 
-fn inspect() -> Result<Shell, RestartError> {
+fn inspect(for_restart: bool) -> Result<Shell, RestartError> {
     let pid = shell_pid();
     if pid == 0 {
         return Err(RestartError::new(ErrorKind::Stale, 1168));
@@ -143,7 +146,13 @@ fn inspect() -> Result<Shell, RestartError> {
     let process = Handle(
         unsafe {
             OpenProcess(
-                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+                PROCESS_QUERY_LIMITED_INFORMATION
+                    | PROCESS_SYNCHRONIZE
+                    | if for_restart {
+                        PROCESS_TERMINATE
+                    } else {
+                        Default::default()
+                    },
                 false,
                 pid,
             )
@@ -184,7 +193,7 @@ fn inspect() -> Result<Shell, RestartError> {
 }
 
 pub fn current() -> Option<Identity> {
-    inspect().ok().map(|s| s.identity)
+    inspect(false).ok().map(|s| s.identity)
 }
 
 /// All UI termination routes share this check before reaching a privileged backend.
@@ -304,6 +313,49 @@ fn wait_ready(old: Identity, timeout: Duration) -> bool {
     }
 }
 
+/// An exit request may destroy the shell windows, then hang in DLL teardown or
+/// error reporting. Once exit was requested, returning early cannot cancel it:
+/// finish shutdown using the exact handle acquired before touching the shell.
+fn finish_shutdown(
+    process: HANDLE,
+    graceful_ms: u32,
+    forced_ms: u32,
+) -> Result<bool, RestartError> {
+    match unsafe { WaitForSingleObject(process, graceful_ms) } {
+        WAIT_OBJECT_0 => return Ok(false),
+        WAIT_FAILED => {
+            return Err(RestartError::win(
+                ErrorKind::Shutdown,
+                windows::core::Error::from_thread(),
+            )
+            .at(Stage::Shutdown));
+        }
+        WAIT_TIMEOUT => {}
+        _ => return Err(RestartError::new(ErrorKind::Shutdown, 1460).at(Stage::Shutdown)),
+    }
+    log::warn!(
+        "Explorer restart: exit timed out; completing original shutdown; old_pid={}",
+        unsafe { GetProcessId(process) }
+    );
+    let terminated = unsafe { TerminateProcess(process, 1460) };
+    // Natural exit can win the race with TerminateProcess, including an
+    // already-started teardown. Always wait for completion before proceeding.
+    match unsafe { WaitForSingleObject(process, forced_ms) } {
+        WAIT_OBJECT_0 => Ok(true),
+        _ if terminated.is_err() => Err(RestartError::win(
+            ErrorKind::Shutdown,
+            terminated.unwrap_err(),
+        )
+        .at(Stage::ForceShutdown)),
+        WAIT_FAILED => Err(RestartError::win(
+            ErrorKind::Shutdown,
+            windows::core::Error::from_thread(),
+        )
+        .at(Stage::ForceShutdown)),
+        _ => Err(RestartError::new(ErrorKind::Shutdown, 1460).at(Stage::ForceShutdown)),
+    }
+}
+
 fn restart_shell(shell: Shell) -> Result<(), RestartError> {
     let old = shell.identity;
     let tray = taskbar(old.pid).ok_or_else(|| RestartError::new(ErrorKind::Unsupported, 50))?;
@@ -322,17 +374,29 @@ fn restart_shell(shell: Shell) -> Result<(), RestartError> {
     // ExitExplorer) avoids Restart Manager's session-ending notifications.
     unsafe { PostMessageW(Some(tray), EXIT_EXPLORER, WPARAM(0), LPARAM(0)) }
         .map_err(|e| RestartError::win(ErrorKind::Shutdown, e).at(Stage::Shutdown))?;
-    // An exit code or a vanished window is not proof that teardown finished.
-    // Do not start another shell while the old process is still shutting down.
-    match unsafe { WaitForSingleObject(shell.process.0, 30_000) } {
-        WAIT_OBJECT_0 => {}
-        WAIT_FAILED => {
-            let error = RestartError::win(ErrorKind::Shutdown, windows::core::Error::from_thread());
-            return Err(error.at(Stage::Shutdown));
-        }
-        _ => return Err(RestartError::new(ErrorKind::Shutdown, 1460).at(Stage::Shutdown)),
-    }
+    // A vanished window alone is not proof that teardown finished. Complete
+    // the requested shutdown before resuming a replacement shell.
+    let forced = finish_shutdown(shell.process.0, 5000, 5000)?;
     drop(shell);
+    // A forced exit may trigger Windows' own shell recovery. Give that shell a
+    // chance to settle; do not launch a second Explorer over an existing shell.
+    if forced && wait_ready(old, Duration::from_secs(2)) {
+        log::info!(
+            "Explorer restart: system recovered desktop; new_pid={}",
+            shell_pid()
+        );
+        return Ok(());
+    }
+    if shell_pid() != 0 {
+        if wait_ready(old, Duration::from_secs(15)) {
+            log::info!(
+                "Explorer restart: existing replacement responsive; new_pid={}",
+                shell_pid()
+            );
+            return Ok(());
+        }
+        return Err(RestartError::new(ErrorKind::Restore, 1460).at(Stage::DesktopReady));
+    }
     prepared.start()?;
     if !wait_ready(old, Duration::from_secs(15)) {
         return Err(RestartError::new(ErrorKind::Restore, 1460).at(Stage::DesktopReady));
@@ -350,7 +414,9 @@ pub fn restart(pid: u32, create_time: i64) -> Result<(), RestartError> {
     }
     let _guard = Restarting;
     let result = (|| {
-        let shell = inspect()?;
+        // Acquire termination access before changing the desktop, so denied
+        // permissions cannot strand it halfway through a failed shutdown.
+        let shell = inspect(true)?;
         if shell.identity != (Identity { pid, create_time }) {
             return Err(RestartError::new(ErrorKind::Stale, 1168));
         }
@@ -387,6 +453,79 @@ pub fn run_mode() -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::windows::{io::AsRawHandle, process::CommandExt};
+
+    struct Child(std::process::Child);
+    impl Child {
+        fn new(sleep: bool) -> Self {
+            Self(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", "explorer::tests::shutdown_fixture", "--ignored"])
+                    .env(
+                        "ARGUS_EXPLORER_SHUTDOWN_FIXTURE",
+                        if sleep { "sleep" } else { "exit" },
+                    )
+                    .creation_flags(0x08000000)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            )
+        }
+        fn handle(&self) -> HANDLE {
+            HANDLE(self.0.as_raw_handle())
+        }
+    }
+    impl Drop for Child {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    #[test]
+    #[ignore = "owned subprocess fixture, invoked by shutdown regression tests"]
+    fn shutdown_fixture() {
+        if std::env::var("ARGUS_EXPLORER_SHUTDOWN_FIXTURE").as_deref() == Ok("sleep") {
+            std::thread::sleep(Duration::from_secs(60));
+        }
+    }
+
+    #[test]
+    fn a_stalled_shutdown_finishes_only_the_original_process_before_recovery() {
+        let mut original = Child::new(true);
+        let mut unrelated = Child::new(true);
+        assert!(finish_shutdown(original.handle(), 30, 5000).unwrap());
+        assert!(original.0.try_wait().unwrap().is_some());
+        assert!(unrelated.0.try_wait().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_completed_shutdown_needs_no_forced_termination() {
+        let mut original = Child::new(false);
+        assert!(original.0.wait().unwrap().success());
+        assert!(!finish_shutdown(original.handle(), 0, 0).unwrap());
+    }
+
+    #[test]
+    fn missing_termination_access_reports_the_stage_without_claiming_recovery() {
+        let mut original = Child::new(true);
+        let read_only = Handle(
+            unsafe {
+                OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+                    false,
+                    original.0.id(),
+                )
+            }
+            .unwrap(),
+        );
+        let error = finish_shutdown(read_only.0, 10, 10).unwrap_err();
+        assert!(matches!(error.stage, Stage::ForceShutdown));
+        assert_eq!(error.code, 5);
+        assert!(original.0.try_wait().unwrap().is_none());
+    }
 
     #[test]
     fn termination_policy_protects_the_current_desktop_process() {
