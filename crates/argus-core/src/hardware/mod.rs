@@ -23,7 +23,7 @@ pub use cpu::cpu_info;
 pub use cpu::{CpuInfo, CpuThread};
 pub use disk::{DiskInfo, DiskStats};
 pub(crate) use gpu::pretty_engine;
-pub use gpu::{GpuInfo, GpuStats};
+pub use gpu::{GpuInfo, GpuStats, GpuUtilSource};
 pub use kernel_sensors::{
     BoardMetric, BoardMetricKind, CcdTemperature, CoreTemperature, CpuCoreSensors, CpuFanReading,
     CpuLimitReason, CpuLimitStatus, CpuMetric, CpuMetricKind, CpuSensorSource, CpuSensors,
@@ -66,6 +66,9 @@ pub(crate) struct HardwareTracker {
 }
 
 impl HardwareTracker {
+    pub(crate) fn gpu_node_engine(&self, luid: u64, node: u32) -> Option<usize> {
+        self.gpus.node_engine(luid, node)
+    }
     pub fn new() -> Self {
         let cpu = cpu::cpu_info();
         let mut t = Self {

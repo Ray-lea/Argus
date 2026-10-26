@@ -55,6 +55,8 @@ export interface ProcessRow {
   gpu: number;
   /** That engine, e.g. `GPU 0 - 3D`; null while the GPU is idle for it. */
   gpuEngine: string | null;
+  /** Sparse physical-engine contributions, used for aggregation. */
+  gpuEngines?: GpuEngineUsage[];
   /** GPU memory in use, bytes. */
   gpuDedicated: number;
   gpuShared: number;
@@ -254,6 +256,7 @@ export interface GpuInfo {
 export interface GpuStats {
   info: GpuInfo;
   util: number;
+  utilSource?: "windows" | "process" | "nvml";
   /** Aligned with `info.engines`. */
   engines: number[];
   dedicatedUsed: number;
@@ -270,6 +273,12 @@ export interface GpuStats {
   clockMaxMhz: number | null;
   voltageMv: number | null;
   memoryClockMhz: number | null;
+}
+
+export interface GpuEngineUsage {
+  id: string;
+  name: string;
+  util: number;
 }
 
 export interface Hardware {

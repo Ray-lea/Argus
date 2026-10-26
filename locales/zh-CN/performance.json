@@ -298,6 +298,12 @@
     "mac": "物理地址"
   },
   "gpu": {
+    "utilizationHint": "整体占用取最忙引擎，并以进程引擎计数和 NVIDIA 核心利用率补充。原生引擎曲线与驱动读数的覆盖范围、采样窗口可能不同。",
+    "utilSource": {
+      "windows": "Windows 引擎",
+      "process": "进程引擎计数",
+      "nvml": "NVIDIA 核心"
+    },
     "notFound": "找不到该 GPU。",
     "engineUtilization": "引擎利用率",
     "dedicatedMemory": "专用 GPU 内存",

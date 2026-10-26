@@ -201,7 +201,7 @@ export default function Vitals() {
                 <span class="vital-sub">{Math.round(g().temperature ?? 0)} °C</span>
               </Show>
             </div>
-            <div class="vital-figure">
+            <div class="vital-figure" title={t(`performance.gpu.utilSource.${g().utilSource ?? "windows"}`)}>
               <span>
                 <span class="vital-value">{Math.round(g().util)}</span>
                 <span class="vital-unit">%</span>

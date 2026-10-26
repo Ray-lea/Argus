@@ -253,9 +253,9 @@ function engineGrid(el: HTMLElement, count: () => number, layout: () => EngineLa
   };
 }
 
-function Stat(props: { label: string; value: JSX.Element; unit?: string; note?: string }) {
+function Stat(props: { label: string; value: JSX.Element; unit?: string; note?: string; hint?: string }) {
   return (
-    <div>
+    <div title={props.hint}>
       <div class="stat-label">{props.label}</div>
       <div class="stat-value">
         {props.value}
@@ -1673,7 +1673,13 @@ function GpuView(props: { id: string }) {
 
           <div class="perf-stats">
             <div class="stat-grid">
-              <Stat label={t("performance.gpu.utilization")} value={Math.round(g().util)} unit="%" />
+              <Stat
+                label={t("performance.gpu.utilization")}
+                value={Math.round(g().util)}
+                unit="%"
+                note={t(`performance.gpu.utilSource.${g().utilSource ?? "windows"}`)}
+                hint={t("performance.gpu.utilizationHint")}
+              />
               <Stat
                 label={t("performance.gpu.dedicatedMemory")}
                 value={`${fmtGB(g().dedicatedUsed)} / ${fmtGB(g().info.dedicatedTotal)}`}

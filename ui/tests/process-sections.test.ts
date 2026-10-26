@@ -60,6 +60,7 @@ const measured = (depth: number, values: Partial<Parameters<typeof sectionTotals
   diskRead: null,
   diskWrite: null,
   gpu: 40,
+  gpuEngine: "GPU 0 - 3D",
   netSent: 1,
   netReceived: 2,
   threads: 3,

@@ -1,5 +1,6 @@
 // Turns a flat process snapshot into the rows the table renders, for each view mode.
 
+import { aggregateGpu } from "./gpu-usage";
 import { localized, t } from "./i18n";
 import { applicationKey, procKey } from "./process-identity";
 import { compareDiskRate, sumDiskIo } from "./process-io";
@@ -11,7 +12,7 @@ import {
   type SectionTotals,
   sectionTotals,
 } from "./process-sections";
-import type { ProcessRow } from "./types";
+import type { GpuEngineUsage, ProcessRow } from "./types";
 
 export type ViewMode = "apps" | "tree" | "list";
 export type SortKey =
@@ -47,8 +48,9 @@ export interface DisplayRow {
   diskRead: number | null;
   diskWrite: number | null;
   gpu: number;
-  /** Busiest GPU engine (a group's busiest member's). */
+  /** Busiest GPU engine after aggregating that engine's contributions. */
   gpuEngine: string | null;
+  gpuEngines?: GpuEngineUsage[];
   /** Network bytes per second, sent and received. */
   netSent: number;
   netReceived: number;
@@ -116,6 +118,7 @@ function procRow(p: ProcessRow, depth: number, label: string, detail: string | n
     diskWrite: p.diskWrite,
     gpu: p.gpu,
     gpuEngine: p.gpuEngine,
+    gpuEngines: p.gpuEngines,
     netSent: p.netSent,
     netReceived: p.netReceived,
     threads: p.threads,
@@ -388,22 +391,16 @@ function buildApps(
       app: members.some((p) => p.appWindow),
       windows: members.every((p) => p.windowsProcess),
     };
-    let busiest = 0;
     for (const p of members) {
       row.cpu += p.cpu;
       row.mem += p.privateWs;
       row.io += ioTotal(p);
-      row.gpu += p.gpu;
       row.netSent += p.netSent;
       row.netReceived += p.netReceived;
-      if (p.gpu > busiest) {
-        busiest = p.gpu;
-        row.gpuEngine = p.gpuEngine;
-      }
       row.threads += p.threads;
       row.handles += p.handles;
     }
-    row.gpu = Math.min(100, row.gpu);
+    Object.assign(row, aggregateGpu(members));
     top.push({ row, members: shown });
   }
 

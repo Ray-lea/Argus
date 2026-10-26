@@ -313,6 +313,12 @@
     "mac": "Physical address"
   },
   "gpu": {
+    "utilizationHint": "Overall usage takes the busiest engine, supplemented by process engine counters and NVIDIA GPU-core utilization. Native engine charts and driver readings can cover different workloads and sampling windows.",
+    "utilSource": {
+      "windows": "Windows engines",
+      "process": "Process engines",
+      "nvml": "NVIDIA GPU core"
+    },
     "notFound": "GPU not found.",
     "engineUtilization": "Engine utilization",
     "dedicatedMemory": "Dedicated GPU memory",

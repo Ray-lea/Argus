@@ -63,6 +63,8 @@ pub struct ProcessRow {
     pub gpu: f32,
     /// That engine, e.g. `GPU 0 - 3D`; None while the process leaves the GPU idle.
     pub gpu_engine: Option<Arc<str>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub gpu_engines: Vec<crate::gpu_process::GpuEngineUsage>,
     /// GPU memory in use, bytes: video memory and system memory.
     pub gpu_dedicated: u64,
     pub gpu_shared: u64,
@@ -289,6 +291,7 @@ impl ProcessTracker {
                 disk_write: disk_rates.map(|v| v.1),
                 gpu: 0.0,
                 gpu_engine: None,
+                gpu_engines: Vec::new(),
                 gpu_dedicated: 0,
                 gpu_shared: 0,
                 net_sent: 0,

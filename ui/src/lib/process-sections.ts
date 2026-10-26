@@ -1,3 +1,6 @@
+import { aggregateGpu } from "./gpu-usage.ts";
+import type { GpuEngineUsage } from "./types.ts";
+
 export type ProcessSection = "apps" | "background" | "windows";
 
 const SECTIONS: readonly ProcessSection[] = ["apps", "background", "windows"];
@@ -27,7 +30,7 @@ export interface SectionTotals {
   /** Null when no row in the section has a reading. */
   diskRead: number | null;
   diskWrite: number | null;
-  /** Summed per process and capped: each is its busiest engine's share. */
+  /** The busiest physical engine after aggregating its contributions. */
   gpu: number;
   net: number;
   threads: number;
@@ -42,6 +45,8 @@ interface Measured {
   diskRead: number | null;
   diskWrite: number | null;
   gpu: number;
+  gpuEngine?: string | null;
+  gpuEngines?: GpuEngineUsage[];
   netSent: number;
   netReceived: number;
   threads: number;
@@ -68,12 +73,11 @@ export function sectionTotals(rows: readonly Measured[]): SectionTotals {
     totals.io += row.io;
     if (row.diskRead != null) totals.diskRead = (totals.diskRead ?? 0) + row.diskRead;
     if (row.diskWrite != null) totals.diskWrite = (totals.diskWrite ?? 0) + row.diskWrite;
-    totals.gpu += row.gpu;
     totals.net += row.netSent + row.netReceived;
     totals.threads += row.threads;
     totals.handles += row.handles;
   }
-  totals.gpu = Math.min(100, totals.gpu);
+  totals.gpu = aggregateGpu(rows.filter((row) => row.depth === 0)).gpu;
   return totals;
 }
 

@@ -42,12 +42,38 @@ pub struct GpuInfo {
     pub temperature_max: Option<f32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GpuUtilSource {
+    Windows,
+    Process,
+    Nvml,
+}
+
+/// Each node owns its baseline: zero is valid and a failed query breaks the pair.
+#[derive(Default)]
+struct NodeCounter(Option<(i64, Instant)>);
+impl NodeCounter {
+    fn sample(&mut self, running: Option<i64>, now: Instant) -> Option<f32> {
+        let Some(running) = running.filter(|v| *v >= 0) else {
+            self.0 = None;
+            return None;
+        };
+        let previous = self.0.replace((running, now));
+        let (before, at) = previous?;
+        let ticks = now.checked_duration_since(at)?.as_secs_f64() * 1e7;
+        let delta = running.checked_sub(before).filter(|v| *v >= 0)?;
+        (ticks > 0.0).then(|| (delta as f64 / ticks * 100.0).min(100.0) as f32)
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuStats {
     pub info: Arc<GpuInfo>,
-    /// Busiest engine, 0–100 (Task Manager's headline number).
+    /// Busiest engine, supplemented by process and GPU-core telemetry, 0–100.
     pub util: f32,
+    pub util_source: GpuUtilSource,
     /// Per engine name, aligned with `info.engines`.
     pub engines: Vec<f32>,
     pub dedicated_used: u64,
@@ -69,13 +95,31 @@ pub struct GpuStats {
     pub memory_clock_mhz: Option<u32>,
 }
 
+impl GpuStats {
+    pub(crate) fn include_usage(&mut self, usage: f32, source: GpuUtilSource) {
+        if usage.is_finite() && (0.0..=100.0).contains(&usage) && usage > self.util {
+            self.util = usage;
+            self.util_source = source;
+        }
+    }
+    pub(crate) fn include_process_engine(&mut self, engine: Option<usize>, usage: f32) {
+        if !usage.is_finite() || !(0.0..=100.0).contains(&usage) {
+            return;
+        }
+        self.include_usage(usage, GpuUtilSource::Process);
+        if let Some(value) = engine.and_then(|i| self.engines.get_mut(i)) {
+            *value = value.max(usage);
+        }
+    }
+}
+
 struct Adapter {
     handle: u32,
     luid: LUID,
     info: Arc<GpuInfo>,
     /// Engine index (into `info.engines`) for every node.
     node_engine: Vec<usize>,
-    prev_running: Vec<i64>,
+    prev_running: Vec<NodeCounter>,
     segments: u32,
     has_perf: bool,
     /// Node of the 3D engine, while its perf data keeps answering.
@@ -95,6 +139,14 @@ pub(crate) struct GpuTracker {
 unsafe impl Send for GpuTracker {}
 
 impl GpuTracker {
+    pub(crate) fn node_engine(&self, luid: u64, node: u32) -> Option<usize> {
+        self.adapters
+            .iter()
+            .find(|a| (((a.luid.HighPart as u32 as u64) << 32) | a.luid.LowPart as u64) == luid)?
+            .node_engine
+            .get(node as usize)
+            .copied()
+    }
     pub fn new() -> Self {
         let adapters = enumerate();
         // Only hardware adapters have a PCI address for NVML to match.
@@ -113,7 +165,6 @@ impl GpuTracker {
 
     pub fn sample(&mut self) -> Vec<GpuStats> {
         let now = Instant::now();
-        let elapsed_ticks = self.last.map(|t| now.duration_since(t).as_secs_f64() * 1e7);
         let vendor = self.vendor.sample(
             self.last
                 .map(|at| now.duration_since(at))
@@ -127,6 +178,7 @@ impl GpuTracker {
                 let mut stats = GpuStats {
                     info: a.info.clone(),
                     util: 0.0,
+                    util_source: GpuUtilSource::Windows,
                     engines: vec![0.0; a.info.engines.len()],
                     dedicated_used: 0,
                     shared_used: 0,
@@ -144,27 +196,22 @@ impl GpuTracker {
                 for (node, prev) in a.prev_running.iter_mut().enumerate() {
                     let mut q = statistics_query(D3DKMT_QUERYSTATISTICS_NODE, a.luid);
                     q.Anonymous.QueryNode.NodeId = node as u32;
-                    if unsafe { D3DKMTQueryStatistics(&q) }.0 < 0 {
-                        continue;
-                    }
-                    let running =
-                        unsafe { q.QueryResult.NodeInformation.GlobalInformation.RunningTime };
-                    if let Some(ticks) = elapsed_ticks.filter(|&t| t > 0.0)
-                        && *prev > 0
-                    {
-                        let pct =
-                            ((running - *prev).max(0) as f64 / ticks * 100.0).min(100.0) as f32;
+                    let running = if unsafe { D3DKMTQueryStatistics(&raw mut q) }.0 >= 0 {
+                        Some(unsafe { q.QueryResult.NodeInformation.GlobalInformation.RunningTime })
+                    } else {
+                        None
+                    };
+                    if let Some(pct) = prev.sample(running, Instant::now()) {
                         let e = a.node_engine[node];
                         stats.engines[e] = stats.engines[e].max(pct);
                     }
-                    *prev = running;
                 }
                 stats.util = stats.engines.iter().copied().fold(0.0, f32::max);
 
                 for seg in 0..a.segments {
                     let mut q = statistics_query(D3DKMT_QUERYSTATISTICS_SEGMENT, a.luid);
                     q.Anonymous.QuerySegment.SegmentId = seg;
-                    if unsafe { D3DKMTQueryStatistics(&q) }.0 < 0 {
+                    if unsafe { D3DKMTQueryStatistics(&raw mut q) }.0 < 0 {
                         continue;
                     }
                     let info = unsafe { &q.QueryResult.SegmentInformation };
@@ -191,6 +238,9 @@ impl GpuTracker {
                     (stats.board_power, stats.board_power_limit) =
                         nvml.power(bus, device, function);
                     stats.power_source = stats.board_power.map(|_| GpuPowerSource::Nvml);
+                    if let Some(util) = nvml.utilization(bus, device, function) {
+                        stats.include_usage(util, GpuUtilSource::Nvml);
+                    }
                 }
                 if let Some(node) = a.node_3d {
                     let mut perf = D3DKMT_NODE_PERFDATA {
@@ -298,8 +348,8 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
         }
     }
 
-    let stats = statistics_query(D3DKMT_QUERYSTATISTICS_ADAPTER, a.AdapterLuid);
-    if unsafe { D3DKMTQueryStatistics(&stats) }.0 < 0 {
+    let mut stats = statistics_query(D3DKMT_QUERYSTATISTICS_ADAPTER, a.AdapterLuid);
+    if unsafe { D3DKMTQueryStatistics(&raw mut stats) }.0 < 0 {
         return None;
     }
     let (nodes, segments) = unsafe {
@@ -376,7 +426,7 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
         }),
         node_engine,
         node_3d,
-        prev_running: vec![0; nodes as usize],
+        prev_running: (0..nodes).map(|_| NodeCounter::default()).collect(),
         segments,
         has_perf,
         pci,
@@ -415,4 +465,97 @@ pub(crate) fn pretty_engine(raw: &str) -> String {
         out.push(c);
     }
     if out.is_empty() { "Engine".into() } else { out }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    #[test]
+    fn an_idle_zero_counter_includes_the_first_busy_interval() {
+        let now = Instant::now();
+        let mut counter = NodeCounter::default();
+        assert_eq!(counter.sample(Some(0), now), None);
+        assert_eq!(
+            counter.sample(Some(9_800_000), now + Duration::from_secs(1)),
+            Some(98.0)
+        );
+    }
+    #[test]
+    fn failed_queries_do_not_turn_three_intervals_of_work_into_a_75_percent_spike() {
+        let now = Instant::now();
+        let mut counter = NodeCounter::default();
+        counter.sample(Some(0), now);
+        assert_eq!(
+            counter.sample(Some(2_500_000), now + Duration::from_secs(1)),
+            Some(25.0)
+        );
+        assert_eq!(counter.sample(None, now + Duration::from_secs(2)), None);
+        assert_eq!(counter.sample(None, now + Duration::from_secs(3)), None);
+        assert_eq!(
+            counter.sample(Some(10_000_000), now + Duration::from_secs(4)),
+            None
+        );
+        assert_eq!(
+            counter.sample(Some(12_500_000), now + Duration::from_secs(5)),
+            Some(25.0)
+        );
+    }
+    #[test]
+    fn reset_and_invalid_counters_reprime_without_underflow() {
+        let now = Instant::now();
+        let mut counter = NodeCounter::default();
+        counter.sample(Some(i64::MAX), now);
+        assert_eq!(counter.sample(Some(0), now + Duration::from_secs(1)), None);
+        assert_eq!(
+            counter.sample(Some(5_000_000), now + Duration::from_secs(2)),
+            Some(50.0)
+        );
+        assert_eq!(counter.sample(Some(-1), now + Duration::from_secs(3)), None);
+    }
+    fn stats() -> GpuStats {
+        GpuStats {
+            info: Arc::new(GpuInfo {
+                id: "1".into(),
+                name: "test".into(),
+                dedicated_total: 0,
+                shared_total: 0,
+                engines: vec!["3D".into()],
+                temperature_max: None,
+            }),
+            util: 1.0,
+            util_source: GpuUtilSource::Windows,
+            engines: vec![1.0],
+            dedicated_used: 0,
+            shared_used: 0,
+            temperature: None,
+            fan_rpm: None,
+            power: None,
+            board_power: None,
+            board_power_limit: None,
+            power_source: None,
+            clock_mhz: None,
+            clock_max_mhz: None,
+            voltage_mv: None,
+            memory_clock_mhz: None,
+        }
+    }
+    #[test]
+    fn process_and_driver_activity_cover_missing_compute_load_without_faking_engine_data() {
+        let mut g = stats();
+        g.include_process_engine(Some(0), 98.0);
+        assert_eq!(
+            (g.util, g.engines[0], g.util_source),
+            (98.0, 98.0, GpuUtilSource::Process)
+        );
+        g.include_usage(100.0, GpuUtilSource::Nvml);
+        assert_eq!(
+            (g.util, g.engines[0], g.util_source),
+            (100.0, 98.0, GpuUtilSource::Nvml)
+        );
+        g.include_usage(f32::NAN, GpuUtilSource::Nvml);
+        g.include_usage(101.0, GpuUtilSource::Nvml);
+        g.include_process_engine(Some(0), f32::INFINITY);
+        assert_eq!((g.util, g.engines[0]), (100.0, 98.0));
+    }
 }
