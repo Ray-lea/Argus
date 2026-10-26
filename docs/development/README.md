@@ -51,9 +51,13 @@ cargo run -p argus-core --example hardware --release   # CPU、传感器、内�
 cargo run -p argus-core --example m3 --release         # 服务、启动项、连接与一次文件占用查询
 cargo run -p argus-core --example lockers -- C:\Windows\System32\ntdll.dll   # 占用指定文件的进程
 cargo run -p argus-core --example gpu_processes --release   # 每进程 GPU 占用与采集耗时
+cargo run -p argus-core --example gpu_diagnostics --release -- <PID> 10  # 连续对照该进程的 GPU 引擎、整体计时与 NVML
+cargo run -p argus-core --example gpu_compute --release     # NVIDIA Turing 及以上：有界 CUDA 测试负载
 cargo run -p argus-core --example app_windows --release     # 归入“应用”的进程（拥有任务栏窗口）与查找耗时
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 ```
+
+`gpu_diagnostics` 输出带时间戳的 JSONL，包括目标进程的引擎身份、原始计数区间、整体读数和可用的 NVIDIA 核心读数；不记录进程命令行，不录制屏幕，不修改 GPU 设置。对照时应保持相同负载，核对适配器、引擎与采样区间。`gpu_compute` 在 12 秒内以 40 ms 提交、160 ms 休息的节拍运行短 CUDA 内核；这是提交节拍，并不保证 GPU 利用率恰为 20%。
 
 ## 排查崩溃
 

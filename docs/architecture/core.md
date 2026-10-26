@@ -22,7 +22,7 @@
 | `filelock.rs` | 文件占用：通过 Restart Manager 找出打开文件或加载 DLL 的进程，不需要管理员；整批查询被拒时二分重试，隔离出无法检查的文件 |
 | `handles.rs` | 按需枚举系统 File 句柄，复制后用 `NtQueryObject` 查询类型与名称，以文件 ID 匹配文件（含硬链接）、以路径边界匹配目录及其后代。只在辅助进程运行，流式报告进度与匹配项 |
 | `actions.rs` | 结束进程 / 进程树、设置优先级、开关效率模式（EcoQoS 加低优先级，与系统任务管理器相同）：都先校验 PID 与启动时间，防止 PID 被复用；结束时拦截关键系统进程 |
-| `gpu_process.rs` | 每进程 GPU：每次采样一个 PDH 查询，读出所有进程在各引擎上的占用（取最忙的引擎）和专用 / 共享 GPU 内存，约 2 ms |
+| `gpu_process.rs` | 每进程 GPU：每次采样一个 PDH 查询，读出各引擎占用和专用 / 共享 GPU 内存，拒绝无效百分比；除最忙引擎外保留非零节点贡献及完整 LUID、物理适配器和节点身份，供应用与分类汇总使用，避免相加独立引擎 |
 | `disk_process.rs` | 优先复用普通进程信息中的磁盘计数尾部，旧系统回退完整进程信息的扩展记录，按 PID、创建时间和来源采样时间换算速率；逐条检查扩展线程数组与磁盘记录边界，不读取字符串及账户数据。Windows 10 的完整记录尾部按 UTF-16 对齐，下一条记录不保证 8 字节对齐，数值按字节解码。普通尾部需同时通过系统版本、返回长度及图像名称边界校验；完整信息查询由管理员宿主的后台读取器或特权服务执行 |
 | `net_process.rs` | 每进程网络：以实时 ETW 会话接收 `Microsoft-Windows-Kernel-Network` 的 TCP / UDP 收发事件，按 PID 累计字节数；本地采集按次换算速率，服务通过 `take_bytes` 维护多读者的累计计数。启动会话需要相应权限；GUI 与服务使用独立、按构建区分的会话名，并清理各自残留会话 |
 | `rules.rs` | 规则引擎：按程序名匹配，新进程出现时套用一次；`apply_with` 允许宿主后台线程选择本地或服务执行器，规则或权限来源改变时重新检查。分别统计已应用、权限不足和其他执行失败的次数 |
@@ -53,11 +53,11 @@
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
 | `disk.rs` | 物理磁盘：存储 IOCTL 取型号、容量、SSD、所含的卷和温度，`IOCTL_DISK_PERFORMANCE` 取活动时间、速率、响应时间。用到的 IOCTL 都是 `FILE_ANY_ACCESS`，不需要提权 |
 | `net.rs` | 网络适配器：接口表（`GetIfTable2`）取吞吐量，`GetAdaptersAddresses` 取地址 |
-| `gpu.rs` | D3DKMT（与系统任务管理器同源，无需驱动）：按节点运行时间算各引擎利用率，按段驻留算显存，WDDM 2.4+ 的适配器性能数据给出温度与显存频率，3D 引擎节点的性能数据给出核心频率；适配器的 PCI 地址用于对应 NVML 的设备 |
+| `gpu.rs` | D3DKMT 节点计时、显存与性能数据，无需额外驱动。各节点分别维护有效基线，零值有效，查询失败或计数重置后重新建立基线；有效进程引擎读数可校正整体及对应引擎的下限。总占用还结合 NVIDIA 核心利用率，并保留实际来源；PCI 地址用于对应 NVML 设备 |
 | `vendor_gpu/` | AMD ADL2 PMLog / Overdrive 与 Intel IGCL 电源域，独立线程加载 System32 库、读取遥测；容量为 1 的请求队列，最短 500 ms 采集间隔，过期缓存不进入快照。`ControlLib.dll` 加载后固定在进程中直至退出：它注册的 ETW 提供程序不随 `ctlClose` 和卸载注销，卸载后一旦有跟踪会话启用该提供程序，系统就会调用已卸载的回调，进程崩溃 |
 | `kernel_sensors.rs` | 与特权服务共享的固定 CPU 传感器快照；枚举定义的功耗、电压、电流、时钟和限制，每个物理核心的读数、SMU 状态及主板风扇、电源轨和温度；温度类型、VID、设定电压与实测电压分开，宿主按开关异步补充 |
-| `nvml.rs` | NVIDIA 显卡的板卡功耗与功耗上限（瓦）：只从 System32 加载驱动附带的 `nvml.dll`，没有 NVIDIA 驱动时不加载。每次读取约 10 µs |
+| `nvml.rs` | NVIDIA 板卡功耗、功耗上限及可选的 GPU 核心利用率：只从 System32 加载驱动附带的 `nvml.dll`，按 PCI 位置匹配，不支持或无效的读数不参与补充。核心利用率用于覆盖部分驱动原生节点计时遗漏的 CUDA 等负载，不替代单独的 Windows 引擎曲线 |
 
 ## 示例
 
-`examples/` 下的示例直接打印采集结果（`dump`、`hardware`、`m3`、`lockers`、`gpu_processes`、`history`），用法见[环境与命令](../development/README.md#验证采集数据)。
+`examples/` 下的示例直接打印采集结果（`dump`、`hardware`、`m3`、`lockers`、`gpu_processes`、`gpu_diagnostics`、`history`）；`gpu_compute` 提供有界的 CUDA 测试负载。用法见[环境与命令](../development/README.md#验证采集数据)。
