@@ -4,6 +4,27 @@
 
 User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This is the English edition of [CHANGELOG.md](CHANGELOG.md): `pnpm release` adds each release to both files, and the English entry is translated from the Chinese one before the release is published. The release notes on GitHub and in the app come from these entries.
 
+## [0.3.3](https://github.com/Ray-lea/Argus/compare/v0.3.2...v0.3.3) - 2026-10-26
+
+This release adds interface scaling and font size controls, preserves window and list preferences, and updates GPU usage reporting.
+
+### Features
+
+- **Interface scale**: Set a custom scale from 80% to 150% in Settings → Language and appearance. The default is 100%, and any whole-number percentage, such as 113%, is supported.
+- **Font size**: Adjust the base font size from 11 to 20 px (default: 13 px). It combines with interface scaling, applies immediately and saves automatically. Each setting can be reset independently.
+
+### Fixes
+
+- **GPU statistics**: Attempt to fix low overall usage under some compute workloads, spikes when sampling resumes, and inflated totals across multiple GPUs or engines. Process engine counters and available NVIDIA GPU-core utilization supplement overall usage, with the source shown in the interface. ([#19](https://github.com/Ray-lea/Argus/issues/19))
+- **Window restoration**: Restore window size, position and maximized state after quitting and reopening. Quitting while minimized no longer makes the next launch remain minimized, and off-screen windows return to an available display area.
+- **List preferences**: Processes, Services, Startup and Connections remember their sort column and direction. Services and Connections also restore the selected filter.
+- **Preference storage**: Interface preferences are saved separately, with automatic migration from the previous cache. Saved preferences remain available after clearing the interface cache.
+- **Layout and window controls**: Toolbars and navigation adapt to narrow windows with larger text or higher scaling, and the maximize button's hit area follows the scale correctly.
+
+### Upgrading
+
+- Upgrading from v0.3.x preserves existing settings and history. Previous interface preferences migrate automatically on first launch, without manual reconfiguration.
+
 ## [0.3.2](https://github.com/Ray-lea/Argus/compare/v0.3.1...v0.3.2) - 2026-10-23
 
 This release replaces the withdrawn v0.3.1. It fixes installed copies being incorrectly detected as portable when launched through administrator startup or Task Manager entry points, which prevented in-app updates.
