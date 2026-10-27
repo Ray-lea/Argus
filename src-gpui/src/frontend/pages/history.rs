@@ -283,6 +283,7 @@ impl Desktop {
                                 max,
                                 min: 0.,
                                 interactive: true,
+                                grid: true,
                                 fill: true,
                                 bars: false,
                                 background_separate: false,
@@ -293,6 +294,7 @@ impl Desktop {
                                 live_clock: None,
                                 image_surface: Default::default(),
                                 bar_surfaces: Default::default(),
+                                dash_phases: Default::default(),
                             }),
                     ),
             );

@@ -11,10 +11,13 @@ pub struct Palette {
     pub layer: Hsla,
     pub layer_strong: Hsla,
     pub stroke: Hsla,
+    pub stroke_strong: Hsla,
+    pub tip: Hsla,
     pub control: Hsla,
     pub hover: Hsla,
     pub accent: Hsla,
     pub cpu: Hsla,
+    pub cpu_e: Hsla,
     pub memory: Hsla,
     pub io: Hsla,
     pub network: Hsla,
@@ -27,6 +30,19 @@ impl Palette {
     pub fn current(cx: &App) -> Self {
         let theme = cx.theme();
         let colors = &theme.colors;
+        let mode = if theme.mode == ThemeMode::Dark {
+            "dark"
+        } else {
+            "light"
+        };
+        let token = |key: &str| {
+            parse_color(
+                design()[mode][key]
+                    .as_str()
+                    .or_else(|| design()["light"][key].as_str())
+                    .expect("theme color"),
+            )
+        };
         Self {
             ink: colors.foreground,
             muted: colors.muted_foreground,
@@ -47,10 +63,13 @@ impl Palette {
             layer: colors.group_box,
             layer_strong: colors.popover,
             stroke: colors.border,
+            stroke_strong: token("stroke-strong"),
+            tip: token("tip"),
             control: colors.secondary,
             hover: colors.list_hover,
             accent: colors.primary,
             cpu: colors.chart_1,
+            cpu_e: token("cpu-e"),
             memory: colors.chart_2,
             io: colors.chart_3,
             network: colors.chart_4,
@@ -174,6 +193,18 @@ pub fn design() -> &'static serde_json::Value {
     DESIGN.get_or_init(|| {
         serde_json::from_str(include_str!("../../../resources/theme.json")).expect("product theme")
     })
+}
+/// Large figures and titles use the display optical size where the system has it.
+pub fn display_font(cx: &App) -> SharedString {
+    if cfg!(target_os = "windows") {
+        design()["fonts"]["displayWindows"][0]
+            .as_str()
+            .expect("display font")
+            .to_owned()
+            .into()
+    } else {
+        cx.theme().font_family.clone()
+    }
 }
 pub fn dimension(key: &str) -> Pixels {
     px(design()["layout"][key].as_f64().expect("layout token") as f32)
