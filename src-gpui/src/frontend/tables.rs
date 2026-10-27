@@ -1484,7 +1484,7 @@ impl Desktop {
         let available = window.viewport_size().width
             - px(24.)
             - px(if self.page == "processes" && self.details_open {
-                self.details_width
+                self.details_display_width(window)
             } else {
                 0.
             })
