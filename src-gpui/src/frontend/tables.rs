@@ -635,9 +635,7 @@ impl TableDelegate for NativeTable {
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         if column == 0
-            && let Some(id) = self.rows[row_index].raw["icon"]
-                .as_u64()
-                .map(|id| id as u32)
+            && let Some(id) = icon_id(&self.rows[row_index].raw)
             && !self.icons.contains_key(&id)
             && let Some(owner) = self.owner.upgrade()
             && let Some(png) = owner.read(cx).host.state::<AppState>().meta.icon_png(id)
@@ -875,6 +873,13 @@ impl TableDelegate for NativeTable {
         menu
     }
 }
+/// The icon a row shows: a WebView's host application's, else its own.
+fn icon_id(raw: &Value) -> Option<u32> {
+    raw["webView"]["hostIcon"]
+        .as_u64()
+        .or_else(|| raw["icon"].as_u64())
+        .map(|id| id as u32)
+}
 /// A small outlined label, like the original `.tag`.
 fn tag(text: impl Into<SharedString>, border: Hsla, color: Hsla) -> Div {
     div()
@@ -984,10 +989,7 @@ impl NativeTable {
             };
         }
         if self.page != "services" {
-            let image = row.raw["icon"]
-                .as_u64()
-                .map(|id| id as u32)
-                .and_then(|id| self.icons.get(&id).cloned());
+            let image = icon_id(&row.raw).and_then(|id| self.icons.get(&id).cloned());
             let kernel = processes && row.raw["path"].is_null() && row.members.len() <= 1;
             element = element.child(div().relative().size_4().flex_shrink_0().child(
                 if let Some(image) = image {
@@ -1331,8 +1333,23 @@ impl Desktop {
                 .enumerate()
                 .map(|(i, r)| (&r.key, i))
                 .collect();
-            rows.sort_by_key(|r| order.get(&r.key).copied().unwrap_or(usize::MAX));
-            self.held_order = true;
+            // Rows keep their places; a new row follows the row it comes after in
+            // the fresh order, so it stays in its category instead of dropping to the end.
+            let fresh: Vec<String> = rows.iter().map(|r| r.key.clone()).collect();
+            let mut place = -1.;
+            let mut keyed: Vec<(f64, Row)> = rows
+                .into_iter()
+                .map(|row| {
+                    place = match order.get(&row.key) {
+                        Some(&index) => index as f64,
+                        None => place + 1e-6,
+                    };
+                    (place, row)
+                })
+                .collect();
+            keyed.sort_by(|a, b| a.0.total_cmp(&b.0));
+            rows = keyed.into_iter().map(|(_, row)| row).collect();
+            self.held_order = !rows.iter().map(|r| &r.key).eq(fresh.iter());
         } else {
             self.held_order = false;
         }
