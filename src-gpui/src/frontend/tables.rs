@@ -612,6 +612,12 @@ impl TableDelegate for NativeTable {
             .hover(move |s| s.bg(hover))
             .active(move |s| s.bg(press))
             .accessibility_label(field.label.clone())
+            .when(self.page == "processes", |button| {
+                let title = theme::label(&format!("processes.column.{key}.title"));
+                button.tooltip(move |window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(window, cx)
+                })
+            })
             .child(cell.child(label))
             .on_click(move |_, window, cx| {
                 let owner = owner.clone();
@@ -814,19 +820,26 @@ impl TableDelegate for NativeTable {
     ) -> Stateful<Div> {
         let p = Palette::current(cx);
         let row = &self.rows[index];
-        let selected = self.owner.upgrade().is_some_and(|owner| {
-            owner
-                .read(cx)
-                .selected
-                .get(&self.page)
-                .is_some_and(|key| *key == row.key)
-        });
+        let (selected, fresh) = self
+            .owner
+            .upgrade()
+            .map(|owner| {
+                let app = owner.read(cx);
+                (
+                    app.selected
+                        .get(&self.page)
+                        .is_some_and(|key| *key == row.key),
+                    self.page == "processes" && app.is_fresh(row),
+                )
+            })
+            .unwrap_or_default();
         // Pinned rows lead the list; a line under the last one ends them.
         let last_pinned = row.pinned && self.rows.get(index + 1).is_some_and(|next| !next.pinned);
         div()
             .id(("native-row", index))
             .relative()
             .rounded(px(4.))
+            .when(fresh, |d| d.bg(theme::role(cx, "net").opacity(0.15)))
             .when(selected, |d| {
                 d.child(
                     div()

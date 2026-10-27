@@ -81,7 +81,7 @@ impl Palette {
             network: colors.chart_4,
             gpu: colors.chart_5,
             battery: colors.chart_bullish,
-            danger: colors.danger,
+            danger: role(cx, "danger"),
             heat: parse_color(&format!(
                 "rgb({})",
                 design()[if theme.mode == ThemeMode::Dark {
@@ -148,7 +148,8 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     theme.apply_semantic_tokens(&tokens);
     theme.colors.group_box = color("layer");
     theme.colors.list_hover = color("hover");
-    theme.colors.table = color("layer");
+    // The workspace card paints the layer; the table itself stays clear.
+    theme.colors.table = color("layer").opacity(0.);
     theme.colors.table_head = color("layer").opacity(0.);
     theme.colors.table_head_foreground = color("ink-2");
     theme.colors.table_hover = color("hover");
@@ -157,6 +158,11 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     theme.colors.table_active = theme.colors.primary.opacity(0.15);
     theme.colors.table_active_border = theme.colors.primary.opacity(0.);
     theme.list.active_highlight = true;
+    // The library's danger role colours the caption close button: Windows red, white glyph.
+    theme.colors.danger = rgb(0xc42b1c).into();
+    theme.colors.danger_hover = rgb(0xc42b1c).into();
+    theme.colors.danger_active = Hsla::from(rgb(0xc42b1c)).opacity(0.9);
+    theme.colors.danger_foreground = gpui_kit::gpui::white();
     theme.colors.tab_foreground = color("ink-2");
     theme.colors.tab_active_foreground = color("ink");
     theme.colors.tab_active = color("control-checked");
@@ -164,7 +170,7 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     theme.colors.tab_bar_segmented = color("window-bg").blend(color("control"));
     theme.colors.switch = color("ink-3");
     theme.colors.switch_thumb = color("window-bg");
-    theme.colors.table_even = color("layer");
+    theme.colors.table_even = color("layer").opacity(0.);
     theme.colors.title_bar = color("window-bg").opacity(0.);
     theme.colors.title_bar_border = color("stroke").opacity(0.);
     theme.colors.chart_1 = color("cpu");

@@ -302,6 +302,21 @@ impl Desktop {
         self.timeline.push(&snapshot, self.interval as f64);
         self.work.timeline_us += start.elapsed().as_micros() as u64;
         let previous = std::mem::replace(&mut self.snapshot, snapshot);
+        // New processes are tinted for a few samples, as in the original list.
+        let start_up = previous.is_null();
+        let seen = std::mem::take(&mut self.first_seen);
+        self.first_seen = values(&self.snapshot["processes"])
+            .iter()
+            .map(|p| {
+                let id = model::identity(p);
+                let first = if start_up {
+                    0
+                } else {
+                    seen.get(&id).copied().unwrap_or(self.sequence)
+                };
+                (id, first)
+            })
+            .collect();
         if !previous.is_null() {
             cx.background_executor()
                 .spawn(async move { drop(previous) })
@@ -314,6 +329,16 @@ impl Desktop {
                 cx,
             );
         }
+    }
+    /// Whether a row's processes all started within the last three samples.
+    pub(in crate::frontend) fn is_fresh(&self, row: &Row) -> bool {
+        row.section.is_none()
+            && !row.members.is_empty()
+            && row.members.iter().all(|member| {
+                self.first_seen
+                    .get(&model::identity(member))
+                    .is_some_and(|first| *first != 0 && self.sequence.saturating_sub(*first) < 3)
+            })
     }
     /// How often the visible page re-reads its list, as in the original pages.
     pub(in crate::frontend) fn poll_interval(&self) -> Duration {

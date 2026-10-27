@@ -154,6 +154,8 @@ struct Desktop {
     view_trace: Option<gpui_kit::gpui::profiler::journal::ForegroundJournalCollector>,
     snapshot_pending: bool,
     rows_epoch: u64,
+    /// The sample each running process first appeared in; 0 for those present at start.
+    first_seen: HashMap<String, u64>,
     header_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
     toolbar_regions: Rc<RefCell<[Bounds<Pixels>; 2]>>,
     navigation_regions: Rc<RefCell<[Bounds<Pixels>; PAGES.len() + 1]>>,
@@ -253,6 +255,7 @@ impl Desktop {
             view_trace: None,
             snapshot_pending: false,
             rows_epoch: 0,
+            first_seen: HashMap::new(),
             header_bounds: Rc::new(RefCell::new(HashMap::new())),
             toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 2])),
             navigation_regions: Rc::new(RefCell::new([Bounds::default(); PAGES.len() + 1])),
