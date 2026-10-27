@@ -315,6 +315,30 @@
     "coreVoltage": "核心电压",
     "coreVid": "核心 VID",
     "vidHint": "核显请求电压，不等同于实测供电电压。",
+    "clockStopped": "已停钟",
+    "unsliceClock": "共享逻辑频率",
+    "unsliceClockHint": "核显非切片部分（Unslice）的时钟，与图形计算切片可分别停钟。",
+    "clockHint": "显示图形切片的即时硬件频率。RC6 休眠或切片关闭时显示“已停钟”；最低工作频率是能力范围，不替代当前读数。",
+    "sharedMemoryClock": "共享内存频率",
+    "sharedMemoryClockHint": "核显共享系统内存的时钟，DDR 传输率约为此数值的两倍。",
+    "gtActivity": "GT 活动率",
+    "mediaActivity": "媒体活动率",
+    "activityHint": "由硬件活动计数器按采样间隔计算，与 Windows 引擎忙碌时间的统计范围不同。",
+    "minCoreClock": "最低工作频率",
+    "referenceClock": "基准时钟",
+    "performanceLimits": "性能限制",
+    "limitsActiveCount": "当前触发：{count} 项",
+    "noLimit": "未触发",
+    "limitActive": "正在触发",
+    "limitOccurred": "曾触发",
+    "limitReasons": {
+      "power": "功耗限制",
+      "thermal": "温度限制",
+      "prochot": "PROCHOT",
+      "current": "电流限制（VR TDC）",
+      "other": "其他限制（IccMax／PL4 等）",
+      "inefficient": "低于目标频率"
+    },
     "kernelSensors": "核显内核传感器",
     "kernelEnable": "可在“设置 → 权限”安装特权服务并开启内核传感器，读取核显温度、频率与 VID。",
     "kernelUnavailable": "核显内核读数暂不可用。可在“设置 → 权限”检查特权服务及内核传感器状态。",
@@ -344,7 +368,8 @@
       "adlChip": "AMD ADL · 芯片",
       "igcl": "Intel IGCL · GPU 电源域",
       "igclChip": "Intel IGCL · GPU 芯片",
-      "rapl": "Intel RAPL · 核显"
+      "rapl": "Windows RAPL · 核显",
+      "raplMsr": "Intel RAPL MSR · 核显"
     }
   },
   "battery": {

@@ -65,6 +65,10 @@ AMD／Intel SDK 调用在独立线程执行，GUI 与主采样线程只读取有
 
 GPU 的 D3DKMT 性能查询和 IGCL 遥测暂时失败后会间隔 5 秒重试，期间不沿用旧值。驱动版本较新不代表所有显卡型号均开放全部遥测；例如旧 Intel 核显的部分指标可能仅由专用硬件监控接口提供。
 
+Comet Lake 的切片频率在 RC6 休眠或切片关闭时可为零，GPU 页将其显示为“已停钟”，不以最低工作频率代替。该即时状态与显卡驱动报告的工作频率含义不同；最低／最高工作频率及可读取的基准时钟单独列出。共享内存频率按控制器时钟计算，GT／媒体活动率来自硬件计数器，均不改写 Windows 引擎曲线。核显功耗优先采用服务直接读取的有效 RAPL PP1 差分，缺失时回退 Windows 计数器；有效的直接零值同样保留。性能限制显示已确认的功耗、温度、PROCHOT、电流及其他状态，悬停可查看各项当前与历史锁存状态；不生成没有明确寄存器定义的电压限制值。
+
+布局依据：[Intel Gen9 寄存器定义](https://www.intel.com/content/dam/www/public/us/en/documents/datasheets/desktop-6th-gen-core-family-datasheet-vol-2.pdf)、[Comet Lake 基准时钟与 QCLK 布局](https://github.com/a1ive/nwinfo/blob/master/libnw/sensor/intel.c)。
+
 AMD `0x00620205` 的 SoC 设定电压明确标注为设定值，不代替 SVI3 遥测电压；不能确认含义的字段不作为 VID 上限显示。PPT／TDC／EDC 上限反映当前固件配置，UCLK／MCLK 反映实际内存分频，不按标称默认值覆盖。
 
 当前官方 PawnIO Intel 模块未开放完整的性能限制原因寄存器和硬件核心／封装 C-state 计数器；因此 Intel 提供已允许的热状态与功耗／电流限制，以及 Windows 空闲类别。PL1／PL2 精细原因、原生封装 C6／C10、笔记本 EC 风扇与供电控制器遥测不以估算值代替。

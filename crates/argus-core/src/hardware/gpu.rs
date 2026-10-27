@@ -91,14 +91,15 @@ pub struct GpuStats {
     pub board_power_limit: Option<f32>,
     pub power_source: Option<GpuPowerSource>,
     /// 3D engine clock and its maximum, MHz.
-    pub clock_mhz: Option<u32>,
-    pub clock_max_mhz: Option<u32>,
+    pub clock_mhz: Option<f32>,
+    pub clock_max_mhz: Option<f32>,
     /// 3D engine voltage, mV.
     pub voltage_mv: Option<u32>,
-    pub memory_clock_mhz: Option<u32>,
+    pub memory_clock_mhz: Option<f32>,
     pub core_vid_mv: Option<u32>,
     pub kernel_sensor_state: Option<super::SensorState>,
     pub kernel_sensor_supported: bool,
+    pub integrated_sensors: Option<super::IntegratedGpuSensors>,
 }
 
 impl GpuStats {
@@ -202,6 +203,7 @@ impl GpuTracker {
                     core_vid_mv: None,
                     kernel_sensor_state: None,
                     kernel_sensor_supported: false,
+                    integrated_sensors: None,
                 };
                 for (node, prev) in a.prev_running.iter_mut().enumerate() {
                     let mut q = statistics_query(D3DKMT_QUERYSTATISTICS_NODE, a.luid);
@@ -270,8 +272,10 @@ impl GpuTracker {
                         stats.power_source = reading.source;
                     }
                     stats.temperature = stats.temperature.or(reading.temperature);
-                    stats.clock_mhz = stats.clock_mhz.or(reading.clock);
-                    stats.memory_clock_mhz = stats.memory_clock_mhz.or(reading.memory_clock);
+                    stats.clock_mhz = stats.clock_mhz.or(reading.clock.map(|v| v as f32));
+                    stats.memory_clock_mhz = stats
+                        .memory_clock_mhz
+                        .or(reading.memory_clock.map(|v| v as f32));
                     stats.voltage_mv = stats.voltage_mv.or(reading.voltage);
                 }
                 stats
@@ -449,8 +453,10 @@ fn processor_graphics(vendor: Option<u32>, pci: Option<Pci>) -> bool {
 }
 
 /// Hz to MHz; drivers report 0 for "not supported".
-fn mhz(hz: u64) -> Option<u32> {
-    (hz >= 1_000_000).then_some((hz / 1_000_000) as u32)
+fn mhz(hz: u64) -> Option<f32> {
+    (1_000_000..=100_000_000_000)
+        .contains(&hz)
+        .then_some(hz as f32 / 1_000_000.0)
 }
 
 /// Drivers only fill FriendlyName for non-standard engines.
@@ -486,6 +492,13 @@ pub(crate) fn pretty_engine(raw: &str) -> String {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn gpu_frequency_preserves_fractional_mhz_and_rejects_unavailable_values() {
+        assert_eq!(mhz(1_194_400_000), Some(1194.4));
+        assert_eq!(mhz(0), None);
+        assert_eq!(mhz(u64::MAX), None);
+    }
 
     #[test]
     fn processor_graphics_requires_the_intel_vendor_and_processor_pci_function() {
@@ -527,6 +540,7 @@ mod tests {
                     temperature_celsius: Some(35.0),
                     clock_mhz: Some(350.0),
                     vid_volts: Some(0.8),
+                    ..Default::default()
                 }),
                 ..Default::default()
             }),
@@ -542,7 +556,7 @@ mod tests {
         let gpu = &hw.gpus[1];
         assert_eq!(
             (gpu.temperature, gpu.clock_mhz, gpu.core_vid_mv),
-            (Some(35.0), Some(350), Some(800))
+            (Some(35.0), Some(350.0), Some(800))
         );
         assert_eq!(gpu.voltage_mv, None);
         assert_eq!(gpu.board_power, Some(0.014));
@@ -568,7 +582,7 @@ mod tests {
     fn native_readings_win_and_missing_gpu_data_never_uses_cpu_temperature_or_power() {
         let mut hw = integrated_fixture();
         hw.gpus[1].temperature = Some(36.0);
-        hw.gpus[1].clock_mhz = Some(400);
+        hw.gpus[1].clock_mhz = Some(400.0);
         hw.gpus[1].board_power = Some(1.0);
         hw.gpus[1].power_source = Some(GpuPowerSource::Igcl);
         hw.supplement_integrated_gpu();
@@ -578,7 +592,7 @@ mod tests {
                 hw.gpus[1].clock_mhz,
                 hw.gpus[1].board_power
             ),
-            (Some(36.0), Some(400), Some(1.0))
+            (Some(36.0), Some(400.0), Some(1.0))
         );
         assert!(matches!(
             hw.gpus[1].power_source,
@@ -596,6 +610,46 @@ mod tests {
             hw.gpus[1].kernel_sensor_state,
             Some(super::super::SensorState::NoData)
         );
+    }
+
+    #[test]
+    fn direct_pp1_energy_is_not_masked_by_a_zero_windows_power_meter() {
+        use super::super::{CpuMetricKind, CpuSensorSource};
+        let mut hw = integrated_fixture();
+        hw.power.graphics = Some(0.0);
+        hw.cpu_sensors = None;
+        hw.supplement_integrated_gpu();
+        assert_eq!(hw.gpus[1].board_power, Some(0.0));
+        let mut frame = integrated_fixture().cpu_sensors.unwrap();
+        frame.metric(
+            CpuMetricKind::GraphicsWatts,
+            Some(0.060),
+            CpuSensorSource::Msr,
+        );
+        hw.cpu_sensors = Some(frame);
+        hw.supplement_integrated_gpu();
+        assert_eq!(hw.gpus[1].board_power, Some(0.060));
+        assert!(matches!(
+            hw.gpus[1].power_source,
+            Some(GpuPowerSource::RaplMsr)
+        ));
+        hw.cpu_sensors.as_mut().unwrap().metric(
+            CpuMetricKind::GraphicsWatts,
+            Some(0.0),
+            CpuSensorSource::Msr,
+        );
+        hw.supplement_integrated_gpu();
+        assert_eq!(hw.gpus[1].board_power, Some(0.0));
+        assert!(matches!(
+            hw.gpus[1].power_source,
+            Some(GpuPowerSource::RaplMsr)
+        ));
+        hw.cpu_sensors = None;
+        hw.supplement_integrated_gpu();
+        assert!(matches!(
+            hw.gpus[1].power_source,
+            Some(GpuPowerSource::Rapl)
+        ));
     }
 
     #[test]
@@ -684,6 +738,7 @@ mod tests {
             core_vid_mv: None,
             kernel_sensor_state: None,
             kernel_sensor_supported: false,
+            integrated_sensors: None,
         }
     }
     #[test]

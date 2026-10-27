@@ -28,7 +28,7 @@ pub use gpu::{GpuInfo, GpuStats, GpuUtilSource};
 pub use kernel_sensors::{
     BoardMetric, BoardMetricKind, CcdTemperature, CoreTemperature, CpuCoreSensors, CpuFanReading,
     CpuLimitReason, CpuLimitStatus, CpuMetric, CpuMetricKind, CpuSensorSource, CpuSensors,
-    IntegratedGpuSensors, SensorState, SmuState,
+    IntegratedGpuLimit, IntegratedGpuLimitReason, IntegratedGpuSensors, SensorState, SmuState,
 };
 pub use memory::MemoryInfo;
 pub use net::{NicInfo, NicStats};
@@ -73,14 +73,33 @@ impl Hardware {
         if matches.next().is_some() {
             return;
         }
-        if gpu.board_power.is_none() {
-            gpu.board_power = self
-                .power
-                .graphics
-                .filter(|v| v.is_finite() && (0.0..=1000.0).contains(v));
-            if gpu.board_power.is_some() {
-                gpu.power_source = Some(GpuPowerSource::Rapl);
-            }
+        if gpu.board_power.is_none()
+            || matches!(
+                gpu.power_source,
+                Some(GpuPowerSource::Rapl | GpuPowerSource::RaplMsr)
+            )
+        {
+            let valid = |v: &f32| v.is_finite() && (0.0..=1000.0).contains(v);
+            let direct = self
+                .cpu_sensors
+                .as_ref()
+                .filter(|s| s.state == SensorState::Ready)
+                .and_then(|s| {
+                    s.metrics.iter().find(|m| {
+                        m.kind == CpuMetricKind::GraphicsWatts
+                            && matches!(m.source, CpuSensorSource::Msr)
+                    })
+                })
+                .map(|m| m.value)
+                .filter(valid);
+            gpu.board_power = direct.or(self.power.graphics.filter(valid));
+            gpu.power_source = gpu.board_power.map(|_| {
+                if direct.is_some() {
+                    GpuPowerSource::RaplMsr
+                } else {
+                    GpuPowerSource::Rapl
+                }
+            });
         }
         if !intel_mchbar_supported(&self.cpu) {
             return;
@@ -98,13 +117,19 @@ impl Hardware {
             })
         });
         if let Some(data) = data.filter(|d| d.state == SensorState::Ready) {
+            gpu.integrated_sensors = Some(data.clone());
             gpu.temperature = gpu.temperature.or(data
                 .temperature_celsius
                 .filter(|v| v.is_finite() && (1.0..=150.0).contains(v)));
             gpu.clock_mhz = gpu.clock_mhz.or(data
                 .clock_mhz
-                .filter(|v| v.is_finite() && (0.0..=3000.0).contains(v))
-                .map(|v| v.round() as u32));
+                .filter(|v| v.is_finite() && (0.0..=3000.0).contains(v)));
+            gpu.memory_clock_mhz = gpu.memory_clock_mhz.or(data
+                .memory_clock_mhz
+                .filter(|v| v.is_finite() && (1.0..=10000.0).contains(v)));
+            gpu.clock_max_mhz = gpu.clock_max_mhz.or(data
+                .maximum_clock_mhz
+                .filter(|v| v.is_finite() && (1.0..=3000.0).contains(v)));
             gpu.core_vid_mv = data
                 .vid_volts
                 .filter(|v| v.is_finite() && (0.0..=1.52).contains(v))

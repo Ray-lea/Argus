@@ -196,6 +196,7 @@ pub fn log_hardware_once(s: &Snapshot) {
                 Some(GpuPowerSource::Igcl) => "watts (IGCL GPU)",
                 Some(GpuPowerSource::IgclChip) => "watts (IGCL chip)",
                 Some(GpuPowerSource::Rapl) => "watts (Intel RAPL graphics)",
+                Some(GpuPowerSource::RaplMsr) => "watts (Intel RAPL graphics MSR)",
                 None => "watts (source unavailable)",
             }
         } else if g.power.is_some() {

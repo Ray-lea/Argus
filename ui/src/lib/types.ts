@@ -269,7 +269,7 @@ export interface GpuStats {
   /** Power and limit in W; the source identifies the measurement scope. */
   boardPower: number | null;
   boardPowerLimit: number | null;
-  powerSource: "nvml" | "adlBoard" | "adlChip" | "igcl" | "igclChip" | "rapl" | null;
+  powerSource: "nvml" | "adlBoard" | "adlChip" | "igcl" | "igclChip" | "rapl" | "raplMsr" | null;
   clockMhz: number | null;
   clockMaxMhz: number | null;
   voltageMv: number | null;
@@ -277,6 +277,7 @@ export interface GpuStats {
   coreVidMv: number | null;
   kernelSensorSupported: boolean;
   kernelSensorState: CpuSensors["state"] | null;
+  integratedSensors: IntegratedGpuSensors | null;
 }
 
 export interface GpuEngineUsage {
@@ -301,6 +302,26 @@ export interface Hardware {
   batteries: BatteryStats[];
 }
 
+export interface IntegratedGpuSensors {
+  state: CpuSensors["state"];
+  temperatureCelsius: number | null;
+  clockMhz: number | null;
+  vidVolts: number | null;
+  sliceClockStopped: boolean | null;
+  unsliceClockMhz: number | null;
+  referenceClockMhz: number | null;
+  minimumClockMhz: number | null;
+  maximumClockMhz: number | null;
+  memoryClockMhz: number | null;
+  gtActivityPercent: number | null;
+  mediaActivityPercent: number | null;
+  limits: {
+    reason: "power" | "thermal" | "prochot" | "current" | "other" | "inefficient";
+    active: boolean;
+    occurred: boolean;
+  }[];
+}
+
 export interface CpuSensors {
   limits: CpuLimitStatus[];
   state:
@@ -318,12 +339,7 @@ export interface CpuSensors {
   coreVoltage: number | null;
   coreVid: number | null;
   packageWatts: number | null;
-  integratedGpu?: {
-    state: CpuSensors["state"];
-    temperatureCelsius: number | null;
-    clockMhz: number | null;
-    vidVolts: number | null;
-  } | null;
+  integratedGpu?: IntegratedGpuSensors | null;
   metrics: CpuMetric[];
   cores: CpuCoreSensors[];
   smuState: "pending" | "unavailable" | "unsupportedTable" | "ready" | null;

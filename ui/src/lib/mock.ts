@@ -524,6 +524,7 @@ function mockHardware(cpu: number, io: number): Hardware {
         coreVidMv: null,
         kernelSensorSupported: false,
         kernelSensorState: null,
+        integratedSensors: null,
       },
     ],
     batteries: [

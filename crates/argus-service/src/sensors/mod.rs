@@ -121,7 +121,10 @@ impl SensorClient {
                                 || (g.state == SensorState::Ready
                                     && (g.temperature_celsius.is_none()
                                         || g.clock_mhz.is_none()
-                                        || g.vid_volts.is_none()))
+                                        || g.vid_volts.is_none()
+                                        || g.reference_clock_mhz.is_none()
+                                        || g.memory_clock_mhz.is_none()
+                                        || g.limits.is_empty()))
                         })
                     {
                         argus_core::diagnostics::warn(
@@ -134,7 +137,7 @@ impl SensorClient {
                         );
                         diagnostics.collect(pid);
                     }
-                    frame
+                    *frame
                 }
                 other => {
                     if other.is_ok() {

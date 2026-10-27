@@ -27,6 +27,7 @@ pub enum GpuPowerSource {
     Igcl,
     IgclChip,
     Rapl,
+    RaplMsr,
 }
 
 #[derive(Clone, Default)]

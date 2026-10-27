@@ -330,6 +330,30 @@
     "coreVoltage": "Core voltage",
     "coreVid": "Core VID",
     "vidHint": "Voltage requested by the integrated GPU, not a measured supply voltage.",
+    "clockStopped": "Clock gated",
+    "unsliceClock": "Un-slice clock",
+    "unsliceClockHint": "Clock of the integrated GPU's shared logic (unslice), which can be gated independently of its graphics slices.",
+    "clockHint": "Shows the instantaneous graphics-slice clock. RC6 sleep or disabled slices appear as Clock gated; the minimum operating clock is a capability, not a replacement reading.",
+    "sharedMemoryClock": "Shared memory clock",
+    "sharedMemoryClockHint": "Clock of the system memory shared by the integrated GPU. The DDR transfer rate is about twice this value.",
+    "gtActivity": "GT activity",
+    "mediaActivity": "Media activity",
+    "activityHint": "Calculated from hardware activity counters over the sampling interval. Its scope differs from Windows engine busy time.",
+    "minCoreClock": "Min operating clock",
+    "referenceClock": "Reference clock",
+    "performanceLimits": "Performance limits",
+    "limitsActiveCount": "Active: {count}",
+    "noLimit": "Not active",
+    "limitActive": "Active",
+    "limitOccurred": "Previously active",
+    "limitReasons": {
+      "power": "Power limit",
+      "thermal": "Thermal limit",
+      "prochot": "PROCHOT",
+      "current": "Current limit (VR TDC)",
+      "other": "Other limits (IccMax/PL4 etc.)",
+      "inefficient": "Below target clock"
+    },
     "kernelSensors": "Integrated GPU kernel sensors",
     "kernelEnable": "Install the privileged service and enable kernel sensors in Settings → Permissions to read integrated GPU temperature, clock and VID.",
     "kernelUnavailable": "Integrated GPU kernel readings are unavailable. Check the privileged service and kernel sensors in Settings → Permissions.",
@@ -359,7 +383,8 @@
       "adlChip": "AMD ADL · chip",
       "igcl": "Intel IGCL · GPU power domain",
       "igclChip": "Intel IGCL · GPU chip",
-      "rapl": "Intel RAPL · integrated GPU"
+      "rapl": "Windows RAPL · integrated GPU",
+      "raplMsr": "Intel RAPL MSR · integrated GPU"
     }
   },
   "battery": {

@@ -1527,6 +1527,24 @@ const sameList = (a: readonly string[], b: readonly string[]) =>
 function GpuView(props: { id: string }) {
   const gpus = () => now().hardware.gpus;
   const gpu = () => gpus().find((g) => g.info.id === props.id);
+  const stopped = () => gpu()?.clockMhz === 0 && gpu()?.integratedSensors?.sliceClockStopped === true;
+  const fmtClock = (mhz: number) => fmtCount(Math.round(mhz * 10) / 10);
+  const limits = () => gpu()?.integratedSensors?.limits ?? [];
+  const limitSummary = () => {
+    const active = limits()
+      .filter((v) => v.active)
+      .map((v) => t(`performance.gpu.limitReasons.${v.reason}`));
+    return active.length
+      ? t("performance.gpu.limitsActiveCount", { count: active.length })
+      : t("performance.gpu.noLimit");
+  };
+  const limitDetails = () =>
+    limits()
+      .map(
+        (v) =>
+          `${t(`performance.gpu.limitReasons.${v.reason}`)}: ${t(v.active ? "performance.gpu.limitActive" : "performance.gpu.noLimit")}${v.occurred ? ` (${t("performance.gpu.limitOccurred")})` : ""}`,
+      )
+      .join("\n");
   const index = () => gpus().findIndex((g) => g.info.id === props.id);
   const k = () => `gpu.${props.id}`;
   const engines = () => gpu()?.info.engines ?? [];
@@ -1694,13 +1712,35 @@ function GpuView(props: { id: string }) {
                 <Stat label={t("performance.gpu.fan")} value={fmtCount(g().fanRpm ?? 0)} unit="RPM" />
               </Show>
               <Show when={g().clockMhz !== null}>
-                <Stat label={t("performance.gpu.coreClock")} value={fmtCount(g().clockMhz ?? 0)} unit="MHz" />
+                <Stat
+                  label={t("performance.gpu.coreClock")}
+                  value={stopped() ? t("performance.gpu.clockStopped") : fmtClock(g().clockMhz ?? 0)}
+                  unit={stopped() ? undefined : "MHz"}
+                  hint={g().integratedSensors ? t("performance.gpu.clockHint") : undefined}
+                />
               </Show>
               <Show when={g().memoryClockMhz !== null}>
                 <Stat
-                  label={t("performance.gpu.memoryClock")}
-                  value={fmtCount(g().memoryClockMhz ?? 0)}
+                  label={t(
+                    g().info.intelIntegrated
+                      ? "performance.gpu.sharedMemoryClock"
+                      : "performance.gpu.memoryClock",
+                  )}
+                  value={fmtClock(g().memoryClockMhz ?? 0)}
                   unit="MHz"
+                  hint={g().info.intelIntegrated ? t("performance.gpu.sharedMemoryClockHint") : undefined}
+                />
+              </Show>
+              <Show when={g().integratedSensors?.unsliceClockMhz != null}>
+                <Stat
+                  label={t("performance.gpu.unsliceClock")}
+                  value={
+                    g().integratedSensors?.unsliceClockMhz === 0
+                      ? t("performance.gpu.clockStopped")
+                      : fmtClock(g().integratedSensors?.unsliceClockMhz ?? 0)
+                  }
+                  unit={g().integratedSensors?.unsliceClockMhz === 0 ? undefined : "MHz"}
+                  hint={t("performance.gpu.unsliceClockHint")}
                 />
               </Show>
               <Show when={g().voltageMv !== null}>
@@ -1716,6 +1756,22 @@ function GpuView(props: { id: string }) {
                   value={((g().coreVidMv ?? 0) / 1000).toFixed(3)}
                   unit="V"
                   hint={t("performance.gpu.vidHint")}
+                />
+              </Show>
+              <Show when={g().integratedSensors?.gtActivityPercent != null}>
+                <Stat
+                  label={t("performance.gpu.gtActivity")}
+                  value={(g().integratedSensors?.gtActivityPercent ?? 0).toFixed(1)}
+                  unit="%"
+                  hint={t("performance.gpu.activityHint")}
+                />
+              </Show>
+              <Show when={g().integratedSensors?.mediaActivityPercent != null}>
+                <Stat
+                  label={t("performance.gpu.mediaActivity")}
+                  value={(g().integratedSensors?.mediaActivityPercent ?? 0).toFixed(1)}
+                  unit="%"
+                  hint={t("performance.gpu.activityHint")}
                 />
               </Show>
               <Show
@@ -1766,7 +1822,19 @@ function GpuView(props: { id: string }) {
               <dd>{g().info.engines.length}</dd>
               <Show when={g().clockMaxMhz}>
                 <dt>{t("performance.gpu.maxCoreClock")}</dt>
-                <dd>{fmtCount(g().clockMaxMhz ?? 0)} MHz</dd>
+                <dd>{fmtClock(g().clockMaxMhz ?? 0)} MHz</dd>
+              </Show>
+              <Show when={g().integratedSensors?.minimumClockMhz != null}>
+                <dt>{t("performance.gpu.minCoreClock")}</dt>
+                <dd>{fmtClock(g().integratedSensors?.minimumClockMhz ?? 0)} MHz</dd>
+              </Show>
+              <Show when={g().integratedSensors?.referenceClockMhz != null}>
+                <dt>{t("performance.gpu.referenceClock")}</dt>
+                <dd>{fmtCount(g().integratedSensors?.referenceClockMhz ?? 0)} MHz</dd>
+              </Show>
+              <Show when={limits().length > 0}>
+                <dt>{t("performance.gpu.performanceLimits")}</dt>
+                <dd title={limitDetails()}>{limitSummary()}</dd>
               </Show>
             </dl>
           </div>
