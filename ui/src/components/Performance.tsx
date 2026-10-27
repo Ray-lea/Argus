@@ -1527,7 +1527,6 @@ const sameList = (a: readonly string[], b: readonly string[]) =>
 function GpuView(props: { id: string }) {
   const gpus = () => now().hardware.gpus;
   const gpu = () => gpus().find((g) => g.info.id === props.id);
-  const stopped = () => gpu()?.clockMhz === 0 && gpu()?.integratedSensors?.sliceClockStopped === true;
   const fmtClock = (mhz: number) => fmtCount(Math.round(mhz * 10) / 10);
   const limits = () => gpu()?.integratedSensors?.limits ?? [];
   const limitSummary = () => {
@@ -1714,8 +1713,8 @@ function GpuView(props: { id: string }) {
               <Show when={g().clockMhz !== null}>
                 <Stat
                   label={t("performance.gpu.coreClock")}
-                  value={stopped() ? t("performance.gpu.clockStopped") : fmtClock(g().clockMhz ?? 0)}
-                  unit={stopped() ? undefined : "MHz"}
+                  value={fmtClock(g().clockMhz ?? 0)}
+                  unit="MHz"
                   hint={g().integratedSensors ? t("performance.gpu.clockHint") : undefined}
                 />
               </Show>
@@ -1734,12 +1733,8 @@ function GpuView(props: { id: string }) {
               <Show when={g().integratedSensors?.unsliceClockMhz != null}>
                 <Stat
                   label={t("performance.gpu.unsliceClock")}
-                  value={
-                    g().integratedSensors?.unsliceClockMhz === 0
-                      ? t("performance.gpu.clockStopped")
-                      : fmtClock(g().integratedSensors?.unsliceClockMhz ?? 0)
-                  }
-                  unit={g().integratedSensors?.unsliceClockMhz === 0 ? undefined : "MHz"}
+                  value={fmtClock(g().integratedSensors?.unsliceClockMhz ?? 0)}
+                  unit="MHz"
                   hint={t("performance.gpu.unsliceClockHint")}
                 />
               </Show>
