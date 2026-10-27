@@ -497,6 +497,9 @@ impl Desktop {
             .data
             .get("updates")
             .filter(|s| matches!(text(s, "state"), "ready" | "available" | "downloading"))
+            .filter(|s| {
+                self.prefs.get::<String>("updateDismissed", String::new()) != text(s, "version")
+            })
         {
             // An icon filled with the accent; the version is in the tooltip.
             let title = if text(updates, "state") == "available" {
@@ -525,7 +528,26 @@ impl Desktop {
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.act(Action::Dialog("update".into(), json!({})), window, cx)
                     }))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Right, {
+                        let version = text(updates, "version").to_owned();
+                        cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            let items = vec![
+                                MenuItem::new(
+                                    label("updates.menu.view"),
+                                    Action::Dialog("update".into(), json!({})),
+                                )
+                                .icon("UpdateIcon"),
+                                MenuItem::new(
+                                    label("updates.menu.dismiss"),
+                                    Action::Preference("updateDismissed".into(), json!(version)),
+                                )
+                                .icon("DismissIcon"),
+                            ];
+                            this.act(Action::Popup(items), window, cx);
+                        })
+                    }),
             );
         }
         let owner = cx.entity().downgrade();
