@@ -98,6 +98,7 @@ pub(in crate::frontend) struct UiState {
     /// Settings page: measured width, the clicked section and smooth scrolling.
     pub settings_width: Rc<Cell<Pixels>>,
     pub settings_picked: bool,
+    pub settings_jump_wait: bool,
     pub settings_scroll: Option<(Pixels, Pixels, Instant)>,
     pub located: Option<(String, Instant)>,
     pub focus_rule: Option<(String, Instant)>,

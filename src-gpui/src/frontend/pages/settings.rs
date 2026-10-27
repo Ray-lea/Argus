@@ -534,8 +534,13 @@ impl Desktop {
         let handle = &self.settings_scroll;
         let container = handle.bounds();
         if let Some(index) = self.settings_target.take() {
+            // Wait for one layout after the request: the page may be arriving,
+            // or its text may have reflowed (a language change) since the last.
+            let fresh = std::mem::replace(&mut self.ui.settings_jump_wait, false);
+            self.settings_section = SECTIONS[index].into();
+            self.ui.settings_picked = true;
             match handle.bounds_for_item(index) {
-                Some(child) if container.size.height > px(0.) => {
+                Some(child) if fresh && container.size.height > px(0.) => {
                     let target = (container.top() - child.top())
                         .max(-handle.max_offset().y)
                         .min(px(0.));
@@ -546,6 +551,7 @@ impl Desktop {
                 }
                 _ => {
                     self.settings_target = Some(index);
+                    self.ui.settings_jump_wait = true;
                     window.request_animation_frame();
                 }
             }
