@@ -43,22 +43,38 @@ impl Desktop {
                         .overflow_hidden()
                         .child(self.details_view(window, cx))
                 });
+                // A search narrows the list: an accent ring around it says so at a glance.
+                let filtered = !self.query.trim().is_empty();
+                let accent = self.palette.accent;
                 div()
                     .size_full()
                     .min_h_0()
                     .flex()
                     .flex_col()
-                    .gap_3()
-                    .px_3()
+                    .gap(px(10.))
                     .child(vitals)
                     .child(
                         div()
                             .flex_1()
                             .min_h_0()
+                            .mx(px(12.))
                             .flex()
                             .border_1()
-                            .border_color(self.palette.stroke)
-                            .rounded(cx.theme().radius)
+                            .border_color(if filtered {
+                                accent.opacity(0.7)
+                            } else {
+                                self.palette.stroke
+                            })
+                            .when(filtered, |d| {
+                                d.shadow(vec![BoxShadow {
+                                    color: accent.opacity(0.16),
+                                    offset: point(px(0.), px(0.)),
+                                    blur_radius: px(0.),
+                                    spread_radius: px(3.),
+                                    inset: false,
+                                }])
+                            })
+                            .rounded(px(8.))
                             .overflow_hidden()
                             .bg(self.palette.layer)
                             .child(div().flex_1().min_w_0().min_h_0().child(table))
@@ -123,12 +139,12 @@ impl Desktop {
                 div()
                     .size_full()
                     .min_h_0()
-                    .mx_3()
+                    .mx(px(12.))
                     .flex()
                     .flex_col()
                     .border_1()
                     .border_color(self.palette.stroke)
-                    .rounded(cx.theme().radius)
+                    .rounded(px(8.))
                     .overflow_hidden()
                     .bg(self.palette.layer)
                     .child(div().flex_1().min_h_0().child(table))
@@ -198,59 +214,6 @@ impl Desktop {
                 ),
             );
         }
-        if self.page == "services" {
-            if let Some(sel) = self.selected.get("services")
-                && let Some(svc) = self
-                    .data
-                    .get("services")
-                    .map(values)
-                    .unwrap_or_default()
-                    .iter()
-                    .find(|s| text(s, "name") == sel)
-            {
-                let state = text(svc, "state");
-                let svc_name = text(svc, "name").to_owned();
-                for (id, key, cmd, active) in [
-                    (
-                        "svc-start",
-                        "services.control.start",
-                        "start_service",
-                        state == "stopped",
-                    ),
-                    (
-                        "svc-stop",
-                        "services.control.stop",
-                        "stop_service",
-                        state == "running",
-                    ),
-                    (
-                        "svc-restart",
-                        "services.control.restart",
-                        "restart_service",
-                        state == "running",
-                    ),
-                ] {
-                    if active {
-                        row = row.child(self.button(
-                            id,
-                            label(key),
-                            None,
-                            Action::Invoke(cmd.into(), json!({"name": svc_name})),
-                            false,
-                            cx,
-                        ));
-                    }
-                }
-            }
-            row = row.child(self.button(
-                "services-console",
-                tr!("services.control.openConsole"),
-                None,
-                Action::Invoke("open_services_console".into(), json!({})),
-                false,
-                cx,
-            ));
-        }
         if self.page == "history" {
             row = row.child(
                 self.segments(
@@ -283,7 +246,7 @@ impl Desktop {
         let disk = values(&hw["disks"])
             .iter()
             .map(|d| number(d, "read") + number(d, "write"))
-            .sum();
+            .sum::<f64>();
         let busiest = values(&hw["disks"])
             .iter()
             .max_by(|a, b| number(a, "active").total_cmp(&number(b, "active")));
@@ -299,14 +262,46 @@ impl Desktop {
             .map(|n| number(n, "tx"))
             .sum::<f64>();
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
-        let mut cards = vec![
+        // Rate charts get a round top in the unit they read in, with a floor so idle
+        // noise does not fill the chart.
+        let peak = |key: &str| {
+            self.timeline
+                .samples
+                .get(key)
+                .map(|s| s.iter().filter_map(|(_, v)| *v).fold(0., f64::max))
+                .unwrap_or(0.)
+        };
+        let gb = |bytes: f64| format!("{:.1}", bytes / 1073741824.);
+        let split = |value: String| -> (String, String) {
+            value
+                .split_once(' ')
+                .map(|(figure, unit)| (figure.to_owned(), unit.to_owned()))
+                .unwrap_or((value, String::new()))
+        };
+        let disk_value = split(if disk < 1. {
+            "0 KB/s".into()
+        } else {
+            theme::bytes(disk, true)
+        });
+        let net_value = split(if rx + tx < 1. {
+            if bits {
+                "0 Kbps".into()
+            } else {
+                "0 KB/s".into()
+            }
+        } else {
+            theme::network(rx + tx, bits)
+        });
+        let mem_percent = (number(sys, "memUsed") / number(sys, "memTotal").max(1.) * 100.).round();
+        let mut cards: Vec<VitalCard> = vec![
             (
                 "cpu",
                 "cpu".into(),
                 "system.cpu",
                 p.cpu,
                 Some(100.),
-                format!("{}%", theme::cpu(number(sys, "cpu"))),
+                format!("{}", number(sys, "cpu").round()),
+                "%".into(),
                 hw["cpuMhz"]
                     .as_f64()
                     .map(|v| format!("{:.2} GHz", v / 1000.))
@@ -317,23 +312,24 @@ impl Desktop {
                 "memory".into(),
                 "system.memUsed",
                 p.memory,
-                Some(number(sys, "memTotal")),
-                format!("{:.1}", number(sys, "memUsed") / 1073741824.),
-                format!(
-                    "/ {}  ·  {:.0}%",
-                    theme::memory(number(sys, "memTotal")),
-                    number(sys, "memUsed") / number(sys, "memTotal").max(1.) * 100.
-                ),
+                Some(number(sys, "memTotal").max(1.)),
+                gb(number(sys, "memUsed")),
+                format!("/ {} GB", gb(number(sys, "memTotal"))),
+                format!("{mem_percent}%"),
             ),
             (
                 "disk",
-                busiest
-                    .map(|d| format!("disk:{}", d["info"]["index"]))
-                    .unwrap_or_default(),
+                format!(
+                    "disk:{}",
+                    busiest
+                        .map(|d| d["info"]["index"].clone())
+                        .unwrap_or(json!(0))
+                ),
                 "totals.disk",
                 p.io,
-                None,
-                theme::bytes(disk, true),
+                Some(rate_ceiling(peak("totals.disk").max(1048576.), false)),
+                disk_value.0,
+                disk_value.1,
                 busiest
                     .map(|d| {
                         tr!(
@@ -345,14 +341,18 @@ impl Desktop {
             ),
             (
                 "network",
-                values(&hw["nics"])
-                    .first()
-                    .map(|n| format!("nic:{}", text(&n["info"], "id")))
-                    .unwrap_or_default(),
+                format!(
+                    "nic:{}",
+                    values(&hw["nics"])
+                        .first()
+                        .map(|n| text(&n["info"], "id"))
+                        .unwrap_or_default()
+                ),
                 "totals.network",
                 p.network,
-                None,
-                theme::network(rx + tx, bits),
+                Some(rate_ceiling(peak("totals.network").max(131072.), bits)),
+                net_value.0,
+                net_value.1,
                 tr!(
                     "processes.vitals.netRates",
                     received = theme::network(rx, bits),
@@ -367,140 +367,193 @@ impl Desktop {
                 "totals.gpu",
                 p.gpu,
                 Some(100.),
-                format!("{}%", theme::cpu(number(gpu, "util"))),
+                format!("{}", number(gpu, "util").round()),
+                "%".into(),
                 gpu["temperature"]
                     .as_f64()
                     .map(|v| format!("{v:.0} °C"))
                     .unwrap_or_default(),
             ));
         }
+        let count = cards.len();
+        let hover = p.hover;
+        let press = theme::role(cx, "press");
         let mut band = div()
             .flex()
             .flex_shrink_0()
             .h(theme::dimension("vitalsHeight"))
+            .mx(px(12.))
             .border_1()
             .border_color(p.stroke)
-            .rounded_lg()
-            .bg(p.layer)
-            .overflow_hidden();
-        for (index, (id, device, key, color, max, value, detail)) in cards.into_iter().enumerate() {
+            .rounded(px(8.))
+            .bg(p.layer);
+        for (index, (id, device, key, color, max, figure, unit, detail)) in
+            cards.into_iter().enumerate()
+        {
             let plot = self.chart(
                 &format!("vital-{id}"),
                 &[(key, color)],
                 max,
-                theme::dimension("vitalsHeight") - px(62.),
+                theme::dimension("vitalsHeight") - px(63.),
                 false,
                 cx,
             );
+            let name = if matches!(id, "cpu" | "gpu") {
+                id.to_uppercase()
+            } else {
+                label(&format!("common.resource.{id}"))
+            };
             let mut header = div()
+                .relative()
                 .flex()
                 .w_full()
-                .items_center()
+                .items_start()
                 .justify_between()
-                .gap_2()
+                .gap(px(12.))
                 .child(
                     div()
-                        .text_xs()
+                        .flex_shrink_0()
+                        .text_size(px(12.))
                         .text_color(p.muted)
-                        .child(label(&format!("common.resource.{id}"))),
+                        .child(name.clone()),
                 );
             if id == "cpu" && !values(&sys["cores"]).is_empty() {
-                let keys = values(&sys["cores"])
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| (format!("system.cores.{i}"), color))
-                    .collect::<Vec<_>>();
-                header = header.child(
-                    div().w_24().child(
-                        self.chart(
-                            "vital-core-bars",
-                            &keys
-                                .iter()
-                                .map(|(k, c)| (k.as_str(), *c))
-                                .collect::<Vec<_>>(),
-                            Some(100.),
-                            px(22.),
-                            false,
-                            cx,
-                        ),
-                    ),
-                );
-            } else {
+                header = header.child(self.core_comb(cx));
+            } else if !detail.is_empty() {
                 header = header.child(
                     div()
+                        .id(("vital-detail", index))
                         .min_w_0()
                         .truncate()
-                        .text_xs()
+                        .text_size(px(12.))
                         .text_color(p.muted)
-                        .child(if id == "memory" {
-                            format!(
-                                "{:.0}%",
-                                number(sys, "memUsed") / number(sys, "memTotal").max(1.) * 100.
-                            )
-                        } else {
-                            detail.clone()
+                        .child(detail.clone())
+                        .when(id == "network", |d| {
+                            d.tooltip(|window, cx| {
+                                gpui_kit::component::tooltip::Tooltip::new(label(
+                                    "processes.vitals.netTitle",
+                                ))
+                                .build(window, cx)
+                            })
                         }),
                 );
             }
-            let (figure, unit) = value.split_once(' ').unwrap_or((&value, ""));
-            let (figure, unit) = figure
-                .strip_suffix('%')
-                .map(|v| (v, "%"))
-                .unwrap_or((figure, unit));
+            let open = tr!("processes.vitals.open", device = name);
             band = band.child(
-                self.button(
-                    format!("vital-{id}"),
-                    "",
-                    None,
-                    Action::Device(device),
-                    false,
-                    cx,
-                )
-                .relative()
-                .flex_1()
-                .when(id == "cpu", |b| b.flex_grow(1.3))
-                .min_w_0()
-                .h_full()
-                .rounded_none()
-                .px_4()
-                .py_3()
-                .flex_col()
-                .items_start()
-                .justify_start()
-                .gap_1()
-                .when(index > 0, |d| d.border_l_1().border_color(p.stroke))
-                .child(div().absolute().bottom_0().left_0().right_0().child(plot))
-                .child(header)
-                .child(
-                    div()
-                        .flex()
-                        .items_baseline()
-                        .gap_1()
-                        .w_full()
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .text_size(theme::dimension("figureSize"))
-                                .font_weight(FontWeight::LIGHT)
-                                .child(figure.to_owned()),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(p.muted)
-                                .child(if id == "memory" {
-                                    format!("/ {}", theme::memory(number(sys, "memTotal")))
-                                } else {
-                                    unit.to_owned()
-                                }),
-                        )
-                        .when(id == "cpu", |d| {
-                            d.child(div().pl_2().text_xs().text_color(p.muted).child(detail))
-                        }),
-                ),
+                Button::new(format!("vital-{id}"))
+                    .relative()
+                    .flex_1()
+                    .when(id == "cpu", |b| b.flex_grow(1.3))
+                    .min_w_0()
+                    .h_full()
+                    .when(index == 0, |b| b.rounded_l(px(7.)))
+                    .when(index + 1 == count, |b| b.rounded_r(px(7.)))
+                    .pt(px(11.))
+                    .px(px(16.))
+                    .flex()
+                    .flex_col()
+                    .items_start()
+                    .justify_start()
+                    .text_color(p.ink)
+                    .hover(move |s| s.bg(hover))
+                    .active(move |s| s.bg(press))
+                    .when(index > 0, |d| d.border_l_1().border_color(p.stroke))
+                    .accessibility_label(open.clone())
+                    .tooltip(move |window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(open.clone()).build(window, cx)
+                    })
+                    .child(
+                        div()
+                            .absolute()
+                            .top(px(62.))
+                            .bottom_0()
+                            .left(px(if index == 0 { 4. } else { 0. }))
+                            .right(px(if index + 1 == count { 4. } else { 0. }))
+                            .child(plot),
+                    )
+                    .child(header)
+                    .child(
+                        div()
+                            .relative()
+                            .mt(px(-2.))
+                            .flex()
+                            .items_baseline()
+                            .gap(px(10.))
+                            .w_full()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_baseline()
+                                    .child(
+                                        div()
+                                            .font_family(theme::DISPLAY_FONT)
+                                            .text_size(theme::dimension("figureSize"))
+                                            .font_weight(FontWeight(330.))
+                                            .line_height(relative(1.1))
+                                            .child(figure),
+                                    )
+                                    .child(
+                                        div()
+                                            .ml(px(2.))
+                                            .font_family(theme::DISPLAY_FONT)
+                                            .text_size(px(15.))
+                                            .text_color(p.muted)
+                                            .child(unit),
+                                    ),
+                            )
+                            .when(id == "cpu" && !detail.is_empty(), |d| {
+                                d.child(div().text_size(px(12.)).text_color(p.muted).child(detail))
+                            }),
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.act(Action::Device(device.clone()), window, cx)
+                    })),
             );
         }
         band.into_any_element()
+    }
+    /// Per-core load, one 4 px bar per logical processor over a faint track.
+    fn core_comb(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette;
+        let _ = cx;
+        div()
+            .id("vital-cores")
+            .relative()
+            .flex()
+            .items_end()
+            .gap(px(2.))
+            .h(px(26.))
+            .flex_shrink_0()
+            .children(
+                values(&self.snapshot["system"]["cores"])
+                    .iter()
+                    .map(|core| {
+                        let load = core.as_f64().unwrap_or(0.).clamp(0., 100.) as f32 / 100.;
+                        div()
+                            .relative()
+                            .w(px(4.))
+                            .h_full()
+                            .rounded(px(1.5))
+                            .bg(p.cpu.opacity(0.14))
+                            .child(
+                                div()
+                                    .absolute()
+                                    .bottom_0()
+                                    .left_0()
+                                    .w_full()
+                                    .h(relative(load))
+                                    .rounded(px(1.5))
+                                    .bg(p.cpu),
+                            )
+                    }),
+            )
+            .tooltip(|window, cx| {
+                gpui_kit::component::tooltip::Tooltip::new(label("processes.vitals.cores"))
+                    .build(window, cx)
+            })
+            .into_any_element()
     }
     pub(in crate::frontend) fn preference(
         &mut self,
@@ -582,12 +635,7 @@ impl Desktop {
                 if let Some(process) = found {
                     self.act(Action::CloseOverlay, window, cx);
                     self.act(Action::Page("processes".into()), window, cx);
-                    self.query = process["pid"].to_string();
-                    self.search
-                        .update(cx, |s, cx| s.set_value(self.query.clone(), window, cx));
-                    self.rebuild_rows(false, cx);
-                    self.details_open = true;
-                    self.act(Action::Select(model::identity(&process)), window, cx);
+                    self.reveal(&process, window, cx);
                 } else {
                     self.toast = Some((
                         tr!("processes.pidExited", pid = value["pid"]),
@@ -620,6 +668,23 @@ impl Desktop {
                 let mut settings = self.data["settings"].clone();
                 settings[key] = value;
                 self.request("set_update_settings",json!({"check":settings["updateCheck"],"channel":settings["updateChannel"],"route":settings["updateRoute"],"proxy":settings["updateProxy"]}),Some("settings"),window,cx);
+                return;
+            }
+            "openDetails" => {
+                self.details_open = true;
+                self.prefs.set("detailsPanel", true);
+                if let Some(key) = value.as_str()
+                    && self.selected.get(&self.page).map(String::as_str) != Some(key)
+                {
+                    self.act(Action::Select(key.into()), window, cx);
+                }
+                cx.notify();
+                return;
+            }
+            "deleteNote" => {
+                if let Some(id) = value.as_str() {
+                    self.set_mark(id, "note", Value::Null, cx);
+                }
                 return;
             }
             "pin" => {
@@ -660,6 +725,48 @@ impl Desktop {
         }
         self.prefs.set(key, value);
         cx.notify();
+    }
+    /// Shows a process in the list: clears the search, unfolds its category, group
+    /// and ancestors, selects it, opens the details and scrolls to it.
+    fn reveal(&mut self, process: &Value, window: &mut Window, cx: &mut Context<Self>) {
+        self.query.clear();
+        self.search.update(cx, |s, cx| s.set_value("", window, cx));
+        let processes = values(&self.snapshot["processes"]);
+        if self.view == "apps" {
+            self.expanded.insert(model::application_key(process));
+        } else if self.view == "tree" {
+            let mut parent = process["ppid"].clone();
+            for _ in 0..processes.len() {
+                let Some(next) = processes.iter().find(|p| p["pid"] == parent) else {
+                    break;
+                };
+                self.collapsed.remove(&model::identity(next));
+                parent = next["ppid"].clone();
+            }
+        }
+        let section = if boolean(process, "appWindow") {
+            "apps"
+        } else if boolean(process, "windowsProcess") {
+            "windows"
+        } else {
+            "background"
+        };
+        self.sections.remove(section);
+        self.prefs.set(
+            "collapsedSections",
+            self.sections.iter().collect::<Vec<_>>(),
+        );
+        self.rebuild_rows(false, cx);
+        self.details_open = true;
+        self.prefs.set("detailsPanel", true);
+        let identity = model::identity(process);
+        self.last_select = None;
+        self.act(Action::Select(identity.clone()), window, cx);
+        if let Some(index) = self.rows.iter().position(|row| row.key == identity)
+            && let Some(table) = &self.table
+        {
+            table.update(cx, |state, cx| state.scroll_to_row(index, cx));
+        }
     }
     pub(in crate::frontend) fn metric(
         &self,
@@ -708,5 +815,51 @@ impl Desktop {
             )
             .child(div().flex_1().child(value.into()))
             .into_any_element()
+    }
+}
+
+/// A vitals segment: id, device to open, series, colour, chart top, figure, unit, detail.
+type VitalCard = (
+    &'static str,
+    String,
+    &'static str,
+    Hsla,
+    Option<f64>,
+    String,
+    String,
+    String,
+);
+/// The top for a rate chart whose highest point is `peak` bytes per second: a whole
+/// number in the unit its label shows, above ten a multiple of ten.
+fn rate_ceiling(peak: f64, bits: bool) -> f64 {
+    const EPSILON: f64 = 1e-9;
+    let units: [f64; 3] = if bits {
+        [1e3 / 8., 1e6 / 8., 1e9 / 8.]
+    } else {
+        [1024., 1024f64.powi(2), 1024f64.powi(3)]
+    };
+    let round = |x: f64| {
+        if x <= 1. {
+            1.
+        } else {
+            let whole = (x - EPSILON).ceil();
+            if whole <= 10. {
+                whole
+            } else {
+                (x / 10. - EPSILON).ceil() * 10.
+            }
+        }
+    };
+    let mut unit = 0;
+    while unit + 1 < units.len() && peak >= units[unit + 1] * (1. - EPSILON) {
+        unit += 1;
+    }
+    loop {
+        let top = round(peak / units[unit]) * units[unit];
+        if unit + 1 < units.len() && top >= units[unit + 1] * (1. - EPSILON) {
+            unit += 1;
+            continue;
+        }
+        return top;
     }
 }

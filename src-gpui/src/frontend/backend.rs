@@ -217,6 +217,7 @@ impl Desktop {
                     self.expanded.clone(),
                     self.collapsed.clone(),
                     self.sections.clone(),
+                    self.hosted_services(),
                 );
                 let task = cx.background_executor().spawn(async move {
                     let start = Instant::now();
@@ -234,6 +235,7 @@ impl Desktop {
                                 expanded: &options.4,
                                 collapsed: &options.5,
                                 sections: &options.6,
+                                hosted: &options.7,
                             },
                         )
                     });
@@ -312,6 +314,14 @@ impl Desktop {
                 cx,
             );
         }
+    }
+    /// How often the visible page re-reads its list, as in the original pages.
+    pub(in crate::frontend) fn poll_interval(&self) -> Duration {
+        Duration::from_millis(match self.page.as_str() {
+            "services" | "processes" => 3000,
+            "startup" => 10000,
+            _ => 2000,
+        })
     }
     pub(in crate::frontend) fn poll_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match self.page.as_str() {
@@ -437,7 +447,7 @@ impl Desktop {
                 self.descending = if self.sort == key {
                     !self.descending
                 } else {
-                    key != "name" && key != "displayName"
+                    tables::descending_first(&self.page, &key)
                 };
                 self.sort = key;
                 self.sorts
@@ -454,6 +464,8 @@ impl Desktop {
                 }
                 if self.page != page {
                     self.page_epoch = self.page_epoch.wrapping_add(1);
+                    let index = |name: &str| PAGES.iter().position(|p| p.0 == name).unwrap_or(0);
+                    self.page_direction = (index(&page) as f32 - index(&self.page) as f32).signum();
                 }
                 self.sorts
                     .insert(self.page.clone(), (self.sort.clone(), self.descending));
@@ -464,7 +476,7 @@ impl Desktop {
                         let sort: Value = self.prefs.get("sort", json!({"key":"cpu","desc":true}));
                         (text(&sort, "key").into(), boolean(&sort, "desc"))
                     } else {
-                        ("name".into(), false)
+                        tables::initial_sort(&self.page)
                     }
                 });
                 self.sort = saved.0;
@@ -533,6 +545,10 @@ impl Desktop {
             }
             Action::Fold(key) => {
                 if let Some(section) = key.strip_prefix("s:") {
+                    // While searching every match shows: headings cannot fold.
+                    if !self.query.trim().is_empty() {
+                        return;
+                    }
                     if !self.sections.remove(section) {
                         self.sections.insert(section.into());
                     }
@@ -568,10 +584,6 @@ impl Desktop {
                     window,
                     cx,
                 );
-            }
-            Action::Refresh => {
-                self.request("refresh", json!({}), None, window, cx);
-                self.poll_page(window, cx);
             }
             Action::Interval(ms) => {
                 self.interval = ms;
@@ -667,13 +679,16 @@ impl Desktop {
                 return;
             }
         }
+        let searching = self.search.read(cx).focus_handle(cx).is_focused(window);
         if key == "escape" {
             if self.popup.is_some() || self.modal.is_some() {
                 self.act(Action::CloseOverlay, window, cx);
-            } else if !self.query.is_empty() {
+            } else if searching || !self.query.is_empty() {
+                // Esc in the search box clears it and gives the keyboard back to the list.
                 self.search.update(cx, |s, cx| s.set_value("", window, cx));
                 self.query.clear();
                 self.rebuild_rows(false, cx);
+                self.focus.focus(window, cx);
                 cx.notify();
             } else {
                 self.selected.remove(&self.page);
@@ -687,7 +702,7 @@ impl Desktop {
             }
             return;
         }
-        if m.control {
+        if m.control && !m.alt && !m.shift && !m.platform {
             if let Ok(index) = key.parse::<usize>()
                 && index > 0
                 && index <= PAGES.len()
@@ -697,96 +712,189 @@ impl Desktop {
                 return;
             }
             if key == "f" {
-                self.search.update(cx, |state, cx| state.focus(window, cx));
+                self.focus_process_search(window, cx);
                 cx.stop_propagation();
                 return;
             }
         }
-        if key == "f5" {
-            self.act(Action::Refresh, window, cx);
+        if searching {
+            // ↓ leaves the search box for the list, selecting the first row if none is.
+            if key == "down" && !self.rows.is_empty() {
+                if !self
+                    .selected
+                    .get(&self.page)
+                    .is_some_and(|key| self.rows.iter().any(|row| &row.key == key))
+                {
+                    let first = self.rows[0].key.clone();
+                    self.act(Action::Select(first), window, cx);
+                }
+                self.focus.focus(window, cx);
+                cx.stop_propagation();
+            }
             return;
         }
-        if self.search.read(cx).focus_handle(cx).is_focused(window) {
-            return;
-        }
-        if matches!(key, "up" | "down" | "home" | "end") {
-            let current = self
-                .selected
-                .get(&self.page)
-                .and_then(|key| self.rows.iter().position(|r| &r.key == key))
-                .unwrap_or(0);
-            let index = match key {
-                "up" => current.saturating_sub(1),
-                "down" => (current + 1).min(self.rows.len().saturating_sub(1)),
-                "end" => self.rows.len().saturating_sub(1),
+        let list_page = matches!(
+            self.page.as_str(),
+            "processes" | "services" | "startup" | "network"
+        );
+        let selected = self
+            .selected
+            .get(&self.page)
+            .and_then(|key| self.rows.iter().position(|r| &r.key == key));
+        if list_page && matches!(key, "up" | "down" | "home" | "end" | "pageup" | "pagedown") {
+            let last = self.rows.len().saturating_sub(1);
+            // A page is the rows that fit, less one, as in the original.
+            let page = self
+                .table
+                .as_ref()
+                .map(|table| {
+                    let height = table
+                        .read(cx)
+                        .vertical_scroll_handle
+                        .0
+                        .borrow()
+                        .base_handle
+                        .bounds()
+                        .size
+                        .height;
+                    ((f32::from(height) / 30.).floor() as usize).saturating_sub(1)
+                })
+                .unwrap_or(10)
+                .max(1);
+            let index = match (key, selected) {
+                ("up", Some(i)) => i.saturating_sub(1),
+                ("down", Some(i)) => (i + 1).min(last),
+                ("pageup", Some(i)) => i.saturating_sub(page),
+                ("pagedown", Some(i)) => (i + page).min(last),
+                ("end", _) => last,
                 _ => 0,
             };
-            if let Some(row) = self.rows.get(index) {
-                self.act(Action::Select(row.key.clone()), window, cx);
+            if let Some(key) = self.rows.get(index).map(|row| row.key.clone()) {
+                // Keyboard moves select; they never toggle the selection off.
+                self.last_select = None;
+                self.act(Action::Select(key), window, cx);
                 if let Some(table) = &self.table {
                     table.update(cx, |state, cx| state.scroll_to_row(index, cx));
                 }
             }
             cx.stop_propagation();
-        } else if matches!(key, "left" | "right") && self.page == "processes" {
-            if let Some(index) = self
-                .selected
-                .get(&self.page)
-                .and_then(|selected| self.rows.iter().position(|row| &row.key == selected))
-            {
+            return;
+        }
+        if matches!(key, "left" | "right") && self.page == "processes" {
+            if let Some(index) = selected {
                 let row = self.rows[index].clone();
                 if row.expandable && row.expanded == (key == "left") {
                     self.act(Action::Fold(row.key), window, cx);
                 } else {
                     let next = if key == "right" && row.expanded {
                         self.rows.get(index + 1)
-                    } else if key == "left" {
-                        self.rows[..index]
-                            .iter()
-                            .rev()
-                            .find(|parent| parent.depth < row.depth)
+                    } else if key == "left" && row.section.is_none() {
+                        // From a top-level row, ← goes to its category heading.
+                        self.rows[..index].iter().rev().find(|parent| {
+                            parent.depth < row.depth || (row.depth == 0 && parent.section.is_some())
+                        })
                     } else {
                         None
                     };
                     if let Some(next) = next {
-                        self.act(Action::Select(next.key.clone()), window, cx);
+                        let key = next.key.clone();
+                        self.last_select = None;
+                        self.act(Action::Select(key), window, cx);
                     }
                 }
                 cx.stop_propagation();
             }
-        } else if key == "enter"
-            && let Some(key) = self.selected.get(&self.page)
+            return;
+        }
+        if matches!(key, "enter" | "space")
+            && let Some(index) = selected
         {
-            if self.page == "processes" {
-                self.act(Action::Details, window, cx);
-            } else {
-                self.act(Action::Fold(key.clone()), window, cx);
+            let row = self.rows[index].clone();
+            if row.section.is_some() {
+                self.act(Action::Fold(row.key), window, cx);
+            } else if key == "enter" {
+                self.activate_row(&row, window, cx);
             }
-        } else if (key == "delete" || (m.alt && key == "e")) && self.page == "processes" {
+            cx.stop_propagation();
+            return;
+        }
+        if self.page == "processes" && (key == "delete" || (m.alt && !m.shift && key == "e")) {
             self.open_selected_action("end", window, cx);
-            if m.shift {
+            if key == "delete" && m.shift {
                 self.confirm_dialog(window, cx);
             }
-        } else if matches!(
-            self.page.as_str(),
-            "processes" | "services" | "startup" | "network"
-        ) && !m.control
+            return;
+        }
+        if key == "/" && !m.control && !m.alt {
+            self.focus_process_search(window, cx);
+            cx.stop_propagation();
+            return;
+        }
+        // Typing a letter or digit on the process list starts or extends a search.
+        if self.page == "processes"
+            && !m.control
             && !m.alt
             && !m.platform
-            && key.chars().count() == 1
+            && !event.is_held
+            && let Some(typed) = event.keystroke.key_char.as_deref()
+            && typed.chars().count() == 1
+            && typed.chars().all(char::is_alphanumeric)
         {
-            if key == "/" {
-                self.search.update(cx, |state, cx| state.focus(window, cx));
-                cx.stop_propagation();
-                return;
-            }
+            let query = format!("{}{typed}", self.query);
             self.search.update(cx, |state, cx| {
-                state.set_value(key.to_owned(), window, cx);
+                state.set_value(query.clone(), window, cx);
                 state.focus(window, cx);
             });
-            self.query = key.into();
+            self.query = query;
             self.rebuild_rows(false, cx);
+            cx.stop_propagation();
             cx.notify();
+        }
+    }
+    /// Ctrl+F and "/": the process search, with its text selected.
+    fn focus_process_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page != "processes" {
+            self.act(Action::Page("processes".into()), window, cx);
+        }
+        self.search.update(cx, |state, cx| state.focus(window, cx));
+        window.defer(cx, |window, cx| {
+            window.dispatch_action(Box::new(gpui_kit::component::input::SelectAll), cx);
+        });
+    }
+    /// Enter or a double click: what the row's page does with it.
+    pub(in crate::frontend) fn activate_row(
+        &mut self,
+        row: &Row,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match self.page.as_str() {
+            "processes" => {
+                self.details_open = true;
+                self.prefs.set("detailsPanel", true);
+                cx.notify();
+            }
+            "startup" => {
+                if row.raw["blocked"].is_null() {
+                    self.act(
+                        Action::Invoke(
+                            "set_startup_enabled".into(),
+                            json!({"id": row.raw["id"], "enabled": !boolean(&row.raw, "enabled")}),
+                        ),
+                        window,
+                        cx,
+                    );
+                }
+            }
+            _ => {
+                if row.raw["pid"].as_u64().is_some_and(|pid| pid != 0) {
+                    self.act(
+                        Action::Preference("revealProcess".into(), json!({"pid": row.raw["pid"]})),
+                        window,
+                        cx,
+                    );
+                }
+            }
         }
     }
     pub(in crate::frontend) fn modifiers_changed(
@@ -1074,6 +1182,13 @@ impl Desktop {
             && let Some(row) = self.rows.get(index as usize)
         {
             self.act(Action::Select(row.key.clone()), window, cx);
+        }
+        if let Some(index) = control["rowMenu"].as_u64()
+            && let Some(row) = self.rows.get(index as usize).cloned()
+        {
+            self.selected.insert(self.page.clone(), row.key.clone());
+            let items = self.row_menu(&row);
+            self.open_popup(items, window, cx);
         }
         if control["dismiss"].as_bool() == Some(true) {
             self.act(Action::CloseOverlay, window, cx);

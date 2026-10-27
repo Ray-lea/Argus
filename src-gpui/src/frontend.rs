@@ -4,6 +4,7 @@ mod backend;
 mod charts;
 mod dialogs;
 mod layout;
+mod menus;
 mod model;
 mod motion;
 mod pages;
@@ -49,7 +50,6 @@ enum Action {
     Fold(String),
     Details,
     Pause,
-    Refresh,
     Interval(u64),
     Device(String),
     CpuMode(String),
@@ -67,6 +67,11 @@ struct MenuItem {
     action: Action,
     disabled: bool,
     checked: bool,
+    icon: Option<&'static str>,
+    danger: bool,
+    hint: Option<&'static str>,
+    separator: bool,
+    children: Vec<MenuItem>,
 }
 impl MenuItem {
     fn new(label: impl Into<String>, action: Action) -> Self {
@@ -75,6 +80,11 @@ impl MenuItem {
             action,
             disabled: false,
             checked: false,
+            icon: None,
+            danger: false,
+            hint: None,
+            separator: false,
+            children: Vec::new(),
         }
     }
     fn checked(mut self, checked: bool) -> Self {
@@ -136,6 +146,8 @@ struct Desktop {
     settings_target: Option<usize>,
     page: String,
     page_epoch: u64,
+    /// Where the last page change came from: -1, 0 (start-up) or 1.
+    page_direction: f32,
     render_count: u64,
     work: WorkCounters,
     frame_trace: Option<gpui_kit::gpui::profiler::FrameTimingCollector>,
@@ -181,6 +193,7 @@ struct Desktop {
     modal: Option<dialogs::Modal>,
     toast: Option<(String, Instant)>,
     last_poll: Instant,
+    last_privilege: Instant,
     last_select: Option<(String, Instant)>,
     filters: HashMap<String, String>,
     forms: HashMap<String, Entity<InputState>>,
@@ -233,6 +246,7 @@ impl Desktop {
                 options.page.clone()
             },
             page_epoch: 0,
+            page_direction: 0.,
             render_count: 0,
             work: WorkCounters::default(),
             frame_trace: None,
@@ -288,6 +302,7 @@ impl Desktop {
             modal: None,
             toast: None,
             last_poll: Instant::now() - Duration::from_secs(10),
+            last_privilege: Instant::now() - Duration::from_secs(60),
             last_select: None,
             filters: HashMap::new(),
             forms: HashMap::new(),
@@ -372,10 +387,24 @@ impl Desktop {
                         }
                         if this.host.get_window("main").is_some_and(|w| {
                             w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
-                        }) && this.last_poll.elapsed() >= Duration::from_secs(2)
-                        {
-                            this.last_poll = Instant::now();
-                            this.poll_page(window, cx);
+                        }) {
+                            if this.last_poll.elapsed() >= this.poll_interval() {
+                                this.last_poll = Instant::now();
+                                this.poll_page(window, cx);
+                            }
+                            // The privilege badge follows the service: it may start after Argus.
+                            if this.last_privilege.elapsed() >= Duration::from_secs(30)
+                                && !boolean(&this.data["info"], "elevated")
+                            {
+                                this.last_privilege = Instant::now();
+                                this.request(
+                                    "privileged_service_status",
+                                    json!({}),
+                                    Some("privilege"),
+                                    window,
+                                    cx,
+                                );
+                            }
                         }
                     })
                     .is_err()
@@ -403,8 +432,7 @@ impl Desktop {
         }
         this.poll_page(window, cx);
         if this.page != "processes" {
-            this.sort = "name".into();
-            this.descending = false;
+            (this.sort, this.descending) = tables::initial_sort(&this.page);
         }
         this.change_placeholder(window, cx);
         this.apply_motion(cx);

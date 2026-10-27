@@ -22,12 +22,37 @@ pub struct Palette {
     pub battery: Hsla,
     pub danger: Hsla,
     pub heat: Hsla,
+    pub stroke_strong: Hsla,
+}
+/// Large figures and titles use the display cut of the system font, like the original.
+pub const DISPLAY_FONT: &str = "Segoe UI Variable Display";
+/// A product token without a component-library role, for the active mode.
+pub fn role(cx: &App, key: &str) -> Hsla {
+    let mode = if cx.theme().mode == ThemeMode::Dark {
+        "dark"
+    } else {
+        "light"
+    };
+    parse_color(
+        design()[mode][key]
+            .as_str()
+            .or_else(|| design()["light"][key].as_str())
+            .expect("theme role"),
+    )
+}
+/// An original glyph by its file name, for glyphs without an icon name (layers).
+pub fn glyph(name: &str, color: Hsla) -> Icon {
+    Icon::empty()
+        .path(super::assets::glyph(name).expect("product glyph"))
+        .size_4()
+        .text_color(color)
 }
 impl Palette {
     pub fn current(cx: &App) -> Self {
         let theme = cx.theme();
         let colors = &theme.colors;
         Self {
+            stroke_strong: role(cx, "stroke-strong"),
             ink: colors.foreground,
             muted: colors.muted_foreground,
             faint: parse_color(
@@ -128,6 +153,10 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     theme.colors.table_head_foreground = color("ink-2");
     theme.colors.table_hover = color("hover");
     theme.colors.table_row_border = color("stroke").opacity(0.);
+    // Selected rows: the accent at 15%, with the bar drawn by the row itself.
+    theme.colors.table_active = theme.colors.primary.opacity(0.15);
+    theme.colors.table_active_border = theme.colors.primary.opacity(0.);
+    theme.list.active_highlight = true;
     theme.colors.tab_foreground = color("ink-2");
     theme.colors.tab_active_foreground = color("ink");
     theme.colors.tab_active = color("control-checked");
@@ -196,6 +225,15 @@ pub fn heat_alpha(field: &str, value: f64) -> f32 {
         value / rule["full"].as_f64().unwrap()
     };
     (level.clamp(0., 1.) * heat["opacity"].as_f64().unwrap()) as f32
+}
+/// The original's slower motion, 250 ms on the Fluent move curve; still under reduced motion.
+pub fn transition_slow(cx: &App) -> gpui_kit::base::motion::Transition {
+    gpui_kit::base::motion::Transition::new(if cx.reduce_motion() {
+        std::time::Duration::ZERO
+    } else {
+        std::time::Duration::from_millis(250)
+    })
+    .ease(gpui_kit::base::animation::cubic_bezier(0.33, 0., 0.1, 1.))
 }
 pub fn transition() -> gpui_kit::base::motion::Transition {
     gpui_kit::base::motion::Transition::new(motion_duration())
@@ -343,7 +381,22 @@ pub fn memory(value: f64) -> String {
     }
 }
 pub fn bytes(value: f64, rate: bool) -> String {
-    let suffix = if rate { "/s" } else { "" };
+    if rate {
+        // Rates read in whole kilobytes at least; idle shows a bare 0.
+        const KB: f64 = 1024.;
+        const MB: f64 = KB * 1024.;
+        const GB: f64 = MB * 1024.;
+        return if value < 1. {
+            "0".into()
+        } else if value < MB {
+            format!("{} KB/s", (value / KB).round().max(1.))
+        } else if value < GB {
+            format!("{:.1} MB/s", value / MB)
+        } else {
+            format!("{:.2} GB/s", value / GB)
+        };
+    }
+    let suffix = "";
     let mut amount = value;
     let mut unit = 0;
     while amount >= 1024. && unit < 4 {

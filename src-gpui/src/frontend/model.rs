@@ -157,6 +157,9 @@ pub struct Row {
     pub expandable: bool,
     pub section: Option<String>,
     pub mark_key: Option<String>,
+    /// The user's note and pin from the row marks.
+    pub note: Option<String>,
+    pub pinned: bool,
     visible_members: Option<Vec<Value>>,
 }
 impl Row {
@@ -179,6 +182,8 @@ impl Row {
             expandable: false,
             section: None,
             mark_key: None,
+            note: None,
+            pinned: false,
             visible_members: None,
         }
     }
@@ -219,20 +224,66 @@ pub struct ProcessOptions<'a> {
     pub expanded: &'a HashSet<String>,
     pub collapsed: &'a HashSet<String>,
     pub sections: &'a HashSet<String>,
+    /// Display names of the services each service-hosting process runs, by PID.
+    pub hosted: &'a HashMap<u64, Vec<String>>,
+}
+/// "DNS Client, DHCP Client and 3 more services": at most two names.
+pub fn summarize_services(names: &[String]) -> String {
+    let separator = argus_core::i18n::text("common.listSeparator");
+    if names.len() <= 2 {
+        names.join(&separator)
+    } else {
+        argus_core::tr!(
+            "processes.servicesSummary",
+            names = names[..2].join(&separator),
+            count = names.len()
+        )
+    }
 }
 pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row> {
-    let query = options.query.to_lowercase();
+    let mut rows = group_rows(processes, &options);
+    // A service host's description says nothing; the services it runs do. App
+    // rows keep their exe name; other hosts list their services as detail.
+    if !options.hosted.is_empty() {
+        for row in &mut rows {
+            if row.section.is_some() || row.members.len() > 1 {
+                continue;
+            }
+            let Some(names) = row.raw["pid"]
+                .as_u64()
+                .and_then(|pid| options.hosted.get(&pid))
+            else {
+                continue;
+            };
+            if text(&row.raw, "name").eq_ignore_ascii_case("svchost.exe") {
+                row.title =
+                    argus_core::tr!("processes.serviceHost", names = summarize_services(names));
+                row.detail = text(&row.raw, "name").to_owned();
+            } else if !(options.mode == "apps" && row.depth == 0) {
+                row.detail = summarize_services(names);
+            }
+        }
+    }
+    rows
+}
+fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
+    let query = options.query.trim().to_lowercase();
+    let numeric = !query.is_empty() && query.bytes().all(|b| b.is_ascii_digit());
     let matches = |p: &Value| {
+        let contains = |value: &str| value.to_lowercase().contains(&query);
         query.is_empty()
-            || [
-                text(p, "name"),
-                text(p, "description"),
-                text(p, "path"),
-                text(p, "user"),
-            ]
-            .iter()
-            .any(|s| s.to_lowercase().contains(&query))
-            || p["pid"].to_string().contains(&query)
+            || (numeric && p["pid"].to_string().starts_with(&query))
+            || contains(text(p, "name"))
+            || contains(text(p, "description"))
+            || contains(text(p, "company"))
+            || contains(text(p, "path"))
+            || contains(text(&p["webView"], "hostName"))
+            || contains(text(&p["webView"], "hostDescription"))
+            || web_role(p).is_some_and(|role| contains(&role))
+            || p["pid"]
+                .as_u64()
+                .and_then(|pid| options.hosted.get(&pid))
+                .is_some_and(|names| names.iter().any(|name| contains(name)))
     };
     let compare = |a: &Row, b: &Row| {
         let order = match options.sort {
@@ -682,6 +733,7 @@ mod tests {
                 expanded: &expanded,
                 collapsed: &empty,
                 sections: &empty,
+                hosted: &HashMap::new(),
             },
         );
         let members = rows.iter().filter(|row| row.depth == 1).collect::<Vec<_>>();
@@ -710,6 +762,7 @@ mod tests {
                 expanded: &expanded,
                 collapsed: &empty,
                 sections: &empty,
+                hosted: &HashMap::new(),
             },
         );
         assert_eq!(rows.len(), 3);
@@ -755,6 +808,7 @@ mod tests {
                 expanded: &empty,
                 collapsed: &empty,
                 sections: &empty,
+                hosted: &HashMap::new(),
             },
         );
         assert_eq!(rows.len(), 2);

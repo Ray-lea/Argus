@@ -69,6 +69,8 @@ impl Desktop {
             .into_any_element()
     }
 
+    /// The new page slides in from the side of its navigation entry: from the right
+    /// for a tab further right, from below for an entry further down the pane.
     pub(in crate::frontend) fn enter(
         &self,
         id: impl Into<ElementId>,
@@ -83,19 +85,27 @@ impl Desktop {
             .flex()
             .flex_col()
             .child(content);
-        if cx.reduce_motion() {
+        if cx.reduce_motion() || self.page_direction == 0. {
             self.page_opacity.set(1.);
             return element.into_any_element();
         }
         let opacity = self.page_opacity.clone();
+        let (dx, dy) = if self.nav_top {
+            (self.page_direction * 32., 0.)
+        } else {
+            (0., self.page_direction * 24.)
+        };
+        let ease = gpui_kit::base::animation::cubic_bezier(0.1, 0.9, 0.2, 1.);
         element
             .with_animation(
                 id,
-                Animation::new(theme::motion_duration())
-                    .with_easing(gpui_kit::base::animation::ease_out_cubic),
+                Animation::new(std::time::Duration::from_millis(300)).with_easing(ease),
                 move |element, progress| {
                     opacity.set(progress);
-                    element.opacity(progress).top(px((1. - progress) * 6.))
+                    element
+                        .opacity(progress)
+                        .left(px((1. - progress) * dx))
+                        .top(px((1. - progress) * dy))
                 },
             )
             .into_any_element()

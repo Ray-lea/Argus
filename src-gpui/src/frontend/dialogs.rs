@@ -1,5 +1,5 @@
 use super::*;
-use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::{ActiveTheme, WindowExt, dialog::Dialog};
 
 #[derive(Clone)]
@@ -20,27 +20,23 @@ impl Desktop {
         let owner = cx.entity().downgrade();
         let focus = self.focus.clone();
         let interval = self.interval;
-        let menu = PopupMenu::build(window, cx, move |mut menu, _, _| {
-            menu = menu.action_context(focus);
-            for item in items {
-                let owner = owner.clone();
-                let action = item.action;
-                let checked =
-                    item.checked || matches!(action, Action::Interval(ms) if ms == interval);
-                menu = menu.item(
-                    PopupMenuItem::new(item.label)
-                        .disabled(item.disabled)
-                        .checked(checked)
-                        .on_click(move |_, window, cx| {
-                            let owner = owner.clone();
-                            let action = action.clone();
-                            window.defer(cx, move |window, cx| {
-                                let _ = owner.update(cx, |this, cx| this.act(action, window, cx));
-                            });
-                        }),
-                );
-            }
-            menu
+        let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
+            let items = items
+                .iter()
+                .cloned()
+                .map(|item| {
+                    let checked = item.checked
+                        || matches!(item.action, Action::Interval(ms) if ms == interval);
+                    item.checked(checked)
+                })
+                .collect();
+            menus::fill_menu(
+                menu.action_context(focus.clone()),
+                items,
+                owner.clone(),
+                window,
+                cx,
+            )
         });
         let subscription = cx.subscribe_in(&menu, window, |this, menu, _: &DismissEvent, _, cx| {
             if this
@@ -59,180 +55,6 @@ impl Desktop {
             position: window.mouse_position(),
             _subscription: subscription,
         });
-    }
-    pub(in crate::frontend) fn row_menu(&self, row: &Row) -> Vec<MenuItem> {
-        if row.section.is_some() {
-            return vec![MenuItem::new(
-                label(if row.expanded {
-                    "common.collapse"
-                } else {
-                    "common.expand"
-                }),
-                Action::Fold(row.key.clone()),
-            )];
-        }
-        let mut items = vec![];
-        match self.page.as_str() {
-            "processes" => {
-                if self.data.get("desktopShell").is_some_and(|shell| {
-                    shell["pid"] == row.raw["pid"] && shell["createTime"] == row.raw["createTime"]
-                }) {
-                    items.push(MenuItem::new(
-                        label("tasks.explorer.restart"),
-                        Action::Dialog("restartExplorer".into(), row.raw.clone()),
-                    ));
-                }
-                let args = json!({"members":row.members,"name":row.title});
-                items.push(MenuItem::new(
-                    label("common.endProcess"),
-                    Action::Dialog("end".into(), args.clone()),
-                ));
-                items.push(MenuItem::new(
-                    label("common.endProcessTree"),
-                    Action::Dialog("endTree".into(), args.clone()),
-                ));
-                let current_priority = self
-                    .data
-                    .get(&format!("details:{}", row.key))
-                    .and_then(|info| info["priorityClass"].as_str())
-                    .or_else(|| row.raw["priorityClass"].as_str())
-                    .unwrap_or_default();
-                let priorities = [
-                    "idle",
-                    "belowNormal",
-                    "normal",
-                    "aboveNormal",
-                    "high",
-                    "realtime",
-                ]
-                .into_iter()
-                .map(|priority| {
-                    MenuItem::new(
-                        label(&format!("processes.priority.{priority}")),
-                        Action::Dialog(
-                            "priority".into(),
-                            json!({"members":row.members,"name":row.title,"priority":priority}),
-                        ),
-                    )
-                    .checked(current_priority == priority)
-                })
-                .collect();
-                items.push(MenuItem::new(
-                    label("processes.menu.setPriority"),
-                    Action::Popup(priorities),
-                ));
-                items.push(
-                    MenuItem::new(
-                        label("common.efficiencyMode"),
-                        Action::Dialog(
-                            "efficiency".into(),
-                            json!({"members":row.members,"name":row.title,"on":!boolean(&row.raw,"efficiency")}),
-                        ),
-                    )
-                    .checked(boolean(&row.raw, "efficiency")),
-                );
-                items.push(MenuItem::new(
-                    label("processes.menu.addRule"),
-                    Action::Dialog("ruleScope".into(), json!({"name":text(&row.raw,"name")})),
-                ));
-                if row.members.len() == 1 {
-                    items.push(MenuItem::new(
-                        label("processes.menu.copyPid"),
-                        Action::Copy(row.raw["pid"].to_string()),
-                    ));
-                }
-                items.push(MenuItem::new(
-                    label("processes.menu.details"),
-                    Action::Select(row.key.clone()),
-                ));
-            }
-            "services" => {
-                let state = text(&row.raw, "state");
-                for (action, key, disabled) in [
-                    ("start", "common.start", state == "running"),
-                    ("stop", "common.stop", state == "stopped"),
-                    ("restart", "common.restart", state == "stopped"),
-                ] {
-                    items.push(
-                        MenuItem::new(
-                            label(key),
-                            Action::Invoke(
-                                "control_service".into(),
-                                json!({"name":text(&row.raw,"name"),"action":action}),
-                            ),
-                        )
-                        .disabled(disabled),
-                    );
-                }
-                let current_start = text(&row.raw, "startType");
-                for start_type in ["auto", "autoDelayed", "manual", "disabled"] {
-                    items.push(
-                        MenuItem::new(
-                            label(&format!("services.startType.{start_type}")),
-                            Action::Invoke(
-                                "set_service_start_type".into(),
-                                json!({"name":text(&row.raw,"name"),"startType":start_type}),
-                            ),
-                        )
-                        .checked(current_start == start_type),
-                    );
-                }
-            }
-            "startup" => items.push(MenuItem::new(
-                label(if boolean(&row.raw, "enabled") {
-                    "common.disable"
-                } else {
-                    "common.enable"
-                }),
-                Action::Invoke(
-                    "set_startup_enabled".into(),
-                    json!({"id":row.raw["id"],"enabled":!boolean(&row.raw,"enabled")}),
-                ),
-            )),
-            "network" => {
-                if text(&row.raw, "protocol") == "tcp" && text(&row.raw, "state") == "established" {
-                    items.push(MenuItem::new(
-                        label("connections.menu.close"),
-                        Action::Dialog("closeConnection".into(), row.raw.clone()),
-                    ));
-                }
-                items.push(MenuItem::new(
-                    label("common.goToProcess"),
-                    Action::Preference("revealProcess".into(), row.raw.clone()),
-                ));
-            }
-            _ => {}
-        }
-        if let Some(path) = row.raw["path"].as_str().filter(|p| !p.is_empty()) {
-            items.push(MenuItem::new(
-                label("common.openFileLocation"),
-                Action::Invoke("reveal_in_explorer".into(), json!({"path":path})),
-            ));
-            items.push(MenuItem::new(
-                label("common.copyPath"),
-                Action::Copy(path.into()),
-            ));
-        }
-        items.push(MenuItem::new(
-            label("common.copyName"),
-            Action::Copy(row.title.clone()),
-        ));
-        if let Some(key) = &row.mark_key {
-            items.push(MenuItem::new(
-                label("common.marks.addNote"),
-                Action::Dialog("note".into(), json!({"key":key,"name":row.title})),
-            ));
-            let pinned = boolean(&self.marks()[key], "pinned");
-            items.push(MenuItem::new(
-                label(if pinned {
-                    "common.marks.unpin"
-                } else {
-                    "common.marks.pin"
-                }),
-                Action::Preference("pin".into(), json!(key)),
-            ));
-        }
-        items
     }
     pub(in crate::frontend) fn open_selected_action(
         &mut self,

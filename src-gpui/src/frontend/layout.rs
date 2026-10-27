@@ -61,135 +61,258 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let p = self.palette;
+        let selected = PAGES
+            .iter()
+            .position(|page| page.0 == self.page)
+            .unwrap_or(0);
+        let regions = *self.navigation_regions.borrow();
+        let owner = cx.entity().downgrade();
+        let hover = p.hover;
+        let press = theme::role(cx, "press");
+        let hover_strong = theme::role(cx, "hover-strong");
+        let update_waiting = self
+            .data
+            .get("updates")
+            .is_some_and(|s| matches!(text(s, "state"), "ready" | "available"));
+        let slide = theme::transition_slow(cx);
+        let marker_width = theme::dimension("navigationIndicatorWidth");
+        let marker_x = gpui_kit::base::motion::transition(
+            "page-navigation-indicator",
+            regions[selected + 1].center().x - regions[0].left() - marker_width / 2.,
+            slide.clone(),
+            window,
+            cx,
+        );
+        let marker_y = gpui_kit::base::motion::transition(
+            "page-navigation-pane-indicator",
+            regions[selected + 1].center().y - regions[0].top() - px(8.),
+            slide,
+            window,
+            cx,
+        );
+        let entry = |index: usize, page: &'static str, glyph: &'static str| {
+            let name = label(&format!("shell.page.{page}"));
+            let chosen = index == selected;
+            let title = tr!("shell.pageTitle", page = name.clone(), key = index + 1);
+            let has_dot = page == "settings" && update_waiting;
+            let dot =
+                move || has_dot.then(|| div().absolute().size(px(6.)).rounded_full().bg(p.accent));
+            gpui_kit::base::Tab::new(("page", index))
+                .selected(chosen)
+                .set_position(index + 1, PAGES.len())
+                .accessibility_label(name.clone())
+                .relative()
+                .flex()
+                .flex_shrink_0()
+                .items_center()
+                .rounded(px(4.))
+                .px(px(12.))
+                .text_color(if chosen { p.ink } else { p.muted })
+                .hover(move |s| s.bg(hover).text_color(p.ink))
+                .active(move |s| s.bg(press))
+                .tooltip(move |window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(window, cx)
+                })
+                .on_prepaint(track_region(
+                    index + 1,
+                    self.navigation_regions.clone(),
+                    owner.clone(),
+                ))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.act(Action::Page(page.into()), window, cx);
+                }))
+                .when(top, |tab| {
+                    // The semibold width is reserved, so choosing a tab never moves the others.
+                    tab.h(px(32.)).child(
+                        div()
+                            .relative()
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .invisible()
+                                    .child(name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .flex()
+                                    .justify_center()
+                                    .when(chosen, |d| d.font_weight(FontWeight::SEMIBOLD))
+                                    .child(name.clone()),
+                            )
+                            .children(dot().map(|dot| dot.top(px(-1.)).right(px(-7.)))),
+                    )
+                })
+                .when(!top, |tab| {
+                    tab.h(px(36.))
+                        .justify_start()
+                        .gap(px(12.))
+                        .when(chosen, |tab| tab.bg(hover_strong))
+                        .child(
+                            div()
+                                .relative()
+                                .flex_shrink_0()
+                                .child(icon(glyph, if chosen { p.ink } else { p.muted }))
+                                .children(dot().map(|dot| dot.top(px(-2.)).right(px(-3.)))),
+                        )
+                        .when(self.nav_expanded, |tab| {
+                            tab.child(div().min_w_0().truncate().child(name.clone()))
+                        })
+                })
+        };
         if top {
-            let p = self.palette;
-            let selected = PAGES
-                .iter()
-                .position(|page| page.0 == self.page)
-                .unwrap_or(0);
-            let regions = *self.navigation_regions.borrow();
-            let marker_width = theme::dimension("navigationIndicatorWidth");
-            let marker_x = gpui_kit::base::motion::transition(
-                "page-navigation-indicator",
-                regions[selected + 1].center().x - regions[0].left() - marker_width / 2.,
-                theme::transition(),
-                window,
-                cx,
-            );
-            let owner = cx.entity().downgrade();
             let tabs = gpui_kit::base::Tabs::new("page-navigation")
                 .relative()
                 .flex()
-                .gap_1()
-                .h(theme::dimension("navigationHeight"))
+                .gap(px(2.))
                 .on_prepaint(track_region(
                     0,
                     self.navigation_regions.clone(),
                     owner.clone(),
                 ))
-                .children(PAGES.iter().enumerate().map(|(index, (page, _))| {
-                    let name = label(&format!("shell.page.{page}"));
-                    gpui_kit::base::Tab::new(("page", index))
-                        .selected(index == selected)
-                        .set_position(index + 1, PAGES.len())
-                        .accessibility_label(name.clone())
-                        .px_2()
-                        .h_full()
-                        .cursor_pointer()
-                        .text_color(self.palette.muted)
-                        .rounded_md()
-                        .hover(move |style| style.bg(p.hover).text_color(p.ink))
-                        .when(index == selected, |tab| {
-                            tab.text_color(self.palette.ink)
-                                .font_weight(FontWeight::SEMIBOLD)
-                        })
-                        .child(name)
-                        .on_prepaint(track_region(
-                            index + 1,
-                            self.navigation_regions.clone(),
-                            owner.clone(),
-                        ))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.act(Action::Page((*page).into()), window, cx);
-                        }))
-                }))
+                .children(
+                    PAGES
+                        .iter()
+                        .enumerate()
+                        .map(|(index, (page, glyph))| entry(index, page, glyph)),
+                )
                 .when(regions[selected + 1].size.width > px(0.), |tabs| {
                     tabs.child(
                         div()
                             .absolute()
-                            .bottom_0()
+                            .bottom(px(2.))
                             .left(marker_x)
                             .w(marker_width)
                             .h(theme::dimension("navigationIndicatorHeight"))
-                            .rounded_full()
-                            .bg(self.palette.accent),
+                            .rounded(px(2.))
+                            .bg(p.accent),
                     )
                 });
             return div()
-                .px_4()
+                .px(px(12.))
                 .pb(px(6.))
                 .flex_shrink_0()
                 .child(tabs)
                 .into_any_element();
         }
-        let mut nav = div()
+        let toggle_tip = label(if self.nav_expanded {
+            "shell.nav.collapse"
+        } else {
+            "shell.nav.expand"
+        });
+        let mut items = gpui_kit::base::Tabs::new("page-navigation")
+            .relative()
             .flex()
-            .flex_shrink_0()
-            .gap_1()
-            .when(top, |d| d.px_3().pb_2().flex_wrap())
-            .when(!top, |d| {
-                d.flex_col()
-                    .px_1()
-                    .pb_2()
-                    .when(self.nav_expanded, |d| d.w_48())
-                    .when(!self.nav_expanded, |d| d.w_12())
-            });
-        if !top {
-            nav = nav.child(self.button(
-                "nav-toggle",
-                "",
-                Some("MenuIcon"),
-                Action::Preference("navExpanded".into(), json!(!self.nav_expanded)),
-                false,
-                cx,
+            .flex_col()
+            .flex_1()
+            .gap(px(4.))
+            .on_prepaint(track_region(
+                0,
+                self.navigation_regions.clone(),
+                owner.clone(),
             ));
-        }
-        for (page, glyph) in PAGES {
-            if !top && page == "settings" {
-                nav = nav.child(div().flex_1());
+        for (index, (page, glyph)) in PAGES.iter().enumerate() {
+            if *page == "settings" {
+                items = items.child(div().flex_1());
             }
-            let name = label(&format!("shell.page.{page}"));
-            nav = nav.child(
-                self.button(
-                    format!("nav-{page}"),
-                    if top || self.nav_expanded {
-                        name.clone()
-                    } else {
-                        String::new()
-                    },
-                    (!top).then_some(glyph),
-                    Action::Page(page.into()),
-                    page == self.page,
-                    cx,
-                )
-                .relative()
-                .justify_start()
-                .when(page == self.page, |b| {
-                    b.child(
-                        div()
-                            .absolute()
-                            .left_0()
-                            .w_1()
-                            .h_4()
-                            .rounded_full()
-                            .bg(self.palette.accent),
-                    )
-                })
-                .role(Role::Tab)
-                .accessibility_label(name),
+            items = items.child(entry(index, page, glyph));
+        }
+        if regions[selected + 1].size.height > px(0.) {
+            items = items.child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .top(marker_y)
+                    .w(px(3.))
+                    .h(px(16.))
+                    .rounded(px(2.))
+                    .bg(p.accent),
             );
         }
-        nav.into_any_element()
+        div()
+            .flex()
+            .flex_col()
+            .flex_shrink_0()
+            .gap(px(4.))
+            .px(px(4.))
+            .pb(px(8.))
+            .w(px(if self.nav_expanded { 184. } else { 48. }))
+            .child(
+                Button::new("nav-toggle")
+                    .h(px(36.))
+                    .px(px(12.))
+                    .flex()
+                    .items_center()
+                    .rounded(px(4.))
+                    .hover(move |s| s.bg(hover))
+                    .active(move |s| s.bg(press))
+                    .accessibility_label(toggle_tip.clone())
+                    .child(icon("MenuIcon", p.muted))
+                    .tooltip(move |window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(toggle_tip.clone())
+                            .build(window, cx)
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.act(
+                            Action::Preference("navExpanded".into(), json!(!this.nav_expanded)),
+                            window,
+                            cx,
+                        )
+                    })),
+            )
+            .child(items)
+            .into_any_element()
+    }
+    /// A toolbar button in the original `.btn` style: 32 px, a stroke border with a
+    /// stronger bottom edge, the control surface, and the accent while pressed.
+    /// Without text it is a square icon button.
+    pub(in crate::frontend) fn tool_button(
+        &self,
+        id: impl Into<SharedString>,
+        text: impl Into<SharedString>,
+        glyph: Option<&str>,
+        action: Action,
+        pressed: bool,
+        cx: &Context<Self>,
+    ) -> Button {
+        let text = text.into();
+        let p = self.palette;
+        let hover = theme::role(cx, "control-hover");
+        let press = theme::role(cx, "press");
+        let color = if pressed { p.accent } else { p.ink };
+        Button::new(id.into())
+            .relative()
+            .h(px(32.))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .gap(px(6.))
+            .when(text.is_empty(), |b| b.w(px(32.)))
+            .when(!text.is_empty(), |b| b.px(px(12.)))
+            .rounded(px(4.))
+            .border_1()
+            .border_color(p.stroke)
+            .bg(p.control)
+            .text_color(color)
+            .hover(move |s| s.bg(hover))
+            .active(move |s| s.bg(press).text_color(p.muted))
+            .accessibility_label(text.clone())
+            .child(
+                div()
+                    .absolute()
+                    .left(px(3.))
+                    .right(px(3.))
+                    .bottom(px(-1.))
+                    .h(px(1.))
+                    .bg(p.stroke_strong),
+            )
+            .when_some(glyph, |b, name| b.child(icon(name, color)))
+            .when(!text.is_empty(), |b| b.child(text))
+            .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
     }
     pub(in crate::frontend) fn toolbar(
         &mut self,
@@ -197,6 +320,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
+        let wide = window.viewport_size().width >= px(1100.);
         let mut controls = div()
             .flex()
             .items_center()
@@ -236,13 +360,13 @@ impl Desktop {
         let mut trailing = div()
             .flex()
             .items_center()
-            .gap_1()
+            .gap_2()
             .flex_shrink_0()
             .occlude()
             .child(
-                self.button(
+                self.tool_button(
                     "task",
-                    if window.viewport_size().width > px(1100.) {
+                    if wide {
                         label("tasks.title")
                     } else {
                         String::new()
@@ -252,81 +376,120 @@ impl Desktop {
                     false,
                     cx,
                 )
-                .border_1()
-                .border_color(p.stroke)
-                .bg(p.control)
-                .accessibility_label(label("tasks.title")),
+                .accessibility_label(label("tasks.title"))
+                .tooltip(|window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(label("tasks.title"))
+                        .build(window, cx)
+                }),
             );
-
-        let intervals = [500, 1000, 2000, 5000]
-            .into_iter()
-            .map(|ms| {
-                MenuItem::new(
-                    tr!("shell.interval.option", seconds = ms as f64 / 1000.),
-                    Action::Interval(ms),
-                )
-            })
-            .collect();
+        if self.page == "services" {
+            trailing = trailing.child(self.service_actions(wide, cx));
+        }
         if sampled {
+            let intervals = [500, 1000, 2000, 5000]
+                .into_iter()
+                .map(|ms| {
+                    MenuItem::new(
+                        tr!("shell.interval.option", seconds = ms as f64 / 1000.),
+                        Action::Interval(ms),
+                    )
+                    .checked(ms == self.interval)
+                })
+                .collect::<Vec<_>>();
+            let hover = theme::role(cx, "control-hover");
             trailing = trailing.child(
-                self.button(
-                    "interval",
-                    tr!(
+                Button::new("interval")
+                    .relative()
+                    .h(px(32.))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .pl(px(11.))
+                    .pr(px(10.))
+                    .rounded(px(4.))
+                    .border_1()
+                    .border_color(p.stroke)
+                    .bg(p.control)
+                    .text_color(p.ink)
+                    .hover(move |s| s.bg(hover))
+                    .accessibility_label(label("shell.interval.label"))
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(3.))
+                            .right(px(3.))
+                            .bottom(px(-1.))
+                            .h(px(1.))
+                            .bg(p.stroke_strong),
+                    )
+                    .child(tr!(
                         "shell.interval.option",
                         seconds = self.interval as f64 / 1000.
-                    ),
-                    Some("ChevronDown"),
-                    Action::Popup(intervals),
-                    false,
+                    ))
+                    .child(icon("ChevronDown", p.muted).size(px(12.)))
+                    .tooltip(|window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(label("shell.interval.label"))
+                            .build(window, cx)
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.act(Action::Popup(intervals.clone()), window, cx)
+                    }))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+            );
+            let pause_tip = if self.paused {
+                label("shell.resume")
+            } else {
+                label("shell.pause")
+            };
+            trailing = trailing.child(
+                self.tool_button(
+                    "pause",
+                    String::new(),
+                    Some(if self.paused { "PlayIcon" } else { "PauseIcon" }),
+                    Action::Pause,
+                    self.paused,
                     cx,
                 )
-                .border_1()
-                .border_color(p.stroke)
-                .bg(p.control),
+                .accessibility_label(pause_tip.clone())
+                .tooltip(move |window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(pause_tip.clone()).build(window, cx)
+                }),
             );
         }
-        for (id, key, glyph, action) in [
-            (
-                "pause",
-                if self.paused {
-                    "shell.resume"
-                } else {
-                    "shell.pause"
-                },
-                if self.paused { "PlayIcon" } else { "PauseIcon" },
-                Action::Pause,
-            ),
-            (
+        trailing = trailing.child(
+            self.tool_button(
                 "lock",
-                "shell.fileLock.label",
-                "LockIcon",
+                String::new(),
+                Some("LockIcon"),
                 Action::Dialog("filelock".into(), json!({})),
-            ),
-            (
-                "details",
-                "shell.details.label",
-                "PanelIcon",
-                Action::Details,
-            ),
-        ] {
-            if (id == "details" && self.page != "processes") || (id == "pause" && !sampled) {
-                continue;
-            }
+                false,
+                cx,
+            )
+            .accessibility_label(label("shell.fileLock.label"))
+            .tooltip(|window, cx| {
+                gpui_kit::component::tooltip::Tooltip::new(label("shell.fileLock.title"))
+                    .build(window, cx)
+            }),
+        );
+        if self.page == "processes" {
+            let tip = label(if self.details_open {
+                "shell.details.hide"
+            } else {
+                "shell.details.show"
+            });
             trailing = trailing.child(
-                self.button(
-                    id,
+                self.tool_button(
+                    "details",
                     String::new(),
-                    Some(glyph),
-                    action,
-                    (id == "pause" && self.paused) || (id == "details" && self.details_open),
+                    Some("PanelIcon"),
+                    Action::Details,
+                    self.details_open,
                     cx,
                 )
-                .border_1()
-                .border_color(p.stroke)
-                .bg(p.control)
-                .accessibility_label(label(key))
+                .accessibility_label(label("shell.details.label"))
                 .tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(label(key)).build(window, cx)
+                    gpui_kit::component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
                 }),
             );
         }
@@ -335,21 +498,34 @@ impl Desktop {
             .get("updates")
             .filter(|s| matches!(text(s, "state"), "ready" | "available" | "downloading"))
         {
-            let ver = text(updates, "version");
-            trailing = trailing.child(
-                self.button(
-                    "update-status",
-                    ver.to_owned(),
-                    Some("DownloadIcon"),
-                    Action::Dialog("update".into(), json!({})),
-                    false,
-                    cx,
+            // An icon filled with the accent; the version is in the tooltip.
+            let title = if text(updates, "state") == "available" {
+                tr!(
+                    "updates.button.availableTitle",
+                    version = text(updates, "version")
                 )
-                .border_1()
-                .border_color(p.accent.opacity(0.45))
-                .bg(p.accent.opacity(0.14))
-                .text_color(p.accent)
-                .accessibility_label(label("settings.update.check")),
+            } else {
+                tr!("updates.button.title", version = text(updates, "version"))
+            };
+            let on_accent = theme::role(cx, "on-accent");
+            trailing = trailing.child(
+                Button::new("update-status")
+                    .size(px(32.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded_full()
+                    .bg(p.accent)
+                    .hover(|s| s.opacity(0.92))
+                    .accessibility_label(title.clone())
+                    .child(icon("UpdateIcon", on_accent))
+                    .tooltip(move |window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(window, cx)
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.act(Action::Dialog("update".into(), json!({})), window, cx)
+                    }))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
             );
         }
         let owner = cx.entity().downgrade();
@@ -362,9 +538,14 @@ impl Desktop {
                 div()
                     .flex()
                     .items_center()
-                    .gap_2()
+                    .gap(px(10.))
+                    .pl(px(4.))
+                    .when(!self.nav_top, |d| {
+                        d.min_w(px(if self.nav_expanded { 184. } else { 48. }) - px(8.))
+                    })
+                    .text_size(px(12.))
                     .text_color(p.ink)
-                    .child(img("argus/logo.svg").size_5())
+                    .child(img("argus/logo.svg").size(px(18.)))
                     .child(argus_app::config::app_title()),
             )
             .child(controls)
@@ -386,7 +567,10 @@ impl Desktop {
                             .flex()
                             .items_center()
                             .justify_between()
-                            .px_1()
+                            .pt(px(14.))
+                            .pb(px(10.))
+                            .pl(px(12.))
+                            .pr(px(4.))
                             .gap_2()
                             .child(start)
                             .child(div().flex_1())
@@ -404,38 +588,163 @@ impl Desktop {
                 let width = (right - left).min(theme::dimension("searchWidth"));
                 let centered = (window.viewport_size().width - width) / 2.;
                 let x = centered.max(left).min(right - width);
+                let filled = !self.query.trim().is_empty();
+                let focused = self.search.read(cx).focus_handle(cx).is_focused(window);
+                let hover = theme::role(cx, "control-hover");
+                let layer_strong = theme::role(cx, "layer-strong");
+                let (border, edge, edge_width, background) = if filled {
+                    (
+                        p.accent.opacity(0.55),
+                        p.accent,
+                        if focused { 2. } else { 1. },
+                        p.accent.opacity(0.09),
+                    )
+                } else if focused {
+                    (p.stroke, p.accent, 2., layer_strong)
+                } else {
+                    (p.stroke, p.stroke_strong, 1., p.control)
+                };
                 toolbar = toolbar.child(
                     div()
+                        .id("toolbar-search")
                         .absolute()
                         .left(x)
-                        .top(
-                            (theme::dimension("toolbarHeight") - theme::dimension("controlHeight"))
-                                / 2.,
-                        )
-                        .h(theme::dimension("controlHeight"))
+                        .top(px(14.))
+                        .h(px(32.))
                         .w(width)
                         .flex()
                         .items_center()
+                        .rounded(px(4.))
+                        .border_1()
+                        .border_color(border)
+                        .bg(background)
+                        .when(!filled && !focused, |d| d.hover(move |s| s.bg(hover)))
+                        .overflow_hidden()
                         .occlude()
                         .child(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .right_0()
+                                .bottom(px(-1.))
+                                .h(px(edge_width))
+                                .bg(edge),
+                        )
+                        .child(
                             Input::new(&self.search)
+                                .appearance(false)
                                 .cleanable(true)
-                                .prefix(icon("SearchIcon", p.muted)),
+                                .h_full()
+                                .pl(px(10.))
+                                .prefix(icon(
+                                    "SearchIcon",
+                                    if filled { p.accent } else { p.muted },
+                                )),
                         ),
                 );
             }
         }
         toolbar.into_any_element()
     }
-    pub(in crate::frontend) fn statusbar(&self, cx: &Context<Self>) -> AnyElement {
+    /// What can be done to the selected service, after "Run new task".
+    fn service_actions(&self, wide: bool, cx: &Context<Self>) -> Div {
+        let services = self.data.get("services").map(values).unwrap_or_default();
+        let selected = self
+            .selected
+            .get("services")
+            .and_then(|name| services.iter().find(|s| text(s, "name") == name));
+        let pending = selected.is_none_or(|s| text(s, "state").ends_with("Pending"));
+        let mut row = div().flex().items_center().gap_2();
+        for (id, glyph, action, title, disabled) in [
+            (
+                "svc-start",
+                "PlayIcon",
+                "start",
+                "common.start",
+                pending || selected.is_some_and(|s| text(s, "state") == "running"),
+            ),
+            (
+                "svc-stop",
+                "StopIcon",
+                "stop",
+                "common.stop",
+                pending || !selected.is_some_and(|s| boolean(s, "canStop")),
+            ),
+            (
+                "svc-restart",
+                "RestartIcon",
+                "restart",
+                "common.restart",
+                pending || !selected.is_some_and(|s| boolean(s, "canStop")),
+            ),
+        ] {
+            let name = selected
+                .map(|s| text(s, "name").to_owned())
+                .unwrap_or_default();
+            let tip = label(title);
+            row = row.child(
+                self.tool_button(
+                    id,
+                    String::new(),
+                    Some(glyph),
+                    Action::Invoke(
+                        "control_service".into(),
+                        json!({"name": name, "action": action}),
+                    ),
+                    false,
+                    cx,
+                )
+                .disabled(disabled)
+                .when(disabled, |b| b.opacity(0.4))
+                .accessibility_label(label(&format!("services.control.{action}")))
+                .tooltip(move |window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
+                }),
+            );
+        }
+        let p = self.palette;
+        let hover = p.hover;
+        row.child(
+            Button::new("services-console")
+                .h(px(32.))
+                .px(px(12.))
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .rounded(px(4.))
+                .text_color(p.ink)
+                .hover(move |s| s.bg(hover))
+                .accessibility_label(label("services.control.openConsoleTitle"))
+                .child(icon("ExternalIcon", p.ink))
+                .when(wide, |b| b.child(label("services.control.openConsole")))
+                .tooltip(|window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(label(
+                        "services.control.openConsoleTitle",
+                    ))
+                    .build(window, cx)
+                })
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.act(
+                        Action::Invoke("open_services_console".into(), json!({})),
+                        window,
+                        cx,
+                    )
+                })),
+        )
+        .child(div().w(px(1.)).h(px(20.)).mx_1().bg(p.stroke))
+    }
+    pub(in crate::frontend) fn statusbar(&self) -> AnyElement {
         let p = self.palette;
         let sys = &self.snapshot["system"];
-        let mut left = div()
+        let mut figures = div()
             .flex()
-            .gap_4()
-            .items_center()
+            .flex_wrap()
             .flex_1()
-            .overflow_hidden();
+            .min_w_0()
+            .h(px(17.))
+            .overflow_hidden()
+            .gap_x(px(20.));
+        let cached = format!("{:.1} GB", number(sys, "cached") / 1073741824.);
         for (key, value) in [
             (
                 "shell.status.threads",
@@ -445,17 +754,17 @@ impl Desktop {
                 "shell.status.handles",
                 theme::count(number(sys, "handleCount")),
             ),
-            ("shell.status.cached", theme::memory(number(sys, "cached"))),
+            ("shell.status.cached", cached),
             (
                 "shell.status.pagedPool",
                 theme::memory(number(sys, "kernelPaged")),
             ),
             (
                 "shell.status.uptime",
-                theme::uptime(number(sys, "uptimeMs") / 1000.),
+                status_uptime(number(sys, "uptimeMs") / 1000.),
             ),
         ] {
-            left = left.child(
+            figures = figures.child(
                 div()
                     .flex()
                     .gap_1()
@@ -464,46 +773,86 @@ impl Desktop {
                     .child(div().text_color(p.muted).child(value)),
             );
         }
+        let privilege = if boolean(&self.data["info"], "elevated") {
+            "admin"
+        } else if self.data.get("privilege").is_some_and(|s| {
+            text(s, "state") == "running" && boolean(s, "authorized") && s["error"].is_null()
+        }) {
+            "service"
+        } else {
+            "standard"
+        };
+        let (badge_border, badge_color) = match privilege {
+            "admin" => (p.accent.opacity(0.4), p.accent),
+            "service" => (p.network.opacity(0.4), p.network),
+            _ => (p.stroke, p.muted),
+        };
+        let hint = label(&format!("shell.elevation.{privilege}Hint"));
         div()
-            .h(theme::dimension("statusHeight"))
-            .px_4()
+            .pt(px(6.))
+            .pb(px(8.))
+            .px(px(16.))
             .flex_shrink_0()
             .flex()
             .items_center()
-            .gap_4()
-            .text_xs()
+            .gap(px(20.))
+            .text_size(px(12.))
             .text_color(p.faint)
-            .child(left)
-            .child(div().text_color(p.accent).child(if self.paused {
-                tr!("shell.status.paused")
-            } else if self.held_order {
-                tr!("shell.status.orderHeld")
-            } else {
-                tr!(
-                    "shell.status.interval",
-                    seconds = self.interval as f64 / 1000.
-                )
-            }))
+            .whitespace_nowrap()
+            .child(figures)
+            .when(
+                self.held_order && self.pointer_in_table && !self.paused,
+                |d| {
+                    d.child(
+                        div()
+                            .id("order-held")
+                            .child(label("shell.status.orderHeld"))
+                            .tooltip(|window, cx| {
+                                gpui_kit::component::tooltip::Tooltip::new(label(
+                                    "shell.status.orderHeldHint",
+                                ))
+                                .build(window, cx)
+                            }),
+                    )
+                },
+            )
             .child(
-                self.button(
-                    "privilege-badge",
-                    label(if boolean(&self.data["info"], "elevated") {
-                        "shell.elevation.admin"
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .child(div().size(px(6.)).rounded_full().bg(if self.paused {
+                        p.faint
                     } else {
-                        "shell.elevation.standard"
+                        p.cpu
+                    }))
+                    .child(if self.paused {
+                        tr!("shell.status.paused")
+                    } else {
+                        tr!(
+                            "shell.status.interval",
+                            seconds = self.interval as f64 / 1000.
+                        )
                     }),
-                    None,
-                    Action::Page("settings".into()),
-                    false,
-                    cx,
-                )
-                .min_h_0()
-                .h_5()
-                .py_0()
-                .border_1()
-                .border_color(p.stroke)
-                .rounded_full()
-                .text_xs(),
+            )
+            .child(
+                div()
+                    .id("privilege-badge")
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .h(px(20.))
+                    .my(px(-2.))
+                    .px(px(8.))
+                    .border_1()
+                    .border_color(badge_border)
+                    .rounded_full()
+                    .text_color(badge_color)
+                    .child(icon("ShieldIcon", badge_color).size(px(12.)))
+                    .child(label(&format!("shell.elevation.{privilege}")))
+                    .tooltip(move |window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(hint.clone()).build(window, cx)
+                    }),
             )
             .into_any_element()
     }
@@ -537,7 +886,7 @@ impl Render for Desktop {
         let p = self.palette;
         let toolbar = self.toolbar(window, cx);
         let content = self.page_content(window, cx);
-        let footer = self.statusbar(cx);
+        let footer = self.statusbar();
         let body = div()
             .flex_1()
             .min_h_0()
@@ -636,5 +985,18 @@ fn track_region<const N: usize>(
         window.defer(cx, move |_, cx| {
             let _ = owner.update(cx, |_, cx| cx.notify());
         });
+    }
+}
+
+/// Up time in the status bar, in words: days and hours, hours and minutes, or minutes and seconds.
+fn status_uptime(seconds: f64) -> String {
+    let s = seconds as u64;
+    let (days, hours, minutes) = (s / 86400, s % 86400 / 3600, s % 3600 / 60);
+    if days > 0 {
+        tr!("format.uptime.days", days = days, hours = hours)
+    } else if hours > 0 {
+        tr!("format.uptime.hours", hours = hours, minutes = minutes)
+    } else {
+        tr!("format.uptime.minutes", minutes = minutes, seconds = s % 60)
     }
 }
