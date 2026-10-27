@@ -32,6 +32,7 @@ struct Texture {
     plot_size: Size<Pixels>,
     geometry_start: f64,
     span: f64,
+    max: f64,
 }
 pub(in crate::frontend) struct ImageSurface {
     owner: EntityId,
@@ -42,15 +43,19 @@ pub(in crate::frontend) struct ImageSurface {
     plot_size: Size<Pixels>,
     geometry_start: f64,
     span: f64,
+    max: f64,
 }
 impl ImageSurface {
     fn bounds_at(&self, plot: &TimePlot, bounds: Bounds<Pixels>, end: f64) -> Bounds<Pixels> {
         let span = (plot.end - plot.start).max(1.);
         let sx = f32::from(bounds.size.width) / f32::from(self.plot_size.width)
             * (self.span / span) as f32;
-        let sy = f32::from(bounds.size.height) / f32::from(self.plot_size.height);
+        // A rescale easing in stretches the texture about the baseline.
+        let k = plot.rescale_factor(self.max, Instant::now());
+        let sy = f32::from(bounds.size.height) / f32::from(self.plot_size.height) * k;
         let origin = bounds.origin
             + point(self.offset.x * sx, self.offset.y * sy)
+            + point(px(0.), bounds.size.height * (1. - k))
             + point(
                 px(((self.geometry_start - (end - span)) / span) as f32
                     * f32::from(bounds.size.width)),
@@ -218,6 +223,7 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
                 plot_size: texture.plot_size,
                 geometry_start: texture.geometry_start,
                 span: texture.span,
+                max: texture.max,
             };
             let image_bounds = surface.bounds_at(plot, bounds, plot.end);
             window.with_content_mask(Some(ContentMask { bounds }), |window| {
@@ -461,6 +467,7 @@ fn rasterize(plot: &Input) -> Option<Texture> {
         plot_size: size,
         geometry_start: plot.geometry_start,
         span,
+        max: plot.max,
     })
 }
 
@@ -496,6 +503,7 @@ mod tests {
             image_surface: Default::default(),
             bar_surfaces: Default::default(),
             dash_phases: Default::default(),
+            rescale: Default::default(),
         }
     }
     #[test]

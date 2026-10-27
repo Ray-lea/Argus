@@ -574,6 +574,7 @@ impl Desktop {
                         image_surface: Default::default(),
                         bar_surfaces: Default::default(),
                         dash_phases: Default::default(),
+                        rescale: Default::default(),
                     })
                     .when_some(scale, |d, scale| {
                         d.child(

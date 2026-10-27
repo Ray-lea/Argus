@@ -369,6 +369,39 @@ pub struct TimePlot {
     pub bar_surfaces: Rc<RefCell<Vec<BarSurface>>>,
     /// Dash phase per series and sample time, so dashes keep their place as the curve scrolls.
     pub dash_phases: raster::DashPhases,
+    /// A new top eases in: the top shown before, the target, and when the change began.
+    pub rescale: Rc<Cell<Rescale>>,
+}
+/// How long a chart takes to ease to a new top.
+const RESCALE: Duration = Duration::from_millis(420);
+#[derive(Clone, Copy, Default)]
+pub(in crate::frontend) struct Rescale {
+    from: f64,
+    to: f64,
+    start: Option<Instant>,
+}
+impl Rescale {
+    /// The top on screen at `now`: geometric, easing out, as the original charts rescale.
+    fn at(&self, now: Instant) -> Option<f64> {
+        let start = self.start?;
+        let progress = now.saturating_duration_since(start).as_secs_f64() / RESCALE.as_secs_f64();
+        if progress >= 1. || self.from <= 0. || self.to <= 0. || self.from == self.to {
+            return None;
+        }
+        let eased = 1. - (1. - progress.max(0.)).powi(3);
+        Some(self.from * (self.to / self.from).powf(eased))
+    }
+}
+impl TimePlot {
+    /// The top a texture drawn for `max` is stretched to while a rescale eases in.
+    pub(in crate::frontend) fn rescale_factor(&self, max: f64, now: Instant) -> f32 {
+        self.rescale
+            .get()
+            .at(now)
+            .map(|shown| (max / shown) as f32)
+            .filter(|k| k.is_finite() && *k > 0.)
+            .unwrap_or(1.)
+    }
 }
 pub(in crate::frontend) struct BarSurface {
     handle: Option<PaintedPrimitive>,
@@ -1198,6 +1231,30 @@ impl Desktop {
             .flat_map(|s| s.points.iter().filter_map(|p| p.1))
             .fold(0., f64::min);
         let mut entries = self.chart_entries.borrow_mut();
+        let previous_max = entries.get(id).map(|entry| entry.plot.borrow().max);
+        let rescale = entries
+            .get(id)
+            .map(|entry| entry.plot.borrow().rescale.clone())
+            .unwrap_or_default();
+        let now = Instant::now();
+        let moving = self.chart_clock.borrow().mode != motion::Mode::Off
+            && !(self.paused || self.control_paused);
+        match previous_max {
+            Some(previous) if previous != max && moving => {
+                let shown = rescale.get().at(now).unwrap_or(previous);
+                rescale.set(Rescale {
+                    from: shown,
+                    to: max,
+                    start: Some(now),
+                });
+            }
+            Some(previous) if previous == max => {}
+            _ => rescale.set(Rescale {
+                from: max,
+                to: max,
+                start: None,
+            }),
+        }
         let (width, image_surface, bar_surfaces, dash_phases) = entries
             .get(id)
             .map(|entry| {
@@ -1237,6 +1294,7 @@ impl Desktop {
             image_surface,
             bar_surfaces,
             dash_phases,
+            rescale,
         };
         let plot_rc = if let Some(entry) = entries.get_mut(id) {
             *entry.plot.borrow_mut() = plot;
