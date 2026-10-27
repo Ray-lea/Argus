@@ -230,6 +230,35 @@ fn parse_color(css: &str) -> Hsla {
     .into()
 }
 pub fn icon(name: &str, color: Hsla) -> Icon {
+    // Names follow the original icon set; a few native-only names alias to it.
+    let original = match name {
+        "CpuIcon" => "ChipIcon",
+        "DownloadIcon" => "UpdateIcon",
+        "RefreshIcon" => "RestartIcon",
+        "LanguageIcon" => "GlobeIcon",
+        "MotionIcon" => "SparkleIcon",
+        "AppIcon" => "GenericAppIcon",
+        "DataIcon" => "StorageIcon",
+        "RulesIcon" => "BoltIcon",
+        "ExternalLinkIcon" => "ExternalIcon",
+        "CloseIcon" => "DismissIcon",
+        name => name,
+    };
+    let mut file = String::new();
+    for (index, c) in original
+        .strip_suffix("Icon")
+        .unwrap_or(original)
+        .chars()
+        .enumerate()
+    {
+        if c.is_ascii_uppercase() && index > 0 {
+            file.push('-');
+        }
+        file.push(c.to_ascii_lowercase());
+    }
+    if let Some(path) = super::assets::glyph(&file) {
+        return Icon::empty().path(path).size_4().text_color(color);
+    }
     let icon = match name {
         "ProcessesIcon" => IconName::LayoutList,
         "PulseIcon" => IconName::Activity,
