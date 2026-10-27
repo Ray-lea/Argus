@@ -1049,7 +1049,10 @@ impl Desktop {
             let exited = tr!("history.exited", name = name, pid = pid);
             let menu = vec![
                 MenuItem::new(label("common.goToProcess"), reveal.clone()).disabled(!running),
-                MenuItem::new(label("common.copyName"), Action::Copy(name.clone())),
+                MenuItem::new(
+                    label("common.copyName"),
+                    Action::Copy(name.clone(), "history.copied.name"),
+                ),
             ];
             let mut line = div()
                 .id(("history-row", index))
@@ -1091,7 +1094,7 @@ impl Desktop {
                         if running {
                             this.act(reveal.clone(), window, cx);
                         } else {
-                            this.toast = Some((exited.clone(), Instant::now()));
+                            this.notify_toast(widgets::ToastKind::Info, exited.clone());
                         }
                     }
                     cx.notify();

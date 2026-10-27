@@ -667,10 +667,10 @@ impl Desktop {
                     self.act(Action::Page("processes".into()), window, cx);
                     self.reveal(&process, window, cx);
                 } else {
-                    self.toast = Some((
+                    self.notify_toast(
+                        widgets::ToastKind::Info,
                         tr!("processes.pidExited", pid = value["pid"]),
-                        Instant::now(),
-                    ));
+                    );
                 }
                 return;
             }
@@ -797,27 +797,6 @@ impl Desktop {
         {
             table.update(cx, |state, cx| state.scroll_to_row(index, cx));
         }
-    }
-    pub(in crate::frontend) fn property(
-        &self,
-        title: &str,
-        value: impl Into<SharedString>,
-    ) -> AnyElement {
-        div()
-            .flex()
-            .items_start()
-            .gap_4()
-            .py_0()
-            .line_height(relative(1.5))
-            .child(
-                div()
-                    .text_color(self.palette.muted)
-                    .w_32()
-                    .flex_shrink_0()
-                    .child(label(title)),
-            )
-            .child(div().flex_1().child(value.into()))
-            .into_any_element()
     }
 }
 

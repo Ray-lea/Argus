@@ -1201,7 +1201,7 @@ impl Desktop {
                         format!("{id}-copy"),
                         "CopyIcon",
                         label("common.copyPath"),
-                        Action::Copy(path.into()),
+                        Action::Copy(path.into(), "actions.copyWhat.path"),
                         px(14.),
                         cx,
                     )),
@@ -1265,7 +1265,7 @@ impl Desktop {
                     "overview-copy",
                     "CopyIcon",
                     label("details.overview.copy"),
-                    Action::Copy(copied),
+                    Action::Copy(copied, "details.overview.copyWhat"),
                     px(16.),
                     cx,
                 )

@@ -25,20 +25,38 @@ pub struct Palette {
     pub battery: Hsla,
     pub danger: Hsla,
     pub heat: Hsla,
+    /// Fluent roles used by controls, dialogs and notices.
+    pub flyout: Hsla,
+    /// The Fluent control face (`--control`), unmixed by the component theme.
+    pub face: Hsla,
+    pub face_hover: Hsla,
+    pub face_press: Hsla,
+    pub pill: Hsla,
+    pub press: Hsla,
+    pub on_accent: Hsla,
+    pub on_danger: Hsla,
+    pub dark: bool,
+}
+/// `name` over a card (`--layer`) over the window, as one opaque colour.
+fn on_card(name: &str, dark: bool) -> Hsla {
+    let color = token("window-bg", dark)
+        .blend(token("layer", dark))
+        .blend(token(name, dark));
+    Hsla { a: 1., ..color }
+}
+/// A colour token of the active mode, falling back to the light value.
+pub fn token(name: &str, dark: bool) -> Hsla {
+    let design = design();
+    parse_color(
+        design[if dark { "dark" } else { "light" }][name]
+            .as_str()
+            .or_else(|| design["light"][name].as_str())
+            .expect("theme token"),
+    )
 }
 /// A product token without a component-library role, for the active mode.
 pub fn role(cx: &App, key: &str) -> Hsla {
-    let mode = if cx.theme().mode == ThemeMode::Dark {
-        "dark"
-    } else {
-        "light"
-    };
-    parse_color(
-        design()[mode][key]
-            .as_str()
-            .or_else(|| design()["light"][key].as_str())
-            .expect("theme role"),
-    )
+    token(key, cx.theme().mode == ThemeMode::Dark)
 }
 /// An original glyph by its file name, for glyphs without an icon name (layers).
 pub fn glyph(name: &str, color: Hsla) -> Icon {
@@ -51,8 +69,20 @@ impl Palette {
     pub fn current(cx: &App) -> Self {
         let theme = cx.theme();
         let colors = &theme.colors;
-        let token = |key: &str| role(cx, key);
+        let dark = theme.mode == ThemeMode::Dark;
         Self {
+            stroke_strong: token("stroke-strong", dark),
+            flyout: token("flyout", dark),
+            // Opaque equivalents of the translucent control colours over a card:
+            // stacked translucent fills darken on the transparent window surface.
+            face: on_card("control", dark),
+            face_hover: on_card("control-hover", dark),
+            face_press: on_card("press", dark),
+            pill: on_card("layer-strong", dark),
+            press: token("press", dark),
+            on_accent: colors.primary_foreground,
+            on_danger: token("on-danger", dark),
+            dark,
             ink: colors.foreground,
             muted: colors.muted_foreground,
             faint: parse_color(
@@ -72,13 +102,12 @@ impl Palette {
             layer: colors.group_box,
             layer_strong: colors.popover,
             stroke: colors.border,
-            stroke_strong: token("stroke-strong"),
-            tip: token("tip"),
+            tip: token("tip", dark),
             control: colors.secondary,
             hover: colors.list_hover,
             accent: colors.primary,
             cpu: colors.chart_1,
-            cpu_e: token("cpu-e"),
+            cpu_e: token("cpu-e", dark),
             memory: colors.chart_2,
             io: colors.chart_3,
             network: colors.chart_4,
@@ -182,6 +211,9 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     theme.colors.chart_4 = color("net");
     theme.colors.chart_5 = color("gpu");
     theme.colors.chart_bullish = color("bat");
+    theme.colors.overlay = color("scrim");
+    // Dialogs, menus and notices use the 8 px radius of the original surfaces.
+    theme.radius_lg = px(8.);
     theme.tokens = theme.colors.into();
     Theme::sync_base(cx);
 }
@@ -285,6 +317,45 @@ pub fn transition_slow(cx: &App) -> gpui_kit::base::motion::Transition {
 pub fn transition() -> gpui_kit::base::motion::Transition {
     gpui_kit::base::motion::Transition::new(motion_duration())
 }
+/// A CSS cubic-bezier timing function sampled at `t`.
+pub fn bezier(x1: f32, y1: f32, x2: f32, y2: f32, t: f32) -> f32 {
+    let t = t.clamp(0., 1.);
+    let curve = |a: f32, b: f32, s: f32| {
+        let u = 1. - s;
+        3. * u * u * s * a + 3. * u * s * s * b + s * s * s
+    };
+    // Solve x(s) = t by bisection; the curves used here are monotonic in x.
+    let (mut low, mut high) = (0f32, 1f32);
+    for _ in 0..24 {
+        let mid = (low + high) / 2.;
+        if curve(x1, x2, mid) < t {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    curve(y1, y2, (low + high) / 2.)
+}
+/// Fluent's decelerating entrance curve.
+pub fn ease_out(t: f32) -> f32 {
+    bezier(0.1, 0.9, 0.2, 1., t)
+}
+/// Fluent's accelerating exit curve.
+pub fn ease_in(t: f32) -> f32 {
+    bezier(0.7, 0., 1., 0.5, t)
+}
+/// Fluent's curve for things moving between two places.
+pub fn ease_move(t: f32) -> f32 {
+    bezier(0.33, 0., 0.1, 1., t)
+}
+/// A transition of `ms` milliseconds on one of the curves above.
+pub fn fluent(ms: u64, curve: fn(f32) -> f32) -> gpui_kit::base::motion::Transition {
+    gpui_kit::base::motion::Transition::new(std::time::Duration::from_millis(ms)).ease(curve)
+}
+/// The display face for dialog titles and the About name.
+pub const DISPLAY_FONT: &str = "Segoe UI Variable Display";
+/// Monospaced text: commands, paths, licences.
+pub const MONO_FONT: &str = "Cascadia Mono";
 pub fn motion_duration() -> std::time::Duration {
     let milliseconds = design()["light"]["t-med"]
         .as_str()
@@ -472,20 +543,4 @@ pub fn network(value: f64, bits: bool) -> String {
         unit += 1;
     }
     format!("{amount:.1} {}", units[unit])
-}
-pub fn timestamp(ms: i64) -> String {
-    let Ok(value) = time::OffsetDateTime::from_unix_timestamp(ms.div_euclid(1000)) else {
-        return label("format.missing");
-    };
-    let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
-    let value = value.to_offset(offset);
-    format!(
-        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-        value.year(),
-        u8::from(value.month()),
-        value.day(),
-        value.hour(),
-        value.minute(),
-        value.second()
-    )
 }

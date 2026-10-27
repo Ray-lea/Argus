@@ -1,15 +1,83 @@
 use super::*;
+use gpui_kit::base::ElementExt;
+use gpui_kit::component::WindowExt;
+use gpui_kit::component::dialog::{Dialog, DialogEntrance};
 use gpui_kit::component::menu::PopupMenu;
-use gpui_kit::component::{ActiveTheme, WindowExt, dialog::Dialog};
+use widgets::{ButtonExt, Handler, Toast, ToastKind, Tone};
+
+/// What confirming a generic confirmation does.
+#[derive(Clone)]
+pub(super) struct Ask {
+    pub label: String,
+    pub danger: bool,
+    pub then: Handler,
+}
 
 #[derive(Clone)]
 pub(super) struct Modal {
+    pub id: u64,
     pub kind: String,
     pub args: Value,
     pub title: String,
     pub body: String,
     pub error: Option<String>,
+    pub ask: Option<Ask>,
+    /// The dialog's own focus target, focused when it opens.
+    pub shell: Option<FocusHandle>,
 }
+
+/// Dialogs that open over whatever is open (ConfirmDialog in Overlays.tsx).
+const STACKING: [&str; 6] = [
+    "confirm",
+    "end",
+    "endTree",
+    "restartExplorer",
+    "closeConnection",
+    "priority",
+];
+const PRIORITIES: [&str; 6] = [
+    "idle",
+    "belowNormal",
+    "normal",
+    "aboveNormal",
+    "high",
+    "realtime",
+];
+/// Executables that host other programs; a rule on one reaches them all.
+const SHARED_HOSTS: [&str; 21] = [
+    "msedgewebview2.exe",
+    "svchost.exe",
+    "dllhost.exe",
+    "rundll32.exe",
+    "conhost.exe",
+    "runtimebroker.exe",
+    "applicationframehost.exe",
+    "taskhostw.exe",
+    "taskhost.exe",
+    "wudfhost.exe",
+    "node.exe",
+    "python.exe",
+    "pythonw.exe",
+    "java.exe",
+    "javaw.exe",
+    "dotnet.exe",
+    "wscript.exe",
+    "cscript.exe",
+    "cmd.exe",
+    "powershell.exe",
+    "pwsh.exe",
+];
+
+pub(super) fn valid_task(command: &str) -> bool {
+    !command.trim().is_empty() && command.len() <= 8192 && !command.contains(['\0', '\r', '\n'])
+}
+
+fn hex_code(code: &Value) -> Option<String> {
+    code.as_i64()
+        .filter(|code| *code != 0)
+        .map(|code| tr!("tasks.code", code = format!("0x{:08X}", code as u32)))
+}
+
 impl Desktop {
     pub(in crate::frontend) fn open_popup(
         &mut self,
@@ -95,6 +163,40 @@ impl Desktop {
             }),
         );
     }
+
+    /// Asks before `then` (ConfirmDialog): over any dialog already open.
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::frontend) fn ask(
+        &mut self,
+        title: String,
+        body: String,
+        confirm: String,
+        danger: bool,
+        then: impl Fn(&mut Desktop, &mut Window, &mut Context<Desktop>) + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let args = json!({});
+        self.present(
+            Modal {
+                id: 0,
+                kind: "confirm".into(),
+                args,
+                title,
+                body,
+                error: None,
+                ask: Some(Ask {
+                    label: confirm,
+                    danger,
+                    then: Rc::new(then),
+                }),
+                shell: None,
+            },
+            window,
+            cx,
+        );
+    }
+
     pub(in crate::frontend) fn open_dialog(
         &mut self,
         kind: &str,
@@ -103,93 +205,99 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         self.popup = None;
-        self.forms.clear();
-        let name = text(&args, "name");
-        let members = values(&args["members"]);
-        let pid = members
-            .first()
-            .map(|p| p["pid"].to_string())
-            .unwrap_or_default();
-        let (title, body) = match kind {
-            "end" => (
-                tr!("actions.end.title", name = name),
-                if members.len() > 1 {
-                    tr!("actions.endGroup.body", name = name, count = members.len())
-                } else {
-                    tr!("actions.end.body", pid = pid)
-                },
-            ),
-            "endTree" => (
-                tr!("actions.endTree.title", name = name),
-                tr!("actions.end.body", pid = pid),
-            ),
+        self.ui.select = None;
+        let name = text(&args, "name").to_owned();
+        let members = values(&args["members"]).to_vec();
+        let first = members.first().cloned().unwrap_or(Value::Null);
+        let pid = first["pid"].to_string();
+        // Process actions that apply at once, or ask first (actions.ts).
+        match kind {
+            "priority" if text(&args, "priority") != "realtime" => {
+                self.process_batch("priority", &args, window, cx);
+                return;
+            }
+            "efficiency" => {
+                self.process_batch("efficiency", &args, window, cx);
+                return;
+            }
+            "ruleScope" => {
+                self.add_rule_for(&name, window, cx);
+                return;
+            }
+            "hotkey" => {
+                self.preference("settingsSection", json!("hotkey"), window, cx);
+                self.begin_hotkey(window, cx);
+                return;
+            }
+            "rule" => {
+                self.preference("settingsSection", json!("rules"), window, cx);
+                return;
+            }
+            "proxy" => {
+                self.ui.proxy_draft = Some(text(&args, "updateProxy").to_owned());
+                self.preference("settingsSection", json!("update"), window, cx);
+                return;
+            }
+            "sensors" => {
+                self.set_sensors(boolean(&args, "enabled"), window, cx);
+                return;
+            }
+            "privilege" => {
+                self.manage_service(text(&args, "action").to_owned(), window, cx);
+                return;
+            }
+            "taskmgr" => {
+                self.manage_task_manager(text(&args, "action").to_owned(), window, cx);
+                return;
+            }
+            "clearHistory" => {
+                self.clear_history(window, cx);
+                return;
+            }
+            _ => {}
+        }
+        let count = members.len();
+        let (title, body, ask) = match kind {
+            "end" => {
+                let group = count > 1;
+                (
+                    tr!("actions.end.title", name = name),
+                    if group {
+                        tr!("actions.endGroup.body", name = name, count = count)
+                    } else {
+                        tr!("actions.end.body", pid = pid)
+                    },
+                    Some((
+                        label(if group {
+                            "actions.endAll"
+                        } else {
+                            "common.endProcess"
+                        }),
+                        true,
+                    )),
+                )
+            }
+            "endTree" => {
+                let descendants = self.descendants(&first);
+                (
+                    tr!("actions.endTree.title", name = name),
+                    if descendants > 0 {
+                        tr!("actions.endTree.body", pid = pid, count = descendants)
+                    } else {
+                        tr!("actions.endTree.bodyAlone", pid = pid)
+                    },
+                    Some((label("common.endProcessTree"), true)),
+                )
+            }
             "priority" => (
-                label("processes.menu.setPriority"),
-                if text(&args, "priority") == "realtime" {
-                    tr!("actions.priority.confirmBody")
-                } else {
-                    label(&format!("processes.priority.{}", text(&args, "priority")))
-                },
+                tr!("actions.priority.confirmTitle", name = name),
+                label("actions.priority.confirmBody"),
+                Some((label("actions.priority.confirm"), true)),
             ),
-            "efficiency" => (
-                label("common.efficiencyMode"),
-                label(if boolean(&args, "on") {
-                    "common.on"
-                } else {
-                    "common.off"
-                }),
-            ),
-            "task" => (label("tasks.title"), label("tasks.description")),
             "restartExplorer" => (
                 label("tasks.explorer.title"),
                 label("tasks.explorer.confirm"),
-            ),
-            "filelock" => (label("fileLock.title"), label("fileLock.intro")),
-            "hotkey" => (
-                label("settings.hotkey.title"),
-                label("settings.hotkey.desc"),
-            ),
-            "ruleScope" => (
-                label("actions.ruleScope.title"),
-                tr!("actions.ruleScope.body", name = name),
-            ),
-            "rule" => (
-                label("processes.menu.addRule"),
-                label("settings.rules.desc"),
-            ),
-            "note" => (label("common.marks.note"), name.into()),
-            "privilege" => {
-                let uninstall = text(&args, "action") == "uninstall";
-                let prefix = if uninstall {
-                    "settings.privilege.uninstall"
-                } else {
-                    "settings.privilege.install"
-                };
-                (
-                    label(&format!("{prefix}.title")),
-                    label(&format!("{prefix}.body")),
-                )
-            }
-            "taskmgr" => (
-                label("settings.taskManager.confirm.title"),
-                label("settings.taskManager.confirm.body"),
-            ),
-            "sensors" => (
-                label("settings.sensors.title"),
-                label("settings.sensors.desc"),
-            ),
-            "clearHistory" => (
-                label("settings.data.history.confirm.title"),
-                tr!(
-                    "settings.data.history.confirm.body",
-                    size = theme::bytes(
-                        self.data
-                            .get("historyUsage")
-                            .map(|v| number(v, "bytes"))
-                            .unwrap_or(0.),
-                        false
-                    )
-                ),
+                Some((label("tasks.explorer.restart"), false)),
             ),
             "closeConnection" => (
                 label("connections.menu.close"),
@@ -200,506 +308,558 @@ impl Desktop {
                     text(&args, "remoteAddress"),
                     args["remotePort"]
                 ),
+                Some((label("connections.menu.close"), true)),
             ),
-            "proxy" => (
-                label("settings.update.custom.title"),
-                label("settings.update.custom.desc"),
-            ),
-            "update" => (
-                label("settings.update.restart"),
-                label("settings.update.detail.ready"),
-            ),
+            "task" => (label("tasks.title"), label("tasks.description"), None),
+            "filelock" => (label("fileLock.title"), label("fileLock.intro"), None),
+            "note" => (label("common.marks.note"), name.clone(), None),
+            "update" => (String::new(), String::new(), None),
             "license" => (
-                label("settings.about.license.title"),
+                "GNU Affero General Public License".into(),
                 include_str!("../../../LICENSE").into(),
+                None,
             ),
             "notices" => (
                 label("settings.about.notices.dialog"),
                 include_str!("../../../THIRD-PARTY-NOTICES.txt").into(),
+                None,
             ),
-            "shortcuts" => (
-                label("settings.shortcuts.title"),
-                ["search", "pause", "end", "inputHint"]
-                    .map(|key| label(&format!("settings.shortcuts.{key}")))
-                    .join("\n\n"),
-            ),
+            "shortcuts" => (label("settings.shortcuts.title"), String::new(), None),
             "onboarding" => (
                 label("settings.about.onboarding.title"),
-                label("settings.about.tagline"),
+                String::new(),
+                None,
             ),
             "whatsnew" => (
                 tr!(
                     "updates.dialog.installed",
                     version = env!("CARGO_PKG_VERSION")
                 ),
-                welcome::current_notes(),
+                String::new(),
+                None,
             ),
             _ => return,
         };
-        match kind {
-            "task" => self.form("value", "", "tasks.placeholder", window, cx),
-            "filelock" => self.form("value", "", "common.path", window, cx),
-            "hotkey" => {
-                self.form(
+        let stacking = STACKING.contains(&kind);
+        if !stacking {
+            let onboarding = self
+                .modal
+                .iter()
+                .chain(&self.ui.below)
+                .any(|m| m.kind == "onboarding");
+            if onboarding && kind != "onboarding" {
+                // Never on top of the onboarding, nor in its place: after it.
+                if !self.ui.queued.iter().any(|(queued, _)| queued == kind) {
+                    self.ui.queued.push((kind.to_owned(), args));
+                }
+                return;
+            }
+            self.close_all_modals(window, cx);
+            self.forms.clear();
+            match kind {
+                "task" => {
+                    self.form(
+                        "value",
+                        text(&args, "command"),
+                        "tasks.placeholder",
+                        window,
+                        cx,
+                    );
+                    if let Some(input) = self.forms.get("value").cloned() {
+                        self.ui.input_subscriptions.push(cx.subscribe_in(
+                            &input,
+                            window,
+                            |this, _, event, window, cx| match event {
+                                InputEvent::Change => {
+                                    if let Some(modal) = &mut this.modal
+                                        && modal.kind == "task"
+                                    {
+                                        modal.error = None;
+                                        modal.args["failure"] = Value::Null;
+                                    }
+                                    window.refresh();
+                                }
+                                InputEvent::PressEnter { .. } => this.run_task(window, cx),
+                                _ => {}
+                            },
+                        ));
+                    }
+                }
+                "note" => self.form(
                     "value",
-                    text(&args, "hotkey"),
-                    "settings.hotkey.recording",
+                    text(&self.marks()[text(&args, "key")], "note"),
+                    "common.marks.placeholder",
                     window,
                     cx,
-                );
-                self.request("suspend_hotkey", json!({}), None, window, cx);
+                ),
+                "filelock" => {
+                    // Stale results never survive a reopening.
+                    self.data.remove("lockers");
+                }
+                _ => {}
             }
-            "rule" => self.form("value", name, "settings.rules.placeholder", window, cx),
-            "proxy" => self.form(
-                "value",
-                text(&args, "updateProxy"),
-                "settings.update.custom.label",
+        }
+        let paths = values(&args["paths"])
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let id = self.present(
+            Modal {
+                id: 0,
+                kind: kind.into(),
+                args,
+                title,
+                body,
+                error: None,
+                ask: ask.map(|(label, danger)| Ask {
+                    label,
+                    danger,
+                    then: Rc::new(
+                        |this: &mut Desktop, window: &mut Window, cx: &mut Context<Desktop>| {
+                            this.confirm_dialog(window, cx)
+                        },
+                    ),
+                }),
+                shell: None,
+            },
+            window,
+            cx,
+        );
+        if kind == "onboarding" {
+            self.request(
+                "privileged_service_status",
+                json!({}),
+                Some("privilege"),
                 window,
                 cx,
-            ),
-            "note" => self.form(
-                "value",
-                text(&self.marks()[text(&args, "key")], "note"),
-                "common.marks.placeholder",
-                window,
-                cx,
-            ),
-            _ => {}
-        }
-        self.modal = Some(Modal {
-            kind: kind.into(),
-            args,
-            title,
-            body,
-            error: None,
-        });
-        let owner = cx.entity().downgrade();
-        window.close_dialog(cx);
-        window.open_dialog(cx, move |dialog, window, cx| {
-            if let Some(owner) = owner.upgrade() {
-                owner.update(cx, |this, cx| this.dialog_view(dialog, window, cx))
-            } else {
-                dialog
-            }
-        });
-        if let Some(input) = self.forms.get("value") {
-            input.update(cx, |state, cx| state.focus(window, cx));
-        }
-        cx.notify();
-    }
-    pub(in crate::frontend) fn dialog_view(
-        &self,
-        dialog: Dialog,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Dialog {
-        let Some(modal) = &self.modal else {
-            return dialog;
-        };
-        if modal.kind == "onboarding" {
-            return self.onboarding_dialog(
-                dialog.bg(self.palette.layer_strong.opacity(1.)),
+            );
+            self.request(
+                "task_manager_status",
+                json!({}),
+                Some("taskmgr"),
                 window,
                 cx,
             );
         }
-        let mut content = div()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .when(modal.kind != "whatsnew", |d| d.child(modal.body.clone()))
-            .when(modal.kind == "whatsnew", |d| {
-                d.child(gpui_kit::component::text::TextView::markdown(
-                    "release-notes",
-                    modal.body.clone(),
-                ))
-            });
-        if modal.kind == "update" {
-            let status = self.data.get("updates").unwrap_or(&Value::Null);
-            let current_ver = text(&self.data["info"], "version");
-            let next_ver = text(status, "version");
-            if !next_ver.is_empty() {
-                content = content.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .text_xs()
-                        .child(
-                            div()
-                                .px_2()
-                                .py_0p5()
-                                .rounded_full()
-                                .bg(self.palette.control)
-                                .text_color(self.palette.muted)
-                                .child(format!(
-                                    "{}: {current_ver}",
-                                    label("updates.dialog.current")
-                                )),
-                        )
-                        .child("→")
-                        .child(
-                            div()
-                                .px_2()
-                                .py_0p5()
-                                .rounded_full()
-                                .bg(self.palette.accent.opacity(0.16))
-                                .text_color(self.palette.accent)
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(format!("{}: {next_ver}", label("updates.dialog.next"))),
-                        )
-                        .when(text(status, "state") == "ready", |d| {
-                            d.child(
-                                div()
-                                    .px_2()
-                                    .py_0p5()
-                                    .rounded_full()
-                                    .bg(self.palette.cpu.opacity(0.16))
-                                    .text_color(self.palette.cpu)
-                                    .child(label("updates.dialog.verified")),
-                            )
-                        }),
-                );
-            }
-            if text(status, "state") == "downloading" {
-                let received = number(status, "received");
-                let total = number(status, "total");
-                let ratio = if total > 0. {
-                    (received / total).clamp(0., 1.) as f32
-                } else {
-                    0.
-                };
-                content = content.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_1()
-                        .child(div().text_xs().text_color(self.palette.muted).child(tr!(
-                            "updates.dialog.progress",
-                            received = theme::bytes(received, false),
-                            total = theme::bytes(total, false)
-                        )))
-                        .child(
-                            div()
-                                .w_full()
-                                .h_2()
-                                .rounded_full()
-                                .overflow_hidden()
-                                .bg(self.palette.stroke)
-                                .child(div().h_full().w(relative(ratio)).bg(self.palette.accent)),
-                        ),
-                );
-            }
-            content = content.child(gpui_kit::component::text::TextView::markdown(
-                "update-release-notes",
-                welcome::update_notes(status),
-            ));
-            if let Some(error) = status["error"].as_str() {
-                content = content.child(
-                    div()
-                        .text_color(self.palette.danger)
-                        .child(error.to_owned()),
-                );
-            }
+        if kind == "filelock" && !paths.is_empty() {
+            self.search_lockers(paths, window, cx);
         }
-        if let Some(error) = &modal.error {
-            content = content.child(div().text_color(self.palette.danger).child(error.clone()));
+        let _ = id;
+        if let Some(input) = self.forms.get("value").filter(|_| !stacking) {
+            input.update(cx, |state, cx| state.focus(window, cx));
         }
-        if let Some(input) = self.forms.get("value") {
-            if modal.kind == "hotkey" {
-                content = content.child(
-                    div()
-                        .id("hotkey-recorder")
-                        .track_focus(&input.read(cx).focus_handle(cx))
-                        .p_4()
-                        .border_1()
-                        .border_color(self.palette.stroke)
-                        .child(input.read(cx).value().to_string())
-                        .capture_key_down(cx.listener(Self::record_hotkey))
-                        .on_key_up(cx.listener(|this, _: &KeyUpEvent, window, cx| {
-                            if this
-                                .modal
-                                .as_ref()
-                                .is_some_and(|m| m.args["recorded"].as_bool() == Some(true))
-                            {
-                                this.confirm_dialog(window, cx);
-                            }
-                        })),
-                );
-            } else {
-                content = content.child(Input::new(input));
-            }
-        }
-        if modal.kind == "task" {
-            content = content
-                .child(self.button(
-                    "task-browse",
-                    label("tasks.browse"),
-                    None,
-                    Action::Invoke("pick_path".into(), json!({"folder":false,"task":true})),
-                    false,
-                    cx,
-                ))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .child(label("tasks.administrator"))
-                        .child(self.switch(
-                            "task-elevated",
-                            label("tasks.administrator"),
-                            boolean(&modal.args, "elevated"),
-                            Action::Preference(
-                                "dialog.elevated".into(),
-                                json!(!boolean(&modal.args, "elevated")),
-                            ),
-                            cx,
-                        )),
-                );
-        }
-        if modal.kind == "filelock" {
-            content = content.child(div().flex().gap_2().children(
-                [(false, "fileLock.pickFile"), (true, "fileLock.pickFolder")].map(
-                    |(folder, key)| {
-                        self.button(
-                            key,
-                            label(key),
-                            None,
-                            Action::Invoke("pick_path".into(), json!({"folder":folder})),
-                            false,
-                            cx,
-                        )
-                    },
-                ),
-            ));
-            if let Some(report) = self.data.get("lockers") {
-                let lockers = values(&report["lockers"]);
-                content = content.child(if lockers.is_empty() {
-                    label("fileLock.none")
-                } else {
-                    tr!("fileLock.found", count = lockers.len())
-                });
-                for locker in lockers {
-                    let kind = text(locker, "kind");
-                    let handles_count = locker["handleCount"].as_u64().unwrap_or(0);
-                    let svc_name = text(locker, "serviceName");
-                    content = content.child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .gap_2()
-                            .p_2()
-                            .rounded_md()
-                            .border_1()
-                            .border_color(self.palette.stroke)
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .min_w_0()
-                                    .flex_1()
-                                    .child(icon("AppIcon", self.palette.muted).size_4())
-                                    .child(div().truncate().font_weight(FontWeight::MEDIUM).child(
-                                        format!(
-                                            "{} · PID {}",
-                                            text(locker, "appName"),
-                                            locker["pid"]
-                                        ),
-                                    ))
-                                    .when(!kind.is_empty() && kind != "unknown", |d| {
-                                        d.child(
-                                            div()
-                                                .px_1p5()
-                                                .rounded_full()
-                                                .text_xs()
-                                                .bg(self.palette.control)
-                                                .text_color(self.palette.muted)
-                                                .child(label(&format!("fileLock.kind.{kind}"))),
-                                        )
-                                    })
-                                    .when(!svc_name.is_empty(), |d| {
-                                        d.child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(self.palette.muted)
-                                                .child(tr!("fileLock.service", name = svc_name)),
-                                        )
-                                    })
-                                    .when(handles_count > 0, |d| {
-                                        d.child(
-                                            div().text_xs().text_color(self.palette.muted).child(
-                                                tr!("fileLock.handleCount", count = handles_count),
-                                            ),
-                                        )
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .flex_shrink_0()
-                                    .child(
-                                        self.button(
-                                            format!("locker-{}", model::identity(locker)),
-                                            label("fileLock.showProcess"),
-                                            None,
-                                            Action::Preference(
-                                                "revealProcess".into(),
-                                                locker.clone(),
-                                            ),
-                                            false,
-                                            cx,
-                                        )
-                                        .min_h_0()
-                                        .h_6()
-                                        .text_xs(),
-                                    )
-                                    .child(
-                                        self.button(
-                                            format!("locker-end-{}", model::identity(locker)),
-                                            label("fileLock.end"),
-                                            None,
-                                            Action::Invoke(
-                                                "kill_process".into(),
-                                                json!({
-                                                    "pid": locker["pid"],
-                                                    "createTime": locker["createTime"],
-                                                    "force": false
-                                                }),
-                                            ),
-                                            false,
-                                            cx,
-                                        )
-                                        .min_h_0()
-                                        .h_6()
-                                        .text_xs()
-                                        .text_color(self.palette.danger),
-                                    ),
-                            ),
-                    );
-                }
-                if report["handles"]["denied"].as_u64().unwrap_or(0) > 0 {
-                    content = content.child(
-                        div()
-                            .text_xs()
-                            .text_color(self.palette.muted)
-                            .child(label("fileLock.serviceHint")),
-                    );
-                }
-            }
-        }
-        if modal.kind == "rule" {
-            for (field, options) in [
-                (
-                    "priority",
-                    vec![
-                        "idle",
-                        "belowNormal",
-                        "normal",
-                        "aboveNormal",
-                        "high",
-                        "realtime",
-                    ],
-                ),
-                ("efficiency", vec!["keep", "on", "off"]),
-            ] {
-                let mut choices = div().flex().flex_wrap().gap_1();
-                for value in options {
-                    let label = if field == "priority" {
-                        label(&format!("processes.priority.{value}"))
-                    } else {
-                        label(&format!("settings.rules.efficiency.{value}"))
-                    };
-                    choices = choices.child(self.button(
-                        format!("rule-{field}-{value}"),
-                        label,
-                        None,
-                        Action::Preference(format!("dialog.{field}"), json!(value)),
-                        text(&modal.args, field) == value,
-                        cx,
-                    ));
-                }
-                content = content.child(choices);
-            }
+        cx.notify();
+    }
+
+    /// Puts a dialog on screen, over the ones open; returns its id.
+    fn present(&mut self, mut modal: Modal, window: &mut Window, cx: &mut Context<Self>) -> u64 {
+        self.ui.modal_seq += 1;
+        let id = self.ui.modal_seq;
+        modal.id = id;
+        // The primary control takes the focus, as the original's buttons did.
+        let primary = self.focus_for(&format!("modal-{id}-primary"), cx);
+        if let Some(top) = self.modal.take() {
+            self.ui.below.push(top);
         }
         let owner = cx.entity().downgrade();
-        let confirm_owner = owner.clone();
-        dialog
-            .bg(self.palette.layer_strong.opacity(1.))
-            .title(modal.title.clone())
-            .overlay_closable(false)
-            .child(content)
-            .on_ok(move |_, window, cx| {
-                let _ = confirm_owner.update(cx, |this, cx| this.confirm_dialog(window, cx));
-                false
-            })
-            .footer(
-                div()
-                    .flex()
-                    .justify_end()
-                    .gap_2()
-                    .child(
-                        self.button(
-                            "dialog-cancel",
-                            label("common.cancel"),
-                            None,
-                            Action::CloseOverlay,
-                            false,
-                            cx,
-                        )
-                        .border_1()
-                        .border_color(self.palette.stroke)
-                        .bg(self.palette.control),
-                    )
-                    .child(
-                        self.button(
-                            "dialog-confirm",
-                            label(match modal.kind.as_str() {
-                                "task" => "tasks.run",
-                                "update" => {
-                                    if self
-                                        .data
-                                        .get("updates")
-                                        .is_some_and(|s| text(s, "state") == "ready")
-                                    {
-                                        "settings.update.restart"
-                                    } else {
-                                        "settings.update.download"
-                                    }
-                                }
-                                "filelock" => "fileLock.recheck",
-                                "end" | "endTree" => "common.endProcess",
-                                "license" | "notices" | "shortcuts" | "onboarding" | "whatsnew" => {
-                                    "common.close"
-                                }
-                                _ => "common.marks.save",
-                            }),
-                            None,
-                            Action::Confirm,
-                            true,
-                            cx,
-                        )
-                        .bg(if matches!(modal.kind.as_str(), "end" | "endTree") {
-                            self.palette.danger
-                        } else {
-                            self.palette.accent
-                        })
-                        .text_color(cx.theme().primary_foreground)
-                        .min_w_20(),
-                    ),
-            )
-            .on_close(move |_, window, cx| {
+        window.open_dialog(cx, move |dialog, window, cx| {
+            if let Some(owner) = owner.upgrade() {
+                owner.update(cx, |this, cx| this.dialog_view(id, dialog, window, cx))
+            } else {
+                dialog
+            }
+        });
+        modal.shell = window.focused(cx);
+        if modal.kind != "task" && modal.kind != "note" {
+            primary.focus(window, cx);
+        }
+        self.modal = Some(modal);
+        window.refresh();
+        id
+    }
+
+    /// Escape, a click outside, or a close button: the top layer goes.
+    pub(in crate::frontend) fn close_overlay(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.popup.is_some() || self.ui.select.is_some() {
+            self.popup = None;
+            self.ui.select = None;
+            window.refresh();
+            return;
+        }
+        if let Some(closed) = self.modal.take() {
+            window.close_dialog(cx);
+            self.modal = self.ui.below.pop();
+            self.after_close(closed, false, window, cx);
+        }
+        if self.modal.is_none() {
+            self.focus.focus(window, cx);
+        }
+    }
+
+    fn close_all_modals(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.modal.is_none() {
+            return;
+        }
+        window.close_all_dialogs(cx);
+        self.modal = None;
+        self.ui.below.clear();
+    }
+
+    /// The dialog closed itself (Escape or a press outside it).
+    fn modal_closed(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if self.modal.as_ref().is_some_and(|m| m.id == id) {
+            let closed = self.modal.take();
+            self.modal = self.ui.below.pop();
+            if let Some(closed) = closed {
+                self.after_close(closed, true, window, cx);
+            }
+        } else {
+            self.ui.below.retain(|m| m.id != id);
+        }
+        if self.modal.is_none() {
+            self.focus.focus(window, cx);
+        }
+        cx.notify();
+    }
+
+    fn after_close(
+        &mut self,
+        closed: Modal,
+        cancelled: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if closed.kind == "onboarding" && cancelled {
+            self.request(
+                "complete_onboarding",
+                json!({"version":welcome::configuration()["onboardingVersion"]}),
+                Some("settings"),
+                window,
+                cx,
+            );
+        }
+        if closed.kind == "task" {
+            self.ui.input_subscriptions.clear();
+        }
+        if !self
+            .modal
+            .iter()
+            .chain(&self.ui.below)
+            .any(|m| m.kind == "onboarding")
+            && !self.ui.queued.is_empty()
+        {
+            let queued = std::mem::take(&mut self.ui.queued);
+            let owner = cx.entity().downgrade();
+            window.defer(cx, move |window, cx| {
                 let _ = owner.update(cx, |this, cx| {
-                    this.modal = None;
-                    this.request("resume_hotkey", json!({}), Some("settings"), window, cx);
-                    cx.notify();
+                    for (kind, args) in queued {
+                        this.open_dialog(&kind, args, window, cx);
+                    }
                 });
+            });
+        }
+        window.refresh();
+    }
+
+    fn find_modal(&self, id: u64) -> Option<&Modal> {
+        self.modal
+            .iter()
+            .chain(self.ui.below.iter())
+            .find(|m| m.id == id)
+    }
+
+    /// Whether the dialog may close now (not while it runs something).
+    fn may_close(&self, id: u64) -> bool {
+        let Some(modal) = self.find_modal(id) else {
+            return true;
+        };
+        match modal.kind.as_str() {
+            "task" => !self.ui.busy.contains("task") && !self.ui.busy.contains("pick"),
+            "update" => {
+                !self.ui.busy.contains("install")
+                    && text(self.data.get("updates").unwrap_or(&Value::Null), "state")
+                        != "installing"
+            }
+            _ => true,
+        }
+    }
+
+    /// Wraps a dialog's body (0) or footer (1) to measure it.
+    pub(in crate::frontend) fn measure(&self, id: u64, slot: u8) -> Div {
+        let parts = self.ui.dialog_parts.clone();
+        div()
+            .flex()
+            .flex_col()
+            .on_prepaint(move |bounds, window, cx| {
+                let changed = parts.borrow().get(&(id, slot)) != Some(&bounds.size.height);
+                if changed {
+                    parts.borrow_mut().insert((id, slot), bounds.size.height);
+                    window.defer(cx, |window, _| window.refresh());
+                }
             })
     }
+
+    /// The common dialog surface: width, colours, no close button, Fluent
+    /// fade, centred in the window as the original scrim centred it.
+    fn surface(
+        &self,
+        dialog: Dialog,
+        id: u64,
+        width: f32,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Dialog {
+        let p = self.palette;
+        let parts = self.ui.dialog_parts.borrow();
+        let measured = parts.get(&(id, 0)).zip(parts.get(&(id, 1)));
+        let dialog = match measured {
+            Some((body, footer)) => {
+                let height = *body + *footer + px(2.);
+                dialog.margin_top(((window.viewport_size().height - height) / 2.).max(px(16.)))
+            }
+            None => dialog,
+        };
+        let owner = cx.entity().downgrade();
+        let enter = owner.clone();
+        let cancel = owner.clone();
+        dialog
+            .w(px(width))
+            .p_0()
+            .gap_0()
+            .bg(widgets::solid(p.flyout))
+            .border_color(p.stroke_strong)
+            .rounded(px(8.))
+            .shadow(widgets::flyout_shadow(p.dark))
+            .close_button(false)
+            .entrance(DialogEntrance::Fade)
+            .on_ok(move |_, window, cx| {
+                let _ = enter.update(cx, |this, cx| this.dialog_enter(id, window, cx));
+                false
+            })
+            .on_cancel(move |_, _, cx| {
+                cancel
+                    .upgrade()
+                    .is_none_or(|this| this.read(cx).may_close(id))
+            })
+            .on_close(move |_, window, cx| {
+                let _ = owner.update(cx, |this, cx| this.modal_closed(id, window, cx));
+            })
+    }
+
+    /// A dialog's title in the display face (`.dialog-title`).
+    pub(in crate::frontend) fn dialog_title(&self, title: impl Into<SharedString>) -> Div {
+        div()
+            .font_family(theme::DISPLAY_FONT)
+            .text_size(px(20.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .line_height(relative(1.3))
+            .text_color(self.palette.ink)
+            .child(title.into())
+    }
+
+    /// The footer strip (`.dialog-footer`): a top border on the layer colour.
+    pub(in crate::frontend) fn dialog_footer(&self) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .justify_end()
+            .gap(px(8.))
+            .px(px(24.))
+            .py(px(16.))
+            .border_t_1()
+            .border_color(self.palette.stroke)
+            .bg(self.palette.layer)
+            .rounded_b(px(8.))
+    }
+
+    fn primary_focus(&self, id: u64, cx: &App) -> FocusHandle {
+        self.focus_for(&format!("modal-{id}-primary"), cx)
+    }
+
+    /// A close button for read-only dialogs (accent, focused).
+    fn close_button(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
+        self.btn(
+            format!("modal-{id}-close"),
+            label("common.close"),
+            None,
+            Tone::Accent,
+        )
+        .min_w(px(96.))
+        .track_focus(&self.primary_focus(id, cx))
+        .on_click(cx.listener(|this, _, window, cx| this.close_overlay(window, cx)))
+        .into_any_element()
+    }
+
+    pub(in crate::frontend) fn dialog_view(
+        &mut self,
+        id: u64,
+        dialog: Dialog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Dialog {
+        let Some(modal) = self.find_modal(id).cloned() else {
+            return dialog;
+        };
+        match modal.kind.as_str() {
+            "onboarding" => {
+                // Only its own buttons and Escape close the onboarding.
+                let dialog = self
+                    .surface(dialog, id, 580., window, cx)
+                    .overlay_closable(false);
+                self.onboarding_dialog(dialog, &modal, window, cx)
+            }
+            "shortcuts" => {
+                let dialog = self.surface(dialog, id, 780., window, cx);
+                self.shortcuts_dialog(dialog, id, window, cx)
+            }
+            "license" | "notices" => {
+                let dialog = self.surface(dialog, id, 720., window, cx);
+                self.document_dialog(dialog, &modal, cx)
+            }
+            "task" => {
+                let dialog = self
+                    .surface(dialog, id, 540., window, cx)
+                    .bg(widgets::solid(theme::token("window-bg", self.palette.dark)));
+                self.task_dialog(dialog, &modal, cx)
+            }
+            "filelock" => {
+                let dialog = self.surface(dialog, id, 620., window, cx);
+                self.filelock_dialog(dialog, &modal, window, cx)
+            }
+            "update" | "whatsnew" => {
+                let dialog = self.surface(dialog, id, 620., window, cx);
+                self.update_dialog(dialog, &modal, window, cx)
+            }
+            "note" => {
+                let dialog = self.surface(dialog, id, 420., window, cx);
+                self.note_dialog(dialog, &modal, cx)
+            }
+            _ => {
+                let dialog = self.surface(dialog, id, 420., window, cx);
+                self.confirm_view(dialog, &modal, cx)
+            }
+        }
+    }
+
+    /// A confirmation (Overlays.tsx, ConfirmDialog): title and text, then
+    /// the accent or danger button first and Cancel.
+    fn confirm_view(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
+        let p = self.palette;
+        let id = modal.id;
+        let ask = modal.ask.clone();
+        let confirm = ask
+            .as_ref()
+            .map(|a| a.label.clone())
+            .unwrap_or_else(|| label("common.close"));
+        let danger = ask.as_ref().is_some_and(|a| a.danger);
+        dialog
+            .child(
+                self.measure(id, 0).child(
+                    div()
+                        .pt(px(22.))
+                        .px(px(24.))
+                        .pb(px(20.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(10.))
+                        .child(self.dialog_title(modal.title.clone()))
+                        .child(div().text_color(p.muted).child(modal.body.clone()))
+                        .when_some(modal.error.clone(), |d, error| {
+                            d.child(div().text_size(px(12.)).text_color(p.danger).child(error))
+                        }),
+                ),
+            )
+            .footer(
+                self.measure(id, 1).child(
+                    self.dialog_footer()
+                        .child(
+                            self.btn(
+                                format!("modal-{id}-confirm"),
+                                confirm,
+                                None,
+                                if danger { Tone::Danger } else { Tone::Accent },
+                            )
+                            .min_w(px(96.))
+                            .track_focus(&self.primary_focus(id, cx))
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.answer(id, true, window, cx);
+                                },
+                            )),
+                        )
+                        .child(
+                            self.btn(
+                                format!("modal-{id}-cancel"),
+                                label("common.cancel"),
+                                None,
+                                Tone::Plain,
+                            )
+                            .min_w(px(96.))
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.answer(id, false, window, cx);
+                                },
+                            )),
+                        ),
+                ),
+            )
+    }
+
+    /// Answers the confirmation `id`: it closes, then confirming runs its step.
+    fn answer(&mut self, id: u64, ok: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.modal.as_ref().is_none_or(|m| m.id != id) {
+            return;
+        }
+        let modal = self.modal.clone();
+        if ok
+            && let Some(modal) = modal
+            && let Some(ask) = modal.ask.clone()
+        {
+            if modal.kind == "confirm" {
+                self.close_overlay(window, cx);
+                (ask.then)(self, window, cx);
+            } else {
+                self.confirm_dialog(window, cx);
+            }
+        } else {
+            self.close_overlay(window, cx);
+        }
+        cx.notify();
+    }
+
+    /// Enter in a dialog: the focused control acts on it; with the dialog
+    /// itself or a text box focused, the dialog's main action runs.
+    fn dialog_enter(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(modal) = self.find_modal(id).cloned() else {
+            cx.propagate();
+            return;
+        };
+        let focused = window.focused(cx);
+        let on_shell = focused.is_none() || focused == modal.shell;
+        let in_input = self
+            .forms
+            .values()
+            .any(|form| form.read(cx).focus_handle(cx).is_focused(window));
+        if !(on_shell || in_input) {
+            // Let the focused button take its own click.
+            cx.propagate();
+            return;
+        }
+        match modal.kind.as_str() {
+            "task" => self.run_task(window, cx),
+            "note" => self.confirm_dialog(window, cx),
+            "onboarding" => self.onboarding_next(window, cx),
+            "license" | "notices" | "shortcuts" | "whatsnew" => self.close_overlay(window, cx),
+            "filelock" | "update" => {}
+            _ => self.act(Action::Confirm, window, cx),
+        }
+    }
+
     pub(in crate::frontend) fn confirm_dialog(
         &mut self,
         window: &mut Window,
@@ -715,108 +875,32 @@ impl Desktop {
             .unwrap_or_default();
         let args = &modal.args;
         match modal.kind.as_str() {
-            "restartExplorer" => self.request(
-                "restart_explorer",
-                json!({"pid":args["pid"],"createTime":args["createTime"]}),
-                None,
-                window,
-                cx,
-            ),
-            "end" | "endTree" | "priority" | "efficiency" => {
-                for member in values(&args["members"]) {
-                    let mut payload =
-                        json!({"pid":member["pid"],"createTime":member["createTime"]});
-                    let command = match modal.kind.as_str() {
-                        "end" => {
-                            payload["force"] = json!(false);
-                            "kill_process"
-                        }
-                        "endTree" => "kill_process_tree",
-                        "priority" => {
-                            payload["priority"] = args["priority"].clone();
-                            "set_priority"
-                        }
-                        _ => {
-                            payload["on"] = args["on"].clone();
-                            "set_efficiency_mode"
-                        }
-                    };
-                    self.request(command, payload, None, window, cx);
+            "confirm" => {
+                if let Some(ask) = modal.ask {
+                    self.close_overlay(window, cx);
+                    (ask.then)(self, window, cx);
                 }
+                return;
+            }
+            "restartExplorer" => {
+                self.close_overlay(window, cx);
+                self.restart_explorer(args.clone(), window, cx);
+                return;
+            }
+            "end" | "endTree" | "priority" => {
+                self.close_overlay(window, cx);
+                self.process_batch(&modal.kind, args, window, cx);
+                return;
             }
             "task" => {
-                self.request(
-                    "run_task",
-                    json!({"command":value,"elevated":boolean(args,"elevated")}),
-                    None,
-                    window,
-                    cx,
-                );
+                self.run_task(window, cx);
                 return;
             }
-            "filelock" => {
-                let paths = value
-                    .lines()
-                    .filter(|p| !p.trim().is_empty())
-                    .map(str::trim)
-                    .collect::<Vec<_>>();
-                if paths.is_empty() {
-                    return;
-                }
-                self.request(
-                    "find_lockers",
-                    json!({"paths":paths}),
-                    Some("lockers"),
-                    window,
-                    cx,
-                );
-                return;
-            }
-            "hotkey" => self.request(
-                "set_hotkey",
-                json!({"hotkey":value}),
-                Some("settings"),
-                window,
-                cx,
-            ),
-            "privilege" => self.request(
-                "manage_privileged_service",
-                json!({"action":args["action"]}),
-                Some("privilege"),
-                window,
-                cx,
-            ),
-            "taskmgr" => self.request(
-                "manage_task_manager",
-                json!({"action":args["action"]}),
-                Some("taskmgr"),
-                window,
-                cx,
-            ),
-            "sensors" => self.request(
-                "set_kernel_sensors",
-                json!({"enabled":args["enabled"]}),
-                Some("settings"),
-                window,
-                cx,
-            ),
-            "clearHistory" => self.request("clear_history", json!({}), None, window, cx),
             "closeConnection" => self.request("close_connection", args.clone(), None, window, cx),
             "update" => {
-                let status = self.data.get("updates").cloned().unwrap_or(Value::Null);
-                match text(&status, "state") {
-                    "ready" => self.request("install_update", json!({}), None, window, cx),
-                    "available" => self.request(
-                        "open_release_page",
-                        json!({"version":status["version"]}),
-                        None,
-                        window,
-                        cx,
-                    ),
-                    _ => return,
-                }
+                self.update_primary(window, cx);
+                return;
             }
-            "proxy" => self.preference("updateProxy", json!(value), window, cx),
             "note" => self.set_mark(
                 text(args, "key"),
                 "note",
@@ -831,38 +915,1349 @@ impl Desktop {
                 ),
                 cx,
             ),
-            "ruleScope" => {
-                self.open_dialog("rule", args.clone(), window, cx);
-                return;
+            "filelock" => return,
+            _ => {}
+        }
+        self.close_overlay(window, cx);
+    }
+
+    /// The number of processes started under `root`, as the process tree counts them.
+    fn descendants(&self, root: &Value) -> usize {
+        let processes = values(&self.snapshot["processes"]);
+        let mut children: HashMap<u64, Vec<&Value>> = HashMap::new();
+        for p in processes {
+            children
+                .entry(p["ppid"].as_u64().unwrap_or(0))
+                .or_default()
+                .push(p);
+        }
+        let mut seen = HashSet::from([root["pid"].as_u64().unwrap_or(0)]);
+        let mut stack = vec![root];
+        let mut count = 0;
+        while let Some(p) = stack.pop() {
+            for c in children
+                .get(&p["pid"].as_u64().unwrap_or(0))
+                .into_iter()
+                .flatten()
+            {
+                let pid = c["pid"].as_u64().unwrap_or(0);
+                if number(c, "createTime") >= number(p, "createTime") && seen.insert(pid) {
+                    count += 1;
+                    stack.push(c);
+                }
             }
-            "rule" => {
-                if value.trim().is_empty() {
+        }
+        count
+    }
+
+    /// Runs one process action on each member off the UI thread and reports
+    /// the outcome once, as actions.ts does with Promise.allSettled.
+    fn process_batch(
+        &mut self,
+        kind: &str,
+        args: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let members = values(&args["members"]).to_vec();
+        let name = text(args, "name").to_owned();
+        if members.is_empty() {
+            self.notify_toast(ToastKind::Error, label("actions.staleProcess"));
+            return;
+        }
+        let (command, extra) = match kind {
+            "end" => ("kill_process", json!({"force":false})),
+            "endTree" => ("kill_process_tree", json!({})),
+            "priority" => ("set_priority", json!({"priority":args["priority"]})),
+            _ => ("set_efficiency_mode", json!({"on":args["on"]})),
+        };
+        let payloads = if kind == "endTree" {
+            members.iter().take(1).cloned().collect::<Vec<_>>()
+        } else {
+            members
+        }
+        .into_iter()
+        .map(|member| {
+            let mut payload = json!({"pid":member["pid"],"createTime":member["createTime"]});
+            for (key, value) in extra.as_object().into_iter().flatten() {
+                payload[key] = value.clone();
+            }
+            payload
+        })
+        .collect::<Vec<_>>();
+        if self.options.fixture.is_some() {
+            return;
+        }
+        self.next_request += 1;
+        let id = self.next_request;
+        let summary = json!({"kind":kind,"command":command,"name":name,"priority":args["priority"],"on":args["on"]});
+        self.pending.insert(
+            id,
+            Pending {
+                command: "batch".into(),
+                cache: None,
+                args: summary.clone(),
+            },
+        );
+        let host = self.host.clone();
+        let command = command.to_owned();
+        std::thread::spawn(move || {
+            let results = payloads
+                .into_iter()
+                .map(|payload| {
+                    let result = crate::dispatch::invoke(&host, &command, payload.clone());
+                    json!({"payload":payload,"ok":result.is_ok(),"value":result.unwrap_or_else(|e| e)})
+                })
+                .collect::<Vec<_>>();
+            let mut value = summary;
+            value["results"] = json!(results);
+            let _ = host.emit("command-response", json!({"id":id,"ok":true,"value":value}));
+        });
+        let _ = window;
+        cx.notify();
+    }
+
+    fn batch_done(&mut self, value: &Value) {
+        let kind = text(value, "kind");
+        let command = text(value, "command");
+        let name = text(value, "name").to_owned();
+        let results = values(&value["results"]);
+        let failed = results
+            .iter()
+            .filter(|r| !boolean(r, "ok"))
+            .collect::<Vec<_>>();
+        let total = results.len();
+        let first_error = failed
+            .first()
+            .map(|r| self.action_error(command, &r["payload"], &r["value"]))
+            .unwrap_or_default();
+        let outdated = failed
+            .iter()
+            .any(|r| text(&r["value"], "kind") == "serviceOutdated");
+        let (kind_out, text_out, ms) = match kind {
+            "end" if total > 1 => {
+                if failed.is_empty() {
+                    (
+                        ToastKind::Success,
+                        tr!("actions.endGroup.done", name = name, count = total),
+                        5000,
+                    )
+                } else {
+                    (
+                        ToastKind::Error,
+                        tr!(
+                            "actions.endGroup.partial",
+                            error = first_error,
+                            count = failed.len()
+                        ),
+                        5000,
+                    )
+                }
+            }
+            "end" => {
+                if failed.is_empty() {
+                    (
+                        ToastKind::Success,
+                        tr!("actions.end.done", name = name),
+                        2500,
+                    )
+                } else {
+                    (ToastKind::Error, first_error, 5000)
+                }
+            }
+            "endTree" => {
+                let report = &results
+                    .first()
+                    .map(|r| r["value"].clone())
+                    .unwrap_or_default();
+                if !failed.is_empty() {
+                    (ToastKind::Error, first_error, 5000)
+                } else if number(report, "failed") > 0. {
+                    (
+                        ToastKind::Error,
+                        tr!(
+                            "actions.endTree.partial",
+                            count = number(report, "terminated") as u64,
+                            failed = number(report, "failed") as u64
+                        ),
+                        5000,
+                    )
+                } else {
+                    (
+                        ToastKind::Success,
+                        tr!(
+                            "actions.endTree.done",
+                            count = number(report, "terminated") as u64
+                        ),
+                        2500,
+                    )
+                }
+            }
+            "priority" => {
+                let wanted = text(value, "priority");
+                if failed.len() == total {
+                    (
+                        ToastKind::Error,
+                        format!(
+                            "{}：{first_error}",
+                            tr!("actions.priority.failed", name = name)
+                        ),
+                        5000,
+                    )
+                } else if results.iter().any(|r| {
+                    boolean(r, "ok") && r["value"].as_str().is_some_and(|got| got != wanted)
+                }) {
+                    (ToastKind::Error, label("actions.priority.downgraded"), 5000)
+                } else if !failed.is_empty() {
+                    (
+                        ToastKind::Error,
+                        tr!(
+                            "actions.priority.partial",
+                            count = total - failed.len(),
+                            failed = failed.len()
+                        ),
+                        5000,
+                    )
+                } else {
+                    (
+                        ToastKind::Success,
+                        tr!(
+                            "actions.priority.done",
+                            name = name,
+                            priority = label(&format!("processes.priority.{wanted}"))
+                        ),
+                        2500,
+                    )
+                }
+            }
+            _ => {
+                let state = if boolean(value, "on") { "on" } else { "off" };
+                if failed.len() == total {
+                    (
+                        ToastKind::Error,
+                        format!(
+                            "{}：{first_error}",
+                            argus_core::i18n::format(
+                                &format!("actions.efficiency.{state}.failed"),
+                                &[("name", &name)]
+                            )
+                        ),
+                        5000,
+                    )
+                } else if !failed.is_empty() {
+                    (
+                        ToastKind::Error,
+                        argus_core::i18n::format(
+                            &format!("actions.efficiency.{state}.partial"),
+                            &[
+                                ("count", &(total - failed.len())),
+                                ("failed", &failed.len()),
+                            ],
+                        ),
+                        5000,
+                    )
+                } else {
+                    (
+                        ToastKind::Success,
+                        argus_core::i18n::format(
+                            &format!("actions.efficiency.{state}.done"),
+                            &[("name", &name)],
+                        ),
+                        2500,
+                    )
+                }
+            }
+        };
+        if kind_out == ToastKind::Error && outdated {
+            // Denied while the service needs an update: the notice leads to its card.
+            self.toast_with(
+                ToastKind::Error,
+                text_out,
+                10000,
+                vec![(
+                    label("settings.privilege.update"),
+                    Rc::new(
+                        |this: &mut Desktop, window: &mut Window, cx: &mut Context<Desktop>| {
+                            this.locate_setting("privilege", "privilegedService", window, cx)
+                        },
+                    ),
+                )],
+            );
+        } else {
+            self.toast_with(kind_out, text_out, ms, vec![]);
+        }
+    }
+
+    /// Opens Settings on the rule for `name`, creating one first (actions.ts, addRuleFor).
+    fn add_rule_for(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if name.is_empty() {
+            return;
+        }
+        let rules = values(&self.data["settings"]["rules"]).to_vec();
+        if let Some(rule) = rules
+            .iter()
+            .find(|r| text(r, "name").eq_ignore_ascii_case(name))
+        {
+            self.ui.focus_rule = Some((text(rule, "id").to_owned(), Instant::now()));
+            self.preference("settingsSection", json!("rules"), window, cx);
+            return;
+        }
+        let processes = values(&self.snapshot["processes"]);
+        let same = processes
+            .iter()
+            .filter(|p| text(p, "name").eq_ignore_ascii_case(name))
+            .collect::<Vec<_>>();
+        let process = same.first().cloned().cloned().unwrap_or(Value::Null);
+        let broad = SHARED_HOSTS.contains(&name.to_ascii_lowercase().as_str())
+            || same
+                .iter()
+                .map(|p| text(p, "path").to_ascii_lowercase())
+                .collect::<HashSet<_>>()
+                .len()
+                > 1;
+        let display = name_of(&same).unwrap_or_else(|| name.to_owned());
+        let name = name.to_owned();
+        let create = move |this: &mut Desktop, window: &mut Window, cx: &mut Context<Desktop>| {
+            let priority = process["priorityClass"]
+                .as_str()
+                .filter(|p| *p != "normal" && PRIORITIES.contains(p))
+                .map(|p| json!(p))
+                .unwrap_or(Value::Null);
+            let id = format!(
+                "native-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            );
+            let mut rules = values(&this.data["settings"]["rules"]).to_vec();
+            rules.push(
+                json!({"id":id,"name":name,"enabled":true,"priority":priority,
+                "efficiency":if boolean(&process,"efficiency") {json!(true)} else {Value::Null}}),
+            );
+            this.request(
+                "set_rules",
+                json!({"rules":rules}),
+                Some("settings"),
+                window,
+                cx,
+            );
+            this.ui.focus_rule = Some((id, Instant::now()));
+            this.preference("settingsSection", json!("rules"), window, cx);
+        };
+        if broad {
+            self.ask(
+                label("actions.ruleScope.title"),
+                tr!("actions.ruleScope.body", name = display),
+                label("actions.ruleScope.confirm"),
+                false,
+                create,
+                window,
+                cx,
+            );
+        } else {
+            create(self, window, cx);
+        }
+    }
+
+    /// Restarts Explorer with a pending notice, then says how it went (explorer.ts).
+    fn restart_explorer(&mut self, shell: Value, window: &mut Window, cx: &mut Context<Self>) {
+        if self.ui.busy.contains("explorer") {
+            return;
+        }
+        if self.options.fixture.is_some() {
+            return;
+        }
+        self.ui.busy.insert("explorer".into());
+        let pending = self.toast_with(
+            ToastKind::Info,
+            label("tasks.explorer.restarting"),
+            60000,
+            vec![],
+        );
+        self.ui
+            .errors
+            .insert("explorerToast".into(), pending.to_string());
+        self.request(
+            "restart_explorer",
+            json!({"pid":shell["pid"],"createTime":shell["createTime"]}),
+            None,
+            window,
+            cx,
+        );
+    }
+
+    fn explorer_finished(&mut self, error: Option<&Value>) {
+        self.ui.busy.remove("explorer");
+        if let Some(id) = self
+            .ui
+            .errors
+            .remove("explorerToast")
+            .and_then(|id| id.parse::<u64>().ok())
+        {
+            self.dismiss_toast(id);
+        }
+        let Some(error) = error else {
+            self.notify_toast(ToastKind::Success, label("tasks.explorer.done"));
+            return;
+        };
+        let kind = text(error, "kind");
+        let key = if matches!(
+            kind,
+            "stale" | "unsupported" | "permission" | "prepare" | "shutdown" | "restore" | "busy"
+        ) {
+            format!("tasks.explorer.error.{kind}")
+        } else {
+            "tasks.explorer.error.prepare".into()
+        };
+        let mut message = label(&key);
+        if let Some(code) = hex_code(&error["code"]) {
+            message = format!("{message} {code}");
+        }
+        let actions: Vec<(String, Handler)> = if boolean(error, "shellMissing") {
+            vec![(
+                label("tasks.explorer.recover"),
+                Rc::new(
+                    |this: &mut Desktop, window: &mut Window, cx: &mut Context<Desktop>| {
+                        this.open_dialog(
+                            "task",
+                            json!({"command":"%WINDIR%\\explorer.exe"}),
+                            window,
+                            cx,
+                        )
+                    },
+                ),
+            )]
+        } else {
+            vec![]
+        };
+        self.toast_with(ToastKind::Error, message, 15000, actions);
+    }
+
+    /// Runs the new task's command (NewTaskDialog.tsx, run).
+    fn run_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(modal) = self.modal.as_mut().filter(|m| m.kind == "task") else {
+            return;
+        };
+        if self.ui.busy.contains("task") || self.ui.busy.contains("pick") {
+            return;
+        }
+        let command = self
+            .forms
+            .get("value")
+            .map(|v| v.read(cx).value().to_string())
+            .unwrap_or_default();
+        if !valid_task(&command) {
+            modal.args["failure"] = json!({"kind":"invalid"});
+            window.refresh();
+            return;
+        }
+        modal.args["failure"] = Value::Null;
+        let elevated = boolean(&modal.args, "elevated");
+        self.ui.busy.insert("task".into());
+        self.request(
+            "run_task",
+            json!({"command":command.trim(),"elevated":elevated}),
+            None,
+            window,
+            cx,
+        );
+        window.refresh();
+        cx.notify();
+    }
+
+    fn task_dialog(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
+        let p = self.palette;
+        let id = modal.id;
+        let busy = self.ui.busy.contains("task");
+        let pending = busy || self.ui.busy.contains("pick");
+        let elevated = boolean(&modal.args, "elevated");
+        let command = self
+            .forms
+            .get("value")
+            .map(|v| v.read(cx).value().to_string())
+            .unwrap_or_default();
+        let failure = modal.args["failure"].clone();
+        let failure_kind = text(&failure, "kind").to_owned();
+        let shown_error = !failure_kind.is_empty() && failure_kind != "cancelled";
+        let feedback = if !failure_kind.is_empty() {
+            let key = format!("tasks.error.{failure_kind}");
+            let message = label(&key);
+            Some((
+                if message == key {
+                    label("tasks.error.os")
+                } else {
+                    message
+                },
+                if failure_kind == "cancelled" {
+                    None
+                } else {
+                    hex_code(&failure["code"])
+                },
+            ))
+        } else {
+            None
+        };
+        dialog
+            .child(
+                self.measure(id, 0).child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .flex()
+                                .items_start()
+                                .gap(px(14.))
+                                .pt(px(26.))
+                                .px(px(24.))
+                                .child(
+                                    div()
+                                        .size(px(44.))
+                                        .flex_shrink_0()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .border_1()
+                                        .border_color(p.stroke)
+                                        .rounded(px(10.))
+                                        .bg(p.layer_strong)
+                                        .child(icon("RunTaskIcon", p.accent).size(px(24.))),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(5.))
+                                        .child(self.dialog_title(modal.title.clone()))
+                                        .child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .line_height(relative(1.6))
+                                                .text_color(p.muted)
+                                                .child(modal.body.clone()),
+                                        ),
+                                )
+                                .child(
+                                    self.btn(
+                                        format!("modal-{id}-x"),
+                                        "",
+                                        Some("DismissIcon"),
+                                        Tone::Plain,
+                                    )
+                                    .mt(px(-8.))
+                                    .mr(px(-8.))
+                                    .accessibility_label(label("common.close"))
+                                    .inert(pending)
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| this.close_overlay(window, cx),
+                                    )),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .pt(px(22.))
+                                .px(px(24.))
+                                .pb(px(8.))
+                                .flex()
+                                .flex_col()
+                                .child(
+                                    div()
+                                        .mb(px(8.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child(label("tasks.command")),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .gap(px(8.))
+                                        .child(div().flex_1().min_w_0().h(px(36.)).when_some(
+                                            self.forms.get("value"),
+                                            |d, input| {
+                                                d.child(
+                                                    Input::new(input)
+                                                        .h(px(36.))
+                                                        .font_family(theme::MONO_FONT)
+                                                        .disabled(pending),
+                                                )
+                                            },
+                                        ))
+                                        .child(
+                                            self.btn(
+                                                format!("modal-{id}-browse"),
+                                                label("tasks.browse"),
+                                                Some("FolderIcon"),
+                                                Tone::Plain,
+                                            )
+                                            .h(px(36.))
+                                            .inert(pending)
+                                            .on_click(
+                                                cx.listener(|this, _, window, cx| {
+                                                    if this.options.fixture.is_some() {
+                                                        return;
+                                                    }
+                                                    this.ui.busy.insert("pick".into());
+                                                    this.request(
+                                                        "pick_path",
+                                                        json!({"folder":false,"task":true}),
+                                                        None,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                }),
+                                            ),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .id(("task-elevated", id))
+                                        .mt(px(20.))
+                                        .flex()
+                                        .items_start()
+                                        .gap(px(10.))
+                                        .cursor_pointer()
+                                        .when(!pending, |d| {
+                                            d.on_click(cx.listener(move |this, _, window, cx| {
+                                                if let Some(modal) = &mut this.modal
+                                                    && modal.id == id
+                                                {
+                                                    let on = !boolean(&modal.args, "elevated");
+                                                    modal.args["elevated"] = json!(on);
+                                                    modal.args["failure"] = Value::Null;
+                                                }
+                                                window.refresh();
+                                                cx.notify();
+                                            }))
+                                        })
+                                        .child(
+                                            div()
+                                                .mt(px(2.))
+                                                .size(px(17.))
+                                                .flex_shrink_0()
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .rounded(px(4.))
+                                                .border_1()
+                                                .border_color(if elevated {
+                                                    p.accent
+                                                } else {
+                                                    p.muted
+                                                })
+                                                .bg(if elevated {
+                                                    p.accent
+                                                } else {
+                                                    p.background.opacity(0.)
+                                                })
+                                                .when(elevated, |d| {
+                                                    d.child(
+                                                        icon("CheckIcon", p.on_accent)
+                                                            .size(px(12.)),
+                                                    )
+                                                }),
+                                        )
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .flex_col()
+                                                .child(
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .gap(px(8.))
+                                                        .child(label("tasks.administrator"))
+                                                        .child(
+                                                            icon("ShieldIcon", p.muted)
+                                                                .size(px(14.)),
+                                                        ),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .mt(px(3.))
+                                                        .min_h(px(36.))
+                                                        .text_size(px(12.))
+                                                        .line_height(relative(1.5))
+                                                        .text_color(p.muted)
+                                                        .child(label(if elevated {
+                                                            "tasks.administratorHint"
+                                                        } else {
+                                                            "tasks.standardHint"
+                                                        })),
+                                                ),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .min_h(px(62.))
+                                        .pt(px(8.))
+                                        .text_size(px(12.))
+                                        .line_height(relative(1.5))
+                                        .text_color(if shown_error { p.danger } else { p.muted })
+                                        .flex()
+                                        .flex_col()
+                                        .when_some(feedback, |d, (message, code)| {
+                                            d.child(message).when_some(code, |d, code| {
+                                                d.child(div().text_size(px(11.)).child(code))
+                                            })
+                                        })
+                                        .when(failure_kind.is_empty() && busy, |d| {
+                                            d.child(label("tasks.waiting"))
+                                        }),
+                                ),
+                        ),
+                ),
+            )
+            .footer(
+                self.measure(id, 1).child(
+                    self.dialog_footer()
+                        .child(
+                            self.btn(
+                                format!("modal-{id}-cancel"),
+                                label("common.cancel"),
+                                None,
+                                Tone::Plain,
+                            )
+                            .min_w(px(96.))
+                            .inert(pending)
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.close_overlay(window, cx)),
+                            ),
+                        )
+                        .child(
+                            self.btn(
+                                format!("modal-{id}-run"),
+                                label(if busy { "tasks.running" } else { "tasks.run" }),
+                                None,
+                                Tone::Accent,
+                            )
+                            .min_w(px(96.))
+                            .track_focus(&self.primary_focus(id, cx))
+                            .inert(pending || !valid_task(&command))
+                            .on_click(cx.listener(|this, _, window, cx| this.run_task(window, cx))),
+                        ),
+                ),
+            )
+    }
+
+    /// Checks the chosen paths for lockers (FileLockDialog.tsx, search).
+    pub(in crate::frontend) fn search_lockers(
+        &mut self,
+        paths: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if paths.is_empty() {
+            return;
+        }
+        if let Some(modal) = &mut self.modal
+            && modal.kind == "filelock"
+        {
+            modal.args["paths"] = json!(paths);
+            modal.error = None;
+        }
+        self.data.remove("lockers");
+        self.request(
+            "find_lockers",
+            json!({"paths":paths}),
+            Some("lockers"),
+            window,
+            cx,
+        );
+        window.refresh();
+    }
+
+    fn filelock_dialog(
+        &mut self,
+        dialog: Dialog,
+        modal: &Modal,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Dialog {
+        let p = self.palette;
+        let id = modal.id;
+        let paths = values(&modal.args["paths"])
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let searching = self
+            .pending
+            .values()
+            .any(|pending| pending.cache.as_deref() == Some("lockers"));
+        let report = self.data.get("lockers").cloned();
+        let note = |text: String| {
+            div()
+                .text_size(px(12.))
+                .text_color(p.muted)
+                .child(text)
+                .into_any_element()
+        };
+        let mut result = div().flex().flex_col().gap(px(8.)).min_h(px(40.));
+        if searching {
+            result = result
+                .child(div().text_color(p.muted).child(label("fileLock.checking")))
+                .child(self.progress_bar(None, cx));
+        } else if let Some(error) = modal.error.clone() {
+            result = result.child(div().text_size(px(12.)).text_color(p.danger).child(error));
+        } else if let Some(report) = report {
+            let lockers = values(&report["lockers"]);
+            result = result.child(div().text_color(p.muted).child(if lockers.is_empty() {
+                label("fileLock.none")
+            } else {
+                tr!("fileLock.found", count = lockers.len())
+            }));
+            let mut list = div()
+                .flex()
+                .flex_col()
+                .border_1()
+                .border_color(p.stroke)
+                .rounded(px(6.))
+                .bg(p.layer);
+            for (index, locker) in lockers.iter().enumerate() {
+                let process = values(&self.snapshot["processes"])
+                    .iter()
+                    .find(|q| q["pid"] == locker["pid"] && q["createTime"] == locker["createTime"])
+                    .cloned();
+                let kind = text(locker, "kind");
+                let handles = locker["handleCount"].as_u64().unwrap_or(0);
+                let app = text(locker, "appName").to_owned();
+                let description = process
+                    .as_ref()
+                    .map(|q| text(q, "description").to_owned())
+                    .filter(|d| !d.is_empty())
+                    .unwrap_or_else(|| app.clone());
+                let exe = process
+                    .as_ref()
+                    .map(|q| text(q, "name").to_owned())
+                    .unwrap_or_else(|| app.clone());
+                let service = text(locker, "service").to_owned();
+                let tag = |text: String| {
+                    div()
+                        .px(px(6.))
+                        .py(px(1.))
+                        .rounded(px(4.))
+                        .bg(p.face)
+                        .border_1()
+                        .border_color(p.stroke)
+                        .text_size(px(11.))
+                        .text_color(p.muted)
+                        .whitespace_nowrap()
+                        .child(text)
+                };
+                let locker_value = locker.clone();
+                let ending = locker.clone();
+                list = list.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .px(px(12.))
+                        .py(px(8.))
+                        .when(index > 0, |d| d.border_t_1().border_color(p.stroke))
+                        .child(self.process_icon(process.as_ref(), 20., cx))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .child(div().truncate().child(description))
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_size(px(12.))
+                                        .text_color(p.muted)
+                                        .child(format!(
+                                            "{exe}\u{3000}PID {}{}",
+                                            locker["pid"],
+                                            if service.is_empty() {
+                                                String::new()
+                                            } else {
+                                                format!(
+                                                    " {}",
+                                                    tr!("fileLock.service", name = service)
+                                                )
+                                            }
+                                        )),
+                                )
+                                .when_some(locker["handlePath"].as_str(), |d, path| {
+                                    d.child(
+                                        div()
+                                            .truncate()
+                                            .text_size(px(12.))
+                                            .text_color(p.muted)
+                                            .child(path.to_owned()),
+                                    )
+                                }),
+                        )
+                        .when(
+                            matches!(kind, "service" | "explorer" | "console" | "critical"),
+                            |d| d.child(tag(label(&format!("fileLock.kind.{kind}")))),
+                        )
+                        .when(handles > 0, |d| {
+                            d.child(tag(tr!("fileLock.handleCount", count = handles)))
+                        })
+                        .child(
+                            self.btn_small(
+                                format!("locker-go-{index}"),
+                                "",
+                                Some("GoToIcon"),
+                                Tone::Ghost,
+                            )
+                            .accessibility_label(label("fileLock.showProcess"))
+                            .tooltip(|window, cx| {
+                                gpui_kit::component::tooltip::Tooltip::new(label(
+                                    "fileLock.showProcess",
+                                ))
+                                .build(window, cx)
+                            })
+                            .inert(process.is_none())
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.preference(
+                                        "revealProcess",
+                                        locker_value.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            )),
+                        )
+                        .child(
+                            self.btn_small(
+                                format!("locker-end-{index}"),
+                                label("fileLock.end"),
+                                Some("EndIcon"),
+                                Tone::Danger,
+                            )
+                            .inert(number(locker, "createTime") <= 0.)
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.end_locker(ending.clone(), window, cx);
+                                },
+                            )),
+                        ),
+                );
+            }
+            if !lockers.is_empty() {
+                result = result.child(list);
+            }
+            if let Some(handles) = report["handles"].as_object().map(|_| &report["handles"]) {
+                let detail = if boolean(handles, "available") {
+                    argus_core::i18n::format(
+                        if boolean(handles, "viaService") {
+                            "fileLock.handles.service"
+                        } else {
+                            "fileLock.handles.local"
+                        },
+                        &[("count", &handles["checked"])],
+                    )
+                } else {
+                    label("fileLock.handles.unfinished")
+                };
+                result = result.child(note(tr!(
+                    "fileLock.checked",
+                    count = report["filesChecked"],
+                    handles = detail
+                )));
+                if number(handles, "deniedProcesses") > 0.
+                    || number(handles, "skipped") > 0.
+                    || number(handles, "timeouts") > 0.
+                    || boolean(handles, "truncated")
+                {
+                    result = result.child(note(tr!(
+                        "fileLock.incomplete",
+                        denied = handles["deniedProcesses"],
+                        skipped = handles["skipped"],
+                        timeouts = handles["timeouts"],
+                        limit = if boolean(handles, "truncated") {
+                            label("fileLock.limitReached")
+                        } else {
+                            String::new()
+                        }
+                    )));
+                }
+                if !boolean(handles, "viaService") && !boolean(handles, "elevated") {
+                    result = result.child(note(label("fileLock.serviceHint")));
+                }
+                if let Some(error) = handles["error"].as_str() {
+                    result = result.child(note(error.to_owned()));
+                }
+            }
+            if let Some(error) = report["restartError"].as_str() {
+                result = result.child(note(error.to_owned()));
+            }
+            if number(&report, "unchecked") > 0. {
+                result = result.child(note(tr!("fileLock.unchecked", count = report["unchecked"])));
+            }
+            if boolean(&report, "truncated") {
+                result = result.child(note(tr!(
+                    "fileLock.truncated",
+                    count = (number(&report, "filesChecked") + number(&report, "unchecked")) as u64
+                )));
+            }
+        }
+        let has_paths = !paths.is_empty();
+        let picker = div()
+            .flex()
+            .flex_wrap()
+            .gap(px(8.))
+            .child(
+                self.btn(
+                    format!("modal-{id}-file"),
+                    label("fileLock.pickFile"),
+                    None,
+                    Tone::Plain,
+                )
+                .on_click(
+                    cx.listener(|this, _, window, cx| this.pick_lock_path(false, window, cx)),
+                ),
+            )
+            .child(
+                self.btn(
+                    format!("modal-{id}-folder"),
+                    label("fileLock.pickFolder"),
+                    Some("FolderIcon"),
+                    Tone::Plain,
+                )
+                .on_click(cx.listener(|this, _, window, cx| this.pick_lock_path(true, window, cx))),
+            )
+            .when(has_paths, |d| {
+                let again = paths.clone();
+                d.child(
+                    self.btn(
+                        format!("modal-{id}-recheck"),
+                        label("fileLock.recheck"),
+                        None,
+                        Tone::Ghost,
+                    )
+                    .inert(searching)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.search_lockers(again.clone(), window, cx)
+                    })),
+                )
+            });
+        let chips = if has_paths {
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(4.))
+                .children(paths.iter().map(|path| {
+                    let name = path
+                        .rsplit(['\\', '/'])
+                        .find(|part| !part.is_empty())
+                        .unwrap_or(path)
+                        .to_owned();
+                    div()
+                        .flex()
+                        .items_baseline()
+                        .gap(px(8.))
+                        .px(px(10.))
+                        .py(px(6.))
+                        .rounded(px(6.))
+                        .border_1()
+                        .border_color(p.stroke)
+                        .bg(p.layer)
+                        .min_w_0()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(name),
+                        )
+                        .child(
+                            div()
+                                .truncate()
+                                .text_size(px(12.))
+                                .text_color(p.muted)
+                                .child(path.clone()),
+                        )
+                }))
+                .into_any_element()
+        } else {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .px(px(14.))
+                .py(px(14.))
+                .rounded(px(6.))
+                .border_1()
+                .border_dashed()
+                .border_color(p.stroke_strong)
+                .text_color(p.muted)
+                .child(icon("LockIcon", p.muted).size(px(20.)))
+                .child(label("fileLock.dropZone"))
+                .into_any_element()
+        };
+        dialog
+            .child(
+                self.measure(id, 0).child(
+                    div()
+                        .pt(px(22.))
+                        .px(px(24.))
+                        .pb(px(20.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(14.))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap(px(10.))
+                                .child(self.dialog_title(modal.title.clone()))
+                                .child(div().text_color(p.muted).child(modal.body.clone())),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap(px(10.))
+                                .child(chips)
+                                .child(picker),
+                        )
+                        .child(result),
+                ),
+            )
+            .footer(
+                self.measure(id, 1).child(
+                    self.dialog_footer()
+                        .justify_between()
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .text_size(px(12.))
+                                .text_color(p.muted)
+                                .child(label("fileLock.footerHint")),
+                        )
+                        .child(
+                            self.btn(
+                                format!("modal-{id}-close"),
+                                label("common.close"),
+                                None,
+                                Tone::Plain,
+                            )
+                            .min_w(px(96.))
+                            .track_focus(&self.primary_focus(id, cx))
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.close_overlay(window, cx)),
+                            ),
+                        ),
+                ),
+            )
+    }
+
+    fn pick_lock_path(&mut self, folder: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.options.fixture.is_some() {
+            return;
+        }
+        self.request("pick_path", json!({"folder":folder}), None, window, cx);
+    }
+
+    /// Ends a locker after asking, then checks again (actions.ts, endProcessByPid).
+    fn end_locker(&mut self, locker: Value, window: &mut Window, cx: &mut Context<Self>) {
+        let process = values(&self.snapshot["processes"])
+            .iter()
+            .find(|q| q["pid"] == locker["pid"] && q["createTime"] == locker["createTime"])
+            .cloned();
+        let name = process
+            .as_ref()
+            .map(|q| text(q, "name").to_owned())
+            .unwrap_or_else(|| text(&locker, "appName").to_owned());
+        let pid = locker["pid"].clone();
+        let create = locker["createTime"].clone();
+        let label_name = name.clone();
+        self.ask(
+            tr!("actions.end.title", name = name),
+            tr!("actions.end.body", pid = pid),
+            label("common.endProcess"),
+            true,
+            move |this, window, cx| {
+                if this.options.fixture.is_some() {
                     return;
                 }
-                let mut rules = values(&self.data["settings"]["rules"]).to_vec();
-                let id = args["id"].as_str().map(str::to_owned).unwrap_or_else(|| {
-                    format!(
-                        "native-{}",
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_nanos()
-                    )
-                });
-                rules.retain(|r| r["id"] != id);
-                rules.push(json!({"id":id,"name":value.trim(),"enabled":args["enabled"].as_bool().unwrap_or(true),"priority":args["priority"],"efficiency":args["efficiency"].as_bool().or_else(||match text(args,"efficiency"){"on"=>Some(true),"off"=>Some(false),_=>None})}));
-                self.request(
-                    "set_rules",
-                    json!({"rules":rules}),
-                    Some("settings"),
+                this.ui
+                    .errors
+                    .insert("lockerEnd".into(), label_name.clone());
+                this.request(
+                    "kill_process",
+                    json!({"pid":pid,"createTime":create,"force":false,"locker":true}),
+                    None,
                     window,
                     cx,
                 );
-            }
-            _ => {}
-        }
-        self.act(Action::CloseOverlay, window, cx);
+            },
+            window,
+            cx,
+        );
     }
+
+    fn note_dialog(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
+        let p = self.palette;
+        let id = modal.id;
+        dialog
+            .child(
+                self.measure(id, 0).child(
+                    div()
+                        .pt(px(22.))
+                        .px(px(24.))
+                        .pb(px(20.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(10.))
+                        .child(self.dialog_title(modal.title.clone()))
+                        .child(div().text_color(p.muted).child(modal.body.clone()))
+                        .when_some(self.forms.get("value"), |d, input| {
+                            d.child(Input::new(input))
+                        }),
+                ),
+            )
+            .footer(
+                self.measure(id, 1).child(
+                    self.dialog_footer()
+                        .child(
+                            self.btn(
+                                format!("modal-{id}-save"),
+                                label("common.marks.save"),
+                                None,
+                                Tone::Accent,
+                            )
+                            .min_w(px(96.))
+                            .track_focus(&self.primary_focus(id, cx))
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.confirm_dialog(window, cx)),
+                            ),
+                        )
+                        .child(
+                            self.btn(
+                                format!("modal-{id}-cancel"),
+                                label("common.cancel"),
+                                None,
+                                Tone::Plain,
+                            )
+                            .min_w(px(96.))
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.close_overlay(window, cx)),
+                            ),
+                        ),
+                ),
+            )
+    }
+
+    /// A long text in a bordered monospaced box (Settings.tsx, DocumentDialog).
+    fn document_dialog(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
+        let p = self.palette;
+        let id = modal.id;
+        dialog
+            .child(
+                self.measure(id, 0).child(
+                    div()
+                        .pt(px(22.))
+                        .px(px(24.))
+                        .pb(px(20.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(10.))
+                        .child(self.dialog_title(modal.title.clone()))
+                        .child(
+                            div()
+                                .id(("document", id))
+                                .max_h(px(560.))
+                                .overflow_y_scroll()
+                                .p(px(12.))
+                                .border_1()
+                                .border_color(p.stroke)
+                                .rounded(px(6.))
+                                .bg(p.layer)
+                                .font_family(theme::MONO_FONT)
+                                .text_size(px(12.))
+                                .line_height(relative(1.5))
+                                .text_color(p.muted)
+                                .child(modal.body.clone()),
+                        ),
+                ),
+            )
+            .footer(
+                self.measure(id, 1)
+                    .child(self.dialog_footer().child(self.close_button(id, cx))),
+            )
+    }
+
+    /// A determinate (`value`) or sweeping progress bar (ProgressBar.tsx).
+    pub(in crate::frontend) fn progress_bar(&self, value: Option<f32>, _cx: &App) -> AnyElement {
+        let p = self.palette;
+        let track = div()
+            .relative()
+            .w_full()
+            .h(px(3.))
+            .rounded(px(2.))
+            .overflow_hidden()
+            .bg(p.accent.opacity(0.16));
+        match value {
+            Some(value) => track
+                .child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top_0()
+                        .bottom_0()
+                        .w(relative(value.clamp(0., 1.)))
+                        .rounded(px(2.))
+                        .bg(p.accent),
+                )
+                .into_any_element(),
+            None => track
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
+                        .w(relative(0.4))
+                        .rounded(px(2.))
+                        .bg(p.accent)
+                        .with_animation(
+                            "progress-sweep",
+                            Animation::new(Duration::from_millis(1400))
+                                .repeat()
+                                .with_easing(theme::ease_move),
+                            |bar, delta| bar.left(relative(-0.4 + 1.4 * delta)),
+                        ),
+                )
+                .into_any_element(),
+        }
+    }
+
+    /// A process's own icon, or the generic app glyph.
+    pub(in crate::frontend) fn process_icon(
+        &self,
+        process: Option<&Value>,
+        size: f32,
+        cx: &App,
+    ) -> AnyElement {
+        let id = process.and_then(|p| p["icon"].as_u64()).map(|id| id as u32);
+        let image = id.and_then(|id| {
+            let mut cache = self.ui.icons.borrow_mut();
+            if let Some(image) = cache.get(&id) {
+                return Some(image.clone());
+            }
+            let png = self.host.state::<AppState>().meta.icon_png(id)?;
+            let image = Arc::new(Image::from_bytes(ImageFormat::Png, png.to_vec()));
+            cache.insert(id, image.clone());
+            Some(image)
+        });
+        let _ = cx;
+        match image {
+            Some(image) => img(image).size(px(size)).flex_shrink_0().into_any_element(),
+            None => icon("AppIcon", self.palette.muted)
+                .size(px(size))
+                .flex_shrink_0()
+                .into_any_element(),
+        }
+    }
+
     pub(in crate::frontend) fn command_completed(
         &mut self,
         command: &str,
@@ -872,22 +2267,35 @@ impl Desktop {
     ) {
         match command {
             "complete_onboarding" => self.welcome_checked = false,
+            "batch" => self.batch_done(value),
             "pick_path" => {
-                if let Some(path) = value.as_str()
-                    && let Some(input) = self.forms.get("value")
-                {
-                    let value = if self.modal.as_ref().is_some_and(|m| m.kind == "task") {
-                        format!("\"{path}\"")
-                    } else {
-                        path.into()
-                    };
-                    input.update(cx, |state, cx| state.set_value(value, window, cx));
+                self.ui.busy.remove("pick");
+                let Some(path) = value.as_str() else {
+                    return;
+                };
+                match self.modal.as_ref().map(|m| m.kind.as_str()) {
+                    Some("task") => {
+                        if let Some(input) = self.forms.get("value") {
+                            let quoted = format!("\"{path}\"");
+                            input.update(cx, |state, cx| {
+                                state.set_value(quoted, window, cx);
+                                state.focus(window, cx);
+                            });
+                        }
+                        if let Some(modal) = &mut self.modal {
+                            modal.args["failure"] = Value::Null;
+                        }
+                    }
+                    Some("filelock") => self.search_lockers(vec![path.to_owned()], window, cx),
+                    _ => {}
                 }
             }
             "run_task" => {
-                self.act(Action::CloseOverlay, window, cx);
-                self.toast = Some((label("tasks.started"), Instant::now()));
+                self.ui.busy.remove("task");
+                self.close_overlay(window, cx);
+                self.notify_toast(ToastKind::Success, label("tasks.started"));
             }
+            "restart_explorer" => self.explorer_finished(None),
             "set_theme" => {
                 let saved = self.host.state::<crate::settings::SettingsStore>().get();
                 self.set_theme(crate::platform::is_dark(saved.theme), window, cx);
@@ -896,17 +2304,395 @@ impl Desktop {
                 self.data.insert("privilege".into(), value.clone());
             }
             "kill_process" => {
-                if self.modal.as_ref().is_some_and(|m| m.kind == "filelock") {
-                    self.confirm_dialog(window, cx);
+                if let Some(name) = self.ui.errors.remove("lockerEnd") {
+                    self.notify_toast_for(
+                        ToastKind::Success,
+                        tr!("actions.end.done", name = name),
+                        2500,
+                    );
+                    if let Some(paths) = self
+                        .modal
+                        .as_ref()
+                        .filter(|m| m.kind == "filelock")
+                        .map(|m| m.args["paths"].clone())
+                    {
+                        let paths = values(&paths)
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect();
+                        self.search_lockers(paths, window, cx);
+                    }
                 }
             }
             "control_service"
             | "set_service_start_type"
             | "set_startup_enabled"
             | "close_connection" => self.poll_page(window, cx),
-            _ => {}
+            _ => self.settings_completed(command, value, window, cx),
         }
     }
+
+    /// A failed command: shown where it belongs (a card, the open dialog), or
+    /// as a notice. Returns whether it was shown in place.
+    pub(in crate::frontend) fn command_failed(
+        &mut self,
+        command: &str,
+        args: &Value,
+        error: &Value,
+        message: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            "run_task" => {
+                self.ui.busy.remove("task");
+                if let Some(input) = self.forms.get("value") {
+                    input.update(cx, |state, cx| state.focus(window, cx));
+                }
+                if let Some(modal) = &mut self.modal
+                    && modal.kind == "task"
+                {
+                    modal.args["failure"] = if error.is_object() {
+                        error.clone()
+                    } else {
+                        json!({"kind":"os"})
+                    };
+                }
+            }
+            "pick_path" => {
+                self.ui.busy.remove("pick");
+                self.notify_toast(ToastKind::Error, message);
+            }
+            "find_lockers" => {
+                let text_error = if text(error, "kind") == "notFound" {
+                    label("fileLock.error.notFound")
+                } else if text(error, "kind") == "os" {
+                    message
+                } else {
+                    tr!("fileLock.error.failed", error = message)
+                };
+                if let Some(modal) = &mut self.modal
+                    && modal.kind == "filelock"
+                {
+                    modal.error = Some(text_error);
+                }
+            }
+            "restart_explorer" => self.explorer_finished(Some(error)),
+            "kill_process" if boolean(args, "locker") => {
+                self.ui.errors.remove("lockerEnd");
+                self.notify_toast(ToastKind::Error, message);
+            }
+            _ => {
+                if !self.settings_failed(command, args, error, &message, window, cx) {
+                    self.notify_toast(ToastKind::Error, message);
+                }
+            }
+        }
+        window.refresh();
+    }
+
+    // ---- Toasts (Overlays.tsx, lib/ui.ts, toast-clock.ts) -------------------
+
+    /// Coming back from the tray or a minimized window: when it sampled less
+    /// often meanwhile, says so once, with the way to that setting
+    /// (lib/background.ts, noticeRestored).
+    pub(in crate::frontend) fn restored(&mut self, value: &Value) {
+        let tray = text(value, "from") == "tray";
+        let quiet = if tray {
+            "notice.trayRate"
+        } else {
+            "notice.minimizedRate"
+        };
+        if self.prefs.get::<bool>(quiet, false) || self.modal.is_some() {
+            return;
+        }
+        let away = if tray { "tray" } else { "minimized" };
+        let field = if tray {
+            "trayInterval"
+        } else {
+            "minimizedInterval"
+        };
+        let hidden = number(&self.data["settings"], field);
+        let shown = self.interval as f64;
+        if hidden <= shown || number(value, "awayMs") <= shown {
+            return;
+        }
+        self.toast_with(
+            ToastKind::Info,
+            argus_core::i18n::format(
+                &format!("shell.background.notice.{away}"),
+                &[("from", &(shown / 1000.)), ("to", &(hidden / 1000.))],
+            ),
+            10000,
+            vec![
+                (
+                    label("shell.background.notice.adjust"),
+                    Rc::new(
+                        move |this: &mut Desktop,
+                              window: &mut Window,
+                              cx: &mut Context<Desktop>| {
+                            this.locate_setting("data", field, window, cx)
+                        },
+                    ),
+                ),
+                (
+                    label("shell.background.notice.quiet"),
+                    Rc::new(
+                        move |this: &mut Desktop, _: &mut Window, _: &mut Context<Desktop>| {
+                            this.prefs.set(quiet, true)
+                        },
+                    ),
+                ),
+            ],
+        );
+    }
+
+    /// Shows a notice for five seconds.
+    pub(in crate::frontend) fn notify_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
+        self.toast_with(kind, text, 5000, vec![]);
+    }
+
+    /// Shows a notice for `ms`.
+    pub(in crate::frontend) fn notify_toast_for(
+        &mut self,
+        kind: ToastKind,
+        text: impl Into<String>,
+        ms: u64,
+    ) {
+        self.toast_with(kind, text, ms, vec![]);
+    }
+
+    /// Shows a notice for `ms` with buttons under its text; at most four at a
+    /// time, the oldest giving way. Returns its id.
+    pub(in crate::frontend) fn toast_with(
+        &mut self,
+        kind: ToastKind,
+        text: impl Into<String>,
+        ms: u64,
+        actions: Vec<(String, Handler)>,
+    ) -> u64 {
+        self.ui.toast_seq += 1;
+        let id = self.ui.toast_seq;
+        let now = Instant::now();
+        let live = self
+            .ui
+            .toasts
+            .iter()
+            .filter(|t| t.leaving.is_none())
+            .count();
+        if live >= 4 {
+            let mut excess = live - 3;
+            for toast in self.ui.toasts.iter_mut().filter(|t| t.leaving.is_none()) {
+                if excess == 0 {
+                    break;
+                }
+                toast.leaving = Some(now);
+                excess -= 1;
+            }
+        }
+        self.ui.toasts.push(Toast {
+            id,
+            kind,
+            text: text.into(),
+            actions,
+            born: now,
+            expires: Some(now + Duration::from_millis(ms)),
+            hovered: false,
+            leaving: None,
+        });
+        id
+    }
+
+    pub(in crate::frontend) fn dismiss_toast(&mut self, id: u64) {
+        if let Some(toast) = self
+            .ui
+            .toasts
+            .iter_mut()
+            .find(|t| t.id == id && t.leaving.is_none())
+        {
+            toast.leaving = Some(Instant::now());
+        }
+    }
+
+    /// The quarter-second clock: notices that are due leave, gone ones are
+    /// dropped, and motion follows a system change when not set here.
+    pub(in crate::frontend) fn tick_ui(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let now = Instant::now();
+        let mut changed = false;
+        for toast in &mut self.ui.toasts {
+            if toast.leaving.is_none() && toast.expires.is_some_and(|at| at <= now) {
+                toast.leaving = Some(now);
+                changed = true;
+            }
+        }
+        let before = self.ui.toasts.len();
+        self.ui.toasts.retain(|t| {
+            t.leaving
+                .is_none_or(|at| now.duration_since(at) < Duration::from_millis(170))
+        });
+        changed |= before != self.ui.toasts.len();
+        self.ui.ticks = self.ui.ticks.wrapping_add(1);
+        if self.ui.ticks.is_multiple_of(4) {
+            let system = crate::platform::system_motion();
+            if self.ui.system_motion.is_some_and(|before| before != system)
+                && self.prefs.get::<Option<bool>>("motion.ui", None).is_none()
+            {
+                self.apply_motion(cx);
+                changed = true;
+            }
+            self.ui.system_motion = Some(system);
+        }
+        if self.ui.ticks.is_multiple_of(4) {
+            self.announce_update(window, cx);
+        }
+        changed |= self.tick_hotkey(window, cx);
+        changed |= self.tick_settings();
+        if changed {
+            window.refresh();
+            cx.notify();
+        }
+    }
+
+    fn toast_layer(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.ui.toasts.is_empty() {
+            return None;
+        }
+        let p = self.palette;
+        let reduce = cx.reduce_motion();
+        let viewport = window.viewport_size();
+        let width = px(380.).min(viewport.width - px(40.));
+        let mut animating = false;
+        let stack = div()
+            .absolute()
+            .right(px(20.))
+            .bottom(px(40.))
+            .w(width)
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .children(self.ui.toasts.iter().map(|toast| {
+                let id = toast.id;
+                let enter = if reduce {
+                    1.
+                } else {
+                    (toast.born.elapsed().as_secs_f32() / 0.25).min(1.)
+                };
+                let leave = toast.leaving.map(|at| {
+                    if reduce {
+                        1.
+                    } else {
+                        (at.elapsed().as_secs_f32() / 0.167).min(1.)
+                    }
+                });
+                if enter < 1. || leave.is_some_and(|l| l < 1.) {
+                    animating = true;
+                }
+                let entered = theme::ease_out(enter);
+                let left = leave.map(theme::ease_in).unwrap_or(0.);
+                let (glyph, color) = match toast.kind {
+                    ToastKind::Error => ("WarningIcon", p.danger),
+                    ToastKind::Info => ("InfoIcon", p.accent),
+                    ToastKind::Success => ("CheckIcon", p.accent),
+                };
+                div()
+                    .id(("toast", id))
+                    .occlude()
+                    .relative()
+                    .top(px((1. - entered) * 16.))
+                    .left(px(left * 24.))
+                    .opacity(entered * (1. - left))
+                    .flex()
+                    .items_start()
+                    .gap(px(10.))
+                    .pl(px(12.))
+                    .pr(px(8.))
+                    .py(px(10.))
+                    .border_1()
+                    .border_color(p.stroke_strong)
+                    .rounded(px(8.))
+                    .bg(widgets::solid(p.flyout))
+                    .shadow(widgets::flyout_shadow(p.dark))
+                    .text_color(p.ink)
+                    .text_size(px(13.))
+                    .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                        if let Some(toast) = this.ui.toasts.iter_mut().find(|t| t.id == id) {
+                            toast.hovered = *hovered;
+                            // Held while the pointer is on it; it lingers 2.5 s after.
+                            toast.expires = if *hovered {
+                                None
+                            } else {
+                                Some(Instant::now() + Duration::from_millis(2500))
+                            };
+                        }
+                        cx.notify();
+                    }))
+                    .child(div().mt(px(2.)).child(icon(glyph, color)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(toast.text.clone())
+                            .when(!toast.actions.is_empty(), |d| {
+                                d.child(
+                                    div().flex().flex_wrap().gap(px(6.)).mt(px(8.)).children(
+                                        toast.actions.iter().enumerate().map(
+                                            |(index, (name, run))| {
+                                                let run = run.clone();
+                                                self.btn_small(
+                                                    format!("toast-{id}-{index}"),
+                                                    name.clone(),
+                                                    None,
+                                                    Tone::Plain,
+                                                )
+                                                .on_click(cx.listener(
+                                                    move |this, _, window, cx| {
+                                                        if this.ui.toasts.iter().any(|t| {
+                                                            t.id == id && t.leaving.is_some()
+                                                        }) {
+                                                            return;
+                                                        }
+                                                        this.dismiss_toast(id);
+                                                        run(this, window, cx);
+                                                        cx.notify();
+                                                    },
+                                                ))
+                                            },
+                                        ),
+                                    ),
+                                )
+                            }),
+                    )
+                    .child(
+                        self.btn_small(
+                            format!("toast-{id}-close"),
+                            "",
+                            Some("DismissIcon"),
+                            Tone::Ghost,
+                        )
+                        .accessibility_label(label("common.close"))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.dismiss_toast(id);
+                            cx.notify();
+                        })),
+                    )
+            }));
+        if animating {
+            window.request_animation_frame();
+        }
+        Some(
+            deferred(
+                anchored()
+                    .position(point(px(0.), px(0.)))
+                    .child(div().w(viewport.width).h(viewport.height).child(stack)),
+            )
+            .with_priority(50)
+            .into_any_element(),
+        )
+    }
+
     pub(in crate::frontend) fn render_overlays(
         &self,
         window: &mut Window,
@@ -933,77 +2719,13 @@ impl Desktop {
                 .into_any_element(),
             );
         }
-        if let Some((text, _)) = &self.toast {
-            elements.push(
-                div()
-                    .absolute()
-                    .bottom_4()
-                    .right_4()
-                    .max_w_96()
-                    .bg(self.palette.layer_strong)
-                    .text_color(self.palette.ink)
-                    .border_1()
-                    .border_color(self.palette.stroke)
-                    .rounded(cx.theme().radius)
-                    .p_4()
-                    .child(text.clone())
-                    .into_any_element(),
-            );
-        }
+        elements.extend(self.select_overlay(window, cx));
+        elements.extend(self.toast_layer(window, cx));
         elements
     }
-    fn record_hotkey(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        cx.stop_propagation();
-        let key = event.keystroke.key.as_str();
-        if event.is_held || matches!(key, "control" | "ctrl" | "alt" | "shift" | "cmd" | "win") {
-            return;
-        }
-        if key == "escape"
-            && !event.keystroke.modifiers.control
-            && !event.keystroke.modifiers.alt
-            && !event.keystroke.modifiers.platform
-        {
-            self.act(Action::CloseOverlay, window, cx);
-            return;
-        }
-        if key == "backspace" {
-            self.request(
-                "set_hotkey_enabled",
-                json!({"enabled":false}),
-                Some("settings"),
-                window,
-                cx,
-            );
-            self.act(Action::CloseOverlay, window, cx);
-            return;
-        }
-        let mods = event.keystroke.modifiers;
-        let mut parts = Vec::new();
-        for (enabled, name) in [
-            (mods.control, "Ctrl"),
-            (mods.alt, "Alt"),
-            (mods.shift, "Shift"),
-            (mods.platform, "Win"),
-        ] {
-            if enabled {
-                parts.push(name.to_owned());
-            }
-        }
-        parts.push(match key {
-            "escape" => "Escape".into(),
-            "enter" => "Enter".into(),
-            "space" => "Space".into(),
-            "backspace" => "Backspace".into(),
-            "pageup" => "PageUp".into(),
-            "pagedown" => "PageDown".into(),
-            other => other.to_ascii_uppercase(),
-        });
-        if let Some(input) = self.forms.get("value") {
-            input.update(cx, |state, cx| state.set_value(parts.join("+"), window, cx));
-        }
-        if let Some(modal) = &mut self.modal {
-            modal.args["recorded"] = json!(true);
-        }
-        window.refresh();
-    }
+}
+
+/// The executable name as the processes report it, else as given.
+fn name_of(same: &[&Value]) -> Option<String> {
+    same.first().map(|p| text(p, "name").to_owned())
 }

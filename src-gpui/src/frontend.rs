@@ -9,6 +9,7 @@ mod model;
 mod motion;
 mod pages;
 mod prefs;
+mod recorder;
 mod tables;
 mod theme;
 mod welcome;
@@ -57,7 +58,8 @@ enum Action {
     Dialog(String, Value),
     Popup(Vec<MenuItem>),
     Preference(String, Value),
-    Copy(String),
+    /// Text to copy and the locale key naming it in the confirmation.
+    Copy(String, &'static str),
     CloseOverlay,
     Confirm,
 }
@@ -193,7 +195,7 @@ struct Desktop {
     drag: Option<(String, Point<Pixels>, f32)>,
     popup: Option<Popup>,
     modal: Option<dialogs::Modal>,
-    toast: Option<(String, Instant)>,
+    ui: widgets::UiState,
     last_poll: Instant,
     last_privilege: Instant,
     last_select: Option<(String, Instant)>,
@@ -305,7 +307,7 @@ impl Desktop {
             drag: None,
             popup: None,
             modal: None,
-            toast: None,
+            ui: widgets::UiState::default(),
             last_poll: Instant::now() - Duration::from_secs(10),
             last_privilege: Instant::now() - Duration::from_secs(60),
             last_select: None,
@@ -382,14 +384,7 @@ impl Desktop {
                             cx.quit();
                             return;
                         }
-                        if this
-                            .toast
-                            .as_ref()
-                            .is_some_and(|(_, at)| at.elapsed() > Duration::from_secs(5))
-                        {
-                            this.toast = None;
-                            cx.notify();
-                        }
+                        this.tick_ui(window, cx);
                         if this.host.get_window("main").is_some_and(|w| {
                             w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
                         }) {

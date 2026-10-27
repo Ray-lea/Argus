@@ -149,7 +149,7 @@ impl Desktop {
                     .disabled(!boolean(raw, "exists") || path.is_none()),
                     MenuItem::new(
                         label("startup.menu.copyCommand"),
-                        Action::Copy(text(raw, "command").into()),
+                        Action::Copy(text(raw, "command").into(), "startup.copied.command"),
                     )
                     .icon("CopyIcon")
                     .disabled(text(raw, "command").is_empty()),
@@ -273,7 +273,7 @@ impl Desktop {
         items.push(
             MenuItem::new(
                 label("common.copyPath"),
-                Action::Copy(path.unwrap_or_default().into()),
+                Action::Copy(path.unwrap_or_default().into(), "actions.copyWhat.path"),
             )
             .icon("CopyIcon")
             .disabled(path.is_none()),
@@ -281,12 +281,12 @@ impl Desktop {
         items.push(if group {
             MenuItem::new(
                 label("common.copyName"),
-                Action::Copy(text(&row.raw, "name").into()),
+                Action::Copy(text(&row.raw, "name").into(), "actions.copyWhat.name"),
             )
         } else {
             MenuItem::new(
                 label("processes.menu.copyPid"),
-                Action::Copy(row.raw["pid"].to_string()),
+                Action::Copy(row.raw["pid"].to_string(), "processes.menu.copyPidWhat"),
             )
         });
         items.push(MenuItem::separator());
@@ -366,8 +366,11 @@ impl Desktop {
             )
             .icon("FolderIcon")
             .disabled(binary.is_none()),
-            MenuItem::new(label("services.menu.copyName"), Action::Copy(name.into()))
-                .icon("CopyIcon"),
+            MenuItem::new(
+                label("services.menu.copyName"),
+                Action::Copy(name.into(), "services.copied.name"),
+            )
+            .icon("CopyIcon"),
             MenuItem::separator(),
         ]);
         items
@@ -415,7 +418,10 @@ impl Desktop {
             MenuItem::separator(),
             MenuItem::new(
                 label("connections.menu.copyLocal"),
-                Action::Copy(endpoint(text(raw, "localAddress"), &raw["localPort"])),
+                Action::Copy(
+                    endpoint(text(raw, "localAddress"), &raw["localPort"]),
+                    "connections.copied.local",
+                ),
             )
             .icon("CopyIcon"),
             MenuItem::new(
@@ -424,6 +430,7 @@ impl Desktop {
                     remote
                         .map(|r| endpoint(r, &raw["remotePort"]))
                         .unwrap_or_default(),
+                    "connections.copied.remote",
                 ),
             )
             .disabled(remote.is_none()),
