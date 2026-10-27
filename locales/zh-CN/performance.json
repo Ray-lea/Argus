@@ -53,7 +53,6 @@
     "eCoreSpeed": "能效核频率",
     "packagePower": "封装功耗",
     "corePower": "核心功耗",
-    "graphicsPower": "核显功耗",
     "processes": "进程",
     "threads": "线程",
     "handles": "句柄",
@@ -338,7 +337,8 @@
       "nvml": "NVIDIA NVML · 板卡",
       "adlBoard": "AMD ADL · 板卡",
       "adlChip": "AMD ADL · 芯片",
-      "igcl": "Intel IGCL · GPU 电源域"
+      "igcl": "Intel IGCL · GPU 电源域",
+      "igclChip": "Intel IGCL · GPU 芯片"
     }
   },
   "battery": {

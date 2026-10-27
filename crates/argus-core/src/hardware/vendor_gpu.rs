@@ -25,6 +25,7 @@ pub enum GpuPowerSource {
     AdlBoard,
     AdlChip,
     Igcl,
+    IgclChip,
 }
 
 #[derive(Clone, Default)]

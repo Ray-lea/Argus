@@ -62,7 +62,6 @@
     "eCoreSpeed": "E-core speed",
     "packagePower": "Package power",
     "corePower": "Core power",
-    "graphicsPower": "Graphics power",
     "processes": "Processes",
     "threads": "Threads",
     "handles": "Handles",
@@ -353,7 +352,8 @@
       "nvml": "NVIDIA NVML · board",
       "adlBoard": "AMD ADL · board",
       "adlChip": "AMD ADL · chip",
-      "igcl": "Intel IGCL · GPU power domain"
+      "igcl": "Intel IGCL · GPU power domain",
+      "igclChip": "Intel IGCL · GPU chip"
     }
   },
   "battery": {

@@ -10,6 +10,7 @@ mod kernel_sensors;
 mod memory;
 mod net;
 mod nvml;
+mod query;
 mod registry;
 mod sensors;
 mod vendor_gpu;

@@ -268,7 +268,7 @@ export interface GpuStats {
   /** Power and limit in W; the source identifies the measurement scope. */
   boardPower: number | null;
   boardPowerLimit: number | null;
-  powerSource: "nvml" | "adlBoard" | "adlChip" | "igcl" | null;
+  powerSource: "nvml" | "adlBoard" | "adlChip" | "igcl" | "igclChip" | null;
   clockMhz: number | null;
   clockMaxMhz: number | null;
   voltageMv: number | null;

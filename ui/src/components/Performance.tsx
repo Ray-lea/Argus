@@ -1034,13 +1034,6 @@ function CpuView() {
               <Show when={hw().power.cores !== null}>
                 <Stat label={t("performance.cpu.corePower")} value={fmtW(hw().power.cores ?? 0)} unit="W" />
               </Show>
-              <Show when={hw().power.graphics !== null}>
-                <Stat
-                  label={t("performance.cpu.graphicsPower")}
-                  value={fmtW(hw().power.graphics ?? 0)}
-                  unit="W"
-                />
-              </Show>
               <Stat label={t("performance.cpu.processes")} value={fmtCount(sys().processCount)} />
               <Stat label={t("performance.cpu.threads")} value={fmtCount(sys().threadCount)} />
               <Stat label={t("performance.cpu.handles")} value={fmtCount(sys().handleCount)} />
@@ -1700,16 +1693,22 @@ function GpuView(props: { id: string }) {
               <Show when={g().fanRpm !== null}>
                 <Stat label={t("performance.gpu.fan")} value={fmtCount(g().fanRpm ?? 0)} unit="RPM" />
               </Show>
-              <Show when={g().clockMhz}>
-                {(m) => <Stat label={t("performance.gpu.coreClock")} value={fmtCount(m())} unit="MHz" />}
+              <Show when={g().clockMhz !== null}>
+                <Stat label={t("performance.gpu.coreClock")} value={fmtCount(g().clockMhz ?? 0)} unit="MHz" />
               </Show>
-              <Show when={g().memoryClockMhz}>
-                {(m) => <Stat label={t("performance.gpu.memoryClock")} value={fmtCount(m())} unit="MHz" />}
+              <Show when={g().memoryClockMhz !== null}>
+                <Stat
+                  label={t("performance.gpu.memoryClock")}
+                  value={fmtCount(g().memoryClockMhz ?? 0)}
+                  unit="MHz"
+                />
               </Show>
-              <Show when={g().voltageMv}>
-                {(v) => (
-                  <Stat label={t("performance.gpu.coreVoltage")} value={(v() / 1000).toFixed(3)} unit="V" />
-                )}
+              <Show when={g().voltageMv !== null}>
+                <Stat
+                  label={t("performance.gpu.coreVoltage")}
+                  value={((g().voltageMv ?? 0) / 1000).toFixed(3)}
+                  unit="V"
+                />
               </Show>
               <Show
                 when={g().boardPower !== null}

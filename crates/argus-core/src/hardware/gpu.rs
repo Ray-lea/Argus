@@ -26,6 +26,7 @@ use windows::Wdk::Graphics::Direct3D::{
 use windows::Win32::Foundation::LUID;
 
 use super::nvml::Nvml;
+use super::query::Retry;
 use super::vendor_gpu::{GpuPowerSource, Pci, VendorGpu};
 use crate::util::from_wide;
 
@@ -121,8 +122,9 @@ struct Adapter {
     node_engine: Vec<usize>,
     prev_running: Vec<NodeCounter>,
     segments: u32,
-    has_perf: bool,
-    /// Node of the 3D engine, while its perf data keeps answering.
+    perf_query: Retry,
+    node_perf_query: Retry,
+    /// Node identity survives transient failures of its optional perf query.
     node_3d: Option<u32>,
     /// PCI bus and device number.
     pci: Option<Pci>,
@@ -222,17 +224,15 @@ impl GpuTracker {
                     }
                 }
 
-                if a.has_perf {
+                if let Some(perf) = a.perf_query.query(now, || {
                     let mut perf = D3DKMT_ADAPTER_PERFDATA::default();
-                    if query_info(a.handle, KMTQAITYPE_ADAPTERPERFDATA, &mut perf) {
-                        stats.temperature =
-                            (perf.Temperature > 0).then(|| perf.Temperature as f32 / 10.0);
-                        stats.fan_rpm = (perf.FanRPM > 0).then_some(perf.FanRPM);
-                        stats.power = (perf.Power > 0).then(|| perf.Power as f32 / 10.0);
-                        stats.memory_clock_mhz = mhz(perf.MemoryFrequency);
-                    } else {
-                        a.has_perf = false;
-                    }
+                    query_info(a.handle, KMTQAITYPE_ADAPTERPERFDATA, &mut perf).then_some(perf)
+                }) {
+                    stats.temperature =
+                        (perf.Temperature > 0).then(|| perf.Temperature as f32 / 10.0);
+                    stats.fan_rpm = (perf.FanRPM > 0).then_some(perf.FanRPM);
+                    stats.power = (perf.Power > 0).then(|| perf.Power as f32 / 10.0);
+                    stats.memory_clock_mhz = mhz(perf.MemoryFrequency);
                 }
                 if let (Some(nvml), Some((bus, device, function))) = (&self.nvml, a.pci) {
                     (stats.board_power, stats.board_power_limit) =
@@ -242,18 +242,18 @@ impl GpuTracker {
                         stats.include_usage(util, GpuUtilSource::Nvml);
                     }
                 }
-                if let Some(node) = a.node_3d {
-                    let mut perf = D3DKMT_NODE_PERFDATA {
-                        NodeOrdinal: node,
-                        ..Default::default()
-                    };
-                    if query_info(a.handle, KMTQAITYPE_NODEPERFDATA, &mut perf) {
-                        stats.clock_mhz = mhz(perf.Frequency);
-                        stats.clock_max_mhz = mhz(perf.MaxFrequency);
-                        stats.voltage_mv = (perf.Voltage > 0).then_some(perf.Voltage);
-                    } else {
-                        a.node_3d = None;
-                    }
+                if let Some(node) = a.node_3d
+                    && let Some(perf) = a.node_perf_query.query(now, || {
+                        let mut perf = D3DKMT_NODE_PERFDATA {
+                            NodeOrdinal: node,
+                            ..Default::default()
+                        };
+                        query_info(a.handle, KMTQAITYPE_NODEPERFDATA, &mut perf).then_some(perf)
+                    })
+                {
+                    stats.clock_mhz = mhz(perf.Frequency);
+                    stats.clock_max_mhz = mhz(perf.MaxFrequency);
+                    stats.voltage_mv = (perf.Voltage > 0).then_some(perf.Voltage);
                 }
                 if let Some((_, reading)) = vendor.iter().find(|(pci, _)| Some(*pci) == a.pci) {
                     if reading.watts.is_some() {
@@ -397,8 +397,6 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
 
     let mut caps = D3DKMT_ADAPTER_PERFDATACAPS::default();
     let has_caps = query_info(a.hAdapter, KMTQAITYPE_ADAPTERPERFDATA_CAPS, &mut caps);
-    let mut perf = D3DKMT_ADAPTER_PERFDATA::default();
-    let has_perf = query_info(a.hAdapter, KMTQAITYPE_ADAPTERPERFDATA, &mut perf);
 
     let mut address = D3DKMT_ADAPTERADDRESS::default();
     let pci = query_info(a.hAdapter, KMTQAITYPE_ADAPTERADDRESS, &mut address).then_some((
@@ -428,7 +426,8 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
         node_3d,
         prev_running: (0..nodes).map(|_| NodeCounter::default()).collect(),
         segments,
-        has_perf,
+        perf_query: Retry::default(),
+        node_perf_query: Retry::default(),
         pci,
     })
 }

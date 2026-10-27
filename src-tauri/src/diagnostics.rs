@@ -194,6 +194,7 @@ pub fn log_hardware_once(s: &Snapshot) {
                 Some(GpuPowerSource::AdlBoard) => "watts (ADL board)",
                 Some(GpuPowerSource::AdlChip) => "watts (ADL chip)",
                 Some(GpuPowerSource::Igcl) => "watts (IGCL GPU)",
+                Some(GpuPowerSource::IgclChip) => "watts (IGCL chip)",
                 None => "watts (source unavailable)",
             }
         } else if g.power.is_some() {

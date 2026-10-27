@@ -162,7 +162,7 @@ export function SensorGroups(props: { sensors: CpuSensors }) {
   const keys = (group: string) =>
     (Object.keys(CPU_METRICS) as CpuMetricKind[])
       .filter((kind) => CPU_METRICS[kind].group === group && metrics().has(kind))
-      // These domains already appear in the headline figures and power chart.
+      // Core power is already shown above; graphics power belongs to the GPU view.
       .filter((kind) => kind !== "coresWatts" && kind !== "graphicsWatts");
   const coreVoltage = () => props.sensors.coreVoltage != null && !metrics().has("coreVoltage");
   const chipReadings = (group: string) =>
