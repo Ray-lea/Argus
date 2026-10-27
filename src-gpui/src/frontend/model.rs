@@ -60,37 +60,6 @@ pub fn boolean(value: &Value, key: &str) -> bool {
     value.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
-/// Preserve slower background sampling while separating time spans with no recordings.
-pub fn history_points(records: &[Value], metric: &str, bucket_ms: f64) -> Vec<(f64, Option<f64>)> {
-    let max_cadence = argus_app::settings::BACKGROUND_INTERVALS
-        .iter()
-        .copied()
-        .max()
-        .unwrap() as f64
-        + argus_core::history::FRAME_MS as f64;
-    let mut points = Vec::with_capacity(records.len());
-    for (index, record) in records.iter().enumerate() {
-        let at = number(record, "ts");
-        if index > 0 {
-            let previous = number(&records[index - 1], "ts");
-            let before = if index > 1 {
-                previous - number(&records[index - 2], "ts")
-            } else {
-                0.
-            };
-            let after = records
-                .get(index + 1)
-                .map(|next| number(next, "ts") - at)
-                .unwrap_or(0.);
-            let cadence = before.max(after).min(max_cadence);
-            if at - previous > bucket_ms.max(cadence) * 2.5 {
-                points.push(((at + previous) / 2., None));
-            }
-        }
-        points.push((at, record[metric].as_f64()));
-    }
-    points
-}
 pub fn values(value: &Value) -> &[Value] {
     value.as_array().map(Vec::as_slice).unwrap_or_default()
 }
@@ -791,12 +760,5 @@ mod tests {
         }
         assert!(timeline.samples["system.cpu"].front().unwrap().0 <= 6000.);
         assert!(timeline.samples["system.cpu"].len() > 600);
-    }
-    #[test]
-    fn history_keeps_background_cadence_but_breaks_recording_outages() {
-        let frames = [0, 30_000, 60_000, 600_000, 630_000].map(|ts| json!({"ts":ts,"cpu":10.}));
-        let points = super::history_points(&frames, "cpu", 7200.);
-        assert_eq!(points.iter().filter(|p| p.1.is_none()).count(), 1);
-        assert_eq!(points[3], (330_000., None));
     }
 }

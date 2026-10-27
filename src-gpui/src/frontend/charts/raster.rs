@@ -80,6 +80,7 @@ struct Input {
     size: Size<Pixels>,
     density: f32,
     stroke: f32,
+    smooth: bool,
     phases: DashPhases,
 }
 impl Input {
@@ -94,6 +95,7 @@ impl Input {
             size,
             density,
             stroke: f32::from(theme::dimension("chartStrokeWidth")),
+            smooth: plot.smooth,
             phases: plot.dash_phases.clone(),
         }
     }
@@ -130,6 +132,7 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
         value.to_bits().hash(&mut key);
     }
     plot.fill.hash(&mut key);
+    plot.smooth.hash(&mut key);
     for series in &plot.series {
         series.geometry_key.hash(&mut key);
         series.dashed.hash(&mut key);
@@ -235,11 +238,15 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
     });
 }
 
-fn curve(points: &[(f64, f64)], baseline: Option<f32>) -> Option<tiny_skia::Path> {
+fn curve(points: &[(f64, f64)], baseline: Option<f32>, smooth: bool) -> Option<tiny_skia::Path> {
     if points.len() < 2 {
         return None;
     }
-    let tangent = super::curve_tangents(points);
+    let tangent = if smooth {
+        super::curve_tangents(points)
+    } else {
+        Vec::new()
+    };
     let mut path = tiny_skia::PathBuilder::new();
     let (x, y) = points[0];
     if let Some(base) = baseline {
@@ -251,6 +258,10 @@ fn curve(points: &[(f64, f64)], baseline: Option<f32>) -> Option<tiny_skia::Path
     for i in 0..points.len() - 1 {
         let (x, y) = points[i];
         let (next_x, next_y) = points[i + 1];
+        if !smooth {
+            path.line_to(next_x as f32, next_y as f32);
+            continue;
+        }
         let third = (next_x - x) / 3.;
         path.cubic_to(
             (x + third) as f32,
@@ -345,7 +356,7 @@ fn rasterize(plot: &Input) -> Option<Texture> {
                 .collect::<Vec<_>>();
             if plot.fill
                 && series.fill > 0.
-                && let Some(path) = curve(&points, Some(height))
+                && let Some(path) = curve(&points, Some(height), plot.smooth)
             {
                 // The area fades from its opacity at the chart's top to nothing at the bottom.
                 let shader = tiny_skia::LinearGradient::new(
@@ -409,7 +420,7 @@ fn rasterize(plot: &Input) -> Option<Texture> {
             } else {
                 None
             };
-            if let Some(path) = curve(&points, None) {
+            if let Some(path) = curve(&points, None, plot.smooth) {
                 pixels.stroke_path(
                     &path,
                     &tiny_skia::Paint {
@@ -477,8 +488,8 @@ mod tests {
             fill: false,
             bars: false,
             background_separate: false,
-            selection: None,
-            cursor: None,
+            smooth: true,
+            ticks: None,
             geometry_start: 0.,
             measured_width: Rc::new(Cell::new(100.)),
             live_clock: None,

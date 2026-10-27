@@ -6,5 +6,7 @@
     "minutes": "{minutes}m {seconds}s"
   },
   "uptimeExact": "{days}<u>d</u> {clock}",
-  "sinceBoot": "At system startup"
+  "sinceBoot": "At system startup",
+  "monthDay": "{month} {day}",
+  "monthNames": "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec"
 }

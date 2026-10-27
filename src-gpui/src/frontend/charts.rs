@@ -358,8 +358,10 @@ pub struct TimePlot {
     pub fill: bool,
     pub bars: bool,
     pub(in crate::frontend) background_separate: bool,
-    pub selection: Option<WeakEntity<Desktop>>,
-    pub cursor: Option<f64>,
+    /// Smooth monotone curves; history charts join their points with straight lines.
+    pub smooth: bool,
+    /// Vertical grid lines at these times instead of even columns (history's clock ticks).
+    pub ticks: Option<Arc<Vec<f64>>>,
     pub geometry_start: f64,
     pub measured_width: Rc<Cell<f32>>,
     pub live_clock: Option<Rc<RefCell<motion::Clock>>>,
@@ -641,6 +643,36 @@ impl TimePlot {
                 .first()
                 .map(|s| s.color)
                 .unwrap_or(cx.theme().border);
+            if let Some(ticks) = &self.ticks {
+                // Quarters across, the clock ticks down.
+                let line = color.opacity(GRID_OPACITY);
+                for fraction in [0.25, 0.5, 0.75] {
+                    window.paint_quad(gpui_kit::gpui::fill(
+                        Bounds::new(
+                            point(
+                                bounds.left(),
+                                bounds.top() + px((height * fraction).round()),
+                            ),
+                            size(bounds.size.width, px(1.)),
+                        ),
+                        line,
+                    ));
+                }
+                let span = (self.end - self.start).max(1.);
+                for tick in ticks.iter() {
+                    let x = ((tick - self.start) / span) as f32 * width;
+                    if (0. ..=width).contains(&x) {
+                        window.paint_quad(gpui_kit::gpui::fill(
+                            Bounds::new(
+                                point(bounds.left() + px(x.round()), bounds.top()),
+                                size(px(1.), bounds.size.height),
+                            ),
+                            line,
+                        ));
+                    }
+                }
+                return;
+            }
             for (count, vertical) in [
                 (
                     theme::design()["layout"]["chartGridRows"].as_u64().unwrap(),
@@ -698,8 +730,6 @@ impl Plot for TimePlot {
         }
         let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
-        let start = self.start;
-        let span = (self.end - self.start).max(1.);
         if self.bars {
             let mut surfaces = Vec::with_capacity(self.series.len());
             let step = width / self.series.len().max(1) as f32;
@@ -726,51 +756,7 @@ impl Plot for TimePlot {
             *self.bar_surfaces.borrow_mut() = surfaces;
             return;
         }
-        if let Some(owner) = self.selection.clone() {
-            let end = self.end;
-            let hover_owner = owner.clone();
-            window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
-                if phase == DispatchPhase::Bubble && bounds.contains(&event.position) {
-                    let fraction = (f32::from(event.position.x - bounds.origin.x)
-                        / f32::from(bounds.size.width).max(1.))
-                    .clamp(0., 1.) as f64;
-                    let hovered = Some((start + (end - start) * fraction) as i64);
-                    let _ = hover_owner.update(cx, |this, cx| {
-                        if this.history_hover != hovered {
-                            this.history_hover = hovered;
-                            cx.notify();
-                        }
-                    });
-                }
-            });
-            window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-                if phase == DispatchPhase::Bubble
-                    && event.button == MouseButton::Left
-                    && bounds.contains(&event.position)
-                {
-                    let fraction = (f32::from(event.position.x - bounds.origin.x)
-                        / f32::from(bounds.size.width).max(1.))
-                    .clamp(0., 1.) as f64;
-                    let _ = owner.update(cx, |this, cx| {
-                        this.history_cursor = Some((start + (end - start) * fraction) as i64);
-                        this.load_history(window, cx);
-                        cx.notify();
-                    });
-                    cx.stop_propagation();
-                }
-            });
-        }
         raster::paint(self, bounds, window, cx);
-        if let Some(cursor) = self
-            .cursor
-            .filter(|at| *at >= self.start && *at <= self.end)
-        {
-            let x = bounds.origin.x + px(((cursor - self.start) / span) as f32 * width);
-            window.paint_quad(gpui_kit::gpui::fill(
-                Bounds::new(point(x, bounds.origin.y), size(px(1.), bounds.size.height)),
-                cx.theme().foreground,
-            ));
-        }
     }
     fn tooltip_state(
         &self,
@@ -1243,8 +1229,8 @@ impl Desktop {
             fill: true,
             bars,
             background_separate: false,
-            selection: None,
-            cursor: None,
+            smooth: true,
+            ticks: None,
             geometry_start: start,
             measured_width: width,
             live_clock: Some(self.chart_clock.clone()),

@@ -269,6 +269,25 @@ impl Desktop {
                     cx,
                 ),
             );
+            if self.history_cursor.is_some() {
+                row = row.child(
+                    self.button(
+                        "history-latest",
+                        label("history.latest.label"),
+                        None,
+                        Action::Preference("historyLatest".into(), Value::Null),
+                        false,
+                        cx,
+                    )
+                    .border_1()
+                    .border_color(self.palette.stroke)
+                    .bg(self.palette.control)
+                    .tooltip(|window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(label("history.latest.title"))
+                            .build(window, cx)
+                    }),
+                );
+            }
         }
         row.into_any_element()
     }
@@ -547,7 +566,6 @@ impl Desktop {
             "navExpanded" => self.nav_expanded = value.as_bool().unwrap_or(false),
             "historyRange" => {
                 self.history_range = value.as_str().unwrap_or("1h").into();
-                self.history_cursor = None;
                 self.history_hover = None;
                 self.load_history(window, cx);
             }
