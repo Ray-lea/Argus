@@ -4,6 +4,16 @@
 
 User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This is the English edition of [CHANGELOG.md](CHANGELOG.md): `pnpm release` adds each release to both files, and the English entry is translated from the Chinese one before the release is published. The release notes on GitHub and in the app come from these entries.
 
+## [0.3.4](https://github.com/Ray-lea/Argus/compare/v0.3.3...v0.3.4) - 2026-10-26
+
+### Fixes
+
+- **Windows Explorer restart**: Fixed the desktop and taskbar failing to recover when the old Explorer process gets stuck during exit cleanup or error reporting. If normal shutdown times out, Argus ends only the verified old instance and waits for it to exit before restoring the desktop. If Windows has already restored the desktop, Argus uses the existing Explorer instance instead of starting another. ([#20](https://github.com/Ray-lea/Argus/issues/20))
+
+### Upgrading
+
+- Upgrading from v0.3.x preserves existing settings and history.
+
 ## [0.3.3](https://github.com/Ray-lea/Argus/compare/v0.3.2...v0.3.3) - 2026-10-26
 
 This release adds interface scaling and font size controls, preserves window and list preferences, and updates GPU usage reporting.

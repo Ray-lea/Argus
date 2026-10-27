@@ -4,6 +4,16 @@
 
 Argus 各版本的用户可见变更。版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)；本文件由 `pnpm release` 根据 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 提交信息生成，发布说明取自对应条目。
 
+## [0.3.4](https://github.com/Ray-lea/Argus/compare/v0.3.3...v0.3.4) - 2026-10-26
+
+### 修复
+
+- **资源管理器重启**：修复旧进程在退出清理或错误报告阶段卡住后，桌面与任务栏无法恢复的问题。正常退出超时后仅结束已确认的旧实例，确认其退出后再恢复桌面；Windows 已自动恢复桌面时使用现有实例，避免重复启动。([#20](https://github.com/Ray-lea/Argus/issues/20))
+
+### 升级提示
+
+- 从 v0.3.x 升级保留已有设置和历史记录。
+
 ## [0.3.3](https://github.com/Ray-lea/Argus/compare/v0.3.2...v0.3.3) - 2026-10-26
 
 本版新增界面缩放与字体大小设置，完善窗口和列表偏好的保存，并调整 GPU 占用统计。
