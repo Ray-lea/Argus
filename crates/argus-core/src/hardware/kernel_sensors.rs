@@ -206,6 +206,16 @@ pub struct BoardMetric {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+pub struct IntegratedGpuSensors {
+    pub state: SensorState,
+    pub temperature_celsius: Option<f32>,
+    pub clock_mhz: Option<f32>,
+    /// Requested SVID voltage, not a measured supply voltage.
+    pub vid_volts: Option<f32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
 pub struct CpuSensors {
     pub state: SensorState,
     pub package_celsius: Option<f32>,
@@ -218,6 +228,7 @@ pub struct CpuSensors {
     /// Requested voltage, where the processor documents a VID encoding.
     pub core_vid: Option<f32>,
     pub package_watts: Option<f32>,
+    pub integrated_gpu: Option<IntegratedGpuSensors>,
     pub metrics: Vec<CpuMetric>,
     pub cores: Vec<CpuCoreSensors>,
     pub smu_state: Option<SmuState>,

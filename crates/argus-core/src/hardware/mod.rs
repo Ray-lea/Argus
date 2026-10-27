@@ -28,7 +28,7 @@ pub use gpu::{GpuInfo, GpuStats, GpuUtilSource};
 pub use kernel_sensors::{
     BoardMetric, BoardMetricKind, CcdTemperature, CoreTemperature, CpuCoreSensors, CpuFanReading,
     CpuLimitReason, CpuLimitStatus, CpuMetric, CpuMetricKind, CpuSensorSource, CpuSensors,
-    SensorState, SmuState,
+    IntegratedGpuSensors, SensorState, SmuState,
 };
 pub use memory::MemoryInfo;
 pub use net::{NicInfo, NicStats};
@@ -54,6 +54,63 @@ pub struct Hardware {
     pub nics: Vec<NicStats>,
     pub gpus: Vec<GpuStats>,
     pub batteries: Vec<BatteryStats>,
+}
+
+/// Comet Lake S/H: the Gen9 GT register layout, not the newer Xe layout.
+pub fn intel_mchbar_supported(cpu: &CpuInfo) -> bool {
+    cpu.vendor == "GenuineIntel" && cpu.family == 6 && cpu.model == 0xa5 && cpu.sockets == 1
+}
+
+impl Hardware {
+    /// PP1 belongs to the processor graphics, never to a discrete Intel card.
+    /// Require a single socket and an unambiguous hardware identity.
+    pub fn supplement_integrated_gpu(&mut self) {
+        if self.cpu.vendor != "GenuineIntel" || self.cpu.sockets != 1 {
+            return;
+        }
+        let mut matches = self.gpus.iter_mut().filter(|g| g.info.intel_integrated);
+        let Some(gpu) = matches.next() else { return };
+        if matches.next().is_some() {
+            return;
+        }
+        if gpu.board_power.is_none() {
+            gpu.board_power = self
+                .power
+                .graphics
+                .filter(|v| v.is_finite() && (0.0..=1000.0).contains(v));
+            if gpu.board_power.is_some() {
+                gpu.power_source = Some(GpuPowerSource::Rapl);
+            }
+        }
+        if !intel_mchbar_supported(&self.cpu) {
+            return;
+        }
+        gpu.kernel_sensor_supported = true;
+        let sensors = self.cpu_sensors.as_ref();
+        let data = sensors.and_then(|s| s.integrated_gpu.as_ref());
+        gpu.kernel_sensor_state = data.map(|d| d.state).or_else(|| {
+            sensors.map(|s| {
+                if s.state == SensorState::Ready {
+                    SensorState::NoData
+                } else {
+                    s.state
+                }
+            })
+        });
+        if let Some(data) = data.filter(|d| d.state == SensorState::Ready) {
+            gpu.temperature = gpu.temperature.or(data
+                .temperature_celsius
+                .filter(|v| v.is_finite() && (1.0..=150.0).contains(v)));
+            gpu.clock_mhz = gpu.clock_mhz.or(data
+                .clock_mhz
+                .filter(|v| v.is_finite() && (0.0..=3000.0).contains(v))
+                .map(|v| v.round() as u32));
+            gpu.core_vid_mv = data
+                .vid_volts
+                .filter(|v| v.is_finite() && (0.0..=1.52).contains(v))
+                .map(|v| (v * 1000.0).round() as u32);
+        }
+    }
 }
 
 pub(crate) struct HardwareTracker {
@@ -97,7 +154,7 @@ impl HardwareTracker {
             .as_mut()
             .map(|s| s.sample())
             .unwrap_or_default();
-        Hardware {
+        let mut hardware = Hardware {
             cpu: self.cpu.clone(),
             cpu_mhz: sensed.cpu_mhz,
             core_mhz: sensed.core_mhz,
@@ -110,6 +167,8 @@ impl HardwareTracker {
             nics: self.nics.sample(),
             gpus: self.gpus.sample(),
             batteries: self.batteries.sample(),
-        }
+        };
+        hardware.supplement_integrated_gpu();
+        hardware
     }
 }

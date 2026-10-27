@@ -466,6 +466,7 @@ const GPU_INFO: GpuInfo = {
   sharedTotal: 16 * GB,
   engines: ["3D", "Copy", "Video Encode", "Video Decode", "Compute_0", "Security"],
   temperatureMax: 105,
+  intelIntegrated: false,
 };
 
 function mockHardware(cpu: number, io: number): Hardware {
@@ -520,6 +521,9 @@ function mockHardware(cpu: number, io: number): Hardware {
         clockMaxMhz: 3105,
         voltageMv: null,
         memoryClockMhz: 7001,
+        coreVidMv: null,
+        kernelSensorSupported: false,
+        kernelSensorState: null,
       },
     ],
     batteries: [

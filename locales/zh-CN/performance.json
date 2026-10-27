@@ -313,6 +313,11 @@
     "coreClock": "核心频率",
     "memoryClock": "显存频率",
     "coreVoltage": "核心电压",
+    "coreVid": "核心 VID",
+    "vidHint": "核显请求电压，不等同于实测供电电压。",
+    "kernelSensors": "核显内核传感器",
+    "kernelEnable": "可在“设置 → 权限”安装特权服务并开启内核传感器，读取核显温度、频率与 VID。",
+    "kernelUnavailable": "核显内核读数暂不可用。可在“设置 → 权限”检查特权服务及内核传感器状态。",
     "power": "功耗",
     "powerLimit": "功耗上限",
     "maxTemperature": "最高温度",
@@ -338,7 +343,8 @@
       "adlBoard": "AMD ADL · 板卡",
       "adlChip": "AMD ADL · 芯片",
       "igcl": "Intel IGCL · GPU 电源域",
-      "igclChip": "Intel IGCL · GPU 芯片"
+      "igclChip": "Intel IGCL · GPU 芯片",
+      "rapl": "Intel RAPL · 核显"
     }
   },
   "battery": {

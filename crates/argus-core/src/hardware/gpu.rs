@@ -12,16 +12,16 @@ use serde::Serialize;
 use windows::Wdk::Graphics::Direct3D::{
     D3DKMT_ADAPTER_PERFDATA, D3DKMT_ADAPTER_PERFDATACAPS, D3DKMT_ADAPTERADDRESS,
     D3DKMT_ADAPTERINFO, D3DKMT_ADAPTERREGISTRYINFO, D3DKMT_ADAPTERTYPE, D3DKMT_CLOSEADAPTER,
-    D3DKMT_ENUMADAPTERS2, D3DKMT_NODE_PERFDATA, D3DKMT_NODEMETADATA, D3DKMT_QUERYADAPTERINFO,
-    D3DKMT_QUERYSTATISTICS, D3DKMT_QUERYSTATISTICS_ADAPTER, D3DKMT_QUERYSTATISTICS_NODE,
-    D3DKMT_QUERYSTATISTICS_SEGMENT, D3DKMT_SEGMENTSIZEINFO, D3DKMTCloseAdapter,
-    D3DKMTEnumAdapters2, D3DKMTQueryAdapterInfo, D3DKMTQueryStatistics, DXGK_ENGINE_TYPE,
-    DXGK_ENGINE_TYPE_3D, DXGK_ENGINE_TYPE_COPY, DXGK_ENGINE_TYPE_CRYPTO, DXGK_ENGINE_TYPE_OVERLAY,
-    DXGK_ENGINE_TYPE_SCENE_ASSEMBLY, DXGK_ENGINE_TYPE_VIDEO_DECODE, DXGK_ENGINE_TYPE_VIDEO_ENCODE,
-    DXGK_ENGINE_TYPE_VIDEO_PROCESSING, KMTQAITYPE_ADAPTERADDRESS, KMTQAITYPE_ADAPTERPERFDATA,
-    KMTQAITYPE_ADAPTERPERFDATA_CAPS, KMTQAITYPE_ADAPTERREGISTRYINFO, KMTQAITYPE_ADAPTERTYPE,
-    KMTQAITYPE_GETSEGMENTSIZE, KMTQAITYPE_NODEMETADATA, KMTQAITYPE_NODEPERFDATA,
-    KMTQUERYADAPTERINFOTYPE,
+    D3DKMT_ENUMADAPTERS2, D3DKMT_NODE_PERFDATA, D3DKMT_NODEMETADATA, D3DKMT_QUERY_DEVICE_IDS,
+    D3DKMT_QUERYADAPTERINFO, D3DKMT_QUERYSTATISTICS, D3DKMT_QUERYSTATISTICS_ADAPTER,
+    D3DKMT_QUERYSTATISTICS_NODE, D3DKMT_QUERYSTATISTICS_SEGMENT, D3DKMT_SEGMENTSIZEINFO,
+    D3DKMTCloseAdapter, D3DKMTEnumAdapters2, D3DKMTQueryAdapterInfo, D3DKMTQueryStatistics,
+    DXGK_ENGINE_TYPE, DXGK_ENGINE_TYPE_3D, DXGK_ENGINE_TYPE_COPY, DXGK_ENGINE_TYPE_CRYPTO,
+    DXGK_ENGINE_TYPE_OVERLAY, DXGK_ENGINE_TYPE_SCENE_ASSEMBLY, DXGK_ENGINE_TYPE_VIDEO_DECODE,
+    DXGK_ENGINE_TYPE_VIDEO_ENCODE, DXGK_ENGINE_TYPE_VIDEO_PROCESSING, KMTQAITYPE_ADAPTERADDRESS,
+    KMTQAITYPE_ADAPTERPERFDATA, KMTQAITYPE_ADAPTERPERFDATA_CAPS, KMTQAITYPE_ADAPTERREGISTRYINFO,
+    KMTQAITYPE_ADAPTERTYPE, KMTQAITYPE_GETSEGMENTSIZE, KMTQAITYPE_NODEMETADATA,
+    KMTQAITYPE_NODEPERFDATA, KMTQAITYPE_PHYSICALADAPTERDEVICEIDS, KMTQUERYADAPTERINFOTYPE,
 };
 use windows::Win32::Foundation::LUID;
 
@@ -41,6 +41,8 @@ pub struct GpuInfo {
     /// Distinct engine names, e.g. `3D`, `Copy`, `Video Decode`.
     pub engines: Vec<String>,
     pub temperature_max: Option<f32>,
+    /// Intel's processor graphics at PCI 0:2:0, verified by vendor ID.
+    pub intel_integrated: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -94,6 +96,9 @@ pub struct GpuStats {
     /// 3D engine voltage, mV.
     pub voltage_mv: Option<u32>,
     pub memory_clock_mhz: Option<u32>,
+    pub core_vid_mv: Option<u32>,
+    pub kernel_sensor_state: Option<super::SensorState>,
+    pub kernel_sensor_supported: bool,
 }
 
 impl GpuStats {
@@ -194,6 +199,9 @@ impl GpuTracker {
                     clock_max_mhz: None,
                     voltage_mv: None,
                     memory_clock_mhz: None,
+                    core_vid_mv: None,
+                    kernel_sensor_state: None,
+                    kernel_sensor_supported: false,
                 };
                 for (node, prev) in a.prev_running.iter_mut().enumerate() {
                     let mut q = statistics_query(D3DKMT_QUERYSTATISTICS_NODE, a.luid);
@@ -410,6 +418,9 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
         .position(|&e| engines[e] == "3D")
         .map(|n| n as u32);
     let luid = a.AdapterLuid;
+    let mut ids = D3DKMT_QUERY_DEVICE_IDS::default();
+    let vendor = query_info(a.hAdapter, KMTQAITYPE_PHYSICALADAPTERDEVICEIDS, &mut ids)
+        .then_some(ids.DeviceIds.VendorID);
     Some(Adapter {
         handle: a.hAdapter,
         luid,
@@ -421,6 +432,7 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
             engines,
             temperature_max: (has_caps && caps.TemperatureMax > 0)
                 .then(|| caps.TemperatureMax as f32 / 10.0),
+            intel_integrated: processor_graphics(vendor, pci),
         }),
         node_engine,
         node_3d,
@@ -430,6 +442,10 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
         node_perf_query: Retry::default(),
         pci,
     })
+}
+
+fn processor_graphics(vendor: Option<u32>, pci: Option<Pci>) -> bool {
+    vendor == Some(0x8086) && pci == Some((0, 2, 0))
 }
 
 /// Hz to MHz; drivers report 0 for "not supported".
@@ -470,6 +486,133 @@ pub(crate) fn pretty_engine(raw: &str) -> String {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn processor_graphics_requires_the_intel_vendor_and_processor_pci_function() {
+        assert!(processor_graphics(Some(0x8086), Some((0, 2, 0))));
+        for (vendor, pci) in [
+            (None, Some((0, 2, 0))),
+            (Some(0x10de), Some((0, 2, 0))),
+            (Some(0x8086), Some((1, 0, 0))),
+            (Some(0x8086), None),
+        ] {
+            assert!(!processor_graphics(vendor, pci));
+        }
+    }
+
+    fn integrated_fixture() -> super::super::Hardware {
+        use super::super::{
+            CpuInfo, CpuPower, CpuSensors, Hardware, IntegratedGpuSensors, SensorState,
+        };
+        let mut gpu = stats();
+        Arc::get_mut(&mut gpu.info).unwrap().intel_integrated = true;
+        Hardware {
+            cpu: Arc::new(CpuInfo {
+                vendor: "GenuineIntel".into(),
+                family: 6,
+                model: 0xa5,
+                sockets: 1,
+                ..Default::default()
+            }),
+            power: CpuPower {
+                package: Some(60.0),
+                graphics: Some(0.014),
+                ..Default::default()
+            },
+            cpu_sensors: Some(CpuSensors {
+                state: SensorState::Ready,
+                package_celsius: Some(75.0),
+                integrated_gpu: Some(IntegratedGpuSensors {
+                    state: SensorState::Ready,
+                    temperature_celsius: Some(35.0),
+                    clock_mhz: Some(350.0),
+                    vid_volts: Some(0.8),
+                }),
+                ..Default::default()
+            }),
+            gpus: vec![stats(), gpu, stats()],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn kernel_readings_and_pp1_only_reach_the_identified_integrated_gpu() {
+        let mut hw = integrated_fixture();
+        hw.supplement_integrated_gpu();
+        let gpu = &hw.gpus[1];
+        assert_eq!(
+            (gpu.temperature, gpu.clock_mhz, gpu.core_vid_mv),
+            (Some(35.0), Some(350), Some(800))
+        );
+        assert_eq!(gpu.voltage_mv, None);
+        assert_eq!(gpu.board_power, Some(0.014));
+        assert!(matches!(gpu.power_source, Some(GpuPowerSource::Rapl)));
+        assert!(hw.gpus[0].temperature.is_none() && hw.gpus[2].board_power.is_none());
+        let mut hw = integrated_fixture();
+        hw.power.graphics = Some(0.0);
+        hw.cpu_sensors
+            .as_mut()
+            .unwrap()
+            .integrated_gpu
+            .as_mut()
+            .unwrap()
+            .vid_volts = Some(0.0);
+        hw.supplement_integrated_gpu();
+        assert_eq!(
+            (hw.gpus[1].board_power, hw.gpus[1].core_vid_mv),
+            (Some(0.0), Some(0))
+        );
+    }
+
+    #[test]
+    fn native_readings_win_and_missing_gpu_data_never_uses_cpu_temperature_or_power() {
+        let mut hw = integrated_fixture();
+        hw.gpus[1].temperature = Some(36.0);
+        hw.gpus[1].clock_mhz = Some(400);
+        hw.gpus[1].board_power = Some(1.0);
+        hw.gpus[1].power_source = Some(GpuPowerSource::Igcl);
+        hw.supplement_integrated_gpu();
+        assert_eq!(
+            (
+                hw.gpus[1].temperature,
+                hw.gpus[1].clock_mhz,
+                hw.gpus[1].board_power
+            ),
+            (Some(36.0), Some(400), Some(1.0))
+        );
+        assert!(matches!(
+            hw.gpus[1].power_source,
+            Some(GpuPowerSource::Igcl)
+        ));
+        let mut hw = integrated_fixture();
+        hw.power.graphics = None;
+        hw.cpu_sensors.as_mut().unwrap().integrated_gpu = None;
+        hw.supplement_integrated_gpu();
+        assert_eq!(
+            (hw.gpus[1].temperature, hw.gpus[1].board_power),
+            (None, None)
+        );
+        assert_eq!(
+            hw.gpus[1].kernel_sensor_state,
+            Some(super::super::SensorState::NoData)
+        );
+    }
+
+    #[test]
+    fn ambiguous_or_multi_socket_graphics_do_not_receive_package_sensor_values() {
+        let mut hw = integrated_fixture();
+        hw.gpus.push(hw.gpus[1].clone());
+        hw.supplement_integrated_gpu();
+        assert!(
+            hw.gpus
+                .iter()
+                .all(|g| g.board_power.is_none() && g.core_vid_mv.is_none())
+        );
+        let mut hw = integrated_fixture();
+        Arc::get_mut(&mut hw.cpu).unwrap().sockets = 2;
+        hw.supplement_integrated_gpu();
+        assert!(hw.gpus[1].temperature.is_none());
+    }
     #[test]
     fn an_idle_zero_counter_includes_the_first_busy_interval() {
         let now = Instant::now();
@@ -521,6 +664,7 @@ mod tests {
                 shared_total: 0,
                 engines: vec!["3D".into()],
                 temperature_max: None,
+                intel_integrated: false,
             }),
             util: 1.0,
             util_source: GpuUtilSource::Windows,
@@ -537,6 +681,9 @@ mod tests {
             clock_max_mhz: None,
             voltage_mv: None,
             memory_clock_mhz: None,
+            core_vid_mv: None,
+            kernel_sensor_state: None,
+            kernel_sensor_supported: false,
         }
     }
     #[test]

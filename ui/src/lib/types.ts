@@ -251,6 +251,7 @@ export interface GpuInfo {
   sharedTotal: number;
   engines: string[];
   temperatureMax: number | null;
+  intelIntegrated: boolean;
 }
 
 export interface GpuStats {
@@ -268,11 +269,14 @@ export interface GpuStats {
   /** Power and limit in W; the source identifies the measurement scope. */
   boardPower: number | null;
   boardPowerLimit: number | null;
-  powerSource: "nvml" | "adlBoard" | "adlChip" | "igcl" | "igclChip" | null;
+  powerSource: "nvml" | "adlBoard" | "adlChip" | "igcl" | "igclChip" | "rapl" | null;
   clockMhz: number | null;
   clockMaxMhz: number | null;
   voltageMv: number | null;
   memoryClockMhz: number | null;
+  coreVidMv: number | null;
+  kernelSensorSupported: boolean;
+  kernelSensorState: CpuSensors["state"] | null;
 }
 
 export interface GpuEngineUsage {
@@ -314,6 +318,12 @@ export interface CpuSensors {
   coreVoltage: number | null;
   coreVid: number | null;
   packageWatts: number | null;
+  integratedGpu?: {
+    state: CpuSensors["state"];
+    temperatureCelsius: number | null;
+    clockMhz: number | null;
+    vidVolts: number | null;
+  } | null;
   metrics: CpuMetric[];
   cores: CpuCoreSensors[];
   smuState: "pending" | "unavailable" | "unsupportedTable" | "ready" | null;

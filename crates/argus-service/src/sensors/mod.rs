@@ -115,10 +115,22 @@ impl SensorClient {
             );
             match reply {
                 Ok(Reply::Sensors(frame)) => {
-                    if !matches!(frame.state, SensorState::Ready | SensorState::Pending) {
+                    if !matches!(frame.state, SensorState::Ready | SensorState::Pending)
+                        || frame.integrated_gpu.as_ref().is_some_and(|g| {
+                            !matches!(g.state, SensorState::Ready | SensorState::Pending)
+                                || (g.state == SensorState::Ready
+                                    && (g.temperature_celsius.is_none()
+                                        || g.clock_mhz.is_none()
+                                        || g.vid_volts.is_none()))
+                        })
+                    {
                         argus_core::diagnostics::warn(
                             "kernel sensors unavailable",
-                            format!("state={:?}", frame.state),
+                            format!(
+                                "state={:?}; integrated_gpu={:?}",
+                                frame.state,
+                                frame.integrated_gpu.as_ref().map(|g| g.state)
+                            ),
                         );
                         diagnostics.collect(pid);
                     }
@@ -254,6 +266,7 @@ impl SensorClient {
                 }
             }
         }
+        snapshot.hardware.supplement_integrated_gpu();
     }
 }
 

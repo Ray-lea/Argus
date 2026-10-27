@@ -5,6 +5,7 @@
 
 mod board;
 mod counters;
+mod igpu;
 mod intel;
 mod known_smu;
 mod smu;
@@ -237,6 +238,7 @@ pub(super) struct CpuReader {
     telemetry: telemetry::Telemetry,
     smu: smu::Smu,
     board: board::Board,
+    igpu: igpu::Reader,
 }
 
 impl CpuReader {
@@ -289,6 +291,7 @@ impl CpuReader {
             telemetry,
             smu: smu::Smu::default(),
             board: board::Board::default(),
+            igpu: igpu::Reader::new(&info),
         })
     }
 
@@ -305,6 +308,9 @@ impl CpuReader {
         }
         self.telemetry
             .sample(&self.module, self.id, &mut frame, started);
+        if started.elapsed().as_millis() < 500 {
+            self.igpu.sample(&mut frame);
+        }
         if !self.id.intel && self.id.family >= 0x15 && started.elapsed().as_millis() < 500 {
             self.smu.sample(&mut frame, &self.telemetry.cores, self.id);
         }
@@ -332,6 +338,10 @@ impl CpuReader {
             || frame.core_voltage.is_some()
             || frame.core_vid.is_some()
             || frame.package_watts.is_some()
+            || frame
+                .integrated_gpu
+                .as_ref()
+                .is_some_and(|g| g.state == SensorState::Ready)
             || !frame.metrics.is_empty()
             || !frame.board_fans.is_empty()
             || !frame.board_metrics.is_empty()

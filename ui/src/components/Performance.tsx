@@ -576,8 +576,8 @@ type CpuPage = "overview" | "details";
 const [cpuPage, setCpuPage] = persisted<CpuPage>("cpuPage", "overview");
 const CPU_PAGES: CpuPage[] = ["overview", "details"];
 
-/** Watts with sensible precision: 7.4, 78. */
-const fmtW = (v: number) => (v < 10 ? v.toFixed(1) : String(Math.round(v)));
+/** Preserve sub-watt readings from an idle integrated GPU. */
+const fmtW = (v: number) => (v > 0 && v < 1 ? v.toFixed(3) : v < 10 ? v.toFixed(1) : String(Math.round(v)));
 const watts = (v: number) => `${fmtW(v)} W`;
 const celsius = (v: number) => `${Math.round(v)} °C`;
 
@@ -1710,6 +1710,14 @@ function GpuView(props: { id: string }) {
                   unit="V"
                 />
               </Show>
+              <Show when={g().coreVidMv != null}>
+                <Stat
+                  label={t("performance.gpu.coreVid")}
+                  value={((g().coreVidMv ?? 0) / 1000).toFixed(3)}
+                  unit="V"
+                  hint={t("performance.gpu.vidHint")}
+                />
+              </Show>
               <Show
                 when={g().boardPower !== null}
                 fallback={
@@ -1729,6 +1737,14 @@ function GpuView(props: { id: string }) {
                     <dd>{t(`performance.gpu.sources.${source()}`)}</dd>
                   </>
                 )}
+              </Show>
+              <Show when={g().kernelSensorSupported}>
+                <dt>{t("performance.gpu.kernelSensors")}</dt>
+                <dd>
+                  {g().kernelSensorState
+                    ? t(`performance.cpu.sensorState.${g().kernelSensorState ?? "pending"}`)
+                    : t("performance.cpu.notEnabled")}
+                </dd>
               </Show>
               <dt>{t("performance.gpu.dedicatedMemory")}</dt>
               <dd>{fmtGB(g().info.dedicatedTotal)} GB</dd>
@@ -1754,6 +1770,13 @@ function GpuView(props: { id: string }) {
               </Show>
             </dl>
           </div>
+          <Show when={g().kernelSensorSupported && g().kernelSensorState !== "ready"}>
+            <p class="perf-note">
+              {g().kernelSensorState
+                ? t("performance.gpu.kernelUnavailable")
+                : t("performance.gpu.kernelEnable")}
+            </p>
+          </Show>
         </div>
       )}
     </Show>

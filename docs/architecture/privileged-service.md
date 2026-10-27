@@ -88,7 +88,9 @@
 
 协议版本为 9，旧版服务需要更新。`SensorSnapshot {}` 无参数；多余字段一律拒绝。回复包含固定类型的温度、电压、电流、功耗、频率、限制、每核读数、风扇转速及主板电源轨和温度，不能指定模块路径、寄存器地址、任意 IOCTL 或写操作。沿用原有账户及令牌校验。
 
-模块固定为 PawnIO.Modules 0.2.11 的 IntelMSR、AMDFamily10、AMDFamily17、RyzenSMU 与 LpcIO，编译时嵌入签名二进制。`vendor/pawnio` 包含固定 SHA-256、上游版本、完整对应源码及 LGPL 许可证；许可生成脚本同时检查文件摘要。CPU 调用仅包含寄存器读取及固定的 SMU 表定位、刷新和读取；SMN 与 SMU 的访问通过 `Global\Access_PCI` 与其他监控工具协调，等待不超过 20 ms。模块本身具有的其他入口不向 IPC 开放。
+模块固定为 PawnIO.Modules 0.2.11 的 IntelMSR、IntelMCHBAR、AMDFamily10、AMDFamily17、RyzenSMU 与 LpcIO，编译时嵌入签名二进制。`vendor/pawnio` 包含固定 SHA-256、上游版本、完整对应源码及 LGPL 许可证；许可生成脚本同时检查文件摘要。CPU 调用仅包含寄存器读取及固定的 SMU 表定位、刷新和读取；SMN 与 SMU 的访问通过 `Global\Access_PCI` 与其他监控工具协调，等待不超过 20 ms。模块本身具有的其他入口不向 IPC 开放。
+
+IntelMCHBAR 仅在单插槽 Comet Lake S/H（Family 6、Model A5h）使用 Gen9 GT 布局，固定读取 `5948h`（频率与 VID）、`5980h`（GT 温度）、`5998h`（频率能力）。不读取 CPU 温度来代替 GPU 温度，不写寄存器或唤醒 GPU；RC6 的有效零频率与零 VID 保留。核显字段作为 `CpuSensors.integratedGpu` 可选快照传回，旧服务缺少该字段时按不可用处理，协议请求与既有字段不变。宿主按 Intel 厂商 ID、PCI `0:2:0` 和唯一适配器匹配，将读数及 RAPL PP1 功耗补充到 GPU 页；不补充到独显或多插槽系统。
 
 设置默认关闭。服务首次收到请求后打开已经安装的 PawnIO 设备，采集线程不安装或启动驱动。模块加载失败重试间隔为 30 秒；检测到驱动出现或版本改变后立即重试，15 秒没有请求即释放模块。Intel 按处理器组设置并恢复采集线程的亲和性，单次最多读取 256 个逻辑处理器，循环预算为 500 ms。AMD 仅在单插槽配置读取节点 0；未知 CCD / 电压布局不猜测。服务读取等待有 800 ms 上限，GUI 读取在独立线程进行，采样线程不等待 RPC。过期缓存被丢弃。
 

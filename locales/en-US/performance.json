@@ -328,6 +328,11 @@
     "coreClock": "Core clock",
     "memoryClock": "Memory clock",
     "coreVoltage": "Core voltage",
+    "coreVid": "Core VID",
+    "vidHint": "Voltage requested by the integrated GPU, not a measured supply voltage.",
+    "kernelSensors": "Integrated GPU kernel sensors",
+    "kernelEnable": "Install the privileged service and enable kernel sensors in Settings → Permissions to read integrated GPU temperature, clock and VID.",
+    "kernelUnavailable": "Integrated GPU kernel readings are unavailable. Check the privileged service and kernel sensors in Settings → Permissions.",
     "power": "Power",
     "powerLimit": "Power limit",
     "maxTemperature": "Max temperature",
@@ -353,7 +358,8 @@
       "adlBoard": "AMD ADL · board",
       "adlChip": "AMD ADL · chip",
       "igcl": "Intel IGCL · GPU power domain",
-      "igclChip": "Intel IGCL · GPU chip"
+      "igclChip": "Intel IGCL · GPU chip",
+      "rapl": "Intel RAPL · integrated GPU"
     }
   },
   "battery": {

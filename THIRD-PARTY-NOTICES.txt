@@ -2845,7 +2845,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 适用于：PawnIO.Modules 0.2.11
 ================================================================================
 
-Copyright (C) 2025-2026 namazso
+Copyright (C) 2025-2026 namazso; Copyright (C) 2026 Gen Li
 
 
 
