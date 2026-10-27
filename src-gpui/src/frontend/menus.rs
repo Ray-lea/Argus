@@ -334,9 +334,14 @@ impl Desktop {
         for start_type in ["auto", "autoDelayed", "manual", "disabled"] {
             items.push(
                 MenuItem::new(
-                    tr!(
+                    // `type` is a keyword, so the placeholder is passed by name.
+                    argus_core::i18n::format(
                         "services.menu.startType",
-                        r#type = label(&format!("services.startType.{start_type}"))
+                        &[(
+                            "type",
+                            &label(&format!("services.startType.{start_type}"))
+                                as &dyn std::fmt::Display,
+                        )],
                     ),
                     Action::Invoke(
                         "set_service_start_type".into(),
