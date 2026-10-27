@@ -49,6 +49,96 @@ gpui_kit::assets::icon_assets!(
         Circle
     ]
 );
+/// The original 16px line glyphs, drawn to match Fluent's regular weight.
+macro_rules! glyphs {
+    ($($name:literal),* $(,)?) => {
+        const GLYPHS: &[(&str, &str, &[u8])] = &[$((
+            $name,
+            concat!("argus/glyphs/", $name, ".svg"),
+            include_bytes!(concat!("../../../resources/glyphs/", $name, ".svg")),
+        )),*];
+    };
+}
+glyphs!(
+    "apps",
+    "arrow-right",
+    "battery",
+    "bolt",
+    "branch-end",
+    "chat",
+    "check",
+    "chevron-down",
+    "chevron-right",
+    "chevron-up",
+    "chip",
+    "computer",
+    "copy",
+    "disk",
+    "dismiss",
+    "document",
+    "end",
+    "external",
+    "eye-off",
+    "eye",
+    "filter",
+    "folder",
+    "gauge",
+    "generic-app-fill",
+    "generic-app",
+    "globe",
+    "go-to",
+    "gpu",
+    "history",
+    "info",
+    "kernel-fill",
+    "kernel",
+    "keyboard",
+    "leaf",
+    "list",
+    "lock",
+    "memory",
+    "menu",
+    "minimize",
+    "nav-side",
+    "nav-top",
+    "network",
+    "note",
+    "notes",
+    "panel",
+    "pause",
+    "pin",
+    "play",
+    "pointer",
+    "power",
+    "processes",
+    "pulse",
+    "restart",
+    "run-task",
+    "search",
+    "services",
+    "settings",
+    "shield",
+    "sparkle",
+    "star",
+    "stop",
+    "storage",
+    "theme",
+    "timer",
+    "transfer",
+    "trash",
+    "tray",
+    "tree",
+    "unpin",
+    "update",
+    "warning",
+);
+/// Asset path of an original glyph, by its kebab-case name.
+pub fn glyph(name: &str) -> Option<&'static str> {
+    GLYPHS
+        .iter()
+        .find(|(glyph, _, _)| *glyph == name)
+        .map(|(_, path, _)| *path)
+}
 pub struct Assets;
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
@@ -56,6 +146,9 @@ impl AssetSource for Assets {
             return Ok(Some(Cow::Borrowed(include_bytes!(
                 "../../../resources/logo.svg"
             ))));
+        }
+        if let Some((_, _, bytes)) = GLYPHS.iter().find(|(_, glyph, _)| *glyph == path) {
+            return Ok(Some(Cow::Borrowed(bytes)));
         }
         if let Some(bytes) = ProductIcons.load(path)? {
             return Ok(Some(bytes));
@@ -68,6 +161,12 @@ impl AssetSource for Assets {
         if "argus/logo.svg".starts_with(path) {
             paths.push("argus/logo.svg".into());
         }
+        paths.extend(
+            GLYPHS
+                .iter()
+                .filter(|(_, glyph, _)| glyph.starts_with(path))
+                .map(|(_, glyph, _)| SharedString::from(*glyph)),
+        );
         paths.sort();
         paths.dedup();
         Ok(paths)
