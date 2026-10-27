@@ -1,6 +1,6 @@
 //! Read-only Comet Lake GT sensors through the signed IntelMCHBAR module.
-//! Gen9 layout: Intel 332688 Vol. 2, sections 7.50 / 7.51 / 7.72 / 7.74 / 7.78 / 7.80.
-//! Comet Lake BCLK/QCLK layout: a1ive/nwinfo libnw/sensor/intel.c.
+//! Intel 615212-003 (Comet Lake), sections 9.8 / 9.9 / 9.30 / 9.31 /
+//! 9.32 / 9.36 / 9.38 / 9.41. Frequencies use documented nominal steps.
 //! Newer Xe layouts use different ratio bits and must not enter this reader.
 
 use std::time::{Duration, Instant};
@@ -23,7 +23,6 @@ enum Register {
     Performance = 0x5948,
     Temperature = 0x5980,
     Capabilities = 0x5998,
-    ReferenceClock = 0x5f60,
 }
 
 #[derive(Default, Debug)]
@@ -31,7 +30,6 @@ struct Registers {
     temperature: Option<u32>,
     performance: Option<u32>,
     capabilities: Option<u32>,
-    reference: Option<u32>,
     memory: Option<u32>,
     limits: Option<u32>,
 }
@@ -109,7 +107,6 @@ impl Reader {
                 temperature: read(Register::Temperature),
                 performance: read(Register::Performance),
                 capabilities: read(Register::Capabilities),
-                reference: read(Register::ReferenceClock),
                 memory: read(Register::MemoryClock),
                 limits: read(Register::Limits),
             };
@@ -126,7 +123,6 @@ impl Reader {
             if result.temperature_celsius.is_none()
                 || result.clock_mhz.is_none()
                 || result.vid_volts.is_none()
-                || result.reference_clock_mhz.is_none()
                 || result.memory_clock_mhz.is_none()
                 || result.limits.is_empty()
             {
@@ -174,34 +170,35 @@ fn decode(raw: &Registers) -> IntegratedGpuSensors {
     let performance = raw
         .performance
         .filter(|v| capabilities.is_some() && v & 0xfc00_0000 == 0);
-    // Comet Lake PCU reports BCLK in kHz. Keep the documented nominal PLL
-    // conversion when that optional field is absent, rather than inventing BCLK.
-    let reference_clock_mhz = raw
-        .reference
-        .map(|v| v as f32 / 1000.0)
-        .filter(|v| (40.0..=400.0).contains(v));
-    let reference = reference_clock_mhz.unwrap_or(100.0);
+    // 615212 section 9.32 defines a nominal 16.666 MHz step. This is not a
+    // measurement of the board's reference-clock deviation. 5F60h is not a
+    // documented BCLK source for this layout and returned zero on the original PC.
     let clock_mhz = performance
-        .map(|v| ((v >> 17) & 0x1ff) as f32 * reference / 6.0)
+        .map(|v| ((v >> 17) & 0x1ff) as f32 * 50.0 / 3.0)
         .filter(|v| *v <= 3000.0);
     let slice_clock_stopped = performance.map(|v| ((v >> 17) & 0x1ff) == 0);
     let unslice_clock_mhz = performance
-        .map(|v| ((v >> 8) & 0x1ff) as f32 * reference / 6.0)
+        .map(|v| ((v >> 8) & 0x1ff) as f32 * 50.0 / 3.0)
         .filter(|v| *v <= 3000.0);
     let minimum_clock_mhz = capabilities
-        .map(|v| ((v >> 16) & 0xff) as f32 * reference / 2.0)
+        .map(|v| ((v >> 16) & 0xff) as f32 * 50.0)
         .filter(|v| (1.0..=3000.0).contains(v));
     let maximum_clock_mhz = capabilities
-        .map(|v| (v & 0xff) as f32 * reference / 2.0)
+        .map(|v| (v & 0xff) as f32 * 50.0)
         .filter(|v| (1.0..=3000.0).contains(v));
-    // Comet Lake SA_PERF_STATUS: QCLK ratio [9:2], reference selector [10].
-    // This is shared system-memory clock, not DDR transfers per second.
+    // 615212 section 9.31: QCLK ratio [6:0], reference selector [7].
+    // Section 9.41 defines DCLK = QCLK / 2. Do not label QCLK as DRAM clock,
+    // or apply a later controller's [9:2]/[10] layout to Comet Lake.
     let memory_clock_mhz = raw
         .memory
         .filter(|v| *v != u32::MAX)
-        .zip(reference_clock_mhz)
-        .map(|(v, bclk)| {
-            ((v >> 2) & 0xff) as f32 * bclk * if v & (1 << 10) != 0 { 1.0 } else { 4.0 / 3.0 }
+        .map(|v| {
+            let ratio = (v & 0x7f) as f32;
+            if v & (1 << 7) != 0 {
+                ratio * 50.0
+            } else {
+                ratio * 200.0 / 3.0
+            }
         })
         .filter(|v| (100.0..=10000.0).contains(v));
     // Legacy 8-bit SVID: zero requests off; 01h is 250 mV, then 5 mV steps.
@@ -221,7 +218,6 @@ fn decode(raw: &Registers) -> IntegratedGpuSensors {
         vid_volts,
         slice_clock_stopped,
         unslice_clock_mhz,
-        reference_clock_mhz,
         minimum_clock_mhz,
         maximum_clock_mhz,
         memory_clock_mhz,
@@ -259,6 +255,20 @@ mod tests {
 
     const CAPS: u32 = (7 << 16) | (7 << 8) | 24;
 
+    #[test]
+    fn comet_lake_recorded_memory_status_decodes_without_an_undocumented_reference() {
+        // Original i7-10700K: SA_PERF_STATUS=2B000A1Bh, RP_STATE_CAP=00070718h.
+        // Intel 615212-003 sections 9.31 and 9.41 define QCLK and DCLK=QCLK/2.
+        let raw = Registers {
+            temperature: Some(35),
+            performance: Some(0),
+            capabilities: Some(0x0007_0718),
+            memory: Some(0x2b00_0a1b),
+            limits: Some(0),
+        };
+        assert_eq!(super::decode(&raw).memory_clock_mhz, Some(1800.0));
+    }
+
     fn decode(
         temperature: Option<u32>,
         performance: Option<u32>,
@@ -273,30 +283,30 @@ mod tests {
     }
 
     #[test]
-    fn clocks_use_the_reported_reference_and_idle_is_not_replaced_with_a_minimum() {
+    fn nominal_clock_steps_are_distinct_from_reference_measurement_and_idle_state() {
         let mut raw = Registers {
             temperature: Some(41),
             performance: Some(72 << 17),
             capabilities: Some(CAPS),
-            reference: Some(99533),
-            memory: Some((18 << 2) | (1 << 10)),
+            memory: Some(27),
             ..Default::default()
         };
         let busy = super::decode(&raw);
-        assert!((busy.clock_mhz.unwrap() - 1194.396).abs() < 0.01);
-        assert!((busy.memory_clock_mhz.unwrap() - 1791.594).abs() < 0.01);
+        assert_eq!(busy.clock_mhz, Some(1200.0));
+        assert_eq!(busy.memory_clock_mhz, Some(1800.0));
+        assert_eq!(busy.reference_clock_mhz, None);
         assert_eq!(busy.slice_clock_stopped, Some(false));
         raw.performance = Some(0);
         let idle = super::decode(&raw);
         assert_eq!(idle.clock_mhz, Some(0.0));
         assert_eq!(idle.slice_clock_stopped, Some(true));
-        assert!((idle.minimum_clock_mhz.unwrap() - 348.3655).abs() < 0.01);
-        raw.memory = Some(9 << 2);
-        assert!((super::decode(&raw).memory_clock_mhz.unwrap() - 1194.396).abs() < 0.01);
-        raw.reference = Some(0);
+        assert_eq!(idle.minimum_clock_mhz, Some(350.0));
+        raw.memory = Some((1 << 7) | 36);
+        assert_eq!(super::decode(&raw).memory_clock_mhz, Some(1800.0));
+        raw.memory = Some(0);
         assert_eq!(super::decode(&raw).memory_clock_mhz, None);
-        raw.reference = Some(u32::MAX);
-        assert_eq!(super::decode(&raw).reference_clock_mhz, None);
+        raw.memory = Some(u32::MAX);
+        assert_eq!(super::decode(&raw).memory_clock_mhz, None);
     }
 
     #[test]

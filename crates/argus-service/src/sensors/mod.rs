@@ -122,7 +122,6 @@ impl SensorClient {
                                     && (g.temperature_celsius.is_none()
                                         || g.clock_mhz.is_none()
                                         || g.vid_volts.is_none()
-                                        || g.reference_clock_mhz.is_none()
                                         || g.memory_clock_mhz.is_none()
                                         || g.limits.is_empty()))
                         })
