@@ -5,33 +5,52 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 pub fn number(value: &Value, key: &str) -> f64 {
     value.get(key).and_then(Value::as_f64).unwrap_or(0.)
 }
-pub fn core_grid_columns(
-    count: usize,
-    width: f32,
-    height: f32,
-    minimum_width: f32,
-    minimum_height: f32,
-    gap: f32,
-) -> usize {
-    let limit = (((width + gap) / (minimum_width + gap)).floor() as usize)
+/// Available grid space and the minimum dimensions of a processor card.
+pub struct CoreGrid {
+    pub count: usize,
+    pub width: f32,
+    pub height: f32,
+    pub cell_width: f32,
+    pub cell_height: f32,
+    pub header_height: f32,
+    pub gap: f32,
+}
+/// Prefer readable plots and full rows; keep a near-equal layout while resizing.
+pub fn core_grid_columns(size: &CoreGrid, previous: usize) -> usize {
+    if size.count <= 1 || size.width <= 0. {
+        return 1;
+    }
+    let limit = (((size.width + size.gap) / (size.cell_width + size.gap)).floor() as usize)
         .max(1)
-        .min(count.max(1));
+        .min(size.count);
+    let score = |columns: usize| {
+        let rows = size.count.div_ceil(columns);
+        let width = (size.width - (columns - 1) as f32 * size.gap) / columns as f32;
+        let height = (size.height - (rows - 1) as f32 * size.gap) / rows as f32;
+        if height < size.cell_height - 0.5 {
+            return 0.;
+        }
+        let plot = (width / 1.8).min(height - size.header_height);
+        let empty = 1. - size.count as f32 / (rows * columns) as f32;
+        plot * (1. - empty * 0.15)
+    };
     let mut best = limit;
     let mut best_score = 0.;
     for columns in 1..=limit {
-        let rows = count.div_ceil(columns).max(1);
-        let cell_width = (width - gap * (columns - 1) as f32) / columns as f32;
-        let cell_height = (height - gap * (rows - 1) as f32) / rows as f32;
-        if cell_height + 0.5 < minimum_height {
-            continue;
-        }
-        let empty = 1. - count as f32 / (rows * columns) as f32;
-        let score = (cell_width / 1.8).min(cell_height - 20.) * (1. - empty * 0.15);
-        if score > best_score {
+        let value = score(columns);
+        if value > best_score {
             best = columns;
-            best_score = score;
+            best_score = value;
         }
     }
+    if previous > 0 && previous <= limit {
+        let current = score(previous);
+        // A small dead band prevents one-pixel drags from repeatedly moving cores.
+        if current > 0. && best_score <= current * 1.08 {
+            return previous;
+        }
+    }
+    // When no arrangement fits vertically, minimize the height and allow scrolling.
     best
 }
 pub fn text<'a>(value: &'a Value, key: &str) -> &'a str {

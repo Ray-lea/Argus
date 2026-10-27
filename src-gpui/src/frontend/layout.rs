@@ -521,7 +521,7 @@ impl Desktop {
                 cx.notify();
             } else if kind == "perf-sidebar" {
                 self.perf_sidebar_width =
-                    (*start + f32::from(event.position.x - origin.x)).clamp(180., 360.);
+                    (*start + f32::from(event.position.x - origin.x)).clamp(200., 440.);
                 cx.notify();
             }
         }
@@ -602,7 +602,7 @@ impl Render for Desktop {
                         if kind == "details" {
                             this.prefs.set("detailsWidth", this.details_width);
                         } else if kind == "perf-sidebar" {
-                            this.prefs.set("perfSidebarWidth", this.perf_sidebar_width);
+                            this.prefs.set("perfSideWidth", this.perf_sidebar_width);
                         }
                     }
                     cx.notify();

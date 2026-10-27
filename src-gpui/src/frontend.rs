@@ -271,7 +271,7 @@ impl Desktop {
             details_open: prefs.get("detailsPanel", true),
             details_width: prefs.get("detailsWidth", f32::from(theme::dimension("detailsWidth"))),
             perf_sidebar_width: prefs.get(
-                "perfSidebarWidth",
+                "perfSideWidth",
                 f32::from(theme::dimension("deviceRailWidth")),
             ),
             device: prefs.get("perfDevice", "cpu".into()),

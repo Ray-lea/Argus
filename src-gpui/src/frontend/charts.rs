@@ -13,7 +13,6 @@ use gpui_kit::component::plot::{
 pub(super) enum ChartHeight {
     Fixed(Pixels),
     Fill,
-    Compact,
 }
 impl From<Pixels> for ChartHeight {
     fn from(value: Pixels) -> Self {
@@ -1034,7 +1033,6 @@ impl Desktop {
                         look.min_height
                             .unwrap_or(theme::dimension("chartMinHeight")),
                     ),
-                    ChartHeight::Compact => d.flex_1().min_h(px(24.)),
                 })
                 .when(look.frame, |d| {
                     d.border_1()
@@ -1093,7 +1091,6 @@ impl Desktop {
         let axes = interactive
             && match height {
                 ChartHeight::Fill => true,
-                ChartHeight::Compact => false,
                 ChartHeight::Fixed(height) => height >= theme::dimension("chartMinHeight"),
             };
         let lines = keys

@@ -661,33 +661,6 @@ impl Desktop {
         self.prefs.set(key, value);
         cx.notify();
     }
-    pub(in crate::frontend) fn metric(
-        &self,
-        title: &str,
-        value: impl Into<SharedString>,
-    ) -> AnyElement {
-        div()
-            .flex()
-            .flex_col()
-            .gap_0()
-            .py_0()
-            .min_w_0()
-            .flex_1()
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(self.palette.muted)
-                    .child(label(title)),
-            )
-            .child(
-                div()
-                    .text_size(theme::dimension("metricSize"))
-                    .line_height(relative(1.3))
-                    .font_weight(FontWeight::NORMAL)
-                    .child(value.into()),
-            )
-            .into_any_element()
-    }
     pub(in crate::frontend) fn property(
         &self,
         title: &str,
