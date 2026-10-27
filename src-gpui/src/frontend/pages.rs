@@ -589,10 +589,10 @@ impl Desktop {
                     self.details_open = true;
                     self.act(Action::Select(model::identity(&process)), window, cx);
                 } else {
-                    self.toast = Some((
+                    self.notify_toast(
+                        widgets::ToastKind::Info,
                         tr!("processes.pidExited", pid = value["pid"]),
-                        Instant::now(),
-                    ));
+                    );
                 }
                 return;
             }

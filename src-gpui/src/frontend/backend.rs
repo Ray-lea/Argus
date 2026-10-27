@@ -1,5 +1,4 @@
 use super::*;
-use gpui_kit::component::WindowExt;
 impl Desktop {
     pub(in crate::frontend) fn request(
         &mut self,
@@ -146,10 +145,7 @@ impl Desktop {
                     .as_str()
                     .map(str::to_owned)
                     .unwrap_or_else(|| self.action_error(&pending.command, &pending.args, &error));
-                if let Some(modal) = &mut self.modal {
-                    modal.error = Some(message.clone());
-                }
-                self.toast = Some((message, Instant::now()));
+                self.command_failed(&pending.command, &pending.args, &error, message, window, cx);
             }
         }
         if self.modal.is_some() {
@@ -186,7 +182,12 @@ impl Desktop {
                     self.change_placeholder(window, cx);
                     changed = true;
                 }
-                "argus-blur" => self.set_control_paused(false, window, cx),
+                "argus-blur" => {
+                    self.set_control_paused(false, window, cx);
+                    self.hotkey_blur(window, cx);
+                }
+                "argus-restored" => self.restored(&event.value),
+                "argus-hotkey-changed" => self.hotkey_changed(window, cx),
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
                 "argus-taskmgr-ready" => {
                     self.request("task_manager_ready", json!({}), None, window, cx)
@@ -328,25 +329,7 @@ impl Desktop {
                 window,
                 cx,
             ),
-            "settings" => {
-                self.request("history_usage", json!({}), Some("historyUsage"), window, cx);
-                self.request(
-                    "task_manager_status",
-                    json!({}),
-                    Some("taskmgr"),
-                    window,
-                    cx,
-                );
-                self.request(
-                    "privileged_service_status",
-                    json!({}),
-                    Some("privilege"),
-                    window,
-                    cx,
-                );
-                self.request("update_status", json!({}), Some("updates"), window, cx);
-                self.request("rule_stats", json!({}), Some("ruleStats"), window, cx);
-            }
+            "settings" => self.poll_settings(window, cx),
             "history" => self.load_history(window, cx),
             _ => {}
         }
@@ -602,13 +585,7 @@ impl Desktop {
             }
             Action::Preference(key, value) => self.preference(&key, value, window, cx),
             Action::Copy(value) => cx.write_to_clipboard(ClipboardItem::new_string(value)),
-            Action::CloseOverlay => {
-                window.close_dialog(cx);
-                self.popup = None;
-                self.modal = None;
-                self.request("resume_hotkey", json!({}), Some("settings"), window, cx);
-                self.focus.focus(window, cx);
-            }
+            Action::CloseOverlay => self.close_overlay(window, cx),
             Action::Confirm => self.confirm_dialog(window, cx),
         }
         cx.notify();
@@ -681,10 +658,8 @@ impl Desktop {
             }
             return;
         }
+        // Enter in a dialog belongs to the dialog (dialogs.rs, dialog_enter).
         if self.modal.is_some() {
-            if key == "enter" {
-                self.act(Action::Confirm, window, cx);
-            }
             return;
         }
         if m.control {
@@ -1025,6 +1000,79 @@ impl Desktop {
                     }),
                     cx,
                 );
+            });
+        }
+        if self.options.fixture.is_some()
+            && let Some(data) = control["data"].as_object()
+        {
+            for (key, value) in data {
+                self.data.insert(key.clone(), value.clone());
+            }
+        }
+        if let Some(text) = control["toast"].as_str() {
+            self.notify_toast(widgets::ToastKind::Info, text.to_owned());
+        }
+        if control["recordHotkey"].as_bool() == Some(true) {
+            self.begin_hotkey(window, cx);
+        }
+        if self.options.fixture.is_some()
+            && let Some(keys) = control["keys"].as_array()
+        {
+            // Synthetic keys through the normal dispatch path, for dialogs and the recorder.
+            let strokes = keys
+                .iter()
+                .filter_map(Value::as_str)
+                .filter_map(|k| Keystroke::parse(k).ok())
+                .collect::<Vec<_>>();
+            window.defer(cx, move |window, cx| {
+                for stroke in strokes {
+                    let modifiers = |modifiers| {
+                        PlatformInput::ModifiersChanged(ModifiersChangedEvent {
+                            modifiers,
+                            capslock: Default::default(),
+                        })
+                    };
+                    window.dispatch_event(modifiers(stroke.modifiers), cx);
+                    window.dispatch_event(
+                        PlatformInput::KeyDown(KeyDownEvent {
+                            keystroke: stroke.clone(),
+                            is_held: false,
+                            prefer_character_input: false,
+                        }),
+                        cx,
+                    );
+                    window
+                        .dispatch_event(PlatformInput::KeyUp(KeyUpEvent { keystroke: stroke }), cx);
+                    window.dispatch_event(modifiers(Modifiers::default()), cx);
+                }
+            });
+        }
+        if self.options.fixture.is_some()
+            && let Some(id) = control["clickSelect"].as_str()
+            && let Some(bounds) = self.ui.anchors.borrow().get(id).copied()
+        {
+            let position = bounds.center();
+            window.defer(cx, move |window, cx| {
+                for event in [
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position,
+                        ..Default::default()
+                    }),
+                    PlatformInput::MouseDown(MouseDownEvent {
+                        position,
+                        button: MouseButton::Left,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                    PlatformInput::MouseUp(MouseUpEvent {
+                        position,
+                        button: MouseButton::Left,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                ] {
+                    window.dispatch_event(event, cx);
+                }
             });
         }
         if let Some(section) = control["settingsSection"].as_str() {
