@@ -22,7 +22,7 @@
     "deviceRailWidth": 244,
     "settingsRailWidth": 208,
     "settingsMaxWidth": 1120,
-    "detailsWidth": 344,
+    "detailsWidth": 348,
     "chartMinHeight": 168,
     "chartGridRows": 4,
     "chartGridColumns": 6,
@@ -34,7 +34,9 @@
   },
   "fonts": {
     "windows": ["Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],
-    "macos": [".SystemUIFont"]
+    "macos": [".SystemUIFont"],
+    "display": ["Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI"],
+    "mono": ["Cascadia Mono", "Cascadia Code", "Consolas"]
   },
   "light": {
     "scrollbar-size": "10px",

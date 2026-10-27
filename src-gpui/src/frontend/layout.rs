@@ -864,9 +864,10 @@ impl Desktop {
     ) {
         if let Some((kind, origin, start)) = &self.drag {
             if kind == "details" {
-                let em = f32::from(window.rem_size());
-                self.details_width = (*start - f32::from(event.position.x - origin.x))
-                    .clamp(em * 12., f32::from(window.viewport_size().width) * 0.45);
+                self.details_width = Self::clamp_details_width(
+                    *start - f32::from(event.position.x - origin.x),
+                    window,
+                );
                 cx.notify();
             } else if kind == "perf-sidebar" {
                 self.perf_sidebar_width =

@@ -286,7 +286,9 @@ impl Desktop {
             nav_top: prefs.get::<String>("navPosition", "top".into()) == "top",
             nav_expanded: prefs.get("navExpanded", false),
             details_open: prefs.get("detailsPanel", true),
-            details_width: prefs.get("detailsWidth", f32::from(theme::dimension("detailsWidth"))),
+            details_width: prefs
+                .get("detailsWidth", f32::from(theme::dimension("detailsWidth")))
+                .clamp(Self::DETAILS_MIN_WIDTH, Self::DETAILS_MAX_WIDTH),
             perf_sidebar_width: prefs.get(
                 "perfSidebarWidth",
                 f32::from(theme::dimension("deviceRailWidth")),

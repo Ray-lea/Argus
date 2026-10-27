@@ -24,14 +24,20 @@ impl Desktop {
                 }
                 let vitals = self.vitals(window, cx);
                 let table = self.table_view(window, cx);
+                // The pane follows its handle without easing while dragged.
+                let dragging = self.drag.as_ref().is_some_and(|drag| drag.0 == "details");
                 let width = gpui_kit::base::motion::transition(
                     "details-width",
                     if self.details_open {
-                        px(self.details_width)
+                        px(self.details_display_width(window))
                     } else {
                         px(0.)
                     },
-                    theme::transition(),
+                    if dragging {
+                        gpui_kit::base::motion::Transition::new(Duration::ZERO)
+                    } else {
+                        theme::transition()
+                    },
                     window,
                     cx,
                 );

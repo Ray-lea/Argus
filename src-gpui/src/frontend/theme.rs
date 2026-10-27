@@ -253,7 +253,7 @@ pub fn motion_duration() -> std::time::Duration {
         .expect("motion milliseconds");
     std::time::Duration::from_millis(milliseconds)
 }
-fn parse_color(css: &str) -> Hsla {
+pub(super) fn parse_color(css: &str) -> Hsla {
     if let Some(hex) = css.strip_prefix('#') {
         return rgb(u32::from_str_radix(hex, 16).expect("theme hex color")).into();
     }
