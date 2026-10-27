@@ -11,10 +11,13 @@ pub struct Palette {
     pub layer: Hsla,
     pub layer_strong: Hsla,
     pub stroke: Hsla,
+    pub stroke_strong: Hsla,
+    pub tip: Hsla,
     pub control: Hsla,
     pub hover: Hsla,
     pub accent: Hsla,
     pub cpu: Hsla,
+    pub cpu_e: Hsla,
     pub memory: Hsla,
     pub io: Hsla,
     pub network: Hsla,
@@ -22,10 +25,7 @@ pub struct Palette {
     pub battery: Hsla,
     pub danger: Hsla,
     pub heat: Hsla,
-    pub stroke_strong: Hsla,
 }
-/// Large figures and titles use the display cut of the system font, like the original.
-pub const DISPLAY_FONT: &str = "Segoe UI Variable Display";
 /// A product token without a component-library role, for the active mode.
 pub fn role(cx: &App, key: &str) -> Hsla {
     let mode = if cx.theme().mode == ThemeMode::Dark {
@@ -51,8 +51,8 @@ impl Palette {
     pub fn current(cx: &App) -> Self {
         let theme = cx.theme();
         let colors = &theme.colors;
+        let token = |key: &str| role(cx, key);
         Self {
-            stroke_strong: role(cx, "stroke-strong"),
             ink: colors.foreground,
             muted: colors.muted_foreground,
             faint: parse_color(
@@ -72,10 +72,13 @@ impl Palette {
             layer: colors.group_box,
             layer_strong: colors.popover,
             stroke: colors.border,
+            stroke_strong: token("stroke-strong"),
+            tip: token("tip"),
             control: colors.secondary,
             hover: colors.list_hover,
             accent: colors.primary,
             cpu: colors.chart_1,
+            cpu_e: token("cpu-e"),
             memory: colors.chart_2,
             io: colors.chart_3,
             network: colors.chart_4,
@@ -209,6 +212,44 @@ pub fn design() -> &'static serde_json::Value {
     DESIGN.get_or_init(|| {
         serde_json::from_str(include_str!("../../../resources/theme.json")).expect("product theme")
     })
+}
+/// Large figures and titles use the display optical size where the system has it.
+pub fn display_font(cx: &App) -> SharedString {
+    installed_font("display", cx)
+}
+/// Addresses, ports, commands and code use the monospaced family.
+pub fn mono_font(cx: &App) -> SharedString {
+    installed_font("mono", cx)
+}
+/// The first family of a theme font list that the system has; a missing
+/// family would otherwise fall back to a proportional default.
+fn installed_font(kind: &str, cx: &App) -> SharedString {
+    static DISPLAY: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
+    static MONO: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
+    let cell = if kind == "mono" { &MONO } else { &DISPLAY };
+    cell.get_or_init(|| {
+        let system = cx.text_system();
+        design()["fonts"][kind]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .find(|name| {
+                let id = system.resolve_font(&font(name.to_string()));
+                system
+                    .get_font_for_id(id)
+                    .is_some_and(|resolved| resolved.family.as_ref() == *name)
+            })
+            .map(|name| SharedString::from(name.to_owned()))
+            .unwrap_or_else(|| {
+                if kind == "mono" {
+                    cx.theme().mono_font_family.clone()
+                } else {
+                    cx.theme().font_family.clone()
+                }
+            })
+    })
+    .clone()
 }
 pub fn dimension(key: &str) -> Pixels {
     px(design()["layout"][key].as_f64().expect("layout token") as f32)
@@ -447,15 +488,4 @@ pub fn timestamp(ms: i64) -> String {
         value.minute(),
         value.second()
     )
-}
-pub fn uptime(seconds: f64) -> String {
-    let s = seconds as u64;
-    let days = s / 86400;
-    let hours = s / 3600 % 24;
-    let minutes = s / 60 % 60;
-    if days > 0 {
-        argus_core::tr!("format.uptime.days", days = days, hours = hours)
-    } else {
-        format!("{hours}:{minutes:02}:{:02}", s % 60)
-    }
 }

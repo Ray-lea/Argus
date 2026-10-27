@@ -1,4 +1,7 @@
+//! History: what the machine and its busiest processes did, up to a week back. The
+//! charts are drawn once per query; pointing at them only moves the cursor marks.
 use super::*;
+use charts::{GIB, KIB, MIB};
 
 pub(super) const RANGES: [(&str, i64); 4] = [
     ("1h", 3_600_000),
@@ -6,6 +9,21 @@ pub(super) const RANGES: [(&str, i64); 4] = [
     ("24h", 86_400_000),
     ("7d", 604_800_000),
 ];
+const MINUTE: i64 = 60_000;
+const HOUR: i64 = 60 * MINUTE;
+const DAY: i64 = 24 * HOUR;
+/// Axis tick spacing per range, on local clock boundaries.
+const TICKS: [i64; 4] = [10 * MINUTE, HOUR, 3 * HOUR, DAY];
+/// One recorded frame (`FRAME_MS` in history.rs).
+const FRAME: f64 = argus_core::history::FRAME_MS as f64;
+/// Label column, chart gap and time axis (the original's `.history-graphs`).
+const LABELS: f32 = 150.;
+const COLUMN_GAP: f32 = 14.;
+const ROW_GAP: f32 = 8.;
+const AXIS: f32 = 22.;
+const BORDER: f32 = 1.;
+const TABLE_ROW: f32 = 28.;
+
 pub(super) fn range_label(id: &str) -> String {
     let hours = RANGES
         .iter()
@@ -18,495 +36,1099 @@ pub(super) fn range_label(id: &str) -> String {
         tr!("history.range.hours", count = hours)
     }
 }
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+fn local_offset() -> time::UtcOffset {
+    time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC)
+}
+fn local(ts: i64) -> Option<time::OffsetDateTime> {
+    time::OffsetDateTime::from_unix_timestamp(ts.div_euclid(1000))
+        .ok()
+        .map(|t| t.to_offset(local_offset()))
+}
+
+// ---- Gaps (lib/history-gaps.ts) ------------------------------------------------------
+
+/// The widest spacing of frames recorded while running: the slowest background
+/// refresh plus how late a sample can land.
+fn max_cadence() -> f64 {
+    argus_app::settings::BACKGROUND_INTERVALS
+        .iter()
+        .copied()
+        .max()
+        .unwrap_or(0) as f64
+        + FRAME
+}
+/// Whether the line joins each point to the next: always within 2.5 steps, and past
+/// that within 2.5 of the wider neighbouring spacing (up to the slowest cadence).
+fn joins(ts: &[f64], step: f64) -> Vec<bool> {
+    (0..ts.len().saturating_sub(1))
+        .map(|i| {
+            let before = if i > 0 { ts[i] - ts[i - 1] } else { 0. };
+            let after = if i + 2 < ts.len() {
+                ts[i + 2] - ts[i + 1]
+            } else {
+                0.
+            };
+            let cadence = before.max(after).min(max_cadence());
+            ts[i + 1] - ts[i] <= step.max(cadence) * 2.5
+        })
+        .collect()
+}
+/// Index of the point closest to `at`.
+fn nearest(ts: &[f64], at: f64) -> Option<usize> {
+    if ts.is_empty() {
+        return None;
+    }
+    let index = ts.partition_point(|t| *t < at).min(ts.len() - 1);
+    Some(if index > 0 && at - ts[index - 1] < ts[index] - at {
+        index - 1
+    } else {
+        index
+    })
+}
+/// The point a reading at `at` shows: the nearest one on the line, none in a gap.
+fn point_at(ts: &[f64], joined: &[bool], step: f64, at: f64) -> Option<usize> {
+    let index = nearest(ts, at)?;
+    if (ts[index] - at).abs() <= step * 1.5 {
+        return Some(index);
+    }
+    let pair = if at < ts[index] {
+        index.checked_sub(1)?
+    } else {
+        index
+    };
+    joined.get(pair).copied().unwrap_or(false).then_some(index)
+}
+
+// ---- Times ----------------------------------------------------------------------------
+
+/// Axis ticks on local clock boundaries: so many minutes past midnight, or midnights.
+fn ticks(from: f64, to: f64, step: i64) -> Vec<f64> {
+    let offset = i64::from(local_offset().whole_seconds()) * 1000;
+    let midnight = (from as i64 + offset).div_euclid(DAY) * DAY - offset;
+    (0..)
+        .map(|k| (midnight + k * step) as f64)
+        .take_while(|at| *at <= to)
+        .filter(|at| *at >= from)
+        .collect()
+}
+fn month_day(ts: i64) -> String {
+    let Some(t) = local(ts) else {
+        return label("format.missing");
+    };
+    // The month as the locale names it: a number in Chinese, an abbreviation in English.
+    let names = label("format.monthNames");
+    let month = names
+        .split_whitespace()
+        .nth(usize::from(u8::from(t.month())) - 1)
+        .map(String::from)
+        .unwrap_or_else(|| u8::from(t.month()).to_string());
+    tr!("format.monthDay", month = month, day = t.day())
+}
+fn clock(ts: i64, seconds: bool) -> String {
+    let Some(t) = local(ts) else {
+        return label("format.missing");
+    };
+    if seconds {
+        format!("{:02}:{:02}:{:02}", t.hour(), t.minute(), t.second())
+    } else {
+        format!("{:02}:{:02}", t.hour(), t.minute())
+    }
+}
+/// A moment, with its date unless it is today.
+fn moment_label(ts: i64) -> String {
+    let today = local(now_ms()).map(|t| t.date());
+    if local(ts).map(|t| t.date()) == today {
+        clock(ts, true)
+    } else {
+        format!("{} {}", month_day(ts), clock(ts, true))
+    }
+}
+/// The cursor's time, as precise as the points under it.
+fn cursor_label(ts: i64, span: f64) -> String {
+    if span > DAY as f64 {
+        format!("{} {}", month_day(ts), clock(ts, false))
+    } else if span > 6. * HOUR as f64 {
+        clock(ts, false)
+    } else {
+        clock(ts, true)
+    }
+}
+fn tick_label(ts: i64) -> String {
+    match local(ts) {
+        Some(t) if t.hour() == 0 && t.minute() == 0 => month_day(ts),
+        _ => clock(ts, false),
+    }
+}
+/// Rough width of a short label at 11 px with its padding, for keeping chips inside the plot.
+fn chip_width(text: &str) -> f32 {
+    12. + text
+        .chars()
+        .map(|c| if c.is_ascii() { 6.4 } else { 11. })
+        .sum::<f32>()
+}
+
+// ---- Formats --------------------------------------------------------------------------
+
+/// A byte rate; idle rows read a bare "0".
+fn quiet_rate(bytes: f64) -> String {
+    if bytes < 1. {
+        "0".into()
+    } else {
+        charts::byte_rate(bytes)
+    }
+}
+fn quiet_net(bytes: f64, bits: bool) -> String {
+    if !bits {
+        quiet_rate(bytes)
+    } else if bytes * 8. < 1. {
+        "0".into()
+    } else {
+        charts::bit_rate(bytes)
+    }
+}
+
+/// One chart: its record field, resource name and color.
+struct Metric {
+    field: &'static str,
+    resource: &'static str,
+    color: Hsla,
+}
+
 impl Desktop {
+    fn history_span(&self) -> i64 {
+        RANGES
+            .iter()
+            .find(|(key, _)| *key == self.history_range)
+            .unwrap_or(&RANGES[0])
+            .1
+    }
+    /// The plot column's width: the page less margins, card padding, the label column and gap.
+    fn history_plot_width(&self, window: &Window) -> f32 {
+        let navigation = if self.nav_top {
+            0.
+        } else if self.nav_expanded {
+            192.
+        } else {
+            48.
+        };
+        (f32::from(window.viewport_size().width)
+            - navigation
+            - 24.
+            - 2.
+            - 32.
+            - LABELS
+            - COLUMN_GAP
+            - 10.)
+            .max(120.)
+    }
+    /// Queries the series for the window on screen and the processes of the shown moment.
+    /// While a moment is picked the window stays put; following the present it refreshes
+    /// every 10 s to 5 min, coarser views less often.
     pub(in crate::frontend) fn load_history(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let to = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let now = now_ms();
+        let span = self.history_span();
+        let previous = self.data.get("historyWindow").map(|w| {
+            (
+                w["from"].as_f64().unwrap_or(0.) as i64,
+                w["to"].as_f64().unwrap_or(0.) as i64,
+            )
+        });
+        let to = match (self.history_cursor, previous) {
+            (None, _) => now,
+            (Some(_), Some((from, to))) if to - from == span => to,
+            // A new range keeps the picked moment in the middle of the view.
+            (Some(cursor), _) => (cursor + span / 2).min(now),
+        };
+        let following = self.history_cursor.is_none();
+        let buckets = ((span as f64 / FRAME).ceil() as i64)
+            .min((self.history_plot_width(window) / 2.).floor() as i64)
+            .max(30);
+        let every = (span / 360).clamp(10_000, 5 * MINUTE);
+        let query = self
+            .data
+            .get("historyQuery")
+            .cloned()
+            .unwrap_or(Value::Null);
+        let stale = query.is_null()
+            || query["range"] != json!(self.history_range)
+            || query["buckets"] != json!(buckets)
+            || if following {
+                now - query["at"].as_i64().unwrap_or(0) >= every
+            } else {
+                query["to"] != json!(to)
+            };
+        if stale {
+            self.data.insert(
+                "historyQuery".into(),
+                json!({"range": self.history_range, "buckets": buckets, "to": to, "at": now}),
+            );
+            self.request(
+                "history_series",
+                json!({"from": to - span, "to": to, "buckets": buckets, "range": self.history_range}),
+                Some("historySeries"),
+                window,
+                cx,
+            );
+            self.request("history_range", json!({}), Some("historyRange"), window, cx);
+        }
+        let moment = self.history_cursor.unwrap_or(to);
+        if stale || self.data.get("historyMomentAt") != Some(&json!(moment)) {
+            self.data.insert("historyMomentAt".into(), json!(moment));
+            self.request(
+                "history_moment",
+                json!({"ts": moment, "cursor": self.history_cursor}),
+                Some("historyMoment"),
+                window,
+                cx,
+            );
+        }
+    }
+    /// Keyboard on the history page: arrows step between points (Shift and Page keys by a
+    /// tenth), Home and End jump to either end, Escape returns to the newest data.
+    pub(in crate::frontend) fn history_key(
+        &mut self,
+        key: &str,
+        shift: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if key == "escape" {
+            if self.history_cursor.is_none() {
+                return false;
+            }
+            self.history_cursor = None;
+            self.load_history(window, cx);
+            cx.notify();
+            return true;
+        }
+        if !matches!(
+            key,
+            "left" | "right" | "home" | "end" | "pageup" | "pagedown"
+        ) {
+            return false;
+        }
+        let ts = self
+            .data
+            .get("historySeries")
+            .map(values)
             .unwrap_or_default()
-            .as_millis() as i64;
-        let span = RANGES
             .iter()
-            .find(|(key, _)| *key == self.history_range)
-            .unwrap_or(&RANGES[0])
-            .1;
-        let buckets = f32::from(window.viewport_size().width).ceil() as usize;
-        self.request(
-            "history_series",
-            json!({"from":to-span,"to":to,"buckets":buckets,"range":self.history_range}),
-            Some("historySeries"),
-            window,
-            cx,
-        );
-        self.request(
-            "history_moment",
-            json!({"ts":self.history_cursor.unwrap_or(to),"cursor":self.history_cursor}),
-            Some("historyMoment"),
-            window,
-            cx,
-        );
+            .filter_map(|p| p["ts"].as_f64())
+            .collect::<Vec<_>>();
+        if ts.is_empty() {
+            return true;
+        }
+        let last = ts.len() - 1;
+        let far = (ts.len() as f64 / 10.).round().max(1.) as usize;
+        let current = self
+            .history_cursor
+            .and_then(|at| nearest(&ts, at as f64))
+            .unwrap_or(last);
+        let index = match key {
+            "left" => current.saturating_sub(if shift { far } else { 1 }),
+            "right" => (current + if shift { far } else { 1 }).min(last),
+            "pageup" => current.saturating_sub(far),
+            "pagedown" => (current + far).min(last),
+            "home" => 0,
+            _ => last,
+        };
+        self.history_cursor = Some(ts[index] as i64);
+        self.load_history(window, cx);
+        cx.notify();
+        true
     }
     pub(in crate::frontend) fn history_view(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let p = self.palette;
         let records = self
             .data
             .get("historySeries")
             .map(values)
-            .unwrap_or_default();
-        if records.is_empty() {
-            let enabled = boolean(&self.data["settings"], "history");
-            return div()
-                .flex_1()
-                .flex()
-                .flex_col()
-                .items_center()
-                .justify_center()
-                .gap_3()
-                .child(label(if enabled {
-                    "history.empty.none"
-                } else {
-                    "history.empty.off"
-                }))
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(self.palette.muted)
-                        .child(label(if enabled {
-                            "history.empty.hint"
-                        } else {
-                            "history.empty.offHint"
-                        })),
-                )
-                .when(!enabled, |d| {
-                    d.child(self.button(
-                        "history-open-settings",
-                        label("shell.page.settings"),
-                        None,
-                        Action::Preference("settingsSection".into(), json!("data")),
-                        false,
-                        cx,
-                    ))
-                })
-                .into_any_element();
-        }
-        let metrics = [
-            ("cpu", "common.resource.cpu", self.palette.cpu, Some(100.)),
-            (
-                "memUsed",
-                "common.resource.memory",
-                self.palette.memory,
-                None,
-            ),
-            ("disk", "common.resource.disk", self.palette.io, None),
-            ("net", "common.resource.network", self.palette.network, None),
-            ("gpu", "common.resource.gpu", self.palette.gpu, Some(100.)),
-            (
-                "battery",
-                "common.resource.battery",
-                self.palette.battery,
-                Some(100.),
-            ),
-        ];
-        let visible_metrics = metrics
+            .unwrap_or_default()
+            .to_vec();
+        let span_ms = self.history_span();
+        let (from, to) = self
+            .data
+            .get("historyWindow")
+            .and_then(|w| Some((w["from"].as_f64()?, w["to"].as_f64()?)))
+            .unwrap_or_else(|| {
+                let now = now_ms() as f64;
+                (now - span_ms as f64, now)
+            });
+        let span = (to - from).max(1.);
+        let buckets = self
+            .data
+            .get("historyQuery")
+            .and_then(|query| query["buckets"].as_f64())
+            .unwrap_or(records.len().max(1) as f64);
+        let step = (span / buckets.max(1.)).max(FRAME);
+        let ts = records.iter().map(|r| number(r, "ts")).collect::<Vec<_>>();
+        let joined = joins(&ts, step);
+        let tick_step = TICKS[RANGES
             .iter()
-            .copied()
-            .filter(|(key, _, _, _)| {
-                *key != "battery" || records.iter().any(|p| p[*key].is_number())
-            })
-            .collect::<Vec<_>>();
-        let controls = self.segments(
-            "history-metric",
-            visible_metrics
-                .iter()
-                .map(|(key, label_key, _, _)| {
-                    (
-                        label(label_key),
-                        None,
-                        Action::Preference("historyMetric".into(), json!(key)),
-                        self.history_metric == *key,
-                    )
-                })
-                .collect(),
-            cx,
-        );
-        let step = self
-            .data
-            .get("historyWindow")
-            .map(|w| {
-                (number(w, "to") - number(w, "from"))
-                    / f64::from(f32::from(window.viewport_size().width).max(1.))
-            })
-            .unwrap_or(argus_core::history::FRAME_MS as f64);
-        let cpu_points = model::history_points(records, "cpu", step);
-        let start = self
-            .data
-            .get("historyWindow")
-            .and_then(|w| w["from"].as_f64())
-            .unwrap_or_else(|| cpu_points.first().map(|p| p.0).unwrap_or_default());
-        let end = self
-            .data
-            .get("historyWindow")
-            .and_then(|w| w["to"].as_f64())
-            .unwrap_or_else(|| cpu_points.last().map(|p| p.0).unwrap_or(start + 1.));
-        let active_cursor = self.history_hover.or(self.history_cursor);
-        let inspect_ts = active_cursor.unwrap_or(end as i64) as f64;
-        let nearest_record = records.iter().min_by(|a, b| {
-            (number(a, "ts") - inspect_ts)
-                .abs()
-                .total_cmp(&(number(b, "ts") - inspect_ts).abs())
-        });
-        let mut chart_stack = div()
-            .id("history-chart")
+            .position(|(key, _)| *key == self.history_range)
+            .unwrap_or(0)];
+        let tick_list = Arc::new(ticks(from, to, tick_step));
+        let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
+        let has_battery = records.iter().any(|r| r["battery"].is_number());
+        let metrics = [
+            ("cpu", "cpu", p.cpu),
+            ("memUsed", "memory", p.memory),
+            ("disk", "disk", p.io),
+            ("net", "network", p.network),
+            ("gpu", "gpu", p.gpu),
+            ("battery", "battery", p.battery),
+        ]
+        .into_iter()
+        .filter(|(field, _, _)| *field != "battery" || has_battery)
+        .map(|(field, resource, color)| Metric {
+            field,
+            resource,
+            color,
+        })
+        .collect::<Vec<_>>();
+        let shown_at =
+            |at: f64| point_at(&ts, &joined, step, at).and_then(|index| records.get(index));
+        let read_ts = self.history_hover.or(self.history_cursor);
+        let readout = match read_ts {
+            Some(at) => shown_at(at as f64),
+            None => records.last(),
+        };
+        let cursor_point = read_ts.and_then(|at| shown_at(at as f64));
+        let row = px((f32::from(window.viewport_size().height) * 0.075).clamp(36., 96.));
+        let compact = f32::from(window.viewport_size().height) <= 720.;
+
+        // Labels: color square and name, the value at the readout, a detail line.
+        let mut labels = div()
+            .w(px(LABELS))
+            .flex_shrink_0()
             .flex()
             .flex_col()
-            .gap_2()
-            .on_mouse_move(cx.listener(|_, _, _, _| {}));
-        for &(key, name, color, maximum) in &visible_metrics {
-            let points = model::history_points(records, key, step);
-            let max = maximum
-                .or_else(|| {
-                    if key == "memUsed" {
-                        nearest_record
-                            .and_then(|r| r["memTotal"].as_f64())
-                            .or_else(|| self.snapshot["system"]["memTotal"].as_f64())
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or_else(|| points.iter().filter_map(|p| p.1).fold(1., f64::max));
-            let current_val = nearest_record
-                .and_then(|r| r[key].as_f64())
-                .map(|v| charts::series_format(key).value(v))
-                .unwrap_or_else(|| label("history.noData"));
-            let extra = match key {
-                "cpu" => nearest_record
-                    .and_then(|r| r["cpuPeak"].as_f64())
-                    .map(|p| tr!("history.metric.peak", value = theme::cpu(p))),
-                "memUsed" => nearest_record
-                    .and_then(|r| r["memTotal"].as_f64())
-                    .or_else(|| self.snapshot["system"]["memTotal"].as_f64())
-                    .filter(|t| *t > 0.)
-                    .map(|t| {
-                        tr!(
-                            "history.metric.total",
-                            value = format!("{:.1}", t / 1073741824.)
-                        )
+            .gap(px(ROW_GAP));
+        let mut charts_column = Vec::new();
+        for metric in &metrics {
+            let value_of = |r: &Value| r[metric.field].as_f64();
+            let reading = readout.and_then(|r| value_of(r).map(|v| (r, v)));
+            let value_text = reading.map(|(_, v)| match metric.field {
+                "cpu" | "gpu" => format!("{}%", theme::cpu(v)),
+                "memUsed" => format!("{:.1} GB", v / GIB),
+                "disk" => charts::byte_rate(v),
+                "net" => charts::net_rate(v, bits),
+                _ => format!("{}%", v.round()),
+            });
+            let detail = reading.and_then(|(r, _)| match metric.field {
+                "cpu" => r["cpuPeak"]
+                    .as_f64()
+                    .map(|peak| tr!("history.metric.peak", value = theme::cpu(peak))),
+                "memUsed" => r["memTotal"].as_f64().map(|total| {
+                    tr!(
+                        "history.metric.total",
+                        value = format!("{:.1}", total / GIB)
+                    )
+                }),
+                "battery" => r["batteryRate"]
+                    .as_f64()
+                    .filter(|rate| *rate != 0.)
+                    .map(|rate| {
+                        let value = format!("{} W", charts::watts(rate.abs() / 1000.));
+                        if rate > 0. {
+                            tr!("history.metric.charging", value = value)
+                        } else {
+                            tr!("history.metric.discharging", value = value)
+                        }
                     }),
                 _ => None,
-            };
-            let mut series = vec![charts::Series::new(
-                label(name),
-                points,
-                color,
-                charts::series_format(key),
-            )];
-            if key == "cpu" && records.iter().any(|r| r["cpuPeak"].is_number()) {
-                series.push(charts::Series::new(
-                    label(name),
-                    model::history_points(records, "cpuPeak", step),
-                    color.opacity(0.35),
-                    charts::series_format("cpu"),
-                ));
-            }
-            let selected = self.history_metric == key;
-            let row_height = if selected {
-                window.rem_size() * 6.5
-            } else {
-                window.rem_size() * 3.8
-            };
-            chart_stack = chart_stack.child(
+            });
+            labels = labels.child(
                 div()
+                    .h(row)
+                    .min_w_0()
                     .flex()
                     .flex_col()
-                    .gap_1()
+                    .justify_center()
+                    .whitespace_nowrap()
                     .child(
                         div()
                             .flex()
-                            .justify_between()
                             .items_center()
-                            .text_xs()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .font_weight(if selected {
-                                        FontWeight::SEMIBOLD
-                                    } else {
-                                        FontWeight::NORMAL
-                                    })
-                                    .text_color(if selected {
-                                        self.palette.ink
-                                    } else {
-                                        self.palette.muted
-                                    })
-                                    .child(label(name)),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .text_color(self.palette.muted)
-                                    .when_some(extra, |d, ex| d.child(ex))
-                                    .child(
-                                        div()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(self.palette.ink)
-                                            .child(current_val),
-                                    ),
-                            ),
+                            .gap(px(6.))
+                            .text_size(px(12.))
+                            .text_color(p.muted)
+                            .child(div().size(px(8.)).rounded(px(2.)).bg(metric.color))
+                            .child(label(&format!("common.resource.{}", metric.resource))),
                     )
-                    .child(
-                        div()
-                            .h(row_height)
-                            .flex_shrink_0()
-                            .border_1()
-                            .border_color(if selected {
-                                color.opacity(0.65)
+                    .child(match value_text {
+                        Some(text) => div()
+                            .truncate()
+                            .text_size(px(15.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(text),
+                        None => div().text_size(px(15.)).text_color(p.faint).child(
+                            if read_ts.is_none() && readout.is_none() {
+                                label("format.missing")
                             } else {
-                                color.opacity(0.28)
-                            })
-                            .rounded_sm()
-                            .overflow_hidden()
-                            .child(charts::TimePlot {
-                                id: format!("history-{key}").into(),
-                                series,
-                                start,
-                                end,
-                                max,
-                                min: 0.,
-                                interactive: true,
-                                fill: true,
-                                bars: false,
-                                background_separate: false,
-                                selection: Some(cx.entity().downgrade()),
-                                cursor: active_cursor.map(|at| at as f64),
-                                geometry_start: start,
-                                measured_width: Rc::new(Cell::new(1.)),
-                                live_clock: None,
-                                image_surface: Default::default(),
-                                bar_surfaces: Default::default(),
-                            }),
-                    ),
+                                label("history.noData")
+                            },
+                        ),
+                    })
+                    .when_some(detail.filter(|_| !compact), |d, detail| {
+                        d.child(div().text_size(px(12.)).text_color(p.faint).child(detail))
+                    }),
+            );
+
+            // The chart: drawn once per query, the readout's dot above it.
+            let mut points = Vec::with_capacity(records.len() + 8);
+            let mut peaks = Vec::new();
+            for (i, record) in records.iter().enumerate() {
+                points.push((ts[i], value_of(record)));
+                if metric.field == "cpu" {
+                    peaks.push((ts[i], record["cpuPeak"].as_f64()));
+                }
+                if joined.get(i) == Some(&false) {
+                    let gap = (ts[i] + ts[i + 1]) / 2.;
+                    points.push((gap, None));
+                    if metric.field == "cpu" {
+                        peaks.push((gap, None));
+                    }
+                }
+            }
+            let highest = |field: &str| {
+                records
+                    .iter()
+                    .filter_map(|r| r[field].as_f64())
+                    .fold(0., f64::max)
+            };
+            let (max, scale) = match metric.field {
+                "memUsed" => (highest("memTotal").max(1.), None),
+                "disk" => {
+                    let top = charts::rate_ceiling(highest("disk").max(MIB), false);
+                    (top, Some(charts::rate_ceiling_label(top, false)))
+                }
+                "net" => {
+                    let floor = if bits { 125_000. } else { 100. * KIB };
+                    let top = charts::rate_ceiling(highest("net").max(floor), bits);
+                    (top, Some(charts::rate_ceiling_label(top, bits)))
+                }
+                _ => (100., None),
+            };
+            let format = match metric.field {
+                "memUsed" => charts::MetricFormat::Gigabytes,
+                "disk" => charts::MetricFormat::ByteRate,
+                "net" => charts::MetricFormat::Network(bits),
+                _ => charts::MetricFormat::Percent,
+            };
+            let mut series = Vec::with_capacity(2);
+            if metric.field == "cpu" && peaks.iter().any(|(_, v)| v.is_some()) {
+                series.push(
+                    charts::Series::new(String::new(), peaks, metric.color.opacity(0.45), format)
+                        .fill(0.),
+                );
+            }
+            series
+                .push(charts::Series::new(String::new(), points, metric.color, format).fill(0.28));
+            let dot = cursor_point.and_then(|r| {
+                let value = value_of(r)?;
+                let x = ((number(r, "ts") - from) / span) as f32;
+                let y = 1. - (value / max).clamp(0., 1.) as f32;
+                Some((x, y))
+            });
+            let inner = row - px(2. * BORDER);
+            charts_column.push(
+                div()
+                    .relative()
+                    .h(row)
+                    .flex_shrink_0()
+                    .border_1()
+                    .border_color(metric.color.opacity(0.45))
+                    .rounded(px(4.))
+                    .child(charts::TimePlot {
+                        id: format!("history-{}", metric.field).into(),
+                        series,
+                        start: from,
+                        end: to,
+                        max,
+                        min: 0.,
+                        interactive: false,
+                        grid: true,
+                        fill: true,
+                        bars: false,
+                        background_separate: false,
+                        smooth: false,
+                        ticks: Some(tick_list.clone()),
+                        geometry_start: from,
+                        measured_width: Rc::new(Cell::new(1.)),
+                        live_clock: None,
+                        image_surface: Default::default(),
+                        bar_surfaces: Default::default(),
+                        dash_phases: Default::default(),
+                        rescale: Default::default(),
+                    })
+                    .when_some(scale, |d, scale| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .top(px(3.))
+                                .right(px(6.))
+                                .text_size(px(11.))
+                                .text_color(p.faint)
+                                .child(scale),
+                        )
+                    })
+                    .when_some(dot, |d, (x, y)| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .left(relative(x))
+                                .top(inner * y)
+                                .ml(px(-4.5))
+                                .mt(px(-4.5))
+                                .size(px(9.))
+                                .rounded_full()
+                                .border_2()
+                                .border_color(p.tip)
+                                .bg(metric.color),
+                        )
+                    })
+                    .into_any_element(),
             );
         }
+        labels = labels.child(div().h(px(AXIS)).flex_shrink_0());
+
+        // Time axis, the empty state and the pointer overlay over the plot column.
+        let axis = div()
+            .relative()
+            .h(px(AXIS))
+            .flex_shrink_0()
+            .text_size(px(11.))
+            .text_color(p.faint)
+            .children(tick_list.iter().filter_map(|tick| {
+                let f = ((tick - from) / span) as f32;
+                (f > 0.03 && f < 0.97).then(|| {
+                    let text = tick_label(*tick as i64);
+                    let width = chip_width(&text) - 12.;
+                    div()
+                        .absolute()
+                        .top(px(3.))
+                        .left(relative(f))
+                        .ml(px(-width / 2.))
+                        .whitespace_nowrap()
+                        .child(text)
+                })
+            }));
+        let bounds_state = window.use_keyed_state("history-plot-bounds", cx, |_, _| {
+            Bounds::<Pixels>::default()
+        });
+        let plot_bounds = *bounds_state.read(cx);
+        let plot_width = f32::from(plot_bounds.size.width).max(1.);
+        // Pointer position to time, snapped to the point drawn there.
+        let time_at = {
+            let ts = ts.clone();
+            let joined = joined.clone();
+            move |position: Point<Pixels>| {
+                let f = (f32::from(position.x - plot_bounds.left()) - BORDER)
+                    / (f32::from(plot_bounds.size.width) - 2. * BORDER).max(1.);
+                if !(0. ..=1.).contains(&f) {
+                    return None;
+                }
+                let at = from + f as f64 * span;
+                Some(
+                    point_at(&ts, &joined, step, at)
+                        .map(|index| ts[index] as i64)
+                        .unwrap_or(at.round() as i64),
+                )
+            }
+        };
+        let mark = |at: Option<i64>| {
+            let at = at?;
+            let f = (at as f64 - from) / span;
+            (0. ..=1.)
+                .contains(&f)
+                .then_some((at, BORDER + f as f32 * (plot_width - 2. * BORDER)))
+        };
+        let on_accent = cx.theme().primary_foreground;
+        let chip = |at: i64, x: f32, pinned: bool| {
+            let text = cursor_label(at, span);
+            let width = chip_width(&text);
+            div()
+                .absolute()
+                .bottom_0()
+                .left(px(x - width * (x / plot_width)))
+                .px(px(6.))
+                .border_1()
+                .border_color(if pinned {
+                    gpui_kit::gpui::transparent_black()
+                } else {
+                    p.stroke_strong
+                })
+                .rounded(px(4.))
+                .bg(if pinned { p.accent } else { p.tip })
+                .text_color(if pinned { on_accent } else { p.ink })
+                .text_size(px(11.))
+                .line_height(px(18.))
+                .whitespace_nowrap()
+                .child(text)
+                .into_any_element()
+        };
+        let line = |x: f32, color: Hsla| {
+            div()
+                .absolute()
+                .top_0()
+                .bottom(px(AXIS))
+                .left(px(x.round()))
+                .w(px(1.))
+                .bg(color)
+                .into_any_element()
+        };
+        let mut marks = Vec::new();
+        // While hovering, the picked moment keeps its line but gives up its label.
+        if let Some((at, x)) = mark(self.history_cursor) {
+            marks.push(line(x, p.accent));
+            if self.history_hover.is_none() {
+                marks.push(chip(at, x, true));
+            }
+        }
+        if let Some((at, x)) = mark(self.history_hover) {
+            marks.push(line(x, p.ink.opacity(0.35)));
+            marks.push(chip(at, x, false));
+        }
+        let recording_off = self
+            .data
+            .get("settings")
+            .and_then(|s| s["history"].as_bool())
+            == Some(false);
+        let empty = self.data.contains_key("historySeries") && records.is_empty();
+        let move_time = time_at.clone();
+        let click_time = time_at;
+        let overlay = div()
+            .id("history-overlay")
+            .absolute()
+            .inset_0()
+            .cursor_crosshair()
+            .child(
+                canvas(
+                    move |bounds, _, cx| {
+                        bounds_state.update(cx, |state, _| *state = bounds);
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
+            .children(marks)
+            .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _, cx| {
+                let hovered = move_time(event.position);
+                if this.history_hover != hovered {
+                    this.history_hover = hovered;
+                    cx.notify();
+                }
+            }))
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                if !*hovered && this.history_hover.is_some() {
+                    this.history_hover = None;
+                    cx.notify();
+                }
+            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    if let Some(at) = click_time(event.position) {
+                        this.history_cursor = Some(at);
+                        this.load_history(window, cx);
+                        cx.notify();
+                    }
+                }),
+            );
+        let plot = div()
+            .relative()
+            .flex_1()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .gap(px(ROW_GAP))
+            .children(charts_column)
+            .child(axis)
+            .when(empty, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .bottom(px(AXIS))
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .justify_center()
+                        .gap_1()
+                        .text_color(p.muted)
+                        .child(label(if recording_off {
+                            "history.empty.off"
+                        } else {
+                            "history.empty.none"
+                        }))
+                        .child(div().text_size(px(12.)).text_color(p.faint).child(label(
+                            if recording_off {
+                                "history.empty.offHint"
+                            } else {
+                                "history.empty.hint"
+                            },
+                        ))),
+                )
+            })
+            .child(overlay);
+        let graphs = div()
+            .flex_none()
+            .flex()
+            .gap(px(COLUMN_GAP))
+            .pt(px(14.))
+            .px(px(16.))
+            .pb(px(6.))
+            .border_1()
+            .border_color(p.stroke)
+            .rounded(px(8.))
+            .bg(p.layer)
+            .child(labels)
+            .child(plot);
+
+        // The processes of the shown moment.
         let moment = self
             .data
             .get("historyMoment")
             .cloned()
             .unwrap_or(Value::Null);
-        use gpui_kit::component::table::{
-            Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+        let title = match moment["system"]["ts"].as_i64() {
+            Some(time) => tr!("history.busiestAt", time = moment_label(time)),
+            None => label("history.busiest"),
         };
-        let header = TableHeader::new().child(
-            TableRow::new().children(
-                [
-                    "processes.column.name.label",
-                    "processes.column.pid.label",
-                    "processes.column.cpu.label",
-                    "processes.column.mem.label",
-                    "processes.column.io.label",
-                    "processes.column.gpu.label",
-                    "processes.column.net.label",
-                ]
-                .into_iter()
-                .enumerate()
-                .map(|(index, key)| {
-                    TableHead::new()
-                        .when(index > 0, |h| h.text_right())
-                        .child(label(key))
-                }),
-            ),
-        );
-        let mut table = TableBody::new();
-        let mut processes = values(&moment["processes"]).to_vec();
-        let process_metric = match self.history_metric.as_str() {
-            "memUsed" => "mem",
-            "disk" => "io",
-            other => other,
-        };
-        processes.sort_by(|a, b| number(b, process_metric).total_cmp(&number(a, process_metric)));
-        let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
-        for (index, process) in processes.iter().enumerate() {
-            let proc_name = text(process, "name").to_owned();
-            let pid = process["pid"].clone();
-            let create_time = process["createTime"].clone();
-            table = table.child(
-                TableRow::new()
-                    .child(
-                        TableCell::new().child(
-                            self.button(
-                                format!("history-process-{index}"),
-                                proc_name.clone(),
-                                None,
-                                Action::Preference(
-                                    "revealProcess".into(),
-                                    json!({"pid": pid, "createTime": create_time}),
-                                ),
-                                false,
-                                cx,
-                            )
-                            .flex_1()
-                            .justify_start(),
-                        ),
-                    )
-                    .child(
-                        TableCell::new()
-                            .text_right()
-                            .child(process["pid"].to_string()),
-                    )
-                    .child(
-                        TableCell::new()
-                            .text_right()
-                            .child(format!("{}%", theme::cpu(number(process, "cpu")))),
-                    )
-                    .child(
-                        TableCell::new()
-                            .text_right()
-                            .child(theme::memory(number(process, "mem"))),
-                    )
-                    .child(
-                        TableCell::new()
-                            .text_right()
-                            .child(theme::bytes(number(process, "io"), true)),
-                    )
-                    .child(
-                        TableCell::new()
-                            .text_right()
-                            .child(format!("{}%", theme::cpu(number(process, "gpu")))),
-                    )
-                    .child(
-                        TableCell::new()
-                            .text_right()
-                            .child(theme::network(number(process, "net"), bits)),
+        let earliest = self
+            .data
+            .get("historyRange")
+            .and_then(|range| range[0].as_i64());
+        let table = self.history_table(values(&moment["processes"]), bits, window, cx);
+        let foot = div()
+            .flex()
+            .flex_wrap()
+            .justify_between()
+            .gap_x_4()
+            .gap_y_1()
+            .px(px(14.))
+            .py(px(8.))
+            .border_t_1()
+            .border_color(p.stroke)
+            .text_size(px(12.))
+            .text_color(p.muted)
+            .when_some(earliest, |d, ts| {
+                d.child(
+                    div().flex().gap_1().child(label("history.earliest")).child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(p.ink)
+                            .child(moment_label(ts)),
                     ),
-            );
-        }
-        let earliest_ts = records.first().and_then(|r| r["ts"].as_i64());
-        let history_enabled = boolean(&self.data["settings"], "history");
+                )
+            })
+            .child(if recording_off {
+                let text = label("history.off");
+                let (before, rest) = text.split_once("<link>").unwrap_or((&text, ""));
+                let (link, after) = rest.split_once("</link>").unwrap_or((rest, ""));
+                div()
+                    .flex()
+                    .items_center()
+                    .child(before.to_owned())
+                    .child(
+                        div()
+                            .id("history-open-settings")
+                            .text_color(p.accent)
+                            .cursor_pointer()
+                            .child(link.to_owned())
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.act(
+                                    Action::Preference("settingsSection".into(), json!("data")),
+                                    window,
+                                    cx,
+                                )
+                            })),
+                    )
+                    .child(after.to_owned())
+                    .into_any_element()
+            } else {
+                div().child(label("history.note")).into_any_element()
+            });
+        let moment_card = div()
+            .flex_1()
+            .min_h(px(36. + 30. + TABLE_ROW * 3. + 34.))
+            .flex()
+            .flex_col()
+            .border_1()
+            .border_color(p.stroke)
+            .rounded(px(8.))
+            .bg(p.layer)
+            .overflow_hidden()
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_baseline()
+                    .gap_x(px(14.))
+                    .gap_y_1()
+                    .pt(px(10.))
+                    .px(px(14.))
+                    .pb(px(4.))
+                    .child(
+                        div()
+                            .text_size(px(14.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(title),
+                    )
+                    .child(div().text_size(px(12.)).text_color(p.faint).child(label(
+                        if self.history_cursor.is_none() {
+                            "history.hint.pick"
+                        } else {
+                            "history.hint.move"
+                        },
+                    ))),
+            )
+            .child(table)
+            .child(foot);
         div()
             .id("history-content")
             .size_full()
             .min_h_0()
             .overflow_y_scroll()
-            .mx_3()
-            .p_5()
-            .border_1()
-            .border_color(self.palette.stroke)
-            .rounded_lg()
-            .bg(self.palette.layer)
+            .px(px(12.))
             .flex()
             .flex_col()
-            .gap_4()
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .items_center()
-                    .gap_3()
-                    .child(controls)
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .text_xs()
-                            .text_color(self.palette.muted)
-                            .child(if let Some(at) = active_cursor {
-                                format!("{}: {}", label("history.time"), theme::timestamp(at))
-                            } else {
-                                label("history.hint.pick")
-                            })
-                            .when(self.history_cursor.is_some(), |d| {
-                                d.child(
-                                    self.button(
-                                        "history-latest",
-                                        label("history.latest.label"),
-                                        None,
-                                        Action::Preference("historyLatest".into(), Value::Null),
-                                        false,
-                                        cx,
-                                    )
-                                    .min_h_0()
-                                    .h_6()
-                                    .border_1()
-                                    .border_color(self.palette.stroke)
-                                    .bg(self.palette.control),
-                                )
-                            }),
-                    ),
-            )
-            .child(chart_stack)
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .text_xs()
-                    .text_color(self.palette.muted)
-                    .child(theme::timestamp(start as i64))
-                    .child(label("history.hint.move"))
-                    .child(theme::timestamp(end as i64)),
-            )
-            .child(if let Some(time) = moment["system"]["ts"].as_i64() {
-                tr!("history.busiestAt", time = theme::timestamp(time))
+            .gap(px(10.))
+            .line_height(relative(1.4))
+            .child(graphs)
+            .child(moment_card)
+            .into_any_element()
+    }
+    /// The moment's processes: sortable, with a menu and double-click to the live process.
+    fn history_table(
+        &self,
+        processes: &[Value],
+        bits: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        let sort = window.use_keyed_state("history-sort", cx, |_, _| ("cpu".to_owned(), true));
+        let selected = window.use_keyed_state("history-selected", cx, |_, _| None::<String>);
+        let (sort_key, descending) = sort.read(cx).clone();
+        let selected_key = selected.read(cx).clone();
+        // Per-process network needs administrator rights; without it the column is all zeros.
+        let has_net = processes.iter().any(|row| number(row, "net") > 0.);
+        let mut columns: Vec<(&str, String, f32, Option<&str>)> = vec![
+            ("name", label("common.name"), 0., None),
+            ("pid", label("processes.column.pid.label"), 72., None),
+            (
+                "cpu",
+                label("common.resource.cpu"),
+                70.,
+                Some("history.column.cpuTitle"),
+            ),
+            (
+                "mem",
+                label("common.resource.memory"),
+                96.,
+                Some("history.column.memTitle"),
+            ),
+            ("io", label("processes.column.io.label"), 92., None),
+        ];
+        if has_net {
+            columns.push(("net", label("common.resource.network"), 92., None));
+        }
+        columns.push(("gpu", label("common.resource.gpu"), 70., None));
+        let mut rows = processes.to_vec();
+        rows.sort_by(|a, b| {
+            let order = if sort_key == "name" {
+                text(a, "name")
+                    .to_lowercase()
+                    .cmp(&text(b, "name").to_lowercase())
             } else {
-                label("history.busiest")
-            })
-            .child(
+                number(a, &sort_key).total_cmp(&number(b, &sort_key))
+            };
+            if descending { order.reverse() } else { order }
+        });
+        let cell = |width: f32, end: bool| {
+            div()
+                .px(px(8.))
+                .min_w_0()
+                .truncate()
+                .when(width > 0., |d| d.w(px(width)).flex_shrink_0())
+                .when(width <= 0., |d| d.flex_1().min_w(px(200.)))
+                .when(end, |d| d.text_right())
+        };
+        let header = div()
+            .flex()
+            .flex_shrink_0()
+            .h(px(30.))
+            .items_center()
+            .px(px(6.))
+            .border_b_1()
+            .border_color(p.stroke)
+            .text_size(px(12.))
+            .text_color(p.muted)
+            .children(columns.iter().map(|(id, name, width, title)| {
+                let id = (*id).to_owned();
+                let active = id == sort_key;
+                let arrow = if !active {
+                    ""
+                } else if descending {
+                    " ↓"
+                } else {
+                    " ↑"
+                };
+                let sort = sort.clone();
+                let title = title.map(label);
+                cell(*width, id != "name")
+                    .id(SharedString::from(format!("history-head-{id}")))
+                    .cursor_pointer()
+                    .when(active, |d| d.text_color(p.ink))
+                    .child(format!("{name}{arrow}"))
+                    .when_some(title, |d, title| {
+                        d.tooltip(move |window, cx| {
+                            gpui_kit::component::tooltip::Tooltip::new(title.clone())
+                                .build(window, cx)
+                        })
+                    })
+                    .on_click(cx.listener(move |_, _, _, cx| {
+                        let id = id.clone();
+                        sort.update(cx, |(key, desc), _| {
+                            if *key == id {
+                                *desc = !*desc;
+                            } else {
+                                *desc = id != "name";
+                                *key = id;
+                            }
+                        });
+                        cx.notify();
+                    }))
+            }));
+        let live = values(&self.snapshot["processes"]);
+        let mut body = div()
+            .id("history-processes")
+            .flex_1()
+            .min_h(px(TABLE_ROW * 3.))
+            .overflow_y_scroll()
+            .flex()
+            .flex_col();
+        if rows.is_empty() {
+            body = body.child(
                 div()
-                    .rounded_lg()
-                    .overflow_hidden()
-                    .border_1()
-                    .border_color(self.palette.stroke)
-                    .child(Table::new().child(header).child(table)),
-            )
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .items_center()
-                    .gap_3()
-                    .text_sm()
-                    .text_color(self.palette.muted)
-                    .child(label("history.note"))
-                    .when_some(earliest_ts, |d, ts| {
-                        d.child(div().text_xs().child(format!(
-                            "{}: {}",
-                            label("history.earliest"),
-                            theme::timestamp(ts)
-                        )))
-                    }),
-            )
-            .when(!history_enabled, |d| {
-                d.child(
-                    div()
+                    .p_4()
+                    .text_color(p.faint)
+                    .child(label("history.noRecordAt")),
+            );
+        }
+        for (index, row) in rows.iter().enumerate() {
+            let name = text(row, "name").to_owned();
+            let pid = row["pid"].clone();
+            let key = format!("{name}:{pid}");
+            let current = selected_key.as_deref() == Some(key.as_str());
+            // A reused PID is not the recorded process: the name must match too.
+            let running = live
+                .iter()
+                .find(|process| process["pid"] == pid)
+                .is_some_and(|process| text(process, "name") == name);
+            let reveal = Action::Preference("revealProcess".into(), json!({"pid": pid}));
+            let exited = tr!("history.exited", name = name, pid = pid);
+            let menu = vec![
+                MenuItem::new(label("common.goToProcess"), reveal.clone()).disabled(!running),
+                MenuItem::new(label("common.copyName"), Action::Copy(name.clone())),
+            ];
+            let mut line = div()
+                .id(("history-row", index))
+                .flex()
+                .flex_shrink_0()
+                .h(px(TABLE_ROW))
+                .items_center()
+                .px(px(6.))
+                .when(current, |d| d.bg(p.control))
+                .when(!current, |d| d.hover(move |s| s.bg(p.hover)))
+                .child(
+                    cell(0., false)
                         .flex()
                         .items_center()
                         .gap_2()
-                        .text_xs()
-                        .text_color(self.palette.muted)
-                        .child(label("history.empty.off"))
-                        .child(
-                            self.button(
-                                "history-off-settings",
-                                label("shell.page.settings"),
-                                None,
-                                Action::Preference("settingsSection".into(), json!("data")),
-                                false,
-                                cx,
-                            )
-                            .min_h_0()
-                            .h_6(),
-                        ),
+                        .child(icon("AppIcon", p.muted))
+                        .child(div().min_w_0().truncate().child(name.clone())),
                 )
-            })
+                .child(
+                    cell(72., true)
+                        .text_color(p.muted)
+                        .child(row["pid"].to_string()),
+                )
+                .child(cell(70., true).child(theme::cpu(number(row, "cpu"))))
+                .child(cell(96., true).child(theme::memory(number(row, "mem"))))
+                .child(cell(92., true).child(quiet_rate(number(row, "io"))));
+            if has_net {
+                line = line.child(cell(92., true).child(quiet_net(number(row, "net"), bits)));
+            }
+            line = line.child(cell(70., true).child(theme::cpu(number(row, "gpu"))));
+            let select = selected.clone();
+            let select_menu = selected.clone();
+            let row_key = key.clone();
+            let menu_key = key;
+            body = body.child(
+                line.on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                    select.update(cx, |state, _| *state = Some(row_key.clone()));
+                    if event.click_count() >= 2 {
+                        if running {
+                            this.act(reveal.clone(), window, cx);
+                        } else {
+                            this.toast = Some((exited.clone(), Instant::now()));
+                        }
+                    }
+                    cx.notify();
+                }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, _, window, cx| {
+                        select_menu.update(cx, |state, _| *state = Some(menu_key.clone()));
+                        this.act(Action::Popup(menu.clone()), window, cx);
+                    }),
+                ),
+            );
+        }
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(body)
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{joins, point_at};
+    #[test]
+    fn gaps_follow_the_recording_cadence() {
+        // Five-second frames, then a stop, then frames again.
+        let ts = [0., 5_000., 10_000., 200_000., 205_000.];
+        let joined = joins(&ts, 5_000.);
+        assert_eq!(joined, vec![true, true, false, true]);
+        assert_eq!(point_at(&ts, &joined, 5_000., 6_000.), Some(1));
+        assert_eq!(point_at(&ts, &joined, 5_000., 100_000.), None);
+        // A slower background cadence stays joined.
+        let slow = [0., 30_000., 60_000., 600_000., 630_000.];
+        assert_eq!(joins(&slow, 7_200.), vec![true, true, false, true]);
     }
 }

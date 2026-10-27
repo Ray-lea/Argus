@@ -4,6 +4,11 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static BUILDS: AtomicU64 = AtomicU64::new(0);
+/// Dash phase (0..period) at each sample time, per series; kept between rasterizations.
+pub(in crate::frontend) type DashPhases = Arc<std::sync::Mutex<Vec<HashMap<u64, f32>>>>;
+/// Dash and gap lengths of a secondary series, logical pixels.
+const DASH: f32 = 4.;
+const DASH_GAP: f32 = 3.;
 static BUILD_MICROS: AtomicU64 = AtomicU64::new(0);
 
 pub(super) fn metrics() -> (u64, u64) {
@@ -27,6 +32,7 @@ struct Texture {
     plot_size: Size<Pixels>,
     geometry_start: f64,
     span: f64,
+    max: f64,
 }
 pub(in crate::frontend) struct ImageSurface {
     owner: EntityId,
@@ -37,15 +43,19 @@ pub(in crate::frontend) struct ImageSurface {
     plot_size: Size<Pixels>,
     geometry_start: f64,
     span: f64,
+    max: f64,
 }
 impl ImageSurface {
     fn bounds_at(&self, plot: &TimePlot, bounds: Bounds<Pixels>, end: f64) -> Bounds<Pixels> {
         let span = (plot.end - plot.start).max(1.);
         let sx = f32::from(bounds.size.width) / f32::from(self.plot_size.width)
             * (self.span / span) as f32;
-        let sy = f32::from(bounds.size.height) / f32::from(self.plot_size.height);
+        // A rescale easing in stretches the texture about the baseline.
+        let k = plot.rescale_factor(self.max, Instant::now());
+        let sy = f32::from(bounds.size.height) / f32::from(self.plot_size.height) * k;
         let origin = bounds.origin
             + point(self.offset.x * sx, self.offset.y * sy)
+            + point(px(0.), bounds.size.height * (1. - k))
             + point(
                 px(((self.geometry_start - (end - span)) / span) as f32
                     * f32::from(bounds.size.width)),
@@ -75,6 +85,8 @@ struct Input {
     size: Size<Pixels>,
     density: f32,
     stroke: f32,
+    smooth: bool,
+    phases: DashPhases,
 }
 impl Input {
     fn new(plot: &TimePlot, size: Size<Pixels>, density: f32) -> Self {
@@ -88,6 +100,8 @@ impl Input {
             size,
             density,
             stroke: f32::from(theme::dimension("chartStrokeWidth")),
+            smooth: plot.smooth,
+            phases: plot.dash_phases.clone(),
         }
     }
 }
@@ -123,8 +137,11 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
         value.to_bits().hash(&mut key);
     }
     plot.fill.hash(&mut key);
+    plot.smooth.hash(&mut key);
     for series in &plot.series {
         series.geometry_key.hash(&mut key);
+        series.dashed.hash(&mut key);
+        series.fill.to_bits().hash(&mut key);
         for value in [
             series.color.h,
             series.color.s,
@@ -206,6 +223,7 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
                 plot_size: texture.plot_size,
                 geometry_start: texture.geometry_start,
                 span: texture.span,
+                max: texture.max,
             };
             let image_bounds = surface.bounds_at(plot, bounds, plot.end);
             window.with_content_mask(Some(ContentMask { bounds }), |window| {
@@ -226,11 +244,15 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
     });
 }
 
-fn curve(points: &[(f64, f64)], baseline: Option<f32>) -> Option<tiny_skia::Path> {
+fn curve(points: &[(f64, f64)], baseline: Option<f32>, smooth: bool) -> Option<tiny_skia::Path> {
     if points.len() < 2 {
         return None;
     }
-    let tangent = super::curve_tangents(points);
+    let tangent = if smooth {
+        super::curve_tangents(points)
+    } else {
+        Vec::new()
+    };
     let mut path = tiny_skia::PathBuilder::new();
     let (x, y) = points[0];
     if let Some(base) = baseline {
@@ -242,6 +264,10 @@ fn curve(points: &[(f64, f64)], baseline: Option<f32>) -> Option<tiny_skia::Path
     for i in 0..points.len() - 1 {
         let (x, y) = points[i];
         let (next_x, next_y) = points[i + 1];
+        if !smooth {
+            path.line_to(next_x as f32, next_y as f32);
+            continue;
+        }
         let third = (next_x - x) / 3.;
         path.cubic_to(
             (x + third) as f32,
@@ -257,6 +283,35 @@ fn curve(points: &[(f64, f64)], baseline: Option<f32>) -> Option<tiny_skia::Path
         path.close();
     }
     path.finish()
+}
+
+/// Approximate arc length of each cubic segment between consecutive points.
+fn segment_lengths(points: &[(f64, f64)]) -> Vec<f32> {
+    if points.len() < 2 {
+        return Vec::new();
+    }
+    let tangent = super::curve_tangents(points);
+    points
+        .windows(2)
+        .enumerate()
+        .map(|(i, pair)| {
+            let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
+            let third = (x1 - x0) / 3.;
+            let (c1, c2) = (y0 + tangent[i] * third, y1 - tangent[i + 1] * third);
+            let mut length = 0.;
+            let mut previous = (x0, y0);
+            const STEPS: usize = 8;
+            for step in 1..=STEPS {
+                let t = step as f64 / STEPS as f64;
+                let u = 1. - t;
+                let x = x0 + (x1 - x0) * t;
+                let y = u * u * u * y0 + 3. * u * u * t * c1 + 3. * u * t * t * c2 + t * t * t * y1;
+                length += ((x - previous.0).powi(2) + (y - previous.1).powi(2)).sqrt();
+                previous = (x, y);
+            }
+            length as f32
+        })
+        .collect()
 }
 
 fn rasterize(plot: &Input) -> Option<Texture> {
@@ -288,48 +343,51 @@ fn rasterize(plot: &Input) -> Option<Texture> {
     let pixel_height = (height * density).ceil() as u32;
     let mut pixels = tiny_skia::Pixmap::new(pixel_width, pixel_height)?;
     let transform = tiny_skia::Transform::from_scale(density, density);
+    let top = stroke / 2.;
+    let mut phases = plot.phases.lock().unwrap_or_else(|e| e.into_inner());
+    phases.resize_with(plot.series.len(), HashMap::new);
     for (index, series) in plot.series.iter().enumerate() {
         let color: Rgba = series.color.into();
         let solid = tiny_skia::Color::from_rgba(color.r, color.g, color.b, color.a)?;
+        let mut next_phases = HashMap::new();
         for run in series.geometry.iter() {
             let points = run
                 .iter()
                 .map(|&(at, value)| {
                     (
                         ((at - plot.geometry_start) / span) * width as f64 - left as f64,
-                        height as f64 - (value - plot.min) / scale * (height - stroke / 2.) as f64,
+                        height as f64 - (value - plot.min) / scale * (height - top) as f64,
                     )
                 })
                 .collect::<Vec<_>>();
             if plot.fill
-                && index == 0
-                && let Some(path) = curve(&points, Some(height))
+                && series.fill > 0.
+                && let Some(path) = curve(&points, Some(height), plot.smooth)
             {
+                // The area fades from its opacity at the chart's top to nothing at the bottom.
                 let shader = tiny_skia::LinearGradient::new(
-                    tiny_skia::Point::from_xy(
-                        0.,
-                        points
-                            .iter()
-                            .map(|point| point.1 as f32)
-                            .fold(height, f32::min)
-                            .clamp(0., height),
-                    ),
+                    tiny_skia::Point::from_xy(0., top),
                     tiny_skia::Point::from_xy(0., height),
                     vec![
                         tiny_skia::GradientStop::new(
                             0.,
-                            tiny_skia::Color::from_rgba(color.r, color.g, color.b, color.a * 0.16)?,
+                            tiny_skia::Color::from_rgba(
+                                color.r,
+                                color.g,
+                                color.b,
+                                color.a * series.fill.clamp(0., 1.),
+                            )?,
                         ),
                         tiny_skia::GradientStop::new(
                             1.,
-                            tiny_skia::Color::from_rgba(color.r, color.g, color.b, color.a * 0.02)?,
+                            tiny_skia::Color::from_rgba(color.r, color.g, color.b, 0.)?,
                         ),
                     ],
                     tiny_skia::SpreadMode::Pad,
                     tiny_skia::Transform::identity(),
                 )
                 .unwrap_or(tiny_skia::Shader::SolidColor(
-                    tiny_skia::Color::from_rgba(color.r, color.g, color.b, color.a * 0.02)?,
+                    tiny_skia::Color::from_rgba(color.r, color.g, color.b, 0.)?,
                 ));
                 pixels.fill_path(
                     &path,
@@ -343,7 +401,32 @@ fn rasterize(plot: &Input) -> Option<Texture> {
                     None,
                 );
             }
-            if let Some(path) = curve(&points, None) {
+            let dash = if series.dashed {
+                // Dashes run along the curve. Start the pattern so that a sample drawn
+                // last time keeps its phase; otherwise they would crawl as the oldest
+                // sample drops off.
+                let period = DASH + DASH_GAP;
+                let lengths = segment_lengths(&points);
+                let mut start = 0.;
+                let mut along = 0.;
+                for (i, &(at, _)) in run.iter().enumerate() {
+                    if let Some(phase) = phases[index].get(&at.to_bits()) {
+                        start = phase - along;
+                        break;
+                    }
+                    along += lengths.get(i).copied().unwrap_or(0.);
+                }
+                let start = start.rem_euclid(period);
+                let mut along = start;
+                for (i, &(at, _)) in run.iter().enumerate() {
+                    next_phases.insert(at.to_bits(), along.rem_euclid(period));
+                    along += lengths.get(i).copied().unwrap_or(0.);
+                }
+                tiny_skia::StrokeDash::new(vec![DASH, DASH_GAP], start)
+            } else {
+                None
+            };
+            if let Some(path) = curve(&points, None, plot.smooth) {
                 pixels.stroke_path(
                     &path,
                     &tiny_skia::Paint {
@@ -353,6 +436,8 @@ fn rasterize(plot: &Input) -> Option<Texture> {
                     },
                     &tiny_skia::Stroke {
                         width: stroke,
+                        line_join: tiny_skia::LineJoin::Round,
+                        dash,
                         ..Default::default()
                     },
                     transform,
@@ -360,7 +445,11 @@ fn rasterize(plot: &Input) -> Option<Texture> {
                 );
             }
         }
+        if series.dashed {
+            phases[index] = next_phases;
+        }
     }
+    drop(phases);
     // RenderImage uses straight BGRA, while tiny-skia stores premultiplied RGBA.
     let mut bgra = Vec::with_capacity(pixels.data().len());
     for pixel in pixels.pixels() {
@@ -378,6 +467,7 @@ fn rasterize(plot: &Input) -> Option<Texture> {
         plot_size: size,
         geometry_start: plot.geometry_start,
         span,
+        max: plot.max,
     })
 }
 
@@ -401,16 +491,19 @@ mod tests {
             max: 100.,
             min: 0.,
             interactive: false,
+            grid: false,
             fill: false,
             bars: false,
             background_separate: false,
-            selection: None,
-            cursor: None,
+            smooth: true,
+            ticks: None,
             geometry_start: 0.,
             measured_width: Rc::new(Cell::new(100.)),
             live_clock: None,
             image_surface: Default::default(),
             bar_surfaces: Default::default(),
+            dash_phases: Default::default(),
+            rescale: Default::default(),
         }
     }
     #[test]

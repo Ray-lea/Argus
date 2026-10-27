@@ -46,7 +46,6 @@ struct Field {
 const ROW_HEIGHT: f32 = 30.;
 const ROW_INSET: f32 = 4.;
 const CELL_PADDING: f32 = 10.;
-const MONO_FONT: &str = "Cascadia Mono";
 fn fields(page: &str, network: bool, available: f32) -> Vec<Field> {
     use CellKind::*;
     use Track::*;
@@ -563,7 +562,7 @@ impl TableDelegate for NativeTable {
                     .gap_1()
                     .text_size(px(15.))
                     .line_height(relative(1.25))
-                    .font_family(theme::DISPLAY_FONT)
+                    .font_family(theme::display_font(cx))
                     .text_color(p.ink)
                     .whitespace_nowrap()
                     .when(field.key == "name" && !app.query.trim().is_empty(), |d| {
@@ -781,7 +780,7 @@ impl TableDelegate for NativeTable {
             }
             CellKind::Mono | CellKind::MonoDim | CellKind::Port | CellKind::PortDim => {
                 element = element
-                    .font_family(MONO_FONT)
+                    .font_family(theme::mono_font(cx))
                     .text_size(px(12.))
                     .when(
                         matches!(field.kind, CellKind::MonoDim | CellKind::PortDim),

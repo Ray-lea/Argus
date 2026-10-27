@@ -4,7 +4,6 @@ use gpui_kit::base::SelectableText;
 use gpui_kit::component::scroll::{ScrollableElement, ScrollbarAxis};
 use gpui_kit::component::tooltip::Tooltip;
 use std::hash::{Hash, Hasher};
-use std::sync::OnceLock;
 
 /// The selected row resolved against the latest processes, so filtering or
 /// folding the table never makes a running process look exited.
@@ -324,7 +323,7 @@ impl Desktop {
             .data
             .get(&format!("details:{key}"))
             .filter(|info| info.is_object());
-        let mono = installed_font("mono", cx);
+        let mono = theme::mono_font(cx);
         let mut subtitle = div().mt(px(2.)).text_color(p.muted).child(if picked.group {
             format!(
                 "{} · {}",
@@ -1009,7 +1008,7 @@ impl Desktop {
                     .flex_col()
                     .child(
                         div()
-                            .font_family(installed_font("display", cx))
+                            .font_family(theme::display_font(cx))
                             .text_size(px(18.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .line_height(relative(1.25))
@@ -1107,7 +1106,7 @@ impl Desktop {
             .child(div().text_size(px(12.)).text_color(p.muted).child(title))
             .child(
                 div()
-                    .font_family(installed_font("display", cx))
+                    .font_family(theme::display_font(cx))
                     .text_size(px(18.))
                     .font_features(tabular())
                     .child(value),
@@ -1713,35 +1712,6 @@ fn design_color(key: &str, cx: &App) -> Hsla {
             .or_else(|| design["light"][key].as_str())
             .expect("theme color"),
     )
-}
-
-/// The first family of a theme font list that the system has; a missing
-/// family would otherwise fall back to a proportional default.
-fn installed_font(kind: &str, cx: &App) -> SharedString {
-    static DISPLAY: OnceLock<SharedString> = OnceLock::new();
-    static MONO: OnceLock<SharedString> = OnceLock::new();
-    let cell = if kind == "mono" { &MONO } else { &DISPLAY };
-    cell.get_or_init(|| {
-        let system = cx.text_system();
-        values(&theme::design()["fonts"][kind])
-            .iter()
-            .filter_map(Value::as_str)
-            .find(|name| {
-                let id = system.resolve_font(&font(name.to_string()));
-                system
-                    .get_font_for_id(id)
-                    .is_some_and(|resolved| resolved.family.as_ref() == *name)
-            })
-            .map(|name| SharedString::from(name.to_owned()))
-            .unwrap_or_else(|| {
-                if kind == "mono" {
-                    cx.theme().mono_font_family.clone()
-                } else {
-                    cx.theme().font_family.clone()
-                }
-            })
-    })
-    .clone()
 }
 
 fn tabular() -> FontFeatures {

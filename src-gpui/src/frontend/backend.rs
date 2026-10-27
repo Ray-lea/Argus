@@ -636,51 +636,13 @@ impl Desktop {
     ) {
         let key = event.keystroke.key.as_str();
         let m = event.keystroke.modifiers;
-        if self.page == "history" && self.modal.is_none() && self.popup.is_none() {
-            if key == "escape" && self.history_cursor.is_some() {
-                self.history_cursor = None;
-                self.load_history(window, cx);
-                cx.notify();
-                return;
-            }
-            if matches!(key, "left" | "right" | "home" | "end") {
-                let points = self
-                    .data
-                    .get("historySeries")
-                    .map(values)
-                    .unwrap_or_default();
-                if points.is_empty() {
-                    return;
-                }
-                let current = self
-                    .history_cursor
-                    .and_then(|time| {
-                        points
-                            .iter()
-                            .enumerate()
-                            .min_by_key(|(_, p)| {
-                                (p["ts"].as_i64().unwrap_or(0) - time).unsigned_abs()
-                            })
-                            .map(|(i, _)| i)
-                    })
-                    .unwrap_or(points.len() - 1);
-                let step = if m.shift {
-                    (points.len() / 20).max(1)
-                } else {
-                    1
-                };
-                let index = match key {
-                    "left" => current.saturating_sub(step),
-                    "right" => (current + step).min(points.len() - 1),
-                    "home" => 0,
-                    _ => points.len() - 1,
-                };
-                self.history_cursor = points[index]["ts"].as_i64();
-                self.load_history(window, cx);
-                cx.notify();
-                cx.stop_propagation();
-                return;
-            }
+        if self.page == "history"
+            && self.modal.is_none()
+            && self.popup.is_none()
+            && self.history_key(key, m.shift, window, cx)
+        {
+            cx.stop_propagation();
+            return;
         }
         let searching = self.search.read(cx).focus_handle(cx).is_focused(window);
         if key == "escape" {

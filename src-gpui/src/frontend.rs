@@ -290,7 +290,7 @@ impl Desktop {
                 .get("detailsWidth", f32::from(theme::dimension("detailsWidth")))
                 .clamp(Self::DETAILS_MIN_WIDTH, Self::DETAILS_MAX_WIDTH),
             perf_sidebar_width: prefs.get(
-                "perfSidebarWidth",
+                "perfSideWidth",
                 f32::from(theme::dimension("deviceRailWidth")),
             ),
             device: prefs.get("perfDevice", "cpu".into()),

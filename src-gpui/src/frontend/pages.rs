@@ -238,6 +238,25 @@ impl Desktop {
                     cx,
                 ),
             );
+            if self.history_cursor.is_some() {
+                row = row.child(
+                    self.button(
+                        "history-latest",
+                        label("history.latest.label"),
+                        None,
+                        Action::Preference("historyLatest".into(), Value::Null),
+                        false,
+                        cx,
+                    )
+                    .border_1()
+                    .border_color(self.palette.stroke)
+                    .bg(self.palette.control)
+                    .tooltip(|window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(label("history.latest.title"))
+                            .build(window, cx)
+                    }),
+                );
+            }
         }
         row.into_any_element()
     }
@@ -333,7 +352,10 @@ impl Desktop {
                 ),
                 "totals.disk",
                 p.io,
-                Some(rate_ceiling(peak("totals.disk").max(1048576.), false)),
+                Some(charts::rate_ceiling(
+                    peak("totals.disk").max(1048576.),
+                    false,
+                )),
                 disk_value.0,
                 disk_value.1,
                 busiest
@@ -356,7 +378,10 @@ impl Desktop {
                 ),
                 "totals.network",
                 p.network,
-                Some(rate_ceiling(peak("totals.network").max(131072.), bits)),
+                Some(charts::rate_ceiling(
+                    peak("totals.network").max(131072.),
+                    bits,
+                )),
                 net_value.0,
                 net_value.1,
                 tr!(
@@ -494,7 +519,7 @@ impl Desktop {
                                     .items_baseline()
                                     .child(
                                         div()
-                                            .font_family(theme::DISPLAY_FONT)
+                                            .font_family(theme::display_font(cx))
                                             .text_size(theme::dimension("figureSize"))
                                             .font_weight(FontWeight(330.))
                                             .line_height(relative(1.1))
@@ -503,7 +528,7 @@ impl Desktop {
                                     .child(
                                         div()
                                             .ml(px(2.))
-                                            .font_family(theme::DISPLAY_FONT)
+                                            .font_family(theme::display_font(cx))
                                             .text_size(px(15.))
                                             .text_color(p.muted)
                                             .child(unit),
@@ -606,7 +631,6 @@ impl Desktop {
             "navExpanded" => self.nav_expanded = value.as_bool().unwrap_or(false),
             "historyRange" => {
                 self.history_range = value.as_str().unwrap_or("1h").into();
-                self.history_cursor = None;
                 self.history_hover = None;
                 self.load_history(window, cx);
             }
@@ -774,33 +798,6 @@ impl Desktop {
             table.update(cx, |state, cx| state.scroll_to_row(index, cx));
         }
     }
-    pub(in crate::frontend) fn metric(
-        &self,
-        title: &str,
-        value: impl Into<SharedString>,
-    ) -> AnyElement {
-        div()
-            .flex()
-            .flex_col()
-            .gap_0()
-            .py_0()
-            .min_w_0()
-            .flex_1()
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(self.palette.muted)
-                    .child(label(title)),
-            )
-            .child(
-                div()
-                    .text_size(theme::dimension("metricSize"))
-                    .line_height(relative(1.3))
-                    .font_weight(FontWeight::NORMAL)
-                    .child(value.into()),
-            )
-            .into_any_element()
-    }
     pub(in crate::frontend) fn property(
         &self,
         title: &str,
@@ -835,37 +832,3 @@ type VitalCard = (
     String,
     String,
 );
-/// The top for a rate chart whose highest point is `peak` bytes per second: a whole
-/// number in the unit its label shows, above ten a multiple of ten.
-fn rate_ceiling(peak: f64, bits: bool) -> f64 {
-    const EPSILON: f64 = 1e-9;
-    let units: [f64; 3] = if bits {
-        [1e3 / 8., 1e6 / 8., 1e9 / 8.]
-    } else {
-        [1024., 1024f64.powi(2), 1024f64.powi(3)]
-    };
-    let round = |x: f64| {
-        if x <= 1. {
-            1.
-        } else {
-            let whole = (x - EPSILON).ceil();
-            if whole <= 10. {
-                whole
-            } else {
-                (x / 10. - EPSILON).ceil() * 10.
-            }
-        }
-    };
-    let mut unit = 0;
-    while unit + 1 < units.len() && peak >= units[unit + 1] * (1. - EPSILON) {
-        unit += 1;
-    }
-    loop {
-        let top = round(peak / units[unit]) * units[unit];
-        if unit + 1 < units.len() && top >= units[unit + 1] * (1. - EPSILON) {
-            unit += 1;
-            continue;
-        }
-        return top;
-    }
-}
