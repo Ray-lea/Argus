@@ -1101,7 +1101,15 @@ impl Desktop {
                         }
                     }
                     TableEvent::ClearSelection => {
-                        this.selected.remove(&this.page);
+                        // A selection the current filter or folding hides stays
+                        // selected; only clearing a visible row deselects it.
+                        if this
+                            .selected
+                            .get(&this.page)
+                            .is_some_and(|key| this.rows.iter().any(|row| &row.key == key))
+                        {
+                            this.selected.remove(&this.page);
+                        }
                         cx.notify();
                     }
                     _ => {}

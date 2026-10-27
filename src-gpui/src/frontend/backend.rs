@@ -504,30 +504,8 @@ impl Desktop {
                 } else {
                     self.selected.insert(self.page.clone(), key.clone());
                     self.last_select = Some((key.clone(), Instant::now()));
-                    if self.page == "processes"
-                        && let Some(row) = self.rows.iter().find(|r| r.key == key)
-                    {
-                        let prefix = if row.members.len() > 1 {
-                            format!("group.{}", row.key)
-                        } else {
-                            format!("process.{}", row.key)
-                        };
-                        self.timeline
-                            .samples
-                            .entry(format!("{prefix}.cpu"))
-                            .or_default();
-                        self.timeline
-                            .samples
-                            .entry(format!("{prefix}.mem"))
-                            .or_default();
-                        let raw = row.raw.clone();
-                        self.request(
-                            "process_details",
-                            json!({"pid":raw["pid"],"path":raw["path"]}),
-                            Some(&format!("details:{key}")),
-                            window,
-                            cx,
-                        );
+                    if self.page == "processes" {
+                        self.details_track(&key, window, cx);
                     }
                 }
             }
