@@ -3352,6 +3352,40 @@ impl Window {
         )
     }
 
+    /// Device bounds and fill of an animated bar. Its sides and baseline snap to
+    /// device pixels; its top keeps a fractional position, drawn as a coverage
+    /// ramp one device pixel tall, so the bar grows smoothly between pixel rows
+    /// instead of jumping a whole row at a time. None when nothing would show.
+    fn bar_quad(
+        &self,
+        bounds: Bounds<Pixels>,
+        color: Hsla,
+    ) -> Option<(Bounds<ScaledPixels>, Background)> {
+        let scale_factor = self.scale_factor();
+        let left = round_to_device_pixel(bounds.left().0, scale_factor);
+        let right = round_to_device_pixel(bounds.right().0, scale_factor).max(left);
+        let bottom = round_to_device_pixel(bounds.bottom().0, scale_factor);
+        let top = (bounds.top().0 * scale_factor).min(bottom);
+        if right <= left || bottom - top < 1. / 256. {
+            return None;
+        }
+        // Rounding noise must not lift the quad a row above its region.
+        let row = (top + 1e-3).floor();
+        let height = bottom - row;
+        let fill = crate::linear_gradient(
+            180.,
+            crate::linear_color_stop(color.opacity(0.), (top - 0.5 - row) / height),
+            crate::linear_color_stop(color, (top + 0.5 - row) / height),
+        );
+        Some((
+            Bounds::from_corners(
+                point(ScaledPixels(left), ScaledPixels(row)),
+                point(ScaledPixels(right), ScaledPixels(bottom)),
+            ),
+            fill,
+        ))
+    }
+
     /// Rounds half-to-zero but clamps any non-zero input up to 1 dp so thin strokes do not disappear.
     #[inline]
     fn snap_stroke(&self, value: Pixels) -> ScaledPixels {
@@ -5279,7 +5313,8 @@ impl Window {
     ) -> Option<PaintedPrimitive> {
         use crate::scene::{PaintOperation, Primitive};
         let layer = self.cover_bounds(region.intersect(&self.content_mask().bounds));
-        let requested = self.snap_bounds(bounds);
+        // The fill as painted, with the element opacity applied.
+        let bar = self.bar_quad(bounds, color.opacity(self.element_opacity()));
         self.paint_layer(region, |window| {
             let operation = window.next_frame.scene.len();
             window.paint_quad(crate::fill(region, color).corner_radii(corner_radius));
@@ -5294,10 +5329,12 @@ impl Window {
             };
             let background = recorded.background;
             let quad = scene.quads.last_mut()?;
-            if requested.is_empty() {
-                quad.background = background.opacity(0.);
-            } else {
-                quad.bounds = requested;
+            match bar {
+                Some((bounds, fill)) => {
+                    quad.bounds = bounds;
+                    quad.background = fill;
+                }
+                None => quad.background = background.opacity(0.),
             }
             *recorded = *quad;
             Some(PaintedPrimitive {
@@ -5362,10 +5399,10 @@ impl Window {
         else {
             return false;
         };
-        let requested = if tile.is_some() {
-            bounds.scale(self.scale_factor())
-        } else {
-            self.snap_bounds(bounds)
+        let requested = bounds.scale(self.scale_factor());
+        let bar = match (tile, handle.background.and_then(|b| b.as_solid())) {
+            (None, Some(color)) => self.bar_quad(bounds, color),
+            _ => None,
         };
         let scene = &mut self.rendered_frame.scene;
         let Some(PaintOperation::Primitive(recorded)) =
@@ -5405,16 +5442,12 @@ impl Window {
                 let Some(background) = handle.background else {
                     return false;
                 };
-                let target = if requested.is_empty() {
-                    handle.layer
-                } else {
-                    requested
-                };
+                let (target, fill) = bar.unwrap_or((handle.layer, background.opacity(0.)));
                 if !fits(target, quad.content_mask.bounds) {
                     return false;
                 }
                 quad.bounds = target;
-                quad.background = background.opacity(if requested.is_empty() { 0. } else { 1. });
+                quad.background = fill;
                 *recorded = *quad;
                 true
             }
