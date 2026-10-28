@@ -902,11 +902,31 @@ impl TableDelegate for NativeTable {
             .unwrap_or_default();
         // Pinned rows lead the list; a line under the last one ends them.
         let last_pinned = row.pinned && self.rows.get(index + 1).is_some_and(|next| !next.pinned);
+        // A double-click folds a group (the table reports the first, click
+        // count 2). Another double-click right after it arrives as clicks 3 and
+        // 4 within the system's double-click time and would be lost until that
+        // time passed: every completed pair folds again.
+        let refold = (self.page == "processes" && row.expandable).then(|| {
+            let owner = self.owner.clone();
+            let key = row.key.clone();
+            move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let count = event.click_count();
+                if count >= 4 && count.is_multiple_of(2) {
+                    let owner = owner.clone();
+                    let key = key.clone();
+                    window.defer(cx, move |window, cx| {
+                        let _ =
+                            owner.update(cx, |this, cx| this.act(Action::Fold(key), window, cx));
+                    });
+                }
+            }
+        });
         div()
             .id(("native-row", index))
             .relative()
             .border_b_0()
             .rounded(px(4.))
+            .when_some(refold, |d, refold| d.on_click(refold))
             .when(fresh, |d| d.bg(p.network.opacity(0.15)))
             .when(selected, |d| {
                 d.child(
