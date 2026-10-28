@@ -1488,6 +1488,11 @@ impl Desktop {
                 .spawn(async move { drop(previous_rows) })
                 .detach();
         }
+        super::trace_work(
+            "rows",
+            Some(&format!("{} {}", self.page, self.rows.len())),
+            started,
+        );
         let elapsed = started.elapsed().as_micros() as u64;
         self.work.rows_us += elapsed;
         self.work.rows_max_us = self.work.rows_max_us.max(elapsed);

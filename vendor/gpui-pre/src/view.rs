@@ -355,6 +355,7 @@ impl<V: View> Element for ViewElement<V> {
             let view = &mut self.view;
             let layout = request_layout_view(
                 entity_id,
+                self.view_type_name,
                 self.cached_style.as_ref(),
                 window,
                 cx,
@@ -394,6 +395,7 @@ impl<V: View> Element for ViewElement<V> {
             let start = window.window_profiler.begin_view();
             let prepainted = prepaint_view(
                 entity_id,
+                self.view_type_name,
                 global_id,
                 bounds,
                 element,
@@ -467,6 +469,7 @@ impl Render for EmptyView {
 #[inline(never)]
 fn request_layout_view(
     entity_id: EntityId,
+    _name: &'static str,
     cached_style: Option<&StyleRefinement>,
     window: &mut Window,
     cx: &mut App,
@@ -482,7 +485,13 @@ fn request_layout_view(
                 (layout_id, None)
             }
             _ => {
+                #[cfg(feature = "profiler")]
+                let started = std::time::Instant::now();
                 let mut element = render(window, cx);
+                #[cfg(feature = "profiler")]
+                window
+                    .window_profiler
+                    .record_view_render(_name, started.elapsed());
                 let layout_id = element.request_layout(window, cx);
                 (layout_id, Some(element))
             }
@@ -507,6 +516,7 @@ fn request_layout_component(
 #[inline(never)]
 fn prepaint_view(
     entity_id: EntityId,
+    _name: &'static str,
     global_id: Option<&GlobalElementId>,
     bounds: Bounds<Pixels>,
     element: &mut Option<AnyElement>,
@@ -534,6 +544,8 @@ fn prepaint_view(
                     && !window.dirty_views.contains(&entity_id)
                     && !window.refreshing
                 {
+                    #[cfg(feature = "profiler")]
+                    window.window_profiler.record_view_reuse();
                     let prepaint_start = window.prepaint_index();
                     window.reuse_prepaint(element_state.prepaint_range.clone());
                     cx.entities
@@ -547,7 +559,13 @@ fn prepaint_view(
                 let refreshing = mem::replace(&mut window.refreshing, true);
                 let prepaint_start = window.prepaint_index();
                 let (element, accessed_entities) = cx.detect_accessed_entities(|cx| {
+                    #[cfg(feature = "profiler")]
+                    let started = std::time::Instant::now();
                     let mut element = render(window, cx);
+                    #[cfg(feature = "profiler")]
+                    window
+                        .window_profiler
+                        .record_view_render(_name, started.elapsed());
                     element.layout_as_root(Size::<AvailableSpace>::from(bounds.size), window, cx);
                     element.prepaint_at(bounds.origin, window, cx);
                     element

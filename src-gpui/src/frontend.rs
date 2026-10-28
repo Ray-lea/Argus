@@ -532,6 +532,20 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
         });
     Ok(())
 }
+/// Opt-in record of UI-thread work outside drawing, for the frame trace
+/// (`ARGUS_GPUI_FRAME_TRACE`): what ran and for how long, on the probe's clock.
+fn trace_work(event: &str, detail: Option<&str>, started: Instant) {
+    use gpui_kit::gpui::profiler;
+    if profiler::phase_trace_enabled() {
+        let us = started.elapsed().as_micros();
+        if us >= 300 {
+            println!(
+                "{}",
+                json!({"event":"ui-work-slice","what":event,"detail":detail,"us":us,"atQpc":profiler::trace_clock_100ns()})
+            );
+        }
+    }
+}
 struct DesktopRoot {
     desktop: Entity<Desktop>,
     charts: Entity<charts::ChartLayer>,

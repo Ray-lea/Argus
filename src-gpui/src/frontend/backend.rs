@@ -160,6 +160,25 @@ impl Desktop {
     ) {
         let mut changed = false;
         for event in self.host.drain() {
+            let started = Instant::now();
+            // What ran, for the frame trace only.
+            let what = gpui_kit::gpui::profiler::phase_trace_enabled()
+                .then(|| match event.name.as_str() {
+                    "command-response" => event.value["id"]
+                        .as_u64()
+                        .and_then(|id| self.pending.get(&id))
+                        .map(|pending| pending.command.clone()),
+                    "test-control" => event.value.as_object().map(|control| {
+                        control
+                            .keys()
+                            .filter(|key| *key != "pointerOutside")
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    }),
+                    _ => None,
+                })
+                .flatten();
             match event.name.as_str() {
                 "command-response" => self.complete(
                     event.value["id"].as_u64().unwrap_or(0),
@@ -195,6 +214,7 @@ impl Desktop {
                 "test-control" => self.test_control(&event.value, window, cx),
                 _ => {}
             }
+            super::trace_work(&event.name, what.as_deref(), started);
         }
         if self.host.exit_code().is_some() {
             cx.quit();
@@ -250,6 +270,7 @@ impl Desktop {
                 cx.spawn_in(window, async move |this, cx| {
                     let (model, rows, serialize_us, group_us) = task.await;
                     let _ = this.update_in(cx, |this, window, cx| {
+                        let started = Instant::now();
                         this.snapshot_pending = false;
                         this.work.serialize_us += serialize_us;
                         this.work.background_group_us += group_us;
@@ -260,6 +281,7 @@ impl Desktop {
                                 None
                             };
                         this.accept_snapshot_prepared(model, rows, cx);
+                        super::trace_work("snapshot", None, started);
                         // Pick up the newest source sequence without accumulating a UI queue.
                         this.notifications(window, cx);
                         cx.notify();

@@ -3704,6 +3704,15 @@ impl Window {
         let present_start = Instant::now();
         self.platform_window.draw(&self.rendered_frame.scene);
         #[cfg(feature = "profiler")]
+        if profiler::phase_trace_enabled() {
+            println!(
+                "{{\"event\":\"frame-present\",\"atQpc\":{},\"us\":{},\"primitives\":{}}}",
+                profiler::trace_clock_100ns(),
+                present_start.elapsed().as_micros(),
+                self.rendered_frame.scene.len(),
+            );
+        }
+        #[cfg(feature = "profiler")]
         self.window_profiler.record_present(
             present_start,
             Instant::now(),
