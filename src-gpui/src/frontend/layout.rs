@@ -543,6 +543,8 @@ impl Desktop {
             .child(
                 TitleBar::new()
                     .h(theme::dimension("toolbarHeight"))
+                    // The row below has the original's own 12 px inset.
+                    .pl_0()
                     .bg(p.background)
                     .border_0()
                     .child(

@@ -489,10 +489,14 @@ impl Desktop {
                     .when(index + 1 == count, |b| b.rounded_r(px(7.)))
                     .pt(px(11.))
                     .px(px(16.))
+                    // The original card was a <button>: its content sits in the
+                    // middle of what the top padding leaves, in the body's 1.4
+                    // line height.
                     .flex()
                     .flex_col()
                     .items_start()
-                    .justify_start()
+                    .justify_center()
+                    .line_height(relative(1.4))
                     .text_color(p.ink)
                     .hover(move |s| s.bg(hover))
                     .active(move |s| s.bg(press))
