@@ -4,6 +4,8 @@ mod frames;
 mod latency;
 #[cfg(feature = "capture")]
 mod pixels;
+#[cfg(all(windows, feature = "capture"))]
+mod record;
 #[cfg(all(windows, target_arch = "x86_64"))]
 mod stacks;
 #[cfg(windows)]
