@@ -1388,9 +1388,11 @@ impl Desktop {
             },
         )]);
         let layout = sentence.layout().clone();
-        let glyph: Option<SharedString> = Some(gpui_kit::assets::IconNamed::path(
-            theme::icon_name("PanelIcon"),
-        ));
+        let glyph: Option<SharedString> = Some(
+            crate::frontend::assets::ui_icon("PanelIcon").unwrap_or_else(|| {
+                gpui_kit::assets::IconNamed::path(theme::icon_name("PanelIcon"))
+            }),
+        );
         let (control, stroke, ink) = (p.control, p.stroke, p.ink);
         div()
             .relative()

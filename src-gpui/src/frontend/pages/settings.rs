@@ -768,7 +768,7 @@ impl Desktop {
                     })
                     .role(Role::Tab)
                     .accessibility_label(label(&format!("settings.sections.{section}")))
-                    .child(icon(section_icon(section), p.ink))
+                    .child(theme::glyph(section_icon(section)))
                     .child(
                         div()
                             .min_w_0()

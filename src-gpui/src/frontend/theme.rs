@@ -541,8 +541,18 @@ pub fn icon_name(name: &str) -> IconName {
         _ => IconName::Circle,
     }
 }
+/// The original's own icon for a product icon name; the component set's
+/// nearest one (`icon_name`) for the few the original does not have.
 pub fn icon(name: &str, color: Hsla) -> Icon {
-    Icon::new(icon_name(name)).size_4().text_color(color)
+    glyph(name).text_color(color)
+}
+/// An icon in the text colour around it (`currentColor`), following hover.
+pub fn glyph(name: &str) -> Icon {
+    match super::assets::ui_icon(name) {
+        Some(path) => Icon::empty().path(path),
+        None => Icon::new(icon_name(name)),
+    }
+    .size_4()
 }
 pub fn label(key: &str) -> String {
     argus_core::i18n::text(key)
