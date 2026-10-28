@@ -282,6 +282,24 @@ fn or_missing(value: &str) -> String {
         value.into()
     }
 }
+/// How a grid's cards move. They glide only once this display has been laid
+/// out at its real size (`measured`): entering the page or switching device or
+/// view places them at once, while later resizes and filters animate.
+fn settle_policy(
+    id: &'static str,
+    measured: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> gpui_kit::base::motion::Transition {
+    let settled = window.use_keyed_state(id, cx, |_, _| false);
+    if *settled.read(cx) {
+        return theme::transition();
+    }
+    if measured {
+        settled.update(cx, |settled, _| *settled = true);
+    }
+    gpui_kit::base::motion::Transition::new(std::time::Duration::ZERO)
+}
 /// Splits text such as "5<u>d</u> 14:00:00" into plain and small runs.
 fn rich_runs(template: &str) -> Vec<(String, bool)> {
     let mut runs = Vec::new();
@@ -1273,7 +1291,11 @@ impl Desktop {
         let header = theme::dimension("coreHeaderHeight");
         // Below the preferred card height the cards flatten to this before the view scrolls.
         let fit_height = theme::dimension("coreFitHeight");
-        let measured = self.core_grid_size.get();
+        // The grid's size in this display; until it is known, the size it last had.
+        let here_state = window.use_keyed_state("cpu-core-grid-size", cx, |_, _| None);
+        let here: Option<Size<Pixels>> = *here_state.read(cx);
+        let measured = here.unwrap_or_else(|| self.core_grid_size.get());
+        let policy = settle_policy("cpu-core-settled", here.is_some(), window, cx);
         let available = if measured.width > px(0.) {
             measured.width
         } else {
@@ -1311,7 +1333,10 @@ impl Desktop {
             .child(
                 canvas(
                     move |bounds, window, cx| {
-                        if grid_size.replace(bounds.size) != bounds.size {
+                        grid_size.set(bounds.size);
+                        let changed = here_state.update(cx, |size, _| size.replace(bounds.size))
+                            != Some(bounds.size);
+                        if changed {
                             let owner = owner.clone();
                             window.defer(cx, move |_, cx| {
                                 let _ = owner.update(cx, |_, cx| cx.notify());
@@ -1323,6 +1348,9 @@ impl Desktop {
                 .absolute()
                 .size_full(),
             );
+        // Never laid out before: the cards wait one frame for the real size
+        // rather than appearing in a guessed arrangement.
+        let place = here.is_some() || measured.height > px(0.);
         let core_temperatures = values(&hw["cpuSensors"]["coreTemperatures"])
             .iter()
             .filter_map(|core| {
@@ -1335,13 +1363,13 @@ impl Desktop {
         let initial_scale = theme::design()["layout"]["coreEnterScale"]
             .as_f64()
             .expect("core enter scale") as f32;
-        for (index, value) in core_values.iter().enumerate() {
+        for (index, value) in core_values.iter().enumerate().filter(|_| place) {
             let ordinal = visible.iter().position(|i| *i == index);
             let key = format!("system.cores.{index}");
             let opacity = gpui_kit::base::motion::transition(
                 format!("core-opacity-{index}"),
                 if ordinal.is_some() { 1f32 } else { 0. },
-                theme::transition(),
+                policy.clone(),
                 window,
                 cx,
             );
@@ -1363,7 +1391,7 @@ impl Desktop {
             let mut bounds = gpui_kit::base::motion::transition(
                 format!("core-bounds-{index}"),
                 target,
-                theme::transition(),
+                policy.clone(),
                 window,
                 cx,
             );
