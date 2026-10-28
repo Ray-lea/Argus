@@ -737,10 +737,8 @@ impl Desktop {
                     .right_0()
                     .top(px(mark))
                     .h(px(36.))
-                    .border_1()
-                    .border_color(p.stroke)
                     .rounded(px(6.))
-                    .bg(p.layer_strong)
+                    .bg(p.soft)
                     .child(
                         div()
                             .absolute()
@@ -769,7 +767,12 @@ impl Desktop {
                     .role(Role::Tab)
                     .accessibility_label(label(&format!("settings.sections.{section}")))
                     .child(icon(section_icon(section), p.ink))
-                    .child(label(&format!("settings.sections.{section}")))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .child(label(&format!("settings.sections.{section}"))),
+                    )
                     .when(section == "update" && pending_update, |b| {
                         b.child(div().ml_auto().size(px(6.)).rounded_full().bg(p.accent))
                     })
@@ -1547,9 +1550,20 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<InputState> {
-        if let Some(input) = self.ui.inputs.get(key) {
-            return input.clone();
+        if let Some(input) = self.ui.inputs.get(key).cloned() {
+            if self.ui.input_placeholders.get(key) != Some(&placeholder) {
+                input.update(cx, |state, cx| {
+                    state.set_placeholder(placeholder.clone(), window, cx)
+                });
+                self.ui
+                    .input_placeholders
+                    .insert(key.to_owned(), placeholder);
+            }
+            return input;
         }
+        self.ui
+            .input_placeholders
+            .insert(key.to_owned(), placeholder.clone());
         let initial = initial.to_owned();
         let input = cx.new(|cx| {
             let mut state = InputState::new(window, cx).placeholder(placeholder);

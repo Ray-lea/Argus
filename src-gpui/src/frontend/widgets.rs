@@ -106,6 +106,8 @@ pub(in crate::frontend) struct UiState {
     pub errors: HashMap<String, String>,
     pub inputs: HashMap<String, Entity<InputState>>,
     pub input_subscriptions: Vec<Subscription>,
+    /// The placeholder each inline input shows, to follow a language change.
+    pub input_placeholders: HashMap<String, String>,
     pub proxy_draft: Option<String>,
     pub hotkey: HotkeyCard,
     pub system_motion: Option<bool>,

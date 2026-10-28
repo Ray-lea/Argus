@@ -770,7 +770,13 @@ impl Desktop {
                         .flex_col()
                         .gap(px(10.))
                         .child(self.dialog_title(modal.title.clone()))
-                        .child(div().text_color(p.muted).child(modal.body.clone()))
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .line_height(relative(1.5))
+                                .text_color(p.muted)
+                                .child(modal.body.clone()),
+                        )
                         .when_some(modal.error.clone(), |d, error| {
                             d.child(div().text_size(px(12.)).text_color(p.danger).child(error))
                         }),
@@ -2010,7 +2016,13 @@ impl Desktop {
                                 .flex_col()
                                 .gap(px(10.))
                                 .child(self.dialog_title(modal.title.clone()))
-                                .child(div().text_color(p.muted).child(modal.body.clone())),
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .line_height(relative(1.5))
+                                        .text_color(p.muted)
+                                        .child(modal.body.clone()),
+                                ),
                         )
                         .child(
                             div()
@@ -2111,7 +2123,13 @@ impl Desktop {
                         .flex_col()
                         .gap(px(10.))
                         .child(self.dialog_title(modal.title.clone()))
-                        .child(div().text_color(p.muted).child(modal.body.clone()))
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .line_height(relative(1.5))
+                                .text_color(p.muted)
+                                .child(modal.body.clone()),
+                        )
                         .when_some(self.forms.get("value"), |d, input| {
                             d.child(Input::new(input))
                         }),
