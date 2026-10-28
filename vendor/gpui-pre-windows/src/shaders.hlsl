@@ -1330,8 +1330,15 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     }
     color.a *= sprite.opacity * saturate(0.5 - distance);
     if (compose_prefix != 0u) {
-        // Match the existing straight-alpha RGB and additive-alpha blend state.
-        precise float4 composed_color = float4(color.rgb * color.a + prefix.rgb * (1.0 - color.a), saturate(color.a + prefix.a));
+        // Match the sprite blend state: straight-alpha RGB and "over" coverage
+        // (see `create_blend_state`). Adding the alphas here made translucent
+        // curve pixels over a translucent surface hide more of the window
+        // backdrop than the same pixels drawn normally (light areas and edges
+        // came out grey on light-theme cards). Rounding the source to the 8-bit
+        // target first keeps the result within two code values of the
+        // fixed-function blend (measured; mostly within one).
+        precise float4 source = round(saturate(color) * 255.0) / 255.0;
+        precise float4 composed_color = float4(source.rgb * source.a + prefix.rgb * (1.0 - source.a), source.a + prefix.a * (1.0 - source.a));
         return composed_color;
     }
     return color;
