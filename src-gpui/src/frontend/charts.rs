@@ -806,10 +806,13 @@ impl Plot for TimePlot {
         &mut self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> Vec<AnyElement> {
         self.measured_width
             .set(f32::from(bounds.size.width) * window.scale_factor());
+        if !self.bars {
+            raster::prepare(self, bounds, window, cx);
+        }
         vec![]
     }
     fn id(&self) -> Option<ElementId> {

@@ -12,6 +12,10 @@ const FADE_FLOOR: u8 = 8;
 const DASH: f32 = 4.;
 const DASH_GAP: f32 = 3.;
 static BUILD_MICROS: AtomicU64 = AtomicU64::new(0);
+/// How long a chart's first paint waits for its curve. Every chart's raster
+/// starts in prepaint, so they draw in parallel and one wait covers them all;
+/// a raster that takes longer appears when it is done.
+const FIRST_PAINT_WAIT: Duration = Duration::from_millis(50);
 
 pub(super) fn metrics() -> (u64, u64) {
     (
@@ -26,8 +30,59 @@ struct Cache {
     requested: Option<u64>,
     /// The series the latest request shows; a texture of other series is never kept.
     requested_content: Option<u64>,
-    pending: bool,
+    pending: Option<Pending>,
     texture: Option<Texture>,
+}
+/// The raster in flight.
+#[derive(Clone)]
+struct Pending {
+    revision: u64,
+    /// The series it draws.
+    content: u64,
+    started: Instant,
+    slot: Arc<Slot>,
+}
+/// A background raster's result, which a first paint may wait for.
+#[derive(Default)]
+struct Slot {
+    result: std::sync::Mutex<Option<Option<Texture>>>,
+    ready: std::sync::Condvar,
+}
+impl Cache {
+    /// Takes a finished raster in, unless the request moved on to other series.
+    /// A texture of the same series is kept even when newer data or a new size
+    /// was requested meanwhile: it is placed by its own time window and scaled
+    /// to the plot until the redraw that follows.
+    fn settle(&mut self, slot: &Arc<Slot>, window: &mut Window) {
+        let Some(pending) = &self.pending else {
+            return;
+        };
+        if !Arc::ptr_eq(&pending.slot, slot) {
+            return;
+        }
+        let Some(texture) = slot.result.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+            return;
+        };
+        let revision = pending.revision;
+        self.pending = None;
+        let current = self.requested == Some(revision);
+        let same = texture
+            .as_ref()
+            .is_some_and(|texture| Some(texture.content) == self.requested_content);
+        if current || same {
+            if let Some(previous) = self.texture.take() {
+                let _ = window.drop_image(previous.image);
+            }
+            self.texture = texture;
+            self.key = Some(revision);
+        }
+    }
+    /// Whether a texture of these series is at hand.
+    fn shows(&self, content: u64) -> bool {
+        self.texture
+            .as_ref()
+            .is_some_and(|texture| texture.content == content)
+    }
 }
 struct Texture {
     image: Arc<RenderImage>,
@@ -162,13 +217,15 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
     key.finish()
 }
 
-pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-    let density = window.scale_factor()
+fn density(window: &Window) -> f32 {
+    window.scale_factor()
         * theme::design()["layout"]["chartRasterScale"]
             .as_f64()
-            .expect("chart raster scale") as f32;
-    let revision = key(plot, bounds.size, density);
-    let cache = window.use_keyed_state("argus-curve-texture", cx, |window, cx| {
+            .expect("chart raster scale") as f32
+}
+
+fn cache(plot: &TimePlot, window: &mut Window, cx: &mut App) -> Entity<Cache> {
+    window.use_keyed_state("argus-curve-texture", cx, |window, cx| {
         let handle = window.window_handle();
         let surface = Rc::downgrade(&plot.image_surface);
         let owner = cx.entity().entity_id();
@@ -192,42 +249,82 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
         })
         .detach();
         Cache::default()
-    });
+    })
+}
+
+/// Requests the texture for the plot as laid out now: a raster of a new revision
+/// starts in the background, unless one of these series is already in flight
+/// (one of other series, such as the previous device's, is superseded and its
+/// result dropped). Called from prepaint, so every chart on screen starts
+/// before the first one paints.
+pub(super) fn prepare(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    let density = density(window);
+    let revision = key(plot, bounds.size, density);
+    let cache = cache(plot, window, cx);
     cache.update(cx, |cache, cx| {
+        let content = plot.content();
         cache.requested = Some(revision);
-        cache.requested_content = Some(plot.content());
-        if cache.key != Some(revision) && !cache.pending {
-            cache.pending = true;
-            let input = Input::new(plot, bounds.size, density);
-            let task = cx.background_executor().spawn(async move {
-                let start = Instant::now();
-                let texture = rasterize(&input);
-                BUILDS.fetch_add(1, Ordering::Relaxed);
-                BUILD_MICROS.fetch_add(start.elapsed().as_micros() as u64, Ordering::Relaxed);
-                texture
+        cache.requested_content = Some(content);
+        if cache.key == Some(revision)
+            || cache
+                .pending
+                .as_ref()
+                .is_some_and(|pending| pending.content == content)
+        {
+            return;
+        }
+        let slot = Arc::new(Slot::default());
+        cache.pending = Some(Pending {
+            revision,
+            content,
+            started: Instant::now(),
+            slot: slot.clone(),
+        });
+        let input = Input::new(plot, bounds.size, density);
+        let landing = slot.clone();
+        let task = cx.background_executor().spawn(async move {
+            let start = Instant::now();
+            let texture = rasterize(&input);
+            BUILDS.fetch_add(1, Ordering::Relaxed);
+            BUILD_MICROS.fetch_add(start.elapsed().as_micros() as u64, Ordering::Relaxed);
+            *landing.result.lock().unwrap_or_else(|e| e.into_inner()) = Some(texture);
+            landing.ready.notify_all();
+        });
+        cx.spawn_in(window, async move |cache, cx| {
+            task.await;
+            let _ = cache.update_in(cx, |cache, window, cx| {
+                cache.settle(&slot, window);
+                cx.notify();
             });
-            cx.spawn_in(window, async move |cache, cx| {
-                let texture = task.await;
-                let _ = cache.update_in(cx, |cache, window, cx| {
-                    cache.pending = false;
-                    // A texture of the same series is kept even when newer data or a
-                    // new size was requested meanwhile: it is placed by its own time
-                    // window and scaled to the plot until the redraw that follows.
-                    let current = cache.requested == Some(revision);
-                    let same = texture
-                        .as_ref()
-                        .is_some_and(|texture| Some(texture.content) == cache.requested_content);
-                    if current || same {
-                        if let Some(previous) = cache.texture.take() {
-                            let _ = window.drop_image(previous.image);
-                        }
-                        cache.texture = texture;
-                        cache.key = Some(revision);
-                    }
-                    cx.notify();
-                });
-            })
-            .detach();
+        })
+        .detach();
+    });
+}
+
+pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    prepare(plot, bounds, window, cx);
+    let cache = cache(plot, window, cx);
+    cache.update(cx, |cache, cx| {
+        // Nothing of these series yet (a first display, another device): wait a
+        // little for the raster rather than show the chart without its curve.
+        if !cache.shows(plot.content())
+            && let Some(Pending { started, slot, .. }) = cache.pending.clone()
+        {
+            let deadline = started + FIRST_PAINT_WAIT;
+            let mut result = slot.result.lock().unwrap_or_else(|e| e.into_inner());
+            while result.is_none() {
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    break;
+                }
+                result = slot
+                    .ready
+                    .wait_timeout(result, left)
+                    .unwrap_or_else(|e| e.into_inner())
+                    .0;
+            }
+            drop(result);
+            cache.settle(&slot, window);
         }
         let Some(texture) = cache
             .texture
