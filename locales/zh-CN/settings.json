@@ -342,7 +342,6 @@
     "admin": "正在以管理员身份运行。",
     "service": "正在以标准权限运行；特权服务已连接，可代为执行需要管理员权限的操作。",
     "standard": "正在以标准权限运行，部分系统进程的信息与操作受限。",
-    "font": "界面字体：HarmonyOS Sans。",
     "whatsNew": "更新内容",
     "quit": "退出 Argus",
     "homepage": {

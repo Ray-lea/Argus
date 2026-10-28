@@ -38,8 +38,8 @@
     "chartRasterScale": 2
   },
   "fonts": {
-    "sans": ["HarmonyOS Sans SC"],
-    "display": ["HarmonyOS Sans SC"],
+    "sans": ["Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],
+    "display": ["Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],
     "mono": ["Cascadia Mono", "Cascadia Code", "Consolas"]
   },
   "light": {

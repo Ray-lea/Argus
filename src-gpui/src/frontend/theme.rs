@@ -187,6 +187,7 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
                 .expect("theme color"),
         )
     };
+    let sans = installed_font("sans", cx);
     let theme = Theme::global_mut(cx);
     let mut tokens = theme.semantic_tokens();
     tokens.colors.background = color("window-bg");
@@ -214,12 +215,7 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     tokens.colors.input = color("control");
     tokens.colors.ring = color("accent");
     tokens.typography.md.size = px(design["fontSize"].as_f64().expect("theme font size") as f32);
-    // The bundled HarmonyOS Sans SC (see `install_fonts`) on every platform.
-    tokens.typography.sans = design["fonts"]["sans"][0]
-        .as_str()
-        .expect("interface font")
-        .to_owned()
-        .into();
+    tokens.typography.sans = sans;
     theme.apply_semantic_tokens(&tokens);
     theme.colors.group_box = color("layer");
     theme.colors.list_hover = color("hover");
@@ -260,18 +256,6 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     theme.tokens = theme.colors.into();
     Theme::sync_base(cx);
 }
-/// Registers the bundled interface font: HarmonyOS Sans SC, a variable font with
-/// every weight in one unmodified file (its licence forbids subsetting).
-pub fn install_fonts(cx: &mut App) {
-    static HARMONYOS_SANS_SC: &[u8] =
-        include_bytes!("../../../resources/fonts/HarmonyOS_Sans_SC.ttf");
-    if let Err(error) = cx
-        .text_system()
-        .add_fonts(vec![std::borrow::Cow::Borrowed(HARMONYOS_SANS_SC)])
-    {
-        log::warn!("interface font unavailable: {error}");
-    }
-}
 pub fn install_surface(cx: &mut App) {
     gpui_kit::base::Root::register_plugin(cx, |_, _| ProductSurface);
 }
@@ -285,7 +269,12 @@ impl gpui_kit::base::RootPlugin for ProductSurface {
     fn prepare(&mut self, window: &mut Window, _: &mut Context<Self>) {
         window.set_rem_size(dimension("unit"));
     }
-    fn style(&self, surface: &mut Stateful<Div>, _: &mut Window, _: &mut App) {
+    fn style(&self, surface: &mut Stateful<Div>, _: &mut Window, cx: &mut App) {
+        // Characters the interface family lacks (Chinese above all) take the
+        // rest of the theme's list, as the original's CSS font stack did. Left
+        // to DirectWrite, an English system locale renders Chinese in the
+        // Japanese Yu Gothic UI.
+        surface.text_style().font_fallbacks = Some(font_fallbacks(cx));
         if crate::platform::supports_backdrop() {
             use gpui_kit::gpui::Refineable;
             surface
@@ -308,12 +297,37 @@ pub fn display_font(cx: &App) -> SharedString {
 pub fn mono_font(cx: &App) -> SharedString {
     installed_font("mono", cx)
 }
+/// The interface families after the one in use, for characters it lacks.
+fn font_fallbacks(cx: &App) -> FontFallbacks {
+    static FALLBACKS: std::sync::OnceLock<FontFallbacks> = std::sync::OnceLock::new();
+    FALLBACKS
+        .get_or_init(|| {
+            let sans = installed_font("sans", cx);
+            FontFallbacks::from_fonts(
+                design()["fonts"]["sans"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(serde_json::Value::as_str)
+                    .skip_while(|name| *name != sans.as_ref())
+                    .skip(1)
+                    .map(str::to_owned)
+                    .collect(),
+            )
+        })
+        .clone()
+}
 /// The first family of a theme font list that the system has; a missing
 /// family would otherwise fall back to a proportional default.
 fn installed_font(kind: &str, cx: &App) -> SharedString {
+    static SANS: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
     static DISPLAY: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
     static MONO: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
-    let cell = if kind == "mono" { &MONO } else { &DISPLAY };
+    let cell = match kind {
+        "sans" => &SANS,
+        "mono" => &MONO,
+        _ => &DISPLAY,
+    };
     cell.get_or_init(|| {
         let system = cx.text_system();
         design()["fonts"][kind]

@@ -447,7 +447,6 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
         .with_assets(assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
-            theme::install_fonts(cx);
             theme::install_surface(cx);
             let opts = WindowOptions {
                 window_bounds: Some(WindowBounds::centered(

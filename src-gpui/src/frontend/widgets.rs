@@ -309,7 +309,6 @@ impl Desktop {
                 .text_size(px(13.))
                 .whitespace_nowrap()
                 .text_color(color)
-                .when(chosen, |b| b.font_weight(FontWeight::MEDIUM))
                 // Before the first layout there is no pill yet: paint the choice itself.
                 .when(chosen && to.is_none(), |b| b.bg(p.thumb))
                 .when(!chosen, |b| b.hover(move |s| s.bg(hover).text_color(ink)))
@@ -379,9 +378,6 @@ impl Desktop {
             .bg(bg)
             .text_color(fg)
             .text_size(px(13.))
-            .when(tone == Tone::Accent || tone == Tone::Danger, |b| {
-                b.font_weight(FontWeight::MEDIUM)
-            })
             .whitespace_nowrap()
             .hover(move |s| match tone {
                 Tone::Plain => s.bg(p.soft_hover),
