@@ -545,41 +545,18 @@ impl Desktop {
         }
         band.into_any_element()
     }
-    /// Per-core load, one 4 px bar per logical processor over a faint track.
+    /// Per-core load, one 4 px bar per logical processor over a faint track,
+    /// gliding with the chart clock.
     fn core_comb(&self, cx: &mut Context<Self>) -> AnyElement {
-        let p = self.palette;
-        let _ = cx;
+        let keys = (0..values(&self.snapshot["system"]["cores"]).len())
+            .map(|index| format!("system.cores.{index}"))
+            .collect::<Vec<_>>();
         div()
             .id("vital-cores")
-            .relative()
-            .flex()
-            .items_end()
-            .gap(px(2.))
-            .h(px(26.))
             .flex_shrink_0()
-            .children(
-                values(&self.snapshot["system"]["cores"])
-                    .iter()
-                    .map(|core| {
-                        let load = core.as_f64().unwrap_or(0.).clamp(0., 100.) as f32 / 100.;
-                        div()
-                            .relative()
-                            .w(px(4.))
-                            .h_full()
-                            .rounded(px(1.5))
-                            .bg(p.cpu.opacity(0.14))
-                            .child(
-                                div()
-                                    .absolute()
-                                    .bottom_0()
-                                    .left_0()
-                                    .w_full()
-                                    .h(relative(load))
-                                    .rounded(px(1.5))
-                                    .bg(p.cpu),
-                            )
-                    }),
-            )
+            .w(charts::bars_width(keys.len()))
+            .h(px(26.))
+            .child(self.chart_bars("vital-core-bars", &keys, self.palette.cpu, px(26.), cx))
             .tooltip(|window, cx| {
                 gpui_kit::component::tooltip::Tooltip::new(label("processes.vitals.cores"))
                     .build(window, cx)

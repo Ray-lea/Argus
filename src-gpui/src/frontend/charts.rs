@@ -37,6 +37,16 @@ pub struct Series {
 }
 /// Default area opacity under a solid line.
 pub(in crate::frontend) const FILL: f32 = 0.3;
+/// Core-load bars (the original's comb): fixed width, gap and corner radius,
+/// over a track in the bar's colour.
+const BAR_WIDTH: f32 = 4.;
+const BAR_GAP: f32 = 2.;
+const BAR_RADIUS: f32 = 1.5;
+const BAR_TRACK: f32 = 0.14;
+/// The width `count` load bars take.
+pub(in crate::frontend) fn bars_width(count: usize) -> Pixels {
+    px((count as f32 * (BAR_WIDTH + BAR_GAP) - BAR_GAP).max(0.))
+}
 /// One series a chart draws, read from the live timeline.
 #[derive(Clone, PartialEq)]
 pub(in crate::frontend) struct Line {
@@ -115,6 +125,8 @@ pub(in crate::frontend) struct Look {
     pub min_height: Option<Pixels>,
     /// Legend entries under the chart: label and whether its swatch is dashed.
     pub legend: Vec<(String, bool)>,
+    /// One load bar per series at its latest sample instead of curves.
+    pub bars: bool,
 }
 impl Look {
     /// A framed chart with captions and a readout.
@@ -423,6 +435,26 @@ impl TimePlot {
             .filter(|k| k.is_finite() && *k > 0.)
             .unwrap_or(1.)
     }
+    /// The time the load bars read: one interval behind the newest sample, so
+    /// each bar glides to a sample over the interval before the next arrives,
+    /// as the original's bars do. Curves keep their longer lag.
+    /// Without gliding (pixel steps or no animation) they show the newest sample.
+    fn bar_time(&self, end: f64) -> f64 {
+        let gliding = self.live_clock.as_ref().is_some_and(|clock| {
+            matches!(
+                clock.borrow().mode,
+                motion::Mode::Fluid | motion::Mode::Balanced
+            )
+        });
+        if !gliding {
+            return f64::INFINITY;
+        }
+        let config = motion::config();
+        let samples = config["chartSamples"].as_f64().expect("chart samples");
+        let interval = (self.end - self.start) / (samples - 1.).max(1.);
+        end + interval * (config["chartLagIntervals"].as_f64().expect("lag") - 1.)
+            + config["chartLagSlackMs"].as_f64().expect("lag slack")
+    }
 }
 pub(in crate::frontend) struct BarSurface {
     handle: Option<PaintedPrimitive>,
@@ -510,11 +542,12 @@ impl ChartLayer {
                     if surfaces.len() != plot.series.len() {
                         return false;
                     }
+                    let at = plot.bar_time(end);
                     surfaces.iter().zip(&plot.series).all(|(surface, series)| {
                         let Some(handle) = surface.handle else {
                             return false;
                         };
-                        let value = sample_at(&series.points, end).unwrap_or(0.);
+                        let value = sample_at(&series.points, at).unwrap_or(0.);
                         let height =
                             surface.bounds.size.height * (value / 100.).clamp(0., 1.) as f32;
                         let bounds = Bounds::new(
@@ -576,12 +609,8 @@ impl Render for ChartLayer {
                             let span = plot.end - plot.start;
                             plot.end = plot_end(&plot, &clock, now);
                             plot.start = plot.end - span;
-                            let step = f32::from(placement.bounds.size.width)
-                                / plot.series.len().max(1) as f32;
-                            // Keep interleaved painting when densely packed bars could overlap after pixel snapping.
-                            plot.background_separate = !plot.bars
-                                || (step - f32::from(bar_width(step))) * window.scale_factor()
-                                    >= 1.;
+                            // Bars keep a fixed gap, so their tracks never overlap a neighbour's fill.
+                            plot.background_separate = true;
                             let background = plot.clone();
                             let mut element = plot.into_any_element();
                             window.with_content_mask(
@@ -631,6 +660,7 @@ struct ChartRevision {
     sequence: u64,
     lines: Vec<Line>,
     scale: Option<Scale>,
+    bars: bool,
     interval: u64,
     locale: argus_core::i18n::Locale,
     mode: motion::Mode,
@@ -672,25 +702,29 @@ fn segments(points: &[(f64, Option<f64>)]) -> Vec<Vec<(f64, f64)>> {
     }
     runs
 }
-fn bar_width(step: f32) -> Pixels {
-    px((step * 0.65).max(1.))
+/// Where load bar `index` stands: full height, at a fixed pitch from the left.
+fn bar_region(bounds: Bounds<Pixels>, index: usize) -> Bounds<Pixels> {
+    Bounds::new(
+        point(
+            bounds.left() + px(index as f32 * (BAR_WIDTH + BAR_GAP)),
+            bounds.top(),
+        ),
+        size(px(BAR_WIDTH), bounds.size.height),
+    )
 }
 impl TimePlot {
     fn paint_base(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
         if self.bars {
-            let step = width / self.series.len().max(1) as f32;
             for (index, series) in self.series.iter().enumerate() {
-                let x = bounds.origin.x + px(index as f32 * step);
-                let bar_width = bar_width(step);
-                window.paint_quad(gpui_kit::gpui::fill(
-                    Bounds::new(
-                        point(x, bounds.origin.y),
-                        size(bar_width, bounds.size.height),
-                    ),
-                    series.color.opacity(0.12),
-                ));
+                window.paint_quad(
+                    gpui_kit::gpui::fill(
+                        bar_region(bounds, index),
+                        series.color.opacity(BAR_TRACK),
+                    )
+                    .corner_radii(px(BAR_RADIUS)),
+                );
             }
             return;
         }
@@ -785,25 +819,28 @@ impl Plot for TimePlot {
         if !self.background_separate && !self.bars {
             self.paint_base(bounds, window, cx);
         }
-        let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
         if self.bars {
             let mut surfaces = Vec::with_capacity(self.series.len());
-            let step = width / self.series.len().max(1) as f32;
+            let at = self.bar_time(self.end);
             for (index, series) in self.series.iter().enumerate() {
-                let value = sample_at(&series.points, self.end);
-                let x = bounds.origin.x + px(index as f32 * step);
-                let bar_width = bar_width(step);
+                let value = sample_at(&series.points, at);
                 let h = px((value.unwrap_or(0.) / 100.).clamp(0., 1.) as f32 * height);
-                let region =
-                    Bounds::new(point(x, bounds.top()), size(bar_width, bounds.size.height));
+                let region = bar_region(bounds, index);
                 if !self.background_separate {
-                    window.paint_quad(gpui_kit::gpui::fill(region, series.color.opacity(0.12)));
+                    window.paint_quad(
+                        gpui_kit::gpui::fill(region, series.color.opacity(BAR_TRACK))
+                            .corner_radii(px(BAR_RADIUS)),
+                    );
                 }
                 let handle = window.paint_animated_rect(
-                    Bounds::new(point(x, bounds.bottom() - h), size(bar_width, h)),
+                    Bounds::new(
+                        point(region.left(), bounds.bottom() - h),
+                        size(region.size.width, h),
+                    ),
                     region,
                     series.color,
+                    px(BAR_RADIUS),
                 );
                 surfaces.push(BarSurface {
                     handle,
@@ -1153,6 +1190,26 @@ impl Desktop {
         };
         self.chart_view(id, &lines, maximum.map(Scale::Fixed), height, look, cx)
     }
+    /// Percent load bars, one per key, gliding with the chart clock (the vitals'
+    /// per-core comb); `bars_width` gives the width they take.
+    pub(in crate::frontend) fn chart_bars(
+        &self,
+        id: &str,
+        keys: &[String],
+        color: Hsla,
+        height: Pixels,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let lines = keys
+            .iter()
+            .map(|key| Line::new(key.clone(), color))
+            .collect::<Vec<_>>();
+        let look = Look {
+            bars: true,
+            ..Look::default()
+        };
+        self.chart_view(id, &lines, Some(Scale::Fixed(100.)), height, look, cx)
+    }
     /// A live chart of `lines` read from the timeline, scaled by `scale` (a round top when none).
     pub(in crate::frontend) fn chart_view(
         &self,
@@ -1169,6 +1226,7 @@ impl Desktop {
             sequence: self.sequence,
             lines: lines.to_vec(),
             scale,
+            bars: look.bars,
             interval: self.interval,
             locale: argus_core::i18n::locale(),
             mode: self.chart_clock.borrow().mode,
@@ -1203,10 +1261,7 @@ impl Desktop {
                 .expect("chart samples")
                 - 1.);
         let start = end - span;
-        let bars = lines.len() > 1
-            && lines
-                .iter()
-                .all(|line| line.key.starts_with("system.cores."));
+        let bars = look.bars;
         let series = lines
             .iter()
             .map(|line| {
