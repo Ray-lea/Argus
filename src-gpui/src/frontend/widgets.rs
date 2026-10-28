@@ -116,7 +116,7 @@ pub(in crate::frontend) struct UiState {
     /// Measured heights of each dialog's body and footer, to centre it.
     pub dialog_parts: Rc<RefCell<HashMap<(u64, u8), Pixels>>>,
     /// Segmented controls: where each one's selection was and is (x, width).
-    pub slides: RefCell<HashMap<SharedString, Slide>>,
+    pub slides: Rc<RefCell<HashMap<SharedString, Slide>>>,
 }
 
 /// The sliding selection of one segmented control.
@@ -125,6 +125,8 @@ pub(in crate::frontend) struct Slide {
     pub selected: usize,
     pub from: Option<(f32, f32)>,
     pub to: Option<(f32, f32)>,
+    /// The page visit it was last drawn in.
+    pub epoch: u64,
 }
 
 /// Records an element's bounds; a change redraws the desktop once, so geometry
@@ -180,6 +182,18 @@ pub(in crate::frontend) fn solid(color: Hsla) -> Hsla {
     Hsla { a: 1., ..color }
 }
 
+/// The stronger bottom edge of a Fluent control, over its 1 px stroke; the
+/// control must be `relative`.
+pub(in crate::frontend) fn control_edge(p: &Palette) -> Div {
+    div()
+        .absolute()
+        .left(px(3.))
+        .right(px(3.))
+        .bottom(px(-1.))
+        .h(px(1.))
+        .bg(p.control_edge)
+}
+
 /// Lighter, like the original's `filter: brightness(1.08)` on hover.
 pub(in crate::frontend) fn brighter(color: Hsla) -> Hsla {
     Hsla {
@@ -199,8 +213,10 @@ impl ButtonExt for gpui_kit::base::Button {
 }
 
 impl Desktop {
-    /// A segmented control: a quiet track whose selection is a raised pill
-    /// that slides to the chosen option.
+    /// A segmented control (`.segmented`): a layer-coloured track with a
+    /// 1 px stroke, whose raised selection (`.seg-thumb`) slides to the chosen
+    /// option. Like the original's Indicator it glides only when the choice
+    /// changes in view; shown again (another page visit) it is already there.
     pub(in crate::frontend) fn segments(
         &self,
         id: impl Into<SharedString>,
@@ -225,12 +241,18 @@ impl Desktop {
         };
         let (from, to) = {
             let mut slides = self.ui.slides.borrow_mut();
+            let epoch = self.page_epoch;
             let slide = slides.entry(id.clone()).or_insert(Slide {
                 selected,
                 from: None,
                 to: geometry,
+                epoch,
             });
-            if slide.selected != selected {
+            if slide.epoch != epoch {
+                slide.epoch = epoch;
+                slide.from = None;
+                slide.selected = selected;
+            } else if slide.selected != selected {
                 slide.from = slide.to;
                 slide.selected = selected;
             }
@@ -246,38 +268,71 @@ impl Desktop {
             .flex()
             .items_center()
             .gap(px(2.))
-            .p(px(3.))
+            .p(px(2.))
             .flex_shrink_0()
-            .rounded(px(8.))
-            .bg(p.track)
-            .on_prepaint(remember(track_key, anchors.clone(), owner.clone()));
+            .border_1()
+            .border_color(p.stroke)
+            .rounded(px(6.))
+            .bg(p.layer)
+            // The track's padding box, the frame the sliding selection is placed
+            // in: `on_prepaint` would measure from where its probe happens to sit.
+            .child({
+                let remember = remember(track_key, anchors.clone(), owner.clone());
+                canvas(
+                    move |bounds, window, cx| remember(bounds, window, cx),
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0()
+            });
         if let Some((x, width)) = to {
+            // The option's box plus the original's 1 px `--stroke` ring around
+            // it. The ring is a border of its own, with the face inside it: GPUI
+            // paints a shadow, and a background, under the whole box, where they
+            // would show through the translucent dark-theme face and ring.
+            // Positions are inside the track's stroke, as the track is measured.
+            let x = x - 1.;
             let pill = div()
                 .absolute()
-                .top(px(3.))
-                .bottom(px(3.))
+                .top(px(1.))
+                .bottom(px(1.))
                 .left(px(x))
-                .w(px(width))
-                .rounded(px(6.))
-                .bg(p.thumb)
-                .shadow(vec![BoxShadow {
-                    color: hsla(0., 0., 0., if p.dark { 0.28 } else { 0.1 }),
-                    offset: point(px(0.), px(1.)),
-                    blur_radius: px(2.),
-                    spread_radius: px(0.),
-                    inset: false,
-                }]);
-            track = track.child(match from.filter(|from| *from != (x, width)) {
-                Some((from_x, from_width)) if !cx.reduce_motion() => pill
-                    .with_animation(
+                .w(px(width + 2.))
+                .rounded(px(5.))
+                .border_1()
+                .border_color(p.stroke)
+                .child(div().size_full().rounded(px(4.)).bg(p.control_checked))
+                .when(p.control_checked.a >= 1., |pill| {
+                    pill.shadow(vec![BoxShadow {
+                        color: hsla(0., 0., 0., 0.08),
+                        offset: point(px(0.), px(1.)),
+                        blur_radius: px(2.),
+                        spread_radius: px(0.),
+                        inset: false,
+                    }])
+                });
+            track = track.child(match from.filter(|from| *from != (x + 1., width)) {
+                Some((from_x, from_width)) if !cx.reduce_motion() => {
+                    let from_x = from_x - 1.;
+                    let slides = self.ui.slides.clone();
+                    let id = id.clone();
+                    pill.with_animation(
                         ElementId::NamedInteger(format!("seg-slide-{id}").into(), selected as u64),
-                        Animation::new(Duration::from_millis(220)).with_easing(theme::ease_move),
+                        // The original's Indicator: --t-slow on the move curve.
+                        Animation::new(Duration::from_millis(250)).with_easing(theme::ease_move),
                         move |pill, t| {
+                            // Once there, it stays: a later redraw must not replay the glide.
+                            if t >= 1.
+                                && let Some(slide) = slides.borrow_mut().get_mut(&id)
+                            {
+                                slide.from = None;
+                            }
                             pill.left(px(from_x + (x - from_x) * t))
-                                .w(px(from_width + (width - from_width) * t))
+                                .w(px(from_width + (width - from_width) * t + 2.))
                         },
                     )
-                    .into_any_element(),
+                    .into_any_element()
+                }
                 _ => pill.into_any_element(),
             });
         }
@@ -299,18 +354,17 @@ impl Desktop {
                 ))
                 .relative()
                 .h(px(26.))
-                .when(icon_only, |b| b.w(px(30.)))
-                .when(!icon_only, |b| b.px(px(11.)))
+                .px(px(10.))
                 .flex()
                 .items_center()
                 .justify_center()
                 .gap(px(6.))
-                .rounded(px(6.))
+                .rounded(px(4.))
                 .text_size(px(13.))
                 .whitespace_nowrap()
                 .text_color(color)
                 // Before the first layout there is no pill yet: paint the choice itself.
-                .when(chosen && to.is_none(), |b| b.bg(p.thumb))
+                .when(chosen && to.is_none(), |b| b.bg(p.control_checked))
                 .when(!chosen, |b| b.hover(move |s| s.bg(hover).text_color(ink)))
                 .role(Role::Tab)
                 .accessibility_label(accessible)
@@ -359,38 +413,40 @@ impl Desktop {
     ) -> gpui_kit::base::Button {
         let p = self.palette;
         let clear = p.background.opacity(0.);
-        let (bg, fg) = match tone {
-            Tone::Plain => (p.soft, p.ink),
-            Tone::Accent => (p.accent, p.on_accent),
-            Tone::Danger => (p.danger, p.on_danger),
-            Tone::Ghost => (clear, p.ink),
+        let (bg, fg, border) = match tone {
+            Tone::Plain => (p.control_face, p.ink, p.stroke),
+            Tone::Accent => (p.accent, p.on_accent, clear),
+            Tone::Danger => (p.danger, p.on_danger, clear),
+            Tone::Ghost => (clear, p.ink, clear),
         };
         let icon_only = text.is_empty() && glyph.is_some();
-        let height = if small { px(26.) } else { px(32.) };
+        let height = if small { px(24.) } else { px(32.) };
         gpui_kit::base::Button::new(id)
             .relative()
             .h(height)
             .when(icon_only, |b| b.w(height))
-            .when(!icon_only, |b| b.px(if small { px(10.) } else { px(14.) }))
+            .when(!icon_only, |b| b.px(if small { px(8.) } else { px(12.) }))
             .flex_shrink_0()
             .gap(px(6.))
-            .rounded(px(6.))
+            .rounded(px(4.))
+            .border_1()
+            .border_color(border)
             .bg(bg)
             .text_color(fg)
             .text_size(px(13.))
             .whitespace_nowrap()
             .hover(move |s| match tone {
-                Tone::Plain => s.bg(p.soft_hover),
+                Tone::Plain => s.bg(p.control_hover),
                 Tone::Ghost => s.bg(p.hover),
                 Tone::Accent => s.bg(brighter(p.accent)),
                 Tone::Danger => s.bg(brighter(p.danger)),
             })
             .active(move |s| match tone {
-                Tone::Plain => s.bg(p.soft_press),
-                Tone::Ghost => s.bg(p.press),
-                Tone::Accent => s.bg(p.accent.opacity(0.88)),
-                Tone::Danger => s.bg(p.danger.opacity(0.88)),
+                Tone::Plain | Tone::Ghost => s.bg(p.press).text_color(p.muted),
+                Tone::Accent => s.bg(p.accent.opacity(0.9)),
+                Tone::Danger => s.bg(p.danger.opacity(0.9)),
             })
+            .when(tone == Tone::Plain, |b| b.child(control_edge(&p)))
             .accessibility_label(text.clone())
             .when_some(glyph, |b, name| b.child(icon(name, fg)))
             .when(!text.is_empty(), |b| b.child(text))
@@ -521,14 +577,11 @@ impl Desktop {
                     .px(px(8.))
                     .py(px(2.))
                     .border_1()
+                    .border_b_2()
                     .when(off, |d| d.border_dashed())
-                    .border_color(tint(if off { p.stroke_strong } else { p.soft }))
-                    .rounded(px(5.))
-                    .bg(if off {
-                        p.background.opacity(0.)
-                    } else {
-                        p.soft
-                    })
+                    .border_color(tint(p.stroke_strong))
+                    .rounded(px(4.))
+                    .bg(p.control_face)
                     .text_size(px(12.))
                     .text_color(tint(if off { p.muted } else { p.ink }))
                     .whitespace_nowrap()
@@ -587,7 +640,8 @@ impl Desktop {
             .into_any_element()
     }
 
-    /// A state pill: a soft tinted capsule with a coloured dot, or a spinner while busy.
+    /// A state pill (`.state-pill`): a raised capsule with a coloured dot, or a
+    /// spinner while busy.
     pub(in crate::frontend) fn state_pill(&self, text: String, tone: &str) -> AnyElement {
         let p = self.palette;
         let color = match tone {
@@ -603,11 +657,10 @@ impl Desktop {
             .h(px(26.))
             .px(px(11.))
             .flex_shrink_0()
+            .border_1()
+            .border_color(p.stroke)
             .rounded(px(13.))
-            .bg(match tone {
-                "ok" | "warn" | "busy" => p.soft.blend(color.opacity(0.16)),
-                _ => p.soft,
-            })
+            .bg(p.layer_strong)
             .text_size(px(12.))
             .text_color(p.ink)
             .whitespace_nowrap()
@@ -615,7 +668,7 @@ impl Desktop {
                 self.spinner(10., p.accent)
             } else {
                 div()
-                    .size(px(7.))
+                    .size(px(8.))
                     .rounded_full()
                     .bg(color)
                     .into_any_element()
@@ -698,11 +751,19 @@ impl Desktop {
             .gap(px(10.))
             .flex_shrink_0()
             .justify_start()
-            .rounded(px(6.))
-            .bg(if open { p.soft_hover } else { p.soft })
+            .rounded(px(4.))
+            .border_1()
+            .border_color(p.stroke)
+            .bg(if open {
+                p.control_hover
+            } else {
+                p.control_face
+            })
             .text_color(p.ink)
             .text_size(px(13.))
-            .hover(move |s| s.bg(p.soft_hover))
+            .hover(move |s| s.bg(p.control_hover))
+            .active(move |s| s.text_color(p.muted))
+            .child(control_edge(&p))
             .child(
                 // Every label in one column, the others without height: the
                 // button is as wide as the longest.

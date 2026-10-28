@@ -280,15 +280,6 @@ impl Desktop {
         let text = text.into();
         let p = self.palette;
         let color = if pressed { p.accent } else { p.ink };
-        let (rest, hover, press) = if pressed {
-            (
-                p.accent.opacity(0.16),
-                p.accent.opacity(0.22),
-                p.accent.opacity(0.12),
-            )
-        } else {
-            (p.soft, p.soft_hover, p.soft_press)
-        };
         Button::new(id.into())
             .relative()
             .h(px(32.))
@@ -298,12 +289,15 @@ impl Desktop {
             .justify_center()
             .gap(px(6.))
             .when(text.is_empty(), |b| b.w(px(32.)))
-            .when(!text.is_empty(), |b| b.px(px(13.)))
-            .rounded(px(6.))
-            .bg(rest)
+            .when(!text.is_empty(), |b| b.px(px(12.)))
+            .rounded(px(4.))
+            .border_1()
+            .border_color(p.stroke)
+            .bg(p.control_face)
             .text_color(color)
-            .hover(move |s| s.bg(hover))
-            .active(move |s| s.bg(press))
+            .hover(move |s| s.bg(p.control_hover))
+            .active(move |s| s.bg(p.press).text_color(p.muted))
+            .child(widgets::control_edge(&p))
             .accessibility_label(text.clone())
             .when_some(glyph, |b, name| b.child(icon(name, color)))
             .when(!text.is_empty(), |b| b.child(text))
@@ -576,18 +570,20 @@ impl Desktop {
                 let x = centered.max(left).min(right - width);
                 let filled = !self.query.trim().is_empty();
                 let focused = self.search.read(cx).focus_handle(cx).is_focused(window);
-                // A soft field: a quiet fill, an accent outline while focused, and an
-                // accent tint while it filters the list.
-                let hover = p.soft_hover;
-                let (border, background) = if filled {
+                // A Fluent text box (`.search input`): the control face with a
+                // stronger bottom edge; focused, a 2 px accent bottom on the raised
+                // layer; while it filters the list, it wears the accent.
+                let hover = p.control_hover;
+                let (border, background, edge) = if filled {
                     (
-                        p.accent.opacity(if focused { 0.7 } else { 0.4 }),
-                        p.soft.blend(p.accent.opacity(0.12)),
+                        p.accent.opacity(0.55),
+                        p.control_face.blend(p.accent.opacity(0.09)),
+                        Some(p.accent),
                     )
                 } else if focused {
-                    (p.accent.opacity(0.7), p.soft_hover)
+                    (p.stroke, p.layer_strong, Some(p.accent))
                 } else {
-                    (p.soft.opacity(0.), p.soft)
+                    (p.stroke, p.control_face, None)
                 };
                 toolbar = toolbar.child(
                     div()
@@ -599,12 +595,11 @@ impl Desktop {
                         .w(width)
                         .flex()
                         .items_center()
-                        .rounded(px(8.))
+                        .rounded(px(4.))
                         .border_1()
                         .border_color(border)
                         .bg(background)
                         .when(!filled && !focused, |d| d.hover(move |s| s.bg(hover)))
-                        .overflow_hidden()
                         .occlude()
                         .child(
                             Input::new(&self.search)
@@ -616,7 +611,18 @@ impl Desktop {
                                     "SearchIcon",
                                     if filled { p.accent } else { p.muted },
                                 )),
-                        ),
+                        )
+                        .child(match edge {
+                            // The accent bottom is 2 px: over the stroke and 1 px inside.
+                            Some(color) => div()
+                                .absolute()
+                                .left(px(3.))
+                                .right(px(3.))
+                                .bottom(px(-1.))
+                                .h(px(2.))
+                                .bg(color),
+                            None => widgets::control_edge(&p),
+                        }),
                 );
             }
         }
@@ -763,10 +769,10 @@ impl Desktop {
             "service" => p.network,
             _ => p.muted,
         };
-        let badge_fill = if privilege == "standard" {
-            p.soft
+        let badge_border = if privilege == "standard" {
+            p.stroke
         } else {
-            badge_color.opacity(0.14)
+            badge_color.opacity(0.4)
         };
         let hint = label(&format!("shell.elevation.{privilege}Hint"));
         div()
@@ -825,7 +831,8 @@ impl Desktop {
                     .h(px(20.))
                     .my(px(-2.))
                     .px(px(8.))
-                    .bg(badge_fill)
+                    .border_1()
+                    .border_color(badge_border)
                     .rounded_full()
                     .text_color(badge_color)
                     .child(icon("ShieldIcon", badge_color).size(px(12.)))

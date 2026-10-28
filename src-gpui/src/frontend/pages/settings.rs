@@ -738,7 +738,9 @@ impl Desktop {
                     .top(px(mark))
                     .h(px(36.))
                     .rounded(px(6.))
-                    .bg(p.soft)
+                    .border_1()
+                    .border_color(p.stroke)
+                    .bg(p.layer_strong)
                     .child(
                         div()
                             .absolute()

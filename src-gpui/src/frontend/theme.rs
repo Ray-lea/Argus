@@ -32,13 +32,15 @@ pub struct Palette {
     pub flyout: Hsla,
     /// The Fluent control face (`--control`), unmixed by the component theme.
     pub face: Hsla,
-    /// Soft filled controls: a quiet fill that lightens on hover, no outline.
-    pub soft: Hsla,
-    pub soft_hover: Hsla,
-    pub soft_press: Hsla,
-    /// Segmented controls: the track and the raised, sliding selection.
-    pub track: Hsla,
-    pub thumb: Hsla,
+    /// Fluent controls as the original drew them: translucent faces
+    /// (`--control`, `--control-hover`, `--control-checked`) over whatever
+    /// is behind, a 1 px stroke, and a stronger bottom edge (`control_edge`).
+    pub control_face: Hsla,
+    pub control_hover: Hsla,
+    pub control_checked: Hsla,
+    /// Laid over the 1 px stroke along a control's bottom, the two make the
+    /// original's `--stroke-strong` bottom border (GPUI borders have one colour).
+    pub control_edge: Hsla,
     pub press: Hsla,
     pub on_accent: Hsla,
     pub on_danger: Hsla,
@@ -51,16 +53,13 @@ fn on_card(name: &str, dark: bool) -> Hsla {
         .blend(token(name, dark));
     Hsla { a: 1., ..color }
 }
-/// A soft control fill over a card, as one opaque colour: white at `on_dark`
-/// strength in the dark theme, black at `on_light` strength in the light one.
-fn soft(dark: bool, on_dark: f32, on_light: f32) -> Hsla {
-    let card = token("window-bg", dark).blend(token("layer", dark));
-    let color = if dark {
-        card.blend(hsla(0., 0., 1., on_dark))
-    } else {
-        card.blend(hsla(0., 0., 0., on_light))
-    };
-    Hsla { a: 1., ..color }
+/// What, laid over `under`, gives `over` in its place: both are the same
+/// colour at different strengths (the strokes are white or black).
+fn remainder(under: Hsla, over: Hsla) -> Hsla {
+    Hsla {
+        a: 1. - (1. - over.a) / (1. - under.a),
+        ..over
+    }
 }
 /// A colour token of the active mode, falling back to the light value.
 pub fn token(name: &str, dark: bool) -> Hsla {
@@ -114,15 +113,10 @@ impl Palette {
             // Opaque equivalents of the translucent control colours over a card:
             // stacked translucent fills darken on the transparent window surface.
             face: on_card("control", dark),
-            soft: soft(dark, 0.075, 0.055),
-            soft_hover: soft(dark, 0.11, 0.085),
-            soft_press: soft(dark, 0.055, 0.11),
-            track: soft(dark, 0.05, 0.05),
-            thumb: if dark {
-                soft(dark, 0.14, 0.)
-            } else {
-                hsla(0., 0., 1., 1.)
-            },
+            control_face: token("control", dark),
+            control_hover: token("control-hover", dark),
+            control_checked: token("control-checked", dark),
+            control_edge: remainder(token("stroke", dark), token("stroke-strong", dark)),
             press: token("press", dark),
             on_accent: colors.primary_foreground,
             on_danger: token("on-danger", dark),
