@@ -139,6 +139,8 @@ struct Desktop {
     active_charts: Rc<RefCell<HashSet<String>>>,
     chart_placements: charts::Placements,
     page_opacity: Rc<Cell<f32>>,
+    /// Opacity of the live charts being built: a view settling in fades its charts.
+    chart_fade: Cell<f32>,
     chart_tick_queued: bool,
     chart_frame: u64,
     grid_bounds: RefCell<HashMap<String, Bounds<Pixels>>>,
@@ -242,6 +244,7 @@ impl Desktop {
             active_charts: Rc::new(RefCell::new(HashSet::new())),
             chart_placements: Rc::new(RefCell::new(HashMap::new())),
             page_opacity: Rc::new(Cell::new(1.)),
+            chart_fade: Cell::new(1.),
             chart_tick_queued: false,
             chart_frame: 0,
             grid_bounds: RefCell::new(HashMap::new()),

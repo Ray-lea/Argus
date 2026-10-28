@@ -475,6 +475,8 @@ pub(super) struct Placement {
     bounds: Bounds<Pixels>,
     mask: Bounds<Pixels>,
     plot: Rc<RefCell<TimePlot>>,
+    /// The chart's own fade (a view settling in), on top of the page's.
+    opacity: f32,
 }
 pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
 
@@ -586,75 +588,73 @@ impl Render for ChartLayer {
         let placements = self.placements.clone();
         let clock = self.clock.clone();
         let active = self.active.clone();
-        div()
-            .absolute()
-            .inset_0()
-            .opacity(self.opacity.get())
-            .child(
-                canvas(
-                    move |bounds, window, cx| {
-                        let placements = placements.borrow();
-                        let clock = clock.borrow();
-                        let now = clock.end(Instant::now());
-                        let mut elements = Vec::new();
-                        for key in active.borrow().iter() {
-                            let Some(placement) = placements.get(key) else {
-                                continue;
-                            };
-                            let clip = placement
-                                .bounds
-                                .intersect(&placement.mask)
-                                .intersect(&bounds);
-                            if clip.size.width <= px(0.) || clip.size.height <= px(0.) {
-                                continue;
-                            }
-                            let mut plot = placement.plot.borrow().clone();
-                            let span = plot.end - plot.start;
-                            plot.end = plot_end(&plot, &clock, now);
-                            plot.start = plot.end - span;
-                            // Bars keep a fixed gap, so their tracks never overlap a neighbour's fill.
-                            plot.background_separate = true;
-                            let background = plot.clone();
-                            let mut element = plot.into_any_element();
-                            window.with_content_mask(
-                                Some(ContentMask { bounds: clip }),
-                                |window| {
-                                    element.layout_as_root(
-                                        placement.bounds.size.into(),
-                                        window,
-                                        cx,
-                                    );
-                                    element.prepaint_at(placement.bounds.origin, window, cx);
-                                },
-                            );
-                            elements.push((element, clip, background, placement.bounds));
+        let page_opacity = self.opacity.clone();
+        div().absolute().inset_0().child(
+            canvas(
+                move |bounds, window, cx| {
+                    // Read in prepaint, after the cached desktop rendered this
+                    // frame's fades: read in render, they would lag a frame
+                    // behind the page they belong to.
+                    let page_opacity = page_opacity.get();
+                    let placements = placements.borrow();
+                    let clock = clock.borrow();
+                    let now = clock.end(Instant::now());
+                    let mut elements = Vec::new();
+                    for key in active.borrow().iter() {
+                        let Some(placement) = placements.get(key) else {
+                            continue;
+                        };
+                        let clip = placement
+                            .bounds
+                            .intersect(&placement.mask)
+                            .intersect(&bounds);
+                        if clip.size.width <= px(0.) || clip.size.height <= px(0.) {
+                            continue;
                         }
-                        elements
-                    },
-                    |bounds, elements, window, cx| {
-                        // Grids and bar tracks are static, even though their data moves.
-                        // Paint every backdrop before the shared animated layer.
-                        for (_, clip, plot, bounds) in &elements {
-                            if !plot.background_separate {
-                                continue;
-                            }
+                        let mut plot = placement.plot.borrow().clone();
+                        let span = plot.end - plot.start;
+                        plot.end = plot_end(&plot, &clock, now);
+                        plot.start = plot.end - span;
+                        // Bars keep a fixed gap, so their tracks never overlap a neighbour's fill.
+                        plot.background_separate = true;
+                        let background = plot.clone();
+                        let alpha = page_opacity * placement.opacity;
+                        let mut element = div()
+                            .size_full()
+                            .opacity(alpha)
+                            .child(plot)
+                            .into_any_element();
+                        window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
+                            element.layout_as_root(placement.bounds.size.into(), window, cx);
+                            element.prepaint_at(placement.bounds.origin, window, cx);
+                        });
+                        elements.push((element, clip, background, placement.bounds, alpha));
+                    }
+                    elements
+                },
+                |bounds, elements, window, cx| {
+                    // Grids and bar tracks are static, even though their data moves.
+                    // Paint every backdrop before the shared animated layer.
+                    for (_, clip, plot, bounds, alpha) in &elements {
+                        if !plot.background_separate {
+                            continue;
+                        }
+                        window.with_content_mask(Some(ContentMask { bounds: *clip }), |window| {
+                            plot.paint_base(*bounds, *alpha, window, cx)
+                        });
+                    }
+                    window.paint_layer(bounds, |window| {
+                        for (mut element, clip, _, _, _) in elements {
                             window
-                                .with_content_mask(Some(ContentMask { bounds: *clip }), |window| {
-                                    plot.paint_base(*bounds, window, cx)
+                                .with_content_mask(Some(ContentMask { bounds: clip }), |window| {
+                                    element.paint(window, cx)
                                 });
                         }
-                        window.paint_layer(bounds, |window| {
-                            for (mut element, clip, _, _) in elements {
-                                window.with_content_mask(
-                                    Some(ContentMask { bounds: clip }),
-                                    |window| element.paint(window, cx),
-                                );
-                            }
-                        });
-                    },
-                )
-                .size_full(),
+                    });
+                },
             )
+            .size_full(),
+        )
     }
 }
 
@@ -716,7 +716,8 @@ fn bar_region(bounds: Bounds<Pixels>, index: usize) -> Bounds<Pixels> {
     )
 }
 impl TimePlot {
-    fn paint_base(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    /// Grid lines or bar tracks, at `alpha` of their own opacity.
+    fn paint_base(&self, bounds: Bounds<Pixels>, alpha: f32, window: &mut Window, cx: &mut App) {
         let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
         if self.bars {
@@ -724,7 +725,7 @@ impl TimePlot {
                 window.paint_quad(
                     gpui_kit::gpui::fill(
                         bar_region(bounds, index),
-                        series.color.opacity(BAR_TRACK),
+                        series.color.opacity(BAR_TRACK * alpha),
                     )
                     .corner_radii(px(BAR_RADIUS)),
                 );
@@ -739,7 +740,7 @@ impl TimePlot {
                 .unwrap_or(cx.theme().border);
             if let Some(ticks) = &self.ticks {
                 // Quarters across, the clock ticks down.
-                let line = color.opacity(GRID_OPACITY);
+                let line = color.opacity(GRID_OPACITY * alpha);
                 for fraction in [0.25, 0.5, 0.75] {
                     window.paint_quad(gpui_kit::gpui::fill(
                         Bounds::new(
@@ -794,7 +795,7 @@ impl TimePlot {
                     };
                     window.paint_quad(gpui_kit::gpui::fill(
                         Bounds::new(origin, size),
-                        color.opacity(GRID_OPACITY),
+                        color.opacity(GRID_OPACITY * alpha),
                     ));
                 }
             }
@@ -806,10 +807,13 @@ impl Plot for TimePlot {
         &mut self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> Vec<AnyElement> {
         self.measured_width
             .set(f32::from(bounds.size.width) * window.scale_factor());
+        if !self.bars {
+            raster::prepare(self, bounds, window, cx);
+        }
         vec![]
     }
     fn id(&self) -> Option<ElementId> {
@@ -820,7 +824,7 @@ impl Plot for TimePlot {
     }
     fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         if !self.background_separate && !self.bars {
-            self.paint_base(bounds, window, cx);
+            self.paint_base(bounds, 1., window, cx);
         }
         let height = f32::from(bounds.size.height);
         if self.bars {
@@ -1058,6 +1062,7 @@ impl Desktop {
         let id = plot.id.to_string();
         let placements = self.chart_placements.clone();
         let placed_plot = plot_rc.clone();
+        let opacity = self.chart_fade.get();
         let placeholder = canvas(
             move |bounds, window, _| {
                 placements.borrow_mut().insert(
@@ -1066,6 +1071,7 @@ impl Desktop {
                         bounds,
                         mask: window.content_mask().bounds,
                         plot: placed_plot.clone(),
+                        opacity,
                     },
                 );
             },

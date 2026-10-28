@@ -777,7 +777,14 @@ pub fn run(args: &[String]) -> Result<()> {
     let mut stack_sampler = None;
     #[cfg(feature = "capture")]
     let mut observer: Option<crate::frames::Observer> = None;
+    #[cfg(feature = "capture")]
+    let mut recorder: Option<crate::record::Recorder> = None;
     loop {
+        #[cfg(feature = "capture")]
+        if recorder.as_ref().is_some_and(|r| r.finished()) {
+            println!("{}", recorder.take().unwrap().finish());
+            io::stdout().flush()?;
+        }
         anyhow::ensure!(
             !monitor.violated.load(Ordering::Relaxed),
             "owned test became foreground; result rejected"
@@ -876,6 +883,10 @@ pub fn run(args: &[String]) -> Result<()> {
                 if command == "stop" {
                     #[cfg(feature = "capture")]
                     drop(observer.take());
+                    #[cfg(feature = "capture")]
+                    if let Some(recorder) = recorder.take() {
+                        println!("{}", recorder.finish());
+                    }
                     let _ = PostMessageW(
                         Some(search.hwnd),
                         WM_CLOSE,
@@ -887,6 +898,39 @@ pub fn run(args: &[String]) -> Result<()> {
                 #[cfg(feature = "capture")]
                 if command == "watch" {
                     observer = Some(crate::frames::Observer::start(search.hwnd));
+                }
+                // record DIR MS [X Y W H]: every presented frame (cropped) for MS milliseconds.
+                #[cfg(feature = "capture")]
+                if let Some(rest) = command.strip_prefix("record ") {
+                    let parts = rest.split_whitespace().collect::<Vec<_>>();
+                    anyhow::ensure!(
+                        parts.len() == 2 || parts.len() == 6,
+                        "record DIR MS [X Y W H]"
+                    );
+                    let numbers = parts[1..]
+                        .iter()
+                        .map(|p| p.parse::<u32>())
+                        .collect::<std::result::Result<Vec<_>, _>>()?;
+                    let crop = (numbers.len() == 5).then(|| crate::record::Crop {
+                        x: numbers[1],
+                        y: numbers[2],
+                        width: numbers[3],
+                        height: numbers[4],
+                    });
+                    if let Some(previous) = recorder.take() {
+                        println!("{}", previous.finish());
+                    }
+                    recorder = Some(crate::record::Recorder::start(
+                        search.hwnd,
+                        parts[0].into(),
+                        Duration::from_millis(u64::from(numbers[0])),
+                        crop,
+                    ));
+                    println!(
+                        "{}",
+                        serde_json::json!({"event":"recording","qpc100ns":qpc_time_100ns()?})
+                    );
+                    io::stdout().flush()?;
                 }
                 #[cfg(feature = "capture")]
                 if command == "unwatch" {

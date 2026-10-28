@@ -20,6 +20,8 @@ const STAT_GAP_Y: f32 = 14.;
 const STATS_GAP: f32 = 28.;
 /// The CPU's figures and specs go side by side from this width each.
 const CPU_STATS_MIN: f32 = 320.;
+/// How long the CPU charts take to settle in after another graph or core type.
+const SETTLE: std::time::Duration = std::time::Duration::from_millis(200);
 /// Smallest chart heights before the page scrolls (main, half, small).
 const MAIN_MIN: f32 = 120.;
 const HALF_MIN: f32 = 80.;
@@ -299,6 +301,26 @@ fn settle_policy(
         settled.update(cx, |settled, _| *settled = true);
     }
     gpui_kit::base::motion::Transition::new(std::time::Duration::ZERO)
+}
+/// The opacity of a view that settles in once `key` changes, as the original's
+/// CPU charts do: from nothing to full over [`SETTLE`], decelerating. A first
+/// display (entering the page, another device) shows at once.
+fn settle_fade(id: &'static str, key: String, window: &mut Window, cx: &mut App) -> f32 {
+    let state = window.use_keyed_state(id, cx, |_, _| (key.clone(), None::<Instant>));
+    let (shown, mut started) = state.read(cx).clone();
+    if shown != key {
+        started = Some(Instant::now());
+        state.update(cx, |state, _| *state = (key, started));
+    }
+    let Some(started) = started.filter(|_| !cx.reduce_motion()) else {
+        return 1.;
+    };
+    let progress = started.elapsed().as_secs_f32() / SETTLE.as_secs_f32();
+    if progress >= 1. {
+        return 1.;
+    }
+    window.request_animation_frame();
+    theme::ease_out(progress)
 }
 /// Splits text such as "5<u>d</u> 14:00:00" into plain and small runs.
 fn rich_runs(template: &str) -> Vec<(String, bool)> {
@@ -1083,33 +1105,57 @@ impl Desktop {
             ),
         );
         out.push(self.perf_toolbar(controls));
-        if logical {
-            out.push(self.core_grid(hybrid, &filter, window, cx));
+        // Another graph, or core type among the processors, swaps the charts at
+        // once and fades them in, as the original's do. Its slight scale is left
+        // out: every curve would be redrawn on each frame of it.
+        let fade = settle_fade(
+            "cpu-chart-settle",
+            if logical {
+                format!("logical/{filter}")
+            } else {
+                "overall".into()
+            },
+            window,
+            cx,
+        );
+        self.chart_fade.set(fade);
+        let graphs = if logical {
+            self.core_grid(hybrid, &filter, window, cx)
         } else {
-            out.push(
-                self.chart_view(
-                    "cpu-overall-plot",
-                    &[
-                        Line::new("system.cpu", p.cpu).label(label("performance.cpu.total")),
-                        Line::new("system.cpuKernel", p.cpu)
-                            .dashed()
-                            .fill(0.18)
-                            .label(label("performance.cpu.kernel")),
-                    ],
-                    Some(Scale::Fixed(100.)),
-                    ChartHeight::Fill,
-                    Look::boxed(label("performance.cpu.utilizationChart"))
-                        .top("100%")
-                        .format(MetricFormat::RoundPercent)
-                        .min_height(px(MAIN_MIN))
-                        .legend(vec![
-                            (label("performance.cpu.total"), false),
-                            (label("performance.cpu.kernelTime"), true),
-                        ]),
-                    cx,
-                ),
-            );
-        }
+            self.chart_view(
+                "cpu-overall-plot",
+                &[
+                    Line::new("system.cpu", p.cpu).label(label("performance.cpu.total")),
+                    Line::new("system.cpuKernel", p.cpu)
+                        .dashed()
+                        .fill(0.18)
+                        .label(label("performance.cpu.kernel")),
+                ],
+                Some(Scale::Fixed(100.)),
+                ChartHeight::Fill,
+                Look::boxed(label("performance.cpu.utilizationChart"))
+                    .top("100%")
+                    .format(MetricFormat::RoundPercent)
+                    .min_height(px(MAIN_MIN))
+                    .legend(vec![
+                        (label("performance.cpu.total"), false),
+                        (label("performance.cpu.kernelTime"), true),
+                    ]),
+                cx,
+            )
+        };
+        self.chart_fade.set(1.);
+        out.push(
+            div()
+                .w_full()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .opacity(fade)
+                .child(graphs)
+                .into_any_element(),
+        );
         // Live figures.
         let mut stats = vec![
             self.stat(
@@ -1296,6 +1342,15 @@ impl Desktop {
         let here: Option<Size<Pixels>> = *here_state.read(cx);
         let measured = here.unwrap_or_else(|| self.core_grid_size.get());
         let policy = settle_policy("cpu-core-settled", here.is_some(), window, cx);
+        // Another core type is a new arrangement rather than a move: the cards
+        // take their places at once while the view fades in (see `settle_fade`).
+        let shown_filter = window.use_keyed_state("cpu-core-filter", cx, |_, _| filter.to_owned());
+        let policy = if *shown_filter.read(cx) != filter {
+            shown_filter.update(cx, |shown, _| *shown = filter.to_owned());
+            gpui_kit::base::motion::Transition::new(std::time::Duration::ZERO)
+        } else {
+            policy
+        };
         let available = if measured.width > px(0.) {
             measured.width
         } else {
