@@ -1213,6 +1213,25 @@ impl Desktop {
                 json!({"event":"ui-render-counts","label":label,"desktop":self.render_count,"chartTicks":self.chart_frame,"sort":self.sort,"descending":self.descending})
             );
         }
+        // The page's rows as built, to compare titles and order with the original.
+        if let Some(label) = control["dumpRows"].as_str() {
+            let rows: Vec<Value> = self
+                .rows
+                .iter()
+                .map(|row| {
+                    let count = if row.section.is_some() {
+                        row.raw["entryCount"].clone()
+                    } else {
+                        json!(row.members.len())
+                    };
+                    json!({"key":row.key,"title":row.title,"detail":row.detail,"depth":row.depth,"count":count,"section":row.section})
+                })
+                .collect();
+            println!(
+                "{}",
+                json!({"event":"rows","label":label,"page":self.page,"view":self.view,"sort":self.sort,"descending":self.descending,"rows":rows})
+            );
+        }
         if let Some(key) = control["sort"].as_str() {
             self.act(Action::Sort(key.into()), window, cx);
         }
