@@ -120,6 +120,12 @@ pub(in crate::frontend) struct UiState {
     pub dialog_parts: Rc<RefCell<HashMap<(u64, u8), Pixels>>>,
     /// Segmented controls: where each one's selection was and is (x, width).
     pub slides: Rc<RefCell<HashMap<SharedString, Slide>>>,
+    /// When each dialog was first drawn visible: its entrance runs from there,
+    /// not from a first frame that may take long to build.
+    pub dialog_shown: RefCell<HashMap<u64, Instant>>,
+    /// The top dialog fading out before it closes: its id, when it started and
+    /// whether it was cancelled (Escape or a press outside it).
+    pub dialog_leaving: Option<(u64, Instant, bool)>,
 }
 
 /// The sliding selection of one segmented control.

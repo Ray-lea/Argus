@@ -454,6 +454,10 @@ impl Desktop {
 
     /// Puts a dialog on screen, over the ones open; returns its id.
     fn present(&mut self, mut modal: Modal, window: &mut Window, cx: &mut Context<Self>) -> u64 {
+        // A dialog still fading out goes at once rather than end up under this one.
+        if let Some((id, _, _)) = self.ui.dialog_leaving {
+            self.finish_leaving(id, window, cx);
+        }
         self.ui.modal_seq += 1;
         let id = self.ui.modal_seq;
         modal.id = id;
@@ -491,13 +495,62 @@ impl Desktop {
             window.refresh();
             return;
         }
+        self.begin_leaving(false, window, cx);
+    }
+
+    /// The top dialog fades out (`dialog-out`, with the scrim when it is the
+    /// last one) and closes when that ends; at once under reduced motion.
+    fn begin_leaving(&mut self, cancelled: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.modal.as_ref().map(|m| m.id) else {
+            if self.modal.is_none() {
+                self.focus.focus(window, cx);
+            }
+            return;
+        };
+        if self.ui.dialog_leaving.is_some() {
+            return;
+        }
+        self.ui.dialog_leaving = Some((id, Instant::now(), cancelled));
+        if cx.reduce_motion() {
+            self.finish_leaving(id, window, cx);
+            return;
+        }
+        if self.ui.below.is_empty() {
+            self.scrim.leaving.set(Some(Instant::now()));
+            self.notify_scrim(cx);
+        }
+        window.refresh();
+        cx.notify();
+    }
+
+    /// Closes the dialog that was fading out.
+    fn finish_leaving(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((leaving, _, cancelled)) = self.ui.dialog_leaving else {
+            return;
+        };
+        if leaving != id {
+            return;
+        }
+        self.ui.dialog_leaving = None;
+        self.ui.dialog_shown.borrow_mut().remove(&id);
         if let Some(closed) = self.modal.take() {
             window.close_dialog(cx);
             self.modal = self.ui.below.pop();
-            self.after_close(closed, false, window, cx);
+            self.after_close(closed, cancelled, window, cx);
         }
         if self.modal.is_none() {
+            self.scrim.shown.set(None);
+            self.scrim.leaving.set(None);
+            self.notify_scrim(cx);
             self.focus.focus(window, cx);
+        }
+        window.refresh();
+        cx.notify();
+    }
+
+    fn notify_scrim(&self, cx: &mut Context<Self>) {
+        if let Some(scrim) = &self.scrim_view {
+            scrim.update(cx, |_, cx| cx.notify());
         }
     }
 
@@ -622,7 +675,9 @@ impl Desktop {
         let dialog = match measured {
             Some((body, footer)) => {
                 let height = *body + *footer + px(2.);
-                dialog.margin_top(((window.viewport_size().height - height) / 2.).max(px(16.)))
+                let dialog =
+                    dialog.margin_top(((window.viewport_size().height - height) / 2.).max(px(16.)));
+                dialog.opacity(self.dialog_opacity(id, window, cx))
             }
             None => dialog.opacity(0.),
         };
@@ -633,24 +688,77 @@ impl Desktop {
             .w(px(width))
             .p_0()
             .gap_0()
+            // The original's 13 px body text; the component's default is larger.
+            .text_size(px(13.))
             .bg(widgets::solid(p.flyout))
             .border_color(p.stroke_strong)
             .rounded(px(8.))
             .shadow(widgets::flyout_shadow(p.dark))
             .close_button(false)
-            .entrance(DialogEntrance::FadeSlide)
+            // The entrance, the exit and the scrim (`Scrim`, drawn over the chart
+            // layer too) follow the original; the backdrop only takes the clicks.
+            .entrance(DialogEntrance::None)
             .on_ok(move |_, window, cx| {
                 let _ = enter.update(cx, |this, cx| this.dialog_enter(id, window, cx));
                 false
             })
-            .on_cancel(move |_, _, cx| {
-                cancel
-                    .upgrade()
-                    .is_none_or(|this| this.read(cx).may_close(id))
+            .on_cancel(move |_, window, cx| {
+                if let Some(this) = cancel.upgrade()
+                    && this.read(cx).may_close(id)
+                {
+                    window.defer(cx, move |window, cx| {
+                        this.update(cx, |this, cx| {
+                            if this.modal.as_ref().is_some_and(|m| m.id == id) {
+                                this.begin_leaving(true, window, cx);
+                            }
+                        });
+                    });
+                }
+                false
             })
             .on_close(move |_, window, cx| {
                 let _ = owner.update(cx, |this, cx| this.modal_closed(id, window, cx));
             })
+    }
+
+    /// A shown dialog's opacity: in over 250 ms from its first visible frame
+    /// (`dialog-in`, decelerating), out over 167 ms while it leaves
+    /// (`dialog-out`, accelerating). The original's slight scale is left out.
+    fn dialog_opacity(&self, id: u64, window: &Window, cx: &mut Context<Self>) -> f32 {
+        let shown = *self
+            .ui
+            .dialog_shown
+            .borrow_mut()
+            .entry(id)
+            .or_insert_with(Instant::now);
+        if self.scrim.shown.get().is_none() {
+            self.scrim.shown.set(Some(shown));
+            self.scrim.leaving.set(None);
+            self.notify_scrim(cx);
+        }
+        if cx.reduce_motion() {
+            return 1.;
+        }
+        let entering = (shown.elapsed().as_secs_f32() / 0.25).min(1.);
+        let mut opacity = theme::ease_out(entering);
+        let mut animating = entering < 1.;
+        if let Some((leaving, started, _)) = self.ui.dialog_leaving
+            && leaving == id
+        {
+            let t = (started.elapsed().as_secs_f32() / 0.167).min(1.);
+            opacity *= 1. - theme::ease_in(t);
+            if t >= 1. {
+                cx.defer_in(window, move |this, window, cx| {
+                    this.finish_leaving(id, window, cx)
+                });
+            } else {
+                animating = true;
+            }
+        }
+        if animating {
+            window.request_animation_frame();
+        }
+        opacity
     }
 
     /// A dialog's title in the display face (`.dialog-title`).
@@ -1485,8 +1593,12 @@ impl Desktop {
                                             self.forms.get("value"),
                                             |d, input| {
                                                 d.child(
+                                                    // The original's command box has no
+                                                    // face of its own (`.new-task-input`).
                                                     Input::new(input)
+                                                        .appearance(false)
                                                         .h(px(36.))
+                                                        .px(px(11.))
                                                         .font_family(theme::MONO_FONT)
                                                         .disabled(pending),
                                                 )
@@ -2748,4 +2860,55 @@ impl Desktop {
 /// The executable name as the processes report it, else as given.
 fn name_of(same: &[&Value]) -> Option<String> {
     same.first().map(|p| text(p, "name").to_owned())
+}
+
+/// When the dim behind the dialogs (`.scrim`) came and started to go.
+#[derive(Default)]
+pub(super) struct ScrimState {
+    pub shown: Cell<Option<Instant>>,
+    pub leaving: Cell<Option<Instant>>,
+}
+
+/// The dim behind dialogs, a layer of its own over the desktop and its chart
+/// layer, so the moving curves dim with everything else; the caption buttons
+/// stay above it. It fades in over 167 ms when the first dialog shows and out
+/// (accelerating) with the last.
+pub(super) struct Scrim {
+    pub state: Rc<ScrimState>,
+}
+
+impl Render for Scrim {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let reduce = cx.reduce_motion();
+        let progress = |since: Instant| {
+            if reduce {
+                1.
+            } else {
+                (since.elapsed().as_secs_f32() / 0.167).min(1.)
+            }
+        };
+        let level = match (self.state.shown.get(), self.state.leaving.get()) {
+            (_, Some(leaving)) => 1. - theme::ease_in(progress(leaving)),
+            (Some(shown), None) => progress(shown),
+            (None, None) => 0.,
+        };
+        let settled = match (self.state.shown.get(), self.state.leaving.get()) {
+            (_, Some(leaving)) => progress(leaving) >= 1.,
+            (Some(shown), None) => progress(shown) >= 1.,
+            (None, None) => true,
+        };
+        if !settled {
+            window.request_animation_frame();
+        }
+        let color = theme::token("scrim", Palette::current(cx).dark).opacity(level);
+        // The caption buttons stay above the dim, as the original's (`.caption`
+        // over `.scrim`): the toolbar row stops short of them.
+        let toolbar = theme::dimension("toolbarHeight");
+        let captions = gpui_kit::component::TITLE_BAR_HEIGHT * 3.;
+        let dim = || div().absolute().bg(color);
+        div().absolute().inset_0().when(level > 0., |d| {
+            d.child(dim().top_0().left_0().right(captions).h(toolbar))
+                .child(dim().top(toolbar).left_0().right_0().bottom_0())
+        })
+    }
 }

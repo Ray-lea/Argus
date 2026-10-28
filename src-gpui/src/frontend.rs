@@ -136,6 +136,9 @@ struct Desktop {
     chart_clock: Rc<RefCell<motion::Clock>>,
     chart_entries: RefCell<HashMap<String, charts::ChartEntry>>,
     chart_layer: Option<Entity<charts::ChartLayer>>,
+    /// The dim behind dialogs and its layer (over the chart layer).
+    scrim: Rc<dialogs::ScrimState>,
+    scrim_view: Option<Entity<dialogs::Scrim>>,
     active_charts: Rc<RefCell<HashSet<String>>>,
     chart_placements: charts::Placements,
     page_opacity: Rc<Cell<f32>>,
@@ -241,6 +244,8 @@ impl Desktop {
             chart_clock: Rc::new(RefCell::new(motion::Clock::new(motion::Mode::Off))),
             chart_entries: RefCell::new(HashMap::new()),
             chart_layer: None,
+            scrim: Rc::new(dialogs::ScrimState::default()),
+            scrim_view: None,
             active_charts: Rc::new(RefCell::new(HashSet::new())),
             chart_placements: Rc::new(RefCell::new(HashMap::new())),
             page_opacity: Rc::new(Cell::new(1.)),
@@ -506,9 +511,13 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 let charts =
                     cx.new(|_| charts::ChartLayer::new(placements, clock, active, opacity));
                 view.update(cx, |desktop, _| desktop.chart_layer = Some(charts.clone()));
+                let state = view.read(cx).scrim.clone();
+                let scrim = cx.new(|_| dialogs::Scrim { state });
+                view.update(cx, |desktop, _| desktop.scrim_view = Some(scrim.clone()));
                 cx.new(|_| DesktopRoot {
                     desktop: view,
                     charts,
+                    scrim,
                 })
             })
             .expect("create native window");
@@ -523,6 +532,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
 struct DesktopRoot {
     desktop: Entity<Desktop>,
     charts: Entity<charts::ChartLayer>,
+    scrim: Entity<dialogs::Scrim>,
 }
 
 impl Render for DesktopRoot {
@@ -536,5 +546,6 @@ impl Render for DesktopRoot {
                     .cached(StyleRefinement::default().size_full()),
             )
             .child(self.charts.clone())
+            .child(self.scrim.clone())
     }
 }

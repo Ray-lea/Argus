@@ -249,7 +249,9 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     theme.colors.chart_4 = color("net");
     theme.colors.chart_5 = color("gpu");
     theme.colors.chart_bullish = color("bat");
-    theme.colors.overlay = color("scrim");
+    // Dialogs dim the window with their own fading layer (`dialogs::Scrim`);
+    // the component backdrop only takes the clicks outside them.
+    theme.colors.overlay = color("scrim").opacity(0.);
     // Dialogs, menus and notices use the 8 px radius of the original surfaces.
     theme.radius_lg = px(8.);
     theme.tokens = theme.colors.into();
