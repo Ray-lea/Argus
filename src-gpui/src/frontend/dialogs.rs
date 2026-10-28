@@ -205,7 +205,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         self.popup = None;
-        self.ui.select = None;
+        self.close_select();
         let name = text(&args, "name").to_owned();
         let members = values(&args["members"]).to_vec();
         let first = members.first().cloned().unwrap_or(Value::Null);
@@ -487,7 +487,7 @@ impl Desktop {
     ) {
         if self.popup.is_some() || self.ui.select.is_some() {
             self.popup = None;
-            self.ui.select = None;
+            self.close_select();
             window.refresh();
             return;
         }
@@ -2631,8 +2631,8 @@ impl Desktop {
                     .border_1()
                     .border_color(p.stroke_strong)
                     .rounded(px(8.))
+                    // No shadow, as the original's toasts (`.toast`).
                     .bg(widgets::solid(p.flyout))
-                    .shadow(widgets::flyout_shadow(p.dark))
                     .text_color(p.ink)
                     .text_size(px(13.))
                     .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {

@@ -472,56 +472,48 @@ impl Desktop {
             cx,
         )];
         if engines.len() > 1 {
+            // A drop-down like every other choice of the original (its
+            // `Select`): the list opens under the button, not at the pointer.
             let smart = is_smart(choice.as_ref());
-            let current = if smart {
-                label("performance.gpu.engineSmart")
-            } else if shown.len() == engines.len() {
-                tr!("performance.gpu.engineCountAll", count = engines.len())
-            } else {
-                tr!("performance.gpu.engineCountOption", count = shown.len())
-            };
-            let mut items = vec![
-                MenuItem::new(
-                    label("performance.gpu.engineSmart"),
-                    save(with_smart(&engines, choice.as_ref())),
-                )
-                .checked(smart),
-            ];
+            let mut options = vec![label("performance.gpu.engineSmart")];
+            let mut actions = vec![save(with_smart(&engines, choice.as_ref()))];
             for count in 1..=engines.len() {
-                items.push(
-                    MenuItem::new(
-                        if count == engines.len() {
-                            tr!("performance.gpu.engineCountAll", count = count)
-                        } else {
-                            tr!("performance.gpu.engineCountOption", count = count)
-                        },
-                        save(with_count(&engines, choice.as_ref(), count, &shown)),
-                    )
-                    .checked(!smart && shown.len() == count),
-                );
+                options.push(if count == engines.len() {
+                    tr!("performance.gpu.engineCountAll", count = count)
+                } else {
+                    tr!("performance.gpu.engineCountOption", count = count)
+                });
+                actions.push(save(with_count(&engines, choice.as_ref(), count, &shown)));
             }
-            let select = self
-                .button(
-                    "gpu-engine-count",
-                    current,
-                    None,
-                    Action::Popup(items),
-                    false,
-                    cx,
-                )
-                .border_1()
-                .border_color(p.stroke)
-                .bg(p.control)
-                .child(icon("ChevronDown", p.muted).size(px(12.)))
-                .when(smart, |b| {
-                    b.tooltip(|window, cx| {
+            let selected = if smart { 0 } else { shown.len() };
+            let select = self.select(
+                "gpu-engine-count",
+                label("performance.gpu.engineCount"),
+                options,
+                Some(selected),
+                false,
+                move |this, index, window, cx| {
+                    if let Some(action) = actions.get(index) {
+                        this.act(action.clone(), window, cx);
+                    }
+                },
+                cx,
+            );
+            let select = if smart {
+                div()
+                    .id("gpu-engine-count-tip")
+                    .flex_shrink_0()
+                    .child(select)
+                    .tooltip(|window, cx| {
                         gpui_kit::component::tooltip::Tooltip::new(label(
                             "performance.gpu.engineSmartTitle",
                         ))
                         .build(window, cx)
                     })
-                })
-                .into_any_element();
+                    .into_any_element()
+            } else {
+                select
+            };
             let layouts = self.segments(
                 "gpu-layout",
                 LAYOUTS
@@ -658,15 +650,9 @@ impl Desktop {
                 },
                 cx,
             );
-            let options = engines
+            let actions = engines
                 .iter()
-                .map(|engine| {
-                    MenuItem::new(
-                        engine.clone(),
-                        save(with_engine(&engines, choice.as_ref(), slot, engine, &shown)),
-                    )
-                    .checked(engine == name)
-                })
+                .map(|engine| save(with_engine(&engines, choice.as_ref(), slot, engine, &shown)))
                 .collect::<Vec<_>>();
             let load = gpu["engines"][index].as_f64().unwrap_or(0.);
             let head = div()
@@ -680,22 +666,23 @@ impl Desktop {
                 .pb(px(3.))
                 .whitespace_nowrap()
                 .child(
-                    self.button(
-                        format!("gpu-engine-choice-{slot}"),
-                        name.clone(),
-                        None,
-                        Action::Popup(options),
-                        false,
-                        cx,
-                    )
-                    .min_h_0()
-                    .h(px(18.))
-                    .px(px(4.))
-                    .py_0()
-                    .gap_1()
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .child(icon("ChevronDown", p.muted).size(px(10.))),
+                    div()
+                        .min_w_0()
+                        .flex()
+                        .text_size(px(12.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(self.select_compact(
+                            format!("gpu-engine-choice-{slot}"),
+                            label("performance.gpu.engineType"),
+                            engines.clone(),
+                            engines.iter().position(|engine| engine == name),
+                            move |this, index, window, cx| {
+                                if let Some(action) = actions.get(index) {
+                                    this.act(action.clone(), window, cx);
+                                }
+                            },
+                            cx,
+                        )),
                 )
                 .child(
                     div()

@@ -186,7 +186,12 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     let mut tokens = theme.semantic_tokens();
     tokens.colors.background = color("window-bg");
     tokens.colors.foreground = color("ink");
-    tokens.colors.surface = color("flyout");
+    // Opaque: menus paint their shadow under the whole surface, where it would
+    // darken a translucent one (the original blurs what is behind instead).
+    tokens.colors.surface = Hsla {
+        a: 1.,
+        ..color("flyout")
+    };
     tokens.colors.surface_foreground = color("ink");
     tokens.colors.primary = color("accent");
     if let Some(accent) = argus_core::theme::accent_colors() {

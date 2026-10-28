@@ -36,6 +36,7 @@ pub(in crate::frontend) struct Toast {
 }
 
 /// A drop-down list that is open, and where its button is.
+#[derive(Clone)]
 pub(in crate::frontend) struct OpenSelect {
     pub id: SharedString,
     pub options: Vec<String>,
@@ -87,6 +88,8 @@ pub(in crate::frontend) struct UiState {
     pub toasts: Vec<Toast>,
     pub toast_seq: u64,
     pub select: Option<OpenSelect>,
+    /// The drop-down list that just closed, fading out (`.menu.leaving`).
+    pub select_leaving: Option<(OpenSelect, Instant)>,
     pub anchors: Rc<RefCell<HashMap<SharedString, Bounds<Pixels>>>>,
     pub focus: RefCell<HashMap<SharedString, FocusHandle>>,
     /// Dialogs under the top one (`Desktop::modal`), bottom first.
@@ -698,6 +701,37 @@ impl Desktop {
         pick: impl Fn(&mut Desktop, usize, &mut Window, &mut Context<Desktop>) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        self.select_with(id, name, options, selected, disabled, false, pick, cx)
+    }
+
+    /// A drop-down inside a chart label (`.select.compact`): the label's size
+    /// and colour, a face only on hover or while open, as wide as the current
+    /// choice; the same list opens under it.
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::frontend) fn select_compact(
+        &self,
+        id: impl Into<SharedString>,
+        name: impl Into<SharedString>,
+        options: Vec<String>,
+        selected: Option<usize>,
+        pick: impl Fn(&mut Desktop, usize, &mut Window, &mut Context<Desktop>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        self.select_with(id, name, options, selected, false, true, pick, cx)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn select_with(
+        &self,
+        id: impl Into<SharedString>,
+        name: impl Into<SharedString>,
+        options: Vec<String>,
+        selected: Option<usize>,
+        disabled: bool,
+        compact: bool,
+        pick: impl Fn(&mut Desktop, usize, &mut Window, &mut Context<Desktop>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let id: SharedString = id.into();
         let p = self.palette;
         let open = self.ui.select.as_ref().is_some_and(|s| s.id == id);
@@ -710,7 +744,7 @@ impl Desktop {
             let options = options.clone();
             Rc::new(move |this, window, cx| {
                 if this.ui.select.as_ref().is_some_and(|s| s.id == id) {
-                    this.ui.select = None;
+                    this.close_select();
                 } else {
                     let anchor = this
                         .ui
@@ -752,46 +786,79 @@ impl Desktop {
             .accessibility_label(name.into())
             .key_context("Combobox")
             .relative()
-            .h(px(32.))
-            .pl(px(11.))
-            .pr(px(10.))
-            .gap(px(10.))
             .flex_shrink_0()
             .justify_start()
             .rounded(px(4.))
             .border_1()
-            .border_color(p.stroke)
-            .bg(if open {
-                p.control_hover
-            } else {
-                p.control_face
-            })
-            .text_color(p.ink)
-            .text_size(px(13.))
             .hover(move |s| s.bg(p.control_hover))
-            .active(move |s| s.text_color(p.muted))
-            .child(control_edge(&p))
-            .child(
-                // Every label in one column, the others without height: the
-                // button is as wide as the longest.
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .children(options.iter().enumerate().map(|(index, option)| {
-                        div()
-                            .whitespace_nowrap()
-                            .when(Some(index) != selected, |d| {
-                                d.h_0().overflow_hidden().invisible()
-                            })
-                            .child(option.clone())
-                    })),
-            )
-            .child(icon("ChevronDown", p.muted).size(px(12.)))
-            .on_prepaint(move |bounds, _, _| {
-                anchors.borrow_mut().insert(anchor_id, bounds);
+            .map(|button| {
+                if compact {
+                    button
+                        .min_w_0()
+                        .h(px(18.))
+                        .ml(px(-4.))
+                        .pl(px(4.))
+                        .pr(px(2.))
+                        .gap(px(2.))
+                        .border_color(gpui_kit::gpui::transparent_black())
+                        .when(open, |b| b.bg(p.control_hover))
+                        .child(
+                            div().min_w_0().truncate().child(
+                                selected
+                                    .and_then(|i| options.get(i))
+                                    .cloned()
+                                    .unwrap_or_default(),
+                            ),
+                        )
+                } else {
+                    button
+                        .h(px(32.))
+                        .pl(px(11.))
+                        .pr(px(10.))
+                        .gap(px(10.))
+                        .border_color(p.stroke)
+                        .bg(if open {
+                            p.control_hover
+                        } else {
+                            p.control_face
+                        })
+                        .text_color(p.ink)
+                        .text_size(px(13.))
+                        .active(move |s| s.text_color(p.muted))
+                        .child(control_edge(&p))
+                        .child(
+                            // Every label in one column, the others without
+                            // height: the button is as wide as the longest.
+                            div().flex_1().flex().flex_col().children(
+                                options.iter().enumerate().map(|(index, option)| {
+                                    div()
+                                        .whitespace_nowrap()
+                                        .when(Some(index) != selected, |d| {
+                                            d.h_0().overflow_hidden().invisible()
+                                        })
+                                        .child(option.clone())
+                                }),
+                            ),
+                        )
+                }
             })
-            .inert(disabled)
+            .child(icon("ChevronDown", p.muted).size(px(12.)))
+            // The button's border box, which the list lines up with: an absolute
+            // child fills the padding box (`on_prepaint` would measure from where
+            // its probe sits after the padding), plus the 1 px border.
+            .child(
+                canvas(
+                    move |bounds, _, _| {
+                        anchors
+                            .borrow_mut()
+                            .insert(anchor_id, bounds.dilate(px(1.)));
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .inert_dimmed(disabled)
             .on_click({
                 let toggle = toggle.clone();
                 cx.listener(move |this, _, window, cx| toggle(this, window, cx))
@@ -841,7 +908,7 @@ impl Desktop {
                     move |this, _: &gpui_kit::base::actions::Cancel, window, cx| {
                         if is_open(this) {
                             // Only the list closes, not a dialog around it.
-                            this.ui.select = None;
+                            this.close_select();
                             window.refresh();
                             cx.notify();
                         } else {
@@ -860,7 +927,7 @@ impl Desktop {
                 match event.keystroke.key.as_str() {
                     "home" => open.active = 0,
                     "end" => open.active = open.options.len().saturating_sub(1),
-                    "tab" => this.ui.select = None,
+                    "tab" => this.close_select(),
                     _ => return,
                 }
                 window.refresh();
@@ -870,6 +937,13 @@ impl Desktop {
             .into_any_element()
     }
 
+    /// Closes the open drop-down; its list fades out.
+    pub(in crate::frontend) fn close_select(&mut self) {
+        if let Some(open) = self.ui.select.take() {
+            self.ui.select_leaving = Some((open, Instant::now()));
+        }
+    }
+
     /// Takes the active (or given) option of the open drop-down.
     pub(in crate::frontend) fn pick_select(
         &mut self,
@@ -877,9 +951,10 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(open) = self.ui.select.take() else {
+        let Some(open) = self.ui.select.clone() else {
             return;
         };
+        self.close_select();
         let index = index.unwrap_or(open.active);
         let focus = self.ui.focus.borrow().get(&open.id).cloned();
         if let Some(focus) = focus {
@@ -901,7 +976,28 @@ impl Desktop {
         const ITEM: f32 = 32.;
         const GAP: f32 = 4.;
         const MARGIN: f32 = 8.;
-        let open = self.ui.select.as_ref()?;
+        let reduce = cx.reduce_motion();
+        let leaving = self
+            .ui
+            .select_leaving
+            .as_ref()
+            .filter(|(_, at)| !reduce && at.elapsed().as_secs_f32() < 0.083);
+        let interactive = self.ui.select.is_some();
+        let (open, opacity) = match (&self.ui.select, leaving) {
+            // Grows in over 167 ms, decelerating (`flyout-in`; its slight
+            // scale is left out).
+            (Some(open), _) => (
+                open,
+                if reduce {
+                    1.
+                } else {
+                    theme::ease_out((open.opened.elapsed().as_secs_f32() / 0.167).min(1.))
+                },
+            ),
+            // Fades out over 83 ms, linear (`fade-out`), without taking input.
+            (None, Some((open, at))) => (open, 1. - at.elapsed().as_secs_f32() / 0.083),
+            (None, None) => return None,
+        };
         let p = self.palette;
         let viewport = window.viewport_size();
         let anchor = open.anchor;
@@ -920,17 +1016,12 @@ impl Desktop {
             .left()
             .min(viewport.width - px(MARGIN) - anchor.size.width)
             .max(px(MARGIN));
-        let opacity = if cx.reduce_motion() {
-            1.
-        } else {
-            (open.opened.elapsed().as_secs_f32() / 0.083).min(1.)
-        };
         if opacity < 1. {
             window.request_animation_frame();
         }
         let list = div()
             .id("select-list")
-            .occlude()
+            .when(interactive, |d| d.occlude())
             .absolute()
             .left(left)
             .top(top)
@@ -941,8 +1032,9 @@ impl Desktop {
             .border_1()
             .border_color(p.stroke_strong)
             .rounded(px(8.))
-            .bg(p.flyout)
-            .shadow(flyout_shadow(p.dark))
+            // No shadow, as the original's menus and lists (window.md); opaque,
+            // where the original blurs what is behind its translucent face.
+            .bg(solid(p.flyout))
             .opacity(opacity)
             .text_size(px(13.))
             .text_color(p.ink)
@@ -993,17 +1085,17 @@ impl Desktop {
                         .id("select-scrim")
                         .w(viewport.width)
                         .h(viewport.height)
-                        .occlude()
+                        .when(interactive, |d| d.occlude())
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(|this, _, window, cx| {
-                                this.ui.select = None;
+                                this.close_select();
                                 window.refresh();
                                 cx.notify();
                             }),
                         )
                         .on_scroll_wheel(cx.listener(|this, _, window, cx| {
-                            this.ui.select = None;
+                            this.close_select();
                             window.refresh();
                             cx.notify();
                         }))
