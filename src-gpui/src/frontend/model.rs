@@ -1,4 +1,5 @@
 //! Renderer-independent view state and deterministic process identity/grouping.
+use super::collation::{self, SortKey};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
@@ -137,7 +138,8 @@ pub struct Row {
     pub key: String,
     pub raw: Value,
     pub title: String,
-    sort_name: String,
+    /// The title's collation key in the interface language.
+    sort_name: SortKey,
     pub detail: String,
     pub members: Vec<Value>,
     pub depth: usize,
@@ -160,7 +162,7 @@ impl Row {
         };
         Self {
             key: identity(&raw),
-            sort_name: title.to_lowercase(),
+            sort_name: collation::key(&title),
             title,
             detail,
             members: vec![raw.clone()],
@@ -377,7 +379,7 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
                 let mut row = Row::process(p, 0);
                 if row.raw["webView"].is_null() {
                     row.title = text(&row.raw, "name").into();
-                    row.sort_name = row.title.to_lowercase();
+                    row.sort_name = collation::key(&row.title);
                     row.detail = text(&row.raw, "description").into();
                 } else if let Some(role) = web_role(&row.raw) {
                     row.detail = format!("{} · {role}", text(&row.raw, "name"));
@@ -519,7 +521,7 @@ fn append_groups(
                 .map(|p| {
                     let mut row = Row::process(p, 1);
                     row.title = web_role(&row.raw).unwrap_or_else(|| text(&row.raw, "name").into());
-                    row.sort_name = row.title.to_lowercase();
+                    row.sort_name = collation::key(&row.title);
                     row.detail = if row.raw["webView"].is_null() {
                         String::new()
                     } else {

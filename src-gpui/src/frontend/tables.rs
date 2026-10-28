@@ -1296,29 +1296,45 @@ impl Desktop {
                 .first()
                 .map(|field| field.key)
                 .unwrap_or("name");
+            // The original's table order: text collates as names do, numbers
+            // compare by value, and equal rows keep the source order.
+            let owner = |row: &Row| {
+                row.raw["pid"]
+                    .as_u64()
+                    .and_then(|pid| processes.get(&pid))
+                    .map_or("", |p| text(p, "name"))
+            };
             rows.sort_by(|a, b| {
                 let key = self.sort.as_str();
-                let order = if key == first {
-                    natural_cmp(&a.title, &b.title)
+                let order = if key == first && self.page == "network" {
+                    // Owners sort by executable name, as in the original.
+                    collation::compare(owner(a), owner(b))
+                } else if key == first {
+                    collation::compare(&a.title, &b.title)
                 } else if key == "protocol" {
-                    natural_cmp(text(&a.raw, key), text(&b.raw, key))
+                    collation::compare(text(&a.raw, key), text(&b.raw, key))
                         .then_with(|| boolean(&a.raw, "ipv6").cmp(&boolean(&b.raw, "ipv6")))
                 } else {
                     match (&a.raw[key], &b.raw[key]) {
                         (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
-                        (Value::Number(a), Value::Number(b)) => a
+                        // A missing port compares as 0.
+                        (
+                            a @ (Value::Number(_) | Value::Null),
+                            b @ (Value::Number(_) | Value::Null),
+                        ) if a.is_number() || b.is_number() => a
                             .as_f64()
                             .unwrap_or(0.)
                             .total_cmp(&b.as_f64().unwrap_or(0.)),
-                        (a, b) => natural_cmp(a.as_str().unwrap_or(""), b.as_str().unwrap_or("")),
+                        (a, b) => {
+                            collation::compare(a.as_str().unwrap_or(""), b.as_str().unwrap_or(""))
+                        }
                     }
                 };
-                let order = if self.descending {
+                if self.descending {
                     order.reverse()
                 } else {
                     order
-                };
-                order.then_with(|| a.key.cmp(&b.key))
+                }
             });
             rows
         };
@@ -1608,40 +1624,6 @@ impl Desktop {
 }
 /// Case-insensitive comparison that orders digit runs by value, like `Intl.Collator`
 /// with `numeric: true`.
-fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
-    let (mut a, mut b) = (a.chars().peekable(), b.chars().peekable());
-    loop {
-        match (a.peek().copied(), b.peek().copied()) {
-            (None, None) => return std::cmp::Ordering::Equal,
-            (None, Some(_)) => return std::cmp::Ordering::Less,
-            (Some(_), None) => return std::cmp::Ordering::Greater,
-            (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
-                let take = |chars: &mut std::iter::Peekable<std::str::Chars>| {
-                    let mut digits = String::new();
-                    while let Some(c) = chars.peek().copied().filter(char::is_ascii_digit) {
-                        digits.push(c);
-                        chars.next();
-                    }
-                    digits
-                };
-                let (x, y) = (take(&mut a), take(&mut b));
-                let (x, y) = (x.trim_start_matches('0'), y.trim_start_matches('0'));
-                let order = x.len().cmp(&y.len()).then_with(|| x.cmp(y));
-                if order.is_ne() {
-                    return order;
-                }
-            }
-            (Some(x), Some(y)) => {
-                let order = x.to_lowercase().cmp(y.to_lowercase());
-                if order.is_ne() {
-                    return order;
-                }
-                a.next();
-                b.next();
-            }
-        }
-    }
-}
 impl Desktop {
     /// Puts the table's own selection back on the selected row (or none), after
     /// a click the desktop did not turn into a selection.

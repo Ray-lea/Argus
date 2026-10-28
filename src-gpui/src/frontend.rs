@@ -2,6 +2,7 @@
 mod assets;
 mod backend;
 mod charts;
+mod collation;
 mod dialogs;
 mod layout;
 mod menus;
