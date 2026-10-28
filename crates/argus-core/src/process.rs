@@ -25,6 +25,7 @@ use crate::nt::{
     ProcessEntry, ProcessIter, THREAD_STATE_WAITING, WAIT_REASON_SUSPENDED,
     query_system_information,
 };
+use crate::package::{AppMeta, Identity};
 use crate::paths::PathResolver;
 use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, ticks_to_unix_ms};
 use crate::webview::{self, Instance, WebViewInfo};
@@ -38,6 +39,8 @@ pub struct ProcessRow {
     pub create_time: i64,
     pub name: Arc<str>,
     pub path: Option<Arc<str>>,
+    /// A packaged app's display name for its own executable, otherwise the
+    /// executable's file description.
     pub description: Option<Arc<str>>,
     pub company: Option<Arc<str>>,
     pub icon: Option<u32>,
@@ -107,7 +110,21 @@ struct Tracked {
     /// denied, which is final for that instance).
     handle: Option<OwnedHandle>,
     web_view: Option<Box<webview::State>>,
+    package: Option<Box<Package>>,
 }
+
+/// A packaged app's process: its identity, then the app once resolved.
+struct Package {
+    identity: Identity,
+    app: Option<Arc<AppMeta>>,
+    /// The app's name if this process is the app's own executable.
+    own_name: Option<Arc<str>>,
+    /// While the app's name is pending, the process shows its executable's
+    /// name rather than a description about to change; not for longer than
+    /// `PACKAGE_WAIT`, should the shell be slow.
+    since: Instant,
+}
+const PACKAGE_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
 
 pub(crate) struct ProcessTracker {
     buf: AlignedBuf,
@@ -209,6 +226,18 @@ impl ProcessTracker {
                     // Started since the last sample: everything it consumed is new.
                     let started = elapsed.is_some() && p.create_time > prev_systime;
                     let prev = started.then_some((0, 0, [0; 3], Some((0, 0))));
+                    let handle = query_handle(pid, p.create_time);
+                    let package = handle
+                        .as_ref()
+                        .and_then(|h| crate::package::identity(h.0))
+                        .map(|identity| {
+                            Box::new(Package {
+                                identity,
+                                app: None,
+                                own_name: None,
+                                since: now,
+                            })
+                        });
                     (
                         slot.insert(Tracked {
                             seen: self.generation,
@@ -221,8 +250,9 @@ impl ProcessTracker {
                             cpu_cycles: p.cycle_time,
                             io,
                             disk,
-                            handle: query_handle(pid, p.create_time),
+                            handle,
                             web_view: runtime,
+                            package,
                         }),
                         prev,
                     )
@@ -237,6 +267,13 @@ impl ProcessTracker {
                 && let Some(path) = &entry.path
             {
                 entry.meta = self.meta.get_or_request(path);
+            }
+            if let Some(package) = entry.package.as_mut()
+                && package.app.is_none()
+                && let Some(app) = self.meta.app_or_request(&package.identity)
+            {
+                package.own_name = app.name_for(entry.path.as_deref());
+                package.app = Some(app);
             }
 
             let (cpu, rates) = match (prev, capacity_ticks, elapsed) {
@@ -273,7 +310,16 @@ impl ProcessTracker {
                 create_time: ticks_to_unix_ms(p.create_time),
                 name: entry.name.clone(),
                 path: entry.path.clone(),
-                description: meta.and_then(|m| m.description.clone()),
+                description: match entry.package.as_deref() {
+                    Some(p) if p.app.is_none() && now.duration_since(p.since) < PACKAGE_WAIT => {
+                        None
+                    }
+                    Some(Package {
+                        own_name: Some(name),
+                        ..
+                    }) => Some(name.clone()),
+                    _ => meta.and_then(|m| m.description.clone()),
+                },
                 company: meta.and_then(|m| m.company.clone()),
                 icon: meta.and_then(|m| m.icon),
                 web_view: None,
@@ -352,14 +398,14 @@ impl ProcessTracker {
             {
                 runtime.learn_context(&context);
             }
-            let runtime = self
-                .tracked
-                .get_mut(&key)
-                .unwrap()
-                .web_view
-                .as_mut()
-                .unwrap();
-            rows[index].web_view = Some(runtime.view(context, &self.meta));
+            let entry = self.tracked.get_mut(&key).unwrap();
+            // A WebView2 process inherits its host's package identity: the host app's name.
+            let app = entry
+                .package
+                .as_ref()
+                .and_then(|p| p.app.as_ref()?.name.clone());
+            let runtime = entry.web_view.as_mut().unwrap();
+            rows[index].web_view = Some(runtime.view(context, &self.meta, app));
         }
         if self.webviews.capacity() > (self.webviews.len() + 8) * 2 {
             self.webviews.shrink_to(self.webviews.len() + 8);

@@ -1,5 +1,5 @@
-//! Per-executable metadata (version strings, icon), resolved off the sampling
-//! thread and cached by path.
+//! Per-executable metadata (version strings, icon) and packaged app names,
+//! resolved off the sampling thread and cached by path or app.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -18,6 +18,7 @@ use windows::Win32::UI::Shell::{SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetF
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 use windows::core::PCWSTR;
 
+use crate::package::{self, AppMeta, Identity};
 use crate::util::wide;
 
 /// Metadata shared by every process running the same executable.
@@ -35,26 +36,39 @@ struct Inner {
     by_path: HashMap<String, Arc<FileMeta>>,
     pending: HashSet<String>,
     icons: Vec<Arc<[u8]>>,
+    /// By package full name and app ID: one package version's app.
+    apps: HashMap<(Box<str>, Box<str>), Arc<AppMeta>>,
+    apps_pending: HashSet<(Box<str>, Box<str>)>,
 }
 
 pub struct MetaStore {
     inner: RwLock<Inner>,
     queue: Sender<String>,
+    /// Apps resolve on their own thread: the shell takes 10–50 ms per app,
+    /// which would hold up every executable's icon queued behind it.
+    apps: Sender<Identity>,
 }
 
 impl MetaStore {
-    /// Creates the store and its background resolver thread.
+    /// Creates the store and its background resolver threads.
     pub fn new() -> Arc<Self> {
         let (tx, rx) = mpsc::channel();
+        let (apps_tx, apps_rx) = mpsc::channel();
         let store = Arc::new(Self {
             inner: RwLock::default(),
             queue: tx,
+            apps: apps_tx,
         });
         let weak = Arc::downgrade(&store);
         std::thread::Builder::new()
             .name("argus-meta".into())
             .spawn(move || worker(weak, rx))
             .expect("spawn meta worker");
+        let weak = Arc::downgrade(&store);
+        std::thread::Builder::new()
+            .name("argus-apps".into())
+            .spawn(move || app_worker(weak, apps_rx))
+            .expect("spawn app name worker");
         store
     }
 
@@ -73,6 +87,25 @@ impl MetaStore {
         let mut inner = self.inner.write().unwrap();
         if inner.pending.insert(key) {
             let _ = self.queue.send(path.to_owned());
+        }
+        None
+    }
+
+    /// The packaged app a process runs as; schedules resolution on a miss.
+    pub(crate) fn app_or_request(&self, identity: &Identity) -> Option<Arc<AppMeta>> {
+        let key = (identity.full_name.clone(), identity.aumid.clone());
+        {
+            let inner = self.inner.read().unwrap();
+            if let Some(app) = inner.apps.get(&key) {
+                return Some(app.clone());
+            }
+            if inner.apps_pending.contains(&key) {
+                return None;
+            }
+        }
+        let mut inner = self.inner.write().unwrap();
+        if inner.apps_pending.insert(key) {
+            let _ = self.apps.send(identity.clone());
         }
         None
     }
@@ -104,6 +137,13 @@ impl MetaStore {
         inner.pending.remove(&key);
         inner.by_path.insert(key, Arc::new(meta));
     }
+
+    fn insert_app(&self, identity: Identity, app: AppMeta) {
+        let key = (identity.full_name, identity.aumid);
+        let mut inner = self.inner.write().unwrap();
+        inner.apps_pending.remove(&key);
+        inner.apps.insert(key, Arc::new(app));
+    }
 }
 
 fn worker(store: Weak<MetaStore>, rx: Receiver<String>) {
@@ -117,6 +157,20 @@ fn worker(store: Weak<MetaStore>, rx: Receiver<String>) {
         let icon = extract_icon_png(&path);
         match store.upgrade() {
             Some(store) => store.insert(&path, version, icon, &system_root),
+            None => return,
+        }
+    }
+}
+
+fn app_worker(store: Weak<MetaStore>, rx: Receiver<Identity>) {
+    // The shell's Applications folder requires COM on the calling thread.
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+    }
+    while let Ok(identity) = rx.recv() {
+        let app = package::resolve(&identity);
+        match store.upgrade() {
+            Some(store) => store.insert_app(identity, app),
             None => return,
         }
     }

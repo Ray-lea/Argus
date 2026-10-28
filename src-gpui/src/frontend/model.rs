@@ -1,6 +1,8 @@
 //! Renderer-independent view state and deterministic process identity/grouping.
+use super::collation::{self, SortKey};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub fn number(value: &Value, key: &str) -> f64 {
     value.get(key).and_then(Value::as_f64).unwrap_or(0.)
@@ -110,34 +112,60 @@ pub fn application_key(p: &Value) -> String {
         .unwrap_or_else(|| path.strip_prefix(r"\\?\").unwrap_or(&path).to_owned());
     format!("g:image:{path}")
 }
+/// "WebView2: <host app>" for a WebView2 process, from the app that hosts it.
+fn web_title(p: &Value) -> Option<String> {
+    let web = &p["webView"];
+    let host = web["hostDescription"]
+        .as_str()
+        .or_else(|| web["hostName"].as_str())
+        .filter(|host| !host.is_empty())?;
+    Some(argus_core::tr!("processes.webView.host", name = host))
+}
+/// A process's own title: its WebView2 host, its description, or its name.
 pub fn title(p: &Value) -> String {
-    if !p["webView"].is_null() {
-        let web = &p["webView"];
-        let host = web["hostDescription"]
-            .as_str()
-            .or_else(|| web["hostName"].as_str());
-        if let Some(host) = host {
-            return argus_core::tr!("processes.webView.host", name = host);
+    web_title(p).unwrap_or_else(|| {
+        let description = text(p, "description");
+        if description.is_empty() {
+            text(p, "name").to_owned()
+        } else {
+            description.to_owned()
         }
-    }
-    let description = text(p, "description");
-    if description.is_empty() {
-        text(p, "name").to_owned()
-    } else {
-        description.to_owned()
-    }
+    })
 }
 fn web_role(p: &Value) -> Option<String> {
     let role = text(&p["webView"], "role");
     (!role.is_empty() && role != "unknown")
         .then(|| argus_core::i18n::text(&format!("processes.webView.role.{role}")))
 }
+/// The text beside a process titled by its executable name or WebView2 host.
+fn process_detail(p: &Value) -> String {
+    match web_role(p) {
+        Some(role) => format!("{} · {role}", text(p, "name")),
+        None if web_title(p).is_some() => text(p, "name").to_owned(),
+        None => text(p, "description").to_owned(),
+    }
+}
+/// "Service Host: DNS Client" for a service host, which its description does not tell apart.
+fn service_title(p: &Value, hosted: &HashMap<u64, Vec<String>>) -> Option<String> {
+    if !text(p, "name").eq_ignore_ascii_case("svchost.exe") {
+        return None;
+    }
+    let names = p["pid"]
+        .as_u64()
+        .and_then(|pid| hosted.get(&pid))
+        .filter(|names| !names.is_empty())?;
+    Some(argus_core::tr!(
+        "processes.serviceHost",
+        names = summarize_services(names)
+    ))
+}
 #[derive(Clone)]
 pub struct Row {
     pub key: String,
     pub raw: Value,
     pub title: String,
-    sort_name: String,
+    /// The title's collation key; set where process lists are built.
+    sort_name: SortKey,
     pub detail: String,
     pub members: Vec<Value>,
     pub depth: usize,
@@ -151,16 +179,10 @@ pub struct Row {
     visible_members: Option<Vec<Value>>,
 }
 impl Row {
-    pub fn process(raw: Value, depth: usize) -> Self {
-        let title = title(&raw);
-        let detail = if title != text(&raw, "name") {
-            text(&raw, "name").into()
-        } else {
-            String::new()
-        };
+    fn new(raw: Value, depth: usize, title: String, detail: String, sort_name: SortKey) -> Self {
         Self {
             key: identity(&raw),
-            sort_name: title.to_lowercase(),
+            sort_name,
             title,
             detail,
             members: vec![raw.clone()],
@@ -174,6 +196,20 @@ impl Row {
             pinned: false,
             visible_members: None,
         }
+    }
+    pub fn process(raw: Value, depth: usize) -> Self {
+        let title = title(&raw);
+        let detail = if title != text(&raw, "name") {
+            text(&raw, "name").into()
+        } else {
+            String::new()
+        };
+        Self::new(raw, depth, title, detail, SortKey::default())
+    }
+    /// A process row of the process list, ordered by `title` when sorted by name.
+    fn labeled(raw: Value, depth: usize, title: String, detail: String) -> Self {
+        let sort_name = collation::key(&title);
+        Self::new(raw, depth, title, detail, sort_name)
     }
     pub fn metric(&self, key: &str) -> Option<f64> {
         let key = match key {
@@ -228,6 +264,8 @@ pub fn summarize_services(names: &[String]) -> String {
         )
     }
 }
+/// The rows of the process table in the original's arrangement: the apps view
+/// titles a row by its description, the tree and list by the executable name.
 pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row> {
     let mut rows = group_rows(processes, &options);
     // A service host's description says nothing; the services it runs do. App
@@ -243,9 +281,7 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
             else {
                 continue;
             };
-            if text(&row.raw, "name").eq_ignore_ascii_case("svchost.exe") {
-                row.title =
-                    argus_core::tr!("processes.serviceHost", names = summarize_services(names));
+            if !names.is_empty() && text(&row.raw, "name").eq_ignore_ascii_case("svchost.exe") {
                 row.detail = text(&row.raw, "name").to_owned();
             } else if !(options.mode == "apps" && row.depth == 0) {
                 row.detail = summarize_services(names);
@@ -253,6 +289,41 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
         }
     }
     rows
+}
+fn pid(row: &Row) -> u64 {
+    row.raw["pid"].as_u64().unwrap_or(0)
+}
+/// The original's comparator: names collate in the interface language with
+/// the PID breaking ties; figures compare at their displayed precision, then
+/// by name in ascending order whatever the direction.
+fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
+    let direct = |order: Ordering| if descending { order.reverse() } else { order };
+    let by_name = || {
+        a.sort_name
+            .cmp(&b.sort_name)
+            .then_with(|| pid(a).cmp(&pid(b)))
+    };
+    let order = match sort {
+        "name" => direct(by_name()),
+        "pid" => direct(pid(a).cmp(&pid(b))),
+        key => {
+            let scale = match key {
+                "cpu" | "gpu" => 10.,
+                "mem" => 1. / 104858.,
+                "io" | "diskRead" | "diskWrite" | "net" => 1. / 1024.,
+                _ => 1.,
+            };
+            // Missing readings (a disk interval not measured yet) sort last either way.
+            match (a.metric(key), b.metric(key)) {
+                (Some(a), Some(b)) => direct((a * scale).round().total_cmp(&(b * scale).round())),
+                (None, None) => Ordering::Equal,
+                (None, _) => Ordering::Greater,
+                (_, None) => Ordering::Less,
+            }
+            .then_with(by_name)
+        }
+    };
+    order.then_with(|| a.key.cmp(&b.key))
 }
 fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
     let query = options.query.trim().to_lowercase();
@@ -273,61 +344,78 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
                 .and_then(|pid| options.hosted.get(&pid))
                 .is_some_and(|names| names.iter().any(|name| contains(name)))
     };
-    let compare = |a: &Row, b: &Row| {
-        let order = match options.sort {
-            "name" => a.sort_name.cmp(&b.sort_name),
-            "pid" => number(&a.raw, "pid").total_cmp(&number(&b.raw, "pid")),
-            key => match (a.metric(key), b.metric(key)) {
-                (Some(a), Some(b)) => {
-                    let scale = match key {
-                        "cpu" | "gpu" => 10.,
-                        "mem" => 1. / 104858.,
-                        "io" | "diskRead" | "diskWrite" | "net" => 1. / 1024.,
-                        _ => 1.,
-                    };
-                    (a * scale).round().total_cmp(&(b * scale).round())
-                }
-                (None, None) => std::cmp::Ordering::Equal,
-                (None, _) => return std::cmp::Ordering::Greater,
-                (_, None) => return std::cmp::Ordering::Less,
-            },
-        };
-        let order = if options.descending {
-            order.reverse()
-        } else {
-            order
-        };
-        order
-            .then_with(|| a.sort_name.cmp(&b.sort_name))
-            .then_with(|| a.key.cmp(&b.key))
+    let compare = |a: &Row, b: &Row| compare_rows(a, b, options.sort, options.descending);
+    // The tree and list name a process by its executable, its description beside it.
+    let named_by_executable = |p: &Value, depth: usize| {
+        let name = text(p, "name");
+        match service_title(p, options.hosted) {
+            Some(service) => Row::labeled(p.clone(), depth, service, name.to_owned()),
+            None => Row::labeled(
+                p.clone(),
+                depth,
+                web_title(p).unwrap_or_else(|| name.to_owned()),
+                process_detail(p),
+            ),
+        }
     };
     let mut top = Vec::new();
-    if options.mode == "apps" {
-        let mut groups: BTreeMap<String, Vec<&Value>> = BTreeMap::new();
-        for p in processes {
-            groups.entry(application_key(p)).or_default().push(p);
-        }
-        for (key, mut members) in groups {
-            if !members.iter().any(|process| matches(process)) {
-                continue;
+    match options.mode {
+        "apps" => {
+            let mut order = Vec::new();
+            let mut groups: HashMap<String, Vec<&Value>> = HashMap::new();
+            for p in processes {
+                let key = application_key(p);
+                groups
+                    .entry(key)
+                    .or_insert_with_key(|key| {
+                        order.push(key.clone());
+                        Vec::new()
+                    })
+                    .push(p);
             }
-            members.sort_by(|a, b| number(a, "createTime").total_cmp(&number(b, "createTime")));
-            let mut row = Row::process(members[0].clone(), 0);
-            let shown = if !query.is_empty()
-                && !row.title.to_lowercase().contains(&query)
-                && !text(&row.raw, "name").to_lowercase().contains(&query)
-            {
-                Some(
-                    members
+            for key in order {
+                let mut members = groups.remove(&key).unwrap_or_default();
+                // The earliest-started member stands for the app (the details panel
+                // reads the first member too).
+                members.sort_by(|a, b| number(a, "createTime").total_cmp(&number(b, "createTime")));
+                let Some(&first) = members.first() else {
+                    continue;
+                };
+                let name = text(first, "name");
+                let label = service_title(first, options.hosted).unwrap_or_else(|| title(first));
+                let detail =
+                    if !text(first, "description").is_empty() || !first["webView"].is_null() {
+                        name.to_owned()
+                    } else {
+                        String::new()
+                    };
+                // A search that names the app shows all of it; otherwise only the matches.
+                let shown = if !query.is_empty()
+                    && !label.to_lowercase().contains(&query)
+                    && !name.to_lowercase().contains(&query)
+                {
+                    let shown: Vec<Value> = members
                         .iter()
                         .filter(|p| matches(p))
-                        .map(|process| (**process).clone())
-                        .collect::<Vec<_>>(),
-                )
-            } else {
-                None
-            };
-            if members.len() > 1 {
+                        .map(|p| (*p).clone())
+                        .collect();
+                    if shown.is_empty() {
+                        continue;
+                    }
+                    Some(shown)
+                } else {
+                    None
+                };
+                if members.len() == 1 {
+                    let detail = if first["webView"].is_null() {
+                        detail
+                    } else {
+                        process_detail(first)
+                    };
+                    top.push(Row::labeled(first.clone(), 0, label, detail));
+                    continue;
+                }
+                let mut row = Row::labeled(first.clone(), 0, label, detail);
                 row.key = key;
                 row.members = members.into_iter().cloned().collect();
                 row.expandable = true;
@@ -336,136 +424,22 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
                         .as_ref()
                         .is_some_and(|items| items.len() < row.members.len());
                 row.visible_members = shown;
+                top.push(row);
             }
-            top.push(row);
         }
-    } else {
-        let mut tree_visible = HashSet::new();
-        if options.mode == "tree" && !query.is_empty() {
-            let by_pid: HashMap<_, _> = processes
+        "tree" => return tree_rows(processes, options, &query, &matches, &named_by_executable),
+        _ => {
+            top = processes
                 .iter()
-                .filter_map(|p| p["pid"].as_u64().map(|pid| (pid, p)))
+                .filter(|p| matches(p))
+                .map(|p| named_by_executable(p, 0))
                 .collect();
-            for process in processes.iter().filter(|p| matches(p)) {
-                let mut current = process;
-                loop {
-                    if !tree_visible.insert(identity(current)) {
-                        break;
-                    }
-                    let Some(parent) = current["ppid"].as_u64().and_then(|pid| by_pid.get(&pid))
-                    else {
-                        break;
-                    };
-                    if number(parent, "createTime") > number(current, "createTime") {
-                        break;
-                    }
-                    current = parent;
-                }
-            }
         }
-        top = processes
-            .iter()
-            .filter(|p| {
-                if options.mode == "tree" && !query.is_empty() {
-                    tree_visible.contains(&identity(p))
-                } else {
-                    matches(p)
-                }
-            })
-            .cloned()
-            .map(|p| {
-                let mut row = Row::process(p, 0);
-                if row.raw["webView"].is_null() {
-                    row.title = text(&row.raw, "name").into();
-                    row.sort_name = row.title.to_lowercase();
-                    row.detail = text(&row.raw, "description").into();
-                } else if let Some(role) = web_role(&row.raw) {
-                    row.detail = format!("{} · {role}", text(&row.raw, "name"));
-                }
-                row
-            })
-            .collect();
     }
     top.sort_by(compare);
-    if options.mode == "tree" {
-        let ids: HashSet<u64> = processes.iter().filter_map(|p| p["pid"].as_u64()).collect();
-        let mut children: HashMap<u64, Vec<Row>> = HashMap::new();
-        let mut roots = Vec::new();
-        for row in top {
-            let parent = row.raw["ppid"].as_u64().unwrap_or(0);
-            let pid = row.raw["pid"].as_u64().unwrap_or(0);
-            let parent_is_newer = processes
-                .iter()
-                .find(|p| p["pid"].as_u64() == Some(parent))
-                .is_some_and(|p| number(p, "createTime") > number(&row.raw, "createTime"));
-            if parent == pid || !ids.contains(&parent) || parent_is_newer {
-                roots.push(row);
-            } else {
-                children.entry(parent).or_default().push(row);
-            }
-        }
-        fn visit(
-            mut row: Row,
-            depth: usize,
-            visible: bool,
-            children: &mut HashMap<u64, Vec<Row>>,
-            out: &mut Vec<Row>,
-            collapsed: &HashSet<String>,
-            seen: &mut HashSet<String>,
-        ) {
-            if !seen.insert(row.key.clone()) {
-                return;
-            }
-            row.depth = depth;
-            let descendants = children
-                .remove(&row.raw["pid"].as_u64().unwrap_or(0))
-                .unwrap_or_default();
-            row.expandable = !descendants.is_empty();
-            row.expanded = !collapsed.contains(&row.key);
-            let expanded = row.expanded;
-            if visible {
-                out.push(row);
-            }
-            for child in descendants {
-                visit(
-                    child,
-                    depth + 1,
-                    visible && expanded,
-                    children,
-                    out,
-                    collapsed,
-                    seen,
-                );
-            }
-        }
-        let mut out = Vec::new();
-        let mut seen = HashSet::new();
-        let expanded_for_search = HashSet::new();
-        for row in roots {
-            visit(
-                row,
-                0,
-                true,
-                &mut children,
-                &mut out,
-                if query.is_empty() {
-                    options.collapsed
-                } else {
-                    &expanded_for_search
-                },
-                &mut seen,
-            );
-        }
-        for (_, rows) in children {
-            for row in rows {
-                if seen.insert(row.key.clone()) {
-                    out.push(row);
-                }
-            }
-        }
-        return out;
-    }
     let mut out = Vec::new();
+    // Like Windows Task Manager: sorted by name, apps come first under their
+    // own heading. Other sorts keep one list.
     if options.sort == "name" {
         for section in ["apps", "background", "windows"] {
             let grouped: Vec<_> = top
@@ -503,11 +477,101 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
     }
     out
 }
-fn append_groups(
-    rows: Vec<Row>,
-    compare: &impl Fn(&Row, &Row) -> std::cmp::Ordering,
-    out: &mut Vec<Row>,
-) {
+/// The process tree: children under the process that started them, each level
+/// sorted on its own. While searching, the ancestors of matches stay in place.
+fn tree_rows(
+    processes: &[Value],
+    options: &ProcessOptions<'_>,
+    query: &str,
+    matches: &impl Fn(&Value) -> bool,
+    named: &impl Fn(&Value, usize) -> Row,
+) -> Vec<Row> {
+    let by_pid: HashMap<u64, &Value> = processes
+        .iter()
+        .filter_map(|p| p["pid"].as_u64().map(|pid| (pid, p)))
+        .collect();
+    // A parent must predate its child; otherwise the parent PID was reused.
+    let parent_of = |p: &Value| {
+        p["ppid"]
+            .as_u64()
+            .and_then(|ppid| by_pid.get(&ppid).copied())
+            .filter(|parent| {
+                parent["pid"] != p["pid"] && number(parent, "createTime") <= number(p, "createTime")
+            })
+    };
+    let mut children: HashMap<String, Vec<&Value>> = HashMap::new();
+    let mut roots = Vec::new();
+    for p in processes {
+        match parent_of(p) {
+            Some(parent) => children.entry(identity(parent)).or_default().push(p),
+            None => roots.push(p),
+        }
+    }
+    let searching = !query.is_empty();
+    let mut visible = HashSet::new();
+    if searching {
+        for process in processes.iter().filter(|p| matches(p)) {
+            let mut current = Some(process);
+            while let Some(p) = current {
+                if !visible.insert(identity(p)) {
+                    break;
+                }
+                current = parent_of(p);
+            }
+        }
+    }
+    struct Walk<'a, F> {
+        children: &'a HashMap<String, Vec<&'a Value>>,
+        visible: &'a HashSet<String>,
+        searching: bool,
+        collapsed: &'a HashSet<String>,
+        named: &'a F,
+        sort: &'a str,
+        descending: bool,
+        seen: HashSet<String>,
+        out: Vec<Row>,
+    }
+    impl<F: Fn(&Value, usize) -> Row> Walk<'_, F> {
+        fn level(&mut self, list: &[&Value], depth: usize) {
+            let mut level: Vec<Row> = list
+                .iter()
+                .filter(|p| !self.searching || self.visible.contains(&identity(p)))
+                .map(|p| {
+                    let mut row = (self.named)(p, depth);
+                    row.expandable = self.children.get(&row.key).is_some_and(|c| !c.is_empty());
+                    row.expanded =
+                        row.expandable && (self.searching || !self.collapsed.contains(&row.key));
+                    row
+                })
+                .collect();
+            level.sort_by(|a, b| compare_rows(a, b, self.sort, self.descending));
+            for row in level {
+                if !self.seen.insert(row.key.clone()) {
+                    continue;
+                }
+                let (key, expanded) = (row.key.clone(), row.expanded);
+                self.out.push(row);
+                if expanded && let Some(list) = self.children.get(&key) {
+                    self.level(list, depth + 1);
+                }
+            }
+        }
+    }
+    let mut walk = Walk {
+        children: &children,
+        visible: &visible,
+        searching,
+        collapsed: options.collapsed,
+        named,
+        sort: options.sort,
+        descending: options.descending,
+        seen: HashSet::new(),
+        out: Vec::new(),
+    };
+    walk.level(&roots, 0);
+    walk.out
+}
+fn append_groups(rows: Vec<Row>, compare: &impl Fn(&Row, &Row) -> Ordering, out: &mut Vec<Row>) {
     for row in rows {
         let children = if row.expanded && row.expandable {
             let mut children: Vec<_> = row
@@ -515,17 +579,14 @@ fn append_groups(
                 .as_ref()
                 .unwrap_or(&row.members)
                 .iter()
-                .cloned()
                 .map(|p| {
-                    let mut row = Row::process(p, 1);
-                    row.title = web_role(&row.raw).unwrap_or_else(|| text(&row.raw, "name").into());
-                    row.sort_name = row.title.to_lowercase();
-                    row.detail = if row.raw["webView"].is_null() {
+                    let label = web_role(p).unwrap_or_else(|| text(p, "name").into());
+                    let detail = if p["webView"].is_null() {
                         String::new()
                     } else {
-                        title(&row.raw)
+                        title(p)
                     };
-                    row
+                    Row::labeled(p.clone(), 1, label, detail)
                 })
                 .collect();
             children.sort_by(compare);
@@ -820,6 +881,133 @@ impl Timeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn rows_of(
+        processes: &[Value],
+        mode: &str,
+        query: &str,
+        sort: &str,
+        descending: bool,
+        hosted: &HashMap<u64, Vec<String>>,
+    ) -> Vec<Row> {
+        let empty = HashSet::new();
+        process_rows(
+            processes,
+            ProcessOptions {
+                mode,
+                query,
+                sort,
+                descending,
+                expanded: &empty,
+                collapsed: &empty,
+                sections: &empty,
+                hosted,
+            },
+        )
+    }
+    fn pids(rows: &[Row]) -> Vec<u64> {
+        rows.iter()
+            .filter(|row| row.section.is_none())
+            .map(pid)
+            .collect()
+    }
+    #[test]
+    fn service_hosts_sort_by_the_services_they_run() {
+        // Titles come from the interface catalogs, in whatever language is current.
+        crate::catalog::register();
+        let host = |pid: u64| json!({"pid":pid,"createTime":1,"name":"svchost.exe","description":"Host Process for Windows Services","path":"C:/Windows/System32/svchost.exe"});
+        let processes = vec![host(10), host(20)];
+        let hosted = HashMap::from([
+            (10, vec!["Zeta Service".to_owned()]),
+            (20, vec!["Alpha Service".to_owned()]),
+        ]);
+        for mode in ["apps", "list", "tree"] {
+            let rows = rows_of(&processes, mode, "", "name", false, &hosted);
+            assert_eq!(pids(&rows), [20, 10], "{mode}");
+            let row = rows.iter().find(|row| pid(row) == 20).unwrap();
+            assert!(row.title.contains("Alpha Service"), "{mode}");
+            assert_eq!(row.detail, "svchost.exe", "{mode}");
+        }
+    }
+    #[test]
+    fn equal_names_follow_the_pid_in_the_sort_direction() {
+        let processes = vec![
+            json!({"pid":5,"createTime":1,"name":"same.exe"}),
+            json!({"pid":3,"createTime":1,"name":"same.exe"}),
+            json!({"pid":4,"createTime":1,"name":"other.exe"}),
+        ];
+        let none = HashMap::new();
+        assert_eq!(
+            pids(&rows_of(&processes, "list", "", "name", false, &none)),
+            [4, 3, 5]
+        );
+        assert_eq!(
+            pids(&rows_of(&processes, "list", "", "name", true, &none)),
+            [5, 3, 4]
+        );
+    }
+    #[test]
+    fn equal_figures_keep_names_ascending_in_either_direction() {
+        let processes = vec![
+            json!({"pid":1,"createTime":1,"name":"b.exe","cpu":1.0}),
+            json!({"pid":2,"createTime":1,"name":"a.exe","cpu":1.02}),
+            json!({"pid":3,"createTime":1,"name":"c.exe","cpu":5.0}),
+        ];
+        let none = HashMap::new();
+        assert_eq!(
+            pids(&rows_of(&processes, "list", "", "cpu", true, &none)),
+            [3, 2, 1]
+        );
+        assert_eq!(
+            pids(&rows_of(&processes, "list", "", "cpu", false, &none)),
+            [2, 1, 3]
+        );
+    }
+    #[test]
+    fn views_title_processes_like_the_original() {
+        let processes = vec![
+            json!({"pid":1,"createTime":1,"name":"app.exe","description":"App","path":"C:/app.exe"}),
+            json!({"pid":2,"createTime":2,"name":"msedgewebview2.exe","path":"C:/wv/msedgewebview2.exe","webView":{"browserPid":2,"browserCreateTime":2,"hostName":"app.exe","hostDescription":"App","role":"browser"}}),
+        ];
+        let none = HashMap::new();
+        let apps = rows_of(&processes, "apps", "", "pid", false, &none);
+        assert_eq!(
+            (apps[0].title.as_str(), apps[0].detail.as_str()),
+            ("App", "app.exe")
+        );
+        // A lone WebView2 process names its role beside the executable.
+        assert!(apps[1].detail.starts_with("msedgewebview2.exe · "));
+        for mode in ["list", "tree"] {
+            let rows = rows_of(&processes, mode, "", "pid", false, &none);
+            assert_eq!(
+                (rows[0].title.as_str(), rows[0].detail.as_str()),
+                ("app.exe", "App")
+            );
+            assert_eq!(rows[1].title, apps[1].title);
+            assert_eq!(rows[1].detail, apps[1].detail);
+        }
+    }
+    #[test]
+    fn the_tree_expands_parents_only_and_keeps_ancestors_of_matches() {
+        let processes = vec![
+            json!({"pid":1,"ppid":0,"createTime":1,"name":"root.exe"}),
+            json!({"pid":2,"ppid":1,"createTime":2,"name":"child.exe"}),
+            json!({"pid":3,"ppid":2,"createTime":3,"name":"leaf.exe"}),
+            // Its parent PID was reused by a newer process: a root of its own.
+            json!({"pid":4,"ppid":5,"createTime":4,"name":"orphan.exe"}),
+            json!({"pid":5,"ppid":0,"createTime":9,"name":"newer.exe"}),
+        ];
+        let none = HashMap::new();
+        let rows = rows_of(&processes, "tree", "", "name", false, &none);
+        assert_eq!(pids(&rows), [5, 4, 1, 2, 3]);
+        assert_eq!(
+            rows.iter().map(|row| row.depth).collect::<Vec<_>>(),
+            [0, 0, 0, 1, 2]
+        );
+        assert!(rows[2].expandable && rows[2].expanded);
+        assert!(!rows[4].expandable && !rows[4].expanded);
+        let found = rows_of(&processes, "tree", "leaf", "name", false, &none);
+        assert_eq!(pids(&found), [1, 2, 3]);
+    }
     #[test]
     fn expanded_members_sort_by_their_displayed_names() {
         let processes = vec![

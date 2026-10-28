@@ -956,9 +956,7 @@ impl Desktop {
         let mut rows = processes.to_vec();
         rows.sort_by(|a, b| {
             let order = if sort_key == "name" {
-                text(a, "name")
-                    .to_lowercase()
-                    .cmp(&text(b, "name").to_lowercase())
+                collation::compare(text(a, "name"), text(b, "name"))
             } else {
                 number(a, &sort_key).total_cmp(&number(b, &sort_key))
             };

@@ -238,7 +238,13 @@ impl State {
         }
     }
 
-    pub fn view(&mut self, context: Context, meta: &MetaStore) -> Arc<WebViewInfo> {
+    /// `app`: the host's packaged app name, which takes the place of its file description.
+    pub fn view(
+        &mut self,
+        context: Context,
+        meta: &MetaStore,
+        app: Option<Arc<str>>,
+    ) -> Arc<WebViewInfo> {
         if self.context.as_ref().and_then(|c| c.host_path.as_ref()) != context.host_path.as_ref() {
             self.meta = None;
         }
@@ -252,7 +258,8 @@ impl State {
             browser_pid: context.browser.0,
             browser_create_time: ticks_to_unix_ms(context.browser.1),
             host_name: context.host_name.clone(),
-            host_description: self.meta.as_ref().and_then(|m| m.description.clone()),
+            host_description: app
+                .or_else(|| self.meta.as_ref().and_then(|m| m.description.clone())),
             host_icon: self.meta.as_ref().and_then(|m| m.icon),
             role: self.hint.role,
         };
@@ -476,8 +483,8 @@ mod tests {
             host_path: None,
         };
         let meta = MetaStore::new();
-        let first = state.view(context.clone(), &meta);
-        let second = state.view(context, &meta);
+        let first = state.view(context.clone(), &meta, None);
+        let second = state.view(context, &meta, None);
         assert!(Arc::ptr_eq(&first, &second));
         let json = serde_json::to_value(first).unwrap();
         assert_eq!(json["browserPid"], 11);
