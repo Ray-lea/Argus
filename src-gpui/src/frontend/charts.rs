@@ -37,6 +37,9 @@ pub struct Series {
 }
 /// Default area opacity under a solid line.
 pub(in crate::frontend) const FILL: f32 = 0.3;
+/// Opacity of a compact chart's secondary series: a solid line, as dashes
+/// break up at preview sizes.
+const COMPACT_SECONDARY: f32 = 0.55;
 /// Core-load bars (the original's comb): fixed width, gap and corner radius,
 /// over a track in the bar's colour.
 const BAR_WIDTH: f32 = 4.;
@@ -1222,6 +1225,26 @@ impl Desktop {
     ) -> AnyElement {
         let height = height.into();
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
+        // Dashes break up at preview sizes: a compact chart's secondary series is
+        // a fainter solid line without fill.
+        let compacted;
+        let lines = if look.caption.is_none() && !look.bars && lines.iter().any(|l| l.dashed) {
+            compacted = lines
+                .iter()
+                .cloned()
+                .map(|mut line| {
+                    if line.dashed {
+                        line.dashed = false;
+                        line.fill = 0.;
+                        line.color = line.color.opacity(COMPACT_SECONDARY);
+                    }
+                    line
+                })
+                .collect::<Vec<_>>();
+            &compacted[..]
+        } else {
+            lines
+        };
         let revision = ChartRevision {
             sequence: self.sequence,
             lines: lines.to_vec(),
