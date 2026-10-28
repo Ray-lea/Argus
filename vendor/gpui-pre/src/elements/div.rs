@@ -2146,6 +2146,8 @@ pub struct Interactivity {
     pub(crate) tracked_scroll_handle: Option<ScrollHandle>,
     pub(crate) scroll_anchor: Option<ScrollAnchor>,
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
+    /// Argus patch: the scroll range found during prepaint, for the wheel listener.
+    pub(crate) scroll_max: Cell<Point<Pixels>>,
     pub(crate) ongoing_scroll: Option<Rc<RefCell<OngoingScroll>>>,
     pub(crate) group: Option<SharedString>,
     /// The base style of the element, before any modifications are applied
@@ -2476,6 +2478,7 @@ impl Interactivity {
                 .max(&Default::default());
             // Clamp scroll offset in case scroll max is smaller now (e.g., if children
             // were removed or the bounds became larger).
+            self.scroll_max.set(scroll_max);
             let key = Rc::as_ptr(scroll_offset) as usize;
             let mut scroll_offset = scroll_offset.borrow_mut();
             smooth_scroll::advance(key, &mut scroll_offset, scroll_max, window);
@@ -3337,13 +3340,27 @@ impl Interactivity {
             let allow_concurrent_scroll = style.allow_concurrent_scroll;
             let restrict_scroll_to_axis = style.restrict_scroll_to_axis;
             let line_height = window.line_height();
+            let scroll_max = self.scroll_max.get();
             let hitbox = hitbox.clone();
             let current_view = window.current_view();
             window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
-                if phase == DispatchPhase::Bubble && hitbox.should_handle_scroll(window) {
+                if phase == DispatchPhase::Capture {
+                    smooth_scroll::new_event();
+                    return;
+                }
+                if phase == DispatchPhase::Bubble
+                    && hitbox.should_handle_scroll(window)
+                    && !smooth_scroll::claimed()
+                {
                     let mut scroll_offset = scroll_offset.borrow_mut();
                     let old_scroll_offset = *scroll_offset;
-                    let mut delta = event.delta.pixel_delta(line_height);
+                    // Wheel notches move by Chromium's line height, whatever the text size.
+                    let notch = !event.delta.precise() && event.touch_phase == TouchPhase::Moved;
+                    let mut delta = if notch {
+                        event.delta.pixel_delta(px(smooth_scroll::PIXELS_PER_LINE))
+                    } else {
+                        event.delta.pixel_delta(line_height)
+                    };
 
                     if restrict_scroll_to_axis
                         && event.delta.precise()
@@ -3380,15 +3397,32 @@ impl Interactivity {
                         }
                     }
                     let key = Rc::as_ptr(&scroll_offset_rc) as usize;
-                    if event.delta.precise() || event.touch_phase != TouchPhase::Moved {
+                    let clamp = |p: Point<Pixels>| {
+                        point(
+                            p.x.clamp(-scroll_max.x, px(0.)),
+                            p.y.clamp(-scroll_max.y, px(0.)),
+                        )
+                    };
+                    // The innermost scroller that can move takes the event; at
+                    // its edge the wheel goes on to the one around it.
+                    if notch {
+                        let target = smooth_scroll::target(key, old_scroll_offset);
+                        let next = clamp(target + point(delta_x, delta_y));
+                        if next != clamp(target) {
+                            smooth_scroll::glide_to(key, old_scroll_offset, next);
+                            smooth_scroll::claim();
+                            cx.notify(current_view);
+                        }
+                    } else {
                         smooth_scroll::cancel(key);
                         scroll_offset.y += delta_y;
                         scroll_offset.x += delta_x;
-                    } else {
-                        smooth_scroll::start(key, *scroll_offset, point(delta_x, delta_y));
-                    }
-                    if *scroll_offset != old_scroll_offset || smooth_scroll::running(key) {
-                        cx.notify(current_view);
+                        if clamp(*scroll_offset) != clamp(old_scroll_offset) {
+                            smooth_scroll::claim();
+                        }
+                        if *scroll_offset != old_scroll_offset {
+                            cx.notify(current_view);
+                        }
                     }
                 }
             });
@@ -4401,6 +4435,42 @@ impl ScrollHandle {
     pub fn scroll_to_bottom(&self) {
         let mut state = self.0.borrow_mut();
         state.scroll_to_bottom = true;
+    }
+
+    /// Argus patch: scrolls by wheel lines as a notch does, gliding toward the
+    /// target (see `smooth_scroll`). Returns whether the target moved; the
+    /// caller notifies the view that paints the scrolled element.
+    pub fn scroll_by_lines(&self, lines: Point<f32>) -> bool {
+        let delta = point(
+            px(lines.x * smooth_scroll::PIXELS_PER_LINE),
+            px(lines.y * smooth_scroll::PIXELS_PER_LINE),
+        );
+        self.glide_to(self.wheel_target() + delta)
+    }
+
+    /// Argus patch: glides to an offset, clamped to the scrollable range, with
+    /// the wheel's animation. Returns whether the target moved.
+    pub fn glide_to(&self, to: Point<Pixels>) -> bool {
+        let state = self.0.borrow();
+        let max = state.max_offset;
+        let key = Rc::as_ptr(&state.offset) as usize;
+        let current = *state.offset.borrow();
+        let clamp =
+            |p: Point<Pixels>| point(p.x.clamp(-max.x, px(0.)), p.y.clamp(-max.y, px(0.)));
+        let target = clamp(smooth_scroll::target(key, current));
+        let to = clamp(to);
+        if to == target {
+            return false;
+        }
+        smooth_scroll::glide_to(key, current, to);
+        true
+    }
+
+    /// Argus patch: where the offset is heading: a running glide's target, else the offset.
+    pub fn wheel_target(&self) -> Point<Pixels> {
+        let state = self.0.borrow();
+        let key = Rc::as_ptr(&state.offset) as usize;
+        smooth_scroll::target(key, *state.offset.borrow())
     }
 
     /// Set the offset explicitly. The offset is the distance from the top left of the
@@ -5648,18 +5718,32 @@ mod tests {
     }
 }
 
-/// Argus patch: mouse-wheel notches glide to their target instead of jumping.
-/// Precise (touchpad) deltas and programmatic scrolls apply directly and end a glide.
-mod smooth_scroll {
+/// Argus patch: wheel scrolling animates the way Chromium (WebView2) animates
+/// it, as the original Argus did. A notch moves the target by
+/// [`smooth_scroll::PIXELS_PER_LINE`] per line; the offset follows cc's
+/// `ScrollOffsetAnimationCurve` (ease-in-out, with a duration that shrinks as
+/// the distance grows: 200 ms up to 120 px, 100 ms from 480 px). A notch during
+/// a glide extends its target and keeps the current velocity. Precise
+/// (touchpad) deltas and programmatic scrolls apply directly and end a glide.
+pub mod smooth_scroll {
     use crate::{Pixels, Point, Window, point, px};
-    use std::{cell::RefCell, collections::HashMap, time::Duration, time::Instant};
+    use std::{cell::RefCell, collections::HashMap, time::Instant};
 
-    const DURATION: Duration = Duration::from_millis(140);
+    /// Chromium's pixels per wheel line on Windows (`kScrollbarPixelsPerLine`):
+    /// 100 px per notch at the default three lines.
+    pub const PIXELS_PER_LINE: f32 = 100. / 3.;
 
     struct Glide {
         from: Point<Pixels>,
         to: Point<Pixels>,
         start: Instant,
+        /// Seconds; `None` until the first frame, which clamps the target to
+        /// the scrollable range and then times the segment.
+        duration: Option<f32>,
+        /// The timing function's initial slope, carrying a retargeted glide's velocity.
+        slope: f32,
+        /// The velocity (px/s along the larger axis) when the segment began.
+        velocity: f32,
         /// The offset the glide last wrote; anything else means someone else scrolled.
         written: Point<Pixels>,
     }
@@ -5668,29 +5752,147 @@ mod smooth_scroll {
         static GLIDES: RefCell<HashMap<usize, Glide>> = RefCell::new(HashMap::new());
     }
 
-    pub(super) fn start(key: usize, current: Point<Pixels>, delta: Point<Pixels>) {
+    /// The segment duration in seconds for a distance (cc's kInverseDelta).
+    fn segment(distance: f32) -> f32 {
+        const RAMP_START: f32 = 120.;
+        const RAMP_END: f32 = 480.;
+        const MIN_FRAMES: f32 = 6.;
+        const MAX_FRAMES: f32 = 12.;
+        let slope = (MIN_FRAMES - MAX_FRAMES) / (RAMP_END - RAMP_START);
+        let frames =
+            (MAX_FRAMES + (distance.abs() - RAMP_START) * slope).clamp(MIN_FRAMES, MAX_FRAMES);
+        frames / 60.
+    }
+
+    /// The larger component of a delta, keeping its sign (cc's MaximumDimension).
+    fn major(delta: Point<Pixels>) -> f32 {
+        let (x, y) = (f32::from(delta.x), f32::from(delta.y));
+        if x.abs() > y.abs() { x } else { y }
+    }
+
+    /// cubic-bezier(0.42, 0.42 * slope, 0.58, 1): progress at `x`, and its slope.
+    fn ease(slope: f32, x: f32) -> (f32, f32) {
+        let (x1, y1, x2, y2) = (0.42f32, 0.42 * slope, 0.58f32, 1f32);
+        let (cx, cy) = (3. * x1, 3. * y1);
+        let (bx, by) = (3. * (x2 - x1) - cx, 3. * (y2 - y1) - cy);
+        let (ax, ay) = (1. - cx - bx, 1. - cy - by);
+        let curve_x = |t: f32| ((ax * t + bx) * t + cx) * t;
+        let speed_x = |t: f32| (3. * ax * t + 2. * bx) * t + cx;
+        let mut t = x;
+        for _ in 0..8 {
+            let error = curve_x(t) - x;
+            let speed = speed_x(t);
+            if error.abs() < 1e-6 || speed.abs() < 1e-6 {
+                break;
+            }
+            t = (t - error / speed).clamp(0., 1.);
+        }
+        if (curve_x(t) - x).abs() > 1e-4 {
+            let (mut low, mut high) = (0f32, 1f32);
+            for _ in 0..32 {
+                t = (low + high) / 2.;
+                if curve_x(t) < x {
+                    low = t
+                } else {
+                    high = t
+                }
+            }
+        }
+        let y = ((ay * t + by) * t + cy) * t;
+        let dy = (3. * ay * t + 2. * by) * t + cy;
+        let dx = speed_x(t);
+        (y, if dx.abs() < 1e-6 { 0. } else { dy / dx })
+    }
+
+    impl Glide {
+        fn progress(&self, now: Instant) -> f32 {
+            match self.duration {
+                Some(duration) if duration > 0. => {
+                    (now.saturating_duration_since(self.start).as_secs_f32() / duration).min(1.)
+                }
+                _ => 0.,
+            }
+        }
+
+        fn value(&self, now: Instant) -> Point<Pixels> {
+            let (y, _) = ease(self.slope, self.progress(now));
+            self.from + (self.to - self.from) * y
+        }
+
+        /// Velocity in px/s along the larger axis of the segment.
+        fn velocity(&self, now: Instant) -> f32 {
+            match self.duration {
+                Some(duration) if duration > 0. => {
+                    let x = self.progress(now);
+                    if x >= 1. {
+                        return 0.;
+                    }
+                    ease(self.slope, x).1 * major(self.to - self.from) / duration
+                }
+                _ => self.velocity,
+            }
+        }
+    }
+
+    /// Where a running glide is heading, or `current` when none is.
+    pub fn target(key: usize, current: Point<Pixels>) -> Point<Pixels> {
+        GLIDES.with_borrow(|glides| match glides.get(&key) {
+            Some(glide) if glide.written == current => glide.to,
+            _ => current,
+        })
+    }
+
+    /// Glides from `current` to `to`, continuing a running glide's motion.
+    pub fn glide_to(key: usize, current: Point<Pixels>, to: Point<Pixels>) {
+        let now = Instant::now();
         GLIDES.with_borrow_mut(|glides| {
-            let target = match glides.get(&key) {
-                Some(glide) if glide.written == current => glide.to,
-                _ => current,
+            let (from, velocity) = match glides.get(&key) {
+                Some(glide) if glide.written == current => {
+                    (glide.value(now), glide.velocity(now))
+                }
+                _ => (current, 0.),
             };
             glides.insert(
                 key,
                 Glide {
-                    from: current,
-                    to: target + delta,
-                    start: Instant::now(),
+                    from,
+                    to,
+                    start: now,
+                    duration: None,
+                    slope: 0.,
+                    velocity,
                     written: current,
                 },
             );
         });
     }
 
-    pub(super) fn cancel(key: usize) {
+    thread_local! {
+        static CLAIMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    /// A wheel event starts its dispatch: no scroller has taken it yet.
+    pub fn new_event() {
+        CLAIMED.set(false);
+    }
+
+    /// A scroller moved for the event being dispatched; outer scrollers leave it.
+    pub fn claim() {
+        CLAIMED.set(true);
+    }
+
+    /// Whether a scroller already moved for the event being dispatched.
+    pub fn claimed() -> bool {
+        CLAIMED.get()
+    }
+
+    /// Ends a running glide where it is.
+    pub fn cancel(key: usize) {
         GLIDES.with_borrow_mut(|glides| glides.remove(&key));
     }
 
-    pub(super) fn running(key: usize) -> bool {
+    /// Whether a glide is running.
+    pub fn running(key: usize) -> bool {
         GLIDES.with_borrow(|glides| glides.contains_key(&key))
     }
 
@@ -5710,24 +5912,61 @@ mod smooth_scroll {
                 glides.remove(&key);
                 return;
             }
-            let clamp = |p: Point<Pixels>| {
-                point(p.x.clamp(-max.x, px(0.)), p.y.clamp(-max.y, px(0.)))
-            };
-            glide.to = clamp(glide.to);
-            let t = (glide.start.elapsed().as_secs_f32() / DURATION.as_secs_f32()).min(1.);
-            // Ease out: fast at the notch, settling at the target.
-            let eased = 1. - (1. - t).powi(3);
-            let next = point(
-                glide.from.x + (glide.to.x - glide.from.x) * eased,
-                glide.from.y + (glide.to.y - glide.from.y) * eased,
-            );
-            *offset = clamp(next);
+            let clamp =
+                |p: Point<Pixels>| point(p.x.clamp(-max.x, px(0.)), p.y.clamp(-max.y, px(0.)));
+            let to = clamp(glide.to);
+            if glide.duration.is_none() || to != glide.to {
+                // Time the segment from where it began, toward the reachable target.
+                if glide.duration.is_some() {
+                    let now = Instant::now();
+                    glide.velocity = glide.velocity(now);
+                    glide.from = glide.value(now);
+                    glide.start = now;
+                }
+                glide.to = to;
+                let distance = major(to - glide.from);
+                if distance.abs() < 0.01 {
+                    *offset = to;
+                    glides.remove(&key);
+                    return;
+                }
+                let duration = segment(distance);
+                glide.duration = Some(duration);
+                glide.slope = (glide.velocity * duration / distance).clamp(-1000., 1000.);
+            }
+            let now = Instant::now();
+            *offset = clamp(glide.value(now));
             glide.written = *offset;
-            if t >= 1. {
+            if glide.progress(now) >= 1. {
+                *offset = to;
+                glide.written = to;
                 glides.remove(&key);
             } else {
                 window.request_animation_frame();
             }
         });
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn durations_follow_chromium_inverse_delta() {
+            assert!((segment(100.) - 0.2).abs() < 1e-6);
+            assert!((segment(-120.) - 0.2).abs() < 1e-6);
+            assert!((segment(300.) - 0.15).abs() < 1e-6);
+            assert!((segment(900.) - 0.1).abs() < 1e-6);
+        }
+
+        #[test]
+        fn ease_in_out_matches_css_and_carries_slope() {
+            let (half, slope) = ease(0., 0.5);
+            assert!((half - 0.5).abs() < 1e-4);
+            assert!(slope > 1.5);
+            assert!(ease(0., 0.).1.abs() < 1e-4);
+            assert!((ease(2., 0.).1 - 2.).abs() < 1e-3);
+            assert!((ease(0., 1.).0 - 1.).abs() < 1e-5);
+        }
     }
 }
