@@ -28,7 +28,9 @@ use crate::{AppState, HistoryDir, shell};
 pub(crate) mod autostart;
 
 pub fn minimize_main(window: crate::native_runtime::NativeWindow) {
-    let _ = window.minimize();
+    if let Ok(hwnd) = window.hwnd() {
+        crate::window_motion::minimize(hwnd);
+    }
 }
 
 pub fn desktop_shell() -> Option<crate::explorer::Identity> {

@@ -25,6 +25,9 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
         }
         crate::shell::restore_window_state(host, &native, options);
         crate::shell::follow_visibility(&native);
+        if let Ok(hwnd) = native.hwnd() {
+            crate::window_motion::install(hwnd);
+        }
         crate::shell::apply_theme(
             host,
             host.state::<crate::settings::SettingsStore>().get().theme,

@@ -152,14 +152,17 @@ pub fn animations_enabled() -> bool {
 }
 pub fn show_main(app: &Host) {
     if let Some(window) = app.get_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
+        if let Ok(hwnd) = window.hwnd() {
+            crate::window_motion::show(hwnd);
+        }
         let _ = window.set_focus();
     }
     crate::hotkey::retry_failed(app);
 }
 pub fn hide_main(window: &NativeWindow) {
-    let _ = window.hide();
+    if let Ok(hwnd) = window.hwnd() {
+        crate::window_motion::hide(hwnd);
+    }
     crate::hotkey::resume_if_suspended(window.app_handle());
 }
 pub fn toggle_main(app: &Host) {
@@ -167,6 +170,7 @@ pub fn toggle_main(app: &Host) {
         if window.is_visible().unwrap_or(false)
             && !window.is_minimized().unwrap_or(false)
             && window.is_focused().unwrap_or(false)
+            && !crate::window_motion::is_leaving()
         {
             hide_main(&window);
         } else {
@@ -511,7 +515,8 @@ unsafe extern "system" fn procedure(
         }
     }
     let result = unsafe { DefSubclassProc(hwnd, message, w, l) };
-    if message == WM_WINDOWPOSCHANGED {
+    // A fade reports the completed change itself (window_motion).
+    if message == WM_WINDOWPOSCHANGED && !crate::window_motion::changing_visibility() {
         resync_visibility(hwnd);
     }
     result

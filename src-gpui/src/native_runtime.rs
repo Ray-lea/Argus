@@ -214,30 +214,6 @@ impl NativeWindow {
         &self.host
     }
 
-    pub fn show(&self) -> Result<()> {
-        unsafe {
-            let _ = ShowWindow(self.hwnd()?, SW_SHOWNOACTIVATE);
-        }
-        Ok(())
-    }
-    pub fn hide(&self) -> Result<()> {
-        unsafe {
-            let _ = ShowWindow(self.hwnd()?, SW_HIDE);
-        }
-        Ok(())
-    }
-    pub fn minimize(&self) -> Result<()> {
-        unsafe {
-            let _ = ShowWindow(self.hwnd()?, SW_MINIMIZE);
-        }
-        Ok(())
-    }
-    pub fn unminimize(&self) -> Result<()> {
-        unsafe {
-            let _ = ShowWindow(self.hwnd()?, SW_RESTORE);
-        }
-        Ok(())
-    }
     pub fn is_visible(&self) -> Result<bool> {
         Ok(unsafe { IsWindowVisible(self.hwnd()?).as_bool() })
     }

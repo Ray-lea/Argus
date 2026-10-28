@@ -1432,11 +1432,17 @@ impl Desktop {
     }
     pub(in crate::frontend) fn apply_motion(&mut self, cx: &mut Context<Self>) {
         let system = crate::platform::system_motion();
-        cx.set_reduce_motion(
-            !self
-                .prefs
-                .get::<Option<bool>>("motion.ui", None)
-                .unwrap_or(system),
+        let motion = self
+            .prefs
+            .get::<Option<bool>>("motion.ui", None)
+            .unwrap_or(system);
+        cx.set_reduce_motion(!motion);
+        // The window fades in and out in place with interface motion on.
+        crate::window_motion::set_enabled(
+            self.host
+                .get_window("main")
+                .and_then(|window| window.hwnd().ok()),
+            motion,
         );
         let saved = self
             .prefs

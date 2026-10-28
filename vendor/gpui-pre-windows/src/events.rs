@@ -1126,7 +1126,17 @@ impl WindowsWindowInner {
         {
             let handled = match (wparam.0 as u32, last_pressed) {
                 (HTMINBUTTON, HTMINBUTTON) if self.is_minimizable => {
-                    unsafe { ShowWindowAsync(handle, SW_MINIMIZE).ok().log_err() };
+                    // Argus patch: minimize as the system caption button does, through
+                    // SC_MINIMIZE, so a window subclass can animate it.
+                    unsafe {
+                        PostMessageW(
+                            Some(handle),
+                            WM_SYSCOMMAND,
+                            WPARAM(SC_MINIMIZE as usize),
+                            LPARAM(0),
+                        )
+                        .log_err()
+                    };
                     true
                 }
                 (HTMINBUTTON, HTMINBUTTON) => true,

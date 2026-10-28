@@ -21,6 +21,7 @@ mod shell;
 mod tasks;
 mod update_transport;
 mod updater;
+mod window_motion;
 
 include!(concat!(env!("OUT_DIR"), "/taskmgr-assets.rs"));
 
