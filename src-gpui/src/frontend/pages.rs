@@ -23,8 +23,8 @@ impl Desktop {
                         .into_any_element();
                 }
                 let vitals = self.fade_in(
-                    ("vitals-enter", self.page_epoch),
                     div().flex_shrink_0().child(self.vitals(window, cx)),
+                    window,
                     cx,
                 );
                 let table = self.table_view(window, cx);
@@ -51,11 +51,9 @@ impl Desktop {
                         .h_full()
                         .flex_shrink_0()
                         .overflow_hidden()
-                        .child(self.fade_in(
-                            ("details-enter", self.page_epoch),
-                            div().size_full().child(self.details_view(window, cx)),
-                            cx,
-                        ))
+                        // Its own entrance, as in the original: the pane slides in
+                        // and its content rises (details.rs).
+                        .child(self.details_view(window, cx))
                 });
                 // A search narrows the list: an accent ring around it says so at a glance.
                 let filtered = !self.query.trim().is_empty();

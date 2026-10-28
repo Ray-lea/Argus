@@ -954,8 +954,8 @@ impl Desktop {
     /// once from its cache instead of repainting on every frame of the fade.
     pub(in crate::frontend) fn enter(
         &self,
-        id: impl Into<ElementId>,
         content: impl IntoElement,
+        window: &Window,
         cx: &App,
     ) -> AnyElement {
         let element = div()
@@ -977,30 +977,28 @@ impl Desktop {
             }
             return element.into_any_element();
         }
-        self.fade_in(id, element, cx)
+        self.fade_in(element, window, cx)
     }
     /// Fades one part of a newly shown page in; the chart layer follows along.
+    /// Only the opacity changes: an animation wrapper that goes away when the
+    /// fade ends would change the element path of everything inside, which
+    /// drops its state and replays its own entrance (the details pane's).
     pub(in crate::frontend) fn fade_in(
         &self,
-        id: impl Into<ElementId>,
         element: impl IntoElement + Styled + 'static,
+        window: &Window,
         cx: &App,
     ) -> AnyElement {
         if !self.page_fading(cx) {
             self.page_opacity.set(1.);
             return element.into_any_element();
         }
-        let opacity = self.page_opacity.clone();
-        element
-            .with_animation(
-                id,
-                Animation::new(PAGE_FADE).with_easing(theme::ease_out),
-                move |element, progress| {
-                    opacity.set(progress);
-                    element.opacity(progress)
-                },
-            )
-            .into_any_element()
+        let progress = theme::ease_out(
+            (self.page_switched.elapsed().as_secs_f32() / PAGE_FADE.as_secs_f32()).min(1.),
+        );
+        self.page_opacity.set(progress);
+        window.request_animation_frame();
+        element.opacity(progress).into_any_element()
     }
     /// Whether the page is still fading in after a page change.
     pub(in crate::frontend) fn page_fading(&self, cx: &App) -> bool {

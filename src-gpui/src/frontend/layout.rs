@@ -882,11 +882,12 @@ impl Render for Desktop {
                     .min_h_0()
                     .flex()
                     .flex_col()
-                    .child(div().flex_1().min_h_0().child(self.enter(
-                        ("page-enter", self.page_epoch),
-                        content,
-                        cx,
-                    )))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .child(self.enter(content, window, cx)),
+                    )
                     .child(footer),
             );
         let overlays = self.render_overlays(window, cx);
