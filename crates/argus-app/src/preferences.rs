@@ -30,12 +30,21 @@ fn save(path: &Path, values: &Preferences) -> io::Result<()> {
     fs::rename(temp, path)
 }
 pub fn set(path: &Path, key: String, value: Value) -> io::Result<()> {
-    if key.is_empty() || key.len() > 1024 {
+    set_many(path, vec![(key, value)])
+}
+/// Whether `key` can name a preference.
+pub fn valid_key(key: &str) -> bool {
+    !key.is_empty() && key.len() <= 1024
+}
+/// Stores several preferences with one atomic replacement, in order: a later
+/// entry for the same key wins.
+pub fn set_many(path: &Path, entries: Vec<(String, Value)>) -> io::Result<()> {
+    if entries.iter().any(|(key, _)| !valid_key(key)) {
         return Err(io::Error::other("invalid preference key"));
     }
     let _lock = WRITE.lock().unwrap();
     let mut current = load(path)?;
-    current.insert(key, value);
+    current.extend(entries);
     save(path, &current)
 }
 #[cfg(test)]

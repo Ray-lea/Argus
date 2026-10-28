@@ -1213,6 +1213,50 @@ pub struct WindowProfiler {
     /// For each view phase in progress, the time spent in views nested
     /// inside it so far.
     nested_view_time: SmallVec<[Duration; 16]>,
+    /// Opt-in per-draw view work (`ARGUS_GPUI_FRAME_TRACE`).
+    draw_work: DrawWork,
+}
+
+/// The views a draw rendered or replayed, for the opt-in frame trace.
+#[cfg(feature = "profiler")]
+#[derive(Default)]
+struct DrawWork {
+    render: Duration,
+    rendered: SmallVec<[&'static str; 8]>,
+    reused: u32,
+    /// Own time of each view in each phase, slowest first when printed.
+    views: SmallVec<[(&'static str, ViewPhase, Duration); 16]>,
+}
+
+/// Whether `ARGUS_GPUI_FRAME_TRACE` asks for per-draw phase records.
+#[cfg(feature = "profiler")]
+pub fn phase_trace_enabled() -> bool {
+    static PHASE_TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *PHASE_TRACE.get_or_init(|| std::env::var_os("ARGUS_GPUI_FRAME_TRACE").is_some())
+}
+
+/// The performance counter in 100 ns units, the clock of the window probe's
+/// frame captures, so traced draws line up with presented frames.
+#[cfg(feature = "profiler")]
+pub fn trace_clock_100ns() -> u64 {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn QueryPerformanceCounter(count: *mut i64) -> i32;
+            fn QueryPerformanceFrequency(frequency: *mut i64) -> i32;
+        }
+        let (mut count, mut frequency) = (0i64, 0i64);
+        // SAFETY: both calls only write the given out-pointers.
+        unsafe {
+            QueryPerformanceCounter(&mut count);
+            QueryPerformanceFrequency(&mut frequency);
+        }
+        (count as u128 * 10_000_000 / frequency.max(1) as u128) as u64
+    }
+    #[cfg(not(windows))]
+    {
+        0
+    }
 }
 
 #[cfg(feature = "profiler")]
@@ -1251,6 +1295,7 @@ impl WindowProfiler {
                 .map_err(|error| anyhow::anyhow!("Failed to create frame histogram: {error}"))?,
             draw_phases: DrawPhases::default(),
             nested_view_time: SmallVec::new(),
+            draw_work: DrawWork::default(),
         };
         journal::record_frame_pending(window_id, Instant::now());
         Ok(profiler)
@@ -1361,6 +1406,21 @@ impl WindowProfiler {
         self.draw_phases = phases;
     }
 
+    /// Records a view render of `duration` in the draw in progress (traced only).
+    pub(crate) fn record_view_render(&mut self, name: &'static str, duration: Duration) {
+        if phase_trace_enabled() {
+            self.draw_work.render += duration;
+            self.draw_work.rendered.push(name);
+        }
+    }
+
+    /// Records a cached view replayed in the draw in progress (traced only).
+    pub(crate) fn record_view_reuse(&mut self) {
+        if phase_trace_enabled() {
+            self.draw_work.reused += 1;
+        }
+    }
+
     /// Records the start of one phase of drawing a view, returning its start
     /// time to pass to [`WindowProfiler::end_view`].
     pub fn begin_view(&mut self) -> Instant {
@@ -1378,6 +1438,17 @@ impl WindowProfiler {
             *parent_nested += duration;
         }
         let self_duration = duration.saturating_sub(nested);
+        if phase_trace_enabled() {
+            match self
+                .draw_work
+                .views
+                .iter_mut()
+                .find(|(n, p, _)| *n == name && *p == phase)
+            {
+                Some(entry) => entry.2 += self_duration,
+                None => self.draw_work.views.push((name, phase, self_duration)),
+            }
+        }
         if self_duration >= VIEW_TIMING_FLOOR {
             journal::record_view(ViewTiming {
                 name,
@@ -1415,14 +1486,36 @@ impl WindowProfiler {
             phases: std::mem::take(&mut self.draw_phases),
         };
         let draw_duration = frame_timing.draw_duration();
-        static PHASE_TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if *PHASE_TRACE.get_or_init(|| std::env::var_os("ARGUS_GPUI_FRAME_TRACE").is_some()) {
+        let work = std::mem::take(&mut self.draw_work);
+        if phase_trace_enabled() {
+            let short = |name: &str| name.rsplit("::").next().unwrap_or(name).to_owned();
+            let rendered = work
+                .rendered
+                .iter()
+                .map(|name| format!("\"{}\"", short(name)))
+                .collect::<Vec<_>>()
+                .join(",");
+            let mut views = work.views.clone();
+            views.sort_by_key(|view| std::cmp::Reverse(view.2));
+            let views = views
+                .iter()
+                .filter(|view| view.2 >= Duration::from_micros(100))
+                .map(|(name, phase, duration)| {
+                    format!("\"{}.{}\":{}", short(name), phase.as_str(), duration.as_micros())
+                })
+                .collect::<Vec<_>>()
+                .join(",");
             println!(
-                "{{\"event\":\"frame-phases\",\"totalUs\":{},\"layoutUs\":{},\"prepaintUs\":{},\"paintUs\":{}}}",
+                "{{\"event\":\"frame-phases\",\"atQpc\":{},\"totalUs\":{},\"layoutUs\":{},\"prepaintUs\":{},\"paintUs\":{},\"renderUs\":{},\"reused\":{},\"rendered\":[{}],\"views\":{{{}}}}}",
+                trace_clock_100ns(),
                 draw_duration.as_micros(),
                 frame_timing.phases.request_layout.as_micros(),
                 frame_timing.phases.prepaint.as_micros(),
                 frame_timing.phases.paint.as_micros(),
+                work.render.as_micros(),
+                work.reused,
+                rendered,
+                views,
             );
         }
         if !journal::power_interrupted_since(draw_start) {

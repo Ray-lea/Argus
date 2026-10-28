@@ -22,7 +22,16 @@ impl Desktop {
                         .child(tr!("shell.loadingProcesses"))
                         .into_any_element();
                 }
-                let vitals = div().flex_shrink_0().child(self.vitals(window, cx));
+                // A region of its own: scrolling the list or animating the details
+                // pane replays the cards.
+                let vitals = self.region(
+                    regions::RegionKind::Vitals,
+                    StyleRefinement::default()
+                        .w_full()
+                        .h(theme::dimension("vitalsHeight"))
+                        .flex_shrink_0(),
+                    cx,
+                );
                 let table = self.table_view(window, cx);
                 // The pane follows its handle without easing while dragged.
                 let dragging = self.drag.as_ref().is_some_and(|drag| drag.0 == "details");
@@ -49,7 +58,15 @@ impl Desktop {
                         .overflow_hidden()
                         // Its own entrance, as in the original: the pane slides in
                         // and its content rises (details.rs).
-                        .child(self.details_view(window, cx))
+                        .child(
+                            self.region(
+                                regions::RegionKind::Details,
+                                StyleRefinement::default()
+                                    .w(px(self.details_display_width(window)))
+                                    .h_full(),
+                                cx,
+                            ),
+                        )
                 });
                 // A search narrows the list: an accent ring around it says so at a glance.
                 let filtered = !self.query.trim().is_empty();

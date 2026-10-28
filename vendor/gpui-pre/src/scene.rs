@@ -46,6 +46,8 @@ pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<DrawOrder>,
+    /// The visual transforms in effect, each composed with those outside it.
+    transform_stack: Vec<VisualTransform>,
     pub shadows: Vec<Shadow>,
     pub quads: Vec<Quad>,
     pub paths: Vec<Path<ScaledPixels>>,
@@ -65,6 +67,7 @@ impl Scene {
         self.paint_operations.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
+        self.transform_stack.clear();
         self.paths.clear();
         self.shadows.clear();
         self.quads.clear();
@@ -80,10 +83,32 @@ impl Scene {
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        let order = self.primitive_bounds.insert(bounds);
+        let placed = match self.transform_stack.last() {
+            Some(transform) => transform.bounds(bounds),
+            None => bounds,
+        };
+        let order = self.primitive_bounds.insert(placed);
         self.layer_stack.push(order);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds));
+    }
+
+    /// Moves and fades everything inserted until the matching
+    /// [`Self::pop_transform`]. The operations keep the untransformed
+    /// primitives, so replaying them follows the transforms then in effect.
+    pub fn push_transform(&mut self, transform: VisualTransform) {
+        let composed = match self.transform_stack.last() {
+            Some(outer) => outer.then(transform),
+            None => transform,
+        };
+        self.transform_stack.push(composed);
+        self.paint_operations
+            .push(PaintOperation::PushTransform(transform));
+    }
+
+    pub fn pop_transform(&mut self) {
+        self.transform_stack.pop();
+        self.paint_operations.push(PaintOperation::PopTransform);
     }
 
     pub fn pop_layer(&mut self) {
@@ -92,7 +117,19 @@ impl Scene {
     }
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
-        let mut primitive = primitive.into();
+        let primitive = primitive.into();
+        let Some(transform) = self.transform_stack.last().copied() else {
+            self.place_primitive(primitive, true);
+            return;
+        };
+        // The untransformed primitive is the operation: replayed in another
+        // transform, it lands where that one puts it, even if hidden now.
+        self.place_primitive(transform.apply(&primitive), false);
+        self.paint_operations
+            .push(PaintOperation::Primitive(primitive));
+    }
+
+    fn place_primitive(&mut self, mut primitive: Primitive, record: bool) {
         let clipped_bounds = primitive
             .bounds()
             .intersect(&primitive.content_mask().bounds);
@@ -141,8 +178,10 @@ impl Scene {
                 self.surfaces.push(surface.clone());
             }
         }
-        self.paint_operations
-            .push(PaintOperation::Primitive(primitive));
+        if record {
+            self.paint_operations
+                .push(PaintOperation::Primitive(primitive));
+        }
     }
 
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
@@ -151,6 +190,8 @@ impl Scene {
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
                 PaintOperation::EndLayer => self.pop_layer(),
+                PaintOperation::PushTransform(transform) => self.push_transform(*transform),
+                PaintOperation::PopTransform => self.pop_transform(),
             }
         }
     }
@@ -222,6 +263,131 @@ pub(crate) enum PaintOperation {
     Primitive(Primitive),
     StartLayer(Bounds<ScaledPixels>),
     EndLayer,
+    PushTransform(VisualTransform),
+    PopTransform,
+}
+
+/// A translation and opacity for everything painted inside it (see
+/// [`crate::Window::with_visual_transform`]). It only changes what is drawn:
+/// layout, hit testing and element bounds stay where they were laid out.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VisualTransform {
+    /// Device pixels to move by.
+    pub offset: Point<ScaledPixels>,
+    /// Multiplies the opacity of everything inside.
+    pub opacity: f32,
+}
+
+impl VisualTransform {
+    /// `inner` inside `self`.
+    fn then(self, inner: Self) -> Self {
+        Self {
+            offset: point(self.offset.x + inner.offset.x, self.offset.y + inner.offset.y),
+            opacity: self.opacity * inner.opacity,
+        }
+    }
+
+    fn bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
+        Bounds {
+            origin: point(bounds.origin.x + self.offset.x, bounds.origin.y + self.offset.y),
+            size: bounds.size,
+        }
+    }
+
+    fn mask(&self, mask: ContentMask<ScaledPixels>) -> ContentMask<ScaledPixels> {
+        ContentMask {
+            bounds: self.bounds(mask.bounds),
+        }
+    }
+
+    /// The primitive as drawn: moved and faded. Glyphs and images move by
+    /// whole device pixels, where a fresh paint would have snapped them.
+    fn apply(&self, primitive: &Primitive) -> Primitive {
+        let snapped = VisualTransform {
+            offset: point(
+                ScaledPixels(self.offset.x.0.round()),
+                ScaledPixels(self.offset.y.0.round()),
+            ),
+            opacity: self.opacity,
+        };
+        let opacity = self.opacity;
+        match primitive {
+            Primitive::Shadow(shadow) => Primitive::Shadow(Shadow {
+                bounds: self.bounds(shadow.bounds),
+                content_mask: self.mask(shadow.content_mask),
+                element_bounds: self.bounds(shadow.element_bounds),
+                color: shadow.color.opacity(opacity),
+                ..*shadow
+            }),
+            Primitive::Quad(quad) => Primitive::Quad(Quad {
+                bounds: self.bounds(quad.bounds),
+                content_mask: self.mask(quad.content_mask),
+                background: quad.background.opacity(opacity),
+                border_color: quad.border_color.opacity(opacity),
+                ..*quad
+            }),
+            Primitive::Path(path) => {
+                let mut path = path.clone();
+                path.bounds = self.bounds(path.bounds);
+                path.content_mask = self.mask(path.content_mask);
+                for vertex in &mut path.vertices {
+                    vertex.xy_position = point(
+                        vertex.xy_position.x + self.offset.x,
+                        vertex.xy_position.y + self.offset.y,
+                    );
+                    vertex.content_mask = self.mask(vertex.content_mask.clone());
+                }
+                path.color = path.color.opacity(opacity);
+                Primitive::Path(path)
+            }
+            Primitive::Underline(underline) => Primitive::Underline(Underline {
+                bounds: self.bounds(underline.bounds),
+                content_mask: self.mask(underline.content_mask),
+                color: underline.color.opacity(opacity),
+                ..*underline
+            }),
+            Primitive::MonochromeSprite(sprite) => Primitive::MonochromeSprite(MonochromeSprite {
+                bounds: snapped.bounds(sprite.bounds),
+                content_mask: self.mask(sprite.content_mask),
+                color: sprite.color.opacity(opacity),
+                transformation: snapped.matrix(sprite.transformation),
+                ..*sprite
+            }),
+            Primitive::SubpixelSprite(sprite) => Primitive::SubpixelSprite(SubpixelSprite {
+                bounds: snapped.bounds(sprite.bounds),
+                content_mask: self.mask(sprite.content_mask),
+                color: sprite.color.opacity(opacity),
+                transformation: snapped.matrix(sprite.transformation),
+                ..*sprite
+            }),
+            Primitive::PolychromeSprite(sprite) => Primitive::PolychromeSprite(PolychromeSprite {
+                bounds: snapped.bounds(sprite.bounds),
+                content_mask: self.mask(sprite.content_mask),
+                opacity: sprite.opacity * opacity,
+                ..*sprite
+            }),
+            Primitive::Surface(surface) => {
+                let mut surface = surface.clone();
+                surface.bounds = snapped.bounds(surface.bounds);
+                surface.content_mask = self.mask(surface.content_mask);
+                Primitive::Surface(surface)
+            }
+        }
+    }
+
+    /// A sprite's matrix for its moved bounds: the matrix maps device
+    /// positions, so its translation absorbs the move it would rotate.
+    fn matrix(&self, matrix: TransformationMatrix) -> TransformationMatrix {
+        let [[a, b], [c, d]] = matrix.rotation_scale;
+        let (x, y) = (self.offset.x.0, self.offset.y.0);
+        TransformationMatrix {
+            rotation_scale: matrix.rotation_scale,
+            translation: [
+                matrix.translation[0] + x - (x * a + y * c),
+                matrix.translation[1] + y - (x * b + y * d),
+            ],
+        }
+    }
 }
 
 #[derive(Clone)]
