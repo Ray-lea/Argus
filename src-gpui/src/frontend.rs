@@ -152,8 +152,6 @@ struct Desktop {
     page_direction: f32,
     /// When the page last changed; the page fades in for `PAGE_FADE` after it.
     page_switched: Instant,
-    /// The table painted uncached during a fade; its cache must refresh after.
-    table_uncached: bool,
     render_count: u64,
     work: WorkCounters,
     frame_trace: Option<gpui_kit::gpui::profiler::FrameTimingCollector>,
@@ -256,7 +254,6 @@ impl Desktop {
             page_epoch: 0,
             page_direction: 0.,
             page_switched: Instant::now(),
-            table_uncached: false,
             render_count: 0,
             work: WorkCounters::default(),
             frame_trace: None,

@@ -22,7 +22,11 @@ impl Desktop {
                         .child(tr!("shell.loadingProcesses"))
                         .into_any_element();
                 }
-                let vitals = self.vitals(window, cx);
+                let vitals = self.fade_in(
+                    ("vitals-enter", self.page_epoch),
+                    div().flex_shrink_0().child(self.vitals(window, cx)),
+                    cx,
+                );
                 let table = self.table_view(window, cx);
                 // The pane follows its handle without easing while dragged.
                 let dragging = self.drag.as_ref().is_some_and(|drag| drag.0 == "details");
@@ -47,7 +51,11 @@ impl Desktop {
                         .h_full()
                         .flex_shrink_0()
                         .overflow_hidden()
-                        .child(self.details_view(window, cx))
+                        .child(self.fade_in(
+                            ("details-enter", self.page_epoch),
+                            div().size_full().child(self.details_view(window, cx)),
+                            cx,
+                        ))
                 });
                 // A search narrows the list: an accent ring around it says so at a glance.
                 let filtered = !self.query.trim().is_empty();

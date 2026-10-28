@@ -952,8 +952,10 @@ impl Desktop {
     }
 
     /// The new page fades in. Opacity alone, without movement: a moving page
-    /// changes the bounds of the cached table views and re-renders them on every
-    /// frame, and motion shows uneven frame pacing far more than a fade does.
+    /// changes the bounds of cached views and re-renders them on every frame, and
+    /// motion shows uneven frame pacing far more than a fade does. Pages built
+    /// around a table fade only their other parts (`fade_in`): the table shows at
+    /// once from its cache instead of repainting on every frame of the fade.
     pub(in crate::frontend) fn enter(
         &self,
         id: impl Into<ElementId>,
@@ -968,7 +970,27 @@ impl Desktop {
             .flex()
             .flex_col()
             .child(content);
-        if !self.page_fading(cx) && self.page_switched.elapsed() >= PAGE_FADE {
+        let table_page = matches!(
+            self.page.as_str(),
+            "processes" | "services" | "startup" | "network"
+        );
+        if table_page || !self.page_fading(cx) {
+            // The process page fades its vitals band, which carries the charts.
+            if self.page != "processes" {
+                self.page_opacity.set(1.);
+            }
+            return element.into_any_element();
+        }
+        self.fade_in(id, element, cx)
+    }
+    /// Fades one part of a newly shown page in; the chart layer follows along.
+    pub(in crate::frontend) fn fade_in(
+        &self,
+        id: impl Into<ElementId>,
+        element: impl IntoElement + Styled + 'static,
+        cx: &App,
+    ) -> AnyElement {
+        if !self.page_fading(cx) {
             self.page_opacity.set(1.);
             return element.into_any_element();
         }

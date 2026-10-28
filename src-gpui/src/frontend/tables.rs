@@ -1558,24 +1558,13 @@ impl Desktop {
                 }
                 cx.notify();
             }))
-            .child({
-                let frame = self.table_frame.as_ref().expect("table frame").clone();
-                let fading = self.page_fading(cx);
-                if !fading && std::mem::take(&mut self.table_uncached) {
-                    // The cache may hold a frame from the previous visit.
-                    frame.update(cx, |_, cx| cx.notify());
-                }
-                self.table_uncached |= fading;
-                // A cached view keeps the opacity it was painted with: while the page
-                // fades in, the table paints every frame so it fades with the page.
-                if fading {
-                    div().size_full().child(frame).into_any_element()
-                } else {
-                    frame
-                        .cached(StyleRefinement::default().size_full())
-                        .into_any_element()
-                }
-            })
+            .child(
+                self.table_frame
+                    .as_ref()
+                    .expect("table frame")
+                    .clone()
+                    .cached(StyleRefinement::default().size_full()),
+            )
             .into_any_element()
     }
     pub(in crate::frontend) fn marks(&self) -> Value {
