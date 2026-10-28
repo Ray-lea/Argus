@@ -25,13 +25,20 @@ pub struct Palette {
     pub battery: Hsla,
     pub danger: Hsla,
     pub heat: Hsla,
+    /// Icons standing in for a missing process icon.
+    pub glyph: Hsla,
+    pub hover_strong: Hsla,
     /// Fluent roles used by controls, dialogs and notices.
     pub flyout: Hsla,
     /// The Fluent control face (`--control`), unmixed by the component theme.
     pub face: Hsla,
-    pub face_hover: Hsla,
-    pub face_press: Hsla,
-    pub pill: Hsla,
+    /// Soft filled controls: a quiet fill that lightens on hover, no outline.
+    pub soft: Hsla,
+    pub soft_hover: Hsla,
+    pub soft_press: Hsla,
+    /// Segmented controls: the track and the raised, sliding selection.
+    pub track: Hsla,
+    pub thumb: Hsla,
     pub press: Hsla,
     pub on_accent: Hsla,
     pub on_danger: Hsla,
@@ -42,6 +49,17 @@ fn on_card(name: &str, dark: bool) -> Hsla {
     let color = token("window-bg", dark)
         .blend(token("layer", dark))
         .blend(token(name, dark));
+    Hsla { a: 1., ..color }
+}
+/// A soft control fill over a card, as one opaque colour: white at `on_dark`
+/// strength in the dark theme, black at `on_light` strength in the light one.
+fn soft(dark: bool, on_dark: f32, on_light: f32) -> Hsla {
+    let card = token("window-bg", dark).blend(token("layer", dark));
+    let color = if dark {
+        card.blend(hsla(0., 0., 1., on_dark))
+    } else {
+        card.blend(hsla(0., 0., 0., on_light))
+    };
     Hsla { a: 1., ..color }
 }
 /// A colour token of the active mode, falling back to the light value.
@@ -58,27 +76,53 @@ pub fn token(name: &str, dark: bool) -> Hsla {
 pub fn role(cx: &App, key: &str) -> Hsla {
     token(key, cx.theme().mode == ThemeMode::Dark)
 }
-/// An original glyph by its file name, for glyphs without an icon name (layers).
-pub fn glyph(name: &str, color: Hsla) -> Icon {
-    Icon::empty()
-        .path(super::assets::glyph(name).expect("product glyph"))
-        .size_4()
-        .text_color(color)
-}
+/// What a cached palette depends on: the mode, the accent and the base colours.
+type PaletteKey = (ThemeMode, Hsla, Hsla, Hsla);
 impl Palette {
+    /// The palette of the active theme. Built once per theme and accent: table
+    /// cells ask for it on every frame, and building it parses theme tokens.
     pub fn current(cx: &App) -> Self {
+        thread_local! {
+            static CACHE: std::cell::Cell<Option<(PaletteKey, Palette)>> =
+                const { std::cell::Cell::new(None) };
+        }
+        let theme = cx.theme();
+        let key = (
+            theme.mode,
+            theme.colors.primary,
+            theme.colors.foreground,
+            theme.colors.background,
+        );
+        if let Some((cached, palette)) = CACHE.get()
+            && cached == key
+        {
+            return palette;
+        }
+        let palette = Self::build(cx);
+        CACHE.set(Some((key, palette)));
+        palette
+    }
+    fn build(cx: &App) -> Self {
         let theme = cx.theme();
         let colors = &theme.colors;
         let dark = theme.mode == ThemeMode::Dark;
         Self {
+            glyph: token("glyph-stroke", dark),
+            hover_strong: token("hover-strong", dark),
             stroke_strong: token("stroke-strong", dark),
             flyout: token("flyout", dark),
             // Opaque equivalents of the translucent control colours over a card:
             // stacked translucent fills darken on the transparent window surface.
             face: on_card("control", dark),
-            face_hover: on_card("control-hover", dark),
-            face_press: on_card("press", dark),
-            pill: on_card("layer-strong", dark),
+            soft: soft(dark, 0.075, 0.055),
+            soft_hover: soft(dark, 0.11, 0.085),
+            soft_press: soft(dark, 0.055, 0.11),
+            track: soft(dark, 0.05, 0.05),
+            thumb: if dark {
+                soft(dark, 0.14, 0.)
+            } else {
+                hsla(0., 0., 1., 1.)
+            },
             press: token("press", dark),
             on_accent: colors.primary_foreground,
             on_danger: token("on-danger", dark),
@@ -170,13 +214,12 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     tokens.colors.input = color("control");
     tokens.colors.ring = color("accent");
     tokens.typography.md.size = px(design["fontSize"].as_f64().expect("theme font size") as f32);
-    if cfg!(target_os = "windows") {
-        tokens.typography.sans = design["fonts"]["windows"][0]
-            .as_str()
-            .expect("system font")
-            .to_owned()
-            .into();
-    }
+    // The bundled HarmonyOS Sans SC (see `install_fonts`) on every platform.
+    tokens.typography.sans = design["fonts"]["sans"][0]
+        .as_str()
+        .expect("interface font")
+        .to_owned()
+        .into();
     theme.apply_semantic_tokens(&tokens);
     theme.colors.group_box = color("layer");
     theme.colors.list_hover = color("hover");
@@ -216,6 +259,18 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     theme.radius_lg = px(8.);
     theme.tokens = theme.colors.into();
     Theme::sync_base(cx);
+}
+/// Registers the bundled interface font: HarmonyOS Sans SC, a variable font with
+/// every weight in one unmodified file (its licence forbids subsetting).
+pub fn install_fonts(cx: &mut App) {
+    static HARMONYOS_SANS_SC: &[u8] =
+        include_bytes!("../../../resources/fonts/HarmonyOS_Sans_SC.ttf");
+    if let Err(error) = cx
+        .text_system()
+        .add_fonts(vec![std::borrow::Cow::Borrowed(HARMONYOS_SANS_SC)])
+    {
+        log::warn!("interface font unavailable: {error}");
+    }
 }
 pub fn install_surface(cx: &mut App) {
     gpui_kit::base::Root::register_plugin(cx, |_, _| ProductSurface);
@@ -385,47 +440,20 @@ pub(super) fn parse_color(css: &str) -> Hsla {
     }
     .into()
 }
-pub fn icon(name: &str, color: Hsla) -> Icon {
-    // Names follow the original icon set; a few native-only names alias to it.
-    let original = match name {
-        "CpuIcon" => "ChipIcon",
-        "DownloadIcon" => "UpdateIcon",
-        "RefreshIcon" => "RestartIcon",
-        "LanguageIcon" => "GlobeIcon",
-        "MotionIcon" => "SparkleIcon",
-        "AppIcon" => "GenericAppIcon",
-        "DataIcon" => "StorageIcon",
-        "RulesIcon" => "BoltIcon",
-        "ExternalLinkIcon" => "ExternalIcon",
-        "CloseIcon" => "DismissIcon",
-        name => name,
-    };
-    let mut file = String::new();
-    for (index, c) in original
-        .strip_suffix("Icon")
-        .unwrap_or(original)
-        .chars()
-        .enumerate()
-    {
-        if c.is_ascii_uppercase() && index > 0 {
-            file.push('-');
-        }
-        file.push(c.to_ascii_lowercase());
-    }
-    if let Some(path) = super::assets::glyph(&file) {
-        return Icon::empty().path(path).size_4().text_color(color);
-    }
-    let icon = match name {
+/// The component set's icon for a product icon name; unknown names show a circle.
+pub fn icon_name(name: &str) -> IconName {
+    match name {
         "ProcessesIcon" => IconName::LayoutList,
         "PulseIcon" => IconName::Activity,
         "ServicesIcon" => IconName::Settings2,
         "PowerIcon" => IconName::Power,
         "DownloadIcon" => IconName::Download,
-        "GlobeIcon" => IconName::Network,
+        "UpdateIcon" => IconName::Download,
+        "GlobeIcon" => IconName::Globe,
         "HistoryIcon" => IconName::Clock,
         "SettingsIcon" => IconName::Settings,
         "MenuIcon" => IconName::Menu,
-        "AppsIcon" => IconName::PanelsTopLeft,
+        "AppsIcon" => IconName::LayoutGrid,
         "TreeIcon" => IconName::ListTree,
         "ListIcon" => IconName::List,
         "PauseIcon" => IconName::Pause,
@@ -439,30 +467,67 @@ pub fn icon(name: &str, color: Hsla) -> Icon {
         "MinimizeIcon" => IconName::Minus,
         "MaximizeIcon" => IconName::Square,
         "DismissIcon" => IconName::X,
+        "CloseIcon" => IconName::X,
         "CpuIcon" => IconName::Cpu,
+        "ChipIcon" => IconName::Cpu,
+        "KernelIcon" => IconName::Microchip,
         "MemoryIcon" => IconName::MemoryStick,
         "DiskIcon" => IconName::HardDrive,
-        "GpuIcon" => IconName::Monitor,
+        "GpuIcon" => IconName::Gpu,
+        "NetworkIcon" => IconName::EthernetPort,
         "BatteryIcon" => IconName::Battery,
-        "RefreshIcon" => IconName::RefreshCw,
+        "ComputerIcon" => IconName::Monitor,
+        "RefreshIcon" => IconName::RotateCw,
+        "RestartIcon" => IconName::RotateCw,
         "LanguageIcon" => IconName::Globe,
         "KeyboardIcon" => IconName::Keyboard,
         "ShieldIcon" => IconName::Shield,
         "MotionIcon" => IconName::Sparkles,
+        "SparkleIcon" => IconName::Sparkles,
         "InfoIcon" => IconName::Info,
         "CopyIcon" => IconName::Copy,
         "EyeIcon" => IconName::Eye,
         "EyeOffIcon" => IconName::EyeOff,
         "AppIcon" => IconName::AppWindow,
+        "GenericAppIcon" => IconName::AppWindow,
         "ThemeIcon" => IconName::SunMoon,
         "DataIcon" => IconName::Database,
+        "StorageIcon" => IconName::Database,
         "RulesIcon" => IconName::Zap,
+        "BoltIcon" => IconName::Zap,
         "SearchIcon" => IconName::Search,
         "ExternalLinkIcon" => IconName::ExternalLink,
+        "ExternalIcon" => IconName::ExternalLink,
         "FolderIcon" => IconName::FolderOpen,
+        "FilterIcon" => IconName::Funnel,
+        "LeafIcon" => IconName::Leaf,
+        "NoteIcon" => IconName::StickyNote,
+        "NotesIcon" => IconName::NotebookText,
+        "PinIcon" => IconName::Pin,
+        "UnpinIcon" => IconName::PinOff,
+        "TrashIcon" => IconName::Trash,
+        "GoToIcon" => IconName::SquareArrowOutUpRight,
+        "EndIcon" => IconName::CircleX,
+        "BranchEndIcon" => IconName::ListX,
+        "GaugeIcon" => IconName::Gauge,
+        "StopIcon" => IconName::Square,
+        "TrayIcon" => IconName::PanelBottom,
+        "TimerIcon" => IconName::Timer,
+        "TransferIcon" => IconName::ArrowLeftRight,
+        "StarIcon" => IconName::Star,
+        "ChatIcon" => IconName::MessageCircle,
+        "DocumentIcon" => IconName::FileText,
+        "NavSideIcon" => IconName::PanelLeft,
+        "NavTopIcon" => IconName::PanelTop,
+        "WarningIcon" => IconName::TriangleAlert,
+        "CheckIcon" => IconName::Check,
+        "PointerIcon" => IconName::MousePointer2,
+        "ArrowRightIcon" => IconName::ArrowRight,
         _ => IconName::Circle,
-    };
-    Icon::new(icon).size_4().text_color(color)
+    }
+}
+pub fn icon(name: &str, color: Hsla) -> Icon {
+    Icon::new(icon_name(name)).size_4().text_color(color)
 }
 pub fn label(key: &str) -> String {
     argus_core::i18n::text(key)

@@ -150,6 +150,10 @@ struct Desktop {
     page_epoch: u64,
     /// Where the last page change came from: -1, 0 (start-up) or 1.
     page_direction: f32,
+    /// When the page last changed; the page fades in for `PAGE_FADE` after it.
+    page_switched: Instant,
+    /// The table painted uncached during a fade; its cache must refresh after.
+    table_uncached: bool,
     render_count: u64,
     work: WorkCounters,
     frame_trace: Option<gpui_kit::gpui::profiler::FrameTimingCollector>,
@@ -251,6 +255,8 @@ impl Desktop {
             },
             page_epoch: 0,
             page_direction: 0.,
+            page_switched: Instant::now(),
+            table_uncached: false,
             render_count: 0,
             work: WorkCounters::default(),
             frame_trace: None,
@@ -444,6 +450,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
         .with_assets(assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
+            theme::install_fonts(cx);
             theme::install_surface(cx);
             let opts = WindowOptions {
                 window_bounds: Some(WindowBounds::centered(

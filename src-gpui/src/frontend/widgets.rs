@@ -1,7 +1,6 @@
 //! Shared native controls and short, reduced-motion-aware transitions.
 use super::*;
 use gpui_kit::base::ElementExt;
-use gpui_kit::component::tab::{Tab, TabBar};
 
 /// The button faces of the original `.btn`: plain, accent, danger and ghost.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -114,6 +113,35 @@ pub(in crate::frontend) struct UiState {
     pub icons: RefCell<HashMap<u32, Arc<Image>>>,
     /// Measured heights of each dialog's body and footer, to centre it.
     pub dialog_parts: Rc<RefCell<HashMap<(u64, u8), Pixels>>>,
+    /// Segmented controls: where each one's selection was and is (x, width).
+    pub slides: RefCell<HashMap<SharedString, Slide>>,
+}
+
+/// The sliding selection of one segmented control.
+#[derive(Clone, Copy)]
+pub(in crate::frontend) struct Slide {
+    pub selected: usize,
+    pub from: Option<(f32, f32)>,
+    pub to: Option<(f32, f32)>,
+}
+
+/// Records an element's bounds; a change redraws the desktop once, so geometry
+/// that depends on layout (a sliding selection) catches up on the next frame.
+fn remember(
+    key: SharedString,
+    anchors: Rc<RefCell<HashMap<SharedString, Bounds<Pixels>>>>,
+    owner: WeakEntity<Desktop>,
+) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
+    move |bounds, window, cx| {
+        if anchors.borrow().get(&key) == Some(&bounds) {
+            return;
+        }
+        anchors.borrow_mut().insert(key.clone(), bounds);
+        let owner = owner.clone();
+        window.defer(cx, move |_, cx| {
+            let _ = owner.update(cx, |_, cx| cx.notify());
+        });
+    }
 }
 
 /// The privileged service's state in a few words (also used by the onboarding).
@@ -169,42 +197,132 @@ impl ButtonExt for gpui_kit::base::Button {
 }
 
 impl Desktop {
+    /// A segmented control: a quiet track whose selection is a raised pill
+    /// that slides to the chosen option.
     pub(in crate::frontend) fn segments(
         &self,
         id: impl Into<SharedString>,
         choices: Vec<(String, Option<&str>, Action, bool)>,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let id: SharedString = id.into();
+        let p = self.palette;
         let selected = choices.iter().position(|choice| choice.3).unwrap_or(0);
-        let actions = choices
-            .iter()
-            .map(|choice| choice.2.clone())
-            .collect::<Vec<_>>();
-        TabBar::new(id.into())
-            .segmented()
-            .selected_index(selected)
-            .children(choices.into_iter().map(|(name, glyph, action, _)| {
-                let icon_only = name.is_empty();
-                let accessible = if icon_only && let Action::View(mode) = &action {
-                    label(&format!("shell.viewMode.{mode}.label"))
-                } else {
-                    name.clone()
-                };
-                Tab::new()
-                    .label(name)
-                    .aria_label(accessible)
-                    .when_some(glyph, |tab, glyph| {
-                        if icon_only {
-                            tab.icon(icon(glyph, self.palette.muted))
-                        } else {
-                            tab.prefix(icon(glyph, self.palette.muted))
-                        }
-                    })
-            }))
-            .on_click(cx.listener(move |this, index: &usize, window, cx| {
-                this.act(actions[*index].clone(), window, cx);
-            }))
-            .into_any_element()
+        let anchors = self.ui.anchors.clone();
+        let item_key = |index: usize| SharedString::from(format!("seg:{id}:{index}"));
+        let track_key = SharedString::from(format!("seg:{id}"));
+        let geometry = {
+            let anchors = anchors.borrow();
+            match (anchors.get(&track_key), anchors.get(&item_key(selected))) {
+                (Some(track), Some(item)) => Some((
+                    f32::from(item.left() - track.left()),
+                    f32::from(item.size.width),
+                )),
+                _ => None,
+            }
+        };
+        let (from, to) = {
+            let mut slides = self.ui.slides.borrow_mut();
+            let slide = slides.entry(id.clone()).or_insert(Slide {
+                selected,
+                from: None,
+                to: geometry,
+            });
+            if slide.selected != selected {
+                slide.from = slide.to;
+                slide.selected = selected;
+            }
+            if geometry.is_some() {
+                slide.to = geometry;
+            }
+            (slide.from, slide.to)
+        };
+        let owner = cx.entity().downgrade();
+        let mut track = div()
+            .id(ElementId::Name(id.clone()))
+            .relative()
+            .flex()
+            .items_center()
+            .gap(px(2.))
+            .p(px(3.))
+            .flex_shrink_0()
+            .rounded(px(8.))
+            .bg(p.track)
+            .on_prepaint(remember(track_key, anchors.clone(), owner.clone()));
+        if let Some((x, width)) = to {
+            let pill = div()
+                .absolute()
+                .top(px(3.))
+                .bottom(px(3.))
+                .left(px(x))
+                .w(px(width))
+                .rounded(px(6.))
+                .bg(p.thumb)
+                .shadow(vec![BoxShadow {
+                    color: hsla(0., 0., 0., if p.dark { 0.28 } else { 0.1 }),
+                    offset: point(px(0.), px(1.)),
+                    blur_radius: px(2.),
+                    spread_radius: px(0.),
+                    inset: false,
+                }]);
+            track = track.child(match from.filter(|from| *from != (x, width)) {
+                Some((from_x, from_width)) if !cx.reduce_motion() => pill
+                    .with_animation(
+                        ElementId::NamedInteger(format!("seg-slide-{id}").into(), selected as u64),
+                        Animation::new(Duration::from_millis(220)).with_easing(theme::ease_move),
+                        move |pill, t| {
+                            pill.left(px(from_x + (x - from_x) * t))
+                                .w(px(from_width + (width - from_width) * t))
+                        },
+                    )
+                    .into_any_element(),
+                _ => pill.into_any_element(),
+            });
+        }
+        for (index, (name, glyph, action, _)) in choices.into_iter().enumerate() {
+            let chosen = index == selected;
+            let icon_only = name.is_empty();
+            let accessible = if icon_only && let Action::View(mode) = &action {
+                label(&format!("shell.viewMode.{mode}.label"))
+            } else {
+                name.clone()
+            };
+            let color = if chosen { p.ink } else { p.muted };
+            let hover = p.hover;
+            let ink = p.ink;
+            track = track.child(
+                gpui_kit::base::Button::new(ElementId::NamedInteger(
+                    format!("seg-{id}").into(),
+                    index as u64,
+                ))
+                .relative()
+                .h(px(26.))
+                .when(icon_only, |b| b.w(px(30.)))
+                .when(!icon_only, |b| b.px(px(11.)))
+                .flex()
+                .items_center()
+                .justify_center()
+                .gap(px(6.))
+                .rounded(px(6.))
+                .text_size(px(13.))
+                .whitespace_nowrap()
+                .text_color(color)
+                .when(chosen, |b| b.font_weight(FontWeight::MEDIUM))
+                // Before the first layout there is no pill yet: paint the choice itself.
+                .when(chosen && to.is_none(), |b| b.bg(p.thumb))
+                .when(!chosen, |b| b.hover(move |s| s.bg(hover).text_color(ink)))
+                .role(Role::Tab)
+                .accessibility_label(accessible)
+                .when_some(glyph, |b, glyph| b.child(icon(glyph, color)))
+                .when(!icon_only, |b| b.child(name))
+                .on_prepaint(remember(item_key(index), anchors.clone(), owner.clone()))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.act(action.clone(), window, cx);
+                }))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+            );
+        }
+        track.into_any_element()
     }
 
     /// A Fluent button (`.btn`): 32 px, 1 px stroke with a stronger bottom
@@ -240,53 +358,42 @@ impl Desktop {
     ) -> gpui_kit::base::Button {
         let p = self.palette;
         let clear = p.background.opacity(0.);
-        let (bg, fg, border) = match tone {
-            Tone::Plain => (p.face, p.ink, p.stroke),
-            Tone::Accent => (p.accent, p.on_accent, clear),
-            Tone::Danger => (p.danger, p.on_danger, clear),
-            Tone::Ghost => (clear, p.ink, clear),
+        let (bg, fg) = match tone {
+            Tone::Plain => (p.soft, p.ink),
+            Tone::Accent => (p.accent, p.on_accent),
+            Tone::Danger => (p.danger, p.on_danger),
+            Tone::Ghost => (clear, p.ink),
         };
         let icon_only = text.is_empty() && glyph.is_some();
-        let height = if small { px(24.) } else { px(32.) };
+        let height = if small { px(26.) } else { px(32.) };
         gpui_kit::base::Button::new(id)
             .relative()
             .h(height)
             .when(icon_only, |b| b.w(height))
-            .when(!icon_only, |b| b.px(if small { px(8.) } else { px(12.) }))
+            .when(!icon_only, |b| b.px(if small { px(10.) } else { px(14.) }))
             .flex_shrink_0()
             .gap(px(6.))
-            .rounded(px(4.))
-            .border_1()
-            .border_color(border)
+            .rounded(px(6.))
             .bg(bg)
             .text_color(fg)
             .text_size(px(13.))
+            .when(tone == Tone::Accent || tone == Tone::Danger, |b| {
+                b.font_weight(FontWeight::MEDIUM)
+            })
             .whitespace_nowrap()
             .hover(move |s| match tone {
-                Tone::Plain => s.bg(p.face_hover),
+                Tone::Plain => s.bg(p.soft_hover),
                 Tone::Ghost => s.bg(p.hover),
                 Tone::Accent => s.bg(brighter(p.accent)),
                 Tone::Danger => s.bg(brighter(p.danger)),
             })
             .active(move |s| match tone {
-                Tone::Plain => s.bg(p.face_press).text_color(p.muted),
-                Tone::Ghost => s.bg(p.press).text_color(p.muted),
-                Tone::Accent => s.bg(p.accent.opacity(0.9)),
-                Tone::Danger => s.bg(p.danger.opacity(0.9)),
+                Tone::Plain => s.bg(p.soft_press),
+                Tone::Ghost => s.bg(p.press),
+                Tone::Accent => s.bg(p.accent.opacity(0.88)),
+                Tone::Danger => s.bg(p.danger.opacity(0.88)),
             })
             .accessibility_label(text.clone())
-            .when(tone == Tone::Plain, |b| {
-                // The stronger bottom edge of a Fluent control.
-                b.child(
-                    div()
-                        .absolute()
-                        .left(px(3.))
-                        .right(px(3.))
-                        .top(height - px(2.))
-                        .h(px(1.))
-                        .bg(p.stroke_strong),
-                )
-            })
             .when_some(glyph, |b, name| b.child(icon(name, fg)))
             .when(!text.is_empty(), |b| b.child(text))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -416,11 +523,14 @@ impl Desktop {
                     .px(px(8.))
                     .py(px(2.))
                     .border_1()
-                    .border_b_2()
                     .when(off, |d| d.border_dashed())
-                    .border_color(tint(p.stroke_strong))
-                    .rounded(px(4.))
-                    .bg(p.face)
+                    .border_color(tint(if off { p.stroke_strong } else { p.soft }))
+                    .rounded(px(5.))
+                    .bg(if off {
+                        p.background.opacity(0.)
+                    } else {
+                        p.soft
+                    })
                     .text_size(px(12.))
                     .text_color(tint(if off { p.muted } else { p.ink }))
                     .whitespace_nowrap()
@@ -479,9 +589,15 @@ impl Desktop {
             .into_any_element()
     }
 
-    /// A state pill (`.state-pill`): a coloured dot, or a spinner while busy.
+    /// A state pill: a soft tinted capsule with a coloured dot, or a spinner while busy.
     pub(in crate::frontend) fn state_pill(&self, text: String, tone: &str) -> AnyElement {
         let p = self.palette;
+        let color = match tone {
+            "ok" => p.network,
+            "warn" => p.io,
+            "busy" => p.accent,
+            _ => p.faint,
+        };
         div()
             .flex()
             .items_center()
@@ -489,23 +605,21 @@ impl Desktop {
             .h(px(26.))
             .px(px(11.))
             .flex_shrink_0()
-            .border_1()
-            .border_color(p.stroke)
             .rounded(px(13.))
-            .bg(p.pill)
+            .bg(match tone {
+                "ok" | "warn" | "busy" => p.soft.blend(color.opacity(0.16)),
+                _ => p.soft,
+            })
             .text_size(px(12.))
+            .text_color(p.ink)
             .whitespace_nowrap()
             .child(if tone == "busy" {
                 self.spinner(10., p.accent)
             } else {
                 div()
-                    .size(px(8.))
+                    .size(px(7.))
                     .rounded_full()
-                    .bg(match tone {
-                        "ok" => p.network,
-                        "warn" => p.io,
-                        _ => p.faint,
-                    })
+                    .bg(color)
                     .into_any_element()
             })
             .child(text)
@@ -586,22 +700,11 @@ impl Desktop {
             .gap(px(10.))
             .flex_shrink_0()
             .justify_start()
-            .rounded(px(4.))
-            .border_1()
-            .border_color(p.stroke)
-            .bg(if open { p.face_hover } else { p.face })
+            .rounded(px(6.))
+            .bg(if open { p.soft_hover } else { p.soft })
             .text_color(p.ink)
             .text_size(px(13.))
-            .hover(move |s| s.bg(p.face_hover))
-            .child(
-                div()
-                    .absolute()
-                    .left(px(3.))
-                    .right(px(3.))
-                    .top(px(30.))
-                    .h(px(1.))
-                    .bg(p.stroke_strong),
-            )
+            .hover(move |s| s.bg(p.soft_hover))
             .child(
                 // Every label in one column, the others without height: the
                 // button is as wide as the longest.
@@ -846,8 +949,9 @@ impl Desktop {
         )
     }
 
-    /// The new page slides in from the side of its navigation entry: from the right
-    /// for a tab further right, from below for an entry further down the pane.
+    /// The new page fades in. Opacity alone, without movement: a moving page
+    /// changes the bounds of the cached table views and re-renders them on every
+    /// frame, and motion shows uneven frame pacing far more than a fade does.
     pub(in crate::frontend) fn enter(
         &self,
         id: impl Into<ElementId>,
@@ -862,32 +966,30 @@ impl Desktop {
             .flex()
             .flex_col()
             .child(content);
-        if cx.reduce_motion() || self.page_direction == 0. {
+        if !self.page_fading(cx) && self.page_switched.elapsed() >= PAGE_FADE {
             self.page_opacity.set(1.);
             return element.into_any_element();
         }
         let opacity = self.page_opacity.clone();
-        let (dx, dy) = if self.nav_top {
-            (self.page_direction * 32., 0.)
-        } else {
-            (0., self.page_direction * 24.)
-        };
-        let ease = gpui_kit::base::animation::cubic_bezier(0.1, 0.9, 0.2, 1.);
         element
             .with_animation(
                 id,
-                Animation::new(std::time::Duration::from_millis(300)).with_easing(ease),
+                Animation::new(PAGE_FADE).with_easing(theme::ease_out),
                 move |element, progress| {
                     opacity.set(progress);
-                    element
-                        .opacity(progress)
-                        .left(px((1. - progress) * dx))
-                        .top(px((1. - progress) * dy))
+                    element.opacity(progress)
                 },
             )
             .into_any_element()
     }
+    /// Whether the page is still fading in after a page change.
+    pub(in crate::frontend) fn page_fading(&self, cx: &App) -> bool {
+        !cx.reduce_motion() && self.page_direction != 0. && self.page_switched.elapsed() < PAGE_FADE
+    }
 }
+
+/// How long a page takes to fade in after a page change.
+pub(in crate::frontend) const PAGE_FADE: Duration = Duration::from_millis(180);
 
 /// The flyout shadow of menus, lists and dialogs (`--shadow-flyout`).
 pub(in crate::frontend) fn flyout_shadow(dark: bool) -> Vec<BoxShadow> {

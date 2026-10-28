@@ -593,7 +593,7 @@ impl TableDelegate for NativeTable {
                 d.child(icon(if sort.1 { "ChevronDown" } else { "ChevronUp" }, p.ink).size(px(12.)))
             });
         let hover = p.hover;
-        let press = theme::role(cx, "press");
+        let press = p.press;
         let header_bounds = owner
             .upgrade()
             .map(|owner| owner.read(cx).header_bounds.clone());
@@ -835,8 +835,9 @@ impl TableDelegate for NativeTable {
         div()
             .id(("native-row", index))
             .relative()
+            .border_b_0()
             .rounded(px(4.))
-            .when(fresh, |d| d.bg(theme::role(cx, "net").opacity(0.15)))
+            .when(fresh, |d| d.bg(p.network.opacity(0.15)))
             .when(selected, |d| {
                 d.child(
                     div()
@@ -994,20 +995,7 @@ impl NativeTable {
                 if let Some(image) = image {
                     img(image).size_4().into_any_element()
                 } else {
-                    let glyph = if kernel { "kernel" } else { "generic-app" };
-                    div()
-                        .size_4()
-                        .child(div().absolute().inset_0().child(theme::glyph(
-                            &format!("{glyph}-fill"),
-                            theme::role(cx, "glyph-bg"),
-                        )))
-                        .child(
-                            div()
-                                .absolute()
-                                .inset_0()
-                                .child(theme::glyph(glyph, theme::role(cx, "glyph-stroke"))),
-                        )
-                        .into_any_element()
+                    icon(if kernel { "KernelIcon" } else { "AppIcon" }, p.glyph).into_any_element()
                 },
             ));
         }
@@ -1421,8 +1409,13 @@ impl Desktop {
                 window,
                 |this, _, event, window, cx| match event {
                     TableEvent::SelectRow(index) => {
-                        if let Some(row) = this.rows.get(*index) {
-                            this.act(Action::Select(row.key.clone()), window, cx);
+                        if let Some(row) = this.rows.get(*index).cloned() {
+                            if row.section.is_some() {
+                                this.act(Action::Fold(row.key.clone()), window, cx);
+                                this.sync_table_selection(cx);
+                            } else {
+                                this.act(Action::Select(row.key.clone()), window, cx);
+                            }
                         }
                     }
                     TableEvent::DoubleClickedRow(index) => {
@@ -1439,7 +1432,9 @@ impl Desktop {
                     }
                     TableEvent::RightClickedRow(Some(index)) => {
                         // A right press selects the row, as a left one does, then opens its menu.
-                        if let Some(row) = this.rows.get(*index).cloned() {
+                        if let Some(row) = this.rows.get(*index).cloned()
+                            && row.section.is_none()
+                        {
                             this.selected.insert(this.page.clone(), row.key.clone());
                             let items = this.row_menu(&row);
                             this.open_popup(items, window, cx);
@@ -1537,13 +1532,24 @@ impl Desktop {
                 }
                 cx.notify();
             }))
-            .child(
-                self.table_frame
-                    .as_ref()
-                    .expect("table frame")
-                    .clone()
-                    .cached(StyleRefinement::default().size_full()),
-            )
+            .child({
+                let frame = self.table_frame.as_ref().expect("table frame").clone();
+                let fading = self.page_fading(cx);
+                if !fading && std::mem::take(&mut self.table_uncached) {
+                    // The cache may hold a frame from the previous visit.
+                    frame.update(cx, |_, cx| cx.notify());
+                }
+                self.table_uncached |= fading;
+                // A cached view keeps the opacity it was painted with: while the page
+                // fades in, the table paints every frame so it fades with the page.
+                if fading {
+                    div().size_full().child(frame).into_any_element()
+                } else {
+                    frame
+                        .cached(StyleRefinement::default().size_full())
+                        .into_any_element()
+                }
+            })
             .into_any_element()
     }
     pub(in crate::frontend) fn marks(&self) -> Value {
@@ -1622,6 +1628,23 @@ fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 impl Desktop {
+    /// Puts the table's own selection back on the selected row (or none), after
+    /// a click the desktop did not turn into a selection.
+    pub(in crate::frontend) fn sync_table_selection(&self, cx: &mut Context<Self>) {
+        let selected = self
+            .selected
+            .get(&self.page)
+            .and_then(|key| self.rows.iter().position(|row| &row.key == key));
+        if let Some(table) = &self.table {
+            table.update(cx, |state, cx| {
+                match selected {
+                    Some(index) => state.set_selected_row(index, cx),
+                    None => state.clear_selection(cx),
+                }
+                state.set_right_clicked_row(None, cx);
+            });
+        }
+    }
     /// Display names of the services running in each process, by PID.
     pub(in crate::frontend) fn hosted_services(&self) -> HashMap<u64, Vec<String>> {
         let mut hosted: HashMap<u64, Vec<String>> = HashMap::new();

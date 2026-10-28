@@ -69,8 +69,8 @@ impl Desktop {
         let regions = *self.navigation_regions.borrow();
         let owner = cx.entity().downgrade();
         let hover = p.hover;
-        let press = theme::role(cx, "press");
-        let hover_strong = theme::role(cx, "hover-strong");
+        let press = p.press;
+        let hover_strong = p.hover_strong;
         let update_waiting = self
             .data
             .get("updates")
@@ -279,9 +279,16 @@ impl Desktop {
     ) -> Button {
         let text = text.into();
         let p = self.palette;
-        let hover = theme::role(cx, "control-hover");
-        let press = theme::role(cx, "press");
         let color = if pressed { p.accent } else { p.ink };
+        let (rest, hover, press) = if pressed {
+            (
+                p.accent.opacity(0.16),
+                p.accent.opacity(0.22),
+                p.accent.opacity(0.12),
+            )
+        } else {
+            (p.soft, p.soft_hover, p.soft_press)
+        };
         Button::new(id.into())
             .relative()
             .h(px(32.))
@@ -291,24 +298,13 @@ impl Desktop {
             .justify_center()
             .gap(px(6.))
             .when(text.is_empty(), |b| b.w(px(32.)))
-            .when(!text.is_empty(), |b| b.px(px(12.)))
-            .rounded(px(4.))
-            .border_1()
-            .border_color(p.stroke)
-            .bg(p.control)
+            .when(!text.is_empty(), |b| b.px(px(13.)))
+            .rounded(px(6.))
+            .bg(rest)
             .text_color(color)
             .hover(move |s| s.bg(hover))
-            .active(move |s| s.bg(press).text_color(p.muted))
+            .active(move |s| s.bg(press))
             .accessibility_label(text.clone())
-            .child(
-                div()
-                    .absolute()
-                    .left(px(3.))
-                    .right(px(3.))
-                    .bottom(px(-1.))
-                    .h(px(1.))
-                    .bg(p.stroke_strong),
-            )
             .when_some(glyph, |b, name| b.child(icon(name, color)))
             .when(!text.is_empty(), |b| b.child(text))
             .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
@@ -386,56 +382,22 @@ impl Desktop {
             trailing = trailing.child(self.service_actions(wide, cx));
         }
         if sampled {
-            let intervals = [500, 1000, 2000, 5000]
-                .into_iter()
-                .map(|ms| {
-                    MenuItem::new(
-                        tr!("shell.interval.option", seconds = ms as f64 / 1000.),
-                        Action::Interval(ms),
-                    )
-                    .checked(ms == self.interval)
-                })
-                .collect::<Vec<_>>();
-            let hover = theme::role(cx, "control-hover");
+            const INTERVALS: [u64; 4] = [500, 1000, 2000, 5000];
             trailing = trailing.child(
-                Button::new("interval")
-                    .relative()
-                    .h(px(32.))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .pl(px(11.))
-                    .pr(px(10.))
-                    .rounded(px(4.))
-                    .border_1()
-                    .border_color(p.stroke)
-                    .bg(p.control)
-                    .text_color(p.ink)
-                    .hover(move |s| s.bg(hover))
-                    .accessibility_label(label("shell.interval.label"))
-                    .child(
-                        div()
-                            .absolute()
-                            .left(px(3.))
-                            .right(px(3.))
-                            .bottom(px(-1.))
-                            .h(px(1.))
-                            .bg(p.stroke_strong),
-                    )
-                    .child(tr!(
-                        "shell.interval.option",
-                        seconds = self.interval as f64 / 1000.
-                    ))
-                    .child(icon("ChevronDown", p.muted).size(px(12.)))
-                    .tooltip(|window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(label("shell.interval.label"))
-                            .build(window, cx)
-                    })
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.act(Action::Popup(intervals.clone()), window, cx)
-                    }))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+                self.select(
+                    "interval",
+                    label("shell.interval.label"),
+                    INTERVALS
+                        .iter()
+                        .map(|ms| tr!("shell.interval.option", seconds = *ms as f64 / 1000.))
+                        .collect(),
+                    INTERVALS.iter().position(|ms| *ms == self.interval),
+                    false,
+                    |this, index, window, cx| {
+                        this.act(Action::Interval(INTERVALS[index]), window, cx);
+                    },
+                    cx,
+                ),
             );
             let pause_tip = if self.paused {
                 label("shell.resume")
@@ -510,7 +472,7 @@ impl Desktop {
             } else {
                 tr!("updates.button.title", version = text(updates, "version"))
             };
-            let on_accent = theme::role(cx, "on-accent");
+            let on_accent = p.on_accent;
             trailing = trailing.child(
                 Button::new("update-status")
                     .size(px(32.))
@@ -612,19 +574,18 @@ impl Desktop {
                 let x = centered.max(left).min(right - width);
                 let filled = !self.query.trim().is_empty();
                 let focused = self.search.read(cx).focus_handle(cx).is_focused(window);
-                let hover = theme::role(cx, "control-hover");
-                let layer_strong = theme::role(cx, "layer-strong");
-                let (border, edge, edge_width, background) = if filled {
+                // A soft field: a quiet fill, an accent outline while focused, and an
+                // accent tint while it filters the list.
+                let hover = p.soft_hover;
+                let (border, background) = if filled {
                     (
-                        p.accent.opacity(0.55),
-                        p.accent,
-                        if focused { 2. } else { 1. },
-                        p.accent.opacity(0.09),
+                        p.accent.opacity(if focused { 0.7 } else { 0.4 }),
+                        p.soft.blend(p.accent.opacity(0.12)),
                     )
                 } else if focused {
-                    (p.stroke, p.accent, 2., layer_strong)
+                    (p.accent.opacity(0.7), p.soft_hover)
                 } else {
-                    (p.stroke, p.stroke_strong, 1., p.control)
+                    (p.soft.opacity(0.), p.soft)
                 };
                 toolbar = toolbar.child(
                     div()
@@ -636,22 +597,13 @@ impl Desktop {
                         .w(width)
                         .flex()
                         .items_center()
-                        .rounded(px(4.))
+                        .rounded(px(8.))
                         .border_1()
                         .border_color(border)
                         .bg(background)
                         .when(!filled && !focused, |d| d.hover(move |s| s.bg(hover)))
                         .overflow_hidden()
                         .occlude()
-                        .child(
-                            div()
-                                .absolute()
-                                .left_0()
-                                .right_0()
-                                .bottom(px(-1.))
-                                .h(px(edge_width))
-                                .bg(edge),
-                        )
                         .child(
                             Input::new(&self.search)
                                 .appearance(false)
@@ -804,10 +756,15 @@ impl Desktop {
         } else {
             "standard"
         };
-        let (badge_border, badge_color) = match privilege {
-            "admin" => (p.accent.opacity(0.4), p.accent),
-            "service" => (p.network.opacity(0.4), p.network),
-            _ => (p.stroke, p.muted),
+        let badge_color = match privilege {
+            "admin" => p.accent,
+            "service" => p.network,
+            _ => p.muted,
+        };
+        let badge_fill = if privilege == "standard" {
+            p.soft
+        } else {
+            badge_color.opacity(0.14)
         };
         let hint = label(&format!("shell.elevation.{privilege}Hint"));
         div()
@@ -866,8 +823,7 @@ impl Desktop {
                     .h(px(20.))
                     .my(px(-2.))
                     .px(px(8.))
-                    .border_1()
-                    .border_color(badge_border)
+                    .bg(badge_fill)
                     .rounded_full()
                     .text_color(badge_color)
                     .child(icon("ShieldIcon", badge_color).size(px(12.)))

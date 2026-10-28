@@ -1043,31 +1043,17 @@ impl Desktop {
                 .clone();
             return img(image).size(size).into_any_element();
         }
-        let (fill, stroke) = if process["path"].is_null() {
-            ("KernelFillIcon", "KernelIcon")
-        } else {
-            ("GenericAppFillIcon", "GenericAppIcon")
-        };
-        div()
-            .relative()
-            .size(size)
-            .child(
-                icon(fill, design_color("glyph-bg", cx))
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .w(size)
-                    .h(size),
-            )
-            .child(
-                icon(stroke, design_color("glyph-stroke", cx))
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .w(size)
-                    .h(size),
-            )
-            .into_any_element()
+        icon(
+            if process["path"].is_null() {
+                "KernelIcon"
+            } else {
+                "AppIcon"
+            },
+            design_color("glyph-stroke", cx),
+        )
+        .w(size)
+        .h(size)
+        .into_any_element()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1408,7 +1394,9 @@ impl Desktop {
             },
         )]);
         let layout = sentence.layout().clone();
-        let glyph: Option<SharedString> = assets::glyph("panel").map(Into::into);
+        let glyph: Option<SharedString> = Some(gpui_kit::assets::IconNamed::path(
+            theme::icon_name("PanelIcon"),
+        ));
         let (control, stroke, ink) = (p.control, p.stroke, p.ink);
         div()
             .relative()

@@ -2476,7 +2476,9 @@ impl Interactivity {
                 .max(&Default::default());
             // Clamp scroll offset in case scroll max is smaller now (e.g., if children
             // were removed or the bounds became larger).
+            let key = Rc::as_ptr(scroll_offset) as usize;
             let mut scroll_offset = scroll_offset.borrow_mut();
+            smooth_scroll::advance(key, &mut scroll_offset, scroll_max, window);
 
             scroll_offset.x = scroll_offset.x.clamp(-scroll_max.x, px(0.));
             if scroll_to_bottom {
@@ -3329,6 +3331,7 @@ impl Interactivity {
         _cx: &mut App,
     ) {
         if let Some(scroll_offset) = self.scroll_offset.clone() {
+            let scroll_offset_rc = scroll_offset.clone();
             let ongoing_scroll = self.ongoing_scroll.clone();
             let overflow = style.overflow;
             let allow_concurrent_scroll = style.allow_concurrent_scroll;
@@ -3376,9 +3379,15 @@ impl Interactivity {
                             delta_x = Pixels::ZERO;
                         }
                     }
-                    scroll_offset.y += delta_y;
-                    scroll_offset.x += delta_x;
-                    if *scroll_offset != old_scroll_offset {
+                    let key = Rc::as_ptr(&scroll_offset_rc) as usize;
+                    if event.delta.precise() || event.touch_phase != TouchPhase::Moved {
+                        smooth_scroll::cancel(key);
+                        scroll_offset.y += delta_y;
+                        scroll_offset.x += delta_x;
+                    } else {
+                        smooth_scroll::start(key, *scroll_offset, point(delta_x, delta_y));
+                    }
+                    if *scroll_offset != old_scroll_offset || smooth_scroll::running(key) {
                         cx.notify(current_view);
                     }
                 }
@@ -5636,5 +5645,89 @@ mod tests {
         assert_eq!(bounds("cell-0").origin.x, px(0.));
         assert_eq!(bounds("cell-1").origin.x, px(100.));
         assert_eq!(bounds("cell-2").origin.x, px(300.));
+    }
+}
+
+/// Argus patch: mouse-wheel notches glide to their target instead of jumping.
+/// Precise (touchpad) deltas and programmatic scrolls apply directly and end a glide.
+mod smooth_scroll {
+    use crate::{Pixels, Point, Window, point, px};
+    use std::{cell::RefCell, collections::HashMap, time::Duration, time::Instant};
+
+    const DURATION: Duration = Duration::from_millis(140);
+
+    struct Glide {
+        from: Point<Pixels>,
+        to: Point<Pixels>,
+        start: Instant,
+        /// The offset the glide last wrote; anything else means someone else scrolled.
+        written: Point<Pixels>,
+    }
+
+    thread_local! {
+        static GLIDES: RefCell<HashMap<usize, Glide>> = RefCell::new(HashMap::new());
+    }
+
+    pub(super) fn start(key: usize, current: Point<Pixels>, delta: Point<Pixels>) {
+        GLIDES.with_borrow_mut(|glides| {
+            let target = match glides.get(&key) {
+                Some(glide) if glide.written == current => glide.to,
+                _ => current,
+            };
+            glides.insert(
+                key,
+                Glide {
+                    from: current,
+                    to: target + delta,
+                    start: Instant::now(),
+                    written: current,
+                },
+            );
+        });
+    }
+
+    pub(super) fn cancel(key: usize) {
+        GLIDES.with_borrow_mut(|glides| glides.remove(&key));
+    }
+
+    pub(super) fn running(key: usize) -> bool {
+        GLIDES.with_borrow(|glides| glides.contains_key(&key))
+    }
+
+    /// Moves the offset along a running glide, keeping the target inside the
+    /// scrollable range, and asks for the next frame until the glide ends.
+    pub(super) fn advance(
+        key: usize,
+        offset: &mut Point<Pixels>,
+        max: Point<Pixels>,
+        window: &mut Window,
+    ) {
+        GLIDES.with_borrow_mut(|glides| {
+            let Some(glide) = glides.get_mut(&key) else {
+                return;
+            };
+            if *offset != glide.written {
+                glides.remove(&key);
+                return;
+            }
+            let clamp = |p: Point<Pixels>| {
+                point(p.x.clamp(-max.x, px(0.)), p.y.clamp(-max.y, px(0.)))
+            };
+            glide.to = clamp(glide.to);
+            let t = (glide.start.elapsed().as_secs_f32() / DURATION.as_secs_f32()).min(1.);
+            // Ease out: fast at the notch, settling at the target.
+            let eased = 1. - (1. - t).powi(3);
+            let next = point(
+                glide.from.x + (glide.to.x - glide.from.x) * eased,
+                glide.from.y + (glide.to.y - glide.from.y) * eased,
+            );
+            *offset = clamp(next);
+            glide.written = *offset;
+            if t >= 1. {
+                glides.remove(&key);
+            } else {
+                window.request_animation_frame();
+            }
+        });
     }
 }

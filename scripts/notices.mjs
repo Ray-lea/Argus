@@ -197,7 +197,7 @@ function render(rust, npm, native) {
   return `${out.join("\n")}\n`;
 }
 
-const text = render(crates(), npmPackages(), [...vendored(),{name:"Native installer templates (Tauri-derived)",version:"2.12.3",license:"MIT OR Apache-2.0",url:"https://github.com/tauri-apps/tauri",texts:[readFileSync(join(root,"packaging/windows/LICENSE-TAURI-MIT"),"utf8"),readFileSync(join(root,"packaging/windows/LICENSE-TAURI-APACHE"),"utf8")]}]);
+const text = render(crates(), npmPackages(), [...vendored(),{name:"HarmonyOS Sans SC",version:"2.040",license:"HarmonyOS Sans Fonts License Agreement",url:"https://gitee.com/openharmony/global_system_resources",texts:[readFileSync(join(root,"resources/fonts/LICENSE-HarmonyOS-Sans.txt"),"utf8")]},{name:"Native installer templates (Tauri-derived)",version:"2.12.3",license:"MIT OR Apache-2.0",url:"https://github.com/tauri-apps/tauri",texts:[readFileSync(join(root,"packaging/windows/LICENSE-TAURI-MIT"),"utf8"),readFileSync(join(root,"packaging/windows/LICENSE-TAURI-APACHE"),"utf8")]}]);
 const path = join(root, OUT);
 if (process.argv.includes("--check")) {
   if (!existsSync(path) || readFileSync(path, "utf8") !== text) {

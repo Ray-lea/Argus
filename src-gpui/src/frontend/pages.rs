@@ -408,7 +408,7 @@ impl Desktop {
         }
         let count = cards.len();
         let hover = p.hover;
-        let press = theme::role(cx, "press");
+        let press = p.press;
         let mut band = div()
             .flex()
             .flex_shrink_0()

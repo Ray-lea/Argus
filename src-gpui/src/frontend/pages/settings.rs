@@ -2373,6 +2373,14 @@ impl Desktop {
                                 .text_size(px(12.))
                                 .text_color(p.muted)
                                 .child(format!("© 2026 {}", env!("CARGO_PKG_AUTHORS"))),
+                        )
+                        // Required by the HarmonyOS Sans Fonts License Agreement.
+                        .child(
+                            div()
+                                .mt(px(2.))
+                                .text_size(px(12.))
+                                .text_color(p.muted)
+                                .child(label("settings.about.font")),
                         ),
                 )
                 .child(

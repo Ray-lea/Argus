@@ -617,12 +617,14 @@ impl Desktop {
         let p = self.palette;
         let parts = self.ui.dialog_parts.borrow();
         let measured = parts.get(&(id, 0)).zip(parts.get(&(id, 1)));
+        // Centred from the measured height. Until the first measurement the dialog
+        // stays invisible, so it never shows at the default position and then jumps.
         let dialog = match measured {
             Some((body, footer)) => {
                 let height = *body + *footer + px(2.);
                 dialog.margin_top(((window.viewport_size().height - height) / 2.).max(px(16.)))
             }
-            None => dialog,
+            None => dialog.opacity(0.),
         };
         let owner = cx.entity().downgrade();
         let enter = owner.clone();
@@ -636,7 +638,7 @@ impl Desktop {
             .rounded(px(8.))
             .shadow(widgets::flyout_shadow(p.dark))
             .close_button(false)
-            .entrance(DialogEntrance::Fade)
+            .entrance(DialogEntrance::FadeSlide)
             .on_ok(move |_, window, cx| {
                 let _ = enter.update(cx, |this, cx| this.dialog_enter(id, window, cx));
                 false

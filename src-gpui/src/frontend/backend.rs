@@ -474,6 +474,7 @@ impl Desktop {
                     self.page_epoch = self.page_epoch.wrapping_add(1);
                     let index = |name: &str| PAGES.iter().position(|p| p.0 == name).unwrap_or(0);
                     self.page_direction = (index(&page) as f32 - index(&self.page) as f32).signum();
+                    self.page_switched = Instant::now();
                 }
                 self.sorts
                     .insert(self.page.clone(), (self.sort.clone(), self.descending));
@@ -716,6 +717,17 @@ impl Desktop {
                 ("end", _) => last,
                 _ => 0,
             };
+            // Category headings are not selectable: step past them in the move's direction.
+            let forward = matches!(key, "down" | "pagedown" | "home");
+            let index = if forward {
+                (index..self.rows.len()).find(|i| self.rows[*i].section.is_none())
+            } else {
+                (0..=index.min(last))
+                    .rev()
+                    .find(|i| self.rows[*i].section.is_none())
+            }
+            .or_else(|| self.rows.iter().position(|row| row.section.is_none()))
+            .unwrap_or(index);
             if let Some(key) = self.rows.get(index).map(|row| row.key.clone()) {
                 // Keyboard moves select; they never toggle the selection off.
                 self.last_select = None;
@@ -914,6 +926,18 @@ impl Desktop {
                     }),
                     cx,
                 );
+            });
+        }
+        if let Some(wheel) = control.get("wheel") {
+            // A mouse-wheel notch at a point (test only): {"x":…,"y":…,"lines":…}.
+            let event = ScrollWheelEvent {
+                position: point(px(number(wheel, "x") as f32), px(number(wheel, "y") as f32)),
+                delta: ScrollDelta::Lines(point(0., number(wheel, "lines") as f32)),
+                touch_phase: TouchPhase::Moved,
+                ..Default::default()
+            };
+            window.defer(cx, move |window, cx| {
+                window.dispatch_event(PlatformInput::ScrollWheel(event), cx);
             });
         }
         if let Some(id) = control["hoverChart"].as_str()

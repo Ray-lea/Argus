@@ -38,9 +38,8 @@
     "chartRasterScale": 2
   },
   "fonts": {
-    "windows": ["Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],
-    "macos": [".SystemUIFont"],
-    "display": ["Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI"],
+    "sans": ["HarmonyOS Sans SC"],
+    "display": ["HarmonyOS Sans SC"],
     "mono": ["Cascadia Mono", "Cascadia Code", "Consolas"]
   },
   "light": {
