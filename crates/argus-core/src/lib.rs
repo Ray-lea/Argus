@@ -23,6 +23,7 @@ pub mod i18n;
 pub mod meta;
 pub mod net_process;
 mod nt;
+mod package;
 mod paths;
 mod pdh;
 pub mod privilege;
