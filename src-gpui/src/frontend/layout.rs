@@ -18,6 +18,7 @@ impl Desktop {
             window,
             cx,
         );
+        scrollbar::style_library(dark, cx);
         self.palette = Palette::current(cx);
         for (table, frame) in self.tables.values() {
             table.update(cx, |_, cx| cx.notify());

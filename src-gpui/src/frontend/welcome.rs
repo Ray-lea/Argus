@@ -965,12 +965,16 @@ impl Desktop {
             .min(window.viewport_size().height - px(140.))
             .max(px(200.));
         let reduce = cx.reduce_motion();
+        let scroll = scrollbar::fresh_handle("onboarding-step", (id << 8) | step as u64);
         let content = div()
             .id(("onboarding-step", id))
+            .track_scroll(&scroll)
             .h(height)
             .overflow_y_scroll()
             .pt(px(28.))
-            .px(px(32.))
+            .pl(px(32.))
+            // The gutter is kept (`scrollbar-gutter: stable`).
+            .pr(px(32. + scrollbar::SIZE))
             .pb(px(20.))
             .child(
                 body.with_animation(
@@ -987,7 +991,12 @@ impl Desktop {
                             .opacity(if dir == 0. { 1. } else { delta })
                     },
                 ),
-            );
+            )
+            .child(scrollbar::scrollbar(
+                "onboarding-scrollbar",
+                &scroll,
+                p.dark,
+            ));
         let dots = div()
             .flex()
             .gap(px(6.))

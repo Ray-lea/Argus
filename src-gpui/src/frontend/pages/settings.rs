@@ -7,7 +7,6 @@ use crate::frontend::widgets::{
     ButtonExt, HotkeyMessage, HotkeyMode, ToastKind, Tone, service_connected, service_state,
 };
 use gpui_kit::base::ElementExt;
-use gpui_kit::component::scroll::{ScrollableElement, ScrollbarAxis};
 
 pub(super) const SECTIONS: [&str; 9] = [
     "language",
@@ -674,7 +673,10 @@ impl Desktop {
         } else {
             f32::from(window.viewport_size().width) - 24.
         };
-        let narrow = width < NARROW;
+        // The gutter is kept (`scrollbar-gutter: stable`): the container query
+        // and the centring see the width beside it.
+        let width = width - scrollbar::SIZE;
+        let narrow = width <= NARROW;
         let layout = if narrow {
             (width - 8.).max(0.)
         } else {
@@ -698,7 +700,9 @@ impl Desktop {
             .flex()
             .flex_col()
             .pl(px(content_left))
-            .pr(px((width - content_left - content_width).max(0.)))
+            .pr(px(
+                (width - content_left - content_width).max(0.) + scrollbar::SIZE
+            ))
             .pt(px(4.))
             .pb(px(32.))
             .children(sections)
@@ -707,7 +711,11 @@ impl Desktop {
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.ui.settings_picked = false),
             );
-        let body = body.scrollbar(&self.settings_scroll, ScrollbarAxis::Vertical);
+        let body = body.child(scrollbar::scrollbar(
+            "settings-scrollbar",
+            &self.settings_scroll,
+            p.dark,
+        ));
         let selected = SECTIONS
             .iter()
             .position(|s| *s == self.settings_section)

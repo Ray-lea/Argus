@@ -1,7 +1,6 @@
 //! The process details pane: the selected row looked up in the snapshot, or this computer's parts.
 use super::*;
 use gpui_kit::base::SelectableText;
-use gpui_kit::component::scroll::{ScrollableElement, ScrollbarAxis};
 use gpui_kit::component::tooltip::Tooltip;
 use std::hash::{Hash, Hasher};
 
@@ -28,8 +27,6 @@ const MB: f64 = KB * 1024.;
 const GB: f64 = MB * 1024.;
 /// Width of the box around each fact name (styles.css `.facts`).
 const FACT_NAME_WIDTH: f32 = 84.;
-/// Room kept for the vertical scrollbar, as `scrollbar-gutter: stable` does.
-const SCROLLBAR_GUTTER: f32 = 10.;
 /// Pane width change per arrow key.
 const KEY_STEP: f32 = 16.;
 /// Largest share of the window the pane takes.
@@ -174,9 +171,9 @@ impl Desktop {
                     .pt(px(14.))
                     .pb(px(16.))
                     .pl(px(16.))
-                    .pr(px(16. + SCROLLBAR_GUTTER))
+                    .pr(px(16. + scrollbar::SIZE))
                     .child(body)
-                    .scrollbar(&scroll, ScrollbarAxis::Vertical),
+                    .child(scrollbar::scrollbar("details-scrollbar", &scroll, p.dark)),
             )
             .children(actions);
         // Another selection settles in where the last one was (DetailsPanel.tsx).

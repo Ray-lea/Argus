@@ -766,9 +766,15 @@ impl Desktop {
                 cells.push(cell(content, index == 0, false));
             }
         }
+        let scroll = scrollbar::keyed_handle(id);
         div()
             .id(SharedString::from(id.to_owned()))
+            .track_scroll(&scroll)
             .overflow_x_scroll()
+            // A vertical wheel scrolls the page, as in Chromium.
+            .restrict_scroll_to_axis()
+            // `overflow-x: scroll` keeps the rail even when the columns fit.
+            .pb(px(scrollbar::SIZE))
             .child(
                 div()
                     .min_w_full()
@@ -777,6 +783,7 @@ impl Desktop {
                     .text_size(px(12.))
                     .children(cells),
             )
+            .child(scrollbar::scrollbar(format!("{id}-scrollbar"), &scroll, p.dark).horizontal())
             .into_any_element()
     }
     fn head_cell(&self, name: String, unit: Option<&str>) -> AnyElement {
