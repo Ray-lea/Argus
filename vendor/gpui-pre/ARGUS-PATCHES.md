@@ -15,6 +15,7 @@ Local changes:
 - The runnable counter uses `AtomicUsize::try_update`, the current name of `fetch_update` on the workspace Rust toolchain. Ordering and checked subtraction are unchanged.
 - Text measurement reuses matching wrap/truncation constraints and unwrapped text that fits the new width. Truncated or wrapped results cannot answer wider intrinsic probes. Line wrappers are acquired only for actual truncation, and decoration storage follows the number of style runs.
 - Inherited text styles cache their resolved prefix, and text without background decorations skips the empty background paint pass.
+- Mouse-wheel notches (line deltas) glide to their target over 140 ms with an ease-out curve instead of jumping; the glide advances while the scroll offset is clamped during prepaint and requests animation frames only for the view being scrolled. Precise (touchpad) deltas and programmatic scrolls apply directly and end a running glide. See `smooth_scroll` in `src/elements/div.rs`.
 - Taffy 0.14 uses its leaf-layout adapter for measured elements. Opt-in frame diagnostics report layout node counts, measurement time and cleanup separately; normal rendering does not enable the timers.
 
 The owned-window probe exercises normal startup, caption movement, resize, frame timing, and foreground isolation. Remove these patches when an upstream version provides equivalent behavior.
