@@ -606,42 +606,51 @@ impl Desktop {
                     ),
             );
         }
-        // A newly chosen device starts at the top and arrives from its direction in the list.
+        // A newly chosen device starts at the top and arrives from its direction in
+        // the list, fading in (250 ms, decelerating). Only the offset and opacity
+        // change: an animation wrapper keyed by each arrival would drop the
+        // state of everything inside, the charts' drawn curves included, and
+        // they would pop in again.
         let arrival = window.use_keyed_state("perf-device-arrival", cx, |_, _| {
-            (String::new(), 0usize, 0f32, 0u64)
+            (String::new(), 0usize, 0f32, None::<Instant>)
         });
-        let (previous_id, previous_index, mut direction, mut epoch) = arrival.read(cx).clone();
+        let (previous_id, previous_index, mut direction, mut started) = arrival.read(cx).clone();
         let current_id = selected.as_ref().map(|d| d.id.clone()).unwrap_or_default();
         if previous_id != current_id {
             if !previous_id.is_empty() {
                 direction = (selected_index as f32 - previous_index as f32).signum();
-                epoch += 1;
+                started = Some(Instant::now());
                 self.device_scroll.set_offset(point(px(0.), px(0.)));
             }
             arrival.update(cx, |state, _| {
-                *state = (current_id, selected_index, direction, epoch)
+                *state = (current_id, selected_index, direction, started)
             });
         }
+        let progress = started
+            .filter(|_| !cx.reduce_motion())
+            .map(|at| (at.elapsed().as_secs_f32() / 0.25).min(1.))
+            .unwrap_or(1.);
+        let arriving = if progress < 1. {
+            window.request_animation_frame();
+            theme::ease_out(progress)
+        } else {
+            1.
+        };
+        // The chart layer's curves fade with the view.
+        self.chart_fade.set(arriving);
         let content = selected
             .map(|device| self.device_view(&device, window, cx))
             .unwrap_or_else(|| div().into_any_element());
-        let content = if epoch > 0 && !cx.reduce_motion() {
-            div()
-                .relative()
-                .flex_1()
-                .flex()
-                .flex_col()
-                .child(content)
-                .with_animation(
-                    ("perf-device-enter", epoch),
-                    Animation::new(std::time::Duration::from_millis(250))
-                        .with_easing(gpui_kit::base::animation::ease_out_cubic),
-                    move |element, progress| element.top(px(direction * 16. * (1. - progress))),
-                )
-                .into_any_element()
-        } else {
-            content
-        };
+        self.chart_fade.set(1.);
+        let content = div()
+            .relative()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .top(px(direction * 16. * (1. - arriving)))
+            .opacity(arriving)
+            .child(content)
+            .into_any_element();
         let splitter = div()
             .id("perf-sidebar-splitter")
             .group("perf-splitter")
@@ -1135,7 +1144,9 @@ impl Desktop {
             window,
             cx,
         );
-        self.chart_fade.set(fade);
+        // On top of the fade the device view may be arriving with.
+        let outer = self.chart_fade.get();
+        self.chart_fade.set(outer * fade);
         let graphs = if logical {
             self.core_grid(hybrid, &filter, window, cx)
         } else {
@@ -1161,7 +1172,7 @@ impl Desktop {
                 cx,
             )
         };
-        self.chart_fade.set(1.);
+        self.chart_fade.set(outer);
         out.push(
             div()
                 .w_full()
