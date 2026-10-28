@@ -475,6 +475,8 @@ pub(super) struct Placement {
     bounds: Bounds<Pixels>,
     mask: Bounds<Pixels>,
     plot: Rc<RefCell<TimePlot>>,
+    /// The chart's own fade (a view settling in), on top of the page's.
+    opacity: f32,
 }
 pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
 
@@ -616,7 +618,7 @@ impl Render for ChartLayer {
                         // Bars keep a fixed gap, so their tracks never overlap a neighbour's fill.
                         plot.background_separate = true;
                         let background = plot.clone();
-                        let alpha = page_opacity;
+                        let alpha = page_opacity * placement.opacity;
                         let mut element = div()
                             .size_full()
                             .opacity(alpha)
@@ -1060,6 +1062,7 @@ impl Desktop {
         let id = plot.id.to_string();
         let placements = self.chart_placements.clone();
         let placed_plot = plot_rc.clone();
+        let opacity = self.chart_fade.get();
         let placeholder = canvas(
             move |bounds, window, _| {
                 placements.borrow_mut().insert(
@@ -1068,6 +1071,7 @@ impl Desktop {
                         bounds,
                         mask: window.content_mask().bounds,
                         plot: placed_plot.clone(),
+                        opacity,
                     },
                 );
             },
