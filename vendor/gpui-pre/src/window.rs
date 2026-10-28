@@ -5250,6 +5250,9 @@ impl Window {
     /// Paint a complete image at fractional device coordinates, clipped by the
     /// current content mask. Animated raster layers must retain their subpixel
     /// position instead of snapping bounds or rounding a cropped atlas tile.
+    /// The Windows renderer area-filters these images (see
+    /// [`PolychromeSprite::AREA_FILTER`]), so a raster drawn at a multiple of the
+    /// device resolution keeps the same antialiasing at every position.
     pub fn paint_image_subpixel(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -5273,7 +5276,7 @@ impl Window {
         let content_mask = self.snapped_content_mask();
         let sprite = PolychromeSprite {
             order: 0,
-            pad: 0,
+            pad: PolychromeSprite::AREA_FILTER,
             grayscale: false.into(),
             bounds: bounds.scale(self.scale_factor()),
             content_mask,

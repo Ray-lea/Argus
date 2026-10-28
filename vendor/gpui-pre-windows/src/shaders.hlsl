@@ -1262,6 +1262,48 @@ PolychromeSpriteVertexOutput polychrome_sprite_vertex(uint vertex_id: SV_VertexI
     return output;
 }
 
+// Argus: `PolychromeSprite::pad` set to this asks for area filtering. It marks
+// a raster drawn at fractional device coordinates, usually from more texels
+// than pixels (a chart curve rasterized at twice the device resolution and
+// translated on every frame); see `Window::paint_image_subpixel`.
+static const uint SPRITE_AREA_FILTER = 1u;
+
+// The texels under the pixel's footprint, each weighted by the part of the
+// footprint it covers and premultiplied before they are averaged: the
+// box-filtered coverage of the raster at any subpixel position. Bilinear
+// sampling of a 2x raster point-samples at some positions (stair-stepped
+// edges that change as the raster moves) and mixes straight colours with the
+// transparent black around a stroke (dark fringes). The footprint is at least
+// one texel, so a magnified raster interpolates linearly instead of showing
+// blocks, and at most three. Texels outside the tile count as transparent.
+// Returns straight alpha, as `Sample` does for the other sprites.
+float4 sample_area(float2 position, Bounds bounds, AtlasTile tile) {
+    float2 texels = float2(tile.bounds.size) / bounds.size;
+    float2 footprint = clamp(texels, 1.0, 3.0);
+    float2 tile_lo = float2(tile.bounds.origin);
+    float2 tile_hi = tile_lo + float2(tile.bounds.size);
+    float2 center = tile_lo + (position - bounds.origin) * texels;
+    float2 lo = center - footprint * 0.5;
+    float2 hi = center + footprint * 0.5;
+    float2 first = floor(lo);
+    float4 sum = float4(0.0, 0.0, 0.0, 0.0);
+    [unroll] for (int j = 0; j < 4; j++) {
+        float y = first.y + float(j);
+        float wy = saturate(min(y + 1.0, hi.y) - max(y, lo.y));
+        [unroll] for (int i = 0; i < 4; i++) {
+            float x = first.x + float(i);
+            float wx = saturate(min(x + 1.0, hi.x) - max(x, lo.x));
+            float weight = wx * wy;
+            if (weight > 0.0 && x >= tile_lo.x && x < tile_hi.x && y >= tile_lo.y && y < tile_hi.y) {
+                float4 texel = t_sprite.Load(int3(int(x), int(y), 0));
+                sum += float4(texel.rgb * texel.a, texel.a) * weight;
+            }
+        }
+    }
+    sum /= footprint.x * footprint.y;
+    return sum.a > 0.0 ? float4(sum.rgb / sum.a, sum.a) : float4(0.0, 0.0, 0.0, 0.0);
+}
+
 float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Target {
     PolychromeSprite sprite = poly_sprites[input.sprite_id];
     float4 prefix = float4(0.0, 0.0, 0.0, 0.0);
@@ -1271,9 +1313,14 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
             || any(input.position.xy < sprite.content_mask.origin) || any(input.position.xy >= sprite.content_mask.origin + sprite.content_mask.size)) return prefix;
     }
     // Use the same pixel-space mapping for ordinary and background-restoring draws.
-    float2 unit = (input.position.xy - sprite.bounds.origin) / sprite.bounds.size;
-    float2 tile_position = (float2(sprite.tile.bounds.origin) + unit * float2(sprite.tile.bounds.size)) / input.atlas_size;
-    float4 sample = t_sprite.Sample(s_sprite, tile_position);
+    float4 sample;
+    if (sprite.pad == SPRITE_AREA_FILTER) {
+        sample = sample_area(input.position.xy, sprite.bounds, sprite.tile);
+    } else {
+        float2 unit = (input.position.xy - sprite.bounds.origin) / sprite.bounds.size;
+        float2 tile_position = (float2(sprite.tile.bounds.origin) + unit * float2(sprite.tile.bounds.size)) / input.atlas_size;
+        sample = t_sprite.Sample(s_sprite, tile_position);
+    }
     float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 
     float4 color = sample;
