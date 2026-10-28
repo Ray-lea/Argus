@@ -573,6 +573,7 @@ impl Desktop {
                         live_clock: None,
                         image_surface: Default::default(),
                         bar_surfaces: Default::default(),
+                        bar_glides: Default::default(),
                         dash_phases: Default::default(),
                         rescale: Default::default(),
                     })

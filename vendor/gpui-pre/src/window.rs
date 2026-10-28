@@ -3356,10 +3356,16 @@ impl Window {
     /// device pixels; its top keeps a fractional position, drawn as a coverage
     /// ramp one device pixel tall, so the bar grows smoothly between pixel rows
     /// instead of jumping a whole row at a time. None when nothing would show.
+    ///
+    /// The quad starts half a pixel above the top, where the ramp begins, rather
+    /// than at the pixel row holding the top: its rounded corners then move with
+    /// the top instead of jumping a whole row each time the top crosses one. It
+    /// never starts above `ceiling` (the top of the bar's reserved region).
     fn bar_quad(
         &self,
         bounds: Bounds<Pixels>,
         color: Hsla,
+        ceiling: ScaledPixels,
     ) -> Option<(Bounds<ScaledPixels>, Background)> {
         let scale_factor = self.scale_factor();
         let left = round_to_device_pixel(bounds.left().0, scale_factor);
@@ -3369,17 +3375,17 @@ impl Window {
         if right <= left || bottom - top < 1. / 256. {
             return None;
         }
-        // Rounding noise must not lift the quad a row above its region.
-        let row = (top + 1e-3).floor();
-        let height = bottom - row;
+        // Rounding noise must not lift the quad above its region.
+        let start = (top - 0.5).max(ceiling.0.min(top + 1e-3).floor());
+        let height = bottom - start;
         let fill = crate::linear_gradient(
             180.,
-            crate::linear_color_stop(color.opacity(0.), (top - 0.5 - row) / height),
-            crate::linear_color_stop(color, (top + 0.5 - row) / height),
+            crate::linear_color_stop(color.opacity(0.), (top - 0.5 - start) / height),
+            crate::linear_color_stop(color, (top + 0.5 - start) / height),
         );
         Some((
             Bounds::from_corners(
-                point(ScaledPixels(left), ScaledPixels(row)),
+                point(ScaledPixels(left), ScaledPixels(start)),
                 point(ScaledPixels(right), ScaledPixels(bottom)),
             ),
             fill,
@@ -5317,7 +5323,7 @@ impl Window {
         use crate::scene::{PaintOperation, Primitive};
         let layer = self.cover_bounds(region.intersect(&self.content_mask().bounds));
         // The fill as painted, with the element opacity applied.
-        let bar = self.bar_quad(bounds, color.opacity(self.element_opacity()));
+        let bar = self.bar_quad(bounds, color.opacity(self.element_opacity()), layer.top());
         self.paint_layer(region, |window| {
             let operation = window.next_frame.scene.len();
             window.paint_quad(crate::fill(region, color).corner_radii(corner_radius));
@@ -5404,7 +5410,7 @@ impl Window {
         };
         let requested = bounds.scale(self.scale_factor());
         let bar = match (tile, handle.background.and_then(|b| b.as_solid())) {
-            (None, Some(color)) => self.bar_quad(bounds, color),
+            (None, Some(color)) => self.bar_quad(bounds, color, handle.layer.top()),
             _ => None,
         };
         let scene = &mut self.rendered_frame.scene;
