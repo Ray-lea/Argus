@@ -755,6 +755,8 @@ impl From<SubpixelSprite> for Primitive {
 #[expect(missing_docs)]
 pub struct PolychromeSprite {
     pub order: DrawOrder,
+    /// Argus: [`Self::AREA_FILTER`] or 0 (the field keeps its name and layout,
+    /// so renderers that ignore it treat it as padding).
     pub pad: u32,
     pub grayscale: PaddedBool32,
     pub opacity: f32,
@@ -762,6 +764,13 @@ pub struct PolychromeSprite {
     pub content_mask: ContentMask<ScaledPixels>,
     pub corner_radii: Corners<ScaledPixels>,
     pub tile: AtlasTile,
+}
+
+impl PolychromeSprite {
+    /// Sample the image by the area each pixel covers, with premultiplied
+    /// texels, instead of bilinearly: for rasters drawn at fractional positions
+    /// from more texels than pixels (Windows renderer).
+    pub const AREA_FILTER: u32 = 1;
 }
 
 impl From<PolychromeSprite> for Primitive {

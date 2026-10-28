@@ -144,10 +144,14 @@ try {
     await sleep(4500);
     capture("restored-performance");
   } else if (retained) {
+    // Light-theme cards are translucent white over the backdrop: composited
+    // curve pixels must cover it exactly as a full paint does.
     for (const [name, state] of [
-      ["processes", { page: "processes" }],
+      ["processes", { page: "processes", theme: "dark" }],
       ["overall", { page: "performance", cpuMode: "overall" }],
       ["logical", { page: "performance", cpuMode: "logical" }],
+      ["processes-light", { page: "processes", theme: "light" }],
+      ["overall-light", { page: "performance", cpuMode: "overall" }],
     ]) {
       send({ ...state, pointerOutside: true });
       await sleep(1500);
@@ -174,15 +178,17 @@ try {
         assert.equal(compared.status, 0, compared.stderr);
         const difference = JSON.parse(compared.stdout);
         events.push({ event: "pixel-comparison", label: picture, ...difference });
-        // Replayed rasterization and shader/fixed-function blending may round a
-        // UNORM8 channel by one code value; larger changes indicate a real regression.
-        assert(difference.maxChannelDelta <= 1,
+        // A parent redraw replays the same draws: one code value of rounding at
+        // most. Animation frames may composite curves in the shader, whose float
+        // blend rounds antialiased curve pixels up to two code values away from
+        // the fixed-function blend; larger changes indicate a real regression.
+        assert(difference.maxChannelDelta <= (picture === animated ? 2 : 1),
           `${picture}: retained rendering differs from a full paint: ${compared.stdout}`);
         }
       }
     }
     const steps = events.filter((event) => event.event === "ui-chart-step");
-    assert.equal(steps.length, 18);
+    assert.equal(steps.length, 30);
     assert(steps.every((event) => event.retained), "comparison did not exercise retained presentation");
     if (!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION)
       assert(events.some((event) => event.event === "gpu-scene-cache" && event.composed),

@@ -389,6 +389,8 @@ pub struct TimePlot {
     pub live_clock: Option<Rc<RefCell<motion::Clock>>>,
     pub image_surface: Rc<RefCell<Option<raster::ImageSurface>>>,
     pub bar_surfaces: Rc<RefCell<Vec<BarSurface>>>,
+    /// Each load bar's glide to its latest sample, kept from sample to sample.
+    pub bar_glides: Rc<RefCell<Vec<BarGlide>>>,
     /// Dash phase per series and sample time, so dashes keep their place as the curve scrolls.
     pub dash_phases: raster::DashPhases,
     /// A new top eases in: the top shown before, the target, and when the change began.
@@ -438,25 +440,72 @@ impl TimePlot {
             .filter(|k| k.is_finite() && *k > 0.)
             .unwrap_or(1.)
     }
-    /// The time the load bars read: one interval behind the newest sample, so
-    /// each bar glides to a sample over the interval before the next arrives,
-    /// as the original's bars do. Curves keep their longer lag.
-    /// Without gliding (pixel steps or no animation) they show the newest sample.
-    fn bar_time(&self, end: f64) -> f64 {
-        let gliding = self.live_clock.as_ref().is_some_and(|clock| {
-            matches!(
-                clock.borrow().mode,
-                motion::Mode::Fluid | motion::Mode::Balanced
-            )
-        });
-        if !gliding {
-            return f64::INFINITY;
+    /// Load bar `index` as drawn at `now`: a fraction of its full height.
+    fn bar_level(&self, index: usize, now: Instant) -> f32 {
+        self.bar_glides
+            .borrow()
+            .get(index)
+            .map_or(0., |glide| glide.at(now)) as f32
+    }
+}
+/// A load bar's way to its latest sample, as the original's bars move: when a
+/// sample arrives, the bar glides linearly from where it stands to the new
+/// value over one refresh interval, arriving as the next sample does. A bar
+/// never waits for a sample's time stamp to come round, so it neither stalls
+/// nor jumps when the next sample arrives a little later or earlier.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::frontend) struct BarGlide {
+    /// Heights as a fraction of the bar.
+    from: f64,
+    to: f64,
+    start: Instant,
+    duration: Duration,
+    /// Time stamp of the sample the bar is heading for.
+    sample: f64,
+}
+impl BarGlide {
+    fn at(&self, now: Instant) -> f64 {
+        if self.duration.is_zero() {
+            return self.to;
         }
-        let config = motion::config();
-        let samples = config["chartSamples"].as_f64().expect("chart samples");
-        let interval = (self.end - self.start) / (samples - 1.).max(1.);
-        end + interval * (config["chartLagIntervals"].as_f64().expect("lag") - 1.)
-            + config["chartLagSlackMs"].as_f64().expect("lag slack")
+        let progress = (now.saturating_duration_since(self.start).as_secs_f64()
+            / self.duration.as_secs_f64())
+        .min(1.);
+        self.from + (self.to - self.from) * progress
+    }
+    /// Heads for the newest sample of `points`. A sample already headed for
+    /// changes nothing; a new one starts from the height on screen `now`, or
+    /// from the bottom for a bar that was not on screen (the original's bars
+    /// grow in as the page appears). Without gliding the bar shows the sample
+    /// at once. An unknown reading draws nothing.
+    fn follow(
+        previous: Option<&BarGlide>,
+        points: &[(f64, Option<f64>)],
+        glide: bool,
+        interval: Duration,
+        now: Instant,
+    ) -> BarGlide {
+        let (sample, value) = points.last().copied().unwrap_or((f64::NAN, None));
+        let to = value.map_or(0., |v| (v / 100.).clamp(0., 1.));
+        if let Some(previous) = previous
+            && previous.sample.to_bits() == sample.to_bits()
+            && (glide || previous.at(now) == previous.to)
+        {
+            return *previous;
+        }
+        let from = previous.map_or(0., |previous| previous.at(now));
+        let duration = if glide && value.is_some() {
+            interval
+        } else {
+            Duration::ZERO
+        };
+        BarGlide {
+            from,
+            to,
+            start: now,
+            duration,
+            sample,
+        }
     }
 }
 pub(in crate::frontend) struct BarSurface {
@@ -547,14 +596,12 @@ impl ChartLayer {
                     if surfaces.len() != plot.series.len() {
                         return false;
                     }
-                    let at = plot.bar_time(end);
-                    surfaces.iter().zip(&plot.series).all(|(surface, series)| {
+                    let now = Instant::now();
+                    surfaces.iter().enumerate().all(|(index, surface)| {
                         let Some(handle) = surface.handle else {
                             return false;
                         };
-                        let value = sample_at(&series.points, at).unwrap_or(0.);
-                        let height =
-                            surface.bounds.size.height * (value / 100.).clamp(0., 1.) as f32;
+                        let height = surface.bounds.size.height * plot.bar_level(index, now);
                         let bounds = Bounds::new(
                             point(surface.bounds.left(), surface.bounds.bottom() - height),
                             size(surface.bounds.size.width, height),
@@ -829,10 +876,9 @@ impl Plot for TimePlot {
         let height = f32::from(bounds.size.height);
         if self.bars {
             let mut surfaces = Vec::with_capacity(self.series.len());
-            let at = self.bar_time(self.end);
+            let now = Instant::now();
             for (index, series) in self.series.iter().enumerate() {
-                let value = sample_at(&series.points, at);
-                let h = px((value.unwrap_or(0.) / 100.).clamp(0., 1.) as f32 * height);
+                let h = px(self.bar_level(index, now) * height);
                 let region = bar_region(bounds, index);
                 if !self.background_separate {
                     window.paint_quad(
@@ -1368,7 +1414,7 @@ impl Desktop {
                 start: None,
             }),
         }
-        let (width, image_surface, bar_surfaces, dash_phases) = entries
+        let (width, image_surface, bar_surfaces, dash_phases, bar_glides) = entries
             .get(id)
             .map(|entry| {
                 let plot = entry.plot.borrow();
@@ -1382,6 +1428,7 @@ impl Desktop {
                     } else {
                         Default::default()
                     },
+                    plot.bar_glides.clone(),
                 )
             })
             .unwrap_or_else(|| {
@@ -1390,8 +1437,37 @@ impl Desktop {
                     Default::default(),
                     Default::default(),
                     Default::default(),
+                    Default::default(),
                 )
             });
+        if bars {
+            // Bars on screen without a break keep gliding from where they
+            // stand; bars appearing (or showing other series) grow in.
+            let glide = matches!(
+                self.chart_clock.borrow().mode,
+                motion::Mode::Fluid | motion::Mode::Balanced
+            ) && !(self.paused || self.control_paused);
+            let kept = continuous
+                && entries
+                    .get(id)
+                    .is_some_and(|entry| entry.plot.borrow().content() == content);
+            let interval = Duration::from_millis(self.interval);
+            let mut glides = bar_glides.borrow_mut();
+            let next = series
+                .iter()
+                .enumerate()
+                .map(|(index, series)| {
+                    BarGlide::follow(
+                        glides.get(index).filter(|_| kept),
+                        &series.points,
+                        glide,
+                        interval,
+                        now,
+                    )
+                })
+                .collect();
+            *glides = next;
+        }
         let plot = TimePlot {
             id: id.to_owned().into(),
             series,
@@ -1411,6 +1487,7 @@ impl Desktop {
             live_clock: Some(self.chart_clock.clone()),
             image_surface,
             bar_surfaces,
+            bar_glides,
             dash_phases,
             rescale,
         };
@@ -1514,20 +1591,6 @@ impl Desktop {
     }
 }
 
-fn sample_at(points: &[(f64, Option<f64>)], at: f64) -> Option<f64> {
-    let right = points.partition_point(|p| p.0 < at);
-    if right == 0 {
-        return points.first().and_then(|p| p.1);
-    }
-    let before = points[right - 1];
-    let Some(after) = points.get(right) else {
-        return before.1;
-    };
-    before
-        .1
-        .zip(after.1)
-        .map(|(a, b)| a + (b - a) * ((at - before.0) / (after.0 - before.0).max(1.)).clamp(0., 1.))
-}
 /// The value the drawn curve passes through at `at`: the same monotone cubic the
 /// raster strokes, so a readout's dot sits on the line. Unknown samples stay gaps.
 fn curve_at(points: &[(f64, Option<f64>)], at: f64) -> Option<f64> {
@@ -1695,7 +1758,8 @@ pub(in crate::frontend) fn nice_max(value: f64) -> f64 {
 }
 #[cfg(test)]
 mod tests {
-    use super::{nice_max, sample_at, segments, smooth_run};
+    use super::{BarGlide, nice_max, segments, smooth_run};
+    use std::time::{Duration, Instant};
     #[test]
     fn smoothing_preserves_peaks_and_uneven_sample_times() {
         let points = [(0., 0.), (10., 100.), (37., 20.), (40., 20.), (100., 80.)];
@@ -1711,16 +1775,44 @@ mod tests {
         }
     }
     #[test]
-    fn animated_core_bars_do_not_fill_unknown_samples() {
-        let points = [
-            (0., Some(0.)),
-            (10., Some(100.)),
-            (20., None),
-            (30., Some(20.)),
-        ];
-        assert_eq!(sample_at(&points, 5.), Some(50.));
-        assert_eq!(sample_at(&points, 15.), None);
-        assert_eq!(sample_at(&points, 25.), None);
+    fn core_bars_glide_from_where_they_stand_over_one_interval() {
+        let interval = Duration::from_millis(1000);
+        let start = Instant::now();
+        let first = BarGlide::follow(None, &[(0., Some(80.))], true, interval, start);
+        // A bar appearing grows in from the bottom.
+        assert_eq!(first.at(start), 0.);
+        assert!((first.at(start + Duration::from_millis(500)) - 0.4).abs() < 1e-9);
+        // The next sample arrives late: the bar has arrived and waits there,
+        // then heads for the new value from where it stands.
+        let late = start + Duration::from_millis(1100);
+        assert_eq!(first.at(late), 0.8);
+        let points = [(0., Some(80.)), (1000., Some(20.))];
+        let second = BarGlide::follow(Some(&first), &points, true, interval, late);
+        assert_eq!(second.at(late), 0.8);
+        assert!((second.at(late + Duration::from_millis(250)) - 0.65).abs() < 1e-9);
+        // Repainting without a new sample keeps the glide.
+        let again = late + Duration::from_millis(300);
+        assert_eq!(
+            BarGlide::follow(Some(&second), &points, true, interval, again),
+            second
+        );
+        // An early sample takes over mid-way, without a jump.
+        let early = late + Duration::from_millis(500);
+        let points = [(1000., Some(20.)), (1900., Some(100.))];
+        let third = BarGlide::follow(Some(&second), &points, true, interval, early);
+        assert!((third.at(early) - second.at(early)).abs() < 1e-9);
+        assert_eq!(third.at(early + interval), 1.);
+    }
+    #[test]
+    fn core_bars_jump_without_gliding_and_hide_unknown_samples() {
+        let interval = Duration::from_millis(1000);
+        let now = Instant::now();
+        let moving = BarGlide::follow(None, &[(0., Some(50.))], true, interval, now);
+        let still = BarGlide::follow(Some(&moving), &[(0., Some(50.))], false, interval, now);
+        assert_eq!(still.at(now), 0.5);
+        let unknown = [(0., Some(50.)), (1000., None)];
+        let gap = BarGlide::follow(Some(&moving), &unknown, true, interval, now);
+        assert_eq!(gap.at(now), 0.);
     }
     #[test]
     pub(in crate::frontend) fn unavailable_readings_split_the_line() {

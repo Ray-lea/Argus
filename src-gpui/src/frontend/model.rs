@@ -783,14 +783,12 @@ impl Timeline {
             ),
         ]);
         let oldest = now - interval * 64. - 250.;
+        // Samples further apart than the interval (the slower cadence while the
+        // window is minimized or in the tray, a pause, a missed sample) join up,
+        // as in the original; only an unknown reading breaks a curve.
         let mut record = |key: String, value: Option<f64>| {
             if value.is_some() || self.samples.contains_key(&key) {
                 let list = self.samples.entry(key).or_default();
-                if let Some(previous) = list.back().map(|p| p.0)
-                    && now - previous > interval * 2.5
-                {
-                    list.push_back((previous + interval, None));
-                }
                 list.push_back((now, value));
                 while list.len() > 2 && list[1].0 < oldest {
                     list.pop_front();
@@ -800,7 +798,7 @@ impl Timeline {
         for (key, value) in metrics {
             record(key, value);
         }
-        self.push_usage(snapshot, now, oldest, interval);
+        self.push_usage(snapshot, now, oldest);
         self.samples.retain(|_, list| {
             if list.back().map(|p| p.0) != Some(now) {
                 list.push_back((now, None));
@@ -812,16 +810,8 @@ impl Timeline {
         });
     }
     /// Records every process and app, as the original kept them; exited ones are dropped.
-    fn push_usage(&mut self, snapshot: &Value, now: f64, oldest: f64, interval: f64) {
-        if let Some(&previous) = self.times.back()
-            && now - previous > interval * 2.5
-        {
-            // A stall (hidden, paused or a missed sample) stays a gap.
-            self.times.push_back(previous + interval);
-            for usage in self.processes.values_mut().chain(self.groups.values_mut()) {
-                usage.push(f64::NAN, f64::NAN, usize::MAX);
-            }
-        }
+    fn push_usage(&mut self, snapshot: &Value, now: f64, oldest: f64) {
+        // Sparse samples join up here too (see `push`).
         self.times.push_back(now);
         while self.times.len() > 2 && self.times[1] < oldest {
             self.times.pop_front();
@@ -1117,7 +1107,8 @@ mod tests {
             if index < 2 {
                 processes.push(process(2, 1.));
             }
-            // Two samples are missed: the histories keep a gap there.
+            // Two samples are missed: the histories join the samples around
+            // them, as the original does (a minimized window samples less often).
             if !matches!(index, 3 | 4) {
                 timeline.push(
                     &json!({"timestamp":index*1000,"system":{"cpu":1},"processes":processes}),
@@ -1128,7 +1119,11 @@ mod tests {
         let cpu = timeline.points("process.1:1.cpu").unwrap();
         assert_eq!(cpu.first(), Some(&(0., Some(0.))));
         assert_eq!(cpu.last(), Some(&(5000., Some(5.))));
-        assert_eq!(cpu[3], (3000., None));
+        assert_eq!(cpu[3], (5000., Some(5.)));
+        assert!(cpu.iter().all(|(_, value)| value.is_some()));
+        let total = timeline.points("system.cpu").unwrap();
+        assert_eq!(total.len(), 4);
+        assert!(total.iter().all(|(_, value)| value.is_some()));
         // An exited process is dropped; its app adds up whichever members ran.
         assert!(timeline.points("process.2:1.cpu").is_none());
         let app = timeline.points("group.g:image:c:\\app.exe.cpu").unwrap();

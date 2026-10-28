@@ -6,8 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static BUILDS: AtomicU64 = AtomicU64::new(0);
 /// Dash phase (0..period) at each sample time, per series; kept between rasterizations.
 pub(in crate::frontend) type DashPhases = Arc<std::sync::Mutex<Vec<HashMap<u64, f32>>>>;
-/// Fade mask levels below this are dropped (see the fade in `rasterize`).
-const FADE_FLOOR: u8 = 8;
 /// Dash and gap lengths of a secondary series, logical pixels.
 const DASH: f32 = 4.;
 const DASH_GAP: f32 = 3.;
@@ -473,11 +471,10 @@ fn rasterize(plot: &Input) -> Option<Texture> {
         for (index, line) in mask.data_mut().chunks_exact_mut(row).enumerate() {
             let y = (index as f32 + 0.5) / density;
             let level = ((height - y) / (height - top)).clamp(0., 1.);
-            // The last few levels round to one alpha step whose straight colour is
-            // noise, which texture filtering would smear into a light line at the
-            // bottom; they end at nothing instead.
-            let level = (level * 255. + 0.5) as u8;
-            line.fill(if level < FADE_FLOOR { 0 } else { level });
+            // Down to nothing at the bottom, as the original's gradient. The
+            // renderer averages premultiplied texels (see `paint_image_subpixel`),
+            // so the noisy straight colour of the faintest rows stays invisible.
+            line.fill((level * 255. + 0.5) as u8);
         }
         Some(mask)
     } else {
@@ -674,6 +671,7 @@ mod tests {
             live_clock: None,
             image_surface: Default::default(),
             bar_surfaces: Default::default(),
+            bar_glides: Default::default(),
             dash_phases: Default::default(),
             rescale: Default::default(),
         }
