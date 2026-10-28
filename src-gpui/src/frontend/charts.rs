@@ -1178,29 +1178,19 @@ impl Desktop {
             .iter()
             .map(|line| {
                 let key = line.key.as_str();
+                let mut points = self
+                    .timeline
+                    .points(&model::series_key(&self.snapshot, key))
+                    .unwrap_or_default();
+                if line.factor != 1. || line.absolute {
+                    for (_, value) in &mut points {
+                        *value =
+                            value.map(|v| (if line.absolute { v.abs() } else { v }) * line.factor);
+                    }
+                }
                 Series::with_geometry(
                     line.label.clone().unwrap_or_default(),
-                    self.timeline
-                        .samples
-                        .get(&model::series_key(&self.snapshot, key))
-                        .map(|p| {
-                            if line.factor == 1. && !line.absolute {
-                                p.iter().copied().collect()
-                            } else {
-                                p.iter()
-                                    .map(|&(at, v)| {
-                                        (
-                                            at,
-                                            v.map(|v| {
-                                                (if line.absolute { v.abs() } else { v })
-                                                    * line.factor
-                                            }),
-                                        )
-                                    })
-                                    .collect()
-                            }
-                        })
-                        .unwrap_or_default(),
+                    points,
                     line.color,
                     look.format.unwrap_or_else(|| {
                         if key.contains(".nics.") || key == "totals.network" {
