@@ -32,6 +32,8 @@ pub struct Series {
     pub fill: f32,
     geometry: Arc<Vec<Vec<(f64, f64)>>>,
     geometry_key: u64,
+    /// Identifies the data shown (series key and transform); 0 when unnamed.
+    source: u64,
 }
 /// Default area opacity under a solid line.
 pub(in crate::frontend) const FILL: f32 = 0.3;
@@ -180,7 +182,12 @@ impl Series {
             fill: FILL,
             geometry,
             geometry_key,
+            source: 0,
         }
+    }
+    fn source(mut self, source: u64) -> Self {
+        self.source = source;
+        self
     }
 }
 #[derive(Clone, Copy, PartialEq)]
@@ -372,6 +379,15 @@ pub struct TimePlot {
     /// A new top eases in: the top shown before, the target, and when the change began.
     pub rescale: Rc<Cell<Rescale>>,
 }
+fn hash_of(value: impl std::hash::Hash) -> u64 {
+    use std::hash::Hasher;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+fn content(bars: bool, series: &[Series]) -> u64 {
+    hash_of((bars, series.iter().map(|s| s.source).collect::<Vec<_>>()))
+}
 /// How long a chart takes to ease to a new top.
 const RESCALE: Duration = Duration::from_millis(420);
 #[derive(Clone, Copy, Default)]
@@ -393,12 +409,17 @@ impl Rescale {
     }
 }
 impl TimePlot {
-    /// The top a texture drawn for `max` is stretched to while a rescale eases in.
+    /// Identifies the data the chart shows: a texture drawn for other series,
+    /// such as the previously selected device's, is never shown.
+    pub(in crate::frontend) fn content(&self) -> u64 {
+        content(self.bars, &self.series)
+    }
+    /// How far a texture drawn for `max` stretches to the top on screen: the
+    /// easing top while a rescale runs, else the chart's own (a texture still
+    /// waiting for its redraw after a scale change).
     pub(in crate::frontend) fn rescale_factor(&self, max: f64, now: Instant) -> f32 {
-        self.rescale
-            .get()
-            .at(now)
-            .map(|shown| (max / shown) as f32)
+        let shown = self.rescale.get().at(now).unwrap_or(self.max);
+        Some((max / shown) as f32)
             .filter(|k| k.is_finite() && *k > 0.)
             .unwrap_or(1.)
     }
@@ -410,6 +431,9 @@ pub(in crate::frontend) struct BarSurface {
 pub(super) struct ChartEntry {
     plot: Rc<RefCell<TimePlot>>,
     revision: ChartRevision,
+    /// The desktop render that last built the chart; a chart that skipped one
+    /// was off screen and appears afresh.
+    shown: u64,
 }
 #[derive(Clone)]
 pub(super) struct Placement {
@@ -1155,13 +1179,22 @@ impl Desktop {
             network_bits: bits,
         };
         self.active_charts.borrow_mut().insert(id.into());
-        if let Some(entry) = self.chart_entries.borrow().get(id)
-            && entry.revision == revision
-        {
-            if look.top.is_none() {
-                look.top = scale_label(scale, entry.plot.borrow().max);
+        let render = self.render_count;
+        let mut entries = self.chart_entries.borrow_mut();
+        // Built in the previous desktop render too: on screen without a break.
+        let continuous = entries
+            .get(id)
+            .is_some_and(|entry| entry.shown.wrapping_add(1) >= render);
+        if let Some(entry) = entries.get_mut(id) {
+            entry.shown = render;
+            if entry.revision == revision {
+                let plot = entry.plot.clone();
+                drop(entries);
+                if look.top.is_none() {
+                    look.top = scale_label(scale, plot.borrow().max);
+                }
+                return self.chart_frame(plot, height, &look);
             }
-            return self.chart_frame(entry.plot.clone(), height, &look);
         }
         let end = number(&self.snapshot, "timestamp");
         let span = self.interval as f64
@@ -1178,10 +1211,9 @@ impl Desktop {
             .iter()
             .map(|line| {
                 let key = line.key.as_str();
-                let mut points = self
-                    .timeline
-                    .points(&model::series_key(&self.snapshot, key))
-                    .unwrap_or_default();
+                let stable = model::series_key(&self.snapshot, key);
+                let source = hash_of((&stable, line.factor.to_bits(), line.absolute));
+                let mut points = self.timeline.points(&stable).unwrap_or_default();
                 if line.factor != 1. || line.absolute {
                     for (_, value) in &mut points {
                         *value =
@@ -1203,8 +1235,10 @@ impl Desktop {
                 )
                 .dashed(line.dashed)
                 .fill(line.fill)
+                .source(source)
             })
             .collect::<Vec<_>>();
+        let content = content(bars, &series);
         let observed = series
             .iter()
             .flat_map(|s| s.points.iter().filter_map(|(_, v)| *v))
@@ -1220,8 +1254,13 @@ impl Desktop {
             .iter()
             .flat_map(|s| s.points.iter().filter_map(|p| p.1))
             .fold(0., f64::min);
-        let mut entries = self.chart_entries.borrow_mut();
-        let previous_max = entries.get(id).map(|entry| entry.plot.borrow().max);
+        // The same series again without a break: a new top eases in. Anything
+        // else (a first display, another device, a return to the page) starts
+        // at its own top.
+        let previous_max = entries
+            .get(id)
+            .filter(|entry| continuous && entry.plot.borrow().content() == content)
+            .map(|entry| entry.plot.borrow().max);
         let rescale = entries
             .get(id)
             .map(|entry| entry.plot.borrow().rescale.clone())
@@ -1253,7 +1292,12 @@ impl Desktop {
                     plot.measured_width.clone(),
                     plot.image_surface.clone(),
                     plot.bar_surfaces.clone(),
-                    plot.dash_phases.clone(),
+                    // Dash phases belong to the series they were measured on.
+                    if plot.content() == content {
+                        plot.dash_phases.clone()
+                    } else {
+                        Default::default()
+                    },
                 )
             })
             .unwrap_or_else(|| {
@@ -1297,6 +1341,7 @@ impl Desktop {
                 ChartEntry {
                     plot: plot_rc.clone(),
                     revision,
+                    shown: render,
                 },
             );
             plot_rc

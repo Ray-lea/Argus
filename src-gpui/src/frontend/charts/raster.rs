@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static BUILDS: AtomicU64 = AtomicU64::new(0);
 /// Dash phase (0..period) at each sample time, per series; kept between rasterizations.
 pub(in crate::frontend) type DashPhases = Arc<std::sync::Mutex<Vec<HashMap<u64, f32>>>>;
+/// Fade mask levels below this are dropped (see the fade in `rasterize`).
+const FADE_FLOOR: u8 = 8;
 /// Dash and gap lengths of a secondary series, logical pixels.
 const DASH: f32 = 4.;
 const DASH_GAP: f32 = 3.;
@@ -22,6 +24,8 @@ pub(super) fn metrics() -> (u64, u64) {
 struct Cache {
     key: Option<u64>,
     requested: Option<u64>,
+    /// The series the latest request shows; a texture of other series is never kept.
+    requested_content: Option<u64>,
     pending: bool,
     texture: Option<Texture>,
 }
@@ -33,6 +37,7 @@ struct Texture {
     geometry_start: f64,
     span: f64,
     max: f64,
+    content: u64,
 }
 pub(in crate::frontend) struct ImageSurface {
     owner: EntityId,
@@ -87,6 +92,7 @@ struct Input {
     stroke: f32,
     smooth: bool,
     phases: DashPhases,
+    content: u64,
 }
 impl Input {
     fn new(plot: &TimePlot, size: Size<Pixels>, density: f32) -> Self {
@@ -102,6 +108,7 @@ impl Input {
             stroke: f32::from(theme::dimension("chartStrokeWidth")),
             smooth: plot.smooth,
             phases: plot.dash_phases.clone(),
+            content: plot.content(),
         }
     }
 }
@@ -138,6 +145,7 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
     }
     plot.fill.hash(&mut key);
     plot.smooth.hash(&mut key);
+    plot.content().hash(&mut key);
     for series in &plot.series {
         series.geometry_key.hash(&mut key);
         series.dashed.hash(&mut key);
@@ -187,6 +195,7 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
     });
     cache.update(cx, |cache, cx| {
         cache.requested = Some(revision);
+        cache.requested_content = Some(plot.content());
         if cache.key != Some(revision) && !cache.pending {
             cache.pending = true;
             let input = Input::new(plot, bounds.size, density);
@@ -201,7 +210,14 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
                 let texture = task.await;
                 let _ = cache.update_in(cx, |cache, window, cx| {
                     cache.pending = false;
-                    if cache.requested == Some(revision) {
+                    // A texture of the same series is kept even when newer data or a
+                    // new size was requested meanwhile: it is placed by its own time
+                    // window and scaled to the plot until the redraw that follows.
+                    let current = cache.requested == Some(revision);
+                    let same = texture
+                        .as_ref()
+                        .is_some_and(|texture| Some(texture.content) == cache.requested_content);
+                    if current || same {
                         if let Some(previous) = cache.texture.take() {
                             let _ = window.drop_image(previous.image);
                         }
@@ -213,34 +229,41 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
             })
             .detach();
         }
-        if let Some(texture) = &cache.texture {
-            let mut surface = ImageSurface {
-                owner: cx.entity().entity_id(),
-                handle: None,
-                _image: texture.image.clone(),
-                offset: texture.offset,
-                size: texture.size,
-                plot_size: texture.plot_size,
-                geometry_start: texture.geometry_start,
-                span: texture.span,
-                max: texture.max,
-            };
-            let image_bounds = surface.bounds_at(plot, bounds, plot.end);
-            window.with_content_mask(Some(ContentMask { bounds }), |window| {
-                match window.paint_image_subpixel(image_bounds, texture.image.clone(), 0) {
-                    Ok(handle) => {
-                        surface.handle = handle;
-                    }
-                    Err(error) => {
-                        argus_core::diagnostics::warn(
-                            "chart texture paint",
-                            argus_core::diagnostics::error_chain(error.as_ref()),
-                        );
-                    }
+        let Some(texture) = cache
+            .texture
+            .as_ref()
+            .filter(|texture| texture.content == plot.content())
+        else {
+            // Nothing of these series yet; never show another device's curve.
+            plot.image_surface.borrow_mut().take();
+            return;
+        };
+        let mut surface = ImageSurface {
+            owner: cx.entity().entity_id(),
+            handle: None,
+            _image: texture.image.clone(),
+            offset: texture.offset,
+            size: texture.size,
+            plot_size: texture.plot_size,
+            geometry_start: texture.geometry_start,
+            span: texture.span,
+            max: texture.max,
+        };
+        let image_bounds = surface.bounds_at(plot, bounds, plot.end);
+        window.with_content_mask(Some(ContentMask { bounds }), |window| {
+            match window.paint_image_subpixel(image_bounds, texture.image.clone(), 0) {
+                Ok(handle) => {
+                    surface.handle = handle;
                 }
-            });
-            *plot.image_surface.borrow_mut() = Some(surface);
-        }
+                Err(error) => {
+                    argus_core::diagnostics::warn(
+                        "chart texture paint",
+                        argus_core::diagnostics::error_chain(error.as_ref()),
+                    );
+                }
+            }
+        });
+        *plot.image_surface.borrow_mut() = Some(surface);
     });
 }
 
@@ -344,6 +367,25 @@ fn rasterize(plot: &Input) -> Option<Texture> {
     let mut pixels = tiny_skia::Pixmap::new(pixel_width, pixel_height)?;
     let transform = tiny_skia::Transform::from_scale(density, density);
     let top = stroke / 2.;
+    // Areas fade from their opacity at the chart's top to nothing at its bottom:
+    // a solid fill through this row mask, which costs a fraction of a gradient
+    // shader's per-pixel work.
+    let fade = if plot.fill && plot.series.iter().any(|series| series.fill > 0.) {
+        let mut mask = tiny_skia::Mask::new(pixel_width, pixel_height)?;
+        let row = pixel_width as usize;
+        for (index, line) in mask.data_mut().chunks_exact_mut(row).enumerate() {
+            let y = (index as f32 + 0.5) / density;
+            let level = ((height - y) / (height - top)).clamp(0., 1.);
+            // The last few levels round to one alpha step whose straight colour is
+            // noise, which texture filtering would smear into a light line at the
+            // bottom; they end at nothing instead.
+            let level = (level * 255. + 0.5) as u8;
+            line.fill(if level < FADE_FLOOR { 0 } else { level });
+        }
+        Some(mask)
+    } else {
+        None
+    };
     let mut phases = plot.phases.lock().unwrap_or_else(|e| e.into_inner());
     phases.resize_with(plot.series.len(), HashMap::new);
     for (index, series) in plot.series.iter().enumerate() {
@@ -360,45 +402,26 @@ fn rasterize(plot: &Input) -> Option<Texture> {
                     )
                 })
                 .collect::<Vec<_>>();
-            if plot.fill
+            if let Some(fade) = &fade
                 && series.fill > 0.
                 && let Some(path) = curve(&points, Some(height), plot.smooth)
             {
-                // The area fades from its opacity at the chart's top to nothing at the bottom.
-                let shader = tiny_skia::LinearGradient::new(
-                    tiny_skia::Point::from_xy(0., top),
-                    tiny_skia::Point::from_xy(0., height),
-                    vec![
-                        tiny_skia::GradientStop::new(
-                            0.,
-                            tiny_skia::Color::from_rgba(
-                                color.r,
-                                color.g,
-                                color.b,
-                                color.a * series.fill.clamp(0., 1.),
-                            )?,
-                        ),
-                        tiny_skia::GradientStop::new(
-                            1.,
-                            tiny_skia::Color::from_rgba(color.r, color.g, color.b, 0.)?,
-                        ),
-                    ],
-                    tiny_skia::SpreadMode::Pad,
-                    tiny_skia::Transform::identity(),
-                )
-                .unwrap_or(tiny_skia::Shader::SolidColor(
-                    tiny_skia::Color::from_rgba(color.r, color.g, color.b, 0.)?,
-                ));
+                let area = tiny_skia::Color::from_rgba(
+                    color.r,
+                    color.g,
+                    color.b,
+                    color.a * series.fill.clamp(0., 1.),
+                )?;
                 pixels.fill_path(
                     &path,
                     &tiny_skia::Paint {
-                        shader,
+                        shader: tiny_skia::Shader::SolidColor(area),
                         anti_alias: true,
                         ..Default::default()
                     },
                     tiny_skia::FillRule::Winding,
                     transform,
-                    None,
+                    Some(fade),
                 );
             }
             let dash = if series.dashed {
@@ -450,13 +473,8 @@ fn rasterize(plot: &Input) -> Option<Texture> {
         }
     }
     drop(phases);
-    // RenderImage uses straight BGRA, while tiny-skia stores premultiplied RGBA.
-    let mut bgra = Vec::with_capacity(pixels.data().len());
-    for pixel in pixels.pixels() {
-        let c = pixel.demultiply();
-        bgra.extend([c.blue(), c.green(), c.red(), c.alpha()]);
-    }
-    let buffer = image::RgbaImage::from_raw(pixel_width, pixel_height, bgra)?;
+    let buffer =
+        image::RgbaImage::from_raw(pixel_width, pixel_height, straight_bgra(pixels.data()))?;
     Some(Texture {
         image: Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])),
         offset: point(px(left), px(0.)),
@@ -468,12 +486,69 @@ fn rasterize(plot: &Input) -> Option<Texture> {
         geometry_start: plot.geometry_start,
         span,
         max: plot.max,
+        content: plot.content,
     })
+}
+
+/// tiny-skia's premultiplied RGBA as the straight BGRA a RenderImage holds.
+/// Most pixels are empty or repeat their neighbour (an area's row shares one
+/// colour), so the division runs only where the colour changes.
+fn straight_bgra(rgba: &[u8]) -> Vec<u8> {
+    let mut bgra = vec![0; rgba.len()];
+    let mut last = ([0u8; 4], [0u8; 4]);
+    let (pixels, _) = rgba.as_chunks::<4>();
+    for (out, &pixel) in bgra.as_chunks_mut::<4>().0.iter_mut().zip(pixels) {
+        if pixel[3] == 0 {
+            continue;
+        }
+        if pixel != last.0 {
+            // The same rounding as tiny-skia's own demultiply.
+            let alpha = f64::from(pixel[3]) / 255.;
+            let straight = |c: u8| (f64::from(c) / alpha + 0.5) as u8;
+            last = (
+                pixel,
+                [
+                    straight(pixel[2]),
+                    straight(pixel[1]),
+                    straight(pixel[0]),
+                    pixel[3],
+                ],
+            );
+        }
+        *out = last.1;
+    }
+    bgra
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Input, key, rasterize};
+    use super::{Input, key, rasterize, straight_bgra};
+    #[test]
+    fn straight_alpha_matches_tiny_skia() {
+        for alpha in 0..=255u8 {
+            for value in 0..=alpha {
+                let premultiplied =
+                    tiny_skia::PremultipliedColorU8::from_rgba(value, 0, value / 2, alpha).unwrap();
+                let expected = premultiplied.demultiply();
+                let pixel = [
+                    premultiplied.red(),
+                    premultiplied.green(),
+                    premultiplied.blue(),
+                    alpha,
+                ];
+                assert_eq!(
+                    straight_bgra(&pixel),
+                    [
+                        expected.blue(),
+                        expected.green(),
+                        expected.red(),
+                        expected.alpha()
+                    ],
+                    "value {value} alpha {alpha}"
+                );
+            }
+        }
+    }
     use crate::frontend::charts::{MetricFormat, Series, TimePlot};
     use gpui_kit::gpui::{px, rgb, size};
     use std::{cell::Cell, rc::Rc};
