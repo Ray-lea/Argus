@@ -1124,8 +1124,9 @@ impl Desktop {
     /// for a page further down the side navigation; the navigation stays put.
     /// Only the opacity and the offset change, never the element tree, so
     /// nothing inside loses its state or replays its own entrance (the details
-    /// pane's). The chart layer takes the opacity, and the offset through the
-    /// placements its charts record.
+    /// pane's). Both apply only when drawing (`shift.rs`): the page is laid out
+    /// and hit-tested in place, and replays its last paint every frame. The
+    /// chart layer takes the opacity and the offset (`page_shift`).
     pub(in crate::frontend) fn enter(
         &self,
         content: impl IntoElement,
@@ -1142,6 +1143,7 @@ impl Desktop {
             .child(content);
         if !self.page_fading(cx) {
             self.page_opacity.set(1.);
+            self.page_shift.set(Point::default());
             return element.into_any_element();
         }
         let progress = theme::ease_out(
@@ -1150,16 +1152,15 @@ impl Desktop {
         self.page_opacity.set(progress);
         window.request_animation_frame();
         let shift = (1. - progress) * self.page_direction;
-        element
-            .opacity(progress)
-            .map(|page| {
-                if self.nav_top {
-                    page.left(px(shift * 32.))
-                } else {
-                    page.top(px(shift * 24.))
-                }
-            })
-            .into_any_element()
+        let offset = if self.nav_top {
+            point(px(shift * 32.), px(0.))
+        } else {
+            point(px(0.), px(shift * 24.))
+        };
+        self.page_shift.set(offset);
+        // Drawn moved and faded; laid out in place, so the page (and its cached
+        // tables) replays its last paint instead of rendering every frame.
+        super::shift::shifted(element, offset, progress).into_any_element()
     }
     /// Whether the page is still entering after a page change.
     pub(in crate::frontend) fn page_fading(&self, cx: &App) -> bool {

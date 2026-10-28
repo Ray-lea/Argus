@@ -522,6 +522,7 @@ impl Desktop {
                     let index = |name: &str| PAGES.iter().position(|p| p.0 == name).unwrap_or(0);
                     self.page_direction = (index(&page) as f32 - index(&self.page) as f32).signum();
                     self.page_switched = Instant::now();
+                    self.page_enter_pending = true;
                 }
                 self.sorts
                     .insert(self.page.clone(), (self.sort.clone(), self.descending));

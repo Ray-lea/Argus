@@ -315,6 +315,8 @@ impl<V: View> IntoElement for ViewElement<V> {
 struct ViewElementState {
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
+    /// The draw that last recorded these ranges (see `Window::paint_generation`).
+    drawn: u64,
     cache_key: ViewElementCacheKey,
     accessed_entities: FxHashSet<EntityId>,
 }
@@ -537,13 +539,19 @@ fn prepaint_view(
                 let content_mask = window.content_mask();
                 let text_style = window.text_style();
 
+                // The ranges index the last frame: only a view drawn in it can
+                // replay them. A view inside a replayed ancestor wasn't drawn.
+                let generation = window.paint_generation();
                 if let Some(mut element_state) = element_state
                     && element_state.cache_key.bounds == bounds
                     && element_state.cache_key.content_mask == content_mask
                     && element_state.cache_key.text_style == text_style
                     && !window.dirty_views.contains(&entity_id)
                     && !window.refreshing
+                    && element_state.drawn == generation.wrapping_sub(1)
+                    && !window.view_notified_during_draw(entity_id)
                 {
+                    element_state.drawn = generation;
                     #[cfg(feature = "profiler")]
                     window.window_profiler.record_view_reuse();
                     let prepaint_start = window.prepaint_index();
@@ -556,7 +564,11 @@ fn prepaint_view(
                     return (None, element_state);
                 }
 
-                let refreshing = mem::replace(&mut window.refreshing, true);
+                // A notified view renders the cached views inside it too: they
+                // may show its state. Rendering again only to animate, or because
+                // a view inside it changed, replays those still current.
+                let refresh = window.refreshing || window.notified_views.contains(&entity_id);
+                let refreshing = mem::replace(&mut window.refreshing, refresh);
                 let prepaint_start = window.prepaint_index();
                 let (element, accessed_entities) = cx.detect_accessed_entities(|cx| {
                     #[cfg(feature = "profiler")]
@@ -580,6 +592,7 @@ fn prepaint_view(
                         accessed_entities,
                         prepaint_range: prepaint_start..prepaint_end,
                         paint_range: PaintIndex::default()..PaintIndex::default(),
+                        drawn: generation,
                         cache_key: ViewElementCacheKey {
                             bounds,
                             content_mask,

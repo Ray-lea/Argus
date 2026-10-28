@@ -11,7 +11,9 @@ mod motion;
 mod pages;
 mod prefs;
 mod recorder;
+mod regions;
 mod scrollbar;
+mod shift;
 mod tables;
 mod theme;
 mod welcome;
@@ -144,6 +146,8 @@ struct Desktop {
     active_charts: Rc<RefCell<HashSet<String>>>,
     chart_placements: charts::Placements,
     page_opacity: Rc<Cell<f32>>,
+    /// How far the entering page is drawn from its place (the chart layer follows).
+    page_shift: Rc<Cell<Point<Pixels>>>,
     /// Opacity of the live charts being built: a view settling in fades its charts.
     chart_fade: Cell<f32>,
     chart_tick_queued: bool,
@@ -159,7 +163,10 @@ struct Desktop {
     page_direction: f32,
     /// When the page last changed; the page fades in for `PAGE_FADE` after it.
     page_switched: Instant,
+    /// The entrance starts with the first frame drawn after a page change.
+    page_enter_pending: bool,
     render_count: u64,
+    regions: regions::Regions,
     work: WorkCounters,
     frame_trace: Option<gpui_kit::gpui::profiler::FrameTimingCollector>,
     view_trace: Option<gpui_kit::gpui::profiler::journal::ForegroundJournalCollector>,
@@ -251,6 +258,7 @@ impl Desktop {
             active_charts: Rc::new(RefCell::new(HashSet::new())),
             chart_placements: Rc::new(RefCell::new(HashMap::new())),
             page_opacity: Rc::new(Cell::new(1.)),
+            page_shift: Rc::new(Cell::new(Point::default())),
             chart_fade: Cell::new(1.),
             chart_tick_queued: false,
             chart_frame: 0,
@@ -267,7 +275,9 @@ impl Desktop {
             page_epoch: 0,
             page_direction: 0.,
             page_switched: Instant::now(),
+            page_enter_pending: false,
             render_count: 0,
+            regions: regions::Regions::default(),
             work: WorkCounters::default(),
             frame_trace: None,
             view_trace: None,
@@ -511,8 +521,9 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 let clock = view.read(cx).chart_clock.clone();
                 let active = view.read(cx).active_charts.clone();
                 let opacity = view.read(cx).page_opacity.clone();
+                let shift = view.read(cx).page_shift.clone();
                 let charts =
-                    cx.new(|_| charts::ChartLayer::new(placements, clock, active, opacity));
+                    cx.new(|_| charts::ChartLayer::new(placements, clock, active, opacity, shift));
                 view.update(cx, |desktop, _| desktop.chart_layer = Some(charts.clone()));
                 let state = view.read(cx).scrim.clone();
                 let scrim = cx.new(|_| dialogs::Scrim { state });

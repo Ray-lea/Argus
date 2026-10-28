@@ -871,17 +871,38 @@ impl Render for Desktop {
             && std::env::var_os("ARGUS_GPUI_VIEW_TRACE").is_some())
         .then(Instant::now);
         self.render_count = self.render_count.wrapping_add(1);
-        self.active_charts.borrow_mut().clear();
+        if std::mem::take(&mut self.page_enter_pending) {
+            // As a CSS animation: it starts when first drawn, after the switch's work.
+            self.page_switched = Instant::now();
+        }
         let p = self.palette;
-        let toolbar = self.toolbar(window, cx);
-        let content = self.page_content(window, cx);
+        let toolbar = self.region(
+            regions::RegionKind::Toolbar,
+            StyleRefinement::default()
+                .w_full()
+                .h(theme::dimension("toolbarHeight"))
+                .flex_shrink_0(),
+            cx,
+        );
+        // The page is a region: an animation inside the toolbar or a page
+        // entrance replays it, and its own frames redraw only it.
+        let content = self.region(
+            regions::RegionKind::Page,
+            StyleRefinement::default().size_full(),
+            cx,
+        );
         let footer = self.statusbar();
         let body = div()
             .flex_1()
             .min_h_0()
             .flex()
             .when(!self.nav_top, |d| {
-                d.child(self.navigation(false, window, cx))
+                let width = px(if self.nav_expanded { 184. } else { 48. });
+                d.child(self.region(
+                    regions::RegionKind::Navigation,
+                    StyleRefinement::default().w(width).h_full().flex_shrink_0(),
+                    cx,
+                ))
             })
             .child(
                 div()
@@ -948,7 +969,19 @@ impl Render for Desktop {
                 }),
             )
             .child(toolbar)
-            .when(self.nav_top, |d| d.child(self.navigation(true, window, cx)))
+            .when(self.nav_top, |d| {
+                // The tabs (32 px) and their 6 px gap below.
+                d.child(
+                    self.region(
+                        regions::RegionKind::Navigation,
+                        StyleRefinement::default()
+                            .w_full()
+                            .h(px(38.))
+                            .flex_shrink_0(),
+                        cx,
+                    ),
+                )
+            })
             .child(body)
             .children(overlays);
         if let Some(render_started) = render_started {

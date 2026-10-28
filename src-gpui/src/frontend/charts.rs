@@ -536,6 +536,8 @@ pub(super) struct ChartLayer {
     clock: Rc<RefCell<motion::Clock>>,
     active: Rc<RefCell<HashSet<String>>>,
     opacity: Rc<Cell<f32>>,
+    /// Where the entering page is drawn, from where it is laid out (`shift.rs`).
+    shift: Rc<Cell<Point<Pixels>>>,
     last_end: f64,
     pixel_ends: HashMap<String, f64>,
     pub(super) fast_frames: u64,
@@ -546,12 +548,14 @@ impl ChartLayer {
         clock: Rc<RefCell<motion::Clock>>,
         active: Rc<RefCell<HashSet<String>>>,
         opacity: Rc<Cell<f32>>,
+        shift: Rc<Cell<Point<Pixels>>>,
     ) -> Self {
         Self {
             placements,
             clock,
             active,
             opacity,
+            shift,
             last_end: f64::NAN,
             pixel_ends: HashMap::new(),
             fast_frames: 0,
@@ -636,6 +640,7 @@ impl Render for ChartLayer {
         let clock = self.clock.clone();
         let active = self.active.clone();
         let page_opacity = self.opacity.clone();
+        let page_shift = self.shift.clone();
         div().absolute().inset_0().child(
             canvas(
                 move |bounds, window, cx| {
@@ -643,6 +648,7 @@ impl Render for ChartLayer {
                     // frame's fades: read in render, they would lag a frame
                     // behind the page they belong to.
                     let page_opacity = page_opacity.get();
+                    let shift = page_shift.get();
                     let placements = placements.borrow();
                     let clock = clock.borrow();
                     let now = clock.end(Instant::now());
@@ -650,6 +656,12 @@ impl Render for ChartLayer {
                     for key in active.borrow().iter() {
                         let Some(placement) = placements.get(key) else {
                             continue;
+                        };
+                        let placement = Placement {
+                            bounds: placement.bounds + shift,
+                            mask: placement.mask + shift,
+                            plot: placement.plot.clone(),
+                            opacity: placement.opacity,
                         };
                         let clip = placement
                             .bounds

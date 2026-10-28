@@ -125,6 +125,8 @@ struct WindowInvalidatorInner {
     pub dirty: bool,
     pub draw_phase: DrawPhase,
     pub dirty_views: FxHashSet<EntityId>,
+    /// Views that asked for an animation frame: redrawn without a notification.
+    pub animation_views: FxHashSet<EntityId>,
     pub update_count: usize,
     #[cfg(feature = "profiler")]
     pub frame_dirty: FrameDirtyAccumulator,
@@ -166,6 +168,7 @@ impl WindowInvalidator {
                 dirty: true,
                 draw_phase: DrawPhase::None,
                 dirty_views: FxHashSet::default(),
+                animation_views: FxHashSet::default(),
                 update_count: 0,
                 #[cfg(feature = "profiler")]
                 frame_dirty: FrameDirtyAccumulator::default(),
@@ -199,6 +202,41 @@ impl WindowInvalidator {
         } else {
             false
         }
+    }
+
+    /// Marks `entity` for redrawing in the next frame because it animates.
+    /// Unlike [`Self::invalidate_view`], observers aren't notified (its state
+    /// didn't change), and cached views nested in it can be replayed.
+    pub fn invalidate_view_for_animation(&self, entity: EntityId) {
+        let mut inner = self.inner.borrow_mut();
+        inner.update_count += 1;
+        inner.animation_views.insert(entity);
+        if inner.draw_phase == DrawPhase::None {
+            #[cfg(feature = "profiler")]
+            let dirty_at = Self::record_frame_dirty(&mut inner);
+            let became_dirty = !inner.dirty;
+            inner.dirty = true;
+            let waker = became_dirty.then(|| inner.platform_waker.clone()).flatten();
+            #[cfg(feature = "profiler")]
+            let window_id = inner.window_id;
+            drop(inner);
+            #[cfg(feature = "profiler")]
+            if became_dirty {
+                profiler::journal::record_frame_pending(window_id, dirty_at);
+            }
+            if let Some(waker) = waker {
+                waker();
+            }
+        }
+    }
+
+    /// Whether a view notified during the draw in progress is `view` or lies
+    /// inside it (in the last rendered frame).
+    fn pending_within(&self, view: EntityId, tree: &DispatchTree) -> bool {
+        let inner = self.inner.borrow();
+        inner.dirty_views.iter().any(|pending| {
+            *pending == view || tree.view_path_reversed(*pending).any(|ancestor| ancestor == view)
+        })
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -269,6 +307,10 @@ impl WindowInvalidator {
 
     pub fn take_views(&self) -> FxHashSet<EntityId> {
         mem::take(&mut self.inner.borrow_mut().dirty_views)
+    }
+
+    pub fn take_animation_views(&self) -> FxHashSet<EntityId> {
+        mem::take(&mut self.inner.borrow_mut().animation_views)
     }
 
     pub fn replace_views(&self, views: FxHashSet<EntityId>) {
@@ -1297,6 +1339,9 @@ pub struct Window {
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
     pub(crate) next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>>,
     pub(crate) dirty_views: FxHashSet<EntityId>,
+    /// Views notified (not merely animating, nor ancestors of dirty views)
+    /// since the last draw. Rendering one renders the cached views inside it.
+    pub(crate) notified_views: FxHashSet<EntityId>,
     focus_listeners: SubscriberSet<(), AnyWindowFocusListener>,
     pub(crate) focus_lost_listeners: SubscriberSet<(), AnyObserver>,
     focus_lost_path: SmallVec<[FocusId; 8]>,
@@ -2195,6 +2240,7 @@ impl Window {
             next_tooltip_id: TooltipId::default(),
             tooltip_bounds: None,
             dirty_views: FxHashSet::default(),
+            notified_views: FxHashSet::default(),
             focus_listeners: SubscriberSet::new(),
             focus_lost_listeners: SubscriberSet::new(),
             focus_lost_path: SmallVec::new(),
@@ -2768,7 +2814,9 @@ impl Window {
     /// and skip the frame request when it is set.
     pub fn request_animation_frame(&self) {
         let entity = self.current_view();
-        self.on_next_frame(move |_, cx| cx.notify(entity));
+        self.on_next_frame(move |window, _| {
+            window.invalidator.invalidate_view_for_animation(entity)
+        });
     }
 
     /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
@@ -3690,10 +3738,28 @@ impl Window {
 
     fn invalidate_entities(&mut self) {
         let mut views = self.invalidator.take_views();
+        self.notified_views.clear();
         for entity in views.drain() {
+            self.notified_views.insert(entity);
             self.mark_view_dirty(entity);
         }
         self.invalidator.replace_views(views);
+        for entity in self.invalidator.take_animation_views() {
+            self.mark_view_dirty(entity);
+        }
+    }
+
+    /// Whether a cached view must render again although its own cache key
+    /// matches: it, or a view inside it, was notified during this draw.
+    pub(crate) fn view_notified_during_draw(&self, view: EntityId) -> bool {
+        self.invalidator
+            .pending_within(view, &self.rendered_frame.dispatch_tree)
+    }
+
+    /// The number of the draw in progress; a cached view replays its last
+    /// ranges only if it was drawn in the one before.
+    pub(crate) fn paint_generation(&self) -> u64 {
+        self.paint_generation
     }
 
     #[profiling::function]
@@ -4320,6 +4386,27 @@ impl Window {
         self.element_offset_stack.push(offset);
         let result = f(self);
         self.element_offset_stack.pop();
+        result
+    }
+
+    /// Paints `f` moved by `offset` and faded by `opacity` without changing
+    /// layout, element bounds or hit testing (transforms nest). Cached views
+    /// painted inside replay their last paint at the new place and opacity, so
+    /// moving a cached subtree costs no rendering. Call during paint.
+    pub fn with_visual_transform<R>(
+        &mut self,
+        offset: Point<Pixels>,
+        opacity: f32,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint();
+        let transform = crate::VisualTransform {
+            offset: offset.scale(self.scale_factor()),
+            opacity: opacity.clamp(0., 1.),
+        };
+        self.next_frame.scene.push_transform(transform);
+        let result = f(self);
+        self.next_frame.scene.pop_transform();
         result
     }
 
