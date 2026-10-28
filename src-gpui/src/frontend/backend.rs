@@ -270,6 +270,7 @@ impl Desktop {
         }
         if !self.snapshot.is_null() && !self.first_frame {
             self.first_frame = true;
+            self.first_frame_at = Some(Instant::now());
             if self.host.state::<AppState>().task_manager_start {
                 crate::commands::task_manager_ready(self.host.clone());
             }
@@ -348,6 +349,30 @@ impl Desktop {
             "startup" => 10000,
             _ => 2000,
         })
+    }
+    /// Reads the lists of the other table pages once, a second after the first
+    /// snapshot, so that the first visit shows them at once instead of waiting
+    /// for the read (cold, the service list alone took over a second). Each page
+    /// still re-reads its list when shown; the process page already reads the
+    /// services.
+    pub(in crate::frontend) fn prefetch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.prefetched
+            || self
+                .first_frame_at
+                .is_none_or(|at| at.elapsed() < Duration::from_secs(1))
+        {
+            return;
+        }
+        self.prefetched = true;
+        for (command, cache) in [
+            ("list_services", "services"),
+            ("list_startup", "startup"),
+            ("list_connections", "connections"),
+        ] {
+            if !self.data.contains_key(cache) {
+                self.request(command, json!({}), Some(cache), window, cx);
+            }
+        }
     }
     pub(in crate::frontend) fn poll_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match self.page.as_str() {

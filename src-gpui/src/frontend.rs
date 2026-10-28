@@ -204,6 +204,9 @@ struct Desktop {
     filters: HashMap<String, String>,
     forms: HashMap<String, Entity<InputState>>,
     first_frame: bool,
+    /// When the first snapshot was drawn; the other lists are read soon after.
+    first_frame_at: Option<Instant>,
+    prefetched: bool,
     welcome_checked: bool,
     history_range: String,
     history_metric: String,
@@ -317,6 +320,8 @@ impl Desktop {
             filters: HashMap::new(),
             forms: HashMap::new(),
             first_frame: false,
+            first_frame_at: None,
+            prefetched: false,
             welcome_checked: false,
             history_range: "1h".into(),
             history_metric: "cpu".into(),
@@ -395,6 +400,7 @@ impl Desktop {
                                 this.last_poll = Instant::now();
                                 this.poll_page(window, cx);
                             }
+                            this.prefetch(window, cx);
                             // The privilege badge follows the service: it may start after Argus.
                             if this.last_privilege.elapsed() >= Duration::from_secs(30)
                                 && !boolean(&this.data["info"], "elevated")
