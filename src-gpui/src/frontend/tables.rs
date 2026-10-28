@@ -1229,6 +1229,16 @@ impl Desktop {
                 .iter()
                 .filter_map(|p| p["pid"].as_u64().map(|pid| (pid, p)))
                 .collect();
+            // Listening sockets by owner and port: a connection on such a port is local.
+            let listening: HashSet<(Option<u64>, Option<u64>)> = if self.page == "network" {
+                source
+                    .iter()
+                    .filter(|c| text(c, "state") == "listen")
+                    .map(|c| (c["pid"].as_u64(), c["localPort"].as_u64()))
+                    .collect()
+            } else {
+                HashSet::new()
+            };
             // A number is almost always a port or PID: match it exactly, so 80 does not find 8080.
             let number_query = query.parse::<u64>().ok();
             let contains = |value: &str| value.to_lowercase().contains(&query);
@@ -1293,11 +1303,10 @@ impl Desktop {
                                 let name = text(process, "name").to_lowercase();
                                 let protocol = text(&row.raw, "protocol");
                                 let local = row.raw["remoteAddress"].is_null()
-                                    || source.iter().any(|c| {
-                                        c["pid"] == row.raw["pid"]
-                                            && c["localPort"] == row.raw["localPort"]
-                                            && text(c, "state") == "listen"
-                                    });
+                                    || listening.contains(&(
+                                        row.raw["pid"].as_u64(),
+                                        row.raw["localPort"].as_u64(),
+                                    ));
                                 row.mark_key = Some(if local {
                                     format!("{protocol}|{name}|local|{}", row.raw["localPort"])
                                 } else {

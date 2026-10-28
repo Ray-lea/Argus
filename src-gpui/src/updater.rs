@@ -1170,6 +1170,7 @@ fn launch(app: &Host, ready: &Ready) -> Failure {
     drop(file);
     // std::process::exit skips RunEvent::Exit.
     crate::stop_network_session();
+    crate::frontend::flush_preferences();
     log::logger().flush();
     std::process::exit(0);
 }

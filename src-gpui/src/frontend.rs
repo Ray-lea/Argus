@@ -526,11 +526,18 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
             .expect("create native window");
             cx.on_app_quit(move |_| {
                 owner.exit(0);
+                // Preferences are written in the background: finish before exit.
+                prefs::flush(Duration::from_secs(2));
                 async {}
             })
             .detach();
         });
     Ok(())
+}
+/// Writes the interface preferences still queued (they are saved in the
+/// background), for exits that skip the application quit handlers.
+pub(crate) fn flush_preferences() {
+    prefs::flush(Duration::from_secs(2));
 }
 /// Opt-in record of UI-thread work outside drawing, for the frame trace
 /// (`ARGUS_GPUI_FRAME_TRACE`): what ran and for how long, on the probe's clock.
