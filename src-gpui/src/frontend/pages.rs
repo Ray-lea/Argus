@@ -180,8 +180,10 @@ impl Desktop {
                     }
                     _ => None,
                 };
+                // Stretched in the page's column: a full width plus the margins
+                // would push the card's right edge and its scrollbar out of the window.
                 div()
-                    .size_full()
+                    .flex_1()
                     .min_h_0()
                     .mx(px(12.))
                     .flex()

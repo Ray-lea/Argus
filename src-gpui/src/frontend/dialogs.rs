@@ -2283,6 +2283,7 @@ impl Desktop {
     fn document_dialog(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
         let p = self.palette;
         let id = modal.id;
+        let document = scrollbar::fresh_handle("document", id);
         dialog
             .child(
                 self.measure(id, 0).child(
@@ -2297,9 +2298,12 @@ impl Desktop {
                         .child(
                             div()
                                 .id(("document", id))
+                                .track_scroll(&document)
                                 .max_h(px(560.))
                                 .overflow_y_scroll()
                                 .p(px(12.))
+                                // The gutter is kept (`scrollbar-gutter: stable`).
+                                .pr(px(12. + scrollbar::SIZE))
                                 .border_1()
                                 .border_color(p.stroke)
                                 .rounded(px(6.))
@@ -2308,7 +2312,11 @@ impl Desktop {
                                 .text_size(px(12.))
                                 .line_height(relative(1.5))
                                 .text_color(p.muted)
-                                .child(modal.body.clone()),
+                                .child(modal.body.clone())
+                                .child(
+                                    scrollbar::scrollbar("document-scrollbar", &document, p.dark)
+                                        .border(1.),
+                                ),
                         ),
                 ),
             )

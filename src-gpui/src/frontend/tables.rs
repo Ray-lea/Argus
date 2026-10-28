@@ -313,16 +313,37 @@ impl Render for TableFrame {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Process headers carry a total above the label; the other tables use the
         // original 34 px header cell. Both sit in a 4 px padded header row.
-        DataTable::new(&self.state)
-            .small()
-            .header_row_height(px(if self.state.read(cx).delegate().page == "processes" {
-                PROCESS_HEADER_BAND
-            } else {
-                34.
-            }))
-            .bordered(false)
-            .fixed_cols_border(false)
-            .stripe(false)
+        let state = self.state.read(cx);
+        let rows = state.vertical_scroll_handle.0.borrow().base_handle.clone();
+        let table = self.state.entity_id();
+        let dark = cx.theme().mode == ThemeMode::Dark;
+        let processes = state.delegate().page == "processes";
+        let columns = state.horizontal_scroll_handle.as_ref().clone();
+        div()
+            .relative()
+            .size_full()
+            // The process table keeps a rail for sideways scrolling below its
+            // rows, even when the columns fit (`.hscroll`).
+            .when(processes, |d| d.pb(px(scrollbar::SIZE)))
+            .child(scrollbar::wheel_glide(&rows, table))
+            .child(
+                DataTable::new(&self.state)
+                    .small()
+                    .header_row_height(px(if processes { PROCESS_HEADER_BAND } else { 34. }))
+                    .bordered(false)
+                    .fixed_cols_border(false)
+                    .stripe(false)
+                    // The original's scrollbars are drawn below.
+                    .scrollbar_visible(false, false),
+            )
+            .child(scrollbar::scrollbar("table-scrollbar", &rows, dark).view(table))
+            .when(processes, |d| {
+                d.child(
+                    scrollbar::scrollbar("table-columns-scrollbar", &columns, dark)
+                        .rail_below(&rows)
+                        .view(table),
+                )
+            })
     }
 }
 impl NativeTable {
@@ -514,6 +535,17 @@ impl TableDelegate for NativeTable {
                     .rounded_tl(px(7.))
                     .when(!details, |d| d.rounded_tr(px(7.)))
             })
+    }
+    /// The space after the last column: the columns leave room for the
+    /// header's insets and the scrollbar gutter (see `configure`), and with the
+    /// library's 12 px default here the header would scroll sideways by 4 px
+    /// even when the columns fit, showing a horizontal thumb.
+    fn render_last_empty_col(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        div().w(px(ROW_INSET * 2.)).h_full().flex_shrink_0()
     }
     fn render_empty(
         &mut self,

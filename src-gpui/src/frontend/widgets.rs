@@ -45,6 +45,7 @@ pub(in crate::frontend) struct OpenSelect {
     pub anchor: Bounds<Pixels>,
     pub pick: Pick,
     pub opened: Instant,
+    pub scroll: ScrollHandle,
 }
 
 /// The show/hide hotkey card's recording session (Settings.tsx, HotkeySetting).
@@ -767,6 +768,7 @@ impl Desktop {
                         anchor,
                         pick: pick.clone(),
                         opened: Instant::now(),
+                        scroll: ScrollHandle::new(),
                     });
                 }
                 window.refresh();
@@ -1027,6 +1029,7 @@ impl Desktop {
         }
         let list = div()
             .id("select-list")
+            .track_scroll(&open.scroll)
             .when(interactive, |d| d.occlude())
             .absolute()
             .left(left)
@@ -1035,6 +1038,8 @@ impl Desktop {
             .max_h(px(max_height))
             .overflow_y_scroll()
             .p(px(4.))
+            // The gutter is kept (`scrollbar-gutter: stable`).
+            .pr(px(4. + scrollbar::SIZE))
             .border_1()
             .border_color(p.stroke_strong)
             .rounded(px(8.))
@@ -1083,7 +1088,8 @@ impl Desktop {
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.pick_select(Some(index), window, cx);
                     }))
-            }));
+            }))
+            .child(scrollbar::scrollbar("select-scrollbar", &open.scroll, p.dark).border(1.));
         Some(
             deferred(
                 anchored().position(point(px(0.), px(0.))).child(

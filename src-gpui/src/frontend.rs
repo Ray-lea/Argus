@@ -11,6 +11,7 @@ mod motion;
 mod pages;
 mod prefs;
 mod recorder;
+mod scrollbar;
 mod tables;
 mod theme;
 mod welcome;
@@ -500,6 +501,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                     window,
                     cx,
                 );
+                scrollbar::style_library(crate::platform::is_dark(saved.theme), cx);
                 let view = cx.new(|cx| Desktop::new(host.clone(), options.clone(), window, cx));
                 // Apply platform integration after the component root is constructed.
                 window.defer(cx, move |window, cx| {

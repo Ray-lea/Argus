@@ -962,7 +962,45 @@ impl Desktop {
                 ..Default::default()
             };
             window.defer(cx, move |window, cx| {
+                if let Some(ms) = scrollbar::trace_ms() {
+                    println!("{}", json!({"event":"wheel","ms":ms}));
+                }
                 window.dispatch_event(PlatformInput::ScrollWheel(event), cx);
+            });
+        }
+        if let Some(ms) = control["scrollTrace"].as_u64() {
+            // Print every scrollbar's offset and thumb on each frame (test only).
+            scrollbar::trace(ms);
+            window.refresh();
+        }
+        if let Some(mouse) = control.get("mouse") {
+            // A left-button pointer step at a point (test only): {"type":"move|down|up","x":…,"y":…}.
+            let position = point(px(number(mouse, "x") as f32), px(number(mouse, "y") as f32));
+            let input = match mouse["type"].as_str() {
+                Some("down") => PlatformInput::MouseDown(MouseDownEvent {
+                    position,
+                    button: MouseButton::Left,
+                    click_count: 1,
+                    ..Default::default()
+                }),
+                Some("up") => PlatformInput::MouseUp(MouseUpEvent {
+                    position,
+                    button: MouseButton::Left,
+                    click_count: 1,
+                    ..Default::default()
+                }),
+                Some("drag") => PlatformInput::MouseMove(MouseMoveEvent {
+                    position,
+                    pressed_button: Some(MouseButton::Left),
+                    ..Default::default()
+                }),
+                _ => PlatformInput::MouseMove(MouseMoveEvent {
+                    position,
+                    ..Default::default()
+                }),
+            };
+            window.defer(cx, move |window, cx| {
+                window.dispatch_event(input, cx);
             });
         }
         if let Some(id) = control["hoverChart"].as_str()

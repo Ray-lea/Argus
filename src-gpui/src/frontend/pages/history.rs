@@ -904,18 +904,26 @@ impl Desktop {
             )
             .child(table)
             .child(foot);
+        let page = window
+            .use_keyed_state("history-scroll", cx, |_, _| ScrollHandle::new())
+            .read(cx)
+            .clone();
         div()
             .id("history-content")
+            .track_scroll(&page)
             .size_full()
             .min_h_0()
             .overflow_y_scroll()
-            .px(px(12.))
+            // The gutter is kept (`scrollbar-gutter: stable`).
+            .pl(px(12.))
+            .pr(px(12. + scrollbar::SIZE))
             .flex()
             .flex_col()
             .gap(px(10.))
             .line_height(relative(1.4))
             .child(graphs)
             .child(moment_card)
+            .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))
             .into_any_element()
     }
     /// The moment's processes: sortable, with a menu and double-click to the live process.
@@ -977,7 +985,9 @@ impl Desktop {
             .flex_shrink_0()
             .h(px(30.))
             .items_center()
-            .px(px(6.))
+            .pl(px(6.))
+            // Over the rows' scrollbar gutter, like `.thead`.
+            .pr(px(6. + scrollbar::SIZE))
             .border_b_1()
             .border_color(p.stroke)
             .text_size(px(12.))
@@ -1019,11 +1029,17 @@ impl Desktop {
                     }))
             }));
         let live = values(&self.snapshot["processes"]);
+        let rows_scroll = window
+            .use_keyed_state("history-processes-scroll", cx, |_, _| ScrollHandle::new())
+            .read(cx)
+            .clone();
         let mut body = div()
             .id("history-processes")
+            .track_scroll(&rows_scroll)
             .flex_1()
             .min_h(px(TABLE_ROW * 3.))
             .overflow_y_scroll()
+            .pr(px(scrollbar::SIZE))
             .flex()
             .flex_col();
         if rows.is_empty() {
@@ -1113,7 +1129,11 @@ impl Desktop {
             .flex()
             .flex_col()
             .child(header)
-            .child(body)
+            .child(body.child(scrollbar::scrollbar(
+                "history-processes-scrollbar",
+                &rows_scroll,
+                p.dark,
+            )))
             .into_any_element()
     }
 }

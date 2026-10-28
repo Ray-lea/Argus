@@ -1,6 +1,5 @@
 use super::*;
 use charts::{ChartHeight, GIB, KIB, Line, Look, MIB, MetricFormat, Scale};
-use gpui_kit::component::scroll::{ScrollableElement, ScrollbarAxis};
 mod engines;
 mod telemetry;
 
@@ -499,8 +498,15 @@ impl Desktop {
             window,
             cx,
         );
+        let device_list = window
+            .use_keyed_state("devices-scroll", cx, |_, _| ScrollHandle::new())
+            .read(cx)
+            .clone();
+        // The rows leave the scrollbar's width free, whether or not it shows
+        // (`.dev` is `100cqw - var(--scrollbar-size)` wide).
         let mut list = div()
             .id("devices")
+            .track_scroll(&device_list)
             .relative()
             .w(px(side_width))
             .flex_shrink_0()
@@ -508,12 +514,12 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap(px(ROW_GAP))
-            .pr_1()
+            .pr(px(scrollbar::SIZE))
             .child(
                 div()
                     .absolute()
                     .left_0()
-                    .right_1()
+                    .right(px(scrollbar::SIZE))
                     .top(mark_top)
                     .h(px(ROW_HEIGHT))
                     .border_1()
@@ -677,7 +683,11 @@ impl Desktop {
             .flex()
             // The original page's body line height; GPUI's default is taller.
             .line_height(relative(1.4))
-            .child(list)
+            .child(list.child(scrollbar::scrollbar(
+                "devices-scrollbar",
+                &device_list,
+                p.dark,
+            )))
             .child(splitter)
             .child(
                 div()
@@ -692,8 +702,15 @@ impl Desktop {
                     .overflow_y_scroll()
                     .flex()
                     .flex_col()
+                    // The gutter is kept (`scrollbar-gutter: stable`).
+                    .pr(px(scrollbar::SIZE))
                     .child(content)
-                    .scrollbar(&self.device_scroll, ScrollbarAxis::Vertical),
+                    // Clear of the card's rounded corners (`.perf-scroll` track margin).
+                    .child(
+                        scrollbar::scrollbar("device-scrollbar", &self.device_scroll, p.dark)
+                            .border(1.)
+                            .track_margin(8.),
+                    ),
             )
             .into_any_element()
     }
