@@ -46,6 +46,11 @@ struct Field {
 const ROW_HEIGHT: f32 = 30.;
 const ROW_INSET: f32 = 4.;
 const CELL_PADDING: f32 = 10.;
+/// The process table's header band: a total above each label, the original's
+/// cell padding and the band's own separator row.
+const PROCESS_HEADER_BAND: f32 = 49.;
+/// The process table header: 4 px above the band, its separator the last row.
+pub(super) const PROCESS_HEADER_HEIGHT: f32 = 4. + PROCESS_HEADER_BAND;
 fn fields(page: &str, network: bool, available: f32) -> Vec<Field> {
     use CellKind::*;
     use Track::*;
@@ -311,7 +316,7 @@ impl Render for TableFrame {
         DataTable::new(&self.state)
             .small()
             .header_row_height(px(if self.state.read(cx).delegate().page == "processes" {
-                44.
+                PROCESS_HEADER_BAND
             } else {
                 34.
             }))
@@ -482,9 +487,33 @@ impl TableDelegate for NativeTable {
     fn render_header(
         &mut self,
         _window: &mut Window,
-        _cx: &mut Context<TableState<Self>>,
+        cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
-        div().id("native-table-header").px(px(ROW_INSET)).py(px(4.))
+        // A search narrows the process list: an accent header with the card's
+        // accent ring (`.workspace.filtered .thead`), rounded into the card's
+        // corner, and the right one too while the details are closed.
+        let filtered = (self.page == "processes")
+            .then(|| self.owner.upgrade())
+            .flatten()
+            .map(|owner| {
+                let app = owner.read(cx);
+                (!app.query.trim().is_empty(), app.details_open)
+            });
+        let p = Palette::current(cx);
+        // The process header band ends in its own separator row, so the 4 px
+        // below the labels are inside it (see `render_th`): no bottom padding.
+        // While filtering, the workspace draws the accent separator over that
+        // row (`PROCESS_HEADER_HEIGHT`).
+        div()
+            .id("native-table-header")
+            .px(px(ROW_INSET))
+            .pt(px(4.))
+            .when(filtered.is_none(), |d| d.pb(px(4.)))
+            .when_some(filtered.filter(|(on, _)| *on), |d, (_, details)| {
+                d.bg(p.accent.opacity(0.08))
+                    .rounded_tl(px(7.))
+                    .when(!details, |d| d.rounded_tr(px(7.)))
+            })
     }
     fn render_empty(
         &mut self,
@@ -541,10 +570,14 @@ impl TableDelegate for NativeTable {
         let field = &self.fields[index];
         let p = Palette::current(cx);
         let end = field.end;
+        // Process headers: the original's 4 px cell padding inside its 4 px
+        // header padding below the label, which the header band leaves out.
+        let processes = self.page == "processes";
         let mut cell = div()
             .size_full()
             .px(px(CELL_PADDING))
-            .py(px(4.))
+            .pt(px(4.))
+            .pb(px(if processes { 8. } else { 4. }))
             .flex()
             .flex_col()
             .justify_end()
@@ -588,6 +621,8 @@ impl TableDelegate for NativeTable {
             .items_center()
             .gap(px(2.))
             .text_size(px(12.))
+            .line_height(relative(1.4))
+            .when(processes, |d| d.mt(px(1.)))
             .whitespace_nowrap()
             .text_color(if sort.0 { p.ink } else { p.muted })
             .when(sort.0, |d| d.font_weight(FontWeight::SEMIBOLD))

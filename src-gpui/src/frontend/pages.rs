@@ -71,26 +71,62 @@ impl Desktop {
                             .min_h_0()
                             .mx(px(12.))
                             .flex()
-                            .border_1()
-                            .border_color(if filtered {
-                                accent.opacity(0.7)
-                            } else {
-                                self.palette.stroke
-                            })
+                            .relative()
+                            // The original's 3 px ring (a spread box shadow) as a
+                            // border just outside the card: GPUI paints a shadow
+                            // under the whole box, where it would tint the
+                            // translucent card itself.
                             .when(filtered, |d| {
-                                d.shadow(vec![BoxShadow {
-                                    color: accent.opacity(0.16),
-                                    offset: point(px(0.), px(0.)),
-                                    blur_radius: px(0.),
-                                    spread_radius: px(3.),
-                                    inset: false,
-                                }])
+                                d.child(
+                                    div()
+                                        .absolute()
+                                        .top(px(-3.))
+                                        .left(px(-3.))
+                                        .right(px(-3.))
+                                        .bottom(px(-3.))
+                                        .rounded(px(11.))
+                                        .border(px(3.))
+                                        .border_color(accent.opacity(0.16)),
+                                )
                             })
-                            .rounded(px(8.))
-                            .overflow_hidden()
-                            .bg(self.palette.layer)
-                            .child(div().flex_1().min_w_0().min_h_0().child(table))
-                            .children(details),
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .min_h_0()
+                                    .flex()
+                                    .border_1()
+                                    .border_color(if filtered {
+                                        accent.opacity(0.7)
+                                    } else {
+                                        self.palette.stroke
+                                    })
+                                    .rounded(px(8.))
+                                    .overflow_hidden()
+                                    .bg(self.palette.layer)
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .min_h_0()
+                                            .relative()
+                                            .child(table)
+                                            // The accent header separator, over the
+                                            // table's own (its component colour).
+                                            .when(filtered, |d| {
+                                                d.child(
+                                                    div()
+                                                        .absolute()
+                                                        .top(px(tables::PROCESS_HEADER_HEIGHT - 1.))
+                                                        .left_0()
+                                                        .right_0()
+                                                        .h(px(1.))
+                                                        .bg(accent.opacity(0.4)),
+                                                )
+                                            }),
+                                    )
+                                    .children(details),
+                            ),
                     )
                     .into_any_element()
             }
