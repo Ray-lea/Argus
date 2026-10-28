@@ -298,6 +298,8 @@ pub(super) struct NativeTable {
     columns: Vec<Column>,
     icons: HashMap<u32, Arc<Image>>,
     available: Pixels,
+    /// A row the desktop selected itself; the table's select event for it is ignored.
+    echo: Option<usize>,
 }
 pub(super) struct TableFrame {
     state: Entity<TableState<NativeTable>>,
@@ -328,6 +330,7 @@ impl NativeTable {
             columns: vec![],
             icons: HashMap::new(),
             available: px(0.),
+            echo: None,
         }
     }
     fn configure(
@@ -873,6 +876,22 @@ impl TableDelegate for NativeTable {
         menu
     }
 }
+/// Shows the desktop's selection in the table without the side effects of a
+/// click: no select event back to the desktop (which would toggle it off) and no
+/// scroll to the row, which would pull the list back whenever rows reorder.
+fn mirror_selection(
+    state: &mut TableState<NativeTable>,
+    index: usize,
+    cx: &mut Context<TableState<NativeTable>>,
+) {
+    state.delegate_mut().echo = Some(index);
+    state.set_selected_row(index, cx);
+    state
+        .vertical_scroll_handle
+        .0
+        .borrow_mut()
+        .deferred_scroll_to_item = None;
+}
 /// The icon a row shows: a WebView's host application's, else its own.
 fn icon_id(raw: &Value) -> Option<u32> {
     raw["webView"]["hostIcon"]
@@ -1369,7 +1388,7 @@ impl Desktop {
                 }
                 if selected != state.selected_row() {
                     if let Some(index) = selected {
-                        state.set_selected_row(index, cx);
+                        mirror_selection(state, index, cx);
                     } else {
                         state.clear_selection(cx);
                     }
@@ -1409,6 +1428,13 @@ impl Desktop {
                 window,
                 |this, _, event, window, cx| match event {
                     TableEvent::SelectRow(index) => {
+                        let echo = this.table.as_ref().is_some_and(|table| {
+                            table.update(cx, |state, _| state.delegate_mut().echo.take())
+                                == Some(*index)
+                        });
+                        if echo {
+                            return;
+                        }
                         if let Some(row) = this.rows.get(*index).cloned() {
                             if row.section.is_some() {
                                 this.act(Action::Fold(row.key.clone()), window, cx);
@@ -1509,7 +1535,7 @@ impl Desktop {
             if selected != state.selected_row() {
                 changed = true;
                 if let Some(index) = selected {
-                    state.set_selected_row(index, cx);
+                    mirror_selection(state, index, cx);
                 } else {
                     state.clear_selection(cx);
                 }
@@ -1638,7 +1664,7 @@ impl Desktop {
         if let Some(table) = &self.table {
             table.update(cx, |state, cx| {
                 match selected {
-                    Some(index) => state.set_selected_row(index, cx),
+                    Some(index) => mirror_selection(state, index, cx),
                     None => state.clear_selection(cx),
                 }
                 state.set_right_clicked_row(None, cx);
