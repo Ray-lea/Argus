@@ -203,11 +203,18 @@ pub(in crate::frontend) fn brighter(color: Hsla) -> Hsla {
 }
 
 pub(in crate::frontend) trait ButtonExt {
-    /// Disables the button and dims it, as Chromium dims a disabled `.btn`.
+    /// Disables the button; it looks as before, as the original's disabled
+    /// `.btn` (its styles do not change for `:disabled`).
     fn inert(self, disabled: bool) -> Self;
+    /// Disables the button and dims it to half, as the original dims a
+    /// disabled `.select` and the hotkey controls while a key is recorded.
+    fn inert_dimmed(self, disabled: bool) -> Self;
 }
 impl ButtonExt for gpui_kit::base::Button {
     fn inert(self, disabled: bool) -> Self {
+        self.disabled(disabled)
+    }
+    fn inert_dimmed(self, disabled: bool) -> Self {
         self.disabled(disabled).when(disabled, |b| b.opacity(0.5))
     }
 }

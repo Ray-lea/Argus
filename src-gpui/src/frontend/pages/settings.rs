@@ -2663,7 +2663,7 @@ impl Desktop {
                             Tone::Plain,
                         )
                         .track_focus(&self.focus_for("hotkey-change", cx))
-                        .inert(!idle)
+                        .inert_dimmed(!idle)
                         .on_click(cx.listener(|this, _, window, cx| this.begin_hotkey(window, cx))),
                     )
                     .child(self.toggle(
