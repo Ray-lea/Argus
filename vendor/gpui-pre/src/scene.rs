@@ -282,14 +282,20 @@ impl VisualTransform {
     /// `inner` inside `self`.
     fn then(self, inner: Self) -> Self {
         Self {
-            offset: point(self.offset.x + inner.offset.x, self.offset.y + inner.offset.y),
+            offset: point(
+                self.offset.x + inner.offset.x,
+                self.offset.y + inner.offset.y,
+            ),
             opacity: self.opacity * inner.opacity,
         }
     }
 
     fn bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
         Bounds {
-            origin: point(bounds.origin.x + self.offset.x, bounds.origin.y + self.offset.y),
+            origin: point(
+                bounds.origin.x + self.offset.x,
+                bounds.origin.y + self.offset.y,
+            ),
             size: bounds.size,
         }
     }

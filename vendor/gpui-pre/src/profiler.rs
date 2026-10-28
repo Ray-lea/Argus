@@ -1501,7 +1501,12 @@ impl WindowProfiler {
                 .iter()
                 .filter(|view| view.2 >= Duration::from_micros(100))
                 .map(|(name, phase, duration)| {
-                    format!("\"{}.{}\":{}", short(name), phase.as_str(), duration.as_micros())
+                    format!(
+                        "\"{}.{}\":{}",
+                        short(name),
+                        phase.as_str(),
+                        duration.as_micros()
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join(",");

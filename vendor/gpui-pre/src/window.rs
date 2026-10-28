@@ -235,7 +235,10 @@ impl WindowInvalidator {
     fn pending_within(&self, view: EntityId, tree: &DispatchTree) -> bool {
         let inner = self.inner.borrow();
         inner.dirty_views.iter().any(|pending| {
-            *pending == view || tree.view_path_reversed(*pending).any(|ancestor| ancestor == view)
+            *pending == view
+                || tree
+                    .view_path_reversed(*pending)
+                    .any(|ancestor| ancestor == view)
         })
     }
 
