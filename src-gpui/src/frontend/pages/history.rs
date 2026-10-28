@@ -1029,6 +1029,13 @@ impl Desktop {
                     }))
             }));
         let live = values(&self.snapshot["processes"]);
+        // A recorded process shows the icon of a running one with the same name.
+        let mut by_name: HashMap<String, &Value> = HashMap::new();
+        for process in live {
+            by_name
+                .entry(text(process, "name").to_lowercase())
+                .or_insert(process);
+        }
         let rows_scroll = window
             .use_keyed_state("history-processes-scroll", cx, |_, _| ScrollHandle::new())
             .read(cx)
@@ -1083,7 +1090,11 @@ impl Desktop {
                         .flex()
                         .items_center()
                         .gap_2()
-                        .child(icon("AppIcon", p.muted))
+                        .child(self.process_icon(
+                            by_name.get(&name.to_lowercase()).copied(),
+                            16.,
+                            cx,
+                        ))
                         .child(div().min_w_0().truncate().child(name.clone())),
                 )
                 .child(
