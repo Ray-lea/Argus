@@ -22,11 +22,7 @@ impl Desktop {
                         .child(tr!("shell.loadingProcesses"))
                         .into_any_element();
                 }
-                let vitals = self.fade_in(
-                    div().flex_shrink_0().child(self.vitals(window, cx)),
-                    window,
-                    cx,
-                );
+                let vitals = div().flex_shrink_0().child(self.vitals(window, cx));
                 let table = self.table_view(window, cx);
                 // The pane follows its handle without easing while dragged.
                 let dragging = self.drag.as_ref().is_some_and(|drag| drag.0 == "details");

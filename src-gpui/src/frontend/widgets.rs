@@ -1113,11 +1113,13 @@ impl Desktop {
         )
     }
 
-    /// The new page fades in. Opacity alone, without movement: a moving page
-    /// changes the bounds of cached views and re-renders them on every frame, and
-    /// motion shows uneven frame pacing far more than a fade does. Pages built
-    /// around a table fade only their other parts (`fade_in`): the table shows at
-    /// once from its cache instead of repainting on every frame of the fade.
+    /// The new page slides in from the side of its entry in the navigation while
+    /// it fades in (App.tsx): from the right for a tab further right, from below
+    /// for a page further down the side navigation; the navigation stays put.
+    /// Only the opacity and the offset change, never the element tree, so
+    /// nothing inside loses its state or replays its own entrance (the details
+    /// pane's). The chart layer takes the opacity, and the offset through the
+    /// placements its charts record.
     pub(in crate::frontend) fn enter(
         &self,
         content: impl IntoElement,
@@ -1132,50 +1134,40 @@ impl Desktop {
             .flex()
             .flex_col()
             .child(content);
-        let table_page = matches!(
-            self.page.as_str(),
-            "processes" | "services" | "startup" | "network"
-        );
-        if table_page || !self.page_fading(cx) {
-            // The process page fades its vitals band, which carries the charts.
-            if self.page != "processes" {
-                self.page_opacity.set(1.);
-            }
-            return element.into_any_element();
-        }
-        self.fade_in(element, window, cx)
-    }
-    /// Fades one part of a newly shown page in; the chart layer follows along.
-    /// Only the opacity changes: an animation wrapper that goes away when the
-    /// fade ends would change the element path of everything inside, which
-    /// drops its state and replays its own entrance (the details pane's).
-    pub(in crate::frontend) fn fade_in(
-        &self,
-        element: impl IntoElement + Styled + 'static,
-        window: &Window,
-        cx: &App,
-    ) -> AnyElement {
         if !self.page_fading(cx) {
             self.page_opacity.set(1.);
             return element.into_any_element();
         }
         let progress = theme::ease_out(
-            (self.page_switched.elapsed().as_secs_f32() / PAGE_FADE.as_secs_f32()).min(1.),
+            (self.page_switched.elapsed().as_secs_f32() / PAGE_ENTER.as_secs_f32()).min(1.),
         );
         self.page_opacity.set(progress);
         window.request_animation_frame();
-        element.opacity(progress).into_any_element()
+        let shift = (1. - progress) * self.page_direction;
+        element
+            .opacity(progress)
+            .map(|page| {
+                if self.nav_top {
+                    page.left(px(shift * 32.))
+                } else {
+                    page.top(px(shift * 24.))
+                }
+            })
+            .into_any_element()
     }
-    /// Whether the page is still fading in after a page change.
+    /// Whether the page is still entering after a page change.
     pub(in crate::frontend) fn page_fading(&self, cx: &App) -> bool {
-        !cx.reduce_motion() && self.page_direction != 0. && self.page_switched.elapsed() < PAGE_FADE
+        !cx.reduce_motion()
+            && self.page_direction != 0.
+            && self.page_switched.elapsed() < PAGE_ENTER
     }
 }
 
-/// How long a page takes to fade in after a page change.
-pub(in crate::frontend) const PAGE_FADE: Duration = Duration::from_millis(180);
+/// How long a page takes to enter after a page change (300 ms, `EASE_OUT`).
+pub(in crate::frontend) const PAGE_ENTER: Duration = Duration::from_millis(300);
 
-/// The flyout shadow of menus, lists and dialogs (`--shadow-flyout`).
+/// The shadow of dialogs (`--shadow-flyout`); the original's menus, lists and
+/// toasts have none.
 pub(in crate::frontend) fn flyout_shadow(dark: bool) -> Vec<BoxShadow> {
     vec![
         BoxShadow {
