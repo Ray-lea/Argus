@@ -7,10 +7,11 @@ float color_brightness(float3 color) {
     return dot(color, float3(0.30f, 0.59f, 0.11f));
 }
 
+// Argus patch: light text keeps the full enhanced contrast, as in Chromium.
+// Upstream fades it out above 75% brightness, which draws white and light grey
+// text on dark backgrounds visibly thinner than the same font in a browser.
 float light_on_dark_contrast(float enhancedContrast, float3 color) {
-    float brightness = color_brightness(color);
-    float multiplier = saturate(4.0f * (0.75f - brightness));
-    return enhancedContrast * multiplier;
+    return enhancedContrast;
 }
 
 float enhance_contrast(float alpha, float k) {

@@ -33,6 +33,11 @@ struct FontInfo {
     features: IDWriteTypography,
     fallbacks: Option<IDWriteFontFallback>,
     font_collection: IDWriteFontCollection1,
+    /// The weight layout asks for. For a variable font requested between its
+    /// named instances it is the requested weight, set on the weight axis
+    /// (`weight_axis`); `font_face` is then the nearest named instance.
+    weight: f32,
+    weight_axis: bool,
 }
 
 pub(crate) struct DirectWriteTextSystem {
@@ -315,6 +320,34 @@ impl PlatformTextSystem for DirectWriteTextSystem {
 }
 
 impl DirectWriteState {
+    /// Registers a face DirectWrite chose during layout (a fallback font, or a
+    /// variable font instance at the requested weight), so its glyphs are
+    /// rasterized with that face rather than with a face matched again by family
+    /// and weight, which would lose the instance's axis values and simulations.
+    fn cache_font_face(
+        &mut self,
+        components: &DirectWriteComponents,
+        font: &Font,
+        font_face: &IDWriteFontFace3,
+    ) -> Option<FontId> {
+        let features =
+            unsafe { Self::generate_font_features(&components.factory, &font.features).log_err()? };
+        let font_id = FontId(self.fonts.len());
+        self.fonts.push(FontInfo {
+            font_family_h: HSTRING::from(font.family.as_ref()),
+            font_face: font_face.clone(),
+            features,
+            fallbacks: None,
+            font_collection: self.system_font_collection.clone(),
+            weight: font.weight.0,
+            weight_axis: variable_weight(font_face).is_some_and(|w| {
+                (w - font_weight_from_dwrite(unsafe { font_face.GetWeight() }).0).abs() > 0.5
+            }),
+        });
+        self.font_to_font_id.insert(font.clone(), font_id);
+        Some(font_id)
+    }
+
     fn select_and_cache_font(
         &mut self,
         components: &DirectWriteComponents,
@@ -509,8 +542,18 @@ impl DirectWriteState {
                         .log_err()
                         .flatten()
                 });
+                // Between the named instances of a variable font, lay out on its
+                // weight axis (see `weight_axis`). Other fonts and weights keep
+                // DirectWrite's own matching, for fallback fonts too.
+                let exact = variable_weight(&font_face).is_some_and(|w| (w - weight.0).abs() > 0.5);
                 let font_info = FontInfo {
                     font_family_h: font_family_h.clone(),
+                    weight: if exact {
+                        weight.0
+                    } else {
+                        font_weight_from_dwrite(unsafe { font_face.GetWeight() }).0
+                    },
+                    weight_axis: exact,
                     font_face,
                     features: direct_write_features,
                     fallbacks,
@@ -554,7 +597,7 @@ impl DirectWriteState {
                     .CreateTextFormat(
                         &font_info.font_family_h,
                         collection,
-                        font_info.font_face.GetWeight(),
+                        font_weight_to_dwrite(FontWeight(font_info.weight)),
                         font_info.font_face.GetStyle(),
                         DWRITE_FONT_STRETCH_NORMAL,
                         font_size.as_f32(),
@@ -563,6 +606,11 @@ impl DirectWriteState {
                     .cast()?;
                 if let Some(ref fallbacks) = font_info.fallbacks {
                     format.SetFontFallback(fallbacks)?;
+                }
+                if font_info.weight_axis
+                    && let Ok(format) = format.cast::<IDWriteTextFormat3>()
+                {
+                    format.SetFontAxisValues(&weight_axis(font_info.weight))?;
                 }
 
                 let layout = components.factory.CreateTextLayout(
@@ -615,7 +663,17 @@ impl DirectWriteState {
                 };
                 text_layout.SetFontSize(font_size, text_range)?;
                 text_layout.SetFontStyle(font_info.font_face.GetStyle(), text_range)?;
-                text_layout.SetFontWeight(font_info.font_face.GetWeight(), text_range)?;
+                text_layout.SetFontWeight(
+                    font_weight_to_dwrite(FontWeight(font_info.weight)),
+                    text_range,
+                )?;
+                if let Ok(layout) = text_layout.cast::<IDWriteTextLayout4>() {
+                    let axis = weight_axis(font_info.weight);
+                    layout.SetFontAxisValues(
+                        if font_info.weight_axis { &axis } else { &[] },
+                        text_range,
+                    )?;
+                }
                 text_layout.SetTypography(&font_info.features, text_range)?;
 
                 break_ligatures = !break_ligatures;
@@ -1551,7 +1609,7 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
                         Some(&font_id) => font_id,
                         None => context
                             .text_system
-                            .select_and_cache_font(context.components, &font)
+                            .cache_font_face(context.components, &font, font_face)
                             .ok_or_else(|| Error::new(DWRITE_E_NOFONT, "Failed to create font"))?,
                     };
                     context
@@ -1751,6 +1809,33 @@ fn font_style_from_dwrite(value: DWRITE_FONT_STYLE) -> FontStyle {
     }
 }
 
+/// Argus patch: a variable font requested between its named instances is laid
+/// out at exactly that weight, as browsers do, instead of at the nearest instance
+/// (Segoe UI Variable has none between Regular 400 and Semibold 600).
+fn weight_axis(weight: f32) -> [DWRITE_FONT_AXIS_VALUE; 1] {
+    [DWRITE_FONT_AXIS_VALUE {
+        axisTag: DWRITE_FONT_AXIS_TAG_WEIGHT,
+        value: weight,
+    }]
+}
+
+/// The weight axis value of a variable font instance.
+fn variable_weight(font_face: &IDWriteFontFace3) -> Option<f32> {
+    let face = font_face.cast::<IDWriteFontFace5>().ok()?;
+    unsafe {
+        if !face.HasVariations().as_bool() {
+            return None;
+        }
+        let mut values =
+            vec![DWRITE_FONT_AXIS_VALUE::default(); face.GetFontAxisValueCount() as usize];
+        face.GetFontAxisValues(&mut values).ok()?;
+        values
+            .iter()
+            .find(|value| value.axisTag == DWRITE_FONT_AXIS_TAG_WEIGHT)
+            .map(|value| value.value)
+    }
+}
+
 fn font_weight_to_dwrite(weight: FontWeight) -> DWRITE_FONT_WEIGHT {
     DWRITE_FONT_WEIGHT(weight.0 as i32)
 }
@@ -1786,12 +1871,14 @@ fn get_font_names_from_collection(
 fn font_face_to_font(font_face: &IDWriteFontFace3, locale: &HSTRING) -> Option<Font> {
     let localized_family_name = unsafe { font_face.GetFamilyNames().log_err() }?;
     let family_name = get_name(localized_family_name, locale).log_err()?;
-    let weight = unsafe { font_face.GetWeight() };
+    let weight = variable_weight(font_face)
+        .map(FontWeight)
+        .unwrap_or_else(|| font_weight_from_dwrite(unsafe { font_face.GetWeight() }));
     let style = unsafe { font_face.GetStyle() };
     Some(Font {
         family: family_name.into(),
         features: FontFeatures::default(),
-        weight: font_weight_from_dwrite(weight),
+        weight,
         style: font_style_from_dwrite(style),
         fallbacks: None,
     })
