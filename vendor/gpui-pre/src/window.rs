@@ -5266,21 +5266,23 @@ impl Window {
         Ok(handle)
     }
 
-    /// Paint an antialiased, sharp solid rectangle in a fixed animation region.
-    /// Empty rectangles retain an invisible primitive, allowing a bar to grow
-    /// again without changing scene ordering or introducing a nonzero reading.
+    /// Paint an antialiased solid rectangle, with optionally rounded corners, in
+    /// a fixed animation region. Empty rectangles retain an invisible primitive,
+    /// allowing a bar to grow again without changing scene ordering or
+    /// introducing a nonzero reading.
     pub fn paint_animated_rect(
         &mut self,
         bounds: Bounds<Pixels>,
         region: Bounds<Pixels>,
         color: Hsla,
+        corner_radius: Pixels,
     ) -> Option<PaintedPrimitive> {
         use crate::scene::{PaintOperation, Primitive};
         let layer = self.cover_bounds(region.intersect(&self.content_mask().bounds));
         let requested = self.snap_bounds(bounds);
         self.paint_layer(region, |window| {
             let operation = window.next_frame.scene.len();
-            window.paint_quad(crate::fill(region, color));
+            window.paint_quad(crate::fill(region, color).corner_radii(corner_radius));
             if window.next_frame.scene.len() != operation + 1 {
                 return None;
             }

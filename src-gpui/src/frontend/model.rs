@@ -540,6 +540,38 @@ fn append_groups(
 
 pub struct Timeline {
     pub samples: HashMap<String, VecDeque<(f64, Option<f64>)>>,
+    /// Sample times of the process and app histories, oldest first.
+    times: VecDeque<f64>,
+    /// CPU and private working set of every live process, by PID and creation time.
+    processes: HashMap<(u64, i64), Usage>,
+    /// The same per app (group key): totals of whichever members ran at the time.
+    groups: HashMap<String, Usage>,
+    /// Counts pushes; usage not updated in the latest one belongs to an exited process.
+    tick: u64,
+}
+
+/// Rolling CPU and memory of one process or app, aligned with the end of `Timeline::times`.
+#[derive(Default)]
+struct Usage {
+    /// Newest last; NaN marks an unknown sample.
+    cpu: VecDeque<f64>,
+    mem: VecDeque<f64>,
+    /// The app a process belongs to, when it can share an app row with others.
+    /// A process without one is checked again in case its path or WebView
+    /// details arrive later.
+    app: Option<String>,
+    origin: (usize, bool),
+    tick: u64,
+}
+impl Usage {
+    fn push(&mut self, cpu: f64, mem: f64, keep: usize) {
+        self.cpu.push_back(cpu);
+        self.mem.push_back(mem);
+        while self.cpu.len() > keep {
+            self.cpu.pop_front();
+            self.mem.pop_front();
+        }
+    }
 }
 
 /// Device histories survive collection reordering and never follow a reused array slot.
@@ -571,19 +603,67 @@ impl Timeline {
     pub fn new() -> Self {
         Self {
             samples: HashMap::new(),
+            times: VecDeque::new(),
+            processes: HashMap::new(),
+            groups: HashMap::new(),
+            tick: 0,
         }
+    }
+    /// A series by key: device metrics, or `process.<identity>.cpu|mem` and
+    /// `group.<app key>.cpu|mem`, which every live process and app keeps from
+    /// its first sample, so a newly selected row's charts are already full.
+    pub fn points(&self, key: &str) -> Option<Vec<(f64, Option<f64>)>> {
+        let points = |usage: &Usage, metric: &str| {
+            let values = match metric {
+                "cpu" => &usage.cpu,
+                "mem" => &usage.mem,
+                _ => return None,
+            };
+            let skip = self.times.len().saturating_sub(values.len());
+            Some(
+                self.times
+                    .iter()
+                    .skip(skip)
+                    .zip(values)
+                    .map(|(&at, &value)| (at, (!value.is_nan()).then_some(value)))
+                    .collect(),
+            )
+        };
+        if let Some(rest) = key.strip_prefix("process.") {
+            // The identity is `pid:createTime`, as the rows key processes.
+            let (id, metric) = rest.rsplit_once('.')?;
+            let (pid, created) = id.split_once(':')?;
+            let usage = self
+                .processes
+                .get(&(pid.parse().ok()?, created.parse().ok()?))?;
+            return points(usage, metric);
+        }
+        if let Some(rest) = key.strip_prefix("group.") {
+            let (id, metric) = rest.rsplit_once('.')?;
+            return points(self.groups.get(id)?, metric);
+        }
+        self.samples
+            .get(key)
+            .map(|list| list.iter().copied().collect())
     }
     pub fn push(&mut self, snapshot: &Value, interval: f64) {
         let now = number(snapshot, "timestamp");
         if !now.is_finite() {
             return;
         }
-        let last = self.samples.values().find_map(|v| v.back().map(|p| p.0));
+        let last = self
+            .samples
+            .values()
+            .find_map(|v| v.back().map(|p| p.0))
+            .or_else(|| self.times.back().copied());
         if last == Some(now) {
             return;
         }
         if last.is_some_and(|previous| now < previous) {
             self.samples.clear();
+            self.times.clear();
+            self.processes.clear();
+            self.groups.clear();
         }
         fn flatten(prefix: &str, value: &Value, out: &mut Vec<(String, Option<f64>)>) {
             match value {
@@ -642,12 +722,6 @@ impl Timeline {
             ),
         ]);
         let oldest = now - interval * 64. - 250.;
-        let tracked_keys: HashSet<String> = self
-            .samples
-            .keys()
-            .filter(|k| k.starts_with("process.") || k.starts_with("group."))
-            .cloned()
-            .collect();
         let mut record = |key: String, value: Option<f64>| {
             if value.is_some() || self.samples.contains_key(&key) {
                 let list = self.samples.entry(key).or_default();
@@ -665,29 +739,7 @@ impl Timeline {
         for (key, value) in metrics {
             record(key, value);
         }
-        let mut groups: HashMap<String, (f64, f64)> = HashMap::new();
-        // Only record process/group historical series if they are already tracked (e.g. active in details view)
-        if !tracked_keys.is_empty() {
-            for p in values(&snapshot["processes"]) {
-                let key = identity(p);
-                let cpu_key = format!("process.{key}.cpu");
-                if tracked_keys.contains(&cpu_key) {
-                    record(cpu_key, p["cpu"].as_f64());
-                    record(format!("process.{key}.mem"), p["privateWs"].as_f64());
-                }
-                let app_key = application_key(p);
-                let group_cpu_key = format!("group.{app_key}.cpu");
-                if tracked_keys.contains(&group_cpu_key) {
-                    let sum = groups.entry(app_key).or_default();
-                    sum.0 += number(p, "cpu");
-                    sum.1 += number(p, "privateWs");
-                }
-            }
-            for (key, (cpu, mem)) in groups {
-                record(format!("group.{key}.cpu"), Some(cpu));
-                record(format!("group.{key}.mem"), Some(mem));
-            }
-        }
+        self.push_usage(snapshot, now, oldest, interval);
         self.samples.retain(|_, list| {
             if list.back().map(|p| p.0) != Some(now) {
                 list.push_back((now, None));
@@ -697,6 +749,71 @@ impl Timeline {
             }
             list.iter().any(|(_, v)| v.is_some())
         });
+    }
+    /// Records every process and app, as the original kept them; exited ones are dropped.
+    fn push_usage(&mut self, snapshot: &Value, now: f64, oldest: f64, interval: f64) {
+        if let Some(&previous) = self.times.back()
+            && now - previous > interval * 2.5
+        {
+            // A stall (hidden, paused or a missed sample) stays a gap.
+            self.times.push_back(previous + interval);
+            for usage in self.processes.values_mut().chain(self.groups.values_mut()) {
+                usage.push(f64::NAN, f64::NAN, usize::MAX);
+            }
+        }
+        self.times.push_back(now);
+        while self.times.len() > 2 && self.times[1] < oldest {
+            self.times.pop_front();
+        }
+        let keep = self.times.len();
+        self.tick = self.tick.wrapping_add(1);
+        let tick = self.tick;
+        for p in values(&snapshot["processes"]) {
+            let (Some(pid), Some(created)) = (p["pid"].as_u64(), p["createTime"].as_i64()) else {
+                continue;
+            };
+            let usage = self.processes.entry((pid, created)).or_default();
+            if usage.tick == tick {
+                continue;
+            }
+            usage.tick = tick;
+            let fresh = usage.cpu.is_empty();
+            if fresh || usage.app.is_none() {
+                let origin = (text(p, "path").len(), p["webView"].is_null());
+                if fresh || usage.origin != origin {
+                    let app = application_key(p);
+                    usage.app = (!app.starts_with("g:instance:")).then_some(app);
+                    usage.origin = origin;
+                }
+            }
+            usage.push(
+                p["cpu"].as_f64().unwrap_or(f64::NAN),
+                p["privateWs"].as_f64().unwrap_or(f64::NAN),
+                keep,
+            );
+        }
+        self.processes.retain(|_, usage| usage.tick == tick);
+        // An app's figures add up its processes' latest samples; unknown ones count as zero.
+        let latest =
+            |values: &VecDeque<f64>| values.back().copied().filter(|v| !v.is_nan()).unwrap_or(0.);
+        let mut totals: HashMap<&str, (f64, f64)> = HashMap::new();
+        for usage in self.processes.values() {
+            if let Some(app) = &usage.app {
+                let sum = totals.entry(app).or_default();
+                sum.0 += latest(&usage.cpu);
+                sum.1 += latest(&usage.mem);
+            }
+        }
+        for (app, (cpu, mem)) in totals {
+            if !self.groups.contains_key(app) {
+                self.groups.insert(app.to_owned(), Usage::default());
+            }
+            if let Some(usage) = self.groups.get_mut(app) {
+                usage.tick = tick;
+                usage.push(cpu, mem, keep);
+            }
+        }
+        self.groups.retain(|_, usage| usage.tick == tick);
     }
 }
 
@@ -802,6 +919,37 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].members.len(), 2);
         assert_eq!(rows[1].raw["pid"], 42);
+    }
+    #[test]
+    fn every_process_and_app_keeps_history_from_its_first_sample() {
+        let mut timeline = Timeline::new();
+        let process = |pid: u64, cpu: f64| json!({"pid":pid,"createTime":1,"name":"app.exe","path":"C:/app.exe","cpu":cpu,"privateWs":1000});
+        for index in 0..6u64 {
+            let mut processes = vec![process(1, index as f64)];
+            if index < 2 {
+                processes.push(process(2, 1.));
+            }
+            // Two samples are missed: the histories keep a gap there.
+            if !matches!(index, 3 | 4) {
+                timeline.push(
+                    &json!({"timestamp":index*1000,"system":{"cpu":1},"processes":processes}),
+                    1000.,
+                );
+            }
+        }
+        let cpu = timeline.points("process.1:1.cpu").unwrap();
+        assert_eq!(cpu.first(), Some(&(0., Some(0.))));
+        assert_eq!(cpu.last(), Some(&(5000., Some(5.))));
+        assert_eq!(cpu[3], (3000., None));
+        // An exited process is dropped; its app adds up whichever members ran.
+        assert!(timeline.points("process.2:1.cpu").is_none());
+        let app = timeline.points("group.g:image:c:\\app.exe.cpu").unwrap();
+        assert_eq!(app[1], (1000., Some(2.)));
+        assert_eq!(app[2], (2000., Some(2.)));
+        assert_eq!(
+            timeline.points("group.g:image:c:\\app.exe.mem").unwrap()[0],
+            (0., Some(2000.))
+        );
     }
     #[test]
     fn dense_samples_preserve_the_displayed_time_window() {

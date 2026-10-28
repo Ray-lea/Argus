@@ -109,7 +109,8 @@ impl Desktop {
         })
     }
 
-    /// Starts following a newly selected row: its history and its slow details.
+    /// Starts following a newly selected row's slow details; the timeline
+    /// already keeps every process's and app's history.
     pub(in crate::frontend) fn details_track(
         &mut self,
         key: &str,
@@ -119,16 +120,9 @@ impl Desktop {
         let Some(picked) = self.details_pick(key) else {
             return;
         };
-        let prefix = if picked.group { "group" } else { "process" };
         let process = picked
             .process
             .map(|p| json!({"pid":p["pid"],"path":p["path"]}));
-        for metric in ["cpu", "mem"] {
-            self.timeline
-                .samples
-                .entry(format!("{prefix}.{key}.{metric}"))
-                .or_default();
-        }
         if let Some(args) = process {
             self.request(
                 "process_details",

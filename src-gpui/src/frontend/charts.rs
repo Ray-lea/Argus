@@ -32,9 +32,24 @@ pub struct Series {
     pub fill: f32,
     geometry: Arc<Vec<Vec<(f64, f64)>>>,
     geometry_key: u64,
+    /// Identifies the data shown (series key and transform); 0 when unnamed.
+    source: u64,
 }
 /// Default area opacity under a solid line.
 pub(in crate::frontend) const FILL: f32 = 0.3;
+/// Opacity of a compact chart's secondary series: a solid line, as dashes
+/// break up at preview sizes.
+const COMPACT_SECONDARY: f32 = 0.55;
+/// Core-load bars (the original's comb): fixed width, gap and corner radius,
+/// over a track in the bar's colour.
+const BAR_WIDTH: f32 = 4.;
+const BAR_GAP: f32 = 2.;
+const BAR_RADIUS: f32 = 1.5;
+const BAR_TRACK: f32 = 0.14;
+/// The width `count` load bars take.
+pub(in crate::frontend) fn bars_width(count: usize) -> Pixels {
+    px((count as f32 * (BAR_WIDTH + BAR_GAP) - BAR_GAP).max(0.))
+}
 /// One series a chart draws, read from the live timeline.
 #[derive(Clone, PartialEq)]
 pub(in crate::frontend) struct Line {
@@ -113,6 +128,8 @@ pub(in crate::frontend) struct Look {
     pub min_height: Option<Pixels>,
     /// Legend entries under the chart: label and whether its swatch is dashed.
     pub legend: Vec<(String, bool)>,
+    /// One load bar per series at its latest sample instead of curves.
+    pub bars: bool,
 }
 impl Look {
     /// A framed chart with captions and a readout.
@@ -180,7 +197,12 @@ impl Series {
             fill: FILL,
             geometry,
             geometry_key,
+            source: 0,
         }
+    }
+    fn source(mut self, source: u64) -> Self {
+        self.source = source;
+        self
     }
 }
 #[derive(Clone, Copy, PartialEq)]
@@ -372,6 +394,15 @@ pub struct TimePlot {
     /// A new top eases in: the top shown before, the target, and when the change began.
     pub rescale: Rc<Cell<Rescale>>,
 }
+fn hash_of(value: impl std::hash::Hash) -> u64 {
+    use std::hash::Hasher;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+fn content(bars: bool, series: &[Series]) -> u64 {
+    hash_of((bars, series.iter().map(|s| s.source).collect::<Vec<_>>()))
+}
 /// How long a chart takes to ease to a new top.
 const RESCALE: Duration = Duration::from_millis(420);
 #[derive(Clone, Copy, Default)]
@@ -393,14 +424,39 @@ impl Rescale {
     }
 }
 impl TimePlot {
-    /// The top a texture drawn for `max` is stretched to while a rescale eases in.
+    /// Identifies the data the chart shows: a texture drawn for other series,
+    /// such as the previously selected device's, is never shown.
+    pub(in crate::frontend) fn content(&self) -> u64 {
+        content(self.bars, &self.series)
+    }
+    /// How far a texture drawn for `max` stretches to the top on screen: the
+    /// easing top while a rescale runs, else the chart's own (a texture still
+    /// waiting for its redraw after a scale change).
     pub(in crate::frontend) fn rescale_factor(&self, max: f64, now: Instant) -> f32 {
-        self.rescale
-            .get()
-            .at(now)
-            .map(|shown| (max / shown) as f32)
+        let shown = self.rescale.get().at(now).unwrap_or(self.max);
+        Some((max / shown) as f32)
             .filter(|k| k.is_finite() && *k > 0.)
             .unwrap_or(1.)
+    }
+    /// The time the load bars read: one interval behind the newest sample, so
+    /// each bar glides to a sample over the interval before the next arrives,
+    /// as the original's bars do. Curves keep their longer lag.
+    /// Without gliding (pixel steps or no animation) they show the newest sample.
+    fn bar_time(&self, end: f64) -> f64 {
+        let gliding = self.live_clock.as_ref().is_some_and(|clock| {
+            matches!(
+                clock.borrow().mode,
+                motion::Mode::Fluid | motion::Mode::Balanced
+            )
+        });
+        if !gliding {
+            return f64::INFINITY;
+        }
+        let config = motion::config();
+        let samples = config["chartSamples"].as_f64().expect("chart samples");
+        let interval = (self.end - self.start) / (samples - 1.).max(1.);
+        end + interval * (config["chartLagIntervals"].as_f64().expect("lag") - 1.)
+            + config["chartLagSlackMs"].as_f64().expect("lag slack")
     }
 }
 pub(in crate::frontend) struct BarSurface {
@@ -410,6 +466,9 @@ pub(in crate::frontend) struct BarSurface {
 pub(super) struct ChartEntry {
     plot: Rc<RefCell<TimePlot>>,
     revision: ChartRevision,
+    /// The desktop render that last built the chart; a chart that skipped one
+    /// was off screen and appears afresh.
+    shown: u64,
 }
 #[derive(Clone)]
 pub(super) struct Placement {
@@ -486,11 +545,12 @@ impl ChartLayer {
                     if surfaces.len() != plot.series.len() {
                         return false;
                     }
+                    let at = plot.bar_time(end);
                     surfaces.iter().zip(&plot.series).all(|(surface, series)| {
                         let Some(handle) = surface.handle else {
                             return false;
                         };
-                        let value = sample_at(&series.points, end).unwrap_or(0.);
+                        let value = sample_at(&series.points, at).unwrap_or(0.);
                         let height =
                             surface.bounds.size.height * (value / 100.).clamp(0., 1.) as f32;
                         let bounds = Bounds::new(
@@ -552,12 +612,8 @@ impl Render for ChartLayer {
                             let span = plot.end - plot.start;
                             plot.end = plot_end(&plot, &clock, now);
                             plot.start = plot.end - span;
-                            let step = f32::from(placement.bounds.size.width)
-                                / plot.series.len().max(1) as f32;
-                            // Keep interleaved painting when densely packed bars could overlap after pixel snapping.
-                            plot.background_separate = !plot.bars
-                                || (step - f32::from(bar_width(step))) * window.scale_factor()
-                                    >= 1.;
+                            // Bars keep a fixed gap, so their tracks never overlap a neighbour's fill.
+                            plot.background_separate = true;
                             let background = plot.clone();
                             let mut element = plot.into_any_element();
                             window.with_content_mask(
@@ -607,6 +663,7 @@ struct ChartRevision {
     sequence: u64,
     lines: Vec<Line>,
     scale: Option<Scale>,
+    bars: bool,
     interval: u64,
     locale: argus_core::i18n::Locale,
     mode: motion::Mode,
@@ -648,25 +705,29 @@ fn segments(points: &[(f64, Option<f64>)]) -> Vec<Vec<(f64, f64)>> {
     }
     runs
 }
-fn bar_width(step: f32) -> Pixels {
-    px((step * 0.65).max(1.))
+/// Where load bar `index` stands: full height, at a fixed pitch from the left.
+fn bar_region(bounds: Bounds<Pixels>, index: usize) -> Bounds<Pixels> {
+    Bounds::new(
+        point(
+            bounds.left() + px(index as f32 * (BAR_WIDTH + BAR_GAP)),
+            bounds.top(),
+        ),
+        size(px(BAR_WIDTH), bounds.size.height),
+    )
 }
 impl TimePlot {
     fn paint_base(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
         if self.bars {
-            let step = width / self.series.len().max(1) as f32;
             for (index, series) in self.series.iter().enumerate() {
-                let x = bounds.origin.x + px(index as f32 * step);
-                let bar_width = bar_width(step);
-                window.paint_quad(gpui_kit::gpui::fill(
-                    Bounds::new(
-                        point(x, bounds.origin.y),
-                        size(bar_width, bounds.size.height),
-                    ),
-                    series.color.opacity(0.12),
-                ));
+                window.paint_quad(
+                    gpui_kit::gpui::fill(
+                        bar_region(bounds, index),
+                        series.color.opacity(BAR_TRACK),
+                    )
+                    .corner_radii(px(BAR_RADIUS)),
+                );
             }
             return;
         }
@@ -761,25 +822,28 @@ impl Plot for TimePlot {
         if !self.background_separate && !self.bars {
             self.paint_base(bounds, window, cx);
         }
-        let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
         if self.bars {
             let mut surfaces = Vec::with_capacity(self.series.len());
-            let step = width / self.series.len().max(1) as f32;
+            let at = self.bar_time(self.end);
             for (index, series) in self.series.iter().enumerate() {
-                let value = sample_at(&series.points, self.end);
-                let x = bounds.origin.x + px(index as f32 * step);
-                let bar_width = bar_width(step);
+                let value = sample_at(&series.points, at);
                 let h = px((value.unwrap_or(0.) / 100.).clamp(0., 1.) as f32 * height);
-                let region =
-                    Bounds::new(point(x, bounds.top()), size(bar_width, bounds.size.height));
+                let region = bar_region(bounds, index);
                 if !self.background_separate {
-                    window.paint_quad(gpui_kit::gpui::fill(region, series.color.opacity(0.12)));
+                    window.paint_quad(
+                        gpui_kit::gpui::fill(region, series.color.opacity(BAR_TRACK))
+                            .corner_radii(px(BAR_RADIUS)),
+                    );
                 }
                 let handle = window.paint_animated_rect(
-                    Bounds::new(point(x, bounds.bottom() - h), size(bar_width, h)),
+                    Bounds::new(
+                        point(region.left(), bounds.bottom() - h),
+                        size(region.size.width, h),
+                    ),
                     region,
                     series.color,
+                    px(BAR_RADIUS),
                 );
                 surfaces.push(BarSurface {
                     handle,
@@ -1129,6 +1193,26 @@ impl Desktop {
         };
         self.chart_view(id, &lines, maximum.map(Scale::Fixed), height, look, cx)
     }
+    /// Percent load bars, one per key, gliding with the chart clock (the vitals'
+    /// per-core comb); `bars_width` gives the width they take.
+    pub(in crate::frontend) fn chart_bars(
+        &self,
+        id: &str,
+        keys: &[String],
+        color: Hsla,
+        height: Pixels,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let lines = keys
+            .iter()
+            .map(|key| Line::new(key.clone(), color))
+            .collect::<Vec<_>>();
+        let look = Look {
+            bars: true,
+            ..Look::default()
+        };
+        self.chart_view(id, &lines, Some(Scale::Fixed(100.)), height, look, cx)
+    }
     /// A live chart of `lines` read from the timeline, scaled by `scale` (a round top when none).
     pub(in crate::frontend) fn chart_view(
         &self,
@@ -1141,10 +1225,31 @@ impl Desktop {
     ) -> AnyElement {
         let height = height.into();
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
+        // Dashes break up at preview sizes: a compact chart's secondary series is
+        // a fainter solid line without fill.
+        let compacted;
+        let lines = if look.caption.is_none() && !look.bars && lines.iter().any(|l| l.dashed) {
+            compacted = lines
+                .iter()
+                .cloned()
+                .map(|mut line| {
+                    if line.dashed {
+                        line.dashed = false;
+                        line.fill = 0.;
+                        line.color = line.color.opacity(COMPACT_SECONDARY);
+                    }
+                    line
+                })
+                .collect::<Vec<_>>();
+            &compacted[..]
+        } else {
+            lines
+        };
         let revision = ChartRevision {
             sequence: self.sequence,
             lines: lines.to_vec(),
             scale,
+            bars: look.bars,
             interval: self.interval,
             locale: argus_core::i18n::locale(),
             mode: self.chart_clock.borrow().mode,
@@ -1155,13 +1260,22 @@ impl Desktop {
             network_bits: bits,
         };
         self.active_charts.borrow_mut().insert(id.into());
-        if let Some(entry) = self.chart_entries.borrow().get(id)
-            && entry.revision == revision
-        {
-            if look.top.is_none() {
-                look.top = scale_label(scale, entry.plot.borrow().max);
+        let render = self.render_count;
+        let mut entries = self.chart_entries.borrow_mut();
+        // Built in the previous desktop render too: on screen without a break.
+        let continuous = entries
+            .get(id)
+            .is_some_and(|entry| entry.shown.wrapping_add(1) >= render);
+        if let Some(entry) = entries.get_mut(id) {
+            entry.shown = render;
+            if entry.revision == revision {
+                let plot = entry.plot.clone();
+                drop(entries);
+                if look.top.is_none() {
+                    look.top = scale_label(scale, plot.borrow().max);
+                }
+                return self.chart_frame(plot, height, &look);
             }
-            return self.chart_frame(entry.plot.clone(), height, &look);
         }
         let end = number(&self.snapshot, "timestamp");
         let span = self.interval as f64
@@ -1170,37 +1284,23 @@ impl Desktop {
                 .expect("chart samples")
                 - 1.);
         let start = end - span;
-        let bars = lines.len() > 1
-            && lines
-                .iter()
-                .all(|line| line.key.starts_with("system.cores."));
+        let bars = look.bars;
         let series = lines
             .iter()
             .map(|line| {
                 let key = line.key.as_str();
+                let stable = model::series_key(&self.snapshot, key);
+                let source = hash_of((&stable, line.factor.to_bits(), line.absolute));
+                let mut points = self.timeline.points(&stable).unwrap_or_default();
+                if line.factor != 1. || line.absolute {
+                    for (_, value) in &mut points {
+                        *value =
+                            value.map(|v| (if line.absolute { v.abs() } else { v }) * line.factor);
+                    }
+                }
                 Series::with_geometry(
                     line.label.clone().unwrap_or_default(),
-                    self.timeline
-                        .samples
-                        .get(&model::series_key(&self.snapshot, key))
-                        .map(|p| {
-                            if line.factor == 1. && !line.absolute {
-                                p.iter().copied().collect()
-                            } else {
-                                p.iter()
-                                    .map(|&(at, v)| {
-                                        (
-                                            at,
-                                            v.map(|v| {
-                                                (if line.absolute { v.abs() } else { v })
-                                                    * line.factor
-                                            }),
-                                        )
-                                    })
-                                    .collect()
-                            }
-                        })
-                        .unwrap_or_default(),
+                    points,
                     line.color,
                     look.format.unwrap_or_else(|| {
                         if key.contains(".nics.") || key == "totals.network" {
@@ -1213,8 +1313,10 @@ impl Desktop {
                 )
                 .dashed(line.dashed)
                 .fill(line.fill)
+                .source(source)
             })
             .collect::<Vec<_>>();
+        let content = content(bars, &series);
         let observed = series
             .iter()
             .flat_map(|s| s.points.iter().filter_map(|(_, v)| *v))
@@ -1230,8 +1332,13 @@ impl Desktop {
             .iter()
             .flat_map(|s| s.points.iter().filter_map(|p| p.1))
             .fold(0., f64::min);
-        let mut entries = self.chart_entries.borrow_mut();
-        let previous_max = entries.get(id).map(|entry| entry.plot.borrow().max);
+        // The same series again without a break: a new top eases in. Anything
+        // else (a first display, another device, a return to the page) starts
+        // at its own top.
+        let previous_max = entries
+            .get(id)
+            .filter(|entry| continuous && entry.plot.borrow().content() == content)
+            .map(|entry| entry.plot.borrow().max);
         let rescale = entries
             .get(id)
             .map(|entry| entry.plot.borrow().rescale.clone())
@@ -1263,7 +1370,12 @@ impl Desktop {
                     plot.measured_width.clone(),
                     plot.image_surface.clone(),
                     plot.bar_surfaces.clone(),
-                    plot.dash_phases.clone(),
+                    // Dash phases belong to the series they were measured on.
+                    if plot.content() == content {
+                        plot.dash_phases.clone()
+                    } else {
+                        Default::default()
+                    },
                 )
             })
             .unwrap_or_else(|| {
@@ -1307,6 +1419,7 @@ impl Desktop {
                 ChartEntry {
                     plot: plot_rc.clone(),
                     revision,
+                    shown: render,
                 },
             );
             plot_rc

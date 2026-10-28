@@ -10,6 +10,8 @@ const SHARE_MAX: f32 = 0.85;
 /// Height of the handle between the engine and memory charts.
 const HANDLE: f32 = 18.;
 const LAYOUTS: [&str; 3] = ["grid", "focus", "rows"];
+/// Where the engine grid keeps the size it last had, among the grid bounds.
+const ENGINE_GRID: &str = "gpu-engine-grid";
 
 fn clamp_share(share: f32) -> f32 {
     if share.is_finite() {
@@ -557,9 +559,17 @@ impl Desktop {
             theme::dimension("engineMinHeight"),
         );
         let header = theme::dimension("coreHeaderHeight");
+        // The grid's size in this display; until it is known, the size it last had.
         let measured_state =
-            window.use_keyed_state("gpu-engine-grid-size", cx, |_, _| Size::<Pixels>::default());
-        let measured = *measured_state.read(cx);
+            window.use_keyed_state("gpu-engine-grid-size", cx, |_, _| None::<Size<Pixels>>);
+        let here = *measured_state.read(cx);
+        let measured = here.unwrap_or_else(|| {
+            self.grid_bounds
+                .borrow()
+                .get(ENGINE_GRID)
+                .map_or_else(Size::default, |bounds| bounds.size)
+        });
+        let policy = super::settle_policy("gpu-engine-settled", here.is_some(), window, cx);
         let width = if measured.width > px(0.) {
             f32::from(measured.width)
         } else {
@@ -588,8 +598,8 @@ impl Desktop {
                 canvas(
                     move |bounds, window, cx| {
                         let changed = measured_state
-                            .update(cx, |size, _| std::mem::replace(size, bounds.size))
-                            != bounds.size;
+                            .update(cx, |size, _| size.replace(bounds.size))
+                            != Some(bounds.size);
                         if changed {
                             let owner = owner.clone();
                             window.defer(cx, move |_, cx| {
@@ -602,7 +612,15 @@ impl Desktop {
                 .absolute()
                 .size_full(),
             );
-        for (slot, name) in shown.iter().enumerate() {
+        if let Some(size) = here {
+            self.grid_bounds
+                .borrow_mut()
+                .insert(ENGINE_GRID.into(), Bounds::new(Point::default(), size));
+        }
+        // Never laid out before: the charts wait one frame for the real size
+        // rather than appearing in a guessed arrangement.
+        let place = here.is_some() || measured.height > px(0.);
+        for (slot, name) in shown.iter().enumerate().filter(|_| place) {
             let Some(index) = engines.iter().position(|e| e == name) else {
                 continue;
             };
@@ -625,7 +643,7 @@ impl Desktop {
             let bounds = gpui_kit::base::motion::transition(
                 SharedString::from(format!("gpu-engine-bounds-{name}")),
                 target,
-                theme::transition(),
+                policy.clone(),
                 window,
                 cx,
             );
