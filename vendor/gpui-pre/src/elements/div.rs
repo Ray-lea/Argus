@@ -2015,6 +2015,8 @@ impl Element for Div {
         if let Some(scroll_handle) = self.interactivity.tracked_scroll_handle.as_ref() {
             scroll_handle.scroll_to_active_item();
         }
+        self.interactivity.content_end = (!request_layout.child_layout_ids.is_empty())
+            .then(|| point(child_max.x - bounds.origin.x, child_max.y - bounds.origin.y));
 
         self.interactivity.prepaint(
             global_id,
@@ -2140,6 +2142,11 @@ pub struct Interactivity {
     pub hovered: Option<bool>,
     pub(crate) tooltip_id: Option<TooltipId>,
     pub(crate) content_size: Size<Pixels>,
+    /// The far edge of the children, from the element's own origin (Argus):
+    /// the scroll range runs to it plus the end padding and border, as in CSS,
+    /// so a child placed before the content origin (an absolutely positioned
+    /// overlay at the padding box) does not add to it.
+    pub(crate) content_end: Option<Point<Pixels>>,
     pub(crate) key_context: Option<KeyContext>,
     pub(crate) focusable: bool,
     pub(crate) tracked_focus_handle: Option<FocusHandle>,
@@ -2472,10 +2479,20 @@ impl Interactivity {
             // 0.00000x pixels. As we generally don't benefit from a precision that
             // high for the maximum scroll, we round the scroll max to 2 decimal
             // places here.
-            let padded_content_size = self.content_size + padding_size;
-            let scroll_max = Point::from(padded_content_size - bounds.size)
-                .map(round_to_two_decimals)
-                .max(&Default::default());
+            let scroll_max = match self.content_end {
+                // Argus: from the children's far edge, as CSS measures the
+                // scrollable overflow (see `content_end`).
+                Some(end) => {
+                    let border = style.border_widths.to_pixels(rem_size);
+                    point(
+                        end.x + padding.right + border.right - bounds.size.width,
+                        end.y + padding.bottom + border.bottom - bounds.size.height,
+                    )
+                }
+                None => Point::from(self.content_size + padding_size - bounds.size),
+            }
+            .map(round_to_two_decimals)
+            .max(&Default::default());
             // Clamp scroll offset in case scroll max is smaller now (e.g., if children
             // were removed or the bounds became larger).
             self.scroll_max.set(scroll_max);
@@ -4455,8 +4472,7 @@ impl ScrollHandle {
         let max = state.max_offset;
         let key = Rc::as_ptr(&state.offset) as usize;
         let current = *state.offset.borrow();
-        let clamp =
-            |p: Point<Pixels>| point(p.x.clamp(-max.x, px(0.)), p.y.clamp(-max.y, px(0.)));
+        let clamp = |p: Point<Pixels>| point(p.x.clamp(-max.x, px(0.)), p.y.clamp(-max.y, px(0.)));
         let target = clamp(smooth_scroll::target(key, current));
         let to = clamp(to);
         if to == target {
@@ -5791,11 +5807,7 @@ pub mod smooth_scroll {
             let (mut low, mut high) = (0f32, 1f32);
             for _ in 0..32 {
                 t = (low + high) / 2.;
-                if curve_x(t) < x {
-                    low = t
-                } else {
-                    high = t
-                }
+                if curve_x(t) < x { low = t } else { high = t }
             }
         }
         let y = ((ay * t + by) * t + cy) * t;
@@ -5847,9 +5859,7 @@ pub mod smooth_scroll {
         let now = Instant::now();
         GLIDES.with_borrow_mut(|glides| {
             let (from, velocity) = match glides.get(&key) {
-                Some(glide) if glide.written == current => {
-                    (glide.value(now), glide.velocity(now))
-                }
+                Some(glide) if glide.written == current => (glide.value(now), glide.velocity(now)),
                 _ => (current, 0.),
             };
             glides.insert(
