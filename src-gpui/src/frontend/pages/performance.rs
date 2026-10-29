@@ -1,6 +1,7 @@
 use super::*;
 use charts::{ChartHeight, GIB, KIB, Line, Look, MIB, MetricFormat, Scale};
 use gpui_kit::base::ElementExt;
+mod cpu_motion;
 mod engines;
 mod telemetry;
 
@@ -27,8 +28,6 @@ const STATS_GAP: f32 = 28.;
 const HINT_WIDTH: f32 = 420.;
 /// The CPU's figures and specs go side by side from this width each.
 const CPU_STATS_MIN: f32 = 320.;
-/// How long the CPU charts take to settle in after another graph or core type.
-const SETTLE: std::time::Duration = std::time::Duration::from_millis(200);
 /// Smallest chart heights before the page scrolls (main, half, small).
 const MAIN_MIN: f32 = 120.;
 const HALF_MIN: f32 = 80.;
@@ -296,7 +295,7 @@ fn or_missing(value: &str) -> String {
 }
 /// How a grid's cards move. They glide only once this display has been laid
 /// out at its real size (`measured`): entering the page or switching device or
-/// view places them at once, while later resizes and filters animate.
+/// view places them at once, while later resizes and layout changes animate.
 fn settle_policy(
     id: &'static str,
     measured: bool,
@@ -311,26 +310,6 @@ fn settle_policy(
         settled.update(cx, |settled, _| *settled = true);
     }
     gpui_kit::base::motion::Transition::new(std::time::Duration::ZERO)
-}
-/// The opacity of a view that settles in once `key` changes, as the original's
-/// CPU charts do: from nothing to full over [`SETTLE`], decelerating. A first
-/// display (entering the page, another device) shows at once.
-fn settle_fade(id: &'static str, key: String, window: &mut Window, cx: &mut App) -> f32 {
-    let state = window.use_keyed_state(id, cx, |_, _| (key.clone(), None::<Instant>));
-    let (shown, mut started) = state.read(cx).clone();
-    if shown != key {
-        started = Some(Instant::now());
-        state.update(cx, |state, _| *state = (key, started));
-    }
-    let Some(started) = started.filter(|_| !cx.reduce_motion()) else {
-        return 1.;
-    };
-    let progress = started.elapsed().as_secs_f32() / SETTLE.as_secs_f32();
-    if progress >= 1. {
-        return 1.;
-    }
-    window.request_animation_frame();
-    theme::ease_out(progress)
 }
 /// Splits text such as "5<u>d</u> 14:00:00" into plain and small runs.
 fn rich_runs(template: &str) -> Vec<(String, bool)> {
@@ -1114,7 +1093,6 @@ impl Desktop {
         body.children(content).into_any_element()
     }
     fn cpu_view(&self, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let p = self.palette;
         let hw = &self.snapshot["hardware"];
         let sys = &self.snapshot["system"];
         let cpu = &hw["cpu"];
@@ -1196,59 +1174,7 @@ impl Desktop {
             ),
         );
         out.push(self.perf_toolbar(controls));
-        // Another graph, or core type among the processors, swaps the charts at
-        // once and fades them in, as the original's do. Its slight scale is left
-        // out: every curve would be redrawn on each frame of it.
-        let fade = settle_fade(
-            "cpu-chart-settle",
-            if logical {
-                format!("logical/{filter}")
-            } else {
-                "overall".into()
-            },
-            window,
-            cx,
-        );
-        // On top of the fade the device view may be arriving with.
-        let outer = self.chart_fade.get();
-        self.chart_fade.set(outer * fade);
-        let graphs = if logical {
-            self.core_grid(hybrid, &filter, window, cx)
-        } else {
-            self.chart_view(
-                "cpu-overall-plot",
-                &[
-                    Line::new("system.cpu", p.cpu).label(label("performance.cpu.total")),
-                    Line::new("system.cpuKernel", p.cpu)
-                        .dashed()
-                        .fill(0.18)
-                        .label(label("performance.cpu.kernel")),
-                ],
-                Some(Scale::Fixed(100.)),
-                ChartHeight::Fill,
-                Look::boxed(label("performance.cpu.utilizationChart"))
-                    .top("100%")
-                    .format(MetricFormat::RoundPercent)
-                    .min_height(px(MAIN_MIN))
-                    .legend(vec![
-                        (label("performance.cpu.total"), false),
-                        (label("performance.cpu.kernelTime"), true),
-                    ]),
-                cx,
-            )
-        };
-        self.chart_fade.set(outer);
-        out.push(
-            div()
-                .w_full()
-                .min_w_0()
-                .flex_1()
-                .flex()
-                .flex_col()
-                .opacity(fade)
-                .child(graphs)
-                .into_any_element(),
-        );
+        out.push(self.cpu_graphs(logical, hybrid, &filter, window, cx));
         // Live figures.
         let mut stats = vec![
             self.stat(
@@ -1398,16 +1324,153 @@ impl Desktop {
         }
         out
     }
-    /// The logical processors' grid: rows stretch to the height the view leaves it,
-    /// and the column count follows the area.
-    fn core_grid(
+    /// The CPU chart area: the overall graph or the logical processors' grid.
+    /// Another graph cross-fades in from a slight zoom (`cpu_motion`): the
+    /// outgoing one stays drawn over it where it was, fading out quickly. The
+    /// area is laid out once in its new arrangement; the zoom and fades are
+    /// live transforms, so their frames replay the page's paint rather than
+    /// render it, and the chart layer draws the curves inside them.
+    fn cpu_graphs(
         &self,
+        logical: bool,
         hybrid: bool,
         filter: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let animate = !cx.reduce_motion();
+        let motions = self.live_motions.clone();
+        let switch = window.use_keyed_state("cpu-view-switch", cx, |_, _| {
+            cpu_motion::ViewSwitch::default()
+        });
+        let cores = window.use_keyed_state("cpu-core-motion", cx, |_, _| {
+            cpu_motion::CoreMotion::default()
+        });
+        let drawn = cores.read(cx).drawn(&motions);
+        let done = self.render_page_later(cx);
+        let leaving = switch.update(cx, |switch, _| {
+            switch.update(logical, animate, &motions, || drawn, done)
+        });
+        let (area, ghost, ghost_cards) = {
+            let switch = switch.read(cx);
+            (
+                switch.area.clone(),
+                switch.ghost.clone(),
+                switch.cards.clone(),
+            )
+        };
+        let lives = |transform: &LiveTransform| charts::Live {
+            transform: transform.clone(),
+            anchor: Rc::new(Cell::new(Point::default())),
+        };
+        let incoming = leaving.map(|_| lives(&area));
+        if let Some(live) = &incoming {
+            self.chart_lives.borrow_mut().push(live.clone());
+        }
+        let graphs = if logical {
+            let (graphs, placed) = self.core_grid(hybrid, filter, &cores, window, cx);
+            // A grid shown for the first time places its cards once it knows
+            // its size, a frame later: the switch begins when they are drawn.
+            if placed {
+                let done = self.render_page_later(cx);
+                switch.update(cx, |switch, _| switch.ready(&motions, done));
+            } else {
+                switch.update(cx, |switch, _| switch.wait());
+            }
+            graphs
+        } else {
+            cores.update(cx, |cores, _| cores.reset(&motions));
+            self.cpu_overall_chart(cx)
+        };
+        if incoming.is_some() {
+            self.chart_lives.borrow_mut().pop();
+        }
+        let graphs = div()
+            .w_full()
+            .min_w_0()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(graphs);
+        let graphs = match incoming {
+            Some(live) => super::super::shift::live(
+                graphs,
+                live.transform,
+                super::super::shift::Anchor::Center,
+                live.anchor,
+            )
+            .into_any_element(),
+            None => graphs.into_any_element(),
+        };
+        let leaving = leaving.map(|was_logical| {
+            let live = lives(&ghost);
+            self.chart_lives.borrow_mut().push(live.clone());
+            let graphs = if was_logical {
+                self.core_layout(hybrid, &ghost_cards, None, None, px(0.), false, cx)
+            } else {
+                self.cpu_overall_chart(cx)
+            };
+            self.chart_lives.borrow_mut().pop();
+            div()
+                .absolute()
+                .inset_0()
+                .flex()
+                .flex_col()
+                .child(super::super::shift::live(
+                    div().size_full().flex().flex_col().child(graphs),
+                    live.transform,
+                    super::super::shift::Anchor::TopLeft,
+                    live.anchor,
+                ))
+        });
+        div()
+            .relative()
+            .w_full()
+            .min_w_0()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(graphs)
+            .children(leaving)
+            .into_any_element()
+    }
+    fn cpu_overall_chart(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
+        self.chart_view(
+            "cpu-overall-plot",
+            &[
+                Line::new("system.cpu", p.cpu).label(label("performance.cpu.total")),
+                Line::new("system.cpuKernel", p.cpu)
+                    .dashed()
+                    .fill(0.18)
+                    .label(label("performance.cpu.kernel")),
+            ],
+            Some(Scale::Fixed(100.)),
+            ChartHeight::Fill,
+            Look::boxed(label("performance.cpu.utilizationChart"))
+                .top("100%")
+                .format(MetricFormat::RoundPercent)
+                .min_height(px(MAIN_MIN))
+                .legend(vec![
+                    (label("performance.cpu.total"), false),
+                    (label("performance.cpu.kernelTime"), true),
+                ]),
+            cx,
+        )
+    }
+    /// The logical processors' grid: rows stretch to the height the view leaves it,
+    /// and the column count follows the area. Another core type or another
+    /// size of the grid rearranges the cards (`cpu_motion`): they are laid out
+    /// where they go, and drawn moving there with live transforms. Also
+    /// returns whether it placed its cards (not before it knows its size).
+    fn core_grid(
+        &self,
+        hybrid: bool,
+        filter: &str,
+        cores: &Entity<cpu_motion::CoreMotion>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (AnyElement, bool) {
         let hw = &self.snapshot["hardware"];
         let sys = &self.snapshot["system"];
         let cpu = &hw["cpu"];
@@ -1432,16 +1495,6 @@ impl Desktop {
         let here_state = window.use_keyed_state("cpu-core-grid-size", cx, |_, _| None);
         let here: Option<Size<Pixels>> = *here_state.read(cx);
         let measured = here.unwrap_or_else(|| self.core_grid_size.get());
-        let policy = settle_policy("cpu-core-settled", here.is_some(), window, cx);
-        // Another core type is a new arrangement rather than a move: the cards
-        // take their places at once while the view fades in (see `settle_fade`).
-        let shown_filter = window.use_keyed_state("cpu-core-filter", cx, |_, _| filter.to_owned());
-        let policy = if *shown_filter.read(cx) != filter {
-            shown_filter.update(cx, |shown, _| *shown = filter.to_owned());
-            gpui_kit::base::motion::Transition::new(std::time::Duration::ZERO)
-        } else {
-            policy
-        };
         let available = if measured.width > px(0.) {
             measured.width
         } else {
@@ -1471,57 +1524,39 @@ impl Desktop {
         let height = ((measured.height - gap * (rows - 1) as f32) / rows as f32).max(fit_height);
         let grid_size = self.core_grid_size.clone();
         let owner = cx.entity().downgrade();
-        let mut grid = div()
-            .relative()
-            .w_full()
-            .flex_1()
-            .min_h((fit_height + gap) * rows as f32 - gap)
-            .child(
-                canvas(
-                    move |bounds, window, cx| {
-                        grid_size.set(bounds.size);
-                        let changed = here_state.update(cx, |size, _| size.replace(bounds.size))
-                            != Some(bounds.size);
-                        if changed {
-                            let owner = owner.clone();
-                            window.defer(cx, move |_, cx| {
-                                let _ = owner.update(cx, |_, cx| cx.notify());
-                            });
-                        }
-                    },
-                    |_, _, _, _| {},
-                )
-                .absolute()
-                .size_full(),
-            );
+        let measuring = cores.clone();
+        let measure = canvas(
+            move |bounds, window, cx| {
+                grid_size.set(bounds.size);
+                let previous = here_state.update(cx, |size, _| size.replace(bounds.size));
+                if bounds.size != measured {
+                    // Laid out at a size it does not have: again at its own.
+                    let owner = owner.clone();
+                    window.defer(cx, move |_, cx| {
+                        let _ = owner.update(cx, |_, cx| cx.notify());
+                    });
+                } else if previous.is_none() {
+                    // A first display laid out at the size the grid last had,
+                    // which it has: no second render (it would hold up the
+                    // transition to this graph), and later changes animate.
+                    measuring.update(cx, |cores, _| cores.measured());
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full()
+        .into_any_element();
         // Never laid out before: the cards wait one frame for the real size
         // rather than appearing in a guessed arrangement.
         let place = here.is_some() || measured.height > px(0.);
-        let core_temperatures = values(&hw["cpuSensors"]["coreTemperatures"])
+        let targets = visible
             .iter()
-            .filter_map(|core| {
-                Some((
-                    (core["group"].as_u64()?, core["processor"].as_u64()?),
-                    core["celsius"].as_f64()?,
-                ))
-            })
-            .collect::<HashMap<_, _>>();
-        let initial_scale = theme::design()["layout"]["coreEnterScale"]
-            .as_f64()
-            .expect("core enter scale") as f32;
-        for (index, value) in core_values.iter().enumerate().filter(|_| place) {
-            let ordinal = visible.iter().position(|i| *i == index);
-            let key = format!("system.cores.{index}");
-            let opacity = gpui_kit::base::motion::transition(
-                format!("core-opacity-{index}"),
-                if ordinal.is_some() { 1f32 } else { 0. },
-                policy.clone(),
-                window,
-                cx,
-            );
-            if let Some(ordinal) = ordinal {
-                self.grid_bounds.borrow_mut().insert(
-                    key.clone(),
+            .enumerate()
+            .filter(|_| place)
+            .map(|(ordinal, index)| {
+                (
+                    *index,
                     Bounds::new(
                         point(
                             (width + gap) * (ordinal % columns) as f32,
@@ -1529,147 +1564,113 @@ impl Desktop {
                         ),
                         size(width, height),
                     ),
-                );
-            }
-            let Some(target) = self.grid_bounds.borrow().get(&key).copied() else {
-                continue;
-            };
-            let mut bounds = gpui_kit::base::motion::transition(
-                format!("core-bounds-{index}"),
-                target,
-                policy.clone(),
-                window,
-                cx,
-            );
-            if opacity <= 0.001 {
-                continue;
-            }
-            let scale = initial_scale + (1. - initial_scale) * opacity;
-            let inset_x = bounds.size.width * ((1. - scale) / 2.);
-            let inset_y = bounds.size.height * ((1. - scale) / 2.);
-            bounds.origin += point(inset_x, inset_y);
-            bounds.size = size(bounds.size.width * scale, bounds.size.height * scale);
-            let eff = efficient(index);
-            let color = if eff { p.cpu_e } else { p.cpu };
-            let chart = self.chart_view(
-                &format!("cpu-{index}"),
-                &[Line::new(key.clone(), color)],
-                Some(Scale::Fixed(100.)),
-                (bounds.size.height - header).max(px(1.)),
-                Look {
-                    frame: true,
-                    ..Look::default()
-                },
-                cx,
-            );
-            let thread = threads.get(index);
-            let core = thread
-                .and_then(|t| t["core"].as_u64())
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| "?".into());
-            let mut tip = match (hybrid, eff) {
-                (true, true) => tr!("performance.cpu.coreTipE", index = index, core = core),
-                (true, false) => tr!("performance.cpu.coreTipP", index = index, core = core),
-                _ => tr!("performance.cpu.coreTip", index = index, core = core),
-            };
-            if let Some(celsius) = thread.and_then(|t| {
-                core_temperatures
-                    .get(&(t["group"].as_u64()?, t["processor"].as_u64()?))
-                    .copied()
-            }) {
-                tip.push_str(&format!(
-                    "\n{}: {} °C",
-                    label("common.resource.temperature"),
-                    celsius.round()
-                ));
-            }
-            let mhz = number(&hw["coreMhz"], &index.to_string())
-                .max(hw["coreMhz"][index].as_f64().unwrap_or(0.));
-            let head = div()
-                .h(header)
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap_2()
-                .px(px(1.))
-                .pb(px(3.))
-                .whitespace_nowrap()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .min_w_0()
-                        .when(hybrid, |d| {
-                            d.child(
-                                div()
-                                    .flex_none()
-                                    .min_w(px(15.))
-                                    .px(px(3.))
-                                    .rounded(px(4.))
-                                    .bg(color.opacity(0.16))
-                                    .text_color(color.blend(p.ink.opacity(0.3)))
-                                    .text_size(theme::font(10.))
-                                    .font_weight(FontWeight::BOLD)
-                                    .line_height(px(15.))
-                                    .text_center()
-                                    .child(if eff { "E" } else { "P" }),
-                            )
-                        })
-                        .child(
-                            div()
-                                .text_size(theme::font(12.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(index.to_string()),
-                        )
-                        .when(mhz > 0., |d| {
-                            d.child(
-                                div()
-                                    .ml(px(2.))
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_size(theme::font(11.))
-                                    .text_color(p.muted)
-                                    .child(ghz(mhz)),
-                            )
-                        }),
                 )
-                .child(
-                    div()
-                        .flex_none()
-                        .flex()
-                        .items_baseline()
-                        .text_size(theme::font(13.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .map(|d| match value.as_f64() {
-                            Some(load) => d.child(format!("{}", load.round())).child(
-                                div()
-                                    .ml(px(1.))
-                                    .text_size(theme::font(10.5))
-                                    .font_weight(FontWeight::NORMAL)
-                                    .text_color(p.muted)
-                                    .child("%"),
-                            ),
-                            None => d.child(missing()),
-                        }),
-                );
-            grid = grid.child(
-                div()
-                    .id(("core-cell", index))
-                    .absolute()
-                    .left(bounds.origin.x)
-                    .top(bounds.origin.y)
-                    .w(bounds.size.width)
-                    .h(bounds.size.height)
-                    .opacity(opacity)
-                    .overflow_hidden()
-                    .flex()
-                    .flex_col()
-                    .child(head)
-                    .child(chart)
-                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx)),
-            );
+            })
+            .collect::<Vec<_>>();
+        let animate = !cx.reduce_motion();
+        let enter_scale = theme::design()["layout"]["coreEnterScale"]
+            .as_f64()
+            .expect("core enter scale") as f32;
+        let motions = self.live_motions.clone();
+        let done = self.render_page_later(cx);
+        let moving = cores.update(cx, |cores, _| {
+            cores.update(
+                filter,
+                &targets,
+                here.is_some(),
+                animate,
+                header,
+                enter_scale,
+                &motions,
+                done,
+            )
+        });
+        let cards = match &moving {
+            Some(moving) => moving
+                .cards
+                .iter()
+                .map(|card| {
+                    (
+                        card.index,
+                        cpu_motion::Card {
+                            bounds: card.layout,
+                            presence: 1.,
+                        },
+                    )
+                })
+                .collect(),
+            None => targets
+                .iter()
+                .map(|(index, bounds)| {
+                    (
+                        *index,
+                        cpu_motion::Card {
+                            bounds: *bounds,
+                            presence: 1.,
+                        },
+                    )
+                })
+                .collect::<Vec<_>>(),
+        };
+        let grid = self.core_layout(
+            hybrid,
+            &cards,
+            moving.as_deref(),
+            Some(measure),
+            (fit_height + gap) * rows as f32 - gap,
+            true,
+            cx,
+        );
+        (grid, place)
+    }
+    /// The grid holding `cards`, with the legend below. While the cards
+    /// rearrange (`moving`), each is drawn inside its live transforms;
+    /// `interactive` cards carry their tooltips (not those of a grid fading out).
+    #[allow(clippy::too_many_arguments)]
+    fn core_layout(
+        &self,
+        hybrid: bool,
+        cards: &[(usize, cpu_motion::Card)],
+        moving: Option<&cpu_motion::Rearrangement>,
+        measure: Option<AnyElement>,
+        min_height: Pixels,
+        interactive: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        let core_temperatures =
+            values(&self.snapshot["hardware"]["cpuSensors"]["coreTemperatures"])
+                .iter()
+                .filter_map(|core| {
+                    Some((
+                        (core["group"].as_u64()?, core["processor"].as_u64()?),
+                        core["celsius"].as_f64()?,
+                    ))
+                })
+                .collect::<HashMap<_, _>>();
+        let mut grid = div()
+            .relative()
+            .w_full()
+            .flex_1()
+            .min_h(min_height)
+            .children(measure);
+        for (index, card) in cards {
+            let lives = moving.and_then(|moving| {
+                moving
+                    .cards
+                    .iter()
+                    .find(|moving| moving.index == *index)
+                    .map(|moving| moving.lives.clone())
+            });
+            grid = grid.child(self.core_card(
+                *index,
+                *card,
+                lives,
+                hybrid,
+                interactive,
+                &core_temperatures,
+                cx,
+            ));
         }
         div()
             .flex_1()
@@ -1683,6 +1684,217 @@ impl Desktop {
                 ]))
             })
             .into_any_element()
+    }
+    /// A logical processor's card at `card`'s bounds, drawn faded and shrunk
+    /// toward its centre by its presence (a grid fading out keeps the cards as
+    /// they were drawn). A card that `lives` move is drawn inside them: the
+    /// card zooms and fades, its caption's two ends follow the card's top
+    /// corners and its chart frame stretches to the card, its curve with it.
+    #[allow(clippy::too_many_arguments)]
+    fn core_card(
+        &self,
+        index: usize,
+        card: cpu_motion::Card,
+        lives: Option<cpu_motion::CardLives>,
+        hybrid: bool,
+        interactive: bool,
+        core_temperatures: &HashMap<(u64, u64), f64>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        use super::super::shift::{Anchor, live};
+        let p = self.palette;
+        let hw = &self.snapshot["hardware"];
+        let threads = values(&hw["cpu"]["threads"]);
+        let value = &self.snapshot["system"]["cores"][index];
+        let header = theme::dimension("coreHeaderHeight");
+        let enter_scale = theme::design()["layout"]["coreEnterScale"]
+            .as_f64()
+            .expect("core enter scale") as f32;
+        let bounds = card.bounds;
+        let key = format!("system.cores.{index}");
+        let eff = hybrid
+            && threads
+                .get(index)
+                .is_some_and(|thread| boolean(thread, "efficient"));
+        let color = if eff { p.cpu_e } else { p.cpu };
+        let anchored = |transform: &LiveTransform| charts::Live {
+            transform: transform.clone(),
+            anchor: Rc::new(Cell::new(Point::default())),
+        };
+        // A card drawn part way in or out (a grid fading out keeps it so).
+        let presence = (card.presence < 1.).then(|| {
+            LiveTransform::new(LiveTransformValue::zoom(
+                enter_scale + (1. - enter_scale) * card.presence,
+                card.presence,
+            ))
+        });
+        let whole = lives
+            .as_ref()
+            .map(|lives| anchored(&lives.card))
+            .or_else(|| presence.as_ref().map(anchored));
+        let frame = lives.as_ref().map(|lives| anchored(&lives.frame));
+        let pushed = whole
+            .iter()
+            .chain(frame.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        self.chart_lives.borrow_mut().extend(pushed.iter().cloned());
+        let chart = self.chart_view(
+            &format!("cpu-{index}"),
+            &[Line::new(key, color)],
+            Some(Scale::Fixed(100.)),
+            (bounds.size.height - header).max(px(1.)),
+            Look {
+                frame: true,
+                ..Look::default()
+            },
+            cx,
+        );
+        {
+            let mut stack = self.chart_lives.borrow_mut();
+            let kept = stack.len() - pushed.len();
+            stack.truncate(kept);
+        }
+        let chart = match frame {
+            Some(frame) => {
+                live(chart, frame.transform, Anchor::TopLeft, frame.anchor).into_any_element()
+            }
+            None => chart,
+        };
+        let thread = threads.get(index);
+        let core = thread
+            .and_then(|t| t["core"].as_u64())
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "?".into());
+        let mut tip = match (hybrid, eff) {
+            (true, true) => tr!("performance.cpu.coreTipE", index = index, core = core),
+            (true, false) => tr!("performance.cpu.coreTipP", index = index, core = core),
+            _ => tr!("performance.cpu.coreTip", index = index, core = core),
+        };
+        if let Some(celsius) = thread.and_then(|t| {
+            core_temperatures
+                .get(&(t["group"].as_u64()?, t["processor"].as_u64()?))
+                .copied()
+        }) {
+            tip.push_str(&format!(
+                "\n{}: {} °C",
+                label("common.resource.temperature"),
+                celsius.round()
+            ));
+        }
+        let mhz = number(&hw["coreMhz"], &index.to_string())
+            .max(hw["coreMhz"][index].as_f64().unwrap_or(0.));
+        let name = div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .min_w_0()
+            .when(hybrid, |d| {
+                d.child(
+                    div()
+                        .flex_none()
+                        .min_w(px(15.))
+                        .px(px(3.))
+                        .rounded(px(4.))
+                        .bg(color.opacity(0.16))
+                        .text_color(color.blend(p.ink.opacity(0.3)))
+                        .text_size(theme::font(10.))
+                        .font_weight(FontWeight::BOLD)
+                        .line_height(px(15.))
+                        .text_center()
+                        .child(if eff { "E" } else { "P" }),
+                )
+            })
+            .child(
+                div()
+                    .text_size(theme::font(12.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(index.to_string()),
+            )
+            .when(mhz > 0., |d| {
+                d.child(
+                    div()
+                        .ml(px(2.))
+                        .min_w_0()
+                        .truncate()
+                        .text_size(theme::font(11.))
+                        .text_color(p.muted)
+                        .child(ghz(mhz)),
+                )
+            });
+        let load = div()
+            .flex_none()
+            .flex()
+            .items_baseline()
+            .text_size(theme::font(13.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .map(|d| match value.as_f64() {
+                Some(load) => d.child(format!("{}", load.round())).child(
+                    div()
+                        .ml(px(1.))
+                        .text_size(theme::font(10.5))
+                        .font_weight(FontWeight::NORMAL)
+                        .text_color(p.muted)
+                        .child("%"),
+                ),
+                None => d.child(missing()),
+            });
+        let (name, load) = match &lives {
+            Some(lives) => (
+                live(
+                    name,
+                    lives.left.clone(),
+                    Anchor::TopLeft,
+                    Rc::new(Cell::new(Point::default())),
+                )
+                .into_any_element(),
+                live(
+                    load,
+                    lives.right.clone(),
+                    Anchor::TopLeft,
+                    Rc::new(Cell::new(Point::default())),
+                )
+                .into_any_element(),
+            ),
+            None => (name.into_any_element(), load.into_any_element()),
+        };
+        let head = div()
+            .h(header)
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap_2()
+            .px(px(1.))
+            .pb(px(3.))
+            .whitespace_nowrap()
+            .child(name)
+            .child(load);
+        let cell = div()
+            .absolute()
+            .left(bounds.origin.x)
+            .top(bounds.origin.y)
+            .w(bounds.size.width)
+            .h(bounds.size.height)
+            // A card gliding from a larger size draws its frame past its bounds.
+            .when(lives.is_none(), |d| d.overflow_hidden())
+            .flex()
+            .flex_col()
+            .child(head)
+            .child(chart);
+        let cell = if interactive {
+            cell.id(("core-cell", index))
+                .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+                .into_any_element()
+        } else {
+            cell.into_any_element()
+        };
+        match whole {
+            Some(whole) => {
+                live(cell, whole.transform, Anchor::Center, whole.anchor).into_any_element()
+            }
+            None => cell,
+        }
     }
     fn memory_view(&self, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let p = self.palette;

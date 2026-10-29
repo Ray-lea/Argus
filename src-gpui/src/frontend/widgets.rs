@@ -185,10 +185,11 @@ pub(in crate::frontend) struct ToolbarFit {
 }
 
 /// The sliding selection of one segmented control.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(in crate::frontend) struct Slide {
     pub selected: usize,
-    pub from: Option<(f32, f32)>,
+    /// The transform it is drawn gliding with, until the glide ends.
+    pub live: Option<LiveTransform>,
     pub to: Option<(f32, f32)>,
     /// The page visit it was last drawn in.
     pub epoch: u64,
@@ -428,6 +429,9 @@ impl ButtonExt for gpui_kit::base::Button {
     }
 }
 
+/// How long a segmented control's selection takes to glide to another choice.
+const SLIDE: Duration = Duration::from_millis(250);
+
 impl Desktop {
     /// A segmented control (`.segmented`): a layer-coloured track with a
     /// 1 px stroke, whose raised selection (`.seg-thumb`) slides to the chosen
@@ -455,27 +459,71 @@ impl Desktop {
                 _ => None,
             }
         };
-        let (from, to) = {
+        let (to, live) = {
             let mut slides = self.ui.slides.borrow_mut();
             let epoch = self.page_epoch;
+            let glide = SharedString::from(format!("seg-slide:{id}"));
             let slide = slides.entry(id.clone()).or_insert(Slide {
                 selected,
-                from: None,
+                live: None,
                 to: geometry,
                 epoch,
             });
             if slide.epoch != epoch {
                 slide.epoch = epoch;
-                slide.from = None;
+                slide.live = None;
                 slide.selected = selected;
+                self.live_motions.stop(&glide);
             } else if slide.selected != selected {
-                slide.from = slide.to;
                 slide.selected = selected;
+                slide.live = None;
+                // The original's Indicator: --t-slow on the move curve. Laid out
+                // at the new choice and drawn gliding there with a live
+                // transform (moved, and stretched without thickening its ring
+                // or changing its corners), so that the view around it replays
+                // its paint instead of rendering on every frame of the glide.
+                if let (Some((from_x, from_width)), Some((x, width))) = (slide.to, geometry)
+                    && (from_x, from_width) != (x, width)
+                    && !cx.reduce_motion()
+                {
+                    let transform = LiveTransform::default();
+                    let stepped = transform.clone();
+                    let slides = self.ui.slides.clone();
+                    let key = id.clone();
+                    self.live_motions.start(
+                        glide,
+                        SLIDE,
+                        move |elapsed| {
+                            let (left, wide) = if elapsed >= SLIDE {
+                                (x, width)
+                            } else {
+                                let t =
+                                    theme::ease_move(elapsed.as_secs_f32() / SLIDE.as_secs_f32());
+                                (
+                                    from_x + (x - from_x) * t,
+                                    from_width + (width - from_width) * t,
+                                )
+                            };
+                            // The pill is the option's box plus its 1 px ring.
+                            stepped.set(LiveTransformValue {
+                                offset: point(px(left - x), px(0.)),
+                                scale_x: (wide + 2.) / (width + 2.),
+                                ..LiveTransformValue::default()
+                            });
+                        },
+                        move |_| {
+                            if let Some(slide) = slides.borrow_mut().get_mut(&key) {
+                                slide.live = None;
+                            }
+                        },
+                    );
+                    slide.live = Some(transform);
+                }
             }
             if geometry.is_some() {
                 slide.to = geometry;
             }
-            (slide.from, slide.to)
+            (slide.to, slide.live.clone())
         };
         let mut track = div()
             .id(ElementId::Name(id.clone()))
@@ -526,29 +574,15 @@ impl Desktop {
                         inset: false,
                     }])
                 });
-            track = track.child(match from.filter(|from| *from != (x + 1., width)) {
-                Some((from_x, from_width)) if !cx.reduce_motion() => {
-                    let from_x = from_x - 1.;
-                    let slides = self.ui.slides.clone();
-                    let id = id.clone();
-                    pill.with_animation(
-                        ElementId::NamedInteger(format!("seg-slide-{id}").into(), selected as u64),
-                        // The original's Indicator: --t-slow on the move curve.
-                        Animation::new(Duration::from_millis(250)).with_easing(theme::ease_move),
-                        move |pill, t| {
-                            // Once there, it stays: a later redraw must not replay the glide.
-                            if t >= 1.
-                                && let Some(slide) = slides.borrow_mut().get_mut(&id)
-                            {
-                                slide.from = None;
-                            }
-                            pill.left(px(from_x + (x - from_x) * t))
-                                .w(px(from_width + (width - from_width) * t + 2.))
-                        },
-                    )
-                    .into_any_element()
-                }
-                _ => pill.into_any_element(),
+            track = track.child(match live {
+                Some(live) => super::shift::live(
+                    pill,
+                    live,
+                    super::shift::Anchor::TopLeft,
+                    Rc::new(Cell::new(Point::default())),
+                )
+                .into_any_element(),
+                None => pill.into_any_element(),
             });
         }
         for (index, (name, glyph, action, _)) in choices.into_iter().enumerate() {

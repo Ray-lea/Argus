@@ -614,8 +614,48 @@ pub(super) struct Placement {
     offset: Point<Pixels>,
     /// Captions the chart layer draws inside the frame.
     captions: Option<Rc<FrameCaptions>>,
+    /// The live transforms the page draws the chart and its surroundings
+    /// inside, outermost first (`shift::live`): the chart layer draws the
+    /// curve inside the same ones, so that it moves, scales and fades with
+    /// its frame in every frame.
+    lives: Vec<Live>,
+}
+impl Placement {
+    /// Whether the chart layer draws this chart other than at its laid-out place.
+    fn transformed(&self) -> bool {
+        !self.lives.is_empty()
+    }
 }
 pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
+
+/// A live transform the page draws a chart inside (`shift::live`), and the
+/// point it is anchored at: in window coordinates, written when the page
+/// prepaints, so that the chart layer, which paints later, reads this
+/// layout's (the page replays its paint while the transform changes).
+#[derive(Clone)]
+pub(super) struct Live {
+    pub(super) transform: LiveTransform,
+    pub(super) anchor: Rc<Cell<Point<Pixels>>>,
+}
+
+/// Paints `f` inside `lives` (outermost first), their anchors moved by
+/// `translation`: drawn inside a move by the same amount, so that a point
+/// lands where the page draws it (`live(p) + translation`).
+fn with_lives(
+    lives: &[Live],
+    translation: Point<Pixels>,
+    window: &mut Window,
+    f: impl FnOnce(&mut Window),
+) {
+    match lives.split_first() {
+        None => f(window),
+        Some((live, rest)) => {
+            window.with_live_transform(&live.transform, live.anchor.get() + translation, |window| {
+                with_lives(rest, translation, window, f)
+            })
+        }
+    }
+}
 
 /// How the details pane is drawn while it opens or closes, away from where it
 /// is laid out (`Desktop::details_pane`): its charts move and fade with it,
@@ -651,6 +691,8 @@ pub(super) struct ChartLayer {
     /// Where the entering page is drawn, from where it is laid out (`shift.rs`).
     shift: Rc<Cell<Point<Pixels>>>,
     pane: Rc<RefCell<PaneMotion>>,
+    /// Animations of live transforms, stepped before each frame (`shift::LiveMotions`).
+    motions: Rc<super::shift::LiveMotions>,
     last_end: f64,
     pixel_ends: HashMap<String, f64>,
     pub(super) fast_frames: u64,
@@ -663,9 +705,11 @@ impl ChartLayer {
         opacity: Rc<Cell<f32>>,
         shift: Rc<Cell<Point<Pixels>>>,
         pane: Rc<RefCell<PaneMotion>>,
+        motions: Rc<super::shift::LiveMotions>,
     ) -> Self {
         Self {
             pane,
+            motions,
             placements,
             clock,
             active,
@@ -701,6 +745,11 @@ impl ChartLayer {
                 let Some(placement) = placements.get(key) else {
                     return true;
                 };
+                // A surface update would place the curve at its laid-out
+                // bounds, outside the live transforms it is drawn inside.
+                if placement.transformed() {
+                    return false;
+                }
                 let clip = placement.bounds.intersect(&placement.mask);
                 if clip.is_empty() {
                     return true;
@@ -741,6 +790,17 @@ impl ChartLayer {
         }
     }
 }
+/// A chart the layer prepainted this frame, ready to paint.
+struct Drawn {
+    element: AnyElement,
+    clip: Bounds<Pixels>,
+    /// The plot again, for its grid or bar tracks (painted before every curve).
+    background: TimePlot,
+    bounds: Bounds<Pixels>,
+    alpha: f32,
+    lives: Vec<Live>,
+    translation: Point<Pixels>,
+}
 fn plot_end(plot: &TimePlot, clock: &motion::Clock, now: f64) -> f64 {
     if clock.mode == motion::Mode::Pixel {
         let step = (plot.end - plot.start) / f64::from(plot.measured_width.get().max(1.));
@@ -750,7 +810,11 @@ fn plot_end(plot: &TimePlot, clock: &motion::Clock, now: f64) -> f64 {
     }
 }
 impl Render for ChartLayer {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Every frame draws this layer: the live transforms take this frame's
+        // values here, before the cached views that paint them replay.
+        self.motions.tick(Instant::now(), cx);
+        let motions = self.motions.clone();
         let placements = self.placements.clone();
         let clock = self.clock.clone();
         let active = self.active.clone();
@@ -760,6 +824,10 @@ impl Render for ChartLayer {
         div().absolute().inset_0().child(
             canvas(
                 move |bounds, window, cx| {
+                    // A view may have started an animation in this frame.
+                    if motions.active() {
+                        window.request_animation_frame();
+                    }
                     // Read in prepaint, after the cached desktop rendered this
                     // frame's fades: read in render, they would lag a frame
                     // behind the page they belong to.
@@ -786,6 +854,7 @@ impl Render for ChartLayer {
                         } else {
                             (placement.bounds, placement.mask, 1.)
                         };
+                        let laid_out = placement.bounds;
                         let placement = Placement {
                             bounds: moved + shift + placement.offset,
                             mask: mask + shift,
@@ -793,6 +862,7 @@ impl Render for ChartLayer {
                             opacity: placement.opacity * fade,
                             offset: Point::default(),
                             captions: placement.captions.clone(),
+                            lives: placement.lives.clone(),
                         };
                         let clip = placement
                             .bounds
@@ -801,6 +871,9 @@ impl Render for ChartLayer {
                         if clip.size.width <= px(0.) || clip.size.height <= px(0.) {
                             continue;
                         }
+                        // The live transforms' anchors move with the chart, as
+                        // the page draws them inside the same move.
+                        let translation = placement.bounds.origin - laid_out.origin;
                         let mut plot = placement.plot.borrow().clone();
                         plot.captions = placement.captions;
                         let span = plot.end - plot.start;
@@ -819,27 +892,47 @@ impl Render for ChartLayer {
                             element.layout_as_root(placement.bounds.size.into(), window, cx);
                             element.prepaint_at(placement.bounds.origin, window, cx);
                         });
-                        elements.push((element, clip, background, placement.bounds, alpha));
+                        elements.push(Drawn {
+                            element,
+                            clip,
+                            background,
+                            bounds: placement.bounds,
+                            alpha,
+                            lives: placement.lives,
+                            translation,
+                        });
                     }
                     elements
                 },
                 |bounds, elements, window, cx| {
                     // Grids and bar tracks are static, even though their data moves.
                     // Paint every backdrop before the shared animated layer.
-                    for (_, clip, plot, bounds, alpha) in &elements {
-                        if !plot.background_separate {
+                    for drawn in &elements {
+                        if !drawn.background.background_separate {
                             continue;
                         }
-                        window.with_content_mask(Some(ContentMask { bounds: *clip }), |window| {
-                            plot.paint_base(*bounds, *alpha, window, cx)
+                        with_lives(&drawn.lives, drawn.translation, window, |window| {
+                            window.with_content_mask(
+                                Some(ContentMask { bounds: drawn.clip }),
+                                |window| {
+                                    drawn.background.paint_base(
+                                        drawn.bounds,
+                                        drawn.alpha,
+                                        window,
+                                        cx,
+                                    )
+                                },
+                            )
                         });
                     }
                     window.paint_layer(bounds, |window| {
-                        for (mut element, clip, _, _, _) in elements {
-                            window
-                                .with_content_mask(Some(ContentMask { bounds: clip }), |window| {
-                                    element.paint(window, cx)
-                                });
+                        for mut drawn in elements {
+                            with_lives(&drawn.lives, drawn.translation, window, |window| {
+                                window.with_content_mask(
+                                    Some(ContentMask { bounds: drawn.clip }),
+                                    |window| drawn.element.paint(window, cx),
+                                )
+                            });
                         }
                     });
                 },
@@ -1306,6 +1399,7 @@ impl Desktop {
         let placed_plot = plot_rc.clone();
         let opacity = self.chart_fade.get();
         let offset = self.chart_shift.get();
+        let lives = self.chart_lives.borrow().clone();
         // The name and top above the frame, the span and zero below it; in a
         // short performance card, inside the frame (drawn by the chart layer).
         let captions = look.caption.as_ref().map(|caption| {
@@ -1342,6 +1436,7 @@ impl Desktop {
                         opacity,
                         offset,
                         captions: inside.clone(),
+                        lives: lives.clone(),
                     },
                 );
             },

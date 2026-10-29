@@ -159,6 +159,11 @@ struct Desktop {
     /// Whether the charts being built draw their captions inside the frame
     /// (a short performance card).
     chart_captions_inside: Cell<bool>,
+    /// The live transforms the charts being built are drawn inside, outermost
+    /// first: a view or card in motion moves its charts with it (`shift::live`).
+    chart_lives: RefCell<Vec<charts::Live>>,
+    /// Animations of live transforms, stepped by the chart layer in every frame.
+    live_motions: Rc<shift::LiveMotions>,
     /// The viewport height less the performance card's content height, as
     /// last laid out: the card's height in a viewport of any height.
     perf_card_chrome: Rc<Cell<Option<Pixels>>>,
@@ -306,6 +311,8 @@ impl Desktop {
             chart_fade: Cell::new(1.),
             chart_shift: Cell::new(Point::default()),
             chart_captions_inside: Cell::new(false),
+            chart_lives: RefCell::new(Vec::new()),
+            live_motions: Rc::default(),
             perf_card_chrome: Rc::new(Cell::new(None)),
             chart_tick_queued: false,
             chart_frame: 0,
@@ -621,8 +628,11 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 let opacity = view.read(cx).page_opacity.clone();
                 let shift = view.read(cx).page_shift.clone();
                 let pane = view.read(cx).pane_motion.clone();
+                let motions = view.read(cx).live_motions.clone();
                 let charts = cx.new(|_| {
-                    charts::ChartLayer::new(placements, clock, active, opacity, shift, pane)
+                    charts::ChartLayer::new(
+                        placements, clock, active, opacity, shift, pane, motions,
+                    )
                 });
                 view.update(cx, |desktop, _| desktop.chart_layer = Some(charts.clone()));
                 let state = view.read(cx).scrim.clone();
