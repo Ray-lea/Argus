@@ -154,6 +154,12 @@ struct Desktop {
     pane_motion: Rc<RefCell<charts::PaneMotion>>,
     /// Opacity of the live charts being built: a view settling in fades its charts.
     chart_fade: Cell<f32>,
+    /// Whether the charts being built draw their captions inside the frame
+    /// (a short performance card).
+    chart_captions_inside: Cell<bool>,
+    /// The viewport height less the performance card's content height, as
+    /// last laid out: the card's height in a viewport of any height.
+    perf_card_chrome: Rc<Cell<Option<Pixels>>>,
     chart_tick_queued: bool,
     chart_frame: u64,
     grid_bounds: RefCell<HashMap<String, Bounds<Pixels>>>,
@@ -268,6 +274,8 @@ impl Desktop {
             page_shift: Rc::new(Cell::new(Point::default())),
             pane_motion: Rc::default(),
             chart_fade: Cell::new(1.),
+            chart_captions_inside: Cell::new(false),
+            perf_card_chrome: Rc::new(Cell::new(None)),
             chart_tick_queued: false,
             chart_frame: 0,
             grid_bounds: RefCell::new(HashMap::new()),

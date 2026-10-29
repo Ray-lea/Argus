@@ -674,6 +674,7 @@ mod tests {
             bar_glides: Default::default(),
             dash_phases: Default::default(),
             rescale: Default::default(),
+            captions: None,
         }
     }
     #[test]
