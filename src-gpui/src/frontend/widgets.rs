@@ -204,6 +204,43 @@ pub(in crate::frontend) fn control_edge(p: &Palette) -> Div {
         .bg(p.control_edge)
 }
 
+/// A tooltip for a sentence or two: it wraps at `max` like a system tooltip
+/// (the original's `title`), where a plain one runs on in a single line, past
+/// the window. Tooltips are laid out at their min-content size, which for text
+/// is its unwrapped width, so a long text gets the width it wraps at.
+pub(in crate::frontend) fn wrapping_tooltip(
+    text: SharedString,
+    max: Pixels,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
+    use gpui_kit::component::ActiveTheme;
+    // The tooltip's `text_sm` in its theme font.
+    let size = rems(0.875).to_pixels(window.rem_size());
+    let family = cx.theme().font_family.clone();
+    let natural = text
+        .split('\n')
+        .map(|line| {
+            let run = TextRun {
+                len: line.len(),
+                font: font(family.clone()),
+                color: Hsla::default(),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            };
+            window
+                .text_system()
+                .shape_line(SharedString::from(line.to_owned()), size, &[run], None)
+                .width
+        })
+        .fold(px(0.), Pixels::max);
+    gpui_kit::component::tooltip::Tooltip::element(move |_, _| {
+        div().when(natural > max, |d| d.w(max)).child(text.clone())
+    })
+    .build(window, cx)
+}
+
 /// Lighter, like the original's `filter: brightness(1.08)` on hover.
 pub(in crate::frontend) fn brighter(color: Hsla) -> Hsla {
     Hsla {

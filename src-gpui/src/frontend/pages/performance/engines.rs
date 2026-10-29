@@ -813,13 +813,18 @@ impl Desktop {
 
         // Live figures and specs.
         let gb_pair = |used: f64, total: f64| format!("{} / {}", gb(used), gb(total));
+        let source = gpu["utilSource"].as_str().unwrap_or("windows");
         let mut stats = vec![
-            self.stat(
-                label("performance.gpu.utilization"),
-                format!("{}", number(gpu, "util").round()),
-                Some("%".into()),
-                None,
-                cx,
+            self.hinted(
+                "gpu-stat-util",
+                Some(label("performance.gpu.utilizationHint")),
+                self.stat(
+                    label("performance.gpu.utilization"),
+                    format!("{}", number(gpu, "util").round()),
+                    Some("%".into()),
+                    Some(label(&format!("performance.gpu.utilSource.{source}"))),
+                    cx,
+                ),
             ),
             self.stat(
                 label("performance.gpu.dedicatedMemory"),

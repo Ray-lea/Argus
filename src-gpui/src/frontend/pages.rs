@@ -350,9 +350,18 @@ impl Desktop {
         let busiest = values(&hw["disks"])
             .iter()
             .max_by(|a, b| number(a, "active").total_cmp(&number(b, "active")));
+        // The busiest GPU; the first one listed while they are equally busy.
         let gpu = values(&hw["gpus"])
             .iter()
-            .max_by(|a, b| number(a, "util").total_cmp(&number(b, "util")));
+            .fold(None::<&Value>, |busiest, g| match busiest {
+                Some(b) if number(g, "util") <= number(b, "util") => Some(b),
+                _ => Some(g),
+            });
+        // Where the GPU figure comes from: Windows engines, process engines or NVML.
+        let gpu_source = gpu.map(|g| {
+            let source = g["utilSource"].as_str().unwrap_or("windows");
+            label(&format!("performance.gpu.utilSource.{source}"))
+        });
         let rx = values(&hw["nics"])
             .iter()
             .map(|n| number(n, "rx"))
@@ -545,6 +554,7 @@ impl Desktop {
                 );
             }
             let open = tr!("processes.vitals.open", device = name);
+            let figure_tip = gpu_source.clone().filter(|_| id == "gpu");
             band = band.child(
                 Button::new(format!("vital-{id}"))
                     .relative()
@@ -584,6 +594,7 @@ impl Desktop {
                     .child(header)
                     .child(
                         div()
+                            .id(("vital-figure", index))
                             .relative()
                             .mt(px(-2.))
                             .flex()
@@ -615,6 +626,12 @@ impl Desktop {
                             )
                             .when(id == "cpu" && !detail.is_empty(), |d| {
                                 d.child(div().text_size(px(12.)).text_color(p.muted).child(detail))
+                            })
+                            .when_some(figure_tip, |d, tip| {
+                                d.tooltip(move |window, cx| {
+                                    gpui_kit::component::tooltip::Tooltip::new(tip.clone())
+                                        .build(window, cx)
+                                })
                             }),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {

@@ -1287,7 +1287,7 @@ impl Desktop {
                     } else {
                         json!(row.members.len())
                     };
-                    json!({"key":row.key,"title":row.title,"detail":row.detail,"depth":row.depth,"count":count,"section":row.section})
+                    json!({"key":row.key,"title":row.title,"detail":row.detail,"depth":row.depth,"count":count,"section":row.section,"gpu":row.metric("gpu")})
                 })
                 .collect();
             println!(

@@ -405,6 +405,7 @@
             "temperatureMax": 105
           },
           "util": 14.340482702312762,
+          "utilSource": "windows",
           "engines": [
             14.340482702312762,
             0.5781997400378236,
@@ -2357,6 +2358,13 @@
         "diskWrite": null,
         "gpu": 4.466032170717985,
         "gpuEngine": "GPU 0 - 3D",
+        "gpuEngines": [
+          {
+            "id": "7001:0:0",
+            "name": "GPU 0 - 3D",
+            "util": 4.466032170717985
+          }
+        ],
         "gpuDedicated": 167772160,
         "gpuShared": 25165824,
         "netSent": 0,
@@ -2459,6 +2467,13 @@
         "diskWrite": null,
         "gpu": 6.805476976553564,
         "gpuEngine": "GPU 0 - 3D",
+        "gpuEngines": [
+          {
+            "id": "7001:0:0",
+            "name": "GPU 0 - 3D",
+            "util": 6.805476976553564
+          }
+        ],
         "gpuDedicated": 251658240,
         "gpuShared": 37748736,
         "netSent": 18286.93560060809,
@@ -2595,6 +2610,13 @@
         "diskWrite": null,
         "gpu": 9.932179039894017,
         "gpuEngine": "GPU 0 - Video Decode",
+        "gpuEngines": [
+          {
+            "id": "7001:0:3",
+            "name": "GPU 0 - Video Decode",
+            "util": 9.932179039894017
+          }
+        ],
         "gpuDedicated": 377487360,
         "gpuShared": 56623104,
         "netSent": 0,
@@ -3207,6 +3229,13 @@
         "diskWrite": null,
         "gpu": 1.0870474472368241,
         "gpuEngine": "GPU 0 - 3D",
+        "gpuEngines": [
+          {
+            "id": "7001:0:0",
+            "name": "GPU 0 - 3D",
+            "util": 1.0870474472368241
+          }
+        ],
         "gpuDedicated": 50331648,
         "gpuShared": 7549747.199999999,
         "netSent": 0,
@@ -4345,6 +4374,13 @@
         "diskWrite": null,
         "gpu": 2.803097039992159,
         "gpuEngine": "GPU 0 - 3D",
+        "gpuEngines": [
+          {
+            "id": "7001:0:0",
+            "name": "GPU 0 - 3D",
+            "util": 2.803097039992159
+          }
+        ],
         "gpuDedicated": 83886080,
         "gpuShared": 12582912,
         "netSent": 0,
@@ -4597,6 +4633,13 @@
         "diskWrite": null,
         "gpu": 2.6664105291511495,
         "gpuEngine": "GPU 0 - 3D",
+        "gpuEngines": [
+          {
+            "id": "7001:0:0",
+            "name": "GPU 0 - 3D",
+            "util": 2.6664105291511495
+          }
+        ],
         "gpuDedicated": 83886080,
         "gpuShared": 12582912,
         "netSent": 0,
