@@ -404,6 +404,63 @@ pub struct TimePlot {
     pub dash_phases: raster::DashPhases,
     /// A new top eases in: the top shown before, the target, and when the change began.
     pub rescale: Rc<Cell<Rescale>>,
+    /// Captions drawn inside the frame, over the curve (set by the chart layer).
+    pub(in crate::frontend) captions: Option<Rc<FrameCaptions>>,
+}
+/// A chart's captions drawn inside its frame, over the curve and under the
+/// readout: the short performance card's (`@container perf (max-height:
+/// 640px)` in the original), where the chart box keeps only its frame.
+pub(in crate::frontend) struct FrameCaptions {
+    /// Name and top value, at the frame's top.
+    top: (String, String),
+    /// Time span and zero, at its bottom.
+    bottom: (String, String),
+    color: Hsla,
+}
+/// Where frame captions sit: the original's 7 px from the chart box's sides,
+/// 4 px from its top and 3 px from its bottom, less the frame's 1 px border
+/// (the plot's bounds are inside it).
+const CAPTION_INSET_X: f32 = 6.;
+const CAPTION_INSET_TOP: f32 = 3.;
+const CAPTION_INSET_BOTTOM: f32 = 2.;
+impl FrameCaptions {
+    /// The two caption rows, laid out across `bounds` (the plot's).
+    fn rows(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
+        let width = (bounds.size.width - px(2. * CAPTION_INSET_X)).max(px(0.));
+        let family = cx.theme().font_family.clone();
+        [(&self.top, true), (&self.bottom, false)]
+            .into_iter()
+            .map(|((left, right), top)| {
+                // As the captions above and below a frame, at 11 instead of 12.
+                let mut row = div()
+                    .w(width)
+                    .flex()
+                    .justify_between()
+                    .gap_3()
+                    .font_family(family.clone())
+                    .text_size(theme::font(11.))
+                    .line_height(relative(1.4))
+                    .text_color(self.color)
+                    .child(div().min_w_0().truncate().child(left.clone()))
+                    .child(div().flex_shrink_0().child(right.clone()))
+                    .into_any_element();
+                let height = row
+                    .layout_as_root(
+                        size(AvailableSpace::Definite(width), AvailableSpace::MinContent),
+                        window,
+                        cx,
+                    )
+                    .height;
+                let y = if top {
+                    bounds.top() + px(CAPTION_INSET_TOP)
+                } else {
+                    bounds.bottom() - px(CAPTION_INSET_BOTTOM) - height
+                };
+                row.prepaint_at(point(bounds.left() + px(CAPTION_INSET_X), y), window, cx);
+                row
+            })
+            .collect()
+    }
 }
 fn hash_of(value: impl std::hash::Hash) -> u64 {
     use std::hash::Hasher;
@@ -535,6 +592,8 @@ pub(super) struct Placement {
     plot: Rc<RefCell<TimePlot>>,
     /// The chart's own fade (a view settling in), on top of the page's.
     opacity: f32,
+    /// Captions the chart layer draws inside the frame.
+    captions: Option<Rc<FrameCaptions>>,
 }
 pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
 
@@ -713,6 +772,7 @@ impl Render for ChartLayer {
                             mask: mask + shift,
                             plot: placement.plot.clone(),
                             opacity: placement.opacity * fade,
+                            captions: placement.captions.clone(),
                         };
                         let clip = placement
                             .bounds
@@ -722,6 +782,7 @@ impl Render for ChartLayer {
                             continue;
                         }
                         let mut plot = placement.plot.borrow().clone();
+                        plot.captions = placement.captions;
                         let span = plot.end - plot.start;
                         plot.end = plot_end(&plot, &clock, now);
                         plot.start = plot.end - span;
@@ -924,7 +985,12 @@ impl Plot for TimePlot {
         if !self.bars {
             raster::prepare(self, bounds, window, cx);
         }
-        vec![]
+        // Laid out only when the chart layer draws in full; the frames that
+        // just move the curve keep them as painted.
+        match self.captions.clone() {
+            Some(captions) => captions.rows(bounds, window, cx),
+            None => vec![],
+        }
     }
     fn id(&self) -> Option<ElementId> {
         Some(self.id.clone().into())
@@ -1172,6 +1238,31 @@ impl Desktop {
         let placements = self.chart_placements.clone();
         let placed_plot = plot_rc.clone();
         let opacity = self.chart_fade.get();
+        // The name and top above the frame, the span and zero below it; in a
+        // short performance card, inside the frame (drawn by the chart layer).
+        let captions = look.caption.as_ref().map(|caption| {
+            let top = look.top.clone().unwrap_or_else(|| {
+                look.format
+                    .or_else(|| plot.series.first().map(|s| s.format))
+                    .map(|format| format.value(plot.max))
+                    .unwrap_or_default()
+            });
+            (
+                (caption.clone(), top),
+                (span_label(self.interval), "0".to_owned()),
+            )
+        });
+        let (outside, inside) = match captions {
+            Some((top, bottom)) if self.chart_captions_inside.get() => (
+                None,
+                Some(Rc::new(FrameCaptions {
+                    top,
+                    bottom,
+                    color: self.palette.muted,
+                })),
+            ),
+            captions => (captions, None),
+        };
         let placeholder = canvas(
             move |bounds, window, _| {
                 placements.borrow_mut().insert(
@@ -1181,6 +1272,7 @@ impl Desktop {
                         mask: window.content_mask().bounds,
                         plot: placed_plot.clone(),
                         opacity,
+                        captions: inside.clone(),
                     },
                 );
             },
@@ -1193,7 +1285,7 @@ impl Desktop {
             .map(|s| s.color)
             .unwrap_or(self.palette.accent);
         let flexible = !matches!(height, ChartHeight::Fixed(_));
-        let caption_row = |left: String, right: String| {
+        let caption_row = |(left, right): (String, String)| {
             div()
                 .flex()
                 .flex_shrink_0()
@@ -1212,14 +1304,9 @@ impl Desktop {
             .flex_col()
             .when(flexible, |d| d.flex_1())
             .when(!flexible, |d| d.flex_shrink_0());
-        if let Some(caption) = &look.caption {
-            let top = look.top.clone().unwrap_or_else(|| {
-                look.format
-                    .or_else(|| plot.series.first().map(|s| s.format))
-                    .map(|format| format.value(plot.max))
-                    .unwrap_or_default()
-            });
-            frame = frame.child(caption_row(caption.clone(), top));
+        let (top, bottom) = outside.unzip();
+        if let Some(top) = top {
+            frame = frame.child(caption_row(top));
         }
         frame = frame.child(
             div()
@@ -1239,8 +1326,8 @@ impl Desktop {
                 })
                 .child(placeholder),
         );
-        if look.caption.is_some() {
-            frame = frame.child(caption_row(span_label(self.interval), "0".into()));
+        if let Some(bottom) = bottom {
+            frame = frame.child(caption_row(bottom));
         }
         if !look.legend.is_empty() {
             frame = frame.child(
@@ -1553,6 +1640,7 @@ impl Desktop {
             bar_glides,
             dash_phases,
             rescale,
+            captions: None,
         };
         let plot_rc = if let Some(entry) = entries.get_mut(id) {
             *entry.plot.borrow_mut() = plot;

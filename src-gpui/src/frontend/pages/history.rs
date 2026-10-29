@@ -581,6 +581,7 @@ impl Desktop {
                         bar_glides: Default::default(),
                         dash_phases: Default::default(),
                         rescale: Default::default(),
+                        captions: None,
                     })
                     .when_some(scale, |d, scale| {
                         d.child(

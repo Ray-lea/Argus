@@ -1,5 +1,6 @@
 use super::*;
 use charts::{ChartHeight, GIB, KIB, Line, Look, MIB, MetricFormat, Scale};
+use gpui_kit::base::ElementExt;
 mod engines;
 mod telemetry;
 
@@ -32,6 +33,9 @@ const SETTLE: std::time::Duration = std::time::Duration::from_millis(200);
 const MAIN_MIN: f32 = 120.;
 const HALF_MIN: f32 = 80.;
 const SMALL_MIN: f32 = 64.;
+/// A detail card at most this tall (its content box) draws the chart
+/// captions inside the frames: `@container perf (max-height: 640px)`.
+const SHORT_CARD: f32 = 640.;
 
 #[derive(Clone)]
 pub(super) struct Device {
@@ -369,6 +373,14 @@ impl Desktop {
         };
         f32::from(window.viewport_size().width) - navigation - 2. * PAGE_GAP
     }
+    /// The detail card's content height (the original's `100cqh`), once laid
+    /// out: the card fills the page's height whatever it holds, so in this
+    /// viewport it is the viewport's less what surrounds the card.
+    fn perf_card_height(&self, window: &Window) -> Option<Pixels> {
+        self.perf_card_chrome
+            .get()
+            .map(|chrome| window.viewport_size().height - chrome)
+    }
     /// The detail card's content width: the page less the list, gap, border, padding and scrollbar.
     fn detail_width(&self, window: &Window) -> f32 {
         let page = self.page_width(window);
@@ -645,9 +657,16 @@ impl Desktop {
         };
         // The chart layer's curves fade with the view.
         self.chart_fade.set(arriving);
+        // A short card (the original's size container query on the card)
+        // takes the chart captions into the frames.
+        let short = self
+            .perf_card_height(window)
+            .is_some_and(|card| card <= px(SHORT_CARD));
+        self.chart_captions_inside.set(short);
         let content = selected
             .map(|device| self.device_view(&device, window, cx))
             .unwrap_or_else(|| div().into_any_element());
+        self.chart_captions_inside.set(false);
         self.chart_fade.set(1.);
         let content = div()
             .relative()
@@ -692,6 +711,8 @@ impl Desktop {
                     cx.notify();
                 }),
             );
+        let chrome = self.perf_card_chrome.clone();
+        let owner = cx.entity().downgrade();
         div()
             .size_full()
             .min_h_0()
@@ -699,6 +720,18 @@ impl Desktop {
             .flex()
             // The original page's body line height; GPUI's default is taller.
             .line_height(relative(1.4))
+            // The card is as tall as the page; its content box is inside the
+            // border. What surrounds it changes rarely (text size, navigation,
+            // toolbar rows): the views sized by it are built again then.
+            .on_prepaint(move |bounds, window, cx| {
+                let card = bounds.size.height - px(2.);
+                let measured = Some(window.viewport_size().height - card);
+                if chrome.replace(measured) != measured {
+                    window.defer(cx, move |_, cx| {
+                        let _ = owner.update(cx, |_, cx| cx.notify());
+                    });
+                }
+            })
             .child(list.child(scrollbar::scrollbar(
                 "devices-scrollbar",
                 &device_list,
