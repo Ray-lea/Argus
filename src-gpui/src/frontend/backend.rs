@@ -90,13 +90,18 @@ impl Desktop {
         let Some(pending) = self.pending.remove(&id) else {
             return;
         };
+        // An answer for another range or moment is dropped. One history query of each
+        // kind is in flight at a time, so the one for what is shown now may have been
+        // held back while this one was read: forget it was sent and ask again.
         if pending.command == "history_series" && pending.args["range"] != self.history_range {
+            self.data.remove("historyQuery");
             self.load_history(window, cx);
             return;
         }
         if pending.command == "history_moment"
             && pending.args["cursor"] != json!(self.history_cursor)
         {
+            self.data.remove("historyMomentAt");
             self.load_history(window, cx);
             return;
         }
@@ -130,6 +135,9 @@ impl Desktop {
                 }
                 if let Some(key) = pending.cache {
                     self.data.insert(key, value.clone());
+                }
+                if pending.command == "history_series" {
+                    self.history_answered(&pending.args, window, cx);
                 }
                 if pending.command.starts_with("set_") && value.get("closeToTray").is_some() {
                     self.data.insert("settings".into(), value.clone());
