@@ -782,10 +782,11 @@ impl Desktop {
         controls: Option<AnyElement>,
         cx: &App,
     ) -> AnyElement {
+        // `.perf-head`: the model on the title's baseline.
         div()
             .flex()
             .flex_shrink_0()
-            .items_center()
+            .items_baseline()
             .justify_between()
             .gap_4()
             .mb(px(14.))

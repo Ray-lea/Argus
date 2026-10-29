@@ -627,6 +627,8 @@ struct TextLayoutInner {
     wrap_width: Option<Pixels>,
     truncate_width: Option<Pixels>,
     size: Option<Size<Pixels>>,
+    /// How far the first line's baseline lies below the top.
+    baseline: Option<Pixels>,
     bounds: Option<Bounds<Pixels>>,
 }
 
@@ -652,6 +654,31 @@ impl TextLayoutInner {
     }
 }
 
+/// How far the first line's baseline lies below the top, where `paint_line`
+/// draws it: the glyphs' ascent and descent centred in the line height. An
+/// empty line has no glyphs to measure and takes the font's, as the strut of
+/// a CSS line box does, so that an empty text aligns as a line of that font.
+fn first_baseline(
+    lines: &[WrappedLine],
+    line_height: Pixels,
+    font: &crate::Font,
+    font_size: Pixels,
+    window: &Window,
+) -> Option<Pixels> {
+    let layout = &lines.first()?.layout.unwrapped_layout;
+    let (ascent, descent) = if layout.ascent > Pixels::ZERO || layout.descent > Pixels::ZERO {
+        (layout.ascent, layout.descent)
+    } else {
+        let text_system = window.text_system();
+        let font_id = text_system.resolve_font(font);
+        (
+            text_system.ascent(font_id, font_size),
+            text_system.descent(font_id, font_size).abs(),
+        )
+    };
+    Some((line_height - ascent - descent) / 2. + ascent)
+}
+
 impl TextLayout {
     fn layout(
         &self,
@@ -673,7 +700,9 @@ impl TextLayout {
         } else {
             vec![text_style.to_run(text.len())]
         };
-        window.request_measured_layout(Default::default(), {
+        // Text reports its first baseline, so that containers aligning their
+        // items to baselines line up the text rather than the boxes.
+        window.request_measured_layout_with_baseline(Default::default(), {
             let element_state = self.clone();
 
             move |known_dimensions, available_space, window, cx| {
@@ -712,7 +741,7 @@ impl TextLayout {
                     && let Some(size) =
                         text_layout.cached_size(wrap_width, truncate_width, text_style.line_clamp)
                 {
-                    return size;
+                    return (size, text_layout.baseline);
                 }
 
                 let (text, runs) = if let Some(truncate_width) = truncate_width {
@@ -778,9 +807,10 @@ impl TextLayout {
                         wrap_width,
                         truncate_width,
                         size: Some(Size::default()),
+                        baseline: None,
                         bounds: None,
                     });
-                    return Size::default();
+                    return (Size::default(), None);
                 };
 
                 let mut size: Size<Pixels> = Size::default();
@@ -789,6 +819,8 @@ impl TextLayout {
                     size.height += line_size.height;
                     size.width = size.width.max(line_size.width).ceil();
                 }
+                let baseline =
+                    first_baseline(&lines, line_height, &text_style.font(), font_size, window);
 
                 element_state.0.borrow_mut().replace(TextLayoutInner {
                     lines,
@@ -797,10 +829,11 @@ impl TextLayout {
                     wrap_width,
                     truncate_width,
                     size: Some(size),
+                    baseline,
                     bounds: None,
                 });
 
-                size
+                (size, baseline)
             }
         })
     }
@@ -1350,6 +1383,7 @@ mod tests {
             wrap_width,
             truncate_width,
             size: Some(crate::size(crate::px(80.), crate::px(16.))),
+            baseline: None,
             bounds: None,
         }
     }

@@ -21,8 +21,14 @@ type StackSafe<T> = stacksafe::StackSafe<T>;
 #[cfg(not(feature = "stacker"))]
 type StackSafe<T> = T;
 
-type MeasureFn =
-    dyn FnMut(Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App) -> Size<Pixels>;
+/// A measured node's size and, for text, the offset of its first baseline
+/// from its top edge.
+type MeasureFn = dyn FnMut(
+    Size<Option<Pixels>>,
+    Size<AvailableSpace>,
+    &mut Window,
+    &mut App,
+) -> (Size<Pixels>, Option<Pixels>);
 type NodeMeasureFn = StackSafe<Box<MeasureFn>>;
 
 struct NodeContext {
@@ -122,6 +128,33 @@ impl TaffyLayoutEngine {
             &mut Window,
             &mut App,
         ) -> Size<Pixels>
+        + 'static,
+    ) -> LayoutId {
+        let mut measure = measure;
+        self.request_measured_layout_with_baseline(
+            style,
+            rem_size,
+            scale_factor,
+            move |known, available, window, cx| (measure(known, available, window, cx), None),
+        )
+    }
+
+    /// As `request_measured_layout`, for a node that also reports where its
+    /// first baseline lies below its top edge (text). Flex and grid
+    /// containers aligning items to their baselines use it, and a block
+    /// container takes its first child's, as CSS does; a node without one
+    /// counts as having its baseline at its bottom edge.
+    pub fn request_measured_layout_with_baseline(
+        &mut self,
+        style: Style,
+        rem_size: Pixels,
+        scale_factor: f32,
+        measure: impl FnMut(
+            Size<Option<Pixels>>,
+            Size<AvailableSpace>,
+            &mut Window,
+            &mut App,
+        ) -> (Size<Pixels>, Option<Pixels>)
         + 'static,
     ) -> LayoutId {
         if let Some(stats) = self.stats.as_mut() {
@@ -272,7 +305,8 @@ impl TaffyLayoutEngine {
                 id.into(),
                 available_space.into(),
                 |inputs, _id, node_context, style| {
-                    taffy::compute_leaf_layout(
+                    let mut first_baseline = None;
+                    let mut output = taffy::compute_leaf_layout(
                         inputs,
                         style,
                         |_, _| 0.0,
@@ -300,19 +334,36 @@ impl TaffyLayoutEngine {
                             );
 
                             let measure_start = started.map(|_| std::time::Instant::now());
-                            let measured_size: Size<Pixels> = (node_context.measure)(
+                            let (measured_size, baseline) = (node_context.measure)(
                                 known_dimensions,
                                 available_space,
                                 window,
                                 cx,
                             );
+                            // Whole device pixels: aligned items then keep the same
+                            // fraction below their baselines, so glyphs, whose baseline
+                            // is rounded to the pixel grid, land on the same row.
+                            first_baseline =
+                                baseline.map(|baseline| (baseline.0 * scale_factor).round());
                             if let Some(start) = measure_start {
                                 measure_us += start.elapsed().as_micros();
                                 measures += 1;
                             }
                             snap_measured_size_to_device_pixels(measured_size, scale_factor).into()
                         },
-                    )
+                    );
+                    if let Some(baseline) = first_baseline {
+                        // The measured content starts inside the padding and border.
+                        use taffy::{CoreStyle as _, util::ResolveOrZero as _};
+                        let resolve = |_: *const (), value: f32| value;
+                        let width = inputs.parent_size.width;
+                        output.baselines.first = Some(
+                            baseline
+                                + style.padding().top.resolve_or_zero(width, resolve)
+                                + style.border().top.resolve_or_zero(width, resolve),
+                        );
+                    }
+                    output
                 },
             )
             .expect(EXPECT_MESSAGE);

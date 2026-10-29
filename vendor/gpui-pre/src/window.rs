@@ -5712,6 +5712,32 @@ impl Window {
             .request_measured_layout(style, rem_size, scale_factor, measure)
     }
 
+    /// As [`Window::request_measured_layout`], for an element that also reports how far its
+    /// first baseline lies below its top edge, as text does. Containers aligning their items to
+    /// baselines (`items_baseline`) align that baseline; an element without one counts as having
+    /// its baseline at its bottom edge.
+    ///
+    /// This method should only be called as part of the request_layout or prepaint phase of element drawing.
+    pub fn request_measured_layout_with_baseline<F>(&mut self, style: Style, measure: F) -> LayoutId
+    where
+        F: Fn(
+                Size<Option<Pixels>>,
+                Size<AvailableSpace>,
+                &mut Window,
+                &mut App,
+            ) -> (Size<Pixels>, Option<Pixels>)
+            + 'static,
+    {
+        self.invalidator.debug_assert_prepaint();
+
+        let rem_size = self.rem_size();
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .request_measured_layout_with_baseline(style, rem_size, scale_factor, measure)
+    }
+
     /// Compute the layout for the given id within the given available space.
     /// This method is called for its side effect, typically by the framework prior to painting.
     /// After calling it, you can request the bounds of the given layout node id or any descendant.
