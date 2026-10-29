@@ -174,7 +174,8 @@ struct Desktop {
     /// The sample each running process first appeared in; 0 for those present at start.
     first_seen: HashMap<String, u64>,
     header_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
-    toolbar_regions: Rc<RefCell<[Bounds<Pixels>; 2]>>,
+    /// The title row's start and end controls, and the row itself.
+    toolbar_regions: Rc<RefCell<[Bounds<Pixels>; 3]>>,
     navigation_regions: Rc<RefCell<[Bounds<Pixels>; PAGES.len() + 1]>>,
     query: String,
     search: Entity<InputState>,
@@ -290,7 +291,7 @@ impl Desktop {
             rows_epoch: 0,
             first_seen: HashMap::new(),
             header_bounds: Rc::new(RefCell::new(HashMap::new())),
-            toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 2])),
+            toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 3])),
             navigation_regions: Rc::new(RefCell::new([Bounds::default(); PAGES.len() + 1])),
             query: String::new(),
             search: search.clone(),
