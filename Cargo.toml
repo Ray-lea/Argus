@@ -102,3 +102,12 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 opt-level = 2
 debug = false
+
+# The interface and collection code run every frame and every sample: at
+# opt-level 0 the dev app scrolled tables at ~85 fps where release reaches
+# ~125. Level 2 keeps a one-line change rebuilding in about 30 s.
+[profile.dev.package.argus]
+opt-level = 2
+
+[profile.dev.package.argus-core]
+opt-level = 2
