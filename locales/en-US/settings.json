@@ -41,6 +41,10 @@
       "desc": "Starts quietly in the system tray. Open the window with the keyboard shortcut or by clicking the tray icon.",
       "error": "Couldn't change the startup setting: {error}"
     },
+    "startPage": {
+      "title": "Default page",
+      "desc": "The page shown when the window first opens after Argus starts. Reopening the window from the tray keeps the current page."
+    },
     "closeToTray": {
       "title": "Keep in the system tray when closed",
       "desc": "Keeps Argus running so it reopens quickly. While hidden, it samples at the tray refresh rate, and history and rules keep working.",
