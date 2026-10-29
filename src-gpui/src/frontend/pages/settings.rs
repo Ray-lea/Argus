@@ -2437,10 +2437,7 @@ impl Desktop {
                     Tone::Ghost,
                 )
                 .accessibility_label(tr!("settings.rules.deleteLabel", name = name))
-                .tooltip(|window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(label("settings.rules.delete"))
-                        .build(window, cx)
-                })
+                .tooltip(|window, cx| widgets::tooltip(label("settings.rules.delete"), window, cx))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     let mut rules = values(&this.data["settings"]["rules"]).to_vec();
                     rules.retain(|r| r["id"] != id.as_str());

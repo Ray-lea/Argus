@@ -2404,10 +2404,7 @@ impl Desktop {
                     Tone::Ghost,
                 )
                 .accessibility_label(label("fileLock.showProcess"))
-                .tooltip(|window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(label("fileLock.showProcess"))
-                        .build(window, cx)
-                })
+                .tooltip(|window, cx| widgets::tooltip(label("fileLock.showProcess"), window, cx))
                 .inert(process.is_none())
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.preference("revealProcess", reveal.clone(), window, cx);

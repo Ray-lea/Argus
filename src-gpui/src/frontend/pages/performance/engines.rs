@@ -505,10 +505,7 @@ impl Desktop {
                     .flex_shrink_0()
                     .child(select)
                     .tooltip(|window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(label(
-                            "performance.gpu.engineSmartTitle",
-                        ))
-                        .build(window, cx)
+                        widgets::tooltip(label("performance.gpu.engineSmartTitle"), window, cx)
                     })
                     .into_any_element()
             } else {
@@ -1061,10 +1058,7 @@ impl Desktop {
                 div()
                     .id("gpu-limits")
                     .child(summary)
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(details.clone())
-                            .build(window, cx)
-                    })
+                    .tooltip(move |window, cx| widgets::tooltip(details.clone(), window, cx))
                     .into_any_element(),
             ));
         }

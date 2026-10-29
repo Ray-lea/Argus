@@ -330,8 +330,7 @@ impl Desktop {
                         )
                     }))
                     .tooltip(|window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(label("history.latest.title"))
-                            .build(window, cx)
+                        widgets::tooltip(label("history.latest.title"), window, cx)
                     }),
                 );
             }
@@ -574,10 +573,7 @@ impl Desktop {
                         .child(detail.clone())
                         .when(id == "network", |d| {
                             d.tooltip(|window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(label(
-                                    "processes.vitals.netTitle",
-                                ))
-                                .build(window, cx)
+                                widgets::tooltip(label("processes.vitals.netTitle"), window, cx)
                             })
                         }),
                 );
@@ -608,9 +604,7 @@ impl Desktop {
                     .active(move |s| s.bg(press))
                     .when(index > 0, |d| d.border_l_1().border_color(p.stroke))
                     .accessibility_label(open.clone())
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(open.clone()).build(window, cx)
-                    })
+                    .tooltip(move |window, cx| widgets::tooltip(open.clone(), window, cx))
                     .child(
                         div()
                             .absolute()
@@ -663,8 +657,7 @@ impl Desktop {
                             })
                             .when_some(figure_tip, |d, tip| {
                                 d.tooltip(move |window, cx| {
-                                    gpui_kit::component::tooltip::Tooltip::new(tip.clone())
-                                        .build(window, cx)
+                                    widgets::tooltip(tip.clone(), window, cx)
                                 })
                             }),
                     )
@@ -687,10 +680,7 @@ impl Desktop {
             .w(charts::bars_width(keys.len()))
             .h(px(26.))
             .child(self.chart_bars("vital-core-bars", &keys, self.palette.cpu, px(26.), cx))
-            .tooltip(|window, cx| {
-                gpui_kit::component::tooltip::Tooltip::new(label("processes.vitals.cores"))
-                    .build(window, cx)
-            })
+            .tooltip(|window, cx| widgets::tooltip(label("processes.vitals.cores"), window, cx))
             .into_any_element()
     }
     pub(in crate::frontend) fn preference(

@@ -738,8 +738,7 @@ impl TableDelegate for NativeTable {
                                 .flex_shrink_0()
                                 .child(icon("FilterIcon", p.accent).size(px(13.)))
                                 .tooltip(move |window, cx| {
-                                    gpui_kit::component::tooltip::Tooltip::new(tip.clone())
-                                        .build(window, cx)
+                                    widgets::tooltip(tip.clone(), window, cx)
                                 }),
                         )
                     })
@@ -797,9 +796,7 @@ impl TableDelegate for NativeTable {
             .accessibility_label(field.label.clone())
             .when(self.page == "processes", |button| {
                 let title = theme::label(&format!("processes.column.{key}.title"));
-                button.tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(window, cx)
-                })
+                button.tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
             })
             .child(cell.child(label))
             .on_click(move |_, window, cx| {

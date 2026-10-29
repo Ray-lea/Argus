@@ -2,7 +2,6 @@
 use super::*;
 use gpui_kit::base::ElementExt;
 use gpui_kit::base::SelectableText;
-use gpui_kit::component::tooltip::Tooltip;
 use std::hash::{Hash, Hasher};
 
 /// The selected row resolved against the latest processes, so filtering or
@@ -32,6 +31,19 @@ const FACT_NAME_WIDTH: f32 = 84.;
 const KEY_STEP: f32 = 16.;
 /// Largest share of the window the pane takes.
 const WINDOW_SHARE: f32 = 0.45;
+/// The overview tips' text (`.overview-tips`).
+const TIP_SIZE: f32 = 12.;
+const TIP_LINE_HEIGHT: f32 = 1.5;
+/// The toolbar's panel button drawn in a tip (`.overview-key`): its box, the
+/// margin on either side, its glyph, how far below its top its baseline lies
+/// (the bottom of the glyph, centred inside the 1 px border), and how far that
+/// sits below the text's baseline (`vertical-align: -4px`).
+const KEY_WIDTH: f32 = 20.;
+const KEY_HEIGHT: f32 = 18.;
+const KEY_MARGIN: f32 = 2.;
+const KEY_GLYPH: f32 = 12.;
+const KEY_BASELINE: f32 = 15.;
+const KEY_DROP: f32 = 4.;
 
 impl Desktop {
     pub(in crate::frontend) const DETAILS_MIN_WIDTH: f32 = 300.;
@@ -715,7 +727,7 @@ impl Desktop {
                 div()
                     .id(SharedString::from(format!("details-{field}")))
                     .child(value)
-                    .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                     .into_any_element(),
             ));
         }
@@ -847,7 +859,7 @@ impl Desktop {
                     .line_height(relative(1.4))
                     .hover(move |style| style.bg(p.hover))
                     .accessibility_label(display.clone())
-                    .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                     .child(div().min_w_0().overflow_hidden().child(display))
                     .child(
                         div()
@@ -898,7 +910,7 @@ impl Desktop {
                 .line_height(relative(1.4))
                 .hover(move |style| style.bg(p.hover))
                 .accessibility_label(tip.clone())
-                .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                 .child(
                     div()
                         .flex_1()
@@ -1266,7 +1278,7 @@ impl Desktop {
             .text_color(p.ink)
             .hover(move |style| style.bg(p.hover))
             .accessibility_label(name)
-            .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+            .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
             .child(icon(glyph, p.ink).w(glyph_size).h(glyph_size))
             .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -1358,8 +1370,8 @@ impl Desktop {
             .border_color(design_color("stroke-strong", cx))
             .rounded(px(6.))
             .text_color(p.muted)
-            .text_size(theme::font(12.))
-            .line_height(relative(1.5))
+            .text_size(theme::font(TIP_SIZE))
+            .line_height(relative(TIP_LINE_HEIGHT))
             .child(tip(
                 "PointerIcon",
                 label("details.overview.selectTip").into_any_element(),
@@ -1428,83 +1440,35 @@ impl Desktop {
         body.into_any_element()
     }
 
-    /// The second tip, with the toolbar's panel button drawn inside the sentence.
+    /// The second tip, with the toolbar's panel button set in the sentence
+    /// like the original's inline `.overview-key`.
     fn overview_close_tip(&self) -> AnyElement {
         let p = self.palette;
         const MARK: char = '\u{FFFC}';
-        let template = tr!("details.overview.closeTip", icon = MARK);
-        let (before, after) = template.split_once(MARK).unwrap_or((&template, ""));
-        // An invisible word about as wide as the 20 px key keeps its place in
-        // the sentence; a word, unlike spaces, never breaks across lines.
-        const ROOM: &str = "MM";
-        let start = before.len();
-        let end = start + ROOM.len();
-        let sentence = StyledText::new(format!("{before}{ROOM}{after}")).with_highlights([(
-            start..end,
-            HighlightStyle {
-                fade_out: Some(1.),
-                ..Default::default()
-            },
-        )]);
-        let layout = sentence.layout().clone();
-        let glyph: Option<SharedString> = Some(
-            crate::frontend::assets::ui_icon("PanelIcon").unwrap_or_else(|| {
-                gpui_kit::assets::IconNamed::path(theme::icon_name("PanelIcon"))
-            }),
-        );
-        let (control, stroke, ink) = (p.control, p.stroke, p.ink);
-        div()
-            .relative()
-            .child(sentence)
-            .child(
-                canvas(
-                    |_, _, _| {},
-                    move |_, _, window, cx| {
-                        let (Some(from), Some(to)) = (
-                            layout.position_for_index(start),
-                            layout.position_for_index(end),
-                        ) else {
-                            return;
-                        };
-                        let center = if (to.y - from.y).abs() < px(1.) {
-                            (from.x + to.x) / 2.
-                        } else {
-                            from.x + px(12.)
-                        };
-                        let key = Bounds::new(
-                            point(
-                                center - px(10.),
-                                from.y + (layout.line_height() - px(18.)) / 2.,
-                            ),
-                            size(px(20.), px(18.)),
-                        );
-                        window.paint_quad(quad(
-                            key,
-                            px(4.),
-                            control,
-                            px(1.),
-                            stroke,
-                            BorderStyle::Solid,
-                        ));
-                        if let Some(glyph) = glyph.clone() {
-                            let _ = window.paint_svg(
-                                Bounds::new(
-                                    point(key.center().x - px(6.), key.center().y - px(6.)),
-                                    size(px(12.), px(12.)),
-                                ),
-                                glyph,
-                                None,
-                                TransformationMatrix::unit(),
-                                ink,
-                                cx,
-                            );
-                        }
-                    },
-                )
-                .absolute()
-                .inset_0(),
-            )
-            .into_any_element()
+        let key = div()
+            .w(px(KEY_WIDTH))
+            .h(px(KEY_HEIGHT))
+            .flex()
+            .items_center()
+            .justify_center()
+            .border_1()
+            .border_color(p.stroke)
+            .rounded(px(4.))
+            .bg(p.control)
+            .child(icon("PanelIcon", p.ink).w(px(KEY_GLYPH)).h(px(KEY_GLYPH)));
+        inline::inline_text(
+            tr!("details.overview.closeTip", icon = MARK),
+            vec![inline::part(
+                MARK,
+                key,
+                px(KEY_MARGIN),
+                inline::Align::Baseline {
+                    baseline: px(KEY_BASELINE),
+                    drop: px(KEY_DROP),
+                },
+            )],
+        )
+        .into_any_element()
     }
 
     /// This computer's parts, each a way to its view on the performance page
