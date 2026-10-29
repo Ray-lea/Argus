@@ -1278,6 +1278,13 @@ impl Desktop {
         if let Some(section) = control["settingsSection"].as_str() {
             self.preference("settingsSection", json!(section), window, cx);
         }
+        if let (Some(section), Some(item)) = (
+            control["locate"]["section"].as_str(),
+            control["locate"]["item"].as_str(),
+        ) {
+            // Points out a settings card as a notice does (test only).
+            self.locate_setting(section, item, window, cx);
+        }
         if let Some(label) = control["inspectLayout"].as_str() {
             println!(
                 "{}",

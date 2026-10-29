@@ -452,6 +452,25 @@ pub fn bezier(x1: f32, y1: f32, x2: f32, y2: f32, t: f32) -> f32 {
     }
     curve(y1, y2, (low + high) / 2.)
 }
+/// `from` moved toward `to` by `t`, the way CSS animates and `color-mix`es
+/// colours: premultiplied sRGB, alpha included. (`Hsla::blend` keeps the
+/// first colour's alpha, so it cannot bring a translucent stroke to the accent.)
+pub fn mix(from: Hsla, to: Hsla, t: f32) -> Hsla {
+    let (a, b) = (Rgba::from(from), Rgba::from(to));
+    let t = t.clamp(0., 1.);
+    let alpha = a.a + (b.a - a.a) * t;
+    if alpha <= 0. {
+        return Hsla::transparent_black();
+    }
+    let channel = |x: f32, y: f32| (x * a.a + (y * b.a - x * a.a) * t) / alpha;
+    Rgba {
+        r: channel(a.r, b.r),
+        g: channel(a.g, b.g),
+        b: channel(a.b, b.b),
+        a: alpha,
+    }
+    .into()
+}
 /// Fluent's decelerating entrance curve.
 pub fn ease_out(t: f32) -> f32 {
     bezier(0.1, 0.9, 0.2, 1., t)

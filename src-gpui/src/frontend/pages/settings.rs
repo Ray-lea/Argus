@@ -159,6 +159,37 @@ impl Desktop {
             .unwrap_or(0.)
     }
 
+    /// A located card's border and fill (pages.css `setting-located`): eased
+    /// from the accent and from 12 % accent back to the card's own.
+    fn located_colors(&self, tint: f32) -> (Hsla, Hsla) {
+        let p = self.palette;
+        if tint <= 0. {
+            return (p.stroke, p.layer);
+        }
+        (
+            theme::mix(p.stroke, p.accent, tint),
+            theme::mix(p.layer, theme::mix(p.layer, p.accent, 0.12), tint),
+        )
+    }
+
+    /// A located card's 1 px accent ring just outside its border (the
+    /// keyframe's `box-shadow: 0 0 0 1px`), fading with it. Absolute inside
+    /// the card: a GPUI shadow would tint the translucent card under it.
+    fn located_ring(&self, tint: f32) -> Option<AnyElement> {
+        (tint > 0.).then(|| {
+            div()
+                .absolute()
+                .top(px(-2.))
+                .left(px(-2.))
+                .right(px(-2.))
+                .bottom(px(-2.))
+                .rounded(px(7.))
+                .border_1()
+                .border_color(self.palette.accent.opacity(tint))
+                .into_any_element()
+        })
+    }
+
     /// One setting (`.setting`): icon, title and description, controls on the right.
     pub(in crate::frontend) fn setting(
         &self,
@@ -171,6 +202,7 @@ impl Desktop {
     ) -> AnyElement {
         let p = self.palette;
         let tint = self.located_tint(id);
+        let (border, fill) = self.located_colors(tint);
         div()
             .id(SharedString::from(format!("setting-{id}")))
             .flex()
@@ -180,17 +212,10 @@ impl Desktop {
             .px(px(16.))
             .py(px(12.))
             .border_1()
-            .border_color(if tint > 0. {
-                p.stroke.blend(p.accent.opacity(tint))
-            } else {
-                p.stroke
-            })
+            .border_color(border)
             .rounded(px(6.))
-            .bg(if tint > 0. {
-                p.layer.blend(p.accent.opacity(0.12 * tint))
-            } else {
-                p.layer
-            })
+            .bg(fill)
+            .children(self.located_ring(tint))
             .child(
                 div()
                     .w(px(20.))
@@ -275,18 +300,16 @@ impl Desktop {
     ) -> AnyElement {
         let p = self.palette;
         let tint = self.located_tint(id);
+        let (border, fill) = self.located_colors(tint);
         div()
             .id(SharedString::from(format!("setting-{id}")))
             .flex()
             .flex_col()
             .border_1()
-            .border_color(if tint > 0. {
-                p.stroke.blend(p.accent.opacity(tint))
-            } else {
-                p.stroke
-            })
+            .border_color(border)
             .rounded(px(6.))
-            .bg(p.layer)
+            .bg(fill)
+            .children(self.located_ring(tint))
             .child(
                 div()
                     .flex()
@@ -3212,18 +3235,15 @@ impl Desktop {
                 )
         });
         let tint = self.located_tint("hotkey");
-        div()
+        let (border, fill) = self.located_colors(tint);
+        let card = div()
             .id("setting-hotkey")
             .flex()
             .flex_col()
             .border_1()
-            .border_color(if tint > 0. {
-                p.stroke.blend(p.accent.opacity(tint))
-            } else {
-                p.stroke
-            })
+            .border_color(border)
             .rounded(px(6.))
-            .bg(p.layer)
+            .bg(fill)
             .overflow_hidden()
             .child(head)
             .children(drawer)
@@ -3249,8 +3269,18 @@ impl Desktop {
                         this.finish_hotkey(true, false, window, cx);
                     }
                 }))
-            })
-            .into_any_element()
+            });
+        // The card clips its drawer, so its ring sits on a wrapper.
+        match self.located_ring(tint) {
+            Some(ring) => div()
+                .relative()
+                .flex()
+                .flex_col()
+                .child(card)
+                .child(ring)
+                .into_any_element(),
+            None => card.into_any_element(),
+        }
     }
 
     pub(in crate::frontend) fn begin_hotkey(
