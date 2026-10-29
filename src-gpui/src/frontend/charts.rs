@@ -251,8 +251,17 @@ impl MetricFormat {
 pub(in crate::frontend) const KIB: f64 = 1024.;
 pub(in crate::frontend) const MIB: f64 = KIB * 1024.;
 pub(in crate::frontend) const GIB: f64 = MIB * 1024.;
-/// Watts with sensible precision: 7.4, 78.
+/// Watts with sensible precision: 7.4, 78, and the sub-watt readings of an
+/// idle integrated GPU kept: 0.012.
 pub(in crate::frontend) fn watts(value: f64) -> String {
+    if value > 0. && value < 1. {
+        format!("{value:.3}")
+    } else {
+        watts_tenths(value)
+    }
+}
+/// Watts to a tenth below 10 W, as the history page shows them: 7.4, 78.
+pub(in crate::frontend) fn watts_tenths(value: f64) -> String {
     if value < 10. {
         format!("{value:.1}")
     } else {

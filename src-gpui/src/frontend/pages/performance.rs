@@ -17,6 +17,8 @@ const STAT_GAP_X: f32 = 20.;
 const STAT_GAP_Y: f32 = 14.;
 /// Gap between the figures and the specs beside them.
 const STATS_GAP: f32 = 28.;
+/// Widest a figure's explanation runs before it wraps.
+const HINT_WIDTH: f32 = 420.;
 /// The CPU's figures and specs go side by side from this width each.
 const CPU_STATS_MIN: f32 = 320.;
 /// How long the CPU charts take to settle in after another graph or core type.
@@ -831,6 +833,22 @@ impl Desktop {
             })
             .into_any_element()
     }
+    /// A figure explained on hover, as the original's `title` does. The
+    /// explanation wraps like a system tooltip instead of running off the window.
+    fn hinted(&self, id: &'static str, hint: Option<String>, stat: AnyElement) -> AnyElement {
+        let hint = hint.map(SharedString::from);
+        match hint {
+            Some(hint) => div()
+                .id(id)
+                .min_w_0()
+                .child(stat)
+                .tooltip(move |window, cx| {
+                    widgets::wrapping_tooltip(hint.clone(), px(HINT_WIDTH), window, cx)
+                })
+                .into_any_element(),
+            None => stat,
+        }
+    }
     /// A figure split into number and unit.
     fn stat_parts(&self, title: String, value: String, cx: &App) -> AnyElement {
         let (number, unit) = split(value);
@@ -1236,10 +1254,10 @@ impl Desktop {
                 cx,
             ));
         }
+        // Graphics power belongs to the GPU view, where its source is named.
         for (field, title) in [
             ("package", "performance.cpu.packagePower"),
             ("cores", "performance.cpu.corePower"),
-            ("graphics", "performance.cpu.graphicsPower"),
         ] {
             if let Some(watts) = hw["power"][field].as_f64() {
                 stats.push(self.stat(

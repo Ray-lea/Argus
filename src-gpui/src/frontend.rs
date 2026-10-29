@@ -4,6 +4,7 @@ mod backend;
 mod charts;
 mod collation;
 mod dialogs;
+mod gpu_usage;
 mod layout;
 mod menus;
 mod model;

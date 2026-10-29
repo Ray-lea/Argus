@@ -1,6 +1,8 @@
 //! Renderer-independent view state and deterministic process identity/grouping.
 use super::collation::{self, SortKey};
+use super::gpu_usage::{self, GpuUsage};
 use serde_json::{Value, json};
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -177,6 +179,9 @@ pub struct Row {
     pub note: Option<String>,
     pub pinned: bool,
     visible_members: Option<Vec<Value>>,
+    /// An app group's or section's GPU usage, aggregated per physical engine;
+    /// a process row reads its own.
+    gpu: Option<GpuUsage>,
 }
 impl Row {
     fn new(raw: Value, depth: usize, title: String, detail: String, sort_name: SortKey) -> Self {
@@ -195,6 +200,7 @@ impl Row {
             note: None,
             pinned: false,
             visible_members: None,
+            gpu: None,
         }
     }
     pub fn process(raw: Value, depth: usize) -> Self {
@@ -232,12 +238,22 @@ impl Row {
                     .sum(),
             );
         }
-        let total = self
-            .members
+        if key == "gpu"
+            && let Some(usage) = &self.gpu
+        {
+            return Some(usage.gpu);
+        }
+        self.members
             .iter()
             .filter_map(|p| p[key].as_f64())
-            .reduce(|sum, value| sum + value);
-        total.map(|value| if key == "gpu" { value.min(100.) } else { value })
+            .reduce(|sum, value| sum + value)
+    }
+    /// The GPU usage a heading folds in: a group's aggregate or the process's own reading.
+    fn gpu_usage(&self) -> Cow<'_, GpuUsage> {
+        match &self.gpu {
+            Some(usage) => Cow::Borrowed(usage),
+            None => Cow::Owned(GpuUsage::of_process(&self.raw)),
+        }
     }
 }
 pub struct ProcessOptions<'a> {
@@ -417,6 +433,10 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
                 }
                 let mut row = Row::labeled(first.clone(), 0, label, detail);
                 row.key = key;
+                // Every member counts, also those a search leaves out.
+                row.gpu = Some(gpu_usage::aggregate(
+                    members.iter().map(|p| GpuUsage::of_process(p)),
+                ));
                 row.members = members.into_iter().cloned().collect();
                 row.expandable = true;
                 row.expanded = options.expanded.contains(&row.key)
@@ -463,6 +483,8 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
             heading.section = Some(section.into());
             heading.title = argus_core::i18n::text(&format!("processes.section.{section}"));
             heading.members = grouped.iter().flat_map(|r| r.members.clone()).collect();
+            // Top-level rows only: a group's usage already includes its members.
+            heading.gpu = Some(gpu_usage::aggregate(grouped.iter().map(Row::gpu_usage)));
             heading.raw["entryCount"] = json!(grouped.len());
             heading.expandable = true;
             heading.expanded = !options.sections.contains(section) || !query.is_empty();
@@ -1030,8 +1052,8 @@ mod tests {
     #[test]
     fn expanded_apps_distinguish_members_and_bound_gpu_totals() {
         let processes = vec![
-            json!({"pid":1,"createTime":1,"name":"app.exe","description":"Product","path":"C:/app.exe","gpu":70}),
-            json!({"pid":2,"createTime":2,"name":"app.exe","description":"Product","path":"C:/app.exe","gpu":50}),
+            json!({"pid":1,"createTime":1,"name":"app.exe","description":"Product","path":"C:/app.exe","gpu":70,"gpuEngine":"GPU 0 - 3D","gpuEngines":[{"id":"1:0:0","name":"GPU 0 - 3D","util":70}]}),
+            json!({"pid":2,"createTime":2,"name":"app.exe","description":"Product","path":"C:/app.exe","gpu":50,"gpuEngine":"GPU 0 - 3D","gpuEngines":[{"id":"1:0:0","name":"GPU 0 - 3D","util":50}]}),
         ];
         let empty = HashSet::new();
         let expanded = HashSet::from([application_key(&processes[0])]);
@@ -1054,6 +1076,48 @@ mod tests {
         assert!(rows[1].detail.is_empty());
         assert_eq!(rows[1].depth, 1);
         assert_ne!(rows[1].key, rows[2].key);
+    }
+    #[test]
+    fn app_groups_and_headings_take_the_busiest_physical_engine() {
+        let process = |pid: u64, path: &str, engines: Value| {
+            json!({"pid":pid,"createTime":pid,"name":"app.exe","description":"Product","path":path,
+                "gpu":values(&engines).iter().map(|e| number(e, "util")).fold(0., f64::max),
+                "gpuEngines":engines})
+        };
+        let processes = vec![
+            process(
+                1,
+                "C:/a.exe",
+                json!([{"id":"1:0:0","name":"GPU 0 - 3D","util":40}]),
+            ),
+            process(
+                2,
+                "C:/a.exe",
+                json!([{"id":"2:0:3","name":"GPU 1 - Video Decode","util":35}]),
+            ),
+            process(
+                3,
+                "C:/b.exe",
+                json!([{"id":"1:0:0","name":"GPU 0 - 3D","util":30}]),
+            ),
+        ];
+        let rows = rows_of(&processes, "apps", "", "name", false, &HashMap::new());
+        let group = rows.iter().find(|row| row.members.len() == 2).unwrap();
+        assert_eq!(group.metric("gpu"), Some(40.));
+        // The heading folds the group in by engine: 40% + 30% on one 3D node.
+        assert_eq!(rows[0].section.as_deref(), Some("background"));
+        assert_eq!(rows[0].metric("gpu"), Some(70.));
+        // Rows labelled with one busy engine add up on it, as the original's heading does.
+        let labeled = |pid: u64, gpu: f64| json!({"pid":pid,"createTime":1,"name":format!("{pid}.exe"),"gpu":gpu,"gpuEngine":"GPU 0 - 3D"});
+        let rows = rows_of(
+            &[labeled(1, 40.), labeled(2, 40.), labeled(3, 30.)],
+            "list",
+            "",
+            "name",
+            false,
+            &HashMap::new(),
+        );
+        assert_eq!(rows[0].metric("gpu"), Some(100.));
     }
     #[test]
     fn shared_hosts_never_merge_unrelated_instances() {

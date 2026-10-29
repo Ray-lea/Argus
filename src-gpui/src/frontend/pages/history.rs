@@ -443,7 +443,7 @@ impl Desktop {
                     .as_f64()
                     .filter(|rate| *rate != 0.)
                     .map(|rate| {
-                        let value = format!("{} W", charts::watts(rate.abs() / 1000.));
+                        let value = format!("{} W", charts::watts_tenths(rate.abs() / 1000.));
                         if rate > 0. {
                             tr!("history.metric.charging", value = value)
                         } else {
