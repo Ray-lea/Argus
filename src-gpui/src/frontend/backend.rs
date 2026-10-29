@@ -1247,6 +1247,36 @@ impl Desktop {
             }
             self.take_connections();
         }
+        // A sample made up from the current one (fixture only), accepted as a
+        // collected one: taken `at` ms from now on the wall clock, with `set`
+        // replacing values by JSON pointer. The first one starts the chart
+        // clock as in a live session, so that a test can watch curves scroll
+        // while samples arrive (`chartTime` still stops it).
+        if self.options.fixture.is_some()
+            && let Some(sample) = control.get("sample")
+        {
+            let wall = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs_f64()
+                * 1000.;
+            let mut snapshot = self.snapshot.clone();
+            snapshot["timestamp"] = json!((wall + number(sample, "at")).round());
+            snapshot["seq"] = json!(self.sequence + 1);
+            if let Some(set) = sample["set"].as_object() {
+                for (pointer, value) in set {
+                    if let Some(slot) = snapshot.pointer_mut(pointer) {
+                        *slot = value.clone();
+                    }
+                }
+            }
+            self.accept_snapshot(snapshot, cx);
+            if !self.fixture_samples {
+                self.fixture_samples = true;
+                self.chart_clock.borrow_mut().set_paused(false);
+            }
+            cx.notify();
+        }
         // A command in flight (fixture only): held and never dispatched, so the
         // view shows what it shows while waiting, until `resolve` answers it.
         if self.options.fixture.is_some()

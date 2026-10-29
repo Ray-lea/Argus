@@ -1859,7 +1859,7 @@ impl Desktop {
                 .as_deref()
                 .unwrap_or(if system { "fluid" } else { "off" }),
         );
-        if self.options.fixture.is_some() {
+        if self.options.fixture.is_some() && !self.fixture_samples {
             self.chart_clock.borrow_mut().set_paused(true);
         }
     }
@@ -1870,7 +1870,7 @@ impl Desktop {
     ) {
         let active = matches!(self.page.as_str(), "processes" | "performance")
             && self.modal.is_none()
-            && self.options.fixture.is_none()
+            && (self.options.fixture.is_none() || self.fixture_samples)
             && self.host.get_window("main").is_some_and(|w| {
                 w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
             });
