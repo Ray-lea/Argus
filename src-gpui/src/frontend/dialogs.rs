@@ -1558,9 +1558,7 @@ impl Desktop {
                                         .border_1()
                                         .border_color(p.stroke)
                                         .rounded(px(10.))
-                                        // `--layer-strong` (the palette's `layer_strong` is the
-                                        // menu surface)
-                                        .bg(theme::token("layer-strong", p.dark))
+                                        .bg(p.layer_strong)
                                         .child(icon("RunTaskIcon", p.accent).size(px(24.))),
                                 )
                                 .child(

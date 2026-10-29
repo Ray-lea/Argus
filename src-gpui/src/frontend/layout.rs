@@ -637,8 +637,7 @@ impl Desktop {
                         theme::mix(p.control_face, p.accent, 0.09),
                     )
                 } else if focused {
-                    // `--layer-strong` (the palette's `layer_strong` is the menu surface)
-                    (p.stroke, theme::token("layer-strong", p.dark))
+                    (p.stroke, p.layer_strong)
                 } else {
                     (p.stroke, p.control_face)
                 };

@@ -138,7 +138,8 @@ impl Palette {
                 colors.background
             },
             layer: colors.group_box,
-            layer_strong: colors.popover,
+            // `--layer-strong`: raised marks and pills (the menus' surface is `popover`).
+            layer_strong: token("layer-strong", dark),
             stroke: colors.border,
             tip: token("tip", dark),
             control: colors.secondary,
