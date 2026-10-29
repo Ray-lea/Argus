@@ -11,7 +11,8 @@
   "pages": "Pages",
   "nav": {
     "expand": "Expand navigation",
-    "collapse": "Collapse navigation"
+    "collapse": "Collapse navigation",
+    "resize": "Resize the navigation"
   },
   "page": {
     "processes": "Processes",

@@ -11,7 +11,8 @@
   "pages": "页面",
   "nav": {
     "expand": "展开导航",
-    "collapse": "收起导航"
+    "collapse": "收起导航",
+    "resize": "调整导航栏宽度"
   },
   "page": {
     "processes": "进程",

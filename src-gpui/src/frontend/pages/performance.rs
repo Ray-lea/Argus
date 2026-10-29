@@ -367,7 +367,7 @@ impl Desktop {
         let navigation = if self.nav_top {
             0.
         } else if self.nav_expanded {
-            192.
+            self.nav_width + 8.
         } else {
             48.
         };

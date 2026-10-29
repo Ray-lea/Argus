@@ -500,10 +500,10 @@ impl Desktop {
         // narrow: `clamp(16px, 33cqw, 34rem / 13)` of the card's content width,
         // the unit `clamp(9px, 15cqw, 15rem / 13)`. The band spans the page
         // inside its margins and border; the CPU card is 1.3 parts.
-        let navigation = match (self.nav_top, self.nav_expanded) {
-            (true, _) => px(0.),
-            (false, true) => px(184.),
-            (false, false) => px(48.),
+        let navigation = if self.nav_top {
+            px(0.)
+        } else {
+            px(self.side_nav_width())
         };
         let band_width = window.viewport_size().width - navigation - px(2. * 12. + 2.);
         let parts = cards

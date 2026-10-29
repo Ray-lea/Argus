@@ -212,6 +212,8 @@ struct Desktop {
     next_request: u64,
     nav_top: bool,
     nav_expanded: bool,
+    /// The side navigation's expanded width (`navWidth`), set by dragging its edge.
+    nav_width: f32,
     details_open: bool,
     details_width: f32,
     perf_sidebar_width: f32,
@@ -338,6 +340,7 @@ impl Desktop {
             next_request: 0,
             nav_top: prefs.get::<String>("navPosition", "top".into()) == "top",
             nav_expanded: prefs.get("navExpanded", false),
+            nav_width: Desktop::clamp_nav_width(prefs.get("navWidth", layout::NAV_WIDTH)),
             details_open: prefs.get("detailsPanel", true),
             details_width: prefs
                 .get("detailsWidth", f32::from(theme::dimension("detailsWidth")))

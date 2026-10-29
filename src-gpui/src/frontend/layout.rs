@@ -2,6 +2,16 @@
 use super::*;
 use gpui_kit::base::ElementExt;
 use gpui_kit::component::ActiveTheme;
+
+/// The side navigation's expanded width by default (the original's fixed
+/// 184 px). Unlike the original, dragging its edge adjusts it, within these
+/// limits; collapsed, it is a 48 px rail.
+pub(in crate::frontend) const NAV_WIDTH: f32 = 184.;
+const NAV_MIN_WIDTH: f32 = 150.;
+const NAV_MAX_WIDTH: f32 = 320.;
+const NAV_RAIL: f32 = 48.;
+/// Navigation width change per arrow key on its edge.
+const NAV_KEY_STEP: f32 = 16.;
 impl Desktop {
     pub(in crate::frontend) fn set_theme(
         &mut self,
@@ -25,6 +35,93 @@ impl Desktop {
             frame.update(cx, |_, cx| cx.notify());
         }
         cx.notify();
+    }
+    /// A saved or dragged navigation width within its limits.
+    pub(in crate::frontend) fn clamp_nav_width(width: f32) -> f32 {
+        if width.is_finite() {
+            width.round().clamp(NAV_MIN_WIDTH, NAV_MAX_WIDTH)
+        } else {
+            NAV_WIDTH
+        }
+    }
+    /// The side navigation's width now: its expanded width, or the rail.
+    pub(in crate::frontend) fn side_nav_width(&self) -> f32 {
+        if self.nav_expanded {
+            self.nav_width
+        } else {
+            NAV_RAIL
+        }
+    }
+    /// The expanded side navigation's right edge: drag it, use the arrow keys,
+    /// Home or End, or double-click to go back to the default width.
+    fn nav_splitter(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette;
+        let focus = window
+            .use_keyed_state("nav-splitter-focus", cx, |_, cx| {
+                cx.focus_handle().tab_stop(true)
+            })
+            .read(cx)
+            .clone();
+        let dragging = self.drag.as_ref().is_some_and(|(kind, _, _)| kind == "nav");
+        let shown = dragging || focus.is_focused(window);
+        let grip = div()
+            .absolute()
+            .top(relative(0.5))
+            .mt(px(-16.))
+            .left(px(3.))
+            .w(px(2.))
+            .h(px(32.))
+            .rounded(px(1.))
+            .bg(if dragging {
+                p.accent
+            } else {
+                theme::token("stroke-strong", p.dark)
+            })
+            .when(!shown, |grip| {
+                grip.opacity(0.)
+                    .group_hover("nav-splitter", |style| style.opacity(1.))
+            });
+        div()
+            .id("nav-splitter")
+            .group("nav-splitter")
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .right(px(-4.))
+            .w(px(8.))
+            .cursor_col_resize()
+            .track_focus(&focus)
+            .role(Role::Splitter)
+            .aria_label(label("shell.nav.resize"))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                    if event.click_count >= 2 {
+                        this.drag = None;
+                        this.nav_width = NAV_WIDTH;
+                        this.prefs.set("navWidth", this.nav_width);
+                    } else {
+                        this.drag = Some(("nav".into(), event.position, this.nav_width));
+                    }
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                let width = match event.keystroke.key.as_str() {
+                    "left" => this.nav_width - NAV_KEY_STEP,
+                    "right" => this.nav_width + NAV_KEY_STEP,
+                    "home" => NAV_MIN_WIDTH,
+                    "end" => NAV_MAX_WIDTH,
+                    _ => return,
+                };
+                this.nav_width = Self::clamp_nav_width(width);
+                this.prefs.set("navWidth", this.nav_width);
+                cx.stop_propagation();
+                cx.notify();
+            }))
+            .child(grip)
+            .into_any_element()
     }
     pub(in crate::frontend) fn navigation(
         &self,
@@ -255,7 +352,8 @@ impl Desktop {
             .gap(px(4.))
             .px(px(4.))
             .pb(px(8.))
-            .w(px(if self.nav_expanded { 184. } else { 48. }))
+            .relative()
+            .w(px(self.side_nav_width()))
             .child(
                 // An entry like the pages': its icon lines up with theirs,
                 // at the start of the open pane (Button centres by default).
@@ -297,6 +395,9 @@ impl Desktop {
                     })),
             )
             .child(items)
+            .when(self.nav_expanded, |d| {
+                d.child(self.nav_splitter(window, cx))
+            })
             .into_any_element()
     }
     /// A toolbar button in the original `.btn` style: 32 px, a stroke border with a
@@ -562,7 +663,7 @@ impl Desktop {
                     // the page; compact levels give that room up first
                     // (`.toolbar[data-compact] .brand`).
                     .when(!self.nav_top && wide, |d| {
-                        d.min_w(px(if self.nav_expanded { 184. } else { 48. }) - px(8.))
+                        d.min_w(px(self.side_nav_width()) - px(8.))
                     })
                     .text_size(theme::font(12.))
                     .text_color(p.ink)
@@ -1094,6 +1195,8 @@ impl Desktop {
                 self.prefs.set("detailsWidth", self.details_width);
             } else if kind == "perf-sidebar" {
                 self.prefs.set("perfSideWidth", self.perf_sidebar_width);
+            } else if kind == "nav" {
+                self.prefs.set("navWidth", self.nav_width);
             }
         }
         cx.notify();
@@ -1120,6 +1223,10 @@ impl Desktop {
             } else if kind == "perf-sidebar" {
                 self.perf_sidebar_width =
                     (*start + f32::from(event.position.x - origin.x)).clamp(200., 440.);
+                cx.notify();
+            } else if kind == "nav" {
+                self.nav_width =
+                    Self::clamp_nav_width(*start + f32::from(event.position.x - origin.x));
                 cx.notify();
             }
         }
@@ -1158,7 +1265,7 @@ impl Render for Desktop {
             .min_h_0()
             .flex()
             .when(!self.nav_top, |d| {
-                let width = px(if self.nav_expanded { 184. } else { 48. });
+                let width = px(self.side_nav_width());
                 d.child(self.region(
                     regions::RegionKind::Navigation,
                     StyleRefinement::default().w(width).h_full().flex_shrink_0(),

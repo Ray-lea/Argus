@@ -1926,10 +1926,8 @@ impl Desktop {
             })
             - px(if self.nav_top {
                 0.
-            } else if self.nav_expanded {
-                184.
             } else {
-                48.
+                self.side_nav_width()
             });
         let selected = self
             .selected
