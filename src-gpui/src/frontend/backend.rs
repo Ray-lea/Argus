@@ -1370,7 +1370,13 @@ impl Desktop {
         {
             self.act(Action::Fold(row.key.clone()), window, cx);
         }
-        for key in ["navPosition", "navExpanded", "coreFilter", "uiMotion"] {
+        for key in [
+            "navPosition",
+            "navExpanded",
+            "coreFilter",
+            "uiMotion",
+            "historyRange",
+        ] {
             if let Some(value) = control.get(key) {
                 self.preference(key, value.clone(), window, cx);
             }

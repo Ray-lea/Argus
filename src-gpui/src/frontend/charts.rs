@@ -200,7 +200,8 @@ impl Series {
             source: 0,
         }
     }
-    fn source(mut self, source: u64) -> Self {
+    /// Names the data shown: a texture drawn for other data is never shown for it.
+    pub(in crate::frontend) fn source(mut self, source: u64) -> Self {
         self.source = source;
         self
     }
@@ -404,8 +405,25 @@ pub struct TimePlot {
     pub dash_phases: raster::DashPhases,
     /// A new top eases in: the top shown before, the target, and when the change began.
     pub rescale: Rc<Cell<Rescale>>,
+    /// When the hover readout's text last read the curve, kept from sample to sample.
+    pub readout: Rc<Cell<ReadoutClock>>,
     /// Captions drawn inside the frame, over the curve (set by the chart layer).
     pub(in crate::frontend) captions: Option<Rc<FrameCaptions>>,
+}
+/// How often a hover readout's text follows a curve gliding under a resting
+/// pointer, as the original's text timer: its dots ride the curve on every
+/// frame, while the text reads it ten times a second, and at once when a
+/// sample arrives or the pointer moves.
+const READOUT_EVERY: Duration = Duration::from_millis(100);
+/// When a live chart's hover readout last read the curve, and for what.
+#[derive(Clone, Copy, Default)]
+pub(in crate::frontend) struct ReadoutClock {
+    /// The pointer's x, the drawing's first time (a new one for every
+    /// sample) and the chart mode the text was read for.
+    key: Option<(u32, u64, motion::Mode)>,
+    /// The window end the text was read at, and when.
+    end: f64,
+    read: Option<Instant>,
 }
 /// A chart's captions drawn inside its frame, over the curve and under the
 /// readout: the short performance card's (`@container perf (max-height:
@@ -462,7 +480,7 @@ impl FrameCaptions {
             .collect()
     }
 }
-fn hash_of(value: impl std::hash::Hash) -> u64 {
+pub(in crate::frontend) fn hash_of(value: impl std::hash::Hash) -> u64 {
     use std::hash::Hasher;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     value.hash(&mut hasher);
@@ -1071,14 +1089,26 @@ impl Plot for TimePlot {
         let width = f32::from(bounds.size.width).max(1.);
         let x = cursor.x.clamp(px(0.), bounds.size.width);
         let at = start + (f32::from(x) / width) as f64 * span;
-        let rows = self
-            .series
-            .iter()
-            .filter_map(|s| curve_at(&s.points, at).map(|v| (s, v)))
-            .collect::<Vec<_>>();
-        if rows.is_empty() {
+        let read = |at: f64| {
+            self.series
+                .iter()
+                .filter_map(|s| curve_at(&s.points, at).map(|v| (s, v)))
+                .collect::<Vec<_>>()
+        };
+        // The dots sit on the curve as drawn this frame; the text reads it on
+        // the readout's own clock (see `readout_end`).
+        let dots = read(at);
+        let mut end_read = self.readout_end(x, end, false);
+        let mut rows = read(at + (end_read - end));
+        if rows.is_empty() && end_read != end {
+            // The curve under the cursor only just began: read it now.
+            end_read = self.readout_end(x, end, true);
+            rows = read(at);
+        }
+        if rows.is_empty() || dots.is_empty() {
             return None;
         }
+        let (end, at) = (end_read, at + (end_read - end));
         // Age counted from now: a moving trace keeps its age at a fixed point.
         let reference = match &self.live_clock {
             Some(clock) if clock.borrow().mode != motion::Mode::Off => {
@@ -1126,10 +1156,10 @@ impl Plot for TimePlot {
             } else {
                 tr!("performance.chart.ago", seconds = age)
             }));
-        let mut dots = Vec::with_capacity(rows.len());
-        for (series, value) in rows {
-            let y = self.y_of(value, bounds);
-            dots.push(
+        let dots = dots
+            .into_iter()
+            .map(|(series, value)| {
+                let y = self.y_of(value, bounds);
                 div()
                     .absolute()
                     .left(x - px(4.5))
@@ -1138,8 +1168,10 @@ impl Plot for TimePlot {
                     .rounded_full()
                     .border_2()
                     .border_color(palette.tip)
-                    .bg(series.color),
-            );
+                    .bg(series.color)
+            })
+            .collect::<Vec<_>>();
+        for (series, value) in rows {
             tip = tip.child(
                 div()
                     .flex()
@@ -1187,6 +1219,39 @@ impl TimePlot {
             })
             .unwrap_or(self.end);
         (end - span, end, span)
+    }
+    /// The window end the hover readout's text reads the curve at, for the
+    /// pointer at `x` with the window ending at `end` this frame. While the
+    /// curve glides (fluid and balanced) the text holds for `READOUT_EVERY`
+    /// unless the pointer moves, a sample arrives or the mode changes, as the
+    /// original's text timer: read on every frame, it changed with each one.
+    /// Pixel and off modes move the curve a pixel or a sample at a time, so the
+    /// text follows each step, as there. `fresh` reads anew regardless.
+    fn readout_end(&self, x: Pixels, end: f64, fresh: bool) -> f64 {
+        let Some(clock) = &self.live_clock else {
+            return end;
+        };
+        let mode = clock.borrow().mode;
+        // The layer moves `start` and `end` on every frame; the drawing's
+        // first time changes only with the data.
+        let key = (f32::from(x).to_bits(), self.geometry_start.to_bits(), mode);
+        let now = Instant::now();
+        let shown = self.readout.get();
+        let held = !fresh
+            && matches!(mode, motion::Mode::Fluid | motion::Mode::Balanced)
+            && shown.key == Some(key)
+            && shown
+                .read
+                .is_some_and(|read| now.saturating_duration_since(read) < READOUT_EVERY);
+        if held {
+            return shown.end;
+        }
+        self.readout.set(ReadoutClock {
+            key: Some(key),
+            end,
+            read: Some(now),
+        });
+        end
     }
     /// The height a value is drawn at, as the raster lays it out.
     fn y_of(&self, value: f64, bounds: Bounds<Pixels>) -> Pixels {
@@ -1545,6 +1610,10 @@ impl Desktop {
             .get(id)
             .map(|entry| entry.plot.borrow().rescale.clone())
             .unwrap_or_default();
+        let readout = entries
+            .get(id)
+            .map(|entry| entry.plot.borrow().readout.clone())
+            .unwrap_or_default();
         let now = Instant::now();
         let moving = self.chart_clock.borrow().mode != motion::Mode::Off
             && !(self.paused || self.control_paused);
@@ -1640,6 +1709,7 @@ impl Desktop {
             bar_glides,
             dash_phases,
             rescale,
+            readout,
             captions: None,
         };
         let plot_rc = if let Some(entry) = entries.get_mut(id) {
@@ -1909,8 +1979,67 @@ pub(in crate::frontend) fn nice_max(value: f64) -> f64 {
 }
 #[cfg(test)]
 mod tests {
-    use super::{BarGlide, nice_max, segments, smooth_run};
+    use super::{
+        BarGlide, MetricFormat, READOUT_EVERY, Series, TimePlot, nice_max, segments, smooth_run,
+    };
+    use crate::frontend::motion;
+    use gpui_kit::gpui::{px, rgb};
     use std::time::{Duration, Instant};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
+    fn live_plot(clock: Rc<RefCell<motion::Clock>>) -> TimePlot {
+        TimePlot {
+            id: "readout-test".into(),
+            series: vec![Series::new(
+                String::new(),
+                vec![(0., Some(30.)), (1000., Some(60.))],
+                rgb(0x28b8e0).into(),
+                MetricFormat::Percent,
+            )],
+            start: 0.,
+            end: 1000.,
+            max: 100.,
+            min: 0.,
+            interactive: true,
+            grid: false,
+            fill: false,
+            bars: false,
+            background_separate: false,
+            smooth: true,
+            ticks: None,
+            geometry_start: 0.,
+            measured_width: Rc::new(Cell::new(100.)),
+            live_clock: Some(clock),
+            image_surface: Default::default(),
+            bar_surfaces: Default::default(),
+            bar_glides: Default::default(),
+            dash_phases: Default::default(),
+            rescale: Default::default(),
+            readout: Default::default(),
+            captions: None,
+        }
+    }
+    #[test]
+    fn readout_text_reads_a_gliding_curve_ten_times_a_second() {
+        let clock = Rc::new(RefCell::new(motion::Clock::new(motion::Mode::Fluid)));
+        let mut plot = live_plot(clock.clone());
+        assert_eq!(plot.readout_end(px(40.), 1000., false), 1000.);
+        // The next frames: the text still reads where it did.
+        assert_eq!(plot.readout_end(px(40.), 1006., false), 1000.);
+        // The pointer moves, or a sample arrives: it reads at once.
+        assert_eq!(plot.readout_end(px(41.), 1012., false), 1012.);
+        plot.geometry_start += 1000.;
+        assert_eq!(plot.readout_end(px(41.), 1018., false), 1018.);
+        assert_eq!(plot.readout_end(px(41.), 1024., true), 1024.);
+        std::thread::sleep(READOUT_EVERY);
+        assert_eq!(plot.readout_end(px(41.), 1130., false), 1130.);
+        // A curve moving a pixel (or a sample) at a time is read at each step.
+        clock.borrow_mut().mode = motion::Mode::Pixel;
+        assert_eq!(plot.readout_end(px(41.), 1131., false), 1131.);
+        assert_eq!(plot.readout_end(px(41.), 1132., false), 1132.);
+    }
     #[test]
     fn smoothing_preserves_peaks_and_uneven_sample_times() {
         let points = [(0., 0.), (10., 100.), (37., 20.), (40., 20.), (100., 80.)];
