@@ -1,6 +1,6 @@
 # 特权服务
 
-`crates/argus-service` 提供可选的 Windows 服务；设置入口见[权限](../guide/settings.md#权限)。服务以 LocalSystem 运行，不创建窗口或 WebView。目前承接手动进程操作、自动规则中的操作、按需每进程网络、磁盘读写与 CPU 内核传感器采集、句柄查询、服务控制和断开 IPv4 TCP 连接；其他采集仍在 原生宿主执行。
+`crates/argus-service` 提供可选的 Windows 服务；设置入口见[权限](../guide/settings.md#权限)。服务以 LocalSystem 运行，不创建窗口或 WebView。目前承接手动进程操作、自动规则中的操作、按需每进程网络、磁盘读写与 CPU 内核传感器采集、句柄查询、服务控制和断开 IPv4 TCP 连接；其他采集仍在原生宿主执行。
 
 ## 模块
 

@@ -35,7 +35,7 @@ CPU 占用统计已验证的 x64 系统包括 Windows 10 LTSC 2019（17763）、
 
 ## 系统兼容范围
 
-安装版与免安装版支持 Windows 10 22H2（内部版本 19045）及以上的 x64 系统，包括 Windows 11，均需 WebView2 运行时。完整功能验证以 Windows 10 22H2 为最低基线；CPU 采集专项验证还覆盖 Windows 10 LTSC 2019（17763）和 21H2。
+安装版与免安装版支持 Windows 10 22H2（内部版本 19045）及以上的 x64 系统，包括 Windows 11，需要支持 DirectX 11 的图形设备与驱动。完整功能验证以 Windows 10 22H2 为最低基线；CPU 采集专项验证还覆盖 Windows 10 LTSC 2019（17763）和 21H2。
 
 | 功能 | Windows 10 22H2 | Windows 11 |
 |---|---|---|
