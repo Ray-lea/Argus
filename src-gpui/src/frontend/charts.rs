@@ -592,6 +592,8 @@ pub(super) struct Placement {
     plot: Rc<RefCell<TimePlot>>,
     /// The chart's own fade (a view settling in), on top of the page's.
     opacity: f32,
+    /// The chart's own move inside its clip (a view arriving), on top of the page's.
+    offset: Point<Pixels>,
     /// Captions the chart layer draws inside the frame.
     captions: Option<Rc<FrameCaptions>>,
 }
@@ -767,10 +769,11 @@ impl Render for ChartLayer {
                             (placement.bounds, placement.mask, 1.)
                         };
                         let placement = Placement {
-                            bounds: moved + shift,
+                            bounds: moved + shift + placement.offset,
                             mask: mask + shift,
                             plot: placement.plot.clone(),
                             opacity: placement.opacity * fade,
+                            offset: Point::default(),
                             captions: placement.captions.clone(),
                         };
                         let clip = placement
@@ -1237,6 +1240,7 @@ impl Desktop {
         let placements = self.chart_placements.clone();
         let placed_plot = plot_rc.clone();
         let opacity = self.chart_fade.get();
+        let offset = self.chart_shift.get();
         // The name and top above the frame, the span and zero below it; in a
         // short performance card, inside the frame (drawn by the chart layer).
         let captions = look.caption.as_ref().map(|caption| {
@@ -1271,6 +1275,7 @@ impl Desktop {
                         mask: window.content_mask().bounds,
                         plot: placed_plot.clone(),
                         opacity,
+                        offset,
                         captions: inside.clone(),
                     },
                 );

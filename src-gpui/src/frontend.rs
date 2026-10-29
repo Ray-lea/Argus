@@ -150,6 +150,9 @@ struct Desktop {
     pane_motion: Rc<RefCell<charts::PaneMotion>>,
     /// Opacity of the live charts being built: a view settling in fades its charts.
     chart_fade: Cell<f32>,
+    /// How far the live charts being built are drawn from their place, inside
+    /// their clip: the performance view arriving moves its charts.
+    chart_shift: Cell<Point<Pixels>>,
     /// Whether the charts being built draw their captions inside the frame
     /// (a short performance card).
     chart_captions_inside: Cell<bool>,
@@ -278,6 +281,7 @@ impl Desktop {
             page_shift: Rc::new(Cell::new(Point::default())),
             pane_motion: Rc::default(),
             chart_fade: Cell::new(1.),
+            chart_shift: Cell::new(Point::default()),
             chart_captions_inside: Cell::new(false),
             perf_card_chrome: Rc::new(Cell::new(None)),
             chart_tick_queued: false,
