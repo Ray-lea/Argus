@@ -251,8 +251,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search =
-            cx.new(|cx| InputState::new(window, cx).placeholder(tr!("shell.search.processes")));
+        let search = cx.new(|cx| InputState::new(window, cx));
         let settings =
             crate::dispatch::invoke(&host, "get_settings", json!({})).unwrap_or(Value::Null);
         let info = crate::dispatch::invoke(&host, "app_info", json!({})).unwrap_or(Value::Null);
@@ -513,7 +512,6 @@ impl Desktop {
             });
         }
         this.poll_page(window, cx);
-        this.change_placeholder(window, cx);
         this.apply_motion(cx);
         this
     }

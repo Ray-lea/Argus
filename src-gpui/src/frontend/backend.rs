@@ -198,7 +198,6 @@ impl Desktop {
                     self.set_theme(event.value.as_bool().unwrap_or(false), window, cx);
                 }
                 "argus-language" => {
-                    self.change_placeholder(window, cx);
                     changed = true;
                 }
                 "argus-blur" => {
@@ -418,16 +417,6 @@ impl Desktop {
             _ => {}
         }
     }
-    pub(in crate::frontend) fn change_placeholder(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let key = self.search_placeholder();
-        self.search.update(cx, |state, cx| {
-            state.set_placeholder(label(key), window, cx)
-        });
-    }
     /// The locale key of the search box placeholder on the current page.
     pub(in crate::frontend) fn search_placeholder(&self) -> &'static str {
         match self.page.as_str() {
@@ -554,7 +543,6 @@ impl Desktop {
                 self.query = self.queries.get(&self.page).cloned().unwrap_or_default();
                 self.search
                     .update(cx, |s, cx| s.set_value(self.query.clone(), window, cx));
-                self.change_placeholder(window, cx);
                 self.horizontal = 0.;
                 self.popup = None;
                 self.rebuild_rows(false, cx);

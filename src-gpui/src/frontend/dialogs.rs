@@ -2,7 +2,7 @@ use super::*;
 use gpui_kit::base::ElementExt;
 use gpui_kit::component::WindowExt;
 use gpui_kit::component::dialog::{Dialog, DialogEntrance};
-use widgets::{ButtonExt, Handler, Toast, ToastKind, Tone};
+use widgets::{ButtonExt, Field, Handler, Toast, ToastKind, Tone};
 
 /// What confirming a generic confirmation does.
 #[derive(Clone)]
@@ -132,20 +132,20 @@ impl Desktop {
             );
         }
     }
+    /// A dialog's text box, starting with `value`; the dialog draws its
+    /// placeholder (`Desktop::text_field`).
     pub(in crate::frontend) fn form(
         &mut self,
         key: &str,
         value: &str,
-        placeholder: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let value = value.to_owned();
-        let placeholder = label(placeholder);
         self.forms.insert(
             key.into(),
             cx.new(|cx| {
-                let mut state = InputState::new(window, cx).placeholder(placeholder);
+                let mut state = InputState::new(window, cx);
                 state.set_value(value, window, cx);
                 state
             }),
@@ -346,13 +346,7 @@ impl Desktop {
             self.forms.clear();
             match kind {
                 "task" => {
-                    self.form(
-                        "value",
-                        text(&args, "command"),
-                        "tasks.placeholder",
-                        window,
-                        cx,
-                    );
+                    self.form("value", text(&args, "command"), window, cx);
                     if let Some(input) = self.forms.get("value").cloned() {
                         self.ui.input_subscriptions.push(cx.subscribe_in(
                             &input,
@@ -376,7 +370,6 @@ impl Desktop {
                 "note" => self.form(
                     "value",
                     text(&self.marks()[text(&args, "key")], "note"),
-                    "common.marks.placeholder",
                     window,
                     cx,
                 ),
@@ -842,7 +835,7 @@ impl Desktop {
                 let dialog = self
                     .surface(dialog, id, 540., window, cx)
                     .bg(widgets::solid(theme::token("window-bg", self.palette.dark)));
-                self.task_dialog(dialog, &modal, cx)
+                self.task_dialog(dialog, &modal, window, cx)
             }
             "filelock" => {
                 let dialog = self.surface(dialog, id, 620., window, cx);
@@ -854,7 +847,7 @@ impl Desktop {
             }
             "note" => {
                 let dialog = self.surface(dialog, id, 420., window, cx);
-                self.note_dialog(dialog, &modal, cx)
+                self.note_dialog(dialog, &modal, window, cx)
             }
             _ => {
                 let dialog = self.surface(dialog, id, 420., window, cx);
@@ -1502,7 +1495,13 @@ impl Desktop {
         cx.notify();
     }
 
-    fn task_dialog(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
+    fn task_dialog(
+        &self,
+        dialog: Dialog,
+        modal: &Modal,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Dialog {
         let p = self.palette;
         let id = modal.id;
         let busy = self.ui.busy.contains("task");
@@ -1534,9 +1533,11 @@ impl Desktop {
         } else {
             None
         };
+        // The dialog keeps its scrollbar's gutter (`scrollbar-gutter: stable`):
+        // header, body and footer all end that far from its right edge.
         dialog
             .child(
-                self.measure(id, 0).child(
+                self.measure(id, 0).mr(px(scrollbar::SIZE)).child(
                     div()
                         .flex()
                         .flex_col()
@@ -1557,7 +1558,9 @@ impl Desktop {
                                         .border_1()
                                         .border_color(p.stroke)
                                         .rounded(px(10.))
-                                        .bg(p.layer_strong)
+                                        // `--layer-strong` (the palette's `layer_strong` is the
+                                        // menu surface)
+                                        .bg(theme::token("layer-strong", p.dark))
                                         .child(icon("RunTaskIcon", p.accent).size(px(24.))),
                                 )
                                 .child(
@@ -1612,16 +1615,22 @@ impl Desktop {
                                         .child(div().flex_1().min_w_0().h(px(36.)).when_some(
                                             self.forms.get("value"),
                                             |d, input| {
+                                                // Commands in the monospaced face, the
+                                                // placeholder in the interface one. While
+                                                // a run is pending the original disabled
+                                                // the box without changing how it looks.
                                                 d.child(
-                                                    // The original's command box has no
-                                                    // face of its own (`.new-task-input`).
-                                                    Input::new(input)
-                                                        .appearance(false)
-                                                        .h(px(36.))
-                                                        .px(px(11.))
-                                                        .font_family(theme::MONO_FONT)
-                                                        .text_size(theme::font(13.))
-                                                        .disabled(pending),
+                                                    self.text_field(
+                                                        input,
+                                                        Input::new(input)
+                                                            .font_family(theme::MONO_FONT)
+                                                            .readonly(pending),
+                                                        Field::Bare,
+                                                        label("tasks.placeholder").into(),
+                                                        !pending,
+                                                        window,
+                                                        cx,
+                                                    ),
                                                 )
                                             },
                                         ))
@@ -1632,7 +1641,8 @@ impl Desktop {
                                                 Some("FolderIcon"),
                                                 Tone::Plain,
                                             )
-                                            .h(px(36.))
+                                            // A 32 px `.btn` at the top of the 36 px row.
+                                            .flex_shrink_0()
                                             .inert(pending)
                                             .on_click(
                                                 cx.listener(|this, _, window, cx| {
@@ -1753,7 +1763,7 @@ impl Desktop {
                 ),
             )
             .footer(
-                self.measure(id, 1).child(
+                self.measure(id, 1).mr(px(scrollbar::SIZE)).child(
                     self.dialog_footer()
                         .child(
                             self.btn(
@@ -2339,7 +2349,13 @@ impl Desktop {
         );
     }
 
-    fn note_dialog(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
+    fn note_dialog(
+        &self,
+        dialog: Dialog,
+        modal: &Modal,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Dialog {
         let p = self.palette;
         let id = modal.id;
         dialog
@@ -2364,7 +2380,15 @@ impl Desktop {
                                 .child(modal.body.clone()),
                         )
                         .when_some(self.forms.get("value"), |d, input| {
-                            d.child(Input::new(input).text_size(theme::font(13.)))
+                            d.child(self.text_field(
+                                input,
+                                Input::new(input),
+                                Field::Boxed,
+                                label("common.marks.placeholder").into(),
+                                true,
+                                window,
+                                cx,
+                            ))
                         }),
                 ),
             )

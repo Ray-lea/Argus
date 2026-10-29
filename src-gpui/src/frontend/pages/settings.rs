@@ -4,7 +4,7 @@ use super::*;
 use crate::frontend::recorder::{self, Effect, Mods, Verdict};
 use crate::frontend::recorder::{hotkey_error_text, issue_text};
 use crate::frontend::widgets::{
-    ButtonExt, HotkeyMessage, HotkeyMode, ToastKind, Tone, service_connected, service_state,
+    ButtonExt, Field, HotkeyMessage, HotkeyMode, ToastKind, Tone, service_connected, service_state,
 };
 use gpui_kit::base::ElementExt;
 
@@ -1916,33 +1916,22 @@ impl Desktop {
 
     // ---- Rules ------------------------------------------------------------------
 
-    /// An inline text box kept across frames; Enter runs `submit`.
+    /// An inline text box kept across frames; Enter runs `submit`. The card
+    /// draws its placeholder (`Desktop::text_field`).
     fn inline_input(
         &mut self,
         key: &str,
-        placeholder: String,
         initial: &str,
         submit: fn(&mut Desktop, &mut Window, &mut Context<Desktop>),
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<InputState> {
         if let Some(input) = self.ui.inputs.get(key).cloned() {
-            if self.ui.input_placeholders.get(key) != Some(&placeholder) {
-                input.update(cx, |state, cx| {
-                    state.set_placeholder(placeholder.clone(), window, cx)
-                });
-                self.ui
-                    .input_placeholders
-                    .insert(key.to_owned(), placeholder);
-            }
             return input;
         }
-        self.ui
-            .input_placeholders
-            .insert(key.to_owned(), placeholder.clone());
         let initial = initial.to_owned();
         let input = cx.new(|cx| {
-            let mut state = InputState::new(window, cx).placeholder(placeholder);
+            let mut state = InputState::new(window, cx);
             state.set_value(initial, window, cx);
             state
         });
@@ -2032,7 +2021,6 @@ impl Desktop {
         let p = self.palette;
         let input = self.inline_input(
             "ruleDraft",
-            label("settings.rules.placeholder"),
             "",
             |this, window, cx| this.add_rule(window, cx),
             window,
@@ -2043,11 +2031,15 @@ impl Desktop {
             .flex()
             .items_center()
             .gap(px(8.))
-            .child(
-                div()
-                    .w(px(220.))
-                    .child(Input::new(&input).text_size(theme::font(13.))),
-            )
+            .child(div().w(px(220.)).child(self.text_field(
+                &input,
+                Input::new(&input),
+                Field::Boxed,
+                label("settings.rules.placeholder").into(),
+                true,
+                window,
+                cx,
+            )))
             .child(
                 self.btn("rule-add", label("settings.rules.add"), None, Tone::Plain)
                     .inert(draft.is_empty())
@@ -2565,7 +2557,6 @@ impl Desktop {
                 let initial = self.ui.proxy_draft.clone().unwrap_or_else(|| proxy.clone());
                 let input = self.inline_input(
                     "proxyDraft",
-                    label("settings.update.custom.label"),
                     &initial,
                     |this, window, cx| this.save_proxy_draft(window, cx),
                     window,
@@ -2576,11 +2567,15 @@ impl Desktop {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(
-                        div()
-                            .w(px(220.))
-                            .child(Input::new(&input).text_size(theme::font(13.))),
-                    )
+                    .child(div().w(px(220.)).child(self.text_field(
+                        &input,
+                        Input::new(&input),
+                        Field::Boxed,
+                        label("settings.update.custom.label").into(),
+                        true,
+                        window,
+                        cx,
+                    )))
                     .child(
                         self.btn(
                             "proxy-save",

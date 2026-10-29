@@ -565,24 +565,33 @@ impl Desktop {
             if search_row || right > left {
                 let filled = !self.query.trim().is_empty();
                 let focused = self.search.read(cx).focus_handle(cx).is_focused(window);
+                let empty = self.search.read(cx).value().is_empty();
+                let placeholder: SharedString = label(self.search_placeholder()).into();
                 // A Fluent text box (`.search input`): the control face with a
                 // stronger bottom edge; focused, a 2 px accent bottom on the raised
                 // layer; while it filters the list, it wears the accent.
                 let hover = p.control_hover;
-                let (border, background, edge) = if filled {
+                let (border, background) = if filled {
                     (
                         p.accent.opacity(0.55),
-                        p.control_face.blend(p.accent.opacity(0.09)),
-                        Some(p.accent),
+                        // `color-mix(in srgb, var(--accent) 9%, var(--control))`
+                        theme::mix(p.control_face, p.accent, 0.09),
                     )
                 } else if focused {
-                    (p.stroke, p.layer_strong, Some(p.accent))
+                    // `--layer-strong` (the palette's `layer_strong` is the menu surface)
+                    (p.stroke, theme::token("layer-strong", p.dark))
                 } else {
-                    (p.stroke, p.control_face, None)
+                    (p.stroke, p.control_face)
                 };
-                let search = div()
-                    .id("toolbar-search")
-                    .h(px(32.))
+                // The accent bottom: 2 px while focused, 1 px while filtering.
+                let edge = if focused {
+                    Some(px(2.))
+                } else {
+                    filled.then_some(px(1.))
+                };
+                let face = div()
+                    .relative()
+                    .size_full()
                     .flex()
                     .items_center()
                     .rounded(px(4.))
@@ -590,26 +599,36 @@ impl Desktop {
                     .border_color(border)
                     .bg(background)
                     .when(!filled && !focused, |d| d.hover(move |s| s.bg(hover)))
-                    .occlude()
+                    .when(edge.is_none(), |d| d.child(widgets::control_edge(&p)))
+                    // The icon 10 px from the edge and the text 34 px inside it
+                    // (`.search > svg`, `padding-left: 34px`).
+                    .when(empty, |d| {
+                        d.child(widgets::placeholder(
+                            placeholder.clone(),
+                            px(34.),
+                            px(12.),
+                            &p,
+                        ))
+                    })
                     .child(
                         Input::new(&self.search)
                             .appearance(false)
                             .cleanable(true)
                             .h_full()
-                            .pl(px(10.))
+                            .pl(px(9.))
+                            .gap(px(9.))
                             .text_size(theme::font(13.))
+                            .aria_label(placeholder)
                             .prefix(icon("SearchIcon", if filled { p.accent } else { p.muted })),
-                    )
-                    .child(match edge {
-                        // The accent bottom is 2 px: over the stroke and 1 px inside.
-                        Some(color) => div()
-                            .absolute()
-                            .left(px(3.))
-                            .right(px(3.))
-                            .bottom(px(-1.))
-                            .h(px(2.))
-                            .bg(color),
-                        None => widgets::control_edge(&p),
+                    );
+                let search = div()
+                    .id("toolbar-search")
+                    .relative()
+                    .h(px(32.))
+                    .occlude()
+                    .child(face)
+                    .when_some(edge, |d, width| {
+                        d.child(widgets::accent_edge(p.accent, width))
                     });
                 toolbar = toolbar.child(if search_row {
                     // Its own row below the title row, across the toolbar.

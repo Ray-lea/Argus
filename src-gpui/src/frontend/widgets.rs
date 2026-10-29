@@ -115,8 +115,6 @@ pub(in crate::frontend) struct UiState {
     pub administrator_announced: bool,
     pub inputs: HashMap<String, Entity<InputState>>,
     pub input_subscriptions: Vec<Subscription>,
-    /// The placeholder each inline input shows, to follow a language change.
-    pub input_placeholders: HashMap<String, String>,
     pub proxy_draft: Option<String>,
     pub hotkey: HotkeyCard,
     pub system_motion: Option<bool>,
@@ -227,6 +225,76 @@ pub(in crate::frontend) fn control_edge(p: &Palette) -> Div {
         .bottom(px(-1.))
         .h(px(1.))
         .bg(p.control_edge)
+}
+
+/// The accent bottom of a Fluent text box (`border-bottom: <width> solid
+/// var(--accent)`, 2 px while focused): over the box's 1 px stroke and the
+/// rest inside it. A box paints its border over its children, so this goes on
+/// a `relative` wrapper without a border, laid over the box.
+pub(in crate::frontend) fn accent_edge(color: Hsla, width: Pixels) -> Div {
+    div()
+        .absolute()
+        .left(px(3.))
+        .right(px(3.))
+        .bottom_0()
+        .h(width)
+        .bg(color)
+}
+
+/// The ring of a focused box (`:focus-visible`: a 2 px outline 1 px outside
+/// its edge, around its 4 px corners). `border` is the box's own border
+/// width, which absolutely placed children start inside of. The box must be
+/// `relative`.
+pub(in crate::frontend) fn focus_ring(color: Hsla, border: Pixels) -> Div {
+    let out = -(border + px(3.));
+    div()
+        .absolute()
+        .top(out)
+        .bottom(out)
+        .left(out)
+        .right(out)
+        .border_2()
+        .border_color(color)
+        .rounded(px(7.))
+}
+
+/// How a single-line text box draws itself.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::frontend) enum Field {
+    /// `.input`: 32 px, the control face in a 1 px stroke with a stronger
+    /// bottom edge; focused, the bottom becomes a 2 px accent line.
+    Boxed,
+    /// The run dialog's command box (`.new-task-input > input`): 36 px with no
+    /// face of its own; focused, the 2 px accent ring of `:focus-visible`.
+    Bare,
+}
+
+/// A text box's placeholder (`::placeholder`): `--ink-3` in the interface
+/// face at the 13 px base size, whatever the box's own font. The library's
+/// placeholder takes the input's font and `--ink-2`, so boxes leave theirs
+/// empty and draw this one under the text, where the caret stays visible. It
+/// takes the input's line height, so it sits on the line the text will.
+/// `left` and `right` are the box's padding, where its text starts and ends.
+pub(in crate::frontend) fn placeholder(
+    text: SharedString,
+    left: Pixels,
+    right: Pixels,
+    p: &Palette,
+) -> Div {
+    div()
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .left(left)
+        .right(right)
+        .flex()
+        .items_center()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_size(theme::font(13.))
+        .line_height(rems(1.25))
+        .text_color(p.faint)
+        .child(text)
 }
 
 /// A tooltip for a sentence or two: it wraps at `max` like a system tooltip
@@ -457,6 +525,61 @@ impl Desktop {
             );
         }
         track.into_any_element()
+    }
+
+    /// A single-line text box drawn as the original's (`field`), around
+    /// `input` (built by the caller from `state`, with its own font or
+    /// read-only state). `enabled` is false while the box is disabled: the
+    /// original drew it unchanged, without its focus ring.
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::frontend) fn text_field(
+        &self,
+        state: &Entity<InputState>,
+        input: Input,
+        field: Field,
+        placeholder_text: SharedString,
+        enabled: bool,
+        window: &Window,
+        cx: &App,
+    ) -> Div {
+        let p = self.palette;
+        let state = state.read(cx);
+        let focused = enabled && state.focus_handle(cx).is_focused(window);
+        let empty = state.value().is_empty();
+        let (height, pad) = match field {
+            Field::Boxed => (px(32.), px(10.)),
+            Field::Bare => (px(36.), px(11.)),
+        };
+        let face = div()
+            .relative()
+            .size_full()
+            .px(pad)
+            .flex()
+            .items_center()
+            .when(field == Field::Boxed, |d| {
+                d.border_1()
+                    .border_color(p.stroke)
+                    .rounded(px(4.))
+                    .bg(p.control_face)
+                    .when(!focused, |d| d.child(control_edge(&p)))
+            })
+            .when(empty, |d| {
+                d.child(placeholder(placeholder_text.clone(), pad, pad, &p))
+            })
+            .child(
+                input
+                    .appearance(false)
+                    .px_0()
+                    .py_0()
+                    .text_size(theme::font(13.))
+                    .aria_label(placeholder_text),
+            );
+        div().relative().h(height).child(face).when(focused, |d| {
+            d.child(match field {
+                Field::Boxed => accent_edge(p.accent, px(2.)),
+                Field::Bare => focus_ring(p.accent, px(0.)),
+            })
+        })
     }
 
     /// A Fluent button (`.btn`): 32 px, 1 px stroke with a stronger bottom
