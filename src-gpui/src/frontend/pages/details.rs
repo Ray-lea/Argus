@@ -769,7 +769,7 @@ impl Desktop {
     }
 
     /// Why a process shows no disk reading (privilege.ts `missingDiskHint`).
-    fn missing_disk_hint(&self) -> String {
+    pub(in crate::frontend) fn missing_disk_hint(&self) -> String {
         let measured = values(&self.snapshot["processes"])
             .iter()
             .any(|p| !p["diskRead"].is_null() || !p["diskWrite"].is_null());

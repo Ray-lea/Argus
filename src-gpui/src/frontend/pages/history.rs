@@ -1062,9 +1062,22 @@ impl Desktop {
             .use_keyed_state("history-processes-scroll", cx, |_, _| ScrollHandle::new())
             .read(cx)
             .clone();
+        // The name under the pointer reports where it lies, for its hint (`tips`).
+        let near = self
+            .tips
+            .begin(window)
+            .then(|| tips::row_under(&rows_scroll, TABLE_ROW, rows.len(), window))
+            .flatten();
+        let moved = self.tips.clone();
         let mut body = div()
             .id("history-processes")
             .track_scroll(&rows_scroll)
+            .on_mouse_move(move |event, window, cx| moved.moved(event, window, cx))
+            .on_hover(cx.listener(|this, hovered, window, cx| {
+                if !hovered {
+                    this.tips.dismiss(window, cx);
+                }
+            }))
             .flex_1()
             .min_h(px(TABLE_ROW * 3.))
             .overflow_y_scroll()
@@ -1117,7 +1130,23 @@ impl Desktop {
                             16.,
                             cx,
                         ))
-                        .child(div().min_w_0().truncate().child(name.clone())),
+                        .child({
+                            let label = div().min_w_0().truncate().child(name.clone());
+                            // The description of a running program of that name.
+                            let hint = (near == Some(index))
+                                .then(|| by_name.get(&name.to_lowercase()))
+                                .flatten()
+                                .map(|process| text(process, "description"))
+                                .filter(|description| !description.is_empty());
+                            match hint {
+                                Some(hint) => self.tips.target(
+                                    label,
+                                    tips::id(("history", &key, "name")),
+                                    hint.to_owned(),
+                                ),
+                                None => label,
+                            }
+                        }),
                 )
                 .child(
                     cell(72., true)

@@ -18,6 +18,7 @@ mod scrollbar;
 mod shift;
 mod tables;
 mod theme;
+mod tips;
 mod welcome;
 mod widgets;
 use crate::{AppState, Options, native_runtime::Host};
@@ -179,6 +180,9 @@ struct Desktop {
     /// The sample each running process first appeared in; 0 for those present at start.
     first_seen: HashMap<String, u64>,
     header_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
+    /// Hover hints on table cells, and the view that draws them (`tips`).
+    tips: tips::Tips,
+    tip_layer: Entity<tips::TipLayer>,
     toolbar_regions: Rc<RefCell<[Bounds<Pixels>; 2]>>,
     navigation_regions: Rc<RefCell<[Bounds<Pixels>; PAGES.len() + 1]>>,
     query: String,
@@ -250,6 +254,8 @@ impl Desktop {
         let info = crate::dispatch::invoke(&host, "app_info", json!({})).unwrap_or(Value::Null);
         let palette = Palette::current(cx);
         let saved_sort: Value = prefs.get("sort", json!({"key":"cpu","desc":true}));
+        let tips = tips::Tips::default();
+        let tip_layer = cx.new(|cx| tips::TipLayer::new(tips.clone(), cx));
         let mut this = Self {
             host: host.clone(),
             options: options.clone(),
@@ -293,6 +299,8 @@ impl Desktop {
             rows_epoch: 0,
             first_seen: HashMap::new(),
             header_bounds: Rc::new(RefCell::new(HashMap::new())),
+            tips,
+            tip_layer,
             toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 2])),
             navigation_regions: Rc::new(RefCell::new([Bounds::default(); PAGES.len() + 1])),
             query: String::new(),
