@@ -609,7 +609,13 @@ impl Desktop {
                                     .text_size(theme::font(12.))
                                     .text_color(p.muted)
                                     .truncate()
-                                    .child(self.device_sub(device)),
+                                    // `.dev-sub` collapsed runs of spaces, as HTML does.
+                                    .child(
+                                        self.device_sub(device)
+                                            .split_whitespace()
+                                            .collect::<Vec<_>>()
+                                            .join(" "),
+                                    ),
                             ),
                     )
                     .child(
@@ -1920,7 +1926,8 @@ impl Desktop {
             .iter()
             .filter_map(Value::as_str)
             .collect::<Vec<_>>()
-            .join("  ");
+            // The original joined them with two spaces, which its HTML shows as one.
+            .join(" ");
         let kind = disk_kind(info);
         let mut rows = vec![
             (

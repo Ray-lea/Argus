@@ -2,7 +2,6 @@ use super::*;
 use gpui_kit::base::ElementExt;
 use gpui_kit::component::WindowExt;
 use gpui_kit::component::dialog::{Dialog, DialogEntrance};
-use gpui_kit::component::menu::PopupMenu;
 use widgets::{ButtonExt, Handler, Toast, ToastKind, Tone};
 
 /// What confirming a generic confirmation does.
@@ -113,51 +112,6 @@ fn locker_action(locker: &Value, shell: Option<&Value>, restarting: bool) -> Loc
 }
 
 impl Desktop {
-    pub(in crate::frontend) fn open_popup(
-        &mut self,
-        items: Vec<MenuItem>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let owner = cx.entity().downgrade();
-        let focus = self.focus.clone();
-        let interval = self.interval;
-        let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
-            let items = items
-                .iter()
-                .cloned()
-                .map(|item| {
-                    let checked = item.checked
-                        || matches!(item.action, Action::Interval(ms) if ms == interval);
-                    item.checked(checked)
-                })
-                .collect();
-            menus::fill_menu(
-                menu.action_context(focus.clone()),
-                items,
-                owner.clone(),
-                window,
-                cx,
-            )
-        });
-        let subscription = cx.subscribe_in(&menu, window, |this, menu, _: &DismissEvent, _, cx| {
-            if this
-                .popup
-                .as_ref()
-                .is_some_and(|popup| popup.menu.entity_id() == menu.entity_id())
-            {
-                this.popup = None;
-                this.rebuild_rows(false, cx);
-                cx.notify();
-            }
-        });
-        menu.focus_handle(cx).focus(window, cx);
-        self.popup = Some(Popup {
-            menu,
-            position: window.mouse_position(),
-            _subscription: subscription,
-        });
-    }
     pub(in crate::frontend) fn open_selected_action(
         &mut self,
         kind: &str,
@@ -238,7 +192,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.popup = None;
+        self.close_menu(window, cx);
         self.close_select();
         let name = text(&args, "name").to_owned();
         let members = values(&args["members"]).to_vec();
@@ -531,7 +485,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         if self.popup.is_some() || self.ui.select.is_some() {
-            self.popup = None;
+            self.close_menu(window, cx);
             self.close_select();
             window.refresh();
             return;
@@ -3014,26 +2968,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let mut elements = vec![];
-        if let Some(popup) = &self.popup {
-            elements.push(
-                deferred(
-                    anchored().child(
-                        div()
-                            .w(window.bounds().size.width)
-                            .h(window.bounds().size.height)
-                            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-                            .child(
-                                anchored()
-                                    .position(popup.position)
-                                    .snap_to_window_with_margin(window.rem_size() / 2.)
-                                    .child(popup.menu.clone()),
-                            ),
-                    ),
-                )
-                .with_priority(gpui_kit::base::POPUP_PRIORITY)
-                .into_any_element(),
-            );
-        }
+        elements.extend(self.menu_overlay(window, cx));
         elements.extend(self.select_overlay(window, cx));
         elements.extend(self.toast_layer(window, cx));
         elements

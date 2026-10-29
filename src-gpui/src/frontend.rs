@@ -104,11 +104,6 @@ impl MenuItem {
         self
     }
 }
-struct Popup {
-    menu: Entity<gpui_kit::component::menu::PopupMenu>,
-    position: Point<Pixels>,
-    _subscription: Subscription,
-}
 struct Pending {
     command: String,
     cache: Option<String>,
@@ -185,7 +180,8 @@ struct Desktop {
     /// The sample each running process first appeared in; 0 for those present at start.
     first_seen: HashMap<String, u64>,
     header_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
-    toolbar_regions: Rc<RefCell<[Bounds<Pixels>; 2]>>,
+    /// The title row's start and end controls, and the row itself.
+    toolbar_regions: Rc<RefCell<[Bounds<Pixels>; 3]>>,
     navigation_regions: Rc<RefCell<[Bounds<Pixels>; PAGES.len() + 1]>>,
     query: String,
     search: Entity<InputState>,
@@ -222,7 +218,9 @@ struct Desktop {
     held_order: bool,
     horizontal: f32,
     drag: Option<(String, Point<Pixels>, f32)>,
-    popup: Option<Popup>,
+    popup: Option<menus::Popup>,
+    /// The menu that just closed, fading out (`menus::Popup`).
+    popup_leaving: Option<(menus::Popup, Instant)>,
     modal: Option<dialogs::Modal>,
     ui: widgets::UiState,
     last_poll: Instant,
@@ -301,7 +299,7 @@ impl Desktop {
             rows_epoch: 0,
             first_seen: HashMap::new(),
             header_bounds: Rc::new(RefCell::new(HashMap::new())),
-            toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 2])),
+            toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 3])),
             navigation_regions: Rc::new(RefCell::new([Bounds::default(); PAGES.len() + 1])),
             query: String::new(),
             search: search.clone(),
@@ -348,6 +346,7 @@ impl Desktop {
             horizontal: 0.,
             drag: None,
             popup: None,
+            popup_leaving: None,
             modal: None,
             ui: widgets::UiState::default(),
             last_poll: Instant::now() - Duration::from_secs(10),
@@ -385,6 +384,7 @@ impl Desktop {
                 _ => {}
             }),
         );
+        this.watch_menu_window(window, cx);
         if let Some(path) = &options.fixture {
             match std::fs::read(path)
                 .ok()

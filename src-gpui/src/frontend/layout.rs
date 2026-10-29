@@ -26,36 +26,6 @@ impl Desktop {
         }
         cx.notify();
     }
-    pub(in crate::frontend) fn button(
-        &self,
-        id: impl Into<SharedString>,
-        text: impl Into<SharedString>,
-        glyph: Option<&str>,
-        action: Action,
-        selected: bool,
-        cx: &Context<Self>,
-    ) -> Button {
-        let text = text.into();
-        let p = self.palette;
-        Button::new(id.into())
-            .text_size(cx.theme().font_size)
-            .min_h(theme::dimension("controlHeight"))
-            .flex_shrink_0()
-            .px_3()
-            .py_1()
-            .gap_2()
-            .rounded(cx.theme().radius)
-            .text_color(p.ink)
-            .when(selected, |b| b.bg(p.control))
-            .hover(move |s| s.bg(p.hover).text_color(p.ink))
-            .accessibility_label(text.clone())
-            .when_some(glyph, |b, name| {
-                b.child(icon(name, if selected { p.accent } else { p.muted }))
-            })
-            .when(!text.is_empty(), |b| b.child(text))
-            .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-    }
     pub(in crate::frontend) fn navigation(
         &self,
         top: bool,
@@ -546,7 +516,8 @@ impl Desktop {
         } else {
             (start.child(controls), None)
         };
-        let trailing = trailing.on_prepaint(track_region(1, self.toolbar_regions.clone(), owner));
+        let trailing =
+            trailing.on_prepaint(track_region(1, self.toolbar_regions.clone(), owner.clone()));
         let mut toolbar = div()
             .relative()
             .w_full()
@@ -564,7 +535,15 @@ impl Desktop {
                     .border_0()
                     .child(
                         div()
-                            .size_full()
+                            // Exactly the room before the caption buttons,
+                            // whatever its content needs: what does not fit
+                            // is clipped until the next compact level instead
+                            // of pushing the caption buttons out of the window.
+                            .h_full()
+                            .w_0()
+                            .flex_grow(1.)
+                            .min_w_0()
+                            .overflow_hidden()
                             .flex()
                             .items_center()
                             .justify_between()
@@ -575,7 +554,8 @@ impl Desktop {
                             .gap_2()
                             .child(start)
                             .child(div().flex_1())
-                            .child(trailing),
+                            .child(trailing)
+                            .on_prepaint(track_region(2, self.toolbar_regions.clone(), owner)),
                     ),
             );
         if self.has_search() {
@@ -706,21 +686,24 @@ impl Desktop {
     /// while the row overflows (the search box narrower than its placeholder,
     /// or the controls running into each other) the toolbar goes one compact
     /// level further each frame, learning the width the level wanted; it goes
-    /// back once the window is that wide. Another page, text size, language
-    /// or navigation starts over. Returns the level to draw.
+    /// back once the window is that wide. Another page, text size, language,
+    /// navigation, update button or the history page's "Latest" button
+    /// starts over. Returns the level to draw.
     pub(in crate::frontend) fn fit_toolbar(
         &self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> u8 {
         let key = format!(
-            "{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}",
             self.page,
             self.font_size,
             self.nav_top,
             self.nav_expanded,
             argus_core::i18n::locale() as u8,
-            self.update_button().is_some()
+            self.update_button().is_some(),
+            // The history page's "Latest" button (`showsLatest`).
+            self.page == "history" && self.history_cursor.is_some()
         );
         let fit = self.search_fit(window, cx);
         let regions = *self.toolbar_regions.borrow();
@@ -738,13 +721,22 @@ impl Desktop {
         }
         // The regions measure the level last drawn: once the current one is
         // drawn, see whether it fits.
-        if state.drawn == Some(state.level) && state.level < 4 && regions[1].size.width > px(0.) {
+        if state.drawn == Some(state.level)
+            && state.level < 4
+            && regions[1].size.width > px(0.)
+            && regions[2].size.width > px(0.)
+        {
             let room = if self.has_search() {
                 px(8.) + fit + px(8.)
             } else {
                 px(8.)
             };
-            let overflow = regions[0].right() + room - regions[1].left();
+            // Nor may the end controls pass the row's 4 px inset before the
+            // caption buttons: without a search box between them, the start
+            // pushes them there (the original's `overflow` measures the row's
+            // furthest item).
+            let overflow = (regions[0].right() + room - regions[1].left())
+                .max(regions[1].right() - (regions[2].right() - px(4.)));
             if overflow > px(0.5) {
                 let level = state.level as usize;
                 state.need[level] = width + overflow;

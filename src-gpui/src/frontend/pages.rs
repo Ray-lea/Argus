@@ -313,18 +313,22 @@ impl Desktop {
                 ),
             );
             if self.history_cursor.is_some() {
+                // A plain `.btn` whose text is not a `.btn-text`: it keeps its
+                // label at every compact level of the toolbar.
                 row = row.child(
-                    self.button(
+                    self.btn(
                         "history-latest",
                         label("history.latest.label"),
                         None,
-                        Action::Preference("historyLatest".into(), Value::Null),
-                        false,
-                        cx,
+                        widgets::Tone::Plain,
                     )
-                    .border_1()
-                    .border_color(self.palette.stroke)
-                    .bg(self.palette.control)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.act(
+                            Action::Preference("historyLatest".into(), Value::Null),
+                            window,
+                            cx,
+                        )
+                    }))
                     .tooltip(|window, cx| {
                         gpui_kit::component::tooltip::Tooltip::new(label("history.latest.title"))
                             .build(window, cx)
@@ -625,8 +629,8 @@ impl Desktop {
                             .flex()
                             .items_baseline()
                             .gap(px(10.))
-                            .w_full()
-                            .overflow_hidden()
+                            // Not clipped: in a narrow card the unit runs on
+                            // into the next one, as in the original.
                             .whitespace_nowrap()
                             .child(
                                 div()
