@@ -321,7 +321,12 @@ pub(super) struct NativeTable {
     near_due: bool,
     /// Why disk readings are missing, as of a sample.
     disk_hint: RefCell<Option<(u64, String)>>,
+    /// Process header totals, where each laid out unclipped: the frame paints
+    /// them over the header (`header_totals`).
+    header_totals: HeaderTotals,
 }
+/// A process header total by column key: its text and its laid-out bounds.
+type HeaderTotals = Rc<RefCell<HashMap<String, (Bounds<Pixels>, SharedString)>>>;
 pub(super) struct TableFrame {
     state: Entity<TableState<NativeTable>>,
 }
@@ -361,13 +366,50 @@ impl Render for TableFrame {
                 d.child(scrollbar::scrollbar("table-scrollbar", &rows, dark).view(table))
             })
             .when(processes, |d| {
-                d.child(
-                    scrollbar::scrollbar("table-columns-scrollbar", &columns, dark)
-                        .rail_below(&rows)
-                        .view(table),
-                )
+                d.child(header_totals(state.delegate().header_totals.clone(), cx))
+                    .child(
+                        scrollbar::scrollbar("table-columns-scrollbar", &columns, dark)
+                            .rail_below(&rows)
+                            .view(table),
+                    )
             })
     }
+}
+/// The process header totals, painted over the header without the cells'
+/// clip: a total wider than its column runs into the one before it, as the
+/// original's overflowing header text does (at large font sizes).
+fn header_totals(totals: HeaderTotals, cx: &App) -> impl IntoElement {
+    let ink = Palette::current(cx).ink;
+    let family = theme::display_font(cx);
+    let size = theme::font(15.);
+    canvas(
+        |_, _, _| {},
+        move |_, _, window, cx| {
+            for (bounds, text) in totals.borrow().values() {
+                let run = TextRun {
+                    len: text.len(),
+                    font: font(family.clone()),
+                    color: ink,
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                };
+                let line = window
+                    .text_system()
+                    .shape_line(text.clone(), size, &[run], None);
+                let _ = line.paint(
+                    bounds.origin,
+                    size * 1.25,
+                    TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                );
+            }
+        },
+    )
+    .absolute()
+    .inset_0()
 }
 impl NativeTable {
     fn new(owner: WeakEntity<Desktop>, tips: tips::Tips) -> Self {
@@ -378,6 +420,7 @@ impl NativeTable {
             near: None,
             near_due: false,
             disk_hint: RefCell::new(None),
+            header_totals: Rc::default(),
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -411,6 +454,7 @@ impl NativeTable {
         self.available = available;
         self.page = page.into();
         self.fields = fields;
+        self.header_totals.borrow_mut().clear();
         // Resolve the grid tracks like CSS: fixed tracks first, then the flexible
         // ones share what is left by their fractions without going below their minimum.
         // The rows sit 4 px in from each side and the scrollbar keeps its gutter.
@@ -657,7 +701,13 @@ impl TableDelegate for NativeTable {
             && let Some(owner) = self.owner.upgrade()
         {
             let app = owner.read(cx);
-            let total = app.column_total(field.key);
+            let total = SharedString::from(app.column_total(field.key));
+            // A total wider than its column runs into the next one, as in the
+            // original; the table clips each cell, so the frame paints it
+            // (`header_totals`) where this transparent copy is laid out.
+            let painted = field.key != "name";
+            let totals = self.header_totals.clone();
+            let measured = (field.key.to_owned(), total.clone());
             cell = cell.child(
                 div()
                     .flex()
@@ -666,8 +716,19 @@ impl TableDelegate for NativeTable {
                     .text_size(theme::font(15.))
                     .line_height(relative(1.25))
                     .font_family(theme::display_font(cx))
-                    .text_color(p.ink)
+                    .text_color(if painted {
+                        gpui_kit::gpui::transparent_black()
+                    } else {
+                        p.ink
+                    })
                     .whitespace_nowrap()
+                    .when(painted, |d| {
+                        d.on_prepaint(move |bounds, _, _| {
+                            totals
+                                .borrow_mut()
+                                .insert(measured.0.clone(), (bounds, measured.1.clone()));
+                        })
+                    })
                     .when(field.key == "name" && !app.query.trim().is_empty(), |d| {
                         let tip = label("processes.filtered");
                         d.child(
