@@ -1177,13 +1177,19 @@ impl Plot for TimePlot {
         _state: &TooltipState,
         cursor: Point<Pixels>,
         bounds: Bounds<Pixels>,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) -> Option<AnyElement> {
         let (start, end, span) = self.live_window();
         let width = f32::from(bounds.size.width).max(1.);
         let x = cursor.x.clamp(px(0.), bounds.size.width);
-        let at = start + (f32::from(x) / width) as f64 * span;
+        // The cursor line is laid out at `x`, snapped to a device pixel and a
+        // device pixel or so wide (rounding as layout does); the curve is read
+        // at its middle, where the dots sit.
+        let scale = window.scale_factor();
+        let device = |v: f32| (v - 0.5).ceil();
+        let line = (device(f32::from(x) * scale) + device(scale).max(1.) / 2.) / scale;
+        let at = start + (line / width) as f64 * span;
         let read = |at: f64| {
             self.series
                 .iter()
@@ -1251,21 +1257,32 @@ impl Plot for TimePlot {
             } else {
                 tr!("performance.chart.ago", seconds = age)
             }));
-        let dots = dots
+        // The dots sit exactly on the curve as this frame draws it: at the
+        // height the texture places it (`ImageSurface::curve_y`, read in
+        // paint, after the plot placed its texture), at fractional pixels.
+        let plot = self.clone();
+        let ring = palette.tip;
+        let marks = dots
             .into_iter()
-            .map(|(series, value)| {
-                let y = self.y_of(value, bounds);
-                div()
-                    .absolute()
-                    .left(x - px(4.5))
-                    .top(y - px(4.5))
-                    .size(px(9.))
-                    .rounded_full()
-                    .border_2()
-                    .border_color(palette.tip)
-                    .bg(series.color)
-            })
+            .map(|(series, value)| (series.color, value))
             .collect::<Vec<_>>();
+        let dots = canvas(
+            |_, _, _| {},
+            move |_, _, window, _| {
+                let surface = plot.image_surface.borrow();
+                for &(color, value) in &marks {
+                    let y = match surface.as_ref() {
+                        Some(surface) => surface.curve_y(&plot, bounds, value),
+                        None => bounds.top() + plot.y_of(value, bounds),
+                    };
+                    raster::paint_dot(window, point(bounds.left() + px(line), y), color, ring);
+                }
+            },
+        )
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full();
         for (series, value) in rows {
             tip = tip.child(
                 div()
@@ -1296,24 +1313,20 @@ impl Plot for TimePlot {
                     .h(bounds.size.height)
                     .bg(ink.opacity(0.3)),
             )
-            .children(dots)
+            .child(dots)
             .child(tip);
         Some(overlay.into_any_element())
     }
 }
 impl TimePlot {
-    /// The window on screen now: live charts follow the scroll clock between renders.
+    /// The window on screen in this frame: the chart layer moves a live
+    /// chart's window to the scroll clock before drawing it, and its texture
+    /// is placed by that same window, so the readout reads the curve where it
+    /// is drawn (reading the clock again here could land on the next pixel
+    /// step).
     fn live_window(&self) -> (f64, f64, f64) {
         let span = (self.end - self.start).max(1.);
-        let end = self
-            .live_clock
-            .as_ref()
-            .map(|clock| {
-                let clock = clock.borrow();
-                plot_end(self, &clock, clock.end(Instant::now()))
-            })
-            .unwrap_or(self.end);
-        (end - span, end, span)
+        (self.end - span, self.end, span)
     }
     /// The window end the hover readout's text reads the curve at, for the
     /// pointer at `x` with the window ending at `end` this frame. While the
@@ -1859,7 +1872,7 @@ impl Desktop {
                 .as_deref()
                 .unwrap_or(if system { "fluid" } else { "off" }),
         );
-        if self.options.fixture.is_some() {
+        if self.options.fixture.is_some() && !self.fixture_samples {
             self.chart_clock.borrow_mut().set_paused(true);
         }
     }
@@ -1870,7 +1883,7 @@ impl Desktop {
     ) {
         let active = matches!(self.page.as_str(), "processes" | "performance")
             && self.modal.is_none()
-            && self.options.fixture.is_none()
+            && (self.options.fixture.is_none() || self.fixture_samples)
             && self.host.get_window("main").is_some_and(|w| {
                 w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
             });

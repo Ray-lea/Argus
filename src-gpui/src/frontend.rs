@@ -181,6 +181,9 @@ struct Desktop {
     /// last laid out: the card's height in a viewport of any height.
     perf_card_chrome: Rc<Cell<Option<Pixels>>>,
     chart_tick_queued: bool,
+    /// A fixture fed made-up samples (the `sample` test control): its chart
+    /// clock runs as in a live session instead of standing still.
+    fixture_samples: bool,
     chart_frame: u64,
     grid_bounds: RefCell<HashMap<String, Bounds<Pixels>>>,
     core_grid_size: Rc<Cell<Size<Pixels>>>,
@@ -330,6 +333,7 @@ impl Desktop {
             live_motions: Rc::default(),
             perf_card_chrome: Rc::new(Cell::new(None)),
             chart_tick_queued: false,
+            fixture_samples: false,
             chart_frame: 0,
             grid_bounds: RefCell::new(HashMap::new()),
             core_grid_size: Rc::new(Cell::new(size(px(0.), px(0.)))),
