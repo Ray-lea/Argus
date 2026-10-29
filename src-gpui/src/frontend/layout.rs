@@ -983,12 +983,56 @@ impl Desktop {
             )
             .into_any_element()
     }
+    /// While a splitter is dragged: follows the pointer and ends the drag on
+    /// release wherever they happen. The listeners are the window's, in the
+    /// capture phase: the root's own move and release listeners need its
+    /// hitbox hovered, so a pane over it (the details pane occludes the list)
+    /// swallowed them and a press left the splitter dragging after release.
+    fn drag_capture(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let desktop = cx.entity().downgrade();
+        canvas(
+            |_, _, _| {},
+            move |_, _, window, _| {
+                let moving = desktop.clone();
+                window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
+                    if phase == DispatchPhase::Capture {
+                        let _ = moving.update(cx, |this, cx| this.mouse_move(event, window, cx));
+                    }
+                });
+                let ending = desktop.clone();
+                window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
+                    if phase == DispatchPhase::Capture && event.button == MouseButton::Left {
+                        let _ = ending.update(cx, |this, cx| this.end_drag(cx));
+                    }
+                });
+            },
+        )
+        .absolute()
+        .size_0()
+    }
+    /// Ends a splitter drag and keeps the width it left.
+    fn end_drag(&mut self, cx: &mut Context<Self>) {
+        if let Some((kind, _, _)) = self.drag.take() {
+            if kind == "details" {
+                self.prefs.set("detailsWidth", self.details_width);
+            } else if kind == "perf-sidebar" {
+                self.prefs.set("perfSideWidth", self.perf_sidebar_width);
+            }
+        }
+        cx.notify();
+    }
     pub(in crate::frontend) fn mouse_move(
         &mut self,
         event: &MouseMoveEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A release can come before the listeners above are painted (a click
+        // within one frame); a move without the button means it came.
+        if self.drag.is_some() && event.pressed_button != Some(MouseButton::Left) {
+            self.end_drag(cx);
+            return;
+        }
         if let Some((kind, origin, start)) = &self.drag {
             if kind == "details" {
                 self.details_width = Self::clamp_details_width(
@@ -1094,20 +1138,7 @@ impl Render for Desktop {
                     cx,
                 );
             }))
-            .on_mouse_move(cx.listener(Self::mouse_move))
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    if let Some((kind, _, _)) = this.drag.take() {
-                        if kind == "details" {
-                            this.prefs.set("detailsWidth", this.details_width);
-                        } else if kind == "perf-sidebar" {
-                            this.prefs.set("perfSideWidth", this.perf_sidebar_width);
-                        }
-                    }
-                    cx.notify();
-                }),
-            )
+            .when(self.drag.is_some(), |d| d.child(self.drag_capture(cx)))
             // First, so its press and wheel listeners precede the page's.
             .child(self.tip_layer.clone())
             .child(toolbar)
