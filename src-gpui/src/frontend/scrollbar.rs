@@ -573,8 +573,17 @@ pub(in crate::frontend) fn wheel_glide(handle: &ScrollHandle, view: EntityId) ->
                 let ScrollDelta::Lines(lines) = event.delta else {
                     return;
                 };
-                if lines.y != 0. && handle.scroll_by_lines(point(0., lines.y)) {
+                if lines.y == 0. {
+                    return;
+                }
+                if handle.scroll_by_lines(point(0., lines.y)) {
                     cx.notify(view);
+                    cx.stop_propagation();
+                } else if handle.wheel_target() != handle.offset() {
+                    // A notch past the edge while the glide is still on its way
+                    // there belongs to the glide. Left to the table, its own
+                    // wheel handling would jump by its line step and end the
+                    // glide, short of the edge when that was farther away.
                     cx.stop_propagation();
                 }
             });
