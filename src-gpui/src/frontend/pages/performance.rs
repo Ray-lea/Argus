@@ -1254,10 +1254,10 @@ impl Desktop {
                 cx,
             ));
         }
+        // Graphics power belongs to the GPU view, where its source is named.
         for (field, title) in [
             ("package", "performance.cpu.packagePower"),
             ("cores", "performance.cpu.corePower"),
-            ("graphics", "performance.cpu.graphicsPower"),
         ] {
             if let Some(watts) = hw["power"][field].as_f64() {
                 stats.push(self.stat(

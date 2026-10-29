@@ -647,8 +647,8 @@ impl Desktop {
                     );
                 }
             }
-            // Keep the metric order of the shared metadata; these domains already
-            // appear in the headline figures and power chart.
+            // Keep the metric order of the shared metadata. Core power is already
+            // shown above; graphics power belongs to the GPU view.
             if let Some(kinds) = metadata.as_object() {
                 for (kind, spec) in kinds {
                     if text(spec, "group") != group

@@ -811,7 +811,11 @@ impl Desktop {
                 .into_any_element(),
         );
 
-        // Live figures and specs.
+        // Live figures and specs. Zero is a valid clock, voltage or power reading;
+        // only a missing one is left out.
+        let sensors = &gpu["integratedSensors"];
+        let integrated = boolean(info, "intelIntegrated");
+        let reading = |value: &Value, key: &str| value[key].as_f64();
         let gb_pair = |used: f64, total: f64| format!("{} / {}", gb(used), gb(total));
         let source = gpu["utilSource"].as_str().unwrap_or("windows");
         let mut stats = vec![
@@ -841,7 +845,7 @@ impl Desktop {
                 cx,
             ),
         ];
-        if let Some(celsius) = gpu["temperature"].as_f64() {
+        if let Some(celsius) = reading(gpu, "temperature") {
             stats.push(self.stat(
                 label("performance.gpu.temperature"),
                 format!("{}", celsius.round()),
@@ -850,7 +854,7 @@ impl Desktop {
                 cx,
             ));
         }
-        if let Some(rpm) = gpu["fanRpm"].as_f64() {
+        if let Some(rpm) = reading(gpu, "fanRpm") {
             stats.push(self.stat(
                 label("performance.gpu.fan"),
                 theme::count(rpm),
@@ -859,30 +863,90 @@ impl Desktop {
                 cx,
             ));
         }
-        for (field, title) in [
-            ("clockMhz", "performance.gpu.coreClock"),
-            ("memoryClockMhz", "performance.gpu.memoryClock"),
-        ] {
-            if let Some(mhz) = gpu[field].as_f64().filter(|v| *v > 0.) {
-                stats.push(self.stat(
-                    label(title),
-                    theme::count(mhz),
-                    Some("MHz".into()),
+        // Figures with an optional explanation: (id, title, value, unit, hint).
+        let mut figures: Vec<(&str, &str, String, &str, Option<&str>)> = Vec::new();
+        if let Some(mhz) = reading(gpu, "clockMhz") {
+            figures.push((
+                "gpu-stat-clock",
+                "performance.gpu.coreClock",
+                clock(mhz),
+                "MHz",
+                (!sensors.is_null()).then_some("performance.gpu.clockHint"),
+            ));
+        }
+        if let Some(mhz) = reading(gpu, "memoryClockMhz") {
+            figures.push(if integrated {
+                (
+                    "gpu-stat-memory-clock",
+                    "performance.gpu.sharedMemoryClock",
+                    clock(mhz),
+                    "MHz",
+                    Some("performance.gpu.sharedMemoryClockHint"),
+                )
+            } else {
+                (
+                    "gpu-stat-memory-clock",
+                    "performance.gpu.memoryClock",
+                    clock(mhz),
+                    "MHz",
                     None,
-                    cx,
+                )
+            });
+        }
+        if let Some(mhz) = reading(sensors, "unsliceClockMhz") {
+            figures.push((
+                "gpu-stat-unslice-clock",
+                "performance.gpu.unsliceClock",
+                clock(mhz),
+                "MHz",
+                Some("performance.gpu.unsliceClockHint"),
+            ));
+        }
+        if let Some(millivolts) = reading(gpu, "voltageMv") {
+            figures.push((
+                "gpu-stat-voltage",
+                "performance.gpu.coreVoltage",
+                format!("{:.3}", millivolts / 1000.),
+                "V",
+                None,
+            ));
+        }
+        if let Some(millivolts) = reading(gpu, "coreVidMv") {
+            figures.push((
+                "gpu-stat-vid",
+                "performance.gpu.coreVid",
+                format!("{:.3}", millivolts / 1000.),
+                "V",
+                Some("performance.gpu.vidHint"),
+            ));
+        }
+        for (field, id, title) in [
+            (
+                "gtActivityPercent",
+                "gpu-stat-gt-activity",
+                "performance.gpu.gtActivity",
+            ),
+            (
+                "mediaActivityPercent",
+                "gpu-stat-media-activity",
+                "performance.gpu.mediaActivity",
+            ),
+        ] {
+            if let Some(percent) = reading(sensors, field) {
+                figures.push((
+                    id,
+                    title,
+                    format!("{percent:.1}"),
+                    "%",
+                    Some("performance.gpu.activityHint"),
                 ));
             }
         }
-        if let Some(millivolts) = gpu["voltageMv"].as_f64().filter(|v| *v > 0.) {
-            stats.push(self.stat(
-                label("performance.gpu.coreVoltage"),
-                format!("{:.3}", millivolts / 1000.),
-                Some("V".into()),
-                None,
-                cx,
-            ));
+        for (id, title, value, unit, hint) in figures {
+            let stat = self.stat(label(title), value, Some(unit.into()), None, cx);
+            stats.push(self.hinted(id, hint.map(label), stat));
         }
-        if let Some(watts) = gpu["boardPower"].as_f64() {
+        if let Some(watts) = reading(gpu, "boardPower") {
             stats.push(self.stat(
                 label("performance.gpu.power"),
                 charts::watts(watts),
@@ -890,7 +954,7 @@ impl Desktop {
                 None,
                 cx,
             ));
-        } else if let Some(percent) = gpu["power"].as_f64().filter(|v| *v > 0.) {
+        } else if let Some(percent) = reading(gpu, "power").filter(|v| *v != 0.) {
             stats.push(self.stat(
                 label("performance.gpu.power"),
                 format!("{}", percent.round()),
@@ -907,6 +971,17 @@ impl Desktop {
                 plain(label(&format!("performance.gpu.sources.{source}"))),
             ));
         }
+        let kernel_supported = boolean(gpu, "kernelSensorSupported");
+        let kernel_state = gpu["kernelSensorState"].as_str();
+        if kernel_supported {
+            rows.push((
+                label("performance.gpu.kernelSensors"),
+                plain(match kernel_state {
+                    Some(state) => label(&format!("performance.cpu.sensorState.{state}")),
+                    None => label("performance.cpu.notEnabled"),
+                }),
+            ));
+        }
         rows.push((
             label("performance.gpu.dedicatedMemory"),
             plain(format!("{} GB", gb(number(info, "dedicatedTotal")))),
@@ -915,13 +990,13 @@ impl Desktop {
             label("performance.gpu.sharedMemory"),
             plain(format!("{} GB", gb(number(info, "sharedTotal")))),
         ));
-        if let Some(limit) = gpu["boardPowerLimit"].as_f64().filter(|v| *v > 0.) {
+        if let Some(limit) = reading(gpu, "boardPowerLimit").filter(|v| *v != 0.) {
             rows.push((
                 label("performance.gpu.powerLimit"),
                 plain(format!("{} W", charts::watts(limit))),
             ));
         }
-        if let Some(max) = info["temperatureMax"].as_f64().filter(|v| *v > 0.) {
+        if let Some(max) = reading(info, "temperatureMax").filter(|v| *v != 0.) {
             rows.push((
                 label("performance.gpu.maxTemperature"),
                 plain(format!("{} °C", max.round())),
@@ -931,15 +1006,105 @@ impl Desktop {
             label("performance.gpu.engines"),
             plain(engines.len().to_string()),
         ));
-        if let Some(max) = gpu["clockMaxMhz"].as_f64().filter(|v| *v > 0.) {
+        if let Some(max) = reading(gpu, "clockMaxMhz").filter(|v| *v != 0.) {
             rows.push((
                 label("performance.gpu.maxCoreClock"),
-                plain(format!("{} MHz", theme::count(max))),
+                plain(format!("{} MHz", clock(max))),
+            ));
+        }
+        if let Some(min) = reading(sensors, "minimumClockMhz") {
+            rows.push((
+                label("performance.gpu.minCoreClock"),
+                plain(format!("{} MHz", clock(min))),
+            ));
+        }
+        if let Some(reference) = reading(sensors, "referenceClockMhz") {
+            rows.push((
+                label("performance.gpu.referenceClock"),
+                plain(format!("{} MHz", decimal(reference, 3))),
+            ));
+        }
+        let limits = values(&sensors["limits"]);
+        if !limits.is_empty() {
+            let reason = |limit: &Value| {
+                label(&format!(
+                    "performance.gpu.limitReasons.{}",
+                    text(limit, "reason")
+                ))
+            };
+            let active = limits.iter().filter(|l| boolean(l, "active")).count();
+            let summary = if active > 0 {
+                tr!("performance.gpu.limitsActiveCount", count = active)
+            } else {
+                label("performance.gpu.noLimit")
+            };
+            // Each reason, whether it limits now, and whether it did since the last read.
+            let details = limits
+                .iter()
+                .map(|limit| {
+                    let state = label(if boolean(limit, "active") {
+                        "performance.gpu.limitActive"
+                    } else {
+                        "performance.gpu.noLimit"
+                    });
+                    let occurred = if boolean(limit, "occurred") {
+                        format!(" ({})", label("performance.gpu.limitOccurred"))
+                    } else {
+                        String::new()
+                    };
+                    format!("{}: {state}{occurred}", reason(limit))
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            rows.push((
+                label("performance.gpu.performanceLimits"),
+                div()
+                    .id("gpu-limits")
+                    .child(summary)
+                    .tooltip(move |window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(details.clone())
+                            .build(window, cx)
+                    })
+                    .into_any_element(),
             ));
         }
         out.push(self.perf_stats(stats, self.info_list(rows), false, window));
+        if kernel_supported && kernel_state != Some("ready") {
+            out.push(self.perf_note(label(if kernel_state.is_some() {
+                "performance.gpu.kernelUnavailable"
+            } else {
+                "performance.gpu.kernelEnable"
+            })));
+        }
         out
     }
+}
+
+/// A clock to a tenth of a MHz, grouped like the other counts: 1,950, 433.3.
+fn clock(mhz: f64) -> String {
+    decimal((mhz * 10.).round() / 10., 1)
+}
+/// A number grouped by thousands with up to `digits` decimals, trailing zeros
+/// dropped, as `Intl.NumberFormat` shows it: 1,972.5, 24, 19.2.
+fn decimal(value: f64, digits: usize) -> String {
+    let fixed = format!("{:.*}", digits, value.abs());
+    let (whole, fraction) = fixed.split_once('.').unwrap_or((&fixed, ""));
+    let fraction = fraction.trim_end_matches('0');
+    let mut out = String::new();
+    if value < 0. && fixed.bytes().any(|b| b.is_ascii_digit() && b != b'0') {
+        out.push('-');
+    }
+    for (i, c) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    if !fraction.is_empty() {
+        out.push('.');
+        out.push_str(fraction);
+    }
+    out
 }
 
 #[cfg(test)]

@@ -402,7 +402,8 @@
               "Compute_0",
               "Security"
             ],
-            "temperatureMax": 105
+            "temperatureMax": 105,
+            "intelIntegrated": false
           },
           "util": 14.340482702312762,
           "utilSource": "windows",
@@ -425,7 +426,11 @@
           "clockMhz": 1972,
           "clockMaxMhz": 3105,
           "voltageMv": null,
-          "memoryClockMhz": 7001
+          "memoryClockMhz": 7001,
+          "coreVidMv": null,
+          "kernelSensorState": null,
+          "kernelSensorSupported": false,
+          "integratedSensors": null
         }
       ],
       "batteries": [
