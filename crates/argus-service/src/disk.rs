@@ -257,6 +257,7 @@ mod tests {
             disk_write: disk,
             gpu: 0.0,
             gpu_engine: None,
+            gpu_engines: Vec::new(),
             gpu_dedicated: 0,
             gpu_shared: 0,
             net_sent: 0,

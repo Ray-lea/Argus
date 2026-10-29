@@ -191,6 +191,9 @@ pub fn log_hardware_once(s: &Snapshot) {
                 Some(GpuPowerSource::AdlBoard) => "watts (ADL board)",
                 Some(GpuPowerSource::AdlChip) => "watts (ADL chip)",
                 Some(GpuPowerSource::Igcl) => "watts (IGCL GPU)",
+                Some(GpuPowerSource::IgclChip) => "watts (IGCL chip)",
+                Some(GpuPowerSource::Rapl) => "watts (Intel RAPL graphics)",
+                Some(GpuPowerSource::RaplMsr) => "watts (Intel RAPL graphics MSR)",
                 None => "watts (source unavailable)",
             }
         } else if g.power.is_some() {
@@ -199,7 +202,7 @@ pub fn log_hardware_once(s: &Snapshot) {
             "none"
         };
         log::info!(
-            "gpu: {}; model=\"{}\"; temperature: {}; power: {power}; clock: {}",
+            "gpu: {}; model=\"{}\"; temperature: {}; power: {power}; clock: {}; intel_integrated={}; kernel_sensor_supported={}",
             index,
             hardware_label(&g.info.name),
             if g.temperature.is_some() {
@@ -208,6 +211,8 @@ pub fn log_hardware_once(s: &Snapshot) {
                 "none"
             },
             if g.clock_mhz.is_some() { "yes" } else { "none" },
+            g.info.intel_integrated,
+            g.kernel_sensor_supported,
         );
     }
     log::info!(

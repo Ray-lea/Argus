@@ -23,9 +23,14 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
             // already borrowed. Refresh GPUI's viewport after that callback returns.
             window.bounds_changed(cx);
         }
-        crate::shell::restore_window_state(host, &native, options);
+        if !options.test
+            && let (Ok(hwnd), Ok(dir)) = (native.hwnd(), host.path().app_config_dir())
+        {
+            crate::window_state::install(hwnd, dir.join("preferences.json"));
+        }
         crate::shell::follow_visibility(&native);
         if let Ok(hwnd) = native.hwnd() {
+            argus_service::admin::window_relaunch(&host.config().identifier, hwnd);
             crate::window_motion::install(hwnd);
         }
         crate::shell::apply_theme(
@@ -48,9 +53,17 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
         }
     }
     if let Err(error) = crate::instance::install(host, |app, args| {
+        // An administrator start's verified handoff replaces this process.
+        if !argus_core::privilege::is_elevated()
+            && argus_service::admin::trusted_handoff(&app.config().identifier, &args)
+        {
+            app.exit(0);
+            return;
+        }
+        argus_service::admin::acknowledge(&args);
         if argus_service::taskmgr::ready::queue(&args) {
             let _ = app.emit("argus-taskmgr-ready", ());
-        } else {
+        } else if !args.iter().any(|arg| arg == "--hidden") {
             crate::shell::show_main(app);
         }
     }) {

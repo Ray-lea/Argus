@@ -1,4 +1,4 @@
-//! Board power of NVIDIA GPUs, in watts, from NVML (`nvml.dll`, which the
+//! Board power and GPU-core activity from NVML (`nvml.dll`, which the
 //! driver installs in System32). WDDM's adapter perf data leaves power empty
 //! on NVIDIA cards and only ever gives it as a share of the budget. Loaded from
 //! System32 only, never from the application or working directory; without an
@@ -29,10 +29,18 @@ struct PciInfo {
 }
 
 type Query = unsafe extern "C" fn(Device, *mut u32) -> Return;
+#[repr(C)]
+#[derive(Default)]
+struct Utilization {
+    gpu: u32,
+    memory: u32,
+}
+type UtilizationQuery = unsafe extern "C" fn(Device, *mut Utilization) -> Return;
 
 pub(crate) struct Nvml {
     power_usage: Query,
     power_limit: Query,
+    utilization: Option<UtilizationQuery>,
     /// PCI bus and device number of each GPU NVML manages.
     devices: Vec<(u32, u32, u32, Device)>,
 }
@@ -61,6 +69,7 @@ impl Nvml {
                 export(module, s!("nvmlDeviceGetPciInfo_v3"))?;
             let power_usage: Query = export(module, s!("nvmlDeviceGetPowerUsage"))?;
             let power_limit: Query = export(module, s!("nvmlDeviceGetEnforcedPowerLimit"))?;
+            let utilization = export(module, s!("nvmlDeviceGetUtilizationRates"));
             // Initialized for the rest of the process; NVML is never shut down.
             if init() != SUCCESS {
                 return None;
@@ -94,9 +103,23 @@ impl Nvml {
             (!devices.is_empty()).then_some(Self {
                 power_usage,
                 power_limit,
+                utilization,
                 devices,
             })
         }
+    }
+
+    /// Driver GPU-core activity, including CUDA workloads missing from WDDM nodes.
+    /// Zero is valid; unsupported or invalid readings remain absent.
+    pub fn utilization(&self, bus: u32, device: u32, function: u32) -> Option<f32> {
+        let query = self.utilization?;
+        let &(_, _, _, handle) = self
+            .devices
+            .iter()
+            .find(|&&(b, d, f, _)| (b, d, f) == (bus, device, function))?;
+        let mut value = Utilization::default();
+        (unsafe { query(handle, &mut value) } == SUCCESS && value.gpu <= 100)
+            .then_some(value.gpu as f32)
     }
 
     /// Board power draw and the limit the driver enforces, in watts.
@@ -116,5 +139,42 @@ impl Nvml {
                 .then(|| milliwatts as f32 / 1000.0)
         };
         (read(self.power_usage, true), read(self.power_limit, false))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    unsafe extern "C" fn unavailable(_: Device, _: *mut u32) -> Return {
+        3
+    }
+    unsafe extern "C" fn sample(device: Device, out: *mut Utilization) -> Return {
+        let value = device as usize;
+        if value == 999 {
+            return 3;
+        }
+        unsafe {
+            (*out).gpu = value as u32;
+        }
+        SUCCESS
+    }
+    #[test]
+    fn driver_utilization_is_optional_bounded_and_matched_by_pci_address() {
+        let mut nvml = Nvml {
+            power_usage: unavailable,
+            power_limit: unavailable,
+            utilization: Some(sample),
+            devices: vec![(1, 0, 0, 100usize as Device)],
+        };
+        assert_eq!(nvml.utilization(1, 0, 0), Some(100.0));
+        assert_eq!(nvml.utilization(2, 0, 0), None);
+        nvml.devices[0].3 = std::ptr::null_mut();
+        assert_eq!(nvml.utilization(1, 0, 0), Some(0.0));
+        for value in [101usize, 999] {
+            nvml.devices[0].3 = value as Device;
+            assert_eq!(nvml.utilization(1, 0, 0), None);
+        }
+        nvml.utilization = None;
+        assert_eq!(nvml.utilization(1, 0, 0), None);
     }
 }

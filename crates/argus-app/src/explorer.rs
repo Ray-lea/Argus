@@ -1,53 +1,46 @@
-//! Restart only the current desktop shell. A helper keeps the shell's own identity.
+//! Restart only the current desktop shell, retaining its account and desktop.
+
+mod process;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use windows::Win32::Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS, FILETIME, HANDLE};
-use windows::Win32::Security::{
-    DuplicateTokenEx, EqualSid, SecurityImpersonation, TOKEN_ADJUST_DEFAULT,
-    TOKEN_ADJUST_SESSIONID, TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE, TOKEN_ELEVATION, TOKEN_QUERY,
-    TOKEN_USER, TokenElevation, TokenPrimary, TokenSessionId, TokenUser,
+use windows::Win32::Foundation::{
+    HANDLE, HWND, LPARAM, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
 };
-use windows::Win32::System::Environment::CreateEnvironmentBlock;
-use windows::Win32::System::RestartManager::{
-    CCH_RM_SESSION_KEY, RM_PROCESS_INFO, RM_UNIQUE_PROCESS, RmEndSession, RmExplorer, RmGetList,
-    RmRegisterResources, RmRestart, RmShutdown, RmShutdownOnlyRegistered, RmStartSession,
+use windows::Win32::Security::{
+    EqualSid, TOKEN_DUPLICATE, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER, TokenElevation,
+    TokenSessionId, TokenUser,
 };
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
 use windows::Win32::System::Threading::{
-    CREATE_NO_WINDOW, CREATE_PROCESS_LOGON_FLAGS, CREATE_UNICODE_ENVIRONMENT,
-    CreateProcessWithTokenW, GetCurrentProcess, GetExitCodeProcess, GetProcessTimes, INFINITE,
-    OpenProcess, OpenProcessToken, PROCESS_INFORMATION, PROCESS_NAME_WIN32,
-    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW, STARTUPINFOW,
-    WaitForSingleObject,
+    GetProcessId, GetProcessTimes, OpenProcess, OpenProcessToken, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GetShellWindow, GetWindowThreadProcessId, IsWindowVisible,
+    FindWindowW, GetShellWindow, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
+    SMTO_ABORTIFHUNG, SMTO_BLOCK, SendMessageTimeoutW, WM_NULL,
 };
 use windows::core::{PCWSTR, PWSTR, w};
 
-use crate::tasks::{Environment, Handle, quote, token_buffer, wide};
+use crate::tasks::{Handle, token_buffer};
 
 const HELPER: &str = "--argus-restart-explorer";
+const EXIT_EXPLORER: u32 = 0x5B4;
 static RESTARTING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy)]
 enum Stage {
-    Validate,
-    Token,
-    Environment,
-    HelperLaunch,
-    HelperResult,
-    SessionStart,
-    Register,
-    Resources,
-    Shutdown,
-    Restart,
-    Recovery,
-    DesktopReady,
-    Image,
+    Validate = 0,
+    Token = 1,
+    Environment = 2,
+    Spawn = 3,
+    Shutdown = 8,
+    Restart = 9,
+    DesktopReady = 11,
+    ForceShutdown = 12,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -103,49 +96,6 @@ impl RestartError {
         }
         0x60000000 | ((self.kind as u32) << 20) | ((self.stage as u32) << 16) | self.code
     }
-    fn from_exit(code: u32) -> Self {
-        let kind = if code & 0xff000000 == 0x60000000 {
-            match (code >> 20) & 0xf {
-                1 => ErrorKind::Stale,
-                2 => ErrorKind::Unsupported,
-                3 => ErrorKind::Permission,
-                4 => ErrorKind::Prepare,
-                5 => ErrorKind::Shutdown,
-                6 => ErrorKind::Restore,
-                7 => ErrorKind::Busy,
-                _ => ErrorKind::Prepare,
-            }
-        } else {
-            ErrorKind::Prepare
-        };
-        Self::new(
-            kind,
-            if code & 0xff000000 == 0x60000000 {
-                code & 0xffff
-            } else {
-                code
-            },
-        )
-        .at(if code & 0xff000000 == 0x60000000 {
-            match (code >> 16) & 0xf {
-                0 => Stage::Validate,
-                1 => Stage::Token,
-                2 => Stage::Environment,
-                3 => Stage::HelperLaunch,
-                4 => Stage::HelperResult,
-                5 => Stage::SessionStart,
-                6 => Stage::Register,
-                7 => Stage::Resources,
-                8 => Stage::Shutdown,
-                9 => Stage::Restart,
-                10 => Stage::Recovery,
-                11 => Stage::DesktopReady,
-                _ => Stage::Image,
-            }
-        } else {
-            Stage::HelperResult
-        })
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -157,15 +107,8 @@ pub struct Identity {
 
 struct Shell {
     identity: Identity,
-    started: FILETIME,
     process: Handle,
     path: String,
-}
-struct Session(u32);
-impl Drop for Session {
-    fn drop(&mut self) {
-        let _ = unsafe { RmEndSession(self.0) };
-    }
 }
 struct Restarting;
 impl Drop for Restarting {
@@ -195,14 +138,26 @@ fn system_explorer() -> Result<String, RestartError> {
     ))
 }
 
-fn inspect() -> Result<Shell, RestartError> {
+fn inspect(for_restart: bool) -> Result<Shell, RestartError> {
     let pid = shell_pid();
     if pid == 0 {
         return Err(RestartError::new(ErrorKind::Stale, 1168));
     }
     let process = Handle(
-        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
-            .map_err(|e| RestartError::win(ErrorKind::Permission, e))?,
+        unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION
+                    | PROCESS_SYNCHRONIZE
+                    | if for_restart {
+                        PROCESS_TERMINATE
+                    } else {
+                        Default::default()
+                    },
+                false,
+                pid,
+            )
+        }
+        .map_err(|e| RestartError::win(ErrorKind::Permission, e))?,
     );
     let (mut started, mut ended, mut kernel, mut user) = Default::default();
     unsafe { GetProcessTimes(process.0, &mut started, &mut ended, &mut kernel, &mut user) }
@@ -232,14 +187,23 @@ fn inspect() -> Result<Shell, RestartError> {
     }
     Ok(Shell {
         identity,
-        started,
         process,
         path,
     })
 }
 
 pub fn current() -> Option<Identity> {
-    inspect().ok().map(|s| s.identity)
+    inspect(false).ok().map(|s| s.identity)
+}
+
+/// All UI termination routes share this check before reaching a privileged backend.
+pub fn check_termination(pid: u32) -> Result<(), argus_core::actions::ActionError> {
+    if pid != 0 && pid == shell_pid() {
+        return Err(argus_core::actions::ActionError::Os(argus_core::tr!(
+            "host.desktopShellTerminate"
+        )));
+    }
+    Ok(())
 }
 
 fn token(process: HANDLE, duplicate: bool) -> Result<Handle, RestartError> {
@@ -293,24 +257,54 @@ fn verify_tokens(shell: HANDLE, own: HANDLE, same_user: bool) -> Result<(), Rest
     Ok(())
 }
 
-fn ready(old: Identity) -> bool {
-    let Some(shell) = current() else { return false };
-    if shell == old {
-        return false;
-    }
+fn taskbar(pid: u32) -> Option<HWND> {
     let Ok(taskbar) = (unsafe { FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) }) else {
-        return false;
+        return None;
     };
-    let mut pid = 0;
-    unsafe { GetWindowThreadProcessId(taskbar, Some(&mut pid)) };
-    pid == shell.pid && unsafe { IsWindowVisible(taskbar) }.as_bool()
+    let mut owner = 0;
+    unsafe { GetWindowThreadProcessId(taskbar, Some(&mut owner)) };
+    (owner == pid && unsafe { IsWindowVisible(taskbar) }.as_bool()).then_some(taskbar)
+}
+
+fn responsive(window: HWND) -> bool {
+    !window.0.is_null()
+        && unsafe {
+            SendMessageTimeoutW(
+                window,
+                WM_NULL,
+                WPARAM(0),
+                LPARAM(0),
+                SMTO_ABORTIFHUNG | SMTO_BLOCK,
+                1000,
+                None,
+            )
+        }
+        .0 != 0
+}
+
+fn ready(old: Identity) -> Option<Identity> {
+    let shell = current()?;
+    (shell != old
+        && responsive(unsafe { GetShellWindow() })
+        && taskbar(shell.pid).is_some_and(responsive)
+        && current() == Some(shell))
+    .then_some(shell)
 }
 
 fn wait_ready(old: Identity, timeout: Duration) -> bool {
     let until = Instant::now() + timeout;
+    let mut candidate: Option<(Identity, Instant)> = None;
     loop {
-        if ready(old) {
-            return true;
+        match ready(old) {
+            Some(shell) => match candidate {
+                Some((previous, since)) if previous == shell => {
+                    if since.elapsed() >= Duration::from_secs(1) {
+                        return true;
+                    }
+                }
+                _ => candidate = Some((shell, Instant::now())),
+            },
+            None => candidate = None,
         }
         if Instant::now() >= until {
             return false;
@@ -319,148 +313,99 @@ fn wait_ready(old: Identity, timeout: Duration) -> bool {
     }
 }
 
-fn restart_standard(shell: Shell) -> Result<(), RestartError> {
-    let shell_token = token(shell.process.0, false)?;
-    let own_token = token(unsafe { GetCurrentProcess() }, false)?;
-    verify_tokens(shell_token.0, own_token.0, true)?;
-    let mut key = [0u16; CCH_RM_SESSION_KEY as usize + 1];
-    let mut handle = 0;
-    let result = unsafe { RmStartSession(&mut handle, None, PWSTR(key.as_mut_ptr())) };
-    if result != ERROR_SUCCESS {
-        return Err(RestartError::new(ErrorKind::Prepare, result.0).at(Stage::SessionStart));
+/// An exit request may destroy the shell windows, then hang in DLL teardown or
+/// error reporting. Once exit was requested, returning early cannot cancel it:
+/// finish shutdown using the exact handle acquired before touching the shell.
+fn finish_shutdown(
+    process: HANDLE,
+    graceful_ms: u32,
+    forced_ms: u32,
+) -> Result<bool, RestartError> {
+    match unsafe { WaitForSingleObject(process, graceful_ms) } {
+        WAIT_OBJECT_0 => return Ok(false),
+        WAIT_FAILED => {
+            return Err(RestartError::win(
+                ErrorKind::Shutdown,
+                windows::core::Error::from_thread(),
+            )
+            .at(Stage::Shutdown));
+        }
+        WAIT_TIMEOUT => {}
+        _ => return Err(RestartError::new(ErrorKind::Shutdown, 1460).at(Stage::Shutdown)),
     }
-    let session = Session(handle);
-    let target = RM_UNIQUE_PROCESS {
-        dwProcessId: shell.identity.pid,
-        ProcessStartTime: shell.started,
-    };
-    let result = unsafe { RmRegisterResources(session.0, None, Some(&[target]), None) };
-    if result != ERROR_SUCCESS {
-        return Err(RestartError::new(ErrorKind::Prepare, result.0).at(Stage::Register));
-    }
-    let mut infos: [RM_PROCESS_INFO; 2] = unsafe { std::mem::zeroed() };
-    let (mut needed, mut count, mut reasons) = (0, infos.len() as u32, 0);
-    let result = unsafe {
-        RmGetList(
-            session.0,
-            &mut needed,
-            &mut count,
-            Some(infos.as_mut_ptr()),
-            &mut reasons,
+    log::warn!(
+        "Explorer restart: exit timed out; completing original shutdown; old_pid={}",
+        unsafe { GetProcessId(process) }
+    );
+    let terminated = unsafe { TerminateProcess(process, 1460) };
+    // Natural exit can win the race with TerminateProcess, including an
+    // already-started teardown. Always wait for completion before proceeding.
+    match unsafe { WaitForSingleObject(process, forced_ms) } {
+        WAIT_OBJECT_0 => Ok(true),
+        _ if terminated.is_err() => Err(RestartError::win(
+            ErrorKind::Shutdown,
+            terminated.unwrap_err(),
         )
-    };
-    if result != ERROR_SUCCESS && result != ERROR_MORE_DATA {
-        return Err(RestartError::new(ErrorKind::Prepare, result.0).at(Stage::Resources));
+        .at(Stage::ForceShutdown)),
+        WAIT_FAILED => Err(RestartError::win(
+            ErrorKind::Shutdown,
+            windows::core::Error::from_thread(),
+        )
+        .at(Stage::ForceShutdown)),
+        _ => Err(RestartError::new(ErrorKind::Shutdown, 1460).at(Stage::ForceShutdown)),
     }
-    if result != ERROR_SUCCESS
-        || count != 1
-        || reasons != 0
-        || infos[0].Process.dwProcessId != shell.identity.pid
-        || infos[0].Process.ProcessStartTime != shell.started
-        || infos[0].ApplicationType != RmExplorer
-        || !infos[0].bRestartable.as_bool()
-    {
-        return Err(RestartError::new(ErrorKind::Unsupported, 50).at(Stage::Resources));
+}
+
+fn restart_shell(shell: Shell) -> Result<(), RestartError> {
+    let old = shell.identity;
+    let tray = taskbar(old.pid).ok_or_else(|| RestartError::new(ErrorKind::Unsupported, 50))?;
+    if !responsive(unsafe { GetShellWindow() }) || !responsive(tray) {
+        return Err(RestartError::new(ErrorKind::Shutdown, 1460).at(Stage::Shutdown));
     }
-    if current() != Some(shell.identity) {
+    let prepared = process::Prepared::new(&shell)?;
+    if current() != Some(old) || taskbar(old.pid) != Some(tray) {
         return Err(RestartError::new(ErrorKind::Stale, 1168));
     }
-    let shutdown = unsafe { RmShutdown(session.0, RmShutdownOnlyRegistered.0 as u32, None) };
-    // Restart is required even when shutdown only partly succeeded.
-    let restart = unsafe { RmRestart(session.0, None, None) };
-    if wait_ready(shell.identity, Duration::from_secs(10)) {
+    log::info!(
+        "Explorer restart: replacement prepared; old_pid={}",
+        old.pid
+    );
+    // Explorer's own Exit Explorer request (also used by ExplorerPatcher's
+    // ExitExplorer) avoids Restart Manager's session-ending notifications.
+    unsafe { PostMessageW(Some(tray), EXIT_EXPLORER, WPARAM(0), LPARAM(0)) }
+        .map_err(|e| RestartError::win(ErrorKind::Shutdown, e).at(Stage::Shutdown))?;
+    // A vanished window alone is not proof that teardown finished. Complete
+    // the requested shutdown before resuming a replacement shell.
+    let forced = finish_shutdown(shell.process.0, 5000, 5000)?;
+    drop(shell);
+    // A forced exit may trigger Windows' own shell recovery. Give that shell a
+    // chance to settle; do not launch a second Explorer over an existing shell.
+    if forced && wait_ready(old, Duration::from_secs(2)) {
+        log::info!(
+            "Explorer restart: system recovered desktop; new_pid={}",
+            shell_pid()
+        );
         return Ok(());
     }
     if shell_pid() != 0 {
-        return Err(RestartError::new(
-            ErrorKind::Shutdown,
-            if shutdown.0 != 0 { shutdown.0 } else { 1460 },
-        )
-        .at(Stage::Shutdown));
+        if wait_ready(old, Duration::from_secs(15)) {
+            log::info!(
+                "Explorer restart: existing replacement responsive; new_pid={}",
+                shell_pid()
+            );
+            return Ok(());
+        }
+        return Err(RestartError::new(ErrorKind::Restore, 1460).at(Stage::DesktopReady));
     }
-    // The same standard user owns this worker. Never fall back to an elevated shell.
-    if let Err(error) = crate::tasks::launch(0, quote(&shell.path), false) {
-        return Err(RestartError::new(ErrorKind::Restore, error.code).at(Stage::Recovery));
+    prepared.start()?;
+    if !wait_ready(old, Duration::from_secs(15)) {
+        return Err(RestartError::new(ErrorKind::Restore, 1460).at(Stage::DesktopReady));
     }
-    if wait_ready(shell.identity, Duration::from_secs(15)) {
-        return Ok(());
-    }
-    Err(RestartError::new(
-        ErrorKind::Restore,
-        if restart.0 != 0 { restart.0 } else { 1460 },
-    )
-    .at(Stage::DesktopReady))
-}
-
-fn restart_as_shell(shell: Shell) -> Result<(), RestartError> {
-    let shell_token = token(shell.process.0, true)?;
-    let own_token = token(unsafe { GetCurrentProcess() }, false)?;
-    verify_tokens(shell_token.0, own_token.0, false)?;
-    let mut primary = HANDLE::default();
-    unsafe {
-        DuplicateTokenEx(
-            shell_token.0,
-            // Secondary Logon also requires these two rights on the duplicated token.
-            TOKEN_QUERY
-                | TOKEN_DUPLICATE
-                | TOKEN_ASSIGN_PRIMARY
-                | TOKEN_ADJUST_DEFAULT
-                | TOKEN_ADJUST_SESSIONID,
-            None,
-            SecurityImpersonation,
-            TokenPrimary,
-            &mut primary,
-        )
-    }
-    .map_err(|e| RestartError::win(ErrorKind::Permission, e))?;
-    let primary = Handle(primary);
-    let mut environment = std::ptr::null_mut();
-    unsafe { CreateEnvironmentBlock(&mut environment, Some(primary.0), false) }
-        .map_err(|e| RestartError::win(ErrorKind::Prepare, e).at(Stage::Environment))?;
-    let environment = Environment(environment);
-    let exe = std::env::current_exe()
-        .map_err(|e| RestartError::new(ErrorKind::Prepare, e.raw_os_error().unwrap_or(2) as u32))?;
-    let exe = exe.to_string_lossy();
-    let mut line = wide(&format!(
-        "{} {HELPER} {} {}",
-        quote(&exe),
-        shell.identity.pid,
-        shell.identity.create_time
-    ));
-    let exe = wide(&exe);
-    let mut desktop = wide("WinSta0\\Default");
-    let startup = STARTUPINFOW {
-        cb: size_of::<STARTUPINFOW>() as u32,
-        lpDesktop: PWSTR(desktop.as_mut_ptr()),
-        ..Default::default()
-    };
-    let mut process = PROCESS_INFORMATION::default();
-    // Start before shutting anything down; inaccessible binaries or tokens leave the desktop intact.
-    unsafe {
-        CreateProcessWithTokenW(
-            primary.0,
-            CREATE_PROCESS_LOGON_FLAGS(0),
-            PCWSTR(exe.as_ptr()),
-            Some(PWSTR(line.as_mut_ptr())),
-            CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
-            Some(environment.0),
-            PCWSTR::null(),
-            &startup,
-            &mut process,
-        )
-    }
-    .map_err(|e| RestartError::win(ErrorKind::Prepare, e).at(Stage::HelperLaunch))?;
-    let child = Handle(process.hProcess);
-    drop(Handle(process.hThread));
-    unsafe { WaitForSingleObject(child.0, INFINITE) };
-    let mut code = 0;
-    unsafe { GetExitCodeProcess(child.0, &mut code) }
-        .map_err(|e| RestartError::win(ErrorKind::Prepare, e))?;
-    if code == 0 {
-        Ok(())
-    } else {
-        Err(RestartError::from_exit(code))
-    }
+    log::info!(
+        "Explorer restart: desktop and taskbar responsive; new_pid={}",
+        shell_pid()
+    );
+    Ok(())
 }
 
 pub fn restart(pid: u32, create_time: i64) -> Result<(), RestartError> {
@@ -469,15 +414,13 @@ pub fn restart(pid: u32, create_time: i64) -> Result<(), RestartError> {
     }
     let _guard = Restarting;
     let result = (|| {
-        let shell = inspect()?;
+        // Acquire termination access before changing the desktop, so denied
+        // permissions cannot strand it halfway through a failed shutdown.
+        let shell = inspect(true)?;
         if shell.identity != (Identity { pid, create_time }) {
             return Err(RestartError::new(ErrorKind::Stale, 1168));
         }
-        if argus_core::privilege::is_elevated() {
-            restart_as_shell(shell)
-        } else {
-            restart_standard(shell)
-        }
+        restart_shell(shell)
     })();
     if let Err(error) = &result {
         log::warn!(
@@ -510,6 +453,140 @@ pub fn run_mode() -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::windows::{io::AsRawHandle, process::CommandExt};
+
+    struct Child(std::process::Child);
+    impl Child {
+        fn new(sleep: bool) -> Self {
+            Self(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", "explorer::tests::shutdown_fixture", "--ignored"])
+                    .env(
+                        "ARGUS_EXPLORER_SHUTDOWN_FIXTURE",
+                        if sleep { "sleep" } else { "exit" },
+                    )
+                    .creation_flags(0x08000000)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            )
+        }
+        fn handle(&self) -> HANDLE {
+            HANDLE(self.0.as_raw_handle())
+        }
+    }
+    impl Drop for Child {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    #[test]
+    #[ignore = "owned subprocess fixture, invoked by shutdown regression tests"]
+    fn shutdown_fixture() {
+        if std::env::var("ARGUS_EXPLORER_SHUTDOWN_FIXTURE").as_deref() == Ok("sleep") {
+            std::thread::sleep(Duration::from_secs(60));
+        }
+    }
+
+    #[test]
+    fn a_stalled_shutdown_finishes_only_the_original_process_before_recovery() {
+        let mut original = Child::new(true);
+        let mut unrelated = Child::new(true);
+        assert!(finish_shutdown(original.handle(), 30, 5000).unwrap());
+        assert!(original.0.try_wait().unwrap().is_some());
+        assert!(unrelated.0.try_wait().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_completed_shutdown_needs_no_forced_termination() {
+        let mut original = Child::new(false);
+        assert!(original.0.wait().unwrap().success());
+        assert!(!finish_shutdown(original.handle(), 0, 0).unwrap());
+    }
+
+    #[test]
+    fn missing_termination_access_reports_the_stage_without_claiming_recovery() {
+        let mut original = Child::new(true);
+        let read_only = Handle(
+            unsafe {
+                OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+                    false,
+                    original.0.id(),
+                )
+            }
+            .unwrap(),
+        );
+        let error = finish_shutdown(read_only.0, 10, 10).unwrap_err();
+        assert!(matches!(error.stage, Stage::ForceShutdown));
+        assert_eq!(error.code, 5);
+        assert!(original.0.try_wait().unwrap().is_none());
+    }
+
+    #[test]
+    fn termination_policy_protects_the_current_desktop_process() {
+        let shell = shell_pid();
+        if shell != 0 {
+            assert!(matches!(
+                check_termination(shell),
+                Err(argus_core::actions::ActionError::Os(_))
+            ));
+        }
+        assert!(check_termination(u32::MAX).is_ok());
+    }
+
+    #[test]
+    fn a_window_must_answer_messages_before_it_is_ready() {
+        use std::sync::mpsc;
+        use windows::Win32::System::Threading::GetCurrentThreadId;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow, DispatchMessageW, GetMessageW, MSG, PostThreadMessageW,
+            WM_QUIT, WS_POPUP,
+        };
+        let (created_tx, created_rx) = mpsc::channel();
+        let (pump_tx, pump_rx) = mpsc::channel();
+        let thread = std::thread::spawn(move || unsafe {
+            let window = CreateWindowExW(
+                Default::default(),
+                w!("STATIC"),
+                PCWSTR::null(),
+                WS_POPUP,
+                0,
+                0,
+                0,
+                0,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+            created_tx
+                .send((window.0 as usize, GetCurrentThreadId()))
+                .unwrap();
+            pump_rx.recv().unwrap();
+            let mut message = MSG::default();
+            while GetMessageW(&mut message, None, 0, 0).as_bool() {
+                DispatchMessageW(&message);
+            }
+            DestroyWindow(window).unwrap();
+        });
+        let (window, owner) = created_rx.recv().unwrap();
+        let window = HWND(window as *mut _);
+        let blocked = responsive(window);
+        pump_tx.send(()).unwrap();
+        let pumping = responsive(window);
+        unsafe { PostThreadMessageW(owner, WM_QUIT, WPARAM(0), LPARAM(0)) }.unwrap();
+        thread.join().unwrap();
+        assert!(!blocked);
+        assert!(pumping);
+        assert!(!responsive(HWND::default()));
+    }
+
     #[test]
     fn helper_errors_preserve_stage_and_native_code() {
         for kind in [
@@ -521,11 +598,14 @@ mod tests {
             ErrorKind::Restore,
             ErrorKind::Busy,
         ] {
-            let original = RestartError::new(kind, 1223);
-            let restored = RestartError::from_exit(original.exit_code());
-            assert_eq!(restored.kind as u32, kind as u32);
-            assert_eq!(restored.code, 1223);
+            let original = RestartError::new(kind, 1223).at(Stage::Shutdown);
+            assert_eq!((original.exit_code() >> 20) & 0xf, kind as u32);
+            assert_eq!((original.exit_code() >> 16) & 0xf, Stage::Shutdown as u32);
+            assert_eq!(original.exit_code() & 0xffff, 1223);
         }
-        assert_eq!(RestartError::from_exit(0xc0000142).code, 0xc0000142);
+        assert_eq!(
+            RestartError::new(ErrorKind::Prepare, 0xc0000142).exit_code(),
+            0xc0000142
+        );
     }
 }

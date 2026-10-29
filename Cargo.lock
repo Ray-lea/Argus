@@ -215,7 +215,7 @@ dependencies = [
 
 [[package]]
 name = "argus"
-version = "0.3.0"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "argus-app",
@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "argus-app"
-version = "0.3.0"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "argus-core",
@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "argus-core"
-version = "0.3.0"
+version = "0.3.4"
 dependencies = [
  "log",
  "png 0.18.1",
@@ -270,7 +270,7 @@ dependencies = [
 
 [[package]]
 name = "argus-service"
-version = "0.3.0"
+version = "0.3.4"
 dependencies = [
  "argus-core",
  "reqwest",
@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "argus-update-signer"
-version = "0.3.0"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -293,7 +293,7 @@ dependencies = [
 
 [[package]]
 name = "argus-window-probe"
-version = "0.3.0"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "png 0.18.1",

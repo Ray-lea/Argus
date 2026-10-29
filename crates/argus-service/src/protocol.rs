@@ -103,7 +103,7 @@ pub enum Reply {
     Disk(Option<argus_core::disk_process::DiskSnapshot>),
     /// The service's disk query failed: why, in fixed words and codes.
     DiskFailed(argus_core::disk_process::DiskFailure),
-    Sensors(argus_core::hardware::CpuSensors),
+    Sensors(Box<argus_core::hardware::CpuSensors>),
     Handles(argus_core::handles::HandleReport),
     Priority(Priority),
     Error(ActionError),
@@ -168,7 +168,9 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
             return Reply::Handles(crate::handles::scan_local(paths));
         }
         Operation::NetworkSnapshot => return Reply::Network(context.network.snapshot()),
-        Operation::SensorSnapshot {} => return Reply::Sensors(context.sensors.snapshot()),
+        Operation::SensorSnapshot {} => {
+            return Reply::Sensors(Box::new(context.sensors.snapshot()));
+        }
         Operation::DiskSnapshot {} => {
             return match context.disk.snapshot() {
                 Some(Ok(frame)) => Reply::Disk(Some(frame)),
@@ -317,7 +319,7 @@ mod tests {
             })
             .collect(),
         };
-        let reply = Reply::Sensors(CpuSensors {
+        let reply = Reply::Sensors(Box::new(CpuSensors {
             cores: vec![value; 256],
             core_temperatures: vec![
                 CoreTemperature {
@@ -336,11 +338,16 @@ mod tests {
                 64
             ],
             ..Default::default()
-        });
+        }));
         let bytes = serde_json::to_vec(&reply).unwrap();
         assert!(bytes.len() < 256 * 1024);
         assert!(bytes.len() < MAX_REPLY);
         assert!(serde_json::from_slice::<Reply>(&bytes).is_ok());
+        // Boxing affects in-process layout only; older wire snapshots still decode.
+        assert!(matches!(
+            serde_json::from_str::<Reply>(r#"{"kind":"sensors","value":{"state":"ready"}}"#).unwrap(),
+            Reply::Sensors(frame) if frame.state == argus_core::hardware::SensorState::Ready
+        ));
     }
 
     #[test]

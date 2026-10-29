@@ -14,16 +14,20 @@ pub fn is_close_arg(arg: &str) -> bool {
     matches!(arg, CLOSE_COPIES_ARG | "--argus-uninstall-close")
 }
 
-/// Closes verified task manager interface copies during installation or removal.
-pub fn close_copies() {
+/// Closes verified task manager interface copies and administrator copies
+/// during installation or removal.
+pub fn close_copies(identifier: &str) {
     let copies: Vec<(u32, i64)> = process::find_by(|name| {
         name.get(..17)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("argus-taskmgr-ui-"))
+            || name.to_ascii_lowercase().starts_with("argus-admin-")
     })
     .into_iter()
     .filter(|p| {
-        details::image_path_of(p.pid)
-            .is_some_and(|path| argus_service::taskmgr::is_interface_copy(Path::new(&path)))
+        details::image_path_of(p.pid).is_some_and(|path| {
+            argus_service::taskmgr::is_interface_copy(Path::new(&path))
+                || argus_service::admin::is_copy(Path::new(&path), identifier)
+        })
     })
     .map(|p| (p.pid, p.create_time))
     .collect();

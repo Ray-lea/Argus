@@ -19,7 +19,7 @@ pub struct ThermalZone {
     pub celsius: f32,
 }
 
-/// RAPL power domains, in watts; None where the platform does not meter it.
+/// RAPL power domains, in watts; None when no valid reading is available.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CpuPower {
@@ -30,6 +30,28 @@ pub struct CpuPower {
     /// Integrated graphics.
     pub graphics: Option<f32>,
     pub memory: Option<f32>,
+}
+
+impl CpuPower {
+    fn add_meter(&mut self, name: &str, milliwatts: f64) {
+        // PDH already checked counter status. Zero is a valid idle reading,
+        // not an absent domain; invalid readings must not turn into zero.
+        if !milliwatts.is_finite() || milliwatts < 0.0 || name == "_Total" {
+            return;
+        }
+        let slot = match name.rsplit('_').next() {
+            Some("PKG") => &mut self.package,
+            Some("PP0") => &mut self.cores,
+            Some("PP1") => &mut self.graphics,
+            Some("DRAM") => &mut self.memory,
+            _ => return,
+        };
+        // Several packages add up.
+        let watts = f64::from(slot.unwrap_or(0.0)) + milliwatts / 1000.0;
+        if watts <= f64::from(f32::MAX) {
+            *slot = Some(watts as f32);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -186,23 +208,9 @@ impl Sensors {
         }
 
         if let Some(c) = self.energy {
-            let mut power = CpuPower::default();
             for (name, milliwatts) in pdh::array(c, &mut self.buf) {
-                if milliwatts <= 0.0 || name == "_Total" {
-                    continue;
-                }
-                let watts = (milliwatts / 1000.0) as f32;
-                let slot = match name.rsplit('_').next() {
-                    Some("PKG") => &mut power.package,
-                    Some("PP0") => &mut power.cores,
-                    Some("PP1") => &mut power.graphics,
-                    Some("DRAM") => &mut power.memory,
-                    _ => continue,
-                };
-                // Several packages add up.
-                *slot = Some(slot.unwrap_or(0.0) + watts);
+                out.power.add_meter(&name, milliwatts);
             }
-            out.power = power;
         }
         out
     }
@@ -219,6 +227,47 @@ fn processor_index(name: &str, threads: &[CpuThread]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn idle_power_is_a_reading_and_does_not_toggle_availability() {
+        let values = [0.0, 250.0, 0.0, 125.0, 0.0].map(|milliwatts| {
+            let mut power = CpuPower::default();
+            power.add_meter("0_PP1", milliwatts);
+            power.graphics
+        });
+        assert_eq!(
+            values,
+            [Some(0.0), Some(0.25), Some(0.0), Some(0.125), Some(0.0)]
+        );
+    }
+
+    #[test]
+    fn power_domains_sum_valid_meters_without_inventing_missing_data() {
+        let mut power = CpuPower::default();
+        assert_eq!(power.graphics, None);
+        power.add_meter("0_PKG", 12_000.0);
+        power.add_meter("1_PKG", 8_000.0);
+        power.add_meter("0_PP0", 0.0);
+        power.add_meter("0_DRAM", 0.0);
+        power.add_meter("_Total", 999_999.0);
+        power.add_meter("unknown", 123.0);
+        assert_eq!(power.package, Some(20.0));
+        assert_eq!(power.cores, Some(0.0));
+        assert_eq!(power.memory, Some(0.0));
+        assert_eq!(power.graphics, None);
+    }
+
+    #[test]
+    fn invalid_power_values_do_not_poison_a_valid_domain() {
+        for value in [-1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MAX] {
+            let mut power = CpuPower::default();
+            power.add_meter("0_PP1", value);
+            assert_eq!(power.graphics, None);
+            power.add_meter("0_PKG", 10_000.0);
+            power.add_meter("1_PKG", value);
+            assert_eq!(power.package, Some(10.0));
+        }
+    }
     #[test]
     fn idle_instances_preserve_groups_and_ignore_rollups() {
         let threads: Vec<_> = [(0, 0), (0, 1), (1, 0), (1, 2)]

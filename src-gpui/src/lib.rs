@@ -1,3 +1,4 @@
+mod admin;
 mod async_runtime;
 
 mod catalog;
@@ -22,6 +23,7 @@ mod tasks;
 mod update_transport;
 mod updater;
 mod window_motion;
+mod window_state;
 
 include!(concat!(env!("OUT_DIR"), "/taskmgr-assets.rs"));
 
@@ -107,7 +109,10 @@ impl Options {
 }
 
 pub fn run() -> anyhow::Result<()> {
+    // Development builds never install the per-account administrator grant.
+    argus_service::admin::configure_support(!cfg!(debug_assertions));
     for mode in [
+        updater::run_mode,
         packaging::run_mode,
         installer::run_mode,
         explorer::run_mode,
@@ -144,13 +149,19 @@ pub fn run() -> anyhow::Result<()> {
         argus_app::config::product_name(),
         options.identifier
     ));
+    if let Some(code) = argus_service::admin::run_mode(&options.identifier) {
+        std::process::exit(code);
+    }
     let host = Host::new(options.identifier.clone());
     if std::env::args().any(|a| leftovers::is_close_arg(&a)) {
-        leftovers::close_copies();
+        leftovers::close_copies(&options.identifier);
         return Ok(());
     }
-    let _owner = match instance::acquire(&options.identifier, &std::env::args().collect::<Vec<_>>())
-    {
+    let launch_args = std::env::args().collect::<Vec<_>>();
+    if admin::route(&options.identifier, &launch_args) {
+        return Ok(());
+    }
+    let _owner = match instance::acquire(&options.identifier, &launch_args) {
         Ok(Some(owner)) => owner,
         Ok(None) => {
             commands::autostart::repair_once(argus_app::config::product_name());

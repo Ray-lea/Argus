@@ -264,11 +264,65 @@ fn pubkey(_app: &Host) -> String {
         .to_string()
 }
 
+/// Whether this image is a portable download rather than the installation:
+/// the installed argus.exe, or a copy made from it (an administrator start's,
+/// or the Task Manager replacement's), neither of which has the uninstaller
+/// beside it. A portable download stays portable wherever it runs, even beside
+/// another installation's uninstaller.
+fn is_portable(id: &str) -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return true;
+    };
+    let installed = crate::commands::autostart::installed(argus_app::config::product_name());
+    let admin_source = argus_service::admin::is_copy(&exe, id)
+        .then(|| argus_service::admin::source(id))
+        .flatten();
+    !installed_image(
+        &exe,
+        installed.as_deref(),
+        admin_source.as_deref(),
+        argus_service::taskmgr::is_interface_copy(&exe),
+    )
+}
+
+/// `exe` is the installed image, a Task Manager interface copy (only an
+/// installation sets the replacement up), or an administrator copy of the
+/// installed image.
+fn installed_image(
+    exe: &Path,
+    installed: Option<&Path>,
+    admin_source: Option<&Path>,
+    task_manager_copy: bool,
+) -> bool {
+    let same = |a: &Path, b: &Path| {
+        let full = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        full(a)
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&full(b).to_string_lossy())
+    };
+    task_manager_copy
+        || installed.is_some_and(|installed| {
+            same(exe, installed) || admin_source.is_some_and(|source| same(source, installed))
+        })
+}
+
+/// Read-only package check, before single-instance routing or a window.
+/// Exit 0 means an installed image, 1 a portable one.
+pub fn run_mode() -> Option<i32> {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    args.first()
+        .is_some_and(|a| a == "--argus-updater-check")
+        .then(|| {
+            if args.len() == 1 {
+                i32::from(is_portable(argus_app::config::identifier()))
+            } else {
+                87
+            }
+        })
+}
+
 pub fn init(app: &Host) {
-    // The installer puts uninstall.exe beside argus.exe; the standalone exe has none.
-    let portable = !std::env::current_exe()
-        .map(|exe| exe.with_file_name("uninstall.exe").exists())
-        .unwrap_or(false);
+    let portable = is_portable(&app.config().identifier);
     let disabled = if cfg!(debug_assertions) {
         Some(tr!("updater.devBuild"))
     } else if pubkey(app).is_empty() {
@@ -1169,6 +1223,7 @@ fn launch(app: &Host, ready: &Ready) -> Failure {
     }
     drop(file);
     // std::process::exit skips RunEvent::Exit.
+    crate::window_state::flush();
     crate::stop_network_session();
     crate::frontend::flush_preferences();
     log::logger().flush();
@@ -1201,6 +1256,35 @@ pub fn open_release_page(version: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copies_of_the_installation_update_through_the_installer() {
+        let installed = Path::new(r"C:Program FilesArgusargus.exe");
+        let portable = Path::new(r"C:Downloadsargus.exe");
+        let copy = Path::new(r"C:UsersaAppDataLocaladminargus-admin-1.exe");
+        assert!(installed_image(installed, Some(installed), None, false));
+        assert!(installed_image(
+            Path::new(r"c:program filesargusARGUS.EXE"),
+            Some(installed),
+            None,
+            false
+        ));
+        assert!(!installed_image(portable, Some(installed), None, false));
+        assert!(!installed_image(portable, None, None, false));
+        assert!(installed_image(
+            copy,
+            Some(installed),
+            Some(installed),
+            false
+        ));
+        assert!(!installed_image(
+            copy,
+            Some(installed),
+            Some(portable),
+            false
+        ));
+        assert!(installed_image(copy, None, None, true));
+    }
 
     #[test]
     fn sources_follow_the_route() {

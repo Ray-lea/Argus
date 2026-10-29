@@ -1,6 +1,6 @@
 //! Task Manager replacement is opt-in. Status is read-only. All persistent
 //! writes live behind explicit maintenance actions, with a durable journal.
-mod launch;
+pub(crate) mod launch;
 mod probe;
 pub mod ready;
 mod registry;
@@ -37,6 +37,9 @@ pub type Assets = (&'static [u8], &'static [u8]);
 /// for a service update to bring an enabled replacement along (`follow_update`).
 /// None in a development build.
 static ASSETS: OnceLock<Assets> = OnceLock::new();
+pub(crate) fn launcher_asset() -> Option<&'static [u8]> {
+    ASSETS.get().map(|a| a.0)
+}
 
 pub fn id() -> Result<String> {
     Ok(format!(
@@ -497,7 +500,7 @@ fn older_interface(dir: &Path, image: &str) -> Option<String> {
 
 /// Whether `copy` comes before `current` (a version string such as 0.2.0 or
 /// 0.2.0-beta.1); the pre-release part does not count.
-fn older(copy: (u32, u32, u32), current: &str) -> bool {
+pub(crate) fn older(copy: (u32, u32, u32), current: &str) -> bool {
     let mut parts = current
         .split(['-', '+'])
         .next()
@@ -513,7 +516,7 @@ fn older(copy: (u32, u32, u32), current: &str) -> bool {
 }
 
 /// Major, minor and patch from an executable's version resource.
-fn image_version(path: &Path) -> Option<(u32, u32, u32)> {
+pub(crate) fn image_version(path: &Path) -> Option<(u32, u32, u32)> {
     use windows::Win32::Storage::FileSystem::{
         GetFileVersionInfoSizeW, GetFileVersionInfoW, VS_FIXEDFILEINFO, VerQueryValueW,
     };

@@ -212,6 +212,7 @@ fn terminate(state: &AppState, pid: u32, create_time: i64, force: bool) -> Resul
     if pid == std::process::id() {
         return Err(ActionError::Refused);
     }
+    crate::explorer::check_termination(pid)?;
     privileged(
         state,
         Operation::Terminate { pid, create_time },
@@ -236,6 +237,7 @@ pub fn kill_process_tree(
     pid: u32,
     create_time: i64,
 ) -> Result<TreeKillReport, ActionError> {
+    crate::explorer::check_termination(pid)?;
     let result = actions::terminate_tree_with(pid, create_time, |pid, created| {
         terminate(&state, pid, created, false)
     });
@@ -357,6 +359,26 @@ pub fn set_theme(app: crate::native_runtime::Host, theme: Theme) -> Result<Setti
     Ok(settings_view(&app))
 }
 
+/// The administrator start's state, for settings and onboarding.
+pub fn administrator_status(app: crate::native_runtime::Host) -> argus_service::admin::Status {
+    crate::admin::status(&app)
+}
+
+/// Turns the administrator start on or off (`admin::set_mode`).
+pub fn set_administrator_mode(
+    app: crate::native_runtime::Host,
+    enabled: bool,
+    defer: bool,
+    repair: Option<bool>,
+) -> Result<argus_service::admin::Status, String> {
+    crate::admin::set_mode(&app, enabled, defer, repair)
+}
+
+/// Applies a deferred administrator start change.
+pub fn apply_administrator_mode(app: crate::native_runtime::Host) -> Result<(), String> {
+    crate::admin::apply_mode(&app)
+}
+
 /// Records that the onboarding of `version` was completed or skipped.
 pub fn complete_onboarding(
     app: crate::native_runtime::Host,
@@ -465,6 +487,8 @@ pub fn set_autostart(
     let launcher = app.autolaunch();
     if !enabled {
         launcher.disable().map_err(|e| e.to_string())?;
+    } else if let Some(path) = argus_service::admin::launcher(&app.config().identifier) {
+        autostart::enable_admin(&app, &path)?;
     } else if autostart::running_as_copy() {
         // The plugin would name this copy of the task manager replacement.
         autostart::enable_installed(&app.package_info().name)?;

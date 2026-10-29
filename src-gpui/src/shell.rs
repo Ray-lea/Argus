@@ -153,6 +153,7 @@ pub fn animations_enabled() -> bool {
 pub fn show_main(app: &Host) {
     if let Some(window) = app.get_window("main") {
         if let Ok(hwnd) = window.hwnd() {
+            crate::window_state::prepare_show(hwnd);
             crate::window_motion::show(hwnd);
         }
         let _ = window.set_focus();
@@ -362,75 +363,6 @@ pub fn set_tray_update(app: &Host, version: Option<&str>) {
     }
     let _ = app.emit("argus-tray-update", version);
 }
-pub fn save_window_state(app: &Host, hwnd: HWND) {
-    let Ok(dir) = app.path().app_config_dir() else {
-        return;
-    };
-    let mut placement = WINDOWPLACEMENT {
-        length: size_of::<WINDOWPLACEMENT>() as u32,
-        ..Default::default()
-    };
-    if unsafe { GetWindowPlacement(hwnd, &mut placement) }.is_err() {
-        return;
-    }
-    let rect = placement.rcNormalPosition;
-    let width = rect.right - rect.left;
-    let height = rect.bottom - rect.top;
-    if width <= 0 || height <= 0 {
-        return;
-    }
-    let state = serde_json::json!({
-        "x": rect.left,
-        "y": rect.top,
-        "width": width,
-        "height": height,
-        "maximized": placement.showCmd == SW_SHOWMAXIMIZED.0 as u32,
-    });
-    let _ = std::fs::create_dir_all(&dir);
-    let _ = std::fs::write(dir.join("window-state.json"), state.to_string());
-}
-pub fn restore_window_state(app: &Host, native: &NativeWindow, options: &crate::Options) {
-    if options.test || options.hidden {
-        return;
-    }
-    let Ok(dir) = app.path().app_config_dir() else {
-        return;
-    };
-    let Ok(bytes) = std::fs::read(dir.join("window-state.json")) else {
-        return;
-    };
-    let Ok(state) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
-        return;
-    };
-    let (Some(x), Some(y), Some(w), Some(h)) = (
-        state["x"].as_i64().map(|v| v as i32),
-        state["y"].as_i64().map(|v| v as i32),
-        state["width"].as_i64().map(|v| v as i32),
-        state["height"].as_i64().map(|v| v as i32),
-    ) else {
-        return;
-    };
-    if w < 400 || h < 300 {
-        return;
-    }
-    let rect = RECT {
-        left: x,
-        top: y,
-        right: x + w,
-        bottom: y + h,
-    };
-    let Ok(hwnd) = native.hwnd() else {
-        return;
-    };
-    unsafe {
-        if !MonitorFromRect(&rect, MONITOR_DEFAULTTONULL).is_invalid() {
-            let _ = SetWindowPos(hwnd, None, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
-        }
-        if state["maximized"].as_bool() == Some(true) {
-            let _ = ShowWindow(hwnd, SW_MAXIMIZE);
-        }
-    }
-}
 fn tray_menu(app: &Host, hwnd: HWND) {
     unsafe {
         let Ok(menu) = CreatePopupMenu() else {
@@ -487,11 +419,7 @@ unsafe extern "system" fn procedure(
             }
             return LRESULT(0);
         }
-        if message == WM_EXITSIZEMOVE {
-            save_window_state(app, hwnd);
-        }
         if message == WM_CLOSE {
-            save_window_state(app, hwnd);
             if app.state::<SettingsStore>().get().close_to_tray {
                 if let Some(window) = app.get_window("main") {
                     hide_main(&window);

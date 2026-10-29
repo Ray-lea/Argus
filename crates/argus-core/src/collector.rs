@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 
 use crate::app_windows;
-use crate::gpu_process::GpuProcessTracker;
+use crate::gpu_process::{GpuEngineUsage, GpuProcessTracker};
 use crate::hardware::{Hardware, HardwareTracker};
 use crate::meta::MetaStore;
 use crate::net_process::NetworkTracker;
@@ -35,6 +35,7 @@ pub struct Collector {
     network: Option<NetworkTracker>,
     /// `GPU 0 - 3D` labels by adapter LUID and engine, shared by every process.
     engine_labels: HashMap<(u64, Arc<str>), Arc<str>>,
+    engine_ids: HashMap<(u64, u32, u32), Arc<str>>,
     seq: u64,
 }
 
@@ -52,6 +53,7 @@ impl Collector {
             gpu_processes: GpuProcessTracker::new(),
             network: None,
             engine_labels: HashMap::new(),
+            engine_ids: HashMap::new(),
             seq: 0,
         }
     }
@@ -71,8 +73,8 @@ impl Collector {
             self.system.logical_cpus(),
             self.system.precise_idle_fraction(),
         );
-        let hardware = self.hardware.sample();
-        self.attach_gpu_usage(&mut processes, &hardware);
+        let mut hardware = self.hardware.sample();
+        self.attach_gpu_usage(&mut processes, &mut hardware);
         if self
             .network
             .as_ref()
@@ -118,11 +120,11 @@ impl Collector {
         }
     }
 
-    fn attach_gpu_usage(&mut self, processes: &mut [ProcessRow], hardware: &Hardware) {
+    fn attach_gpu_usage(&mut self, processes: &mut [ProcessRow], hardware: &mut Hardware) {
         let Some(tracker) = &mut self.gpu_processes else {
             return;
         };
-        let usage = tracker.sample();
+        let mut usage = tracker.sample();
         if usage.is_empty() {
             return;
         }
@@ -133,8 +135,27 @@ impl Collector {
             .enumerate()
             .filter_map(|(i, g)| g.info.id.parse().ok().map(|id| (id, i)))
             .collect();
+        // Aggregate the same query window by physical node. Taking the maximum
+        // of already-reduced process percentages would lose secondary engines.
+        let mut totals: HashMap<(u64, u32, u32), f32> = HashMap::new();
+        for engine in usage.values().flat_map(|g| &g.engines) {
+            let total = totals
+                .entry((engine.luid, engine.physical, engine.node))
+                .or_default();
+            *total = (*total + engine.util).min(100.0);
+        }
+        for ((luid, physical, node), util) in totals {
+            if let Some(&i) = index.get(&luid) {
+                let engine = if physical == 0 {
+                    self.hardware.gpu_node_engine(luid, node)
+                } else {
+                    None
+                };
+                hardware.gpus[i].include_process_engine(engine, util);
+            }
+        }
         for p in processes {
-            let Some(g) = usage.get(&p.pid) else {
+            let Some(g) = usage.remove(&p.pid) else {
                 continue;
             };
             p.gpu = g.util;
@@ -149,6 +170,74 @@ impl Collector {
                     })
                     .clone()
             });
+            for engine in g.engines {
+                let adapter_index = index.get(&engine.luid).copied();
+                let name = self
+                    .engine_labels
+                    .entry((engine.luid, engine.name.clone()))
+                    .or_insert_with(|| match adapter_index {
+                        Some(i) => format!("GPU {i} - {}", engine.name).into(),
+                        None => engine.name.clone(),
+                    })
+                    .clone();
+                let id = self
+                    .engine_ids
+                    .entry((engine.luid, engine.physical, engine.node))
+                    .or_insert_with(|| {
+                        format!("{}:{}:{}", engine.luid, engine.physical, engine.node).into()
+                    })
+                    .clone();
+                p.gpu_engines.push(GpuEngineUsage {
+                    id,
+                    name,
+                    util: engine.util,
+                });
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    #[ignore = "samples live GPU counters for three seconds"]
+    fn live_gpu_snapshot_keeps_process_and_device_engine_totals_consistent() {
+        let mut collector = Collector::new(MetaStore::new());
+        for _ in 0..3 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let snapshot = collector.sample();
+            let mut engines: HashMap<&str, f32> = HashMap::new();
+            for process in &snapshot.processes {
+                let peak = process
+                    .gpu_engines
+                    .iter()
+                    .map(|e| e.util)
+                    .fold(0.0, f32::max);
+                assert!((peak - process.gpu).abs() < 0.01);
+                for engine in &process.gpu_engines {
+                    let value = engines.entry(&engine.id).or_default();
+                    *value = (*value + engine.util).min(100.0);
+                }
+            }
+            for gpu in &snapshot.hardware.gpus {
+                let prefix = format!("{}:", gpu.info.id);
+                let peak = engines
+                    .iter()
+                    .filter(|(id, _)| id.starts_with(&prefix))
+                    .map(|(_, v)| *v)
+                    .fold(0.0, f32::max);
+                assert!(
+                    gpu.util + 0.01 >= peak,
+                    "device {}% below process engine {}%",
+                    gpu.util,
+                    peak
+                );
+                println!(
+                    "{}: total={:.2}% process engines={:.2}% source={:?}",
+                    gpu.info.name, gpu.util, peak, gpu.util_source
+                );
+            }
         }
     }
 }

@@ -542,6 +542,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
             .expect("create native window");
             cx.on_app_quit(move |_| {
                 owner.exit(0);
+                crate::window_state::flush();
                 // Preferences are written in the background: finish before exit.
                 prefs::flush(Duration::from_secs(2));
                 async {}

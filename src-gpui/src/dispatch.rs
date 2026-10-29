@@ -125,6 +125,21 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         "set_theme" => crate::commands::set_theme(host.clone(), argument::<Theme>(&args, "theme")?)
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "administrator_status" => Ok(serde_json::to_value(crate::commands::administrator_status(
+            host.clone(),
+        ))
+        .expect("serializable command response")),
+        "set_administrator_mode" => crate::commands::set_administrator_mode(
+            host.clone(),
+            argument::<bool>(&args, "enabled")?,
+            argument::<bool>(&args, "defer")?,
+            argument::<Option<bool>>(&args, "repair")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "apply_administrator_mode" => crate::commands::apply_administrator_mode(host.clone())
+            .map(|value| serde_json::to_value(value).expect("serializable command response"))
+            .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "complete_onboarding" => {
             crate::commands::complete_onboarding(host.clone(), argument::<u32>(&args, "version")?)
                 .map(|value| serde_json::to_value(value).expect("serializable command response"))

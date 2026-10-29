@@ -293,6 +293,8 @@ impl Desktop {
         if !self.snapshot.is_null() && !self.first_frame {
             self.first_frame = true;
             self.first_frame_at = Some(Instant::now());
+            // An administrator start counts as succeeded once data is on screen.
+            crate::admin::painted();
             if self.host.state::<AppState>().task_manager_start {
                 crate::commands::task_manager_ready(self.host.clone());
             }

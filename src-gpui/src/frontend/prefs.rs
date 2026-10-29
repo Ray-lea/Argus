@@ -17,10 +17,8 @@ pub struct Prefs {
 }
 impl Prefs {
     pub fn load(path: PathBuf) -> Self {
-        let values = std::fs::read(&path)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        // The values of the shared preferences file (`argus_app::preferences`).
+        let values = argus_app::preferences::load(&path).unwrap_or_default();
         Self { path, values }
     }
     pub fn get<T: serde::de::DeserializeOwned>(&self, key: &str, fallback: T) -> T {

@@ -122,7 +122,7 @@ fn command(program: &Path, args: &str) -> String {
 
 /// The argus.exe the installer put in place: per machine, so recorded under
 /// HKLM, which only administrators can change.
-fn installed(product: &str) -> Option<PathBuf> {
+pub(crate) fn installed(product: &str) -> Option<PathBuf> {
     let key = wide(&format!(
         r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{product}"
     ));
@@ -167,10 +167,52 @@ pub fn running_as_copy() -> bool {
 /// or not at all.
 pub fn enable_installed(product: &str) -> Result<(), String> {
     let exe = installed(product).ok_or_else(|| tr!("host.autostartNotInstalled"))?;
-    write(HKEY_CURRENT_USER, RUN, product, &command(&exe, ARGS))
+    enable_path(product, &exe)
+}
+pub fn enable_path(product: &str, exe: &Path) -> Result<(), String> {
+    write(HKEY_CURRENT_USER, RUN, product, &command(exe, ARGS))
         .map_err(|e| windows::core::Error::from(e.to_hresult()).message())?;
     approve(product);
     Ok(())
+}
+pub fn enable_admin(app: &crate::native_runtime::Host, path: &Path) -> Result<(), String> {
+    let args = format!(
+        "{} {ARGS}",
+        argus_service::admin::launcher_arguments(&app.config().identifier)
+    );
+    write(
+        HKEY_CURRENT_USER,
+        RUN,
+        &app.package_info().name,
+        &command(path, args.trim()),
+    )
+    .map_err(|e| windows::core::Error::from(e.to_hresult()).message())?;
+    approve(&app.package_info().name);
+    Ok(())
+}
+
+/// Retarget only an existing Argus entry, preserving StartupApproved state.
+pub fn follow_admin(app: &crate::native_runtime::Host, previous_source: Option<&Path>) {
+    let product = &app.package_info().name;
+    if read(HKEY_CURRENT_USER, RUN, product).is_none() {
+        return;
+    }
+    let target = argus_service::admin::launcher(&app.config().identifier)
+        .or_else(|| previous_source.map(Path::to_path_buf));
+    if let Some(path) = target {
+        let args = format!(
+            "{} {ARGS}",
+            argus_service::admin::launcher_arguments(&app.config().identifier)
+        );
+        if let Err(code) = write(
+            HKEY_CURRENT_USER,
+            RUN,
+            product,
+            &command(&path, args.trim()),
+        ) {
+            log::warn!("administrator startup Run entry: {}", code.0);
+        }
+    }
 }
 
 static CHECKED: AtomicBool = AtomicBool::new(false);

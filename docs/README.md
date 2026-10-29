@@ -35,6 +35,7 @@ docs/
 - [采集层 argus-core](architecture/core.md)
 - [原生宿主](architecture/host.md)
 - [特权服务](architecture/privileged-service.md)：安装、授权边界、IPC 与验证
+- [管理员启动](architecture/administrator-startup.md)：一次授权、统一入口与权限交接
 - [系统任务管理器替换](architecture/task-manager.md)：启用、回退、更新和卸载保护
 - [前端](architecture/frontend.md)
 

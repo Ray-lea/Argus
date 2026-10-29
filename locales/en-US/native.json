@@ -58,6 +58,7 @@
     "changed": "The startup task state has changed. Refresh and try again."
   },
   "host": {
+    "desktopShellTerminate": "Desktop Explorer cannot be ended directly. Use Restart instead.",
     "webViewProfileFailed": "Argus could not prepare its interface startup environment and did not start. Try starting it with standard permissions as the signed-in account. Details were recorded in the log. Error code: {code}",
     "restoreDesktopForWebView": "Windows Explorer is not running, so the administrator interface cannot initialize. Restore Explorer with the current desktop account's standard permissions and continue starting Argus? Choosing No cancels this startup.",
     "serviceReply": "The privileged service returned an unrecognized result; update the service",
@@ -67,7 +68,8 @@
     "pickFile": "Select a file to check",
     "pickTask": "Choose an app or file to run",
     "invalidInterval": "This refresh interval isn't supported",
-    "autostartNotInstalled": "This window was opened by the Task Manager replacement and no installed Argus was found, so starting at sign-in can't be turned on here. Quit Argus, run it directly, then turn this on."
+    "autostartNotInstalled": "This window was opened by the Task Manager replacement and no installed Argus was found, so starting at sign-in can't be turned on here. Quit Argus, run it directly, then turn this on.",
+    "savePreferencesFailed": "Could not save interface preferences."
   },
   "updater": {
     "devBuild": "Dev builds don't check for updates.",
@@ -249,5 +251,12 @@
     "cancelled": "Administrator permission was canceled; kernel sensors remain off.",
     "startTimeout": "Timed out waiting for PawnIO to become ready. Kernel sensors remain off. Check the driver device status or system messages and try again.",
     "reboot": "A Windows restart is required to finish configuring the PawnIO device. Restart Windows, then enable kernel sensors again."
+  },
+  "admin": {
+    "development": "Persistent administrator authorization is unavailable with development hot reload. Use a release build.",
+    "outdated": "The administrator startup copy needs an update. Quit Argus, open the new executable, then select Repair authorization.",
+    "standardAccount": "This account has no administrator identity, so automatic administrator startup is unavailable. The privileged service can perform supported administrative actions.",
+    "fallback": "Automatic administrator startup did not finish. Argus is running with standard permissions. Repair authorization in Settings.",
+    "notReady": "Administrator startup authorization is not ready."
   }
 }

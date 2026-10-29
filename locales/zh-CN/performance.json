@@ -53,7 +53,6 @@
     "eCoreSpeed": "能效核频率",
     "packagePower": "封装功耗",
     "corePower": "核心功耗",
-    "graphicsPower": "核显功耗",
     "processes": "进程",
     "threads": "线程",
     "handles": "句柄",
@@ -298,6 +297,12 @@
     "mac": "物理地址"
   },
   "gpu": {
+    "utilizationHint": "整体占用取最忙引擎，并以进程引擎计数和 NVIDIA 核心利用率补充。原生引擎曲线与驱动读数的覆盖范围、采样窗口可能不同。",
+    "utilSource": {
+      "windows": "Windows 引擎",
+      "process": "进程引擎计数",
+      "nvml": "NVIDIA 核心"
+    },
     "notFound": "找不到该 GPU。",
     "engineUtilization": "引擎利用率",
     "dedicatedMemory": "专用 GPU 内存",
@@ -308,6 +313,34 @@
     "coreClock": "核心频率",
     "memoryClock": "显存频率",
     "coreVoltage": "核心电压",
+    "coreVid": "核心 VID",
+    "vidHint": "核显请求电压，不等同于实测供电电压。",
+    "unsliceClock": "共享逻辑频率",
+    "unsliceClockHint": "核显非切片部分（Unslice）的时钟，与图形计算切片可分别停钟。",
+    "clockHint": "内核读数由当前倍率按官方标称步进换算，不包含实测基准时钟偏差。频率直接显示数值，零值保留；最低工作频率是能力范围。",
+    "sharedMemoryClock": "共享内存频率",
+    "sharedMemoryClockHint": "核显共享系统内存的时钟。内核读数由控制器配置按标称参考换算，DDR 传输率约为此数值的两倍，不包含实测基准时钟偏差。",
+    "gtActivity": "GT 活动率",
+    "mediaActivity": "媒体活动率",
+    "activityHint": "由硬件活动计数器按采样间隔计算，与 Windows 引擎忙碌时间的统计范围不同。",
+    "minCoreClock": "最低工作频率",
+    "referenceClock": "基准时钟",
+    "performanceLimits": "性能限制",
+    "limitsActiveCount": "当前触发：{count} 项",
+    "noLimit": "未触发",
+    "limitActive": "正在触发",
+    "limitOccurred": "曾触发",
+    "limitReasons": {
+      "power": "功耗限制",
+      "thermal": "温度限制",
+      "prochot": "PROCHOT",
+      "current": "电流限制（VR TDC）",
+      "other": "其他限制（IccMax／PL4 等）",
+      "inefficient": "低于目标频率"
+    },
+    "kernelSensors": "核显内核传感器",
+    "kernelEnable": "可在“设置 → 权限”安装特权服务并开启内核传感器，读取核显温度、频率与 VID。",
+    "kernelUnavailable": "核显内核读数暂不可用。可在“设置 → 权限”检查特权服务及内核传感器状态。",
     "power": "功耗",
     "powerLimit": "功耗上限",
     "maxTemperature": "最高温度",
@@ -332,7 +365,10 @@
       "nvml": "NVIDIA NVML · 板卡",
       "adlBoard": "AMD ADL · 板卡",
       "adlChip": "AMD ADL · 芯片",
-      "igcl": "Intel IGCL · GPU 电源域"
+      "igcl": "Intel IGCL · GPU 电源域",
+      "igclChip": "Intel IGCL · GPU 芯片",
+      "rapl": "Windows RAPL · 核显",
+      "raplMsr": "Intel RAPL MSR · 核显"
     }
   },
   "battery": {

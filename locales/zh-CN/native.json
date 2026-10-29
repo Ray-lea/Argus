@@ -58,6 +58,7 @@
     "changed": "启动项状态已发生变化，请刷新后重试。"
   },
   "host": {
+    "desktopShellTerminate": "无法直接结束桌面资源管理器，请使用“重新启动”。",
     "webViewProfileFailed": "无法准备界面启动环境，Argus 未启动。可尝试以当前登录账户的普通权限启动。详细原因已记录到日志。错误码：{code}",
     "restoreDesktopForWebView": "Windows 资源管理器未运行，无法初始化管理员界面。是否先以当前桌面账户的普通权限恢复资源管理器，再继续启动 Argus？选择“否”将取消本次启动。",
     "serviceReply": "特权服务返回了无法识别的结果，请更新服务",
@@ -67,7 +68,8 @@
     "pickFile": "选择要检查的文件",
     "pickTask": "选择要运行的程序或文件",
     "invalidInterval": "不支持此刷新间隔",
-    "autostartNotInstalled": "此窗口由任务管理器替换打开，未找到已安装的 Argus，无法在此开启开机启动。请退出 Argus，直接运行 Argus 后再开启。"
+    "autostartNotInstalled": "此窗口由任务管理器替换打开，未找到已安装的 Argus，无法在此开启开机启动。请退出 Argus，直接运行 Argus 后再开启。",
+    "savePreferencesFailed": "无法保存界面偏好。"
   },
   "updater": {
     "devBuild": "开发版不检查更新。",
@@ -249,5 +251,12 @@
     "cancelled": "已取消管理员授权，内核传感器保持关闭。",
     "startTimeout": "等待 PawnIO 就绪超时，内核传感器保持关闭。请检查驱动设备状态或系统提示后重试。",
     "reboot": "PawnIO 的设备配置需要重启 Windows 才能完成。请重启后再次开启内核传感器。"
+  },
+  "admin": {
+    "development": "开发热更新模式不支持持久管理员授权，请使用发布构建。",
+    "outdated": "管理员启动副本需要更新。请退出 Argus，从新版程序打开后单击“修复授权”。",
+    "standardAccount": "当前账户没有管理员身份，无法开启自动管理员运行。可使用特权服务执行受支持的管理操作。",
+    "fallback": "自动管理员启动未完成，当前仍以普通权限运行。可在设置中修复授权。",
+    "notReady": "管理员启动授权尚未就绪。"
   }
 }

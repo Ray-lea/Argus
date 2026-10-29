@@ -23,5 +23,6 @@ Argus 采用 Rust 采集层、应用服务层与 GPUI Kit 原生界面。可执�
 - [原生宿主](host.md)
 - [原生界面](frontend.md)
 - [特权服务](privileged-service.md)
+- [管理员启动](administrator-startup.md)
 - [任务管理器替换](task-manager.md)
 - [平台边界](../development/gpui.md)

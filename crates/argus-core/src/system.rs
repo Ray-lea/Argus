@@ -108,6 +108,14 @@ struct CpuReading {
     idle: Option<i64>,
 }
 
+#[derive(Clone, Copy)]
+struct CpuInterval {
+    idle: i64,
+    kernel: i64,
+    total: i64,
+    precise: bool,
+}
+
 pub(crate) struct SystemTracker {
     logical_cpus: u32,
     previous: BTreeMap<Address, CpuReading>,
@@ -141,19 +149,17 @@ impl SystemTracker {
         let mut precise = complete;
         self.precise_idle_fraction = None;
         for (address, now) in readings {
-            precise &= now
-                .zip(self.previous.get(&address))
-                .is_some_and(|(n, p)| n.idle.is_some() && p.idle.is_some());
             let delta = now
                 .zip(self.previous.get(&address))
                 .and_then(|(n, p)| interval(n, *p));
             stats
                 .cores
-                .push(delta.map(|(i, _, t)| usage(i as u128, t as u128)));
-            if let Some((i, k, t)) = delta {
-                idle += i as u128;
-                kernel += k as u128;
-                total += t as u128;
+                .push(delta.map(|d| usage(d.idle as u128, d.total as u128)));
+            if let Some(d) = delta {
+                idle += d.idle as u128;
+                kernel += d.kernel as u128;
+                total += d.total as u128;
+                precise &= d.precise;
             } else {
                 complete = false;
             }
@@ -252,7 +258,7 @@ fn read_cores() -> Readings {
     readings
 }
 
-fn interval(now: CpuReading, prev: CpuReading) -> Option<(i64, i64, i64)> {
+fn interval(now: CpuReading, prev: CpuReading) -> Option<CpuInterval> {
     let legacy_idle = now.times.idle_time.checked_sub(prev.times.idle_time)?;
     let kernel = now.times.kernel_time.checked_sub(prev.times.kernel_time)?;
     let user = now.times.user_time.checked_sub(prev.times.user_time)?;
@@ -260,13 +266,28 @@ fn interval(now: CpuReading, prev: CpuReading) -> Option<(i64, i64, i64)> {
     if legacy_idle < 0 || kernel < legacy_idle || user < 0 || total <= 0 {
         return None;
     }
-    let idle = match (now.idle, prev.idle) {
-        (Some(n), Some(p)) if n >= 0 && p >= 0 => n.checked_sub(p)?,
+    let (idle, precise) = match (now.idle, prev.idle) {
+        (Some(n), Some(p)) if n >= 0 && p >= 0 => {
+            let delta = n.checked_sub(p)?;
+            // Some systems return a successful query with a frozen counter.
+            // Fall back only when legacy time confirms that this CPU was idle;
+            // zero from both sources is valid on a continuously busy CPU.
+            if delta == 0 && legacy_idle > 0 {
+                (legacy_idle, false)
+            } else {
+                (delta, true)
+            }
+        }
         (Some(n), _) | (_, Some(n)) if n < 0 => return None,
         // Use a pair from one source, including during recovery from a failed query.
-        _ => legacy_idle,
+        _ => (legacy_idle, false),
     };
-    (idle >= 0).then_some((idle, kernel - legacy_idle, total))
+    (idle >= 0).then_some(CpuInterval {
+        idle,
+        kernel: kernel - legacy_idle,
+        total,
+        precise,
+    })
 }
 
 fn usage(idle: u128, total: u128) -> f32 {
@@ -357,6 +378,134 @@ mod tests {
         assert!((result.cores[2].unwrap() - 33.30789).abs() < 0.00001);
         assert!((result.cores[3].unwrap() - 31.24181).abs() < 0.00001);
         assert_eq!(result.cpu_kernel, 0.);
+    }
+
+    #[test]
+    fn frozen_independent_idle_falls_back_on_all_sixteen_processors() {
+        for frozen in [0, 123_456_789] {
+            let mut tracker = SystemTracker {
+                logical_cpus: 16,
+                previous: BTreeMap::new(),
+                precise_idle_fraction: None,
+            };
+            let readings = |step: i64| {
+                (0..16)
+                    .map(|p| {
+                        (
+                            (0, p),
+                            Some(precise(
+                                step * 8_000_000,
+                                step * 9_000_000,
+                                step * 1_000_000,
+                                frozen,
+                            )),
+                        )
+                    })
+                    .collect()
+            };
+            tracker.update_cpu(readings(0));
+            for step in 1..=5 {
+                let result = tracker.update_cpu(readings(step));
+                assert_eq!(result.cores, [Some(20.); 16]);
+                assert_eq!(result.cpu, 20.);
+                assert_eq!(result.cpu_kernel, 10.);
+                assert_eq!(tracker.precise_idle_fraction(), None);
+            }
+        }
+    }
+
+    #[test]
+    fn frozen_idle_fallback_is_per_processor_and_recovers_with_paired_readings() {
+        let mut tracker = SystemTracker {
+            logical_cpus: 2,
+            previous: BTreeMap::new(),
+            precise_idle_fraction: None,
+        };
+        tracker.update_cpu(vec![
+            ((0, 0), Some(precise(0, 0, 0, 1000))),
+            ((1, 0), Some(precise(0, 0, 0, 2000))),
+        ]);
+        let result = tracker.update_cpu(vec![
+            ((0, 0), Some(precise(80, 90, 10, 1000))),
+            ((1, 0), Some(precise(200, 200, 0, 2100))),
+        ]);
+        assert_eq!(result.cores, [Some(20.), Some(50.)]);
+        assert_eq!(result.cpu, 40.);
+        // A mixed-source aggregate must not validate the process cycle clock.
+        assert_eq!(tracker.precise_idle_fraction(), None);
+
+        let result = tracker.update_cpu(vec![
+            ((0, 0), Some(precise(160, 180, 20, 1040))),
+            ((1, 0), Some(precise(400, 400, 0, 2200))),
+        ]);
+        assert_eq!(result.cores, [Some(60.), Some(50.)]);
+        assert!((result.cpu - 160. / 3.).abs() < 0.00001);
+        assert_eq!(tracker.precise_idle_fraction(), Some(140. / 300.));
+    }
+
+    #[test]
+    fn zero_idle_delta_on_a_busy_processor_is_still_valid() {
+        let mut tracker = SystemTracker {
+            logical_cpus: 1,
+            previous: BTreeMap::new(),
+            precise_idle_fraction: None,
+        };
+        tracker.update_cpu(vec![((0, 0), Some(precise(100, 200, 300, 1000)))]);
+        let result = tracker.update_cpu(vec![((0, 0), Some(precise(100, 240, 360, 1000)))]);
+        assert_eq!(result.cores, [Some(100.)]);
+        assert_eq!(result.cpu, 100.);
+        assert_eq!(result.cpu_kernel, 40.);
+        assert_eq!(tracker.precise_idle_fraction(), Some(0.));
+    }
+
+    #[test]
+    #[ignore = "samples live native CPU counters for three seconds"]
+    fn live_frozen_idle_uses_legacy_counters() {
+        let mut frozen = SystemTracker::new();
+        let mut legacy = SystemTracker::new();
+        for step in 0..=3 {
+            if step > 0 {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+            let readings = read_cores();
+            let expected = legacy.update_cpu(
+                readings
+                    .iter()
+                    .map(|&(a, r)| (a, r.map(|r| CpuReading { idle: None, ..r })))
+                    .collect(),
+            );
+            let actual = frozen.update_cpu(
+                readings
+                    .into_iter()
+                    .map(|(a, r)| {
+                        (
+                            a,
+                            r.map(|r| CpuReading {
+                                idle: Some(123456),
+                                ..r
+                            }),
+                        )
+                    })
+                    .collect(),
+            );
+            if step > 0 {
+                println!(
+                    "sample {step}: frozen={:.2}% legacy={:.2}% cores={} elevated={}",
+                    actual.cpu,
+                    expected.cpu,
+                    actual.cores.len(),
+                    crate::privilege::is_elevated()
+                );
+                assert!(actual.cores.iter().all(Option::is_some));
+                assert_eq!(actual.cores, expected.cores);
+                assert_eq!(actual.cpu, expected.cpu);
+                assert_eq!(actual.cpu_kernel, expected.cpu_kernel);
+                assert_eq!(
+                    frozen.precise_idle_fraction(),
+                    (expected.cpu == 100.).then_some(0.)
+                );
+            }
+        }
     }
 
     #[test]

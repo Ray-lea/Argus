@@ -1,6 +1,7 @@
 //! Opt-in, per-account authorization for a fixed set of local administrative
 //! operations. Driver access is restricted to fixed, read-only sensor snapshots.
 
+pub mod admin;
 mod background;
 mod diagnostics;
 mod disk;
