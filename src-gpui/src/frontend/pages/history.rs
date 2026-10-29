@@ -105,6 +105,69 @@ fn point_at(ts: &[f64], joined: &[bool], step: f64, at: f64) -> Option<usize> {
     joined.get(pair).copied().unwrap_or(false).then_some(index)
 }
 
+// ---- Window and selection -------------------------------------------------------------
+//
+// Every range shows its newest window, ending at the present, and follows it whether
+// or not a moment is picked; a picked moment lives only as long as the window on
+// screen contains it. (The original instead held the window still once a moment was
+// picked and centred a new range on it.)
+
+fn span_of(range: &str) -> i64 {
+    RANGES
+        .iter()
+        .find(|(key, _)| *key == range)
+        .unwrap_or(&RANGES[0])
+        .1
+}
+/// How often a range moves on to the present: 10 s to 5 min, coarser views less often.
+fn refresh_every(span: i64) -> i64 {
+    (span / 360).clamp(10_000, 5 * MINUTE)
+}
+/// A picked moment stays picked only while the window contains it.
+fn kept(cursor: Option<i64>, from: i64, to: i64) -> Option<i64> {
+    cursor.filter(|at| (from..=to).contains(at))
+}
+/// What loading the page does at `now`, given the last query sent: the window to query,
+/// if the one on screen is not current (another range or resolution, or its refresh is
+/// due), and the moment still picked afterwards. A new window is always the newest of
+/// its range; picking a moment neither moves it nor holds it still.
+fn plan_load(
+    query: &Value,
+    range: &str,
+    buckets: i64,
+    cursor: Option<i64>,
+    now: i64,
+) -> (Option<(i64, i64)>, Option<i64>) {
+    let span = span_of(range);
+    let current = !query.is_null()
+        && query["range"] == json!(range)
+        && query["buckets"] == json!(buckets)
+        && now - query["at"].as_i64().unwrap_or(0) < refresh_every(span);
+    if current {
+        return (None, cursor);
+    }
+    let (from, to) = (now - span, now);
+    (Some((from, to)), kept(cursor, from, to))
+}
+/// Where a key moves the picked moment among the points on screen: arrows step one
+/// point (Shift and the Page keys a tenth of them), Home and End go to either end. With
+/// nothing picked the steps start from the newest point.
+fn stepped(ts: &[f64], cursor: Option<i64>, key: &str, shift: bool) -> Option<i64> {
+    let last = ts.len().checked_sub(1)?;
+    let far = (ts.len() as f64 / 10.).round().max(1.) as usize;
+    let current = cursor.and_then(|at| nearest(ts, at as f64)).unwrap_or(last);
+    let index = match key {
+        "left" => current.saturating_sub(if shift { far } else { 1 }),
+        "right" => (current + if shift { far } else { 1 }).min(last),
+        "pageup" => current.saturating_sub(far),
+        "pagedown" => (current + far).min(last),
+        "home" => 0,
+        "end" => last,
+        _ => return cursor,
+    };
+    Some(ts[index] as i64)
+}
+
 // ---- Times ----------------------------------------------------------------------------
 
 /// Axis ticks on local clock boundaries: so many minutes past midnight, or midnights.
@@ -202,11 +265,7 @@ struct Metric {
 
 impl Desktop {
     fn history_span(&self) -> i64 {
-        RANGES
-            .iter()
-            .find(|(key, _)| *key == self.history_range)
-            .unwrap_or(&RANGES[0])
-            .1
+        span_of(&self.history_range)
     }
     /// The plot column's width: the page less margins, card padding, the label column and gap.
     fn history_plot_width(&self, window: &Window) -> f32 {
@@ -227,9 +286,10 @@ impl Desktop {
             - 10.)
             .max(120.)
     }
-    /// Queries the series for the window on screen and the processes of the shown moment.
-    /// While a moment is picked the window stays put; following the present it refreshes
-    /// every 10 s to 5 min, coarser views less often.
+    /// Queries the newest window of the range and the processes of the shown moment (the
+    /// picked one, else the present). The window follows the present, every 10 s to 5 min,
+    /// whether or not a moment is picked; a new range starts from its newest window at
+    /// once. A picked moment the new window no longer contains is let go.
     pub(in crate::frontend) fn load_history(
         &mut self,
         window: &mut Window,
@@ -237,52 +297,37 @@ impl Desktop {
     ) {
         let now = now_ms();
         let span = self.history_span();
-        let previous = self.data.get("historyWindow").map(|w| {
-            (
-                w["from"].as_f64().unwrap_or(0.) as i64,
-                w["to"].as_f64().unwrap_or(0.) as i64,
-            )
-        });
-        let to = match (self.history_cursor, previous) {
-            (None, _) => now,
-            (Some(_), Some((from, to))) if to - from == span => to,
-            // A new range keeps the picked moment in the middle of the view.
-            (Some(cursor), _) => (cursor + span / 2).min(now),
-        };
-        let following = self.history_cursor.is_none();
         let buckets = ((span as f64 / FRAME).ceil() as i64)
             .min((self.history_plot_width(window) / 2.).floor() as i64)
             .max(30);
-        let every = (span / 360).clamp(10_000, 5 * MINUTE);
-        let query = self
-            .data
-            .get("historyQuery")
-            .cloned()
-            .unwrap_or(Value::Null);
-        let stale = query.is_null()
-            || query["range"] != json!(self.history_range)
-            || query["buckets"] != json!(buckets)
-            || if following {
-                now - query["at"].as_i64().unwrap_or(0) >= every
-            } else {
-                query["to"] != json!(to)
-            };
-        if stale {
+        let (query, cursor) = plan_load(
+            self.data.get("historyQuery").unwrap_or(&Value::Null),
+            &self.history_range,
+            buckets,
+            self.history_cursor,
+            now,
+        );
+        if cursor != self.history_cursor {
+            self.history_cursor = cursor;
+            cx.notify();
+        }
+        if let Some((from, to)) = query {
             self.data.insert(
                 "historyQuery".into(),
                 json!({"range": self.history_range, "buckets": buckets, "to": to, "at": now}),
             );
             self.request(
                 "history_series",
-                json!({"from": to - span, "to": to, "buckets": buckets, "range": self.history_range}),
+                json!({"from": from, "to": to, "buckets": buckets, "range": self.history_range}),
                 Some("historySeries"),
                 window,
                 cx,
             );
             self.request("history_range", json!({}), Some("historyRange"), window, cx);
         }
-        let moment = self.history_cursor.unwrap_or(to);
-        if stale || self.data.get("historyMomentAt") != Some(&json!(moment)) {
+        // A kept moment keeps its processes: they are read again only for another moment.
+        let moment = self.history_cursor.unwrap_or(now);
+        if self.data.get("historyMomentAt") != Some(&json!(moment)) {
             self.data.insert("historyMomentAt".into(), json!(moment));
             self.request(
                 "history_moment",
@@ -293,8 +338,26 @@ impl Desktop {
             );
         }
     }
+    /// A series answer is on screen. A moment picked on the previous window while it was
+    /// queried (pointer or keys) stays picked only if the new window contains it.
+    pub(in crate::frontend) fn history_answered(
+        &mut self,
+        args: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (Some(from), Some(to)) = (args["from"].as_i64(), args["to"].as_i64()) else {
+            return;
+        };
+        let cursor = kept(self.history_cursor, from, to);
+        if cursor != self.history_cursor {
+            self.history_cursor = cursor;
+            self.load_history(window, cx);
+        }
+    }
     /// Keyboard on the history page: arrows step between points (Shift and Page keys by a
-    /// tenth), Home and End jump to either end, Escape returns to the newest data.
+    /// tenth), Home and End jump to either end, Escape returns to the newest data. Steps
+    /// stay among the points on screen and never move the window.
     pub(in crate::frontend) fn history_key(
         &mut self,
         key: &str,
@@ -325,24 +388,10 @@ impl Desktop {
             .iter()
             .filter_map(|p| p["ts"].as_f64())
             .collect::<Vec<_>>();
-        if ts.is_empty() {
+        let Some(at) = stepped(&ts, self.history_cursor, key, shift) else {
             return true;
-        }
-        let last = ts.len() - 1;
-        let far = (ts.len() as f64 / 10.).round().max(1.) as usize;
-        let current = self
-            .history_cursor
-            .and_then(|at| nearest(&ts, at as f64))
-            .unwrap_or(last);
-        let index = match key {
-            "left" => current.saturating_sub(if shift { far } else { 1 }),
-            "right" => (current + if shift { far } else { 1 }).min(last),
-            "pageup" => current.saturating_sub(far),
-            "pagedown" => (current + far).min(last),
-            "home" => 0,
-            _ => last,
         };
-        self.history_cursor = Some(ts[index] as i64);
+        self.history_cursor = Some(at);
         self.load_history(window, cx);
         cx.notify();
         true
@@ -1215,7 +1264,115 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{joins, point_at};
+    use super::{
+        DAY, HOUR, MINUTE, joins, kept, plan_load, point_at, refresh_every, span_of, stepped,
+    };
+    use serde_json::{Value, json};
+
+    const NOW: i64 = 1_800_000_000_000;
+
+    /// The last query sent, as `load_history` stores it.
+    fn sent(range: &str, at: i64) -> Value {
+        json!({"range": range, "buckets": 600, "to": at, "at": at})
+    }
+
+    #[test]
+    fn a_new_range_shows_its_newest_window() {
+        // Seven days on screen, a moment three days back picked, then one hour: the
+        // newest hour, and the moment is let go.
+        let week = sent("7d", NOW - 2_000);
+        assert_eq!(
+            plan_load(&week, "1h", 600, Some(NOW - 3 * DAY), NOW),
+            (Some((NOW - HOUR, NOW)), None)
+        );
+        // A moment within the newest hour stays picked.
+        let recent = Some(NOW - 30 * MINUTE);
+        assert_eq!(
+            plan_load(&week, "1h", 600, recent, NOW),
+            (Some((NOW - HOUR, NOW)), recent)
+        );
+        // Every range ends at the present, widening as well.
+        for (range, span) in [("6h", 6 * HOUR), ("24h", DAY), ("7d", 7 * DAY)] {
+            assert_eq!(
+                plan_load(&sent("1h", NOW - 2_000), range, 600, recent, NOW),
+                (Some((NOW - span, NOW)), recent)
+            );
+        }
+        // The first load, with nothing sent yet.
+        assert_eq!(
+            plan_load(&Value::Null, "24h", 600, None, NOW),
+            (Some((NOW - DAY, NOW)), None)
+        );
+    }
+
+    #[test]
+    fn picking_neither_moves_nor_holds_the_window() {
+        let hour = sent("1h", NOW);
+        let picked = Some(NOW - 20 * MINUTE);
+        // Picking, stepping or choosing the range on screen again queries nothing.
+        assert_eq!(
+            plan_load(&hour, "1h", 600, picked, NOW + 1_000),
+            (None, picked)
+        );
+        assert_eq!(plan_load(&hour, "1h", 600, None, NOW + 1_000), (None, None));
+        // The window still moves on to the present when its refresh is due ...
+        let due = NOW + refresh_every(HOUR);
+        assert_eq!(
+            plan_load(&hour, "1h", 600, picked, due),
+            (Some((due - HOUR, due)), picked)
+        );
+        // ... and lets go of the moment once it has moved past it.
+        let past = NOW + 45 * MINUTE;
+        assert_eq!(
+            plan_load(&hour, "1h", 600, picked, past),
+            (Some((past - HOUR, past)), None)
+        );
+        // Another resolution (the window was resized) is the newest window again.
+        assert_eq!(
+            plan_load(&hour, "1h", 500, picked, NOW + 1_000),
+            (Some((NOW + 1_000 - HOUR, NOW + 1_000)), picked)
+        );
+    }
+
+    #[test]
+    fn coarser_ranges_refresh_less_often() {
+        let every = ["1h", "6h", "24h", "7d"].map(|range| refresh_every(span_of(range)));
+        assert_eq!(every, [10_000, MINUTE, 4 * MINUTE, 5 * MINUTE]);
+        // An unknown range reads as the first.
+        assert_eq!(span_of("2h"), HOUR);
+    }
+
+    #[test]
+    fn a_moment_stays_picked_only_inside_the_window() {
+        // Used again when an answer arrives, for a moment picked on the previous
+        // window while it was queried.
+        assert_eq!(kept(Some(50), 0, 100), Some(50));
+        assert_eq!(kept(Some(0), 0, 100), Some(0));
+        assert_eq!(kept(Some(100), 0, 100), Some(100));
+        assert_eq!(kept(Some(-1), 0, 100), None);
+        assert_eq!(kept(Some(101), 0, 100), None);
+        assert_eq!(kept(None, 0, 100), None);
+    }
+
+    #[test]
+    fn keys_step_among_the_points_on_screen() {
+        let ts = (0..20).map(|i| f64::from(i) * 1_000.).collect::<Vec<_>>();
+        // With nothing picked the steps start from the newest point.
+        assert_eq!(stepped(&ts, None, "left", false), Some(18_000));
+        assert_eq!(stepped(&ts, None, "right", false), Some(19_000));
+        assert_eq!(stepped(&ts, Some(5_000), "right", false), Some(6_000));
+        // Shift and the Page keys move a tenth of the points.
+        assert_eq!(stepped(&ts, Some(5_000), "left", true), Some(3_000));
+        assert_eq!(stepped(&ts, Some(5_000), "pagedown", false), Some(7_000));
+        assert_eq!(stepped(&ts, Some(1_000), "pageup", false), Some(0));
+        assert_eq!(stepped(&ts, Some(19_000), "right", true), Some(19_000));
+        assert_eq!(stepped(&ts, Some(7_000), "home", false), Some(0));
+        assert_eq!(stepped(&ts, Some(7_000), "end", false), Some(19_000));
+        // A moment picked at another resolution steps from the point nearest to it.
+        assert_eq!(stepped(&ts, Some(7_400), "right", false), Some(8_000));
+        assert_eq!(stepped(&[], Some(7_000), "left", false), None);
+    }
+
     #[test]
     fn gaps_follow_the_recording_cadence() {
         // Five-second frames, then a stop, then frames again.

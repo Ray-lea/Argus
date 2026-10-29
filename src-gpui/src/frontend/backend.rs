@@ -131,6 +131,9 @@ impl Desktop {
                 if let Some(key) = pending.cache {
                     self.data.insert(key, value.clone());
                 }
+                if pending.command == "history_series" {
+                    self.history_answered(&pending.args, window, cx);
+                }
                 if pending.command.starts_with("set_") && value.get("closeToTray").is_some() {
                     self.data.insert("settings".into(), value.clone());
                 }
