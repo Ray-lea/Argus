@@ -629,8 +629,8 @@ impl Desktop {
                             .flex()
                             .items_baseline()
                             .gap(px(10.))
-                            .w_full()
-                            .overflow_hidden()
+                            // Not clipped: in a narrow card the unit runs on
+                            // into the next one, as in the original.
                             .whitespace_nowrap()
                             .child(
                                 div()
