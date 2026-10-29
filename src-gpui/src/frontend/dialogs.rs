@@ -1432,9 +1432,6 @@ impl Desktop {
         if self.ui.busy.contains("explorer") {
             return;
         }
-        if self.options.fixture.is_some() {
-            return;
-        }
         self.ui.busy.insert("explorer".into());
         if boolean(&shell, "locker") {
             self.ui
@@ -1450,6 +1447,11 @@ impl Desktop {
         self.ui
             .errors
             .insert("explorerToast".into(), pending.to_string());
+        // A fixture shows the restart under way but never asks for it; a
+        // test control (`resolve`) answers in its place.
+        if self.options.fixture.is_some() {
+            return;
+        }
         self.request(
             "restart_explorer",
             json!({"pid":shell["pid"],"createTime":shell["createTime"]}),
@@ -2300,12 +2302,14 @@ impl Desktop {
             label("common.endProcess"),
             true,
             move |this, window, cx| {
-                if this.options.fixture.is_some() {
-                    return;
-                }
                 this.ui
                     .errors
                     .insert("lockerEnd".into(), label_name.clone());
+                // A fixture never ends anything; a test control (`resolve`)
+                // answers in its place.
+                if this.options.fixture.is_some() {
+                    return;
+                }
                 this.request(
                     "kill_process",
                     json!({"pid":pid,"createTime":create,"force":false,"locker":true}),
