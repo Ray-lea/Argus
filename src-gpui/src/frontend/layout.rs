@@ -670,14 +670,21 @@ impl Desktop {
                     .child(img("argus/logo.svg").size(px(18.)).flex_shrink_0())
                     .child(argus_app::config::app_title()),
             )
-            .on_prepaint(track_region(0, self.toolbar_regions.clone(), owner.clone()));
+            .on_prepaint(track_toolbar(
+                0,
+                self.toolbar_regions.clone(),
+                owner.clone(),
+            ));
         let (start, controls) = if controls_row {
             (start, Some(controls))
         } else {
             (start.child(controls), None)
         };
-        let trailing =
-            trailing.on_prepaint(track_region(1, self.toolbar_regions.clone(), owner.clone()));
+        let trailing = trailing.on_prepaint(track_toolbar(
+            1,
+            self.toolbar_regions.clone(),
+            owner.clone(),
+        ));
         let mut toolbar = div()
             .relative()
             .w_full()
@@ -715,7 +722,7 @@ impl Desktop {
                             .child(start)
                             .child(div().flex_1())
                             .child(trailing)
-                            .on_prepaint(track_region(2, self.toolbar_regions.clone(), owner)),
+                            .on_prepaint(track_toolbar(2, self.toolbar_regions.clone(), owner)),
                     ),
             );
         if self.has_search() {
@@ -1372,6 +1379,38 @@ fn track_region<const N: usize>(
         let owner = owner.clone();
         window.defer(cx, move |_, cx| {
             let _ = owner.update(cx, |_, cx| cx.notify());
+        });
+    }
+}
+
+/// Measures a part of the title row (its start, its end, the row) for the
+/// search box between them and the compact level (`fit_toolbar`). Another
+/// page's controls move them on its first frame: the toolbar alone draws again
+/// to place the search box, unless the row no longer fits. A desktop
+/// notification would draw the whole page again, in the middle of its entrance.
+fn track_toolbar(
+    index: usize,
+    regions: Rc<RefCell<[Bounds<Pixels>; 3]>>,
+    owner: WeakEntity<Desktop>,
+) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
+    move |bounds, window, cx| {
+        if regions.borrow()[index] == bounds {
+            return;
+        }
+        regions.borrow_mut()[index] = bounds;
+        let owner = owner.clone();
+        window.defer(cx, move |window, cx| {
+            let _ = owner.update(cx, |this, cx| {
+                let drawn = this.ui.toolbar_fit.borrow().drawn;
+                // Steps to another level (and asks for a desktop render) if
+                // the row overflows at the level drawn.
+                let level = this.fit_toolbar(window, cx);
+                if drawn == Some(level) {
+                    this.refresh_region(regions::RegionKind::Toolbar, cx);
+                } else {
+                    cx.notify();
+                }
+            });
         });
     }
 }

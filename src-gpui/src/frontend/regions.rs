@@ -64,6 +64,14 @@ impl Desktop {
             .into_any_element()
     }
 
+    /// Draws one region again on the next frame; the desktop around it renders
+    /// its own tree and replays the other regions.
+    pub(super) fn refresh_region(&self, kind: RegionKind, cx: &mut Context<Self>) {
+        if let Some(view) = self.regions.views.get(&kind) {
+            view.update(cx, |_, cx| cx.notify());
+        }
+    }
+
     fn render_region(
         &mut self,
         kind: RegionKind,

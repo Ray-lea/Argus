@@ -190,7 +190,7 @@ impl Desktop {
                         ))
                     }
                     "network" => {
-                        let items = self.data.get("connections").map(values).unwrap_or_default();
+                        let items = self.connections.as_deref().map(values).unwrap_or_default();
                         let listen = items
                             .iter()
                             .filter(|c| text(c, "state") == "listen")

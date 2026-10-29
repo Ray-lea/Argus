@@ -1490,7 +1490,6 @@ impl Desktop {
         prepared: Option<Vec<Row>>,
         cx: &mut Context<Self>,
     ) {
-        self.rows_epoch = self.rows_epoch.wrapping_add(1);
         let started = Instant::now();
         let mut rows = if let Some(rows) = prepared {
             rows
@@ -1509,218 +1508,32 @@ impl Desktop {
                 },
             )
         } else {
-            let data_key = match self.page.as_str() {
-                "services" => "services",
-                "startup" => "startup",
-                "network" => "connections",
-                _ => "",
-            };
-            let query = self.query.trim().to_lowercase();
-            let source = self.data.get(data_key).map(values).unwrap_or_default();
-            let filter = self
-                .filters
-                .get(&self.page)
-                .map(String::as_str)
-                .unwrap_or("all");
-            let marks = self.marks();
-            let processes: HashMap<u64, &Value> = values(&self.snapshot["processes"])
-                .iter()
-                .filter_map(|p| p["pid"].as_u64().map(|pid| (pid, p)))
-                .collect();
-            // Listening sockets by owner and port: a connection on such a port is local.
-            let listening: HashSet<(Option<u64>, Option<u64>)> = if self.page == "network" {
-                source
-                    .iter()
-                    .filter(|c| text(c, "state") == "listen")
-                    .map(|c| (c["pid"].as_u64(), c["localPort"].as_u64()))
-                    .collect()
+            let page = self.page.clone();
+            let spec = self.list_spec(&page, first_column(&page));
+            if page == "network" {
+                let (source, owners) = self.connection_source();
+                lists::list_rows(
+                    &spec,
+                    source.as_deref().map(values).unwrap_or_default(),
+                    &owners,
+                )
             } else {
-                HashSet::new()
-            };
-            // A number is almost always a port or PID: match it exactly, so 80 does not find 8080.
-            let number_query = query.parse::<u64>().ok();
-            let contains = |value: &str| value.to_lowercase().contains(&query);
-            let mut rows: Vec<_> = source
-                .iter()
-                .filter(|row| match self.page.as_str() {
-                    "services" => filter == "all" || text(row, "state") == filter,
-                    "network" => {
-                        filter == "all"
-                            || (filter == "listen" && text(row, "state") == "listen")
-                            || (filter == "established" && text(row, "state") == "established")
-                            || (filter == "udp" && text(row, "protocol") == "udp")
-                    }
-                    _ => true,
-                })
-                .cloned()
-                .map(|raw| {
-                    let mut row = Row::process(raw, 0);
-                    row.detail.clear();
-                    match self.page.as_str() {
-                        "services" => {
-                            row.key = text(&row.raw, "name").into();
-                            row.title = text(&row.raw, "displayName").into();
-                            // Service names are case-insensitive.
-                            row.mark_key = Some(row.key.to_lowercase());
-                        }
-                        "startup" => {
-                            row.key = text(&row.raw, "id").into();
-                            row.title = text(&row.raw, "name").into();
-                            row.mark_key = Some(row.key.clone());
-                        }
-                        "network" => {
-                            row.key = format!(
-                                "{}|{}|{}|{}|{}|{}|{}",
-                                text(&row.raw, "protocol"),
-                                boolean(&row.raw, "ipv6"),
-                                row.raw["pid"],
-                                text(&row.raw, "localAddress"),
-                                row.raw["localPort"],
-                                text(&row.raw, "remoteAddress"),
-                                row.raw["remotePort"]
-                            );
-                            let process =
-                                row.raw["pid"].as_u64().and_then(|pid| processes.get(&pid));
-                            row.title = match process {
-                                Some(p) => {
-                                    let description = text(p, "description");
-                                    if description.is_empty() {
-                                        text(p, "name")
-                                    } else {
-                                        description
-                                    }
-                                    .to_owned()
-                                }
-                                None if row.raw["pid"].as_u64() == Some(0) => {
-                                    "System Idle Process".into()
-                                }
-                                None => label("connections.exited"),
-                            };
-                            if let Some(process) = process {
-                                row.raw["icon"] = process["icon"].clone();
-                                let name = text(process, "name").to_lowercase();
-                                let protocol = text(&row.raw, "protocol");
-                                let local = row.raw["remoteAddress"].is_null()
-                                    || listening.contains(&(
-                                        row.raw["pid"].as_u64(),
-                                        row.raw["localPort"].as_u64(),
-                                    ));
-                                row.mark_key = Some(if local {
-                                    format!("{protocol}|{name}|local|{}", row.raw["localPort"])
-                                } else {
-                                    format!(
-                                        "{protocol}|{name}|remote|{}|{}",
-                                        text(&row.raw, "remoteAddress"),
-                                        row.raw["remotePort"]
-                                            .as_u64()
-                                            .map(|p| p.to_string())
-                                            .unwrap_or_default()
-                                    )
-                                });
-                            }
-                        }
-                        _ => {}
-                    }
-                    if let Some(key) = &row.mark_key {
-                        row.note = marks[key]["note"].as_str().map(str::to_owned);
-                        row.pinned = boolean(&marks[key], "pinned");
-                    }
-                    row
-                })
-                .filter(|row| {
-                    if query.is_empty() {
-                        return true;
-                    }
-                    let raw = &row.raw;
-                    let note = row.note.as_deref().is_some_and(contains);
-                    match self.page.as_str() {
-                        "services" => {
-                            number_query.is_some_and(|n| raw["pid"].as_u64() == Some(n))
-                                || contains(text(raw, "name"))
-                                || contains(text(raw, "displayName"))
-                                || contains(text(raw, "description"))
-                                || note
-                        }
-                        "startup" => {
-                            contains(text(raw, "name"))
-                                || contains(text(raw, "entry"))
-                                || contains(text(raw, "publisher"))
-                                || contains(text(raw, "command"))
-                                || note
-                        }
-                        "network" => {
-                            if let Some(n) = number_query {
-                                return raw["localPort"].as_u64() == Some(n)
-                                    || raw["remotePort"].as_u64() == Some(n)
-                                    || raw["pid"].as_u64() == Some(n);
-                            }
-                            let process = raw["pid"].as_u64().and_then(|pid| processes.get(&pid));
-                            text(raw, "localAddress").contains(&query)
-                                || text(raw, "remoteAddress").contains(&query)
-                                || process.is_some_and(|p| {
-                                    contains(text(p, "name")) || contains(text(p, "description"))
-                                })
-                                || note
-                        }
-                        _ => true,
-                    }
-                })
-                .collect();
-            let first = fields(&self.page, false, f32::MAX)
-                .first()
-                .map(|field| field.key)
-                .unwrap_or("name");
-            // The original's table order: text collates as names do, numbers
-            // compare by value, and equal rows keep the source order.
-            let owner = |row: &Row| {
-                row.raw["pid"]
-                    .as_u64()
-                    .and_then(|pid| processes.get(&pid))
-                    .map_or("", |p| text(p, "name"))
-            };
-            rows.sort_by(|a, b| {
-                let key = self.sort.as_str();
-                let order = if key == first && self.page == "network" {
-                    // Owners sort by executable name, as in the original.
-                    collation::compare(owner(a), owner(b))
-                } else if key == first {
-                    collation::compare(&a.title, &b.title)
-                } else if key == "protocol" {
-                    collation::compare(text(&a.raw, key), text(&b.raw, key))
-                        .then_with(|| boolean(&a.raw, "ipv6").cmp(&boolean(&b.raw, "ipv6")))
-                } else {
-                    match (&a.raw[key], &b.raw[key]) {
-                        (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
-                        // A missing port compares as 0.
-                        (
-                            a @ (Value::Number(_) | Value::Null),
-                            b @ (Value::Number(_) | Value::Null),
-                        ) if a.is_number() || b.is_number() => a
-                            .as_f64()
-                            .unwrap_or(0.)
-                            .total_cmp(&b.as_f64().unwrap_or(0.)),
-                        (a, b) => {
-                            collation::compare(a.as_str().unwrap_or(""), b.as_str().unwrap_or(""))
-                        }
-                    }
+                let source = match page.as_str() {
+                    "services" | "startup" => self.data.get(&page).map(values),
+                    _ => None,
                 };
-                if self.descending {
-                    order.reverse()
-                } else {
-                    order
-                }
-            });
-            rows
-        };
-        let marks = self.marks();
-        for row in &mut rows {
-            if let Some(key) = &row.mark_key {
-                row.note = marks[key]["note"].as_str().map(str::to_owned);
-                row.pinned = boolean(&marks[key], "pinned");
+                lists::list_rows(&spec, source.unwrap_or_default(), &HashMap::new())
             }
-        }
-        if self.page != "processes" {
-            rows.sort_by_key(|row| !row.pinned);
+        };
+        // The other lists come with their marks, pinned rows first.
+        if self.page == "processes" {
+            let marks = self.marks();
+            for row in &mut rows {
+                if let Some(key) = &row.mark_key {
+                    row.note = marks[key]["note"].as_str().map(str::to_owned);
+                    row.pinned = boolean(&marks[key], "pinned");
+                }
+            }
         }
         if hold && self.page == "processes" {
             let order: HashMap<_, _> = self
@@ -1749,11 +1562,33 @@ impl Desktop {
         } else {
             self.held_order = false;
         }
+        let rows = Arc::new(rows);
+        self.install_rows(rows.clone(), cx);
+        if self.page == "network" {
+            self.keep_connection_rows(rows);
+        }
+        super::trace_work(
+            "rows",
+            Some(&format!("{} {}", self.page, self.rows.len())),
+            started,
+        );
+        let elapsed = started.elapsed().as_micros() as u64;
+        self.work.rows_us += elapsed;
+        self.work.rows_max_us = self.work.rows_max_us.max(elapsed);
+        self.work.row_builds += 1;
+    }
+    /// Shows `rows` on the current page's table.
+    pub(in crate::frontend) fn install_rows(
+        &mut self,
+        rows: Arc<Vec<Row>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.rows_epoch = self.rows_epoch.wrapping_add(1);
         if rows.len() != self.rows.len() {
             self.list
                 .reset_with_uniform_height(rows.len(), px(ROW_HEIGHT));
         }
-        let previous_rows = std::mem::replace(&mut self.rows, Arc::new(rows));
+        let previous_rows = std::mem::replace(&mut self.rows, rows);
         // Apply data before rendering. Updating TableState from table_view
         // invalidates its parent during paint and rebuilds Desktop twice per sample.
         if let Some(table) = &self.table {
@@ -1795,15 +1630,6 @@ impl Desktop {
                 .spawn(async move { drop(previous_rows) })
                 .detach();
         }
-        super::trace_work(
-            "rows",
-            Some(&format!("{} {}", self.page, self.rows.len())),
-            started,
-        );
-        let elapsed = started.elapsed().as_micros() as u64;
-        self.work.rows_us += elapsed;
-        self.work.rows_max_us = self.work.rows_max_us.max(elapsed);
-        self.work.row_builds += 1;
     }
     /// The list's vertical scrollbar for a page that draws it beside the table:
     /// the process page, whose list is drawn narrower than it is laid out while
@@ -1970,7 +1796,10 @@ impl Desktop {
                 this.pointer_in_table = *hovered;
                 if !hovered {
                     this.tips.dismiss(window, cx);
-                    this.rebuild_rows(false, cx);
+                    // Only the process list holds its order under the pointer.
+                    if this.page == "processes" {
+                        this.rebuild_rows(false, cx);
+                    }
                 }
                 cx.notify();
             }))
@@ -2006,13 +1835,17 @@ impl Desktop {
         self.rebuild_rows(false, cx);
     }
     pub(in crate::frontend) fn marks(&self) -> Value {
+        self.marks_of(&self.page)
+    }
+    /// A page's row marks, under the original's preference.
+    pub(in crate::frontend) fn marks_of(&self, page: &str) -> Value {
         self.prefs.get(
             &format!(
                 "rowMarks.{}",
-                if self.page == "network" {
+                if page == "network" {
                     "connections"
                 } else {
-                    &self.page
+                    page
                 }
             ),
             json!({}),
@@ -2171,7 +2004,7 @@ impl Desktop {
                 (label("startup.loading"), None)
             }
             "startup" => (label("startup.noMatch"), None),
-            "network" if self.data.get("connections").is_none_or(Value::is_null) => {
+            "network" if self.connections.as_deref().is_none_or(Value::is_null) => {
                 (label("connections.loading"), None)
             }
             "network" => (
@@ -2185,6 +2018,13 @@ impl Desktop {
             _ => (String::new(), None),
         }
     }
+}
+/// A table's first column, which orders by name.
+pub(super) fn first_column(page: &str) -> &'static str {
+    fields(page, false, f32::MAX)
+        .first()
+        .map(|field| field.key)
+        .unwrap_or("name")
 }
 /// The order a table opens in, as in the original pages.
 pub(super) fn initial_sort(page: &str) -> (String, bool) {

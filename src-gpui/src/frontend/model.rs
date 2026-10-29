@@ -203,6 +203,26 @@ impl Row {
             gpu: None,
         }
     }
+    /// A row of a service, startup or connection list: no process members.
+    pub fn item(raw: Value, key: String, title: String) -> Self {
+        Self {
+            key,
+            raw,
+            title,
+            sort_name: SortKey::default(),
+            detail: String::new(),
+            members: Vec::new(),
+            depth: 0,
+            expanded: false,
+            expandable: false,
+            section: None,
+            mark_key: None,
+            note: None,
+            pinned: false,
+            visible_members: None,
+            gpu: None,
+        }
+    }
     pub fn process(raw: Value, depth: usize) -> Self {
         let title = title(&raw);
         let detail = if title != text(&raw, "name") {

@@ -101,6 +101,14 @@ impl Desktop {
             return;
         }
         match result {
+            Ok(value) if pending.command == "list_connections" => {
+                // The rows are built off the UI thread from the shared list
+                // and installed when ready; an identical read changes nothing.
+                if self.set_connections(value) {
+                    self.refresh_connections(cx);
+                }
+                return;
+            }
             Ok(value) => {
                 // Polling keeps external state current; identical read results do
                 // not invalidate the process table or the rest of the desktop.
@@ -135,10 +143,16 @@ impl Desktop {
                     self.data.insert("settings".into(), value.clone());
                 }
                 self.command_completed(&pending.command, &value, window, cx);
-                self.rebuild_rows(
-                    self.pointer_in_table || self.modal.is_some() || self.popup.is_some(),
-                    cx,
-                );
+                if self.page == "network" {
+                    // Its rows follow the list, its owners and how the page
+                    // shows them: rebuilt only when one of those changed.
+                    self.refresh_connections(cx);
+                } else {
+                    self.rebuild_rows(
+                        self.pointer_in_table || self.modal.is_some() || self.popup.is_some(),
+                        cx,
+                    );
+                }
             }
             Err(error) => {
                 let message = error
@@ -159,7 +173,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         let mut changed = false;
-        for event in self.host.drain() {
+        for mut event in self.host.drain() {
             let started = Instant::now();
             // What ran, for the frame trace only.
             let what = gpui_kit::gpui::profiler::phase_trace_enabled()
@@ -182,10 +196,11 @@ impl Desktop {
             match event.name.as_str() {
                 "command-response" => self.complete(
                     event.value["id"].as_u64().unwrap_or(0),
+                    // Taken, not copied: a list read can hold thousands of entries.
                     if event.value["ok"].as_bool().unwrap_or(false) {
-                        Ok(event.value["value"].clone())
+                        Ok(event.value["value"].take())
                     } else {
-                        Err(event.value["value"].clone())
+                        Err(event.value["value"].take())
                     },
                     window,
                     cx,
@@ -283,7 +298,12 @@ impl Desktop {
                         super::trace_work("snapshot", None, started);
                         // Pick up the newest source sequence without accumulating a UI queue.
                         this.notifications(window, cx);
-                        cx.notify();
+                        if this.list_page_entering(cx) {
+                            // Only the status bar shows the sample there.
+                            this.after_entrance(cx);
+                        } else {
+                            cx.notify();
+                        }
                     });
                 })
                 .detach();
@@ -347,12 +367,16 @@ impl Desktop {
                 .spawn(async move { drop(previous) })
                 .detach();
         }
-        if matches!(self.page.as_str(), "processes" | "network") {
+        if self.page == "processes" {
             self.rebuild_rows_prepared(
                 self.pointer_in_table || self.popup.is_some() || self.modal.is_some(),
                 rows,
                 cx,
             );
+        } else if self.page == "network" {
+            // Connections take their owners' names and icons from the sample:
+            // rebuilt off the UI thread, and only when those changed.
+            self.refresh_connections(cx);
         }
     }
     /// Whether a row's processes all started within the last three samples.
@@ -377,7 +401,8 @@ impl Desktop {
     /// snapshot, so that the first visit shows them at once instead of waiting
     /// for the read (cold, the service list alone took over a second). Each page
     /// still re-reads its list when shown; the process page already reads the
-    /// services.
+    /// services. The connection rows are built from the read off the UI thread
+    /// (`refresh_connections`), so that the first visit does not build them.
     pub(in crate::frontend) fn prefetch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.prefetched
             || self
@@ -392,7 +417,12 @@ impl Desktop {
             ("list_startup", "startup"),
             ("list_connections", "connections"),
         ] {
-            if !self.data.contains_key(cache) {
+            let read = if cache == "connections" {
+                self.connections.is_some()
+            } else {
+                self.data.contains_key(cache)
+            };
+            if !read {
                 self.request(command, json!({}), Some(cache), window, cx);
             }
         }
@@ -545,7 +575,12 @@ impl Desktop {
                     .update(cx, |s, cx| s.set_value(self.query.clone(), window, cx));
                 self.horizontal = 0.;
                 self.popup = None;
-                self.rebuild_rows(false, cx);
+                // The network page shows its last rows when they were built for
+                // how it shows them now, without building thousands of rows
+                // while it enters; newer ones replace them after the entrance.
+                if !(self.page == "network" && self.show_kept_connections(cx)) {
+                    self.rebuild_rows(false, cx);
+                }
                 self.list.scroll_to(ListOffset {
                     item_ix: 0,
                     offset_in_item: px(0.),
@@ -1202,6 +1237,7 @@ impl Desktop {
             for (key, value) in data {
                 self.data.insert(key.clone(), value.clone());
             }
+            self.take_connections();
         }
         // A command in flight (fixture only): held and never dispatched, so the
         // view shows what it shows while waiting, until `resolve` answers it.
