@@ -341,8 +341,12 @@ impl Desktop {
                 (true, false) => "performance.cpu.charts.temperature",
                 (true, true) => "performance.cpu.charts.both",
             });
-            let chart_height =
-                px((f32::from(window.viewport_size().height) * 0.22).clamp(110., 220.));
+            // `clamp(110px, 22cqh, 220px)` of the detail card (until it is
+            // laid out, of the viewport).
+            let card = self
+                .perf_card_height(window)
+                .unwrap_or_else(|| window.viewport_size().height);
+            let chart_height = px((f32::from(card) * 0.22).clamp(110., 220.));
             let mut pair = div().grid().grid_cols(2).gap(px(16.));
             if let Some(key) = &temperature {
                 pair = pair.child(
