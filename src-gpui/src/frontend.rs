@@ -148,6 +148,8 @@ struct Desktop {
     page_opacity: Rc<Cell<f32>>,
     /// How far the entering page is drawn from its place (the chart layer follows).
     page_shift: Rc<Cell<Point<Pixels>>>,
+    /// The details pane's drawn motion, for its charts (`details_pane`).
+    pane_motion: Rc<RefCell<charts::PaneMotion>>,
     /// Opacity of the live charts being built: a view settling in fades its charts.
     chart_fade: Cell<f32>,
     chart_tick_queued: bool,
@@ -259,6 +261,7 @@ impl Desktop {
             chart_placements: Rc::new(RefCell::new(HashMap::new())),
             page_opacity: Rc::new(Cell::new(1.)),
             page_shift: Rc::new(Cell::new(Point::default())),
+            pane_motion: Rc::default(),
             chart_fade: Cell::new(1.),
             chart_tick_queued: false,
             chart_frame: 0,
@@ -522,8 +525,10 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 let active = view.read(cx).active_charts.clone();
                 let opacity = view.read(cx).page_opacity.clone();
                 let shift = view.read(cx).page_shift.clone();
-                let charts =
-                    cx.new(|_| charts::ChartLayer::new(placements, clock, active, opacity, shift));
+                let pane = view.read(cx).pane_motion.clone();
+                let charts = cx.new(|_| {
+                    charts::ChartLayer::new(placements, clock, active, opacity, shift, pane)
+                });
                 view.update(cx, |desktop, _| desktop.chart_layer = Some(charts.clone()));
                 let state = view.read(cx).scrim.clone();
                 let scrim = cx.new(|_| dialogs::Scrim { state });

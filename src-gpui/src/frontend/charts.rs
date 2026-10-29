@@ -529,6 +529,26 @@ pub(super) struct Placement {
 }
 pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
 
+/// How the details pane is drawn while it opens or closes, away from where it
+/// is laid out (`Desktop::details_pane`): its charts move and fade with it,
+/// clipped where they are laid out, widened to the left when the pane is
+/// drawn wider than laid out (easing to a narrower width).
+pub(super) struct PaneMotion {
+    /// The charts the details region drew when it last rendered.
+    pub(super) charts: HashSet<String>,
+    pub(super) offset: Point<Pixels>,
+    pub(super) opacity: f32,
+}
+impl Default for PaneMotion {
+    fn default() -> Self {
+        Self {
+            charts: HashSet::new(),
+            offset: Point::default(),
+            opacity: 1.,
+        }
+    }
+}
+
 // One animation entity owns all plot surfaces. Layout still belongs to Desktop;
 // chart frames reuse its measured rectangles and never build a flex subtree.
 pub(super) struct ChartLayer {
@@ -538,6 +558,7 @@ pub(super) struct ChartLayer {
     opacity: Rc<Cell<f32>>,
     /// Where the entering page is drawn, from where it is laid out (`shift.rs`).
     shift: Rc<Cell<Point<Pixels>>>,
+    pane: Rc<RefCell<PaneMotion>>,
     last_end: f64,
     pixel_ends: HashMap<String, f64>,
     pub(super) fast_frames: u64,
@@ -549,8 +570,10 @@ impl ChartLayer {
         active: Rc<RefCell<HashSet<String>>>,
         opacity: Rc<Cell<f32>>,
         shift: Rc<Cell<Point<Pixels>>>,
+        pane: Rc<RefCell<PaneMotion>>,
     ) -> Self {
         Self {
+            pane,
             placements,
             clock,
             active,
@@ -641,6 +664,7 @@ impl Render for ChartLayer {
         let active = self.active.clone();
         let page_opacity = self.opacity.clone();
         let page_shift = self.shift.clone();
+        let pane = self.pane.clone();
         div().absolute().inset_0().child(
             canvas(
                 move |bounds, window, cx| {
@@ -649,6 +673,7 @@ impl Render for ChartLayer {
                     // behind the page they belong to.
                     let page_opacity = page_opacity.get();
                     let shift = page_shift.get();
+                    let pane = pane.borrow();
                     let placements = placements.borrow();
                     let clock = clock.borrow();
                     let now = clock.end(Instant::now());
@@ -657,11 +682,28 @@ impl Render for ChartLayer {
                         let Some(placement) = placements.get(key) else {
                             continue;
                         };
+                        let (moved, mask, fade) = if pane.charts.contains(key) {
+                            let wider = (-pane.offset.x).max(px(0.));
+                            let visible = Bounds::new(
+                                point(placement.mask.left() - wider, placement.mask.top()),
+                                size(
+                                    placement.mask.size.width + wider,
+                                    placement.mask.size.height,
+                                ),
+                            );
+                            (
+                                placement.bounds + pane.offset,
+                                (placement.mask + pane.offset).intersect(&visible),
+                                pane.opacity,
+                            )
+                        } else {
+                            (placement.bounds, placement.mask, 1.)
+                        };
                         let placement = Placement {
-                            bounds: placement.bounds + shift,
-                            mask: placement.mask + shift,
+                            bounds: moved + shift,
+                            mask: mask + shift,
                             plot: placement.plot.clone(),
-                            opacity: placement.opacity,
+                            opacity: placement.opacity * fade,
                         };
                         let clip = placement
                             .bounds

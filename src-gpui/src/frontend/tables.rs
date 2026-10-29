@@ -336,7 +336,10 @@ impl Render for TableFrame {
                     // The original's scrollbars are drawn below.
                     .scrollbar_visible(false, false),
             )
-            .child(scrollbar::scrollbar("table-scrollbar", &rows, dark).view(table))
+            // The process page draws the list's bar itself (`Desktop::table_scrollbar`).
+            .when(!processes, |d| {
+                d.child(scrollbar::scrollbar("table-scrollbar", &rows, dark).view(table))
+            })
             .when(processes, |d| {
                 d.child(
                     scrollbar::scrollbar("table-columns-scrollbar", &columns, dark)
@@ -1526,6 +1529,23 @@ impl Desktop {
         self.work.rows_us += elapsed;
         self.work.rows_max_us = self.work.rows_max_us.max(elapsed);
         self.work.row_builds += 1;
+    }
+    /// The list's vertical scrollbar for a page that draws it beside the table:
+    /// the process page, whose list is drawn narrower than it is laid out while
+    /// the details pane opens or closes.
+    pub(in crate::frontend) fn table_scrollbar(&self, cx: &App) -> Option<scrollbar::Scrollbar> {
+        let table = self.table.as_ref()?;
+        let rows = table
+            .read(cx)
+            .vertical_scroll_handle
+            .0
+            .borrow()
+            .base_handle
+            .clone();
+        Some(
+            scrollbar::scrollbar("table-scrollbar", &rows, self.palette.dark)
+                .view(table.entity_id()),
+        )
     }
     pub(in crate::frontend) fn table_view(
         &mut self,

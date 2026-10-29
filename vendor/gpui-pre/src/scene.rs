@@ -267,15 +267,19 @@ pub(crate) enum PaintOperation {
     PopTransform,
 }
 
-/// A translation and opacity for everything painted inside it (see
-/// [`crate::Window::with_visual_transform`]). It only changes what is drawn:
-/// layout, hit testing and element bounds stay where they were laid out.
+/// A translation, opacity and clip for everything painted inside it (see
+/// [`crate::Window::with_visual_transform`] and
+/// [`crate::Window::with_visual_clip`]). It only changes what is drawn:
+/// layout, hit testing, element bounds and content masks stay as laid out.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VisualTransform {
     /// Device pixels to move by.
     pub offset: Point<ScaledPixels>,
     /// Multiplies the opacity of everything inside.
     pub opacity: f32,
+    /// Device-pixel bounds nothing inside is drawn outside of, placed in the
+    /// coordinates around the transform (its own offset does not move it).
+    pub clip: Option<Bounds<ScaledPixels>>,
 }
 
 impl VisualTransform {
@@ -287,6 +291,10 @@ impl VisualTransform {
                 self.offset.y + inner.offset.y,
             ),
             opacity: self.opacity * inner.opacity,
+            clip: match (self.clip, inner.clip.map(|clip| self.bounds(clip))) {
+                (Some(outer), Some(inner)) => Some(outer.intersect(&inner)),
+                (outer, inner) => outer.or(inner),
+            },
         }
     }
 
@@ -301,8 +309,12 @@ impl VisualTransform {
     }
 
     fn mask(&self, mask: ContentMask<ScaledPixels>) -> ContentMask<ScaledPixels> {
+        let bounds = self.bounds(mask.bounds);
         ContentMask {
-            bounds: self.bounds(mask.bounds),
+            bounds: match self.clip {
+                Some(clip) => bounds.intersect(&clip),
+                None => bounds,
+            },
         }
     }
 
@@ -315,6 +327,7 @@ impl VisualTransform {
                 ScaledPixels(self.offset.y.0.round()),
             ),
             opacity: self.opacity,
+            clip: self.clip,
         };
         let opacity = self.opacity;
         match primitive {

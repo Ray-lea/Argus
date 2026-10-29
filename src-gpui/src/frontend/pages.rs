@@ -35,13 +35,14 @@ impl Desktop {
                 let table = self.table_view(window, cx);
                 // The pane follows its handle without easing while dragged.
                 let dragging = self.drag.as_ref().is_some_and(|drag| drag.0 == "details");
+                let target = if self.details_open {
+                    px(self.details_display_width(window))
+                } else {
+                    px(0.)
+                };
                 let width = gpui_kit::base::motion::transition(
                     "details-width",
-                    if self.details_open {
-                        px(self.details_display_width(window))
-                    } else {
-                        px(0.)
-                    },
+                    target,
                     if dragging {
                         gpui_kit::base::motion::Transition::new(Duration::ZERO)
                     } else {
@@ -50,24 +51,39 @@ impl Desktop {
                     window,
                     cx,
                 );
+                // While the pane eases to another width (opening, closing, a key
+                // step), the list keeps the whole card and is only drawn narrower,
+                // and the pane keeps its final place and is drawn moved (details.rs):
+                // both replay their last paint instead of laying out their rows
+                // again every frame, and settle at the end.
+                let sliding = (width - target).abs() > px(0.01);
+                let (reserved, hidden) = if sliding {
+                    (px(0.), width)
+                } else {
+                    (width, px(0.))
+                };
                 let details = (width > px(0.5)).then(|| {
-                    div()
-                        .w(width)
-                        .h_full()
-                        .flex_shrink_0()
-                        .overflow_hidden()
-                        // Its own entrance, as in the original: the pane slides in
-                        // and its content rises (details.rs).
-                        .child(
-                            self.region(
-                                regions::RegionKind::Details,
-                                StyleRefinement::default()
-                                    .w(px(self.details_display_width(window)))
-                                    .h_full(),
-                                cx,
-                            ),
-                        )
+                    (
+                        div().w(width).h_full().flex_shrink_0(),
+                        self.details_pane(width, window, cx),
+                    )
                 });
+                let (spacer, pane) = details.unzip();
+                let list = super::shift::clipped(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .bottom_0()
+                        .right(reserved)
+                        .child(table),
+                    px(0.),
+                    hidden,
+                );
+                // Drawn here rather than in the table, at the edge the list shows.
+                let bar = self
+                    .table_scrollbar(cx)
+                    .map(|bar| super::shift::shifted(bar, point(-hidden, px(0.)), 1.));
                 // A search narrows the list: an accent ring around it says so at a glance.
                 let filtered = !self.query.trim().is_empty();
                 let accent = self.palette.accent;
@@ -117,13 +133,13 @@ impl Desktop {
                                     .rounded(px(8.))
                                     .overflow_hidden()
                                     .bg(self.palette.layer)
+                                    .child(list)
                                     .child(
                                         div()
                                             .flex_1()
                                             .min_w_0()
                                             .min_h_0()
                                             .relative()
-                                            .child(table)
                                             // The accent header separator, over the
                                             // table's own (its component colour).
                                             .when(filtered, |d| {
@@ -138,7 +154,9 @@ impl Desktop {
                                                 )
                                             }),
                                     )
-                                    .children(details),
+                                    .children(spacer)
+                                    .children(pane)
+                                    .children(bar),
                             ),
                     )
                     .into_any_element()

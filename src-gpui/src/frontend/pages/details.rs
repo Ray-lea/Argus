@@ -55,6 +55,62 @@ impl Desktop {
             .max(1.)
     }
 
+    /// The pane at its open place on the card's right, drawn `width` wide:
+    /// moved by the difference and clipped to the `width` at the card's edge,
+    /// so it replays its last paint while it opens, closes or eases to a new
+    /// width. Opening also slides it
+    /// in from the right as it fades in (styles.css `panel-in`), again whenever
+    /// it was not drawn the frame before.
+    pub(super) fn details_pane(
+        &mut self,
+        width: Pixels,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let pane = px(self.details_display_width(window));
+        let opened = *window
+            .use_keyed_state("details-panel-in", cx, |_, _| Instant::now())
+            .read(cx);
+        let entering = if cx.reduce_motion() {
+            1.
+        } else {
+            (opened.elapsed().as_secs_f32() / duration_of("t-slow").as_secs_f32()).min(1.)
+        };
+        if entering < 1. {
+            window.request_animation_frame();
+        }
+        let progress = ease_out()(entering);
+        let offset = point(pane - width + px((1. - progress) * 24.), px(0.));
+        {
+            let mut motion = self.pane_motion.borrow_mut();
+            motion.offset = offset;
+            motion.opacity = progress;
+        }
+        let region = self.region(
+            regions::RegionKind::Details,
+            StyleRefinement::default().w(pane).h_full(),
+            cx,
+        );
+        super::super::shift::clipped(
+            super::super::shift::shifted(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .right_0()
+                    .w(pane)
+                    // Over the list, which keeps the whole card while the pane moves.
+                    .occlude()
+                    .child(region),
+                offset,
+                progress,
+            ),
+            (pane - width).min(px(0.)),
+            px(0.),
+        )
+        .into_any_element()
+    }
+
     fn details_pick(&self, key: &str) -> Option<Picked<'_>> {
         // A category heading selected with the keyboard is no process.
         if key.is_empty() || key.starts_with("s:") || self.snapshot.is_null() {
@@ -205,18 +261,8 @@ impl Desktop {
             .aria_label(label("shell.details.label"))
             .child(content)
             .child(self.details_splitter(window, cx));
-        if cx.reduce_motion() {
-            return panel.into_any_element();
-        }
-        // Opening the pane slides it in from the right (styles.css `panel-in`);
-        // the animation restarts whenever the pane was not drawn the frame before.
-        panel
-            .with_animation(
-                "details-panel-in",
-                Animation::new(duration_of("t-slow")).with_easing(ease_out()),
-                |element, progress| element.opacity(progress).left(px((1. - progress) * 24.)),
-            )
-            .into_any_element()
+        // Its entrance is drawn around the region (`details_pane`).
+        panel.into_any_element()
     }
 
     /// The handle on the pane's left edge: drag it, use the arrow keys, Home or

@@ -78,3 +78,83 @@ impl Element for Shifted {
         }
     }
 }
+
+/// `child` drawn only inside its own bounds, their sides moved in by `left`
+/// and `right` (out when negative), without an overflow clip: a cached view
+/// inside replays under a new clip instead of rendering again, as it would
+/// when an overflow clip changes.
+pub(super) fn clipped(child: impl IntoElement, left: Pixels, right: Pixels) -> Clipped {
+    Clipped {
+        child: child.into_any_element(),
+        left,
+        right,
+    }
+}
+
+pub(super) struct Clipped {
+    child: AnyElement,
+    left: Pixels,
+    right: Pixels,
+}
+
+impl IntoElement for Clipped {
+    type Element = Self;
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for Clipped {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        (self.child.request_layout(window, cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.child.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let clip = Bounds {
+            origin: point(bounds.origin.x + self.left, bounds.origin.y),
+            size: size(
+                (bounds.size.width - self.left - self.right).max(px(0.)),
+                bounds.size.height,
+            ),
+        };
+        window.with_visual_clip(clip, |window| self.child.paint(window, cx));
+    }
+}

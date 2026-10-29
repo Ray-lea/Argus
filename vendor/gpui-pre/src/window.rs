@@ -4406,6 +4406,28 @@ impl Window {
         let transform = crate::VisualTransform {
             offset: offset.scale(self.scale_factor()),
             opacity: opacity.clamp(0., 1.),
+            clip: None,
+        };
+        self.next_frame.scene.push_transform(transform);
+        let result = f(self);
+        self.next_frame.scene.pop_transform();
+        result
+    }
+
+    /// Paints `f` clipped to `bounds` without changing content masks, layout
+    /// or hit testing (clips nest, with transforms too). Unlike an overflow
+    /// clip, a cached view painted inside replays its last paint under a new
+    /// clip instead of rendering again. Call during paint.
+    pub fn with_visual_clip<R>(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint();
+        let transform = crate::VisualTransform {
+            offset: Point::default(),
+            opacity: 1.,
+            clip: Some(bounds.scale(self.scale_factor())),
         };
         self.next_frame.scene.push_transform(transform);
         let result = f(self);

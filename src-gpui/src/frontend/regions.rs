@@ -129,6 +129,9 @@ impl Desktop {
             .difference(&before)
             .cloned()
             .collect();
+        if kind == RegionKind::Details {
+            self.pane_motion.borrow_mut().charts.clone_from(&added);
+        }
         self.regions.charts.insert(kind, added);
         self.schedule_chart_tick(window, cx);
         element
@@ -136,6 +139,9 @@ impl Desktop {
 
     /// Stops drawing the charts a region built (it renders them again, or is gone).
     fn forget_region_charts(&mut self, kind: RegionKind) {
+        if kind == RegionKind::Details {
+            self.pane_motion.borrow_mut().charts.clear();
+        }
         if let Some(ids) = self.regions.charts.remove(&kind) {
             let mut active = self.active_charts.borrow_mut();
             for id in ids {
