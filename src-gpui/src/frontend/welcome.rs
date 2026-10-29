@@ -292,6 +292,105 @@ impl Desktop {
         }
     }
 
+    /// Skip, finish or Escape (Onboarding.tsx, close): records the onboarding
+    /// as done, closes it once that is saved, then applies an administrator
+    /// choice it deferred. Not while that choice is being made.
+    pub(in crate::frontend) fn finish_onboarding(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.ui.busy.contains("administrator") || self.ui.busy.contains("onboarding") {
+            return;
+        }
+        if self.options.fixture.is_some() {
+            self.act(Action::CloseOverlay, window, cx);
+            return;
+        }
+        self.ui.busy.insert("onboarding".into());
+        // Not keyed to the settings cache: a settings change still under way
+        // must not swallow this request.
+        self.request(
+            "complete_onboarding",
+            json!({"version":configuration()["onboardingVersion"]}),
+            None,
+            window,
+            cx,
+        );
+    }
+
+    /// The onboarding was saved as done: it closes, then a deferred
+    /// administrator choice restarts Argus with those permissions.
+    pub(in crate::frontend) fn onboarding_saved(
+        &mut self,
+        value: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.welcome_checked = false;
+        if value.get("closeToTray").is_some() {
+            self.data.insert("settings".into(), value.clone());
+        }
+        if !self.ui.busy.remove("onboarding") {
+            return;
+        }
+        if self.modal.as_ref().is_some_and(|m| m.kind == "onboarding") {
+            self.act(Action::CloseOverlay, window, cx);
+        }
+        self.request("apply_administrator_mode", json!({}), None, window, cx);
+    }
+
+    /// Once the window shows after a start whose administrator relaunch fell
+    /// back to standard permissions, says so with the way to the setting; not
+    /// over the onboarding, the update dialog or a question (App.tsx).
+    pub(in crate::frontend) fn announce_administrator(&mut self) -> bool {
+        if self.ui.administrator_announced {
+            return false;
+        }
+        let Some(status) = self.data.get("administrator") else {
+            return false;
+        };
+        let Some(error) = status["error"]
+            .as_str()
+            .filter(|_| !boolean(status, "elevated"))
+            .map(str::to_owned)
+        else {
+            // Only the status at start counts.
+            self.ui.administrator_announced = true;
+            return false;
+        };
+        // After the start decided whether the onboarding opens.
+        let decided = self.welcome_checked || self.options.test;
+        let visible = self
+            .host
+            .get_window("main")
+            .is_some_and(|w| w.is_visible().unwrap_or(false));
+        let blocked = self.modal.iter().chain(&self.ui.below).any(|m| {
+            matches!(
+                m.kind.as_str(),
+                "onboarding" | "update" | "whatsnew" | "confirm"
+            )
+        });
+        if !decided || !visible || blocked {
+            return false;
+        }
+        self.ui.administrator_announced = true;
+        self.toast_with(
+            ToastKind::Error,
+            error,
+            15000,
+            vec![(
+                label("settings.administrator.title"),
+                Rc::new(
+                    |this: &mut Desktop, window: &mut Window, cx: &mut Context<Desktop>| {
+                        this.locate_setting("privilege", "administrator", window, cx)
+                    },
+                ),
+            )],
+        );
+        true
+    }
+
     fn onboarding_go(&mut self, step: usize, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(modal) = &mut self.modal
             && modal.kind == "onboarding"
@@ -348,6 +447,15 @@ impl Desktop {
     }
 
     fn onboarding_heading(&self, glyph: &str, step: &str) -> AnyElement {
+        self.onboarding_heading_text(
+            glyph,
+            label(&format!("onboarding.{step}.title")),
+            label(&format!("onboarding.{step}.body")),
+        )
+    }
+
+    /// A step's heading (Heading): icon, title and introduction.
+    fn onboarding_heading_text(&self, glyph: &str, title: String, body: String) -> AnyElement {
         let p = self.palette;
         div()
             .flex()
@@ -363,16 +471,8 @@ impl Desktop {
                     .bg(p.accent.opacity(0.14))
                     .child(icon(glyph, p.accent).size(px(22.))),
             )
-            .child(
-                self.dialog_title(label(&format!("onboarding.{step}.title")))
-                    .mt(px(12.))
-                    .mb(px(6.)),
-            )
-            .child(
-                div()
-                    .text_color(p.muted)
-                    .child(label(&format!("onboarding.{step}.body"))),
-            )
+            .child(self.dialog_title(title).mt(px(12.)).mb(px(6.)))
+            .child(div().text_color(p.muted).child(body))
             .into_any_element()
     }
 
@@ -742,6 +842,19 @@ impl Desktop {
                             ),
                         )
                     });
+            }
+            "administrator" => {
+                body = body
+                    .child(self.onboarding_heading_text(
+                        "ShieldIcon",
+                        label("settings.administrator.title"),
+                        label("onboarding.administrator"),
+                    ))
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .child(self.administrator_card(true, window, cx)),
+                    );
             }
             "privilege" => {
                 let status = self.data.get("privilege").cloned().unwrap_or(Value::Null);

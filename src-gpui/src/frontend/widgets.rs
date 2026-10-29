@@ -108,6 +108,8 @@ pub(in crate::frontend) struct UiState {
     /// Cards running an action, and the errors they show.
     pub busy: HashSet<String>,
     pub errors: HashMap<String, String>,
+    /// The start's administrator fallback was told, or there was none.
+    pub administrator_announced: bool,
     pub inputs: HashMap<String, Entity<InputState>>,
     pub input_subscriptions: Vec<Subscription>,
     /// The placeholder each inline input shows, to follow a language change.

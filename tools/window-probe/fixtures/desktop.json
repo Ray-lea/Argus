@@ -11654,6 +11654,14 @@
     "recoveryPath": "C:\\Program Files\\Argus Privileged\\argus-taskmgr-recover.exe",
     "detail": "当前使用 Windows 任务管理器。"
   },
+  "administrator": {
+    "supported": true,
+    "enabled": false,
+    "ready": false,
+    "elevated": false,
+    "eligible": true,
+    "error": null
+  },
   "updates": {
     "state": "idle",
     "version": null,
