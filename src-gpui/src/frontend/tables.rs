@@ -313,6 +313,14 @@ pub(super) struct NativeTable {
     available: Pixels,
     /// A row the desktop selected itself; the table's select event for it is ignored.
     echo: Option<usize>,
+    /// Cell hints (`tips`): the row under the pointer reports its hinted
+    /// parts, read from the list's scroll handle once this render lays out rows.
+    tips: tips::Tips,
+    list: Option<ScrollHandle>,
+    near: Option<usize>,
+    near_due: bool,
+    /// Why disk readings are missing, as of a sample.
+    disk_hint: RefCell<Option<(u64, String)>>,
 }
 pub(super) struct TableFrame {
     state: Entity<TableState<NativeTable>>,
@@ -362,9 +370,14 @@ impl Render for TableFrame {
     }
 }
 impl NativeTable {
-    fn new(owner: WeakEntity<Desktop>) -> Self {
+    fn new(owner: WeakEntity<Desktop>, tips: tips::Tips) -> Self {
         Self {
             owner,
+            tips,
+            list: None,
+            near: None,
+            near_due: false,
+            disk_hint: RefCell::new(None),
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -525,9 +538,13 @@ impl TableDelegate for NativeTable {
     }
     fn render_header(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
+        // The rows render after the header, laid out where the list scrolled
+        // to this frame: the first one settles which reports its hints.
+        self.near_due = self.tips.begin(window);
+        self.near = None;
         // A search narrows the process list: an accent header with the card's
         // accent ring (`.workspace.filtered .thead`), rounded into the card's
         // corner, and the right one too while the details are closed.
@@ -652,7 +669,18 @@ impl TableDelegate for NativeTable {
                     .text_color(p.ink)
                     .whitespace_nowrap()
                     .when(field.key == "name" && !app.query.trim().is_empty(), |d| {
-                        d.child(icon("FilterIcon", p.accent).size(px(13.)))
+                        let tip = label("processes.filtered");
+                        d.child(
+                            div()
+                                .id("filter-mark")
+                                .flex()
+                                .flex_shrink_0()
+                                .child(icon("FilterIcon", p.accent).size(px(13.)))
+                                .tooltip(move |window, cx| {
+                                    gpui_kit::component::tooltip::Tooltip::new(tip.clone())
+                                        .build(window, cx)
+                                }),
+                        )
                     })
                     .child(total),
             );
@@ -797,12 +825,17 @@ impl TableDelegate for NativeTable {
                 .into_any_element();
         }
         let dot = |color: Hsla| div().size(px(7.)).rounded_full().flex_shrink_0().bg(color);
+        // The original's `title` on this cell, for the row under the pointer.
+        let hint = self
+            .is_near(row_index)
+            .then(|| self.cell_hint(row, field, cx))
+            .flatten();
         match field.kind {
             CellKind::Enabled => {
                 let enabled = boolean(&row.raw, "enabled");
                 let blocked = !row.raw["blocked"].is_null();
                 let id = row.raw["id"].clone();
-                element = element.gap_2().child(
+                let switch =
                     gpui_kit::component::switch::Switch::new(("startup-toggle", row_index))
                         .checked(enabled)
                         .disabled(blocked)
@@ -827,9 +860,22 @@ impl TableDelegate for NativeTable {
                                     )
                                 });
                             });
-                        }),
-                );
-                element = element.child(div().when(!enabled, |d| d.text_color(faint)).child(value));
+                        });
+                let state = div().when(!enabled, |d| d.text_color(faint)).child(value);
+                element = match hint {
+                    // A blocked switch says why over itself and its state (`.switch-cell`).
+                    Some(hint) => element.child(
+                        self.hinted(
+                            div().flex().items_center().gap_2().min_w_0(),
+                            row,
+                            field.key,
+                            hint,
+                        )
+                        .child(switch)
+                        .child(state),
+                    ),
+                    None => element.gap_2().child(switch).child(state),
+                };
             }
             CellKind::ServiceState => {
                 let state = text(&row.raw, "state");
@@ -881,12 +927,15 @@ impl TableDelegate for NativeTable {
                         matches!(field.kind, CellKind::MonoDim | CellKind::PortDim),
                         |d| d.text_color(faint),
                     )
-                    .child(div().truncate().child(value));
+                    .child(self.hint_text(div().truncate().child(value), row, field.key, hint));
             }
             CellKind::Dim | CellKind::ServicePid | CellKind::StartupLocation => {
-                element = element
-                    .text_color(faint)
-                    .child(div().truncate().child(value));
+                element = element.text_color(faint).child(self.hint_text(
+                    div().truncate().child(value),
+                    row,
+                    field.key,
+                    hint,
+                ));
             }
             CellKind::Pid => {
                 element = element.text_color(faint).child(value);
@@ -900,6 +949,8 @@ impl TableDelegate for NativeTable {
                     _ => false,
                 };
                 element = element.when(dim, |d| d.text_color(faint)).child(value);
+                // A figure's `title` covers its whole cell.
+                element = self.hint_text(element, row, field.key, hint);
             }
         }
         element.into_any_element()
@@ -907,12 +958,18 @@ impl TableDelegate for NativeTable {
     fn render_tr(
         &mut self,
         index: usize,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
+        if std::mem::take(&mut self.near_due) {
+            self.near = self
+                .list
+                .as_ref()
+                .and_then(|list| tips::row_under(list, ROW_HEIGHT, self.rows.len(), window));
+        }
         let p = Palette::current(cx);
         let row = &self.rows[index];
-        let (selected, fresh) = self
+        let (selected, fresh, searching) = self
             .owner
             .upgrade()
             .map(|owner| {
@@ -922,9 +979,13 @@ impl TableDelegate for NativeTable {
                         .get(&self.page)
                         .is_some_and(|key| *key == row.key),
                     self.page == "processes" && app.is_fresh(row),
+                    !app.query.trim().is_empty(),
                 )
             })
             .unwrap_or_default();
+        // A heading cannot fold while a search shows every match; its row says so.
+        let locked = (row.section.is_some() && searching && self.is_near(index))
+            .then(|| label("processes.sectionSearching"));
         // Pinned rows lead the list; a line under the last one ends them.
         let last_pinned = row.pinned && self.rows.get(index + 1).is_some_and(|next| !next.pinned);
         // A double-click folds a group (the table reports the first, click
@@ -946,12 +1007,18 @@ impl TableDelegate for NativeTable {
                 }
             }
         });
-        div()
+        let tr = div()
             .id(("native-row", index))
             .relative()
             .border_b_0()
-            .rounded(px(4.))
-            .when_some(refold, |d, refold| d.on_click(refold))
+            .rounded(px(4.));
+        let tr = match locked {
+            Some(hint) => self
+                .tips
+                .target(tr, tips::id((&self.page, &row.key, "row")), hint),
+            None => tr,
+        };
+        tr.when_some(refold, |d, refold| d.on_click(refold))
             .when(fresh, |d| d.bg(p.network.opacity(0.15)))
             .when(selected, |d| {
                 d.child(
@@ -1025,11 +1092,104 @@ fn tag(text: impl Into<SharedString>, border: Hsla, color: Hsla) -> Div {
         .child(text.into())
 }
 impl NativeTable {
+    /// Whether the row reports its hinted parts in this render (`tips`).
+    fn is_near(&self, row_index: usize) -> bool {
+        self.near == Some(row_index)
+    }
+    /// `element` as the part `part` of `row`, hinted by `hint`.
+    fn hinted(&self, element: Div, row: &Row, part: &str, hint: String) -> Div {
+        self.tips
+            .target(element, tips::id((&self.page, &row.key, part)), hint)
+    }
+    fn hint_text(&self, element: Div, row: &Row, part: &str, hint: Option<String>) -> Div {
+        match hint {
+            Some(hint) => self.hinted(element, row, part, hint),
+            None => element,
+        }
+    }
+    /// The `title` the original gives a cell other than the first, if any.
+    fn cell_hint(&self, row: &Row, field: &Field, cx: &App) -> Option<String> {
+        let raw = &row.raw;
+        match (self.page.as_str(), field.key) {
+            // Why a process has no disk reading. Working it out reads every
+            // process, so once a sample, as the original's memo.
+            ("processes", "diskRead" | "diskWrite") if row.metric(field.key).is_none() => {
+                let owner = self.owner.upgrade()?;
+                let app = owner.read(cx);
+                let mut cached = self.disk_hint.borrow_mut();
+                if cached
+                    .as_ref()
+                    .is_none_or(|(sample, _)| *sample != app.sequence)
+                {
+                    *cached = Some((app.sequence, app.missing_disk_hint()));
+                }
+                cached.as_ref().map(|(_, hint)| hint.clone())
+            }
+            // The busiest engine, which the figure is the share of.
+            ("processes", "gpu") => row.gpu_usage().engine.clone().filter(|e| !e.is_empty()),
+            ("processes", "net") => {
+                let owner = self.owner.upgrade()?;
+                let bits = owner
+                    .read(cx)
+                    .prefs
+                    .get::<String>("netUnit", "bytes".into())
+                    == "bits";
+                let rate = |key| charts::net_rate(row.metric(key).unwrap_or(0.), bits);
+                Some(tr!(
+                    "processes.netRates",
+                    sent = rate("netSent"),
+                    received = rate("netReceived")
+                ))
+            }
+            // The process a running service lives in.
+            ("services", "pid") => {
+                let pid = raw["pid"].as_u64().filter(|pid| *pid != 0)?;
+                let owner = self.owner.upgrade()?;
+                let app = owner.read(cx);
+                Some(text(app.process(pid)?, "name").to_owned()).filter(|name| !name.is_empty())
+            }
+            ("services", "description") | ("startup", "command") => {
+                Some(text(raw, field.key).to_owned()).filter(|hint| !hint.is_empty())
+            }
+            ("startup", "enabled") => raw["blocked"]
+                .as_str()
+                .map(|reason| label(&format!("startup.blocked.{reason}"))),
+            _ => None,
+        }
+    }
+    /// The `title` of the first cell's name: the whole name and what it runs.
+    fn name_hint(&self, row: &Row, cx: &App) -> Option<String> {
+        let raw = &row.raw;
+        let hint = match self.page.as_str() {
+            "processes" => format!(
+                "{}\n{}",
+                row.title,
+                raw["path"].as_str().unwrap_or(text(raw, "name"))
+            ),
+            "services" => row.title.clone(),
+            "startup" => [text(raw, "name"), text(raw, "entry")]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            // The executable of the connection's process.
+            "network" => {
+                let owner = self.owner.upgrade()?;
+                let app = owner.read(cx);
+                app.process(raw["pid"].as_u64()?)?["path"]
+                    .as_str()?
+                    .to_owned()
+            }
+            _ => return None,
+        };
+        (!hint.is_empty()).then_some(hint)
+    }
     /// The first cell: fold control, icon, name and the marks that follow it.
     fn name_cell(&self, row_index: usize, element: Div, cx: &mut Context<TableState<Self>>) -> Div {
         let row = &self.rows[row_index];
         let p = Palette::current(cx);
         let owner = self.owner.clone();
+        let near = self.is_near(row_index);
         let fold = |expanded: bool, key: String, owner: WeakEntity<Desktop>| {
             let hover = p.hover;
             let ink = p.ink;
@@ -1132,18 +1292,29 @@ impl NativeTable {
         }
         let group = processes && row.members.len() > 1;
         let off = self.page == "startup" && !boolean(&row.raw, "enabled");
-        element = element.child(
-            div()
-                .min_w_0()
-                .flex_shrink(1.)
-                .truncate()
-                .when(group, |d| d.font_weight(FontWeight::SEMIBOLD))
-                .when(processes && boolean(&row.raw, "suspended"), |d| {
-                    d.text_color(p.muted)
-                })
-                .when(off, |d| d.text_color(p.muted))
-                .child(row.title.clone()),
-        );
+        let name = div()
+            .min_w_0()
+            .flex_shrink(1.)
+            .truncate()
+            .when(group, |d| d.font_weight(FontWeight::SEMIBOLD))
+            .when(processes && boolean(&row.raw, "suspended"), |d| {
+                d.text_color(p.muted)
+            })
+            .when(off, |d| d.text_color(p.muted))
+            .child(row.title.clone());
+        // The marks after the name carry their own `title`s (RowMarks.tsx).
+        let hint = |element: Div, part: &str, hint: Option<String>| {
+            if near {
+                self.hint_text(element, row, part, hint)
+            } else {
+                element
+            }
+        };
+        element = element.child(hint(
+            name,
+            "name",
+            near.then(|| self.name_hint(row, cx)).flatten(),
+        ));
         if group {
             element = element.child(
                 div()
@@ -1161,28 +1332,27 @@ impl NativeTable {
             );
         }
         if let Some(note) = &row.note {
-            element = element.child(
-                div()
-                    .flex()
-                    .flex_shrink(1.)
-                    .items_center()
-                    .gap_1()
-                    .min_w(px(40.))
-                    .h(px(20.))
-                    .ml(px(-2.))
-                    .pl(px(5.))
-                    .pr(px(7.))
-                    .rounded(px(4.))
-                    .bg(p.accent.opacity(0.11))
-                    .text_color(p.accent.blend(p.ink.opacity(0.28)))
-                    .text_size(theme::font(12.))
-                    .child(
-                        icon("NoteIcon", p.accent.blend(p.ink.opacity(0.28)))
-                            .size(px(12.))
-                            .flex_shrink_0(),
-                    )
-                    .child(div().min_w_0().truncate().child(note.clone())),
-            );
+            let badge = div()
+                .flex()
+                .flex_shrink(1.)
+                .items_center()
+                .gap_1()
+                .min_w(px(40.))
+                .h(px(20.))
+                .ml(px(-2.))
+                .pl(px(5.))
+                .pr(px(7.))
+                .rounded(px(4.))
+                .bg(p.accent.opacity(0.11))
+                .text_color(p.accent.blend(p.ink.opacity(0.28)))
+                .text_size(theme::font(12.))
+                .child(
+                    icon("NoteIcon", p.accent.blend(p.ink.opacity(0.28)))
+                        .size(px(12.))
+                        .flex_shrink_0(),
+                )
+                .child(div().min_w_0().truncate().child(note.clone()));
+            element = element.child(hint(badge, "note", Some(note.clone())));
         }
         if processes && !row.detail.is_empty() {
             element = element.child(
@@ -1201,7 +1371,20 @@ impl NativeTable {
                 .filter(|member| boolean(member, "efficiency"))
                 .count();
             if efficient > 0 {
-                element = element.child(icon("LeafIcon", p.muted).size(px(12.)).flex_shrink_0());
+                let leaf = icon("LeafIcon", p.muted).size(px(12.)).flex_shrink_0();
+                element = if near {
+                    element.child(hint(
+                        div().flex().flex_shrink_0().child(leaf),
+                        "efficiency",
+                        Some(if group {
+                            tr!("processes.efficiencyCount", count = efficient)
+                        } else {
+                            label("common.efficiencyMode")
+                        }),
+                    ))
+                } else {
+                    element.child(leaf)
+                };
             }
             if row
                 .members
@@ -1213,16 +1396,25 @@ impl NativeTable {
             }
         }
         if self.page == "startup" && !boolean(&row.raw, "exists") && !row.raw["path"].is_null() {
-            element = element.child(tag(
-                label("startup.missing.label"),
-                p.io.opacity(0.55),
-                p.io,
+            let missing = tag(label("startup.missing.label"), p.io.opacity(0.55), p.io);
+            element = element.child(hint(
+                missing,
+                "missing",
+                Some(label("startup.missing.title")),
             ));
         }
         if row.pinned {
-            element = element
-                .child(div().flex_1())
-                .child(icon("PinIcon", p.muted).flex_shrink_0());
+            let pin = icon("PinIcon", p.muted).flex_shrink_0();
+            element = element.child(div().flex_1());
+            element = if near {
+                element.child(hint(
+                    div().flex().flex_shrink_0().child(pin),
+                    "pin",
+                    Some(label("common.marks.pinned")),
+                ))
+            } else {
+                element.child(pin)
+            };
         }
         element
     }
@@ -1576,11 +1768,15 @@ impl Desktop {
     ) -> AnyElement {
         if self.table.is_none() {
             let owner = cx.entity().downgrade();
+            let tips = self.tips.clone();
             let table = cx.new(|cx| {
-                TableState::new(NativeTable::new(owner), window, cx)
+                let mut state = TableState::new(NativeTable::new(owner, tips), window, cx)
                     .col_selectable(false)
                     .sortable(false)
-                    .col_movable(false)
+                    .col_movable(false);
+                let list = state.vertical_scroll_handle.0.borrow().base_handle.clone();
+                state.delegate_mut().list = Some(list);
+                state
             });
             self.subscriptions.push(cx.subscribe_in(
                 &table,
@@ -1707,16 +1903,20 @@ impl Desktop {
         if changed && let Some(frame) = &self.table_frame {
             frame.update(cx, |_, cx| cx.notify());
         }
+        let tips = self.tips.clone();
         div()
             .id("table-region")
             .size_full()
-            .on_hover(cx.listener(|this, hovered, _, cx| {
+            .on_hover(cx.listener(|this, hovered, window, cx| {
                 this.pointer_in_table = *hovered;
                 if !hovered {
+                    this.tips.dismiss(window, cx);
                     this.rebuild_rows(false, cx);
                 }
                 cx.notify();
             }))
+            // Cell hints follow the pointer here, one listener for the table.
+            .on_mouse_move(move |event, window, cx| tips.moved(event, window, cx))
             .child(
                 self.table_frame
                     .as_ref()
@@ -1804,6 +2004,12 @@ impl Desktop {
                 state.set_right_clicked_row(None, cx);
             });
         }
+    }
+    /// The running process `pid` in the latest snapshot.
+    fn process(&self, pid: u64) -> Option<&Value> {
+        values(&self.snapshot["processes"])
+            .iter()
+            .find(|process| process["pid"].as_u64() == Some(pid))
     }
     /// Display names of the services running in each process, by PID.
     pub(in crate::frontend) fn hosted_services(&self) -> HashMap<u64, Vec<String>> {

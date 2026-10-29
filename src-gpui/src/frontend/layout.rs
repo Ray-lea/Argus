@@ -1108,6 +1108,8 @@ impl Render for Desktop {
                     cx.notify();
                 }),
             )
+            // First, so its press and wheel listeners precede the page's.
+            .child(self.tip_layer.clone())
             .child(toolbar)
             .when(self.nav_top, |d| {
                 // The tabs (32 px a row) and their 6 px gap below. With large

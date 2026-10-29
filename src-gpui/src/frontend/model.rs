@@ -249,7 +249,7 @@ impl Row {
             .reduce(|sum, value| sum + value)
     }
     /// The GPU usage a heading folds in: a group's aggregate or the process's own reading.
-    fn gpu_usage(&self) -> Cow<'_, GpuUsage> {
+    pub fn gpu_usage(&self) -> Cow<'_, GpuUsage> {
         match &self.gpu {
             Some(usage) => Cow::Borrowed(usage),
             None => Cow::Owned(GpuUsage::of_process(&self.raw)),
