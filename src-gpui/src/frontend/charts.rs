@@ -599,13 +599,16 @@ pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
 
 /// How the details pane is drawn while it opens or closes, away from where it
 /// is laid out (`Desktop::details_pane`): its charts move and fade with it,
-/// clipped where they are laid out, widened to the left when the pane is
-/// drawn wider than laid out (easing to a narrower width).
+/// clipped to the pane's own clip.
 pub(super) struct PaneMotion {
     /// The charts the details region drew when it last rendered.
     pub(super) charts: HashSet<String>,
     pub(super) offset: Point<Pixels>,
     pub(super) opacity: f32,
+    /// Where the pane is drawn: where it is laid out, widened to the left
+    /// while it is drawn wider (easing to a narrower width). It does not
+    /// move with the offset.
+    pub(super) clip: Option<Bounds<Pixels>>,
 }
 impl Default for PaneMotion {
     fn default() -> Self {
@@ -613,6 +616,7 @@ impl Default for PaneMotion {
             charts: HashSet::new(),
             offset: Point::default(),
             opacity: 1.,
+            clip: None,
         }
     }
 }
@@ -751,17 +755,12 @@ impl Render for ChartLayer {
                             continue;
                         };
                         let (moved, mask, fade) = if pane.charts.contains(key) {
-                            let wider = (-pane.offset.x).max(px(0.));
-                            let visible = Bounds::new(
-                                point(placement.mask.left() - wider, placement.mask.top()),
-                                size(
-                                    placement.mask.size.width + wider,
-                                    placement.mask.size.height,
-                                ),
-                            );
+                            // The chart's own clip (its frame) moves with the
+                            // pane; the pane's clip stays where it is drawn.
+                            let mask = placement.mask + pane.offset;
                             (
                                 placement.bounds + pane.offset,
-                                (placement.mask + pane.offset).intersect(&visible),
+                                pane.clip.map_or(mask, |clip| mask.intersect(&clip)),
                                 pane.opacity,
                             )
                         } else {

@@ -1,5 +1,6 @@
 //! The process details pane: the selected row looked up in the snapshot, or this computer's parts.
 use super::*;
+use gpui_kit::base::ElementExt;
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::tooltip::Tooltip;
 use std::hash::{Hash, Hasher};
@@ -91,6 +92,8 @@ impl Desktop {
             StyleRefinement::default().w(pane).h_full(),
             cx,
         );
+        let wider = (width - pane).max(px(0.));
+        let motion = self.pane_motion.clone();
         super::super::shift::clipped(
             super::super::shift::shifted(
                 div()
@@ -101,11 +104,19 @@ impl Desktop {
                     .w(pane)
                     // Over the list, which keeps the whole card while the pane moves.
                     .occlude()
+                    // The clip below, for the chart layer: the charts' own
+                    // clips are their frames, which move with the pane.
+                    .on_prepaint(move |bounds, _, _| {
+                        motion.borrow_mut().clip = Some(Bounds::new(
+                            point(bounds.left() - wider, bounds.top()),
+                            size(bounds.size.width + wider, bounds.size.height),
+                        ));
+                    })
                     .child(region),
                 offset,
                 progress,
             ),
-            (pane - width).min(px(0.)),
+            -wider,
             px(0.),
         )
         .into_any_element()

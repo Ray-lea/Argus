@@ -10,10 +10,13 @@ pub(in crate::frontend) type DashPhases = Arc<std::sync::Mutex<Vec<HashMap<u64, 
 const DASH: f32 = 4.;
 const DASH_GAP: f32 = 3.;
 static BUILD_MICROS: AtomicU64 = AtomicU64::new(0);
-/// How long a chart's first paint waits for its curve. Every chart's raster
-/// starts in prepaint, so they draw in parallel and one wait covers them all;
-/// a raster that takes longer appears when it is done.
-const FIRST_PAINT_WAIT: Duration = Duration::from_millis(50);
+/// A chart shown for the first time (entering a page, another device or view)
+/// waits in paint for its curve, so that the curve is part of the first frame
+/// of the page around it, as the original draws its canvases before that
+/// frame. Every chart's raster starts in prepaint and they draw in parallel,
+/// a large one on several threads (`thread_count`), so one short wait covers
+/// them all. This only bounds a raster that does not land.
+const FIRST_PAINT_WAIT: Duration = Duration::from_millis(250);
 
 pub(super) fn metrics() -> (u64, u64) {
     (
@@ -303,12 +306,13 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
     prepare(plot, bounds, window, cx);
     let cache = cache(plot, window, cx);
     cache.update(cx, |cache, cx| {
-        // Nothing of these series yet (a first display, another device): wait a
-        // little for the raster rather than show the chart without its curve.
+        // Nothing of these series yet (a first display, another device): wait
+        // for the raster rather than show the chart without its curve.
         if !cache.shows(plot.content())
             && let Some(Pending { started, slot, .. }) = cache.pending.clone()
         {
             let deadline = started + FIRST_PAINT_WAIT;
+            let waited = Instant::now();
             let mut result = slot.result.lock().unwrap_or_else(|e| e.into_inner());
             while result.is_none() {
                 let left = deadline.saturating_duration_since(Instant::now());
@@ -321,7 +325,15 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
                     .unwrap_or_else(|e| e.into_inner())
                     .0;
             }
+            let landed = result.is_some();
             drop(result);
+            if gpui_kit::gpui::profiler::phase_trace_enabled() {
+                println!(
+                    "{}",
+                    serde_json::json!({"event":"chart-wait","us":waited.elapsed().as_micros(),
+                    "landed":landed,"atQpc":gpui_kit::gpui::profiler::trace_clock_100ns()})
+                );
+            }
             cache.settle(&slot, window);
         }
         let Some(texture) = cache
@@ -432,54 +444,94 @@ fn segment_lengths(points: &[(f64, f64)]) -> Vec<f32> {
         .collect()
 }
 
-fn rasterize(plot: &Input) -> Option<Texture> {
-    let size = plot.size;
-    let density = plot.density;
-    let width = f32::from(size.width);
-    let height = f32::from(size.height);
+/// What a raster draws, built once and drawn into every band in order.
+enum Shape {
+    /// A filled path; an area fades through the row mask.
+    Fill {
+        path: tiny_skia::Path,
+        color: tiny_skia::Color,
+        faded: bool,
+    },
+    /// A line too thin to outline once (a hairline at this density).
+    Stroke {
+        path: tiny_skia::Path,
+        color: tiny_skia::Color,
+        stroke: tiny_skia::Stroke,
+    },
+}
+
+/// A raster this large is drawn on several threads, one for at least this
+/// many pixels: a chart shown for the first time waits for its curve, and a
+/// large one (a big window, a high display density) took over 100 ms on one
+/// thread. Smaller ones stay on one thread, where starting others costs more
+/// than it saves.
+const THREAD_PIXELS: usize = 1 << 17;
+/// At most this many threads per raster, leaving cores to the rest of the app.
+const MAX_THREADS: usize = 8;
+/// Bands per thread, taken in turn down the texture: an area fills the lower
+/// rows far more than the upper ones, and one band per thread left the lowest
+/// to do most of the work.
+const BANDS_PER_THREAD: usize = 2;
+
+fn thread_count(width: u32, height: u32) -> usize {
+    static CORES: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    let cores = *CORES.get_or_init(|| {
+        std::thread::available_parallelism().map_or(1, |n| n.get().clamp(1, MAX_THREADS))
+    });
+    (width as usize * height as usize / THREAD_PIXELS).clamp(1, cores)
+}
+
+/// Where the texture starts left of the plot and its size in device pixels:
+/// wide enough for every run and the line's width at both ends.
+fn extent(plot: &Input) -> Option<(f32, u32, u32)> {
+    let width = f32::from(plot.size.width);
+    let height = f32::from(plot.size.height);
     if width <= 0. || height <= 0. {
         return None;
     }
     let span = plot.span;
-    let scale = (plot.max - plot.min).max(f64::EPSILON);
-    let stroke = plot.stroke;
     let left = plot
         .series
         .iter()
         .flat_map(|s| s.geometry.iter().filter_map(|r| r.first()))
         .map(|p| ((p.0 - plot.geometry_start) / span) as f32 * width)
         .fold(0., f32::min)
-        - stroke;
+        - plot.stroke;
     let right = plot
         .series
         .iter()
         .flat_map(|s| s.geometry.iter().filter_map(|r| r.last()))
         .map(|p| ((p.0 - plot.geometry_start) / span) as f32 * width)
         .fold(width, f32::max)
-        + stroke;
-    let pixel_width = ((right - left) * density).ceil() as u32;
-    let pixel_height = (height * density).ceil() as u32;
-    let mut pixels = tiny_skia::Pixmap::new(pixel_width, pixel_height)?;
+        + plot.stroke;
+    let pixel_width = ((right - left) * plot.density).ceil() as u32;
+    let pixel_height = (height * plot.density).ceil() as u32;
+    (pixel_width > 0 && pixel_height > 0).then_some((left, pixel_width, pixel_height))
+}
+
+fn rasterize(plot: &Input) -> Option<Texture> {
+    let (_, pixel_width, pixel_height) = extent(plot)?;
+    rasterize_in(plot, thread_count(pixel_width, pixel_height))
+}
+
+/// Draws the plot on `threads` threads, each drawing some horizontal bands of
+/// one buffer. A band draws every shape moved up by its first row and clipped
+/// to its rows, as tiny-skia tiles a pixmap too large for it.
+fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
+    let started = Instant::now();
+    let (left, pixel_width, pixel_height) = extent(plot)?;
+    let size = plot.size;
+    let density = plot.density;
+    let width = f32::from(size.width);
+    let height = f32::from(size.height);
+    let span = plot.span;
+    let scale = (plot.max - plot.min).max(f64::EPSILON);
+    let stroke = plot.stroke;
     let transform = tiny_skia::Transform::from_scale(density, density);
+    let resolution = tiny_skia::PathStroker::compute_resolution_scale(&transform);
     let top = stroke / 2.;
-    // Areas fade from their opacity at the chart's top to nothing at its bottom:
-    // a solid fill through this row mask, which costs a fraction of a gradient
-    // shader's per-pixel work.
-    let fade = if plot.fill && plot.series.iter().any(|series| series.fill > 0.) {
-        let mut mask = tiny_skia::Mask::new(pixel_width, pixel_height)?;
-        let row = pixel_width as usize;
-        for (index, line) in mask.data_mut().chunks_exact_mut(row).enumerate() {
-            let y = (index as f32 + 0.5) / density;
-            let level = ((height - y) / (height - top)).clamp(0., 1.);
-            // Down to nothing at the bottom, as the original's gradient. The
-            // renderer averages premultiplied texels (see `paint_image_subpixel`),
-            // so the noisy straight colour of the faintest rows stays invisible.
-            line.fill((level * 255. + 0.5) as u8);
-        }
-        Some(mask)
-    } else {
-        None
-    };
+    let fill = plot.fill && plot.series.iter().any(|series| series.fill > 0.);
+    let mut shapes = Vec::new();
     let mut phases = plot.phases.lock().unwrap_or_else(|e| e.into_inner());
     phases.resize_with(plot.series.len(), HashMap::new);
     for (index, series) in plot.series.iter().enumerate() {
@@ -496,27 +548,20 @@ fn rasterize(plot: &Input) -> Option<Texture> {
                     )
                 })
                 .collect::<Vec<_>>();
-            if let Some(fade) = &fade
+            if fill
                 && series.fill > 0.
                 && let Some(path) = curve(&points, Some(height), plot.smooth)
             {
-                let area = tiny_skia::Color::from_rgba(
-                    color.r,
-                    color.g,
-                    color.b,
-                    color.a * series.fill.clamp(0., 1.),
-                )?;
-                pixels.fill_path(
-                    &path,
-                    &tiny_skia::Paint {
-                        shader: tiny_skia::Shader::SolidColor(area),
-                        anti_alias: true,
-                        ..Default::default()
-                    },
-                    tiny_skia::FillRule::Winding,
-                    transform,
-                    Some(fade),
-                );
+                shapes.push(Shape::Fill {
+                    path,
+                    color: tiny_skia::Color::from_rgba(
+                        color.r,
+                        color.g,
+                        color.b,
+                        color.a * series.fill.clamp(0., 1.),
+                    )?,
+                    faded: true,
+                });
             }
             let dash = if series.dashed {
                 // Dashes run along the curve. Start the pattern so that a sample drawn
@@ -544,22 +589,34 @@ fn rasterize(plot: &Input) -> Option<Texture> {
                 None
             };
             if let Some(path) = curve(&points, None, plot.smooth) {
-                pixels.stroke_path(
-                    &path,
-                    &tiny_skia::Paint {
-                        shader: tiny_skia::Shader::SolidColor(solid),
-                        anti_alias: true,
-                        ..Default::default()
-                    },
-                    &tiny_skia::Stroke {
-                        width: stroke,
-                        line_join: tiny_skia::LineJoin::Round,
-                        dash,
-                        ..Default::default()
-                    },
-                    transform,
-                    None,
-                );
+                let line = tiny_skia::Stroke {
+                    width: stroke,
+                    line_join: tiny_skia::LineJoin::Round,
+                    dash,
+                    ..Default::default()
+                };
+                // What `stroke_path` would do in every band: dash and outline
+                // the line once, then fill the outline. A hairline at this
+                // density takes tiny-skia's own path.
+                if stroke * density > 1. {
+                    let dashed = match &line.dash {
+                        Some(dash) => path.dash(dash, resolution),
+                        None => Some(path),
+                    };
+                    if let Some(outline) = dashed.and_then(|path| path.stroke(&line, resolution)) {
+                        shapes.push(Shape::Fill {
+                            path: outline,
+                            color: solid,
+                            faded: false,
+                        });
+                    }
+                } else {
+                    shapes.push(Shape::Stroke {
+                        path,
+                        color: solid,
+                        stroke: line,
+                    });
+                }
             }
         }
         if series.dashed {
@@ -567,8 +624,109 @@ fn rasterize(plot: &Input) -> Option<Texture> {
         }
     }
     drop(phases);
-    let buffer =
-        image::RgbaImage::from_raw(pixel_width, pixel_height, straight_bgra(pixels.data()))?;
+    let threads = threads.max(1);
+    let bands = if threads > 1 {
+        threads * BANDS_PER_THREAD
+    } else {
+        1
+    };
+    let row = pixel_width as usize * 4;
+    let rows = (pixel_height as usize).div_ceil(bands).max(1);
+    // One buffer, turned into straight colour in place: a second one would
+    // double the fresh pages every raster touches.
+    let mut pixels = vec![0u8; row * pixel_height as usize];
+    let draw = |first: usize, pixels: &mut [u8]| {
+        let count = (pixels.len() / row) as u32;
+        if let Some(mut pixmap) = tiny_skia::PixmapMut::from_bytes(pixels, pixel_width, count) {
+            let transform = transform.post_translate(0., -(first as f32));
+            // Areas fade from their opacity at the chart's top to nothing at its
+            // bottom: a solid fill through this row mask, which costs a fraction
+            // of a gradient shader's per-pixel work.
+            let fade = fill
+                .then(|| tiny_skia::Mask::new(pixel_width, count))
+                .flatten()
+                .map(|mut mask| {
+                    for (index, line) in mask
+                        .data_mut()
+                        .chunks_exact_mut(pixel_width as usize)
+                        .enumerate()
+                    {
+                        let y = ((first + index) as f32 + 0.5) / density;
+                        let level = ((height - y) / (height - top)).clamp(0., 1.);
+                        // Down to nothing at the bottom, as the original's gradient.
+                        // The renderer averages premultiplied texels (see
+                        // `paint_image_subpixel`), so the noisy straight colour of
+                        // the faintest rows stays invisible.
+                        line.fill((level * 255. + 0.5) as u8);
+                    }
+                    mask
+                });
+            for shape in &shapes {
+                match shape {
+                    Shape::Fill { path, color, faded } => {
+                        let mask = if *faded { fade.as_ref() } else { None };
+                        if *faded && mask.is_none() {
+                            continue;
+                        }
+                        pixmap.fill_path(
+                            path,
+                            &tiny_skia::Paint {
+                                shader: tiny_skia::Shader::SolidColor(*color),
+                                anti_alias: true,
+                                ..Default::default()
+                            },
+                            tiny_skia::FillRule::Winding,
+                            transform,
+                            mask,
+                        );
+                    }
+                    Shape::Stroke {
+                        path,
+                        color,
+                        stroke,
+                    } => pixmap.stroke_path(
+                        path,
+                        &tiny_skia::Paint {
+                            shader: tiny_skia::Shader::SolidColor(*color),
+                            anti_alias: true,
+                            ..Default::default()
+                        },
+                        stroke,
+                        transform,
+                        None,
+                    ),
+                }
+            }
+        }
+        straight_bgra(pixels);
+    };
+    let mut work = (0..threads).map(|_| Vec::new()).collect::<Vec<_>>();
+    for (index, band) in pixels.chunks_mut(rows * row).enumerate() {
+        work[index % threads].push((index * rows, band));
+    }
+    std::thread::scope(|scope| {
+        let mut work = work.into_iter();
+        let here = work.next();
+        for bands in work {
+            let draw = &draw;
+            scope.spawn(move || {
+                for (first, band) in bands {
+                    draw(first, band);
+                }
+            });
+        }
+        for (first, band) in here.into_iter().flatten() {
+            draw(first, band);
+        }
+    });
+    let buffer = image::RgbaImage::from_raw(pixel_width, pixel_height, pixels)?;
+    if gpui_kit::gpui::profiler::phase_trace_enabled() {
+        println!(
+            "{}",
+            serde_json::json!({"event":"chart-raster","width":pixel_width,"height":pixel_height,
+            "threads":threads,"us":started.elapsed().as_micros(),"atQpc":gpui_kit::gpui::profiler::trace_clock_100ns()})
+        );
+    }
     Some(Texture {
         image: Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])),
         offset: point(px(left), px(0.)),
@@ -584,14 +742,14 @@ fn rasterize(plot: &Input) -> Option<Texture> {
     })
 }
 
-/// tiny-skia's premultiplied RGBA as the straight BGRA a RenderImage holds.
-/// Most pixels are empty or repeat their neighbour (an area's row shares one
-/// colour), so the division runs only where the colour changes.
-fn straight_bgra(rgba: &[u8]) -> Vec<u8> {
-    let mut bgra = vec![0; rgba.len()];
+/// tiny-skia's premultiplied RGBA turned, in place, into the straight BGRA a
+/// RenderImage holds. Most pixels are empty or repeat their neighbour (an
+/// area's row shares one colour), so the division runs only where the colour
+/// changes.
+fn straight_bgra(pixels: &mut [u8]) {
     let mut last = ([0u8; 4], [0u8; 4]);
-    let (pixels, _) = rgba.as_chunks::<4>();
-    for (out, &pixel) in bgra.as_chunks_mut::<4>().0.iter_mut().zip(pixels) {
+    for out in pixels.as_chunks_mut::<4>().0 {
+        let pixel = *out;
         if pixel[3] == 0 {
             continue;
         }
@@ -611,12 +769,11 @@ fn straight_bgra(rgba: &[u8]) -> Vec<u8> {
         }
         *out = last.1;
     }
-    bgra
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Input, key, rasterize, straight_bgra};
+    use super::{Input, key, rasterize, rasterize_in, straight_bgra};
     #[test]
     fn straight_alpha_matches_tiny_skia() {
         for alpha in 0..=255u8 {
@@ -630,8 +787,10 @@ mod tests {
                     premultiplied.blue(),
                     alpha,
                 ];
+                let mut converted = pixel;
+                straight_bgra(&mut converted);
                 assert_eq!(
-                    straight_bgra(&pixel),
+                    converted,
                     [
                         expected.blue(),
                         expected.green(),
@@ -716,5 +875,70 @@ mod tests {
         assert!(alpha(10.) > 128);
         assert_eq!(alpha(40.), 0);
         assert!(alpha(70.) > 128);
+    }
+    #[test]
+    fn threads_draw_what_one_thread_draws() {
+        // A busy chart, 4400 by 1120 device pixels: a filled line over a
+        // dashed one through 60 noisy samples.
+        let noise = |i: usize, k: u64| {
+            let mut x = (i as u64 + 1).wrapping_mul(0x9e37_79b9_7f4a_7c15 ^ k);
+            x ^= x >> 29;
+            Some((x % 1000) as f64 / 10.)
+        };
+        let points = |k| (0..60).map(|i| (i as f64, noise(i, k))).collect::<Vec<_>>();
+        let mut p = plot(points(1));
+        p.end = 59.;
+        p.fill = true;
+        p.series[0] = p.series[0].clone().fill(0.3);
+        p.series.push(
+            Series::new(
+                String::new(),
+                points(2),
+                rgb(0x28b8e0).into(),
+                MetricFormat::Percent,
+            )
+            .dashed(true)
+            .fill(0.),
+        );
+        let draw = |threads| {
+            let started = std::time::Instant::now();
+            let texture = rasterize_in(&Input::new(&p, size(px(1100.), px(280.)), 4.), threads);
+            (texture.unwrap(), started.elapsed())
+        };
+        let (one, one_time) = draw(1);
+        let (eight, eight_time) = draw(8);
+        let (a, b) = (
+            one.image.as_bytes(0).unwrap(),
+            eight.image.as_bytes(0).unwrap(),
+        );
+        assert_eq!(a.len(), b.len());
+        // Compared premultiplied, as the renderer averages texels. A curve cut
+        // at the edge of a band is subdivided anew there, which can move an
+        // edge across one of the 4 by 4 coverage samples of a texel.
+        let premultiplied = |c: &[u8; 4]| {
+            let alpha = u32::from(c[3]);
+            [
+                (u32::from(c[0]) * alpha + 127) / 255,
+                (u32::from(c[1]) * alpha + 127) / 255,
+                (u32::from(c[2]) * alpha + 127) / 255,
+                alpha,
+            ]
+        };
+        let mut differ = 0;
+        let mut worst = 0;
+        for (p, q) in a.as_chunks::<4>().0.iter().zip(b.as_chunks::<4>().0) {
+            let (p, q) = (premultiplied(p), premultiplied(q));
+            let d = p.iter().zip(&q).map(|(x, y)| x.abs_diff(*y)).max().unwrap();
+            if d > 0 {
+                differ += 1;
+                worst = worst.max(d);
+            }
+        }
+        eprintln!(
+            "{differ} of {} texels differ, by at most {worst}; one thread {one_time:?}, eight {eight_time:?}",
+            a.len() / 4
+        );
+        assert!(differ * 1000 < a.len() / 4, "{differ} texels differ");
+        assert!(worst <= 64, "a texel differs by {worst}");
     }
 }
