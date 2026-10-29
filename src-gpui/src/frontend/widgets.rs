@@ -116,6 +116,10 @@ pub(in crate::frontend) struct UiState {
     pub inputs: HashMap<String, Entity<InputState>>,
     pub input_subscriptions: Vec<Subscription>,
     pub proxy_draft: Option<String>,
+    /// A number box's spin button while it is held.
+    pub spin: Option<Spin>,
+    /// The spin button half under the pointer: its setting and whether it is the up half.
+    pub spin_hover: Option<(&'static str, bool)>,
     pub hotkey: HotkeyCard,
     pub system_motion: Option<bool>,
     pub ticks: u64,
@@ -134,6 +138,17 @@ pub(in crate::frontend) struct UiState {
     pub search_fit: RefCell<Option<(String, Pixels, Pixels)>>,
     /// How compact the toolbar is (`Desktop::fit_toolbar`).
     pub toolbar_fit: RefCell<ToolbarFit>,
+}
+
+/// A number box's spin button held down (`::-webkit-inner-spin-button`).
+pub(in crate::frontend) struct Spin {
+    /// The setting whose box it steps.
+    pub setting: &'static appearance::Setting,
+    /// The half under the pointer (up is `true`), `None` off the button:
+    /// while held it steps that way, as Chromium's does.
+    pub over: Option<bool>,
+    /// Steps again while it stays held.
+    pub repeat: Task<()>,
 }
 
 /// The toolbar's compact level and what it learned (the original's

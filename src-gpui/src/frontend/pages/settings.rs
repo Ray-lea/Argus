@@ -1773,7 +1773,8 @@ impl Desktop {
 
     /// Interface scale or font size (Settings.tsx): a short number box with its
     /// unit (`.appearance-number`) and a button back to the default. The box
-    /// commits on Enter or when it loses focus; the arrow keys step it.
+    /// commits on Enter, when it loses focus and when its spin button is let
+    /// go; the arrow keys step it and commit.
     #[allow(clippy::too_many_arguments)]
     fn appearance_setting(
         &mut self,
@@ -1789,6 +1790,13 @@ impl Desktop {
         let p = self.palette;
         let value = self.appearance_value(setting);
         let input = self.appearance_input(setting, window, cx);
+        let focused = input.read(cx).focus_handle(cx).is_focused(window);
+        let held = self
+            .ui
+            .spin
+            .as_ref()
+            .is_some_and(|spin| std::ptr::eq(spin.setting, setting));
+        let group = SharedString::from(format!("setting-{id}-number"));
         let number = div()
             .flex()
             .items_center()
@@ -1798,6 +1806,8 @@ impl Desktop {
                 // height is the 1.4 line height of the text plus those.
                 div()
                     .id(SharedString::from(format!("setting-{id}-input")))
+                    .group(group.clone())
+                    .relative()
                     .w(theme::font(13. * 4.5))
                     .h(theme::font(13.) * 1.4 + px(12.))
                     .px(px(7.))
@@ -1814,17 +1824,33 @@ impl Desktop {
                             _ => return,
                         };
                         cx.stop_propagation();
-                        let next = setting.step(this.appearance_value(setting), up);
-                        this.commit_appearance(setting, next, window, cx);
+                        let Some(input) = this.ui.inputs.get(setting.key).cloned() else {
+                            return;
+                        };
+                        if let Some(next) = setting.spin(&input.read(cx).value(), up) {
+                            this.commit_appearance(setting, next, window, cx);
+                        }
                     }))
                     .child(
-                        Input::new(&input)
-                            .appearance(false)
+                        // The input keeps its own 32 px height: centred, its
+                        // line sits where the box's text did.
+                        div()
+                            .flex_1()
+                            .min_w_0()
                             .h_full()
-                            .px_0()
-                            .py_0()
-                            .text_size(theme::font(13.)),
-                    ),
+                            .flex()
+                            .items_center()
+                            .child(
+                                Input::new(&input)
+                                    .appearance(false)
+                                    .px_0()
+                                    .py_0()
+                                    .text_size(theme::font(13.)),
+                            ),
+                    )
+                    .child(self.spin_button(setting, id, &group, focused || held, window, cx))
+                    // `:focus-visible`: the 2 px ring in the text colour.
+                    .when(focused, |d| d.child(widgets::focus_ring(p.ink, px(1.)))),
             )
             .child(div().text_color(p.ink).child(unit))
             .into_any_element();
@@ -1912,6 +1938,233 @@ impl Desktop {
                 input.update(cx, |state, cx| state.set_value(text, window, cx));
             }
         }
+    }
+
+    /// A number box's spin button (`::-webkit-inner-spin-button`, drawn by
+    /// Chromium): 15 px wide at the end of the box's text, its two halves
+    /// stepping up and down. It shows while the box is pointed at or focused;
+    /// the arrow under the pointer lights up. Held, it steps once, again after
+    /// 250 ms and then every 50 ms the way the half under the pointer points,
+    /// as Chromium repeats it; the box commits when it is let go.
+    fn spin_button(
+        &self,
+        setting: &'static appearance::Setting,
+        id: &str,
+        group: &SharedString,
+        shown: bool,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let dark = self.palette.dark;
+        let scale = window.scale_factor();
+        let half = |up: bool| {
+            let lit = self.ui.spin_hover == Some((setting.key, up));
+            let color = theme::token(
+                if lit {
+                    "spin-arrow-hover"
+                } else {
+                    "spin-arrow"
+                },
+                dark,
+            );
+            let arrow = assets::spin_arrow(up, color, scale, cx);
+            div()
+                .id(SharedString::from(format!(
+                    "setting-{id}-{}",
+                    if up { "up" } else { "down" }
+                )))
+                .relative()
+                .flex_1()
+                .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                    let here = Some((setting.key, up));
+                    if *hovered {
+                        this.ui.spin_hover = here;
+                    } else if this.ui.spin_hover == here {
+                        this.ui.spin_hover = None;
+                    }
+                    cx.notify();
+                }))
+                .child(
+                    // 15 × 9 in the middle of the half, on whole device pixels,
+                    // area-filtered from its double-resolution raster.
+                    canvas(
+                        |_, _, _| {},
+                        move |bounds, _, window, _| {
+                            let Some(arrow) = arrow else {
+                                return;
+                            };
+                            let s = window.scale_factor();
+                            let snap = |v: Pixels| px((f32::from(v) * s).round() / s);
+                            let size = size(px(15.), px(9.));
+                            let origin = bounds.center() - point(size.width / 2., size.height / 2.);
+                            let _ = window.paint_image_subpixel(
+                                Bounds::new(point(snap(origin.x), snap(origin.y)), size),
+                                arrow,
+                                0,
+                            );
+                        },
+                    )
+                    .absolute()
+                    .size_full(),
+                )
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.spin_press(setting, up, window, cx);
+                    }),
+                )
+        };
+        // Wherever the button is let go, and if the press got lost (the
+        // pointer moving with no button down), the hold ends.
+        let owner = cx.entity().downgrade();
+        let track = canvas(
+            |_, _, _| {},
+            move |bounds, _, window, _| {
+                let held = move |owner: &WeakEntity<Desktop>, cx: &App| {
+                    owner.upgrade().filter(|desktop| {
+                        desktop
+                            .read(cx)
+                            .ui
+                            .spin
+                            .as_ref()
+                            .is_some_and(|spin| std::ptr::eq(spin.setting, setting))
+                    })
+                };
+                let moved = owner.clone();
+                window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
+                    if phase != DispatchPhase::Capture {
+                        return;
+                    }
+                    let Some(desktop) = held(&moved, cx) else {
+                        return;
+                    };
+                    let over = bounds
+                        .contains(&event.position)
+                        .then(|| event.position.y < bounds.center().y);
+                    let pressed = event.pressed_button == Some(MouseButton::Left);
+                    desktop.update(cx, |this, cx| this.spin_track(over, pressed, window, cx));
+                });
+                window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {
+                    if phase != DispatchPhase::Capture || event.button != MouseButton::Left {
+                        return;
+                    }
+                    if let Some(desktop) = held(&owner, cx) {
+                        desktop.update(cx, |this, cx| this.spin_release(window, cx));
+                    }
+                });
+            },
+        )
+        .absolute()
+        .size_full();
+        div()
+            .relative()
+            .flex_shrink_0()
+            .w(px(15.))
+            .h(theme::font(13.) * 1.4)
+            .flex()
+            .flex_col()
+            .bg(theme::token("spin-face", dark))
+            .opacity(if shown { 1. } else { 0. })
+            .when(!shown, |d| d.group_hover(group.clone(), |s| s.opacity(1.)))
+            .child(half(true))
+            .child(half(false))
+            .child(track)
+    }
+
+    /// The spin button pressed: the box takes focus and steps, and keeps
+    /// stepping while it is held.
+    fn spin_press(
+        &mut self,
+        setting: &'static appearance::Setting,
+        up: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(input) = self.ui.inputs.get(setting.key).cloned() else {
+            return;
+        };
+        input.update(cx, |state, cx| state.focus(window, cx));
+        self.spin_step(setting, up, window, cx);
+        let repeat = cx.spawn_in(window, async move |this, cx| {
+            // Steps keep to a schedule from the press: a timer fires on the system
+            // tick (15.6 ms by default), so waiting the interval after each step
+            // would repeat every 62.5 ms instead of every 50 on average.
+            let pressed = cx.background_executor().now();
+            for step in 0u32.. {
+                let due = pressed + scrollbar::REPEAT_DELAY + scrollbar::REPEAT_INTERVAL * step;
+                let now = cx.background_executor().now();
+                cx.background_executor()
+                    .timer(due.saturating_duration_since(now))
+                    .await;
+                let held = this.update_in(cx, |this, window, cx| {
+                    let Some(spin) = this.ui.spin.as_ref() else {
+                        return false;
+                    };
+                    if let Some(up) = spin.over {
+                        this.spin_step(setting, up, window, cx);
+                    }
+                    true
+                });
+                if !matches!(held, Ok(true)) {
+                    break;
+                }
+            }
+        });
+        self.ui.spin = Some(widgets::Spin {
+            setting,
+            over: Some(up),
+            repeat,
+        });
+        cx.notify();
+    }
+
+    /// One step of the box's text; it commits when the button is let go.
+    fn spin_step(
+        &mut self,
+        setting: &'static appearance::Setting,
+        up: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(input) = self.ui.inputs.get(setting.key).cloned() else {
+            return;
+        };
+        let text = input.read(cx).value();
+        if let Some(next) = setting.spin(&text, up).map(|next| next.to_string())
+            && next != text.as_ref()
+        {
+            input.update(cx, |state, cx| state.set_value(next, window, cx));
+        }
+    }
+
+    /// The pointer moved while the spin button is held.
+    fn spin_track(
+        &mut self,
+        over: Option<bool>,
+        pressed: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !pressed {
+            self.spin_release(window, cx);
+        } else if let Some(spin) = &mut self.ui.spin {
+            spin.over = over;
+        }
+    }
+
+    /// The spin button let go: the box commits what it shows, as the
+    /// original's `change` event did on release.
+    fn spin_release(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(spin) = self.ui.spin.take() else {
+            return;
+        };
+        drop(spin.repeat);
+        if let Some(input) = self.ui.inputs.get(spin.setting.key).cloned() {
+            let next = spin.setting.parse(&input.read(cx).value());
+            self.commit_appearance(spin.setting, next, window, cx);
+        }
+        cx.notify();
     }
 
     // ---- Rules ------------------------------------------------------------------
