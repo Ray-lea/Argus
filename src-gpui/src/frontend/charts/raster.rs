@@ -100,7 +100,10 @@ struct Texture {
     plot_size: Size<Pixels>,
     geometry_start: f64,
     span: f64,
+    min: f64,
     max: f64,
+    /// Where the top of the range was drawn, below the plot's top edge.
+    top: f32,
     content: u64,
 }
 pub(in crate::frontend) struct ImageSurface {
@@ -112,9 +115,23 @@ pub(in crate::frontend) struct ImageSurface {
     plot_size: Size<Pixels>,
     geometry_start: f64,
     span: f64,
+    min: f64,
     max: f64,
+    top: f32,
 }
 impl ImageSurface {
+    /// The height on screen at which the curve this texture holds passes
+    /// through `value`: laid out as the raster laid it out, then moved and
+    /// stretched as `bounds_at` places the texture (a rescale easing in).
+    pub(super) fn curve_y(&self, plot: &TimePlot, bounds: Bounds<Pixels>, value: f64) -> Pixels {
+        let k = plot.rescale_factor(self.max, Instant::now());
+        let sy = f32::from(bounds.size.height) / f32::from(self.plot_size.height) * k;
+        let height = f64::from(f32::from(self.plot_size.height));
+        let drawn = height
+            - (value - self.min) / (self.max - self.min).max(f64::EPSILON)
+                * (height - f64::from(self.top));
+        bounds.top() + self.offset.y * sy + bounds.size.height * (1. - k) + px(drawn as f32 * sy)
+    }
     fn bounds_at(&self, plot: &TimePlot, bounds: Bounds<Pixels>, end: f64) -> Bounds<Pixels> {
         let span = (plot.end - plot.start).max(1.);
         let sx = f32::from(bounds.size.width) / f32::from(self.plot_size.width)
@@ -362,7 +379,9 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
             plot_size: texture.plot_size,
             geometry_start: texture.geometry_start,
             span: texture.span,
+            min: texture.min,
             max: texture.max,
+            top: texture.top,
         };
         let image_bounds = surface.bounds_at(plot, bounds, plot.end);
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
@@ -380,6 +399,92 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
         });
         *plot.image_surface.borrow_mut() = Some(surface);
     });
+}
+
+/// The hover readout's dot: 9 px across, the series colour inside a 2 px ring
+/// of the tooltip's colour, as the original's `.chart-dot`.
+const DOT: f32 = 9.;
+const DOT_RING: f32 = 2.;
+
+/// Paints a readout dot centred exactly at `center`. The curve under it moves
+/// by fractions of a device pixel from frame to frame, while laid-out boxes
+/// and quads snap to whole device pixels: a dot drawn that way steps a pixel
+/// at a time along a gently sloping curve and wobbles about the line. Drawn
+/// instead as an image at the curve texture's density and sampled by area
+/// like it (`paint_image_subpixel`), the dot keeps its exact place and moves
+/// as smoothly as the curve.
+pub(super) fn paint_dot(window: &mut Window, center: Point<Pixels>, fill: Hsla, ring: Hsla) {
+    let density = density(window);
+    let Some(image) = dot_image(fill, ring, density) else {
+        return;
+    };
+    let side = px(image.size(0).width.0 as f32 / density);
+    let bounds = Bounds::new(center - point(side / 2., side / 2.), size(side, side));
+    if let Err(error) = window.paint_image_subpixel(bounds, image, 0) {
+        argus_core::diagnostics::warn(
+            "chart dot paint",
+            argus_core::diagnostics::error_chain(error.as_ref()),
+        );
+    }
+}
+
+/// A dot's image, drawn once per colour pair and density: with a clear margin
+/// of a pixel, so that area sampling at any offset never cuts its edge.
+fn dot_image(fill: Hsla, ring: Hsla, density: f32) -> Option<Arc<RenderImage>> {
+    thread_local! {
+        static DOTS: RefCell<HashMap<u64, Arc<RenderImage>>> = RefCell::new(HashMap::new());
+    }
+    let (fill, ring): (Rgba, Rgba) = (fill.into(), ring.into());
+    let key = super::hash_of(
+        [
+            fill.r, fill.g, fill.b, fill.a, ring.r, ring.g, ring.b, ring.a, density,
+        ]
+        .map(f32::to_bits),
+    );
+    if let Some(image) = DOTS.with_borrow(|dots| dots.get(&key).cloned()) {
+        return Some(image);
+    }
+    let side = ((DOT + 2.) * density).ceil() as u32;
+    let mut pixmap = tiny_skia::Pixmap::new(side, side)?;
+    let middle = side as f32 / 2.;
+    let outer = DOT / 2. * density;
+    let inner = (DOT / 2. - DOT_RING) * density;
+    let paint = |color: Rgba| -> Option<tiny_skia::Paint<'static>> {
+        Some(tiny_skia::Paint {
+            shader: tiny_skia::Shader::SolidColor(tiny_skia::Color::from_rgba(
+                color.r, color.g, color.b, color.a,
+            )?),
+            anti_alias: true,
+            ..Default::default()
+        })
+    };
+    let disc = tiny_skia::PathBuilder::from_circle(middle, middle, outer)?;
+    // The fill runs under the ring, which is drawn over it, as a CSS border
+    // over its box's background.
+    let ring_path = {
+        let mut path = tiny_skia::PathBuilder::new();
+        path.push_circle(middle, middle, outer);
+        path.push_circle(middle, middle, inner);
+        path.finish()?
+    };
+    for (path, color, rule) in [
+        (&disc, fill, tiny_skia::FillRule::Winding),
+        (&ring_path, ring, tiny_skia::FillRule::EvenOdd),
+    ] {
+        pixmap.fill_path(
+            path,
+            &paint(color)?,
+            rule,
+            tiny_skia::Transform::identity(),
+            None,
+        );
+    }
+    let mut pixels = pixmap.take();
+    straight_bgra(&mut pixels);
+    let buffer = image::RgbaImage::from_raw(side, side, pixels)?;
+    let image = Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]));
+    DOTS.with_borrow_mut(|dots| dots.insert(key, image.clone()));
+    Some(image)
 }
 
 /// One piece of a curve between two samples, as a cubic Bezier (start,
@@ -904,7 +1009,9 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
         plot_size: size,
         geometry_start: plot.geometry_start,
         span,
+        min: plot.min,
         max: plot.max,
+        top,
         content: plot.content,
     })
 }
