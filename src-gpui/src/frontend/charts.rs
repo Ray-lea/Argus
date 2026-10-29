@@ -200,7 +200,8 @@ impl Series {
             source: 0,
         }
     }
-    fn source(mut self, source: u64) -> Self {
+    /// Names the data shown: a texture drawn for other data is never shown for it.
+    pub(in crate::frontend) fn source(mut self, source: u64) -> Self {
         self.source = source;
         self
     }
@@ -479,7 +480,7 @@ impl FrameCaptions {
             .collect()
     }
 }
-fn hash_of(value: impl std::hash::Hash) -> u64 {
+pub(in crate::frontend) fn hash_of(value: impl std::hash::Hash) -> u64 {
     use std::hash::Hasher;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     value.hash(&mut hasher);

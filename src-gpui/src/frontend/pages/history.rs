@@ -376,6 +376,8 @@ impl Desktop {
             .unwrap_or(records.len().max(1) as f64);
         let step = (span / buckets.max(1.)).max(FRAME);
         let ts = records.iter().map(|r| number(r, "ts")).collect::<Vec<_>>();
+        // The query answer on screen: its window and points.
+        let answer = (from.to_bits(), to.to_bits(), records.len());
         let joined = joins(&ts, step);
         let tick_step = TICKS[RANGES
             .iter()
@@ -535,15 +537,24 @@ impl Desktop {
                 "net" => charts::MetricFormat::Network(bits),
                 _ => charts::MetricFormat::Percent,
             };
+            // Each answer is other data: a curve drawn for another window (the
+            // previous range, or the one before a refresh) is never stretched
+            // onto this one while its own is drawn. The charts wait for their
+            // curves together, as on a first display, and change in one frame.
+            let source = |part: &str| charts::hash_of((answer, metric.field, part));
             let mut series = Vec::with_capacity(2);
             if metric.field == "cpu" && peaks.iter().any(|(_, v)| v.is_some()) {
                 series.push(
                     charts::Series::new(String::new(), peaks, metric.color.opacity(0.45), format)
-                        .fill(0.),
+                        .fill(0.)
+                        .source(source("peak")),
                 );
             }
-            series
-                .push(charts::Series::new(String::new(), points, metric.color, format).fill(0.28));
+            series.push(
+                charts::Series::new(String::new(), points, metric.color, format)
+                    .fill(0.28)
+                    .source(source("value")),
+            );
             let dot = cursor_point.and_then(|r| {
                 let value = value_of(r)?;
                 let x = ((number(r, "ts") - from) / span) as f32;
