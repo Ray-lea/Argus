@@ -18,9 +18,10 @@ pub(in crate::frontend) const SIZE: f32 = 10.;
 const MIN_THUMB: f32 = 17.;
 /// Chromium's page step, as a share of the visible length (`kFractionToStepWhenPaging`).
 const PAGE: f32 = 0.875;
-/// A held track press repeats after this, then at the repeat interval (Blink's autoscroll timer).
-const REPEAT_DELAY: Duration = Duration::from_millis(250);
-const REPEAT_INTERVAL: Duration = Duration::from_millis(50);
+/// A held track press repeats after this, then at the repeat interval (Blink's
+/// autoscroll timer, which a held spin button uses too).
+pub(in crate::frontend) const REPEAT_DELAY: Duration = Duration::from_millis(250);
+pub(in crate::frontend) const REPEAT_INTERVAL: Duration = Duration::from_millis(50);
 
 thread_local! {
     static TRACE: Cell<Option<(Instant, Duration)>> = const { Cell::new(None) };

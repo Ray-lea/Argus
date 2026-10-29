@@ -56,14 +56,44 @@ impl Setting {
         }
     }
 
-    /// One step up or down from `value`, kept in range.
-    pub fn step(&self, value: u32, up: bool) -> u32 {
-        let next = if up {
-            value.saturating_add(1)
-        } else {
-            value.saturating_sub(1)
+    /// One step of the box's text up or down, as Chromium steps a number
+    /// input (`step="1"`) from its spin button or arrow keys: text that is not
+    /// a number starts at the minimum, a value past the end it moves away
+    /// from comes back to that end, a fraction goes to the next whole number
+    /// that way, and a value at (or past) the end it moves toward stays
+    /// (`None`).
+    pub fn spin(&self, text: &str, up: bool) -> Option<u32> {
+        let (min, max) = (*self.range.start(), *self.range.end());
+        let Some(value) = text.trim().parse::<f64>().ok().filter(|v| v.is_finite()) else {
+            return Some(min);
         };
-        next.clamp(*self.range.start(), *self.range.end())
+        let (low, high) = (f64::from(min), f64::from(max));
+        let next = if up {
+            if value < low {
+                return Some(min);
+            }
+            if value >= high {
+                return None;
+            }
+            if value.fract() == 0. {
+                value + 1.
+            } else {
+                value.ceil()
+            }
+        } else {
+            if value > high {
+                return Some(max);
+            }
+            if value <= low {
+                return None;
+            }
+            if value.fract() == 0. {
+                value - 1.
+            } else {
+                value.floor()
+            }
+        };
+        Some(next.clamp(low, high) as u32)
     }
 }
 
@@ -104,7 +134,29 @@ mod tests {
         assert_eq!(SCALE.parse("abc"), 100);
         assert_eq!(FONT_SIZE.parse("19.5"), 20);
         assert_eq!(FONT_SIZE.parse("-4"), 11);
-        assert_eq!(FONT_SIZE.step(20, true), 20);
-        assert_eq!(FONT_SIZE.step(13, false), 12);
+    }
+
+    /// The cases measured on the original's font size box (11–20).
+    #[test]
+    fn spinning_steps_text_like_chromium() {
+        let spin = |text, up| FONT_SIZE.spin(text, up);
+        assert_eq!(spin("15", true), Some(16));
+        assert_eq!(spin("15", false), Some(14));
+        assert_eq!(spin("20", true), None);
+        assert_eq!(spin("11", false), None);
+        assert_eq!(spin("", true), Some(11));
+        assert_eq!(spin("", false), Some(11));
+        assert_eq!(spin("25", false), Some(20));
+        assert_eq!(spin("25", true), None);
+        assert_eq!(spin("5", true), Some(11));
+        assert_eq!(spin("5", false), None);
+        assert_eq!(spin("-3", true), Some(11));
+        assert_eq!(spin("1e1", true), Some(11));
+        assert_eq!(spin("12.5", true), Some(13));
+        assert_eq!(spin("12.2", true), Some(13));
+        assert_eq!(spin("12.5", false), Some(12));
+        assert_eq!(spin("12.2", false), Some(12));
+        assert_eq!(SCALE.spin("150", true), None);
+        assert_eq!(SCALE.spin("abc", false), Some(80));
     }
 }

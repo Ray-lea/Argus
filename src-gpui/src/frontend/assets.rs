@@ -1,6 +1,6 @@
 //! Product icons extend the component bundle without copying its SVG source.
-use gpui_kit::{AssetSource, SharedString};
-use std::borrow::Cow;
+use gpui_kit::{App, AssetSource, Hsla, RenderImage, Rgba, SharedString};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap, sync::Arc};
 gpui_kit::assets::icon_assets!(
     ProductIcons,
     [
@@ -163,6 +163,36 @@ ui_icons![
     "warning",
 ];
 const UI_ICON_PREFIX: &str = "argus/icons/";
+
+/// One arrow of a number box's spin button in `color`, for a 15 × 9 px half
+/// of the button at `scale`: a triangle with rounded corners, as Chromium
+/// draws it there. It is a colour image rather than a tinted icon: icons get
+/// the text contrast boost, which draws these 7 px arrows visibly heavier
+/// than the original's plain coverage.
+pub fn spin_arrow(up: bool, color: Hsla, scale: f32, cx: &App) -> Option<Arc<RenderImage>> {
+    thread_local! {
+        static ARROWS: RefCell<HashMap<(bool, u32, u32), Arc<RenderImage>>> =
+            RefCell::new(HashMap::new());
+    }
+    let rgba = Rgba::from(color);
+    let [r, g, b] = [rgba.r, rgba.g, rgba.b].map(|c| (c * 255.).round() as u8);
+    let key = (up, u32::from_be_bytes([0, r, g, b]), scale.to_bits());
+    if let Some(image) = ARROWS.with_borrow(|arrows| arrows.get(&key).cloned()) {
+        return Some(image);
+    }
+    let source: &[u8] = if up {
+        include_bytes!("../../../resources/spin-up.svg")
+    } else {
+        include_bytes!("../../../resources/spin-down.svg")
+    };
+    let svg = String::from_utf8_lossy(source).replace("#000", &format!("#{r:02x}{g:02x}{b:02x}"));
+    let image = cx
+        .svg_renderer()
+        .render_single_frame(svg.as_bytes(), scale)
+        .ok()?;
+    ARROWS.with_borrow_mut(|arrows| arrows.insert(key, image.clone()));
+    Some(image)
+}
 
 /// The asset path of the original icon for a product icon name, if it has one.
 pub fn ui_icon(name: &str) -> Option<SharedString> {
