@@ -153,6 +153,7 @@ impl WindowsWindowInner {
             WM_CHAR => self.handle_char_msg(wparam),
             WM_IME_STARTCOMPOSITION => self.handle_ime_position(handle),
             WM_IME_COMPOSITION => self.handle_ime_composition(handle, lparam),
+            WM_IME_ENDCOMPOSITION => self.handle_ime_end_composition(handle),
             WM_SETCURSOR => self.handle_set_cursor(handle, lparam),
             WM_SETTINGCHANGE => self.handle_system_settings_changed(handle, wparam, lparam),
             WM_INPUTLANGCHANGE => self.handle_input_language_changed(),
@@ -716,6 +717,35 @@ impl WindowsWindowInner {
     fn handle_ime_composition(&self, handle: HWND, lparam: LPARAM) -> Option<isize> {
         let ctx = ImeContext::get(handle)?;
         self.handle_ime_composition_inner(*ctx, lparam)
+    }
+
+    // An input method may end a composition without a last WM_IME_COMPOSITION
+    // (ImmNotifyIME with CPS_CANCEL sends only WM_IME_ENDCOMPOSITION): text still
+    // marked then was never committed, and the input would keep it as if the
+    // composition went on, so it is removed. A commit already queued behind the
+    // end (an input method that commits after ending) replaces it instead.
+    // Default processing follows.
+    fn handle_ime_end_composition(&self, handle: HWND) -> Option<isize> {
+        let mut pending = MSG::default();
+        let commit_pending = unsafe {
+            PeekMessageW(
+                &mut pending,
+                Some(handle),
+                WM_IME_COMPOSITION,
+                WM_IME_COMPOSITION,
+                // Posted messages only: no sent message is dispatched from here.
+                PM_NOREMOVE | PM_QS_POSTMESSAGE,
+            )
+            .as_bool()
+        } && pending.lParam.0 as u32 & GCS_RESULTSTR.0 != 0;
+        if !commit_pending {
+            self.with_input_handler(|input_handler| {
+                if input_handler.marked_text_range().is_some() {
+                    input_handler.replace_and_mark_text_in_range(None, "", None);
+                }
+            });
+        }
+        None
     }
 
     fn handle_ime_composition_inner(&self, ctx: HIMC, lparam: LPARAM) -> Option<isize> {

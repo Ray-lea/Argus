@@ -1274,6 +1274,7 @@ impl Render for Desktop {
                     .child(footer),
             );
         let overlays = self.render_overlays(window, cx);
+        let composer = self.search_composer(window, cx);
         self.schedule_chart_tick(window, cx);
         let result = div()
             .id("argus-root")
@@ -1308,6 +1309,8 @@ impl Render for Desktop {
                     cx,
                 );
             }))
+            // Before any text input, which then takes over from it.
+            .children(composer)
             .when(self.drag.is_some(), |d| d.child(self.drag_capture(cx)))
             // First, so its press and wheel listeners precede the page's.
             .child(self.tip_layer.clone())
