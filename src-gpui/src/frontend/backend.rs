@@ -1209,6 +1209,52 @@ impl Desktop {
                 self.data.insert(key.clone(), value.clone());
             }
         }
+        // A command in flight (fixture only): held and never dispatched, so the
+        // view shows what it shows while waiting, until `resolve` answers it.
+        if self.options.fixture.is_some()
+            && let Some(command) = control["hold"]["command"].as_str()
+        {
+            self.next_request += 1;
+            self.pending.insert(
+                self.next_request,
+                Pending {
+                    command: command.to_owned(),
+                    cache: control["hold"]["cache"].as_str().map(str::to_owned),
+                    args: control["hold"]["args"].clone(),
+                },
+            );
+        }
+        // Answers a held command, or one made up here, through the normal
+        // completion path (fixture only): nothing is ended or restarted.
+        if self.options.fixture.is_some()
+            && let Some(command) = control["resolve"]["command"].as_str()
+        {
+            let answer = &control["resolve"];
+            let held = self
+                .pending
+                .iter()
+                .find(|(_, pending)| pending.command == command)
+                .map(|(id, _)| *id);
+            let id = held.unwrap_or_else(|| {
+                self.next_request += 1;
+                self.pending.insert(
+                    self.next_request,
+                    Pending {
+                        command: command.to_owned(),
+                        cache: answer["cache"].as_str().map(str::to_owned),
+                        args: answer["args"].clone(),
+                    },
+                );
+                self.next_request
+            });
+            let value = answer["value"].clone();
+            let result = if boolean(answer, "ok") {
+                Ok(value)
+            } else {
+                Err(value)
+            };
+            self.complete(id, result, window, cx);
+        }
         if let Some(text) = control["toast"].as_str() {
             self.notify_toast(widgets::ToastKind::Info, text.to_owned());
         }

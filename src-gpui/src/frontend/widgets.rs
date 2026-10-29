@@ -108,6 +108,9 @@ pub(in crate::frontend) struct UiState {
     /// Cards running an action, and the errors they show.
     pub busy: HashSet<String>,
     pub errors: HashMap<String, String>,
+    /// File-lock searches started: each result fades in once and its list
+    /// starts at the top.
+    pub lock_searches: u64,
     /// The start's administrator fallback was told, or there was none.
     pub administrator_announced: bool,
     pub inputs: HashMap<String, Entity<InputState>>,
@@ -465,7 +468,7 @@ impl Desktop {
         glyph: Option<&str>,
         tone: Tone,
     ) -> gpui_kit::base::Button {
-        self.button_face(id.into(), text.into(), glyph, tone, false)
+        self.button_face(id.into(), text.into(), glyph, tone, false, None)
     }
 
     /// The small variant (`.btn.small`): 24 px high, 8 px padding.
@@ -476,7 +479,28 @@ impl Desktop {
         glyph: Option<&str>,
         tone: Tone,
     ) -> gpui_kit::base::Button {
-        self.button_face(id.into(), text.into(), glyph, tone, true)
+        self.button_face(id.into(), text.into(), glyph, tone, true, None)
+    }
+
+    /// A small button with a `size` px glyph (`.btn.small` holding an icon of
+    /// that size). Without text it keeps the 8 px padding, as a `.btn.small`
+    /// that is not also `.icon`.
+    pub(in crate::frontend) fn btn_small_glyph(
+        &self,
+        id: impl Into<SharedString>,
+        text: impl Into<SharedString>,
+        glyph: &str,
+        size: f32,
+        tone: Tone,
+    ) -> gpui_kit::base::Button {
+        self.button_face(
+            id.into(),
+            text.into(),
+            Some(glyph),
+            tone,
+            true,
+            Some(px(size)),
+        )
     }
 
     fn button_face(
@@ -486,6 +510,7 @@ impl Desktop {
         glyph: Option<&str>,
         tone: Tone,
         small: bool,
+        glyph_size: Option<Pixels>,
     ) -> gpui_kit::base::Button {
         let p = self.palette;
         let clear = p.background.opacity(0.);
@@ -495,7 +520,7 @@ impl Desktop {
             Tone::Danger => (p.danger, p.on_danger, clear),
             Tone::Ghost => (clear, p.ink, clear),
         };
-        let icon_only = text.is_empty() && glyph.is_some();
+        let icon_only = text.is_empty() && glyph.is_some() && glyph_size.is_none();
         let height = if small { px(24.) } else { px(32.) };
         gpui_kit::base::Button::new(id)
             .relative()
@@ -524,7 +549,9 @@ impl Desktop {
             })
             .when(tone == Tone::Plain, |b| b.child(control_edge(&p)))
             .accessibility_label(text.clone())
-            .when_some(glyph, |b, name| b.child(icon(name, fg)))
+            .when_some(glyph, |b, name| {
+                b.child(icon(name, fg).when_some(glyph_size, |i, size| i.size(size)))
+            })
             .when(!text.is_empty(), |b| b.child(text))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
     }
