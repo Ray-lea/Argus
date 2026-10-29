@@ -25,6 +25,38 @@ pub(super) struct Modal {
     pub shell: Option<FocusHandle>,
 }
 
+/// Where a shown dialog sits and how tall it is drawn (`Desktop::surface`).
+/// It is centred once, when it first shows; when its content grows or
+/// shrinks it keeps its top edge and eases to the new height, up to what
+/// fits above the window's bottom margin, past which its body scrolls.
+#[derive(Clone, Copy)]
+pub(super) struct DialogFrame {
+    /// The top edge in the window.
+    top: Pixels,
+    /// The viewport height `top` was centred in: a resized window centres it again.
+    viewport: Pixels,
+    /// The drawn height eases from `from` to `to`, starting at `since`.
+    from: Pixels,
+    to: Pixels,
+    since: Instant,
+    /// What the body is held to so that it cannot scroll: the room the drawn
+    /// height leaves it. `None` once its content is taller than the dialog
+    /// can grow and the height has settled; then the body scrolls.
+    clip: Option<Pixels>,
+}
+
+impl DialogFrame {
+    /// The drawn height at `now`, easing over `length` on the Fluent move curve.
+    fn height(&self, now: Instant, length: Duration) -> Pixels {
+        let t = now.saturating_duration_since(self.since).as_secs_f32() / length.as_secs_f32();
+        if t >= 1. || length.is_zero() {
+            self.to
+        } else {
+            self.from + (self.to - self.from) * theme::ease_move(t)
+        }
+    }
+}
+
 /// Dialogs that open over whatever is open (ConfirmDialog in Overlays.tsx).
 const STACKING: [&str; 6] = [
     "confirm",
@@ -520,7 +552,7 @@ impl Desktop {
             return;
         }
         self.ui.dialog_leaving = None;
-        self.ui.dialog_shown.borrow_mut().remove(&id);
+        self.forget_dialog(id);
         if let Some(closed) = self.modal.take() {
             window.close_dialog(cx);
             self.modal = self.ui.below.pop();
@@ -547,12 +579,15 @@ impl Desktop {
             return;
         }
         window.close_all_dialogs(cx);
-        self.modal = None;
-        self.ui.below.clear();
+        let closed = self.modal.take().into_iter().chain(self.ui.below.drain(..));
+        for id in closed.map(|modal| modal.id).collect::<Vec<_>>() {
+            self.forget_dialog(id);
+        }
     }
 
     /// The dialog closed itself (Escape or a press outside it).
     fn modal_closed(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.forget_dialog(id);
         if self.modal.as_ref().is_some_and(|m| m.id == id) {
             let closed = self.modal.take();
             self.modal = self.ui.below.pop();
@@ -630,50 +665,152 @@ impl Desktop {
         }
     }
 
-    /// Wraps a dialog's body (0) or footer (1) to measure it.
+    /// Wraps a dialog's footer (slot 1) to measure it.
     pub(in crate::frontend) fn measure(&self, id: u64, slot: u8) -> Div {
         let parts = self.ui.dialog_parts.clone();
         div()
             .flex()
             .flex_col()
             .on_prepaint(move |bounds, window, cx| {
-                let changed = parts.borrow().get(&(id, slot)) != Some(&bounds.size.height);
-                if changed {
-                    parts.borrow_mut().insert((id, slot), bounds.size.height);
-                    window.defer(cx, |window, _| window.refresh());
+                note_part(
+                    &parts,
+                    (id, slot),
+                    bounds.top(),
+                    bounds.size.height,
+                    window,
+                    cx,
+                )
+            })
+    }
+
+    /// A dialog's body (slot 0). Its content is laid out at its own height
+    /// (block flow, so nothing in it shrinks) and measured, while the body is
+    /// held to the room the dialog's drawn height leaves it
+    /// (`DialogFrame::clip`): content that fits, or that the dialog is still
+    /// easing toward, never makes it scroll.
+    pub(in crate::frontend) fn dialog_body(&self, id: u64) -> Div {
+        let parts = self.ui.dialog_parts.clone();
+        let clip = self
+            .ui
+            .dialog_frames
+            .borrow()
+            .get(&id)
+            .and_then(|frame| frame.clip);
+        div()
+            .when_some(clip, |d, clip| d.h(clip).overflow_hidden())
+            .on_children_prepainted(move |children, window, cx| {
+                let top = children.iter().map(|c| c.top()).reduce(|a, b| a.min(b));
+                let bottom = children.iter().map(|c| c.bottom()).reduce(|a, b| a.max(b));
+                if let Some((top, bottom)) = top.zip(bottom) {
+                    note_part(&parts, (id, 0), top, bottom - top, window, cx);
                 }
             })
     }
 
+    /// Drops what was kept for a dialog that closed.
+    fn forget_dialog(&self, id: u64) {
+        self.ui.dialog_shown.borrow_mut().remove(&id);
+        self.ui.dialog_frames.borrow_mut().remove(&id);
+        let mut parts = self.ui.dialog_parts.borrow_mut();
+        parts.remove(&(id, 0));
+        parts.remove(&(id, 1));
+    }
+
     /// The common dialog surface: width, colours, no close button, Fluent
-    /// fade, centred in the window as the original scrim centred it.
+    /// fade. It opens centred in the window, as the original's scrim centred
+    /// it, then keeps its top edge while its content changes size: it eases
+    /// to the new height and grows at most to `edge` above the window's
+    /// bottom, past which its body scrolls (the original re-centred instead).
     fn surface(
         &self,
         dialog: Dialog,
         id: u64,
         width: f32,
+        edge: f32,
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Dialog {
         let p = self.palette;
-        let parts = self.ui.dialog_parts.borrow();
-        let measured = parts.get(&(id, 0)).zip(parts.get(&(id, 1)));
-        // Centred from the measured height. Until the first measurement the dialog
-        // stays invisible, so it never shows at the default position and then jumps.
-        // The component moves each stacked dialog 16 px lower; the original
-        // centred a confirmation over the dialog below it as any other.
+        let measured = {
+            let parts = self.ui.dialog_parts.borrow();
+            parts
+                .get(&(id, 0))
+                .copied()
+                .zip(parts.get(&(id, 1)).copied())
+        };
+        // Until the first measurement the dialog stays invisible, so it never
+        // shows at the default position and then jumps.
+        // The component moves each stacked dialog 16 px lower (undone here) and
+        // keeps 16 px from the window's edges; the original centred a
+        // confirmation over the dialog below it as any other.
         let layer = self
             .ui
             .below
             .iter()
             .position(|m| m.id == id)
             .unwrap_or(self.ui.below.len());
+        let shift = px(16. * layer as f32);
         let dialog = match measured {
             Some((body, footer)) => {
-                let height = *body + *footer + px(2.);
-                let top = ((window.viewport_size().height - height) / 2.).max(px(16.));
-                let dialog = dialog.margin_top(top - px(16. * layer as f32));
-                dialog.opacity(self.dialog_opacity(id, window, cx))
+                let viewport = window.viewport_size().height;
+                let edge = px(edge);
+                // Body, footer and the 1 px border above and below.
+                let natural = body + footer + px(2.);
+                // The tallest the component draws a dialog at this layer.
+                let limit = (viewport - px(32.) - shift).max(px(0.));
+                let now = Instant::now();
+                let length = if cx.reduce_motion() {
+                    Duration::ZERO
+                } else {
+                    theme::motion_duration()
+                };
+                let mut frames = self.ui.dialog_frames.borrow_mut();
+                let frame = frames.entry(id).or_insert(DialogFrame {
+                    top: edge,
+                    viewport: px(-1.),
+                    from: natural,
+                    to: natural,
+                    since: now,
+                    clip: None,
+                });
+                if frame.viewport != viewport {
+                    // Centred when it first shows, and again in a resized window.
+                    let fits = natural.min(viewport - edge * 2.).min(limit);
+                    frame.top = ((viewport - fits) / 2.).max(edge);
+                    frame.viewport = viewport;
+                    frame.from = fits;
+                    frame.to = fits;
+                }
+                let cap = (viewport - frame.top - edge).min(limit).max(px(0.));
+                let target = natural.min(cap);
+                if target != frame.to {
+                    frame.from = frame.height(now, length);
+                    frame.to = target;
+                    frame.since = now;
+                }
+                let height = frame.height(now, length);
+                let easing = height != frame.to;
+                if easing {
+                    window.request_animation_frame();
+                }
+                // 1 px short of the body's room, so that rounding to device
+                // pixels never leaves a fraction of a pixel to scroll.
+                frame.clip =
+                    (easing || natural <= cap).then(|| (height - footer - px(3.)).max(px(0.)));
+                if let Some(ms) = scrollbar::trace_ms() {
+                    println!(
+                        "{}",
+                        json!({"event":"dialog","ms":ms,"id":id,"top":f32::from(frame.top),
+                        "height":f32::from(height),"target":f32::from(target),
+                        "natural":f32::from(natural),"clip":frame.clip.map(f32::from)})
+                    );
+                }
+                let top = frame.top;
+                drop(frames);
+                dialog
+                    .margin_top(top - shift)
+                    .h(height)
+                    .opacity(self.dialog_opacity(id, window, cx))
             }
             None => dialog.opacity(0.),
         };
@@ -815,42 +952,44 @@ impl Desktop {
         let Some(modal) = self.find_modal(id).cloned() else {
             return dialog;
         };
+        // How far each dialog stays from the window's top and bottom edges
+        // (the original's `max-height`/`height` margins; 16 px by default).
         match modal.kind.as_str() {
             "onboarding" => {
                 // Only its own buttons and Escape close the onboarding.
                 let dialog = self
-                    .surface(dialog, id, 580., window, cx)
+                    .surface(dialog, id, 580., 16., window, cx)
                     .overlay_closable(false);
                 self.onboarding_dialog(dialog, &modal, window, cx)
             }
             "shortcuts" => {
-                let dialog = self.surface(dialog, id, 780., window, cx);
-                self.shortcuts_dialog(dialog, id, window, cx)
+                let dialog = self.surface(dialog, id, 780., 24., window, cx);
+                self.shortcuts_dialog(dialog, id, cx)
             }
             "license" | "notices" => {
-                let dialog = self.surface(dialog, id, 720., window, cx);
+                let dialog = self.surface(dialog, id, 720., 16., window, cx);
                 self.document_dialog(dialog, &modal, cx)
             }
             "task" => {
                 let dialog = self
-                    .surface(dialog, id, 540., window, cx)
+                    .surface(dialog, id, 540., 20., window, cx)
                     .bg(widgets::solid(theme::token("window-bg", self.palette.dark)));
                 self.task_dialog(dialog, &modal, window, cx)
             }
             "filelock" => {
-                let dialog = self.surface(dialog, id, 620., window, cx);
+                let dialog = self.surface(dialog, id, 620., 16., window, cx);
                 self.filelock_dialog(dialog, &modal, window, cx)
             }
             "update" | "whatsnew" => {
-                let dialog = self.surface(dialog, id, 620., window, cx);
+                let dialog = self.surface(dialog, id, 620., 32., window, cx);
                 self.update_dialog(dialog, &modal, window, cx)
             }
             "note" => {
-                let dialog = self.surface(dialog, id, 420., window, cx);
+                let dialog = self.surface(dialog, id, 420., 16., window, cx);
                 self.note_dialog(dialog, &modal, window, cx)
             }
             _ => {
-                let dialog = self.surface(dialog, id, 420., window, cx);
+                let dialog = self.surface(dialog, id, 420., 16., window, cx);
                 self.confirm_view(dialog, &modal, cx)
             }
         }
@@ -869,7 +1008,7 @@ impl Desktop {
         let danger = ask.as_ref().is_some_and(|a| a.danger);
         dialog
             .child(
-                self.measure(id, 0).child(
+                self.dialog_body(id).child(
                     div()
                         .pt(px(22.))
                         .px(px(24.))
@@ -1537,7 +1676,7 @@ impl Desktop {
         // header, body and footer all end that far from its right edge.
         dialog
             .child(
-                self.measure(id, 0).mr(px(scrollbar::SIZE)).child(
+                self.dialog_body(id).mr(px(scrollbar::SIZE)).child(
                     div()
                         .flex()
                         .flex_col()
@@ -1974,7 +2113,7 @@ impl Desktop {
             .child(picker);
         dialog
             .child(
-                self.measure(id, 0).child(
+                self.dialog_body(id).child(
                     div()
                         .pt(px(22.))
                         .pl(px(24.))
@@ -2358,7 +2497,7 @@ impl Desktop {
         let id = modal.id;
         dialog
             .child(
-                self.measure(id, 0).child(
+                self.dialog_body(id).child(
                     div()
                         .pt(px(22.))
                         .px(px(24.))
@@ -2429,7 +2568,7 @@ impl Desktop {
         let document = scrollbar::fresh_handle("document", id);
         dialog
             .child(
-                self.measure(id, 0).child(
+                self.dialog_body(id).child(
                     div()
                         .pt(px(22.))
                         .px(px(24.))
@@ -2996,6 +3135,29 @@ impl Desktop {
         elements.extend(self.select_overlay(window, cx));
         elements.extend(self.toast_layer(window, cx));
         elements
+    }
+}
+
+/// Keeps a dialog part's measured height (`Desktop::surface` sizes the dialog
+/// from it); a change draws the window again.
+fn note_part(
+    parts: &RefCell<HashMap<(u64, u8), Pixels>>,
+    key: (u64, u8),
+    top: Pixels,
+    height: Pixels,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    if let Some(ms) = scrollbar::trace_ms() {
+        println!(
+            "{}",
+            json!({"event":"dialogPart","ms":ms,"id":key.0,"slot":key.1,
+            "y":f32::from(top),"h":f32::from(height)})
+        );
+    }
+    if parts.borrow().get(&key) != Some(&height) {
+        parts.borrow_mut().insert(key, height);
+        window.defer(cx, |window, _| window.refresh());
     }
 }
 
