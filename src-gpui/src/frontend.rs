@@ -341,7 +341,7 @@ impl Desktop {
             last_poll: Instant::now() - Duration::from_secs(10),
             last_privilege: Instant::now() - Duration::from_secs(60),
             last_select: None,
-            filters: HashMap::new(),
+            filters: tables::saved_filters(&prefs),
             forms: HashMap::new(),
             first_frame: false,
             first_frame_at: None,
@@ -354,6 +354,10 @@ impl Desktop {
             settings_section: "language".into(),
             prefs,
         };
+        // A list page opens in its saved order, before the first rows are built.
+        if this.page != "processes" {
+            (this.sort, this.descending) = tables::saved_sort(&this.page, &this.prefs);
+        }
         this.subscriptions.push(
             cx.subscribe_in(&search, window, |this, _, event, window, cx| match event {
                 InputEvent::Change => {
@@ -403,6 +407,21 @@ impl Desktop {
             window,
             cx,
         );
+        if let Some(outcomes) = this.prefs.outcomes() {
+            cx.spawn_in(window, async move |this, cx| {
+                while let Ok(saved) = outcomes.recv().await {
+                    if this
+                        .update_in(cx, |this, window, cx| {
+                            this.preferences_written(saved, window, cx)
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })
+            .detach();
+        }
         let receiver = host.notifications();
         cx.spawn_in(window, async move |this, cx| {
             while receiver.recv().await.is_ok() {
@@ -472,9 +491,6 @@ impl Desktop {
             });
         }
         this.poll_page(window, cx);
-        if this.page != "processes" {
-            (this.sort, this.descending) = tables::initial_sort(&this.page);
-        }
         this.change_placeholder(window, cx);
         this.apply_motion(cx);
         this

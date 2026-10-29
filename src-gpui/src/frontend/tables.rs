@@ -494,14 +494,17 @@ impl TableDelegate for NativeTable {
         cx: &mut Context<TableState<Self>>,
     ) {
         let key = self.fields[index].key.to_owned();
+        if !sortable(&self.page, &key) {
+            return;
+        }
         let owner = self.owner.clone();
         window.defer(cx, move |_, cx| {
             let _ = owner.update(cx, |this, cx| {
                 this.sort = key;
                 this.descending = sort == ColumnSort::Descending;
-                if this.page == "processes" {
-                    this.prefs
-                        .set("sort", json!({"key":this.sort,"desc":this.descending}));
+                if let Some((key, value)) = sort_preference(&this.page, &this.sort, this.descending)
+                {
+                    this.prefs.set(&key, value);
                 }
                 this.rebuild_rows(false, cx);
                 cx.notify();
@@ -588,8 +591,8 @@ impl TableDelegate for NativeTable {
                             window.defer(cx, move |window, cx| {
                                 let _ = owner.update(cx, |this, cx| {
                                     this.preference("clearSearch", Value::Null, window, cx);
-                                    this.filters.remove(&this.page);
-                                    this.rebuild_rows(false, cx);
+                                    let page = this.page.clone();
+                                    this.set_filter(&page, "all", cx);
                                 });
                             });
                         }),
@@ -671,6 +674,9 @@ impl TableDelegate for NativeTable {
             .upgrade()
             .map(|owner| owner.read(cx).header_bounds.clone());
         let measured_key = key.clone();
+        // A column the original cannot sort by has a disabled header: no
+        // hover or press fill, and a click does nothing (`.th:disabled`).
+        let sortable = sortable(&self.page, &key);
         Button::new(("column-sort", index))
             .size_full()
             .min_w_0()
@@ -681,8 +687,12 @@ impl TableDelegate for NativeTable {
                     headers.borrow_mut().insert(measured_key.clone(), bounds);
                 }
             })
-            .hover(move |s| s.bg(hover))
-            .active(move |s| s.bg(press))
+            .when(sortable, |button| {
+                button
+                    .hover(move |s| s.bg(hover))
+                    .active(move |s| s.bg(press))
+            })
+            .disabled(!sortable)
             .accessibility_label(field.label.clone())
             .when(self.page == "processes", |button| {
                 let title = theme::label(&format!("processes.column.{key}.title"));
@@ -1704,6 +1714,26 @@ impl Desktop {
             )
             .into_any_element()
     }
+    /// Narrows a list to `choice` and keeps it for the next start, under the
+    /// original's preference (`services.filter`, `connections.filter`).
+    pub(in crate::frontend) fn set_filter(
+        &mut self,
+        page: &str,
+        choice: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((key, choices)) = filter_choices(page) else {
+            return;
+        };
+        let choice = if choices.contains(&choice) {
+            choice
+        } else {
+            "all"
+        };
+        self.filters.insert(page.into(), choice.into());
+        self.prefs.set(key, choice);
+        self.rebuild_rows(false, cx);
+    }
     pub(in crate::frontend) fn marks(&self) -> Value {
         self.prefs.get(
             &format!(
@@ -1884,8 +1914,122 @@ pub(super) fn initial_sort(page: &str) -> (String, bool) {
     match page {
         "services" => ("displayName".into(), false),
         "network" => ("localPort".into(), false),
+        "history" => ("cpu".into(), true),
         _ => ("name".into(), false),
     }
+}
+/// The original's table behind each list and its sortable columns, as (field
+/// here, column id there). `tableSort.<table>` keeps the WebView interface's
+/// `{"id": column, "desc": bool}` (DataTable.tsx), so both interfaces read the
+/// same saved order. Columns the original does not sort by are left out.
+type SortColumns = (&'static str, &'static [(&'static str, &'static str)]);
+fn sort_columns(page: &str) -> Option<SortColumns> {
+    Some(match page {
+        "services" => (
+            "services",
+            &[
+                ("displayName", "display"),
+                ("name", "name"),
+                ("pid", "pid"),
+                ("state", "state"),
+                ("startType", "start"),
+            ],
+        ),
+        "startup" => (
+            "startup",
+            &[
+                ("name", "name"),
+                ("publisher", "publisher"),
+                ("enabled", "state"),
+                ("location", "location"),
+            ],
+        ),
+        "network" => (
+            "connections",
+            &[
+                ("name", "process"),
+                ("pid", "pid"),
+                ("protocol", "proto"),
+                ("localAddress", "local"),
+                ("localPort", "lport"),
+                ("remoteAddress", "remote"),
+                ("remotePort", "rport"),
+                ("state", "state"),
+            ],
+        ),
+        "history" => (
+            "history",
+            &[
+                ("name", "name"),
+                ("pid", "pid"),
+                ("cpu", "cpu"),
+                ("mem", "mem"),
+                ("io", "io"),
+                ("net", "net"),
+                ("gpu", "gpu"),
+            ],
+        ),
+        _ => return None,
+    })
+}
+/// Whether `page`'s table sorts by the column `key`; the original disables the
+/// headers of the others (a column without `sortValue`).
+pub(super) fn sortable(page: &str, key: &str) -> bool {
+    sort_columns(page).is_none_or(|(_, columns)| columns.iter().any(|(field, _)| *field == key))
+}
+/// A saved `tableSort.<table>` value as a sort of `page`, if it names one of
+/// the table's sortable columns (the original's validator).
+fn restore_sort(page: &str, saved: &Value) -> Option<(String, bool)> {
+    let (_, columns) = sort_columns(page)?;
+    let id = saved["id"].as_str()?;
+    let descending = saved["desc"].as_bool()?;
+    columns
+        .iter()
+        .find(|(_, column)| *column == id)
+        .map(|(field, _)| ((*field).to_owned(), descending))
+}
+/// The order a list opens in after a restart: the saved one, else the default.
+pub(super) fn saved_sort(page: &str, prefs: &prefs::Prefs) -> (String, bool) {
+    sort_columns(page)
+        .and_then(|(table, _)| {
+            restore_sort(page, &prefs.get(&format!("tableSort.{table}"), Value::Null))
+        })
+        .unwrap_or_else(|| initial_sort(page))
+}
+/// The preference that keeps a sort of `page`, and its value.
+pub(super) fn sort_preference(page: &str, key: &str, descending: bool) -> Option<(String, Value)> {
+    if page == "processes" {
+        return Some(("sort".into(), json!({"key":key,"desc":descending})));
+    }
+    let (table, columns) = sort_columns(page)?;
+    let (_, column) = columns.iter().find(|(field, _)| *field == key)?;
+    Some((
+        format!("tableSort.{table}"),
+        json!({"id":column,"desc":descending}),
+    ))
+}
+/// A list's filter choices and the preference that keeps the choice, named as
+/// in the original (`services.filter`, `connections.filter`).
+pub(super) fn filter_choices(page: &str) -> Option<(&'static str, &'static [&'static str])> {
+    match page {
+        "services" => Some(("services.filter", &["all", "running", "stopped"])),
+        "network" => Some((
+            "connections.filter",
+            &["all", "listen", "established", "udp"],
+        )),
+        _ => None,
+    }
+}
+/// The saved filters of the lists that have one; an unknown value is "all".
+pub(super) fn saved_filters(prefs: &prefs::Prefs) -> HashMap<String, String> {
+    ["services", "network"]
+        .into_iter()
+        .filter_map(|page| {
+            let (key, choices) = filter_choices(page)?;
+            let saved = prefs.get::<String>(key, "all".into());
+            (saved != "all" && choices.contains(&saved.as_str())).then(|| (page.to_owned(), saved))
+        })
+        .collect()
 }
 /// Text columns start ascending and figures descending, the useful first view.
 pub(super) fn descending_first(page: &str, key: &str) -> bool {
@@ -1895,5 +2039,77 @@ pub(super) fn descending_first(page: &str, key: &str) -> bool {
         "startup" => key == "enabled",
         "network" => matches!(key, "pid" | "localPort" | "remotePort"),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Named imports keep the glob-imported GPUI `test` macro out of scope.
+    use super::{
+        Value, json, prefs, restore_sort, saved_filters, sort_columns, sort_preference, sortable,
+    };
+
+    #[test]
+    fn saved_orders_keep_the_original_column_ids() {
+        // Values a preferences.json from the WebView interface holds.
+        assert_eq!(
+            restore_sort("services", &json!({"id":"start","desc":true})),
+            Some(("startType".into(), true))
+        );
+        assert_eq!(
+            restore_sort("network", &json!({"id":"lport","desc":false})),
+            Some(("localPort".into(), false))
+        );
+        assert_eq!(
+            restore_sort("startup", &json!({"id":"state","desc":true})),
+            Some(("enabled".into(), true))
+        );
+        for page in ["services", "startup", "network", "history"] {
+            let (table, columns) = sort_columns(page).unwrap();
+            for (field, _) in columns {
+                let (key, value) = sort_preference(page, field, true).unwrap();
+                assert_eq!(key, format!("tableSort.{table}"));
+                assert_eq!(restore_sort(page, &value), Some(((*field).into(), true)));
+            }
+        }
+        assert_eq!(
+            sort_preference("processes", "cpu", true),
+            Some(("sort".into(), json!({"key":"cpu","desc":true})))
+        );
+    }
+
+    #[test]
+    fn only_the_original_sortable_columns_sort() {
+        assert!(!sortable("services", "description"));
+        assert!(!sortable("startup", "command"));
+        assert!(sortable("services", "startType") && sortable("processes", "threads"));
+        assert_eq!(sort_preference("services", "description", false), None);
+        // The original's validator: unsortable or unknown columns and malformed
+        // values give way to the default order.
+        for saved in [
+            json!({"id":"desc","desc":false}),
+            json!({"id":"displayName","desc":false}),
+            json!({"id":"display"}),
+            json!({"id":"display","desc":"true"}),
+            Value::Null,
+        ] {
+            assert_eq!(restore_sort("services", &saved), None);
+        }
+    }
+
+    #[test]
+    fn filters_come_back_from_the_original_keys() {
+        let file =
+            std::env::temp_dir().join(format!("argus-native-filters-{}.json", std::process::id()));
+        std::fs::write(
+            &file,
+            br#"{"values":{"services.filter":"stopped","connections.filter":"bogus"}}"#,
+        )
+        .unwrap();
+        let prefs = prefs::Prefs::load(file.clone());
+        std::fs::remove_file(&file).unwrap();
+        let filters = saved_filters(&prefs);
+        assert_eq!(filters.get("services").map(String::as_str), Some("stopped"));
+        assert!(!filters.contains_key("network"));
     }
 }

@@ -257,11 +257,7 @@ impl Desktop {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let choices: Vec<&str> = match self.page.as_str() {
-            "services" => vec!["all", "running", "stopped"],
-            "network" => vec!["all", "listen", "established", "udp"],
-            _ => vec![],
-        };
+        let choices: &[&str] = tables::filter_choices(&self.page).map_or(&[], |(_, c)| c);
         let namespace = if self.page == "network" {
             "connections"
         } else {
@@ -278,8 +274,8 @@ impl Desktop {
                 self.segments(
                     "page-filter",
                     choices
-                        .into_iter()
-                        .map(|choice| {
+                        .iter()
+                        .map(|&choice| {
                             (
                                 label(&format!(
                                     "{namespace}.filter.{choice}{}",
@@ -718,6 +714,10 @@ impl Desktop {
             "goToService" => {
                 if let Some(name) = value.as_str() {
                     self.act(Action::Page("services".into()), window, cx);
+                    // Like showService: a remembered search or filter must not
+                    // hide the service being shown.
+                    self.preference("clearSearch", Value::Null, window, cx);
+                    self.set_filter("services", "all", cx);
                     self.selected.insert("services".into(), name.into());
                 }
                 return;
@@ -822,9 +822,9 @@ impl Desktop {
                 }
             }
             _ if key.starts_with("filter.") => {
-                self.filters
-                    .insert(key[7..].into(), value.as_str().unwrap_or("all").into());
-                self.rebuild_rows(false, cx);
+                self.set_filter(&key[7..], value.as_str().unwrap_or("all"), cx);
+                cx.notify();
+                return;
             }
             _ => {}
         }

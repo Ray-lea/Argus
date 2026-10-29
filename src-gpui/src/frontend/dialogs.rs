@@ -78,6 +78,40 @@ fn hex_code(code: &Value) -> Option<String> {
         .map(|code| tr!("tasks.code", code = format!("0x{:08X}", code as u32)))
 }
 
+/// A locker's action button (FileLockDialog.tsx).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LockerAction {
+    /// The desktop's own Explorer: restarted rather than ended, so the desktop
+    /// and taskbar come back.
+    restart: bool,
+    /// Locale key of the label.
+    text: &'static str,
+    glyph: &'static str,
+    danger: bool,
+    disabled: bool,
+}
+
+/// The action for `locker`, given the desktop shell (`desktop_shell`) and
+/// whether an Explorer restart is under way.
+fn locker_action(locker: &Value, shell: Option<&Value>, restarting: bool) -> LockerAction {
+    let restart = shell.is_some_and(|shell| {
+        shell.is_object()
+            && shell["pid"] == locker["pid"]
+            && shell["createTime"] == locker["createTime"]
+    });
+    LockerAction {
+        restart,
+        text: match (restart, restarting) {
+            (false, _) => "fileLock.end",
+            (true, false) => "tasks.explorer.restart",
+            (true, true) => "tasks.explorer.restarting",
+        },
+        glyph: if restart { "RestartIcon" } else { "EndIcon" },
+        danger: !restart,
+        disabled: number(locker, "createTime") <= 0. || (restart && restarting),
+    }
+}
+
 impl Desktop {
     pub(in crate::frontend) fn open_popup(
         &mut self,
@@ -1397,6 +1431,11 @@ impl Desktop {
             return;
         }
         self.ui.busy.insert("explorer".into());
+        if boolean(&shell, "locker") {
+            self.ui
+                .errors
+                .insert("explorerLocker".into(), String::new());
+        }
         let pending = self.toast_with(
             ToastKind::Info,
             label("tasks.explorer.restarting"),
@@ -1417,6 +1456,7 @@ impl Desktop {
 
     fn explorer_finished(&mut self, error: Option<&Value>) {
         self.ui.busy.remove("explorer");
+        self.ui.errors.remove("explorerLocker");
         if let Some(id) = self
             .ui
             .errors
@@ -1797,7 +1837,26 @@ impl Desktop {
             window,
             cx,
         );
+        // The desktop's own Explorer is offered a restart instead of an end.
+        self.request("desktop_shell", json!({}), Some("desktopShell"), window, cx);
         window.refresh();
+    }
+
+    /// Checks the file-lock dialog's paths again, while it is open.
+    fn recheck_lockers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(paths) = self
+            .modal
+            .as_ref()
+            .filter(|m| m.kind == "filelock")
+            .map(|m| m.args["paths"].clone())
+        {
+            let paths = values(&paths)
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect();
+            self.search_lockers(paths, window, cx);
+        }
     }
 
     fn filelock_dialog(
@@ -1847,11 +1906,14 @@ impl Desktop {
                 .border_color(p.stroke)
                 .rounded(px(6.))
                 .bg(p.layer);
+            let shell = self.data.get("desktopShell");
+            let restarting = self.ui.busy.contains("explorer");
             for (index, locker) in lockers.iter().enumerate() {
                 let process = values(&self.snapshot["processes"])
                     .iter()
                     .find(|q| q["pid"] == locker["pid"] && q["createTime"] == locker["createTime"])
                     .cloned();
+                let action = locker_action(locker, shell, restarting);
                 let kind = text(locker, "kind");
                 let handles = locker["handleCount"].as_u64().unwrap_or(0);
                 let app = text(locker, "appName").to_owned();
@@ -1960,14 +2022,25 @@ impl Desktop {
                         .child(
                             self.btn_small(
                                 format!("locker-end-{index}"),
-                                label("fileLock.end"),
-                                Some("EndIcon"),
-                                Tone::Danger,
+                                label(action.text),
+                                Some(action.glyph),
+                                if action.danger {
+                                    Tone::Danger
+                                } else {
+                                    Tone::Plain
+                                },
                             )
-                            .inert(number(locker, "createTime") <= 0.)
+                            .inert(action.disabled)
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
-                                    this.end_locker(ending.clone(), window, cx);
+                                    if action.restart {
+                                        // Confirmed, the restart checks the paths again.
+                                        let mut shell = ending.clone();
+                                        shell["locker"] = json!(true);
+                                        this.open_dialog("restartExplorer", shell, window, cx);
+                                    } else {
+                                        this.end_locker(ending.clone(), window, cx);
+                                    }
                                 },
                             )),
                         ),
@@ -2447,7 +2520,13 @@ impl Desktop {
                 self.close_overlay(window, cx);
                 self.notify_toast(ToastKind::Success, label("tasks.started"));
             }
-            "restart_explorer" => self.explorer_finished(None),
+            "restart_explorer" => {
+                let from_lockers = self.ui.errors.contains_key("explorerLocker");
+                self.explorer_finished(None);
+                if from_lockers {
+                    self.recheck_lockers(window, cx);
+                }
+            }
             "set_theme" => {
                 let saved = self.host.state::<crate::settings::SettingsStore>().get();
                 self.set_theme(crate::platform::is_dark(saved.theme), window, cx);
@@ -2462,19 +2541,7 @@ impl Desktop {
                         tr!("actions.end.done", name = name),
                         2500,
                     );
-                    if let Some(paths) = self
-                        .modal
-                        .as_ref()
-                        .filter(|m| m.kind == "filelock")
-                        .map(|m| m.args["paths"].clone())
-                    {
-                        let paths = values(&paths)
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_owned)
-                            .collect();
-                        self.search_lockers(paths, window, cx);
-                    }
+                    self.recheck_lockers(window, cx);
                 }
             }
             "control_service"
@@ -2598,6 +2665,21 @@ impl Desktop {
                 ),
             ],
         );
+    }
+
+    /// A preference write finished: when saving starts to fail, says so once
+    /// (App.tsx, `preferenceSaveFailed`).
+    pub(in crate::frontend) fn preferences_written(
+        &mut self,
+        saved: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.prefs.record(saved) {
+            self.notify_toast(ToastKind::Error, label("settings.appearance.saveFailed"));
+            window.refresh();
+            cx.notify();
+        }
     }
 
     /// Shows a notice for five seconds.
@@ -2931,5 +3013,50 @@ impl Render for Scrim {
             d.child(dim().top_0().left_0().right(captions).h(toolbar))
                 .child(dim().top(toolbar).left_0().right_0().bottom_0())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Named imports keep the glob-imported GPUI `test` macro out of scope.
+    use super::{Value, json, locker_action};
+
+    #[test]
+    fn the_desktop_shell_is_restarted_instead_of_ended() {
+        let shell = json!({"pid":8844,"createTime":1792249514645_i64});
+        let explorer =
+            json!({"pid":8844,"createTime":1792249514645_i64,"appName":"Windows 资源管理器"});
+        let action = locker_action(&explorer, Some(&shell), false);
+        assert!(action.restart);
+        assert_eq!(action.text, "tasks.explorer.restart");
+        assert_eq!(action.glyph, "RestartIcon");
+        assert!(!action.danger && !action.disabled);
+        // While a restart runs the button says so and waits.
+        let restarting = locker_action(&explorer, Some(&shell), true);
+        assert_eq!(restarting.text, "tasks.explorer.restarting");
+        assert!(restarting.disabled);
+    }
+
+    #[test]
+    fn other_lockers_and_other_explorers_are_ended() {
+        let shell = json!({"pid":8844,"createTime":1792249514645_i64});
+        // Another Explorer process (a separate window process), or the same PID reused.
+        for locker in [
+            json!({"pid":9100,"createTime":1792249514645_i64}),
+            json!({"pid":8844,"createTime":1792249600000_i64}),
+        ] {
+            let action = locker_action(&locker, Some(&shell), true);
+            assert!(!action.restart);
+            assert_eq!(action.text, "fileLock.end");
+            assert_eq!(action.glyph, "EndIcon");
+            assert!(action.danger && !action.disabled);
+        }
+        // Without a known shell (none found, or not asked yet) nothing is spared
+        // here; the host still refuses to end the desktop's Explorer.
+        let explorer = json!({"pid":8844,"createTime":1792249514645_i64});
+        assert!(!locker_action(&explorer, None, false).restart);
+        assert!(!locker_action(&explorer, Some(&Value::Null), false).restart);
+        // A process whose start time is unknown cannot be ended safely.
+        assert!(locker_action(&json!({"pid":4,"createTime":0}), Some(&shell), false).disabled);
     }
 }
