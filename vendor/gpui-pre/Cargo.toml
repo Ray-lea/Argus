@@ -345,6 +345,9 @@ version = "2.0.12"
 [dependencies.ttf-parser]
 version = "0.25"
 
+[dependencies.unicode-linebreak]
+version = "0.1.5"
+
 [dependencies.url]
 version = "2.2"
 

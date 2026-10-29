@@ -206,6 +206,7 @@ impl LineLayout {
         };
         let mut last_boundary_x = px(0.);
         let mut prev_ch = '\0';
+        let mut prev_prev_ch = '\0';
         let mut glyphs = self
             .runs
             .iter()
@@ -229,16 +230,12 @@ impl LineLayout {
 
             // Here is very similar to `LineWrapper::wrap_line` to determine text wrapping,
             // but there are some differences, so we have to duplicate the code here.
-            if LineWrapper::is_word_char(ch) {
-                if prev_ch == ' ' && ch != ' ' && first_non_whitespace_ix.is_some() {
-                    last_candidate_ix = Some(boundary);
-                    last_candidate_x = x;
-                }
-            } else {
-                if ch != ' ' && first_non_whitespace_ix.is_some() {
-                    last_candidate_ix = Some(boundary);
-                    last_candidate_x = x;
-                }
+            let next_ch = glyphs.peek().map_or('\0', |(_, ch, _)| *ch);
+            if first_non_whitespace_ix.is_some()
+                && LineWrapper::is_wrap_opportunity(prev_prev_ch, prev_ch, ch, next_ch)
+            {
+                last_candidate_ix = Some(boundary);
+                last_candidate_x = x;
             }
 
             if ch != ' ' && first_non_whitespace_ix.is_none() {
@@ -265,6 +262,7 @@ impl LineLayout {
                 }
                 boundaries.push(last_boundary);
             }
+            prev_prev_ch = prev_ch;
             prev_ch = ch;
         }
 
@@ -1186,5 +1184,66 @@ mod tests {
 
         let positions = glyph_x_positions(&layout);
         assert_eq!(positions, vec![0.5, 0.5]);
+    }
+    /// The lines `text` wraps into at `columns` characters, every character
+    /// one column wide.
+    fn wrapped(text: &str, columns: usize) -> Vec<String> {
+        let glyphs = text
+            .char_indices()
+            .enumerate()
+            .map(|(column, (index, _))| glyph_at(column as f32 * 10., index))
+            .collect::<Vec<_>>();
+        let mut layout = make_layout(glyphs);
+        layout.width = px(text.chars().count() as f32 * 10.);
+        layout.len = text.len();
+        let chars = text.chars().collect::<Vec<_>>();
+        let mut lines = Vec::new();
+        let mut start = 0;
+        for boundary in layout.compute_wrap_boundaries(text, px(columns as f32 * 10.), None) {
+            lines.push(chars[start..boundary.glyph_ix].iter().collect());
+            start = boundary.glyph_ix;
+        }
+        lines.push(chars[start..].iter().collect());
+        lines
+    }
+
+    #[test]
+    fn test_wrap_keeps_cjk_punctuation_with_its_text() {
+        // A line never starts with closing punctuation: the character before
+        // it moves down too.
+        assert_eq!(
+            wrapped("设置会立即生效。界面", 7),
+            ["设置会立即生", "效。界面"]
+        );
+        assert_eq!(
+            wrapped("核（6 性能核 + 8 能效核）· 20 线程", 15),
+            ["核（6 性能核 + 8 能效", "核）· 20 线程"]
+        );
+        // Nor ends with opening punctuation.
+        assert_eq!(
+            wrapped("打开任务管理器（推荐）", 8),
+            ["打开任务管理器", "（推荐）"]
+        );
+        assert_eq!(
+            wrapped("选择“跟随系统”时", 3),
+            ["选择", "“跟随", "系统”", "时"]
+        );
+        // Ellipses and dashes stay together.
+        assert_eq!(wrapped("请稍候……完成", 4), ["请稍", "候……完", "成"]);
+        assert_eq!(wrapped("中文——中文", 3), ["中文", "——中", "文"]);
+        // Ideographs and Latin words break from each other without a space.
+        assert_eq!(wrapped("使用GPU加速", 4), ["使用", "GPU加", "速"]);
+    }
+
+    #[test]
+    fn test_wrap_latin_unchanged() {
+        assert_eq!(
+            wrapped("aa bbb cccc ddddd", 7),
+            ["aa bbb ", "cccc ", "ddddd"]
+        );
+        assert_eq!(
+            wrapped("path/to/file?x=1", 6),
+            ["path", "/to", "/file", "?x=1"]
+        );
     }
 }

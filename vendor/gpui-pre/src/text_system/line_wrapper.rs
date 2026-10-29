@@ -62,40 +62,39 @@ impl LineWrapper {
         let mut last_candidate_width = px(0.);
         let mut last_wrap_ix = 0;
         let mut prev_c = '\0';
+        let mut prev_prev_c = '\0';
         let mut index = 0;
         let mut candidates = fragments
             .iter()
             .flat_map(move |fragment| fragment.wrap_boundary_candidates())
             .peekable();
         iter::from_fn(move || {
-            for candidate in candidates.by_ref() {
+            while let Some(candidate) = candidates.next() {
                 let ix = index;
                 index += candidate.len_utf8();
-                let mut new_prev_c = prev_c;
+                let mut new_prev_c = None;
                 let item_width = match candidate {
                     WrapBoundaryCandidate::Char { character: c } => {
                         if c == '\n' {
                             continue;
                         }
 
-                        if Self::is_word_char(c) {
-                            if prev_c == ' ' && c != ' ' && first_non_whitespace_ix.is_some() {
-                                last_candidate_ix = ix;
-                                last_candidate_width = width;
-                            }
-                        } else {
-                            // CJK may not be space separated, e.g.: `Hello world你好世界`
-                            if c != ' ' && first_non_whitespace_ix.is_some() {
-                                last_candidate_ix = ix;
-                                last_candidate_width = width;
-                            }
+                        let next_c = match candidates.peek() {
+                            Some(WrapBoundaryCandidate::Char { character }) => *character,
+                            _ => '\0',
+                        };
+                        if first_non_whitespace_ix.is_some()
+                            && Self::is_wrap_opportunity(prev_prev_c, prev_c, c, next_c)
+                        {
+                            last_candidate_ix = ix;
+                            last_candidate_width = width;
                         }
 
                         if c != ' ' && first_non_whitespace_ix.is_none() {
                             first_non_whitespace_ix = Some(ix);
                         }
 
-                        new_prev_c = c;
+                        new_prev_c = Some(c);
 
                         self.width_for_char(c)
                     }
@@ -179,7 +178,10 @@ impl LineWrapper {
                     return Some(Boundary::new(last_wrap_ix, next_indent));
                 }
 
-                prev_c = new_prev_c;
+                if let Some(c) = new_prev_c {
+                    prev_prev_c = prev_c;
+                    prev_c = c;
+                }
             }
 
             None
@@ -392,6 +394,7 @@ impl LineWrapper {
         let mut last_candidate_width = px(0.);
         let mut last_wrap_ix = 0usize;
         let mut prev_c = '\0';
+        let mut prev_prev_c = '\0';
         let mut indent: Option<u32> = None;
         let mut truncate_ix = 0usize;
 
@@ -421,6 +424,7 @@ impl LineWrapper {
                 last_candidate_width = px(0.);
                 last_wrap_ix = ix + 1;
                 prev_c = '\0';
+                prev_prev_c = '\0';
                 indent = None;
                 truncate_ix = ix + 1;
                 continue;
@@ -428,12 +432,10 @@ impl LineWrapper {
 
             let char_width = self.width_for_char(c);
 
-            if Self::is_word_char(c) {
-                if prev_c == ' ' && first_non_whitespace_ix.is_some() {
-                    last_candidate_ix = ix;
-                    last_candidate_width = width;
-                }
-            } else if c != ' ' && first_non_whitespace_ix.is_some() {
+            let next_c = text[ix + c.len_utf8()..].chars().next().unwrap_or('\0');
+            if first_non_whitespace_ix.is_some()
+                && Self::is_wrap_opportunity(prev_prev_c, prev_c, c, next_c)
+            {
                 last_candidate_ix = ix;
                 last_candidate_width = width;
             }
@@ -489,11 +491,36 @@ impl LineWrapper {
                 }
             }
 
+            prev_prev_c = prev_c;
             prev_c = c;
         }
 
         // Text fits within max_lines without truncation.
         (text, Cow::Borrowed(runs))
+    }
+
+    /// Whether a wrapped line may start at `after`, which follows `before`
+    /// (and `before2`) and precedes `after2`; `'\0'` stands for the start or
+    /// end of the text. Never before a space, always after one. Two ASCII
+    /// characters follow `is_word_char`; with a non-ASCII one the pair follows
+    /// UAX #14 as Chromium applies it (Argus patch, see `line_break`), so a
+    /// line never starts with `。` or `）` nor ends with `（`.
+    #[inline]
+    pub fn is_wrap_opportunity(
+        before2: char,
+        before: char,
+        after: char,
+        after2: char,
+    ) -> bool {
+        if after == ' ' {
+            false
+        } else if before == ' ' {
+            true
+        } else if before.is_ascii() && after.is_ascii() {
+            !Self::is_word_char(after)
+        } else {
+            super::line_break::break_allowed(before2, before, after, after2)
+        }
     }
 
     /// Any character in this list should be treated as a word character,
@@ -1917,5 +1944,48 @@ mod tests {
                 .collect::<Vec<_>>(),
             &[Boundary::new(4, 0), Boundary::new(8, 0)]
         );
+    }
+    #[test]
+    fn test_wrap_line_keeps_cjk_punctuation_with_its_text() {
+        let mut wrapper = build_wrapper();
+        let column = wrapper.width_for_char('设');
+        // "。" may not start the second line: "效" (byte 18) moves down with it.
+        assert_eq!(
+            wrapper
+                .wrap_line(
+                    &[LineFragment::text("设置会立即生效。界面")],
+                    column * 7.5,
+                    IndentAdjustment::NoIndent
+                )
+                .collect::<Vec<_>>(),
+            &[Boundary::new(18, 0)]
+        );
+        // "（" may not end the first line.
+        assert_eq!(
+            wrapper
+                .wrap_line(
+                    &[LineFragment::text("打开任务管理器（推荐）")],
+                    column * 8.5,
+                    IndentAdjustment::NoIndent
+                )
+                .collect::<Vec<_>>(),
+            &[Boundary::new(21, 0)]
+        );
+    }
+
+    #[test]
+    fn test_multiline_truncation_keeps_cjk_punctuation_with_its_text() {
+        let mut wrapper = build_wrapper();
+        let column = wrapper.width_for_char('设');
+        let text = "设置会立即生效。界面设置会立即生效。界面";
+        let (result, _) = wrapper.truncate_wrapped_line(
+            text.into(),
+            column * 7.5,
+            2,
+            "…",
+            &generate_test_runs(&[text.len()]),
+            TruncateFrom::End,
+        );
+        assert_eq!(result.as_ref(), "设置会立即生效。界面设置…");
     }
 }

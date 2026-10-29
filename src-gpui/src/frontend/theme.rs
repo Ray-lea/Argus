@@ -276,6 +276,8 @@ impl gpui_kit::base::RootPlugin for ProductSurface {
         // to DirectWrite, an English system locale renders Chinese in the
         // Japanese Yu Gothic UI.
         surface.text_style().font_fallbacks = Some(font_fallbacks(cx));
+        // The page, dialogs and notices inherit the original body's line height.
+        surface.text_style().line_height = Some(line_height());
         if crate::platform::supports_backdrop() {
             use gpui_kit::gpui::Refineable;
             surface
@@ -363,6 +365,12 @@ thread_local! {
 /// The theme's base font size, which the interface's text sizes are written for.
 pub fn base_font_size() -> f32 {
     design()["fontSize"].as_f64().expect("theme font size") as f32
+}
+/// The line height text inherits, as a multiple of its size: the original
+/// body's `line-height: 1.4`. GPUI's default (about 1.618) made wrapped text,
+/// and the boxes it sizes, taller than the original's.
+pub fn line_height() -> DefiniteLength {
+    relative(design()["lineHeight"].as_f64().expect("theme line height") as f32)
 }
 /// A text size written for the theme's 13 px base, following the base font
 /// size the user chose: the original's `calc(N rem / 13)`. Spacing and
@@ -698,4 +706,66 @@ pub fn network(value: f64, bits: bool) -> String {
         unit += 1;
     }
     format!("{amount:.1} {}", units[unit])
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::gpui::LineWrapper;
+
+    /// Every string in the Chinese interface text.
+    fn chinese_strings() -> Vec<String> {
+        fn collect(value: &serde_json::Value, out: &mut Vec<String>) {
+            match value {
+                serde_json::Value::String(text) => out.push(text.clone()),
+                serde_json::Value::Array(items) => items.iter().for_each(|v| collect(v, out)),
+                serde_json::Value::Object(map) => map.values().for_each(|v| collect(v, out)),
+                _ => {}
+            }
+        }
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../locales/zh-CN");
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(dir).expect("Chinese locale") {
+            let path = entry.expect("locale file").path();
+            if path.extension().is_some_and(|e| e == "json") {
+                let text = std::fs::read_to_string(&path).expect("locale text");
+                collect(&serde_json::from_str(&text).expect("locale JSON"), &mut out);
+            }
+        }
+        out
+    }
+
+    /// Wrapped Chinese text keeps punctuation with its text, as the original
+    /// WebView2 front end did: no line starts with closing punctuation or
+    /// ends with opening punctuation, while ideographs still break.
+    #[test]
+    fn chinese_text_wraps_like_the_original() {
+        let strings = chinese_strings();
+        assert!(!strings.is_empty());
+        let mut ideograph_breaks = 0;
+        for text in &strings {
+            let chars: Vec<char> = text.chars().collect();
+            let at = |i: usize| chars.get(i).copied().unwrap_or('\0');
+            for i in 1..chars.len() {
+                let (before, after) = (at(i - 1), at(i));
+                if before == ' ' {
+                    continue;
+                }
+                let before2 = if i >= 2 { at(i - 2) } else { '\0' };
+                let allowed = LineWrapper::is_wrap_opportunity(before2, before, after, at(i + 1));
+                assert!(
+                    !(allowed && "。，、）」』】》”：；！？…".contains(after)),
+                    "a line may start with {after:?} in {text:?}"
+                );
+                assert!(
+                    !(allowed && "（「『【《“".contains(before)),
+                    "a line may end with {before:?} in {text:?}"
+                );
+                let ideograph = |c: char| ('\u{4E00}'..='\u{9FFF}').contains(&c);
+                if allowed && ideograph(before) && ideograph(after) {
+                    ideograph_breaks += 1;
+                }
+            }
+        }
+        assert!(ideograph_breaks > 0);
+    }
 }
