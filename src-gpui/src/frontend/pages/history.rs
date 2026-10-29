@@ -1047,10 +1047,7 @@ impl Desktop {
                     .when(active, |d| d.text_color(p.ink))
                     .child(format!("{name}{arrow}"))
                     .when_some(title, |d, title| {
-                        d.tooltip(move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(title.clone())
-                                .build(window, cx)
-                        })
+                        d.tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         let next = next.clone();

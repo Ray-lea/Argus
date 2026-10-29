@@ -680,10 +680,7 @@ impl Desktop {
                             text(spec, "unit"),
                         )
                         .id(SharedString::from(format!("cpu-metric-{kind}")))
-                        .tooltip(move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(tip.clone())
-                                .build(window, cx)
-                        })
+                        .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                         .into_any_element(),
                     );
                 }
@@ -853,10 +850,7 @@ impl Desktop {
                             .id(SharedString::from(format!("core-limit-{}", core["core"])))
                             .when(active, |d| d.text_color(p.danger))
                             .child(limit_text(flags, false))
-                            .tooltip(move |window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(tip.clone())
-                                    .build(window, cx)
-                            })
+                            .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                             .into_any_element(),
                     );
                 } else if throttling {
@@ -885,9 +879,7 @@ impl Desktop {
             div()
                 .id("limit-history-head")
                 .child(label("performance.cpu.limitHistory"))
-                .tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(hint.clone()).build(window, cx)
-                })
+                .tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx))
                 .into_any_element()
         };
         let header = vec![
@@ -919,10 +911,7 @@ impl Desktop {
                         } else {
                             "performance.cpu.limitNever"
                         }))
-                        .tooltip(move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(hint.clone())
-                                .build(window, cx)
-                        })
+                        .tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx))
                         .into_any_element(),
                 ]
             })
@@ -1024,9 +1013,7 @@ impl Desktop {
                             .child(label("performance.cpu.idleStates")),
                     )
                     .child(self.reading_grid(windows, 420.))
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(source.clone()).build(window, cx)
-                    }),
+                    .tooltip(move |window, cx| widgets::tooltip(source.clone(), window, cx)),
             );
         }
         let cores = values(&sensors["cores"]);

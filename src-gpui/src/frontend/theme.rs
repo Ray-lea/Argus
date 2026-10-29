@@ -301,25 +301,35 @@ pub fn display_font(cx: &App) -> SharedString {
 pub fn mono_font(cx: &App) -> SharedString {
     installed_font("mono", cx)
 }
+/// Hover hints: the family of the system's tooltips, which the original's
+/// native `title` tooltips used, and the families for characters it lacks.
+pub fn tooltip_font(cx: &App) -> (SharedString, FontFallbacks) {
+    (installed_font("tooltip", cx), fallbacks("tooltip", cx))
+}
 /// The interface families after the one in use, for characters it lacks.
 fn font_fallbacks(cx: &App) -> FontFallbacks {
-    static FALLBACKS: std::sync::OnceLock<FontFallbacks> = std::sync::OnceLock::new();
-    FALLBACKS
-        .get_or_init(|| {
-            let sans = installed_font("sans", cx);
-            FontFallbacks::from_fonts(
-                design()["fonts"]["sans"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(serde_json::Value::as_str)
-                    .skip_while(|name| *name != sans.as_ref())
-                    .skip(1)
-                    .map(str::to_owned)
-                    .collect(),
-            )
-        })
-        .clone()
+    fallbacks("sans", cx)
+}
+/// The families of a theme font list after the one in use.
+fn fallbacks(kind: &str, cx: &App) -> FontFallbacks {
+    static SANS: std::sync::OnceLock<FontFallbacks> = std::sync::OnceLock::new();
+    static TOOLTIP: std::sync::OnceLock<FontFallbacks> = std::sync::OnceLock::new();
+    let cell = if kind == "tooltip" { &TOOLTIP } else { &SANS };
+    cell.get_or_init(|| {
+        let family = installed_font(kind, cx);
+        FontFallbacks::from_fonts(
+            design()["fonts"][kind]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(serde_json::Value::as_str)
+                .skip_while(|name| *name != family.as_ref())
+                .skip(1)
+                .map(str::to_owned)
+                .collect(),
+        )
+    })
+    .clone()
 }
 /// The first family of a theme font list that the system has; a missing
 /// family would otherwise fall back to a proportional default.
@@ -327,9 +337,11 @@ fn installed_font(kind: &str, cx: &App) -> SharedString {
     static SANS: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
     static DISPLAY: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
     static MONO: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
+    static TOOLTIP: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
     let cell = match kind {
         "sans" => &SANS,
         "mono" => &MONO,
+        "tooltip" => &TOOLTIP,
         _ => &DISPLAY,
     };
     cell.get_or_init(|| {

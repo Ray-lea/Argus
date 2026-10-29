@@ -1345,9 +1345,7 @@ impl Desktop {
             .id("cpu-base-speed")
             .child(if base > 0. { ghz(base) } else { missing() })
             .when_some(base_source, |d, source| {
-                d.tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(source.clone()).build(window, cx)
-                })
+                d.tooltip(move |window, cx| widgets::tooltip(source.clone(), window, cx))
             })
             .into_any_element();
         let plain = |value: String| div().child(value).into_any_element();
@@ -1669,9 +1667,7 @@ impl Desktop {
                     .flex_col()
                     .child(head)
                     .child(chart)
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
-                    }),
+                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx)),
             );
         }
         div()
@@ -1742,8 +1738,7 @@ impl Desktop {
                             .rounded(px(2.))
                             .flex_shrink_0()
                             .tooltip(move |window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(label(description))
-                                    .build(window, cx)
+                                widgets::tooltip(label(description), window, cx)
                             }),
                     )
                     .child(text)

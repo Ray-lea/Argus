@@ -327,6 +327,40 @@ pub(in crate::frontend) fn placeholder(
         .child(text)
 }
 
+/// Tooltip text size: the system's tooltip font, 9 pt at 96 dpi, which the
+/// original's native `title` tooltips used. It follows the font size setting
+/// like the rest of the interface's text.
+const TOOLTIP_SIZE: f32 = 12.;
+/// Tooltip lines are as tall as the tooltip font's own line spacing (Segoe
+/// UI's ascent and descent, 1.33 em), as the system draws tooltip text.
+const TOOLTIP_LINE_HEIGHT: f32 = 4. / 3.;
+
+/// A hover hint with one line of text.
+pub(in crate::frontend) fn tooltip(
+    text: impl Into<SharedString>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
+    tooltip_text(gpui_kit::component::tooltip::Tooltip::new(text.into()), cx).build(window, cx)
+}
+
+/// A tooltip set in the system tooltip font. Tooltips are laid out apart
+/// from the window's root, so nothing of its text style reaches them: without
+/// the fallback families, an English system locale draws Chinese in the
+/// Japanese Yu Gothic UI.
+fn tooltip_text(
+    tooltip: gpui_kit::component::tooltip::Tooltip,
+    cx: &App,
+) -> gpui_kit::component::tooltip::Tooltip {
+    let (family, fallbacks) = theme::tooltip_font(cx);
+    let mut tooltip = tooltip
+        .font_family(family)
+        .text_size(theme::font(TOOLTIP_SIZE))
+        .line_height(relative(TOOLTIP_LINE_HEIGHT));
+    tooltip.text_style().font_fallbacks = Some(fallbacks);
+    tooltip
+}
+
 /// A tooltip for a sentence or two: it wraps at `max` like a system tooltip
 /// (the original's `title`), where a plain one runs on in a single line, past
 /// the window. Tooltips are laid out at their min-content size, which for text
@@ -337,16 +371,16 @@ pub(in crate::frontend) fn wrapping_tooltip(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    use gpui_kit::component::ActiveTheme;
-    // The tooltip's `text_sm` in its theme font.
-    let size = rems(0.875).to_pixels(window.rem_size());
-    let family = cx.theme().font_family.clone();
+    let (family, fallbacks) = theme::tooltip_font(cx);
+    let mut tooltip_font = font(family);
+    tooltip_font.fallbacks = Some(fallbacks);
+    let size = theme::font(TOOLTIP_SIZE);
     let natural = text
         .split('\n')
         .map(|line| {
             let run = TextRun {
                 len: line.len(),
-                font: font(family.clone()),
+                font: tooltip_font.clone(),
                 color: Hsla::default(),
                 background_color: None,
                 underline: None,
@@ -358,9 +392,12 @@ pub(in crate::frontend) fn wrapping_tooltip(
                 .width
         })
         .fold(px(0.), Pixels::max);
-    gpui_kit::component::tooltip::Tooltip::element(move |_, _| {
-        div().when(natural > max, |d| d.w(max)).child(text.clone())
-    })
+    tooltip_text(
+        gpui_kit::component::tooltip::Tooltip::element(move |_, _| {
+            div().when(natural > max, |d| d.w(max)).child(text.clone())
+        }),
+        cx,
+    )
     .build(window, cx)
 }
 

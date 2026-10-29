@@ -41,7 +41,8 @@
   "fonts": {
     "sans": ["Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],
     "display": ["Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],
-    "mono": ["Cascadia Mono", "Cascadia Code", "Consolas"]
+    "mono": ["Cascadia Mono", "Cascadia Code", "Consolas"],
+    "tooltip": ["Segoe UI", "Microsoft YaHei UI"]
   },
   "light": {
     "scrollbar-size": "10px",

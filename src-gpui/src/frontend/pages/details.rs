@@ -2,7 +2,6 @@
 use super::*;
 use gpui_kit::base::ElementExt;
 use gpui_kit::base::SelectableText;
-use gpui_kit::component::tooltip::Tooltip;
 use std::hash::{Hash, Hasher};
 
 /// The selected row resolved against the latest processes, so filtering or
@@ -715,7 +714,7 @@ impl Desktop {
                 div()
                     .id(SharedString::from(format!("details-{field}")))
                     .child(value)
-                    .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                     .into_any_element(),
             ));
         }
@@ -847,7 +846,7 @@ impl Desktop {
                     .line_height(relative(1.4))
                     .hover(move |style| style.bg(p.hover))
                     .accessibility_label(display.clone())
-                    .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                     .child(div().min_w_0().overflow_hidden().child(display))
                     .child(
                         div()
@@ -898,7 +897,7 @@ impl Desktop {
                 .line_height(relative(1.4))
                 .hover(move |style| style.bg(p.hover))
                 .accessibility_label(tip.clone())
-                .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                 .child(
                     div()
                         .flex_1()
@@ -1266,7 +1265,7 @@ impl Desktop {
             .text_color(p.ink)
             .hover(move |style| style.bg(p.hover))
             .accessibility_label(name)
-            .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+            .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
             .child(icon(glyph, p.ink).w(glyph_size).h(glyph_size))
             .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())

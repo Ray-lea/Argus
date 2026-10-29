@@ -207,9 +207,7 @@ impl Desktop {
                         .text_color(p.ink)
                 })
                 .active(move |s| s.bg(if chosen { hover_strong } else { press }))
-                .tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(window, cx)
-                })
+                .tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
                 .on_prepaint(track_region(
                     index + 1,
                     self.navigation_regions.clone(),
@@ -378,12 +376,15 @@ impl Desktop {
                             let expanded = owner
                                 .upgrade()
                                 .is_some_and(|desktop| desktop.read(cx).nav_expanded);
-                            gpui_kit::component::tooltip::Tooltip::new(label(if expanded {
-                                "shell.nav.collapse"
-                            } else {
-                                "shell.nav.expand"
-                            }))
-                            .build(window, cx)
+                            widgets::tooltip(
+                                label(if expanded {
+                                    "shell.nav.collapse"
+                                } else {
+                                    "shell.nav.expand"
+                                }),
+                                window,
+                                cx,
+                            )
                         }
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -513,10 +514,7 @@ impl Desktop {
                     cx,
                 )
                 .accessibility_label(label("tasks.title"))
-                .tooltip(|window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(label("tasks.title"))
-                        .build(window, cx)
-                }),
+                .tooltip(|window, cx| widgets::tooltip(label("tasks.title"), window, cx)),
             );
         if self.page == "services" {
             trailing = trailing.child(self.service_actions(wide, cx));
@@ -554,9 +552,7 @@ impl Desktop {
                     cx,
                 )
                 .accessibility_label(pause_tip.clone())
-                .tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(pause_tip.clone()).build(window, cx)
-                }),
+                .tooltip(move |window, cx| widgets::tooltip(pause_tip.clone(), window, cx)),
             );
         }
         trailing = trailing.child(
@@ -569,10 +565,7 @@ impl Desktop {
                 cx,
             )
             .accessibility_label(label("shell.fileLock.label"))
-            .tooltip(|window, cx| {
-                gpui_kit::component::tooltip::Tooltip::new(label("shell.fileLock.title"))
-                    .build(window, cx)
-            }),
+            .tooltip(|window, cx| widgets::tooltip(label("shell.fileLock.title"), window, cx)),
         );
         if self.page == "processes" {
             let tip = label(if self.details_open {
@@ -590,9 +583,7 @@ impl Desktop {
                     cx,
                 )
                 .accessibility_label(label("shell.details.label"))
-                .tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
-                }),
+                .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx)),
             );
         }
         if let Some(updates) = self.update_button() {
@@ -617,9 +608,7 @@ impl Desktop {
                     .hover(|s| s.opacity(0.92))
                     .accessibility_label(title.clone())
                     .child(icon("UpdateIcon", on_accent))
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(window, cx)
-                    })
+                    .tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.act(Action::Dialog("update".into(), json!({})), window, cx)
                     }))
@@ -996,9 +985,7 @@ impl Desktop {
                 .disabled(disabled)
                 .when(disabled, |b| b.opacity(0.4))
                 .accessibility_label(label(&format!("services.control.{action}")))
-                .tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
-                }),
+                .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx)),
             );
         }
         let p = self.palette;
@@ -1017,10 +1004,7 @@ impl Desktop {
                 .child(icon("ExternalIcon", p.ink))
                 .when(wide, |b| b.child(label("services.control.openConsole")))
                 .tooltip(|window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(label(
-                        "services.control.openConsoleTitle",
-                    ))
-                    .build(window, cx)
+                    widgets::tooltip(label("services.control.openConsoleTitle"), window, cx)
                 })
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.act(
@@ -1113,10 +1097,7 @@ impl Desktop {
                             .id("order-held")
                             .child(label("shell.status.orderHeld"))
                             .tooltip(|window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(label(
-                                    "shell.status.orderHeldHint",
-                                ))
-                                .build(window, cx)
+                                widgets::tooltip(label("shell.status.orderHeldHint"), window, cx)
                             }),
                     )
                 },
@@ -1155,9 +1136,7 @@ impl Desktop {
                     .text_color(badge_color)
                     .child(icon("ShieldIcon", badge_color).size(px(12.)))
                     .child(label(&format!("shell.elevation.{privilege}")))
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(hint.clone()).build(window, cx)
-                    }),
+                    .tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx)),
             )
             .into_any_element()
     }
