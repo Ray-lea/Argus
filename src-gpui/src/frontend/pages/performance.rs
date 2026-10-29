@@ -222,6 +222,16 @@ fn cpu_temperature(hw: &Value) -> Option<f64> {
                 .reduce(f64::max)
         })
 }
+/// The CPU's one power figure and the label naming its source: the package,
+/// or the cores where the package has no reading.
+fn cpu_power(power: &Value) -> Option<(f64, &'static str)> {
+    [
+        ("package", "performance.cpu.packagePower"),
+        ("cores", "performance.cpu.corePower"),
+    ]
+    .into_iter()
+    .find_map(|(field, source)| power[field].as_f64().map(|watts| (watts, source)))
+}
 fn has_die_temperature(hw: &Value) -> bool {
     let sensors = &hw["cpuSensors"];
     sensors["packageCelsius"].is_number() || !values(&sensors["coreTemperatures"]).is_empty()
@@ -1227,20 +1237,17 @@ impl Desktop {
                 cx,
             ));
         }
-        // Graphics power belongs to the GPU view, where its source is named.
-        for (field, title) in [
-            ("package", "performance.cpu.packagePower"),
-            ("cores", "performance.cpu.corePower"),
-        ] {
-            if let Some(watts) = hw["power"][field].as_f64() {
-                stats.push(self.stat(
-                    label(title),
-                    charts::watts(watts),
-                    Some("W".into()),
-                    None,
-                    cx,
-                ));
-            }
+        // One power figure, its source named on hover. Graphics power belongs
+        // to the GPU view, where its source is named.
+        if let Some((watts, source)) = cpu_power(&hw["power"]) {
+            let stat = self.stat(
+                label("performance.cpu.power"),
+                charts::watts(watts),
+                Some("W".into()),
+                None,
+                cx,
+            );
+            stats.push(self.hinted("cpu-stat-power", Some(label(source)), stat));
         }
         for (field, title) in [
             ("processCount", "performance.cpu.processes"),
@@ -2561,5 +2568,29 @@ impl Desktop {
             )));
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cpu_power;
+    use serde_json::json;
+
+    #[test]
+    fn the_cpu_shows_one_power_figure() {
+        let both = json!({"package": 88.4, "cores": 73.1, "graphics": 2.0});
+        assert_eq!(
+            cpu_power(&both),
+            Some((88.4, "performance.cpu.packagePower"))
+        );
+        let cores = json!({"package": null, "cores": 12.5});
+        assert_eq!(cpu_power(&cores), Some((12.5, "performance.cpu.corePower")));
+        // A valid zero is a reading; graphics power is not the CPU's.
+        assert_eq!(
+            cpu_power(&json!({"package": 0.0})),
+            Some((0.0, "performance.cpu.packagePower"))
+        );
+        assert_eq!(cpu_power(&json!({"package": null, "graphics": 3.0})), None);
+        assert_eq!(cpu_power(&serde_json::Value::Null), None);
     }
 }
