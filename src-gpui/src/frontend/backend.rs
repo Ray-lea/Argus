@@ -501,6 +501,9 @@ impl Desktop {
     ) {
         match action {
             Action::Sort(key) => {
+                if !tables::sortable(&self.page, &key) {
+                    return;
+                }
                 self.descending = if self.sort == key {
                     !self.descending
                 } else {
@@ -509,9 +512,10 @@ impl Desktop {
                 self.sort = key;
                 self.sorts
                     .insert(self.page.clone(), (self.sort.clone(), self.descending));
-                if self.page == "processes" {
-                    self.prefs
-                        .set("sort", json!({"key":self.sort,"desc":self.descending}));
+                if let Some((key, value)) =
+                    tables::sort_preference(&self.page, &self.sort, self.descending)
+                {
+                    self.prefs.set(&key, value);
                 }
                 self.rebuild_rows(false, cx);
             }
@@ -535,7 +539,7 @@ impl Desktop {
                         let sort: Value = self.prefs.get("sort", json!({"key":"cpu","desc":true}));
                         (text(&sort, "key").into(), boolean(&sort, "desc"))
                     } else {
-                        tables::initial_sort(&self.page)
+                        tables::saved_sort(&self.page, &self.prefs)
                     }
                 });
                 self.sort = saved.0;

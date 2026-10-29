@@ -935,9 +935,12 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let sort = window.use_keyed_state("history-sort", cx, |_, _| ("cpu".to_owned(), true));
+        // The order survives restarts (`tableSort.history`, as the original's DataTable).
+        let sort = window.use_keyed_state("history-sort", cx, |_, _| {
+            tables::saved_sort("history", &self.prefs)
+        });
         let selected = window.use_keyed_state("history-selected", cx, |_, _| None::<String>);
-        let (sort_key, descending) = sort.read(cx).clone();
+        let stored = sort.read(cx).clone();
         let selected_key = selected.read(cx).clone();
         // Per-process network needs administrator rights; without it the column is all zeros.
         let has_net = processes.iter().any(|row| number(row, "net") > 0.);
@@ -962,6 +965,13 @@ impl Desktop {
             columns.push(("net", label("common.resource.network"), 92., None));
         }
         columns.push(("gpu", label("common.resource.gpu"), 70., None));
+        // A saved order by a column not shown (network without its readings)
+        // gives way to the default.
+        let (sort_key, descending) = if columns.iter().any(|column| column.0 == stored.0) {
+            stored
+        } else {
+            tables::initial_sort("history")
+        };
         let mut rows = processes.to_vec();
         rows.sort_by(|a, b| {
             let order = if sort_key == "name" {
@@ -1004,6 +1014,11 @@ impl Desktop {
                 };
                 let sort = sort.clone();
                 let title = title.map(label);
+                let next = if active {
+                    (id.clone(), !descending)
+                } else {
+                    (id.clone(), id != "name")
+                };
                 cell(*width, id != "name")
                     .id(SharedString::from(format!("history-head-{id}")))
                     .cursor_pointer()
@@ -1015,16 +1030,14 @@ impl Desktop {
                                 .build(window, cx)
                         })
                     })
-                    .on_click(cx.listener(move |_, _, _, cx| {
-                        let id = id.clone();
-                        sort.update(cx, |(key, desc), _| {
-                            if *key == id {
-                                *desc = !*desc;
-                            } else {
-                                *desc = id != "name";
-                                *key = id;
-                            }
-                        });
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let next = next.clone();
+                        if let Some((key, value)) =
+                            tables::sort_preference("history", &next.0, next.1)
+                        {
+                            this.prefs.set(&key, value);
+                        }
+                        sort.update(cx, |state, _| *state = next);
                         cx.notify();
                     }))
             }));
