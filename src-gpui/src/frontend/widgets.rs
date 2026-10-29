@@ -194,22 +194,22 @@ pub(in crate::frontend) struct Slide {
     pub epoch: u64,
 }
 
-/// Records an element's bounds; a change redraws the desktop once, so geometry
-/// that depends on layout (a sliding selection) catches up on the next frame.
+/// Records an element's bounds; a change draws the view it is in (its region)
+/// again once, so geometry that depends on layout (a sliding selection)
+/// catches up on the next frame. Notifying the desktop would draw every region
+/// and table again: a page's controls move on its first frame, in the middle
+/// of its entrance.
 fn remember(
     key: SharedString,
     anchors: Rc<RefCell<HashMap<SharedString, Bounds<Pixels>>>>,
-    owner: WeakEntity<Desktop>,
 ) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
     move |bounds, window, cx| {
         if anchors.borrow().get(&key) == Some(&bounds) {
             return;
         }
         anchors.borrow_mut().insert(key.clone(), bounds);
-        let owner = owner.clone();
-        window.defer(cx, move |_, cx| {
-            let _ = owner.update(cx, |_, cx| cx.notify());
-        });
+        let view = window.current_view();
+        window.defer(cx, move |_, cx| cx.notify(view));
     }
 }
 
@@ -477,7 +477,6 @@ impl Desktop {
             }
             (slide.from, slide.to)
         };
-        let owner = cx.entity().downgrade();
         let mut track = div()
             .id(ElementId::Name(id.clone()))
             .relative()
@@ -493,7 +492,7 @@ impl Desktop {
             // The track's padding box, the frame the sliding selection is placed
             // in: `on_prepaint` would measure from where its probe happens to sit.
             .child({
-                let remember = remember(track_key, anchors.clone(), owner.clone());
+                let remember = remember(track_key, anchors.clone());
                 canvas(
                     move |bounds, window, cx| remember(bounds, window, cx),
                     |_, _, _, _| {},
@@ -586,7 +585,7 @@ impl Desktop {
                 .accessibility_label(accessible)
                 .when_some(glyph, |b, glyph| b.child(icon(glyph, color)))
                 .when(!icon_only, |b| b.child(name))
-                .on_prepaint(remember(item_key(index), anchors.clone(), owner.clone()))
+                .on_prepaint(remember(item_key(index), anchors.clone()))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.act(action.clone(), window, cx);
                 }))

@@ -8,6 +8,7 @@ mod dialogs;
 mod gpu_usage;
 mod inline;
 mod layout;
+mod lists;
 mod menus;
 mod model;
 mod motion;
@@ -123,6 +124,7 @@ struct WorkCounters {
     rows_max_us: u64,
     row_builds: u64,
     background_group_us: u64,
+    background_list_us: u64,
 }
 struct Desktop {
     table: Option<Entity<gpui_kit::component::table::TableState<tables::NativeTable>>>,
@@ -209,6 +211,25 @@ struct Desktop {
     list: ListState,
     selected: HashMap<String, String>,
     data: HashMap<String, Value>,
+    /// The connection list as last read, shared with row builds off the UI thread.
+    connections: Option<Arc<Value>>,
+    /// Reads of the connection list that changed it.
+    connections_read: u64,
+    /// The owners of the connections in the current snapshot, and how often
+    /// they changed.
+    owners: Arc<lists::Owners>,
+    owners_read: u64,
+    /// The sample and list read the owners were last taken from.
+    owners_sequence: Option<(u64, u64)>,
+    /// The network page's rows as last built, shown or not.
+    connection_rows: Option<lists::ConnectionRows>,
+    /// The latest connection build; a build that is no longer the latest is dropped.
+    connection_build: u64,
+    /// What the build in progress, if any, is built from.
+    connection_building: Option<lists::ConnectionInputs>,
+    /// A desktop render (and connection rows) waiting for the end of a
+    /// list page's entrance (`after_entrance`).
+    entrance_queued: bool,
     pending: HashMap<u64, Pending>,
     next_request: u64,
     nav_top: bool,
@@ -337,6 +358,15 @@ impl Desktop {
             list: ListState::new(0, ListAlignment::Top, px(360.)),
             selected: HashMap::new(),
             data: HashMap::from([("settings".into(), settings), ("info".into(), info)]),
+            connections: None,
+            connections_read: 0,
+            owners: Arc::default(),
+            owners_read: 0,
+            owners_sequence: None,
+            connection_rows: None,
+            connection_build: 0,
+            connection_building: None,
+            entrance_queued: false,
             pending: HashMap::new(),
             next_request: 0,
             nav_top: prefs.get::<String>("navPosition", "top".into()) == "top",
@@ -411,6 +441,7 @@ impl Desktop {
                             this.data.insert(key.clone(), value.clone());
                         }
                     }
+                    this.take_connections();
                     for snapshot in values(&fixture["snapshots"]) {
                         this.accept_snapshot(snapshot.clone(), cx);
                     }
