@@ -46,22 +46,45 @@ impl Desktop {
             .data
             .get("updates")
             .is_some_and(|s| matches!(text(s, "state"), "ready" | "available"));
-        let slide = theme::transition_slow(cx);
+        // The names fade in as the pane opens (`fade-in`, 167 ms linear).
+        let fade_names = !cx.reduce_motion();
         let marker_width = theme::dimension("navigationIndicatorWidth");
-        let marker_x = gpui_kit::base::motion::transition(
-            "page-navigation-indicator",
-            regions[selected + 1].center().x - regions[0].left() - marker_width / 2.,
-            slide.clone(),
-            window,
-            cx,
-        );
-        let marker_y = gpui_kit::base::motion::transition(
-            "page-navigation-pane-indicator",
-            regions[selected + 1].center().y - regions[0].top() - px(8.),
-            slide,
-            window,
-            cx,
-        );
+        // Where the selection mark is: across on top, down at the side. The
+        // regions describe the position they were measured in (the entries'
+        // container is a row on top, a column at the side); just after a
+        // switch they still describe the other one, and the mark waits the
+        // frame it takes to measure the new one.
+        let measured_top = regions[0].size.width > regions[0].size.height;
+        let marker =
+            (measured_top == top && regions[selected + 1].size.width > px(0.)).then(|| {
+                let mut mark = self.ui.nav_mark.get();
+                if mark.top != top || (mark.selected == selected && mark.size != regions[0].size) {
+                    mark.epoch += 1;
+                }
+                mark.top = top;
+                mark.selected = selected;
+                mark.size = regions[0].size;
+                self.ui.nav_mark.set(mark);
+                let chosen = regions[selected + 1];
+                let (id, target) = if top {
+                    (
+                        "page-navigation-indicator",
+                        chosen.center().x - regions[0].left() - marker_width / 2.,
+                    )
+                } else {
+                    (
+                        "page-navigation-pane-indicator",
+                        chosen.center().y - regions[0].top() - px(8.),
+                    )
+                };
+                gpui_kit::base::motion::transition(
+                    format!("{id}-{}", mark.epoch),
+                    target,
+                    theme::transition_slow(cx),
+                    window,
+                    cx,
+                )
+            });
         let entry = |index: usize, page: &'static str, glyph: &'static str| {
             let name = label(&format!("shell.page.{page}"));
             let chosen = index == selected;
@@ -80,8 +103,13 @@ impl Desktop {
                 .rounded(px(4.))
                 .px(px(12.))
                 .text_color(if chosen { p.ink } else { p.muted })
-                .hover(move |s| s.bg(hover).text_color(p.ink))
-                .active(move |s| s.bg(press))
+                // The chosen page keeps its fill while hovered or pressed
+                // (`.nav-item[aria-selected]` follows `:hover` and `:active`).
+                .hover(move |s| {
+                    s.bg(if chosen { hover_strong } else { hover })
+                        .text_color(p.ink)
+                })
+                .active(move |s| s.bg(if chosen { hover_strong } else { press }))
                 .tooltip(move |window, cx| {
                     gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(window, cx)
                 })
@@ -125,11 +153,22 @@ impl Desktop {
                             div()
                                 .relative()
                                 .flex_shrink_0()
-                                .child(icon(glyph, if chosen { p.ink } else { p.muted }))
+                                // In the entry's colour, which brightens on hover.
+                                .child(theme::glyph(glyph))
                                 .children(dot().map(|dot| dot.top(px(-2.)).right(px(-3.)))),
                         )
                         .when(self.nav_expanded, |tab| {
-                            tab.child(div().min_w_0().truncate().child(name.clone()))
+                            let name = div().min_w_0().truncate().child(name.clone());
+                            tab.child(if fade_names {
+                                name.with_animation(
+                                    ("page-navigation-name", index),
+                                    Animation::new(Duration::from_millis(167)),
+                                    |name, delta| name.opacity(delta),
+                                )
+                                .into_any_element()
+                            } else {
+                                name.into_any_element()
+                            })
                         })
                 })
         };
@@ -150,7 +189,7 @@ impl Desktop {
                         .enumerate()
                         .map(|(index, (page, glyph))| entry(index, page, glyph)),
                 )
-                .when(regions[selected + 1].size.width > px(0.), |tabs| {
+                .when_some(marker, |tabs, marker_x| {
                     tabs.child(
                         div()
                             .absolute()
@@ -197,7 +236,7 @@ impl Desktop {
             }
             items = items.child(entry(index, page, glyph));
         }
-        if regions[selected + 1].size.height > px(0.) {
+        if let Some(marker_y) = marker {
             items = items.child(
                 div()
                     .absolute()
@@ -218,19 +257,36 @@ impl Desktop {
             .pb(px(8.))
             .w(px(if self.nav_expanded { 184. } else { 48. }))
             .child(
+                // An entry like the pages': its icon lines up with theirs,
+                // at the start of the open pane (Button centres by default).
                 Button::new("nav-toggle")
                     .h(px(36.))
                     .px(px(12.))
                     .flex()
                     .items_center()
+                    .justify_start()
                     .rounded(px(4.))
-                    .hover(move |s| s.bg(hover))
+                    .text_color(p.muted)
+                    .hover(move |s| s.bg(hover).text_color(p.ink))
                     .active(move |s| s.bg(press))
-                    .accessibility_label(toggle_tip.clone())
-                    .child(icon("MenuIcon", p.muted))
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(toggle_tip.clone())
+                    .accessibility_label(toggle_tip)
+                    .aria_expanded(self.nav_expanded)
+                    .child(theme::glyph("MenuIcon"))
+                    .tooltip({
+                        // Named for what a click does now: a tip that comes
+                        // up after a click must not name the previous state.
+                        let owner = owner.clone();
+                        move |window, cx| {
+                            let expanded = owner
+                                .upgrade()
+                                .is_some_and(|desktop| desktop.read(cx).nav_expanded);
+                            gpui_kit::component::tooltip::Tooltip::new(label(if expanded {
+                                "shell.nav.collapse"
+                            } else {
+                                "shell.nav.expand"
+                            }))
                             .build(window, cx)
+                        }
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.act(
@@ -502,7 +558,10 @@ impl Desktop {
                     .items_center()
                     .gap(px(10.))
                     .pl(px(4.))
-                    .when(!self.nav_top, |d| {
+                    // Spanning the side pane lines the page's controls up with
+                    // the page; compact levels give that room up first
+                    // (`.toolbar[data-compact] .brand`).
+                    .when(!self.nav_top && wide, |d| {
                         d.min_w(px(if self.nav_expanded { 184. } else { 48. }) - px(8.))
                     })
                     .text_size(theme::font(12.))

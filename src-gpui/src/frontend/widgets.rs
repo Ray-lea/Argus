@@ -136,6 +136,21 @@ pub(in crate::frontend) struct UiState {
     pub search_fit: RefCell<Option<(String, Pixels, Pixels)>>,
     /// How compact the toolbar is (`Desktop::fit_toolbar`).
     pub toolbar_fit: RefCell<ToolbarFit>,
+    /// What the page navigation's selection mark was last placed for.
+    pub nav_mark: Cell<NavMark>,
+}
+
+/// The page navigation's selection mark glides to a newly chosen page; when
+/// the entries move for any other reason (the other position, the pane
+/// opening, a reflow) it is placed there at once, like the original's
+/// Indicator. A new `epoch` starts a transition that adopts its first value.
+#[derive(Clone, Copy, Default)]
+pub(in crate::frontend) struct NavMark {
+    pub top: bool,
+    pub selected: usize,
+    /// The entries' container as measured.
+    pub size: Size<Pixels>,
+    pub epoch: u64,
 }
 
 /// The toolbar's compact level and what it learned (the original's
