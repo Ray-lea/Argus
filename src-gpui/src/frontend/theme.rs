@@ -276,6 +276,8 @@ impl gpui_kit::base::RootPlugin for ProductSurface {
         // to DirectWrite, an English system locale renders Chinese in the
         // Japanese Yu Gothic UI.
         surface.text_style().font_fallbacks = Some(font_fallbacks(cx));
+        // The page, dialogs and notices inherit the original body's line height.
+        surface.text_style().line_height = Some(line_height());
         if crate::platform::supports_backdrop() {
             use gpui_kit::gpui::Refineable;
             surface
@@ -363,6 +365,12 @@ thread_local! {
 /// The theme's base font size, which the interface's text sizes are written for.
 pub fn base_font_size() -> f32 {
     design()["fontSize"].as_f64().expect("theme font size") as f32
+}
+/// The line height text inherits, as a multiple of its size: the original
+/// body's `line-height: 1.4`. GPUI's default (about 1.618) made wrapped text,
+/// and the boxes it sizes, taller than the original's.
+pub fn line_height() -> DefiniteLength {
+    relative(design()["lineHeight"].as_f64().expect("theme line height") as f32)
 }
 /// A text size written for the theme's 13 px base, following the base font
 /// size the user chose: the original's `calc(N rem / 13)`. Spacing and
@@ -699,3 +707,4 @@ pub fn network(value: f64, bits: bool) -> String {
     }
     format!("{amount:.1} {}", units[unit])
 }
+

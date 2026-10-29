@@ -813,7 +813,6 @@ impl Desktop {
             .font_family(theme::DISPLAY_FONT)
             .text_size(theme::font(20.))
             .font_weight(FontWeight::SEMIBOLD)
-            .line_height(relative(1.3))
             .text_color(self.palette.ink)
             .child(title.into())
     }
@@ -925,9 +924,9 @@ impl Desktop {
                         .gap(px(10.))
                         .child(self.dialog_title(modal.title.clone()))
                         .child(
+                            // `.dialog-text`, in the body's line height.
                             div()
                                 .text_size(theme::font(13.))
-                                .line_height(relative(1.5))
                                 .text_color(p.muted)
                                 .child(modal.body.clone()),
                         )
@@ -2331,12 +2330,15 @@ impl Desktop {
                         .pb(px(20.))
                         .flex()
                         .flex_col()
-                        .gap(px(10.))
                         .child(self.dialog_title(modal.title.clone()))
                         .child(
+                            // `.note-target`: one line, 4 px into the title's
+                            // 10 px margin and 16 px above the field.
                             div()
+                                .mt(px(6.))
+                                .mb(px(16.))
+                                .truncate()
                                 .text_size(theme::font(13.))
-                                .line_height(relative(1.5))
                                 .text_color(p.muted)
                                 .child(modal.body.clone()),
                         )

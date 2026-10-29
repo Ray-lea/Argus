@@ -1,5 +1,6 @@
 {
   "fontSize": 13,
+  "lineHeight": 1.4,
   "heat": {
     "opacity": 0.34,
     "percent": { "minimum": 1, "full": 40 },

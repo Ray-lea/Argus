@@ -479,17 +479,16 @@ impl Desktop {
     fn onboarding_note(&self, text: String, warning: bool) -> AnyElement {
         let p = self.palette;
         if warning {
+            // `.onboarding-note.warning`: the step's line height, the icon
+            // centred on however many lines the text takes.
             div()
                 .flex()
+                .items_center()
                 .gap(px(6.))
                 .flex_shrink_0()
                 .text_size(theme::font(12.))
                 .text_color(p.ink)
-                .child(
-                    div()
-                        .mt(px(2.))
-                        .child(icon("WarningIcon", p.io).size(px(14.))),
-                )
+                .child(icon("WarningIcon", p.io).size(px(14.)).flex_shrink_0())
                 .child(div().flex_1().child(text))
                 .into_any_element()
         } else {
@@ -1446,6 +1445,8 @@ impl Desktop {
                                 .px(px(14.))
                                 .pb(px(12.))
                                 .text_size(theme::font(13.))
+                                // `.update-entry-body`
+                                .line_height(relative(1.6))
                                 .child(gpui_kit::component::text::TextView::markdown(
                                     SharedString::from(format!(
                                         "release-notes-{}",
