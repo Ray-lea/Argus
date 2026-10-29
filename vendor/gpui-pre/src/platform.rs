@@ -1217,6 +1217,13 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     }
     fn resize(&mut self, size: Size<Pixels>);
     fn scale_factor(&self) -> f32;
+    /// Multiplies the scale factor by `zoom` without changing the window's
+    /// size on screen, as page zoom does in a browser: `scale_factor` grows
+    /// by `zoom` and `content_size`, pointer positions and the sizes in
+    /// `bounds` shrink by it. Screen origins stay in display coordinates.
+    /// Must not invoke callbacks ([`crate::Window::set_content_zoom`]
+    /// refreshes the window). Platforms without support ignore it.
+    fn set_content_zoom(&self, _zoom: f32) {}
     fn appearance(&self) -> WindowAppearance;
     fn display(&self) -> Option<Rc<dyn PlatformDisplay>>;
     fn mouse_position(&self) -> Point<Pixels>;

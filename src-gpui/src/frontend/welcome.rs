@@ -337,7 +337,7 @@ impl Desktop {
                         d.child(
                             div()
                                 .mt(px(2.))
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.muted)
                                 .child(hint),
                         )
@@ -383,7 +383,7 @@ impl Desktop {
                 .flex()
                 .gap(px(6.))
                 .flex_shrink_0()
-                .text_size(px(12.))
+                .text_size(theme::font(12.))
                 .text_color(p.ink)
                 .child(
                     div()
@@ -395,7 +395,7 @@ impl Desktop {
         } else {
             div()
                 .flex_shrink_0()
-                .text_size(px(12.))
+                .text_size(theme::font(12.))
                 .line_height(relative(1.9))
                 .text_color(p.muted)
                 .child(text)
@@ -451,7 +451,7 @@ impl Desktop {
             .child(
                 div()
                     .mt(px(2.))
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .text_color(p.muted)
                     .child(hint),
             )
@@ -505,7 +505,7 @@ impl Desktop {
                     )
                     .child(
                         self.dialog_title(label("onboarding.welcome.title"))
-                            .text_size(px(24.))
+                            .text_size(theme::font(24.))
                             .flex()
                             .justify_center(),
                     )
@@ -642,7 +642,7 @@ impl Desktop {
                     .child(match problem {
                         Some(problem) => self.onboarding_note(problem, true),
                         None if boolean(&settings, "hotkeyEnabled") && !keys.is_empty() => div()
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .text_color(p.muted)
                             .child(self.rich(
                                 tr!("onboarding.background.hotkey", hotkey = ""),
@@ -1091,7 +1091,12 @@ impl Desktop {
                     .gap(px(2.))
                     .child(self.dialog_title(title))
                     .when(!subtitle.is_empty(), |d| {
-                        d.child(div().text_size(px(12.)).text_color(p.muted).child(subtitle))
+                        d.child(
+                            div()
+                                .text_size(theme::font(12.))
+                                .text_color(p.muted)
+                                .child(subtitle),
+                        )
                     }),
             )
             .into_any_element()
@@ -1166,13 +1171,13 @@ impl Desktop {
                 .gap(px(2.))
                 .child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(theme::font(12.))
                         .text_color(p.muted)
                         .child(label(caption)),
                 )
                 .child(
                     div()
-                        .text_size(px(16.))
+                        .text_size(theme::font(16.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(if next { p.accent } else { p.ink })
                         .child(number),
@@ -1232,7 +1237,7 @@ impl Desktop {
                 reader
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .text_color(p.muted)
                             .child(label("updates.dialog.empty")),
                     )
@@ -1295,7 +1300,7 @@ impl Desktop {
                         )
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.muted)
                                 .child(release.date.clone()),
                         )
@@ -1303,7 +1308,7 @@ impl Desktop {
                             b.child(
                                 div()
                                     .ml_auto()
-                                    .text_size(px(12.))
+                                    .text_size(theme::font(12.))
                                     .text_color(p.muted)
                                     .child(tr!("updates.dialog.changes", count = changes)),
                             )
@@ -1323,19 +1328,26 @@ impl Desktop {
                         )),
                     )
                     .when(open, |d| {
-                        d.child(div().px(px(14.)).pb(px(12.)).text_size(px(13.)).child(
-                            gpui_kit::component::text::TextView::markdown(
-                                SharedString::from(format!("release-notes-{}", release.version)),
-                                release.notes.clone(),
-                            ),
-                        ))
+                        d.child(
+                            div()
+                                .px(px(14.))
+                                .pb(px(12.))
+                                .text_size(theme::font(13.))
+                                .child(gpui_kit::component::text::TextView::markdown(
+                                    SharedString::from(format!(
+                                        "release-notes-{}",
+                                        release.version
+                                    )),
+                                    release.notes.clone(),
+                                )),
+                        )
                     }),
             );
         }
         if earlier {
             reader = reader.child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .text_color(p.muted)
                     .child(label("updates.dialog.earlier")),
             );
@@ -1433,7 +1445,7 @@ impl Desktop {
                 .flex()
                 .items_center()
                 .gap(px(6.))
-                .text_size(px(12.))
+                .text_size(theme::font(12.))
                 .text_color(color)
                 .child(icon(glyph, color).size(px(14.)))
                 .child(text)
@@ -1587,7 +1599,7 @@ impl Desktop {
                         .when(can_install, |d| {
                             d.child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(theme::font(12.))
                                     .text_color(p.muted)
                                     .child(label("updates.dialog.hint")),
                             )
@@ -1595,13 +1607,18 @@ impl Desktop {
                         .when(can_download, |d| {
                             d.child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(theme::font(12.))
                                     .text_color(p.muted)
                                     .child(label("updates.dialog.portable")),
                             )
                         })
                         .when_some(failure, |d, failure| {
-                            d.child(div().text_size(px(12.)).text_color(p.danger).child(failure))
+                            d.child(
+                                div()
+                                    .text_size(theme::font(12.))
+                                    .text_color(p.danger)
+                                    .child(failure),
+                            )
                         }),
                 ),
             )

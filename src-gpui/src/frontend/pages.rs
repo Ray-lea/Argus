@@ -146,7 +146,10 @@ impl Desktop {
                                                 d.child(
                                                     div()
                                                         .absolute()
-                                                        .top(px(tables::PROCESS_HEADER_HEIGHT - 1.))
+                                                        .top(
+                                                            tables::process_header_height()
+                                                                - px(1.),
+                                                        )
                                                         .left_0()
                                                         .right_0()
                                                         .h(px(1.))
@@ -241,7 +244,7 @@ impl Desktop {
                                 .justify_between()
                                 .items_center()
                                 .gap_3()
-                                .text_xs()
+                                .text_size(theme::font(12.))
                                 .text_color(self.palette.muted)
                                 .child(summary)
                                 .child(div().truncate().child(note)),
@@ -337,7 +340,7 @@ impl Desktop {
     }
     pub(in crate::frontend) fn vitals(
         &self,
-        _window: &Window,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
@@ -484,6 +487,31 @@ impl Desktop {
         let count = cards.len();
         let hover = p.hover;
         let press = p.press;
+        // The figures fit their card, which large text or scale can make
+        // narrow: `clamp(16px, 33cqw, 34rem / 13)` of the card's content width,
+        // the unit `clamp(9px, 15cqw, 15rem / 13)`. The band spans the page
+        // inside its margins and border; the CPU card is 1.3 parts.
+        let navigation = match (self.nav_top, self.nav_expanded) {
+            (true, _) => px(0.),
+            (false, true) => px(184.),
+            (false, false) => px(48.),
+        };
+        let band_width = window.viewport_size().width - navigation - px(2. * 12. + 2.);
+        let parts = cards
+            .iter()
+            .map(|card| if card.0 == "cpu" { 1.3 } else { 1. })
+            .sum::<f32>();
+        let fit = |id: &str, index: usize| {
+            let share = if id == "cpu" { 1.3 } else { 1. } / parts.max(1.);
+            let border = if index > 0 { px(1.) } else { px(0.) };
+            let content = (band_width * share - px(2. * 16.) - border).max(px(0.));
+            (
+                (content * 0.33)
+                    .min(theme::font_dimension("figureSize"))
+                    .max(px(16.)),
+                (content * 0.15).min(theme::font(15.)).max(px(9.)),
+            )
+        };
         let mut band = div()
             .flex()
             .flex_shrink_0()
@@ -496,6 +524,7 @@ impl Desktop {
         for (index, (id, device, key, color, max, figure, unit, detail)) in
             cards.into_iter().enumerate()
         {
+            let (figure_size, unit_size) = fit(id, index);
             let plot = self.chart(
                 &format!("vital-{id}"),
                 &[(key, color)],
@@ -519,7 +548,7 @@ impl Desktop {
                 .child(
                     div()
                         .flex_shrink_0()
-                        .text_size(px(12.))
+                        .text_size(theme::font(12.))
                         .text_color(p.muted)
                         .child(name.clone()),
                 );
@@ -531,7 +560,7 @@ impl Desktop {
                         .id(("vital-detail", index))
                         .min_w_0()
                         .truncate()
-                        .text_size(px(12.))
+                        .text_size(theme::font(12.))
                         .text_color(p.muted)
                         .child(detail.clone())
                         .when(id == "network", |d| {
@@ -599,7 +628,7 @@ impl Desktop {
                                     .child(
                                         div()
                                             .font_family(theme::display_font(cx))
-                                            .text_size(theme::dimension("figureSize"))
+                                            .text_size(figure_size)
                                             .font_weight(FontWeight(330.))
                                             .line_height(relative(1.1))
                                             .child(figure),
@@ -608,13 +637,18 @@ impl Desktop {
                                         div()
                                             .ml(px(2.))
                                             .font_family(theme::display_font(cx))
-                                            .text_size(px(15.))
+                                            .text_size(unit_size)
                                             .text_color(p.muted)
                                             .child(unit),
                                     ),
                             )
                             .when(id == "cpu" && !detail.is_empty(), |d| {
-                                d.child(div().text_size(px(12.)).text_color(p.muted).child(detail))
+                                d.child(
+                                    div()
+                                        .text_size(theme::font(12.))
+                                        .text_color(p.muted)
+                                        .child(detail),
+                                )
                             }),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -681,6 +715,25 @@ impl Desktop {
                 self.prefs.set(key, value);
                 self.apply_motion(cx);
                 cx.notify();
+                return;
+            }
+            "uiScale" => {
+                let scale = appearance::SCALE.parse(&value.to_string());
+                self.ui_scale = scale;
+                self.prefs.set(key, scale);
+                appearance::apply_scale(scale, window, cx);
+                cx.notify();
+                return;
+            }
+            "fontSize" => {
+                let size = appearance::FONT_SIZE.parse(&value.to_string());
+                self.font_size = size;
+                self.prefs.set(key, size);
+                appearance::apply_font_size(size);
+                // Applying the theme again carries the size to the components;
+                // every view draws its text again.
+                self.set_theme(self.palette.dark, window, cx);
+                window.refresh();
                 return;
             }
             "navPosition" => self.nav_top = value.as_str() != Some("side"),

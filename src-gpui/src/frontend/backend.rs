@@ -423,15 +423,19 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let key = match self.page.as_str() {
+        let key = self.search_placeholder();
+        self.search.update(cx, |state, cx| {
+            state.set_placeholder(label(key), window, cx)
+        });
+    }
+    /// The locale key of the search box placeholder on the current page.
+    pub(in crate::frontend) fn search_placeholder(&self) -> &'static str {
+        match self.page.as_str() {
             "services" => "services.search",
             "startup" => "startup.search",
             "network" => "connections.search",
             _ => "shell.search.processes",
-        };
-        self.search.update(cx, |state, cx| {
-            state.set_placeholder(label(key), window, cx)
-        });
+        }
     }
     pub(in crate::frontend) fn action_error(
         &self,
@@ -1145,7 +1149,7 @@ impl Desktop {
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
-                "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),
+                "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),"scaleFactor":window.scale_factor(),"remSize":f32::from(window.rem_size()),
                 "performanceScrollY":f32::from(self.device_scroll.max_offset().y),
                 "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()})
             );

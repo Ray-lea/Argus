@@ -127,6 +127,26 @@ pub(in crate::frontend) struct UiState {
     /// The top dialog fading out before it closes: its id, when it started and
     /// whether it was cancelled (Escape or a press outside it).
     pub dialog_leaving: Option<(u64, Instant, bool)>,
+    /// The narrowest search box: placeholder, text size and width (`Desktop::search_fit`).
+    pub search_fit: RefCell<Option<(String, Pixels, Pixels)>>,
+    /// How compact the toolbar is (`Desktop::fit_toolbar`).
+    pub toolbar_fit: RefCell<ToolbarFit>,
+}
+
+/// The toolbar's compact level and what it learned (the original's
+/// `fitToolbar`): 1 hides the text of the buttons at the end, 2 the labels of
+/// the view modes, 3 moves the page's controls to a row of their own and 4
+/// the search box too. `need[level]` is the width the toolbar wanted when that
+/// level stopped fitting; it returns to the level once the window is as wide.
+#[derive(Default)]
+pub(in crate::frontend) struct ToolbarFit {
+    /// What the levels were learned for (page, text, navigation, language,
+    /// update button); a change starts over from level 0.
+    pub key: String,
+    pub level: u8,
+    pub need: [Pixels; 4],
+    /// The level the toolbar was last drawn at: its regions measure that one.
+    pub drawn: Option<u8>,
 }
 
 /// The sliding selection of one segmented control.
@@ -377,7 +397,7 @@ impl Desktop {
                 .justify_center()
                 .gap(px(6.))
                 .rounded(px(4.))
-                .text_size(px(13.))
+                .text_size(theme::font(13.))
                 .whitespace_nowrap()
                 .text_color(color)
                 // Before the first layout there is no pill yet: paint the choice itself.
@@ -450,7 +470,7 @@ impl Desktop {
             .border_color(border)
             .bg(bg)
             .text_color(fg)
-            .text_size(px(13.))
+            .text_size(theme::font(13.))
             .whitespace_nowrap()
             .hover(move |s| match tone {
                 Tone::Plain => s.bg(p.control_hover),
@@ -599,7 +619,7 @@ impl Desktop {
                     .border_color(tint(p.stroke_strong))
                     .rounded(px(4.))
                     .bg(p.control_face)
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .text_color(tint(if off { p.muted } else { p.ink }))
                     .whitespace_nowrap()
                     .child(key.clone())
@@ -678,7 +698,7 @@ impl Desktop {
             .border_color(p.stroke)
             .rounded(px(13.))
             .bg(p.layer_strong)
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .text_color(p.ink)
             .whitespace_nowrap()
             .child(if tone == "busy" {
@@ -831,7 +851,7 @@ impl Desktop {
                             p.control_face
                         })
                         .text_color(p.ink)
-                        .text_size(px(13.))
+                        .text_size(theme::font(13.))
                         .active(move |s| s.text_color(p.muted))
                         .child(control_edge(&p))
                         .child(
@@ -1047,7 +1067,7 @@ impl Desktop {
             // where the original blurs what is behind its translucent face.
             .bg(solid(p.flyout))
             .opacity(opacity)
-            .text_size(px(13.))
+            .text_size(theme::font(13.))
             .text_color(p.ink)
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .children(open.options.iter().enumerate().map(|(index, option)| {

@@ -8,7 +8,11 @@ use serde_json::Value;
 use std::{
     collections::BTreeMap,
     path::PathBuf,
-    sync::{OnceLock, mpsc},
+    sync::{
+        OnceLock,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::Duration,
 };
 pub struct Prefs {
@@ -70,7 +74,9 @@ fn writer() -> &'static mpsc::Sender<Job> {
                         }
                     }
                     for (path, entries) in files {
-                        if let Err(error) = argus_app::preferences::set_many(&path, entries) {
+                        let result = argus_app::preferences::set_many(&path, entries);
+                        SAVE_FAILED.store(result.is_err(), Ordering::Relaxed);
+                        if let Err(error) = result {
                             log::warn!(
                                 "native preferences write failed: {}",
                                 argus_core::diagnostics::failure(&error.to_string())
@@ -85,6 +91,13 @@ fn writer() -> &'static mpsc::Sender<Job> {
             .expect("preference writer thread");
         sender
     })
+}
+
+static SAVE_FAILED: AtomicBool = AtomicBool::new(false);
+
+/// Whether the latest preference write failed; a later successful one clears it.
+pub fn save_failed() -> bool {
+    SAVE_FAILED.load(Ordering::Relaxed)
 }
 
 /// Waits (at most `timeout`) until every preference set so far is on disk.

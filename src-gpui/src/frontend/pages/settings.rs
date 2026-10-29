@@ -135,7 +135,7 @@ impl Desktop {
                         d.child(
                             div()
                                 .mt(px(2.))
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.muted)
                                 .child(desc),
                         )
@@ -144,7 +144,7 @@ impl Desktop {
                         d.child(
                             div()
                                 .mt(px(4.))
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.danger)
                                 .child(error),
                         )
@@ -229,7 +229,7 @@ impl Desktop {
                             .child(
                                 div()
                                     .mt(px(2.))
-                                    .text_size(px(12.))
+                                    .text_size(theme::font(12.))
                                     .text_color(p.muted)
                                     .child(desc),
                             ),
@@ -251,7 +251,7 @@ impl Desktop {
                         div()
                             .flex_1()
                             .min_w_0()
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .text_color(p.muted)
                             .child(note)
                             .when_some(error, |d, error| {
@@ -273,7 +273,7 @@ impl Desktop {
                         .pl(px(52.))
                         .pr(px(16.))
                         .pb(px(12.))
-                        .text_size(px(12.))
+                        .text_size(theme::font(12.))
                         .text_color(p.faint)
                         .child(footer),
                 )
@@ -875,6 +875,26 @@ impl Desktop {
                         cx,
                     )],
                 ));
+                cards.push(self.appearance_setting(
+                    &appearance::SCALE,
+                    "ui-scale",
+                    "InterfaceScaleIcon",
+                    "settings.appearance.scaleTitle",
+                    "settings.appearance.scaleDesc",
+                    "%",
+                    window,
+                    cx,
+                ));
+                cards.push(self.appearance_setting(
+                    &appearance::FONT_SIZE,
+                    "font-size",
+                    "FontSizeIcon",
+                    "settings.appearance.fontTitle",
+                    "settings.appearance.fontDesc",
+                    "px",
+                    window,
+                    cx,
+                ));
             }
             "startup" => {
                 let autostart = self.setting_toggle(
@@ -969,7 +989,7 @@ impl Desktop {
                 div()
                     .mt(px(if index == 0 { 6. } else { 28. }))
                     .mb(px(6.))
-                    .text_size(px(14.))
+                    .text_size(theme::font(14.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(p.ink)
                     .child(label(&format!("settings.sections.{section}"))),
@@ -1548,6 +1568,151 @@ impl Desktop {
         );
     }
 
+    // ---- Appearance ---------------------------------------------------------------
+
+    /// Interface scale or font size (Settings.tsx): a short number box with its
+    /// unit (`.appearance-number`) and a button back to the default. The box
+    /// commits on Enter or when it loses focus; the arrow keys step it.
+    #[allow(clippy::too_many_arguments)]
+    fn appearance_setting(
+        &mut self,
+        setting: &'static appearance::Setting,
+        id: &str,
+        glyph: &str,
+        title: &str,
+        desc: &str,
+        unit: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        let value = self.appearance_value(setting);
+        let input = self.appearance_input(setting, window, cx);
+        let number = div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .child(
+                // `width: 4.5em; padding: 5px 7px` with a 1 px stroke; its
+                // height is the 1.4 line height of the text plus those.
+                div()
+                    .id(SharedString::from(format!("setting-{id}-input")))
+                    .w(theme::font(13. * 4.5))
+                    .h(theme::font(13.) * 1.4 + px(12.))
+                    .px(px(7.))
+                    .flex()
+                    .items_center()
+                    .border_1()
+                    .border_color(p.stroke)
+                    .rounded(px(4.))
+                    .bg(p.control_face)
+                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                        let up = match event.keystroke.key.as_str() {
+                            "up" => true,
+                            "down" => false,
+                            _ => return,
+                        };
+                        cx.stop_propagation();
+                        let next = setting.step(this.appearance_value(setting), up);
+                        this.commit_appearance(setting, next, window, cx);
+                    }))
+                    .child(
+                        Input::new(&input)
+                            .appearance(false)
+                            .h_full()
+                            .px_0()
+                            .py_0()
+                            .text_size(theme::font(13.)),
+                    ),
+            )
+            .child(div().text_color(p.ink).child(unit))
+            .into_any_element();
+        let default = setting.default;
+        let reset = self
+            .btn(
+                format!("setting-{id}-reset"),
+                label("settings.appearance.reset"),
+                None,
+                Tone::Plain,
+            )
+            .inert(value == default)
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.commit_appearance(setting, default, window, cx);
+            }))
+            .into_any_element();
+        self.setting_text(id, glyph, title, desc, vec![number, reset])
+    }
+
+    fn appearance_value(&self, setting: &appearance::Setting) -> u32 {
+        if setting.key == appearance::SCALE.key {
+            self.ui_scale
+        } else {
+            self.font_size
+        }
+    }
+
+    /// The number box of an appearance setting, kept across frames.
+    fn appearance_input(
+        &mut self,
+        setting: &'static appearance::Setting,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<InputState> {
+        if let Some(input) = self.ui.inputs.get(setting.key).cloned() {
+            return input;
+        }
+        let value = self.appearance_value(setting).to_string();
+        let input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx);
+            state.set_value(value, window, cx);
+            state
+        });
+        self.subscriptions.push(cx.subscribe_in(
+            &input,
+            window,
+            move |this, input, event, window, cx| match event {
+                InputEvent::Change => {
+                    // What a number box accepts: digits, a sign, a point, an exponent.
+                    let text = input.read(cx).value();
+                    let kept = text
+                        .chars()
+                        .filter(|c| c.is_ascii_digit() || matches!(c, '.' | '-' | '+' | 'e' | 'E'))
+                        .collect::<String>();
+                    if kept != text.as_ref() {
+                        input.update(cx, |state, cx| state.set_value(kept, window, cx));
+                    }
+                }
+                InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                    let next = setting.parse(&input.read(cx).value());
+                    this.commit_appearance(setting, next, window, cx);
+                }
+                _ => {}
+            },
+        ));
+        self.ui.inputs.insert(setting.key.into(), input.clone());
+        input
+    }
+
+    /// Applies and saves an appearance value, and shows it in its box as
+    /// committed (text that is not a number shows the default again).
+    fn commit_appearance(
+        &mut self,
+        setting: &'static appearance::Setting,
+        value: u32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if value != self.appearance_value(setting) {
+            self.preference(setting.key, json!(value), window, cx);
+        }
+        if let Some(input) = self.ui.inputs.get(setting.key).cloned() {
+            let text = value.to_string();
+            if input.read(cx).value().as_ref() != text {
+                input.update(cx, |state, cx| state.set_value(text, window, cx));
+            }
+        }
+    }
+
     // ---- Rules ------------------------------------------------------------------
 
     /// An inline text box kept across frames; Enter runs `submit`.
@@ -1677,7 +1842,11 @@ impl Desktop {
             .flex()
             .items_center()
             .gap(px(8.))
-            .child(div().w(px(220.)).child(Input::new(&input)))
+            .child(
+                div()
+                    .w(px(220.))
+                    .child(Input::new(&input).text_size(theme::font(13.))),
+            )
             .child(
                 self.btn("rule-add", label("settings.rules.add"), None, Tone::Plain)
                     .inert(draft.is_empty())
@@ -2206,7 +2375,11 @@ impl Desktop {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(div().w(px(220.)).child(Input::new(&input)))
+                    .child(
+                        div()
+                            .w(px(220.))
+                            .child(Input::new(&input).text_size(theme::font(13.))),
+                    )
                     .child(
                         self.btn(
                             "proxy-save",
@@ -2360,13 +2533,13 @@ impl Desktop {
                                 .child(
                                     div()
                                         .font_family(theme::DISPLAY_FONT)
-                                        .text_size(px(18.))
+                                        .text_size(theme::font(18.))
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .child(argus_app::config::product_name()),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(13.))
+                                        .text_size(theme::font(13.))
                                         .text_color(p.muted)
                                         .child(text(&self.data["info"], "version").to_owned()),
                                 ),
@@ -2374,14 +2547,14 @@ impl Desktop {
                         .child(
                             div()
                                 .mt(px(2.))
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.muted)
                                 .child(label("settings.about.tagline")),
                         )
                         .child(
                             div()
                                 .mt(px(2.))
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.muted)
                                 .child(label(if boolean(&self.data["info"], "elevated") {
                                     "settings.about.admin"
@@ -2394,7 +2567,7 @@ impl Desktop {
                         .child(
                             div()
                                 .mt(px(2.))
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.muted)
                                 .child(format!("© 2026 {}", env!("CARGO_PKG_AUTHORS"))),
                         ),
@@ -2651,7 +2824,7 @@ impl Desktop {
                     .child(
                         div()
                             .mt(px(2.))
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .text_color(p.muted)
                             .child(label("settings.hotkey.desc")),
                     ),
@@ -2692,7 +2865,7 @@ impl Desktop {
             .items_start()
             .gap(px(6.))
             .py(px(4.))
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .text_color(p.muted);
         if let Some((off, saved, _)) = &card.done {
             let line = div()
@@ -3400,12 +3573,22 @@ impl Desktop {
         let mut row = div().flex().flex_wrap().items_center().gap(px(6.));
         for (index, chord) in value.split(" / ").enumerate() {
             if index > 0 {
-                row = row.child(div().text_size(px(10.)).text_color(p.faint).child("/"));
+                row = row.child(
+                    div()
+                        .text_size(theme::font(10.))
+                        .text_color(p.faint)
+                        .child("/"),
+                );
             }
             let mut keys = div().flex().items_center().gap(px(4.)).whitespace_nowrap();
             for (part, key) in chord.split('+').enumerate() {
                 if part > 0 {
-                    keys = keys.child(div().text_size(px(10.)).text_color(p.faint).child("+"));
+                    keys = keys.child(
+                        div()
+                            .text_size(theme::font(10.))
+                            .text_color(p.faint)
+                            .child("+"),
+                    );
                 }
                 keys = keys.child(
                     div()
@@ -3420,7 +3603,7 @@ impl Desktop {
                         .border_color(p.stroke_strong)
                         .rounded(px(5.))
                         .bg(p.face)
-                        .text_size(px(11.))
+                        .text_size(theme::font(11.))
                         .text_color(p.ink)
                         .child(recorder::key_label(key)),
                 );
@@ -3474,7 +3657,7 @@ impl Desktop {
                                 d.child(
                                     div()
                                         .ml_auto()
-                                        .text_size(px(10.))
+                                        .text_size(theme::font(10.))
                                         .font_weight(FontWeight::NORMAL)
                                         .text_color(p.faint)
                                         .child(badge),
@@ -3485,7 +3668,7 @@ impl Desktop {
                     .child(
                         div()
                             .mt(px(9.))
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .line_height(relative(1.6))
                             .text_color(p.muted)
                             .child(body),
@@ -3528,7 +3711,7 @@ impl Desktop {
             label("settings.hotkey.title"),
             if hotkey.is_empty() {
                 div()
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .text_color(p.faint)
                     .child(label("settings.shortcuts.disabled"))
                     .into_any_element()
@@ -3690,7 +3873,7 @@ impl Desktop {
                                             div()
                                                 .flex_1()
                                                 .min_w_0()
-                                                .text_size(px(12.))
+                                                .text_size(theme::font(12.))
                                                 .text_color(p.muted)
                                                 .child(label(text_key)),
                                         )
@@ -3707,7 +3890,7 @@ impl Desktop {
                     .flex()
                     .items_center()
                     .gap(px(10.))
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .text_color(p.muted)
                     .child(self.shortcut_keys("Ctrl+Shift+Esc"))
                     .child(label("settings.shortcuts.taskManager")),
@@ -3715,7 +3898,7 @@ impl Desktop {
             .child(
                 div()
                     .mt(px(12.))
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .text_color(p.faint)
                     .child(label("settings.shortcuts.inputHint")),
             );
@@ -3750,7 +3933,7 @@ impl Desktop {
                     .child(self.dialog_title(label("settings.shortcuts.title")))
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .text_color(p.muted)
                             .child(label("settings.shortcuts.scope")),
                     ),
@@ -3780,7 +3963,7 @@ impl Desktop {
                                 .flex()
                                 .items_center()
                                 .gap(px(8.))
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.muted)
                                 .child(self.shortcut_keys("Esc"))
                                 .child(label("settings.shortcuts.close")),
