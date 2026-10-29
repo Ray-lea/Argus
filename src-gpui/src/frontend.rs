@@ -104,11 +104,6 @@ impl MenuItem {
         self
     }
 }
-struct Popup {
-    menu: Entity<gpui_kit::component::menu::PopupMenu>,
-    position: Point<Pixels>,
-    _subscription: Subscription,
-}
 struct Pending {
     command: String,
     cache: Option<String>,
@@ -216,7 +211,9 @@ struct Desktop {
     held_order: bool,
     horizontal: f32,
     drag: Option<(String, Point<Pixels>, f32)>,
-    popup: Option<Popup>,
+    popup: Option<menus::Popup>,
+    /// The menu that just closed, fading out (`menus::Popup`).
+    popup_leaving: Option<(menus::Popup, Instant)>,
     modal: Option<dialogs::Modal>,
     ui: widgets::UiState,
     last_poll: Instant,
@@ -340,6 +337,7 @@ impl Desktop {
             horizontal: 0.,
             drag: None,
             popup: None,
+            popup_leaving: None,
             modal: None,
             ui: widgets::UiState::default(),
             last_poll: Instant::now() - Duration::from_secs(10),
@@ -377,6 +375,7 @@ impl Desktop {
                 _ => {}
             }),
         );
+        this.watch_menu_window(window, cx);
         if let Some(path) = &options.fixture {
             match std::fs::read(path)
                 .ok()

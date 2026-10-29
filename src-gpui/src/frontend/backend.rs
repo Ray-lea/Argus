@@ -679,6 +679,11 @@ impl Desktop {
     ) {
         let key = event.keystroke.key.as_str();
         let m = event.keystroke.modifiers;
+        if self.popup.is_some() {
+            self.menu_key(key, window, cx);
+            cx.stop_propagation();
+            return;
+        }
         if self.page == "history"
             && self.modal.is_none()
             && self.popup.is_none()
