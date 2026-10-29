@@ -472,6 +472,38 @@ impl Desktop {
         )
     }
 
+    /// The page a start opens on (`startPage`): any page but Settings, named
+    /// as in the navigation; the card wears the chosen page's icon.
+    fn start_page_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let current = start_page(&self.prefs.get("startPage", Value::Null));
+        let pages = start_pages().collect::<Vec<_>>();
+        let glyph = pages
+            .iter()
+            .find(|(page, _)| *page == current)
+            .map_or(PAGES[0].1, |(_, glyph)| glyph);
+        let select = self.select(
+            "settings-start-page",
+            label("settings.startup.startPage.title"),
+            pages
+                .iter()
+                .map(|(page, _)| label(&format!("shell.page.{page}")))
+                .collect(),
+            pages.iter().position(|(page, _)| *page == current),
+            false,
+            move |this, index, window, cx| {
+                this.preference("startPage", json!(pages[index].0), window, cx);
+            },
+            cx,
+        );
+        self.setting_text(
+            "startPage",
+            glyph,
+            "settings.startup.startPage.title",
+            "settings.startup.startPage.desc",
+            vec![select],
+        )
+    }
+
     /// The interface motion toggle (also used by the onboarding).
     pub(in crate::frontend) fn motion_toggle(
         &self,
@@ -1018,6 +1050,7 @@ impl Desktop {
                     "settings.startup.autostart.desc",
                     vec![autostart],
                 ));
+                cards.push(self.start_page_setting(cx));
                 let tray = self.setting_toggle(
                     "closeToTray",
                     boolean(settings, "closeToTray"),

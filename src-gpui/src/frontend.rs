@@ -51,6 +51,18 @@ const PAGES: [(&str, &str); 7] = [
     ("history", "HistoryIcon"),
     ("settings", "SettingsIcon"),
 ];
+/// The pages a start can open on (the `startPage` preference): all but Settings.
+fn start_pages() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
+    PAGES.iter().filter(|(page, _)| *page != "settings")
+}
+/// The page a start opens on: the saved `startPage` when it names one of
+/// `start_pages`, the process page otherwise.
+fn start_page(saved: &Value) -> &'static str {
+    saved
+        .as_str()
+        .and_then(|saved| start_pages().find(|(page, _)| *page == saved))
+        .map_or(PAGES[0].0, |(page, _)| page)
+}
 #[derive(Clone)]
 enum Action {
     Sort(String),
@@ -321,10 +333,15 @@ impl Desktop {
             settings_scroll: ScrollHandle::new(),
             device_scroll: ScrollHandle::new(),
             settings_target: None,
-            page: if options.page.is_empty() {
-                prefs.get("page", "processes".into())
-            } else {
+            // A start opens the chosen page, wherever the last run ended; an
+            // update's relaunch returns to the page it left (`page`, kept
+            // as pages change). Reshowing the window keeps the page shown.
+            page: if !options.page.is_empty() {
                 options.page.clone()
+            } else if boolean(&info, "updated") {
+                prefs.get("page", PAGES[0].0.into())
+            } else {
+                start_page(&prefs.get("startPage", Value::Null)).into()
             },
             page_epoch: 0,
             page_direction: 0.,
@@ -693,5 +710,43 @@ impl Render for DesktopRoot {
             )
             .child(self.charts.clone())
             .child(self.scrim.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PAGES, start_page, start_pages};
+    use serde_json::{Value, json};
+
+    #[test]
+    fn a_start_opens_a_saved_page_other_than_settings() {
+        // Every page can be chosen except Settings itself.
+        let choices = start_pages().map(|(page, _)| *page).collect::<Vec<_>>();
+        assert_eq!(
+            choices,
+            [
+                "processes",
+                "performance",
+                "services",
+                "startup",
+                "network",
+                "history"
+            ]
+        );
+        for page in &choices {
+            assert_eq!(start_page(&json!(page)), *page);
+        }
+        // Anything else opens the process page.
+        assert_eq!(PAGES[0].0, "processes");
+        for saved in [
+            Value::Null,
+            json!("settings"),
+            json!("Performance"),
+            json!(""),
+            json!(2),
+            json!({"page": "history"}),
+        ] {
+            assert_eq!(start_page(&saved), "processes", "{saved}");
+        }
     }
 }
