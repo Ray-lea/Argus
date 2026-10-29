@@ -740,7 +740,12 @@ impl Desktop {
                 let scale = appearance::SCALE.parse(&value.to_string());
                 self.ui_scale = scale;
                 self.prefs.set(key, scale);
-                appearance::apply_scale(scale, window, cx);
+                // Once this update is over: the new scale resizes the viewport at
+                // once, and the window's bounds observers update the desktop,
+                // which may not be updated twice at a time.
+                window.defer(cx, move |window, cx| {
+                    appearance::apply_scale(scale, window, cx)
+                });
                 cx.notify();
                 return;
             }
