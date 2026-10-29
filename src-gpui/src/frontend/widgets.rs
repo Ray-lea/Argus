@@ -124,8 +124,10 @@ pub(in crate::frontend) struct UiState {
     pub system_motion: Option<bool>,
     pub ticks: u64,
     pub icons: RefCell<HashMap<u32, Arc<Image>>>,
-    /// Measured heights of each dialog's body and footer, to centre it.
+    /// Measured heights of each dialog's body and footer, to size and place it.
     pub dialog_parts: Rc<RefCell<HashMap<(u64, u8), Pixels>>>,
+    /// Where each shown dialog sits and the height it is drawn at.
+    pub dialog_frames: RefCell<HashMap<u64, dialogs::DialogFrame>>,
     /// Segmented controls: where each one's selection was and is (x, width).
     pub slides: Rc<RefCell<HashMap<SharedString, Slide>>>,
     /// When each dialog was first drawn visible: its entrance runs from there,

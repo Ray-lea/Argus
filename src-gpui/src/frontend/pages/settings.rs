@@ -4106,12 +4106,10 @@ impl Desktop {
         &self,
         dialog: gpui_kit::component::dialog::Dialog,
         id: u64,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> gpui_kit::component::dialog::Dialog {
         let p = self.palette;
         let settings = &self.data["settings"];
-        let height = px(760.).min(window.viewport_size().height - px(48.));
         let hotkey = text(settings, "hotkey").to_owned();
         let global = boolean(settings, "hotkeyEnabled")
             && !hotkey.is_empty()
@@ -4437,15 +4435,18 @@ impl Desktop {
                 .accessibility_label(label("common.close"))
                 .on_click(cx.listener(|this, _, window, cx| this.close_overlay(window, cx))),
             );
+        // As tall as its content (the original kept min(760 px, window - 48 px)
+        // and scrolled inside): `surface` grows it downward, keeping its top.
         dialog
-            .h(height)
             .child(
-                self.measure(id, 0)
+                self.dialog_body(id)
                     .child(div().flex().flex_col().child(header).child(body)),
             )
             .footer(
                 self.measure(id, 1).child(
                     self.dialog_footer()
+                        // `.shortcut-dialog .dialog-footer`: 12 px above and below.
+                        .py(px(12.))
                         .justify_between()
                         .child(
                             div()

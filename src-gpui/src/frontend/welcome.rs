@@ -1131,7 +1131,7 @@ impl Desktop {
                         p.stroke_strong
                     })
             }));
-        dialog.child(self.measure(id, 0).child(content)).footer(
+        dialog.child(self.dialog_body(id).child(content)).footer(
             self.measure(id, 1).child(
                 self.dialog_footer()
                     .child(dots)
@@ -1677,11 +1677,9 @@ impl Desktop {
                 .on_click(cx.listener(|this, _, window, cx| this.close_overlay(window, cx))),
             )
         };
-        let height = window.viewport_size().height - px(48.);
         dialog
-            .max_h(height)
             .child(
-                self.measure(id, 0).child(
+                self.dialog_body(id).child(
                     div()
                         .pt(px(22.))
                         .px(px(24.))
