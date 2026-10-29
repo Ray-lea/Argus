@@ -175,10 +175,12 @@ impl WindowsWindowInner {
         let origin = logical_point(
             lparam.signed_loword() as f32,
             lparam.signed_hiword() as f32,
-            self.state.scale_factor.get(),
+            // Screen positions ignore the content zoom (display coordinates).
+            self.state.dpi_scale.get(),
         );
         self.state.origin.set(origin);
-        let size = self.state.logical_size.get();
+        let zoom = self.state.zoom.get();
+        let size = self.state.logical_size.get().map(|length| length * zoom);
         let center_x = origin.x.as_f32() + size.width.as_f32() / 2.;
         let center_y = origin.y.as_f32() + size.height.as_f32() / 2.;
         let monitor_bounds = self.state.display.get().bounds();
@@ -207,7 +209,8 @@ impl WindowsWindowInner {
 
     fn handle_get_min_max_info_msg(&self, lparam: LPARAM) -> Option<isize> {
         let min_size = self.state.min_size?;
-        let scale_factor = self.state.scale_factor.get();
+        // The minimum window size is in display pixels: zoom scales the content only.
+        let scale_factor = self.state.dpi_scale.get();
         let boarder_offset = &self.state.border_offset;
 
         unsafe {
@@ -868,7 +871,9 @@ impl WindowsWindowInner {
         let new_dpi = wparam.loword() as f32;
 
         let is_maximized = self.state.is_maximized();
-        let new_scale_factor = new_dpi / USER_DEFAULT_SCREEN_DPI as f32;
+        let new_dpi_scale = new_dpi / USER_DEFAULT_SCREEN_DPI as f32;
+        let new_scale_factor = new_dpi_scale * self.state.zoom.get();
+        self.state.dpi_scale.set(new_dpi_scale);
         self.state.scale_factor.set(new_scale_factor);
         self.state.border_offset.update(handle).log_err();
 

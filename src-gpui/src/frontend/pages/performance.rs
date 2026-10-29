@@ -5,6 +5,11 @@ mod telemetry;
 
 /// Device list geometry (the original's `.dev` rows).
 const ROW_HEIGHT: f32 = 58.;
+/// A device row: as tall as its preview chart, or as its name (13 px) and
+/// figures (12 px) at line height 1.4 with its padding once text grows.
+fn row_height() -> Pixels {
+    px(ROW_HEIGHT).max((theme::font(13.) + theme::font(12.)) * 1.4 + px(2. * 8. + 2.))
+}
 const ROW_GAP: f32 = 4.;
 const SIDE_DEFAULT: f32 = 248.;
 const SIDE_MIN: f32 = 200.;
@@ -493,7 +498,7 @@ impl Desktop {
         // The selected device: a raised surface with an accent pill, sliding between rows.
         let mark_top = gpui_kit::base::motion::transition(
             "perf-device-mark",
-            px(selected_index as f32 * (ROW_HEIGHT + ROW_GAP)),
+            (row_height() + px(ROW_GAP)) * selected_index as f32,
             gpui_kit::base::motion::Transition::new(std::time::Duration::from_millis(250)).easing(
                 gpui_kit::base::motion::Easing::cubic_bezier(0.33, 0., 0.1, 1.).unwrap_or_default(),
             ),
@@ -523,7 +528,7 @@ impl Desktop {
                     .left_0()
                     .right(px(scrollbar::SIZE))
                     .top(mark_top)
-                    .h(px(ROW_HEIGHT))
+                    .h(row_height())
                     .border_1()
                     .border_color(p.stroke)
                     .rounded(px(6.))
@@ -532,7 +537,7 @@ impl Desktop {
                         div()
                             .absolute()
                             .left(px(-1.))
-                            .top(px((ROW_HEIGHT - 2. - 18.) / 2.))
+                            .top((row_height() - px(2. + 18.)) / 2.)
                             .w(px(3.))
                             .h(px(18.))
                             .rounded(px(2.))
@@ -564,8 +569,8 @@ impl Desktop {
                     }))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .relative()
-                    .h(px(ROW_HEIGHT))
-                    .min_h(px(ROW_HEIGHT))
+                    .h(row_height())
+                    .min_h(row_height())
                     .w_full()
                     .justify_start()
                     .pl(px(12.))
@@ -589,7 +594,7 @@ impl Desktop {
                             )
                             .child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(theme::font(12.))
                                     .text_color(p.muted)
                                     .truncate()
                                     .child(self.device_sub(device)),
@@ -752,7 +757,7 @@ impl Desktop {
                     .child(
                         div()
                             .font_family(theme::display_font(cx))
-                            .text_size(theme::dimension("pageTitleSize"))
+                            .text_size(theme::font_dimension("pageTitleSize"))
                             .font_weight(FontWeight::SEMIBOLD)
                             .whitespace_nowrap()
                             .child(title),
@@ -764,7 +769,7 @@ impl Desktop {
                     div()
                         .min_w_0()
                         .truncate()
-                        .text_size(px(15.))
+                        .text_size(theme::font(15.))
                         .text_color(self.palette.muted)
                         .text_right()
                         .child(model),
@@ -789,7 +794,7 @@ impl Desktop {
                 d.child(
                     div()
                         .ml(px(2.))
-                        .text_size(px(13.))
+                        .text_size(theme::font(13.))
                         .text_color(self.palette.muted)
                         .child(unit),
                 )
@@ -810,7 +815,7 @@ impl Desktop {
             .flex_col()
             .child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .text_color(self.palette.muted)
                     .truncate()
                     .child(title.into()),
@@ -818,7 +823,7 @@ impl Desktop {
             .child(
                 div()
                     .font_family(theme::display_font(cx))
-                    .text_size(theme::dimension("metricSize"))
+                    .text_size(theme::font_dimension("metricSize"))
                     .whitespace_nowrap()
                     .child(value),
             )
@@ -826,7 +831,7 @@ impl Desktop {
                 d.child(
                     div()
                         .mt(px(1.))
-                        .text_size(px(12.))
+                        .text_size(theme::font(12.))
                         .text_color(self.palette.faint)
                         .child(note),
                 )
@@ -875,7 +880,7 @@ impl Desktop {
                 if small {
                     div()
                         .ml(px(2.))
-                        .text_size(px(13.))
+                        .text_size(theme::font(13.))
                         .text_color(self.palette.muted)
                         .child(run)
                 } else {
@@ -959,7 +964,7 @@ impl Desktop {
             .mt(px(18.))
             .flex_shrink_0()
             .max_w(px(640.))
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .text_color(self.palette.faint)
             .child(note)
             .into_any_element()
@@ -998,14 +1003,14 @@ impl Desktop {
                             .flex_none()
                             .flex()
                             .items_baseline()
-                            .text_size(px(14.))
+                            .text_size(theme::font(14.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(title)
                             .when_some(note, |d, note| {
                                 d.child(
                                     div()
                                         .ml(px(6.))
-                                        .text_size(px(12.))
+                                        .text_size(theme::font(12.))
                                         .font_weight(FontWeight::NORMAL)
                                         .text_color(p.muted)
                                         .child(note),
@@ -1018,7 +1023,7 @@ impl Desktop {
                             .min_w_0()
                             .truncate()
                             .text_right()
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .text_color(if alert { p.danger } else { p.muted })
                             .child(summary.unwrap_or_default()),
                     ),
@@ -1565,7 +1570,7 @@ impl Desktop {
                                     .rounded(px(4.))
                                     .bg(color.opacity(0.16))
                                     .text_color(color.blend(p.ink.opacity(0.3)))
-                                    .text_size(px(10.))
+                                    .text_size(theme::font(10.))
                                     .font_weight(FontWeight::BOLD)
                                     .line_height(px(15.))
                                     .text_center()
@@ -1574,7 +1579,7 @@ impl Desktop {
                         })
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .child(index.to_string()),
                         )
@@ -1584,7 +1589,7 @@ impl Desktop {
                                     .ml(px(2.))
                                     .min_w_0()
                                     .truncate()
-                                    .text_size(px(11.))
+                                    .text_size(theme::font(11.))
                                     .text_color(p.muted)
                                     .child(ghz(mhz)),
                             )
@@ -1595,13 +1600,13 @@ impl Desktop {
                         .flex_none()
                         .flex()
                         .items_baseline()
-                        .text_size(px(13.))
+                        .text_size(theme::font(13.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .map(|d| match value.as_f64() {
                             Some(load) => d.child(format!("{}", load.round())).child(
                                 div()
                                     .ml(px(1.))
-                                    .text_size(px(10.5))
+                                    .text_size(theme::font(10.5))
                                     .font_weight(FontWeight::NORMAL)
                                     .text_color(p.muted)
                                     .child("%"),
@@ -1708,7 +1713,7 @@ impl Desktop {
             .flex_shrink_0()
             .gap_x(px(18.))
             .mt(px(6.))
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .text_color(p.muted)
             .child(legend_item(
                 "memory-legend-used",
@@ -2000,7 +2005,7 @@ impl Desktop {
                         .items_center()
                         .gap_1()
                         .mt(px(2.))
-                        .text_size(px(12.))
+                        .text_size(theme::font(12.))
                         .text_color(p.accent)
                         .cursor_pointer()
                         .child(if all {

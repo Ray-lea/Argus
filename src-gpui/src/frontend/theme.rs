@@ -213,7 +213,7 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     tokens.colors.border = color("stroke");
     tokens.colors.input = color("control");
     tokens.colors.ring = color("accent");
-    tokens.typography.md.size = px(design["fontSize"].as_f64().expect("theme font size") as f32);
+    tokens.typography.md.size = font(base_font_size());
     tokens.typography.sans = sans;
     theme.apply_semantic_tokens(&tokens);
     theme.colors.group_box = color("layer");
@@ -337,7 +337,7 @@ fn installed_font(kind: &str, cx: &App) -> SharedString {
             .flatten()
             .filter_map(serde_json::Value::as_str)
             .find(|name| {
-                let id = system.resolve_font(&font(name.to_string()));
+                let id = system.resolve_font(&gpui_kit::font(name.to_string()));
                 system
                     .get_font_for_id(id)
                     .is_some_and(|resolved| resolved.family.as_ref() == *name)
@@ -355,6 +355,52 @@ fn installed_font(kind: &str, cx: &App) -> SharedString {
 }
 pub fn dimension(key: &str) -> Pixels {
     px(design()["layout"][key].as_f64().expect("layout token") as f32)
+}
+thread_local! {
+    /// The base font size (`fontSize`) over the theme's, see `font`.
+    static FONT_SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.) };
+}
+/// The theme's base font size, which the interface's text sizes are written for.
+pub fn base_font_size() -> f32 {
+    design()["fontSize"].as_f64().expect("theme font size") as f32
+}
+/// A text size written for the theme's 13 px base, following the base font
+/// size the user chose: the original's `calc(N rem / 13)`. Spacing and
+/// control sizes stay in pixels, as there.
+pub fn font(size: f32) -> Pixels {
+    px(size * FONT_SCALE.get())
+}
+/// A text size from the layout tokens (figures, titles), as `font`.
+pub fn font_dimension(key: &str) -> Pixels {
+    font(f32::from(dimension(key)))
+}
+/// The width of one line of interface text at `size`.
+pub fn text_width(text: &str, size: Pixels, window: &Window, cx: &App) -> Pixels {
+    let mut font = gpui_kit::font(cx.theme().font_family.clone());
+    font.fallbacks = Some(font_fallbacks(cx));
+    let run = TextRun {
+        len: text.len(),
+        font,
+        color: Hsla::default(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    window
+        .text_system()
+        .layout_line(text, size, &[run], None)
+        .width
+}
+/// How much taller a line of `size` px text at `line_height` gets at the
+/// chosen font size: what the original's content-sized boxes grew by, for
+/// heights written here in pixels (zero at the default size).
+pub fn text_growth(size: f32, line_height: f32) -> Pixels {
+    (font(size) - px(size)) * line_height
+}
+/// Sets the base font size `font` scales to; the caller applies the theme
+/// again (the component font size follows) and redraws.
+pub fn set_font_size(size: f32) {
+    FONT_SCALE.set(size / base_font_size());
 }
 pub fn heat_alpha(field: &str, value: f64) -> f32 {
     let heat = &design()["heat"];

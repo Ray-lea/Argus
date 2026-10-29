@@ -507,7 +507,7 @@ impl Desktop {
                         .rounded(px(6.))
                         .bg(p.hover)
                         .text_color(p.muted)
-                        .text_size(px(12.))
+                        .text_size(theme::font(12.))
                         .child(
                             div()
                                 .flex_shrink_0()
@@ -841,7 +841,7 @@ impl Desktop {
                     .child(
                         div()
                             .flex_shrink_0()
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .text_color(p.faint)
                             .child(name),
                     )
@@ -1046,7 +1046,7 @@ impl Desktop {
                     .child(
                         div()
                             .font_family(theme::display_font(cx))
-                            .text_size(px(18.))
+                            .text_size(theme::font(18.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .line_height(relative(1.25))
                             .child(title),
@@ -1126,11 +1126,16 @@ impl Desktop {
                     .right(px(1.))
                     .child(chart),
             )
-            .child(div().text_size(px(12.)).text_color(p.muted).child(title))
+            .child(
+                div()
+                    .text_size(theme::font(12.))
+                    .text_color(p.muted)
+                    .child(title),
+            )
             .child(
                 div()
                     .font_family(theme::display_font(cx))
-                    .text_size(px(18.))
+                    .text_size(theme::font(18.))
                     .font_features(tabular())
                     .child(value),
             )
@@ -1140,7 +1145,7 @@ impl Desktop {
         div()
             .mt(px(20.))
             .mb(px(6.))
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(self.palette.muted)
             .child(title)
@@ -1190,7 +1195,7 @@ impl Desktop {
             .rounded(px(6.))
             .bg(p.layer)
             .font_family(mono.clone())
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .line_height(relative(1.5))
             .child(selectable(id, value))
     }
@@ -1342,7 +1347,7 @@ impl Desktop {
             .border_color(design_color("stroke-strong", cx))
             .rounded(px(6.))
             .text_color(p.muted)
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .line_height(relative(1.5))
             .child(tip(
                 "PointerIcon",
@@ -1386,7 +1391,7 @@ impl Desktop {
                                 .gap(px(1.))
                                 .child(
                                     div()
-                                        .text_size(px(11.))
+                                        .text_size(theme::font(11.))
                                         .text_color(p.muted)
                                         .child(part.kind),
                                 )
@@ -1394,7 +1399,7 @@ impl Desktop {
                                 .when(!part.detail.is_empty(), |text| {
                                     text.child(
                                         div()
-                                            .text_size(px(12.))
+                                            .text_size(theme::font(12.))
                                             .text_color(p.muted)
                                             .font_features(tabular())
                                             .child(part.detail),

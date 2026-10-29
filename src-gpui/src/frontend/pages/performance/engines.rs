@@ -537,7 +537,7 @@ impl Desktop {
                 .flex_shrink_0()
                 .justify_between()
                 .my(px(2.))
-                .text_size(px(12.))
+                .text_size(theme::font(12.))
                 .text_color(p.muted)
                 .child(label("performance.gpu.engineUtilization"))
                 .child("100%")
@@ -669,7 +669,7 @@ impl Desktop {
                     div()
                         .min_w_0()
                         .flex()
-                        .text_size(px(12.))
+                        .text_size(theme::font(12.))
                         .font_weight(FontWeight::MEDIUM)
                         .child(self.select_compact(
                             format!("gpu-engine-choice-{slot}"),
@@ -689,13 +689,13 @@ impl Desktop {
                         .flex_none()
                         .flex()
                         .items_baseline()
-                        .text_size(px(13.))
+                        .text_size(theme::font(13.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(format!("{}", load.round()))
                         .child(
                             div()
                                 .ml(px(1.))
-                                .text_size(px(10.5))
+                                .text_size(theme::font(10.5))
                                 .font_weight(FontWeight::NORMAL)
                                 .text_color(p.muted)
                                 .child("%"),

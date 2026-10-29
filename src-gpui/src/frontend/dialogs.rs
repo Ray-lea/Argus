@@ -730,7 +730,7 @@ impl Desktop {
             .p_0()
             .gap_0()
             // The original's 13 px body text; the component's default is larger.
-            .text_size(px(13.))
+            .text_size(theme::font(13.))
             .bg(widgets::solid(p.flyout))
             .border_color(p.stroke_strong)
             .rounded(px(8.))
@@ -811,7 +811,7 @@ impl Desktop {
     pub(in crate::frontend) fn dialog_title(&self, title: impl Into<SharedString>) -> Div {
         div()
             .font_family(theme::DISPLAY_FONT)
-            .text_size(px(20.))
+            .text_size(theme::font(20.))
             .font_weight(FontWeight::SEMIBOLD)
             .line_height(relative(1.3))
             .text_color(self.palette.ink)
@@ -926,13 +926,18 @@ impl Desktop {
                         .child(self.dialog_title(modal.title.clone()))
                         .child(
                             div()
-                                .text_size(px(13.))
+                                .text_size(theme::font(13.))
                                 .line_height(relative(1.5))
                                 .text_color(p.muted)
                                 .child(modal.body.clone()),
                         )
                         .when_some(modal.error.clone(), |d, error| {
-                            d.child(div().text_size(px(12.)).text_color(p.danger).child(error))
+                            d.child(
+                                div()
+                                    .text_size(theme::font(12.))
+                                    .text_color(p.danger)
+                                    .child(error),
+                            )
                         }),
                 ),
             )
@@ -1602,7 +1607,7 @@ impl Desktop {
                                         .child(self.dialog_title(modal.title.clone()))
                                         .child(
                                             div()
-                                                .text_size(px(12.))
+                                                .text_size(theme::font(12.))
                                                 .line_height(relative(1.6))
                                                 .text_color(p.muted)
                                                 .child(modal.body.clone()),
@@ -1652,6 +1657,7 @@ impl Desktop {
                                                         .h(px(36.))
                                                         .px(px(11.))
                                                         .font_family(theme::MONO_FONT)
+                                                        .text_size(theme::font(13.))
                                                         .disabled(pending),
                                                 )
                                             },
@@ -1749,7 +1755,7 @@ impl Desktop {
                                                     div()
                                                         .mt(px(3.))
                                                         .min_h(px(36.))
-                                                        .text_size(px(12.))
+                                                        .text_size(theme::font(12.))
                                                         .line_height(relative(1.5))
                                                         .text_color(p.muted)
                                                         .child(label(if elevated {
@@ -1764,14 +1770,16 @@ impl Desktop {
                                     div()
                                         .min_h(px(62.))
                                         .pt(px(8.))
-                                        .text_size(px(12.))
+                                        .text_size(theme::font(12.))
                                         .line_height(relative(1.5))
                                         .text_color(if shown_error { p.danger } else { p.muted })
                                         .flex()
                                         .flex_col()
                                         .when_some(feedback, |d, (message, code)| {
                                             d.child(message).when_some(code, |d, code| {
-                                                d.child(div().text_size(px(11.)).child(code))
+                                                d.child(
+                                                    div().text_size(theme::font(11.)).child(code),
+                                                )
                                             })
                                         })
                                         .when(failure_kind.is_empty() && busy, |d| {
@@ -1880,7 +1888,7 @@ impl Desktop {
         let report = self.data.get("lockers").cloned();
         let note = |text: String| {
             div()
-                .text_size(px(12.))
+                .text_size(theme::font(12.))
                 .text_color(p.muted)
                 .child(text)
                 .into_any_element()
@@ -1891,7 +1899,12 @@ impl Desktop {
                 .child(div().text_color(p.muted).child(label("fileLock.checking")))
                 .child(self.progress_bar(None, cx));
         } else if let Some(error) = modal.error.clone() {
-            result = result.child(div().text_size(px(12.)).text_color(p.danger).child(error));
+            result = result.child(
+                div()
+                    .text_size(theme::font(12.))
+                    .text_color(p.danger)
+                    .child(error),
+            );
         } else if let Some(report) = report {
             let lockers = values(&report["lockers"]);
             result = result.child(div().text_color(p.muted).child(if lockers.is_empty() {
@@ -1935,7 +1948,7 @@ impl Desktop {
                         .bg(p.face)
                         .border_1()
                         .border_color(p.stroke)
-                        .text_size(px(11.))
+                        .text_size(theme::font(11.))
                         .text_color(p.muted)
                         .whitespace_nowrap()
                         .child(text)
@@ -1961,7 +1974,7 @@ impl Desktop {
                                 .child(
                                     div()
                                         .truncate()
-                                        .text_size(px(12.))
+                                        .text_size(theme::font(12.))
                                         .text_color(p.muted)
                                         .child(format!(
                                             "{exe}\u{3000}PID {}{}",
@@ -1980,7 +1993,7 @@ impl Desktop {
                                     d.child(
                                         div()
                                             .truncate()
-                                            .text_size(px(12.))
+                                            .text_size(theme::font(12.))
                                             .text_color(p.muted)
                                             .child(path.to_owned()),
                                     )
@@ -2175,7 +2188,7 @@ impl Desktop {
                         .child(
                             div()
                                 .truncate()
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.muted)
                                 .child(path.clone()),
                         )
@@ -2215,7 +2228,7 @@ impl Desktop {
                                 .child(self.dialog_title(modal.title.clone()))
                                 .child(
                                     div()
-                                        .text_size(px(13.))
+                                        .text_size(theme::font(13.))
                                         .line_height(relative(1.5))
                                         .text_color(p.muted)
                                         .child(modal.body.clone()),
@@ -2240,7 +2253,7 @@ impl Desktop {
                             div()
                                 .flex_1()
                                 .min_w_0()
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .text_color(p.muted)
                                 .child(label("fileLock.footerHint")),
                         )
@@ -2322,13 +2335,13 @@ impl Desktop {
                         .child(self.dialog_title(modal.title.clone()))
                         .child(
                             div()
-                                .text_size(px(13.))
+                                .text_size(theme::font(13.))
                                 .line_height(relative(1.5))
                                 .text_color(p.muted)
                                 .child(modal.body.clone()),
                         )
                         .when_some(self.forms.get("value"), |d, input| {
-                            d.child(Input::new(input))
+                            d.child(Input::new(input).text_size(theme::font(13.)))
                         }),
                 ),
             )
@@ -2394,7 +2407,7 @@ impl Desktop {
                                 .rounded(px(6.))
                                 .bg(p.layer)
                                 .font_family(theme::MONO_FONT)
-                                .text_size(px(12.))
+                                .text_size(theme::font(12.))
                                 .line_height(relative(1.5))
                                 .text_color(p.muted)
                                 .child(modal.body.clone())
@@ -2849,7 +2862,7 @@ impl Desktop {
                     // No shadow, as the original's toasts (`.toast`).
                     .bg(widgets::solid(p.flyout))
                     .text_color(p.ink)
-                    .text_size(px(13.))
+                    .text_size(theme::font(13.))
                     .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
                         if let Some(toast) = this.ui.toasts.iter_mut().find(|t| t.id == id) {
                             toast.hovered = *hovered;

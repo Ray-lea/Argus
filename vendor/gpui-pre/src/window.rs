@@ -3197,6 +3197,21 @@ impl Window {
         self.scale_factor
     }
 
+    /// Scales everything in the window by `zoom` on top of the display scale
+    /// factor, like page zoom in a browser: the scale factor grows by `zoom`,
+    /// the viewport shrinks by it and pointer positions arrive in the zoomed
+    /// coordinates, so layout, painting and hit testing stay consistent. The
+    /// window keeps its size and position on screen. Platforms without
+    /// support ignore it.
+    pub fn set_content_zoom(&mut self, zoom: f32, cx: &mut App) {
+        self.platform_window.set_content_zoom(zoom);
+        if self.scale_factor != self.platform_window.scale_factor()
+            || self.viewport_size != self.platform_window.content_size()
+        {
+            self.bounds_changed(cx);
+        }
+    }
+
     /// Overrides the display scale factor for tests.
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_scale_factor(&mut self, scale_factor: f32) {

@@ -50,7 +50,14 @@ pub struct WindowsWindowState {
     pub border_offset: WindowBorderOffset,
     pub appearance: Cell<WindowAppearance>,
     pub background_appearance: Cell<WindowBackgroundAppearance>,
+    /// Device pixels per content pixel: `dpi_scale * zoom`. Converts the
+    /// client area (layout, painting, pointer and IME positions).
     pub scale_factor: Cell<f32>,
+    /// The window's DPI over 96. Converts screen positions and the minimum
+    /// window size, which page zoom leaves alone.
+    pub dpi_scale: Cell<f32>,
+    /// The content zoom (`PlatformWindow::set_content_zoom`), 1 by default.
+    pub zoom: Cell<f32>,
     pub restore_from_minimized: Cell<Option<Box<dyn FnMut(RequestFrameOptions)>>>,
 
     pub callbacks: Callbacks,
@@ -166,6 +173,8 @@ impl WindowsWindowState {
             appearance: Cell::new(appearance),
             background_appearance: Cell::new(WindowBackgroundAppearance::Opaque),
             scale_factor: Cell::new(scale_factor),
+            dpi_scale: Cell::new(scale_factor),
+            zoom: Cell::new(1.),
             restore_from_minimized: Cell::new(restore_from_minimized),
             min_size,
             callbacks,
@@ -223,9 +232,11 @@ impl WindowsWindowState {
             placement
         };
         (
+            // Like `bounds`: the origin on the screen, the size in content pixels.
             calculate_client_rect(
                 placement.rcNormalPosition,
                 &self.border_offset,
+                self.dpi_scale.get(),
                 self.scale_factor.get(),
             ),
             placement.showCmd == SW_SHOWMAXIMIZED.0 as u32,
@@ -654,7 +665,13 @@ impl PlatformWindow for WindowsWindow {
 
     fn resize(&mut self, size: Size<Pixels>) {
         let hwnd = self.0.hwnd;
-        let bounds = gpui::bounds(self.bounds().origin, size).to_device_pixels(self.scale_factor());
+        // The origin is on the screen, the size in content pixels (see `bounds`).
+        let bounds = Bounds {
+            origin: Bounds::new(self.bounds().origin, Size::default())
+                .to_device_pixels(self.state.dpi_scale.get())
+                .origin,
+            size: size.to_device_pixels(self.scale_factor()),
+        };
         let rect = calculate_window_rect(bounds, &self.state.border_offset);
 
         self.0
@@ -679,6 +696,37 @@ impl PlatformWindow for WindowsWindow {
 
     fn scale_factor(&self) -> f32 {
         self.state.scale_factor.get()
+    }
+
+    fn set_content_zoom(&self, zoom: f32) {
+        let zoom = if zoom.is_finite() && zoom > 0. { zoom } else { 1. };
+        let previous = self.state.scale_factor.get();
+        let scale_factor = self.state.dpi_scale.get() * zoom;
+        self.state.zoom.set(zoom);
+        if scale_factor == previous {
+            return;
+        }
+        self.state.scale_factor.set(scale_factor);
+        self.state.direct_manipulation.set_scale_factor(scale_factor);
+        // The client area keeps its device size; only its logical size changes.
+        // A minimized window has an empty client rectangle: rescale the last
+        // size instead, and `WM_SIZE` reports the real one on restore.
+        let mut rect = RECT::default();
+        let logical_size = if unsafe { IsIconic(self.0.hwnd) }.as_bool()
+            || unsafe { GetClientRect(self.0.hwnd, &mut rect) }.is_err()
+        {
+            self.state
+                .logical_size
+                .get()
+                .map(|length| length * (previous / scale_factor))
+        } else {
+            size(
+                DevicePixels(rect.right - rect.left),
+                DevicePixels(rect.bottom - rect.top),
+            )
+            .to_pixels(scale_factor)
+        };
+        self.state.logical_size.set(logical_size);
     }
 
     fn appearance(&self) -> WindowAppearance {
@@ -1555,7 +1603,8 @@ fn calculate_window_rect(bounds: Bounds<DevicePixels>, border_offset: &WindowBor
 fn calculate_client_rect(
     rect: RECT,
     border_offset: &WindowBorderOffset,
-    scale_factor: f32,
+    origin_scale: f32,
+    size_scale: f32,
 ) -> Bounds<Pixels> {
     let left_offset = border_offset.width_offset.get() / 2;
     let top_offset = border_offset.height_offset.get() / 2;
@@ -1567,8 +1616,8 @@ fn calculate_client_rect(
     let bottom = rect.bottom - bottom_offset;
     let physical_size = size(DevicePixels(right - left), DevicePixels(bottom - top));
     Bounds {
-        origin: logical_point(left as f32, top as f32, scale_factor),
-        size: physical_size.to_pixels(scale_factor),
+        origin: logical_point(left as f32, top as f32, origin_scale),
+        size: physical_size.to_pixels(size_scale),
     }
 }
 

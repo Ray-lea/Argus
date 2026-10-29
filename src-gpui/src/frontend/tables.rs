@@ -49,8 +49,16 @@ const CELL_PADDING: f32 = 10.;
 /// The process table's header band: a total above each label, the original's
 /// cell padding and the band's own separator row.
 const PROCESS_HEADER_BAND: f32 = 49.;
+/// The process header band at the chosen font size: its total (15 px, line
+/// height 1.25) and label (12 px, 1.4) grow with the text, as the original
+/// header sized by its content did.
+fn process_header_band() -> Pixels {
+    px(PROCESS_HEADER_BAND) + theme::text_growth(15., 1.25) + theme::text_growth(12., 1.4)
+}
 /// The process table header: 4 px above the band, its separator the last row.
-pub(super) const PROCESS_HEADER_HEIGHT: f32 = 4. + PROCESS_HEADER_BAND;
+pub(super) fn process_header_height() -> Pixels {
+    px(4.) + process_header_band()
+}
 fn fields(page: &str, network: bool, available: f32) -> Vec<Field> {
     use CellKind::*;
     use Track::*;
@@ -329,7 +337,11 @@ impl Render for TableFrame {
             .child(
                 DataTable::new(&self.state)
                     .small()
-                    .header_row_height(px(if processes { PROCESS_HEADER_BAND } else { 34. }))
+                    .header_row_height(if processes {
+                        process_header_band()
+                    } else {
+                        px(34.) + theme::text_growth(12., 1.4)
+                    })
                     .bordered(false)
                     .fixed_cols_border(false)
                     .stripe(false)
@@ -530,7 +542,7 @@ impl TableDelegate for NativeTable {
         // The process header band ends in its own separator row, so the 4 px
         // below the labels are inside it (see `render_th`): no bottom padding.
         // While filtering, the workspace draws the accent separator over that
-        // row (`PROCESS_HEADER_HEIGHT`).
+        // row (`process_header_height`).
         div()
             .id("native-table-header")
             .px(px(ROW_INSET))
@@ -634,7 +646,7 @@ impl TableDelegate for NativeTable {
                     .flex()
                     .items_center()
                     .gap_1()
-                    .text_size(px(15.))
+                    .text_size(theme::font(15.))
                     .line_height(relative(1.25))
                     .font_family(theme::display_font(cx))
                     .text_color(p.ink)
@@ -658,7 +670,7 @@ impl TableDelegate for NativeTable {
             .flex()
             .items_center()
             .gap(px(2.))
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .line_height(relative(1.4))
             .when(processes, |d| d.mt(px(1.)))
             .whitespace_nowrap()
@@ -779,7 +791,7 @@ impl TableDelegate for NativeTable {
             // Folded headings show their totals a step brighter.
             let collapsed = !row.expanded;
             return element
-                .text_size(px(12.))
+                .text_size(theme::font(12.))
                 .text_color(if collapsed { p.muted } else { faint })
                 .child(value)
                 .into_any_element();
@@ -864,7 +876,7 @@ impl TableDelegate for NativeTable {
             CellKind::Mono | CellKind::MonoDim | CellKind::Port | CellKind::PortDim => {
                 element = element
                     .font_family(theme::mono_font(cx))
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .when(
                         matches!(field.kind, CellKind::MonoDim | CellKind::PortDim),
                         |d| d.text_color(faint),
@@ -1007,7 +1019,7 @@ fn tag(text: impl Into<SharedString>, border: Hsla, color: Hsla) -> Div {
         .border_1()
         .border_color(border)
         .rounded_full()
-        .text_size(px(11.))
+        .text_size(theme::font(11.))
         .line_height(px(16.))
         .text_color(color)
         .child(text.into())
@@ -1065,7 +1077,7 @@ impl NativeTable {
                         .flex_shrink(1.)
                         .min_w_0()
                         .truncate()
-                        .text_size(px(14.))
+                        .text_size(theme::font(14.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.ink)
                         .child(row.title.clone()),
@@ -1078,7 +1090,7 @@ impl NativeTable {
                         .rounded_full()
                         .bg(p.accent.opacity(0.14))
                         .text_color(p.accent.blend(p.ink.opacity(0.22)))
-                        .text_size(px(11.))
+                        .text_size(theme::font(11.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .line_height(px(18.))
                         .flex()
@@ -1141,7 +1153,7 @@ impl NativeTable {
                     .rounded_full()
                     .bg(p.hover)
                     .text_color(p.muted)
-                    .text_size(px(11.))
+                    .text_size(theme::font(11.))
                     .line_height(px(17.))
                     .flex()
                     .justify_center()
@@ -1163,7 +1175,7 @@ impl NativeTable {
                     .rounded(px(4.))
                     .bg(p.accent.opacity(0.11))
                     .text_color(p.accent.blend(p.ink.opacity(0.28)))
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .child(
                         icon("NoteIcon", p.accent.blend(p.ink.opacity(0.28)))
                             .size(px(12.))

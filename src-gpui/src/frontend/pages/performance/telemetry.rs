@@ -285,7 +285,7 @@ impl Desktop {
                             .rounded(px(4.))
                             .bg(p.ink.opacity(0.06))
                             .text_color(p.muted)
-                            .text_size(px(11.))
+                            .text_size(theme::font(11.))
                             .line_height(px(16.))
                             .child(name)
                     }),
@@ -555,7 +555,7 @@ impl Desktop {
             .flex_col()
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(theme::font(11.))
                     .text_color(self.palette.muted)
                     .truncate()
                     .child(name),
@@ -566,11 +566,11 @@ impl Desktop {
                     .flex()
                     .items_baseline()
                     .gap_1()
-                    .text_size(px(16.))
+                    .text_size(theme::font(16.))
                     .child(value)
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .text_color(self.palette.muted)
                             .child(unit.to_owned()),
                     ),
@@ -693,7 +693,7 @@ impl Desktop {
                     .child(
                         div()
                             .mb(px(12.))
-                            .text_size(px(13.))
+                            .text_size(theme::font(13.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(label(title)),
                     )
@@ -720,7 +720,7 @@ impl Desktop {
                 d.child(
                     div()
                         .mb(px(12.))
-                        .text_size(px(12.))
+                        .text_size(theme::font(12.))
                         .text_color(p.muted)
                         .child(status),
                 )
@@ -780,7 +780,7 @@ impl Desktop {
                     .min_w_full()
                     .grid()
                     .grid_cols_min_content(columns)
-                    .text_size(px(12.))
+                    .text_size(theme::font(12.))
                     .children(cells),
             )
             .child(scrollbar::scrollbar(format!("{id}-scrollbar"), &scroll, p.dark).horizontal())
@@ -793,7 +793,7 @@ impl Desktop {
             .gap_1()
             .child(name)
             .when_some(unit, |d, unit| {
-                d.child(div().text_size(px(10.)).child(unit.to_owned()))
+                d.child(div().text_size(theme::font(10.)).child(unit.to_owned()))
             })
             .into_any_element()
     }
@@ -1015,7 +1015,7 @@ impl Desktop {
                     .child(
                         div()
                             .mb(px(12.))
-                            .text_size(px(13.))
+                            .text_size(theme::font(13.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(label("performance.cpu.idleStates")),
                     )
@@ -1055,7 +1055,7 @@ impl Desktop {
                     .child(
                         div()
                             .mb(px(12.))
-                            .text_size(px(13.))
+                            .text_size(theme::font(13.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(label("performance.cpu.idlePerCore")),
                     )

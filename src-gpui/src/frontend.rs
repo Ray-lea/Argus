@@ -1,4 +1,5 @@
 //! Native views share the existing sampling and application services.
+mod appearance;
 mod assets;
 mod backend;
 mod charts;
@@ -185,6 +186,9 @@ struct Desktop {
     focus: FocusHandle,
     subscriptions: Vec<Subscription>,
     prefs: prefs::Prefs,
+    /// Interface scale (percent) and base font size (px), see `appearance`.
+    ui_scale: u32,
+    font_size: u32,
     view: String,
     sort: String,
     descending: bool,
@@ -232,13 +236,13 @@ struct Desktop {
     settings_section: String,
 }
 impl Desktop {
-    fn new(host: Host, options: Options, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let prefs = prefs::Prefs::load(
-            host.path()
-                .app_config_dir()
-                .expect("application config")
-                .join("preferences.json"),
-        );
+    fn new(
+        host: Host,
+        options: Options,
+        prefs: prefs::Prefs,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let search =
             cx.new(|cx| InputState::new(window, cx).placeholder(tr!("shell.search.processes")));
         let settings =
@@ -352,6 +356,8 @@ impl Desktop {
             history_cursor: None,
             history_hover: None,
             settings_section: "language".into(),
+            ui_scale: appearance::SCALE.load(&prefs),
+            font_size: appearance::FONT_SIZE.load(&prefs),
             prefs,
         };
         // A list page opens in its saved order, before the first rows are built.
@@ -529,6 +535,16 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
             let owner = host.clone();
             gpui_kit::open_window(opts, cx, move |window, cx| {
                 window.set_window_title(&argus_app::config::app_title());
+                let prefs = prefs::Prefs::load(
+                    host.path()
+                        .app_config_dir()
+                        .expect("application config")
+                        .join("preferences.json"),
+                );
+                // Before the theme and the first layout: text sizes and the
+                // viewport depend on them.
+                appearance::apply_font_size(appearance::FONT_SIZE.load(&prefs));
+                appearance::apply_scale(appearance::SCALE.load(&prefs), window, cx);
                 let saved = host.state::<crate::settings::SettingsStore>().get();
                 theme::apply(
                     if crate::platform::is_dark(saved.theme) {
@@ -540,7 +556,8 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                     cx,
                 );
                 scrollbar::style_library(crate::platform::is_dark(saved.theme), cx);
-                let view = cx.new(|cx| Desktop::new(host.clone(), options.clone(), window, cx));
+                let view =
+                    cx.new(|cx| Desktop::new(host.clone(), options.clone(), prefs, window, cx));
                 // Apply platform integration after the component root is constructed.
                 window.defer(cx, move |window, cx| {
                     crate::platform::attach_window(&host, &options, window, cx);

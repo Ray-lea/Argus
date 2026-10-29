@@ -85,7 +85,12 @@ pub(super) fn fill_menu(
                             .child(text.clone()),
                     )
                     .when_some(hint, |d, hint| {
-                        d.child(div().text_size(px(12.)).text_color(p.faint).child(hint))
+                        d.child(
+                            div()
+                                .text_size(theme::font(12.))
+                                .text_color(p.faint)
+                                .child(hint),
+                        )
                     })
             })
         } else {

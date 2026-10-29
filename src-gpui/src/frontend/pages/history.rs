@@ -465,7 +465,7 @@ impl Desktop {
                             .flex()
                             .items_center()
                             .gap(px(6.))
-                            .text_size(px(12.))
+                            .text_size(theme::font(12.))
                             .text_color(p.muted)
                             .child(div().size(px(8.)).rounded(px(2.)).bg(metric.color))
                             .child(label(&format!("common.resource.{}", metric.resource))),
@@ -473,10 +473,10 @@ impl Desktop {
                     .child(match value_text {
                         Some(text) => div()
                             .truncate()
-                            .text_size(px(15.))
+                            .text_size(theme::font(15.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(text),
-                        None => div().text_size(px(15.)).text_color(p.faint).child(
+                        None => div().text_size(theme::font(15.)).text_color(p.faint).child(
                             if read_ts.is_none() && readout.is_none() {
                                 label("format.missing")
                             } else {
@@ -485,7 +485,12 @@ impl Desktop {
                         ),
                     })
                     .when_some(detail.filter(|_| !compact), |d, detail| {
-                        d.child(div().text_size(px(12.)).text_color(p.faint).child(detail))
+                        d.child(
+                            div()
+                                .text_size(theme::font(12.))
+                                .text_color(p.faint)
+                                .child(detail),
+                        )
                     }),
             );
 
@@ -583,7 +588,7 @@ impl Desktop {
                                 .absolute()
                                 .top(px(3.))
                                 .right(px(6.))
-                                .text_size(px(11.))
+                                .text_size(theme::font(11.))
                                 .text_color(p.faint)
                                 .child(scale),
                         )
@@ -613,7 +618,7 @@ impl Desktop {
             .relative()
             .h(px(AXIS))
             .flex_shrink_0()
-            .text_size(px(11.))
+            .text_size(theme::font(11.))
             .text_color(p.faint)
             .children(tick_list.iter().filter_map(|tick| {
                 let f = ((tick - from) / span) as f32;
@@ -677,7 +682,7 @@ impl Desktop {
                 .rounded(px(4.))
                 .bg(if pinned { p.accent } else { p.tip })
                 .text_color(if pinned { on_accent } else { p.ink })
-                .text_size(px(11.))
+                .text_size(theme::font(11.))
                 .line_height(px(18.))
                 .whitespace_nowrap()
                 .child(text)
@@ -752,44 +757,45 @@ impl Desktop {
                     }
                 }),
             );
-        let plot = div()
-            .relative()
-            .flex_1()
-            .min_w_0()
-            .flex()
-            .flex_col()
-            .gap(px(ROW_GAP))
-            .children(charts_column)
-            .child(axis)
-            .when(empty, |d| {
-                d.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .right_0()
-                        .bottom(px(AXIS))
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .justify_center()
-                        .gap_1()
-                        .text_color(p.muted)
-                        .child(label(if recording_off {
-                            "history.empty.off"
-                        } else {
-                            "history.empty.none"
-                        }))
-                        .child(div().text_size(px(12.)).text_color(p.faint).child(label(
-                            if recording_off {
-                                "history.empty.offHint"
+        let plot =
+            div()
+                .relative()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap(px(ROW_GAP))
+                .children(charts_column)
+                .child(axis)
+                .when(empty, |d| {
+                    d.child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .right_0()
+                            .bottom(px(AXIS))
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .justify_center()
+                            .gap_1()
+                            .text_color(p.muted)
+                            .child(label(if recording_off {
+                                "history.empty.off"
                             } else {
-                                "history.empty.hint"
-                            },
-                        ))),
-                )
-            })
-            .child(overlay);
+                                "history.empty.none"
+                            }))
+                            .child(div().text_size(theme::font(12.)).text_color(p.faint).child(
+                                label(if recording_off {
+                                    "history.empty.offHint"
+                                } else {
+                                    "history.empty.hint"
+                                }),
+                            )),
+                    )
+                })
+                .child(overlay);
         let graphs = div()
             .flex_none()
             .flex()
@@ -829,7 +835,7 @@ impl Desktop {
             .py(px(8.))
             .border_t_1()
             .border_color(p.stroke)
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .text_color(p.muted)
             .when_some(earliest, |d, ts| {
                 d.child(
@@ -890,17 +896,20 @@ impl Desktop {
                     .pb(px(4.))
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(theme::font(14.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(title),
                     )
-                    .child(div().text_size(px(12.)).text_color(p.faint).child(label(
-                        if self.history_cursor.is_none() {
-                            "history.hint.pick"
-                        } else {
-                            "history.hint.move"
-                        },
-                    ))),
+                    .child(
+                        div()
+                            .text_size(theme::font(12.))
+                            .text_color(p.faint)
+                            .child(label(if self.history_cursor.is_none() {
+                                "history.hint.pick"
+                            } else {
+                                "history.hint.move"
+                            })),
+                    ),
             )
             .child(table)
             .child(foot);
@@ -1000,7 +1009,7 @@ impl Desktop {
             .pr(px(6. + scrollbar::SIZE))
             .border_b_1()
             .border_color(p.stroke)
-            .text_size(px(12.))
+            .text_size(theme::font(12.))
             .text_color(p.muted)
             .children(columns.iter().map(|(id, name, width, title)| {
                 let id = (*id).to_owned();
