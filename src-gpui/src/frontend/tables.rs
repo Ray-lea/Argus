@@ -1052,22 +1052,25 @@ impl TableDelegate for NativeTable {
         // A double-click folds a group (the table reports the first, click
         // count 2). Another double-click right after it arrives as clicks 3 and
         // 4 within the system's double-click time and would be lost until that
-        // time passed: every completed pair folds again.
-        let refold = (self.page == "processes" && row.expandable).then(|| {
-            let owner = self.owner.clone();
-            let key = row.key.clone();
-            move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
-                let count = event.click_count();
-                if count >= 4 && count.is_multiple_of(2) {
-                    let owner = owner.clone();
-                    let key = key.clone();
-                    window.defer(cx, move |window, cx| {
-                        let _ =
-                            owner.update(cx, |this, cx| this.act(Action::Fold(key), window, cx));
-                    });
+        // time passed: every completed pair folds again. A category heading
+        // folds on every press instead (its select event), as the original's
+        // `onClick`: no pair folds it again.
+        let refold =
+            (self.page == "processes" && row.expandable && row.section.is_none()).then(|| {
+                let owner = self.owner.clone();
+                let key = row.key.clone();
+                move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
+                    let count = event.click_count();
+                    if count >= 4 && count.is_multiple_of(2) {
+                        let owner = owner.clone();
+                        let key = key.clone();
+                        window.defer(cx, move |window, cx| {
+                            let _ = owner
+                                .update(cx, |this, cx| this.act(Action::Fold(key), window, cx));
+                        });
+                    }
                 }
-            }
-        });
+            });
         let tr = div()
             .id(("native-row", index))
             .relative()
@@ -1269,6 +1272,8 @@ impl NativeTable {
                             i.rotate(gpui_kit::gpui::radians(std::f32::consts::FRAC_PI_2))
                         }),
                 )
+                // Its press never reaches the row: the row's double-click does
+                // not fold again, and every click folds, whatever its count.
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_click(move |_, window, cx| {
                     let owner = owner.clone();
@@ -1690,7 +1695,8 @@ impl Desktop {
                         if let Some(row) = this.rows.get(*index) {
                             let row = row.clone();
                             if this.page == "processes" {
-                                if row.expandable {
+                                // A heading already folded on this press (`SelectRow`).
+                                if row.expandable && row.section.is_none() {
                                     this.act(Action::Fold(row.key.clone()), window, cx);
                                 }
                             } else {
