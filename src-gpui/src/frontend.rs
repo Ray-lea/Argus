@@ -398,6 +398,21 @@ impl Desktop {
             window,
             cx,
         );
+        if let Some(outcomes) = this.prefs.outcomes() {
+            cx.spawn_in(window, async move |this, cx| {
+                while let Ok(saved) = outcomes.recv().await {
+                    if this
+                        .update_in(cx, |this, window, cx| {
+                            this.preferences_written(saved, window, cx)
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })
+            .detach();
+        }
         let receiver = host.notifications();
         cx.spawn_in(window, async move |this, cx| {
             while receiver.recv().await.is_ok() {

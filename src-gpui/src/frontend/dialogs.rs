@@ -2655,6 +2655,21 @@ impl Desktop {
         );
     }
 
+    /// A preference write finished: when saving starts to fail, says so once
+    /// (App.tsx, `preferenceSaveFailed`).
+    pub(in crate::frontend) fn preferences_written(
+        &mut self,
+        saved: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.prefs.record(saved) {
+            self.notify_toast(ToastKind::Error, label("settings.appearance.saveFailed"));
+            window.refresh();
+            cx.notify();
+        }
+    }
+
     /// Shows a notice for five seconds.
     pub(in crate::frontend) fn notify_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
         self.toast_with(kind, text, 5000, vec![]);
