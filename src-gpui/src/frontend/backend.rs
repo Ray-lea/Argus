@@ -1358,12 +1358,18 @@ impl Desktop {
         {
             self.act(Action::Fold(row.key.clone()), window, cx);
         }
+        // The details pane's width, as dragging its edge sets it (test only).
+        if let Some(width) = control["detailsWidth"].as_f64() {
+            self.details_width = Self::clamp_details_width(width as f32, window);
+        }
         for key in [
             "navPosition",
             "navExpanded",
             "coreFilter",
             "uiMotion",
             "historyRange",
+            "fontSize",
+            "uiScale",
         ] {
             if let Some(value) = control.get(key) {
                 self.preference(key, value.clone(), window, cx);

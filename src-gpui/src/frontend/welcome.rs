@@ -240,36 +240,25 @@ impl Desktop {
         cx.notify();
     }
 
-    /// Places `parts` where the catalog text names them (`{name}`).
-    /// Lays out a formatted text whose placeholders were filled with marker
-    /// characters, putting each part where its marker is.
+    /// Places `parts` where the catalog text names them (`{name}`): a
+    /// formatted text whose placeholders were filled with marker characters,
+    /// each part set in the text's lines where its marker is, as the
+    /// original's inline keycaps.
     pub(in crate::frontend) fn rich(
         &self,
         text: String,
-        mut parts: Vec<(char, AnyElement)>,
+        parts: Vec<(char, AnyElement)>,
     ) -> AnyElement {
-        let mut rest = text;
-        let mut row = div().flex().flex_wrap().items_center().gap_x(px(4.));
-        loop {
-            let next = parts
-                .iter()
-                .enumerate()
-                .filter_map(|(index, (marker, _))| rest.find(*marker).map(|at| (at, index)))
-                .min();
-            let Some((at, index)) = next else {
-                if !rest.is_empty() {
-                    row = row.child(rest);
-                }
-                break;
-            };
-            let (marker, element) = parts.remove(index);
-            if at > 0 {
-                row = row.child(rest[..at].to_owned());
-            }
-            row = row.child(element);
-            rest = rest[at + marker.len_utf8()..].to_owned();
-        }
-        row.into_any_element()
+        inline::inline_text(
+            text,
+            parts
+                .into_iter()
+                .map(|(marker, element)| {
+                    inline::part(marker, element, px(0.), inline::Align::Middle)
+                })
+                .collect(),
+        )
+        .into_any_element()
     }
 
     // ---- Onboarding -------------------------------------------------------------
