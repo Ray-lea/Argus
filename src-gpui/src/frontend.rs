@@ -394,6 +394,14 @@ impl Desktop {
             window,
             cx,
         );
+        // Whether an administrator start fell back to standard permissions.
+        this.request(
+            "administrator_status",
+            json!({}),
+            Some("administrator"),
+            window,
+            cx,
+        );
         let receiver = host.notifications();
         cx.spawn_in(window, async move |this, cx| {
             while receiver.recv().await.is_ok() {

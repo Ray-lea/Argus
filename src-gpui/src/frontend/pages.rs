@@ -650,7 +650,11 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         match key {
-            "finishOnboarding" | "configurePrivilege" => {
+            "finishOnboarding" => {
+                self.finish_onboarding(window, cx);
+                return;
+            }
+            "configurePrivilege" => {
                 self.request(
                     "complete_onboarding",
                     json!({"version":welcome::configuration()["onboardingVersion"]}),
@@ -659,9 +663,7 @@ impl Desktop {
                     cx,
                 );
                 self.act(Action::CloseOverlay, window, cx);
-                if key == "configurePrivilege" {
-                    self.preference("settingsSection", json!("privilege"), window, cx);
-                }
+                self.preference("settingsSection", json!("privilege"), window, cx);
                 return;
             }
             "uiMotion" => {

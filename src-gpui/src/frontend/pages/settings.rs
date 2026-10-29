@@ -65,6 +65,82 @@ fn short_time(ms: i64) -> String {
     )
 }
 
+/// What the administrator card shows: locale keys for its state and notes,
+/// the state's tone and its controls (Settings.tsx, AdministratorSettings).
+#[derive(Debug, PartialEq)]
+pub(in crate::frontend) struct AdministratorView {
+    pub state: &'static str,
+    pub tone: &'static str,
+    pub notes: Vec<&'static str>,
+    /// Whether "Repair authorization" is offered.
+    pub repair: bool,
+    pub checked: bool,
+    pub disabled: bool,
+}
+
+/// `status` is the host's `admin::Status` (none before it arrives or after it
+/// failed); `loading` while it is being read, `busy` while a change runs.
+pub(in crate::frontend) fn administrator_view(
+    status: Option<&Value>,
+    loading: bool,
+    busy: bool,
+    onboarding: bool,
+) -> AdministratorView {
+    let flag = |key: &str| status.is_some_and(|s| boolean(s, key));
+    let (supported, enabled, ready, eligible) = (
+        flag("supported"),
+        flag("enabled"),
+        flag("ready"),
+        flag("eligible"),
+    );
+    let failed = status.is_some_and(|s| s["error"].is_string());
+    let working = busy || loading;
+    let state = if working {
+        "settings.administrator.busy"
+    } else if enabled && ready {
+        "settings.administrator.authorized"
+    } else if enabled {
+        "settings.administrator.repair"
+    } else {
+        "settings.administrator.off"
+    };
+    let tone = if working {
+        "busy"
+    } else if ready {
+        "ok"
+    } else if enabled {
+        "warn"
+    } else {
+        "off"
+    };
+    let mut notes = vec![
+        if flag("elevated") {
+            "settings.administrator.currentAdmin"
+        } else {
+            "settings.administrator.currentStandard"
+        },
+        if onboarding {
+            "settings.administrator.afterOnboarding"
+        } else {
+            "settings.administrator.restart"
+        },
+    ];
+    if status.is_some() && !supported {
+        notes.push("settings.administrator.development");
+    }
+    if supported && !eligible {
+        notes.push("settings.administrator.standardAccount");
+    }
+    AdministratorView {
+        state,
+        tone,
+        notes,
+        repair: supported && enabled && (!ready || failed),
+        checked: enabled,
+        disabled: working || !eligible || (!supported && !enabled),
+    }
+}
+
 impl Desktop {
     /// A card glyph at the cards' 20 px.
     fn glyph(&self, name: &str) -> AnyElement {
@@ -522,6 +598,13 @@ impl Desktop {
                 window,
                 cx,
             );
+            self.request(
+                "administrator_status",
+                json!({}),
+                Some("administrator"),
+                window,
+                cx,
+            );
             self.request("update_status", json!({}), Some("updates"), window, cx);
         }
         self.request("rule_stats", json!({}), Some("ruleStats"), window, cx);
@@ -930,6 +1013,7 @@ impl Desktop {
                 ));
             }
             "privilege" => {
+                cards.push(self.administrator_card(false, window, cx));
                 cards.push(self.service_card(cx));
                 cards.push(self.sensors_card(settings, window, cx));
                 cards.push(self.task_manager_card(cx));
@@ -1389,6 +1473,100 @@ impl Desktop {
             window,
             cx,
         );
+    }
+
+    /// Running Argus as administrator through the one-time grant
+    /// (Settings.tsx, AdministratorSettings); the onboarding shows the same
+    /// card and defers the restart to its end.
+    pub(in crate::frontend) fn administrator_card(
+        &self,
+        onboarding: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let status = self.data.get("administrator");
+        let busy = self.ui.busy.contains("administrator");
+        let loading = (status.is_none() && !self.ui.errors.contains_key("administratorStatus"))
+            || self.ui.busy.contains("administratorStatus");
+        let view = administrator_view(status, loading, busy, onboarding);
+        let note = div()
+            .flex()
+            .flex_col()
+            .children(view.notes.iter().map(|key| div().child(label(key))))
+            .into_any_element();
+        let error = self
+            .ui
+            .errors
+            .get("administrator")
+            .cloned()
+            .or_else(|| status.and_then(|s| s["error"].as_str()).map(str::to_owned))
+            .or_else(|| self.ui.errors.get("administratorStatus").cloned());
+        let mut controls = vec![];
+        if view.repair {
+            controls.push(
+                self.btn(
+                    "administrator-repair",
+                    label("settings.administrator.repair"),
+                    None,
+                    Tone::Plain,
+                )
+                .inert(busy)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.set_administrator(true, true, onboarding, window, cx)
+                }))
+                .into_any_element(),
+            );
+        }
+        controls.push(self.toggle(
+            if onboarding {
+                "onboarding-administrator"
+            } else {
+                "administrator"
+            },
+            label("settings.administrator.allow"),
+            view.checked,
+            view.disabled,
+            move |this, on, window, cx| this.set_administrator(on, false, onboarding, window, cx),
+            window,
+            cx,
+        ));
+        self.feature(
+            "administrator",
+            "ShieldIcon",
+            label("settings.administrator.title"),
+            label("settings.administrator.desc"),
+            label(view.state),
+            view.tone,
+            note,
+            error,
+            controls,
+            Some(label("settings.administrator.scope")),
+        )
+    }
+
+    /// Turns the administrator start on or off, or repairs it. Outside the
+    /// onboarding the host restarts Argus at once with the new permissions.
+    fn set_administrator(
+        &mut self,
+        enabled: bool,
+        repair: bool,
+        onboarding: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.ui.busy.contains("administrator") || self.options.fixture.is_some() {
+            return;
+        }
+        self.ui.busy.insert("administrator".into());
+        self.ui.errors.remove("administrator");
+        self.request(
+            "set_administrator_mode",
+            json!({"enabled":enabled,"defer":onboarding,"repair":repair}),
+            None,
+            window,
+            cx,
+        );
+        cx.notify();
     }
 
     // ---- Data -------------------------------------------------------------------
@@ -3242,6 +3420,14 @@ impl Desktop {
             "set_kernel_sensors" => {
                 self.ui.busy.remove("sensors");
             }
+            "administrator_status" => {
+                self.ui.busy.remove("administratorStatus");
+                self.ui.errors.remove("administratorStatus");
+            }
+            "set_administrator_mode" => {
+                self.ui.busy.remove("administrator");
+                self.data.insert("administrator".into(), value.clone());
+            }
             "clear_history" => {
                 self.ui.busy.remove("clearHistory");
                 self.notify_toast_for(
@@ -3321,6 +3507,31 @@ impl Desktop {
             "set_kernel_sensors" => {
                 self.ui.busy.remove("sensors");
                 self.ui.errors.insert("sensors".into(), message.to_owned());
+            }
+            "administrator_status" => {
+                self.ui.busy.remove("administratorStatus");
+                self.ui
+                    .errors
+                    .insert("administratorStatus".into(), message.to_owned());
+            }
+            "set_administrator_mode" => {
+                // The card reads the state again, showing it as busy meanwhile.
+                self.ui.busy.remove("administrator");
+                self.ui
+                    .errors
+                    .insert("administrator".into(), message.to_owned());
+                self.ui.busy.insert("administratorStatus".into());
+                self.request(
+                    "administrator_status",
+                    json!({}),
+                    Some("administrator"),
+                    window,
+                    cx,
+                );
+            }
+            "complete_onboarding" | "apply_administrator_mode" => {
+                self.ui.busy.remove("onboarding");
+                self.notify_toast(ToastKind::Error, wrapped("onboarding.saveFailed"));
             }
             "clear_history" => {
                 self.ui.busy.remove("clearHistory");
@@ -3800,5 +4011,124 @@ impl Desktop {
                         ),
                 ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AdministratorView, administrator_view};
+    use serde_json::{Value, json};
+
+    fn status(enabled: bool, ready: bool, elevated: bool, error: Option<&str>) -> Value {
+        json!({
+            "supported": true,
+            "enabled": enabled,
+            "ready": ready,
+            "elevated": elevated,
+            "eligible": true,
+            "error": error,
+        })
+    }
+
+    #[test]
+    fn administrator_card_follows_the_grant() {
+        // Off: the switch is free, nothing to repair.
+        let off = administrator_view(
+            Some(&status(false, false, false, None)),
+            false,
+            false,
+            false,
+        );
+        assert_eq!(
+            off,
+            AdministratorView {
+                state: "settings.administrator.off",
+                tone: "off",
+                notes: vec![
+                    "settings.administrator.currentStandard",
+                    "settings.administrator.restart"
+                ],
+                repair: false,
+                checked: false,
+                disabled: false,
+            }
+        );
+        // Authorized and running elevated.
+        let on = administrator_view(Some(&status(true, true, true, None)), false, false, false);
+        assert_eq!(
+            (on.state, on.tone, on.repair, on.checked, on.disabled),
+            (
+                "settings.administrator.authorized",
+                "ok",
+                false,
+                true,
+                false
+            )
+        );
+        assert_eq!(on.notes[0], "settings.administrator.currentAdmin");
+        // Enabled but not ready: the state asks for a repair, which is offered.
+        let broken =
+            administrator_view(Some(&status(true, false, false, None)), false, false, false);
+        assert_eq!(
+            (broken.state, broken.tone, broken.repair),
+            ("settings.administrator.repair", "warn", true)
+        );
+        // Ready, but this start fell back: repair stays offered.
+        let fallback = administrator_view(
+            Some(&status(true, true, false, Some("fallback"))),
+            false,
+            false,
+            false,
+        );
+        assert_eq!(
+            (fallback.state, fallback.tone, fallback.repair),
+            ("settings.administrator.authorized", "ok", true)
+        );
+    }
+
+    #[test]
+    fn administrator_card_waits_and_explains() {
+        // Before the status arrives, and while a change runs.
+        let loading = administrator_view(None, true, false, false);
+        assert_eq!(
+            (
+                loading.state,
+                loading.tone,
+                loading.disabled,
+                loading.checked
+            ),
+            ("settings.administrator.busy", "busy", true, false)
+        );
+        let busy = administrator_view(Some(&status(false, false, false, None)), false, true, true);
+        assert_eq!(
+            (busy.state, busy.disabled),
+            ("settings.administrator.busy", true)
+        );
+        assert_eq!(busy.notes[1], "settings.administrator.afterOnboarding");
+        // A development build: off and locked, with the reason.
+        let mut development = status(false, false, false, None);
+        development["supported"] = json!(false);
+        let view = administrator_view(Some(&development), false, false, false);
+        assert!(view.disabled);
+        assert!(view.notes.contains(&"settings.administrator.development"));
+        // An enabled grant can still be turned off there, but not repaired.
+        development["enabled"] = json!(true);
+        let view = administrator_view(Some(&development), false, false, false);
+        assert!(!view.disabled && !view.repair);
+        // An account without an administrator identity.
+        let mut standard = status(false, false, false, None);
+        standard["eligible"] = json!(false);
+        let view = administrator_view(Some(&standard), false, false, false);
+        assert!(view.disabled);
+        assert!(
+            view.notes
+                .contains(&"settings.administrator.standardAccount")
+        );
+        // A failed read: no status, nothing to explain beyond the two lines.
+        let failed = administrator_view(None, false, false, false);
+        assert_eq!(
+            (failed.state, failed.disabled, failed.notes.len()),
+            ("settings.administrator.off", true, 2)
+        );
     }
 }

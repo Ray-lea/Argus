@@ -441,6 +441,13 @@ impl Desktop {
                 window,
                 cx,
             );
+            self.request(
+                "administrator_status",
+                json!({}),
+                Some("administrator"),
+                window,
+                cx,
+            );
         }
         if kind == "filelock" && !paths.is_empty() {
             self.search_lockers(paths, window, cx);
@@ -708,8 +715,13 @@ impl Desktop {
                 {
                     window.defer(cx, move |window, cx| {
                         this.update(cx, |this, cx| {
-                            if this.modal.as_ref().is_some_and(|m| m.id == id) {
-                                this.begin_leaving(true, window, cx);
+                            match this.modal.as_ref().filter(|m| m.id == id) {
+                                // Escape counts as done, as the original's close().
+                                Some(m) if m.kind == "onboarding" => {
+                                    this.finish_onboarding(window, cx)
+                                }
+                                Some(_) => this.begin_leaving(true, window, cx),
+                                None => {}
                             }
                         });
                     });
@@ -2406,7 +2418,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         match command {
-            "complete_onboarding" => self.welcome_checked = false,
+            "complete_onboarding" => self.onboarding_saved(value, window, cx),
             "batch" => self.batch_done(value),
             "pick_path" => {
                 self.ui.busy.remove("pick");
@@ -2686,6 +2698,7 @@ impl Desktop {
         if self.ui.ticks.is_multiple_of(4) {
             self.announce_update(window, cx);
         }
+        changed |= self.announce_administrator();
         changed |= self.tick_hotkey(window, cx);
         changed |= self.tick_settings();
         if changed {
