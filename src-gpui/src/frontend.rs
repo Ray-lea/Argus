@@ -21,6 +21,7 @@ mod shift;
 mod tables;
 mod theme;
 mod tips;
+mod type_search;
 mod welcome;
 mod widgets;
 use crate::{AppState, Options, native_runtime::Host};
@@ -212,6 +213,8 @@ struct Desktop {
     navigation_regions: Rc<RefCell<[Bounds<Pixels>; PAGES.len() + 1]>>,
     query: String,
     search: Entity<InputState>,
+    /// A composition typed on the process list into the search box (`type_search`).
+    composing: Option<type_search::ComposedSearch>,
     focus: FocusHandle,
     subscriptions: Vec<Subscription>,
     prefs: prefs::Prefs,
@@ -362,6 +365,7 @@ impl Desktop {
             navigation_regions: Rc::new(RefCell::new([Bounds::default(); PAGES.len() + 1])),
             query: String::new(),
             search: search.clone(),
+            composing: None,
             focus: cx.focus_handle(),
             subscriptions: Vec::new(),
             view: prefs.get("view", "apps".into()),
@@ -453,6 +457,11 @@ impl Desktop {
                 _ => {}
             }),
         );
+        // Marked text changes notify without an event.
+        this.subscriptions
+            .push(cx.observe_in(&search, window, |this, _, window, cx| {
+                this.composition_settled(window, cx)
+            }));
         this.watch_menu_window(window, cx);
         if let Some(path) = &options.fixture {
             match std::fs::read(path)
