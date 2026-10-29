@@ -635,7 +635,9 @@ impl Desktop {
         // the list, fading in (250 ms, decelerating). Only the offset and opacity
         // change: an animation wrapper keyed by each arrival would drop the
         // state of everything inside, the charts' drawn curves included, and
-        // they would pop in again.
+        // they would pop in again. Both apply only when drawing (the original's
+        // transform), so the view is laid out in place and its scroll range
+        // never grows by the offset.
         let arrival = window.use_keyed_state("perf-device-arrival", cx, |_, _| {
             (String::new(), 0usize, 0f32, None::<Instant>)
         });
@@ -661,8 +663,10 @@ impl Desktop {
         } else {
             1.
         };
-        // The chart layer's curves fade with the view.
+        let offset = point(px(0.), px(direction * 16. * (1. - arriving)));
+        // The chart layer's curves move and fade with the view.
         self.chart_fade.set(arriving);
+        self.chart_shift.set(offset);
         // A short card (the original's size container query on the card)
         // takes the chart captions into the frames.
         let short = self
@@ -674,15 +678,13 @@ impl Desktop {
             .unwrap_or_else(|| div().into_any_element());
         self.chart_captions_inside.set(false);
         self.chart_fade.set(1.);
-        let content = div()
-            .relative()
-            .flex_1()
-            .flex()
-            .flex_col()
-            .top(px(direction * 16. * (1. - arriving)))
-            .opacity(arriving)
-            .child(content)
-            .into_any_element();
+        self.chart_shift.set(Point::default());
+        let content = super::super::shift::shifted(
+            div().flex_1().flex().flex_col().child(content),
+            offset,
+            arriving,
+        )
+        .into_any_element();
         let splitter = div()
             .id("perf-sidebar-splitter")
             .group("perf-splitter")
