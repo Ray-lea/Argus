@@ -145,6 +145,26 @@ impl Desktop {
         element
     }
 
+    /// Renders the current page again when called (after an animation that
+    /// moved parts of it with live transforms), or the whole desktop when the
+    /// page is not a region of its own.
+    pub(super) fn render_page_later(&self, cx: &Context<Self>) -> impl FnOnce(&mut App) + 'static {
+        let page = self
+            .regions
+            .views
+            .get(&RegionKind::Page)
+            .map(|page| page.downgrade());
+        let desktop = cx.entity().downgrade();
+        move |cx| {
+            let rendered = page
+                .and_then(|page| page.update(cx, |_, cx| cx.notify()).ok())
+                .is_some();
+            if !rendered {
+                let _ = desktop.update(cx, |_, cx| cx.notify());
+            }
+        }
+    }
+
     /// Stops drawing the charts a region built (it renders them again, or is gone).
     fn forget_region_charts(&mut self, kind: RegionKind) {
         if kind == RegionKind::Details {

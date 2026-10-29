@@ -4418,12 +4418,33 @@ impl Window {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         self.invalidator.debug_assert_paint();
-        let transform = crate::VisualTransform {
-            offset: offset.scale(self.scale_factor()),
-            opacity: opacity.clamp(0., 1.),
-            clip: None,
-        };
+        let transform =
+            crate::VisualTransform::moved(offset.scale(self.scale_factor()), opacity.clamp(0., 1.));
         self.next_frame.scene.push_transform(transform);
+        let result = f(self);
+        self.next_frame.scene.pop_transform();
+        result
+    }
+
+    /// Paints `f` inside `transform` about `anchor` (window coordinates): like
+    /// [`Self::with_visual_transform`], layout, element bounds and hit testing
+    /// stay as laid out. The transform's value is read whenever the scene is
+    /// built, so a cached view painted inside (or around) it that replays its
+    /// last paint draws with the value set since: an animation can change the
+    /// value every frame without rendering the views it moves. Call during paint.
+    pub fn with_live_transform<R>(
+        &mut self,
+        transform: &crate::LiveTransform,
+        anchor: Point<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint();
+        let scale_factor = self.scale_factor();
+        self.next_frame.scene.push_live_transform(
+            transform.clone(),
+            anchor.scale(scale_factor),
+            scale_factor,
+        );
         let result = f(self);
         self.next_frame.scene.pop_transform();
         result
@@ -4440,9 +4461,8 @@ impl Window {
     ) -> R {
         self.invalidator.debug_assert_paint();
         let transform = crate::VisualTransform {
-            offset: Point::default(),
-            opacity: 1.,
             clip: Some(bounds.scale(self.scale_factor())),
+            ..crate::VisualTransform::moved(Point::default(), 1.)
         };
         self.next_frame.scene.push_transform(transform);
         let result = f(self);
