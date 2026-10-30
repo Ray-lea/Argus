@@ -255,6 +255,55 @@ struct PrefixComposition {
     dirty: Vec<RECT>,
     restore: Vec<RECT>,
 }
+
+fn composition_rejected(reason: &'static str) -> Option<PrefixComposition> {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    if *ENABLED.get_or_init(|| std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some()) {
+        static COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let count = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if count < 3 || count.is_multiple_of(400) {
+            println!("{{\"event\":\"gpu-composition-reject\",\"reason\":\"{reason}\"}}");
+        }
+    }
+    None
+}
+
+fn subtract_rect(rect: RECT, cover: RECT) -> impl Iterator<Item = RECT> {
+    let left = rect.left.max(cover.left);
+    let top = rect.top.max(cover.top);
+    let right = rect.right.min(cover.right);
+    let bottom = rect.bottom.min(cover.bottom);
+    let pieces = if left >= right || top >= bottom {
+        [rect, RECT::default(), RECT::default(), RECT::default()]
+    } else {
+        [
+            RECT {
+                bottom: top,
+                ..rect
+            },
+            RECT {
+                top: bottom,
+                ..rect
+            },
+            RECT {
+                top,
+                bottom,
+                right: left,
+                ..rect
+            },
+            RECT {
+                top,
+                bottom,
+                left: right,
+                ..rect
+            },
+        ]
+    };
+    pieces
+        .into_iter()
+        .filter(|piece| piece.left < piece.right && piece.top < piece.bottom)
+}
+
 fn independent_sprite_regions(
     scene: &Scene,
     batches: &[PrimitiveBatch],
@@ -270,7 +319,7 @@ fn independent_sprite_regions(
             continue;
         }
         let PrimitiveBatch::PolychromeSprites { range, .. } = batch else {
-            return None;
+            return composition_rejected("unsupported-batch");
         };
         for sprite in &scene.polychrome_sprites[range.clone()] {
             if !sprite.bounds.size.width.as_f32().is_finite()
@@ -278,7 +327,7 @@ fn independent_sprite_regions(
                 || sprite.bounds.size.width.as_f32() <= 0.
                 || sprite.bounds.size.height.as_f32() <= 0.
             {
-                return None;
+                return composition_rejected("invalid-bounds");
             }
             let mask = sprite.content_mask.bounds;
             let rect = RECT {
@@ -293,7 +342,7 @@ fn independent_sprite_regions(
             if (rect.right - rect.left) as f32 > sprite.bounds.size.width.as_f32().ceil()
                 || (rect.bottom - rect.top) as f32 > sprite.bounds.size.height.as_f32().ceil()
             {
-                return None;
+                return composition_rejected("mask-larger-than-image");
             }
             if regions.iter().any(|other| {
                 rect.left < other.right
@@ -301,16 +350,16 @@ fn independent_sprite_regions(
                     && rect.top < other.bottom
                     && other.top < rect.bottom
             }) {
-                return None;
+                return composition_rejected("overlapping-images");
             }
             regions.push(rect);
             images.push((rect, sprite.order));
         }
     }
     if regions.is_empty() {
-        return None;
+        return composition_rejected("empty-regions");
     }
-    let mut remaining_quads = Vec::new();
+    let mut restore = Vec::new();
     for batch in quads {
         let PrimitiveBatch::Quads(range) = batch else {
             unreachable!()
@@ -324,23 +373,30 @@ fn independent_sprite_regions(
             ) else {
                 continue;
             };
-            let covered = damage.iter().all(|rect| {
-                images.iter().any(|(image, order)| {
-                    *order < scene.quads[index].order
-                        && image.left <= rect.left
-                        && image.top <= rect.top
-                        && image.right >= rect.right
-                        && image.bottom >= rect.bottom
-                })
-            });
-            // A later bar drawn over a restored chart needs no second background
-            // copy. Earlier or partly-overlapping content uses the normal path.
-            if !covered {
-                remaining_quads.push(PrimitiveBatch::Quads(index..index + 1));
+            // Earlier images restore their own masks before this bar is drawn.
+            // Copy only the bar's remaining background, including when its
+            // restoration padding crosses the edge of a chart.
+            let mut uncovered = damage;
+            for (image, order) in &images {
+                if *order < scene.quads[index].order
+                    && uncovered.iter().any(|rect| {
+                        rect.left < image.right
+                            && image.left < rect.right
+                            && rect.top < image.bottom
+                            && image.top < rect.bottom
+                    })
+                {
+                    uncovered = uncovered
+                        .into_iter()
+                        .flat_map(|rect| subtract_rect(rect, *image))
+                        .collect();
+                }
+            }
+            for rect in uncovered {
+                merge_damage(&mut restore, rect);
             }
         }
     }
-    let restore = suffix_damage(scene, &remaining_quads, width, height).unwrap_or_default();
     if restore.iter().any(|quad| {
         regions.iter().any(|image| {
             quad.left < image.right
@@ -349,7 +405,7 @@ fn independent_sprite_regions(
                 && image.top < quad.bottom
         })
     }) {
-        return None;
+        return composition_rejected("quad-restore-overlaps-image");
     }
     regions.extend_from_slice(&restore);
     Some(PrefixComposition {
@@ -486,6 +542,10 @@ impl DirectXRenderer {
             .as_ref()
             .expect("devices missing")
             .device_context;
+        static LINEAR_AREA: OnceLock<bool> = OnceLock::new();
+        let linear_area_filter = u32::from(*LINEAR_AREA.get_or_init(|| {
+            std::env::var_os("ARGUS_GPUI_DISABLE_LINEAR_AREA").is_none()
+        }));
         let params = GlobalParams {
             gamma_ratios: self.font_info.gamma_ratios,
             viewport_size: [resources.viewport.Width, resources.viewport.Height],
@@ -493,7 +553,8 @@ impl DirectXRenderer {
             subpixel_enhanced_contrast: self.font_info.subpixel_enhanced_contrast,
             is_bgr: self.font_info.is_bgr as u32,
             compose_prefix: resources.compose_prefix as u32,
-            _pad: [0; 2],
+            linear_area_filter,
+            _pad: 0,
         };
         if self.globals.last_params != Some(params) {
             update_buffer(
@@ -1588,7 +1649,8 @@ struct GlobalParams {
     subpixel_enhanced_contrast: f32,
     is_bgr: u32,
     compose_prefix: u32,
-    _pad: [u32; 2],
+    linear_area_filter: u32,
+    _pad: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

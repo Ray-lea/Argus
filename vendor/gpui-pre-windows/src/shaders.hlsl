@@ -7,7 +7,8 @@ cbuffer GlobalParams: register(b0) {
     float subpixel_enhanced_contrast;
     uint is_bgr;
     uint compose_prefix;
-    uint2 global_pad;
+    uint linear_area_filter;
+    uint global_pad;
 };
 
 cbuffer BatchParams: register(b1) {
@@ -1267,6 +1268,7 @@ PolychromeSpriteVertexOutput polychrome_sprite_vertex(uint vertex_id: SV_VertexI
 // than pixels (a chart curve rasterized at twice the device resolution and
 // translated on every frame); see `Window::paint_image_subpixel`.
 static const uint SPRITE_AREA_FILTER = 1u;
+static const uint SPRITE_PREMULTIPLIED_AREA_FILTER = 2u;
 
 // The texels under the pixel's footprint, each weighted by the part of the
 // footprint it covers and premultiplied before they are averaged: the
@@ -1277,7 +1279,7 @@ static const uint SPRITE_AREA_FILTER = 1u;
 // one texel, so a magnified raster interpolates linearly instead of showing
 // blocks, and at most three. Texels outside the tile count as transparent.
 // Returns straight alpha, as `Sample` does for the other sprites.
-float4 sample_area(float2 position, Bounds bounds, AtlasTile tile) {
+float4 sample_area(float2 position, Bounds bounds, AtlasTile tile, bool premultiplied) {
     float2 texels = float2(tile.bounds.size) / bounds.size;
     float2 footprint = clamp(texels, 1.0, 3.0);
     float2 tile_lo = float2(tile.bounds.origin);
@@ -1296,11 +1298,65 @@ float4 sample_area(float2 position, Bounds bounds, AtlasTile tile) {
             float weight = wx * wy;
             if (weight > 0.0 && x >= tile_lo.x && x < tile_hi.x && y >= tile_lo.y && y < tile_hi.y) {
                 float4 texel = t_sprite.Load(int3(int(x), int(y), 0));
-                sum += float4(texel.rgb * texel.a, texel.a) * weight;
+                sum += (premultiplied ? texel : float4(texel.rgb * texel.a, texel.a)) * weight;
             }
         }
     }
     sum /= footprint.x * footprint.y;
+    return sum.a > 0.0 ? float4(sum.rgb / sum.a, sum.a) : float4(0.0, 0.0, 0.0, 0.0);
+}
+
+struct AreaAxis {
+    float2 position;
+    float2 weight;
+};
+
+// Pair adjacent box-filter weights into hardware linear samples. Each axis
+// needs at most two samples for a footprint of one to three source texels.
+AreaAxis area_axis(float center, float footprint, float tile_lo, float tile_hi) {
+    float lo = center - footprint * 0.5;
+    float hi = center + footprint * 0.5;
+    float first = floor(lo);
+    float4 at = first + float4(0.0, 1.0, 2.0, 3.0);
+    float4 weight = saturate(min(at + 1.0, hi) - max(at, lo));
+    weight *= float4(at >= tile_lo) * float4(at < tile_hi);
+    float2 pairs = float2(weight.x + weight.y, weight.z + weight.w);
+    AreaAxis axis;
+    axis.position = first + float2(0.5, 2.5) + float2(weight.y, weight.w) / max(pairs, 0.000001);
+    axis.position = clamp(axis.position, tile_lo + 0.5, tile_hi - 0.5);
+    axis.weight = pairs / footprint;
+    return axis;
+}
+
+float4 sample_area_linear(float2 position, Bounds bounds, AtlasTile tile, float2 atlas_size) {
+    float2 texels = float2(tile.bounds.size) / bounds.size;
+    float2 footprint = clamp(texels, 1.0, 3.0);
+    float2 tile_lo = float2(tile.bounds.origin);
+    float2 tile_hi = tile_lo + float2(tile.bounds.size);
+    float2 center = tile_lo + (position - bounds.origin) * texels;
+    // Steady chart textures have exactly two texels per device pixel. Their
+    // box filter is four equally weighted bilinear samples; the general
+    // pairing is reserved for scaled transitions and partially covered edges.
+    float4 sum = float4(0.0, 0.0, 0.0, 0.0);
+    [branch] if (all(abs(texels - 2.0) < 0.00001)
+        && all(center - 1.0 >= tile_lo) && all(center + 1.0 <= tile_hi)) {
+        float2 uv = center / atlas_size;
+        float2 half_texel = 0.5 / atlas_size;
+        sum = (
+            t_sprite.SampleLevel(s_sprite, uv - half_texel, 0)
+            + t_sprite.SampleLevel(s_sprite, uv + float2(half_texel.x, -half_texel.y), 0)
+            + t_sprite.SampleLevel(s_sprite, uv + float2(-half_texel.x, half_texel.y), 0)
+            + t_sprite.SampleLevel(s_sprite, uv + half_texel, 0)
+        ) * 0.25;
+    } else {
+        AreaAxis x = area_axis(center.x, footprint.x, tile_lo.x, tile_hi.x);
+        AreaAxis y = area_axis(center.y, footprint.y, tile_lo.y, tile_hi.y);
+        float4 top = t_sprite.SampleLevel(s_sprite, float2(x.position.x, y.position.x) / atlas_size, 0) * x.weight.x
+                   + t_sprite.SampleLevel(s_sprite, float2(x.position.y, y.position.x) / atlas_size, 0) * x.weight.y;
+        float4 bottom = t_sprite.SampleLevel(s_sprite, float2(x.position.x, y.position.y) / atlas_size, 0) * x.weight.x
+                      + t_sprite.SampleLevel(s_sprite, float2(x.position.y, y.position.y) / atlas_size, 0) * x.weight.y;
+        sum = top * y.weight.x + bottom * y.weight.y;
+    }
     return sum.a > 0.0 ? float4(sum.rgb / sum.a, sum.a) : float4(0.0, 0.0, 0.0, 0.0);
 }
 
@@ -1315,7 +1371,15 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     // Use the same pixel-space mapping for ordinary and background-restoring draws.
     float4 sample;
     if (sprite.pad == SPRITE_AREA_FILTER) {
-        sample = sample_area(input.position.xy, sprite.bounds, sprite.tile);
+        sample = sample_area(input.position.xy, sprite.bounds, sprite.tile, false);
+    } else if (sprite.pad == SPRITE_PREMULTIPLIED_AREA_FILTER) {
+        // Keep the reference sampler out of the optimized draw. FXC flattens
+        // a conditional expression here and evaluates both texture paths.
+        [branch] if (linear_area_filter != 0u) {
+            sample = sample_area_linear(input.position.xy, sprite.bounds, sprite.tile, input.atlas_size);
+        } else {
+            sample = sample_area(input.position.xy, sprite.bounds, sprite.tile, true);
+        }
     } else {
         float2 unit = (input.position.xy - sprite.bounds.origin) / sprite.bounds.size;
         float2 tile_position = (float2(sprite.tile.bounds.origin) + unit * float2(sprite.tile.bounds.size)) / input.atlas_size;

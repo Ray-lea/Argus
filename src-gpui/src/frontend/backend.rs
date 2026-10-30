@@ -1008,6 +1008,17 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(groups) = control["freezeChartGroups"].as_array()
+            && let Some(layer) = self.chart_layer.clone()
+        {
+            layer.update(cx, |layer, _| {
+                layer.frozen_groups = groups
+                    .iter()
+                    .filter_map(|group| group.as_str().map(str::to_owned))
+                    .collect();
+            });
+            window.refresh();
+        }
         if self.options.fixture.is_some()
             && let Some(time) = control["chartTime"]
                 .as_f64()

@@ -34,10 +34,12 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 `uiThreadCpuMsPerSecond` 记录所属窗口线程的累计 CPU 时间，用于定位优化前后的界面线程开销。整应用 CPU 仍使用所属 Job 的汇总值。`missedRefreshes` 根据实际捕获间隔估算缺失的刷新周期，同时保留最长间隔与帧率。
 
-同一 EXE 的诊断对照可设置 `ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION=1`，关闭曲线背景合成，其他绘制参数保持不变。这些开关仅用于定位；正式跨版本对照应记录开关状态，并使用默认配置。
+同一 EXE 的诊断对照可设置 `ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION=1`，关闭曲线背景合成；`ARGUS_GPUI_DISABLE_LINEAR_AREA=1` 将预乘曲线纹理切换到逐纹素面积采样，用于对照硬件线性采样的开销与像素结果。`ARGUS_GPUI_DIAGNOSTICS=1` 的 `gpu-composition-reject` 记录合成回退原因。这些开关仅用于定位；正式跨版本对照应记录开关状态，并使用默认配置。
 
 `node scripts/ui-smoke.mjs <标签> --retained --executable <EXE路径> --probe <探针路径>` 使用固定快照，在进程页、CPU 总览与多核页推进动画时间，逐像素比较局部更新与完整重绘。探针需启用 `capture` 功能。普通模拟快照检查覆盖页面、主题、语言、排序和布局；`--live --fluid --move --exercise-updates` 检查持续采样、悬停、窗口移动、缩放与隐藏恢复。
 
 静态截图还覆盖字号上下限与界面缩放。切换后的等待需长于核心条的一次采样过渡；移出指针的测试控制会延迟到绘制帧执行，因此捕获前另留出绘制时间，避免将残留悬停提示当成视觉差异。
 
 `--snapshots` 使用固定数据检查采样更新的绘制边界：确认状态栏数值确实变化，比较缓存页面与强制完整重绘的像素，并检查传感器状态改变时设置页仍重新构建。该检查启用帧阶段记录以验证视图重放，不用于资源占用对照。
+
+测试控制 `freezeChartGroups` 可按区域冻结动画：`vitals` 为顶部曲线、`cores` 为核心小条、`details` 为详情图、`other` 为其他图表，传空数组恢复。采样刷新继续更新读数。区域共用绘制后缀时，冻结其中一组后仍可能绘制该后缀中的静态图元，需结合提交次数、脏区面积与合成记录解释结果。渲染器几何回归用 `cargo test --locked -p gpui-pre-windows --lib --target-dir target/rust-analyzer retained_tests` 运行。

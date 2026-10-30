@@ -695,6 +695,7 @@ pub(super) struct ChartLayer {
     last_end: f64,
     pixel_ends: HashMap<String, f64>,
     pub(super) fast_frames: u64,
+    pub(super) frozen_groups: HashSet<String>,
 }
 impl ChartLayer {
     pub(super) fn new(
@@ -717,6 +718,7 @@ impl ChartLayer {
             last_end: f64::NAN,
             pixel_ends: HashMap::new(),
             fast_frames: 0,
+            frozen_groups: HashSet::new(),
         }
     }
     pub(super) fn advance(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -726,6 +728,9 @@ impl ChartLayer {
             let placements = self.placements.borrow();
             let mut changed = false;
             for key in self.active.borrow().iter() {
+                if self.frozen_groups.contains(chart_group(key)) {
+                    continue;
+                }
                 let Some(placement) = placements.get(key) else {
                     continue;
                 };
@@ -741,6 +746,9 @@ impl ChartLayer {
         if changed {
             let placements = self.placements.borrow();
             let fast = self.active.borrow().iter().all(|key| {
+                if self.frozen_groups.contains(chart_group(key)) {
+                    return true;
+                }
                 let Some(placement) = placements.get(key) else {
                     return true;
                 };
@@ -787,6 +795,17 @@ impl ChartLayer {
                 cx.notify();
             }
         }
+    }
+}
+fn chart_group(id: &str) -> &'static str {
+    if id == "vital-core-bars" {
+        "cores"
+    } else if id.starts_with("vital-") {
+        "vitals"
+    } else if id.starts_with("details-") {
+        "details"
+    } else {
+        "other"
     }
 }
 /// A chart the layer prepainted this frame, ready to paint.
@@ -901,6 +920,9 @@ impl Render for ChartLayer {
                             translation,
                         });
                     }
+                    // Bars occupy the foreground of compact CPU plots. A stable
+                    // order lets the renderer restore a touching chart first.
+                    elements.sort_by_key(|drawn| drawn.background.bars);
                     elements
                 },
                 |bounds, elements, window, cx| {

@@ -1,4 +1,6 @@
-use super::{independent_sprite_regions, merge_damage, split_batches, suffix_damage};
+use super::{
+    independent_sprite_regions, merge_damage, split_batches, subtract_rect, suffix_damage,
+};
 use gpui::{Bounds, ContentMask, PrimitiveBatch, Quad, ScaledPixels, Scene, point, size};
 use windows::Win32::Foundation::RECT;
 
@@ -206,4 +208,84 @@ fn later_bars_reuse_the_background_restored_by_an_enclosing_image() {
     assert!(
         independent_sprite_regions(&scene, &scene.batches().collect::<Vec<_>>(), 100, 80).is_none()
     );
+}
+
+#[test]
+fn a_later_bar_copies_only_background_outside_the_chart() {
+    let mut scene = Scene::default();
+    scene.polychrome_sprites.push(sprite(0., 20., 100., 50.));
+    scene.quads.push(Quad {
+        order: 1,
+        bounds: Bounds::new(
+            point(ScaledPixels(10.), ScaledPixels(5.)),
+            size(ScaledPixels(4.), ScaledPixels(15.)),
+        ),
+        content_mask: ContentMask {
+            bounds: Bounds::new(
+                point(ScaledPixels(10.), ScaledPixels(0.)),
+                size(ScaledPixels(4.), ScaledPixels(20.)),
+            ),
+        },
+        ..Default::default()
+    });
+    let plan =
+        independent_sprite_regions(&scene, &scene.batches().collect::<Vec<_>>(), 100, 80).unwrap();
+    assert_eq!(
+        plan.restore,
+        vec![RECT {
+            left: 9,
+            top: 0,
+            right: 15,
+            bottom: 20
+        }]
+    );
+    scene.quads[0].order = 0;
+    assert!(
+        independent_sprite_regions(&scene, &scene.batches().collect::<Vec<_>>(), 100, 80).is_none()
+    );
+}
+
+#[test]
+fn rectangle_subtraction_preserves_only_the_uncovered_pixels() {
+    let rect = RECT {
+        left: 0,
+        top: 0,
+        right: 11,
+        bottom: 9,
+    };
+    for cover in [
+        RECT {
+            left: 3,
+            top: 2,
+            right: 7,
+            bottom: 6,
+        },
+        RECT {
+            left: -3,
+            top: -2,
+            right: 7,
+            bottom: 6,
+        },
+        RECT {
+            left: 11,
+            top: 0,
+            right: 15,
+            bottom: 9,
+        },
+        RECT {
+            left: -1,
+            top: -1,
+            right: 12,
+            bottom: 10,
+        },
+    ] {
+        let pieces = subtract_rect(rect, cover).collect::<Vec<_>>();
+        for y in -2..12 {
+            for x in -3..16 {
+                let contains = |r: RECT| r.left <= x && x < r.right && r.top <= y && y < r.bottom;
+                let copies = pieces.iter().filter(|r| contains(**r)).count();
+                assert_eq!(copies, usize::from(contains(rect) && !contains(cover)));
+            }
+        }
+    }
 }

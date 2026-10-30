@@ -385,7 +385,12 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
         };
         let image_bounds = surface.bounds_at(plot, bounds, plot.end);
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            match window.paint_image_subpixel(image_bounds, texture.image.clone(), 0) {
+            #[cfg(target_os = "windows")]
+            let painted =
+                window.paint_image_subpixel_premultiplied(image_bounds, texture.image.clone(), 0);
+            #[cfg(not(target_os = "windows"))]
+            let painted = window.paint_image_subpixel(image_bounds, texture.image.clone(), 0);
+            match painted {
                 Ok(handle) => {
                     surface.handle = handle;
                 }
@@ -904,8 +909,8 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
     };
     let row = pixel_width as usize * 4;
     let rows = (pixel_height as usize).div_ceil(bands).max(1);
-    // One buffer, turned into straight colour in place: a second one would
-    // double the fresh pages every raster touches.
+    // Keep tiny-skia's premultiplied channels for the Windows area sampler.
+    // Channel conversion reuses the raster buffer.
     let mut pixels = vec![0u8; row * pixel_height as usize];
     let draw = |first: usize, pixels: &mut [u8]| {
         let count = (pixels.len() / row) as u32;
@@ -970,6 +975,11 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
                 }
             }
         }
+        #[cfg(target_os = "windows")]
+        for pixel in pixels.as_chunks_mut::<4>().0 {
+            pixel.swap(0, 2);
+        }
+        #[cfg(not(target_os = "windows"))]
         straight_bgra(pixels);
     };
     let mut work = (0..threads).map(|_| Vec::new()).collect::<Vec<_>>();
@@ -1213,6 +1223,12 @@ mod tests {
         // (restarting the dashes changes more texels than are inked here, by
         // up to 255).
         let premultiplied = |c: &[u8]| {
+            if cfg!(target_os = "windows") {
+                return c
+                    .iter()
+                    .map(|channel| u32::from(*channel))
+                    .collect::<Vec<_>>();
+            }
             let alpha = u32::from(c[3]);
             [0, 1, 2]
                 .map(|k| (u32::from(c[k]) * alpha + 127) / 255)
@@ -1304,6 +1320,9 @@ mod tests {
         // at the edge of a band is subdivided anew there, which can move an
         // edge across one of the 4 by 4 coverage samples of a texel.
         let premultiplied = |c: &[u8; 4]| {
+            if cfg!(target_os = "windows") {
+                return c.map(u32::from);
+            }
             let alpha = u32::from(c[3]);
             [
                 (u32::from(c[0]) * alpha + 127) / 255,

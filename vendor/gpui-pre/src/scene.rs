@@ -1132,7 +1132,7 @@ impl From<SubpixelSprite> for Primitive {
 #[expect(missing_docs)]
 pub struct PolychromeSprite {
     pub order: DrawOrder,
-    /// Argus: [`Self::AREA_FILTER`] or 0 (the field keeps its name and layout,
+    /// Argus: an area-filter mode or 0 (the field keeps its name and layout,
     /// so renderers that ignore it treat it as padding).
     pub pad: u32,
     pub grayscale: PaddedBool32,
@@ -1148,6 +1148,10 @@ impl PolychromeSprite {
     /// texels, instead of bilinearly: for rasters drawn at fractional positions
     /// from more texels than pixels (Windows renderer).
     pub const AREA_FILTER: u32 = 1;
+
+    /// Area-filter an image whose RGB channels are already multiplied by alpha.
+    /// The Windows renderer combines adjacent texels with hardware linear sampling.
+    pub const PREMULTIPLIED_AREA_FILTER: u32 = 2;
 }
 
 impl From<PolychromeSprite> for Primitive {

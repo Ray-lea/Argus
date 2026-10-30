@@ -5428,6 +5428,32 @@ impl Window {
         data: Arc<RenderImage>,
         frame_index: usize,
     ) -> Result<Option<PaintedPrimitive>> {
+        self.paint_filtered_image(bounds, data, frame_index, PolychromeSprite::AREA_FILTER)
+    }
+
+    /// Paint a premultiplied BGRA image with subpixel area filtering on Windows.
+    /// Use a separate RenderImage from any straight-alpha representation.
+    pub fn paint_image_subpixel_premultiplied(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+    ) -> Result<Option<PaintedPrimitive>> {
+        self.paint_filtered_image(
+            bounds,
+            data,
+            frame_index,
+            PolychromeSprite::PREMULTIPLIED_AREA_FILTER,
+        )
+    }
+
+    fn paint_filtered_image(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+        filter: u32,
+    ) -> Result<Option<PaintedPrimitive>> {
         self.invalidator.debug_assert_paint();
         let params = RenderImageParams {
             image_id: data.id,
@@ -5445,7 +5471,7 @@ impl Window {
         let content_mask = self.snapped_content_mask();
         let sprite = PolychromeSprite {
             order: 0,
-            pad: PolychromeSprite::AREA_FILTER,
+            pad: filter,
             grayscale: false.into(),
             bounds: bounds.scale(self.scale_factor()),
             content_mask,
@@ -5501,6 +5527,10 @@ impl Window {
             };
             let background = recorded.background;
             let quad = scene.quads.last_mut()?;
+            // A retained bar stays inside its reserved animation region.
+            // Keep its restoration mask equally tight so an enclosing plot
+            // clip cannot force unrelated charts back through background copies.
+            quad.content_mask.bounds = quad.content_mask.bounds.intersect(&layer);
             match bar {
                 Some((bounds, fill)) => {
                     quad.bounds = bounds;
