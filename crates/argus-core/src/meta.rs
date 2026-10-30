@@ -14,7 +14,9 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
-use windows::Win32::UI::Shell::{SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW};
+use windows::Win32::UI::Shell::{
+    SHDefExtractIconW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW,
+};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 use windows::core::PCWSTR;
 
@@ -300,22 +302,32 @@ pub fn version_info(path: &str) -> VersionInfo {
 
 fn extract_icon_png(path: &str) -> Option<Vec<u8>> {
     let wpath = wide(path);
-    let mut info = SHFILEINFOW::default();
-    let ok = unsafe {
-        SHGetFileInfoW(
-            PCWSTR(wpath.as_ptr()),
-            FILE_FLAGS_AND_ATTRIBUTES(0),
-            Some(&mut info),
-            std::mem::size_of::<SHFILEINFOW>() as u32,
-            SHGFI_ICON | SHGFI_LARGEICON,
-        )
+    let mut icon = HICON::default();
+    let ok = if path.starts_with(r"\\?\") {
+        // Shell item lookup rejects GLOBALROOT paths. Read the PE resource
+        // for extended paths while keeping ordinary Shell icons unchanged.
+        unsafe { SHDefExtractIconW(PCWSTR(wpath.as_ptr()), 0, 0, Some(&mut icon), None, 32) }
+            .is_ok()
+    } else {
+        let mut info = SHFILEINFOW::default();
+        let result = unsafe {
+            SHGetFileInfoW(
+                PCWSTR(wpath.as_ptr()),
+                FILE_FLAGS_AND_ATTRIBUTES(0),
+                Some(&mut info),
+                std::mem::size_of::<SHFILEINFOW>() as u32,
+                SHGFI_ICON | SHGFI_LARGEICON,
+            )
+        };
+        icon = info.hIcon;
+        result != 0
     };
-    if ok == 0 || info.hIcon.is_invalid() {
+    if icon.is_invalid() {
         return None;
     }
-    let rgba = unsafe { hicon_to_rgba(info.hIcon) };
+    let rgba = ok.then(|| unsafe { hicon_to_rgba(icon) }).flatten();
     unsafe {
-        let _ = DestroyIcon(info.hIcon);
+        let _ = DestroyIcon(icon);
     }
     let (w, h, px) = rgba?;
     encode_png(w, h, &px)
@@ -433,6 +445,32 @@ fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod category_tests {
     use super::*;
+
+    #[test]
+    fn device_paths_need_a_win32_namespace_for_file_metadata() {
+        use windows::Win32::Storage::FileSystem::QueryDosDeviceW;
+
+        let root = windows_directory();
+        let drive = wide(&root[..2]);
+        let mut target = [0u16; 32768];
+        assert!(unsafe { QueryDosDeviceW(PCWSTR(drive.as_ptr()), Some(&mut target)) } > 0);
+        let native = format!(
+            "{}{}\\explorer.exe",
+            crate::util::from_wide(&target),
+            &root[2..]
+        );
+        let win32 = format!(r"\\?\GLOBALROOT{native}");
+        assert!(version_info(&native).description.is_none());
+        assert!(extract_icon_png(&native).is_none());
+        assert!(version_info(&win32).description.is_some());
+        assert!(extract_icon_png(&win32).is_some());
+        let ordinary = format!(r"{root}\explorer.exe");
+        assert_eq!(
+            version_info(&win32).description,
+            version_info(&ordinary).description
+        );
+        assert!(extract_icon_png(&ordinary).is_some());
+    }
 
     fn windows_version() -> VersionInfo {
         VersionInfo {
