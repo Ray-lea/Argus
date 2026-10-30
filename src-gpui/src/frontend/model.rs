@@ -995,7 +995,7 @@ mod tests {
         );
     }
     #[test]
-    fn views_title_processes_like_the_original() {
+    fn views_title_processes_by_identity_and_role() {
         let processes = vec![
             json!({"pid":1,"createTime":1,"name":"app.exe","description":"App","path":"C:/app.exe"}),
             json!({"pid":2,"createTime":2,"name":"msedgewebview2.exe","path":"C:/wv/msedgewebview2.exe","webView":{"browserPid":2,"browserCreateTime":2,"hostName":"app.exe","hostDescription":"App","role":"browser"}}),

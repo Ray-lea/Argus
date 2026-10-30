@@ -2,14 +2,11 @@
 //!
 //! The wrappers' own rules only know spaces and a few ASCII marks: they broke
 //! before any other character, so a wrapped line could start with `。`, `，`
-//! or `）` and end with `（` or `“`. Chromium, which the original front end
-//! used, breaks such text by UAX #14 through ICU (`line-break: auto`). Pairs
-//! with a non-ASCII character follow the same rules here; ASCII pairs keep
-//! the wrappers' rules, as Blink also handles them apart from ICU.
+//! or `）` and end with `（` or `“`. Pairs with a non-ASCII character use
+//! Unicode line-breaking classes and ICU's normal CJK tailoring. ASCII pairs
+//! keep the wrappers' word and separator rules.
 //!
-//! The decisions match what the original's WebView2 (Chromium 155, `lang`
-//! zh-CN) does, measured pair by pair: UAX #14 of Unicode 16 with ICU's
-//! normal CJK tailoring (small kana, `ー` and `〜` break like ideographs) and
+//! The CJK tailoring treats small kana, `ー` and `〜` like ideographs, and
 //! `“` `”` as opening and closing punctuation, while `‘` `’` keep the East
 //! Asian quotation rules. Rules that need more than one character of context
 //! on either side (numbers with several separators, runs of regional

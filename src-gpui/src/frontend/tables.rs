@@ -332,7 +332,7 @@ pub(super) struct TableFrame {
 impl Render for TableFrame {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Process headers carry a total above the label; the other tables use the
-        // original 34 px header cell. Both sit in a 4 px padded header row.
+        // 34 px header cell. Both sit in a 4 px padded header row.
         let state = self.state.read(cx);
         let rows = state.vertical_scroll_handle.0.borrow().base_handle.clone();
         let table = self.state.entity_id();
@@ -701,8 +701,8 @@ impl TableDelegate for NativeTable {
         {
             let app = owner.read(cx);
             let total = SharedString::from(app.column_total(field.key));
-            // A total wider than its column runs into the next one, as in the
-            // original; the table clips each cell, so the frame paints it
+            // A total wider than its column runs into the next one. Since
+            // the table clips each cell, the frame paints it
             // (`header_totals`) where this transparent copy is laid out.
             let painted = field.key != "name";
             let totals = self.header_totals.clone();
@@ -2169,7 +2169,7 @@ mod tests {
     };
 
     #[test]
-    fn saved_orders_keep_the_original_column_ids() {
+    fn saved_orders_keep_persistent_column_ids() {
         // Values a preferences.json from the saved preferences holds.
         assert_eq!(
             restore_sort("services", &json!({"id":"start","desc":true})),
@@ -2198,7 +2198,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_original_sortable_columns_sort() {
+    fn only_supported_columns_sort() {
         assert!(!sortable("services", "description"));
         assert!(!sortable("startup", "command"));
         assert!(sortable("services", "startType") && sortable("processes", "threads"));
@@ -2217,7 +2217,7 @@ mod tests {
     }
 
     #[test]
-    fn filters_come_back_from_the_original_keys() {
+    fn filters_use_persistent_preference_keys() {
         let file =
             std::env::temp_dir().join(format!("argus-native-filters-{}.json", std::process::id()));
         std::fs::write(

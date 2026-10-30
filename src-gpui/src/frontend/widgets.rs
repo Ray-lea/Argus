@@ -632,7 +632,7 @@ impl Desktop {
     /// A single-line text box drawn as the interface's (`field`), around
     /// `input` (built by the caller from `state`, with its own font or
     /// read-only state). `enabled` is false while the box is disabled: the
-    /// original drew it unchanged, without its focus ring.
+    /// appearance stays unchanged except for the focus ring.
     #[allow(clippy::too_many_arguments)]
     pub(in crate::frontend) fn text_field(
         &self,

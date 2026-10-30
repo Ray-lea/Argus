@@ -695,8 +695,7 @@ impl Desktop {
             .border_1()
             .border_color(p.stroke_strong)
             .rounded(px(8.))
-            // No shadow, as the interface's menus (window.md); opaque, where the
-            // original blurs what is behind its translucent face.
+            // Opaque menu faces stay readable over the page without a shadow.
             .bg(widgets::solid(p.flyout))
             .opacity(opacity)
             .text_size(theme::font(13.))

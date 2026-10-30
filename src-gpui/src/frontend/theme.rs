@@ -751,7 +751,7 @@ mod tests {
     /// no line starts with closing punctuation or
     /// ends with opening punctuation, while ideographs still break.
     #[test]
-    fn chinese_text_wraps_like_the_original() {
+    fn chinese_text_respects_cjk_punctuation() {
         let strings = chinese_strings();
         assert!(!strings.is_empty());
         let mut ideograph_breaks = 0;
