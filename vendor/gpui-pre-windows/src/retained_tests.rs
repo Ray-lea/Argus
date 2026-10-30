@@ -289,3 +289,27 @@ fn rectangle_subtraction_preserves_only_the_uncovered_pixels() {
         }
     }
 }
+
+#[test]
+fn fractional_image_edges_can_restore_a_larger_rounded_mask() {
+    for scale in [1., 1.2, 1.5] {
+        let mut image = sprite(10.25 * scale, 20.25 * scale, 100. * scale, 40. * scale);
+        image.content_mask.bounds = Bounds::new(
+            point(
+                ScaledPixels((10.25 * scale).floor()),
+                ScaledPixels((20.25 * scale).floor()),
+            ),
+            size(
+                ScaledPixels((110.25 * scale).ceil() - (10.25 * scale).floor()),
+                ScaledPixels((60.25 * scale).ceil() - (20.25 * scale).floor()),
+            ),
+        );
+        let mut scene = Scene::default();
+        scene.polychrome_sprites.push(image);
+        let plan =
+            independent_sprite_regions(&scene, &scene.batches().collect::<Vec<_>>(), 500, 300)
+                .unwrap();
+        assert_eq!(plan.dirty.len(), 1);
+        assert!(plan.restore.is_empty());
+    }
+}

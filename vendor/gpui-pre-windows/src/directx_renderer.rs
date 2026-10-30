@@ -339,11 +339,9 @@ fn independent_sprite_regions(
             if rect.left >= rect.right || rect.top >= rect.bottom {
                 continue;
             }
-            if (rect.right - rect.left) as f32 > sprite.bounds.size.width.as_f32().ceil()
-                || (rect.bottom - rect.top) as f32 > sprite.bounds.size.height.as_f32().ceil()
-            {
-                return composition_rejected("mask-larger-than-image");
-            }
+            // The composed vertex shader covers the complete mask; fragments
+            // outside the image return the cached background. A rounded mask
+            // may extend a pixel beyond an image at fractional display scales.
             if regions.iter().any(|other| {
                 rect.left < other.right
                     && other.left < rect.right

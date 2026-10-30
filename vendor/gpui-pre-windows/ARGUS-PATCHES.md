@@ -6,6 +6,8 @@ The package-local lockfile and unnormalized manifest are omitted; dependency res
 
 Background composition subtracts earlier image masks from the restoration regions of later bars. Remaining copies are checked against every image after coalescing; incompatible ordering and overlap keep the copy-and-blend path. The `gpu-composition-reject` diagnostic reports these fallback cases. The window readback method uses the `test-support` feature gate, matching the GPUI platform trait and allowing geometry tests to run with the normal dependency features.
 
+Rounded masks may extend past fractional image bounds. The composing shader covers the complete mask and restores cached background outside the image, so mask size no longer rejects this supported case. Geometry regressions cover fractional edges at multiple scales.
+
 Steady two-texel footprints use four equally weighted linear samples at half-texel offsets. Scaled footprints and texture edges use the general paired-area weights. Both specializations execute behind explicit HLSL branches.
 
 `src/directx_renderer.rs` batches per-draw constant parameters into reusable 64 KiB buffers. Devices supporting D3D11.1 constant-buffer offsets bind aligned ranges instead of repeatedly mapping a buffer for every draw. Unchanged batch layouts reuse the uploaded parameters. Device recreation clears these resources; drivers without offsetting retain the original binding path. Shaders, draw order, blending, antialiasing and sampling remain unchanged.
