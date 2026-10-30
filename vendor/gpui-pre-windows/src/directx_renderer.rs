@@ -43,6 +43,9 @@ pub(crate) struct FontInfo {
 pub(crate) struct DirectXRenderer {
     hwnd: HWND,
     atlas: Arc<DirectXAtlas>,
+    gpu_timing: Option<crate::gpu_timing::GpuTimings<5>>,
+    work: FrameWork,
+    last_atlas_stats: (u64, u64),
     devices: Option<DirectXRendererDevices>,
     resources: Option<DirectXResources>,
     globals: DirectXGlobalElements,
@@ -424,6 +427,15 @@ struct DirectXRenderPipelines {
     poly_sprites: PipelineState<PolychromeSprite>,
 }
 
+#[derive(Clone, Copy, Default)]
+struct FrameWork {
+    copies: u64,
+    copy_pixels: u64,
+    clears: u64,
+    resolves: u64,
+    resolve_pixels: u64,
+}
+
 struct DirectXGlobalElements {
     replacement_blend: ID3D11BlendState,
     last_params: Option<GlobalParams>,
@@ -517,6 +529,13 @@ impl DirectXRenderer {
         Ok(DirectXRenderer {
             hwnd,
             atlas,
+            gpu_timing: crate::gpu_timing::GpuTimings::from_environment(
+                &devices.device,
+                &devices.device_context,
+                "render",
+            ),
+            work: FrameWork::default(),
+            last_atlas_stats: (0, 0),
             devices: Some(devices),
             resources: Some(resources),
             globals,
@@ -541,9 +560,10 @@ impl DirectXRenderer {
             .expect("devices missing")
             .device_context;
         static LINEAR_AREA: OnceLock<bool> = OnceLock::new();
-        let linear_area_filter = u32::from(*LINEAR_AREA.get_or_init(|| {
-            std::env::var_os("ARGUS_GPUI_DISABLE_LINEAR_AREA").is_none()
-        }));
+        let linear_area_filter = u32::from(
+            *LINEAR_AREA
+                .get_or_init(|| std::env::var_os("ARGUS_GPUI_DISABLE_LINEAR_AREA").is_none()),
+        );
         let params = GlobalParams {
             gamma_ratios: self.font_info.gamma_ratios,
             viewport_size: [resources.viewport.Width, resources.viewport.Height],
@@ -594,11 +614,17 @@ impl DirectXRenderer {
                             0,
                             Some(&region),
                         );
+                        self.work.copies += 1;
+                        self.work.copy_pixels += u64::from(region.right - region.left)
+                            * u64::from(region.bottom - region.top);
                     }
                 } else {
                     device_context.CopyResource(target, prefix);
+                    self.work.copies += 1;
+                    self.work.copy_pixels += u64::from(self.width) * u64::from(self.height);
                 }
             } else if !reuse_prefix {
+                self.work.clears += 1;
                 device_context.ClearRenderTargetView(
                     resources
                         .render_target_view
@@ -707,6 +733,12 @@ impl DirectXRenderer {
 
         self.atlas
             .handle_device_lost(&devices.device, &devices.device_context);
+        self.gpu_timing = crate::gpu_timing::GpuTimings::from_environment(
+            &devices.device,
+            &devices.device_context,
+            "render",
+        );
+        self.last_atlas_stats = (0, 0);
 
         unsafe {
             devices
@@ -734,7 +766,12 @@ impl DirectXRenderer {
             return Ok(());
         }
         self.render(scene, background_appearance, true)?;
-        self.present()
+        let started = self.gpu_timing.as_ref().map(|_| std::time::Instant::now());
+        let result = self.present();
+        if let (Some(timing), Some(started)) = (&mut self.gpu_timing, started) {
+            timing.present(started.elapsed().as_secs_f64() * 1_000_000.);
+        }
+        result
     }
 
     /// Clear the render target for `background_appearance` and encode every
@@ -854,36 +891,71 @@ impl DirectXRenderer {
                 );
             }
         }
-        self.pre_draw(
-            &match background_appearance {
-                WindowBackgroundAppearance::Opaque => [1.0f32; 4],
-                _ => [0.0f32; 4],
-            },
-            reuse_prefix,
-        )?;
-        self.upload_scene_buffers(scene)?;
-        let devices = self.devices.as_ref().context("devices missing")?;
-        self.globals
-            .batch_params
-            .prepare(&devices.device, &devices.device_context, &batches)?;
-
-        let annotation = self
-            .devices
+        self.work = FrameWork::default();
+        let stats_before = self
+            .gpu_timing
             .as_ref()
-            .and_then(|devices| devices.annotation.clone())
-            .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
-        for (index, batch) in batches.into_iter().enumerate() {
-            if reuse_prefix && Some(index) < prefix_end {
-                continue;
+            .map(|_| self.pipelines.stats())
+            .unwrap_or((0, 0));
+        let atlas_stats = self
+            .gpu_timing
+            .as_ref()
+            .map(|_| self.atlas.upload_stats())
+            .unwrap_or((0, 0));
+        let atlas_delta = (
+            atlas_stats.0.saturating_sub(self.last_atlas_stats.0),
+            atlas_stats.1.saturating_sub(self.last_atlas_stats.1),
+        );
+        self.last_atlas_stats = atlas_stats;
+        if let Some(timing) = &mut self.gpu_timing {
+            timing.begin();
+        }
+        let render_started = self.gpu_timing.as_ref().map(|_| std::time::Instant::now());
+        let result: Result<()> = (|| {
+            self.pre_draw(
+                &match background_appearance {
+                    WindowBackgroundAppearance::Opaque => [1.0f32; 4],
+                    _ => [0.0f32; 4],
+                },
+                reuse_prefix,
+            )?;
+            if let Some(timing) = &mut self.gpu_timing {
+                timing.mark(1);
             }
-            if !reuse_prefix && Some(index) == prefix_end {
-                self.save_scene_prefix(prefix_key.expect("prefix key"))?;
+            self.upload_scene_buffers(scene)?;
+            let devices = self.devices.as_ref().context("devices missing")?;
+            self.globals.batch_params.prepare(
+                &devices.device,
+                &devices.device_context,
+                &batches,
+            )?;
+            if let Some(timing) = &mut self.gpu_timing {
+                timing.mark(2);
+                if reuse_prefix || prefix_end.is_none() {
+                    timing.mark(3);
+                }
             }
-            self.globals.batch_params.active = index;
-            let _annotation = annotation
+
+            let annotation = self
+                .devices
                 .as_ref()
-                .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
-            match batch {
+                .and_then(|devices| devices.annotation.clone())
+                .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
+            for (index, batch) in batches.into_iter().enumerate() {
+                if reuse_prefix && Some(index) < prefix_end {
+                    continue;
+                }
+                if !reuse_prefix && Some(index) == prefix_end {
+                    self.save_scene_prefix(prefix_key.expect("prefix key"))?;
+                    if let Some(timing) = &mut self.gpu_timing {
+                        timing.mark(3);
+                    }
+                }
+                self.globals.batch_params.active = index;
+                let _annotation = annotation
+                    .as_ref()
+                    .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
+                match batch {
                 PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
                 PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
                 PrimitiveBatch::Paths(range) => {
@@ -917,8 +989,29 @@ impl DirectXRenderer {
                     scene.surfaces.len(),
                 )
             })?;
+            }
+            Ok(())
+        })();
+        if let Some(timing) = &mut self.gpu_timing {
+            let stats_after = self.pipelines.stats();
+            let work = self.work;
+            let composed = self.resources.as_ref().is_some_and(|r| r.compose_prefix);
+            let dirty_pixels = self
+                .resources
+                .as_ref()
+                .and_then(|r| r.present_dirty.as_ref())
+                .map(|rects| {
+                    rects
+                        .iter()
+                        .map(|r| (r.right - r.left) as u64 * (r.bottom - r.top) as u64)
+                        .sum::<u64>()
+                })
+                .unwrap_or(u64::from(self.width) * u64::from(self.height));
+            let cpu_us =
+                render_started.map_or(0., |started| started.elapsed().as_secs_f64() * 1_000_000.);
+            timing.finish(|| format!("\"ok\":{},\"reused\":{reuse_prefix},\"composed\":{composed},\"width\":{},\"height\":{},\"drawCalls\":{},\"instanceUploadBytes\":{},\"textureUploads\":{},\"textureUploadBytes\":{},\"copyCalls\":{},\"copyPixels\":{},\"clearCalls\":{},\"resolveCalls\":{},\"resolvePixels\":{},\"dirtyPixels\":{dirty_pixels},\"renderCpuUs\":{cpu_us}", result.is_ok(), self.width, self.height, stats_after.0.wrapping_sub(stats_before.0), stats_after.1.wrapping_sub(stats_before.1), atlas_delta.0, atlas_delta.1, work.copies, work.copy_pixels, work.clears, work.resolves, work.resolve_pixels));
         }
-        Ok(())
+        result
     }
 
     fn save_scene_prefix(&mut self, key: (u64, usize, bool)) -> Result<()> {
@@ -949,6 +1042,8 @@ impl DirectXRenderer {
                 resources.prefix.as_ref().context("scene prefix missing")?,
                 target,
             );
+            self.work.copies += 1;
+            self.work.copy_pixels += u64::from(self.width) * u64::from(self.height);
         }
         resources.prefix_key = Some(key);
         Ok(())
@@ -1165,6 +1260,9 @@ impl DirectXRenderer {
     }
 
     fn draw_paths_to_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
+        self.work.clears += 1;
+        self.work.resolves += 1;
+        self.work.resolve_pixels += u64::from(self.width) * u64::from(self.height);
         if paths.is_empty() {
             return Ok(());
         }
@@ -1498,6 +1596,21 @@ impl DirectXResources {
 }
 
 impl DirectXRenderPipelines {
+    fn stats(&self) -> (u64, u64) {
+        let values = [
+            self.shadow_pipeline.stats(),
+            self.quad_pipeline.stats(),
+            self.path_rasterization_pipeline.stats(),
+            self.path_sprite_pipeline.stats(),
+            self.underline_pipeline.stats(),
+            self.mono_sprites.stats(),
+            self.subpixel_sprites.stats(),
+            self.poly_sprites.stats(),
+        ];
+        values
+            .into_iter()
+            .fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1))
+    }
     pub fn new(device: &ID3D11Device) -> Result<Self> {
         let shadow_pipeline = PipelineState::new(
             device,
@@ -1794,6 +1907,8 @@ impl BatchConstants {
 }
 
 struct PipelineState<T> {
+    draw_calls: std::cell::Cell<u64>,
+    upload_bytes: std::cell::Cell<u64>,
     label: &'static str,
     vertex: ID3D11VertexShader,
     fragment: ID3D11PixelShader,
@@ -1805,6 +1920,9 @@ struct PipelineState<T> {
 }
 
 impl<T> PipelineState<T> {
+    fn stats(&self) -> (u64, u64) {
+        (self.draw_calls.get(), self.upload_bytes.get())
+    }
     fn new(
         device: &ID3D11Device,
         label: &'static str,
@@ -1824,6 +1942,8 @@ impl<T> PipelineState<T> {
         let view = create_buffer_view(device, &buffer)?;
 
         Ok(PipelineState {
+            draw_calls: std::cell::Cell::new(0),
+            upload_bytes: std::cell::Cell::new(0),
             label,
             vertex,
             fragment,
@@ -1865,7 +1985,13 @@ impl<T> PipelineState<T> {
             self.view = view;
             self.buffer_size = new_buffer_size;
         }
-        update_buffer(device_context, &self.buffer, data)
+        update_buffer(device_context, &self.buffer, data)?;
+        self.upload_bytes.set(
+            self.upload_bytes
+                .get()
+                .wrapping_add(std::mem::size_of_val(data) as u64),
+        );
+        Ok(())
     }
 
     fn draw(
@@ -1884,6 +2010,7 @@ impl<T> PipelineState<T> {
             &self.blend_state,
         );
         unsafe {
+            self.draw_calls.set(self.draw_calls.get().wrapping_add(1));
             device_context.DrawInstanced(vertex_count, instance_count, 0, 0);
         }
         Ok(())
@@ -1909,6 +2036,7 @@ impl<T> PipelineState<T> {
             device_context.VSSetShaderResources(0, Some(texture));
             device_context.PSSetShaderResources(0, Some(texture));
 
+            self.draw_calls.set(self.draw_calls.get().wrapping_add(1));
             device_context.DrawInstanced(4, instance_count, 0, 0);
         }
         Ok(())
@@ -1936,6 +2064,7 @@ impl<T> PipelineState<T> {
             &self.blend_state,
         );
         unsafe {
+            self.draw_calls.set(self.draw_calls.get().wrapping_add(1));
             device_context.DrawInstanced(4, instance_count, 0, 0);
         }
         Ok(())
@@ -1969,6 +2098,7 @@ impl<T> PipelineState<T> {
             device_context.PSSetSamplers(0, Some(sampler));
             device_context.VSSetShaderResources(0, Some(texture));
             device_context.PSSetShaderResources(0, Some(texture));
+            self.draw_calls.set(self.draw_calls.get().wrapping_add(1));
             device_context.DrawInstanced(4, instance_count, 0, 0);
         }
         Ok(())

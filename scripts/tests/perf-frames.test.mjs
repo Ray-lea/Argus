@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { summarizeFrames } from "../perf-frames.mjs";
+import { physicalPixelsMatch, summarizeFrames } from "../perf-frames.mjs";
 
 test("frame membership uses QPC time rather than receipt batches", () => {
   const events = [
@@ -32,4 +32,15 @@ test("frame summaries reject old probes and handle an empty hidden interval", ()
   const summary = summarizeFrames([{ capture: { times100ns: [5, 35] } }], 10, 30);
   assert.equal(summary.presentedFps, 0);
   assert.equal(summary.observedFrames, 0);
+});
+
+test("fractional DPI tolerates floating point rounding and rejects a one pixel mismatch", () => {
+  assert(physicalPixelsMatch(1706.6666259765625, 1.5, 2560));
+  assert(!physicalPixelsMatch(1706, 1.5, 2560));
+  assert(!physicalPixelsMatch(NaN, 1.5, 2560));
+});
+
+test("resource measurements without capture report unavailable frame metrics", () => {
+  const summary = summarizeFrames([], 10, 30, false);
+  assert(Object.values(summary).every((value) => value === null));
 });

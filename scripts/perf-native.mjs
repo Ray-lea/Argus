@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 import assert from "node:assert/strict";
-import { summarizeFrames } from "./perf-frames.mjs";
+import { physicalPixelsMatch, summarizeFrames } from "./perf-frames.mjs";
 import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -42,10 +42,19 @@ writeFileSync(
 const probe = resolve(flag("--probe", "target/release/argus-window-probe.exe"));
 const seconds = Number(flag("--seconds", 20));
 const warmup = Number(flag("--warmup", 25));
+const captureEnabled = !process.argv.includes("--no-capture");
+const width = Number(flag("--width", 1240));
+const height = Number(flag("--height", 800));
+const uiScale = Number(flag("--ui-scale", 100));
+assert([width, height].every((value) => Number.isSafeInteger(value) && value > 0), "invalid client size");
+assert(Number.isInteger(uiScale) && uiScale >= 80 && uiScale <= 150, "invalid UI scale");
 const captureCycles = Number(flag("--capture-cycles", 0));
 assert(Number.isInteger(captureCycles) && captureCycles >= 0 && captureCycles <= 100, "invalid capture cycle count");
+assert(captureEnabled || captureCycles === 0, "capture cycles require capture");
 const scenario = flag("--scenario", null);
 const fixture = flag("--fixture", null);
+const streamFixture = process.argv.includes("--stream-fixture");
+assert(!streamFixture || fixture, "fixture stream requires a fixture");
 const phases = scenario ? JSON.parse(readFileSync(resolve(scenario), "utf8")) : flag(
   "--phases",
   "processes:fluid,processes:off,performance:fluid,logical:fluid,settings:off,hidden:off",
@@ -71,12 +80,18 @@ const result = {
   logicalProcessors: availableParallelism(),
   seconds,
   captureCycles,
+  captureEnabled,
+  requestedClient: { width, height, uiScale },
   phases,
   fixture: fixture ? createHash("sha256").update(readFileSync(fixture)).digest("hex") : null,
+  streamFixture,
   instrumentation: {
     frameTrace: !!process.env.ARGUS_GPUI_FRAME_TRACE,
     viewTrace: !!process.env.ARGUS_GPUI_VIEW_TRACE,
+    gpuTiming: !!process.env.ARGUS_GPUI_GPU_TIMING,
     prefixCompositionDisabled: !!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION,
+    linearAreaDisabled: !!process.env.ARGUS_GPUI_DISABLE_LINEAR_AREA,
+    sceneCacheDisabled: !!process.env.ARGUS_GPUI_DISABLE_SCENE_CACHE,
     performanceCores: !!process.env.ARGUS_PROBE_PERFORMANCE_CORES,
   },
   events: [],
@@ -147,7 +162,7 @@ function summarize(tag, before, after) {
   const ms = (after.qpc100ns - before.qpc100ns) / 10000;
   const uiBefore = before.threads?.find((t) => t.pid === shown.pid && t.tid === shown.uiThread);
   const uiAfter = after.threads?.find((t) => t.pid === shown.pid && t.tid === shown.uiThread && t.created === uiBefore?.created);
-  const frames = summarizeFrames(result.events, before.qpc100ns, after.qpc100ns);
+  const frames = summarizeFrames(result.events, before.qpc100ns, after.qpc100ns, captureEnabled);
   const systemTotal = after.system.kernel + after.system.user - before.system.kernel - before.system.user;
   const affinity = result.events.find((event) => event.event === "started")?.performanceCoreAffinity;
   const mask = affinity ? BigInt(affinity) : null;
@@ -187,15 +202,21 @@ function summarize(tag, before, after) {
 try {
   for (let i = 0; i < 1200 && !shown && !exited; i++) await sleep(50);
   assert(shown, `Window unavailable: ${stderr}`);
-  send("size 1240 800");
+  send(`size ${width} ${height}`);
   for (let i = 0; i < 200 && !result.events.some((event) => event.event === "resized") && !exited; i++)
     await sleep(50);
   result.client = result.events.findLast((event) => event.event === "resized");
-  assert(result.client?.width === 1240 && result.client?.height === 800, "client size mismatch");
-  send("watch");
-  app({page: "processes", motion: "fluid"});
+  assert(result.client?.width === width && result.client?.height === height, "client size mismatch");
+  if (captureEnabled) send("watch");
+  app({page: "processes", motion: "fluid", uiScale});
   console.log(`Warmup ${warmup}s: ${label}`);
-  await sleep(warmup * 1000);
+  if (streamFixture) {
+    const until = performance.now() + warmup * 1000;
+    while (performance.now() < until) {
+      app({sample: {at: 0, set: {}}});
+      await sleep(Math.min(1000, Math.max(0, until - performance.now())));
+    }
+  } else await sleep(warmup * 1000);
   for (let cycle = 0; cycle < captureCycles; cycle++) {
     assert(await stopWatching(), "capture cycle teardown failed");
     send("watch");
@@ -215,8 +236,8 @@ try {
       const layout = result.events.findLast((event) => event.event === "ui-layout" && event.label === `${tag}-begin`);
       const conditions = result.events.findLast((event) => event.event === "ui-conditions" && event.label === `${tag}-begin`);
       assert(layout && conditions, "native viewport inspection missing");
-      assert.equal(layout.width * conditions.dpiScale, 1240, "native physical width mismatch");
-      assert.equal(layout.height * conditions.dpiScale, 800, "native physical height mismatch");
+      assert(physicalPixelsMatch(layout.width, conditions.dpiScale, width), "native physical width mismatch");
+      assert(physicalPixelsMatch(layout.height, conditions.dpiScale, height), "native physical height mismatch");
     }
     const before = await mark(`${tag}-begin`);
     if (phase.repeat) {
@@ -247,7 +268,7 @@ try {
 } finally {
   writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
   if (!exited) {
-    result.captureClosedBeforeExit = await stopWatching();
+    result.captureClosedBeforeExit = !captureEnabled || await stopWatching();
     app({ exit: true });
     send("stop");
   }

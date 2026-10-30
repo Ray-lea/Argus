@@ -16,6 +16,9 @@ use gpui::{
 pub(crate) struct DirectXAtlas(Mutex<AtlasState<DirectXAtlasTextures>>);
 
 struct DirectXAtlasTextures {
+    gpu_timing: Option<crate::gpu_timing::GpuTimings<2>>,
+    upload_calls: u64,
+    upload_bytes: u64,
     device: ID3D11Device,
     device_context: ID3D11DeviceContext,
     monochrome_textures: AtlasTextureList<DirectXAtlasTexture>,
@@ -35,6 +38,13 @@ struct DirectXAtlasTexture {
 impl DirectXAtlas {
     pub(crate) fn new(device: &ID3D11Device, device_context: &ID3D11DeviceContext) -> Self {
         DirectXAtlas(Mutex::new(AtlasState::new(DirectXAtlasTextures {
+            gpu_timing: crate::gpu_timing::GpuTimings::from_environment(
+                device,
+                device_context,
+                "atlas-upload",
+            ),
+            upload_calls: 0,
+            upload_bytes: 0,
             device: device.clone(),
             device_context: device_context.clone(),
             monochrome_textures: Default::default(),
@@ -63,12 +73,24 @@ impl DirectXAtlas {
     ) {
         let mut lock = self.0.lock();
         lock.clear(|textures| {
+            textures.gpu_timing = crate::gpu_timing::GpuTimings::from_environment(
+                device,
+                device_context,
+                "atlas-upload",
+            );
+            textures.upload_calls = 0;
+            textures.upload_bytes = 0;
             textures.device = device.clone();
             textures.device_context = device_context.clone();
             textures.monochrome_textures = AtlasTextureList::default();
             textures.polychrome_textures = AtlasTextureList::default();
             textures.subpixel_textures = AtlasTextureList::default();
         });
+    }
+
+    pub(crate) fn upload_stats(&self) -> (u64, u64) {
+        let lock = self.0.lock();
+        (lock.backend.upload_calls, lock.backend.upload_bytes)
     }
 }
 
@@ -96,15 +118,37 @@ impl AtlasBackend for DirectXAtlasTextures {
         bytes: &[u8],
     ) -> anyhow::Result<AtlasTile> {
         crate::frame_trace::record(10, bytes.len() as u64);
-        let tile = self
-            .allocate(size, kind)
-            .ok_or_else(|| anyhow::anyhow!("failed to allocate"))?;
-        let texture = self
-            .texture(tile.texture_id)
-            .ok_or_else(|| anyhow::anyhow!("allocated tile refers to a missing texture"))?;
-        texture.upload(&self.device_context, tile.bounds, bytes);
-        crate::frame_trace::record(11, bytes.len() as u64);
-        Ok(tile)
+        if let Some(timing) = &mut self.gpu_timing {
+            timing.begin();
+        }
+        let started = self.gpu_timing.as_ref().map(|_| std::time::Instant::now());
+        let result = (|| {
+            let tile = self
+                .allocate(size, kind)
+                .ok_or_else(|| anyhow::anyhow!("failed to allocate"))?;
+            let texture = self
+                .texture(tile.texture_id)
+                .ok_or_else(|| anyhow::anyhow!("allocated tile refers to a missing texture"))?;
+            if let Some(uploaded) = texture.upload(&self.device_context, tile.bounds, bytes) {
+                self.upload_calls = self.upload_calls.wrapping_add(1);
+                self.upload_bytes = self.upload_bytes.wrapping_add(uploaded as u64);
+            }
+            crate::frame_trace::record(11, bytes.len() as u64);
+            Ok(tile)
+        })();
+        if let Some(timing) = &mut self.gpu_timing {
+            let cpu_us = started.map_or(0., |s| s.elapsed().as_secs_f64() * 1_000_000.);
+            timing.finish(|| {
+                format!(
+                    "\"ok\":{},\"bytes\":{},\"width\":{},\"height\":{},\"uploadCpuUs\":{cpu_us}",
+                    result.is_ok(),
+                    bytes.len(),
+                    size.width.0,
+                    size.height.0
+                )
+            });
+        }
+        result
     }
 
     fn remove(&mut self, tile: AtlasTile) {
@@ -283,7 +327,7 @@ impl DirectXAtlasTexture {
         device_context: &ID3D11DeviceContext,
         bounds: Bounds<DevicePixels>,
         bytes: &[u8],
-    ) {
+    ) -> Option<usize> {
         // `UpdateSubresource` reads `row_pitch * height` bytes from `bytes` based on the
         // `D3D11_BOX` below. If the caller hands us a slice shorter than that, the driver would
         // over-read past the end of the source buffer (potentially by multiple megabytes), so bail
@@ -300,7 +344,7 @@ impl DirectXAtlasTexture {
                 bounds.size.height.0,
                 expected,
             );
-            return;
+            return None;
         }
         unsafe {
             device_context.UpdateSubresource(
@@ -319,6 +363,7 @@ impl DirectXAtlasTexture {
                 0,
             );
         }
+        Some(expected)
     }
 
     fn decrement_ref_count(&mut self) {

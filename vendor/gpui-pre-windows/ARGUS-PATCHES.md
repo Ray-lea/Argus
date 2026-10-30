@@ -8,6 +8,8 @@ Background composition subtracts earlier image masks from the restoration region
 
 Rounded masks may extend past fractional image bounds. The composing shader covers the complete mask and restores cached background outside the image, so mask size no longer rejects this supported case. Geometry regressions cover fractional edges at multiple scales.
 
+`ARGUS_GPUI_GPU_TIMING` enables sparse, delayed D3D11 timestamp/disjoint queries in `src/gpu_timing.rs`, the renderer and atlas. Reads retain the raw `S_FALSE` pending status, use `DONOTFLUSH`, validate frequency/disjoint state and recycle a bounded query pool. GPU phases, actual draw/copy/clear/resolve/upload counters and CPU Present1 duration are logged through a bounded asynchronous queue. Normal execution creates no timing queries. See the application's performance documentation for sample fields.
+
 Steady two-texel footprints use four equally weighted linear samples at half-texel offsets. Scaled footprints and texture edges use the general paired-area weights. Both specializations execute behind explicit HLSL branches.
 
 `src/directx_renderer.rs` batches per-draw constant parameters into reusable 64 KiB buffers. Devices supporting D3D11.1 constant-buffer offsets bind aligned ranges instead of repeatedly mapping a buffer for every draw. Unchanged batch layouts reuse the uploaded parameters. Device recreation clears these resources; drivers without offsetting retain the original binding path. Shaders, draw order, blending, antialiasing and sampling remain unchanged.
