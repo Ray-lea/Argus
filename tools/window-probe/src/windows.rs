@@ -616,6 +616,12 @@ fn thread_times(pids: &HashSet<u32>) -> Result<Vec<serde_json::Value>> {
 
 fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
     let pids = job.pids()?;
+    let (mut idle, mut kernel, mut user) = (
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+    );
+    unsafe { GetSystemTimes(Some(&mut idle), Some(&mut kernel), Some(&mut user))? };
     let mut processes = Vec::new();
     for &pid in &pids {
         unsafe {
@@ -653,7 +659,7 @@ fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
         }
     }
     Ok(
-        serde_json::json!({"processes":processes,"gpu":gpu.map(|gpu|gpu.sample(&pids)),"threads":gpu.map(|_|thread_times(&pids)).transpose()?}),
+        serde_json::json!({"processes":processes,"system":{"idle":ticks(idle),"kernel":ticks(kernel),"user":ticks(user)},"gpu":gpu.map(|gpu|gpu.sample(&pids)),"threads":gpu.map(|_|thread_times(&pids)).transpose()?}),
     )
 }
 
@@ -728,9 +734,41 @@ pub fn run(args: &[String]) -> Result<()> {
         return Err(error.into());
     }
     let monitor = ForegroundMonitor::start(root, job.clone());
+    // Keep the owned background test comparable to a foreground application.
+    // An explicit control bit prevents Windows from automatically selecting EcoQoS.
+    let power = PROCESS_POWER_THROTTLING_STATE {
+        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+        StateMask: 0,
+    };
+    unsafe {
+        SetProcessInformation(
+            windows::Win32::Foundation::HANDLE(child.as_raw_handle()),
+            ProcessPowerThrottling,
+            (&power as *const PROCESS_POWER_THROTTLING_STATE).cast(),
+            size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+        )?;
+    }
+    let mut actual = PROCESS_POWER_THROTTLING_STATE {
+        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        ..Default::default()
+    };
+    unsafe {
+        GetProcessInformation(
+            windows::Win32::Foundation::HANDLE(child.as_raw_handle()),
+            ProcessPowerThrottling,
+            (&mut actual as *mut PROCESS_POWER_THROTTLING_STATE).cast(),
+            size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+        )?;
+    }
+    anyhow::ensure!(
+        actual.ControlMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED != 0
+            && actual.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED == 0,
+        "owned process power throttling remains enabled"
+    );
     println!(
         "{}",
-        serde_json::json!({"event":"started","pid":root,"unixMs":crate::unix_ms()})
+        serde_json::json!({"event":"started","pid":root,"unixMs":crate::unix_ms(),"powerThrottling":false})
     );
     #[cfg(feature = "capture")]
     {

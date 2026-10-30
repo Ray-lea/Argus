@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 import assert from "node:assert/strict";
 import { summarizeFrames } from "./perf-frames.mjs";
+import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -24,8 +25,7 @@ copyFileSync(sourceExecutable, executable);
 if (process.env.ARGUS_PROTOTYPE_STACK_FILE && existsSync(resolve(dirname(sourceExecutable), "argus.pdb")))
   copyFileSync(resolve(dirname(sourceExecutable), "argus.pdb"), resolve(output, "argus.pdb"));
 const identifier = flag("--identifier", `dev.argus.taskmanager.test.${label}`);
-assert(identifier.startsWith("dev.argus.taskmanager.test."), "isolated test identifier required");
-const config = resolve(process.env.APPDATA, identifier);
+const [config] = testDirectories(identifier);
 mkdirSync(config, { recursive: true });
 writeFileSync(
   resolve(config, "settings.json"),
@@ -39,15 +39,26 @@ writeFileSync(
     updateCheck: false,
   }),
 );
-const probe = resolve(flag("--probe", "target/rust-analyzer/debug/argus-window-probe.exe"));
+const probe = resolve(flag("--probe", "target/release/argus-window-probe.exe"));
 const seconds = Number(flag("--seconds", 20));
 const warmup = Number(flag("--warmup", 25));
 const captureCycles = Number(flag("--capture-cycles", 0));
 assert(Number.isInteger(captureCycles) && captureCycles >= 0 && captureCycles <= 100, "invalid capture cycle count");
-const phases = flag(
+const scenario = flag("--scenario", null);
+const fixture = flag("--fixture", null);
+const phases = scenario ? JSON.parse(readFileSync(resolve(scenario), "utf8")) : flag(
   "--phases",
   "processes:fluid,processes:off,performance:fluid,logical:fluid,settings:off,hidden:off",
-).split(",");
+).split(",").map((phase) => {
+  const [page, motion] = phase.split(":");
+  return { name: `${page}-${motion}`, hidden: page === "hidden", state: {
+    page: page === "logical" ? "performance" : page,
+    cpuMode: page === "logical" ? "logical" : "overall", motion,
+  }};
+});
+assert(Array.isArray(phases) && phases.length > 0, "measurement phases required");
+assert(seconds > 0 && warmup >= 0 && Number.isFinite(seconds + warmup), "invalid measurement duration");
+assert(phases.every((phase) => /^[a-z0-9-]+$/.test(phase.name)), "invalid phase name");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const result = {
   measurementVersion: 3,
@@ -58,6 +69,8 @@ const result = {
   logicalProcessors: availableParallelism(),
   seconds,
   captureCycles,
+  phases,
+  fixture: fixture ? createHash("sha256").update(readFileSync(fixture)).digest("hex") : null,
   instrumentation: {
     frameTrace: !!process.env.ARGUS_GPUI_FRAME_TRACE,
     viewTrace: !!process.env.ARGUS_GPUI_VIEW_TRACE,
@@ -73,7 +86,8 @@ const child = spawn(
     "run",
     executable,
     "--hidden",
-    "--test", "--identifier", identifier, "--stop-after", "550",
+    "--test", "--identifier", identifier, "--stop-after", String(Math.ceil(warmup + phases.length * (seconds + 10) + 120)),
+    ...(fixture ? ["--fixture", resolve(fixture)] : []),
   ],
   {
     windowsHide: true,
@@ -116,13 +130,6 @@ async function stopWatching() {
   }
   return false;
 }
-async function state(page, motion) {
-  app({
-    page: page === "logical" ? "performance" : page,
-    cpuMode: page === "logical" ? "logical" : "overall",
-    motion,
-  });
-}
 async function mark(tag) {
   send(`mark ${tag}`);
   for (let i = 0; i < 200 && !exited; i++) {
@@ -138,6 +145,11 @@ function summarize(tag, before, after) {
   const uiBefore = before.threads?.find((t) => t.pid === shown.pid && t.tid === shown.uiThread);
   const uiAfter = after.threads?.find((t) => t.pid === shown.pid && t.tid === shown.uiThread && t.created === uiBefore?.created);
   const frames = summarizeFrames(result.events, before.qpc100ns, after.qpc100ns);
+  const systemTotal = after.system.kernel + after.system.user - before.system.kernel - before.system.user;
+  const threads = (after.threads ?? []).map((thread) => {
+    const prior = before.threads?.find((old) => old.pid === thread.pid && old.tid === thread.tid && old.created === thread.created);
+    return { name: thread.name, tid: thread.tid, cpuMsPerSecond: prior ? (thread.cpuMs - prior.cpuMs) / ms * 1000 : 0 };
+  }).sort((a, b) => b.cpuMsPerSecond - a.cpuMsPerSecond).slice(0, 8);
   const engines = {};
   for (const [key, value] of Object.entries(after.gpu?.gpuTime100ns ?? {})) {
     const engine = key.replace(/^pid_\d+_/, "");
@@ -147,6 +159,8 @@ function summarize(tag, before, after) {
   return {
     tag,
     durationMs: ms,
+    systemBusyPercent: systemTotal > 0 ? (1 - (after.system.idle - before.system.idle) / systemTotal) * 100 : null,
+    topThreads: threads,
     uiThreadCpuMsPerSecond: uiBefore && uiAfter ? ((uiAfter.cpuMs-uiBefore.cpuMs)/ms)*1000 : null,
     cpuMsPerSecond: ((sum(after.processes, "cpuMs") - sum(before.processes, "cpuMs")) / ms) * 1000,
     cpuPercent:
@@ -168,7 +182,7 @@ try {
   result.client = result.events.findLast((event) => event.event === "resized");
   assert(result.client?.width === 1240 && result.client?.height === 800, "client size mismatch");
   send("watch");
-  await state("processes", "fluid");
+  app({page: "processes", motion: "fluid"});
   console.log(`Warmup ${warmup}s: ${label}`);
   await sleep(warmup * 1000);
   for (let cycle = 0; cycle < captureCycles; cycle++) {
@@ -177,10 +191,12 @@ try {
     await sleep(150);
   }
   for (const [index, phase] of phases.entries()) {
-    const [page, motion] = phase.split(":");
-    if (page === "hidden") send("hide");
-    else await state(page, motion);
-    const tag = `${index}-${page}-${motion}`;
+    if (phase.hidden) send("hide");
+    else {
+      if (index > 0 && phases[index - 1].hidden) send("show");
+      app(phase.state);
+    }
+    const tag = `${index}-${phase.name}`;
     app({ pointerOutside: true, inspectLayout: `${tag}-begin` });
     // Inspection invalidates the test UI. Let it settle before the timing mark.
     await sleep(2500);
@@ -192,14 +208,23 @@ try {
       assert.equal(layout.height * conditions.dpiScale, 800, "native physical height mismatch");
     }
     const before = await mark(`${tag}-begin`);
-    await sleep(seconds * 1000);
+    if (phase.repeat) {
+      const until = performance.now() + seconds * 1000;
+      let step = 0;
+      while (performance.now() < until) {
+        const control = phase.repeat[step++ % phase.repeat.length];
+        if (control.app) app(control.app);
+        if (control.probe) send(control.probe);
+        await sleep(Math.min(control.waitMs ?? 100, Math.max(0, until - performance.now())));
+      }
+    } else await sleep(seconds * 1000);
     const after = await mark(`${tag}-end`);
     app({ inspectLayout: `${tag}-end` });
     const summary = summarize(tag, before, after);
     result.summaries.push(summary);
     writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(summary));
-    if (page !== "hidden" && process.argv.includes("--capture")) {
+    if (!phase.hidden && process.argv.includes("--capture")) {
       const shot = spawnSync(probe, ["capture", String(shown.pid), resolve(output, `${tag}.png`)], {
         windowsHide: true,
         encoding: "utf8",
@@ -218,6 +243,7 @@ try {
   for (let i = 0; i < 240 && !exited; i++) await sleep(50);
   child.stdin.end();
   result.stderr = stderr;
+  if (exited) cleanupTestProfile(identifier);
   writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
 }
 assert.equal(result.exitCode, 0, stderr);

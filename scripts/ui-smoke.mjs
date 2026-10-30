@@ -4,6 +4,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
+import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
 const label = process.argv[2] ?? `smoke-${Date.now()}`;
@@ -15,7 +16,7 @@ const output = resolve("target/native-validation", label);
 mkdirSync(output, { recursive: true });
 const metadata = JSON.parse(readFileSync("resources/app.json"));
 const identifier = `${metadata.identifier}.test.${label}`;
-const config = resolve(process.env.APPDATA, identifier);
+const [config] = testDirectories(identifier);
 mkdirSync(config, { recursive: true });
 writeFileSync(
   resolve(config, "settings.json"),
@@ -266,6 +267,7 @@ try {
     resolve(output, "events.json"),
     JSON.stringify({ identifier, events, stderr: error, exitCode }, null, 2),
   );
+  if (exited) cleanupTestProfile(identifier);
 }
 if (exitCode !== 0 || error || events.some((e) => e.event === "focusViolation"))
   throw Error(`Native validation failed: ${error}`);
