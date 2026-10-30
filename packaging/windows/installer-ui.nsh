@@ -89,7 +89,7 @@ LangString ArgusUninstalledText ${LANG_SIMPCHINESE} "Argus 已从本机移除。
 
 ; ---- Theme --------------------------------------------------------------------
 
-; Argus's palette (ui/src/styles.css). SetCtlColors takes colors only as
+; Argus's palette (resources/theme.json). SetCtlColors takes colors only as
 ; constants, so each role is painted from one of two fixed sets; Argus's
 ; default accent is used rather than the Windows one, for the same reason.
 !define ARGUS_LIGHT_BG ECEFF4

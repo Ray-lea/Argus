@@ -44,7 +44,7 @@
 
 !macro NSIS_HOOK_PREUNINSTALL
 !if "${BUNDLEID}" == "dev.argus.taskmanager"
-  ; An installer that uninstalls before upgrading (Tauri's own pages offer it;
+  ; An installer that uninstalls before upgrading (the base template offers it;
   ; Argus's upgrade in place) runs the old uninstaller in place (with _?=). A
   ; real uninstall, from Apps or from uninstall.exe, runs a copy from %TEMP%.
   ; Reinstalling keeps both.

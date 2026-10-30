@@ -1,4 +1,4 @@
-// Release notes as the update dialog reads them (ui/src/lib/release-notes.ts):
+// Release notes as the update dialog reads them (scripts/lib/release-notes.ts):
 // entries in the format scripts/release.mjs writes and in hand-written ones.
 
 import assert from "node:assert/strict";

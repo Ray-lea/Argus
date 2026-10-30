@@ -1,5 +1,5 @@
 // Changelog entries (CHANGELOG.md, written by scripts/release.mjs) as the
-// update dialog shows them. No Solid and no i18n: ui/tests runs it, and
+// update dialog shows them. Independent of the UI runtime: scripts/tests runs it, and
 // scripts/release.mjs reads CHANGELOG.md with it, so a release publishes the
 // entries the app finds.
 

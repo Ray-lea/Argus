@@ -1,4 +1,4 @@
-// Generates a local Rust adapter for the established command API; no IPC or WebView is involved.
+// Generates a local Rust adapter for the application command API.
 import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 const source = readFileSync("src-gpui/src/commands.rs", "utf8");

@@ -11,7 +11,6 @@ import { summarizeFrames } from "./perf-frames.mjs";
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
 const [label, input] = process.argv.slice(2);
-const tauri = process.argv.includes("--tauri");
 assert(/^[a-z0-9-]+$/.test(label ?? ""), "test label required");
 const flag = (name, fallback) => {
   const index = process.argv.indexOf(name);
@@ -54,7 +53,7 @@ const result = {
   measurementVersion: 3,
   label,
   identifier,
-  renderer: tauri ? "tauri" : "gpui",
+  renderer: "gpui",
   sha256: createHash("sha256").update(readFileSync(executable)).digest("hex"),
   logicalProcessors: availableParallelism(),
   seconds,
@@ -68,27 +67,18 @@ const result = {
   summaries: [],
   invalidStructuredLines: 0,
 };
-const port = Number(flag("--port", 9489));
 const child = spawn(
   probe,
   [
     "run",
     executable,
     "--hidden",
-    ...(tauri ? [] : ["--test", "--identifier", identifier, "--stop-after", "550"]),
+    "--test", "--identifier", identifier, "--stop-after", "550",
   ],
   {
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      ...(tauri
-        ? {
-            WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --disable-features=CalculateNativeWinOcclusion`,
-            WEBVIEW2_USER_DATA_FOLDER: resolve(output, "webview-profile"),
-          }
-        : {}),
-    },
+    env: process.env,
   },
 );
 let shown,
@@ -126,90 +116,12 @@ async function stopWatching() {
   }
   return false;
 }
-let cdp;
-async function connectWebview() {
-  let endpoint;
-  for (let i = 0; i < 300 && !exited; i++) {
-    try {
-      endpoint = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(
-        (tab) => tab.type === "page",
-      )?.webSocketDebuggerUrl;
-    } catch {}
-    if (endpoint) break;
-    await sleep(200);
-  }
-  assert(endpoint, "owned WebView2 debugger unavailable");
-  const socket = new WebSocket(endpoint),
-    pending = new Map();
-  let sequence = 0;
-  await new Promise((resolve, reject) => {
-    socket.onopen = resolve;
-    socket.onerror = reject;
-  });
-  socket.onmessage = ({ data }) => {
-    const event = JSON.parse(data);
-    const waiter = pending.get(event.id);
-    if (waiter) {
-      pending.delete(event.id);
-      event.error ? waiter.reject(Error(JSON.stringify(event.error))) : waiter.resolve(event.result);
-    }
-  };
-  socket.onclose = () => {
-    for (const waiter of pending.values()) waiter.reject(Error("owned debugger closed"));
-    pending.clear();
-  };
-  const request = (method, params = {}) =>
-    new Promise((resolve, reject) => {
-      const id = ++sequence;
-      pending.set(id, { resolve, reject });
-      socket.send(JSON.stringify({ id, method, params }));
-    });
-  const evaluate = async (expression) => {
-    const result = await request("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw Error(JSON.stringify(result.exceptionDetails));
-    return result.result?.value;
-  };
-  cdp = { request, evaluate, close: () => socket.close() };
-  result.webview = await request("Browser.getVersion");
-  for (let i = 0; i < 300 && !(await evaluate('!!document.querySelector(".app")')); i++) await sleep(200);
-  await evaluate(
-    `for (const [key,value] of Object.entries({page:"processes",perfDevice:"cpu",cpuMode:"overall","motion.chartMode":"fluid",interval:1000,detailsPanel:true,navPosition:"top"})) localStorage.setItem("argus."+key,JSON.stringify(value));`,
-  );
-  await request("Page.reload");
-  for (let i = 0; i < 300 && !(await evaluate('!!document.querySelector(".nav-item")')); i++)
-    await sleep(200);
-}
 async function state(page, motion) {
-  if (!tauri)
-    return app({
-      page: page === "logical" ? "performance" : page,
-      cpuMode: page === "logical" ? "logical" : "overall",
-      motion,
-    });
-  const shell = JSON.parse(readFileSync("locales/zh-CN/shell.json"));
-  const settings = JSON.parse(readFileSync("locales/zh-CN/settings.json"));
-  const performance = JSON.parse(readFileSync("locales/zh-CN/performance.json"));
-  const navigate = async (key) => {
-    assert(
-      await cdp.evaluate(
-        `(()=>{const button=[...document.querySelectorAll('.nav-item')].find(el=>el.querySelector('.nav-label')?.textContent===${JSON.stringify(shell.page[key])});button?.click();return !!button})()`,
-      ),
-      `Tauri page ${key} unavailable`,
-    );
-    await sleep(400);
-  };
-  await navigate("settings");
-  const selector = `#settings-motion button[aria-label=${JSON.stringify(settings.motion.chart.title)}]`;
-  await cdp.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-  await cdp.evaluate(
-    `document.querySelectorAll('[role=option]')[${["fluid", "balanced", "pixel", "off"].indexOf(motion)}].click()`,
-  );
-  await navigate(page === "logical" ? "performance" : page);
-  if (page === "performance" || page === "logical") {
-    await cdp.evaluate(
-      `[...document.querySelectorAll('.perf-detail .segmented button')].find(el=>el.textContent===${JSON.stringify(page === "logical" ? performance.cpu.logical : performance.cpu.overall)}).click()`,
-    );
-  }
+  app({
+    page: page === "logical" ? "performance" : page,
+    cpuMode: page === "logical" ? "logical" : "overall",
+    motion,
+  });
 }
 async function mark(tag) {
   send(`mark ${tag}`);
@@ -250,7 +162,6 @@ function summarize(tag, before, after) {
 try {
   for (let i = 0; i < 1200 && !shown && !exited; i++) await sleep(50);
   assert(shown, `Window unavailable: ${stderr}`);
-  if (tauri) await connectWebview();
   send("size 1240 800");
   for (let i = 0; i < 200 && !result.events.some((event) => event.event === "resized") && !exited; i++)
     await sleep(50);
@@ -265,20 +176,15 @@ try {
     send("watch");
     await sleep(150);
   }
-  if (tauri) {
-    result.viewport = await cdp.evaluate("({width:innerWidth,height:innerHeight,scale:devicePixelRatio})");
-    assert.equal(result.viewport.width * result.viewport.scale, 1240, "WebView physical width mismatch");
-    assert.equal(result.viewport.height * result.viewport.scale, 800, "WebView physical height mismatch");
-  }
   for (const [index, phase] of phases.entries()) {
     const [page, motion] = phase.split(":");
     if (page === "hidden") send("hide");
     else await state(page, motion);
     const tag = `${index}-${page}-${motion}`;
-    if (!tauri) app({ pointerOutside: true, inspectLayout: `${tag}-begin` });
+    app({ pointerOutside: true, inspectLayout: `${tag}-begin` });
     // Inspection invalidates the test UI. Let it settle before the timing mark.
     await sleep(2500);
-    if (!tauri) {
+    {
       const layout = result.events.findLast((event) => event.event === "ui-layout" && event.label === `${tag}-begin`);
       const conditions = result.events.findLast((event) => event.event === "ui-conditions" && event.label === `${tag}-begin`);
       assert(layout && conditions, "native viewport inspection missing");
@@ -288,7 +194,7 @@ try {
     const before = await mark(`${tag}-begin`);
     await sleep(seconds * 1000);
     const after = await mark(`${tag}-end`);
-    if (!tauri) app({ inspectLayout: `${tag}-end` });
+    app({ inspectLayout: `${tag}-end` });
     const summary = summarize(tag, before, after);
     result.summaries.push(summary);
     writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
@@ -306,13 +212,11 @@ try {
   writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
   if (!exited) {
     result.captureClosedBeforeExit = await stopWatching();
-    if (tauri && cdp) await cdp.evaluate("window.__TAURI_INTERNALS__.invoke('quit')").catch(() => {});
-    else app({ exit: true });
+    app({ exit: true });
     send("stop");
   }
   for (let i = 0; i < 240 && !exited; i++) await sleep(50);
   child.stdin.end();
-  cdp?.close();
   result.stderr = stderr;
   writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
 }

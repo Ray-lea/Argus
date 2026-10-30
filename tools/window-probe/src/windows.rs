@@ -378,7 +378,7 @@ unsafe extern "system" fn find(hwnd: HWND, data: LPARAM) -> BOOL {
         .starts_with(metadata["productName"].as_str().expect("product name"))
         && matches!(
             String::from_utf16_lossy(&class[..nc]).as_ref(),
-            "Zed::Window" | "Tauri Window"
+            "Zed::Window"
         )
     {
         search.hwnd = hwnd;

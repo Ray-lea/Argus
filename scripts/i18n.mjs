@@ -10,7 +10,7 @@
 // - translations other than Chinese contain no Chinese text;
 // - every key the Rust code looks up (tr!("…")) exists, with the same placeholders;
 // - user-facing text is not written into the code: Chinese outside comments,
-//   tests and ui/src/lib/mock.ts is an error. Mark a deliberate exception with
+//   tests and tools/window-probe/fixtures is an error. Mark a deliberate exception with
 //   `i18n-ignore` in a comment on the line.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";

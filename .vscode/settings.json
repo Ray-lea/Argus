@@ -1,7 +1,7 @@
 {
   // rust-analyzer checks in target/rust-analyzer, the same directory `pnpm check`
   // uses for clippy: no duplicate check artifacts, and it never holds the build
-  // lock while 原生开发入口 rebuilds.
+  // lock while the native development launcher rebuilds.
   "rust-analyzer.cargo.targetDir": true,
   "rust-analyzer.check.command": "clippy",
   "rust-analyzer.check.allTargets": true,
@@ -10,6 +10,5 @@
     "editor.defaultFormatter": "biomejs.biome",
     "editor.formatOnSave": true
   },
-  "css.lint.unknownAtRules": "ignore",
   "files.watcherExclude": { "**/target/**": true }
 }
