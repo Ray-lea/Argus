@@ -357,6 +357,9 @@ fn tooltip_text(
 ) -> gpui_kit::component::tooltip::Tooltip {
     let (family, fallbacks) = theme::tooltip_font(cx);
     let mut tooltip = tooltip
+        // Keep hover surfaces shadow-free: 904bc43 / 77251a2 avoid the
+        // screen-only halo reported on NVIDIA composition over Mica.
+        .shadow_none()
         .font_family(family)
         .text_size(theme::font(TOOLTIP_SIZE))
         .line_height(relative(TOOLTIP_LINE_HEIGHT));
