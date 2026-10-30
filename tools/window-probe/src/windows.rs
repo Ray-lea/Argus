@@ -403,11 +403,15 @@ impl Gpu {
             ("gpuPercent", r"\GPU Engine(*)\Utilization Percentage"),
             ("gpuDedicated", r"\GPU Process Memory(*)\Dedicated Usage"),
             ("gpuShared", r"\GPU Process Memory(*)\Shared Usage"),
+            ("cpuMhz", r"\Processor Information(*)\Actual Frequency"),
         ] {
             let mut counter = Default::default();
             let path = wide(path);
             let rc =
                 unsafe { PdhAddEnglishCounterW(query, PCWSTR(path.as_ptr()), 0, &mut counter) };
+            if name == "cpuMhz" && rc != 0 {
+                continue;
+            }
             anyhow::ensure!(rc == 0, "PDH counter {name} failed: {rc:#x}");
             counters.push((name, counter));
         }
@@ -452,7 +456,7 @@ impl Gpu {
         let mut result = serde_json::Map::new();
         result.insert("status".into(), rc.into());
         for (name, counter) in &self.counters {
-            if *name == "gpuPercent" {
+            if matches!(*name, "gpuPercent" | "cpuMhz") {
                 let (mut bytes, mut count) = (0, 0);
                 unsafe {
                     PdhGetFormattedCounterArrayW(
@@ -486,7 +490,9 @@ impl Gpu {
                             .strip_prefix("pid_")
                             .and_then(|s| s.split('_').next())
                             .and_then(|s| s.parse::<u32>().ok());
-                        if pid.is_some_and(|p| pids.contains(&p)) && item.FmtValue.CStatus <= 1 {
+                        if (*name == "cpuMhz" || pid.is_some_and(|p| pids.contains(&p)))
+                            && item.FmtValue.CStatus <= 1
+                        {
                             entries.insert(
                                 key,
                                 serde_json::json!(unsafe { item.FmtValue.Anonymous.doubleValue }),
@@ -537,6 +543,9 @@ impl Gpu {
         let mut compositor = serde_json::Map::new();
         compositor.insert("pids".into(), serde_json::json!(self.dwm));
         for (name, _) in &self.counters {
+            if *name == "cpuMhz" {
+                continue;
+            }
             if let Some(entries) = result
                 .get_mut(*name)
                 .and_then(|value| value.as_object_mut())
@@ -672,7 +681,73 @@ fn qpc_time_100ns() -> Result<i64> {
     Ok((counter as i128 * 10_000_000 / frequency as i128) as i64)
 }
 
+/// Optional scheduling control for repeated tests on a busy hybrid CPU.
+fn performance_core_mask() -> Result<usize> {
+    use windows::Win32::System::SystemInformation::{
+        GetLogicalProcessorInformationEx, PROCESSOR_RELATIONSHIP, RelationProcessorCore,
+        SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+    };
+    let mut length = 0;
+    let _ = unsafe { GetLogicalProcessorInformationEx(RelationProcessorCore, None, &mut length) };
+    anyhow::ensure!(length > 0, "processor topology unavailable");
+    let mut buffer = vec![0usize; (length as usize).div_ceil(size_of::<usize>())];
+    unsafe {
+        GetLogicalProcessorInformationEx(
+            RelationProcessorCore,
+            Some(buffer.as_mut_ptr().cast()),
+            &mut length,
+        )?;
+    }
+    let mut offset = 0;
+    let mut cores = Vec::new();
+    let header = std::mem::offset_of!(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Anonymous);
+    while offset < length as usize {
+        anyhow::ensure!(
+            length as usize - offset >= header + size_of::<PROCESSOR_RELATIONSHIP>(),
+            "invalid processor topology record"
+        );
+        let pointer = unsafe { buffer.as_ptr().cast::<u8>().add(offset) };
+        let record_size = unsafe { pointer.add(4).cast::<u32>().read_unaligned() } as usize;
+        anyhow::ensure!(
+            record_size >= header + size_of::<PROCESSOR_RELATIONSHIP>()
+                && record_size <= length as usize - offset,
+            "invalid processor topology length"
+        );
+        let processor = unsafe {
+            pointer
+                .add(header)
+                .cast::<PROCESSOR_RELATIONSHIP>()
+                .read_unaligned()
+        };
+        anyhow::ensure!(
+            processor.GroupCount == 1 && processor.GroupMask[0].Group == 0,
+            "performance-core tests require a single processor group"
+        );
+        cores.push((processor.EfficiencyClass, processor.GroupMask[0].Mask));
+        offset += record_size;
+    }
+    let highest = cores
+        .iter()
+        .map(|(class, _)| *class)
+        .max()
+        .context("empty processor topology")?;
+    Ok(cores
+        .into_iter()
+        .filter(|(class, _)| *class == highest)
+        .fold(0, |mask, (_, core)| mask | core))
+}
+
 pub fn run(args: &[String]) -> Result<()> {
+    let timeout = if let Some(option) = args.windows(2).find(|pair| pair[0] == "--stop-after") {
+        let seconds: f64 = option[1].parse().context("invalid owned test duration")?;
+        anyhow::ensure!(
+            seconds.is_finite() && seconds > 0. && seconds <= 3570.,
+            "owned test duration must fit within one hour"
+        );
+        Duration::from_secs_f64(seconds + 30.)
+    } else {
+        Duration::from_secs(600)
+    };
     // Keep the MTA alive for the whole probe. WinRT caches agile factories;
     // ending the only initialized worker apartment can unload their DLL while
     // cached factory pointers or native callbacks still refer to it.
@@ -766,9 +841,24 @@ pub fn run(args: &[String]) -> Result<()> {
             && actual.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED == 0,
         "owned process power throttling remains enabled"
     );
+    let affinity = if std::env::var_os("ARGUS_PROBE_PERFORMANCE_CORES").is_some() {
+        let handle = windows::Win32::Foundation::HANDLE(child.as_raw_handle());
+        let (mut allowed, mut system) = (0, 0);
+        unsafe { GetProcessAffinityMask(handle, &mut allowed, &mut system)? };
+        let mask = performance_core_mask()? & allowed;
+        anyhow::ensure!(mask != 0, "no available performance core");
+        unsafe {
+            SetProcessAffinityMask(handle, mask)?;
+            GetProcessAffinityMask(handle, &mut allowed, &mut system)?;
+        }
+        anyhow::ensure!(allowed == mask, "owned affinity was not applied");
+        Some(format!("0x{mask:x}"))
+    } else {
+        None
+    };
     println!(
         "{}",
-        serde_json::json!({"event":"started","pid":root,"unixMs":crate::unix_ms(),"powerThrottling":false})
+        serde_json::json!({"event":"started","pid":root,"unixMs":crate::unix_ms(),"powerThrottling":false,"performanceCoreAffinity":affinity})
     );
     #[cfg(feature = "capture")]
     {
@@ -1089,7 +1179,7 @@ pub fn run(args: &[String]) -> Result<()> {
             child.wait()?;
             break;
         }
-        if start.elapsed() > Duration::from_secs(600) {
+        if start.elapsed() > timeout {
             #[cfg(feature = "capture")]
             drop(observer.take());
             child.kill()?;

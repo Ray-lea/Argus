@@ -59,6 +59,8 @@ const phases = scenario ? JSON.parse(readFileSync(resolve(scenario), "utf8")) : 
 assert(Array.isArray(phases) && phases.length > 0, "measurement phases required");
 assert(seconds > 0 && warmup >= 0 && Number.isFinite(seconds + warmup), "invalid measurement duration");
 assert(phases.every((phase) => /^[a-z0-9-]+$/.test(phase.name)), "invalid phase name");
+const durationOf = (phase) => phase.seconds ?? seconds;
+assert(phases.every((phase) => Number.isFinite(durationOf(phase)) && durationOf(phase) > 0), "invalid phase duration");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const result = {
   measurementVersion: 3,
@@ -75,6 +77,7 @@ const result = {
     frameTrace: !!process.env.ARGUS_GPUI_FRAME_TRACE,
     viewTrace: !!process.env.ARGUS_GPUI_VIEW_TRACE,
     prefixCompositionDisabled: !!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION,
+    performanceCores: !!process.env.ARGUS_PROBE_PERFORMANCE_CORES,
   },
   events: [],
   summaries: [],
@@ -86,7 +89,7 @@ const child = spawn(
     "run",
     executable,
     "--hidden",
-    "--test", "--identifier", identifier, "--stop-after", String(Math.ceil(warmup + phases.length * (seconds + 10) + 120)),
+    "--test", "--identifier", identifier, "--stop-after", String(Math.ceil(warmup + phases.reduce((total, phase) => total + durationOf(phase) + 10, 0) + 120)),
     ...(fixture ? ["--fixture", resolve(fixture)] : []),
   ],
   {
@@ -146,6 +149,13 @@ function summarize(tag, before, after) {
   const uiAfter = after.threads?.find((t) => t.pid === shown.pid && t.tid === shown.uiThread && t.created === uiBefore?.created);
   const frames = summarizeFrames(result.events, before.qpc100ns, after.qpc100ns);
   const systemTotal = after.system.kernel + after.system.user - before.system.kernel - before.system.user;
+  const affinity = result.events.find((event) => event.event === "started")?.performanceCoreAffinity;
+  const mask = affinity ? BigInt(affinity) : null;
+  const frequencies = result.events.filter((event) => event.atMs >= before.atMs && event.atMs <= after.atMs)
+    .flatMap((event) => Object.entries(event.gpu?.cpuMhz ?? {}))
+    .filter(([key, value]) => /^0,\d+$/.test(key) && Number.isFinite(value) && value > 0 &&
+      (mask === null || (mask & (1n << BigInt(key.split(",")[1]))) !== 0n))
+    .map(([, value]) => value);
   const threads = (after.threads ?? []).map((thread) => {
     const prior = before.threads?.find((old) => old.pid === thread.pid && old.tid === thread.tid && old.created === thread.created);
     return { name: thread.name, tid: thread.tid, cpuMsPerSecond: prior ? (thread.cpuMs - prior.cpuMs) / ms * 1000 : 0 };
@@ -160,6 +170,7 @@ function summarize(tag, before, after) {
     tag,
     durationMs: ms,
     systemBusyPercent: systemTotal > 0 ? (1 - (after.system.idle - before.system.idle) / systemTotal) * 100 : null,
+    processorMhz: frequencies.length ? frequencies.reduce((total, value) => total + value, 0) / frequencies.length : null,
     topThreads: threads,
     uiThreadCpuMsPerSecond: uiBefore && uiAfter ? ((uiAfter.cpuMs-uiBefore.cpuMs)/ms)*1000 : null,
     cpuMsPerSecond: ((sum(after.processes, "cpuMs") - sum(before.processes, "cpuMs")) / ms) * 1000,
@@ -209,7 +220,7 @@ try {
     }
     const before = await mark(`${tag}-begin`);
     if (phase.repeat) {
-      const until = performance.now() + seconds * 1000;
+      const until = performance.now() + durationOf(phase) * 1000;
       let step = 0;
       while (performance.now() < until) {
         const control = phase.repeat[step++ % phase.repeat.length];
@@ -217,7 +228,7 @@ try {
         if (control.probe) send(control.probe);
         await sleep(Math.min(control.waitMs ?? 100, Math.max(0, until - performance.now())));
       }
-    } else await sleep(seconds * 1000);
+    } else await sleep(durationOf(phase) * 1000);
     const after = await mark(`${tag}-end`);
     app({ inspectLayout: `${tag}-end` });
     const summary = summarize(tag, before, after);
