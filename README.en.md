@@ -134,7 +134,7 @@ Join the QQ group **453803497** (Chinese-speaking) to report problems, suggest f
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome; please read the [contributing guide](.github/CONTRIBUTING.md) first. Report security vulnerabilities privately as described in the [security policy](.github/SECURITY.md), rather than in public issues.
+Issues and pull requests are welcome; please read the [contributing guide](.github/CONTRIBUTING.md) first. Report security vulnerabilities privately as described in the [security policy](.github/SECURITY.md).
 
 ## 🧭 Roadmap
 

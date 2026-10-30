@@ -103,7 +103,7 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
    ```
 
    脚本修改四处版本号，把发布说明加到 `CHANGELOG.md` 开头，把由它生成的英文草稿加到 `CHANGELOG.en.md` 开头（小节标题已是英文，条目仍是中文），提交 `chore(release): vX.Y.Z` 并创建附注标签 `vX.Y.Z`，不会推送。仓库还没有任何标签时，默认发布当前版本号。
-5. 检查 `CHANGELOG.md`。润色只改正文：标题行 `## [X.Y.Z](比较链接) - YYYY-MM-DD` 由脚本生成，应用和发布工作流都按这个格式查找条目，日期后不能再有文字；`##` 只用于版本条目的标题，条目内的小节用 `###`。然后把 `CHANGELOG.en.md` 中的草稿译成英文：与中文条目逐条对应，标题行同样不改，用词与界面的英文文案（`locales/en-US`）一致；之后润色中文时同步修改英文。修改后 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 把标签移到新提交上。也可以在运行 `pnpm release` 之前先把该版本的条目写进 `CHANGELOG.md` 和 `CHANGELOG.en.md` 并提交：脚本会沿用已有条目，只把标题换成带比较链接和日期的格式（首个版本的发布说明就是这样预先写好的）。两份文件中有不是条目标题的二级标题时，脚本不改动任何文件，列出这些行。
+5. 检查 `CHANGELOG.md`。润色只改正文：标题行 `## [X.Y.Z](比较链接) - YYYY-MM-DD` 由脚本生成，应用和发布工作流都按这个格式查找条目，日期后不能再有文字；`##` 只用于版本条目的标题，条目内的小节用 `###`。然后把 `CHANGELOG.en.md` 中的草稿译成英文：与中文条目逐条对应，标题行同样不改，用词与界面的英文文案（`locales/en-US`）一致；之后润色中文时同步修改英文。修改后 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 把标签移到新提交上。也可以在运行 `pnpm release` 之前先把该版本的条目写进 `CHANGELOG.md` 和 `CHANGELOG.en.md` 并提交：脚本会沿用已有条目，只把标题换成带比较链接和日期的格式（首个版本的发布说明就是这样预先写好的）。两份文件中出现条目标题以外的二级标题时，脚本会列出对应行并停止修改。
 6. 推送前在本地核对：`node scripts/release.mjs verify vX.Y.Z`。它与发布工作流的第一步做同样的核对，读取条目的规则与应用相同：英文条目缺失、仍含中文（链接地址除外）或日期与中文条目不同时不通过；另外确认标签指向当前提交、版本文件和两份更新日志没有未提交的改动。`node scripts/release.mjs notes X.Y.Z` 打印 GitHub Release 的正文：先是“简体中文”一节，后是“English”一节。
 7. 推送分支和标签：`git push --atomic origin main vX.Y.Z`。`release.yml` 随即开始检查和构建，完成后版本出现在 GitHub Releases。
 
@@ -146,7 +146,7 @@ Windows Authenticode 的测试接入见 [Windows 代码签名](signing.md)。测
 
 本地构建（`start.bat build installer`）不生成更新签名，不需要私钥；发布工作流使用 argus-update-signer 为最终安装包签名，签名后用 `node scripts/release.mjs check-signature` 以 `resources/app.json` 中的公钥校验，Secrets 里的私钥与公钥不配对时在发布前失败。
 
-更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `CHANGELOG.md` 条目（JSON），每个条目以 `translations` 附上 `CHANGELOG.en.md` 中同一版本的英文译文（0.3 之前的版本忽略这个字段），`cargo run -p argus-update-signer -- <版本> <文件>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。签名工具接收既有 Base64 私钥文本，环境变量须保存密钥内容而不是文件路径。应用只显示验签通过且版本号一致的更新内容，并按界面语言选用译文；没有译文的版本显示中文，列表下方加以说明。
+更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `CHANGELOG.md` 条目（JSON），每个条目以 `translations` 附上 `CHANGELOG.en.md` 中同一版本的英文译文（0.3 之前的版本忽略这个字段），`cargo run -p argus-update-signer -- <版本> <文件>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。签名工具接收既有 Base64 私钥文本，环境变量须保存密钥的 Base64 内容。应用只显示验签通过且版本号一致的更新内容，并按界面语言选用译文；没有译文的版本显示中文，列表下方加以说明。
 
 ## 更新通道
 
@@ -173,7 +173,7 @@ Windows Authenticode 的测试接入见 [Windows 代码签名](signing.md)。测
 
    GitHub 的最新稳定版不包括 Pre-release，`releases/latest/download/` 随之指向上一个稳定版的 `latest.json` 与 `beta.json`，旧版本检查时得到“已是最新版本”。不要只删除这两份清单：地址会返回 404，检查失败后，0.2 及之后的版本保留已下载的更新，仍可安装；下载线路为“自动”时还会改用加速代理，可能取得代理缓存的旧清单。
 2. 已下载但未安装的更新在下一次检查成功、清单不再提供更新的版本时撤下。自动检查在启动约 1 分钟后进行一次，此后每天一次；在此之前仍可安装。
-3. 下载线路为“自动”时先连接 GitHub，GitHub 可访问时不经过代理。选择“仅使用加速代理”或无法访问 GitHub 的用户取得的是代理返回的清单，代理可能缓存旧的 `latest.json`，Argus 无法清除。签名只保证安装包未被改动，不保证清单是最新的：按旧清单仍会下载有问题的版本，因为它的安装包还在 Release 上。情况严重时可删除该安装包（`gh release delete-asset vX.Y.Z Argus_X.Y.Z_x64-setup.exe`），GitHub 随即对它返回 404，但代理同样可能缓存了安装包。
+3. 下载线路为“自动”时先连接 GitHub，GitHub 可访问时不经过代理。选择“仅使用加速代理”或无法访问 GitHub 的用户取得的是代理返回的清单，代理可能缓存旧的 `latest.json`，Argus 无法清除。签名用于校验安装包完整性，代理缓存决定清单的新旧；旧清单指向的安装包仍在 Release 上时，应用会继续下载该版本。情况严重时可删除该安装包（`gh release delete-asset vX.Y.Z Argus_X.Y.Z_x64-setup.exe`），GitHub 随即对它返回 404，但代理同样可能缓存了安装包。
 4. 修复后按正常步骤发布修订版本。新的稳定版发布后成为 Latest，两个通道都指向它；有问题的版本保持 Pre-release，标签不动。
 
 有问题的是测试版时，第 1 步不起作用：测试版本来就是 Pre-release，而 `release.yml` 发布它时已把它的清单覆盖到最新稳定版的 `beta.json`（稳定版原来的 `beta.json` 随之丢失）。改为从最新稳定版下载 `latest.json`（与该稳定版发布时的 `beta.json` 内容相同），以 `beta.json` 的名字传回，再确认测试版通道的清单已回到该稳定版：

@@ -132,7 +132,7 @@ start.bat build     # 发布构建：生成 target\release\argus.exe
 
 ## 🤝 参与贡献
 
-欢迎提交问题与拉取请求，参与前请先阅读[贡献指南](.github/CONTRIBUTING.md)。如发现安全漏洞，请按[安全策略](.github/SECURITY.md)私下报告，切勿创建公开的 Issue。
+欢迎提交问题与拉取请求，参与前请先阅读[贡献指南](.github/CONTRIBUTING.md)。安全漏洞请按[安全策略](.github/SECURITY.md)私下报告。
 
 ## 🧭 路线图
 

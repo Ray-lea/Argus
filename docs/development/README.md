@@ -41,4 +41,4 @@ cargo run -p argus-core --example app_windows --release     # 归入“应用”
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 ```
 
-`gpu_diagnostics` 输出带时间戳的 JSONL，包括目标进程的引擎身份、原始计数区间、整体读数和可用的 NVIDIA 核心读数；不记录进程命令行，不录制屏幕，不修改 GPU 设置。对照时应保持相同负载，核对适配器、引擎与采样区间。`gpu_compute` 在 12 秒内以 40 ms 提交、160 ms 休息的节拍运行短 CUDA 内核；这是提交节拍，并不保证 GPU 利用率恰为 20%。
+`gpu_diagnostics` 输出带时间戳的 JSONL，包括目标进程的引擎身份、原始计数区间、整体读数和可用的 NVIDIA 核心读数；不记录进程命令行，不录制屏幕，不修改 GPU 设置。对照时应保持相同负载，核对适配器、引擎与采样区间。`gpu_compute` 在 12 秒内以 40 ms 提交、160 ms 休息的节拍运行短 CUDA 内核；提交占空比为 20%，GPU 实际利用率由计数器测量。
