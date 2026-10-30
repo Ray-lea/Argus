@@ -2822,6 +2822,13 @@ impl Window {
         });
     }
 
+    /// Redraw a view without notifying observers or invalidating its cached
+    /// children. The caller must separately notify any child whose inputs changed.
+    /// Use outside drawing when only uncached content owned by this view changed.
+    pub fn request_view_redraw(&self, entity: EntityId) {
+        self.invalidator.invalidate_view_for_animation(entity);
+    }
+
     /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
     ///
     /// Tests have no platform frame loop, so this simulates the delivery of the

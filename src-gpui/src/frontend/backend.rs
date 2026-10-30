@@ -302,6 +302,9 @@ impl Desktop {
                             } else {
                                 None
                             };
+                        let full = this.snapshot.is_null()
+                            || this.snapshot["hardware"]["cpuSensors"]["state"]
+                                != model["hardware"]["cpuSensors"]["state"];
                         this.accept_snapshot_prepared(model, rows, cx);
                         super::trace_work("snapshot", None, started);
                         // Pick up the newest source sequence without accumulating a UI queue.
@@ -310,7 +313,7 @@ impl Desktop {
                             // Only the status bar shows the sample there.
                             this.after_entrance(cx);
                         } else {
-                            cx.notify();
+                            this.notify_snapshot(full, window, cx);
                         }
                     });
                 })
@@ -333,6 +336,28 @@ impl Desktop {
     }
     pub(in crate::frontend) fn accept_snapshot(&mut self, snapshot: Value, cx: &mut Context<Self>) {
         self.accept_snapshot_prepared(snapshot, None, cx);
+    }
+
+    /// List data arrives through its own command/row notifications. A sample
+    /// only changes the uncached status bar on these pages. Settings also read
+    /// sensor state and live process icons for rules, so retain full updates there.
+    fn notify_snapshot(&self, full: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let status_only = matches!(self.page.as_str(), "services" | "startup" | "network")
+            || (self.page == "settings" && values(&self.data["settings"]["rules"]).is_empty());
+        let visible = self.host.get_window("main").is_some_and(|window| {
+            window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
+        });
+        if status_only
+            && !full
+            && visible
+            && self.modal.is_none()
+            && self.popup.is_none()
+            && self.drag.is_none()
+        {
+            window.request_view_redraw(cx.entity_id());
+        } else {
+            cx.notify();
+        }
     }
     fn accept_snapshot_prepared(
         &mut self,
@@ -1270,10 +1295,17 @@ impl Desktop {
                     }
                 }
             }
+            let full = self.snapshot.is_null()
+                || self.snapshot["hardware"]["cpuSensors"]["state"]
+                    != snapshot["hardware"]["cpuSensors"]["state"];
             self.accept_snapshot(snapshot, cx);
             if !self.fixture_samples {
                 self.fixture_samples = true;
                 self.chart_clock.borrow_mut().set_paused(false);
+            }
+            if control.as_object().is_some_and(|object| object.len() == 1) {
+                self.notify_snapshot(full, window, cx);
+                return;
             }
             cx.notify();
         }
