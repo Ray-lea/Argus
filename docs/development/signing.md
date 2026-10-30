@@ -14,7 +14,7 @@ SignPath Foundation 的测试签名使用组织提供的自签名证书。它用
 | `windows-application` | [application.xml](../../signpath/application.xml) | 主程序、卸载程序 |
 | `windows-installer` | [installer.xml](../../signpath/installer.xml) | NSIS 安装程序 |
 
-三项配置的根元素均为 `zip-file`，对应 `actions/upload-artifact` 自动生成的 ZIP。基金会订阅自动生成签名说明，`authenticode-sign` 不设置 `description` 或 `description-url`。仅签指定的 Argus 程序，不重新签署 WebView2、PawnIO 或 NSIS 的第三方组件。启用可信构建验证时，将 GitHub.com 绑定到项目，并将仓库 URL 设为 `https://github.com/Ray-lea/Argus`；组织已有的来源限制和审批规则继续生效。
+三项配置的根元素均为 `zip-file`，对应 `actions/upload-artifact` 自动生成的 ZIP。基金会订阅自动生成签名说明，`authenticode-sign` 不设置 `description` 或 `description-url`。仅签指定的 Argus 程序，不重新签署 PawnIO 或 NSIS 的第三方组件。启用可信构建验证时，将 GitHub.com 绑定到项目，并将仓库 URL 设为 `https://github.com/Ray-lea/Argus`；组织已有的来源限制和审批规则继续生效。
 
 ## 测试工作流
 

@@ -6,7 +6,7 @@
 
 `window_motion.rs` 让窗口在显示、隐藏到托盘、最小化和还原时原地淡入淡出（显示 180 ms，离开 140 ms），关闭 DWM 的缩放动画；仅在淡入淡出期间给窗口加分层样式，跟随界面动画设置。其他线程的请求转到窗口线程执行；标题栏的最小化按钮发送 `SC_MINIMIZE`，任务栏还原和其他程序直接显示窗口时同样淡入。
 
-`crates/argus-app/src/preferences.rs` 将界面偏好与窗口位置原子保存到配置目录的 `preferences.json`，同一配置目录下的启动入口共享偏好。文件格式与 WebView 版相同（偏好在 `values`，窗口位置在 `window`），更新后原有偏好继续生效；早期原生版本把偏好写在顶层，读取时按偏好处理，下次保存时改写为上述格式。`src-gpui/src/window_state.rs` 保存 `WINDOWPLACEMENT` 的普通窗口矩形与最大化标记，移动或缩放结束后保存，关闭和退出前补写；隐藏启动延迟到首次显示时恢复最大化，不恢复最小化状态；测试实例不恢复窗口位置。
+`crates/argus-app/src/preferences.rs` 将界面偏好与窗口位置原子保存到配置目录的 `preferences.json`，同一配置目录下的启动入口共享偏好。文件中偏好保存在 `values`，窗口位置保存在 `window`，更新时保留已有偏好；早期原生版本把偏好写在顶层，读取时按偏好处理，下次保存时改写为上述格式。`src-gpui/src/window_state.rs` 保存 `WINDOWPLACEMENT` 的普通窗口矩形与最大化标记，移动或缩放结束后保存，关闭和退出前补写；隐藏启动延迟到首次显示时恢复最大化，不恢复最小化状态；测试实例不恢复窗口位置。
 
 `admin.rs` 处理管理员启动策略与权限交接，在单实例及窗口创建前路由；设置中立即切换，引导中延后应用，详见[管理员启动](administrator-startup.md)。开机启动项（`commands/autostart.rs`）在已有管理员启动记录时使用受保护的稳定启动器。安装程序与卸载程序以 `argus.exe --argus-close-copies` 运行（不检查单实例、不创建窗口），由 `leftovers.rs` 结束任务管理器替换与管理员启动目录中正在运行的界面副本：Restart Manager 只关闭安装目录的 `argus.exe`，留下的副本会占着单实例并保留内存中的设置。
 

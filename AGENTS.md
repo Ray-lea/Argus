@@ -26,7 +26,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 测试实例一律带 `--hidden` 启动，主窗口创建后用 `SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 不激活地显示在最底层，并全程监视前台（每 50 ms 查一次 `GetForegroundWindow`，前台不应落到测试进程或其子进程）。不要正常启动后再放到最底层：setup 显示窗口时已经激活了它，事后放到最底层也还不回前台，后台进程没有权限把前台交还原来的窗口。主窗口按进程 ID、窗口类 `Zed::Window` 和标题（发布版为 `Argus`）枚举顶层窗口查找，隐藏时也能找到；只按标题可能拿到同一进程弹出的消息框，`Process.MainWindowHandle` 可能拿到单实例插件的 6×6 辅助窗口。
 - 再次启动、快捷键、托盘和任务管理器替换都会请求激活窗口，不要在正在使用的桌面上自动触发这些路径。需要验证系统焦点时，用 CreateDesktop 创建独立桌面，不调用 SwitchDesktop，测试进程的 lpDesktop 指向独立桌面；通过 GetGUIThreadInfo 和窗口消息验证。
 - 不要改机器上真实的系统设置（启动项、服务等）。需要测试这些功能时用临时条目，测完清理。
-- 不要结束开发者自己启动的开发实例（`start.bat` 启动的 `target\debug\argus.exe`）。
+- 不要结束开发者自己启动的开发实例（`start.bat` 启动的 `target\native-dev\runs\...\argus.exe` 及其 Node 监视进程）。修改监视范围内的源文件会自动重建并重新显示窗口；开发实例运行时，先在隔离副本中准备改动，避免触发重启。
 - 自己启动的实例用完就关；测试控制仅使用隔离标识。
 - 不要强杀 Argus 后几秒内立刻重启：单实例插件会放进第二个实例。
 
@@ -81,4 +81,4 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 辅助脚本用 node 写；仓库不依赖 Python 或 .NET。
 - Windows PowerShell 5.1：传给原生程序的参数里的双引号会被剥掉（把 JS 写进文件再传路径）；没有 BOM 的 .ps1 按 ANSI 读取，含中文的 .ps1 要存成 UTF-8 with BOM。
 - Git Bash 会把以 `/` 开头的参数改写成路径：NSIS 的 `/S`、`/D=…` 因此失效，安装程序会弹出界面。运行这类 Windows 程序用 PowerShell 的 `Start-Process`，或者设 `MSYS_NO_PATHCONV=1`；GitHub Actions 的 Windows 机器上同样如此，工作流里这类步骤写成 `shell: pwsh`。
-- 验证环境的显示器是 165 Hz。Chromium 的帧时间按 0.1 ms 量化，计算刷新率时对中位数附近的间隔求平均，不要直接取中位数。
+- 验证环境的显示器是 165 Hz。实际呈现帧率以窗口探针的 QPC / WGC 时间间隔为准，不用动画回调频率代替。
