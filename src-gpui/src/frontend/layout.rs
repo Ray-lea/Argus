@@ -3,8 +3,8 @@ use super::*;
 use gpui_kit::base::ElementExt;
 use gpui_kit::component::ActiveTheme;
 
-/// The side navigation's expanded width by default (the original's fixed
-/// 184 px). Unlike the original, dragging its edge adjusts it, within these
+/// The side navigation's default expanded width is 184 px.
+/// Dragging its edge adjusts it within these
 /// limits; collapsed, it is a 48 px rail.
 pub(in crate::frontend) const NAV_WIDTH: f32 = 184.;
 const NAV_MIN_WIDTH: f32 = 150.;
@@ -401,7 +401,7 @@ impl Desktop {
             })
             .into_any_element()
     }
-    /// A toolbar button in the original `.btn` style: 32 px, a stroke border with a
+    /// A toolbar button with the shared button style: 32 px, a stroke border with a
     /// stronger bottom edge, the control surface, and the accent while pressed.
     /// Without text it is a square icon button.
     pub(in crate::frontend) fn tool_button(
@@ -685,7 +685,7 @@ impl Desktop {
                 TitleBar::new()
                     .h(theme::dimension("toolbarHeight"))
                     .flex_shrink_0()
-                    // The row below has the original's own 12 px inset.
+                    // The row below has the interface's own 12 px inset.
                     .pl_0()
                     .bg(p.background)
                     .border_0()
@@ -841,7 +841,7 @@ impl Desktop {
             })
     }
     /// The narrowest the search box gets: its placeholder and the room around
-    /// it (`--fit` in the original's SearchBox), measured once per text and size.
+    /// it (`--fit` in the interface's SearchBox), measured once per text and size.
     fn search_fit(&self, window: &Window, cx: &App) -> Pixels {
         let placeholder = label(self.search_placeholder());
         let size = theme::font(13.);
@@ -856,7 +856,7 @@ impl Desktop {
         *self.ui.search_fit.borrow_mut() = Some((placeholder, size, fit));
         fit
     }
-    /// Keeps the title row inside the window, as the original's `fitToolbar`:
+    /// Keeps the title row inside the window, as the interface's `fitToolbar`:
     /// while the row overflows (the search box narrower than its placeholder,
     /// or the controls running into each other) the toolbar goes one compact
     /// level further each frame, learning the width the level wanted; it goes
@@ -907,7 +907,7 @@ impl Desktop {
             };
             // Nor may the end controls pass the row's 4 px inset before the
             // caption buttons: without a search box between them, the start
-            // pushes them there (the original's `overflow` measures the row's
+            // pushes them there (the interface's `overflow` measures the row's
             // furthest item).
             let overflow = (regions[0].right() + room - regions[1].left())
                 .max(regions[1].right() - (regions[2].right() - px(4.)));

@@ -12,7 +12,7 @@
 //! the search box, which takes focus as it starts. Plain keys still reach the
 //! list (letters and digits that no method takes start the search there), and
 //! text a method sends outside a composition (punctuation it passes on) starts
-//! no search, as in the original's process list (an `EditContext`).
+//! no search, as in the interface's process list (an `EditContext`).
 use super::*;
 use std::ops::Range;
 
@@ -332,7 +332,7 @@ mod tests {
     fn only_a_composition_commits_into_the_search() {
         assert_eq!(route_commit(true), Route::Forward);
         // Outside a composition: punctuation a method passes on, or characters
-        // of keys the list left alone (a held key, AltGr), as in the original.
+        // of keys the list left alone (a held key, AltGr).
         assert_eq!(route_commit(false), Route::Ignore);
     }
 

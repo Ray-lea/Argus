@@ -1,9 +1,8 @@
-//! Links the VC++ runtime statically into this package's programs, as
-//! tauri-build does for argus.exe. The task manager launcher and the recovery
-//! program must start on machines without the VC++ redistributable: if they
-//! cannot, taskmgr.exe cannot start at all while the replacement is on. The
-//! Universal CRT stays dynamic; it is part of Windows. Same approach as
-//! tauri-build's `static_vcruntime` (from ChrisDenton/static_vcruntime).
+//! Links the VC++ runtime statically into application and helper programs.
+//! Task manager helpers must start without the VC++ redistributable so the
+//! replacement entry point remains available. The Universal CRT stays dynamic
+//! because Windows supplies it. Adapted from tauri-build's static_vcruntime
+//! implementation (ChrisDenton/static_vcruntime); this is source attribution.
 
 use std::path::Path;
 

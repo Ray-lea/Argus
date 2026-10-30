@@ -76,14 +76,14 @@ impl Order {
             (Order::Bool(a), Order::Bool(b)) => a.cmp(b),
             (Order::Number(a), Order::Number(b)) => a.total_cmp(b),
             // One column gives every row the same kind, except a mix of
-            // values the original compared as text.
+            // values compared as text.
             _ => Ordering::Equal,
         }
     }
 }
 
 /// The rows of a service, startup or connection list, in the page's order with
-/// pinned rows first, as the original tables show them.
+/// pinned rows first, as the tables show them.
 pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> Vec<Row> {
     let page = spec.page.as_str();
     let network = page == "network";
@@ -222,14 +222,14 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
             Some(row)
         })
         .collect();
-    // The original's table order: text collates as names do, numbers compare
+    // The interface's table order: text collates as names do, numbers compare
     // by value, and equal rows keep the source order.
     let key = spec.sort.as_str();
     let mut ordered: Vec<(Order, Row)> = rows
         .drain(..)
         .map(|row| {
             let order = if key == spec.first && network {
-                // Owners sort by executable name, as in the original.
+                // Owners sort by executable name.
                 Order::Key(collation::key(
                     owner(&row.raw).map_or("", |p| p.name.as_str()),
                 ))

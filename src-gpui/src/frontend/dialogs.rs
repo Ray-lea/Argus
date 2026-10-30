@@ -57,7 +57,7 @@ impl DialogFrame {
     }
 }
 
-/// Dialogs that open over whatever is open (ConfirmDialog in Overlays.tsx).
+/// Dialogs that open over whatever is open.
 const STACKING: [&str; 6] = [
     "confirm",
     "end",
@@ -109,7 +109,7 @@ fn hex_code(code: &Value) -> Option<String> {
         .map(|code| tr!("tasks.code", code = format!("0x{:08X}", code as u32)))
 }
 
-/// A locker's action button (FileLockDialog.tsx).
+/// A locker's action button.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct LockerAction {
     /// The desktop's own Explorer: restarted rather than ended, so the desktop
@@ -230,7 +230,7 @@ impl Desktop {
         let members = values(&args["members"]).to_vec();
         let first = members.first().cloned().unwrap_or(Value::Null);
         let pid = first["pid"].to_string();
-        // Process actions that apply at once, or ask first (actions.ts).
+        // Process actions that apply at once, or ask first.
         match kind {
             "priority" if text(&args, "priority") != "realtime" => {
                 self.process_batch("priority", &args, window, cx);
@@ -481,7 +481,7 @@ impl Desktop {
         self.ui.modal_seq += 1;
         let id = self.ui.modal_seq;
         modal.id = id;
-        // The primary control takes the focus, as the original's buttons did.
+        // The primary control takes the focus, as the interface's buttons did.
         let primary = self.focus_for(&format!("modal-{id}-primary"), cx);
         if let Some(top) = self.modal.take() {
             self.ui.below.push(top);
@@ -717,10 +717,10 @@ impl Desktop {
     }
 
     /// The common dialog surface: width, colours, no close button, Fluent
-    /// fade. It opens centred in the window, as the original's scrim centred
+    /// fade. It opens centred in the window, as the interface's scrim centred
     /// it, then keeps its top edge while its content changes size: it eases
     /// to the new height and grows at most to `edge` above the window's
-    /// bottom, past which its body scrolls (the original re-centred instead).
+    /// bottom, past which its body scrolls.
     fn surface(
         &self,
         dialog: Dialog,
@@ -741,8 +741,8 @@ impl Desktop {
         // Until the first measurement the dialog stays invisible, so it never
         // shows at the default position and then jumps.
         // The component moves each stacked dialog 16 px lower (undone here) and
-        // keeps 16 px from the window's edges; the original centred a
-        // confirmation over the dialog below it as any other.
+        // keeps 16 px from the window's edges; stacked confirmations are
+        // centered in the same way as other dialogs.
         let layer = self
             .ui
             .below
@@ -821,7 +821,7 @@ impl Desktop {
             .w(px(width))
             .p_0()
             .gap_0()
-            // The original's 13 px body text; the component's default is larger.
+            // The interface's 13 px body text; the component's default is larger.
             .text_size(theme::font(13.))
             .bg(widgets::solid(p.flyout))
             .border_color(p.stroke_strong)
@@ -829,7 +829,7 @@ impl Desktop {
             .shadow(widgets::flyout_shadow(p.dark))
             .close_button(false)
             // The entrance, the exit and the scrim (`Scrim`, drawn over the chart
-            // layer too) follow the original; the backdrop only takes the clicks.
+            // layer too) are drawn separately; the backdrop only takes the clicks.
             .entrance(DialogEntrance::None)
             .on_ok(move |_, window, cx| {
                 let _ = enter.update(cx, |this, cx| this.dialog_enter(id, window, cx));
@@ -842,7 +842,7 @@ impl Desktop {
                     window.defer(cx, move |window, cx| {
                         this.update(cx, |this, cx| {
                             match this.modal.as_ref().filter(|m| m.id == id) {
-                                // Escape counts as done, as the original's close().
+                                // Escape counts as done, as the interface's close().
                                 Some(m) if m.kind == "onboarding" => {
                                     this.finish_onboarding(window, cx)
                                 }
@@ -861,7 +861,7 @@ impl Desktop {
 
     /// A shown dialog's opacity: in over 250 ms from its first visible frame
     /// (`dialog-in`, decelerating), out over 167 ms while it leaves
-    /// (`dialog-out`, accelerating). The original's slight scale is left out.
+    /// (`dialog-out`, accelerating). The interface's slight scale is left out.
     fn dialog_opacity(&self, id: u64, window: &Window, cx: &mut Context<Self>) -> f32 {
         let shown = *self
             .ui
@@ -953,7 +953,7 @@ impl Desktop {
             return dialog;
         };
         // How far each dialog stays from the window's top and bottom edges
-        // (the original's `max-height`/`height` margins; 16 px by default).
+        // (the interface's `max-height`/`height` margins; 16 px by default).
         match modal.kind.as_str() {
             "onboarding" => {
                 // Only its own buttons and Escape close the onboarding.
@@ -995,7 +995,7 @@ impl Desktop {
         }
     }
 
-    /// A confirmation (Overlays.tsx, ConfirmDialog): title and text, then
+    /// A confirmation: title and text, then
     /// the accent or danger button first and Cancel.
     fn confirm_view(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
         let p = self.palette;
@@ -1448,7 +1448,7 @@ impl Desktop {
         }
     }
 
-    /// Opens Settings on the rule for `name`, creating one first (actions.ts, addRuleFor).
+    /// Opens Settings on the rule for `name`, creating one first.
     fn add_rule_for(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         if name.is_empty() {
             return;
@@ -1520,7 +1520,7 @@ impl Desktop {
         }
     }
 
-    /// Restarts Explorer with a pending notice, then says how it went (explorer.ts).
+    /// Restarts Explorer with a pending notice, then says how it went.
     fn restart_explorer(&mut self, shell: Value, window: &mut Window, cx: &mut Context<Self>) {
         if self.ui.busy.contains("explorer") {
             return;
@@ -1602,7 +1602,7 @@ impl Desktop {
         self.toast_with(ToastKind::Error, message, 15000, actions);
     }
 
-    /// Runs the new task's command (NewTaskDialog.tsx, run).
+    /// Runs the new task's command.
     fn run_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(modal) = self.modal.as_mut().filter(|m| m.kind == "task") else {
             return;
@@ -1754,7 +1754,7 @@ impl Desktop {
                                             |d, input| {
                                                 // Commands in the monospaced face, the
                                                 // placeholder in the interface one. While
-                                                // a run is pending the original disabled
+                                                // a run is pending, disable
                                                 // the box without changing how it looks.
                                                 d.child(
                                                     self.text_field(
@@ -1931,7 +1931,7 @@ impl Desktop {
             )
     }
 
-    /// Checks the chosen paths for lockers (FileLockDialog.tsx, search).
+    /// Checks the chosen paths for lockers.
     pub(in crate::frontend) fn search_lockers(
         &mut self,
         paths: Vec<String>,
@@ -1978,7 +1978,7 @@ impl Desktop {
         }
     }
 
-    /// "Who is using this file?" (FileLockDialog.tsx): the chosen paths or a
+    /// "Who is using this file?": the chosen paths or a
     /// drop zone, the pickers, then the search, its error or its result.
     fn filelock_dialog(
         &mut self,
@@ -2310,7 +2310,7 @@ impl Desktop {
             .map(|q| text(q, "name").to_owned())
             .unwrap_or_else(|| app.clone());
         let service = text(locker, "service");
-        // The original's source has an ideographic space here, but its JSX
+        // The interface's source has an ideographic space here, but its JSX
         // compiler turns it into a plain one, which is what it shows.
         let mut identity = format!("{exe} PID {}", locker["pid"]);
         if !service.is_empty() {
@@ -2443,7 +2443,7 @@ impl Desktop {
         self.request("pick_path", json!({"folder":folder}), None, window, cx);
     }
 
-    /// Ends a locker after asking, then checks again (actions.ts, endProcessByPid).
+    /// Ends a locker after asking, then checks again.
     fn end_locker(&mut self, locker: Value, window: &mut Window, cx: &mut Context<Self>) {
         let process = values(&self.snapshot["processes"])
             .iter()
@@ -2558,7 +2558,7 @@ impl Desktop {
             )
     }
 
-    /// A long text in a bordered monospaced box (Settings.tsx, DocumentDialog).
+    /// A long text in a bordered monospaced box.
     fn document_dialog(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
         let p = self.palette;
         let id = modal.id;
@@ -2605,7 +2605,7 @@ impl Desktop {
             )
     }
 
-    /// A determinate (`value`) or sweeping progress bar (ProgressBar.tsx).
+    /// A determinate (`value`) or sweeping progress bar.
     pub(in crate::frontend) fn progress_bar(&self, value: Option<f32>, _cx: &App) -> AnyElement {
         let p = self.palette;
         let track = div()
@@ -2805,11 +2805,11 @@ impl Desktop {
         window.refresh();
     }
 
-    // ---- Toasts (Overlays.tsx, lib/ui.ts, toast-clock.ts) -------------------
+    // ---- Toasts -------------------
 
     /// Coming back from the tray or a minimized window: when it sampled less
     /// often meanwhile, says so once, with the way to that setting
-    /// (lib/background.ts, noticeRestored).
+    ///.
     pub(in crate::frontend) fn restored(&mut self, value: &Value) {
         let tray = text(value, "from") == "tray";
         let quiet = if tray {
@@ -2862,7 +2862,7 @@ impl Desktop {
     }
 
     /// A preference write finished: when saving starts to fail, says so once
-    /// (App.tsx, `preferenceSaveFailed`).
+    ///.
     pub(in crate::frontend) fn preferences_written(
         &mut self,
         saved: bool,
@@ -3040,7 +3040,7 @@ impl Desktop {
                     .border_1()
                     .border_color(p.stroke_strong)
                     .rounded(px(8.))
-                    // No shadow, as the original's toasts (`.toast`).
+                    // No shadow, as the interface's toasts (`.toast`).
                     .bg(widgets::solid(p.flyout))
                     .text_color(p.ink)
                     .text_size(theme::font(13.))
@@ -3202,7 +3202,7 @@ impl Render for Scrim {
             window.request_animation_frame();
         }
         let color = theme::token("scrim", Palette::current(cx).dark).opacity(level);
-        // The caption buttons stay above the dim, as the original's (`.caption`
+        // The caption buttons stay above the dim, as the interface's (`.caption`
         // over `.scrim`): the toolbar row stops short of them.
         let toolbar = theme::dimension("toolbarHeight");
         let captions = gpui_kit::component::TITLE_BAR_HEIGHT * 3.;

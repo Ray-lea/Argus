@@ -5,7 +5,7 @@ mod cpu_motion;
 mod engines;
 mod telemetry;
 
-/// Device list geometry (the original's `.dev` rows).
+/// Device list geometry (the interface's `.dev` rows).
 const ROW_HEIGHT: f32 = 58.;
 /// A device row: as tall as its preview chart, or as its name (13 px) and
 /// figures (12 px) at line height 1.4 with its padding once text grows.
@@ -108,7 +108,7 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
     out
 }
 
-// ---- Formatting (lib/format.ts) ------------------------------------------------
+// ---- Formatting ------------------------------------------------
 
 fn missing() -> String {
     label("format.missing")
@@ -362,7 +362,7 @@ impl Desktop {
         };
         f32::from(window.viewport_size().width) - navigation - 2. * PAGE_GAP
     }
-    /// The detail card's content height (the original's `100cqh`), once laid
+    /// The detail card's content height (the interface's `100cqh`), once laid
     /// out: the card fills the page's height whatever it holds, so in this
     /// viewport it is the viewport's less what surrounds the card.
     fn perf_card_height(&self, window: &Window) -> Option<Pixels> {
@@ -624,7 +624,7 @@ impl Desktop {
         // the list, fading in (250 ms, decelerating). Only the offset and opacity
         // change: an animation wrapper keyed by each arrival would drop the
         // state of everything inside, the charts' drawn curves included, and
-        // they would pop in again. Both apply only when drawing (the original's
+        // they would pop in again. Both apply only when drawing (the interface's
         // transform), so the view is laid out in place and its scroll range
         // never grows by the offset.
         let arrival = window.use_keyed_state("perf-device-arrival", cx, |_, _| {
@@ -656,7 +656,7 @@ impl Desktop {
         // The chart layer's curves move and fade with the view.
         self.chart_fade.set(arriving);
         self.chart_shift.set(offset);
-        // A short card (the original's size container query on the card)
+        // A short card (the interface's size container query on the card)
         // takes the chart captions into the frames.
         let short = self
             .perf_card_height(window)
@@ -715,7 +715,7 @@ impl Desktop {
             .min_h_0()
             .px(px(PAGE_GAP))
             .flex()
-            // The original page's body line height; GPUI's default is taller.
+            // The interface body line height; GPUI's default is taller.
             .line_height(relative(1.4))
             // The card is as tall as the page; its content box is inside the
             // border. What surrounds it changes rarely (text size, navigation,
@@ -869,7 +869,7 @@ impl Desktop {
             })
             .into_any_element()
     }
-    /// A figure explained on hover, as the original's `title` does. The
+    /// A figure explained on hover, as the interface's `title` does. The
     /// explanation wraps like a system tooltip instead of running off the window.
     fn hinted(&self, id: &'static str, hint: Option<String>, stat: AnyElement) -> AnyElement {
         let hint = hint.map(SharedString::from);
@@ -2143,7 +2143,7 @@ impl Desktop {
             .iter()
             .filter_map(Value::as_str)
             .collect::<Vec<_>>()
-            // The original joined them with two spaces, which its HTML shows as one.
+            // Separate the description fields with a single space.
             .join(" ");
         let kind = disk_kind(info);
         let mut rows = vec![

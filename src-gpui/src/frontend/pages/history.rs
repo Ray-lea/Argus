@@ -16,7 +16,7 @@ const DAY: i64 = 24 * HOUR;
 const TICKS: [i64; 4] = [10 * MINUTE, HOUR, 3 * HOUR, DAY];
 /// One recorded frame (`FRAME_MS` in history.rs).
 const FRAME: f64 = argus_core::history::FRAME_MS as f64;
-/// Label column, chart gap and time axis (the original's `.history-graphs`).
+/// Label column, chart gap and time axis (the interface's `.history-graphs`).
 const LABELS: f32 = 150.;
 const COLUMN_GAP: f32 = 14.;
 const ROW_GAP: f32 = 8.;
@@ -51,7 +51,7 @@ fn local(ts: i64) -> Option<time::OffsetDateTime> {
         .map(|t| t.to_offset(local_offset()))
 }
 
-// ---- Gaps (lib/history-gaps.ts) ------------------------------------------------------
+// ---- Gaps ------------------------------------------------------
 
 /// The widest spacing of frames recorded while running: the slowest background
 /// refresh plus how late a sample can land.
@@ -109,8 +109,7 @@ fn point_at(ts: &[f64], joined: &[bool], step: f64, at: f64) -> Option<usize> {
 //
 // Every range shows its newest window, ending at the present, and follows it whether
 // or not a moment is picked; a picked moment lives only as long as the window on
-// screen contains it. (The original instead held the window still once a moment was
-// picked and centred a new range on it.)
+// screen contains it.
 
 fn span_of(range: &str) -> i64 {
     RANGES
@@ -1006,7 +1005,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        // The order survives restarts (`tableSort.history`, as the original's DataTable).
+        // The order survives restarts (`tableSort.history`, as the interface's DataTable).
         let sort = window.use_keyed_state("history-sort", cx, |_, _| {
             tables::saved_sort("history", &self.prefs)
         });

@@ -77,7 +77,7 @@ gpui_kit::assets::icon_assets!(
         Zap
     ]
 );
-/// The original interface's own 16 px line icons (its `components/icons.tsx`),
+/// The product's 16 px line icons,
 /// one SVG each under `resources/ui-icons`, served as `argus/icons/<name>.svg`.
 macro_rules! ui_icons {
     ($($name:literal),* $(,)?) => {
@@ -168,7 +168,7 @@ const UI_ICON_PREFIX: &str = "argus/icons/";
 /// of the button at `scale`: a triangle with rounded corners, as Chromium
 /// draws it there. It is a colour image rather than a tinted icon: icons get
 /// the text contrast boost, which draws these 7 px arrows visibly heavier
-/// than the original's plain coverage.
+/// than the interface's plain coverage.
 pub fn spin_arrow(up: bool, color: Hsla, scale: f32, cx: &App) -> Option<Arc<RenderImage>> {
     thread_local! {
         static ARROWS: RefCell<HashMap<(bool, u32, u32), Arc<RenderImage>>> =
@@ -194,9 +194,9 @@ pub fn spin_arrow(up: bool, color: Hsla, scale: f32, cx: &App) -> Option<Arc<Ren
     Some(image)
 }
 
-/// The asset path of the original icon for a product icon name, if it has one.
+/// The asset path of the asset for a product icon name, if it has one.
 pub fn ui_icon(name: &str) -> Option<SharedString> {
-    // Names the desktop uses for an icon the original calls otherwise.
+    // Aliases from desktop icon names to product assets.
     let name = match name {
         "AppIcon" => "GenericAppIcon",
         "CloseIcon" => "DismissIcon",

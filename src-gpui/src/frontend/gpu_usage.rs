@@ -1,4 +1,4 @@
-//! GPU usage of several processes (lib/gpu-usage.ts). Independent engines run
+//! GPU usage of several processes. Independent engines run
 //! concurrently: contributions to each physical engine add up first, then the
 //! busiest engine counts; already-reduced percentages are never added.
 use super::model::{text, values};

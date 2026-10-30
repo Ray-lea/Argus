@@ -40,7 +40,7 @@ pub(in crate::frontend) const FILL: f32 = 0.3;
 /// Opacity of a compact chart's secondary series: a solid line, as dashes
 /// break up at preview sizes.
 const COMPACT_SECONDARY: f32 = 0.55;
-/// Core-load bars (the original's comb): fixed width, gap and corner radius,
+/// Core-load bars (the interface's comb): fixed width, gap and corner radius,
 /// over a track in the bar's colour.
 const BAR_WIDTH: f32 = 4.;
 const BAR_GAP: f32 = 2.;
@@ -411,7 +411,7 @@ pub struct TimePlot {
     pub(in crate::frontend) captions: Option<Rc<FrameCaptions>>,
 }
 /// How often a hover readout's text follows a curve gliding under a resting
-/// pointer, as the original's text timer: its dots ride the curve on every
+/// pointer, as the interface's text timer: its dots ride the curve on every
 /// frame, while the text reads it ten times a second, and at once when a
 /// sample arrives or the pointer moves.
 const READOUT_EVERY: Duration = Duration::from_millis(100);
@@ -426,8 +426,8 @@ pub(in crate::frontend) struct ReadoutClock {
     read: Option<Instant>,
 }
 /// A chart's captions drawn inside its frame, over the curve and under the
-/// readout: the short performance card's (`@container perf (max-height:
-/// 640px)` in the original), where the chart box keeps only its frame.
+/// readout in performance cards at most 640 px high, where the chart box
+/// keeps only its frame.
 pub(in crate::frontend) struct FrameCaptions {
     /// Name and top value, at the frame's top.
     top: (String, String),
@@ -435,7 +435,7 @@ pub(in crate::frontend) struct FrameCaptions {
     bottom: (String, String),
     color: Hsla,
 }
-/// Where frame captions sit: the original's 7 px from the chart box's sides,
+/// Where frame captions sit: the interface's 7 px from the chart box's sides,
 /// 4 px from its top and 3 px from its bottom, less the frame's 1 px border
 /// (the plot's bounds are inside it).
 const CAPTION_INSET_X: f32 = 6.;
@@ -498,7 +498,7 @@ pub(in crate::frontend) struct Rescale {
     start: Option<Instant>,
 }
 impl Rescale {
-    /// The top on screen at `now`: geometric, easing out, as the original charts rescale.
+    /// The top on screen at `now`: geometric, easing out, with an eased scale transition.
     fn at(&self, now: Instant) -> Option<f64> {
         let start = self.start?;
         let progress = now.saturating_duration_since(start).as_secs_f64() / RESCALE.as_secs_f64();
@@ -532,7 +532,7 @@ impl TimePlot {
             .map_or(0., |glide| glide.at(now)) as f32
     }
 }
-/// A load bar's way to its latest sample, as the original's bars move: when a
+/// A load bar's way to its latest sample, as the interface's bars move: when a
 /// sample arrives, the bar glides linearly from where it stands to the new
 /// value over one refresh interval, arriving as the next sample does. A bar
 /// never waits for a sample's time stamp to come round, so it neither stalls
@@ -559,8 +559,7 @@ impl BarGlide {
     }
     /// Heads for the newest sample of `points`. A sample already headed for
     /// changes nothing; a new one starts from the height on screen `now`, or
-    /// from the bottom for a bar that was not on screen (the original's bars
-    /// grow in as the page appears). Without gliding the bar shows the sample
+    /// from the bottom for a bar that was not on screen. Without gliding the bar shows the sample
     /// at once. An unknown reading draws nothing.
     fn follow(
         previous: Option<&BarGlide>,
@@ -957,7 +956,7 @@ struct ChartRevision {
     format: Option<MetricFormat>,
     network_bits: bool,
 }
-/// Grid lines and frames in the chart's own color, as the original charts mix them.
+/// Grid lines and frames in the chart's own color.
 const GRID_OPACITY: f32 = 0.13;
 const FRAME_OPACITY: f32 = 0.45;
 /// The top-right caption a scale implies.
@@ -1331,8 +1330,7 @@ impl TimePlot {
     /// The window end the hover readout's text reads the curve at, for the
     /// pointer at `x` with the window ending at `end` this frame. While the
     /// curve glides (fluid and balanced) the text holds for `READOUT_EVERY`
-    /// unless the pointer moves, a sample arrives or the mode changes, as the
-    /// original's text timer: read on every frame, it changed with each one.
+    /// unless the pointer moves, a sample arrives or the mode changes.
     /// Pixel and off modes move the curve a pixel or a sample at a time, so the
     /// text follows each step, as there. `fresh` reads anew regardless.
     fn readout_end(&self, x: Pixels, end: f64, fresh: bool) -> f64 {

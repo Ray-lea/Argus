@@ -228,7 +228,7 @@ fn save(report: &Report) -> Result<()> {
         .map_err(io)
 }
 
-/// Called only in a dedicated helper process, before the Tauri logger exists.
+/// Called only in a dedicated helper process, before the application logger exists.
 pub(crate) fn helper(action: &'static str, run: impl FnOnce() -> Result<()>) -> i32 {
     log::capture_helper_failures();
     let started = Instant::now();
@@ -281,7 +281,7 @@ fn validate(report: &Report, pid: u32, created: u64, code: u32) -> Result<()> {
 }
 
 /// The process handle returned by ShellExecuteExW supplies the identity; no
-/// PID or report path is accepted from the webview or command-line arguments.
+/// PID or report path is accepted from the interface or command-line arguments.
 pub(crate) fn collect(action: &'static str, process: HANDLE, code: u32) {
     let read = (|| {
         let (pid, created) = identity(process)?;

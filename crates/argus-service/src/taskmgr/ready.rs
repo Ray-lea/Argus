@@ -13,7 +13,7 @@ use windows::core::{PCWSTR, PWSTR};
 pub const ARG: &str = "--argus-taskmgr-entry";
 static PENDING: Mutex<Vec<Request>> = Mutex::new(Vec::new());
 
-/// Early startup has no Tauri logger yet. Keep failures beside the launcher's
+/// Early startup has no application logger yet. Keep failures beside the launcher's
 /// diagnostic log, with no executable path, user name or activation payload.
 pub fn handover_failed(
     operation: &'static str,

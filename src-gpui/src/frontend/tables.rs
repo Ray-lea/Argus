@@ -28,7 +28,7 @@ enum CellKind {
     Enabled,
     StartupLocation,
 }
-/// A CSS grid track from the original tables: a fixed width or `minmax(min, fr)`.
+/// A CSS grid track from the tables: a fixed width or `minmax(min, fr)`.
 #[derive(Clone, Copy, PartialEq)]
 enum Track {
     Fixed(f32),
@@ -42,16 +42,15 @@ struct Field {
     track: Track,
     end: bool,
 }
-/// Header and row geometry of the original tables.
+/// Header and row geometry of the tables.
 const ROW_HEIGHT: f32 = 30.;
 const ROW_INSET: f32 = 4.;
 const CELL_PADDING: f32 = 10.;
-/// The process table's header band: a total above each label, the original's
+/// The process table's header band: a total above each label, the interface's
 /// cell padding and the band's own separator row.
 const PROCESS_HEADER_BAND: f32 = 49.;
 /// The process header band at the chosen font size: its total (15 px, line
-/// height 1.25) and label (12 px, 1.4) grow with the text, as the original
-/// header sized by its content did.
+/// height 1.25) and label (12 px, 1.4) grow with the text.
 fn process_header_band() -> Pixels {
     px(PROCESS_HEADER_BAND) + theme::text_growth(15., 1.25) + theme::text_growth(12., 1.4)
 }
@@ -140,7 +139,7 @@ fn fields(page: &str, network: bool, available: f32) -> Vec<Field> {
         ],
         _ => {
             // The process table drops secondary columns as it narrows, like the
-            // original container queries: first threads and handles, then PID and I/O.
+            // responsive column priorities: first threads and handles, then PID and I/O.
             let (name, drop_opt, drop_opt2) = if network {
                 (
                     if available <= 920. {
@@ -358,7 +357,7 @@ impl Render for TableFrame {
                     .bordered(false)
                     .fixed_cols_border(false)
                     .stripe(false)
-                    // The original's scrollbars are drawn below.
+                    // The interface's scrollbars are drawn below.
                     .scrollbar_visible(false, false),
             )
             // The process page draws the list's bar itself (`Desktop::table_scrollbar`).
@@ -377,7 +376,7 @@ impl Render for TableFrame {
 }
 /// The process header totals, painted over the header without the cells'
 /// clip: a total wider than its column runs into the one before it, as the
-/// original's overflowing header text does (at large font sizes).
+/// interface's overflowing header text does (at large font sizes).
 fn header_totals(totals: HeaderTotals, cx: &App) -> impl IntoElement {
     let ink = Palette::current(cx).ink;
     let family = theme::display_font(cx);
@@ -681,7 +680,7 @@ impl TableDelegate for NativeTable {
         let field = &self.fields[index];
         let p = Palette::current(cx);
         let end = field.end;
-        // Process headers: the original's 4 px cell padding inside its 4 px
+        // Process headers: the interface's 4 px cell padding inside its 4 px
         // header padding below the label, which the header band leaves out.
         let processes = self.page == "processes";
         let mut cell = div()
@@ -774,7 +773,7 @@ impl TableDelegate for NativeTable {
             .upgrade()
             .map(|owner| owner.read(cx).header_bounds.clone());
         let measured_key = key.clone();
-        // A column the original cannot sort by has a disabled header: no
+        // A column the table cannot sort by has a disabled header: no
         // hover or press fill, and a click does nothing (`.th:disabled`).
         let sortable = sortable(&self.page, &key);
         Button::new(("column-sort", index))
@@ -883,7 +882,7 @@ impl TableDelegate for NativeTable {
                 .into_any_element();
         }
         let dot = |color: Hsla| div().size(px(7.)).rounded_full().flex_shrink_0().bg(color);
-        // The original's `title` on this cell, for the row under the pointer.
+        // The interface's `title` on this cell, for the row under the pointer.
         let hint = self
             .is_near(row_index)
             .then(|| self.cell_hint(row, field, cx))
@@ -1050,7 +1049,7 @@ impl TableDelegate for NativeTable {
         // count 2). Another double-click right after it arrives as clicks 3 and
         // 4 within the system's double-click time and would be lost until that
         // time passed: every completed pair folds again. A category heading
-        // folds on every press instead (its select event), as the original's
+        // folds on every press instead (its select event), as the interface's
         // `onClick`: no pair folds it again.
         let refold =
             (self.page == "processes" && row.expandable && row.section.is_none()).then(|| {
@@ -1139,7 +1138,7 @@ fn icon_id(raw: &Value) -> Option<u32> {
         .or_else(|| raw["icon"].as_u64())
         .map(|id| id as u32)
 }
-/// A small outlined label, like the original `.tag`.
+/// A small outlined label, with the shared tag style.
 fn tag(text: impl Into<SharedString>, border: Hsla, color: Hsla) -> Div {
     div()
         .flex_shrink_0()
@@ -1168,12 +1167,12 @@ impl NativeTable {
             None => element,
         }
     }
-    /// The `title` the original gives a cell other than the first, if any.
+    /// The hover hint for a cell other than the first, if any.
     fn cell_hint(&self, row: &Row, field: &Field, cx: &App) -> Option<String> {
         let raw = &row.raw;
         match (self.page.as_str(), field.key) {
             // Why a process has no disk reading. Working it out reads every
-            // process, so once a sample, as the original's memo.
+            // process, so once a sample, as the interface's memo.
             ("processes", "diskRead" | "diskWrite") if row.metric(field.key).is_none() => {
                 let owner = self.owner.upgrade()?;
                 let app = owner.read(cx);
@@ -1365,7 +1364,7 @@ impl NativeTable {
             })
             .when(off, |d| d.text_color(p.muted))
             .child(row.title.clone());
-        // The marks after the name carry their own `title`s (RowMarks.tsx).
+        // The marks after the name carry their own `title`s.
         let hint = |element: Div, part: &str, hint: Option<String>| {
             if near {
                 self.hint_text(element, row, part, hint)
@@ -1818,7 +1817,7 @@ impl Desktop {
             .into_any_element()
     }
     /// Narrows a list to `choice` and keeps it for the next start, under the
-    /// original's preference (`services.filter`, `connections.filter`).
+    /// interface's preference (`services.filter`, `connections.filter`).
     pub(in crate::frontend) fn set_filter(
         &mut self,
         page: &str,
@@ -1840,7 +1839,7 @@ impl Desktop {
     pub(in crate::frontend) fn marks(&self) -> Value {
         self.marks_of(&self.page)
     }
-    /// A page's row marks, under the original's preference.
+    /// A page's row marks, under the interface's preference.
     pub(in crate::frontend) fn marks_of(&self, page: &str) -> Value {
         self.prefs.get(
             &format!(
@@ -1919,7 +1918,7 @@ impl Desktop {
         }
         hosted
     }
-    /// The figure above a process column label, as in the original header.
+    /// The figure above a process column label.
     pub(in crate::frontend) fn column_total(&self, key: &str) -> String {
         let sys = &self.snapshot["system"];
         if sys.is_null() {
@@ -2029,7 +2028,7 @@ pub(super) fn first_column(page: &str) -> &'static str {
         .map(|field| field.key)
         .unwrap_or("name")
 }
-/// The order a table opens in, as in the original pages.
+/// The order a table opens in.
 pub(super) fn initial_sort(page: &str) -> (String, bool) {
     match page {
         "services" => ("displayName".into(), false),
@@ -2038,10 +2037,10 @@ pub(super) fn initial_sort(page: &str) -> (String, bool) {
         _ => ("name".into(), false),
     }
 }
-/// The original's table behind each list and its sortable columns, as (field
-/// here, column id there). `tableSort.<table>` keeps the WebView interface's
-/// `{"id": column, "desc": bool}` (DataTable.tsx), so both interfaces read the
-/// same saved order. Columns the original does not sort by are left out.
+/// The interface's table behind each list and its sortable columns, as (field
+/// here, column id there). `tableSort.<table>` keeps the saved preferences's
+/// `{"id": column, "desc": bool}`, so both interfaces read the
+/// same saved order. Columns the table does not sort by are left out.
 type SortColumns = (&'static str, &'static [(&'static str, &'static str)]);
 fn sort_columns(page: &str) -> Option<SortColumns> {
     Some(match page {
@@ -2092,13 +2091,13 @@ fn sort_columns(page: &str) -> Option<SortColumns> {
         _ => return None,
     })
 }
-/// Whether `page`'s table sorts by the column `key`; the original disables the
+/// Whether `page`'s table sorts by the column `key`; the table disables the
 /// headers of the others (a column without `sortValue`).
 pub(super) fn sortable(page: &str, key: &str) -> bool {
     sort_columns(page).is_none_or(|(_, columns)| columns.iter().any(|(field, _)| *field == key))
 }
 /// A saved `tableSort.<table>` value as a sort of `page`, if it names one of
-/// the table's sortable columns (the original's validator).
+/// the table's sortable columns (the interface's validator).
 fn restore_sort(page: &str, saved: &Value) -> Option<(String, bool)> {
     let (_, columns) = sort_columns(page)?;
     let id = saved["id"].as_str()?;
@@ -2129,7 +2128,7 @@ pub(super) fn sort_preference(page: &str, key: &str, descending: bool) -> Option
     ))
 }
 /// A list's filter choices and the preference that keeps the choice, named as
-/// in the original (`services.filter`, `connections.filter`).
+/// under `services.filter` and `connections.filter`.
 pub(super) fn filter_choices(page: &str) -> Option<(&'static str, &'static [&'static str])> {
     match page {
         "services" => Some(("services.filter", &["all", "running", "stopped"])),
@@ -2171,7 +2170,7 @@ mod tests {
 
     #[test]
     fn saved_orders_keep_the_original_column_ids() {
-        // Values a preferences.json from the WebView interface holds.
+        // Values a preferences.json from the saved preferences holds.
         assert_eq!(
             restore_sort("services", &json!({"id":"start","desc":true})),
             Some(("startType".into(), true))
@@ -2204,7 +2203,7 @@ mod tests {
         assert!(!sortable("startup", "command"));
         assert!(sortable("services", "startType") && sortable("processes", "threads"));
         assert_eq!(sort_preference("services", "description", false), None);
-        // The original's validator: unsortable or unknown columns and malformed
+        // The interface's validator: unsortable or unknown columns and malformed
         // values give way to the default order.
         for saved in [
             json!({"id":"desc","desc":false}),

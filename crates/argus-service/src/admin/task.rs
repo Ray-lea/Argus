@@ -21,7 +21,7 @@ impl Drop for Apartment {
 impl Scheduler {
     pub fn new() -> Result<Self> {
         let initialized = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-        // Tauri can already have initialized this thread as an STA.
+        // The native UI can already have initialized this thread as an STA.
         if initialized.is_err() && initialized.0 as u32 != 0x80010106 {
             return Err(initialized.0 as u32);
         }

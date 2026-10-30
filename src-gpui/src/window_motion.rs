@@ -1,4 +1,4 @@
-//! In-place window fades, as the Tauri host had them: showing, hiding to the
+//! In-place window fades: showing, hiding to the
 //! tray, minimizing and restoring fade the whole window instead of the system's
 //! zoom animations. Native visibility still drives sampling; the temporary
 //! layered style exists only while a fade is running.

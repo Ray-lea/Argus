@@ -1,5 +1,5 @@
 //! Settings: cards grouped into sections, with a list of the sections on the
-//! left that follows the scroll (Settings.tsx and pages.css in the original).
+//! left that follows the scroll.
 use super::*;
 use crate::frontend::recorder::{self, Effect, Mods, Verdict};
 use crate::frontend::recorder::{hotkey_error_text, issue_text};
@@ -66,7 +66,7 @@ fn short_time(ms: i64) -> String {
 }
 
 /// What the administrator card shows: locale keys for its state and notes,
-/// the state's tone and its controls (Settings.tsx, AdministratorSettings).
+/// the state's tone and its controls.
 #[derive(Debug, PartialEq)]
 pub(in crate::frontend) struct AdministratorView {
     pub state: &'static str,
@@ -159,7 +159,7 @@ impl Desktop {
             .unwrap_or(0.)
     }
 
-    /// A located card's border and fill (pages.css `setting-located`): eased
+    /// A located card's border and fill: eased
     /// from the accent and from 12 % accent back to the card's own.
     fn located_colors(&self, tint: f32) -> (Hsla, Hsla) {
         let p = self.palette;
@@ -572,7 +572,7 @@ impl Desktop {
     }
 
     /// How often to sample while minimized or in the tray; under 5 s only
-    /// after a warning (Settings.tsx, BackgroundIntervalSelect).
+    /// after a warning.
     pub(in crate::frontend) fn background_select(
         &self,
         place: &str,
@@ -752,7 +752,7 @@ impl Desktop {
         }
     }
 
-    /// Opens Settings at a card, pointing it out (Settings.tsx, goToSetting).
+    /// Opens Settings at a card, pointing it out.
     pub(in crate::frontend) fn locate_setting(
         &mut self,
         section: &str,
@@ -1552,7 +1552,7 @@ impl Desktop {
     }
 
     /// Running Argus as administrator through the one-time grant
-    /// (Settings.tsx, AdministratorSettings); the onboarding shows the same
+    ///; the onboarding shows the same
     /// card and defers the restart to its end.
     pub(in crate::frontend) fn administrator_card(
         &self,
@@ -1804,7 +1804,7 @@ impl Desktop {
 
     // ---- Appearance ---------------------------------------------------------------
 
-    /// Interface scale or font size (Settings.tsx): a short number box with its
+    /// Interface scale or font size: a short number box with its
     /// unit (`.appearance-number`) and a button back to the default. The box
     /// commits on Enter, when it loses focus and when its spin button is let
     /// go; the arrow keys step it and commit.
@@ -2186,8 +2186,7 @@ impl Desktop {
         }
     }
 
-    /// The spin button let go: the box commits what it shows, as the
-    /// original's `change` event did on release.
+    /// Releasing the spin button commits the value shown in the box.
     fn spin_release(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(spin) = self.ui.spin.take() else {
             return;
@@ -2898,7 +2897,7 @@ impl Desktop {
         self.request("install_update", json!({}), None, window, cx);
     }
 
-    /// The release on offer, inline (Settings.tsx, update-release-card).
+    /// The release on offer, inline.
     fn inline_release(
         &self,
         status: &Value,
@@ -3851,7 +3850,7 @@ impl Desktop {
         self.request("get_settings", json!({}), Some("settings"), window, cx);
     }
 
-    /// The window lost focus: a recording ends, as the original's blur did.
+    /// The window lost focus: a recording ends, as the interface's blur did.
     pub(in crate::frontend) fn hotkey_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.ui.hotkey.mode != HotkeyMode::Idle {
             self.finish_hotkey(true, false, window, cx);
@@ -4084,7 +4083,7 @@ impl Desktop {
         true
     }
 
-    // ---- Keyboard shortcuts sheet (ShortcutHelp.tsx) ------------------------
+    // ---- Keyboard shortcuts sheet ------------------------
 
     /// Keys as keycaps: chords split by " / ", keys by "+".
     pub(in crate::frontend) fn shortcut_keys(&self, value: &str) -> AnyElement {
@@ -4465,8 +4464,7 @@ impl Desktop {
                 .accessibility_label(label("common.close"))
                 .on_click(cx.listener(|this, _, window, cx| this.close_overlay(window, cx))),
             );
-        // As tall as its content (the original kept min(760 px, window - 48 px)
-        // and scrolled inside): `surface` grows it downward, keeping its top.
+        // As tall as its content: `surface` grows it downward, keeping its top.
         dialog
             .child(
                 self.dialog_body(id)

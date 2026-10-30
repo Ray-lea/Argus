@@ -355,7 +355,7 @@ impl Desktop {
         self.timeline.push(&snapshot, self.interval as f64);
         self.work.timeline_us += start.elapsed().as_micros() as u64;
         let previous = std::mem::replace(&mut self.snapshot, snapshot);
-        // New processes are tinted for a few samples, as in the original list.
+        // New processes are tinted for a few samples.
         let start_up = previous.is_null();
         let seen = std::mem::take(&mut self.first_seen);
         self.first_seen = values(&self.snapshot["processes"])
@@ -397,7 +397,7 @@ impl Desktop {
                     .is_some_and(|first| *first != 0 && self.sequence.saturating_sub(*first) < 3)
             })
     }
-    /// How often the visible page re-reads its list, as in the original pages.
+    /// How often the visible page re-reads its list.
     pub(in crate::frontend) fn poll_interval(&self) -> Duration {
         Duration::from_millis(match self.page.as_str() {
             "services" | "processes" => 3000,
@@ -785,7 +785,7 @@ impl Desktop {
             .and_then(|key| self.rows.iter().position(|r| &r.key == key));
         if list_page && matches!(key, "up" | "down" | "home" | "end" | "pageup" | "pagedown") {
             let last = self.rows.len().saturating_sub(1);
-            // A page is the rows that fit, less one, as in the original.
+            // A page is the rows that fit, less one.
             let page = self
                 .table
                 .as_ref()
@@ -1405,7 +1405,7 @@ impl Desktop {
                 json!({"event":"ui-render-counts","label":label,"desktop":self.render_count,"chartTicks":self.chart_frame,"sort":self.sort,"descending":self.descending})
             );
         }
-        // The page's rows as built, to compare titles and order with the original.
+        // The page's rows as built, to inspect titles and ordering.
         if let Some(label) = control["dumpRows"].as_str() {
             let rows: Vec<Value> = self
                 .rows

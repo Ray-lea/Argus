@@ -1,5 +1,5 @@
-//! The GPU view: which engines it charts (lib/gpu-engines.ts), how their charts are laid
-//! out (lib/engine-grid.ts), and the memory charts sharing the height with them.
+//! The GPU view: which engines it charts, how their charts are laid
+//! out, and the memory charts sharing the height with them.
 use super::*;
 
 /// Utilization (%) an engine has to reach within the charts' span to be charted by smart display.
@@ -472,8 +472,7 @@ impl Desktop {
             cx,
         )];
         if engines.len() > 1 {
-            // A drop-down like every other choice of the original (its
-            // `Select`): the list opens under the button, not at the pointer.
+            // The drop-down list opens under the button, not at the pointer.
             let smart = is_smart(choice.as_ref());
             let mut options = vec![label("performance.gpu.engineSmart")];
             let mut actions = vec![save(with_smart(&engines, choice.as_ref()))];

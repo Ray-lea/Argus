@@ -300,7 +300,7 @@ pub fn summarize_services(names: &[String]) -> String {
         )
     }
 }
-/// The rows of the process table in the original's arrangement: the apps view
+/// The rows of the process table in the interface's arrangement: the apps view
 /// titles a row by its description, the tree and list by the executable name.
 pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row> {
     let mut rows = group_rows(processes, &options);
@@ -329,7 +329,7 @@ pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row
 fn pid(row: &Row) -> u64 {
     row.raw["pid"].as_u64().unwrap_or(0)
 }
-/// The original's comparator: names collate in the interface language with
+/// The interface's comparator: names collate in the interface language with
 /// the PID breaking ties; figures compare at their displayed precision, then
 /// by name in ascending order whatever the direction.
 fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
@@ -827,7 +827,7 @@ impl Timeline {
         let oldest = now - interval * 64. - 250.;
         // Samples further apart than the interval (the slower cadence while the
         // window is minimized or in the tray, a pause, a missed sample) join up,
-        // as in the original; only an unknown reading breaks a curve.
+        // while only an unknown reading breaks a curve.
         let mut record = |key: String, value: Option<f64>| {
             if value.is_some() || self.samples.contains_key(&key) {
                 let list = self.samples.entry(key).or_default();
@@ -851,7 +851,7 @@ impl Timeline {
             list.iter().any(|(_, v)| v.is_some())
         });
     }
-    /// Records every process and app, as the original kept them; exited ones are dropped.
+    /// Records every process and app, dropping exited ones.
     fn push_usage(&mut self, snapshot: &Value, now: f64, oldest: f64) {
         // Sparse samples join up here too (see `push`).
         self.times.push_back(now);
@@ -1127,7 +1127,7 @@ mod tests {
         // The heading folds the group in by engine: 40% + 30% on one 3D node.
         assert_eq!(rows[0].section.as_deref(), Some("background"));
         assert_eq!(rows[0].metric("gpu"), Some(70.));
-        // Rows labelled with one busy engine add up on it, as the original's heading does.
+        // Rows labelled with one busy engine add up on it, as the interface's heading does.
         let labeled = |pid: u64, gpu: f64| json!({"pid":pid,"createTime":1,"name":format!("{pid}.exe"),"gpu":gpu,"gpuEngine":"GPU 0 - 3D"});
         let rows = rows_of(
             &[labeled(1, 40.), labeled(2, 40.), labeled(3, 30.)],
@@ -1192,7 +1192,7 @@ mod tests {
                 processes.push(process(2, 1.));
             }
             // Two samples are missed: the histories join the samples around
-            // them, as the original does (a minimized window samples less often).
+            // them, across longer intervals (a minimized window samples less often).
             if !matches!(index, 3 | 4) {
                 timeline.push(
                     &json!({"timestamp":index*1000,"system":{"cpu":1},"processes":processes}),

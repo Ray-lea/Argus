@@ -1,13 +1,5 @@
-//! The original's one scrollbar (styles.css `::-webkit-scrollbar*`): a 10 px
-//! gutter at the scroller's edge with a transparent track and a rounded thumb
-//! behind a 3 px transparent border (4 px of colour), widening to 6 px under
-//! the pointer and while dragged. It shows whenever the content overflows, as
-//! Chromium shows classic scrollbars, and sizes and places its thumb the way
-//! Blink does (`ScrollbarTheme::ThumbLength` and `ThumbPosition`).
-//!
-//! The element takes no room: it reads the scroller's bounds and offset from
-//! its handle and paints over the scroller's gutter, so it can sit inside the
-//! scrolled element (as its last child) or beside it, after it in paint order.
+//! Shared scrollbars: a 10 px transparent track and a 4 px rounded thumb.
+//! Hover and dragging widen the thumb; scrolling uses the view's scroll handle.
 use super::*;
 use gpui_kit::Axis;
 

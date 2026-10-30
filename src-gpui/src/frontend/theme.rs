@@ -32,14 +32,14 @@ pub struct Palette {
     pub flyout: Hsla,
     /// The Fluent control face (`--control`), unmixed by the component theme.
     pub face: Hsla,
-    /// Fluent controls as the original drew them: translucent faces
+    /// Fluent controls: translucent faces
     /// (`--control`, `--control-hover`, `--control-checked`) over whatever
     /// is behind, a 1 px stroke, and a stronger bottom edge (`control_edge`).
     pub control_face: Hsla,
     pub control_hover: Hsla,
     pub control_checked: Hsla,
     /// Laid over the 1 px stroke along a control's bottom, the two make the
-    /// original's `--stroke-strong` bottom border (GPUI borders have one colour).
+    /// interface's `--stroke-strong` bottom border (GPUI borders have one colour).
     pub control_edge: Hsla,
     pub press: Hsla,
     pub on_accent: Hsla,
@@ -188,7 +188,7 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     tokens.colors.background = color("window-bg");
     tokens.colors.foreground = color("ink");
     // Opaque: menus paint their shadow under the whole surface, where it would
-    // darken a translucent one (the original blurs what is behind instead).
+    // darken a translucent one.
     tokens.colors.surface = Hsla {
         a: 1.,
         ..color("flyout")
@@ -253,7 +253,7 @@ pub fn apply(mode: ThemeMode, window: &mut Window, cx: &mut App) {
     // Dialogs dim the window with their own fading layer (`dialogs::Scrim`);
     // the component backdrop only takes the clicks outside them.
     theme.colors.overlay = color("scrim").opacity(0.);
-    // Dialogs, menus and notices use the 8 px radius of the original surfaces.
+    // Dialogs, menus and notices use an 8 px corner radius.
     theme.radius_lg = px(8.);
     theme.tokens = theme.colors.into();
     Theme::sync_base(cx);
@@ -273,11 +273,11 @@ impl gpui_kit::base::RootPlugin for ProductSurface {
     }
     fn style(&self, surface: &mut Stateful<Div>, _: &mut Window, cx: &mut App) {
         // Characters the interface family lacks (Chinese above all) take the
-        // rest of the theme's list, as the original's CSS font stack did. Left
+        // rest of the theme's list, as the interface's CSS font stack did. Left
         // to DirectWrite, an English system locale renders Chinese in the
         // Japanese Yu Gothic UI.
         surface.text_style().font_fallbacks = Some(font_fallbacks(cx));
-        // The page, dialogs and notices inherit the original body's line height.
+        // The page, dialogs and notices inherit the shared body line height.
         surface.text_style().line_height = Some(line_height());
         if crate::platform::supports_backdrop() {
             use gpui_kit::gpui::Refineable;
@@ -301,7 +301,7 @@ pub fn display_font(cx: &App) -> SharedString {
 pub fn mono_font(cx: &App) -> SharedString {
     installed_font("mono", cx)
 }
-/// Hover hints: the family of the system's tooltips, which the original's
+/// Hover hints: the family of the system's tooltips, which the interface's
 /// native `title` tooltips used, and the families for characters it lacks.
 pub fn tooltip_font(cx: &App) -> (SharedString, FontFallbacks) {
     (installed_font("tooltip", cx), fallbacks("tooltip", cx))
@@ -379,14 +379,14 @@ thread_local! {
 pub fn base_font_size() -> f32 {
     design()["fontSize"].as_f64().expect("theme font size") as f32
 }
-/// The line height text inherits, as a multiple of its size: the original
-/// body's `line-height: 1.4`. GPUI's default (about 1.618) made wrapped text,
-/// and the boxes it sizes, taller than the original's.
+/// The inherited line height is 1.4 times the font size.
+/// GPUI's default (about 1.618) made wrapped text,
+/// and the boxes it sizes, taller than the interface's.
 pub fn line_height() -> DefiniteLength {
     relative(design()["lineHeight"].as_f64().expect("theme line height") as f32)
 }
 /// A text size written for the theme's 13 px base, following the base font
-/// size the user chose: the original's `calc(N rem / 13)`. Spacing and
+/// size the user chose: the interface's `calc(N rem / 13)`. Spacing and
 /// control sizes stay in pixels, as there.
 pub fn font(size: f32) -> Pixels {
     px(size * FONT_SCALE.get())
@@ -413,7 +413,7 @@ pub fn text_width(text: &str, size: Pixels, window: &Window, cx: &App) -> Pixels
         .width
 }
 /// How much taller a line of `size` px text at `line_height` gets at the
-/// chosen font size: what the original's content-sized boxes grew by, for
+/// chosen font size: what the interface's content-sized boxes grew by, for
 /// heights written here in pixels (zero at the default size).
 pub fn text_growth(size: f32, line_height: f32) -> Pixels {
     (font(size) - px(size)) * line_height
@@ -442,7 +442,7 @@ pub fn heat_alpha(field: &str, value: f64) -> f32 {
     };
     (level.clamp(0., 1.) * heat["opacity"].as_f64().unwrap()) as f32
 }
-/// The original's slower motion, 250 ms on the Fluent move curve; still under reduced motion.
+/// The interface's slower motion, 250 ms on the Fluent move curve; still under reduced motion.
 pub fn transition_slow(cx: &App) -> gpui_kit::base::motion::Transition {
     gpui_kit::base::motion::Transition::new(if cx.reduce_motion() {
         std::time::Duration::ZERO
@@ -627,8 +627,8 @@ pub fn icon_name(name: &str) -> IconName {
         _ => IconName::Circle,
     }
 }
-/// The original's own icon for a product icon name; the component set's
-/// nearest one (`icon_name`) for the few the original does not have.
+/// The interface's own icon for a product icon name; the component set's
+/// nearest one (`icon_name`) when a product asset is unavailable.
 pub fn icon(name: &str, color: Hsla) -> Icon {
     glyph(name).text_color(color)
 }
@@ -747,8 +747,8 @@ mod tests {
         out
     }
 
-    /// Wrapped Chinese text keeps punctuation with its text, as the original
-    /// WebView2 front end did: no line starts with closing punctuation or
+    /// Wrapped Chinese text keeps punctuation with its text:
+    /// no line starts with closing punctuation or
     /// ends with opening punctuation, while ideographs still break.
     #[test]
     fn chinese_text_wraps_like_the_original() {

@@ -20,7 +20,7 @@ const DASH_STRETCH: f64 = 0.25;
 static BUILD_MICROS: AtomicU64 = AtomicU64::new(0);
 /// A chart shown for the first time (entering a page, another device or view)
 /// waits in paint for its curve, so that the curve is part of the first frame
-/// of the page around it, as the original draws its canvases before that
+/// of the page around it. The first texture is needed before that
 /// frame. Every chart's raster starts in prepaint and they draw in parallel,
 /// a large one on several threads (`thread_count`), so one short wait covers
 /// them all. This only bounds a raster that does not land.
@@ -402,7 +402,7 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
 }
 
 /// The hover readout's dot: 9 px across, the series colour inside a 2 px ring
-/// of the tooltip's colour, as the original's `.chart-dot`.
+/// of the tooltip's colour, as the interface's `.chart-dot`.
 const DOT: f32 = 9.;
 const DOT_RING: f32 = 2.;
 
@@ -925,7 +925,7 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
                     {
                         let y = ((first + index) as f32 + 0.5) / density;
                         let level = ((height - y) / (height - top)).clamp(0., 1.);
-                        // Down to nothing at the bottom, as the original's gradient.
+                        // Down to nothing at the bottom, as the interface's gradient.
                         // The renderer averages premultiplied texels (see
                         // `paint_image_subpixel`), so the noisy straight colour of
                         // the faintest rows stays invisible.

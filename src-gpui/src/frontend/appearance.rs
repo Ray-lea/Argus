@@ -1,10 +1,8 @@
-//! Interface scale and base font size (the original's `lib/appearance.ts`).
+//! Interface scale and base font size.
 //!
-//! The scale zooms the whole window as page zoom did in the original WebView:
-//! the window's scale factor grows and its viewport shrinks, so layout,
-//! painting, pointer positions and the native caption hit testing agree. The
-//! font size changes text only (`theme::font`), as the original's
-//! `calc(N rem / 13)` sizes did; spacing and controls keep their pixels.
+//! Scaling grows the window's scale factor and shrinks its content viewport.
+//! Layout, painting, pointer coordinates and caption hit testing stay aligned.
+//! Font size scales text from a 13 px baseline; spacing and controls keep their pixels.
 use super::{prefs::Prefs, theme};
 use gpui_kit::{App, Window};
 use serde_json::Value;
@@ -30,8 +28,7 @@ pub struct Setting {
 }
 
 impl Setting {
-    /// The stored value when it is an integer in range (as the original
-    /// validates it), else the default.
+    /// The stored value when it is an integer in range, else the default.
     pub fn load(&self, prefs: &Prefs) -> u32 {
         self.valid(&prefs.get(self.key, Value::Null))
             .unwrap_or(self.default)
@@ -46,7 +43,7 @@ impl Setting {
     }
 
     /// What typed text commits as: a number is rounded into the range,
-    /// anything else gives the default (the original's `onChange`).
+    /// anything else gives the default (the interface's `onChange`).
     pub fn parse(&self, text: &str) -> u32 {
         match text.trim().parse::<f64>() {
             Ok(value) if value.is_finite() => value
@@ -136,7 +133,7 @@ mod tests {
         assert_eq!(FONT_SIZE.parse("-4"), 11);
     }
 
-    /// The cases measured on the original's font size box (11–20).
+    /// The cases measured on the interface's font size box (11–20).
     #[test]
     fn spinning_steps_text_like_chromium() {
         let spin = |text, up| FONT_SIZE.spin(text, up);

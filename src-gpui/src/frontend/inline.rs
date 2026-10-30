@@ -1,4 +1,4 @@
-//! Text with elements set in its lines, as the original's inline boxes: the
+//! Text with elements set in its lines, as the interface's inline boxes: the
 //! panel button in the overview tip and keycaps inside sentences.
 //!
 //! GPUI text has no inline boxes. An invisible word as wide as an element and

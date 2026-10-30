@@ -1,5 +1,5 @@
 //! The CPU details page: processor information, sensor charts and driver readings as
-//! cards that stay open, in the original order.
+//! cards that stay open, in display order.
 use super::*;
 
 /// Per-core table columns: timeline field, label, scale, digits and unit.

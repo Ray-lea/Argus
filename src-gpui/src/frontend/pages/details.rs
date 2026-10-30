@@ -25,7 +25,7 @@ struct Part {
 const KB: f64 = 1024.;
 const MB: f64 = KB * 1024.;
 const GB: f64 = MB * 1024.;
-/// Width of the box around each fact name (styles.css `.facts`).
+/// Width of the box around each fact name.
 const FACT_NAME_WIDTH: f32 = 84.;
 /// Pane width change per arrow key.
 const KEY_STEP: f32 = 16.;
@@ -72,7 +72,7 @@ impl Desktop {
     /// moved by the difference and clipped to the `width` at the card's edge,
     /// so it replays its last paint while it opens, closes or eases to a new
     /// width. Opening also slides it
-    /// in from the right as it fades in (styles.css `panel-in`), again whenever
+    /// in from the right as it fades in, again whenever
     /// it was not drawn the frame before.
     pub(super) fn details_pane(
         &mut self,
@@ -255,7 +255,7 @@ impl Desktop {
                     .child(scrollbar::scrollbar("details-scrollbar", &scroll, p.dark)),
             )
             .children(actions);
-        // Another selection settles in where the last one was (DetailsPanel.tsx).
+        // Another selection settles in where the last one was.
         let content = if cx.reduce_motion() {
             content.into_any_element()
         } else {
@@ -277,7 +277,7 @@ impl Desktop {
             .flex()
             .flex_col()
             // The workspace card already paints the layer; the pane only adds
-            // its separator (styles.css `.details`).
+            // its separator.
             .border_l_1()
             .border_color(p.stroke)
             .line_height(relative(1.4))
@@ -289,7 +289,7 @@ impl Desktop {
     }
 
     /// The handle on the pane's left edge: drag it, use the arrow keys, Home or
-    /// End, or double-click to go back to the default (Splitter.tsx).
+    /// End, or double-click to go back to the default.
     fn details_splitter(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let focus = window
@@ -791,7 +791,7 @@ impl Desktop {
         rows
     }
 
-    /// Why a process shows no disk reading (privilege.ts `missingDiskHint`).
+    /// Why a process shows no disk reading.
     pub(in crate::frontend) fn missing_disk_hint(&self) -> String {
         let measured = values(&self.snapshot["processes"])
             .iter()
@@ -1129,7 +1129,7 @@ impl Desktop {
     ) -> Div {
         let p = self.palette;
         // The trace keeps clear of the figure and the rounded corners
-        // (styles.css `.mini-chart .trace`).
+        //.
         let chart = self.chart(id, &[(key, color)], maximum, px(36.), false, cx);
         div()
             .relative()
@@ -1175,7 +1175,7 @@ impl Desktop {
             .into_any_element()
     }
 
-    /// Name and value pairs in two columns (styles.css `.facts`).
+    /// Name and value pairs in two columns.
     fn details_facts(&self, rows: Vec<(String, AnyElement)>) -> AnyElement {
         let p = self.palette;
         div()
@@ -1441,7 +1441,7 @@ impl Desktop {
     }
 
     /// The second tip, with the toolbar's panel button set in the sentence
-    /// like the original's inline `.overview-key`.
+    /// like the interface's inline `.overview-key`.
     fn overview_close_tip(&self) -> AnyElement {
         let p = self.palette;
         const MARK: char = '\u{FFFC}';
@@ -1472,7 +1472,7 @@ impl Desktop {
     }
 
     /// This computer's parts, each a way to its view on the performance page
-    /// (SystemOverview.tsx `parts`).
+    ///.
     fn overview_parts(&self) -> Vec<Part> {
         let p = self.palette;
         let hw = &self.snapshot["hardware"];
@@ -1746,7 +1746,7 @@ fn motion_duration() -> Duration {
 }
 
 /// A theme duration such as `t-slow`; "details" is the 200 ms settle of
-/// another selection (DetailsPanel.tsx).
+/// another selection.
 fn duration_of(key: &str) -> Duration {
     if key == "details" {
         return Duration::from_millis(200);
@@ -1771,7 +1771,7 @@ fn byte_rate(bytes_per_second: f64) -> String {
     }
 }
 
-/// Rate in bits per second (format.ts `fmtBits`).
+/// Rate in bits per second.
 fn bit_rate(bytes_per_second: f64) -> String {
     let bits = bytes_per_second * 8.;
     if bits < 1. {

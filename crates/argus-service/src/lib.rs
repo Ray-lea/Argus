@@ -47,7 +47,7 @@ const REFRESH_ARG: &str = "--argus-service-refresh";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PROTOCOL: u32 = 9;
 
-/// Handle service/helper modes before starting Tauri, its singleton or sampler.
+/// Handle service/helper modes before starting the native UI, its singleton or sampler.
 pub fn run_mode() -> Option<i32> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {

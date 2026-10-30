@@ -101,7 +101,7 @@ impl Desktop {
                             .mx(px(12.))
                             .flex()
                             .relative()
-                            // The original's 3 px ring (a spread box shadow) as a
+                            // The interface's 3 px ring (a spread box shadow) as a
                             // border just outside the card: GPUI paints a shadow
                             // under the whole box, where it would tint the
                             // translucent card itself.
@@ -591,7 +591,7 @@ impl Desktop {
                     .when(index + 1 == count, |b| b.rounded_r(px(7.)))
                     .pt(px(11.))
                     .px(px(16.))
-                    // The original card was a <button>: its content sits in the
+                    // The card content sits in the
                     // middle of what the top padding leaves, in the body's 1.4
                     // line height.
                     .flex()
@@ -624,7 +624,7 @@ impl Desktop {
                             .items_baseline()
                             .gap(px(10.))
                             // Not clipped: in a narrow card the unit runs on
-                            // into the next one, as in the original.
+                            // into the next one.
                             .whitespace_nowrap()
                             .child(
                                 div()

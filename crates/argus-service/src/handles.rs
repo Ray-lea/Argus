@@ -88,7 +88,7 @@ pub fn scan_local(paths: Vec<String>) -> HandleReport {
     )
 }
 
-/// Invoked before Tauri/single-instance initialization. The one-byte gate keeps
+/// Invoked before native UI/single-instance initialization. The one-byte gate keeps
 /// the worker idle until the parent has assigned its kill-on-close job.
 pub(crate) fn worker(argument: &str) -> u32 {
     if argument.len() > 16 * 1024 {

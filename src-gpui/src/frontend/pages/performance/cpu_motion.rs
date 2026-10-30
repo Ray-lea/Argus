@@ -27,7 +27,7 @@ const VIEW_IN: Duration = Duration::from_millis(220);
 /// that the two views overlap only briefly; an accelerating exit would hold
 /// the outgoing view over the incoming one for most of its fade.
 const VIEW_OUT: Duration = Duration::from_millis(83);
-/// The incoming view's scale when it starts (the original's settle animation).
+/// The incoming view's scale when it starts (the interface's settle animation).
 const VIEW_ZOOM: f32 = 0.985;
 /// A card's glide to its new place and size.
 const MOVE: Duration = Duration::from_millis(260);

@@ -1,9 +1,6 @@
-//! Name order of the original interface, `Intl.Collator(locale, { numeric: true,
-//! sensitivity: "base" })`: ICU collation in the interface language, digit runs
-//! compared by value, case and accents ignored. Chinese puts Han first, in pinyin
-//! order, then Latin; English puts Latin first. Windows ships ICU as `icu.dll`
-//! (Windows 10 1903 and later), loaded here on first use. The original's
-//! WebView2 collated with ICU too, and both order the test names alike.
+//! Locale-aware ICU name ordering: numeric digit runs, case and accents ignored.
+//! Chinese sorts Han in pinyin order before Latin; English puts Latin first.
+//! Windows supplies ICU as icu.dll, loaded on first use.
 use argus_core::i18n::Locale;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -122,7 +119,7 @@ mod icu {
         .as_ref()
     }
 
-    /// An ICU collator set up as the original's: primary strength (`sensitivity:
+    /// An ICU collator set up as the interface's: primary strength (`sensitivity:
     /// "base"`), numeric ordering, and canonical equivalence as ECMA-402 requires.
     pub struct Collator(*mut UCollator);
     // Used only under the cache's lock.
@@ -211,7 +208,7 @@ mod tests {
         names.into_iter().map(|(_, name)| name).collect()
     }
 
-    // Expected orders are those of the original's WebView2 Intl.Collator.
+    // Expected orders are those of the interface's WebView2 Intl.Collator.
     const NAMES: [&str; 14] = [
         "Argus",
         "东方财富终端",

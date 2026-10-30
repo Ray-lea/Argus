@@ -1,4 +1,4 @@
-//! Hover hints on table cells: the original's native `title` tooltips.
+//! Hover hints on table cells: the interface's native `title` tooltips.
 //!
 //! Tables lay out their visible rows again on every scroll frame, and a
 //! `.tooltip()` on each cell would add a hitbox and four mouse listeners per

@@ -1,5 +1,4 @@
-//! Native onboarding, release notes and the update dialog (Onboarding.tsx,
-//! UpdateDialog.tsx and ReleaseNotes.tsx in the original).
+//! Native onboarding, release notes and the update dialog.
 use super::*;
 use gpui_kit::component::dialog::Dialog;
 use widgets::{ButtonExt, Handler, ToastKind, Tone};
@@ -243,7 +242,7 @@ impl Desktop {
     /// Places `parts` where the catalog text names them (`{name}`): a
     /// formatted text whose placeholders were filled with marker characters,
     /// each part set in the text's lines where its marker is, as the
-    /// original's inline keycaps.
+    /// interface's inline keycaps.
     pub(in crate::frontend) fn rich(
         &self,
         text: String,
@@ -281,7 +280,7 @@ impl Desktop {
         }
     }
 
-    /// Skip, finish or Escape (Onboarding.tsx, close): records the onboarding
+    /// Skip, finish or Escape: records the onboarding
     /// as done, closes it once that is saved, then applies an administrator
     /// choice it deferred. Not while that choice is being made.
     pub(in crate::frontend) fn finish_onboarding(
@@ -331,7 +330,7 @@ impl Desktop {
 
     /// Once the window shows after a start whose administrator relaunch fell
     /// back to standard permissions, says so with the way to the setting; not
-    /// over the onboarding, the update dialog or a question (App.tsx).
+    /// over the onboarding, the update dialog or a question.
     pub(in crate::frontend) fn announce_administrator(&mut self) -> bool {
         if self.ui.administrator_announced {
             return false;
@@ -1238,7 +1237,7 @@ impl Desktop {
         .join(" · ")
     }
 
-    /// This version beside the next one (ReleaseNotes.tsx, UpdateVersions).
+    /// This version beside the next one.
     pub(in crate::frontend) fn update_versions(
         &self,
         from: Option<&str>,

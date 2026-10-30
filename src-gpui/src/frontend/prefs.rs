@@ -1,11 +1,11 @@
-//! Native preferences keep the original key names and preserve unrecognized data.
+//! Native preferences keep stable preference keys and preserve unrecognized data.
 //!
 //! Values change in memory at once; a background thread writes them, so a
 //! preference set from the interface (the page, a sort, a pane width) never
 //! waits for the disk on the UI thread. Writes keep their order, and the queue
 //! is drained before the application quits (`flush`). Each write's outcome
 //! goes back to the interface (`outcomes`), which says when saving starts to
-//! fail, as the original does (prefs.ts, `preferenceSaveFailed`).
+//! fail.
 use serde_json::Value;
 use smol::channel::{Receiver, Sender};
 use std::{

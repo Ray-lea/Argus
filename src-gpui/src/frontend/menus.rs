@@ -1,10 +1,4 @@
-//! Context menus, drawn as the original's `ContextMenu` (Overlays.tsx), and
-//! the row menus' entries in the original order.
-//!
-//! The menu sizes itself as `.menu` and `.menu-item` did: the text follows the
-//! base font size (`theme::font`), while rows, padding, icons and the minimum
-//! width keep their pixels, so larger text fills the 30 px rows instead of
-//! growing them. The interface scale zooms all of it.
+//! Context menu geometry, entries and keyboard/pointer interaction.
 use super::*;
 
 /// `.menu-item`: row height, and its padding and the gap between icon, label and hint.
@@ -25,12 +19,12 @@ const SUBMENU_DELAY: Duration = Duration::from_millis(250);
 /// `flyout-in` and the leaving `fade-out`.
 const ENTER_SECONDS: f32 = 0.167;
 const LEAVE_SECONDS: f32 = 0.083;
-/// The scale `flyout-in` starts from. The original placed a menu by its size
+/// The scale `flyout-in` starts from. The menu position depends on its size
 /// at that moment, so one that opens up or left of the pointer overlaps it
 /// by the difference once grown; menus here are placed the same way.
 const ENTER_SCALE: f32 = 0.96;
 
-/// Where the keyboard is in an open menu. As in the original, the first item
+/// Where the keyboard is in an open menu. The first item
 /// takes it when the menu opens, and the highlight shows once a key moves it
 /// (`:focus-visible`).
 #[derive(Clone, Copy, PartialEq)]
@@ -120,7 +114,7 @@ struct MenuLayout {
     tops: Vec<f32>,
 }
 
-/// The menu's size as the original laid it out: as wide as its widest row
+/// The menu's size: as wide as its widest row
 /// (no narrower than 220 px), 30 px per item and 9 px per separator.
 fn measure(items: &[MenuItem], window: &Window, cx: &App) -> MenuLayout {
     let text = theme::font(13.);
@@ -270,7 +264,7 @@ impl Desktop {
     }
 
     /// The window going to the background or changing size closes the menu,
-    /// as the original's did on `blur` and `resize`.
+    /// as the interface's did on `blur` and `resize`.
     pub(in crate::frontend) fn watch_menu_window(
         &mut self,
         window: &mut Window,
@@ -404,7 +398,7 @@ impl Desktop {
         self.act(action, window, cx);
     }
 
-    /// Keys while a menu is open; it takes them all, as the original's menu
+    /// Keys while a menu is open; it takes them all, as the interface's menu
     /// blocked the window's shortcuts.
     pub(in crate::frontend) fn menu_key(
         &mut self,
@@ -701,7 +695,7 @@ impl Desktop {
             .border_1()
             .border_color(p.stroke_strong)
             .rounded(px(8.))
-            // No shadow, as the original's menus (window.md); opaque, where the
+            // No shadow, as the interface's menus (window.md); opaque, where the
             // original blurs what is behind its translucent face.
             .bg(widgets::solid(p.flyout))
             .opacity(opacity)

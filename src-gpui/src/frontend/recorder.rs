@@ -1,12 +1,9 @@
-//! The show/hide hotkey's rules and recorder, after the original lib/hotkey.ts.
+//! Global hotkey rules and recording.
 //!
-//! The table is shared with the host (hotkey.rs refuses the same `block`
-//! combinations); this side also warns about combinations the host accepts.
-//! GPUI reports modifiers without their side and printable keys as layout
-//! characters, so the recorder maps each key back to a table code and keeps
-//! the original's order: modifiers first, committed when the main key comes up
-//! (committing on the way down would register the hotkey while the key is
-//! still held, and its auto-repeat would fire it).
+//! The host and recorder share one key table. GPUI reports layout characters
+//! and side-independent modifiers, which are mapped back to table codes.
+//! Modifiers precede the main key; release commits the chord so auto-repeat
+//! cannot trigger a newly registered hotkey while the key is still held.
 use serde::Deserialize;
 use std::sync::LazyLock;
 
@@ -497,7 +494,7 @@ impl Recording {
     }
 }
 
-/// Why `shortcut` is refused (keys.ts, hotkeyIssueText).
+/// Why `shortcut` is refused.
 pub(in crate::frontend) fn issue_text(issue: &str, shortcut: &str) -> String {
     let key = shortcut.rsplit('+').next().unwrap_or_default().trim();
     argus_core::i18n::format(
@@ -509,7 +506,7 @@ pub(in crate::frontend) fn issue_text(issue: &str, shortcut: &str) -> String {
     )
 }
 
-/// Why the hotkey is not active or was not changed (keys.ts, hotkeyErrorText).
+/// Why the hotkey is not active or was not changed.
 pub(in crate::frontend) fn hotkey_error_text(error: &serde_json::Value) -> Option<String> {
     if error.is_null() {
         return None;

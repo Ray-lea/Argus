@@ -2,7 +2,7 @@
 use super::*;
 use gpui_kit::base::ElementExt;
 
-/// The button faces of the original `.btn`: plain, accent, danger and ghost.
+/// Shared button faces: plain, accent, danger and ghost.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::frontend) enum Tone {
     Plain,
@@ -22,7 +22,7 @@ pub(in crate::frontend) enum ToastKind {
     Info,
 }
 
-/// One notice in the lower-right stack (Overlays.tsx).
+/// One notice in the lower-right stack.
 pub(in crate::frontend) struct Toast {
     pub id: u64,
     pub kind: ToastKind,
@@ -48,7 +48,7 @@ pub(in crate::frontend) struct OpenSelect {
     pub scroll: ScrollHandle,
 }
 
-/// The show/hide hotkey card's recording session (Settings.tsx, HotkeySetting).
+/// The show/hide hotkey card's recording session.
 #[derive(Default)]
 pub(in crate::frontend) struct HotkeyCard {
     pub mode: HotkeyMode,
@@ -82,7 +82,7 @@ pub(in crate::frontend) enum HotkeyMessage {
     Warning(Vec<&'static str>, String),
 }
 
-/// State the original kept in component signals: the settings scroller, busy
+/// Shared control state: the settings scroller, busy
 /// cards, inline inputs, the open drop-down, toasts and stacked dialogs.
 #[derive(Default)]
 pub(in crate::frontend) struct UiState {
@@ -146,7 +146,7 @@ pub(in crate::frontend) struct UiState {
 
 /// The page navigation's selection mark glides to a newly chosen page; when
 /// the entries move for any other reason (the other position, the pane
-/// opening, a reflow) it is placed there at once, like the original's
+/// opening, a reflow) it is placed there at once, like the interface's
 /// Indicator. A new `epoch` starts a transition that adopts its first value.
 #[derive(Clone, Copy, Default)]
 pub(in crate::frontend) struct NavMark {
@@ -168,7 +168,7 @@ pub(in crate::frontend) struct Spin {
     pub repeat: Task<()>,
 }
 
-/// The toolbar's compact level and what it learned (the original's
+/// The toolbar's compact level and what it learned (the interface's
 /// `fitToolbar`): 1 hides the text of the buttons at the end, 2 the labels of
 /// the view modes, 3 moves the page's controls to a row of their own and 4
 /// the search box too. `need[level]` is the width the toolbar wanted when that
@@ -330,8 +330,8 @@ pub(in crate::frontend) fn placeholder(
         .child(text)
 }
 
-/// Tooltip text size: the system's tooltip font, 9 pt at 96 dpi, which the
-/// original's native `title` tooltips used. It follows the font size setting
+/// Tooltip text size: the system's tooltip font, 9 pt at 96 dpi.
+/// It follows the font size setting
 /// like the rest of the interface's text.
 const TOOLTIP_SIZE: f32 = 12.;
 /// Tooltip lines are as tall as the tooltip font's own line spacing (Segoe
@@ -365,7 +365,7 @@ fn tooltip_text(
 }
 
 /// A tooltip for a sentence or two: it wraps at `max` like a system tooltip
-/// (the original's `title`), where a plain one runs on in a single line, past
+/// (the interface's `title`), where a plain one runs on in a single line, past
 /// the window. Tooltips are laid out at their min-content size, which for text
 /// is its unwrapped width, so a long text gets the width it wraps at.
 pub(in crate::frontend) fn wrapping_tooltip(
@@ -404,7 +404,7 @@ pub(in crate::frontend) fn wrapping_tooltip(
     .build(window, cx)
 }
 
-/// Lighter, like the original's `filter: brightness(1.08)` on hover.
+/// Lighter, like the interface's `filter: brightness(1.08)` on hover.
 pub(in crate::frontend) fn brighter(color: Hsla) -> Hsla {
     Hsla {
         l: (color.l * 1.08).min(1.),
@@ -413,10 +413,10 @@ pub(in crate::frontend) fn brighter(color: Hsla) -> Hsla {
 }
 
 pub(in crate::frontend) trait ButtonExt {
-    /// Disables the button; it looks as before, as the original's disabled
+    /// Disables the button; it looks as before, as the interface's disabled
     /// `.btn` (its styles do not change for `:disabled`).
     fn inert(self, disabled: bool) -> Self;
-    /// Disables the button and dims it to half, as the original dims a
+    /// Disables the button and dims it to half, as it dims a
     /// disabled `.select` and the hotkey controls while a key is recorded.
     fn inert_dimmed(self, disabled: bool) -> Self;
 }
@@ -435,7 +435,7 @@ const SLIDE: Duration = Duration::from_millis(250);
 impl Desktop {
     /// A segmented control (`.segmented`): a layer-coloured track with a
     /// 1 px stroke, whose raised selection (`.seg-thumb`) slides to the chosen
-    /// option. Like the original's Indicator it glides only when the choice
+    /// option. Like the interface's Indicator it glides only when the choice
     /// changes in view; shown again (another page visit) it is already there.
     pub(in crate::frontend) fn segments(
         &self,
@@ -477,7 +477,7 @@ impl Desktop {
             } else if slide.selected != selected {
                 slide.selected = selected;
                 slide.live = None;
-                // The original's Indicator: --t-slow on the move curve. Laid out
+                // The interface's Indicator: --t-slow on the move curve. Laid out
                 // at the new choice and drawn gliding there with a live
                 // transform (moved, and stretched without thickening its ring
                 // or changing its corners), so that the view around it replays
@@ -549,7 +549,7 @@ impl Desktop {
                 .inset_0()
             });
         if let Some((x, width)) = to {
-            // The option's box plus the original's 1 px `--stroke` ring around
+            // The option's box plus the interface's 1 px `--stroke` ring around
             // it. The ring is a border of its own, with the face inside it: GPUI
             // paints a shadow, and a background, under the whole box, where they
             // would show through the translucent dark-theme face and ring.
@@ -629,7 +629,7 @@ impl Desktop {
         track.into_any_element()
     }
 
-    /// A single-line text box drawn as the original's (`field`), around
+    /// A single-line text box drawn as the interface's (`field`), around
     /// `input` (built by the caller from `state`, with its own font or
     /// read-only state). `enabled` is false while the box is disabled: the
     /// original drew it unchanged, without its focus ring.
@@ -1005,7 +1005,7 @@ impl Desktop {
             .into_any_element()
     }
 
-    /// A drop-down (Select.tsx): a combo box button as wide as its longest
+    /// A drop-down: a combo box button as wide as its longest
     /// choice, opening a listbox under it, or above it when there is no room.
     /// Focus stays on the button; the arrow keys move through the list.
     #[allow(clippy::too_many_arguments)]
@@ -1354,8 +1354,8 @@ impl Desktop {
             .border_1()
             .border_color(p.stroke_strong)
             .rounded(px(8.))
-            // No shadow, as the original's menus and lists (window.md); opaque,
-            // where the original blurs what is behind its translucent face.
+            // No shadow, as the interface's menus and lists (window.md); opaque,
+            // to keep the flyout readable over other content.
             .bg(solid(p.flyout))
             .opacity(opacity)
             .text_size(theme::font(13.))
@@ -1431,7 +1431,7 @@ impl Desktop {
     }
 
     /// The new page slides in from the side of its entry in the navigation while
-    /// it fades in (App.tsx): from the right for a tab further right, from below
+    /// it fades in: from the right for a tab further right, from below
     /// for a page further down the side navigation; the navigation stays put.
     /// Only the opacity and the offset change, never the element tree, so
     /// nothing inside loses its state or replays its own entrance (the details
@@ -1484,7 +1484,7 @@ impl Desktop {
 /// How long a page takes to enter after a page change (300 ms, `EASE_OUT`).
 pub(in crate::frontend) const PAGE_ENTER: Duration = Duration::from_millis(300);
 
-/// The shadow of dialogs (`--shadow-flyout`); the original's menus, lists and
+/// The shadow of dialogs (`--shadow-flyout`); the interface's menus, lists and
 /// toasts have none.
 pub(in crate::frontend) fn flyout_shadow(dark: bool) -> Vec<BoxShadow> {
     vec![
