@@ -2,7 +2,7 @@
 use anyhow::{Context, ensure};
 use std::{fs::File, io::BufReader, path::Path};
 
-fn read(path: impl AsRef<Path>) -> anyhow::Result<(u32, u32, Vec<u8>)> {
+pub(crate) fn read(path: impl AsRef<Path>) -> anyhow::Result<(u32, u32, Vec<u8>)> {
     let mut reader = png::Decoder::new(BufReader::new(File::open(path)?)).read_info()?;
     let mut pixels = vec![0; reader.output_buffer_size().context("PNG size overflow")?];
     let info = reader.next_frame(&mut pixels)?;
@@ -132,25 +132,6 @@ pub fn track_chart(directory: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::stroke_x;
-
-    #[test]
-    fn cyan_stroke_position_keeps_subpixels_and_ignores_gray_pixels() {
-        let row = [
-            [210, 210, 210],
-            [30, 199, 230],
-            [30, 199, 230],
-            [60, 66, 72],
-            [0, 0, 0],
-            [20, 130, 150],
-        ];
-        assert_eq!(stroke_x(6, row.as_flattened()), Some(3.25));
-        assert_eq!(stroke_x(1, &[240, 240, 240]), None);
-    }
-}
-
 pub fn compare(left: &str, right: &str) -> anyhow::Result<()> {
     let (width, height, before) = read(left)?;
     let (other_width, other_height, after) = read(right)?;
@@ -180,4 +161,23 @@ pub fn compare(left: &str, right: &str) -> anyhow::Result<()> {
         serde_json::json!({"width":width,"height":height,"changedPixels":changed,"maxChannelDelta":maximum})
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stroke_x;
+
+    #[test]
+    fn cyan_stroke_position_keeps_subpixels_and_ignores_gray_pixels() {
+        let row = [
+            [210, 210, 210],
+            [30, 199, 230],
+            [30, 199, 230],
+            [60, 66, 72],
+            [0, 0, 0],
+            [20, 130, 150],
+        ];
+        assert_eq!(stroke_x(6, row.as_flattened()), Some(3.25));
+        assert_eq!(stroke_x(1, &[240, 240, 240]), None);
+    }
 }

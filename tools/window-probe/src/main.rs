@@ -7,6 +7,8 @@ mod frames;
 mod latency;
 #[cfg(feature = "capture")]
 mod pixels;
+#[cfg(feature = "capture")]
+mod preview;
 #[cfg(all(windows, feature = "capture"))]
 mod record;
 #[cfg(all(windows, target_arch = "x86_64"))]
@@ -43,9 +45,20 @@ fn main() -> anyhow::Result<()> {
         #[cfg(windows)]
         Some("latency") => latency::run(&args[1], args.get(2).map_or(Ok(20), |s| s.parse())?)?,
         #[cfg(all(windows, feature = "capture"))]
-        Some("capture") => windows::capture(args[1].parse()?, &args[2])?,
+        Some("capture" | "capture-preview") => windows::capture(
+            args.get(1).context("window PID required")?.parse()?,
+            args.get(2).context("PNG path required")?,
+            if args[0] == "capture-preview" {
+                Some((
+                    args.get(3).context("inactive SDR capture required")?,
+                    args.get(4).context("active SDR capture required")?,
+                ))
+            } else {
+                None
+            },
+        )?,
         _ => anyhow::bail!(
-            "usage: argus-window-probe run EXE [ARGS] | capture PID PNG | compare LEFT RIGHT | frame-contrast DIRECTORY | track-chart DIRECTORY"
+            "usage: argus-window-probe run EXE [ARGS] | capture PID PNG | capture-preview PID PNG INACTIVE ACTIVE | compare LEFT RIGHT | frame-contrast DIRECTORY | track-chart DIRECTORY"
         ),
     }
     Ok(())

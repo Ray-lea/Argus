@@ -1118,6 +1118,34 @@ pub fn run(args: &[String]) -> Result<()> {
                     println!("{}", serde_json::json!({"event":"unwatched"}));
                     io::stdout().flush()?;
                 }
+                if command == "preview-active" || command == "preview-inactive" {
+                    use windows::Win32::Graphics::Dwm::{
+                        DWMSBT_MAINWINDOW, DWMWA_SYSTEMBACKDROP_TYPE, DwmGetWindowAttribute,
+                    };
+                    let mut backdrop = 0i32;
+                    DwmGetWindowAttribute(
+                        search.hwnd,
+                        DWMWA_SYSTEMBACKDROP_TYPE,
+                        (&raw mut backdrop).cast(),
+                        size_of::<i32>() as u32,
+                    )?;
+                    anyhow::ensure!(backdrop == DWMSBT_MAINWINDOW.0, "Mica backdrop required");
+                    // Paint the native active frame without transferring input to the window.
+                    let active = command == "preview-active";
+                    let sent = SendMessageTimeoutW(
+                        search.hwnd,
+                        WM_NCACTIVATE,
+                        windows::Win32::Foundation::WPARAM(usize::from(active)),
+                        LPARAM(0),
+                        SMTO_ABORTIFHUNG | SMTO_BLOCK,
+                        1000,
+                        None,
+                    );
+                    anyhow::ensure!(sent.0 != 0, "preview frame message failed");
+                    println!("{}", serde_json::json!({"event":command}));
+                    io::stdout().flush()?;
+                    continue;
+                }
                 if command == "begin-move" || command == "end-move" {
                     let message = if command == "begin-move" {
                         WM_ENTERSIZEMOVE
@@ -1248,7 +1276,7 @@ pub fn run(args: &[String]) -> Result<()> {
 }
 
 #[cfg(feature = "capture")]
-pub fn capture(pid: u32, path: &str) -> Result<()> {
+pub fn capture(pid: u32, path: &str, preview: Option<(&str, &str)>) -> Result<()> {
     use windows::{
         Graphics::{
             Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem},
@@ -1304,7 +1332,11 @@ pub fn capture(pid: u32, path: &str) -> Result<()> {
     let size = item.Size()?;
     let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
         &runtime,
-        DirectXPixelFormat::B8G8R8A8UIntNormalized,
+        if preview.is_some() {
+            DirectXPixelFormat::R16G16B16A16Float
+        } else {
+            DirectXPixelFormat::B8G8R8A8UIntNormalized
+        },
         2,
         size,
     )?;
@@ -1334,16 +1366,19 @@ pub fn capture(pid: u32, path: &str) -> Result<()> {
             let stride = mapped.RowPitch as usize;
             let bytes =
                 unsafe { std::slice::from_raw_parts(mapped.pData as *const u8, stride * h) };
-            let mut rgb = Vec::with_capacity(w * h * 3);
-            for y in 0..h {
-                for x in 0..w {
-                    let i = y * stride + x * 4;
-                    rgb.extend_from_slice(&[bytes[i + 2], bytes[i + 1], bytes[i]]);
+            let mut pixels = Vec::with_capacity(w * h * if preview.is_some() { 8 } else { 3 });
+            for row in bytes.chunks_exact(stride) {
+                if preview.is_some() {
+                    pixels.extend_from_slice(&row[..w * 8]);
+                } else {
+                    for &[b, g, r, _] in row[..w * 4].as_chunks::<4>().0 {
+                        pixels.extend_from_slice(&[r, g, b]);
+                    }
                 }
             }
             unsafe { context.Unmap(&staging, 0) };
             frame.Close()?;
-            image = Some((w, h, rgb));
+            image = Some((w, h, pixels));
             break;
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -1351,9 +1386,17 @@ pub fn capture(pid: u32, path: &str) -> Result<()> {
     session.Close()?;
     pool.Close()?;
     let (w, h, data) = image.context("window capture timed out")?;
+    let data = if let Some((inactive, active)) = preview {
+        crate::preview::background(w, h, &data, inactive, active)?
+    } else {
+        data
+    };
     let mut encoder = png::Encoder::new(std::fs::File::create(path)?, w as u32, h as u32);
     encoder.set_color(png::ColorType::Rgb);
     encoder.set_depth(png::BitDepth::Eight);
+    if preview.is_some() {
+        encoder.set_source_srgb(png::SrgbRenderingIntent::RelativeColorimetric);
+    }
     encoder.write_header()?.write_image_data(&data)?;
     println!("{}", serde_json::json!({"width":w,"height":h,"path":path}));
     Ok(())

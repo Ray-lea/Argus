@@ -139,14 +139,15 @@ const resizeLogical = (width, height) => {
   assert(Number.isFinite(scale) && scale > 0, "window scale missing before resize");
   child.stdin.write(`size ${Math.ceil(width * scale)} ${Math.ceil(height * scale)}\n`);
 };
-const capture = async (name, keepPointer = false, inspect = true) => {
+const capture = async (name, keepPointer = false, inspect = true, references) => {
   if (inspect) {
     send({ pointerOutside: !keepPointer, inspectLayout: name });
     // Pointer dispatch is deferred to a frame. Capture after that paint, not
     // the backbuffer that can still contain the user's previous hover target.
     await sleep(250);
   }
-  const result = spawnSync(probe, ["capture", String(shown.pid), resolve(output, `${name}.png`)], {
+  const paths = (references ?? []).map(ref => resolve(output, `${ref}.png`));
+  const result = spawnSync(probe, [references ? "capture-preview" : "capture", String(shown.pid), resolve(output, `${name}.png`), ...paths], {
     windowsHide: true,
     encoding: "utf8",
     timeout: 20000,
@@ -154,16 +155,43 @@ const capture = async (name, keepPointer = false, inspect = true) => {
   if (result.status !== 0) throw Error(`Capture ${name}: ${result.stderr}`);
   console.log(`Captured ${name}`);
 };
+const compareCaptures = (left, right) => {
+  const result = spawnSync(probe, ["compare", resolve(output, `${left}.png`), resolve(output, `${right}.png`)], {
+    windowsHide: true, encoding: "utf8", timeout: 20000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout);
+};
 try {
   for (let i = 0; i < 600 && !shown && !exited; i++) await sleep(50);
   if (!shown) throw Error(`Window unavailable: ${error}`);
   await sleep(2500);
   if (preview) {
     send({ page: "processes", view: "apps", navPosition: "top", details: true, sort: "name" });
+    const appearance = async command => {
+      const start = events.length;
+      child.stdin.write(`${command}\n`);
+      for (let i = 0; i < 100 && !exited && !events.slice(start).some(e => e.event === command); i++) await sleep(50);
+      assert(events.slice(start).some(e => e.event === command), `Preview appearance unavailable: ${command} ${error}`);
+    };
     for (const theme of ["light", "dark"]) {
       send({ theme, pointerOutside: true });
+      await appearance("preview-inactive");
       await sleep(1200);
-      await capture(theme);
+      const inactive = `${theme}-inactive`;
+      await capture(inactive);
+      await appearance("preview-active");
+      await sleep(700);
+      const active = `${theme}-native`;
+      await capture(active);
+      const delta = compareCaptures(inactive, active);
+      events.push({ event: "preview-backdrop", theme, ...delta });
+      // Require the backdrop change to extend well beyond the caption.
+      assert(delta.changedPixels > delta.width * delta.height / 4, `${theme}: active Mica backdrop missing`);
+      await capture(theme, false, true, [inactive, active]);
+      const gradation = compareCaptures(active, theme);
+      events.push({ event: "preview-gradation", theme, ...gradation });
+      assert(gradation.maxChannelDelta <= 1, `${theme}: export changed the native SDR tone`);
       const state = events.findLast(e => e.event === "ui-render-counts" && e.label === theme);
       assert(state?.sort === "name" && state.descending === false, "README preview must use ascending name order");
       const conditions = events.findLast(e => e.event === "ui-conditions" && e.label === theme);
@@ -292,9 +320,7 @@ try {
     }
   } else if (snapshots) {
     const compare = (left, right) => {
-      const result = spawnSync(probe, ["compare", resolve(output, `${left}.png`), resolve(output, `${right}.png`)], { windowsHide: true, encoding: "utf8", timeout: 20000 });
-      assert.equal(result.status, 0, result.stderr);
-      const delta = JSON.parse(result.stdout);
+      const delta = compareCaptures(left, right);
       events.push({ event: "snapshot-comparison", left, right, ...delta });
       return delta;
     };
@@ -438,11 +464,7 @@ try {
         await sleep(250);
         await capture(after, false, false);
         for (const picture of [animated, before]) {
-        const compared = spawnSync(probe, ["compare", resolve(output, `${picture}.png`), resolve(output, `${after}.png`)], {
-          windowsHide: true, encoding: "utf8", timeout: 20000,
-        });
-        assert.equal(compared.status, 0, compared.stderr);
-        const difference = JSON.parse(compared.stdout);
+        const difference = compareCaptures(picture, after);
         events.push({ event: "pixel-comparison", label: picture, ...difference });
         // A parent redraw replays the same draws: one code value of rounding at
         // most. Animation frames may composite curves in the shader, whose float

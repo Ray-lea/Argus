@@ -296,6 +296,7 @@ name = "argus-window-probe"
 version = "0.3.4"
 dependencies = [
  "anyhow",
+ "half",
  "png 0.18.1",
  "serde_json",
  "windows 0.62.2",
