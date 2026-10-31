@@ -201,6 +201,7 @@ impl AtlasBackend for DirectXAtlasTextures {
             texture.allocator.deallocate(tile.tile_id.into());
             texture.decrement_ref_count();
             if texture.is_unreferenced() {
+                texture.trace_page("release");
                 textures.free_list.push(texture.id.index as usize);
             } else {
                 *texture_slot = Some(texture);
@@ -230,6 +231,11 @@ impl DirectXAtlasTextures {
         size: Size<DevicePixels>,
         texture_kind: AtlasTextureKind,
     ) -> Option<AtlasTile> {
+        // D3D11 texture dimensions. Reject invalid tiles before consulting or
+        // creating atlas pages.
+        if !(1..=16384).contains(&size.width.0) || !(1..=16384).contains(&size.height.0) {
+            return None;
+        }
         {
             let textures = match texture_kind {
                 AtlasTextureKind::Monochrome => &mut self.monochrome_textures,
@@ -246,26 +252,28 @@ impl DirectXAtlasTextures {
             }
         }
 
-        let texture = self.push_texture(size, texture_kind)?;
-        texture.allocate(size)
+        self.allocate_page(size, texture_kind)
     }
 
-    fn push_texture(
+    fn allocate_page(
         &mut self,
         min_size: Size<DevicePixels>,
         kind: AtlasTextureKind,
-    ) -> Option<&mut DirectXAtlasTexture> {
+    ) -> Option<AtlasTile> {
         const DEFAULT_ATLAS_SIZE: Size<DevicePixels> = Size {
             width: DevicePixels(1024),
             height: DevicePixels(1024),
         };
-        // Max texture size for DirectX. See:
-        // https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-resources-limits
-        const MAX_ATLAS_SIZE: Size<DevicePixels> = Size {
-            width: DevicePixels(16384),
-            height: DevicePixels(16384),
+        let size = if kind == AtlasTextureKind::Polychrome
+            && (min_size.width > DEFAULT_ATLAS_SIZE.width
+                || min_size.height > DEFAULT_ATLAS_SIZE.height)
+        {
+            // Long chart strips need a full-length row, not a thousand empty rows.
+            // A 64-pixel multiple also accommodates the allocator's shelf alignment.
+            min_size.map(|v| DevicePixels((v.0 + 63) / 64 * 64))
+        } else {
+            min_size.max(&DEFAULT_ATLAS_SIZE)
         };
-        let size = min_size.min(&MAX_ATLAS_SIZE).max(&DEFAULT_ATLAS_SIZE);
         let pixel_format;
         let bind_flag;
         let bytes_per_pixel;
@@ -316,7 +324,7 @@ impl DirectXAtlasTextures {
             AtlasTextureKind::Polychrome => &mut self.polychrome_textures,
             AtlasTextureKind::Subpixel => &mut self.subpixel_textures,
         };
-        let index = texture_list.free_list.pop();
+        let index = texture_list.free_list.last().copied();
         let view = unsafe {
             let mut view = None;
             self.device
@@ -324,7 +332,7 @@ impl DirectXAtlasTextures {
                 .ok()?;
             [view]
         };
-        let atlas_texture = DirectXAtlasTexture {
+        let mut atlas_texture = DirectXAtlasTexture {
             id: AtlasTextureId {
                 index: index.unwrap_or(texture_list.textures.len()) as u32,
                 kind,
@@ -335,13 +343,15 @@ impl DirectXAtlasTextures {
             view,
             live_atlas_keys: 0,
         };
-        if let Some(ix) = index {
+        // Publish an atlas page only once it contains its first tile.
+        let tile = atlas_texture.allocate(min_size)?;
+        atlas_texture.trace_page("create");
+        if let Some(ix) = texture_list.free_list.pop() {
             texture_list.textures[ix] = Some(atlas_texture);
-            texture_list.textures.get_mut(ix).unwrap().as_mut()
         } else {
             texture_list.textures.push(Some(atlas_texture));
-            texture_list.textures.last_mut().unwrap().as_mut()
         }
+        Some(tile)
     }
 
     fn texture(&self, id: AtlasTextureId) -> Option<&DirectXAtlasTexture> {
@@ -355,6 +365,21 @@ impl DirectXAtlasTextures {
 }
 
 impl DirectXAtlasTexture {
+    fn trace_page(&self, action: &str) {
+        static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *ENABLED.get_or_init(|| std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some()) {
+            let mut desc = D3D11_TEXTURE2D_DESC::default();
+            unsafe { self.texture.GetDesc(&mut desc) };
+            println!(
+                "{{\"event\":\"gpu-atlas-page\",\"action\":\"{action}\",\"kind\":\"{:?}\",\"index\":{},\"width\":{},\"height\":{},\"bytes\":{}}}",
+                self.id.kind,
+                self.id.index,
+                desc.Width,
+                desc.Height,
+                u64::from(desc.Width) * u64::from(desc.Height) * u64::from(self.bytes_per_pixel)
+            );
+        }
+    }
     fn allocate(&mut self, size: Size<DevicePixels>) -> Option<AtlasTile> {
         let allocation = self.allocator.allocate(device_size_to_etagere(size))?;
         let tile = AtlasTile {
@@ -522,5 +547,40 @@ mod tests {
 
         let tile_b = insert_tile(&atlas, big_key_b, big);
         assert_eq!(tile_b.texture_id, keeper_tile.texture_id);
+    }
+
+    #[test]
+    fn wide_chart_pages_fit_the_ink_rows_and_reject_oversized_tiles() {
+        let Some(atlas) = create_atlas() else { return };
+        let size = |w, h| Size {
+            width: DevicePixels(w),
+            height: DevicePixels(h),
+        };
+        let key = make_image_key(17);
+        let tile = insert_tile(&atlas, key.clone(), size(4080, 114));
+        {
+            let lock = atlas.0.lock();
+            let page = lock.backend.texture(tile.texture_id).unwrap();
+            let mut desc = D3D11_TEXTURE2D_DESC::default();
+            unsafe { page.texture.GetDesc(&mut desc) };
+            assert_eq!((desc.Width, desc.Height), (4096, 128));
+        }
+        atlas.remove(&key);
+        let mut lock = atlas.0.lock();
+        assert!(lock.backend.texture(tile.texture_id).is_none());
+        assert!(
+            lock.backend
+                .allocate(size(2_776_631, 114), AtlasTextureKind::Polychrome)
+                .is_none()
+        );
+        assert_eq!(
+            lock.backend
+                .polychrome_textures
+                .textures
+                .iter()
+                .flatten()
+                .count(),
+            0
+        );
     }
 }
