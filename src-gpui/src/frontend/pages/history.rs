@@ -628,6 +628,7 @@ impl Desktop {
                         interactive: false,
                         grid: true,
                         fill: true,
+                        separate_curve_layer: false,
                         bars: false,
                         background_separate: false,
                         smooth: false,

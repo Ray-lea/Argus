@@ -2,7 +2,7 @@
 
 窗口采用 GPUI Kit TitleBar 和原生窗口管理；Windows 11 使用 Mica，其他支持的 Windows 系统采用不透明背景。色板、文本和原生窗口主题同步，颜色定义见 resources/theme.json。
 
-Windows 启动参数 `--opaque-window` 选用绑定到 HWND 的不透明交换链，由 Argus 绘制主题底色。默认的 Windows 11 窗口保留云母材质。两种窗口的交互图表都在显示前将曲线与底色混合。
+Windows 启动参数 `--opaque-window` 选用绑定到 HWND 的不透明交换链，由 Argus 绘制主题底色。默认的 Windows 11 窗口保留云母材质。两种窗口均在显示前将曲线填充与底色混合。
 
 启动窗口尺寸与最小尺寸来自 resources/app.json。隐藏启动不激活窗口；隐藏窗口的初始客户区尺寸在平台适配层按 DPI 校正，避免首次显示时使用默认桌面尺寸。拖动、缩放、系统按钮与命中测试由原生框架处理。
 

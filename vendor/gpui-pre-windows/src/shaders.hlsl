@@ -1264,11 +1264,22 @@ float4 chart_backdrop_fragment(float4 position : SV_Position) : SV_Target {
 
 float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
     int2 pixel = int2(position.xy) - chart_update_offset;
-    pixel.x += chart_first_x;
+    int column = 0;
+    float center_x;
+    if (chart_precompose > 1u) {
+        // Consecutive texels within a lane cover eighth-pixel scroll phases
+        // for one stationary screen column. The visual samples all lanes at
+        // the same phase as the curve moves.
+        int stride = int(chart_precompose);
+        column = pixel.x / stride;
+        center_x = 0.25 * float(chart_first_x + 8 * column + pixel.x % stride);
+    } else {
+        center_x = 0.5 * float(chart_first_x + pixel.x);
+    }
     float center_y = chart_first_y + float(pixel.y) * chart_y_scale;
     float low = center_y - 0.5 * chart_y_scale;
     int first = int(floor(low));
-    float left = 0.5 * float(pixel.x) - 1.0;
+    float left = center_x - 1.0;
     float4 value = 0.0;
     [unroll] for (int dy = 0; dy < 4; ++dy) {
         int y = first + dy;
@@ -1283,12 +1294,11 @@ float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
     }
     float4 filtered = value * (0.5 / chart_y_scale);
     // Match the normal sprite's antialiased rectangle at fractional image edges.
-    float center_x = 0.5 * float(pixel.x);
     float edge_x = 0.5 * min(center_x, float(chart_tile_size.x) - center_x);
     float edge_y = min(center_y, float(chart_tile_size.y) - center_y) / chart_y_scale;
     filtered *= saturate(0.5 + min(edge_x, edge_y));
     if (chart_precompose != 0u) {
-        float3 backdrop = t_prefix.Load(int3(chart_backdrop_x, chart_screen_y + pixel.y, 0)).rgb;
+        float3 backdrop = t_prefix.Load(int3(chart_backdrop_x + column, chart_screen_y + pixel.y, 0)).rgb;
         return float4(filtered.rgb + backdrop * (1.0 - filtered.a), 1.0);
     }
     float3 color = filtered.rgb / max(filtered.a, 1e-8);

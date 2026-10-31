@@ -122,6 +122,8 @@ pub(in crate::frontend) struct Look {
     pub frame: bool,
     /// Hover readout.
     pub tooltip: bool,
+    /// Move one native image per plot in a dense grid of small multiples.
+    pub separate_curve_layer: bool,
     /// Readout format for every series.
     pub format: Option<MetricFormat>,
     /// Smallest height of a filling chart's frame.
@@ -388,6 +390,7 @@ pub struct TimePlot {
     /// Grid lines in the first series' color.
     pub grid: bool,
     pub fill: bool,
+    pub(in crate::frontend) separate_curve_layer: bool,
     pub bars: bool,
     pub(in crate::frontend) background_separate: bool,
     /// Smooth monotone curves; history charts join their points with straight lines.
@@ -975,6 +978,7 @@ struct ChartRevision {
     paused: bool,
     interactive: bool,
     grid: bool,
+    separate_curve_layer: bool,
     format: Option<MetricFormat>,
     network_bits: bool,
 }
@@ -1666,6 +1670,7 @@ impl Desktop {
             paused: self.paused || self.control_paused,
             interactive: look.tooltip,
             grid: look.frame,
+            separate_curve_layer: look.separate_curve_layer,
             format: look.format,
             network_bits: bits,
         };
@@ -1840,6 +1845,7 @@ impl Desktop {
             interactive: look.tooltip,
             grid: look.frame,
             fill: true,
+            separate_curve_layer: look.separate_curve_layer,
             bars,
             background_separate: false,
             smooth: true,
@@ -2148,6 +2154,7 @@ mod tests {
             interactive: true,
             grid: false,
             fill: false,
+            separate_curve_layer: false,
             bars: false,
             background_separate: false,
             smooth: true,

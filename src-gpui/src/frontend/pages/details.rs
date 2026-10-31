@@ -1128,8 +1128,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Div {
         let p = self.palette;
-        // The trace keeps clear of the figure and the rounded corners
-        //.
+        // The card is the matte for the curve and the figures painted above it.
         let chart = self.chart(id, &[(key, color)], maximum, px(36.), false, cx);
         div()
             .relative()
@@ -1141,6 +1140,7 @@ impl Desktop {
             .border_1()
             .border_color(p.stroke)
             .rounded(px(6.))
+            .bg(p.chart_surface)
             .child(
                 div()
                     .absolute()

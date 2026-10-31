@@ -95,6 +95,8 @@ impl Cache {
 }
 struct Texture {
     image: Arc<RenderImage>,
+    #[cfg(target_os = "windows")]
+    has_fill: bool,
     offset: Point<Pixels>,
     size: Size<Pixels>,
     plot_size: Size<Pixels>,
@@ -386,7 +388,7 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
         let image_bounds = surface.bounds_at(plot, bounds, plot.end);
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             #[cfg(target_os = "windows")]
-            let painted = if plot.interactive && plot.fill {
+            let painted = if texture.has_fill && !plot.separate_curve_layer {
                 window.paint_image_subpixel_in_scene(image_bounds, texture.image.clone(), 0)
             } else {
                 window.paint_image_subpixel_premultiplied(image_bounds, texture.image.clone(), 0)
@@ -1014,6 +1016,8 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
     }
     Some(Texture {
         image: Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])),
+        #[cfg(target_os = "windows")]
+        has_fill: fill,
         offset: point(px(left), px(0.)),
         size: gpui_kit::gpui::size(
             px(pixel_width as f32 / density),
@@ -1108,6 +1112,7 @@ mod tests {
             interactive: false,
             grid: false,
             fill: false,
+            separate_curve_layer: false,
             bars: false,
             background_separate: false,
             smooth: true,

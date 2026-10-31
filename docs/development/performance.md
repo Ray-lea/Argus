@@ -8,7 +8,7 @@
 
 在支持且开启 HAGS 的设备上，可给隔离的 `--test` 进程设置 `ARGUS_GPUI_TEST_CHART_LAYERS=1` 复查同一条图层路径。测试仍检查 SDR 输出和显存预算。`--require-chart-layers` 会逐场景确认图层实际启用。`gpu-chart-layers` 的 `imageBytes` 和 `untrimmedImageBytes` 分别记录裁剪后和按整图计算的曲线表面字节数。`groupBytes` 按每像素 8 字节估算图表合成区域的中间缓冲，并计入预算。驱动实际分配量由探针的进程专用显存计数记录。
 
-`gpu-window-surface` 记录实际创建的交换链类型、格式和 Alpha 模式。`gpu-chart-layers.opaqueStrips` 记录已经包含背景的曲线区段数。使用同一发行程序，分别以默认模式和 `--opaque-window` 启动，设置 `ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE=1` 可对照交互曲线在窗口内逐帧合成的开销。资源对照关闭窗口捕获和跟踪，实际帧率另外通过窗口捕获测量。单独开启 `ARGUS_GPUI_FRAME_TRACE=1` 可比较同一场景的绘制次数与 Present1 次数。
+`gpu-window-surface` 记录实际创建的交换链类型、格式和 Alpha 模式。`gpu-chart-layers` 中的 `images` 是可见曲线图像数，`opaqueImages` 和 `opaqueStrips` 分别记录已与底色合成的图像数和区段数，`imageSheets` 是存放这些曲线的纹理表面数。使用同一发行程序，分别以默认模式和 `--opaque-window` 启动，设置 `ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE=1` 可对照填充曲线在窗口内逐帧合成的开销。资源对照关闭窗口捕获和跟踪，实际帧率另外通过窗口捕获测量。单独开启 `ARGUS_GPUI_FRAME_TRACE=1` 可比较同一场景的绘制次数与 Present1 次数。
 
 `scripts/ui-smoke.mjs <标识> --chart-scroll --require-chart-layers` 在鼠标停在图表外时逐帧跟踪固定 CPU 峰值。测试分别覆盖正常采样和采样间插入整帧重绘，记录回移的最大物理像素数。实色窗口可追加 `--opaque-window`。帧跟踪阶段 7 记录缓存树提交，阶段 8 记录通过同一根节点提交的完整画面。比较 GPU 提交开销时，这两项与 Present1 分别计数。
 

@@ -616,7 +616,7 @@ impl Desktop {
                             .border_color(device.color.opacity(0.45))
                             .rounded(px(3.))
                             .overflow_hidden()
-                            .child(graph),
+                            .child(div().size_full().bg(p.chart_surface).child(graph)),
                     ),
             );
         }
@@ -1753,6 +1753,7 @@ impl Desktop {
             (bounds.size.height - header).max(px(1.)),
             Look {
                 frame: true,
+                separate_curve_layer: true,
                 ..Look::default()
             },
             cx,

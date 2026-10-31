@@ -528,7 +528,7 @@ impl Desktop {
             .border_1()
             .border_color(p.stroke)
             .rounded(px(8.))
-            .bg(p.layer);
+            .bg(p.chart_surface);
         for (index, (id, device, key, color, max, figure, unit, detail)) in
             cards.into_iter().enumerate()
         {
@@ -610,8 +610,9 @@ impl Desktop {
                             .absolute()
                             .top(px(62.))
                             .bottom_0()
-                            .left(px(if index == 0 { 4. } else { 0. }))
-                            .right(px(if index + 1 == count { 4. } else { 0. }))
+                            // Keep the ink on the opaque part of the rounded band at every DPI.
+                            .left(px(if index == 0 { 8. } else { 0. }))
+                            .right(px(if index + 1 == count { 8. } else { 0. }))
                             .child(plot),
                     )
                     .child(header)

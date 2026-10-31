@@ -109,7 +109,6 @@ struct ChartOutput {
 }
 
 struct Layer {
-    visual: IDCompositionVisual,
     content: LayerContent,
     position: Option<(f32, f32)>,
 }
@@ -119,14 +118,23 @@ enum LayerContent {
         index: usize,
         y_phase: f32,
         first_row: u32,
-        strip: Option<Strip>,
+        strips: Vec<Strip>,
+        transform: IDCompositionMatrixTransform,
+        phases: Option<PhaseMotion>,
     },
     Bar {
         index: usize,
         key: BarKey,
         left: f32,
         bottom: f32,
+        visual: IDCompositionVisual,
     },
+}
+
+struct PhaseMotion {
+    transform: IDCompositionMatrixTransform,
+    reference_x: f32,
+    stride: f32,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -213,17 +221,18 @@ impl Layer {
             LayerContent::Image {
                 index,
                 y_phase,
-                strip,
+                ref strips,
                 ..
             } => scene.polychrome_sprites.get(index).is_some_and(|s| {
                 (row_phase(s.bounds.top().0) - y_phase).abs() <= 1e-5
-                    && strip.is_none_or(|strip| strip.fits(s.bounds))
+                    && strips.iter().all(|strip| strip.fits(s.bounds))
             }),
             LayerContent::Bar {
                 index,
                 key,
                 left,
                 bottom,
+                ..
             } => scene.retained_bars.get(&index).is_some_and(|bar| {
                 bar.bounds.left().0 == left
                     && (bar.bounds.bottom().0 - bottom).abs() < 1e-3
@@ -235,14 +244,11 @@ impl Layer {
     fn place(&mut self, scene: &Scene) -> Result<bool> {
         let (x, y) = match self.content {
             LayerContent::Image {
-                index,
-                first_row,
-                strip,
-                ..
+                index, first_row, ..
             } => {
                 let b = scene.polychrome_sprites[index].bounds;
                 (
-                    b.left().0 - 0.125 + strip.map_or(0., |s| s.first as f32 * 0.25),
+                    b.left().0 - 0.125,
                     (b.top().0 - 0.5).ceil() + first_row as f32,
                 )
             }
@@ -258,16 +264,41 @@ impl Layer {
             }
         };
         let old = self.position;
+        if old == Some((x, y)) {
+            return Ok(false);
+        }
         unsafe {
-            if old.map(|p| p.0) != Some(x) {
-                self.visual.SetOffsetX2(x)?;
-            }
-            if old.map(|p| p.1) != Some(y) {
-                self.visual.SetOffsetY2(y)?;
+            match &self.content {
+                LayerContent::Image {
+                    transform, phases, ..
+                } => {
+                    let matrix = |scale, dx| Matrix3x2 {
+                        M11: scale,
+                        M22: 1.,
+                        M31: dx,
+                        M32: y,
+                        ..Default::default()
+                    };
+                    transform.SetMatrix(&matrix(0.25, x))?;
+                    if let Some(phases) = phases {
+                        phases.transform.SetMatrix(&matrix(
+                            1. / phases.stride,
+                            (x - phases.reference_x) * 8. / phases.stride,
+                        ))?;
+                    }
+                }
+                LayerContent::Bar { visual, .. } => {
+                    if old.map(|p| p.0) != Some(x) {
+                        visual.SetOffsetX2(x)?;
+                    }
+                    if old.map(|p| p.1) != Some(y) {
+                        visual.SetOffsetY2(y)?;
+                    }
+                }
             }
         }
         self.position = Some((x, y));
-        Ok(old != self.position)
+        Ok(true)
     }
 }
 
@@ -395,10 +426,16 @@ impl Filter {
         atlas: &DirectXAtlas,
         sprite: &PolychromeSprite,
         rows: &std::ops::Range<u32>,
-        matte: Option<(Strip, &ID3D11ShaderResourceView)>,
+        strips: &[Strip],
+        prefix: &ID3D11ShaderResourceView,
     ) -> Result<IDCompositionSurface> {
         let tile = sprite.tile.bounds;
-        let w = matte.map_or(2 * tile.size.width.0 as u32 + 1, |(s, _)| s.width);
+        let opaque = !strips.is_empty();
+        let w = if opaque {
+            strips.iter().map(|s| s.width).sum()
+        } else {
+            2 * tile.size.width.0 as u32 + 1
+        };
         let top = sprite.bounds.top().0;
         let h = rows.end - rows.start;
         let y_scale = tile.size.height.0 as f32 / sprite.bounds.size.height.0;
@@ -410,12 +447,12 @@ impl Filter {
             devices,
             w,
             h,
-            if matte.is_some() {
+            if opaque {
                 RENDER_TARGET_FORMAT
             } else {
                 DXGI_FORMAT_R16G16B16A16_FLOAT
             },
-            if matte.is_some() {
+            if opaque {
                 DXGI_ALPHA_MODE_IGNORE
             } else {
                 DXGI_ALPHA_MODE_PREMULTIPLIED
@@ -427,36 +464,48 @@ impl Filter {
                     .device
                     .CreateRenderTargetView(target, None, Some(&mut rtv))?;
                 ctx.OMSetRenderTargets(Some(&[rtv]), None);
-                ctx.RSSetViewports(Some(&[viewport(offset.x as f32, offset.y as f32, w, h)]));
-                update_buffer(
-                    ctx,
-                    &self.params,
-                    &[
-                        tile.origin.x.0,
-                        tile.origin.y.0,
-                        tile.size.width.0,
-                        tile.size.height.0,
-                        offset.x,
-                        offset.y - rows.start as i32,
-                        (row_phase(top) * y_scale).to_bits() as i32,
-                        y_scale.to_bits() as i32,
-                        matte.map_or(0, |(s, _)| s.first),
-                        matte.map_or(0, |(s, _)| s.clip.left),
-                        (top - 0.5).ceil() as i32,
-                        i32::from(matte.is_some()),
-                    ],
-                )?;
                 ctx.PSSetConstantBuffers(2, Some(&[Some(self.params.clone())]));
                 ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
                 ctx.VSSetShader(&self.vertex, None);
                 ctx.PSSetShader(&self.pixel, None);
                 ctx.OMSetBlendState(None, None, u32::MAX);
                 ctx.PSSetShaderResources(0, Some(&view));
-                ctx.PSSetShaderResources(2, Some(&[matte.map(|(_, prefix)| prefix.clone())]));
-                ctx.Draw(4, 0);
+                ctx.PSSetShaderResources(2, Some(&[opaque.then(|| prefix.clone())]));
+                let mut x = offset.x;
+                let mut draw = |width: u32, first: i32, column: i32, mode: u32| -> Result<()> {
+                    ctx.RSSetViewports(Some(&[viewport(x as f32, offset.y as f32, width, h)]));
+                    update_buffer(
+                        ctx,
+                        &self.params,
+                        &[
+                            tile.origin.x.0,
+                            tile.origin.y.0,
+                            tile.size.width.0,
+                            tile.size.height.0,
+                            x,
+                            offset.y - rows.start as i32,
+                            (row_phase(top) * y_scale).to_bits() as i32,
+                            y_scale.to_bits() as i32,
+                            first,
+                            column,
+                            (top - 0.5).ceil() as i32,
+                            mode as i32,
+                        ],
+                    )?;
+                    ctx.Draw(4, 0);
+                    x += width as i32;
+                    Ok(())
+                };
+                let result = if opaque {
+                    strips
+                        .iter()
+                        .try_for_each(|s| draw(s.width, s.first, s.clip.left, s.stride.max(1)))
+                } else {
+                    draw(w, 0, 0, 0)
+                };
                 ctx.PSSetShaderResources(0, Some(&[None]));
                 ctx.PSSetShaderResources(2, Some(&[None]));
-                Ok(())
+                result
             },
         )
     }
@@ -777,7 +826,7 @@ impl DirectXRenderer {
                             s.tile.bounds.size.height.0 as u32,
                             self.atlas.chart_rows(&s.tile),
                         );
-                        let mask = clip(s.content_mask.bounds, self.width, self.height);
+                        let mut mask = clip(s.content_mask.bounds, self.width, self.height);
                         if s.pad == PolychromeSprite::IN_SCENE_AREA_FILTER {
                             // Interaction/full paints use the same source-over operation in the
                             // scene. Promote only pixels that we can finish on an opaque backdrop.
@@ -795,15 +844,10 @@ impl DirectXRenderer {
                                 rows = 0..0;
                             }
                             if !rows.is_empty() {
+                                mask.top = top + rows.start as i32;
+                                mask.bottom = top + rows.end as i32;
                                 marked_masks.push(masks.len());
-                                scan_regions.push((
-                                    i,
-                                    RECT {
-                                        top: top + rows.start as i32,
-                                        bottom: top + rows.end as i32,
-                                        ..mask
-                                    },
-                                ));
+                                scan_regions.push((i, mask));
                             }
                         } else {
                             let width = 2 * s.tile.bounds.size.width.0 as u64 + 1;
@@ -874,16 +918,18 @@ impl DirectXRenderer {
             comp.charts.filter = Some(Filter::new(&devices.device)?);
         }
         if !scan_regions.is_empty() {
-            // An opaque part would erase another animated primitive if they overlapped.
+            // Only earlier ink could be erased by an opaque strip. Later bars
+            // still blend over the chart in their original paint order.
             for &i in &marked_masks {
                 let a = masks[i];
-                if masks.iter().enumerate().any(|(j, b)| {
-                    i != j
-                        && a.left < b.right
-                        && b.left < a.right
-                        && a.top < b.bottom
-                        && b.top < a.bottom
+                if masks[..i].iter().any(|b| {
+                    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
                 }) {
+                    if diagnostics() {
+                        println!(
+                            "{{\"event\":\"gpu-chart-backdrop-limit\",\"reason\":\"earlier-ink\"}}"
+                        );
+                    }
                     return Ok(false);
                 }
             }
@@ -921,16 +967,20 @@ impl DirectXRenderer {
             };
             for (i, bands) in regions {
                 let s = &scene.polychrome_sprites[i];
-                let mut parts = Vec::with_capacity(bands.len());
+                let Some(parts) = backdrop::pack(&bands, s.bounds) else {
+                    if diagnostics() {
+                        println!(
+                            "{{\"event\":\"gpu-chart-backdrop-limit\",\"reason\":\"strip-count-or-width\"}}"
+                        );
+                    }
+                    return Ok(false);
+                };
                 let full_height =
                     (s.bounds.bottom().0 - 0.5).ceil() - (s.bounds.top().0 - 0.5).ceil();
-                for band in bands {
-                    let Some(strip) = Strip::new(band, s.bounds) else {
-                        return Ok(false);
-                    };
-                    image_bytes += u64::from(strip.width) * (band.bottom - band.top) as u64 * 4;
+                for strip in &parts {
+                    image_bytes +=
+                        u64::from(strip.width) * (strip.clip.bottom - strip.clip.top) as u64 * 4;
                     untrimmed_bytes += u64::from(strip.width) * full_height as u64 * 4;
-                    parts.push(Some(strip));
                 }
                 opaque_strips += parts.len();
                 composed.insert(i, parts);
@@ -1016,6 +1066,9 @@ impl DirectXRenderer {
             }
         };
         let mut layers = Vec::new();
+        let opaque_images = composed.len();
+        let mut image_sheets = 0;
+        let mut visual_count = 0;
         let mut image_rows = image_rows.into_iter();
         let mut masks = masks.into_iter();
         for b in suffix {
@@ -1028,38 +1081,74 @@ impl DirectXRenderer {
                         if rows.is_empty() {
                             continue;
                         }
-                        for &strip in composed.get(&i).map(Vec::as_slice).unwrap_or(&[None]) {
+                        let strips = composed.remove(&i).unwrap_or_default();
+                        let transform = unsafe { dev.CreateMatrixTransform()? };
+                        let phases = if let Some(strip) = strips.iter().find(|s| s.stride > 0) {
+                            Some(PhaseMotion {
+                                transform: unsafe { dev.CreateMatrixTransform()? },
+                                reference_x: s.bounds.left().0.round() - 0.125,
+                                stride: strip.stride as f32,
+                            })
+                        } else {
+                            None
+                        };
+                        for sheet in backdrop::sheets(&strips) {
                             let bitmap = filter.image(
                                 dev,
                                 devices,
                                 &self.atlas,
                                 s,
                                 &rows,
-                                strip.map(|s| (s, prefix_view)),
+                                sheet,
+                                prefix_view,
                             )?;
-                            let visual =
-                                child(dev, &group, strip.map_or(mask, |s| s.clip), &bitmap)?;
-                            unsafe {
-                                visual.SetBitmapInterpolationMode(
-                                    DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR,
-                                )?;
-                                visual.SetTransform2(&Matrix3x2 {
-                                    M11: 0.25,
-                                    M22: 1.0,
-                                    ..Default::default()
-                                })?;
+                            image_sheets += 1;
+                            let mut attach =
+                                |clip, offset: f32, motion: &IDCompositionMatrixTransform| unsafe {
+                                    let visual = child(dev, &group, clip, &bitmap)?;
+                                    visual.SetBitmapInterpolationMode(
+                                        DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                    )?;
+                                    visual.SetOffsetX2(offset)?;
+                                    visual.SetTransform(motion)?;
+                                    visual_count += 1;
+                                    Ok::<_, anyhow::Error>(())
+                                };
+                            if sheet.is_empty() {
+                                attach(mask, 0., &transform)?;
+                            } else {
+                                let mut x = 0;
+                                for strip in sheet {
+                                    if strip.stride > 0 {
+                                        let motion = phases
+                                            .as_ref()
+                                            .context("missing chart phase transform")?;
+                                        let phase = strip.phase(s.bounds.left().0.round());
+                                        let offset = strip.clip.left as f32 + 0.5
+                                            - (phase + 0.5 + x as f32) / motion.stride;
+                                        attach(strip.clip, offset, &motion.transform)?;
+                                    } else {
+                                        attach(
+                                            strip.clip,
+                                            (strip.first as f32 - x as f32) * 0.25,
+                                            &transform,
+                                        )?;
+                                    }
+                                    x += strip.width;
+                                }
                             }
-                            layers.push(Layer {
-                                visual,
-                                position: None,
-                                content: LayerContent::Image {
-                                    index: i,
-                                    y_phase: row_phase(s.bounds.top().0),
-                                    first_row: rows.start,
-                                    strip,
-                                },
-                            });
                         }
+                        layers.push(Layer {
+                            position: None,
+                            content: LayerContent::Image {
+                                index: i,
+                                y_phase: row_phase(s.bounds.top().0),
+                                first_row: rows.start,
+                                strips,
+                                transform,
+                                phases,
+                            },
+                        });
                     }
                 }
                 PrimitiveBatch::Quads(range) => {
@@ -1085,10 +1174,11 @@ impl DirectXRenderer {
                             masks.next().context("missing bar clip")?,
                             bitmap,
                         )?;
+                        visual_count += 1;
                         layers.push(Layer {
-                            visual,
                             position: None,
                             content: LayerContent::Bar {
+                                visual,
                                 index: i,
                                 key: k,
                                 left: bar.bounds.left().0,
@@ -1120,11 +1210,8 @@ impl DirectXRenderer {
         crate::frame_trace::record(7, opaque_strips as u64);
         if diagnostics() {
             println!(
-                "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{},\"bytes\":{tree_bytes},\"opaqueStrips\":{opaque_strips},\"imageBytes\":{},\"untrimmedImageBytes\":{},\"barBytes\":{bar_bytes},\"groupBytes\":{group_bytes},\"revision\":{}}}",
-                layers.len(),
-                image_bytes,
-                untrimmed_bytes,
-                key.revision
+                "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{visual_count},\"imageSheets\":{image_sheets},\"bytes\":{tree_bytes},\"opaqueImages\":{opaque_images},\"opaqueStrips\":{opaque_strips},\"imageBytes\":{},\"untrimmedImageBytes\":{},\"barBytes\":{bar_bytes},\"groupBytes\":{group_bytes},\"revision\":{}}}",
+                image_bytes, untrimmed_bytes, key.revision
             );
         }
         charts.output = output;

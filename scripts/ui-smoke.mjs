@@ -54,6 +54,17 @@ if (preview) {
       frame.system.cpu = past.cpu;
       frame.system.memUsed = past.memUsed;
     }
+    if (retained) {
+      // Exercise the engine fills above their grid lines and both memory plots.
+      for (const gpu of frame.hardware?.gpus ?? []) {
+        if (gpu.engines?.length) {
+          gpu.engines = gpu.engines.map((_, engine) => Math.round(40 + 35 * Math.sin(i * 0.39 + engine)));
+          gpu.util = Math.max(...gpu.engines);
+        }
+        if (gpu.info.dedicatedTotal > 0) gpu.dedicatedUsed = Math.round(gpu.info.dedicatedTotal * (0.35 + 0.24 * Math.sin(i * 0.25)));
+        if (gpu.info.sharedTotal > 0) gpu.sharedUsed = Math.round(gpu.info.sharedTotal * (0.16 + 0.12 * Math.cos(i * 0.31)));
+      }
+    }
     if (chartScroll) frame.system.cpu = i === Math.floor(samples * 0.42) ? 89 : 12;
     return frame;
   });
@@ -274,14 +285,19 @@ try {
     assert(compare("sensor-partial", "sensor-full").maxChannelDelta <= 1, "sensor dependency paint differs");
   } else if (retained) {
     let expectedSteps = 0;
+    const gpu = fixture.snapshot.hardware?.gpus?.[0];
+    const gpuPage = gpu ? { page: "performance", device: `gpu:${gpu.info.id}` } : null;
     // Light-theme cards are translucent white over the backdrop: composited
     // curve pixels must cover it exactly as a full paint does.
     for (const [name, state] of [
       ["processes", { page: "processes", theme: "dark" }],
-      ["overall", { page: "performance", cpuMode: "overall" }],
+      ["processes-details", { page: "processes", selectRow: 1, details: true }],
+      ...(gpuPage ? [["gpu", gpuPage]] : []),
+      ["overall", { page: "performance", device: "cpu", cpuMode: "overall" }],
       ["logical", { page: "performance", cpuMode: "logical" }],
       ["processes-light", { page: "processes", theme: "light" }],
-      ["overall-light", { page: "performance", cpuMode: "overall" }],
+      ...(gpuPage ? [["gpu-light", gpuPage]] : []),
+      ["overall-light", { page: "performance", device: "cpu", cpuMode: "overall" }],
     ]) {
       send({ ...state, uiMotion: false, pointerOutside: true });
       await sleep(1500);
@@ -289,13 +305,10 @@ try {
       await sleep(250);
       const settled = events.length;
       for (const [index, offset] of [50, 200, 700].entries()) {
-        if (name.startsWith("overall")) {
-          // Give the asynchronous backdrop scan its own presentation before measuring.
-          send({ chartTime: fixture.snapshot.timestamp + offset - 2 });
-          expectedSteps++;
-          await sleep(150);
-        }
-        expectedSteps += 2;
+        // Give the asynchronous backdrop scan its own presentation before measuring.
+        send({ chartTime: fixture.snapshot.timestamp + offset - 2 });
+        expectedSteps += 3;
+        await sleep(150);
         send({ chartTime: fixture.snapshot.timestamp + offset - 1 });
         await sleep(150);
         send({ chartTime: fixture.snapshot.timestamp + offset });
@@ -327,16 +340,18 @@ try {
       }
       if (process.argv.includes("--require-chart-layers")) {
         const layers = events.slice(settled).filter((event) => event.event === "gpu-chart-layers" && event.images > 0);
-        if (name.startsWith("overall")) {
-          if (process.env.ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE) {
-            assert.equal(layers.length, 0, `${name}: expected the in-scene control`);
+        if (process.env.ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE) {
+          assert.equal(layers.length, 0, `${name}: expected the in-scene control`);
+        } else {
+          assert(layers.length > 0, `${name}: missing filled chart visuals`);
+          if (name === "logical") {
+            assert(layers.some(e => e.opaqueImages < e.images), "logical: expected one independent image per core plot");
           } else {
-            assert(layers.some((event) => event.opaqueStrips > 0), `${name}: the opaque chart cache was not presented`);
-            assert(events.slice(settled).some(e => e.event === "gpu-chart-handoff" && layers.some(l => l.revision === e.revision)),
-              `${name}: a cached chart did not hand off to a complete frame on its composition root`);
+            assert(layers.every(e => e.opaqueImages === e.images),
+              `${name}: a filled chart was presented as a transparent layer`);
           }
-        } else if (!process.env.ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE || name.startsWith("processes")) {
-          assert(layers.length > 0, `${name}: chart visuals were not presented`);
+          assert(events.slice(settled).some(e => e.event === "gpu-chart-handoff" && layers.some(l => l.revision === e.revision)),
+            `${name}: no complete frame was presented on the chart composition root`);
         }
       }
     }
