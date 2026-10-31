@@ -24,7 +24,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshot-dark.png">
-  <img src="docs/images/screenshot-light.png" alt="Argus 进程页：按应用分组的进程列表与 CPU、内存、磁盘、网络、GPU 概况">
+  <img src="docs/images/screenshot-light.png" alt="Argus 进程页，按名称升序排列的应用及其资源占用。上方曲线展示最近一分钟的 CPU、内存、磁盘、网络与 GPU 负载。">
 </picture>
 
 <br>

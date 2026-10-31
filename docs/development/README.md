@@ -8,6 +8,7 @@
 | `start.bat check` | 文案、格式、生成代码、脚本测试、Clippy 与 Rust 测试 |
 | `start.bat build` | 构建辅助程序并嵌入原生 target/release/argus.exe |
 | `start.bat build installer` | 构建并打包 NSIS 安装程序，不运行安装程序 |
+| `node scripts/readme-previews.mjs` | 从当前发行构建生成中英文 README 的浅色和深色进程页截图 |
 | `start.bat clean` | 清理应用产物，保留依赖缓存 |
 | `start.bat clean all` | 清空 Cargo 构建缓存 |
 
@@ -16,6 +17,8 @@
 启动后，终端显示进程 ID 并持续监听文件变更；终端不退出属于正常行为。程序退出或启动失败会显示对应信息。默认启动显示主窗口，显式的 `--hidden` 参数才让窗口保持隐藏；主程序不可使用 Node 的 `windowsHide` 启动选项。
 
 安装打包需要 NSIS 3.13；可安装到默认目录，或通过 ARGUS_NSIS 指定 makensis.exe。构建日志、缓存与验证产物位于 target。
+
+README 预览使用窗口探针捕获独立测试窗口。五条曲线回放 `tools/window-probe/fixtures/readme-trace.json` 中约每秒一次的 60 个连续读数，保留相对采样时间、CPU 与 GPU 占用、内存占比、磁盘读写和网络收发速率。内存占比换算为模拟机器的容量，进程表按模拟进程的占比分配负载。应用图标取自对应程序的 Windows 图标资源。更新界面后重跑同一命令，即可用同一组数据对照新旧预览。
 
 - [GPUI 与平台边界](gpui.md)
 - [构建与缓存](build.md)

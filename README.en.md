@@ -24,7 +24,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshot-en-dark.png">
-  <img src="docs/images/screenshot-en-light.png" alt="The Argus processes page: processes grouped by app, with CPU, memory, disk, network and GPU at a glance">
+  <img src="docs/images/screenshot-en-light.png" alt="The Argus Processes page with apps sorted by name. Charts above the list show the last minute of CPU, memory, disk, network and GPU activity.">
 </picture>
 
 <br>
