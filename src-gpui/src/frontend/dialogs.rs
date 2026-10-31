@@ -904,7 +904,7 @@ impl Desktop {
         div()
             .font_family(theme::DISPLAY_FONT)
             .text_size(theme::font(20.))
-            .font_weight(FontWeight::SEMIBOLD)
+            .font_weight(theme::LABEL_WEIGHT)
             .text_color(self.palette.ink)
             .child(title.into())
     }
@@ -1742,7 +1742,7 @@ impl Desktop {
                                 .child(
                                     div()
                                         .mb(px(8.))
-                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .font_weight(theme::LABEL_WEIGHT)
                                         .child(label("tasks.command")),
                                 )
                                 .child(
@@ -2099,7 +2099,7 @@ impl Desktop {
                     .child(
                         div()
                             .truncate()
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .child(name),
                     )
                     .child(

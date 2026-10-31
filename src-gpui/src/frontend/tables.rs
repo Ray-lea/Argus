@@ -762,7 +762,7 @@ impl TableDelegate for NativeTable {
             .when(processes, |d| d.mt(px(1.)))
             .whitespace_nowrap()
             .text_color(if sort.0 { p.ink } else { p.muted })
-            .when(sort.0, |d| d.font_weight(FontWeight::SEMIBOLD))
+            .when(sort.0, |d| d.font_weight(theme::LABEL_WEIGHT))
             .child(field.label.clone())
             .when(sort.0, |d| {
                 d.child(icon(if sort.1 { "ChevronDown" } else { "ChevronUp" }, p.ink).size(px(12.)))
@@ -851,6 +851,7 @@ impl TableDelegate for NativeTable {
         let owner = self.owner.clone();
         let mut element = div()
             .text_size(cx.theme().font_size)
+            .line_height(theme::line_height())
             .size_full()
             .px(px(CELL_PADDING))
             .flex()
@@ -1300,7 +1301,7 @@ impl NativeTable {
                         .min_w_0()
                         .truncate()
                         .text_size(theme::font(14.))
-                        .font_weight(FontWeight::SEMIBOLD)
+                        .font_weight(theme::LABEL_WEIGHT)
                         .text_color(p.ink)
                         .child(row.title.clone()),
                 )
@@ -1358,7 +1359,7 @@ impl NativeTable {
             .min_w_0()
             .flex_shrink(1.)
             .truncate()
-            .when(group, |d| d.font_weight(FontWeight::SEMIBOLD))
+            .when(group, |d| d.font_weight(theme::LABEL_WEIGHT))
             .when(processes && boolean(&row.raw, "suspended"), |d| {
                 d.text_color(p.muted)
             })

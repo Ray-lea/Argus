@@ -53,6 +53,7 @@ struct DirectWriteComponents {
     text_renderer: TextRendererWrapper,
     system_ui_font_name: SharedString,
     system_subpixel_rendering: bool,
+    grayscale_weights: [u16; 3],
 }
 
 impl Drop for DirectWriteComponents {
@@ -188,6 +189,16 @@ impl DirectWriteTextSystem {
 
         let system_subpixel_rendering = get_system_subpixel_rendering();
         let system_ui_font_name = get_system_ui_font_name();
+        // Luminance in stripe order, in units of 1/256. An unspecified order
+        // gets a symmetric filter with the same emphasis on the center.
+        let geometry = unsafe { factory.CreateRenderingParams() }
+            .map(|params| unsafe { params.GetPixelGeometry() })
+            .unwrap_or(DWRITE_PIXEL_GEOMETRY_FLAT);
+        let grayscale_weights = match geometry {
+            DWRITE_PIXEL_GEOMETRY_RGB => [54, 183, 19],
+            DWRITE_PIXEL_GEOMETRY_BGR => [19, 183, 54],
+            _ => [37, 182, 37],
+        };
         let components = DirectWriteComponents {
             locale,
             factory,
@@ -196,6 +207,7 @@ impl DirectWriteTextSystem {
             text_renderer,
             system_ui_font_name,
             system_subpixel_rendering,
+            grayscale_weights,
         };
 
         let system_font_collection = unsafe {
@@ -739,7 +751,7 @@ impl DirectWriteState {
         &self,
         components: &DirectWriteComponents,
         params: &RenderGlyphParams,
-    ) -> Result<IDWriteGlyphRunAnalysis> {
+    ) -> Result<(IDWriteGlyphRunAnalysis, DWRITE_TEXTURE_TYPE)> {
         let font = &self.fonts[params.font_id.0];
         let glyph_id = [params.glyph_id.0 as u16];
         let advance = [0.0];
@@ -785,16 +797,30 @@ impl DirectWriteState {
                 &mut grid_fit_mode,
             )?;
         }
+        // Smooth edges on both axes. Keep the face's recommended grid fitting
+        // so closely spaced strokes still have distinct gaps at small sizes.
         let rendering_mode = match rendering_mode {
-            DWRITE_RENDERING_MODE1_OUTLINE => DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
-            m => m,
+            DWRITE_RENDERING_MODE1_NATURAL
+            | DWRITE_RENDERING_MODE1_GDI_CLASSIC
+            | DWRITE_RENDERING_MODE1_GDI_NATURAL
+            | DWRITE_RENDERING_MODE1_OUTLINE => DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
+            mode => mode,
         };
 
-        let antialias_mode = if params.subpixel_rendering {
-            DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE
-        } else {
-            DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE
-        };
+        // Sample the three LCD positions even for translucent windows. Their
+        // atlas stores a single neutral coverage value for normal alpha blending.
+        let (antialias_mode, texture_type) =
+            if !params.is_emoji && rendering_mode != DWRITE_RENDERING_MODE1_ALIASED {
+                (
+                    DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE,
+                    DWRITE_TEXTURE_CLEARTYPE_3x1,
+                )
+            } else {
+                (
+                    DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+                    DWRITE_TEXTURE_ALIASED_1x1,
+                )
+            };
 
         let glyph_analysis = unsafe {
             components.factory.CreateGlyphRunAnalysis(
@@ -808,7 +834,7 @@ impl DirectWriteState {
                 baseline_origin_y,
             )
         }?;
-        Ok(glyph_analysis)
+        Ok((glyph_analysis, texture_type))
     }
 
     fn raster_bounds(
@@ -816,13 +842,7 @@ impl DirectWriteState {
         components: &DirectWriteComponents,
         params: &RenderGlyphParams,
     ) -> Result<Bounds<DevicePixels>> {
-        let glyph_analysis = self.create_glyph_run_analysis(components, params)?;
-
-        let texture_type = if params.subpixel_rendering {
-            DWRITE_TEXTURE_CLEARTYPE_3x1
-        } else {
-            DWRITE_TEXTURE_ALIASED_1x1
-        };
+        let (glyph_analysis, texture_type) = self.create_glyph_run_analysis(components, params)?;
 
         let bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
 
@@ -888,60 +908,50 @@ impl DirectWriteState {
         params: &RenderGlyphParams,
         glyph_bounds: Bounds<DevicePixels>,
     ) -> Result<Vec<u8>> {
-        let glyph_analysis = self.create_glyph_run_analysis(components, params)?;
-        if !params.subpixel_rendering {
-            let mut bitmap_data =
-                vec![0u8; glyph_bounds.size.width.0 as usize * glyph_bounds.size.height.0 as usize];
-            unsafe {
-                glyph_analysis.CreateAlphaTexture(
-                    DWRITE_TEXTURE_ALIASED_1x1,
-                    &RECT {
-                        left: glyph_bounds.origin.x.0,
-                        top: glyph_bounds.origin.y.0,
-                        right: glyph_bounds.size.width.0 + glyph_bounds.origin.x.0,
-                        bottom: glyph_bounds.size.height.0 + glyph_bounds.origin.y.0,
-                    },
-                    &mut bitmap_data,
-                )?;
-            }
-
-            return Ok(bitmap_data);
-        }
-
+        let (glyph_analysis, texture_type) = self.create_glyph_run_analysis(components, params)?;
         let width = glyph_bounds.size.width.0 as usize;
         let height = glyph_bounds.size.height.0 as usize;
         let pixel_count = width * height;
-
-        let mut bitmap_data = vec![0u8; pixel_count * 4];
+        let lcd = texture_type == DWRITE_TEXTURE_CLEARTYPE_3x1;
+        let input_stride = if lcd { 3 } else { 1 };
+        let output_stride = if params.subpixel_rendering { 4 } else { 1 };
+        let mut bitmap_data = vec![0; pixel_count * input_stride.max(output_stride)];
 
         unsafe {
             glyph_analysis.CreateAlphaTexture(
-                DWRITE_TEXTURE_CLEARTYPE_3x1,
+                texture_type,
                 &RECT {
                     left: glyph_bounds.origin.x.0,
                     top: glyph_bounds.origin.y.0,
                     right: glyph_bounds.size.width.0 + glyph_bounds.origin.x.0,
                     bottom: glyph_bounds.size.height.0 + glyph_bounds.origin.y.0,
                 },
-                &mut bitmap_data[..pixel_count * 3],
+                &mut bitmap_data[..pixel_count * input_stride],
             )?;
         }
 
-        // The output buffer expects RGBA data, so pad the alpha channel with zeros.
-        for pixel_ix in (0..pixel_count).rev() {
-            let src = pixel_ix * 3;
-            let dst = pixel_ix * 4;
-            (
-                bitmap_data[dst],
-                bitmap_data[dst + 1],
-                bitmap_data[dst + 2],
-                bitmap_data[dst + 3],
-            ) = (
-                bitmap_data[src],
-                bitmap_data[src + 1],
-                bitmap_data[src + 2],
-                0,
-            );
+        if params.subpixel_rendering {
+            // Expand backwards to keep unread samples intact.
+            for i in (0..pixel_count).rev() {
+                let src = i * input_stride;
+                let r = bitmap_data[src];
+                let (g, b) = if lcd {
+                    (bitmap_data[src + 1], bitmap_data[src + 2])
+                } else {
+                    (r, r)
+                };
+                bitmap_data[i * 4..i * 4 + 4].copy_from_slice(&[r, g, b, 0]);
+            }
+        } else if lcd {
+            let [wr, wg, wb] = components.grayscale_weights;
+            for i in 0..pixel_count {
+                let src = i * 3;
+                let coverage = wr * u16::from(bitmap_data[src])
+                    + wg * u16::from(bitmap_data[src + 1])
+                    + wb * u16::from(bitmap_data[src + 2]);
+                bitmap_data[i] = ((coverage + 128) >> 8) as u8;
+            }
+            bitmap_data.truncate(pixel_count);
         }
 
         Ok(bitmap_data)
@@ -2103,6 +2113,53 @@ mod tests {
         assert_eq!(next, Some((5, 1)));
         let next = analyzer.next();
         assert_eq!(next, None);
+    }
+
+    #[test]
+    fn grayscale_diagonals_keep_the_lcd_footprint_and_intermediate_coverage() -> Result<()> {
+        let system = DirectWriteTextSystem::new(None)?;
+        let font_id = system.font_id(&gpui::font("Segoe UI"))?;
+        let glyph_id = system
+            .glyph_for_char(font_id, 'A')
+            .expect("Segoe UI capital A");
+        let [wr, wg, wb] = system.components.grayscale_weights;
+        let mut levels = [false; 256];
+        for scale in [1.0, 1.25, 1.5] {
+            for x in 0..gpui::SUBPIXEL_VARIANTS_X as u8 {
+                let gray = RenderGlyphParams {
+                    font_id,
+                    glyph_id,
+                    font_size: px(18.),
+                    subpixel_variant: point(x, 0),
+                    scale_factor: scale,
+                    is_emoji: false,
+                    subpixel_rendering: false,
+                    dilation: 0,
+                };
+                let lcd = RenderGlyphParams {
+                    subpixel_rendering: true,
+                    ..gray.clone()
+                };
+                let bounds = system.glyph_raster_bounds(&gray)?;
+                assert_eq!(bounds, system.glyph_raster_bounds(&lcd)?);
+                let (size, alpha) = system.rasterize_glyph(&gray, bounds)?;
+                let (lcd_size, rgba) = system.rasterize_glyph(&lcd, bounds)?;
+                assert_eq!(size, lcd_size);
+                assert_eq!(alpha.len(), (size.width.0 * size.height.0) as usize);
+                assert_eq!(rgba.len(), 4 * alpha.len());
+                for (&a, pixel) in alpha.iter().zip(rgba.chunks_exact(4)) {
+                    let expected = (wr * u16::from(pixel[0])
+                        + wg * u16::from(pixel[1])
+                        + wb * u16::from(pixel[2])
+                        + 128)
+                        >> 8;
+                    assert_eq!(u16::from(a), expected);
+                    levels[a as usize] = true;
+                }
+            }
+        }
+        assert!(levels.into_iter().filter(|used| *used).count() > 32);
+        Ok(())
     }
 
     #[test]

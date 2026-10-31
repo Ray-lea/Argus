@@ -10,6 +10,7 @@ pub(in crate::frontend) const NAV_WIDTH: f32 = 184.;
 const NAV_MIN_WIDTH: f32 = 150.;
 const NAV_MAX_WIDTH: f32 = 320.;
 const NAV_RAIL: f32 = 48.;
+const NAV_INSET: f32 = 4.;
 /// Navigation width change per arrow key on its edge.
 const NAV_KEY_STEP: f32 = 16.;
 impl Desktop {
@@ -134,6 +135,21 @@ impl Desktop {
             .iter()
             .position(|page| page.0 == self.page)
             .unwrap_or(0);
+        let names = PAGES.map(|(page, _)| label(&format!("shell.page.{page}")));
+        // On a user-narrowed rail, give the translated labels room before
+        // spending the remaining width on the two insets and the icon gap.
+        let spacing = if !top && self.nav_expanded {
+            let widest = names
+                .iter()
+                .map(|name| theme::text_width(name, theme::font(13.), window, cx))
+                .max()
+                .unwrap_or_default();
+            let space =
+                self.nav_width - 2. * NAV_INSET - f32::from(window.rem_size() + widest.ceil());
+            (space / 3.).floor().clamp(0., 12.)
+        } else {
+            12.
+        };
         let regions = *self.navigation_regions.borrow();
         let owner = cx.entity().downgrade();
         let hover = p.hover;
@@ -183,7 +199,7 @@ impl Desktop {
                 )
             });
         let entry = |index: usize, page: &'static str, glyph: &'static str| {
-            let name = label(&format!("shell.page.{page}"));
+            let name = &names[index];
             let chosen = index == selected;
             let title = tr!("shell.pageTitle", page = name.clone(), key = index + 1);
             let has_dot = page == "settings" && update_waiting;
@@ -191,6 +207,7 @@ impl Desktop {
                 move || has_dot.then(|| div().absolute().size(px(6.)).rounded_full().bg(p.accent));
             gpui_kit::base::Tab::new(("page", index))
                 .selected(chosen)
+                .line_height(theme::line_height())
                 .set_position(index + 1, PAGES.len())
                 .accessibility_label(name.clone())
                 .relative()
@@ -198,7 +215,7 @@ impl Desktop {
                 .flex_shrink_0()
                 .items_center()
                 .rounded(px(4.))
-                .px(px(12.))
+                .px(px(spacing))
                 .text_color(if chosen { p.ink } else { p.muted })
                 // The chosen page keeps its fill while hovered or pressed
                 // (`.nav-item[aria-selected]` follows `:hover` and `:active`).
@@ -217,13 +234,13 @@ impl Desktop {
                     this.act(Action::Page(page.into()), window, cx);
                 }))
                 .when(top, |tab| {
-                    // The semibold width is reserved, so choosing a tab never moves the others.
+                    // Reserve the selected weight so choosing a tab never moves its neighbors.
                     tab.h(px(32.)).child(
                         div()
                             .relative()
                             .child(
                                 div()
-                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .font_weight(theme::LABEL_WEIGHT)
                                     .invisible()
                                     .child(name.clone()),
                             )
@@ -233,7 +250,7 @@ impl Desktop {
                                     .inset_0()
                                     .flex()
                                     .justify_center()
-                                    .when(chosen, |d| d.font_weight(FontWeight::SEMIBOLD))
+                                    .when(chosen, |d| d.font_weight(theme::LABEL_WEIGHT))
                                     .child(name.clone()),
                             )
                             .children(dot().map(|dot| dot.top(px(-1.)).right(px(-7.)))),
@@ -242,7 +259,7 @@ impl Desktop {
                 .when(!top, |tab| {
                     tab.h(px(36.))
                         .justify_start()
-                        .gap(px(12.))
+                        .gap(px(spacing))
                         .when(chosen, |tab| tab.bg(hover_strong))
                         .child(
                             div()
@@ -348,7 +365,7 @@ impl Desktop {
             .flex_col()
             .flex_shrink_0()
             .gap(px(4.))
-            .px(px(4.))
+            .px(px(NAV_INSET))
             .pb(px(8.))
             .relative()
             .w(px(self.side_nav_width()))

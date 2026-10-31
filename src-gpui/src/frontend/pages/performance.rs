@@ -7,10 +7,26 @@ mod telemetry;
 
 /// Device list geometry (the interface's `.dev` rows).
 const ROW_HEIGHT: f32 = 58.;
-/// A device row: as tall as its preview chart, or as its name (13 px) and
-/// figures (12 px) at line height 1.4 with its padding once text grows.
-fn row_height() -> Pixels {
-    px(ROW_HEIGHT).max((theme::font(13.) + theme::font(12.)) * 1.4 + px(2. * 8. + 2.))
+const ROW_PADDING_LEFT: f32 = 12.;
+const ROW_PADDING: f32 = 8.;
+const PREVIEW_WIDTH: f32 = 76.;
+const PREVIEW_GAP: f32 = 10.;
+/// The selection marker follows the actual wrapped names, including when
+/// the rail is resized or the user changes the base font size.
+fn row_height(title: &str, width: Pixels, window: &Window, cx: &App) -> Pixels {
+    let line_height = |size: Pixels| {
+        window.pixel_snap(theme::line_height().to_pixels(size.into(), window.rem_size()))
+    };
+    let size = theme::font(13.);
+    let title_line = line_height(size);
+    let run = theme::text_run(title, theme::LABEL_WEIGHT, cx);
+    let height = window
+        .text_system()
+        .shape_text(title.to_owned().into(), size, &[run], Some(width), None)
+        .map_or(title_line, |lines| {
+            lines.iter().map(|line| line.size(title_line).height).sum()
+        });
+    px(ROW_HEIGHT).max(height + line_height(theme::font(12.)) + px(2. * ROW_PADDING + 2.))
 }
 const ROW_GAP: f32 = 4.;
 const SIDE_DEFAULT: f32 = 248.;
@@ -496,10 +512,26 @@ impl Desktop {
         let p = self.palette;
         let page = self.page_width(window);
         let side_width = self.side_width(page);
+        let title_width = px(side_width
+            - scrollbar::SIZE
+            - 2.
+            - ROW_PADDING_LEFT
+            - ROW_PADDING
+            - PREVIEW_GAP
+            - PREVIEW_WIDTH);
+        let heights: Vec<_> = devices
+            .iter()
+            .map(|device| row_height(&device.title, title_width, window, cx))
+            .collect();
+        let selected_height = heights
+            .get(selected_index)
+            .copied()
+            .unwrap_or(px(ROW_HEIGHT));
         // The selected device: a raised surface with an accent pill, sliding between rows.
         let mark_top = gpui_kit::base::motion::transition(
             "perf-device-mark",
-            (row_height() + px(ROW_GAP)) * selected_index as f32,
+            heights[..selected_index].iter().copied().sum::<Pixels>()
+                + px(ROW_GAP) * selected_index as f32,
             gpui_kit::base::motion::Transition::new(std::time::Duration::from_millis(250)).easing(
                 gpui_kit::base::motion::Easing::cubic_bezier(0.33, 0., 0.1, 1.).unwrap_or_default(),
             ),
@@ -529,7 +561,7 @@ impl Desktop {
                     .left_0()
                     .right(px(scrollbar::SIZE))
                     .top(mark_top)
-                    .h(row_height())
+                    .h(selected_height)
                     .border_1()
                     .border_color(p.stroke)
                     .rounded(px(6.))
@@ -538,14 +570,14 @@ impl Desktop {
                         div()
                             .absolute()
                             .left(px(-1.))
-                            .top((row_height() - px(2. + 18.)) / 2.)
+                            .top((selected_height - px(2. + 18.)) / 2.)
                             .w(px(3.))
                             .h(px(18.))
                             .rounded(px(2.))
                             .bg(p.accent),
                     ),
             );
-        for device in &devices {
+        for (device, height) in devices.iter().zip(heights) {
             let (lines, scale) = self.device_lines(device);
             let graph = self.chart_view(
                 &format!("device-preview-{}", device.id),
@@ -559,6 +591,7 @@ impl Desktop {
             list = list.child(
                 Button::new(SharedString::from(format!("device-{}", device.id)))
                     .accessibility_label(device.title.clone())
+                    .line_height(theme::line_height())
                     .flex()
                     .items_center()
                     .flex_shrink_0()
@@ -570,27 +603,25 @@ impl Desktop {
                     }))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .relative()
-                    .h(row_height())
-                    .min_h(row_height())
+                    .h(height)
                     .w_full()
                     .justify_start()
-                    .pl(px(12.))
-                    .pr(px(8.))
-                    .py(px(8.))
-                    .gap(px(10.))
+                    .pl(px(ROW_PADDING_LEFT))
+                    .pr(px(ROW_PADDING))
+                    .py(px(ROW_PADDING))
+                    .gap(px(PREVIEW_GAP))
                     .border_1()
                     .border_color(gpui_kit::gpui::transparent_black())
                     .rounded(px(6.))
                     .child(
                         div()
-                            .flex_1()
-                            .min_w_0()
+                            .w(title_width)
+                            .flex_shrink_0()
                             .flex()
                             .flex_col()
                             .child(
                                 div()
-                                    .truncate()
-                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .font_weight(theme::LABEL_WEIGHT)
                                     .child(device.title.clone()),
                             )
                             .child(
@@ -609,7 +640,7 @@ impl Desktop {
                     )
                     .child(
                         div()
-                            .w(px(76.))
+                            .w(px(PREVIEW_WIDTH))
                             .h(px(40.))
                             .flex_shrink_0()
                             .border_1()
@@ -789,7 +820,7 @@ impl Desktop {
                         div()
                             .font_family(theme::display_font(cx))
                             .text_size(theme::font_dimension("pageTitleSize"))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .whitespace_nowrap()
                             .child(title),
                     )
@@ -1035,7 +1066,7 @@ impl Desktop {
                             .flex()
                             .items_baseline()
                             .text_size(theme::font(14.))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .child(title)
                             .when_some(note, |d, note| {
                                 d.child(

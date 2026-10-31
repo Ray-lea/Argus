@@ -960,6 +960,7 @@ impl Desktop {
         let control_hover = design_color("control-hover", cx);
         let action_button = |id: &'static str, name: String, action: Action| {
             Button::new(id)
+                .line_height(theme::line_height())
                 .flex_1()
                 .min_w_0()
                 .h(px(32.))
@@ -1070,7 +1071,7 @@ impl Desktop {
                         div()
                             .font_family(theme::display_font(cx))
                             .text_size(theme::font(18.))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .line_height(relative(1.25))
                             .child(title),
                     )
@@ -1169,7 +1170,7 @@ impl Desktop {
             .mt(px(20.))
             .mb(px(6.))
             .text_size(theme::font(12.))
-            .font_weight(FontWeight::SEMIBOLD)
+            .font_weight(theme::LABEL_WEIGHT)
             .text_color(self.palette.muted)
             .child(title)
             .into_any_element()

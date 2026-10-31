@@ -695,7 +695,7 @@ impl Desktop {
                         div()
                             .mb(px(12.))
                             .text_size(theme::font(13.))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .child(label(title)),
                     )
                     .child(self.reading_grid(readings, group_width))
@@ -1009,7 +1009,7 @@ impl Desktop {
                         div()
                             .mb(px(12.))
                             .text_size(theme::font(13.))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .child(label("performance.cpu.idleStates")),
                     )
                     .child(self.reading_grid(windows, 420.))
@@ -1047,7 +1047,7 @@ impl Desktop {
                         div()
                             .mb(px(12.))
                             .text_size(theme::font(13.))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .child(label("performance.cpu.idlePerCore")),
                     )
                     .child(self.sensor_table("idle-readings", header, rows)),

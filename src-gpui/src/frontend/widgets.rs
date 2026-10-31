@@ -1105,6 +1105,7 @@ impl Desktop {
         gpui_kit::base::Button::new(ElementId::Name(id.clone()))
             .track_focus(&focus)
             .role(Role::ComboBox)
+            .line_height(theme::line_height())
             .accessibility_label(name.into())
             .key_context("Combobox")
             .relative()

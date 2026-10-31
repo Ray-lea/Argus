@@ -2,6 +2,11 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{ActiveTheme, Icon, Theme, ThemeMode};
 use gpui_kit::*;
+
+/// Emphasis for names, headings and navigation. Segoe UI Variable supplies
+/// this weight. Requesting 600 selects YaHei UI Bold for Chinese text.
+pub const LABEL_WEIGHT: FontWeight = FontWeight::MEDIUM;
+
 #[derive(Clone, Copy)]
 pub struct Palette {
     pub ink: Hsla,
@@ -397,21 +402,25 @@ pub fn font(size: f32) -> Pixels {
 pub fn font_dimension(key: &str) -> Pixels {
     font(f32::from(dimension(key)))
 }
-/// The width of one line of interface text at `size`.
-pub fn text_width(text: &str, size: Pixels, window: &Window, cx: &App) -> Pixels {
+/// Use the same family and fallbacks as the text drawn by the product surface.
+pub fn text_run(text: &str, weight: FontWeight, cx: &App) -> TextRun {
     let mut font = gpui_kit::font(cx.theme().font_family.clone());
     font.fallbacks = Some(font_fallbacks(cx));
-    let run = TextRun {
+    font.weight = weight;
+    TextRun {
         len: text.len(),
         font,
         color: Hsla::default(),
         background_color: None,
         underline: None,
         strikethrough: None,
-    };
+    }
+}
+/// The width of one line of interface text at `size`.
+pub fn text_width(text: &str, size: Pixels, window: &Window, cx: &App) -> Pixels {
     window
         .text_system()
-        .layout_line(text, size, &[run], None)
+        .layout_line(text, size, &[text_run(text, FontWeight::NORMAL, cx)], None)
         .width
 }
 /// How much taller a line of `size` px text at `line_height` gets at the

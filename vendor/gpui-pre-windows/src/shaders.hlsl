@@ -1144,7 +1144,7 @@ float4 underline_fragment(UnderlineFragmentInput input): SV_Target {
 
 struct MonochromeSprite {
     uint order;
-    uint pad;
+    uint is_glyph;
     Bounds bounds;
     Bounds content_mask;
     Hsla color;
@@ -1156,6 +1156,7 @@ struct MonochromeSpriteVertexOutput {
     float4 position: SV_Position;
     float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
+    nointerpolation uint is_glyph: TEXCOORD0;
     float4 clip_distance: SV_ClipDistance;
 };
 
@@ -1163,6 +1164,7 @@ struct MonochromeSpriteFragmentInput {
     float4 position: SV_Position;
     float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
+    nointerpolation uint is_glyph: TEXCOORD0;
     float4 clip_distance: SV_ClipDistance;
 };
 
@@ -1182,13 +1184,22 @@ MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexI
     output.position = device_position;
     output.tile_position = tile_position;
     output.color = color;
+    output.is_glyph = sprite.is_glyph;
     output.clip_distance = clip_distance;
     return output;
 }
 
 float4 monochrome_sprite_fragment(MonochromeSpriteFragmentInput input): SV_Target {
     float sample = t_sprite.Sample(s_sprite, input.tile_position).r;
-    float alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
+    float alpha_corrected;
+    if (input.is_glyph != 0) {
+        // The font atlas resolved LCD coverage to R8. Use the LCD contrast and
+        // gamma here as well, then composite a single alpha over any backdrop.
+        float3 corrected = apply_contrast_and_gamma_correction3(sample.xxx, input.color.rgb, subpixel_enhanced_contrast, gamma_ratios);
+        alpha_corrected = dot(corrected, float3(0.2126f, 0.7152f, 0.0722f));
+    } else {
+        alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
+    }
     return float4(input.color.rgb, input.color.a * alpha_corrected);
 }
 

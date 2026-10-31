@@ -524,7 +524,7 @@ impl Desktop {
                         Some(text) => div()
                             .truncate()
                             .text_size(theme::font(15.))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .child(text),
                         None => div().text_size(theme::font(15.)).text_color(p.faint).child(
                             if read_ts.is_none() && readout.is_none() {
@@ -907,7 +907,7 @@ impl Desktop {
                 d.child(
                     div().flex().gap_1().child(label("history.earliest")).child(
                         div()
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .text_color(p.ink)
                             .child(moment_label(ts)),
                     ),
@@ -963,7 +963,7 @@ impl Desktop {
                     .child(
                         div()
                             .text_size(theme::font(14.))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .child(title),
                     )
                     .child(

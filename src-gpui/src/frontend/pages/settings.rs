@@ -32,7 +32,11 @@ fn section_icon(section: &str) -> &'static str {
         _ => "InfoIcon",
     }
 }
-const RAIL: f32 = 180.;
+const MIN_RAIL: f32 = 180.;
+const NAV_LEFT: f32 = 14.;
+const NAV_RIGHT: f32 = 12.;
+const NAV_GAP: f32 = 10.;
+const UPDATE_DOT: f32 = 6.;
 const GAP: f32 = 32.;
 const CONTENT: f32 = 780.;
 const NARROW: f32 = 900.;
@@ -814,15 +818,29 @@ impl Desktop {
         // The gutter is kept (`scrollbar-gutter: stable`): the container query
         // and the centring see the width beside it.
         let width = width - scrollbar::SIZE;
-        let narrow = width <= NARROW;
+        let names = SECTIONS.map(|section| label(&format!("settings.sections.{section}")));
+        let controls = NAV_LEFT + f32::from(window.rem_size()) + NAV_GAP + NAV_RIGHT;
+        let rail_width = names
+            .iter()
+            .zip(SECTIONS)
+            .fold(MIN_RAIL, |width, (name, section)| {
+                let text = theme::text_width(name, theme::font(13.), window, cx);
+                let dot = if section == "update" {
+                    NAV_GAP + UPDATE_DOT
+                } else {
+                    0.
+                };
+                width.max(f32::from(text.ceil()) + controls + dot)
+            });
+        let narrow = width <= NARROW + (rail_width - MIN_RAIL);
         let layout = if narrow {
             (width - 8.).max(0.)
         } else {
-            (width - 8.).min(RAIL + GAP + CONTENT)
+            (width - 8.).min(rail_width + GAP + CONTENT)
         };
         let left = (width - layout) / 2.;
-        let content_left = left + if narrow { 0. } else { RAIL + GAP };
-        let content_width = layout - if narrow { 0. } else { RAIL + GAP };
+        let content_left = left + if narrow { 0. } else { rail_width + GAP };
+        let content_width = layout - if narrow { 0. } else { rail_width + GAP };
         let sections = SECTIONS
             .into_iter()
             .enumerate()
@@ -872,7 +890,7 @@ impl Desktop {
             .absolute()
             .top(px(4.))
             .left(px(left))
-            .w(px(RAIL))
+            .w(px(rail_width))
             .flex()
             .flex_col()
             .gap(px(2.))
@@ -898,14 +916,18 @@ impl Desktop {
                             .bg(p.accent),
                     ),
             )
-            .children(SECTIONS.into_iter().enumerate().map(|(index, section)| {
-                let current = index == selected;
-                gpui_kit::base::Button::new(SharedString::from(format!("settings-nav-{section}")))
+            .children(SECTIONS.into_iter().zip(names).enumerate().map(
+                |(index, (section, name))| {
+                    let current = index == selected;
+                    gpui_kit::base::Button::new(SharedString::from(format!(
+                        "settings-nav-{section}"
+                    )))
                     .relative()
                     .h(px(36.))
-                    .pl(px(14.))
-                    .pr(px(12.))
-                    .gap(px(10.))
+                    .pl(px(NAV_LEFT))
+                    .pr(px(NAV_RIGHT))
+                    .gap(px(NAV_GAP))
+                    .line_height(theme::line_height())
                     .justify_start()
                     .rounded(px(6.))
                     .text_color(if current { p.ink } else { p.muted })
@@ -913,22 +935,24 @@ impl Desktop {
                         b.hover(move |s| s.bg(p.hover).text_color(p.ink))
                     })
                     .role(Role::Tab)
-                    .accessibility_label(label(&format!("settings.sections.{section}")))
+                    .accessibility_label(name.clone())
                     .child(theme::glyph(section_icon(section)))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .child(label(&format!("settings.sections.{section}"))),
-                    )
+                    .child(div().whitespace_nowrap().child(name))
                     .when(section == "update" && pending_update, |b| {
-                        b.child(div().ml_auto().size(px(6.)).rounded_full().bg(p.accent))
+                        b.child(
+                            div()
+                                .ml_auto()
+                                .size(px(UPDATE_DOT))
+                                .rounded_full()
+                                .bg(p.accent),
+                        )
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.jump_to_section(index, cx);
                         cx.notify();
                     }))
-            }));
+                },
+            ));
         let measured = self.ui.settings_width.clone();
         let owner = cx.entity().downgrade();
         div()
@@ -1130,7 +1154,7 @@ impl Desktop {
                     .mt(px(if index == 0 { 6. } else { 28. }))
                     .mb(px(6.))
                     .text_size(theme::font(14.))
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .font_weight(theme::LABEL_WEIGHT)
                     .text_color(p.ink)
                     .child(label(&format!("settings.sections.{section}"))),
             )
@@ -2491,7 +2515,7 @@ impl Desktop {
             let card = self.setting(
                 &format!("rule-{id}"),
                 self.process_icon(process.as_ref(), 20., cx),
-                div().font_weight(FontWeight::SEMIBOLD).child(name.clone()),
+                div().font_weight(theme::LABEL_WEIGHT).child(name.clone()),
                 Some(summary.into_any_element()),
                 None,
                 vec![priority, efficiency, toggle, delete],
@@ -3012,7 +3036,7 @@ impl Desktop {
                                     div()
                                         .font_family(theme::DISPLAY_FONT)
                                         .text_size(theme::font(18.))
-                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .font_weight(theme::LABEL_WEIGHT)
                                         .child(argus_app::config::product_name()),
                                 )
                                 .child(
@@ -4166,7 +4190,7 @@ impl Desktop {
                             .items_center()
                             .gap(px(8.))
                             .mb(px(10.))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .child(icon(glyph, p.accent))
                             .child(title)
                             .when_some(badge, |d, badge| {
@@ -4318,7 +4342,7 @@ impl Desktop {
                     .mb(px(10.))
                     .child(
                         div()
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(theme::LABEL_WEIGHT)
                             .child(label("settings.shortcuts.navigation")),
                     )
                     .child(self.shortcut_keys("Ctrl+1–7")),
@@ -4338,6 +4362,7 @@ impl Desktop {
                             "shortcut-group-{key}"
                         )))
                         .w_full()
+                        .line_height(theme::line_height())
                         .h(px(40.))
                         .px(px(14.))
                         .gap(px(8.))
@@ -4348,7 +4373,7 @@ impl Desktop {
                         .child(
                             div()
                                 .flex_1()
-                                .font_weight(FontWeight::SEMIBOLD)
+                                .font_weight(theme::LABEL_WEIGHT)
                                 .child(label(title)),
                         )
                         .child(
