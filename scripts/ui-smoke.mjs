@@ -220,7 +220,7 @@ try {
     const scaleFlag = process.argv.indexOf("--ui-scale");
     const uiScale = scaleFlag >= 0 ? Number(process.argv[scaleFlag + 1]) : 100;
     assert(Number.isInteger(uiScale) && uiScale >= 80 && uiScale <= 150, "invalid chart test UI scale");
-    send({page: "performance", device: "cpu", cpuMode: "overall", theme: "dark", motion: "fluid", uiMotion: false, uiScale});
+    send({page: "performance", device: "cpu", cpuMode: "overall", theme: "dark", motion: "fluid", uiMotion: "off", uiScale});
     await sleep(1500);
     send({pointerOutside: true, inspectLayout: "scroll-plot"});
     await sleep(300);
@@ -295,7 +295,7 @@ try {
     await capture("sensor-full", false, false);
     assert(compare("sensor-partial", "sensor-full").maxChannelDelta <= 1, "sensor dependency paint differs");
     if (fixture.historySeries?.length) {
-      send({ page: "history", pointerOutside: true, uiMotion: false });
+      send({ page: "history", pointerOutside: true, uiMotion: "off" });
       await sleep(1200);
       send({ inspectLayout: "history-plot" });
       await sleep(250);
@@ -314,6 +314,54 @@ try {
       await sleep(350);
       await capture("history-out", false, false);
       assert(compare("history-rest", "history-out").maxChannelDelta <= 1, "history fill changed after hover");
+    }
+    // Follow a content crop that contains the heading and graph in both device layouts.
+    send({ page: "performance", device: "cpu", cpuMode: "overall", navPosition: "top", uiMotion: "on", motion: "off", pointerOutside: true });
+    await sleep(650);
+    send({ inspectLayout: "entrance-crop" });
+    await sleep(250);
+    const layout = events.findLast(e => e.event === "ui-layout" && e.label === "entrance-crop");
+    assert(layout?.cpuPlot, "missing chart bounds for the entrance recording");
+    const [x, y, width, height] = layout.cpuPlot;
+    const heading = [x - 40, Math.max(0, y - 105), Math.min(490, width), 155];
+    const entries = [
+      ["page-entry", { page: "performance" }, heading],
+      ["device-entry", { device: "memory" }, heading],
+    ];
+    const gpu = fixture.snapshot.hardware.gpus?.find(gpu => gpu.info.engines?.length > 1);
+    if (gpu) {
+      // Inside the engine grid, away from the heading and memory graphs.
+      entries.push(["engine-grid-entry", { device: `gpu:${gpu.info.id}` }, [x + 2, y + 24, Math.min(520, width - 2), Math.min(100, height / 2)]]);
+    }
+    send({ page: "settings", settingsSection: "language" });
+    await sleep(650);
+    for (const [name, state, bounds] of entries) {
+      const start = events.length;
+      const dir = `target/native-validation/${label}/${name}`;
+      const crop = bounds.map(v => Math.round(v * layout.scaleFactor));
+      child.stdin.write(`record ${dir} 2000 ${crop.join(" ")}\n`);
+      const event = kind => events.slice(start).find(e => e.event === kind);
+      for (let i = 0; i < 100 && !event("recording"); i++) await sleep(25);
+      assert(event("recording"), `${name}: recorder did not start`);
+      await sleep(450);
+      send({ fullPaint: true });
+      await sleep(450);
+      child.stdin.write(`mark ${name}\n`);
+      send(state);
+      for (let i = 0; i < 150 && !event("recorded"); i++) await sleep(100);
+      const result = event("recorded");
+      assert(result && !result.error && result.frames >= 4, `${name}: missing transition frames`);
+      const mark = events.slice(start).find(e => e.event === "mark" && e.tag === name);
+      assert(mark && result.times100ns[0] < mark.qpc100ns && result.times100ns.at(-1) > mark.qpc100ns + 100 * 10000, `${name}: recording missed the switch`);
+      const scan = spawnSync(probe, ["frame-contrast", resolve(dir)], { windowsHide: true, encoding: "utf8", timeout: 30000 });
+      assert.equal(scan.status, 0, scan.stderr);
+      const levels = JSON.parse(scan.stdout);
+      const endpoints = Math.min(levels[0], levels.at(-1));
+      const lowest = Math.min(...levels);
+      events.push({ event: "entrance-contrast", name, endpoints, lowest });
+      // A quiet chart still has its faint grid lines. Headings have a much larger range.
+      const minimumEndpoint = name === "engine-grid-entry" ? 6 : 50;
+      assert(endpoints > minimumEndpoint && lowest >= endpoints * 0.75, `${name}: contrast fell from ${endpoints} to ${lowest}`);
     }
   } else if (retained) {
     let expectedSteps = 0;
@@ -334,7 +382,7 @@ try {
       ["overall-light", { page: "performance", device: "cpu", cpuMode: "overall" }],
       ["logical-light", { page: "performance", device: "cpu", cpuMode: "logical" }],
     ]) {
-      send({ ...state, uiMotion: false, pointerOutside: true });
+      send({ ...state, uiMotion: "off", pointerOutside: true });
       await sleep(1500);
       send({ pointerOutside: true });
       await sleep(250);

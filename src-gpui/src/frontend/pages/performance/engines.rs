@@ -557,6 +557,7 @@ impl Desktop {
                 .get(ENGINE_GRID)
                 .map_or_else(Size::default, |bounds| bounds.size)
         });
+        let first_layout = here.is_none() && !shown.is_empty();
         let policy = super::settle_policy("gpu-engine-settled", here.is_some(), window, cx);
         let width = if measured.width > px(0.) {
             f32::from(measured.width)
@@ -589,6 +590,9 @@ impl Desktop {
                             .update(cx, |size, _| size.replace(bounds.size))
                             != Some(bounds.size);
                         if changed {
+                            if first_layout && bounds.size != measured && !bounds.is_empty() {
+                                window.defer_presentation_until_layout();
+                            }
                             let owner = owner.clone();
                             window.defer(cx, move |_, cx| {
                                 let _ = owner.update(cx, |_, cx| cx.notify());

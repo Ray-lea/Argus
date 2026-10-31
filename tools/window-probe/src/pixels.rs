@@ -14,6 +14,45 @@ fn read(path: impl AsRef<Path>) -> anyhow::Result<(u32, u32, Vec<u8>)> {
     Ok((info.width, info.height, pixels))
 }
 
+/// Luma range between the 0.5th and 99.5th percentiles. Ignore isolated
+/// highlights so one bright pixel cannot hide a blank frame in the crop.
+fn contrast(pixels: &[u8]) -> u8 {
+    let mut histogram = [0usize; 256];
+    for &[r, g, b] in pixels.as_chunks::<3>().0 {
+        let y = 54 * usize::from(r) + 183 * usize::from(g) + 19 * usize::from(b);
+        histogram[y >> 8] += 1;
+    }
+    let count = pixels.len() / 3;
+    let tail = count / 200;
+    let level = |rank| {
+        let mut sum = 0;
+        histogram
+            .iter()
+            .position(|n| {
+                sum += n;
+                sum > rank
+            })
+            .expect("nonempty image") as u8
+    };
+    level(count - 1 - tail) - level(tail)
+}
+
+pub fn frame_contrast(directory: &str) -> anyhow::Result<()> {
+    let directory = Path::new(directory);
+    let index: serde_json::Value =
+        serde_json::from_reader(File::open(directory.join("index.json"))?)?;
+    let frames = index["frames"]
+        .as_array()
+        .context("missing recorded frames")?;
+    let mut levels = Vec::with_capacity(frames.len());
+    for i in 0..frames.len() {
+        let (_, _, pixels) = read(directory.join(format!("{i:04}.png")))?;
+        levels.push(contrast(&pixels));
+    }
+    println!("{}", serde_json::to_string(&levels)?);
+    Ok(())
+}
+
 /// Find both slopes of the synthetic peak in each scanline. Weight the pixels
 /// of each stroke by coverage, then give the two slopes equal weight so changes
 /// in brightness at a grid line do not look like horizontal movement.

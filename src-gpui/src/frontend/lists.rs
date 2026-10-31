@@ -479,12 +479,12 @@ impl Desktop {
         cx.notify();
     }
     /// Whether a service, startup or connection list is entering. It replays
-    /// its first frame moved and faded; drawing it again (new rows, or a sample,
+    /// its first frame at the animated offset; drawing it again (new rows, or a sample,
     /// which changes nothing there but the status bar) would stall the entrance
     /// for as long as the whole table takes to draw.
     pub(in crate::frontend) fn list_page_entering(&self, cx: &App) -> bool {
         matches!(self.page.as_str(), "services" | "startup" | "network")
-            && (self.page_enter_pending || self.page_fading(cx))
+            && (self.page_enter_pending || self.page_entering(cx))
     }
     /// Draws the desktop again (and installs the connection rows built
     /// meanwhile) once the page's entrance is over.

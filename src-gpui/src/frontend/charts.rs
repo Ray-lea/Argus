@@ -628,7 +628,6 @@ impl Placement {
 #[derive(Clone)]
 pub(super) struct DeviceSlide {
     pub(super) offset: Point<Pixels>,
-    pub(super) opacity: f32,
     pub(super) viewport: Rc<Cell<Bounds<Pixels>>>,
 }
 pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
@@ -692,7 +691,6 @@ pub(super) struct ChartLayer {
     placements: Placements,
     clock: Rc<RefCell<motion::Clock>>,
     active: Rc<RefCell<HashSet<String>>>,
-    opacity: Rc<Cell<f32>>,
     /// Where the entering page is drawn, from where it is laid out (`shift.rs`).
     shift: Rc<Cell<Point<Pixels>>>,
     pane: Rc<RefCell<PaneMotion>>,
@@ -708,7 +706,6 @@ impl ChartLayer {
         placements: Placements,
         clock: Rc<RefCell<motion::Clock>>,
         active: Rc<RefCell<HashSet<String>>>,
-        opacity: Rc<Cell<f32>>,
         shift: Rc<Cell<Point<Pixels>>>,
         pane: Rc<RefCell<PaneMotion>>,
         motions: Rc<super::shift::LiveMotions>,
@@ -719,7 +716,6 @@ impl ChartLayer {
             placements,
             clock,
             active,
-            opacity,
             shift,
             last_end: f64::NAN,
             pixel_ends: HashMap::new(),
@@ -751,7 +747,7 @@ impl ChartLayer {
         self.last_end = now;
         if changed {
             // Fast texture updates use layout coordinates. Repaint while the entire page moves.
-            if self.opacity.get() != 1. || self.shift.get() != Point::default() {
+            if self.shift.get() != Point::default() {
                 cx.notify();
                 return;
             }
@@ -847,20 +843,21 @@ impl Render for ChartLayer {
         let placements = self.placements.clone();
         let clock = self.clock.clone();
         let active = self.active.clone();
-        let page_opacity = self.opacity.clone();
         let page_shift = self.shift.clone();
         let pane = self.pane.clone();
         div().absolute().inset_0().child(
             canvas(
                 move |bounds, window, cx| {
+                    // A provisional layout can have a different plot size. Keep its
+                    // raster out of the cache used by the first visible frame.
+                    if window.is_layout_only() {
+                        return Vec::new();
+                    }
                     // A view may have started an animation in this frame.
                     if motions.active() {
                         window.request_animation_frame();
                     }
-                    // Read in prepaint, after the cached desktop rendered this
-                    // frame's fades: read in render, they would lag a frame
-                    // behind the page they belong to.
-                    let page_opacity = page_opacity.get();
+                    // Read the current offset after the cached desktop has rendered.
                     let shift = page_shift.get();
                     let pane = pane.borrow();
                     let placements = placements.borrow();
@@ -871,7 +868,7 @@ impl Render for ChartLayer {
                         let Some(placement) = placements.get(key) else {
                             continue;
                         };
-                        let (moved, mask, fade) = if pane.charts.contains(key) {
+                        let (moved, mask, alpha) = if pane.charts.contains(key) {
                             // The chart's own clip (its frame) moves with the
                             // pane; the pane's clip stays where it is drawn.
                             let mask = placement.mask + pane.offset;
@@ -884,7 +881,7 @@ impl Render for ChartLayer {
                             (
                                 placement.bounds + slide.offset,
                                 (placement.mask + slide.offset).intersect(&slide.viewport.get()),
-                                slide.opacity,
+                                1.,
                             )
                         } else {
                             (placement.bounds, placement.mask, 1.)
@@ -905,7 +902,6 @@ impl Render for ChartLayer {
                         // Bars keep a fixed gap, so their tracks never overlap a neighbour's fill.
                         plot.background_separate = true;
                         let background = plot.clone();
-                        let alpha = page_opacity * fade;
                         let mut element = div()
                             .size_full()
                             .opacity(alpha)

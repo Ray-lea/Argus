@@ -8,6 +8,8 @@ The vendored package omits standalone examples and their media, the package-loca
 
 Local changes:
 
+- `Window::defer_presentation_until_layout` marks a measurement frame during prepaint. The compositor keeps displaying the previous scene until the scheduled draw has laid out the chart grid. The chart layer checks `Window::is_layout_only` before preparing textures.
+
 - A retained scene records the physical bar geometry and source color used by the Windows compositor. Both render paths use the same leading-edge coverage calculation. An unchanged bar no longer requests a presentation.
 
 - `Window::paint_image_subpixel_premultiplied` paints premultiplied BGRA chart textures with area filtering on Windows. Each image keeps its own pixel format throughout its atlas lifetime. Animated bars restrict their content masks to the reserved animation region, so background restoration covers the complete bar range.

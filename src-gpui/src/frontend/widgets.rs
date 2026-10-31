@@ -1434,14 +1434,9 @@ impl Desktop {
         )
     }
 
-    /// The new page slides in from the side of its entry in the navigation while
-    /// it fades in: from the right for a tab further right, from below
-    /// for a page further down the side navigation; the navigation stays put.
-    /// Only the opacity and the offset change, never the element tree, so
-    /// nothing inside loses its state or replays its own entrance (the details
-    /// pane's). Both apply only when drawing (`shift.rs`): the page is laid out
-    /// and hit-tested in place, and replays its last paint every frame. The
-    /// chart layer takes the opacity and the offset (`page_shift`).
+    /// Slide in from the new tab's direction. The previous page has already
+    /// been replaced, so draw the incoming content at its normal contrast
+    /// from the first frame. Cached views and the chart layer share the move.
     pub(in crate::frontend) fn enter(
         &self,
         content: impl IntoElement,
@@ -1456,15 +1451,13 @@ impl Desktop {
             .flex()
             .flex_col()
             .child(content);
-        if !self.page_fading(cx) {
-            self.page_opacity.set(1.);
+        if !self.page_entering(cx) {
             self.page_shift.set(Point::default());
             return element.into_any_element();
         }
         let progress = theme::ease_out(
             (self.page_switched.elapsed().as_secs_f32() / PAGE_ENTER.as_secs_f32()).min(1.),
         );
-        self.page_opacity.set(progress);
         window.request_animation_frame();
         let shift = (1. - progress) * self.page_direction;
         let offset = if self.nav_top {
@@ -1474,12 +1467,10 @@ impl Desktop {
         };
         let offset = window.pixel_snap_point(offset);
         self.page_shift.set(offset);
-        // Drawn moved and faded; laid out in place, so the page (and its cached
-        // tables) replays its last paint instead of rendering every frame.
-        super::shift::shifted(element, offset, progress).into_any_element()
+        super::shift::shifted(element, offset, 1.).into_any_element()
     }
     /// Whether the page is still entering after a page change.
-    pub(in crate::frontend) fn page_fading(&self, cx: &App) -> bool {
+    pub(in crate::frontend) fn page_entering(&self, cx: &App) -> bool {
         !cx.reduce_motion()
             && self.page_direction != 0.
             && self.page_switched.elapsed() < PAGE_ENTER

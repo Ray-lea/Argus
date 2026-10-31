@@ -160,7 +160,6 @@ struct Desktop {
     scrim_view: Option<Entity<dialogs::Scrim>>,
     active_charts: Rc<RefCell<HashSet<String>>>,
     chart_placements: charts::Placements,
-    page_opacity: Rc<Cell<f32>>,
     /// How far the entering page is drawn from its place (the chart layer follows).
     page_shift: Rc<Cell<Point<Pixels>>>,
     /// The details pane's drawn motion, for its charts (`details_pane`).
@@ -192,7 +191,7 @@ struct Desktop {
     page_epoch: u64,
     /// Where the last page change came from: -1, 0 (start-up) or 1.
     page_direction: f32,
-    /// When the page last changed; the page fades in for `PAGE_FADE` after it.
+    /// Start of the page's directional slide.
     page_switched: Instant,
     /// The entrance starts with the first frame drawn after a page change.
     page_enter_pending: bool,
@@ -329,7 +328,6 @@ impl Desktop {
             scrim_view: None,
             active_charts: Rc::new(RefCell::new(HashSet::new())),
             chart_placements: Rc::new(RefCell::new(HashMap::new())),
-            page_opacity: Rc::new(Cell::new(1.)),
             page_shift: Rc::new(Cell::new(Point::default())),
             pane_motion: Rc::default(),
             chart_slide: None,
@@ -665,14 +663,11 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 let placements = view.read(cx).chart_placements.clone();
                 let clock = view.read(cx).chart_clock.clone();
                 let active = view.read(cx).active_charts.clone();
-                let opacity = view.read(cx).page_opacity.clone();
                 let shift = view.read(cx).page_shift.clone();
                 let pane = view.read(cx).pane_motion.clone();
                 let motions = view.read(cx).live_motions.clone();
                 let charts = cx.new(|_| {
-                    charts::ChartLayer::new(
-                        placements, clock, active, opacity, shift, pane, motions,
-                    )
+                    charts::ChartLayer::new(placements, clock, active, shift, pane, motions)
                 });
                 view.update(cx, |desktop, _| desktop.chart_layer = Some(charts.clone()));
                 let state = view.read(cx).scrim.clone();

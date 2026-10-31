@@ -1086,6 +1086,7 @@ pub(crate) struct Frame {
     pub(crate) mouse_listeners: Vec<Option<AnyMouseListener>>,
     pub(crate) dispatch_tree: DispatchTree,
     pub(crate) scene: Scene,
+    layout_only: bool,
     pub(crate) hitboxes: Vec<Hitbox>,
     pub(crate) window_control_hitboxes: Vec<(WindowControlArea, Hitbox)>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
@@ -1143,6 +1144,7 @@ impl Frame {
             mouse_listeners: Vec::new(),
             dispatch_tree,
             scene: Scene::default(),
+            layout_only: false,
             hitboxes: Vec::new(),
             window_control_hitboxes: Vec::new(),
             deferred_draws: Vec::new(),
@@ -1170,6 +1172,7 @@ impl Frame {
         self.mouse_listeners.clear();
         self.dispatch_tree.clear();
         self.scene.clear();
+        self.layout_only = false;
         self.input_handlers.clear();
         self.tooltip_requests.clear();
         self.cursor_styles.clear();
@@ -3777,8 +3780,25 @@ impl Window {
         self.paint_generation
     }
 
+    /// Keep the last presented scene while this prepaint measures content for
+    /// a scheduled layout pass. The next draw can present normally.
+    pub fn defer_presentation_until_layout(&mut self) {
+        self.invalidator.debug_assert_prepaint();
+        self.next_frame.layout_only = true;
+    }
+
+    /// Whether this prepaint is measuring a frame that will not be presented.
+    pub fn is_layout_only(&self) -> bool {
+        self.invalidator.debug_assert_prepaint();
+        self.next_frame.layout_only
+    }
+
     #[profiling::function]
     fn present(&mut self) {
+        if self.rendered_frame.layout_only {
+            self.needs_present.set(false);
+            return;
+        }
         #[cfg(feature = "profiler")]
         let _foreground_turn = profiler::journal::foreground_turn();
         #[cfg(feature = "profiler")]

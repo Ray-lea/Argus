@@ -651,13 +651,8 @@ impl Desktop {
                     ),
             );
         }
-        // A newly chosen device starts at the top and arrives from its direction in
-        // the list, fading in (250 ms, decelerating). Only the offset and opacity
-        // change: an animation wrapper keyed by each arrival would drop the
-        // state of everything inside, the charts' drawn curves included, and
-        // they would pop in again. Both apply only when drawing (the interface's
-        // transform), so the view is laid out in place and its scroll range
-        // never grows by the offset.
+        // Replace the device at full contrast and slide it from its direction
+        // in the list. Layout stays in place so the scroll range is stable.
         let arrival = window.use_keyed_state("perf-device-arrival", cx, |_, _| {
             (String::new(), 0usize, 0f32, None::<Instant>)
         });
@@ -687,10 +682,9 @@ impl Desktop {
             px(0.),
             window.pixel_snap(px(direction * 16. * (1. - arriving))),
         );
-        // The chart layer's curves move and fade with the view.
+        // Give the separately painted charts the same offset and viewport.
         self.chart_slide = (progress < 1.).then(|| charts::DeviceSlide {
             offset,
-            opacity: arriving,
             viewport: Rc::new(Cell::new(Bounds::default())),
         });
         // A short card (the interface's size container query on the card)
@@ -707,7 +701,7 @@ impl Desktop {
         let content = super::super::shift::shifted(
             div().flex_1().flex().flex_col().child(content),
             offset,
-            arriving,
+            1.,
         )
         .within_viewport(viewport)
         .into_any_element();
@@ -760,7 +754,14 @@ impl Desktop {
             .on_prepaint(move |bounds, window, cx| {
                 let card = bounds.size.height - px(2.);
                 let measured = Some(window.viewport_size().height - card);
-                if chrome.replace(measured) != measured {
+                let previous = chrome.replace(measured);
+                if previous != measured {
+                    // The first layout uses the viewport height for chart sizing.
+                    if (previous.is_none() || short != (card <= px(SHORT_CARD)))
+                        && !bounds.is_empty()
+                    {
+                        window.defer_presentation_until_layout();
+                    }
                     window.defer(cx, move |_, cx| {
                         let _ = owner.update(cx, |_, cx| cx.notify());
                     });
@@ -1567,6 +1568,7 @@ impl Desktop {
         let width = (available - gap * (columns - 1) as f32) / columns as f32;
         let height = ((measured.height - gap * (rows - 1) as f32) / rows as f32).max(fit_height);
         let grid_size = self.core_grid_size.clone();
+        let first_layout = here.is_none() && !visible.is_empty();
         let owner = cx.entity().downgrade();
         let measuring = cores.clone();
         let measure = canvas(
@@ -1575,6 +1577,9 @@ impl Desktop {
                 let previous = here_state.update(cx, |size, _| size.replace(bounds.size));
                 if bounds.size != measured {
                     // Laid out at a size it does not have: again at its own.
+                    if first_layout && !bounds.is_empty() {
+                        window.defer_presentation_until_layout();
+                    }
                     let owner = owner.clone();
                     window.defer(cx, move |_, cx| {
                         let _ = owner.update(cx, |_, cx| cx.notify());

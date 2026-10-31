@@ -27,6 +27,10 @@ fn main() -> anyhow::Result<()> {
         #[cfg(feature = "capture")]
         Some("compare") => pixels::compare(&args[1], &args[2])?,
         #[cfg(feature = "capture")]
+        Some("frame-contrast") => {
+            pixels::frame_contrast(args.get(1).context("recording directory required")?)?
+        }
+        #[cfg(feature = "capture")]
         Some("track-chart") => {
             pixels::track_chart(args.get(1).context("recording directory required")?)?
         }
@@ -41,7 +45,7 @@ fn main() -> anyhow::Result<()> {
         #[cfg(all(windows, feature = "capture"))]
         Some("capture") => windows::capture(args[1].parse()?, &args[2])?,
         _ => anyhow::bail!(
-            "usage: argus-window-probe run EXE [ARGS] | capture PID PNG | compare LEFT RIGHT | track-chart DIRECTORY"
+            "usage: argus-window-probe run EXE [ARGS] | capture PID PNG | compare LEFT RIGHT | frame-contrast DIRECTORY | track-chart DIRECTORY"
         ),
     }
     Ok(())
