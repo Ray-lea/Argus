@@ -9,6 +9,7 @@ use gpui_kit::component::plot::{
     Plot, PlotElement,
     tooltip::{Tooltip, TooltipState},
 };
+use gpui_kit::gpui::Axis;
 #[derive(Clone, Copy)]
 pub(super) enum ChartHeight {
     Fixed(Pixels),
@@ -607,10 +608,7 @@ pub(super) struct Placement {
     bounds: Bounds<Pixels>,
     mask: Bounds<Pixels>,
     plot: Rc<RefCell<TimePlot>>,
-    /// The chart's own fade (a view settling in), on top of the page's.
-    opacity: f32,
-    /// The chart's own move inside its clip (a view arriving), on top of the page's.
-    offset: Point<Pixels>,
+    slide: Option<DeviceSlide>,
     /// Captions the chart layer draws inside the frame.
     captions: Option<Rc<FrameCaptions>>,
     /// The live transforms the page draws the chart and its surroundings
@@ -622,8 +620,16 @@ pub(super) struct Placement {
 impl Placement {
     /// Whether the chart layer draws this chart other than at its laid-out place.
     fn transformed(&self) -> bool {
-        !self.lives.is_empty()
+        self.slide.is_some() || !self.lives.is_empty()
     }
+}
+
+/// The plot's frame and local clip move with the device. Its scroll viewport stays put.
+#[derive(Clone)]
+pub(super) struct DeviceSlide {
+    pub(super) offset: Point<Pixels>,
+    pub(super) opacity: f32,
+    pub(super) viewport: Rc<Cell<Bounds<Pixels>>>,
 }
 pub(super) type Placements = Rc<RefCell<HashMap<String, Placement>>>;
 
@@ -744,6 +750,11 @@ impl ChartLayer {
         };
         self.last_end = now;
         if changed {
+            // Fast texture updates use layout coordinates. Repaint while the entire page moves.
+            if self.opacity.get() != 1. || self.shift.get() != Point::default() {
+                cx.notify();
+                return;
+            }
             let placements = self.placements.borrow();
             let fast = self.active.borrow().iter().all(|key| {
                 if self.frozen_groups.contains(chart_group(key)) {
@@ -869,54 +880,48 @@ impl Render for ChartLayer {
                                 pane.clip.map_or(mask, |clip| mask.intersect(&clip)),
                                 pane.opacity,
                             )
+                        } else if let Some(slide) = &placement.slide {
+                            (
+                                placement.bounds + slide.offset,
+                                (placement.mask + slide.offset).intersect(&slide.viewport.get()),
+                                slide.opacity,
+                            )
                         } else {
                             (placement.bounds, placement.mask, 1.)
                         };
-                        let laid_out = placement.bounds;
-                        let placement = Placement {
-                            bounds: moved + shift + placement.offset,
-                            mask: mask + shift,
-                            plot: placement.plot.clone(),
-                            opacity: placement.opacity * fade,
-                            offset: Point::default(),
-                            captions: placement.captions.clone(),
-                            lives: placement.lives.clone(),
-                        };
-                        let clip = placement
-                            .bounds
-                            .intersect(&placement.mask)
-                            .intersect(&bounds);
+                        let plot_bounds = moved + shift;
+                        let clip = plot_bounds.intersect(&(mask + shift)).intersect(&bounds);
                         if clip.size.width <= px(0.) || clip.size.height <= px(0.) {
                             continue;
                         }
                         // The live transforms' anchors move with the chart, as
                         // the page draws them inside the same move.
-                        let translation = placement.bounds.origin - laid_out.origin;
+                        let translation = plot_bounds.origin - placement.bounds.origin;
                         let mut plot = placement.plot.borrow().clone();
-                        plot.captions = placement.captions;
+                        plot.captions = placement.captions.clone();
                         let span = plot.end - plot.start;
                         plot.end = plot_end(&plot, &clock, now);
                         plot.start = plot.end - span;
                         // Bars keep a fixed gap, so their tracks never overlap a neighbour's fill.
                         plot.background_separate = true;
                         let background = plot.clone();
-                        let alpha = page_opacity * placement.opacity;
+                        let alpha = page_opacity * fade;
                         let mut element = div()
                             .size_full()
                             .opacity(alpha)
                             .child(plot)
                             .into_any_element();
                         window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
-                            element.layout_as_root(placement.bounds.size.into(), window, cx);
-                            element.prepaint_at(placement.bounds.origin, window, cx);
+                            element.layout_as_root(plot_bounds.size.into(), window, cx);
+                            element.prepaint_at(plot_bounds.origin, window, cx);
                         });
                         elements.push(Drawn {
                             element,
                             clip,
                             background,
-                            bounds: placement.bounds,
+                            bounds: plot_bounds,
                             alpha,
-                            lives: placement.lives,
+                            lives: placement.lives.clone(),
                             translation,
                         });
                     }
@@ -1047,7 +1052,8 @@ impl TimePlot {
                 // Quarters across, the clock ticks down.
                 let line = color.opacity(GRID_OPACITY * alpha);
                 for fraction in [0.25, 0.5, 0.75] {
-                    window.paint_quad(gpui_kit::gpui::fill(
+                    window.paint_rule(
+                        Axis::Horizontal,
                         Bounds::new(
                             point(
                                 bounds.left(),
@@ -1056,19 +1062,20 @@ impl TimePlot {
                             size(bounds.size.width, px(1.)),
                         ),
                         line,
-                    ));
+                    );
                 }
                 let span = (self.end - self.start).max(1.);
                 for tick in ticks.iter() {
                     let x = ((tick - self.start) / span) as f32 * width;
                     if (0. ..=width).contains(&x) {
-                        window.paint_quad(gpui_kit::gpui::fill(
+                        window.paint_rule(
+                            Axis::Vertical,
                             Bounds::new(
                                 point(bounds.left() + px(x.round()), bounds.top()),
                                 size(px(1.), bounds.size.height),
                             ),
                             line,
-                        ));
+                        );
                     }
                 }
                 return;
@@ -1085,8 +1092,8 @@ impl TimePlot {
                     true,
                 ),
             ] {
-                // A line at the top of every band, the frame's top and left edges included.
-                for index in 0..count {
+                // The frame already draws the four outside edges.
+                for index in 1..count {
                     let fraction = index as f32 / count as f32;
                     let origin = if vertical {
                         point(bounds.left() + px(width * fraction), bounds.top())
@@ -1098,10 +1105,15 @@ impl TimePlot {
                     } else {
                         size(bounds.size.width, px(1.))
                     };
-                    window.paint_quad(gpui_kit::gpui::fill(
+                    window.paint_rule(
+                        if vertical {
+                            Axis::Vertical
+                        } else {
+                            Axis::Horizontal
+                        },
                         Bounds::new(origin, size),
                         color.opacity(GRID_OPACITY * alpha),
-                    ));
+                    );
                 }
             }
         }
@@ -1430,8 +1442,7 @@ impl Desktop {
         let id = plot.id.to_string();
         let placements = self.chart_placements.clone();
         let placed_plot = plot_rc.clone();
-        let opacity = self.chart_fade.get();
-        let offset = self.chart_shift.get();
+        let slide = self.chart_slide.clone();
         let lives = self.chart_lives.borrow().clone();
         // The name and top above the frame, the span and zero below it; in a
         // short performance card, inside the frame (drawn by the chart layer).
@@ -1466,8 +1477,7 @@ impl Desktop {
                         bounds,
                         mask: window.content_mask().bounds,
                         plot: placed_plot.clone(),
-                        opacity,
-                        offset,
+                        slide: slide.clone(),
                         captions: inside.clone(),
                         lives: lives.clone(),
                     },

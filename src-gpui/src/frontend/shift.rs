@@ -14,6 +14,7 @@ pub(super) fn shifted(child: impl IntoElement, offset: Point<Pixels>, opacity: f
         child: child.into_any_element(),
         offset,
         opacity,
+        viewport: None,
     }
 }
 
@@ -21,6 +22,15 @@ pub(super) struct Shifted {
     child: AnyElement,
     offset: Point<Pixels>,
     opacity: f32,
+    viewport: Option<Rc<Cell<Bounds<Pixels>>>>,
+}
+
+impl Shifted {
+    /// Share the stationary parent clip with a layer painted outside this subtree.
+    pub(super) fn within_viewport(mut self, viewport: Option<Rc<Cell<Bounds<Pixels>>>>) -> Self {
+        self.viewport = viewport;
+        self
+    }
 }
 
 impl IntoElement for Shifted {
@@ -61,6 +71,9 @@ impl Element for Shifted {
         window: &mut Window,
         cx: &mut App,
     ) {
+        if let Some(viewport) = &self.viewport {
+            viewport.set(window.content_mask().bounds);
+        }
         self.child.prepaint(window, cx);
     }
 
@@ -77,9 +90,16 @@ impl Element for Shifted {
         if self.offset == Point::default() && self.opacity >= 1. {
             self.child.paint(window, cx);
         } else {
-            window.with_visual_transform(self.offset, self.opacity, |window| {
-                self.child.paint(window, cx)
-            });
+            let mut paint = |window: &mut Window| {
+                window.with_visual_transform(self.offset, self.opacity, |window| {
+                    self.child.paint(window, cx)
+                })
+            };
+            if let Some(viewport) = &self.viewport {
+                window.with_visual_clip(viewport.get(), paint);
+            } else {
+                paint(window);
+            }
         }
     }
 }

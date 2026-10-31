@@ -5,6 +5,93 @@ use gpui::{Bounds, ContentMask, PrimitiveBatch, Quad, ScaledPixels, Scene, point
 use windows::Win32::Foundation::RECT;
 
 #[test]
+fn replay_snaps_chart_frames_and_rules_after_the_composed_transform() {
+    use gpui::{Axis, Edges, Point, VisualTransform};
+
+    let bounds = |x, y, w, h| {
+        Bounds::new(
+            point(ScaledPixels(x), ScaledPixels(y)),
+            size(ScaledPixels(w), ScaledPixels(h)),
+        )
+    };
+    let mask = ContentMask {
+        bounds: bounds(0., 0., 300., 300.),
+    };
+    let mut source = Scene::default();
+    source.insert_primitive(Quad {
+        bounds: bounds(10., 10., 120., 70.),
+        content_mask: ContentMask {
+            bounds: bounds(10., 10., 120., 3.),
+        },
+        border_widths: Edges::all(ScaledPixels(1.)),
+        border_color: gpui::white(),
+        ..Default::default()
+    });
+    source.insert_rule(
+        Axis::Horizontal,
+        Quad {
+            bounds: bounds(11., 30., 118., 1.),
+            content_mask: mask,
+            background: gpui::white().into(),
+            ..Default::default()
+        },
+    );
+    source.insert_rule(
+        Axis::Vertical,
+        Quad {
+            bounds: bounds(50., 11., 1., 68.),
+            content_mask: mask,
+            background: gpui::white().into(),
+            ..Default::default()
+        },
+    );
+
+    for (dx, dy, sx, sy, lengths, expected_width) in [
+        (0.5, -0.49, 1., 1., 1., 1.),
+        (0.24, 0.7, 0.985, 0.985, 0.985, 1.),
+        (-1.2, 2.4, 1.9, 0.6, 1., 1.),
+        (0.2, 0.4, 2., 2., 2., 2.),
+    ] {
+        let mut frame = Scene::default();
+        frame.push_transform(VisualTransform::moved(
+            point(ScaledPixels(dx), ScaledPixels(dy)),
+            0.5,
+        ));
+        frame.push_transform(VisualTransform {
+            scale_x: sx,
+            scale_y: sy,
+            lengths,
+            ..VisualTransform::moved(Point::default(), 1.)
+        });
+        frame.replay(0..source.len(), &source);
+        frame.pop_transform();
+        frame.pop_transform();
+        assert_eq!(frame.quads.len(), 3);
+        let border = &frame.quads[0];
+        assert_eq!(border.border_widths.top.0, expected_width);
+        assert_eq!(border.border_color.a, 0.5);
+        assert_eq!(frame.quads[1].bounds.size.height.0, expected_width);
+        assert_eq!(frame.quads[2].bounds.size.width.0, expected_width);
+        for rect in frame
+            .quads
+            .iter()
+            .map(|q| q.bounds)
+            .chain([border.content_mask.bounds])
+        {
+            for value in [rect.left(), rect.top(), rect.right(), rect.bottom()] {
+                assert_eq!(value.0.fract(), 0.);
+            }
+        }
+        // A second replay uses the original rule geometry, not the previously scaled pixels.
+        let mut settled = Scene::default();
+        settled.replay(2..2 + source.len(), &frame);
+        for (a, b) in settled.quads.iter().zip(&source.quads) {
+            assert_eq!(a.bounds, b.bounds);
+        }
+    }
+}
+
+#[test]
 fn animated_boundary_splits_a_shared_batch_without_reordering() {
     let mut scene = Scene::default();
     scene.quads = [0, 1, 2, 2]

@@ -1472,6 +1472,7 @@ impl Desktop {
         } else {
             point(px(0.), px(shift * 24.))
         };
+        let offset = window.pixel_snap_point(offset);
         self.page_shift.set(offset);
         // Drawn moved and faded; laid out in place, so the page (and its cached
         // tables) replays its last paint instead of rendering every frame.

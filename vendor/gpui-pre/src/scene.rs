@@ -153,6 +153,27 @@ impl Scene {
             .push(PaintOperation::Primitive(primitive));
     }
 
+    /// Inserts a filled rule in device coordinates. Keep its original geometry
+    /// for replay so the final transform determines position and stroke width.
+    pub fn insert_rule(&mut self, axis: crate::Axis, quad: Quad) {
+        let mut placed = quad;
+        if let Some(transform) = self.transform_stack.last() {
+            placed.bounds = snap_edges(transform.bounds(quad.bounds));
+            match axis {
+                crate::Axis::Horizontal => {
+                    placed.bounds.size.height = transform.stroke(quad.bounds.size.height)
+                }
+                crate::Axis::Vertical => {
+                    placed.bounds.size.width = transform.stroke(quad.bounds.size.width)
+                }
+            }
+            placed.content_mask = transform.mask(quad.content_mask);
+            placed.background = quad.background.opacity(transform.opacity);
+        }
+        self.place_primitive(Primitive::Quad(placed), false);
+        self.paint_operations.push(PaintOperation::Rule(axis, quad));
+    }
+
     fn place_primitive(&mut self, mut primitive: Primitive, record: bool) {
         let clipped_bounds = primitive
             .bounds()
@@ -212,6 +233,7 @@ impl Scene {
         for operation in &prev_scene.paint_operations[range] {
             match operation {
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
+                PaintOperation::Rule(axis, quad) => self.insert_rule(*axis, *quad),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
                 PaintOperation::EndLayer => self.pop_layer(),
                 PaintOperation::PushTransform(transform) => self.push_transform(*transform),
@@ -290,6 +312,7 @@ pub(crate) enum PrimitiveKind {
 
 pub(crate) enum PaintOperation {
     Primitive(Primitive),
+    Rule(crate::Axis, Quad),
     StartLayer(Bounds<ScaledPixels>),
     EndLayer,
     PushTransform(VisualTransform),
@@ -325,6 +348,11 @@ pub struct VisualTransform {
     /// Device-pixel bounds nothing inside is drawn outside of, placed in the
     /// coordinates around the transform (its own offset and scale do not move it).
     pub clip: Option<Bounds<ScaledPixels>>,
+}
+
+fn snap_edges(rect: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
+    let snap = |v: ScaledPixels| ScaledPixels(crate::util::round_half_toward_zero(v.0));
+    Bounds::from_corners(rect.origin.map(snap), rect.bottom_right().map(snap))
 }
 
 impl VisualTransform {
@@ -383,6 +411,13 @@ impl VisualTransform {
         length * self.lengths
     }
 
+    fn stroke(&self, width: ScaledPixels) -> ScaledPixels {
+        ScaledPixels(crate::util::round_stroke_to_device_pixel(
+            width.0,
+            self.lengths,
+        ))
+    }
+
     fn corners(&self, corners: Corners<ScaledPixels>) -> Corners<ScaledPixels> {
         Corners {
             top_left: self.length(corners.top_left),
@@ -430,20 +465,24 @@ impl VisualTransform {
                 color: shadow.color.opacity(opacity),
                 ..*shadow
             }),
-            Primitive::Quad(quad) => Primitive::Quad(Quad {
-                bounds: self.bounds(quad.bounds),
-                content_mask: self.mask(quad.content_mask),
-                background: quad.background.opacity(opacity),
-                border_color: quad.border_color.opacity(opacity),
-                corner_radii: self.corners(quad.corner_radii),
-                border_widths: Edges {
-                    top: self.length(quad.border_widths.top),
-                    right: self.length(quad.border_widths.right),
-                    bottom: self.length(quad.border_widths.bottom),
-                    left: self.length(quad.border_widths.left),
-                },
-                ..*quad
-            }),
+            Primitive::Quad(quad) => {
+                let mut placed = Quad {
+                    bounds: self.bounds(quad.bounds),
+                    content_mask: self.mask(quad.content_mask),
+                    background: quad.background.opacity(opacity),
+                    border_color: quad.border_color.opacity(opacity),
+                    corner_radii: self.corners(quad.corner_radii),
+                    ..*quad
+                };
+                if quad.border_widths != Edges::default() {
+                    // Border strips share a box and meet at clip edges. Snap both
+                    // after composing all transforms so adjacent strips still meet.
+                    placed.bounds = snap_edges(placed.bounds);
+                    placed.content_mask.bounds = snap_edges(placed.content_mask.bounds);
+                    placed.border_widths = quad.border_widths.map(|w| self.stroke(*w));
+                }
+                Primitive::Quad(placed)
+            }
             Primitive::Path(path) => {
                 let mut path = path.clone();
                 path.bounds = self.bounds(path.bounds);

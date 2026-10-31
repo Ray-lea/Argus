@@ -683,10 +683,16 @@ impl Desktop {
         } else {
             1.
         };
-        let offset = point(px(0.), px(direction * 16. * (1. - arriving)));
+        let offset = point(
+            px(0.),
+            window.pixel_snap(px(direction * 16. * (1. - arriving))),
+        );
         // The chart layer's curves move and fade with the view.
-        self.chart_fade.set(arriving);
-        self.chart_shift.set(offset);
+        self.chart_slide = (progress < 1.).then(|| charts::DeviceSlide {
+            offset,
+            opacity: arriving,
+            viewport: Rc::new(Cell::new(Bounds::default())),
+        });
         // A short card (the interface's size container query on the card)
         // takes the chart captions into the frames.
         let short = self
@@ -697,13 +703,13 @@ impl Desktop {
             .map(|device| self.device_view(&device, window, cx))
             .unwrap_or_else(|| div().into_any_element());
         self.chart_captions_inside.set(false);
-        self.chart_fade.set(1.);
-        self.chart_shift.set(Point::default());
+        let viewport = self.chart_slide.take().map(|slide| slide.viewport);
         let content = super::super::shift::shifted(
             div().flex_1().flex().flex_col().child(content),
             offset,
             arriving,
         )
+        .within_viewport(viewport)
         .into_any_element();
         let splitter = div()
             .id("perf-sidebar-splitter")

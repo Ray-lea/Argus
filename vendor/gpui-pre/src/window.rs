@@ -5007,6 +5007,27 @@ impl Window {
         }
     }
 
+    /// Paint a solid axis-aligned rule. Its short side is a stroke width, snapped
+    /// independently of its position, including when a cached scene moves or scales.
+    pub fn paint_rule(&mut self, axis: crate::Axis, bounds: Bounds<Pixels>, color: Hsla) {
+        self.invalidator.debug_assert_paint();
+        if bounds.is_empty() {
+            return;
+        }
+        let mut snapped = self.snap_bounds(bounds);
+        match axis {
+            crate::Axis::Horizontal => snapped.size.height = self.snap_stroke(bounds.size.height),
+            crate::Axis::Vertical => snapped.size.width = self.snap_stroke(bounds.size.width),
+        }
+        let quad = Quad {
+            bounds: snapped,
+            content_mask: self.snapped_content_mask(),
+            background: color.opacity(self.element_opacity()).into(),
+            ..Default::default()
+        };
+        self.next_frame.scene.insert_rule(axis, quad);
+    }
+
     /// Paint the given `Path` into the scene for the next frame at the current z-index.
     ///
     /// This method should only be called as part of the paint phase of element drawing.

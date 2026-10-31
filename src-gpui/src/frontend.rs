@@ -165,11 +165,8 @@ struct Desktop {
     page_shift: Rc<Cell<Point<Pixels>>>,
     /// The details pane's drawn motion, for its charts (`details_pane`).
     pane_motion: Rc<RefCell<charts::PaneMotion>>,
-    /// Opacity of the live charts being built: a view settling in fades its charts.
-    chart_fade: Cell<f32>,
-    /// How far the live charts being built are drawn from their place, inside
-    /// their clip: the performance view arriving moves its charts.
-    chart_shift: Cell<Point<Pixels>>,
+    /// Device content and its separately painted plots share this entrance.
+    chart_slide: Option<charts::DeviceSlide>,
     /// Whether the charts being built draw their captions inside the frame
     /// (a short performance card).
     chart_captions_inside: Cell<bool>,
@@ -335,8 +332,7 @@ impl Desktop {
             page_opacity: Rc::new(Cell::new(1.)),
             page_shift: Rc::new(Cell::new(Point::default())),
             pane_motion: Rc::default(),
-            chart_fade: Cell::new(1.),
-            chart_shift: Cell::new(Point::default()),
+            chart_slide: None,
             chart_captions_inside: Cell::new(false),
             chart_lives: RefCell::new(Vec::new()),
             live_motions: Rc::default(),
