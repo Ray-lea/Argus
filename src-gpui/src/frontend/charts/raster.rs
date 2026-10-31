@@ -1,7 +1,7 @@
 //! Rasterize a curve revision once; continuous frames only translate its texture.
 use super::*;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 static BUILDS: AtomicU64 = AtomicU64::new(0);
 /// Where each sample sits in the dash pattern, by sample time, per series:
@@ -25,11 +25,51 @@ static BUILD_MICROS: AtomicU64 = AtomicU64::new(0);
 /// a large one on several threads (`thread_count`), so one short wait covers
 /// them all. This only bounds a raster that does not land.
 const FIRST_PAINT_WAIT: Duration = Duration::from_millis(250);
+// Include the clock's display lag and a few neighbouring samples. Geometry
+// beyond this margin cannot enter the plot before the next revision.
+const OVERSCAN: f64 = 0.125;
+const MAX_DIMENSION: u32 = 16_384;
+const MAX_BUILD_BYTES: usize = 128 << 20;
+const MAX_IN_FLIGHT_BYTES: usize = 192 << 20;
+#[derive(Default)]
+struct RasterBudget {
+    used: AtomicUsize,
+    peak: AtomicUsize,
+}
+static IN_FLIGHT: RasterBudget = RasterBudget {
+    used: AtomicUsize::new(0),
+    peak: AtomicUsize::new(0),
+};
 
-pub(super) fn metrics() -> (u64, u64) {
+struct Reservation<'a> {
+    used: &'a AtomicUsize,
+    bytes: usize,
+}
+
+impl<'a> Reservation<'a> {
+    fn try_new(budget: &'a RasterBudget, bytes: usize, limit: usize) -> Option<Self> {
+        let used = &budget.used;
+        let before = used
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current.checked_add(bytes).filter(|total| *total <= limit)
+            })
+            .ok()?;
+        budget.peak.fetch_max(before + bytes, Ordering::Relaxed);
+        Some(Self { used, bytes })
+    }
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        self.used.fetch_sub(self.bytes, Ordering::Relaxed);
+    }
+}
+
+pub(super) fn metrics() -> (u64, u64, usize) {
     (
         BUILDS.load(Ordering::Relaxed),
         BUILD_MICROS.load(Ordering::Relaxed),
+        IN_FLIGHT.peak.load(Ordering::Relaxed),
     )
 }
 
@@ -52,10 +92,11 @@ struct Pending {
     slot: Arc<Slot>,
 }
 /// A background raster's result, which a first paint may wait for.
-#[derive(Default)]
 struct Slot {
     result: std::sync::Mutex<Option<Option<Texture>>>,
     ready: std::sync::Condvar,
+    // Dropped after the result, including for a superseded worker.
+    _reservation: Reservation<'static>,
 }
 impl Cache {
     /// Takes a finished raster in, unless the request moved on to other series.
@@ -132,7 +173,7 @@ impl ImageSurface {
         let drawn = height
             - (value - self.min) / (self.max - self.min).max(f64::EPSILON)
                 * (height - f64::from(self.top));
-        bounds.top() + self.offset.y * sy + bounds.size.height * (1. - k) + px(drawn as f32 * sy)
+        bounds.top() + bounds.size.height * (1. - k) + px(drawn as f32 * sy)
     }
     fn bounds_at(&self, plot: &TimePlot, bounds: Bounds<Pixels>, end: f64) -> Bounds<Pixels> {
         let span = (plot.end - plot.start).max(1.);
@@ -301,18 +342,31 @@ pub(super) fn prepare(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Wind
         {
             return;
         }
-        let slot = Arc::new(Slot::default());
+        let input = Input::new(plot, bounds.size, density);
+        let layout = extent(&input);
+        let bytes = layout.map_or(0, |layout| layout.working_bytes);
+        let Some(reservation) = Reservation::try_new(&IN_FLIGHT, bytes, MAX_IN_FLIGHT_BYTES) else {
+            // No work was queued. Retry the current revision when workers release space.
+            window.request_animation_frame();
+            return;
+        };
+        let slot = Arc::new(Slot {
+            _reservation: reservation,
+            result: Default::default(),
+            ready: Default::default(),
+        });
         cache.pending = Some(Pending {
             revision,
             content,
             started: Instant::now(),
             slot: slot.clone(),
         });
-        let input = Input::new(plot, bounds.size, density);
         let landing = slot.clone();
         let task = cx.background_executor().spawn(async move {
             let start = Instant::now();
-            let texture = rasterize(&input);
+            let texture = layout.and_then(|layout| {
+                draw_raster(&input, layout, thread_count(layout.width, layout.rows))
+            });
             BUILDS.fetch_add(1, Ordering::Relaxed);
             BUILD_MICROS.fetch_add(start.elapsed().as_micros() as u64, Ordering::Relaxed);
             *landing.result.lock().unwrap_or_else(|e| e.into_inner()) = Some(texture);
@@ -502,6 +556,12 @@ fn dot_image(fill: Hsla, ring: Hsla, density: f32) -> Option<Arc<RenderImage>> {
 #[derive(Clone, Copy)]
 struct Cubic([(f64, f64); 4]);
 impl Cubic {
+    fn clamp_y(mut self, (min, max): (f64, f64)) -> Self {
+        for p in &mut self.0 {
+            p.1 = p.1.clamp(min, max);
+        }
+        self
+    }
     /// The pieces of the curve through `points`: the monotone cubic, whose
     /// control points sit at thirds of each segment so that x runs linearly
     /// with the parameter, or straight lines.
@@ -689,19 +749,101 @@ fn dashes(segments: &[Measured], phases: &[f64]) -> Option<tiny_skia::Path> {
     path.finish()
 }
 
-fn curve(points: &[(f64, f64)], baseline: Option<f32>, smooth: bool) -> Option<tiny_skia::Path> {
-    if points.len() < 2 {
-        return None;
+/// Keep the original monotone tangents at the clip edges. In each cubic x
+/// is linear in its parameter, so the time window cuts the exact curve.
+fn clipped_run(plot: &Input, layout: Extent, run: &[(f64, f64)]) -> (Vec<Cubic>, Vec<f64>) {
+    let visible = visible_samples(run, layout.time);
+    let mut times = Vec::new();
+    let mut pieces = Vec::new();
+    if visible.len() < 2 {
+        return (pieces, times);
     }
+    let start = visible.start.saturating_sub(1);
+    let neighbours = &run[start..(visible.end + 1).min(run.len())];
+    let width = f64::from(f32::from(plot.size.width));
+    let plot_height = f32::from(plot.size.height);
+    let height = f64::from(plot_height);
+    let scale = (plot.max - plot.min).max(f64::EPSILON);
+    let x = |at| (at - plot.geometry_start) / plot.span * width - f64::from(layout.left);
+    let points = neighbours
+        .iter()
+        .map(|&(at, v)| {
+            (
+                x(at),
+                height - (v - plot.min) / scale * f64::from(plot_height - plot.stroke / 2.),
+            )
+        })
+        .collect::<Vec<_>>();
+    let inset = f64::from(plot.stroke + 2. / layout.density);
+    let vertical = (-inset, height + inset);
+    for (index, cubic) in Cubic::through(&points, plot.smooth)
+        .into_iter()
+        .enumerate()
+        .skip(visible.start - start)
+        .take(visible.len() - 1)
+    {
+        let (a, b) = (neighbours[index].0, neighbours[index + 1].0);
+        let (from, to) = (a.max(layout.time.0), b.min(layout.time.1));
+        if to < from || (from == to && b != a) {
+            continue;
+        }
+        let mut cubic = cubic;
+        if from != a || to != b {
+            cubic = cubic.part((from - a) / (b - a), (to - a) / (b - a));
+            // Direct time projection also retains precision at a distant predecessor.
+            let (left, right) = (x(from), x(to));
+            for (i, point) in cubic.0.iter_mut().enumerate() {
+                point.0 = left + (right - left) * (i as f64 / 3.);
+            }
+        }
+        if !cubic.0.iter().all(|(x, y)| x.is_finite() && y.is_finite()) {
+            return (Vec::new(), Vec::new());
+        }
+        if times.is_empty() {
+            times.push(from);
+        }
+        // Retain the visible portion of an off-scale peak and its fill. A dash
+        // must never enumerate the invisible length above or below the plot.
+        let (y0, y1) = (cubic.0[0].1, cubic.0[3].1);
+        let edges = if y0 <= y1 {
+            [vertical.0, vertical.1]
+        } else {
+            [vertical.1, vertical.0]
+        };
+        let mut begin = 0.;
+        for edge in edges {
+            if y0.min(y1) < edge && edge < y0.max(y1) {
+                let (mut lo, mut hi) = (begin, 1.);
+                for _ in 0..48 {
+                    let mid = (lo + hi) * 0.5;
+                    if (cubic.at(mid).1 < edge) == (y0 < y1) {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                let cut = (lo + hi) * 0.5;
+                pieces.push(cubic.part(begin, cut).clamp_y(vertical));
+                times.push(from + (to - from) * cut);
+                begin = cut;
+            }
+        }
+        pieces.push(cubic.part(begin, 1.).clamp_y(vertical));
+        times.push(to);
+    }
+    (pieces, times)
+}
+
+fn curve(cubics: &[Cubic], baseline: Option<f32>, smooth: bool) -> Option<tiny_skia::Path> {
     let mut path = tiny_skia::PathBuilder::new();
-    let (x, y) = points[0];
+    let (x, y) = cubics.first()?.0[0];
     if let Some(base) = baseline {
         path.move_to(x as f32, base);
         path.line_to(x as f32, y as f32);
     } else {
         path.move_to(x as f32, y as f32);
     }
-    for cubic in Cubic::through(points, smooth) {
+    for cubic in cubics {
         let [_, c1, c2, end] = cubic.0.map(|(x, y)| (x as f32, y as f32));
         if smooth {
             path.cubic_to(c1.0, c1.1, c2.0, c2.1, end.0, end.1);
@@ -710,7 +852,7 @@ fn curve(points: &[(f64, f64)], baseline: Option<f32>, smooth: bool) -> Option<t
         }
     }
     if let Some(base) = baseline {
-        path.line_to(points.last()?.0 as f32, base);
+        path.line_to(cubics.last()?.0[3].0 as f32, base);
         path.close();
     }
     path.finish()
@@ -753,59 +895,141 @@ fn thread_count(width: u32, height: u32) -> usize {
     (width as usize * height as usize / THREAD_PIXELS).clamp(1, cores)
 }
 
-/// Where the texture starts left of the plot and its size in device pixels:
-/// wide enough for every run and the line's width at both ends.
-fn extent(plot: &Input) -> Option<(f32, u32, u32)> {
-    let width = f32::from(plot.size.width);
-    let height = f32::from(plot.size.height);
-    if width <= 0. || height <= 0. {
-        return None;
-    }
-    let span = plot.span;
-    let first = plot
-        .series
-        .iter()
-        .flat_map(|s| s.geometry.iter().filter_map(|r| r.first()))
-        .map(|p| ((p.0 - plot.geometry_start) / span) as f32 * width)
-        .fold(0., f32::min)
-        - plot.stroke;
-    // Time `t` lands on texture column ((t - start) / span * width - left) *
-    // density. Moving `left` back to keep (start / span * width + left) *
-    // density whole puts every time on the same fraction of a texel in every
-    // raster: a redraw for a new sample then repeats the texels already on
-    // screen instead of antialiasing each point and dash end afresh.
-    let density = f64::from(plot.density);
-    let fraction = (plot.geometry_start / span * f64::from(width) * density).rem_euclid(1.);
-    let left = (((f64::from(first) * density + fraction).floor() - fraction) / density) as f32;
-    let right = plot
-        .series
-        .iter()
-        .flat_map(|s| s.geometry.iter().filter_map(|r| r.last()))
-        .map(|p| ((p.0 - plot.geometry_start) / span) as f32 * width)
-        .fold(width, f32::max)
-        + plot.stroke;
-    let pixel_width = ((right - left) * plot.density).ceil() as u32;
-    let pixel_height = (height * plot.density).ceil() as u32;
-    (pixel_width > 0 && pixel_height > 0).then_some((left, pixel_width, pixel_height))
+#[derive(Clone, Copy)]
+struct Extent {
+    time: (f64, f64),
+    left: f32,
+    density: f32,
+    width: u32,
+    first_row: u32,
+    rows: u32,
+    rgba_bytes: usize,
+    working_bytes: usize,
 }
 
+/// Samples touching the interval, including both ends of a crossing segment.
+fn visible_samples(run: &[(f64, f64)], (start, end): (f64, f64)) -> std::ops::Range<usize> {
+    let first = run.partition_point(|p| p.0 < start).saturating_sub(1);
+    let last = (run.partition_point(|p| p.0 <= end) + 1).min(run.len());
+    first..last
+}
+
+fn extent(plot: &Input) -> Option<Extent> {
+    let width = f32::from(plot.size.width);
+    let height = f32::from(plot.size.height);
+    let span = plot.span;
+    let time = (
+        plot.geometry_start - span * OVERSCAN,
+        plot.geometry_start + span * (1. + OVERSCAN),
+    );
+    if ![width, height, plot.density]
+        .into_iter()
+        .all(|n| n.is_finite() && n > 0.)
+        || width.max(height) > 4. * MAX_DIMENSION as f32
+        || !plot.stroke.is_finite()
+        || plot.stroke < 0.
+        || !time.0.is_finite()
+        || !time.1.is_finite()
+        || time.1 <= time.0
+        || !span.is_finite()
+        || span <= 0.
+        || !(plot.max - plot.min).is_finite()
+    {
+        return None;
+    }
+    let x = |at: f64| ((at.clamp(time.0, time.1) - plot.geometry_start) / span) as f32 * width;
+    let scale = (plot.max - plot.min).max(f64::EPSILON);
+    let y = |value: f64| {
+        (height as f64 - (value - plot.min) / scale * (height - plot.stroke / 2.) as f64) as f32
+    };
+    let (mut first, mut last) = (0f32, width);
+    let (mut top, mut bottom) = (f32::INFINITY, f32::NEG_INFINITY);
+    for series in &plot.series {
+        for run in series.geometry.iter() {
+            let points = &run[visible_samples(run, time)];
+            if points.len() < 2 {
+                continue;
+            }
+            first = first.min(x(points[0].0));
+            last = last.max(x(points.last()?.0));
+            // A monotone cubic stays between its endpoint values. Filled runs
+            // also cover the rows down to the plot baseline.
+            for &(_, v) in points {
+                top = top.min(y(v));
+                bottom = bottom.max(y(v));
+            }
+            if plot.fill && series.fill > 0. {
+                bottom = bottom.max(height);
+            }
+        }
+    }
+    if top > bottom {
+        return None;
+    }
+    let mut density = plot.density;
+    for _ in 0..16 {
+        // Keep a timestamp on the same texel phase across revisions. The
+        // vertical crop starts on a whole texel and leaves filter support.
+        let d = f64::from(density);
+        let phase = (plot.geometry_start / span * f64::from(width) * d).rem_euclid(1.);
+        let left = (((f64::from(first - plot.stroke) * d + phase).floor() - phase) / d) as f32;
+        let w = ((last + plot.stroke - left) * density).ceil() as u32;
+        let full_rows = (height * density).ceil() as u32;
+        let first_row = (((top - plot.stroke) * density).floor() - 2.).max(0.) as u32;
+        let end = (((bottom + plot.stroke) * density).ceil() + 2.) as u32;
+        let rows = end.min(full_rows).saturating_sub(first_row);
+        if rows == 0 || w == 0 {
+            return None;
+        }
+        if w <= MAX_DIMENSION && rows <= MAX_DIMENSION {
+            let area = (w as usize).checked_mul(rows as usize)?;
+            let working_bytes = area.checked_mul(5)?; // BGRA plus concurrent band masks.
+            if working_bytes <= MAX_BUILD_BYTES {
+                return Some(Extent {
+                    time,
+                    left,
+                    density,
+                    width: w,
+                    first_row,
+                    rows,
+                    rgba_bytes: area.checked_mul(4)?,
+                    working_bytes,
+                });
+            }
+        }
+        // Unusually large viewports still draw the full graph at lower density.
+        density *= 0.5;
+    }
+    None
+}
+
+#[cfg(test)]
 fn rasterize(plot: &Input) -> Option<Texture> {
-    let (_, pixel_width, pixel_height) = extent(plot)?;
-    rasterize_in(plot, thread_count(pixel_width, pixel_height))
+    let layout = extent(plot)?;
+    draw_raster(plot, layout, thread_count(layout.width, layout.rows))
+}
+
+#[cfg(test)]
+fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
+    draw_raster(plot, extent(plot)?, threads)
 }
 
 /// Draws the plot on `threads` threads, each drawing some horizontal bands of
 /// one buffer. A band draws every shape moved up by its first row and clipped
 /// to its rows, as tiny-skia tiles a pixmap too large for it.
-fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
+fn draw_raster(plot: &Input, layout: Extent, threads: usize) -> Option<Texture> {
     let started = Instant::now();
-    let (left, pixel_width, pixel_height) = extent(plot)?;
+    let Extent {
+        left,
+        density,
+        width: pixel_width,
+        rows: pixel_height,
+        first_row,
+        ..
+    } = layout;
     let size = plot.size;
-    let density = plot.density;
-    let width = f32::from(size.width);
     let height = f32::from(size.height);
     let span = plot.span;
-    let scale = (plot.max - plot.min).max(f64::EPSILON);
     let stroke = plot.stroke;
     let transform = tiny_skia::Transform::from_scale(density, density);
     let resolution = tiny_skia::PathStroker::compute_resolution_scale(&transform);
@@ -819,18 +1043,13 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
         let solid = tiny_skia::Color::from_rgba(color.r, color.g, color.b, color.a)?;
         let mut next_phases = HashMap::new();
         for run in series.geometry.iter() {
-            let points = run
-                .iter()
-                .map(|&(at, value)| {
-                    (
-                        ((at - plot.geometry_start) / span) * width as f64 - left as f64,
-                        height as f64 - (value - plot.min) / scale * (height - top) as f64,
-                    )
-                })
-                .collect::<Vec<_>>();
+            let (cubics, times) = clipped_run(plot, layout, run);
+            if cubics.is_empty() {
+                continue;
+            }
             if fill
                 && series.fill > 0.
-                && let Some(path) = curve(&points, Some(height), plot.smooth)
+                && let Some(path) = curve(&cubics, Some(height), plot.smooth)
             {
                 shapes.push(Shape::Fill {
                     path,
@@ -847,12 +1066,11 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
                 // Dashes run along the curve, so they keep their length on
                 // steep spikes, and keep the phases their samples were drawn
                 // at (`run_phases`), so they stay put as the curve scrolls.
-                let segments = Cubic::through(&points, plot.smooth)
+                let segments = cubics
                     .into_iter()
                     .map(|cubic| Measured::new(cubic, f64::from(density)))
                     .collect::<Vec<_>>();
                 let lengths = segments.iter().map(Measured::length).collect::<Vec<_>>();
-                let times = run.iter().map(|&(at, _)| at).collect::<Vec<_>>();
                 let phases = run_phases(&times, &lengths, &drawn_phases[index]);
                 next_phases.extend(
                     times
@@ -862,7 +1080,7 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
                 );
                 dashes(&segments, &phases)
             } else {
-                curve(&points, None, plot.smooth)
+                curve(&cubics, None, plot.smooth)
             };
             if let Some(path) = line {
                 let line = tiny_skia::Stroke {
@@ -916,8 +1134,11 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
     let rows = (pixel_height as usize).div_ceil(bands).max(1);
     // Keep tiny-skia's premultiplied channels for the Windows area sampler.
     // Channel conversion reuses the raster buffer.
-    let mut pixels = vec![0u8; row * pixel_height as usize];
+    let mut pixels = Vec::new();
+    pixels.try_reserve_exact(layout.rgba_bytes).ok()?;
+    pixels.resize(layout.rgba_bytes, 0);
     let draw = |first: usize, pixels: &mut [u8]| {
+        let first = first + first_row as usize;
         let count = (pixels.len() / row) as u32;
         if let Some(mut pixmap) = tiny_skia::PixmapMut::from_bytes(pixels, pixel_width, count) {
             let transform = transform.post_translate(0., -(first as f32));
@@ -1011,6 +1232,7 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
         println!(
             "{}",
             serde_json::json!({"event":"chart-raster","width":pixel_width,"height":pixel_height,
+            "firstRow":first_row,"rgbaBytes":layout.rgba_bytes,"density":density,
             "threads":threads,"us":started.elapsed().as_micros(),"atQpc":gpui_kit::gpui::profiler::trace_clock_100ns()})
         );
     }
@@ -1018,7 +1240,7 @@ fn rasterize_in(plot: &Input, threads: usize) -> Option<Texture> {
         image: Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])),
         #[cfg(target_os = "windows")]
         has_fill: fill,
-        offset: point(px(left), px(0.)),
+        offset: point(px(left), px(first_row as f32 / density)),
         size: gpui_kit::gpui::size(
             px(pixel_width as f32 / density),
             px(pixel_height as f32 / density),
@@ -1146,6 +1368,72 @@ mod tests {
         assert_ne!(before, key(&p, size, 2.));
     }
     #[test]
+    fn distant_samples_clip_before_bitmap_allocation_and_dash_expansion() {
+        let jump = 731_339_910.;
+        let mut p = plot(vec![(0., Some(10.)), (jump, Some(80.))]);
+        p.series[0] = p.series[0].clone().dashed(true);
+        p.geometry_start = jump - 59_000.;
+        p.start = p.geometry_start;
+        p.end = jump;
+        let input = Input::new(&p, size(px(112.), px(57.)), 2.);
+        let layout = super::extent(&input).unwrap();
+        assert!(layout.width <= 264 && layout.rows <= 114);
+        let (pieces, times) = super::clipped_run(&input, layout, &input.series[0].geometry[0]);
+        assert_eq!(times, [layout.time.0, jump]);
+        assert_eq!(pieces.len(), 1);
+        let value = 10. + 70. * (layout.time.0 / jump);
+        let expected = 57. - value / 100. * (57. - f64::from(input.stroke / 2.));
+        assert!((pieces[0].0[0].1 - expected).abs() < 1e-6);
+        let image = rasterize(&input).unwrap().image;
+        assert!(
+            image
+                .as_bytes(0)
+                .unwrap()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|p| p[3] > 0)
+        );
+        // Crop a segment crossing both edges; disjoint data never gets a bitmap.
+        p.start = jump / 2.;
+        p.geometry_start = p.start;
+        p.end = p.start + 59_000.;
+        let input = Input::new(&p, size(px(112.), px(57.)), 2.);
+        let layout = super::extent(&input).unwrap();
+        let (_, times) = super::clipped_run(&input, layout, &input.series[0].geometry[0]);
+        assert_eq!(times, [layout.time.0, layout.time.1]);
+        p.geometry_start = jump * 3.;
+        assert!(super::extent(&Input::new(&p, size(px(112.), px(57.)), 2.)).is_none());
+    }
+
+    #[test]
+    fn bitmap_dimensions_and_simultaneous_builds_have_separate_limits() {
+        use super::{MAX_BUILD_BYTES, MAX_DIMENSION, Reservation};
+        use std::sync::atomic::Ordering;
+        let mut p = plot(vec![(0., Some(100.)), (100., Some(0.))]);
+        p.fill = true;
+        let input = Input::new(&p, size(px(12_000.), px(8000.)), 4.);
+        let bounds = super::extent(&input).unwrap();
+        assert!(bounds.density < input.density && bounds.width <= MAX_DIMENSION);
+        assert!(bounds.working_bytes <= MAX_BUILD_BYTES);
+        assert!(super::extent(&Input::new(&p, size(px(f32::INFINITY), px(50.)), 2.)).is_none());
+        let used = super::RasterBudget::default();
+        let reservation = Reservation::try_new(&used, 70, 100).unwrap();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                assert!(Reservation::try_new(&used, 31, 100).is_none());
+                let _fits = Reservation::try_new(&used, 30, 100).unwrap();
+                assert_eq!(used.used.load(Ordering::Relaxed), 100);
+            })
+            .join()
+            .unwrap()
+        });
+        drop(reservation);
+        assert!(Reservation::try_new(&used, 100, 100).is_some());
+        assert_eq!(used.used.load(Ordering::Relaxed), 0);
+        assert_eq!(used.peak.load(Ordering::Relaxed), 100);
+    }
+    #[test]
     fn dash_phases_stay_with_their_samples() {
         use super::{DASH_PERIOD, run_phases};
         use std::collections::HashMap;
@@ -1222,6 +1510,10 @@ mod tests {
             b.image.size(0).width.0 as usize,
         );
         let (pa, pb) = (a.image.as_bytes(0).unwrap(), b.image.as_bytes(0).unwrap());
+        let row = |tex: &Texture, y: usize| {
+            y.checked_sub((f32::from(tex.offset.y) * 2.).round() as usize)
+                .filter(|&r| r < tex.image.size(0).height.0 as usize)
+        };
         // Compared premultiplied, as the renderer averages texels. The same
         // shapes moved by whole texels can still round a coordinate to the
         // next float, moving an edge across one of a texel's 16 coverage
@@ -1246,8 +1538,10 @@ mod tests {
         let (mut differ, mut worst, mut inked) = (0, 0, 0);
         for y in 0..120 {
             for x in from..to {
-                let (i, j) = ((y * wa + x) * 4, (y * wb + x - shift) * 4);
-                let (p, q) = (premultiplied(&pa[i..i + 4]), premultiplied(&pb[j..j + 4]));
+                let pixel_a = row(&a, y).map_or(&[0; 4][..], |r| &pa[(r * wa + x) * 4..][..4]);
+                let pixel_b =
+                    row(&b, y).map_or(&[0; 4][..], |r| &pb[(r * wb + x - shift) * 4..][..4]);
+                let (p, q) = (premultiplied(pixel_a), premultiplied(pixel_b));
                 inked += usize::from(p[3] > 0);
                 let d = p.iter().zip(&q).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
                 if d > 0 {
@@ -1279,13 +1573,49 @@ mod tests {
         let alpha = |x: f32| {
             let x = ((x - f32::from(texture.offset.x)) * 2.) as usize;
             (39..44)
-                .map(|y| bytes[(y * width + x) * 4 + 3])
+                .map(|y| {
+                    bytes[((y - (f32::from(texture.offset.y) * 2.).round() as usize) * width + x)
+                        * 4
+                        + 3]
+                })
                 .max()
                 .unwrap()
         };
         assert!(alpha(10.) > 128);
         assert_eq!(alpha(40.), 0);
         assert!(alpha(70.) > 128);
+    }
+
+    #[test]
+    fn trimmed_rows_preserve_the_stroke_and_fill_at_their_original_height() {
+        for filled in [false, true] {
+            let mut p = plot(vec![(0., Some(8.)), (50., Some(10.)), (100., Some(9.))]);
+            p.fill = filled;
+            p.series[0] = p.series[0].clone().fill(if filled { 0.3 } else { 0. });
+            let input = Input::new(&p, size(px(224.), px(114.)), 2.);
+            let clipped = super::extent(&input).unwrap();
+            assert!(clipped.first_row > 150 && clipped.rows < 40);
+            let full = super::Extent {
+                first_row: 0,
+                rows: 228,
+                rgba_bytes: clipped.width as usize * 228 * 4,
+                ..clipped
+            };
+            let a = super::draw_raster(&input, clipped, 1).unwrap();
+            let b = super::draw_raster(&input, full, 1).unwrap();
+            let stride = clipped.width as usize * 4;
+            let first = clipped.first_row as usize * stride;
+            let bytes = a.image.as_bytes(0).unwrap();
+            let reference = b.image.as_bytes(0).unwrap();
+            assert!(reference[..first].iter().all(|&b| b == 0));
+            assert!(reference[first + bytes.len()..].iter().all(|&b| b == 0));
+            assert!(
+                bytes
+                    .iter()
+                    .zip(&reference[first..])
+                    .all(|(a, b)| a.abs_diff(*b) <= 1)
+            );
+        }
     }
     #[test]
     fn threads_draw_what_one_thread_draws() {

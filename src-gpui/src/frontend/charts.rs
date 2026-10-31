@@ -1,7 +1,7 @@
 //! Time-series adapter for GPUI's native plot primitives. Unknown samples remain gaps.
 use super::*;
 mod raster;
-pub(super) fn raster_metrics() -> (u64, u64) {
+pub(super) fn raster_metrics() -> (u64, u64, usize) {
     raster::metrics()
 }
 use gpui_kit::component::ActiveTheme;

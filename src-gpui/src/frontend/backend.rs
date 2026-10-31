@@ -1178,10 +1178,10 @@ impl Desktop {
                 "{}",
                 json!({"event":"ui-work","label":label,"serializeUs":self.work.serialize_us,"backgroundGroupUs":self.work.background_group_us,"timelineUs":self.work.timeline_us,"rowsUs":self.work.rows_us,"rowsMaxUs":self.work.rows_max_us,"rowBuilds":self.work.row_builds})
             );
-            let (builds, micros) = charts::raster_metrics();
+            let (builds, micros, peak_bytes) = charts::raster_metrics();
             println!(
                 "{}",
-                json!({"event":"ui-chart-work","label":label,"rasterBuilds":builds,"rasterMicros":micros})
+                json!({"event":"ui-chart-work","label":label,"rasterBuilds":builds,"rasterMicros":micros,"peakRasterBuildBytes":peak_bytes})
             );
             let frames = window.frame_duration_snapshot();
             let controls = window.window_control_regions();
