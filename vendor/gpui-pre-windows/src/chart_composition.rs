@@ -26,6 +26,7 @@ const MAX_TREE_BYTES: u64 = 256 * 1024 * 1024;
 #[derive(Default)]
 pub(super) struct ChartComposition {
     tree: Option<Tree>,
+    output: Option<ChartOutput>,
     skipped: Option<FrameKey>,
     unavailable: bool,
     standard_sdr: Option<bool>,
@@ -96,6 +97,15 @@ fn standard_sdr_window(hwnd: HWND) -> bool {
 struct Tree {
     key: FrameKey,
     layers: Vec<Layer>,
+}
+
+/// The backing bitmap and root stay attached while a marked chart alternates
+/// between a complete paint and compositor-driven motion.
+#[derive(Clone)]
+struct ChartOutput {
+    size: (u32, u32),
+    root: IDCompositionVisual,
+    bitmap: IDCompositionSurface,
 }
 
 struct Layer {
@@ -289,10 +299,21 @@ fn surface(
     alpha_mode: DXGI_ALPHA_MODE,
     paint: impl FnOnce(&ID3D11Texture2D, POINT) -> Result<()>,
 ) -> Result<IDCompositionSurface> {
+    let surface = unsafe { comp.CreateSurface(width, height, format, alpha_mode)? };
+    draw_surface(&surface, devices, None, paint)?;
+    Ok(surface)
+}
+
+fn draw_surface(
+    surface: &IDCompositionSurface,
+    devices: &DirectXRendererDevices,
+    rect: Option<RECT>,
+    paint: impl FnOnce(&ID3D11Texture2D, POINT) -> Result<()>,
+) -> Result<()> {
     unsafe {
-        let surface = comp.CreateSurface(width, height, format, alpha_mode)?;
         let mut offset = POINT::default();
-        let update: IDXGISurface = surface.BeginDraw(None, &mut offset)?;
+        let update: IDXGISurface =
+            surface.BeginDraw(rect.as_ref().map(std::ptr::from_ref), &mut offset)?;
         let result = update
             .cast()
             .map_err(anyhow::Error::from)
@@ -302,8 +323,37 @@ fn surface(
         let ended = surface.EndDraw();
         result?;
         ended?;
-        Ok(surface)
+        Ok(())
     }
+}
+
+fn copy_scene(
+    surface: &IDCompositionSurface,
+    devices: &DirectXRendererDevices,
+    source: &ID3D11Texture2D,
+    rect: Option<RECT>,
+) -> Result<()> {
+    let region = rect.map(|r| D3D11_BOX {
+        left: r.left as u32,
+        top: r.top as u32,
+        right: r.right as u32,
+        bottom: r.bottom as u32,
+        front: 0,
+        back: 1,
+    });
+    draw_surface(surface, devices, rect, |target, at| unsafe {
+        devices.device_context.CopySubresourceRegion(
+            target,
+            0,
+            at.x as u32,
+            at.y as u32,
+            0,
+            source,
+            0,
+            region.as_ref().map(std::ptr::from_ref),
+        );
+        Ok(())
+    })
 }
 
 fn viewport(x: f32, y: f32, w: u32, h: u32) -> D3D11_VIEWPORT {
@@ -530,6 +580,78 @@ fn child(
 }
 
 impl DirectXRenderer {
+    /// A cached tree and its next fully painted frame must enter the same
+    /// compositor transaction stream. Reattaching the flip chain here can
+    /// expose its last presented chart position for one refresh.
+    pub(super) fn present_chart_frame(&mut self, scene: &Scene) -> Result<bool> {
+        let Some(comp) = &mut self.direct_composition else {
+            return Ok(false);
+        };
+        let Some(output) = &comp.charts.output else {
+            return Ok(false);
+        };
+        if comp.charts.unavailable
+            || comp.charts.standard_sdr != Some(true)
+            || output.size != (self.width, self.height)
+            || !scene.surfaces.is_empty()
+            || !scene
+                .polychrome_sprites
+                .iter()
+                .any(|s| s.pad == PolychromeSprite::IN_SCENE_AREA_FILTER)
+        {
+            return Ok(false);
+        }
+        let r = self
+            .resources
+            .as_ref()
+            .context("missing chart frame resources")?;
+        let source = r
+            .render_target
+            .as_ref()
+            .context("missing completed chart frame")?;
+        let devices = self
+            .devices
+            .as_ref()
+            .context("missing chart frame device")?;
+        let tree = comp.charts.tree.as_ref();
+        let previous = tree.map(|t| t.key);
+        // The tree's backing contains just the prefix. A second flat frame
+        // can update the dirty regions of the preceding completed frame.
+        let dirty = if tree.is_none() {
+            r.present_dirty.as_deref()
+        } else {
+            None
+        };
+        if let Some(dirty) = dirty {
+            for rect in dirty {
+                copy_scene(&output.bitmap, devices, source, Some(*rect))?;
+            }
+        } else {
+            copy_scene(&output.bitmap, devices, source, None)?;
+        }
+        unsafe {
+            if let Some(tree) = tree {
+                output.root.RemoveAllVisuals()?;
+                output.root.SetContent(&output.bitmap)?;
+                if comp.charts.skipped == Some(tree.key) {
+                    comp.charts.skipped = None;
+                }
+            }
+            comp.comp_device.Commit()?;
+        }
+        comp.charts.tree = None;
+        crate::frame_trace::record(8, u64::from(previous.is_some()));
+        if diagnostics()
+            && let Some(key) = previous
+        {
+            println!(
+                "{{\"event\":\"gpu-chart-handoff\",\"revision\":{}}}",
+                key.revision
+            );
+        }
+        Ok(true)
+    }
+
     pub(crate) fn release_hidden_chart_layers(&mut self) -> Result<bool> {
         let Some(comp) = &mut self.direct_composition else {
             return Ok(false);
@@ -838,31 +960,32 @@ impl DirectXRenderer {
         let filter = charts.filter.as_ref().context("chart filter")?;
         let root = unsafe { dev.CreateVisual()? };
         let prefix = r.prefix.as_ref().context("missing chart background")?;
-        let background = surface(
-            dev,
-            devices,
-            self.width,
-            self.height,
-            RENDER_TARGET_FORMAT,
-            if comp.swap_visual.is_none() {
-                DXGI_ALPHA_MODE_IGNORE
-            } else {
-                DXGI_ALPHA_MODE_PREMULTIPLIED
+        let alpha = if comp.swap_visual.is_none() {
+            DXGI_ALPHA_MODE_IGNORE
+        } else {
+            DXGI_ALPHA_MODE_PREMULTIPLIED
+        };
+        let previous = charts
+            .output
+            .as_ref()
+            .filter(|frame| opaque_strips > 0 && frame.size == key.size);
+        let background = match previous {
+            Some(frame) => frame.bitmap.clone(),
+            None => unsafe {
+                dev.CreateSurface(self.width, self.height, RENDER_TARGET_FORMAT, alpha)?
             },
-            |target, at| unsafe {
-                devices.device_context.CopySubresourceRegion(
-                    target,
-                    0,
-                    at.x as u32,
-                    at.y as u32,
-                    0,
-                    prefix,
-                    0,
-                    None,
-                );
-                Ok(())
-            },
-        )?;
+        };
+        let output = if opaque_strips == 0 {
+            None
+        } else if let Some(frame) = previous {
+            Some(frame.clone())
+        } else {
+            Some(ChartOutput {
+                size: key.size,
+                root: unsafe { dev.CreateVisual()? },
+                bitmap: background.clone(),
+            })
+        };
         // Only the chart region needs an off-screen group. Keep the backdrop
         // and antialiased window corners outside it, painting each prefix pixel once.
         let viewport = RECT {
@@ -980,10 +1103,21 @@ impl DirectXRenderer {
         for layer in &mut layers {
             layer.place(scene)?;
         }
+        copy_scene(&background, devices, prefix, None)?;
         unsafe {
-            comp.comp_target.SetRoot(&root)?;
+            if let Some(frame) = &output {
+                frame.root.RemoveAllVisuals()?;
+                frame.root.SetContent(None::<&windows::core::IUnknown>)?;
+                frame.root.AddVisual(&root, false, None)?;
+                if previous.is_none() {
+                    comp.comp_target.SetRoot(&frame.root)?;
+                }
+            } else {
+                comp.comp_target.SetRoot(&root)?;
+            }
             dev.Commit()?;
         }
+        crate::frame_trace::record(7, opaque_strips as u64);
         if diagnostics() {
             println!(
                 "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{},\"bytes\":{tree_bytes},\"opaqueStrips\":{opaque_strips},\"imageBytes\":{},\"untrimmedImageBytes\":{},\"barBytes\":{bar_bytes},\"groupBytes\":{group_bytes},\"revision\":{}}}",
@@ -993,6 +1127,7 @@ impl DirectXRenderer {
                 key.revision
             );
         }
+        charts.output = output;
         charts.tree = Some(Tree { key, layers });
         charts.used_since_hide = true;
         Ok(true)
@@ -1065,6 +1200,9 @@ impl ChartComposition {
         self.skipped = None;
     }
     pub(super) fn active(&self) -> bool {
+        self.tree.is_some() || self.output.is_some()
+    }
+    pub(super) fn moving_tree(&self) -> bool {
         self.tree.is_some()
     }
     pub(super) fn disable(&mut self) {
@@ -1073,6 +1211,7 @@ impl ChartComposition {
         self.bars.clear();
     }
     pub(super) fn deactivate(&mut self) {
+        self.output = None;
         self.tree = None;
         self.skipped = None;
     }

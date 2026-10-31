@@ -789,7 +789,11 @@ impl DirectXRenderer {
             .direct_composition
             .as_ref()
             .is_some_and(|c| c.charts.active());
-        self.render(scene, background_appearance, !was_composited)?;
+        let tree_was_moving = self
+            .direct_composition
+            .as_ref()
+            .is_some_and(|c| c.charts.moving_tree());
+        self.render(scene, background_appearance, !tree_was_moving)?;
         let mut restore_root = was_composited;
         match self.install_chart_tree(scene, background_appearance) {
             Ok(true) => return Ok(()),
@@ -799,6 +803,21 @@ impl DirectXRenderer {
                 self.direct_composition.as_mut().unwrap().charts.disable();
             }
             Ok(false) => {}
+        }
+        match self.present_chart_frame(scene) {
+            Ok(true) => return Ok(()),
+            Err(error) => {
+                log::warn!("Presenting completed chart frame: {error:#}");
+                restore_root = true;
+                self.direct_composition.as_mut().unwrap().charts.disable();
+            }
+            Ok(false) => {}
+        }
+        if restore_root {
+            // The flip chain may last have presented a different scene.
+            if let Some(resources) = &mut self.resources {
+                resources.present_dirty = None;
+            }
         }
         let started = self.gpu_timing.as_ref().map(|_| std::time::Instant::now());
         let result = self.present();

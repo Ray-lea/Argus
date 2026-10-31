@@ -1414,11 +1414,11 @@ pub(in crate::frontend) fn swatch(color: Hsla, dashed: bool, width: Pixels) -> A
         .into_any_element()
 }
 impl Desktop {
-    pub(in crate::frontend) fn chart_center(&self, id: &str) -> Option<Point<Pixels>> {
+    pub(in crate::frontend) fn chart_bounds(&self, id: &str) -> Option<Bounds<Pixels>> {
         self.chart_placements
             .borrow()
             .get(id)
-            .map(|placement| placement.bounds.center())
+            .map(|placement| placement.bounds)
     }
     fn chart_frame(
         &self,

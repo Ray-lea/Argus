@@ -11,8 +11,10 @@ const label = process.argv[2] ?? `smoke-${Date.now()}`;
 if (!/^[a-z0-9-]+$/.test(label)) throw Error("Invalid test label");
 const live = process.argv.includes("--live");
 const retained = process.argv.includes("--retained");
+const chartScroll = process.argv.includes("--chart-scroll");
 const opaqueWindow = process.argv.includes("--opaque-window");
 const snapshots = process.argv.includes("--snapshots");
+assert(!(chartScroll && (live || retained || snapshots)), "chart scroll checks use a fixed CPU spike");
 assert(!(live && retained), "retained comparisons require a fixed fixture");
 assert(!(snapshots && (live || retained)), "snapshot comparisons require a fixed fixture");
 const output = resolve("target/native-validation", label);
@@ -29,6 +31,11 @@ let fixture;
 if (!live) {
   const fixtureFlag = process.argv.indexOf("--fixture");
   fixture = JSON.parse(readFileSync(fixtureFlag >= 0 ? process.argv[fixtureFlag + 1] : "tools/window-probe/fixtures/desktop.json"));
+  if (chartScroll) {
+    fixture.snapshot.timestamp = Date.now();
+    fixture.snapshot.system.cpu = 12;
+    fixture.snapshot.system.cpuKernel = 4;
+  }
   const samples = JSON.parse(readFileSync("resources/motion.json")).chartSamples;
   const history = fixture.historySeries ?? [];
   fixture.snapshots = Array.from({ length: samples - 1 }, (_, i) => {
@@ -40,6 +47,7 @@ if (!live) {
       frame.system.cpu = past.cpu;
       frame.system.memUsed = past.memUsed;
     }
+    if (chartScroll) frame.system.cpu = i === Math.floor(samples * 0.42) ? 89 : 12;
     return frame;
   });
   fixture.snapshot.seq = samples;
@@ -64,7 +72,7 @@ const child = spawn(
     ...(opaqueWindow ? ["--opaque-window"] : []),
     ...(live ? [] : ["--fixture", resolve(output, "fixture.json")]),
   ],
-  { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}), ...(snapshots ? { ARGUS_GPUI_FRAME_TRACE: "1" } : {}) } },
+  { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained || chartScroll ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}), ...(snapshots ? { ARGUS_GPUI_FRAME_TRACE: "1" } : {}) } },
 );
 const events = [];
 let error = "",
@@ -159,6 +167,57 @@ try {
     child.stdin.write("show\n");
     await sleep(4500);
     await capture("restored-performance");
+  } else if (chartScroll) {
+    const widthFlag = process.argv.indexOf("--width"), heightFlag = process.argv.indexOf("--height");
+    if (widthFlag >= 0 || heightFlag >= 0) {
+      const width = Number(process.argv[widthFlag + 1]), height = Number(process.argv[heightFlag + 1]);
+      assert(widthFlag >= 0 && heightFlag >= 0 && Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0, "invalid chart test dimensions");
+      child.stdin.write(`size ${width} ${height}\n`);
+      for (let i = 0; i < 100 && !events.some(e => e.event === "resized" && e.width === width && e.height === height); i++) await sleep(50);
+      assert(events.some(e => e.event === "resized" && e.width === width && e.height === height), "chart test dimensions unavailable");
+    }
+    const scaleFlag = process.argv.indexOf("--ui-scale");
+    const uiScale = scaleFlag >= 0 ? Number(process.argv[scaleFlag + 1]) : 100;
+    assert(Number.isInteger(uiScale) && uiScale >= 80 && uiScale <= 150, "invalid chart test UI scale");
+    send({page: "performance", device: "cpu", cpuMode: "overall", theme: "dark", motion: "fluid", uiMotion: false, uiScale});
+    await sleep(1500);
+    send({pointerOutside: true, inspectLayout: "scroll-plot"});
+    await sleep(300);
+    const layout = events.findLast(e => e.event === "ui-layout" && e.label === "scroll-plot");
+    assert(layout?.cpuPlot, "missing CPU plot bounds");
+    const [x, y, w, h] = layout.cpuPlot.map(v => v * layout.scaleFactor);
+    const crop = [x + w * 0.04, y + h * 0.35, w * 0.49, Math.min(12, h * 0.025)].map(Math.round);
+    let seq = 0;
+    const append = () => {
+      seq++;
+      send({sample: {at: 0, set: {"/system/cpu": 12 + seq % 8, "/system/threadCount": 13000 + seq}}});
+    };
+    append();
+    await sleep(800);
+    send({pointerOutside: true});
+    await sleep(300);
+    for (const phase of ["samples", "repaints"]) {
+      const start = events.length;
+      const dir = `target/native-validation/${label}/${phase}`;
+      child.stdin.write(`record ${dir} 6000 ${crop.join(" ")}\n`);
+      for (let tick = 0; tick < 12; tick++) {
+        if (tick % 2 === 0) append();
+        else if (phase === "repaints") send({fullPaint: true});
+        await sleep(500);
+      }
+      for (let i = 0; i < 150 && !events.slice(start).some(e => e.event === "recorded"); i++) await sleep(100);
+      const recording = events.slice(start).find(e => e.event === "recorded");
+      assert(recording && !recording.error && recording.frames > 50, JSON.stringify(recording));
+      const result = spawnSync(probe, ["track-chart", resolve(dir)], {windowsHide: true, encoding: "utf8", timeout: 30000});
+      assert.equal(result.status, 0, result.stderr);
+      const track = JSON.parse(result.stdout);
+      events.push({event: "chart-motion-check", phase, ...track});
+      assert(track.tracked >= track.frames * 0.95 && track.travelPx > w * 0.04, `CPU spike did not traverse the recording: ${result.stdout}`);
+      assert(track.maxReversePx <= 0.75, `CPU chart moved backwards: ${result.stdout}`);
+      if (process.argv.includes("--require-chart-layers")) {
+        assert(events.slice(start).some(e => e.event === "gpu-chart-handoff"), `${phase}: no chart handoff observed`);
+      }
+    }
   } else if (snapshots) {
     const compare = (left, right) => {
       const result = spawnSync(probe, ["compare", resolve(output, `${left}.png`), resolve(output, `${right}.png`)], { windowsHide: true, encoding: "utf8", timeout: 20000 });
@@ -254,6 +313,8 @@ try {
             assert.equal(layers.length, 0, `${name}: expected the in-scene control`);
           } else {
             assert(layers.some((event) => event.opaqueStrips > 0), `${name}: the opaque chart cache was not presented`);
+            assert(events.slice(settled).some(e => e.event === "gpu-chart-handoff" && layers.some(l => l.revision === e.revision)),
+              `${name}: a cached chart did not hand off to a complete frame on its composition root`);
           }
         } else if (!process.env.ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE || name.startsWith("processes")) {
           assert(layers.length > 0, `${name}: chart visuals were not presented`);
@@ -358,7 +419,7 @@ for (const event of events.filter((e) => e.event === "ui-caption" && !e.label.en
   assert(event.actionsAreClient, `${event.label}: toolbar controls were classified as draggable caption`);
   assert(event.minimize && event.maximize && event.close, `${event.label}: native caption controls were lost`);
 }
-if (!live && !retained && !snapshots) {
+if (!live && !retained && !snapshots && !chartScroll) {
   for (const [label, sort, descending] of [["sorted-name", "name", false], ["sorted-name-reversed", "name", true], ["sorted-cpu", "cpu", true]]) {
     const state = events.find((event) => event.event === "ui-render-counts" && event.label === label);
     assert(state && state.sort === sort && state.descending === descending, `${label}: clicking the full header did not sort`);

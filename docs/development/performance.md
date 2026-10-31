@@ -10,6 +10,8 @@
 
 `gpu-window-surface` 记录实际创建的交换链类型、格式和 Alpha 模式。`gpu-chart-layers.opaqueStrips` 记录已经包含背景的曲线区段数。使用同一发行程序，分别以默认模式和 `--opaque-window` 启动，设置 `ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE=1` 可对照交互曲线在窗口内逐帧合成的开销。资源对照关闭窗口捕获和跟踪，实际帧率另外通过窗口捕获测量。单独开启 `ARGUS_GPUI_FRAME_TRACE=1` 可比较同一场景的绘制次数与 Present1 次数。
 
+`scripts/ui-smoke.mjs <标识> --chart-scroll --require-chart-layers` 在鼠标停在图表外时逐帧跟踪固定 CPU 峰值。测试分别覆盖正常采样和采样间插入整帧重绘，记录回移的最大物理像素数。实色窗口可追加 `--opaque-window`。帧跟踪阶段 7 记录缓存树提交，阶段 8 记录通过同一根节点提交的完整画面。比较 GPU 提交开销时，这两项与 Present1 分别计数。
+
 tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内存及 GPU 引擎时间，通过 Windows.Graphics.Capture 观察目标窗口的呈现间隔。DWM 消耗包含整个桌面的合成工作，单独记录。忙碌开发机上的进程占用结果需要多轮交替与稳定性判断。
 
 应用以 --hidden --test --identifier <独立标识> 启动；工具使用 HWND_BOTTOM 和 NOACTIVATE 显示，并每 50 ms 监视前台。截图与帧统计均来自该窗口的捕获结果，隐藏状态单独测量资源开销。测试完退出实例并清理自身测试数据。

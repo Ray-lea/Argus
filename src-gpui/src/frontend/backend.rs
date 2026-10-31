@@ -1109,8 +1109,9 @@ impl Desktop {
             });
         }
         if let Some(id) = control["hoverChart"].as_str()
-            && let Some(position) = self.chart_center(id)
+            && let Some(bounds) = self.chart_bounds(id)
         {
+            let position = bounds.center();
             // Dispatch after releasing Desktop; hover listeners may update it.
             window.defer(cx, move |window, cx| {
                 window.dispatch_event(
@@ -1226,6 +1227,7 @@ impl Desktop {
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
                 "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),"scaleFactor":window.scale_factor(),"remSize":f32::from(window.rem_size()),
+                "cpuPlot":self.chart_bounds("cpu-overall-plot").map(|b|[f32::from(b.left()),f32::from(b.top()),f32::from(b.size.width),f32::from(b.size.height)]),
                 "performanceScrollY":f32::from(self.device_scroll.max_offset().y),
                 "performanceCardHeight":self.perf_card_chrome.get().map(|chrome| f32::from(window.viewport_size().height - chrome)),
                 "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()})

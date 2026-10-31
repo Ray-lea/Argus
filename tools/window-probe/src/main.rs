@@ -1,3 +1,6 @@
+#[cfg(feature = "capture")]
+use anyhow::Context as _;
+
 #[cfg(all(windows, feature = "capture"))]
 mod frames;
 #[cfg(windows)]
@@ -23,6 +26,10 @@ fn main() -> anyhow::Result<()> {
     match args.first().map(String::as_str) {
         #[cfg(feature = "capture")]
         Some("compare") => pixels::compare(&args[1], &args[2])?,
+        #[cfg(feature = "capture")]
+        Some("track-chart") => {
+            pixels::track_chart(args.get(1).context("recording directory required")?)?
+        }
         #[cfg(windows)]
         Some("run") => windows::run(&args[1..])?,
         #[cfg(windows)]
@@ -33,7 +40,9 @@ fn main() -> anyhow::Result<()> {
         Some("latency") => latency::run(&args[1], args.get(2).map_or(Ok(20), |s| s.parse())?)?,
         #[cfg(all(windows, feature = "capture"))]
         Some("capture") => windows::capture(args[1].parse()?, &args[2])?,
-        _ => anyhow::bail!("usage: argus-window-probe run EXE [ARGS] | capture PID PNG"),
+        _ => anyhow::bail!(
+            "usage: argus-window-probe run EXE [ARGS] | capture PID PNG | compare LEFT RIGHT | track-chart DIRECTORY"
+        ),
     }
     Ok(())
 }
