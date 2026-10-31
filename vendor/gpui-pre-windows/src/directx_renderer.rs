@@ -31,6 +31,7 @@ mod retained_tests;
 mod chart_composition;
 
 pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "GPUI_DISABLE_DIRECT_COMPOSITION";
+
 const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 // This configuration is used for MSAA rendering on paths only, and it's guaranteed to be supported by DirectX 11.
 const PATH_MULTISAMPLE_COUNT: u32 = 4;
@@ -64,6 +65,7 @@ pub(crate) struct DirectXRenderer {
     /// In that case we want to discard the first frame that we draw as we got reset in the middle of a frame
     /// meaning we lost all the allocated gpu textures and scene resources.
     skip_draws: bool,
+    disable_direct_composition: bool,
 }
 
 /// Direct3D objects
@@ -465,7 +467,7 @@ impl Drop for Annotation<'_> {
 struct DirectComposition {
     comp_device: IDCompositionDevice,
     comp_target: IDCompositionTarget,
-    comp_visual: IDCompositionVisual,
+    swap_visual: Option<IDCompositionVisual>,
     charts: chart_composition::ChartComposition,
 }
 
@@ -511,23 +513,19 @@ impl DirectXRenderer {
         let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
             .context("Creating DirectX devices")?;
 
-        let resources = DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
+        let hwnd_swap_chain = disable_direct_composition || windows_opaque_window_requested();
+        let resources = DirectXResources::new(&devices, 1, 1, hwnd, hwnd_swap_chain)
             .context("Creating DirectX resources")?;
         let globals = DirectXGlobalElements::new(&devices.device)
             .context("Creating DirectX global elements")?;
         let pipelines = DirectXRenderPipelines::new(&devices.device)
             .context("Creating DirectX render pipelines")?;
 
-        let direct_composition = if disable_direct_composition {
-            None
-        } else {
-            let composition = DirectComposition::new(devices.dxgi_device.as_ref().unwrap(), hwnd)
-                .context("Creating DirectComposition")?;
-            composition
-                .set_swap_chain(&resources.swap_chain)
-                .context("Setting swap chain for DirectComposition")?;
-            Some(composition)
-        };
+        let direct_composition = DirectComposition::for_window(
+            &devices,
+            hwnd,
+            (!hwnd_swap_chain).then_some(&resources.swap_chain),
+        )?;
 
         let atlas = Arc::new(DirectXAtlas::new(
             &devices.device,
@@ -555,6 +553,7 @@ impl DirectXRenderer {
             width: 1,
             height: 1,
             skip_draws: false,
+            disable_direct_composition,
         })
     }
 
@@ -692,7 +691,7 @@ impl DirectXRenderer {
     }
 
     fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
-        let disable_direct_composition = self.direct_composition.is_none();
+        let disable_direct_composition = self.disable_direct_composition;
 
         unsafe {
             #[cfg(debug_assertions)]
@@ -719,12 +718,13 @@ impl DirectXRenderer {
 
         let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
             .context("Recreating DirectX devices")?;
+        let hwnd_swap_chain = disable_direct_composition || windows_opaque_window_requested();
         let resources = DirectXResources::new(
             &devices,
             self.width,
             self.height,
             self.hwnd,
-            disable_direct_composition,
+            hwnd_swap_chain,
         )
         .context("Creating DirectX resources")?;
         let globals = DirectXGlobalElements::new(&devices.device)
@@ -732,14 +732,11 @@ impl DirectXRenderer {
         let pipelines = DirectXRenderPipelines::new(&devices.device)
             .context("Creating DirectXRenderPipelines")?;
 
-        let direct_composition = if disable_direct_composition {
-            None
-        } else {
-            let composition =
-                DirectComposition::new(devices.dxgi_device.as_ref().unwrap(), self.hwnd)?;
-            composition.set_swap_chain(&resources.swap_chain)?;
-            Some(composition)
-        };
+        let direct_composition = DirectComposition::for_window(
+            &devices,
+            self.hwnd,
+            (!hwnd_swap_chain).then_some(&resources.swap_chain),
+        )?;
 
         self.atlas.handle_device_lost(
             &devices.device,
@@ -812,7 +809,7 @@ impl DirectXRenderer {
         if restore_root {
             let comp = self.direct_composition.as_mut().unwrap();
             unsafe {
-                comp.comp_target.SetRoot(&comp.comp_visual)?;
+                comp.comp_target.SetRoot(comp.swap_visual.as_ref())?;
                 comp.comp_device.Commit()?;
             }
             comp.charts.deactivate();
@@ -1572,9 +1569,9 @@ impl DirectXResources {
         width: u32,
         height: u32,
         hwnd: HWND,
-        disable_direct_composition: bool,
+        hwnd_swap_chain: bool,
     ) -> Result<Self> {
-        let swap_chain = if disable_direct_composition {
+        let swap_chain = if hwnd_swap_chain {
             create_swap_chain(&devices.dxgi_factory, &devices.device, hwnd, width, height)?
         } else {
             create_swap_chain_for_composition(
@@ -1594,6 +1591,14 @@ impl DirectXResources {
             path_intermediate_msaa_view,
             viewport,
         ) = create_resources(devices, &swap_chain, width, height)?;
+        if std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some()
+            && let Ok(desc) = unsafe { swap_chain.GetDesc1() }
+        {
+            println!(
+                "{{\"event\":\"gpu-window-surface\",\"hwndSwapChain\":{hwnd_swap_chain},\"format\":{},\"alphaMode\":{}}}",
+                desc.Format.0, desc.AlphaMode.0
+            );
+        }
         set_rasterizer_state(&devices.device, &devices.device_context)?;
 
         Ok(Self {
@@ -1736,26 +1741,56 @@ impl DirectXRenderPipelines {
 }
 
 impl DirectComposition {
-    pub fn new(dxgi_device: &IDXGIDevice, hwnd: HWND) -> Result<Self> {
-        let comp_device = get_comp_device(dxgi_device)?;
-        let comp_target = unsafe { comp_device.CreateTargetForHwnd(hwnd, true) }?;
-        let comp_visual = unsafe { comp_device.CreateVisual() }?;
-
-        Ok(Self {
-            comp_device,
-            comp_target,
-            comp_visual,
-            charts: chart_composition::ChartComposition::new(dxgi_device),
-        })
-    }
-
-    pub fn set_swap_chain(&self, swap_chain: &IDXGISwapChain1) -> Result<()> {
-        unsafe {
-            self.comp_visual.SetContent(swap_chain)?;
-            self.comp_target.SetRoot(&self.comp_visual)?;
-            self.comp_device.Commit()?;
+    fn for_window(
+        devices: &DirectXRendererDevices,
+        hwnd: HWND,
+        swap_chain: Option<&IDXGISwapChain1>,
+    ) -> Result<Option<Self>> {
+        let Some(dxgi) = &devices.dxgi_device else {
+            return Ok(None);
+        };
+        let mut charts = chart_composition::ChartComposition::new(dxgi);
+        if swap_chain.is_none() && !charts.enabled() {
+            return Ok(None);
         }
-        Ok(())
+        let create = || -> Result<Self> {
+            let comp_device = if swap_chain.is_some() && charts.enabled() {
+                unsafe { DCompositionCreateDevice3(dxgi) }.or_else(|_| {
+                    charts.disable();
+                    get_comp_device(dxgi)
+                })?
+            } else {
+                get_comp_device(dxgi)?
+            };
+            unsafe {
+                let comp_target = comp_device.CreateTargetForHwnd(hwnd, true)?;
+                let swap_visual = if let Some(chain) = swap_chain {
+                    let visual = comp_device.CreateVisual()?;
+                    visual.SetContent(chain)?;
+                    comp_target.SetRoot(&visual)?;
+                    comp_device.Commit()?;
+                    Some(visual)
+                } else {
+                    // A native swap chain already presents into the HWND.
+                    // Attach a visual only while a complete chart tree covers it.
+                    None
+                };
+                Ok(Self {
+                    comp_device,
+                    comp_target,
+                    swap_visual,
+                    charts,
+                })
+            }
+        };
+        match create() {
+            Ok(comp) => Ok(Some(comp)),
+            Err(error) if swap_chain.is_none() => {
+                log::warn!("Opaque window chart layers unavailable: {error:#}");
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
     }
 }
 
@@ -2617,6 +2652,7 @@ pub(crate) mod shader_resources {
         SubpixelSprite,
         PolychromeSprite,
         ChartFilter,
+        ChartBackdrop,
         EmojiRasterization,
     }
 
@@ -2690,6 +2726,10 @@ pub(crate) mod shader_resources {
                 ShaderModule::ChartFilter => match target {
                     ShaderTarget::Vertex => CHART_FILTER_VERTEX_BYTES,
                     ShaderTarget::Fragment => CHART_FILTER_FRAGMENT_BYTES,
+                },
+                ShaderModule::ChartBackdrop => match target {
+                    ShaderTarget::Vertex => CHART_BACKDROP_VERTEX_BYTES,
+                    ShaderTarget::Fragment => CHART_BACKDROP_FRAGMENT_BYTES,
                 },
                 ShaderModule::PolychromeSprite => match target {
                     ShaderTarget::Vertex => POLYCHROME_SPRITE_VERTEX_BYTES,
@@ -2786,6 +2826,7 @@ pub(crate) mod shader_resources {
                 ShaderModule::SubpixelSprite => "subpixel_sprite",
                 ShaderModule::PolychromeSprite => "polychrome_sprite",
                 ShaderModule::ChartFilter => "chart_filter",
+                ShaderModule::ChartBackdrop => "chart_backdrop",
                 ShaderModule::EmojiRasterization => "emoji_rasterization",
             }
         }

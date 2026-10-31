@@ -386,8 +386,11 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
         let image_bounds = surface.bounds_at(plot, bounds, plot.end);
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             #[cfg(target_os = "windows")]
-            let painted =
-                window.paint_image_subpixel_premultiplied(image_bounds, texture.image.clone(), 0);
+            let painted = if plot.interactive && plot.fill {
+                window.paint_image_subpixel_in_scene(image_bounds, texture.image.clone(), 0)
+            } else {
+                window.paint_image_subpixel_premultiplied(image_bounds, texture.image.clone(), 0)
+            };
             #[cfg(not(target_os = "windows"))]
             let painted = window.paint_image_subpixel(image_bounds, texture.image.clone(), 0);
             match painted {

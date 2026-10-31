@@ -1196,6 +1196,10 @@ impl PolychromeSprite {
     /// Area-filter an image whose RGB channels are already multiplied by alpha.
     /// The Windows renderer combines adjacent texels with hardware linear sampling.
     pub const PREMULTIPLIED_AREA_FILTER: u32 = 2;
+
+    /// Blend the filtered image with the scene before presentation. A platform
+    /// may move cached pixels if they already include their opaque backdrop.
+    pub const IN_SCENE_AREA_FILTER: u32 = 3;
 }
 
 impl From<PolychromeSprite> for Primitive {

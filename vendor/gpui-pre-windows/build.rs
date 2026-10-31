@@ -42,6 +42,7 @@ mod shader_compilation {
             "subpixel_sprite",
             "polychrome_sprite",
             "chart_filter",
+            "chart_backdrop",
         ];
 
         let rust_binding_path = format!("{}/shaders_bytes.rs", out_dir);

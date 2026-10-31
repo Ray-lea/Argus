@@ -1516,12 +1516,23 @@ impl Desktop {
                             .unwrap_or(theme::dimension("chartMinHeight")),
                     ),
                 })
-                .when(look.frame, |d| {
-                    d.border_1()
-                        .border_color(color.opacity(FRAME_OPACITY))
-                        .rounded(px(4.))
-                })
-                .child(placeholder),
+                .map(|d| {
+                    if look.frame {
+                        // Put the opaque matte behind the antialiased border. The rectangular
+                        // plot clip can include corner texels that a rounded fill leaves clear.
+                        d.bg(self.palette.chart_surface).child(
+                            div()
+                                .size_full()
+                                .overflow_hidden()
+                                .border_1()
+                                .border_color(color.opacity(FRAME_OPACITY))
+                                .rounded(px(4.))
+                                .child(placeholder),
+                        )
+                    } else {
+                        d.child(placeholder)
+                    }
+                }),
         );
         if let Some(bottom) = bottom {
             frame = frame.child(caption_row(bottom));

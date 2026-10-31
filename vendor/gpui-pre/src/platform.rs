@@ -2767,6 +2767,23 @@ pub enum WindowAppearance {
     VibrantDark,
 }
 
+/// Whether the Windows host and renderer should use an opaque HWND swap chain.
+#[cfg(target_os = "windows")]
+pub fn windows_opaque_window_requested() -> bool {
+    static REQUESTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *REQUESTED.get_or_init(|| {
+        std::env::args_os()
+            .skip(1)
+            .any(|arg| arg == "--opaque-window")
+            || [
+                "ARGUS_GPUI_OPAQUE_WINDOW",
+                "GPUI_DISABLE_DIRECT_COMPOSITION",
+            ]
+            .iter()
+            .any(|key| std::env::var(key).is_ok_and(|value| value == "1" || value == "true"))
+    })
+}
+
 /// The appearance of the background of the window itself, when there is
 /// no content or the content is transparent.
 #[derive(Copy, Clone, Debug, Default, PartialEq)]

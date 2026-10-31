@@ -5437,6 +5437,22 @@ impl Window {
         )
     }
 
+    /// Paint a premultiplied image whose displayed pixels must include its backdrop.
+    /// Retained bounds can still move without repainting its parent element.
+    pub fn paint_image_subpixel_in_scene(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+    ) -> Result<Option<PaintedPrimitive>> {
+        self.paint_filtered_image(
+            bounds,
+            data,
+            frame_index,
+            PolychromeSprite::IN_SCENE_AREA_FILTER,
+        )
+    }
+
     fn paint_filtered_image(
         &mut self,
         bounds: Bounds<Pixels>,

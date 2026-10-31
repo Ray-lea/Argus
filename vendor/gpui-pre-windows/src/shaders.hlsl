@@ -1234,14 +1234,37 @@ cbuffer ChartFilterParams : register(b2) {
     int2 chart_update_offset;
     float chart_first_y;
     float chart_y_scale;
+    int chart_first_x;
+    int chart_backdrop_x;
+    int chart_screen_y;
+    uint chart_precompose;
 };
 
 float4 chart_filter_vertex(uint id : SV_VertexID) : SV_Position {
     return float4((id & 1u) ? 1.0 : -1.0, (id & 2u) ? -1.0 : 1.0, 0.0, 1.0);
 }
 
+float4 chart_backdrop_vertex(uint id : SV_VertexID) : SV_Position {
+    return chart_filter_vertex(id);
+}
+
+// One R8 flag per screen column. Test the actual static pixels, including
+// horizontal and vertical grid intersections, rather than inferring their colors.
+float4 chart_backdrop_fragment(float4 position : SV_Position) : SV_Target {
+    int x = int(position.x);
+    uint changed = 0u;
+    [loop] for (int y = 0; y < chart_tile_size.y; ++y) {
+        int2 p = chart_tile_origin + int2(x, y);
+        float4 pixel = t_prefix.Load(int3(p, 0));
+        if (pixel.a != 1.0) return float4(2.0 / 255.0, 0, 0, 1);
+        if (x > 0 && any(pixel != t_prefix.Load(int3(p - int2(1,0), 0)))) changed = 1u;
+    }
+    return float4(float(changed) / 255.0, 0, 0, 1);
+}
+
 float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
     int2 pixel = int2(position.xy) - chart_update_offset;
+    pixel.x += chart_first_x;
     float center_y = chart_first_y + float(pixel.y) * chart_y_scale;
     float low = center_y - 0.5 * chart_y_scale;
     int first = int(floor(low));
@@ -1264,6 +1287,10 @@ float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
     float edge_x = 0.5 * min(center_x, float(chart_tile_size.x) - center_x);
     float edge_y = min(center_y, float(chart_tile_size.y) - center_y) / chart_y_scale;
     filtered *= saturate(0.5 + min(edge_x, edge_y));
+    if (chart_precompose != 0u) {
+        float3 backdrop = t_prefix.Load(int3(chart_backdrop_x, chart_screen_y + pixel.y, 0)).rgb;
+        return float4(filtered.rgb + backdrop * (1.0 - filtered.a), 1.0);
+    }
     float3 color = filtered.rgb / max(filtered.a, 1e-8);
     // The FP16 composition surface is linear scRGB; the atlas is sRGB.
     float3 decoded = color <= 0.04045 ? color / 12.92 : pow(abs((color + 0.055) / 1.055), 2.4);
@@ -1315,6 +1342,7 @@ PolychromeSpriteVertexOutput polychrome_sprite_vertex(uint vertex_id: SV_VertexI
 // translated on every frame); see `Window::paint_image_subpixel`.
 static const uint SPRITE_AREA_FILTER = 1u;
 static const uint SPRITE_PREMULTIPLIED_AREA_FILTER = 2u;
+static const uint SPRITE_IN_SCENE_AREA_FILTER = 3u;
 
 // The texels under the pixel's footprint, each weighted by the part of the
 // footprint it covers and premultiplied before they are averaged: the
@@ -1418,7 +1446,7 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     float4 sample;
     if (sprite.pad == SPRITE_AREA_FILTER) {
         sample = sample_area(input.position.xy, sprite.bounds, sprite.tile, false);
-    } else if (sprite.pad == SPRITE_PREMULTIPLIED_AREA_FILTER) {
+    } else if (sprite.pad == SPRITE_PREMULTIPLIED_AREA_FILTER || sprite.pad == SPRITE_IN_SCENE_AREA_FILTER) {
         // Keep the reference sampler out of the optimized draw. FXC flattens
         // a conditional expression here and evaluates both texture paths.
         [branch] if (linear_area_filter != 0u) {

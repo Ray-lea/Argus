@@ -90,6 +90,8 @@ const result = {
     viewTrace: !!process.env.ARGUS_GPUI_VIEW_TRACE,
     gpuTiming: !!process.env.ARGUS_GPUI_GPU_TIMING,
     chartLayersDisabled: !!process.env.ARGUS_GPUI_DISABLE_CHART_LAYERS,
+    chartBackdropCacheDisabled: !!process.env.ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE,
+    opaqueWindow: process.argv.includes("--opaque-window") || ["1", "true"].includes(process.env.ARGUS_GPUI_OPAQUE_WINDOW),
     testChartLayers: !!process.env.ARGUS_GPUI_TEST_CHART_LAYERS,
     prefixCompositionDisabled: !!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION,
     linearAreaDisabled: !!process.env.ARGUS_GPUI_DISABLE_LINEAR_AREA,
@@ -107,6 +109,7 @@ const child = spawn(
     executable,
     "--hidden",
     "--test", "--identifier", identifier, "--stop-after", String(Math.ceil(warmup + phases.reduce((total, phase) => total + durationOf(phase) + 10, 0) + 120)),
+    ...(process.argv.includes("--opaque-window") ? ["--opaque-window"] : []),
     ...(fixture ? ["--fixture", resolve(fixture)] : []),
   ],
   {

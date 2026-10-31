@@ -11,6 +11,7 @@ const label = process.argv[2] ?? `smoke-${Date.now()}`;
 if (!/^[a-z0-9-]+$/.test(label)) throw Error("Invalid test label");
 const live = process.argv.includes("--live");
 const retained = process.argv.includes("--retained");
+const opaqueWindow = process.argv.includes("--opaque-window");
 const snapshots = process.argv.includes("--snapshots");
 assert(!(live && retained), "retained comparisons require a fixed fixture");
 assert(!(snapshots && (live || retained)), "snapshot comparisons require a fixed fixture");
@@ -60,6 +61,7 @@ const child = spawn(
     identifier,
     "--stop-after",
     "180",
+    ...(opaqueWindow ? ["--opaque-window"] : []),
     ...(live ? [] : ["--fixture", resolve(output, "fixture.json")]),
   ],
   { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}), ...(snapshots ? { ARGUS_GPUI_FRAME_TRACE: "1" } : {}) } },
@@ -193,6 +195,7 @@ try {
     await capture("sensor-full", false, false);
     assert(compare("sensor-partial", "sensor-full").maxChannelDelta <= 1, "sensor dependency paint differs");
   } else if (retained) {
+    let expectedSteps = 0;
     // Light-theme cards are translucent white over the backdrop: composited
     // curve pixels must cover it exactly as a full paint does.
     for (const [name, state] of [
@@ -202,13 +205,19 @@ try {
       ["processes-light", { page: "processes", theme: "light" }],
       ["overall-light", { page: "performance", cpuMode: "overall" }],
     ]) {
-      const firstEvent = events.length;
-      send({ ...state, pointerOutside: true });
+      send({ ...state, uiMotion: false, pointerOutside: true });
       await sleep(1500);
       send({ pointerOutside: true });
       await sleep(250);
+      const settled = events.length;
       for (const [index, offset] of [50, 200, 700].entries()) {
-        // The first retained presentation builds the static prefix; the second reuses it.
+        if (name.startsWith("overall")) {
+          // Give the asynchronous backdrop scan its own presentation before measuring.
+          send({ chartTime: fixture.snapshot.timestamp + offset - 2 });
+          expectedSteps++;
+          await sleep(150);
+        }
+        expectedSteps += 2;
         send({ chartTime: fixture.snapshot.timestamp + offset - 1 });
         await sleep(150);
         send({ chartTime: fixture.snapshot.timestamp + offset });
@@ -239,12 +248,20 @@ try {
         }
       }
       if (process.argv.includes("--require-chart-layers")) {
-        assert(events.slice(firstEvent).some((event) => event.event === "gpu-chart-layers" && event.images > 0),
-          `${name}: chart visuals were not presented`);
+        const layers = events.slice(settled).filter((event) => event.event === "gpu-chart-layers" && event.images > 0);
+        if (name.startsWith("overall")) {
+          if (process.env.ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE) {
+            assert.equal(layers.length, 0, `${name}: expected the in-scene control`);
+          } else {
+            assert(layers.some((event) => event.opaqueStrips > 0), `${name}: the opaque chart cache was not presented`);
+          }
+        } else if (!process.env.ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE || name.startsWith("processes")) {
+          assert(layers.length > 0, `${name}: chart visuals were not presented`);
+        }
       }
     }
     const steps = events.filter((event) => event.event === "ui-chart-step");
-    assert.equal(steps.length, 30);
+    assert.equal(steps.length, expectedSteps);
     assert(steps.every((event) => event.retained), "comparison did not exercise retained presentation");
     const chartLayers = events.some((event) => event.event === "gpu-chart-layers" && event.images > 0);
     if (process.env.ARGUS_GPUI_DISABLE_CHART_LAYERS) assert(!chartLayers, "disabled chart visuals were presented");

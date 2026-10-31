@@ -8,6 +8,9 @@ use windows::Wdk::Graphics::Direct3D::{
 use windows::Win32::Foundation::POINT;
 use windows::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromWindow};
 use windows_numerics::Matrix3x2;
+#[path = "chart_backdrop.rs"]
+mod backdrop;
+use backdrop::Strip;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct FrameKey {
@@ -29,6 +32,7 @@ pub(super) struct ChartComposition {
     tree_budget: u64,
     used_since_hide: bool,
     filter: Option<Filter>,
+    backdrop_scan: Option<backdrop::Scan>,
     bars: Vec<(BarKey, IDCompositionSurface)>,
 }
 
@@ -105,6 +109,7 @@ enum LayerContent {
         index: usize,
         y_phase: f32,
         first_row: u32,
+        strip: Option<Strip>,
     },
     Bar {
         index: usize,
@@ -152,9 +157,10 @@ fn key(
     height: u32,
     background: WindowBackgroundAppearance,
 ) -> Option<FrameKey> {
+    let order = scene.animated_order?;
     Some(FrameKey {
         revision: scene.paint_revision,
-        order: scene.animated_order?,
+        order,
         size: (width, height),
         opaque: matches!(background, WindowBackgroundAppearance::Opaque),
     })
@@ -172,8 +178,10 @@ fn clip(bounds: Bounds<ScaledPixels>, width: u32, height: u32) -> RECT {
 }
 
 fn supported_image(s: &PolychromeSprite) -> bool {
-    s.pad == PolychromeSprite::PREMULTIPLIED_AREA_FILTER
-        && s.tile.bounds.size.width.0 > 0
+    matches!(
+        s.pad,
+        PolychromeSprite::PREMULTIPLIED_AREA_FILTER | PolychromeSprite::IN_SCENE_AREA_FILTER
+    ) && s.tile.bounds.size.width.0 > 0
         && s.tile.bounds.size.width.0 < 8192
         && (s.bounds.bottom().0 - 0.5).ceil() > (s.bounds.top().0 - 0.5).ceil()
         && s.opacity == 1.
@@ -192,10 +200,15 @@ fn row_phase(top: f32) -> f32 {
 impl Layer {
     fn compatible(&self, scene: &Scene) -> bool {
         match self.content {
-            LayerContent::Image { index, y_phase, .. } => scene
-                .polychrome_sprites
-                .get(index)
-                .is_some_and(|s| (row_phase(s.bounds.top().0) - y_phase).abs() <= 1e-5),
+            LayerContent::Image {
+                index,
+                y_phase,
+                strip,
+                ..
+            } => scene.polychrome_sprites.get(index).is_some_and(|s| {
+                (row_phase(s.bounds.top().0) - y_phase).abs() <= 1e-5
+                    && strip.is_none_or(|strip| strip.fits(s.bounds))
+            }),
             LayerContent::Bar {
                 index,
                 key,
@@ -212,11 +225,14 @@ impl Layer {
     fn place(&mut self, scene: &Scene) -> Result<bool> {
         let (x, y) = match self.content {
             LayerContent::Image {
-                index, first_row, ..
+                index,
+                first_row,
+                strip,
+                ..
             } => {
                 let b = scene.polychrome_sprites[index].bounds;
                 (
-                    b.left().0 - 0.125,
+                    b.left().0 - 0.125 + strip.map_or(0., |s| s.first as f32 * 0.25),
                     (b.top().0 - 0.5).ceil() + first_row as f32,
                 )
             }
@@ -270,10 +286,11 @@ fn surface(
     width: u32,
     height: u32,
     format: DXGI_FORMAT,
+    alpha_mode: DXGI_ALPHA_MODE,
     paint: impl FnOnce(&ID3D11Texture2D, POINT) -> Result<()>,
 ) -> Result<IDCompositionSurface> {
     unsafe {
-        let surface = comp.CreateSurface(width, height, format, DXGI_ALPHA_MODE_PREMULTIPLIED)?;
+        let surface = comp.CreateSurface(width, height, format, alpha_mode)?;
         let mut offset = POINT::default();
         let update: IDXGISurface = surface.BeginDraw(None, &mut offset)?;
         let result = update
@@ -303,6 +320,7 @@ fn viewport(x: f32, y: f32, w: u32, h: u32) -> D3D11_VIEWPORT {
 struct Filter {
     vertex: ID3D11VertexShader,
     pixel: ID3D11PixelShader,
+    columns: ID3D11PixelShader,
     params: ID3D11Buffer,
 }
 
@@ -310,10 +328,12 @@ impl Filter {
     fn new(device: &ID3D11Device) -> Result<Self> {
         let vertex = RawShaderBytes::new(ShaderModule::ChartFilter, ShaderTarget::Vertex)?;
         let pixel = RawShaderBytes::new(ShaderModule::ChartFilter, ShaderTarget::Fragment)?;
+        let columns = RawShaderBytes::new(ShaderModule::ChartBackdrop, ShaderTarget::Fragment)?;
         Ok(Self {
             vertex: create_vertex_shader(device, vertex.as_bytes())?,
             pixel: create_fragment_shader(device, pixel.as_bytes())?,
-            params: create_constant_buffer::<[i32; 8]>(device)?
+            columns: create_fragment_shader(device, columns.as_bytes())?,
+            params: create_constant_buffer::<[i32; 12]>(device)?
                 .context("chart filter constants")?,
         })
     }
@@ -325,9 +345,10 @@ impl Filter {
         atlas: &DirectXAtlas,
         sprite: &PolychromeSprite,
         rows: &std::ops::Range<u32>,
+        matte: Option<(Strip, &ID3D11ShaderResourceView)>,
     ) -> Result<IDCompositionSurface> {
         let tile = sprite.tile.bounds;
-        let w = 2 * tile.size.width.0 as u32 + 1;
+        let w = matte.map_or(2 * tile.size.width.0 as u32 + 1, |(s, _)| s.width);
         let top = sprite.bounds.top().0;
         let h = rows.end - rows.start;
         let y_scale = tile.size.height.0 as f32 / sprite.bounds.size.height.0;
@@ -339,7 +360,16 @@ impl Filter {
             devices,
             w,
             h,
-            DXGI_FORMAT_R16G16B16A16_FLOAT,
+            if matte.is_some() {
+                RENDER_TARGET_FORMAT
+            } else {
+                DXGI_FORMAT_R16G16B16A16_FLOAT
+            },
+            if matte.is_some() {
+                DXGI_ALPHA_MODE_IGNORE
+            } else {
+                DXGI_ALPHA_MODE_PREMULTIPLIED
+            },
             |target, offset| unsafe {
                 let ctx = &devices.device_context;
                 let mut rtv = None;
@@ -360,6 +390,10 @@ impl Filter {
                         offset.y - rows.start as i32,
                         (row_phase(top) * y_scale).to_bits() as i32,
                         y_scale.to_bits() as i32,
+                        matte.map_or(0, |(s, _)| s.first),
+                        matte.map_or(0, |(s, _)| s.clip.left),
+                        (top - 0.5).ceil() as i32,
+                        i32::from(matte.is_some()),
                     ],
                 )?;
                 ctx.PSSetConstantBuffers(2, Some(&[Some(self.params.clone())]));
@@ -368,8 +402,10 @@ impl Filter {
                 ctx.PSSetShader(&self.pixel, None);
                 ctx.OMSetBlendState(None, None, u32::MAX);
                 ctx.PSSetShaderResources(0, Some(&view));
+                ctx.PSSetShaderResources(2, Some(&[matte.map(|(_, prefix)| prefix.clone())]));
                 ctx.Draw(4, 0);
                 ctx.PSSetShaderResources(0, Some(&[None]));
+                ctx.PSSetShaderResources(2, Some(&[None]));
                 Ok(())
             },
         )
@@ -393,6 +429,7 @@ fn bar_sheet(
         w,
         h,
         RENDER_TARGET_FORMAT,
+        DXGI_ALPHA_MODE_PREMULTIPLIED,
         |target, offset| unsafe {
             let ctx = &devices.device_context;
             let mut desc = D3D11_TEXTURE2D_DESC::default();
@@ -499,12 +536,13 @@ impl DirectXRenderer {
         };
         // A full paint just before hiding may already have detached the tree.
         // Its releases still need to reach the compositor before the idle period.
+        comp.charts.backdrop_scan = None;
         if !comp.charts.used_since_hide {
             return Ok(false);
         }
         if comp.charts.active() {
             unsafe {
-                comp.comp_target.SetRoot(&comp.comp_visual)?;
+                comp.comp_target.SetRoot(comp.swap_visual.as_ref())?;
                 comp.comp_device.Commit()?;
             }
         }
@@ -595,30 +633,69 @@ impl DirectXRenderer {
             .collect();
         let mut bar_keys = Vec::new();
         let mut images = 0;
-        let mut pixels = 0u64;
-        let mut untrimmed_pixels = 0u64;
+        let mut image_bytes = 0u64;
+        let mut untrimmed_bytes = 0u64;
         let mut image_rows = Vec::new();
+        let mut masks = Vec::new();
+        let mut marked_masks = Vec::new();
+        let mut scan_regions = Vec::new();
         for b in &suffix {
             match b {
                 PrimitiveBatch::PolychromeSprites { range, .. } => {
-                    for s in &scene.polychrome_sprites[range.clone()] {
+                    for i in range.clone() {
+                        let s = &scene.polychrome_sprites[i];
                         if !supported_image(s)
                             || self.atlas.get_texture_view(s.tile.texture_id).is_none()
                         {
                             return Ok(false);
                         }
-                        let rows = filtered_rows(
+                        let mut rows = filtered_rows(
                             s.bounds.top().0,
                             s.bounds.size.height.0,
                             s.tile.bounds.size.height.0 as u32,
                             self.atlas.chart_rows(&s.tile),
                         );
+                        let mask = clip(s.content_mask.bounds, self.width, self.height);
+                        if s.pad == PolychromeSprite::IN_SCENE_AREA_FILTER {
+                            // Interaction/full paints use the same source-over operation in the
+                            // scene. Promote only pixels that we can finish on an opaque backdrop.
+                            static DISABLED: OnceLock<bool> = OnceLock::new();
+                            if *DISABLED.get_or_init(|| {
+                                std::env::var_os("ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE")
+                                    .is_some()
+                            }) {
+                                return Ok(false);
+                            }
+                            let top = (s.bounds.top().0 - 0.5).ceil() as i32;
+                            rows.start = rows.start.max(mask.top.saturating_sub(top).max(0) as u32);
+                            rows.end = rows.end.min(mask.bottom.saturating_sub(top).max(0) as u32);
+                            if rows.start > rows.end || mask.left >= mask.right {
+                                rows = 0..0;
+                            }
+                            if !rows.is_empty() {
+                                marked_masks.push(masks.len());
+                                scan_regions.push((
+                                    i,
+                                    RECT {
+                                        top: top + rows.start as i32,
+                                        bottom: top + rows.end as i32,
+                                        ..mask
+                                    },
+                                ));
+                            }
+                        } else {
+                            let width = 2 * s.tile.bounds.size.width.0 as u64 + 1;
+                            image_bytes += width * u64::from(rows.end - rows.start) * 8;
+                            let full_height = (s.bounds.bottom().0 - 0.5).ceil()
+                                - (s.bounds.top().0 - 0.5).ceil();
+                            untrimmed_bytes += width * full_height as u64 * 8;
+                        }
+                        masks.push(if rows.is_empty() {
+                            RECT::default()
+                        } else {
+                            mask
+                        });
                         images += usize::from(!rows.is_empty());
-                        let width = 2 * s.tile.bounds.size.width.0 as u64 + 1;
-                        pixels += width * u64::from(rows.end - rows.start);
-                        let full_height =
-                            (s.bounds.bottom().0 - 0.5).ceil() - (s.bounds.top().0 - 0.5).ceil();
-                        untrimmed_pixels += width * full_height as u64;
                         image_rows.push(rows);
                     }
                 }
@@ -630,6 +707,15 @@ impl DirectXRenderer {
                         let Some(k) = BarKey::new(*bar, &scene.quads[i]) else {
                             return Ok(false);
                         };
+                        let region = Bounds::from_corners(
+                            point(bar.bounds.left(), ScaledPixels(bar.ceiling.0.floor())),
+                            bar.bounds.bottom_right(),
+                        );
+                        masks.push(clip(
+                            region.intersect(&scene.quads[i].content_mask.bounds),
+                            self.width,
+                            self.height,
+                        ));
                         if !bar_keys.contains(&k) {
                             bar_keys.push(k);
                         }
@@ -638,9 +724,102 @@ impl DirectXRenderer {
                 _ => return Ok(false),
             }
         }
+        let Some(area) = masks
+            .iter()
+            .copied()
+            .filter(|r| r.left < r.right && r.top < r.bottom)
+            .reduce(|a, b| RECT {
+                left: a.left.min(b.left),
+                top: a.top.min(b.top),
+                right: a.right.max(b.right),
+                bottom: a.bottom.max(b.bottom),
+            })
+        else {
+            return Ok(false);
+        };
+        // Reserve space for the compositor's intermediate as well as our bitmaps.
+        let group_bytes = if comp.swap_visual.is_some() {
+            (area.right - area.left) as u64 * (area.bottom - area.top) as u64 * 8
+        } else {
+            0
+        };
         let bar_bytes = bar_keys.iter().map(|k| k.bytes()).sum::<u64>();
-        let tree_bytes =
-            pixels * 8 + bar_bytes + u64::from(self.width) * u64::from(self.height) * 4;
+        let devices = self.devices.as_ref().context("missing chart device")?;
+        let prefix_view = r.prefix_view.as_ref().context("chart prefix view")?;
+        let mut composed = std::collections::BTreeMap::new();
+        let mut opaque_strips = 0;
+        if comp.charts.filter.is_none() {
+            comp.charts.filter = Some(Filter::new(&devices.device)?);
+        }
+        if !scan_regions.is_empty() {
+            // An opaque part would erase another animated primitive if they overlapped.
+            for &i in &marked_masks {
+                let a = masks[i];
+                if masks.iter().enumerate().any(|(j, b)| {
+                    i != j
+                        && a.left < b.right
+                        && b.left < a.right
+                        && a.top < b.bottom
+                        && b.top < a.bottom
+                }) {
+                    return Ok(false);
+                }
+            }
+            let filter = comp.charts.filter.as_ref().context("chart filter")?;
+            let pending = &mut comp.charts.backdrop_scan;
+            if !pending
+                .as_ref()
+                .is_some_and(|s| s.key == key && s.regions == scan_regions)
+            {
+                *pending = Some(backdrop::Scan::start(
+                    key,
+                    scan_regions,
+                    devices,
+                    filter,
+                    prefix_view,
+                )?);
+            }
+            let result = pending
+                .as_ref()
+                .context("chart backdrop scan")?
+                .poll(&devices.device_context)?;
+            let std::task::Poll::Ready(regions) = result else {
+                comp.charts.skipped = None;
+                return Ok(false);
+            };
+            *pending = None;
+            let Some(regions) = regions else {
+                if diagnostics() {
+                    println!(
+                        "{{\"event\":\"gpu-chart-backdrop-rejected\",\"revision\":{}}}",
+                        key.revision
+                    );
+                }
+                return Ok(false);
+            };
+            for (i, bands) in regions {
+                let s = &scene.polychrome_sprites[i];
+                let mut parts = Vec::with_capacity(bands.len());
+                let full_height =
+                    (s.bounds.bottom().0 - 0.5).ceil() - (s.bounds.top().0 - 0.5).ceil();
+                for band in bands {
+                    let Some(strip) = Strip::new(band, s.bounds) else {
+                        return Ok(false);
+                    };
+                    image_bytes += u64::from(strip.width) * (band.bottom - band.top) as u64 * 4;
+                    untrimmed_bytes += u64::from(strip.width) * full_height as u64 * 4;
+                    parts.push(Some(strip));
+                }
+                opaque_strips += parts.len();
+                composed.insert(i, parts);
+            }
+        } else {
+            comp.charts.backdrop_scan = None;
+        }
+        let tree_bytes = image_bytes
+            + bar_bytes
+            + group_bytes
+            + u64::from(self.width) * u64::from(self.height) * 4;
         if (image_rows.is_empty() && bar_keys.is_empty())
             || bar_bytes > MAX_BAR_BYTES
             || tree_bytes > comp.charts.tree_budget
@@ -653,13 +832,9 @@ impl DirectXRenderer {
             }
             return Ok(false);
         }
-        let devices = self.devices.as_ref().context("missing chart device")?;
         let dev = &comp.comp_device;
         let charts = &mut comp.charts;
         charts.bars.retain(|(k, _)| bar_keys.contains(k));
-        if charts.filter.is_none() {
-            charts.filter = Some(Filter::new(&devices.device)?);
-        }
         let filter = charts.filter.as_ref().context("chart filter")?;
         let root = unsafe { dev.CreateVisual()? };
         let prefix = r.prefix.as_ref().context("missing chart background")?;
@@ -669,6 +844,11 @@ impl DirectXRenderer {
             self.width,
             self.height,
             RENDER_TARGET_FORMAT,
+            if comp.swap_visual.is_none() {
+                DXGI_ALPHA_MODE_IGNORE
+            } else {
+                DXGI_ALPHA_MODE_PREMULTIPLIED
+            },
             |target, at| unsafe {
                 devices.device_context.CopySubresourceRegion(
                     target,
@@ -683,46 +863,80 @@ impl DirectXRenderer {
                 Ok(())
             },
         )?;
-        unsafe {
-            root.SetContent(&background)?;
-        }
+        // Only the chart region needs an off-screen group. Keep the backdrop
+        // and antialiased window corners outside it, painting each prefix pixel once.
+        let viewport = RECT {
+            left: 0,
+            top: 0,
+            right: self.width as i32,
+            bottom: self.height as i32,
+        };
+        let group = if comp.swap_visual.is_none() {
+            unsafe {
+                root.SetContent(&background)?;
+            }
+            root.clone()
+        } else {
+            unsafe {
+                for outside in subtract_rect(viewport, area) {
+                    child(dev, &root, outside, &background)?;
+                }
+                let group = dev.CreateVisual()?;
+                child(dev, &group, area, &background)?;
+                let output = dev
+                    .cast::<IDCompositionDevice3>()?
+                    .CreateColorMatrixEffect()?;
+                output.SetClampOutput(true)?;
+                group.SetEffect(&output)?;
+                root.AddVisual(&group, false, None)?;
+                group
+            }
+        };
         let mut layers = Vec::new();
         let mut image_rows = image_rows.into_iter();
+        let mut masks = masks.into_iter();
         for b in suffix {
             match b {
                 PrimitiveBatch::PolychromeSprites { range, .. } => {
                     for i in range.clone() {
                         let s = &scene.polychrome_sprites[i];
                         let rows = image_rows.next().context("missing chart rows")?;
+                        let mask = masks.next().context("missing chart clip")?;
                         if rows.is_empty() {
                             continue;
                         }
-                        let bitmap = filter.image(dev, devices, &self.atlas, s, &rows)?;
-                        let visual = child(
-                            dev,
-                            &root,
-                            clip(s.content_mask.bounds, self.width, self.height),
-                            &bitmap,
-                        )?;
-                        unsafe {
-                            visual.SetBitmapInterpolationMode(
-                                DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR,
+                        for &strip in composed.get(&i).map(Vec::as_slice).unwrap_or(&[None]) {
+                            let bitmap = filter.image(
+                                dev,
+                                devices,
+                                &self.atlas,
+                                s,
+                                &rows,
+                                strip.map(|s| (s, prefix_view)),
                             )?;
-                            visual.SetTransform2(&Matrix3x2 {
-                                M11: 0.25,
-                                M22: 1.0,
-                                ..Default::default()
-                            })?;
+                            let visual =
+                                child(dev, &group, strip.map_or(mask, |s| s.clip), &bitmap)?;
+                            unsafe {
+                                visual.SetBitmapInterpolationMode(
+                                    DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                )?;
+                                visual.SetTransform2(&Matrix3x2 {
+                                    M11: 0.25,
+                                    M22: 1.0,
+                                    ..Default::default()
+                                })?;
+                            }
+                            layers.push(Layer {
+                                visual,
+                                position: None,
+                                content: LayerContent::Image {
+                                    index: i,
+                                    y_phase: row_phase(s.bounds.top().0),
+                                    first_row: rows.start,
+                                    strip,
+                                },
+                            });
                         }
-                        layers.push(Layer {
-                            visual,
-                            position: None,
-                            content: LayerContent::Image {
-                                index: i,
-                                y_phase: row_phase(s.bounds.top().0),
-                                first_row: rows.start,
-                            },
-                        });
                     }
                 }
                 PrimitiveBatch::Quads(range) => {
@@ -742,18 +956,10 @@ impl DirectXRenderer {
                             .find(|(key, _)| *key == k)
                             .context("bar sheet")?
                             .1;
-                        let region = Bounds::from_corners(
-                            point(bar.bounds.left(), ScaledPixels(bar.ceiling.0.floor())),
-                            bar.bounds.bottom_right(),
-                        );
                         let visual = child(
                             dev,
-                            &root,
-                            clip(
-                                region.intersect(&q.content_mask.bounds),
-                                self.width,
-                                self.height,
-                            ),
+                            &group,
+                            masks.next().context("missing bar clip")?,
                             bitmap,
                         )?;
                         layers.push(Layer {
@@ -780,10 +986,10 @@ impl DirectXRenderer {
         }
         if diagnostics() {
             println!(
-                "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{},\"bytes\":{tree_bytes},\"imageBytes\":{},\"untrimmedImageBytes\":{},\"barBytes\":{bar_bytes},\"revision\":{}}}",
+                "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{},\"bytes\":{tree_bytes},\"opaqueStrips\":{opaque_strips},\"imageBytes\":{},\"untrimmedImageBytes\":{},\"barBytes\":{bar_bytes},\"groupBytes\":{group_bytes},\"revision\":{}}}",
                 layers.len(),
-                pixels * 8,
-                untrimmed_pixels * 8,
+                image_bytes,
+                untrimmed_bytes,
                 key.revision
             );
         }
@@ -854,6 +1060,7 @@ impl ChartComposition {
         }
     }
     pub(super) fn display_changed(&mut self) {
+        self.backdrop_scan = None;
         self.standard_sdr = None;
         self.skipped = None;
     }
@@ -861,6 +1068,7 @@ impl ChartComposition {
         self.tree.is_some()
     }
     pub(super) fn disable(&mut self) {
+        self.backdrop_scan = None;
         self.unavailable = true;
         self.bars.clear();
     }

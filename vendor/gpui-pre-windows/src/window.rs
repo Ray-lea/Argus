@@ -523,7 +523,7 @@ impl WindowsWindow {
 
             (dwexstyle, dwstyle)
         };
-        if !disable_direct_composition {
+        if !disable_direct_composition && !gpui::windows_opaque_window_requested() {
             dwexstyle |= WS_EX_NOREDIRECTIONBITMAP;
         }
 

@@ -226,6 +226,11 @@ pub fn follow_visibility(window: &NativeWindow) {
 }
 
 pub fn supports_mica() -> bool {
+    // An HWND swap chain ignores alpha. Paint the theme background in that
+    // mode so translucent controls and charts have the intended backdrop.
+    if gpui_kit::gpui::windows_opaque_window_requested() {
+        return false;
+    }
     use windows::Win32::System::SystemInformation::OSVERSIONINFOW;
     #[link(name = "ntdll")]
     unsafe extern "system" {

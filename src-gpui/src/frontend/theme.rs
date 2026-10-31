@@ -9,6 +9,7 @@ pub struct Palette {
     pub faint: Hsla,
     pub background: Hsla,
     pub layer: Hsla,
+    pub chart_surface: Hsla,
     pub layer_strong: Hsla,
     pub stroke: Hsla,
     pub stroke_strong: Hsla,
@@ -138,6 +139,7 @@ impl Palette {
                 colors.background
             },
             layer: colors.group_box,
+            chart_surface: colors.background.blend(colors.group_box),
             // `--layer-strong`: raised marks and pills (the menus' surface is `popover`).
             layer_strong: token("layer-strong", dark),
             stroke: colors.border,
