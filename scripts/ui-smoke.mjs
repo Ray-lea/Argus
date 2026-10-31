@@ -55,6 +55,9 @@ if (preview) {
       frame.system.memUsed = past.memUsed;
     }
     if (retained) {
+      if (frame.system.cores?.length) {
+        frame.system.cores = frame.system.cores.map((_, core) => Math.round(45 + 40 * Math.sin(i * 0.37 + core * 0.63)));
+      }
       // Exercise the engine fills above their grid lines and both memory plots.
       for (const gpu of frame.hardware?.gpus ?? []) {
         if (gpu.engines?.length) {
@@ -71,6 +74,14 @@ if (preview) {
   fixture.snapshot.seq = samples;
   writeFileSync(resolve(output, "fixture.json"), JSON.stringify(fixture));
 }
+const hardware = fixture?.snapshot.hardware ?? {};
+const retainedDevices = retained ? [
+  "memory",
+  ...(hardware.disks ?? []).map(d => `disk:${d.info.index}`),
+  ...(hardware.nics ?? []).map(n => `nic:${n.info.id}`),
+  ...(hardware.gpus ?? []).slice(1).map(g => `gpu:${g.info.id}`),
+  ...(hardware.batteries ?? []).map(b => `bat:${b.info.id}`),
+] : [];
 const probeFlag = process.argv.indexOf("--probe");
 const probe = resolve(probeFlag >= 0 ? process.argv[probeFlag + 1] : "target/release/argus-window-probe.exe");
 const executable = resolve(output, "argus.exe");
@@ -86,7 +97,7 @@ const child = spawn(
     "--identifier",
     identifier,
     "--stop-after",
-    "180",
+    String(180 + 12 * retainedDevices.length),
     ...(opaqueWindow ? ["--opaque-window"] : []),
     ...(live ? [] : ["--fixture", resolve(output, "fixture.json")]),
     ...(preview ? ["--width", "1440", "--height", "900"] : []),
@@ -283,6 +294,27 @@ try {
     await sleep(250);
     await capture("sensor-full", false, false);
     assert(compare("sensor-partial", "sensor-full").maxChannelDelta <= 1, "sensor dependency paint differs");
+    if (fixture.historySeries?.length) {
+      send({ page: "history", pointerOutside: true, uiMotion: false });
+      await sleep(1200);
+      send({ inspectLayout: "history-plot" });
+      await sleep(250);
+      const layout = events.findLast(e => e.event === "ui-layout" && e.label === "history-plot");
+      assert.equal(layout?.page, "history");
+      await capture("history-rest", false, false);
+      send({ mouse: { x: layout.width * 0.65, y: layout.height * 0.4 } });
+      await sleep(350);
+      await capture("history-hover", false, false);
+      assert(compare("history-rest", "history-hover").changedPixels > 0, "history readout did not appear");
+      send({ fullPaint: true });
+      await sleep(250);
+      await capture("history-full", false, false);
+      assert(compare("history-hover", "history-full").maxChannelDelta <= 1, "history hover paint differs");
+      send({ pointerOutside: true });
+      await sleep(350);
+      await capture("history-out", false, false);
+      assert(compare("history-rest", "history-out").maxChannelDelta <= 1, "history fill changed after hover");
+    }
   } else if (retained) {
     let expectedSteps = 0;
     const gpu = fixture.snapshot.hardware?.gpus?.[0];
@@ -295,9 +327,12 @@ try {
       ...(gpuPage ? [["gpu", gpuPage]] : []),
       ["overall", { page: "performance", device: "cpu", cpuMode: "overall" }],
       ["logical", { page: "performance", cpuMode: "logical" }],
+      ["cpu-telemetry", { page: "performance", device: "cpu", cpuMode: "details" }],
+      ...retainedDevices.map((device, index) => [`device-${index}`, { page: "performance", device }]),
       ["processes-light", { page: "processes", theme: "light" }],
       ...(gpuPage ? [["gpu-light", gpuPage]] : []),
       ["overall-light", { page: "performance", device: "cpu", cpuMode: "overall" }],
+      ["logical-light", { page: "performance", device: "cpu", cpuMode: "logical" }],
     ]) {
       send({ ...state, uiMotion: false, pointerOutside: true });
       await sleep(1500);
@@ -344,12 +379,10 @@ try {
           assert.equal(layers.length, 0, `${name}: expected the in-scene control`);
         } else {
           assert(layers.length > 0, `${name}: missing filled chart visuals`);
-          if (name === "logical") {
-            assert(layers.some(e => e.opaqueImages < e.images), "logical: expected one independent image per core plot");
-          } else {
-            assert(layers.every(e => e.opaqueImages === e.images),
-              `${name}: a filled chart was presented as a transparent layer`);
-          }
+          assert(layers.every(e => e.opaqueImages === e.images),
+            `${name}: a filled chart was presented as a transparent layer`);
+          assert(layers.every(e => e.imageBytes <= e.untrimmedImageBytes),
+            `${name}: trimmed chart surfaces exceeded their full-height size`);
           assert(events.slice(settled).some(e => e.event === "gpu-chart-handoff" && layers.some(l => l.revision === e.revision)),
             `${name}: no complete frame was presented on the chart composition root`);
         }

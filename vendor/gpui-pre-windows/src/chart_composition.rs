@@ -34,6 +34,7 @@ pub(super) struct ChartComposition {
     used_since_hide: bool,
     filter: Option<Filter>,
     backdrop_scan: Option<backdrop::Scan>,
+    sparse_unavailable: bool,
     bars: Vec<(BarKey, IDCompositionSurface)>,
 }
 
@@ -120,6 +121,7 @@ enum LayerContent {
         first_row: u32,
         strips: Vec<Strip>,
         transform: IDCompositionMatrixTransform,
+        samples: f32,
         phases: Option<PhaseMotion>,
     },
     Bar {
@@ -247,10 +249,7 @@ impl Layer {
                 index, first_row, ..
             } => {
                 let b = scene.polychrome_sprites[index].bounds;
-                (
-                    b.left().0 - 0.125,
-                    (b.top().0 - 0.5).ceil() + first_row as f32,
-                )
+                (b.left().0, (b.top().0 - 0.5).ceil() + first_row as f32)
             }
             LayerContent::Bar { index, key, .. } => {
                 let bar = scene.retained_bars[&index];
@@ -270,7 +269,10 @@ impl Layer {
         unsafe {
             match &self.content {
                 LayerContent::Image {
-                    transform, phases, ..
+                    transform,
+                    phases,
+                    samples,
+                    ..
                 } => {
                     let matrix = |scale, dx| Matrix3x2 {
                         M11: scale,
@@ -279,7 +281,7 @@ impl Layer {
                         M32: y,
                         ..Default::default()
                     };
-                    transform.SetMatrix(&matrix(0.25, x))?;
+                    transform.SetMatrix(&matrix(1. / samples, x - 0.5 / samples))?;
                     if let Some(phases) = phases {
                         phases.transform.SetMatrix(&matrix(
                             1. / phases.stride,
@@ -428,6 +430,7 @@ impl Filter {
         rows: &std::ops::Range<u32>,
         strips: &[Strip],
         prefix: &ID3D11ShaderResourceView,
+        sparse: Option<RECT>,
     ) -> Result<IDCompositionSurface> {
         let tile = sprite.tile.bounds;
         let opaque = !strips.is_empty();
@@ -442,72 +445,100 @@ impl Filter {
         let view = atlas
             .get_texture_view(sprite.tile.texture_id)
             .context("chart atlas texture")?;
-        surface(
-            comp,
-            devices,
-            w,
-            h,
-            if opaque {
-                RENDER_TARGET_FORMAT
+        let paint = |target: &ID3D11Texture2D, offset: POINT, pieces: &[Strip]| unsafe {
+            let ctx = &devices.device_context;
+            let mut rtv = None;
+            devices
+                .device
+                .CreateRenderTargetView(target, None, Some(&mut rtv))?;
+            ctx.OMSetRenderTargets(Some(&[rtv]), None);
+            ctx.PSSetConstantBuffers(2, Some(&[Some(self.params.clone())]));
+            ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+            ctx.VSSetShader(&self.vertex, None);
+            ctx.PSSetShader(&self.pixel, None);
+            ctx.OMSetBlendState(None, None, u32::MAX);
+            ctx.PSSetShaderResources(0, Some(&view));
+            ctx.PSSetShaderResources(2, Some(&[opaque.then(|| prefix.clone())]));
+            let mut x = offset.x;
+            let mut draw = |width: u32, first: i32, column: i32, mode: u32| -> Result<()> {
+                ctx.RSSetViewports(Some(&[viewport(x as f32, offset.y as f32, width, h)]));
+                update_buffer(
+                    ctx,
+                    &self.params,
+                    &[
+                        tile.origin.x.0,
+                        tile.origin.y.0,
+                        tile.size.width.0,
+                        tile.size.height.0,
+                        x,
+                        offset.y - rows.start as i32,
+                        (row_phase(top) * y_scale).to_bits() as i32,
+                        y_scale.to_bits() as i32,
+                        first,
+                        column,
+                        (top - 0.5).ceil() as i32,
+                        mode as i32,
+                    ],
+                )?;
+                ctx.Draw(4, 0);
+                x += width as i32;
+                Ok(())
+            };
+            let result = if opaque {
+                pieces
+                    .iter()
+                    .try_for_each(|s| draw(s.width, s.first, s.column, s.stride.max(s.samples / 4)))
             } else {
-                DXGI_FORMAT_R16G16B16A16_FLOAT
-            },
-            if opaque {
-                DXGI_ALPHA_MODE_IGNORE
-            } else {
-                DXGI_ALPHA_MODE_PREMULTIPLIED
-            },
-            |target, offset| unsafe {
-                let ctx = &devices.device_context;
-                let mut rtv = None;
-                devices
-                    .device
-                    .CreateRenderTargetView(target, None, Some(&mut rtv))?;
-                ctx.OMSetRenderTargets(Some(&[rtv]), None);
-                ctx.PSSetConstantBuffers(2, Some(&[Some(self.params.clone())]));
-                ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-                ctx.VSSetShader(&self.vertex, None);
-                ctx.PSSetShader(&self.pixel, None);
-                ctx.OMSetBlendState(None, None, u32::MAX);
-                ctx.PSSetShaderResources(0, Some(&view));
-                ctx.PSSetShaderResources(2, Some(&[opaque.then(|| prefix.clone())]));
-                let mut x = offset.x;
-                let mut draw = |width: u32, first: i32, column: i32, mode: u32| -> Result<()> {
-                    ctx.RSSetViewports(Some(&[viewport(x as f32, offset.y as f32, width, h)]));
-                    update_buffer(
-                        ctx,
-                        &self.params,
-                        &[
-                            tile.origin.x.0,
-                            tile.origin.y.0,
-                            tile.size.width.0,
-                            tile.size.height.0,
-                            x,
-                            offset.y - rows.start as i32,
-                            (row_phase(top) * y_scale).to_bits() as i32,
-                            y_scale.to_bits() as i32,
-                            first,
-                            column,
-                            (top - 0.5).ceil() as i32,
-                            mode as i32,
-                        ],
-                    )?;
-                    ctx.Draw(4, 0);
-                    x += width as i32;
-                    Ok(())
+                draw(w, 0, 0, 0)
+            };
+            ctx.PSSetShaderResources(0, Some(&[None]));
+            ctx.PSSetShaderResources(2, Some(&[None]));
+            result
+        };
+        if let Some(span) = sparse {
+            let stride = strips
+                .first()
+                .context("missing sparse chart columns")?
+                .stride;
+            let width = ((span.right - span.left) as u32)
+                .checked_mul(stride)
+                .context("sparse chart width overflow")?;
+            let bitmap: IDCompositionSurface = unsafe {
+                comp.CreateVirtualSurface(width, h, RENDER_TARGET_FORMAT, DXGI_ALPHA_MODE_IGNORE)?
+            }
+            .cast()?;
+            for strip in strips {
+                let left = (strip.clip.left - span.left) * stride as i32;
+                let update = RECT {
+                    left,
+                    top: 0,
+                    right: left + strip.width as i32,
+                    bottom: h as i32,
                 };
-                let result = if opaque {
-                    strips
-                        .iter()
-                        .try_for_each(|s| draw(s.width, s.first, s.clip.left, s.stride.max(1)))
+                draw_surface(&bitmap, devices, Some(update), |t, at| {
+                    paint(t, at, std::slice::from_ref(strip))
+                })?;
+            }
+            Ok(bitmap)
+        } else {
+            surface(
+                comp,
+                devices,
+                w,
+                h,
+                if opaque {
+                    RENDER_TARGET_FORMAT
                 } else {
-                    draw(w, 0, 0, 0)
-                };
-                ctx.PSSetShaderResources(0, Some(&[None]));
-                ctx.PSSetShaderResources(2, Some(&[None]));
-                result
-            },
-        )
+                    DXGI_FORMAT_R16G16B16A16_FLOAT
+                },
+                if opaque {
+                    DXGI_ALPHA_MODE_IGNORE
+                } else {
+                    DXGI_ALPHA_MODE_PREMULTIPLIED
+                },
+                |t, at| paint(t, at, strips),
+            )
+        }
     }
 }
 
@@ -913,6 +944,9 @@ impl DirectXRenderer {
         let devices = self.devices.as_ref().context("missing chart device")?;
         let prefix_view = r.prefix_view.as_ref().context("chart prefix view")?;
         let mut composed = std::collections::BTreeMap::new();
+        let fixed_bytes =
+            bar_bytes + group_bytes + u64::from(self.width) * u64::from(self.height) * 4;
+        let mut sparse_images = 0;
         let mut opaque_strips = 0;
         if comp.charts.filter.is_none() {
             comp.charts.filter = Some(Filter::new(&devices.device)?);
@@ -965,9 +999,19 @@ impl DirectXRenderer {
                 }
                 return Ok(false);
             };
-            for (i, bands) in regions {
+            for (&i, columns) in &regions {
                 let s = &scene.polychrome_sprites[i];
-                let Some(parts) = backdrop::pack(&bands, s.bounds) else {
+                // A thin stroke ends inside a handful of rows. Eight phases
+                // resolve its sharply antialiased cap at a small texture cost.
+                let h = (columns.rect.bottom - columns.rect.top) as u64;
+                let samples = if h <= 16 { 8 } else { 4 };
+                let Some(parts) = backdrop::pack(&columns.runs, s.bounds, samples).or_else(|| {
+                    if samples == 8 {
+                        backdrop::pack(&columns.runs, s.bounds, 4)
+                    } else {
+                        None
+                    }
+                }) else {
                     if diagnostics() {
                         println!(
                             "{{\"event\":\"gpu-chart-backdrop-limit\",\"reason\":\"strip-count-or-width\"}}"
@@ -977,21 +1021,50 @@ impl DirectXRenderer {
                 };
                 let full_height =
                     (s.bounds.bottom().0 - 0.5).ceil() - (s.bounds.top().0 - 0.5).ceil();
-                for strip in &parts {
-                    image_bytes +=
-                        u64::from(strip.width) * (strip.clip.bottom - strip.clip.top) as u64 * 4;
-                    untrimmed_bytes += u64::from(strip.width) * full_height as u64 * 4;
+                let plan = backdrop::Plan {
+                    strips: parts,
+                    corrections: Vec::new(),
+                };
+                image_bytes += plan.bytes(h);
+                untrimmed_bytes += plan.bytes(full_height as u64);
+                opaque_strips += plan.clips();
+                composed.insert(i, plan);
+            }
+            // A core grid can otherwise need hundreds of independently clipped
+            // visuals. The common backdrop and its sparse exceptions need two.
+            if opaque_strips > 128 && !comp.charts.sparse_unavailable {
+                for (i, columns) in regions {
+                    let plan = composed.get_mut(&i).context("missing opaque chart plan")?;
+                    if plan.clips() < 5 {
+                        continue;
+                    }
+                    let bounds = scene.polychrome_sprites[i].bounds;
+                    let samples = plan
+                        .strips
+                        .iter()
+                        .find(|s| s.stride == 0)
+                        .map_or(4, |s| s.samples);
+                    let Some(sparse) = columns.sparse(bounds, samples) else {
+                        continue;
+                    };
+                    let h = (columns.rect.bottom - columns.rect.top) as u64;
+                    let full_h =
+                        ((bounds.bottom().0 - 0.5).ceil() - (bounds.top().0 - 0.5).ceil()) as u64;
+                    let next = image_bytes - plan.bytes(h) + sparse.bytes(h);
+                    if next > image_bytes && next + fixed_bytes > comp.charts.tree_budget {
+                        continue;
+                    }
+                    image_bytes = next;
+                    untrimmed_bytes = untrimmed_bytes - plan.bytes(full_h) + sparse.bytes(full_h);
+                    opaque_strips = opaque_strips - plan.clips() + sparse.clips();
+                    *plan = sparse;
+                    sparse_images += 1;
                 }
-                opaque_strips += parts.len();
-                composed.insert(i, parts);
             }
         } else {
             comp.charts.backdrop_scan = None;
         }
-        let tree_bytes = image_bytes
-            + bar_bytes
-            + group_bytes
-            + u64::from(self.width) * u64::from(self.height) * 4;
+        let tree_bytes = image_bytes + fixed_bytes;
         if (image_rows.is_empty() && bar_keys.is_empty())
             || bar_bytes > MAX_BAR_BYTES
             || tree_bytes > comp.charts.tree_budget
@@ -1081,17 +1154,40 @@ impl DirectXRenderer {
                         if rows.is_empty() {
                             continue;
                         }
-                        let strips = composed.remove(&i).unwrap_or_default();
+                        let backdrop::Plan {
+                            mut strips,
+                            corrections: extra,
+                        } = composed.remove(&i).unwrap_or_default();
                         let transform = unsafe { dev.CreateMatrixTransform()? };
-                        let phases = if let Some(strip) = strips.iter().find(|s| s.stride > 0) {
+                        let samples = strips
+                            .iter()
+                            .find(|s| s.stride == 0)
+                            .map_or(4., |s| s.samples as f32);
+                        let phases = if let Some(strip) =
+                            strips.iter().chain(&extra).find(|s| s.stride > 0)
+                        {
                             Some(PhaseMotion {
                                 transform: unsafe { dev.CreateMatrixTransform()? },
-                                reference_x: s.bounds.left().0.round() - 0.125,
+                                reference_x: s.bounds.left().0.round(),
                                 stride: strip.stride as f32,
                             })
                         } else {
                             None
                         };
+                        let mut attach =
+                            |bitmap: &IDCompositionSurface,
+                             clip,
+                             offset: f32,
+                             motion: &IDCompositionMatrixTransform| unsafe {
+                                let visual = child(dev, &group, clip, bitmap)?;
+                                visual.SetBitmapInterpolationMode(
+                                    DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                )?;
+                                visual.SetOffsetX2(offset)?;
+                                visual.SetTransform(motion)?;
+                                visual_count += 1;
+                                Ok::<_, anyhow::Error>(())
+                            };
                         for sheet in backdrop::sheets(&strips) {
                             let bitmap = filter.image(
                                 dev,
@@ -1101,21 +1197,11 @@ impl DirectXRenderer {
                                 &rows,
                                 sheet,
                                 prefix_view,
+                                None,
                             )?;
                             image_sheets += 1;
-                            let mut attach =
-                                |clip, offset: f32, motion: &IDCompositionMatrixTransform| unsafe {
-                                    let visual = child(dev, &group, clip, &bitmap)?;
-                                    visual.SetBitmapInterpolationMode(
-                                        DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR,
-                                    )?;
-                                    visual.SetOffsetX2(offset)?;
-                                    visual.SetTransform(motion)?;
-                                    visual_count += 1;
-                                    Ok::<_, anyhow::Error>(())
-                                };
                             if sheet.is_empty() {
-                                attach(mask, 0., &transform)?;
+                                attach(&bitmap, mask, 0., &transform)?;
                             } else {
                                 let mut x = 0;
                                 for strip in sheet {
@@ -1126,17 +1212,46 @@ impl DirectXRenderer {
                                         let phase = strip.phase(s.bounds.left().0.round());
                                         let offset = strip.clip.left as f32 + 0.5
                                             - (phase + 0.5 + x as f32) / motion.stride;
-                                        attach(strip.clip, offset, &motion.transform)?;
+                                        attach(&bitmap, strip.clip, offset, &motion.transform)?;
                                     } else {
                                         attach(
+                                            &bitmap,
                                             strip.clip,
-                                            (strip.first as f32 - x as f32) * 0.25,
+                                            (strip.first as f32 - x as f32) / samples,
                                             &transform,
                                         )?;
                                     }
                                     x += strip.width;
                                 }
                             }
+                        }
+                        if let Some(&first) = extra.first() {
+                            let motion =
+                                phases.as_ref().context("missing sparse chart transform")?;
+                            let bitmap = match filter.image(
+                                dev,
+                                devices,
+                                &self.atlas,
+                                s,
+                                &rows,
+                                &extra,
+                                prefix_view,
+                                Some(mask),
+                            ) {
+                                Ok(surface) => surface,
+                                Err(error) => {
+                                    log::warn!("Creating sparse chart columns: {error:#}");
+                                    charts.sparse_unavailable = true;
+                                    charts.skipped = None;
+                                    return Ok(false);
+                                }
+                            };
+                            let phase = first.phase(s.bounds.left().0.round());
+                            let offset = mask.left as f32 + 0.5 - (phase + 0.5) / motion.stride;
+                            attach(&bitmap, mask, offset, &motion.transform)?;
+                            image_sheets += 1;
+                            // All exception columns have the same phase and vertical origin.
+                            strips.push(first);
                         }
                         layers.push(Layer {
                             position: None,
@@ -1146,6 +1261,7 @@ impl DirectXRenderer {
                                 first_row: rows.start,
                                 strips,
                                 transform,
+                                samples,
                                 phases,
                             },
                         });
@@ -1210,7 +1326,7 @@ impl DirectXRenderer {
         crate::frame_trace::record(7, opaque_strips as u64);
         if diagnostics() {
             println!(
-                "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{visual_count},\"imageSheets\":{image_sheets},\"bytes\":{tree_bytes},\"opaqueImages\":{opaque_images},\"opaqueStrips\":{opaque_strips},\"imageBytes\":{},\"untrimmedImageBytes\":{},\"barBytes\":{bar_bytes},\"groupBytes\":{group_bytes},\"revision\":{}}}",
+                "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{visual_count},\"imageSheets\":{image_sheets},\"bytes\":{tree_bytes},\"opaqueImages\":{opaque_images},\"opaqueStrips\":{opaque_strips},\"sparseImages\":{sparse_images},\"imageBytes\":{},\"untrimmedImageBytes\":{},\"barBytes\":{bar_bytes},\"groupBytes\":{group_bytes},\"revision\":{}}}",
                 image_bytes, untrimmed_bytes, key.revision
             );
         }

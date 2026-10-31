@@ -618,32 +618,36 @@ impl Desktop {
                     .border_1()
                     .border_color(metric.color.opacity(0.45))
                     .rounded(px(4.))
-                    .child(charts::TimePlot {
-                        id: format!("history-{}", metric.field).into(),
-                        series,
-                        start: from,
-                        end: to,
-                        max,
-                        min: 0.,
-                        interactive: false,
-                        grid: true,
-                        fill: true,
-                        separate_curve_layer: false,
-                        bars: false,
-                        background_separate: false,
-                        smooth: false,
-                        ticks: Some(tick_list.clone()),
-                        geometry_start: from,
-                        measured_width: Rc::new(Cell::new(1.)),
-                        live_clock: None,
-                        image_surface: Default::default(),
-                        bar_surfaces: Default::default(),
-                        bar_glides: Default::default(),
-                        dash_phases: Default::default(),
-                        rescale: Default::default(),
-                        readout: Default::default(),
-                        captions: None,
-                    })
+                    .child(
+                        div()
+                            .size_full()
+                            .bg(p.chart_surface)
+                            .child(charts::TimePlot {
+                                id: format!("history-{}", metric.field).into(),
+                                series,
+                                start: from,
+                                end: to,
+                                max,
+                                min: 0.,
+                                interactive: false,
+                                grid: true,
+                                fill: true,
+                                bars: false,
+                                background_separate: false,
+                                smooth: false,
+                                ticks: Some(tick_list.clone()),
+                                geometry_start: from,
+                                measured_width: Rc::new(Cell::new(1.)),
+                                live_clock: None,
+                                image_surface: Default::default(),
+                                bar_surfaces: Default::default(),
+                                bar_glides: Default::default(),
+                                dash_phases: Default::default(),
+                                rescale: Default::default(),
+                                readout: Default::default(),
+                                captions: None,
+                            }),
+                    )
                     .when_some(scale, |d, scale| {
                         d.child(
                             div()

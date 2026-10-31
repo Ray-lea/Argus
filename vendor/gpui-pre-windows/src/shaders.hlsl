@@ -1257,7 +1257,8 @@ float4 chart_backdrop_fragment(float4 position : SV_Position) : SV_Target {
         int2 p = chart_tile_origin + int2(x, y);
         float4 pixel = t_prefix.Load(int3(p, 0));
         if (pixel.a != 1.0) return float4(2.0 / 255.0, 0, 0, 1);
-        if (x > 0 && any(pixel != t_prefix.Load(int3(p - int2(1,0), 0)))) changed = 1u;
+        if (x > 0 && any(pixel != t_prefix.Load(int3(p - int2(1,0), 0)))) changed |= 1u;
+        if (any(pixel != t_prefix.Load(int3(chart_first_x, p.y, 0)))) changed |= 4u;
     }
     return float4(float(changed) / 255.0, 0, 0, 1);
 }
@@ -1266,7 +1267,7 @@ float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
     int2 pixel = int2(position.xy) - chart_update_offset;
     int column = 0;
     float center_x;
-    if (chart_precompose > 1u) {
+    if (chart_precompose > 2u) {
         // Consecutive texels within a lane cover eighth-pixel scroll phases
         // for one stationary screen column. The visual samples all lanes at
         // the same phase as the curve moves.
@@ -1274,7 +1275,7 @@ float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
         column = pixel.x / stride;
         center_x = 0.25 * float(chart_first_x + 8 * column + pixel.x % stride);
     } else {
-        center_x = 0.5 * float(chart_first_x + pixel.x);
+        center_x = (chart_precompose == 2u ? 0.25 : 0.5) * float(chart_first_x + pixel.x);
     }
     float center_y = chart_first_y + float(pixel.y) * chart_y_scale;
     float low = center_y - 0.5 * chart_y_scale;

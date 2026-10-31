@@ -1753,7 +1753,6 @@ impl Desktop {
             (bounds.size.height - header).max(px(1.)),
             Look {
                 frame: true,
-                separate_curve_layer: true,
                 ..Look::default()
             },
             cx,

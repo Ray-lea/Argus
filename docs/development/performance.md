@@ -12,6 +12,8 @@
 
 `scripts/ui-smoke.mjs <标识> --chart-scroll --require-chart-layers` 在鼠标停在图表外时逐帧跟踪固定 CPU 峰值。测试分别覆盖正常采样和采样间插入整帧重绘，记录回移的最大物理像素数。实色窗口可追加 `--opaque-window`。帧跟踪阶段 7 记录缓存树提交，阶段 8 记录通过同一根节点提交的完整画面。比较 GPU 提交开销时，这两项与 Present1 分别计数。
 
+`--retained --require-chart-layers` 对比进程概览、详情、CPU 多核网格和各设备性能页的滚动帧与完整重绘。`gpu-chart-layers.sparseImages` 记录使用虚拟表面修正局部背景的曲线数。多核页应一并核对 `images`、`opaqueImages`、实际呈现帧率与进程 GPU 占用。`--snapshots` 另行检查历史页移入、完整重绘和移出后的画面。
+
 tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内存及 GPU 引擎时间，通过 Windows.Graphics.Capture 观察目标窗口的呈现间隔。DWM 消耗包含整个桌面的合成工作，单独记录。忙碌开发机上的进程占用结果需要多轮交替与稳定性判断。
 
 应用以 --hidden --test --identifier <独立标识> 启动；工具使用 HWND_BOTTOM 和 NOACTIVATE 显示，并每 50 ms 监视前台。截图与帧统计均来自该窗口的捕获结果，隐藏状态单独测量资源开销。测试完退出实例并清理自身测试数据。

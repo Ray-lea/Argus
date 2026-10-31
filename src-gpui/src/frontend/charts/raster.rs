@@ -388,7 +388,7 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
         let image_bounds = surface.bounds_at(plot, bounds, plot.end);
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             #[cfg(target_os = "windows")]
-            let painted = if texture.has_fill && !plot.separate_curve_layer {
+            let painted = if texture.has_fill {
                 window.paint_image_subpixel_in_scene(image_bounds, texture.image.clone(), 0)
             } else {
                 window.paint_image_subpixel_premultiplied(image_bounds, texture.image.clone(), 0)
@@ -1112,7 +1112,6 @@ mod tests {
             interactive: false,
             grid: false,
             fill: false,
-            separate_curve_layer: false,
             bars: false,
             background_separate: false,
             smooth: true,

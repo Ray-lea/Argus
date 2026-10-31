@@ -5,7 +5,43 @@ use std::task::Poll;
 
 const MAX_STRIPS: usize = 48;
 const MAX_SHEET_WIDTH: u32 = 16384;
-type ColumnRuns = BTreeMap<usize, Vec<RECT>>;
+type ColumnRuns = BTreeMap<usize, Columns>;
+
+pub(super) struct Columns {
+    pub rect: RECT,
+    pub runs: Vec<RECT>,
+    exceptions: Vec<RECT>,
+}
+
+#[derive(Default)]
+pub(super) struct Plan {
+    pub strips: Vec<Strip>,
+    pub corrections: Vec<Strip>,
+}
+
+impl Plan {
+    pub fn clips(&self) -> usize {
+        self.strips.len() + usize::from(!self.corrections.is_empty())
+    }
+
+    pub fn bytes(&self, height: u64) -> u64 {
+        let packed: u64 = self.strips.iter().map(|s| u64::from(s.width)).sum();
+        let mut bytes = packed * height * 4;
+        if let Some(base) = self.strips.first() {
+            // Reserve padded updates, including tiles straddled by a column.
+            for s in &self.corrections {
+                let start = (s.clip.left - base.clip.left) as u64 * u64::from(s.stride);
+                let end = (start + u64::from(s.width)).next_multiple_of(128);
+                bytes += (end - start / 128 * 128) * height.next_multiple_of(64) * 4;
+            }
+        }
+        bytes
+    }
+}
+
+fn reference_x(rect: RECT) -> i32 {
+    rect.left + (rect.right - rect.left) / 11
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct Strip {
@@ -13,24 +49,31 @@ pub(super) struct Strip {
     pub first: i32,
     pub width: u32,
     pub top: i32,
+    pub column: i32,
+    /// Horizontal phases per device pixel in the filtered bitmap.
+    pub samples: u32,
     /// Samples stored for each fixed screen column; zero for a uniform span.
     pub stride: u32,
 }
 
 impl Strip {
-    pub fn new(clip: RECT, bounds: Bounds<ScaledPixels>) -> Option<Self> {
+    pub fn new(clip: RECT, bounds: Bounds<ScaledPixels>, samples: u32) -> Option<Self> {
         let left = bounds.left().0;
         // Leave room for about two samples of a 60-sample chart. Larger moves
         // use the normal scene until the next cache is ready.
-        let guard = 4 * (bounds.size.width.0 / 32.).ceil().clamp(8., 128.) as i32 + 2;
-        let first = (((clip.left as f32 - left) * 4.).floor() as i32).checked_sub(guard)?;
-        let end = (((clip.right as f32 - left) * 4.).ceil() as i32).checked_add(guard)?;
+        let guard = samples as i32 * (bounds.size.width.0 / 32.).ceil().clamp(8., 128.) as i32 + 2;
+        let first =
+            (((clip.left as f32 - left) * samples as f32).floor() as i32).checked_sub(guard)?;
+        let end =
+            (((clip.right as f32 - left) * samples as f32).ceil() as i32).checked_add(guard)?;
         let width = u32::try_from(end.checked_sub(first)?).ok()?;
         (width > 0 && width <= MAX_SHEET_WIDTH).then_some(Self {
             clip,
             first,
             width,
             top: (bounds.top().0 - 0.5).ceil() as i32,
+            column: clip.left,
+            samples,
             stride: 0,
         })
     }
@@ -45,52 +88,68 @@ impl Strip {
             && if self.stride > 0 {
                 (1.0..=self.stride as f32 - 2.).contains(&self.phase(left))
             } else {
-                (self.clip.left as f32 - left) * 4. >= (self.first + 2) as f32
-                    && (self.clip.right as f32 - left) * 4.
+                (self.clip.left as f32 - left) * self.samples as f32 >= (self.first + 2) as f32
+                    && (self.clip.right as f32 - left) * self.samples as f32
                         <= self.first as f32 + self.width as f32 - 2.
             }
     }
 }
 
-/// Dense glyph edges share a clip. Each screen column gets its own lane of
-/// eighth-pixel curve phases over that column's actual background.
-pub(super) fn pack(runs: &[RECT], bounds: Bounds<ScaledPixels>) -> Option<Vec<Strip>> {
-    let mut result = Vec::new();
-    let mut remaining = runs;
-    // Rolling moves left. Keep a sample interval ahead and a smaller margin
-    // for corrections. A power-of-two stride and integral anchor keep the
-    // fixed offset exact at high DPI, even near the right edge of a 4K window.
+fn append_lanes(rect: RECT, bounds: Bounds<ScaledPixels>, result: &mut Vec<Strip>) -> Option<()> {
+    // Keep a sample interval ahead and a smaller margin for corrections.
+    // The power-of-two stride keeps the fixed offset exact at high DPI.
     let travel = 8 * (bounds.size.width.0 / 48.).ceil().clamp(2., 128.) as u32;
     let stride = (travel + 16).next_power_of_two();
     let guard = (stride / 4).min(stride - travel - 2) as i32;
     let anchor = bounds.left().0.round();
+    let mut left = rect.left;
+    while left < rect.right {
+        let right = rect.right.min(left + (MAX_SHEET_WIDTH / stride) as i32);
+        let source = ((left as f32 + 0.5 - anchor) * 8.) as i32;
+        result.push(Strip {
+            clip: RECT {
+                left,
+                right,
+                ..rect
+            },
+            first: source.checked_sub(guard)?,
+            width: (right - left) as u32 * stride,
+            top: (bounds.top().0 - 0.5).ceil() as i32,
+            column: left,
+            samples: 8,
+            stride,
+        });
+        left = right;
+    }
+    Some(())
+}
+
+/// Dense glyph edges share a clip. Each screen column gets its own lane of
+/// eighth-pixel curve phases over that column's actual background.
+pub(super) fn pack(
+    runs: &[RECT],
+    bounds: Bounds<ScaledPixels>,
+    samples: u32,
+) -> Option<Vec<Strip>> {
+    let mut result = Vec::new();
+    let mut remaining = runs;
     while let Some(first) = remaining.first() {
         let narrow = remaining
             .iter()
             .take_while(|r| r.right - r.left < 8)
             .count();
         if narrow < 2 {
-            result.push(Strip::new(*first, bounds)?);
+            result.push(Strip::new(*first, bounds, samples)?);
             remaining = &remaining[1..];
         } else {
-            let end = remaining[narrow - 1].right;
-            let mut left = first.left;
-            while left < end {
-                let right = end.min(left + (MAX_SHEET_WIDTH / stride) as i32);
-                let source = ((left as f32 + 0.5 - anchor) * 8.) as i32;
-                result.push(Strip {
-                    clip: RECT {
-                        left,
-                        right,
-                        ..*first
-                    },
-                    first: source.checked_sub(guard)?,
-                    width: (right - left) as u32 * stride,
-                    top: (bounds.top().0 - 0.5).ceil() as i32,
-                    stride,
-                });
-                left = right;
-            }
+            append_lanes(
+                RECT {
+                    right: remaining[narrow - 1].right,
+                    ..*first
+                },
+                bounds,
+                &mut result,
+            )?;
             remaining = &remaining[narrow..];
         }
         if result.len() > MAX_STRIPS {
@@ -98,6 +157,27 @@ pub(super) fn pack(runs: &[RECT], bounds: Bounds<ScaledPixels>) -> Option<Vec<St
         }
     }
     Some(result)
+}
+
+impl Columns {
+    /// One moving opaque chart covers the common background. A virtual
+    /// surface stores only the fixed columns whose actual pixels differ.
+    pub fn sparse(&self, bounds: Bounds<ScaledPixels>, samples: u32) -> Option<Plan> {
+        let columns: i32 = self.exceptions.iter().map(|r| r.right - r.left).sum();
+        if columns == 0 || columns * 4 > self.rect.right - self.rect.left {
+            return None;
+        }
+        let mut base = Strip::new(self.rect, bounds, samples)?;
+        base.column = reference_x(self.rect);
+        let mut corrections = Vec::new();
+        for &rect in &self.exceptions {
+            append_lanes(rect, bounds, &mut corrections)?;
+        }
+        Some(Plan {
+            strips: vec![base],
+            corrections,
+        })
+    }
 }
 
 /// Pack adjacent strips at their original sampling density. A plain
@@ -190,6 +270,7 @@ impl Scan {
                         r.right - r.left,
                         r.bottom - r.top,
                     ]);
+                    params[8] = reference_x(*r);
                     update_buffer(ctx, &filter.params, &params)?;
                     ctx.RSSetViewports(Some(&[viewport(
                         0.,
@@ -240,7 +321,7 @@ impl Scan {
                             .add(row * mapped.RowPitch as usize),
                         (r.right - r.left) as usize,
                     );
-                    Some((index, strips(r, data)?))
+                    Some((index, classify(r, data)?))
                 })
                 .collect();
             ctx.Unmap(&self.readback, 0);
@@ -249,21 +330,42 @@ impl Scan {
     }
 }
 
+fn classify(rect: RECT, flags: &[u8]) -> Option<Columns> {
+    let runs = strips(rect, flags)?;
+    let mut exceptions: Vec<RECT> = Vec::new();
+    for &r in &runs {
+        if flags[(r.left - rect.left) as usize] & 4 != 0 {
+            if let Some(last) = exceptions.last_mut()
+                && last.right == r.left
+            {
+                last.right = r.right;
+            } else {
+                exceptions.push(r);
+            }
+        }
+    }
+    Some(Columns {
+        rect,
+        runs,
+        exceptions,
+    })
+}
+
 fn strips(rect: RECT, flags: &[u8]) -> Option<Vec<RECT>> {
     let mut start = rect.left;
     let mut result = Vec::new();
     for (i, &flag) in flags.iter().enumerate() {
-        if flag > 1 {
+        if flag & 2 != 0 {
             if diagnostics() {
                 println!(
                     "{{\"event\":\"gpu-chart-backdrop-limit\",\"reason\":\"translucent-prefix\",\"columns\":{},\"height\":{}}}",
-                    flags.iter().filter(|&&f| f > 1).count(),
+                    flags.iter().filter(|&&f| f & 2 != 0).count(),
                     rect.bottom - rect.top
                 );
             }
             return None;
         }
-        if i != 0 && flag == 1 {
+        if i != 0 && flag & 1 != 0 {
             let x = rect.left + i as i32;
             result.push(RECT {
                 left: start,
@@ -282,7 +384,7 @@ fn strips(rect: RECT, flags: &[u8]) -> Option<Vec<RECT>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_SHEET_WIDTH, MAX_STRIPS, Strip, pack, sheets, strips};
+    use super::{MAX_SHEET_WIDTH, MAX_STRIPS, Strip, classify, pack, reference_x, sheets, strips};
     use gpui::{Bounds, ScaledPixels, point, size};
     use windows::Win32::Foundation::RECT;
     #[test]
@@ -299,6 +401,7 @@ mod tests {
                 bottom: 260,
             },
             bounds,
+            4,
         )
         .unwrap();
         assert!(strip.fits(bounds));
@@ -340,7 +443,7 @@ mod tests {
             size(ScaledPixels(300.), ScaledPixels(20.)),
         );
         let runs = strips(rect, &[1; 120]).unwrap();
-        let columns = pack(&runs, bounds).unwrap();
+        let columns = pack(&runs, bounds, 4).unwrap();
         assert_eq!(columns.len(), 1);
         assert_eq!(columns[0].clip, rect);
         assert!(columns[0].stride > 1);
@@ -354,7 +457,7 @@ mod tests {
                 ..rect
             })
             .collect();
-        assert!(pack(&many, bounds).is_none());
+        assert!(pack(&many, bounds, 4).is_none());
         assert_eq!(sheets(&columns).len(), 1);
         let large = [
             Strip {
@@ -384,7 +487,7 @@ mod tests {
             size(ScaledPixels(1400.), ScaledPixels(80.)),
         );
         let runs = strips(rect, &[1; 600]).unwrap();
-        let tiles = pack(&runs, bounds).unwrap();
+        let tiles = pack(&runs, bounds, 4).unwrap();
         assert!(tiles.len() > 1);
         let anchor = bounds.left().0.round();
         let mut next = rect.left;
@@ -399,5 +502,51 @@ mod tests {
             next = tile.clip.right;
         }
         assert_eq!(next, rect.right);
+    }
+
+    #[test]
+    fn sparse_columns_preserve_every_grid_edge_and_share_one_phase() {
+        let rect = RECT {
+            left: 19,
+            right: 129,
+            top: 3,
+            bottom: 20,
+        };
+        let bounds = Bounds::new(
+            point(ScaledPixels(17.375), ScaledPixels(2.)),
+            size(ScaledPixels(112.), ScaledPixels(40.)),
+        );
+        // Two neighboring grid columns have different colors, followed by a
+        // return to the reference and an isolated line near the far edge.
+        let mut flags = [0; 110];
+        for (x, f) in [(3, 5), (4, 5), (5, 1), (95, 5), (96, 1)] {
+            flags[x] = f;
+        }
+        let profile = classify(rect, &flags).unwrap();
+        let plan = profile.sparse(bounds, 4).unwrap();
+        assert_eq!(plan.clips(), 2);
+        assert!(plan.bytes(20) <= plan.bytes(80));
+        let base = plan.strips[0];
+        let lanes = plan.corrections;
+        assert_eq!(base.clip, rect);
+        assert_eq!(base.column, reference_x(rect));
+        assert_eq!(
+            lanes
+                .iter()
+                .map(|s| (s.clip.left, s.clip.right))
+                .collect::<Vec<_>>(),
+            [(22, 24), (114, 115)]
+        );
+        assert_eq!(
+            lanes[0].phase(bounds.left().0.round()),
+            lanes[1].phase(bounds.left().0.round())
+        );
+        assert!(
+            lanes
+                .iter()
+                .all(|s| s.fits(bounds) && s.column == s.clip.left)
+        );
+        flags[1] = 6;
+        assert!(classify(rect, &flags).is_none());
     }
 }
