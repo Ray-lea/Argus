@@ -1259,6 +1259,11 @@ float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
         }
     }
     float4 filtered = value * (0.5 / chart_y_scale);
+    // Match the normal sprite's antialiased rectangle at fractional image edges.
+    float center_x = 0.5 * float(pixel.x);
+    float edge_x = 0.5 * min(center_x, float(chart_tile_size.x) - center_x);
+    float edge_y = min(center_y, float(chart_tile_size.y) - center_y) / chart_y_scale;
+    filtered *= saturate(0.5 + min(edge_x, edge_y));
     float3 color = filtered.rgb / max(filtered.a, 1e-8);
     // The FP16 composition surface is linear scRGB; the atlas is sRGB.
     float3 decoded = color <= 0.04045 ? color / 12.92 : pow(abs((color + 0.055) / 1.055), 2.4);

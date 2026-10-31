@@ -27,6 +27,7 @@ pub(super) struct ChartComposition {
     unavailable: bool,
     standard_sdr: Option<bool>,
     tree_budget: u64,
+    used_since_hide: bool,
     filter: Option<Filter>,
     bars: Vec<(BarKey, IDCompositionSurface)>,
 }
@@ -55,7 +56,11 @@ fn software_scheduled(device: &IDXGIDevice) -> bool {
             hAdapter: adapter.hAdapter,
         });
         // HwSchSupported is bit zero, HwSchEnabled is bit one.
-        status.is_ok() && caps.Anonymous.Value & 3 == 1
+        let test_layers = std::env::var_os("ARGUS_GPUI_TEST_CHART_LAYERS").is_some()
+            && std::env::args_os().any(|arg| arg == "--test");
+        status.is_ok()
+            && caps.Anonymous.Value & 1 != 0
+            && (caps.Anonymous.Value & 2 == 0 || test_layers)
     }
 }
 
@@ -89,9 +94,24 @@ struct Tree {
     layers: Vec<Layer>,
 }
 
-enum Layer {
-    Image(usize, IDCompositionVisual, f32),
-    Bar(usize, IDCompositionVisual, BarKey),
+struct Layer {
+    visual: IDCompositionVisual,
+    content: LayerContent,
+    position: Option<(f32, f32)>,
+}
+
+enum LayerContent {
+    Image {
+        index: usize,
+        y_phase: f32,
+        first_row: u32,
+    },
+    Bar {
+        index: usize,
+        key: BarKey,
+        left: f32,
+        bottom: f32,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -114,7 +134,7 @@ impl BarKey {
         }
         let key = Self {
             width: width as u32,
-            height: height as u32,
+            height: height.round() as u32,
             color: bar.color,
             corners: quad.corner_radii,
         };
@@ -163,29 +183,85 @@ fn supported_image(s: &PolychromeSprite) -> bool {
         && (s.bounds.size.height.0 * 2. - s.tile.bounds.size.height.0 as f32).abs() < 0.01
 }
 
-fn place(layer: &Layer, scene: &Scene) -> Result<()> {
-    unsafe {
-        match layer {
-            Layer::Image(i, visual, _) => {
-                let b = scene.polychrome_sprites[*i].bounds;
-                // The first filtered texel is centered on the original tile boundary.
-                visual.SetOffsetX2(b.left().0 - 0.125)?;
-                visual.SetOffsetY2((b.top().0 - 0.5).ceil())?;
+// The first sampled pixel changes at a half-pixel boundary, including when
+// two origins have almost identical fractional parts on opposite sides.
+fn row_phase(top: f32) -> f32 {
+    (top - 0.5).ceil() + 0.5 - top
+}
+
+impl Layer {
+    fn compatible(&self, scene: &Scene) -> bool {
+        match self.content {
+            LayerContent::Image { index, y_phase, .. } => scene
+                .polychrome_sprites
+                .get(index)
+                .is_some_and(|s| (row_phase(s.bounds.top().0) - y_phase).abs() <= 1e-5),
+            LayerContent::Bar {
+                index,
+                key,
+                left,
+                bottom,
+            } => scene.retained_bars.get(&index).is_some_and(|bar| {
+                bar.bounds.left().0 == left
+                    && (bar.bounds.bottom().0 - bottom).abs() < 1e-3
+                    && bar.bounds.size.width.0 == key.width as f32
+            }),
+        }
+    }
+
+    fn place(&mut self, scene: &Scene) -> Result<bool> {
+        let (x, y) = match self.content {
+            LayerContent::Image {
+                index, first_row, ..
+            } => {
+                let b = scene.polychrome_sprites[index].bounds;
+                (
+                    b.left().0 - 0.125,
+                    (b.top().0 - 0.5).ceil() + first_row as f32,
+                )
             }
-            Layer::Bar(i, visual, key) => {
-                let bar = scene.retained_bars[i];
-                let b = bar.bounds;
-                let phase = (b.size.height.0 * BAR_PHASES as f32)
+            LayerContent::Bar { index, key, .. } => {
+                let bar = scene.retained_bars[&index];
+                let phase = (bar.bounds.size.height.0 * BAR_PHASES as f32)
                     .round()
                     .clamp(0., (key.height * BAR_PHASES) as f32) as u32;
-                visual.SetOffsetX2(b.left().0 - (phase % BAR_PHASES * key.width) as f32)?;
-                visual.SetOffsetY2(
+                (
+                    bar.bounds.left().0 - (phase % BAR_PHASES * key.width) as f32,
                     bar.ceiling.0.floor() - (phase / BAR_PHASES * key.height) as f32,
-                )?;
+                )
+            }
+        };
+        let old = self.position;
+        unsafe {
+            if old.map(|p| p.0) != Some(x) {
+                self.visual.SetOffsetX2(x)?;
+            }
+            if old.map(|p| p.1) != Some(y) {
+                self.visual.SetOffsetY2(y)?;
             }
         }
-        Ok(())
+        self.position = Some((x, y));
+        Ok(old != self.position)
     }
+}
+
+// Destination pixels integrate [y, y+1] in the original chart's coordinate
+// system. Retain a transparent guard row on either side for interpolation.
+fn filtered_rows(
+    top: f32,
+    height: f32,
+    source_height: u32,
+    ink: std::ops::Range<u32>,
+) -> std::ops::Range<u32> {
+    if ink.is_empty() || source_height == 0 {
+        return 0..0;
+    }
+    let first = (top - 0.5).ceil();
+    let last = (top + height - 0.5).ceil();
+    let scale = height / source_height as f32;
+    let start = ((top + ink.start as f32 * scale).floor() - 1.).clamp(first, last);
+    let end = ((top + ink.end as f32 * scale).ceil() + 1.).clamp(first, last);
+    (start - first) as u32..(end - first) as u32
 }
 
 fn surface(
@@ -248,12 +324,12 @@ impl Filter {
         devices: &DirectXRendererDevices,
         atlas: &DirectXAtlas,
         sprite: &PolychromeSprite,
+        rows: &std::ops::Range<u32>,
     ) -> Result<IDCompositionSurface> {
         let tile = sprite.tile.bounds;
         let w = 2 * tile.size.width.0 as u32 + 1;
         let top = sprite.bounds.top().0;
-        let first_row = (top - 0.5).ceil();
-        let h = ((sprite.bounds.bottom().0 - 0.5).ceil() - first_row) as u32;
+        let h = rows.end - rows.start;
         let y_scale = tile.size.height.0 as f32 / sprite.bounds.size.height.0;
         let view = atlas
             .get_texture_view(sprite.tile.texture_id)
@@ -281,8 +357,8 @@ impl Filter {
                         tile.size.width.0,
                         tile.size.height.0,
                         offset.x,
-                        offset.y,
-                        ((first_row + 0.5 - top) * y_scale).to_bits() as i32,
+                        offset.y - rows.start as i32,
+                        (row_phase(top) * y_scale).to_bits() as i32,
                         y_scale.to_bits() as i32,
                     ],
                 )?;
@@ -417,6 +493,43 @@ fn child(
 }
 
 impl DirectXRenderer {
+    pub(crate) fn release_hidden_chart_layers(&mut self) -> Result<bool> {
+        let Some(comp) = &mut self.direct_composition else {
+            return Ok(false);
+        };
+        // A full paint just before hiding may already have detached the tree.
+        // Its releases still need to reach the compositor before the idle period.
+        if !comp.charts.used_since_hide {
+            return Ok(false);
+        }
+        if comp.charts.active() {
+            unsafe {
+                comp.comp_target.SetRoot(&comp.comp_visual)?;
+                comp.comp_device.Commit()?;
+            }
+        }
+        comp.charts.deactivate();
+        comp.charts.bars.clear();
+        if let Some(r) = self.resources.as_mut() {
+            // The next visible draw must reconstruct the entire swap-chain buffer.
+            r.prefix_key = None;
+            r.prefix_view = None;
+            r.prefix = None;
+        }
+        if let Some(devices) = &self.devices {
+            unsafe {
+                devices
+                    .device_context
+                    .PSSetShaderResources(2, Some(&[None]));
+            }
+        }
+        unsafe {
+            comp.comp_device.Commit()?;
+        }
+        comp.charts.used_since_hide = false;
+        Ok(true)
+    }
+
     pub(super) fn update_chart_tree(
         &mut self,
         scene: &Scene,
@@ -425,7 +538,7 @@ impl DirectXRenderer {
         let Some(comp) = &mut self.direct_composition else {
             return Ok(false);
         };
-        let Some(tree) = &comp.charts.tree else {
+        let Some(tree) = &mut comp.charts.tree else {
             return Ok(false);
         };
         if Some(tree.key) != key(scene, self.width, self.height, background)
@@ -434,19 +547,17 @@ impl DirectXRenderer {
         {
             return Ok(false);
         }
-        if tree.layers.iter().any(|layer| match layer {
-            Layer::Image(i, _, y_phase) => {
-                (scene.polychrome_sprites[*i].bounds.top().0.fract() - y_phase).abs() > 1e-5
-            }
-            Layer::Bar(..) => false,
-        }) {
+        if !tree.layers.iter().all(|layer| layer.compatible(scene)) {
             return Ok(false);
         }
-        for layer in &tree.layers {
-            place(layer, scene)?;
+        let mut changed = false;
+        for layer in &mut tree.layers {
+            changed |= layer.place(scene)?;
         }
-        unsafe {
-            comp.comp_device.Commit()?;
+        if changed {
+            unsafe {
+                comp.comp_device.Commit()?;
+            }
         }
         Ok(true)
     }
@@ -462,12 +573,7 @@ impl DirectXRenderer {
         let Some(comp) = &mut self.direct_composition else {
             return Ok(false);
         };
-        static ENABLED: OnceLock<bool> = OnceLock::new();
-        if comp.charts.unavailable
-            || comp.charts.skipped == Some(key)
-            || !*ENABLED
-                .get_or_init(|| std::env::var_os("ARGUS_GPUI_DISABLE_CHART_LAYERS").is_none())
-        {
+        if comp.charts.unavailable || comp.charts.skipped == Some(key) {
             return Ok(false);
         }
         comp.charts.skipped = Some(key);
@@ -490,6 +596,8 @@ impl DirectXRenderer {
         let mut bar_keys = Vec::new();
         let mut images = 0;
         let mut pixels = 0u64;
+        let mut untrimmed_pixels = 0u64;
+        let mut image_rows = Vec::new();
         for b in &suffix {
             match b {
                 PrimitiveBatch::PolychromeSprites { range, .. } => {
@@ -499,10 +607,19 @@ impl DirectXRenderer {
                         {
                             return Ok(false);
                         }
-                        images += 1;
-                        pixels += (2 * s.tile.bounds.size.width.0 as u64 + 1)
-                            * ((s.bounds.bottom().0 - 0.5).ceil() - (s.bounds.top().0 - 0.5).ceil())
-                                as u64;
+                        let rows = filtered_rows(
+                            s.bounds.top().0,
+                            s.bounds.size.height.0,
+                            s.tile.bounds.size.height.0 as u32,
+                            self.atlas.chart_rows(&s.tile),
+                        );
+                        images += usize::from(!rows.is_empty());
+                        let width = 2 * s.tile.bounds.size.width.0 as u64 + 1;
+                        pixels += width * u64::from(rows.end - rows.start);
+                        let full_height =
+                            (s.bounds.bottom().0 - 0.5).ceil() - (s.bounds.top().0 - 0.5).ceil();
+                        untrimmed_pixels += width * full_height as u64;
+                        image_rows.push(rows);
                     }
                 }
                 PrimitiveBatch::Quads(range) => {
@@ -524,7 +641,10 @@ impl DirectXRenderer {
         let bar_bytes = bar_keys.iter().map(|k| k.bytes()).sum::<u64>();
         let tree_bytes =
             pixels * 8 + bar_bytes + u64::from(self.width) * u64::from(self.height) * 4;
-        if images == 0 || bar_bytes > MAX_BAR_BYTES || tree_bytes > comp.charts.tree_budget {
+        if (image_rows.is_empty() && bar_keys.is_empty())
+            || bar_bytes > MAX_BAR_BYTES
+            || tree_bytes > comp.charts.tree_budget
+        {
             if diagnostics() {
                 println!(
                     "{{\"event\":\"gpu-chart-budget\",\"bytes\":{tree_bytes},\"limit\":{}}}",
@@ -567,12 +687,17 @@ impl DirectXRenderer {
             root.SetContent(&background)?;
         }
         let mut layers = Vec::new();
+        let mut image_rows = image_rows.into_iter();
         for b in suffix {
             match b {
                 PrimitiveBatch::PolychromeSprites { range, .. } => {
                     for i in range.clone() {
                         let s = &scene.polychrome_sprites[i];
-                        let bitmap = filter.image(dev, devices, &self.atlas, s)?;
+                        let rows = image_rows.next().context("missing chart rows")?;
+                        if rows.is_empty() {
+                            continue;
+                        }
+                        let bitmap = filter.image(dev, devices, &self.atlas, s, &rows)?;
                         let visual = child(
                             dev,
                             &root,
@@ -589,7 +714,15 @@ impl DirectXRenderer {
                                 ..Default::default()
                             })?;
                         }
-                        layers.push(Layer::Image(i, visual, s.bounds.top().0.fract()));
+                        layers.push(Layer {
+                            visual,
+                            position: None,
+                            content: LayerContent::Image {
+                                index: i,
+                                y_phase: row_phase(s.bounds.top().0),
+                                first_row: rows.start,
+                            },
+                        });
                     }
                 }
                 PrimitiveBatch::Quads(range) => {
@@ -623,14 +756,23 @@ impl DirectXRenderer {
                             ),
                             bitmap,
                         )?;
-                        layers.push(Layer::Bar(i, visual, k));
+                        layers.push(Layer {
+                            visual,
+                            position: None,
+                            content: LayerContent::Bar {
+                                index: i,
+                                key: k,
+                                left: bar.bounds.left().0,
+                                bottom: bar.bounds.bottom().0,
+                            },
+                        });
                     }
                 }
                 _ => unreachable!(),
             }
         }
-        for layer in &layers {
-            place(layer, scene)?;
+        for layer in &mut layers {
+            layer.place(scene)?;
         }
         unsafe {
             comp.comp_target.SetRoot(&root)?;
@@ -638,12 +780,15 @@ impl DirectXRenderer {
         }
         if diagnostics() {
             println!(
-                "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{},\"bytes\":{tree_bytes},\"revision\":{}}}",
+                "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{},\"bytes\":{tree_bytes},\"imageBytes\":{},\"untrimmedImageBytes\":{},\"barBytes\":{bar_bytes},\"revision\":{}}}",
                 layers.len(),
+                pixels * 8,
+                untrimmed_pixels * 8,
                 key.revision
             );
         }
         charts.tree = Some(Tree { key, layers });
+        charts.used_since_hide = true;
         Ok(true)
     }
 }
@@ -653,7 +798,43 @@ fn diagnostics() -> bool {
     *ENABLED.get_or_init(|| std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{filtered_rows, row_phase};
+
+    #[test]
+    fn a_half_pixel_crossing_needs_a_new_filtered_first_row() {
+        let top = 40.5_f32;
+        let next = f32::from_bits(top.to_bits() + 1);
+        assert!((top - next).abs() < 1e-5);
+        assert!((row_phase(top) - row_phase(next)).abs() > 0.99);
+        assert_eq!(row_phase(-0.25), row_phase(2.75));
+    }
+
+    #[test]
+    fn trimmed_filter_covers_all_ink_at_fractional_origins() {
+        for top in [-3.75_f32, 0., 0.499, 20.5, 200.875] {
+            let height = 100.;
+            let first = (top - 0.5).ceil();
+            let full = filtered_rows(top, height, 200, 0..200);
+            let ink = 71..85;
+            let cropped = filtered_rows(top, height, 200, ink.clone());
+            assert!(cropped.len() <= 10);
+            for row in full {
+                let low = (first + row as f32 - top) * 2.;
+                if low < ink.end as f32 && low + 2. > ink.start as f32 {
+                    assert!(cropped.contains(&row));
+                }
+            }
+            assert!(filtered_rows(top, height, 200, 0..0).is_empty());
+        }
+    }
+}
+
 impl ChartComposition {
+    pub(super) fn enabled(&self) -> bool {
+        !self.unavailable
+    }
     pub(super) fn new(device: &IDXGIDevice) -> Self {
         // Bound the whole resident tree, including the window background. A
         // flat cap sized for a 1440p client rejects a normal 4K graph on a
@@ -667,7 +848,8 @@ impl ChartComposition {
         };
         Self {
             tree_budget,
-            unavailable: !software_scheduled(device),
+            unavailable: std::env::var_os("ARGUS_GPUI_DISABLE_CHART_LAYERS").is_some()
+                || !software_scheduled(device),
             ..Self::default()
         }
     }
@@ -680,6 +862,7 @@ impl ChartComposition {
     }
     pub(super) fn disable(&mut self) {
         self.unavailable = true;
+        self.bars.clear();
     }
     pub(super) fn deactivate(&mut self) {
         self.tree = None;

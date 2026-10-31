@@ -1,7 +1,6 @@
 #![allow(clippy::disallowed_methods, reason = "build scripts are exempt")]
 
 fn main() {
-    #[cfg(not(all(target_os = "windows", not(debug_assertions))))]
     println!("cargo:rerun-if-changed=build.rs");
     #[cfg(target_os = "windows")]
     {
@@ -25,13 +24,9 @@ mod shader_compilation {
             PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("src/shaders.hlsl");
         let out_dir = std::env::var("OUT_DIR").unwrap();
 
-        println!("cargo:rerun-if-changed={}", shader_path.display());
-        println!(
-            "cargo:rerun-if-changed={}",
-            shader_path
-                .with_file_name("alpha_correction.hlsl")
-                .display()
-        );
+        println!("cargo:rerun-if-changed=src/shaders.hlsl");
+        println!("cargo:rerun-if-changed=src/alpha_correction.hlsl");
+        println!("cargo:rerun-if-changed=src/color_text_raster.hlsl");
 
         // Check if fxc.exe is available
         let fxc_path = find_fxc_compiler();

@@ -510,7 +510,6 @@ impl DirectXRenderer {
 
         let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
             .context("Creating DirectX devices")?;
-        let atlas = Arc::new(DirectXAtlas::new(&devices.device, &devices.device_context));
 
         let resources = DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
             .context("Creating DirectX resources")?;
@@ -530,6 +529,13 @@ impl DirectXRenderer {
             Some(composition)
         };
 
+        let atlas = Arc::new(DirectXAtlas::new(
+            &devices.device,
+            &devices.device_context,
+            direct_composition
+                .as_ref()
+                .is_some_and(|c| c.charts.enabled()),
+        ));
         Ok(DirectXRenderer {
             hwnd,
             atlas,
@@ -735,8 +741,13 @@ impl DirectXRenderer {
             Some(composition)
         };
 
-        self.atlas
-            .handle_device_lost(&devices.device, &devices.device_context);
+        self.atlas.handle_device_lost(
+            &devices.device,
+            &devices.device_context,
+            direct_composition
+                .as_ref()
+                .is_some_and(|c| c.charts.enabled()),
+        );
         self.gpu_timing = crate::gpu_timing::GpuTimings::from_environment(
             &devices.device,
             &devices.device_context,
@@ -777,7 +788,10 @@ impl DirectXRenderer {
             }
             Ok(false) => {}
         }
-        let was_composited = self.direct_composition.as_ref().is_some_and(|c| c.charts.active());
+        let was_composited = self
+            .direct_composition
+            .as_ref()
+            .is_some_and(|c| c.charts.active());
         self.render(scene, background_appearance, !was_composited)?;
         let mut restore_root = was_composited;
         match self.install_chart_tree(scene, background_appearance) {

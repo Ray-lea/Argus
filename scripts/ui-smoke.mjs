@@ -202,8 +202,11 @@ try {
       ["processes-light", { page: "processes", theme: "light" }],
       ["overall-light", { page: "performance", cpuMode: "overall" }],
     ]) {
+      const firstEvent = events.length;
       send({ ...state, pointerOutside: true });
       await sleep(1500);
+      send({ pointerOutside: true });
+      await sleep(250);
       for (const [index, offset] of [50, 200, 700].entries()) {
         // The first retained presentation builds the static prefix; the second reuses it.
         send({ chartTime: fixture.snapshot.timestamp + offset - 1 });
@@ -235,12 +238,16 @@ try {
           `${picture}: retained rendering differs from a full paint: ${compared.stdout}`);
         }
       }
+      if (process.argv.includes("--require-chart-layers")) {
+        assert(events.slice(firstEvent).some((event) => event.event === "gpu-chart-layers" && event.images > 0),
+          `${name}: chart visuals were not presented`);
+      }
     }
     const steps = events.filter((event) => event.event === "ui-chart-step");
     assert.equal(steps.length, 30);
     assert(steps.every((event) => event.retained), "comparison did not exercise retained presentation");
     const chartLayers = events.some((event) => event.event === "gpu-chart-layers" && event.images > 0);
-    if (process.argv.includes("--require-chart-layers")) assert(chartLayers, "chart visuals were not presented");
+    if (process.env.ARGUS_GPUI_DISABLE_CHART_LAYERS) assert(!chartLayers, "disabled chart visuals were presented");
     if (!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION)
       assert(chartLayers || events.some((event) => event.event === "gpu-scene-cache" && event.composed),
         "comparison did not exercise a retained composition path");

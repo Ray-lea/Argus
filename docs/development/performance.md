@@ -6,6 +6,8 @@
 
 检查 Windows 图表合成时，在同一发行构建上设置 `ARGUS_GPUI_DISABLE_CHART_LAYERS=1` 可测量交换链路径。开启诊断后，`gpu-chart-layers` 事件记录已提交的曲线和图层数量。在支持且关闭 HAGS 的 SDR 环境，可用 `scripts/ui-smoke.mjs` 的 `--retained --require-chart-layers` 参数核对图层路径的实际画面。正式资源测量关闭诊断，分别记录应用 GPU 引擎、DWM、显卡时钟和窗口实际呈现帧率。
 
+在支持且开启 HAGS 的设备上，可给隔离的 `--test` 进程设置 `ARGUS_GPUI_TEST_CHART_LAYERS=1` 复查同一条图层路径。测试仍检查 SDR 输出和显存预算。`--require-chart-layers` 会逐场景确认图层实际启用。`gpu-chart-layers` 的 `imageBytes` 和 `untrimmedImageBytes` 分别记录裁剪后和按整图计算的曲线表面字节数。驱动实际分配量由探针的进程专用显存计数记录。
+
 tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内存及 GPU 引擎时间，通过 Windows.Graphics.Capture 观察目标窗口的呈现间隔。DWM 消耗包含整个桌面的合成工作，单独记录。忙碌开发机上的进程占用结果需要多轮交替与稳定性判断。
 
 应用以 --hidden --test --identifier <独立标识> 启动；工具使用 HWND_BOTTOM 和 NOACTIVATE 显示，并每 50 ms 监视前台。截图与帧统计均来自该窗口的捕获结果，隐藏状态单独测量资源开销。测试完退出实例并清理自身测试数据。

@@ -944,7 +944,11 @@ pub struct RetainedBar {
 impl RetainedBar {
     /// Geometry and coverage ramp for the antialiased leading edge.
     pub fn paint(self) -> Option<(Bounds<ScaledPixels>, Background)> {
-        let Self { bounds, ceiling, color } = self;
+        let Self {
+            bounds,
+            ceiling,
+            color,
+        } = self;
         let top = bounds.top().0.min(bounds.bottom().0);
         if bounds.size.width.0 <= 0. || bounds.bottom().0 - top < 1. / 256. {
             return None;
@@ -958,7 +962,10 @@ impl RetainedBar {
         )
         .coverage_ramp();
         Some((
-            Bounds::from_corners(point(bounds.left(), ScaledPixels(start)), bounds.bottom_right()),
+            Bounds::from_corners(
+                point(bounds.left(), ScaledPixels(start)),
+                bounds.bottom_right(),
+            ),
             fill,
         ))
     }

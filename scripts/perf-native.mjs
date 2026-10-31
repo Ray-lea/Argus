@@ -89,6 +89,8 @@ const result = {
     frameTrace: !!process.env.ARGUS_GPUI_FRAME_TRACE,
     viewTrace: !!process.env.ARGUS_GPUI_VIEW_TRACE,
     gpuTiming: !!process.env.ARGUS_GPUI_GPU_TIMING,
+    chartLayersDisabled: !!process.env.ARGUS_GPUI_DISABLE_CHART_LAYERS,
+    testChartLayers: !!process.env.ARGUS_GPUI_TEST_CHART_LAYERS,
     prefixCompositionDisabled: !!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION,
     linearAreaDisabled: !!process.env.ARGUS_GPUI_DISABLE_LINEAR_AREA,
     sceneCacheDisabled: !!process.env.ARGUS_GPUI_DISABLE_SCENE_CACHE,

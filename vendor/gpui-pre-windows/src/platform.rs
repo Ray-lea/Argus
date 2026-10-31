@@ -1192,7 +1192,8 @@ impl WindowsPlatformInner {
             | WM_GPUI_DOCK_MENU_ACTION
             | WM_GPUI_KEYBOARD_LAYOUT_CHANGED
             | WM_GPUI_DISPLAYS_CHANGED
-            | WM_GPUI_GPU_DEVICE_LOST => self.handle_gpui_events(msg, wparam, lparam),
+            | WM_GPUI_GPU_DEVICE_LOST
+            | WM_GPUI_TRIM_IDLE_DEVICE => self.handle_gpui_events(msg, wparam, lparam),
             WM_POWERBROADCAST => self.handle_power_broadcast(wparam),
             WM_DISPLAYCHANGE => self.handle_display_change(handle),
             WM_QUERYENDSESSION => Some(1),
@@ -1221,7 +1222,40 @@ impl WindowsPlatformInner {
             WM_GPUI_KEYBOARD_LAYOUT_CHANGED => self.handle_keyboard_layout_change(),
             WM_GPUI_DISPLAYS_CHANGED => self.handle_displays_changed(),
             WM_GPUI_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
+            WM_GPUI_TRIM_IDLE_DEVICE => {
+                self.trim_idle_device();
+                Some(0)
+            }
             _ => unreachable!(),
+        }
+    }
+
+    fn trim_idle_device(&self) {
+        // All GPUI windows share this device. Recheck at delivery, including
+        // a window that was restored between the hide event and this message.
+        let Some(windows) = self.raw_window_handles.upgrade() else {
+            return;
+        };
+        if windows.read().iter().any(|window| unsafe {
+            IsWindowVisible(window.as_raw()).as_bool() && !IsIconic(window.as_raw()).as_bool()
+        }) {
+            return;
+        }
+        let device = self
+            .state
+            .directx_devices
+            .borrow()
+            .as_ref()
+            .and_then(|devices| {
+                devices
+                    .device
+                    .cast::<windows::Win32::Graphics::Dxgi::IDXGIDevice3>()
+                    .ok()
+            });
+        if let Some(device) = device {
+            unsafe {
+                device.Trim();
+            }
         }
     }
 

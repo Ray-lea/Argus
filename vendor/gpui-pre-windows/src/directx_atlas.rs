@@ -16,6 +16,8 @@ use gpui::{
 pub(crate) struct DirectXAtlas(Mutex<AtlasState<DirectXAtlasTextures>>);
 
 struct DirectXAtlasTextures {
+    // Vertical ink extents of polychrome tiles used to size compositor surfaces.
+    chart_rows: Option<std::collections::BTreeMap<(u32, u32), std::ops::Range<u32>>>,
     gpu_timing: Option<crate::gpu_timing::GpuTimings<2>>,
     upload_calls: u64,
     upload_bytes: u64,
@@ -36,8 +38,13 @@ struct DirectXAtlasTexture {
 }
 
 impl DirectXAtlas {
-    pub(crate) fn new(device: &ID3D11Device, device_context: &ID3D11DeviceContext) -> Self {
+    pub(crate) fn new(
+        device: &ID3D11Device,
+        device_context: &ID3D11DeviceContext,
+        chart_layers: bool,
+    ) -> Self {
         DirectXAtlas(Mutex::new(AtlasState::new(DirectXAtlasTextures {
+            chart_rows: chart_layers.then(Default::default),
             gpu_timing: crate::gpu_timing::GpuTimings::from_environment(
                 device,
                 device_context,
@@ -66,13 +73,25 @@ impl DirectXAtlas {
         Some(texture.view.clone())
     }
 
+    pub(crate) fn chart_rows(&self, tile: &AtlasTile) -> std::ops::Range<u32> {
+        self.0
+            .lock()
+            .backend
+            .chart_rows
+            .as_ref()
+            .and_then(|rows| rows.get(&(tile.texture_id.index, tile.tile_id.0)).cloned())
+            .unwrap_or(0..tile.bounds.size.height.0 as u32)
+    }
+
     pub(crate) fn handle_device_lost(
         &self,
         device: &ID3D11Device,
         device_context: &ID3D11DeviceContext,
+        chart_layers: bool,
     ) {
         let mut lock = self.0.lock();
         lock.clear(|textures| {
+            textures.chart_rows = chart_layers.then(Default::default);
             textures.gpu_timing = crate::gpu_timing::GpuTimings::from_environment(
                 device,
                 device_context,
@@ -130,6 +149,15 @@ impl AtlasBackend for DirectXAtlasTextures {
                 .texture(tile.texture_id)
                 .ok_or_else(|| anyhow::anyhow!("allocated tile refers to a missing texture"))?;
             if let Some(uploaded) = texture.upload(&self.device_context, tile.bounds, bytes) {
+                if kind == AtlasTextureKind::Polychrome
+                    && let Some(rows) = &mut self.chart_rows
+                {
+                    let height = size.height.0 as u32;
+                    let ink = ink_rows(&bytes[..uploaded], size.width.0 as usize, height);
+                    if ink != (0..height) {
+                        rows.insert((tile.texture_id.index, tile.tile_id.0), ink);
+                    }
+                }
                 self.upload_calls = self.upload_calls.wrapping_add(1);
                 self.upload_bytes = self.upload_bytes.wrapping_add(uploaded as u64);
             }
@@ -153,6 +181,11 @@ impl AtlasBackend for DirectXAtlasTextures {
 
     fn remove(&mut self, tile: AtlasTile) {
         let id = tile.texture_id;
+        if id.kind == AtlasTextureKind::Polychrome
+            && let Some(rows) = &mut self.chart_rows
+        {
+            rows.remove(&(id.index, tile.tile_id.0));
+        }
 
         let textures = match id.kind {
             AtlasTextureKind::Monochrome => &mut self.monochrome_textures,
@@ -174,6 +207,21 @@ impl AtlasBackend for DirectXAtlasTextures {
             }
         }
     }
+}
+
+// Called only after a validated BGRA upload. Usually only the transparent
+// margins and the edges of the first/last inked row need to be inspected.
+fn ink_rows(bytes: &[u8], width: usize, height: u32) -> std::ops::Range<u32> {
+    if width == 0 || height == 0 {
+        return 0..0;
+    }
+    let mut rows = bytes.chunks_exact(width * 4);
+    let has_ink = |row: &[u8]| row.as_chunks::<4>().0.iter().any(|p| p[3] != 0);
+    let Some(first) = rows.position(has_ink) else {
+        return 0..0;
+    };
+    let trailing = rows.rev().take_while(|row| !has_ink(row)).count();
+    first as u32..height - trailing as u32
 }
 
 impl DirectXAtlasTextures {
@@ -389,6 +437,17 @@ fn etagere_point_to_device(value: etagere::Point) -> Point<DevicePixels> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chart_ink_extent_preserves_even_a_single_faint_texel() {
+        let mut pixels = [0; 3 * 6 * 4];
+        pixels[0] = 255; // Transparent RGB makes no contribution.
+        assert_eq!(ink_rows(&pixels, 3, 6), 0..0);
+        pixels[(2 * 3 + 2) * 4 + 3] = 1;
+        assert_eq!(ink_rows(&pixels, 3, 6), 2..3);
+        pixels[5 * 3 * 4 + 3] = 255;
+        assert_eq!(ink_rows(&pixels, 3, 6), 2..6);
+    }
     use gpui::{ImageId, RenderImageParams};
     use std::borrow::Cow;
     use windows::Win32::{
@@ -416,7 +475,7 @@ mod tests {
             )
         }
         .ok()?;
-        Some(DirectXAtlas::new(&device?, &device_context?))
+        Some(DirectXAtlas::new(&device?, &device_context?, false))
     }
 
     fn make_image_key(image_id: usize) -> AtlasKey {

@@ -5639,7 +5639,9 @@ impl Window {
                 let Some(bar) = bar else {
                     return false;
                 };
-                let (target, fill) = bar.paint().unwrap_or((handle.layer, background.opacity(0.)));
+                let (target, fill) = bar
+                    .paint()
+                    .unwrap_or((handle.layer, background.opacity(0.)));
                 if !fits(target, quad.content_mask.bounds) {
                     return false;
                 }

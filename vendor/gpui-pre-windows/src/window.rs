@@ -72,6 +72,7 @@ pub struct WindowsWindowState {
     pub direct_manipulation: DirectManipulationHandler,
 
     pub renderer: RefCell<DirectXRenderer>,
+    pub(crate) chart_display_dirty: Cell<bool>,
     /// Set when the next `draw_window` call must be treated as a forced
     /// render. Used after a GPU device-lost recovery, where the next frame
     /// must both re-enable drawing (via `mark_drawable`) and bypass the GPUI
@@ -187,6 +188,7 @@ impl WindowsWindowState {
             hovered: Cell::new(hovered),
             last_visibility: Cell::new(None),
             renderer: RefCell::new(renderer),
+            chart_display_dirty: Cell::new(false),
             force_render_pending: Cell::new(false),
             click_state,
             current_cursor: Cell::new(current_cursor),
@@ -1082,9 +1084,12 @@ impl PlatformWindow for WindowsWindow {
     }
 
     fn draw(&self, scene: &Scene) {
-        self.state
-            .renderer
-            .borrow_mut()
+        let mut renderer = self.state.renderer.borrow_mut();
+        // Display-change broadcasts can arrive inside a renderer COM call.
+        if self.state.chart_display_dirty.replace(false) {
+            renderer.chart_display_changed();
+        }
+        renderer
             .draw(scene, self.state.background_appearance.get())
             .log_err();
     }

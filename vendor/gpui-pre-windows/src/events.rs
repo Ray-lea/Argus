@@ -29,6 +29,7 @@ pub(crate) const WM_GPUI_KEYBOARD_LAYOUT_CHANGED: u32 = WM_USER + 6;
 pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
 pub(crate) const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
 pub(crate) const WM_GPUI_DISPLAYS_CHANGED: u32 = WM_USER + 10;
+pub(crate) const WM_GPUI_TRIM_IDLE_DEVICE: u32 = WM_USER + 11;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
@@ -980,7 +981,7 @@ impl WindowsWindowInner {
     }
 
     fn set_display(&self, display: WindowsDisplay) {
-        self.state.renderer.borrow_mut().chart_display_changed();
+        self.state.chart_display_dirty.set(true);
         self.state.display.set(display);
         if let Some(mut callback) = self.state.callbacks.display_changed.take() {
             callback();
@@ -1331,6 +1332,26 @@ impl WindowsWindowInner {
                     return;
                 }
                 this.state.last_visibility.set(Some(visibility));
+                if visibility == WindowVisibility::Hidden
+                    && this
+                        .state
+                        .renderer
+                        .borrow_mut()
+                        .release_hidden_chart_layers()
+                        .log_err()
+                        == Some(true)
+                {
+                    this.state.force_render_pending.set(true);
+                    unsafe {
+                        PostMessageW(
+                            Some(this.platform_window_handle),
+                            WM_GPUI_TRIM_IDLE_DEVICE,
+                            WPARAM(this.validation_number),
+                            LPARAM(0),
+                        )
+                        .log_err();
+                    }
+                }
                 if let Some(mut callback) = this.state.callbacks.visibility_change.take() {
                     callback(visibility);
                     this.state.callbacks.visibility_change.set(Some(callback));
