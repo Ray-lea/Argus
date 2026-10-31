@@ -810,6 +810,14 @@ impl std::fmt::Debug for Background {
 }
 
 impl Eq for Background {}
+
+impl Background {
+    /// This one-pixel alpha ramp encodes geometric coverage, not a color fade.
+    pub(crate) fn coverage_ramp(mut self) -> Self {
+        self.pad = 1;
+        self
+    }
+}
 impl Default for Background {
     fn default() -> Self {
         Self {

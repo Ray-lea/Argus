@@ -6,6 +6,8 @@ The vendored package omits standalone examples and their media, the package-loca
 
 Local changes:
 
+- A retained scene records the physical bar geometry and source color used by the Windows compositor. Both render paths use the same leading-edge coverage calculation. An unchanged bar no longer requests a presentation.
+
 - `Window::paint_image_subpixel_premultiplied` paints premultiplied BGRA chart textures with area filtering on Windows. Each image keeps its own pixel format throughout its atlas lifetime. Animated bars restrict their content masks to the reserved animation region, so background restoration covers the complete bar range.
 
 - A position-only notification updates the screen-dependent state and notifies bounds observers without invalidating the entire local scene. Size and scale changes still use `bounds_changed`, including the explicit hidden-start viewport synchronization.

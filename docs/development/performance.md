@@ -2,6 +2,10 @@
 
 测量使用发行构建、独立应用标识与相同数据源，记录窗口客户区物理尺寸、DPI、刷新间隔、曲线模式、设备、主题和实际呈现帧率。CPU 与 GPU 比较需保持相同的实际画面和节拍，并以窗口捕获测得的实际 FPS 为准。
 
+跨机器或驱动比较时，记录 Windows 构建、显示驱动版本与活动 HAGS（硬件加速 GPU 计划）状态。活动状态通过设备能力查询或重启后的 DxDiag 核验；图形设置中保存的配置需重启后生效。GPU 频率、最忙引擎占用和实际 FPS 一并记录，调度模式变更单独做同机对照。D3D11 与 D3D12 工作可能出现在不同引擎，统计时覆盖目标进程的全部 GPU 引擎。
+
+检查 Windows 图表合成时，在同一发行构建上设置 `ARGUS_GPUI_DISABLE_CHART_LAYERS=1` 可测量交换链路径。开启诊断后，`gpu-chart-layers` 事件记录已提交的曲线和图层数量。在支持且关闭 HAGS 的 SDR 环境，可用 `scripts/ui-smoke.mjs` 的 `--retained --require-chart-layers` 参数核对图层路径的实际画面。正式资源测量关闭诊断，分别记录应用 GPU 引擎、DWM、显卡时钟和窗口实际呈现帧率。
+
 tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内存及 GPU 引擎时间，通过 Windows.Graphics.Capture 观察目标窗口的呈现间隔。DWM 消耗包含整个桌面的合成工作，单独记录。忙碌开发机上的进程占用结果需要多轮交替与稳定性判断。
 
 应用以 --hidden --test --identifier <独立标识> 启动；工具使用 HWND_BOTTOM 和 NOACTIVATE 显示，并每 50 ms 监视前台。截图与帧统计均来自该窗口的捕获结果，隐藏状态单独测量资源开销。测试完退出实例并清理自身测试数据。

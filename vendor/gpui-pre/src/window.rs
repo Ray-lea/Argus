@@ -3434,35 +3434,25 @@ impl Window {
     /// than at the pixel row holding the top: its rounded corners then move with
     /// the top instead of jumping a whole row each time the top crosses one. It
     /// never starts above `ceiling` (the top of the bar's reserved region).
-    fn bar_quad(
+    fn retained_bar(
         &self,
         bounds: Bounds<Pixels>,
         color: Hsla,
         ceiling: ScaledPixels,
-    ) -> Option<(Bounds<ScaledPixels>, Background)> {
+    ) -> crate::RetainedBar {
         let scale_factor = self.scale_factor();
         let left = round_to_device_pixel(bounds.left().0, scale_factor);
         let right = round_to_device_pixel(bounds.right().0, scale_factor).max(left);
         let bottom = round_to_device_pixel(bounds.bottom().0, scale_factor);
         let top = (bounds.top().0 * scale_factor).min(bottom);
-        if right <= left || bottom - top < 1. / 256. {
-            return None;
-        }
-        // Rounding noise must not lift the quad above its region.
-        let start = (top - 0.5).max(ceiling.0.min(top + 1e-3).floor());
-        let height = bottom - start;
-        let fill = crate::linear_gradient(
-            180.,
-            crate::linear_color_stop(color.opacity(0.), (top - 0.5 - start) / height),
-            crate::linear_color_stop(color, (top + 0.5 - start) / height),
-        );
-        Some((
-            Bounds::from_corners(
-                point(ScaledPixels(left), ScaledPixels(start)),
+        crate::RetainedBar {
+            bounds: Bounds::from_corners(
+                point(ScaledPixels(left), ScaledPixels(top)),
                 point(ScaledPixels(right), ScaledPixels(bottom)),
             ),
-            fill,
-        ))
+            ceiling,
+            color,
+        }
     }
 
     /// Rounds half-to-zero but clamps any non-zero input up to 1 dp so thin strokes do not disappear.
@@ -5512,7 +5502,9 @@ impl Window {
         use crate::scene::{PaintOperation, Primitive};
         let layer = self.cover_bounds(region.intersect(&self.content_mask().bounds));
         // The fill as painted, with the element opacity applied.
-        let bar = self.bar_quad(bounds, color.opacity(self.element_opacity()), layer.top());
+        let bar = self
+            .retained_bar(bounds, color.opacity(self.element_opacity()), layer.top())
+            .paint();
         self.paint_layer(region, |window| {
             let operation = window.next_frame.scene.len();
             window.paint_quad(crate::fill(region, color).corner_radii(corner_radius));
@@ -5603,7 +5595,7 @@ impl Window {
         };
         let requested = bounds.scale(self.scale_factor());
         let bar = match (tile, handle.background.and_then(|b| b.as_solid())) {
-            (None, Some(color)) => self.bar_quad(bounds, color, handle.layer.top()),
+            (None, Some(color)) => Some(self.retained_bar(bounds, color, handle.layer.top())),
             _ => None,
         };
         let scene = &mut self.rendered_frame.scene;
@@ -5644,14 +5636,19 @@ impl Window {
                 let Some(background) = handle.background else {
                     return false;
                 };
-                let (target, fill) = bar.unwrap_or((handle.layer, background.opacity(0.)));
+                let Some(bar) = bar else {
+                    return false;
+                };
+                let (target, fill) = bar.paint().unwrap_or((handle.layer, background.opacity(0.)));
                 if !fits(target, quad.content_mask.bounds) {
                     return false;
                 }
+                scene.retained_bars.insert(index, bar);
+                let changed = quad.bounds != target || quad.background != fill;
                 quad.bounds = target;
                 quad.background = fill;
                 *recorded = *quad;
-                true
+                changed
             }
             _ => return false,
         };

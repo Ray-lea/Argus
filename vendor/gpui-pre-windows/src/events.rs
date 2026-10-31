@@ -980,6 +980,7 @@ impl WindowsWindowInner {
     }
 
     fn set_display(&self, display: WindowsDisplay) {
+        self.state.renderer.borrow_mut().chart_display_changed();
         self.state.display.set(display);
         if let Some(mut callback) = self.state.callbacks.display_changed.take() {
             callback();

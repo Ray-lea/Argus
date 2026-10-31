@@ -89,6 +89,12 @@ createInterface({ input: child.stdout }).on("line", (line) => {
   }
 });
 const send = (control) => child.stdin.write(`app ${JSON.stringify(control)}\n`);
+const resizeLogical = (width, height) => {
+  // The probe accepts physical pixels; manifest window bounds are logical.
+  const scale = events.findLast((event) => event.event === "ui-conditions")?.dpiScale;
+  assert(Number.isFinite(scale) && scale > 0, "window scale missing before resize");
+  child.stdin.write(`size ${Math.ceil(width * scale)} ${Math.ceil(height * scale)}\n`);
+};
 const capture = async (name, keepPointer = false, inspect = true) => {
   if (inspect) {
     send({ pointerOutside: !keepPointer, inspectLayout: name });
@@ -129,10 +135,10 @@ try {
       await sleep(1000);
       await capture("hovered-performance",true);
       send({pointerOutside:true});
-      child.stdin.write(`size ${metadata.window.minWidth} ${metadata.window.minHeight}\n`);
+      resizeLogical(metadata.window.minWidth, metadata.window.minHeight);
       await sleep(1800);
       await capture("live-narrow");
-      child.stdin.write(`size ${metadata.window.width} ${metadata.window.height}\n`);
+      resizeLogical(metadata.window.width, metadata.window.height);
       await sleep(1800);
       await capture("live-resized");
     }
@@ -233,9 +239,11 @@ try {
     const steps = events.filter((event) => event.event === "ui-chart-step");
     assert.equal(steps.length, 30);
     assert(steps.every((event) => event.retained), "comparison did not exercise retained presentation");
+    const chartLayers = events.some((event) => event.event === "gpu-chart-layers" && event.images > 0);
+    if (process.argv.includes("--require-chart-layers")) assert(chartLayers, "chart visuals were not presented");
     if (!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION)
-      assert(events.some((event) => event.event === "gpu-scene-cache" && event.composed),
-        "comparison did not exercise prefix composition");
+      assert(chartLayers || events.some((event) => event.event === "gpu-scene-cache" && event.composed),
+        "comparison did not exercise a retained composition path");
   } else {
     for (const page of [
       "processes",
@@ -298,13 +306,13 @@ try {
       await capture(name);
     }
     send({ page: "processes", language: "zh-CN", theme: "light", navPosition: "top" });
-    child.stdin.write(`size ${metadata.window.minWidth} ${metadata.window.minHeight}\n`);
+    resizeLogical(metadata.window.minWidth, metadata.window.minHeight);
     await sleep(800);
     await capture("narrow");
     send({ page: "performance", device: "cpu", cpuMode: "overall" });
     await sleep(800);
     await capture("narrow-performance");
-    child.stdin.write("size 1600 1000\n");
+    resizeLogical(1600, 1000);
     await sleep(800);
     await capture("large-performance");
   }

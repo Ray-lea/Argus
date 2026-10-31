@@ -27,6 +27,9 @@ use gpui::*;
 #[path = "retained_tests.rs"]
 mod retained_tests;
 
+#[path = "chart_composition.rs"]
+mod chart_composition;
+
 pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "GPUI_DISABLE_DIRECT_COMPOSITION";
 const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 // This configuration is used for MSAA rendering on paths only, and it's guaranteed to be supported by DirectX 11.
@@ -463,6 +466,7 @@ struct DirectComposition {
     comp_device: IDCompositionDevice,
     comp_target: IDCompositionTarget,
     comp_visual: IDCompositionVisual,
+    charts: chart_composition::ChartComposition,
 }
 
 impl DirectXRendererDevices {
@@ -765,13 +769,41 @@ impl DirectXRenderer {
             // and so likely do not have the textures anymore that are required for drawing
             return Ok(());
         }
-        self.render(scene, background_appearance, true)?;
+        match self.update_chart_tree(scene, background_appearance) {
+            Ok(true) => return Ok(()),
+            Err(error) => {
+                log::warn!("Updating chart visuals: {error:#}");
+                self.direct_composition.as_mut().unwrap().charts.disable();
+            }
+            Ok(false) => {}
+        }
+        let was_composited = self.direct_composition.as_ref().is_some_and(|c| c.charts.active());
+        self.render(scene, background_appearance, !was_composited)?;
+        let mut restore_root = was_composited;
+        match self.install_chart_tree(scene, background_appearance) {
+            Ok(true) => return Ok(()),
+            Err(error) => {
+                log::warn!("Creating chart visuals: {error:#}");
+                restore_root = true;
+                self.direct_composition.as_mut().unwrap().charts.disable();
+            }
+            Ok(false) => {}
+        }
         let started = self.gpu_timing.as_ref().map(|_| std::time::Instant::now());
         let result = self.present();
         if let (Some(timing), Some(started)) = (&mut self.gpu_timing, started) {
             timing.present(started.elapsed().as_secs_f64() * 1_000_000.);
         }
-        result
+        result?;
+        if restore_root {
+            let comp = self.direct_composition.as_mut().unwrap();
+            unsafe {
+                comp.comp_target.SetRoot(&comp.comp_visual)?;
+                comp.comp_device.Commit()?;
+            }
+            comp.charts.deactivate();
+        }
+        Ok(())
     }
 
     /// Clear the render target for `background_appearance` and encode every
@@ -1125,6 +1157,12 @@ impl DirectXRenderer {
         }
         image::RgbaImage::from_raw(width, height, pixels)
             .context("Failed to build RgbaImage from staging readback")
+    }
+
+    pub(crate) fn chart_display_changed(&mut self) {
+        if let Some(comp) = &mut self.direct_composition {
+            comp.charts.display_changed();
+        }
     }
 
     pub(crate) fn resize(&mut self, new_size: Size<DevicePixels>) -> Result<()> {
@@ -1666,7 +1704,7 @@ impl DirectXRenderPipelines {
             "polychrome_sprite_pipeline",
             ShaderModule::PolychromeSprite,
             16,
-            create_blend_state(device)?,
+            create_over_blend_state(device, D3D11_BLEND_ONE)?,
         )?;
 
         Ok(Self {
@@ -1693,6 +1731,7 @@ impl DirectComposition {
             comp_device,
             comp_target,
             comp_visual,
+            charts: chart_composition::ChartComposition::new(dxgi_device),
         })
     }
 
@@ -2332,11 +2371,15 @@ fn set_rasterizer_state(device: &ID3D11Device, device_context: &ID3D11DeviceCont
 // https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_blend_desc
 #[inline]
 fn create_blend_state(device: &ID3D11Device) -> Result<ID3D11BlendState> {
+    create_over_blend_state(device, D3D11_BLEND_SRC_ALPHA)
+}
+
+fn create_over_blend_state(device: &ID3D11Device, source: D3D11_BLEND) -> Result<ID3D11BlendState> {
     let mut desc = D3D11_BLEND_DESC::default();
     desc.RenderTarget[0].BlendEnable = true.into();
     desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
     desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    desc.RenderTarget[0].SrcBlend = source;
     desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
     desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
     // Argus: "over" coverage. The premultiplied swap chain is composited over
@@ -2559,6 +2602,7 @@ pub(crate) mod shader_resources {
         MonochromeSprite,
         SubpixelSprite,
         PolychromeSprite,
+        ChartFilter,
         EmojiRasterization,
     }
 
@@ -2628,6 +2672,10 @@ pub(crate) mod shader_resources {
                 ShaderModule::SubpixelSprite => match target {
                     ShaderTarget::Vertex => SUBPIXEL_SPRITE_VERTEX_BYTES,
                     ShaderTarget::Fragment => SUBPIXEL_SPRITE_FRAGMENT_BYTES,
+                },
+                ShaderModule::ChartFilter => match target {
+                    ShaderTarget::Vertex => CHART_FILTER_VERTEX_BYTES,
+                    ShaderTarget::Fragment => CHART_FILTER_FRAGMENT_BYTES,
                 },
                 ShaderModule::PolychromeSprite => match target {
                     ShaderTarget::Vertex => POLYCHROME_SPRITE_VERTEX_BYTES,
@@ -2723,6 +2771,7 @@ pub(crate) mod shader_resources {
                 ShaderModule::MonochromeSprite => "monochrome_sprite",
                 ShaderModule::SubpixelSprite => "subpixel_sprite",
                 ShaderModule::PolychromeSprite => "polychrome_sprite",
+                ShaderModule::ChartFilter => "chart_filter",
                 ShaderModule::EmojiRasterization => "emoji_rasterization",
             }
         }

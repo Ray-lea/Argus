@@ -399,7 +399,9 @@ float4 gradient_color(Background background,
             // Triangular-distributed noise breaks up 8-bit quantization steps.
             // ±2/255 for RGB (enough for dark-on-dark compositing),
             // ±3/255 for alpha (needs more because alpha × dark color = tiny steps).
-            {
+            // Coverage ramps already represent the antialiased edge. Adding
+            // screen-space noise here also perturbs the solid interior.
+            if (background.pad == 0u) {
                 float2 seed = position * 0.6180339887; // golden ratio spread
                 float r1 = frac(sin(dot(seed, float2(12.9898, 78.233))) * 43758.5453);
                 float r2 = frac(sin(dot(seed, float2(39.3460, 11.135))) * 24634.6345);
@@ -1224,6 +1226,45 @@ struct PolychromeSprite {
     AtlasTile tile;
 };
 
+// Integrate the 2x chart raster on the target pixel rows. Quarter-pixel X
+// phases limit interpolation error when moving an scRGB surface over SDR UI.
+cbuffer ChartFilterParams : register(b2) {
+    int2 chart_tile_origin;
+    int2 chart_tile_size;
+    int2 chart_update_offset;
+    float chart_first_y;
+    float chart_y_scale;
+};
+
+float4 chart_filter_vertex(uint id : SV_VertexID) : SV_Position {
+    return float4((id & 1u) ? 1.0 : -1.0, (id & 2u) ? -1.0 : 1.0, 0.0, 1.0);
+}
+
+float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
+    int2 pixel = int2(position.xy) - chart_update_offset;
+    float center_y = chart_first_y + float(pixel.y) * chart_y_scale;
+    float low = center_y - 0.5 * chart_y_scale;
+    int first = int(floor(low));
+    float left = 0.5 * float(pixel.x) - 1.0;
+    float4 value = 0.0;
+    [unroll] for (int dy = 0; dy < 4; ++dy) {
+        int y = first + dy;
+        float weight = max(0.0, min(low + chart_y_scale, float(y + 1)) - max(low, float(y)));
+        [unroll] for (int dx = 0; dx < 3; ++dx) {
+            int x = int(floor(left)) + dx;
+            float wx = saturate(min(left + 2.0, float(x + 1)) - max(left, float(x)));
+            int2 texel = int2(x, y);
+            if (all(texel >= 0) && all(texel < chart_tile_size))
+                value += t_sprite.Load(int3(chart_tile_origin + texel, 0)) * (wx * weight);
+        }
+    }
+    float4 filtered = value * (0.5 / chart_y_scale);
+    float3 color = filtered.rgb / max(filtered.a, 1e-8);
+    // The FP16 composition surface is linear scRGB; the atlas is sRGB.
+    float3 decoded = color <= 0.04045 ? color / 12.92 : pow(abs((color + 0.055) / 1.055), 2.4);
+    return float4(decoded * filtered.a, filtered.a);
+}
+
 struct PolychromeSpriteVertexOutput {
     nointerpolation uint sprite_id: TEXCOORD0;
     float4 position: SV_Position;
@@ -1278,7 +1319,7 @@ static const uint SPRITE_PREMULTIPLIED_AREA_FILTER = 2u;
 // transparent black around a stroke (dark fringes). The footprint is at least
 // one texel, so a magnified raster interpolates linearly instead of showing
 // blocks, and at most three. Texels outside the tile count as transparent.
-// Returns straight alpha, as `Sample` does for the other sprites.
+// The color and alpha remain premultiplied through filtering and composition.
 float4 sample_area(float2 position, Bounds bounds, AtlasTile tile, bool premultiplied) {
     float2 texels = float2(tile.bounds.size) / bounds.size;
     float2 footprint = clamp(texels, 1.0, 3.0);
@@ -1303,7 +1344,7 @@ float4 sample_area(float2 position, Bounds bounds, AtlasTile tile, bool premulti
         }
     }
     sum /= footprint.x * footprint.y;
-    return sum.a > 0.0 ? float4(sum.rgb / sum.a, sum.a) : float4(0.0, 0.0, 0.0, 0.0);
+    return sum;
 }
 
 struct AreaAxis {
@@ -1357,7 +1398,7 @@ float4 sample_area_linear(float2 position, Bounds bounds, AtlasTile tile, float2
                       + t_sprite.SampleLevel(s_sprite, float2(x.position.y, y.position.y) / atlas_size, 0) * x.weight.y;
         sum = top * y.weight.x + bottom * y.weight.y;
     }
-    return sum.a > 0.0 ? float4(sum.rgb / sum.a, sum.a) : float4(0.0, 0.0, 0.0, 0.0);
+    return sum;
 }
 
 float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Target {
@@ -1384,6 +1425,7 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
         float2 unit = (input.position.xy - sprite.bounds.origin) / sprite.bounds.size;
         float2 tile_position = (float2(sprite.tile.bounds.origin) + unit * float2(sprite.tile.bounds.size)) / input.atlas_size;
         sample = t_sprite.Sample(s_sprite, tile_position);
+        sample.rgb *= sample.a;
     }
     float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 
@@ -1392,18 +1434,11 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
         float3 grayscale = dot(color.rgb, GRAYSCALE_FACTORS);
         color = float4(grayscale, sample.a);
     }
-    color.a *= sprite.opacity * saturate(0.5 - distance);
+    color *= sprite.opacity * saturate(0.5 - distance);
     if (compose_prefix != 0u) {
-        // Match the sprite blend state: straight-alpha RGB and "over" coverage
-        // (see `create_blend_state`). Adding the alphas here made translucent
-        // curve pixels over a translucent surface hide more of the window
-        // backdrop than the same pixels drawn normally (light areas and edges
-        // came out grey on light-theme cards). Rounding the source to the 8-bit
-        // target first keeps the result within two code values of the
-        // fixed-function blend (measured; mostly within one).
+        // Use the same premultiplied source-over operation as the normal draw.
         precise float4 source = round(saturate(color) * 255.0) / 255.0;
-        precise float4 composed_color = float4(source.rgb * source.a + prefix.rgb * (1.0 - source.a), source.a + prefix.a * (1.0 - source.a));
-        return composed_color;
+        return source + prefix * (1.0 - source.a);
     }
     return color;
 }
