@@ -12,11 +12,13 @@ if (!/^[a-z0-9-]+$/.test(label)) throw Error("Invalid test label");
 const live = process.argv.includes("--live");
 const retained = process.argv.includes("--retained");
 const chartScroll = process.argv.includes("--chart-scroll");
+const chartGap = process.argv.includes("--chart-gap");
 const opaqueWindow = process.argv.includes("--opaque-window");
 const snapshots = process.argv.includes("--snapshots");
 const previewFlag = process.argv.indexOf("--readme");
 const preview = previewFlag < 0 ? null : process.argv[previewFlag + 1];
-if (previewFlag >= 0) assert(["zh-CN", "en-US"].includes(preview) && !(live || retained || chartScroll || snapshots));
+if (previewFlag >= 0) assert(["zh-CN", "en-US"].includes(preview) && !(live || retained || chartScroll || chartGap || snapshots));
+assert(!(chartGap && (live || retained || chartScroll || snapshots)), "chart gap checks use a dedicated fixture replay");
 assert(!(chartScroll && (live || retained || snapshots)), "chart scroll checks use a fixed CPU spike");
 assert(!(live && retained), "retained comparisons require a fixed fixture");
 assert(!(snapshots && (live || retained)), "snapshot comparisons require a fixed fixture");
@@ -38,8 +40,10 @@ if (preview) {
 } else if (!live) {
   const fixtureFlag = process.argv.indexOf("--fixture");
   fixture = JSON.parse(readFileSync(fixtureFlag >= 0 ? process.argv[fixtureFlag + 1] : "tools/window-probe/fixtures/desktop.json"));
+  if (chartScroll || snapshots || chartGap) {
+    fixture.snapshot.timestamp = Date.now() - (chartGap ? 731_339_910 : 0);
+  }
   if (chartScroll) {
-    fixture.snapshot.timestamp = Date.now();
     fixture.snapshot.system.cpu = 12;
     fixture.snapshot.system.cpuKernel = 4;
   }
@@ -102,7 +106,7 @@ const child = spawn(
     ...(live ? [] : ["--fixture", resolve(output, "fixture.json")]),
     ...(preview ? ["--width", "1440", "--height", "900"] : []),
   ],
-  { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained || chartScroll ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}), ...(snapshots ? { ARGUS_GPUI_FRAME_TRACE: "1" } : {}) } },
+  { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained || chartScroll || chartGap ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}), ...(snapshots || chartGap ? { ARGUS_GPUI_FRAME_TRACE: "1" } : {}) } },
 );
 const events = [];
 let error = "",
@@ -208,6 +212,33 @@ try {
     child.stdin.write("show\n");
     await sleep(4500);
     await capture("restored-performance");
+  } else if (chartGap) {
+    const limit = events.find(e => e.event === "started")?.jobCommitLimit;
+    assert(limit > 0 && limit <= 2 * 1024 ** 3, "chart gap test requires the limited window probe");
+    send({ page: "performance", device: "cpu", cpuMode: "overall", motion: "fluid", uiMotion: "off", pointerOutside: true });
+    await sleep(1000);
+    send({ inspectLayout: "before-gap" });
+    await sleep(350);
+    const work = label => events.find(e => e.event === "ui-chart-work" && e.label === label);
+    assert(work("before-gap")?.peakRasterBuildBytes > 0, "chart gap test requires the bounded rasterizer");
+    const start = events.length;
+    send({ sample: { at: 0, set: { "/system/cpu": 71, "/system/cpuKernel": 31 } } });
+    await sleep(1200);
+    send({ cpuMode: "logical" });
+    await sleep(900);
+    send({ page: "processes", sample: { at: 0, set: { "/system/cpu": 37 } } });
+    await sleep(900);
+    send({ inspectLayout: "after-gap" });
+    await sleep(350);
+    const layout = events.find(e => e.event === "ui-layout" && e.label === "after-gap");
+    const rasters = events.slice(start).filter(e => e.event === "chart-raster");
+    assert(layout && rasters.length > 0 && work("after-gap").rasterBuilds > work("before-gap").rasterBuilds, "missing post-gap rasters");
+    const maxWidth = Math.ceil(layout.width * layout.scaleFactor * 2 * 1.25) + 32;
+    assert(rasters.every(r => r.width <= maxWidth && r.rgbaBytes <= 128 * 1024 ** 2), "offscreen geometry escaped raster bounds");
+    assert(work("after-gap").peakRasterBuildBytes <= 192 * 1024 ** 2, "in-flight raster budget exceeded");
+    if (process.argv.includes("--require-chart-layers")) {
+      assert(events.slice(start).some(e => e.event === "gpu-chart-layers" && e.images > 0), "post-gap chart visuals were not active");
+    }
   } else if (chartScroll) {
     const widthFlag = process.argv.indexOf("--width"), heightFlag = process.argv.indexOf("--height");
     if (widthFlag >= 0 || heightFlag >= 0) {
@@ -534,7 +565,7 @@ for (const event of events.filter((e) => e.event === "ui-caption" && !e.label.en
   assert(event.actionsAreClient, `${event.label}: toolbar controls were classified as draggable caption`);
   assert(event.minimize && event.maximize && event.close, `${event.label}: native caption controls were lost`);
 }
-if (!live && !retained && !snapshots && !chartScroll && !preview) {
+if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview) {
   for (const [label, sort, descending] of [["sorted-name", "name", false], ["sorted-name-reversed", "name", true], ["sorted-cpu", "cpu", true]]) {
     const state = events.find((event) => event.event === "ui-render-counts" && event.label === label);
     assert(state && state.sort === sort && state.descending === descending, `${label}: clicking the full header did not sort`);

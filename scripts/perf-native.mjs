@@ -55,6 +55,17 @@ const scenario = flag("--scenario", null);
 const fixture = flag("--fixture", null);
 const streamFixture = process.argv.includes("--stream-fixture");
 assert(!streamFixture || fixture, "fixture stream requires a fixture");
+let launchFixture = fixture && resolve(fixture);
+let fixtureOffsetMs = 0;
+if (streamFixture) {
+  const replay = JSON.parse(readFileSync(launchFixture, "utf8"));
+  const frames = [...(replay.snapshots ?? []), replay.snapshot];
+  assert(frames.every(frame => Number.isSafeInteger(frame?.timestamp)), "fixture stream requires sample timestamps");
+  fixtureOffsetMs = Date.now() - replay.snapshot.timestamp;
+  for (const frame of frames) frame.timestamp += fixtureOffsetMs;
+  launchFixture = resolve(config, `streamed-fixture-${process.pid}.json`);
+  writeFileSync(launchFixture, JSON.stringify(replay), { flag: "wx" });
+}
 const phases = scenario ? JSON.parse(readFileSync(resolve(scenario), "utf8")) : flag(
   "--phases",
   "processes:fluid,processes:off,performance:fluid,logical:fluid,settings:off,hidden:off",
@@ -85,17 +96,18 @@ const result = {
   phases,
   fixture: fixture ? createHash("sha256").update(readFileSync(fixture)).digest("hex") : null,
   streamFixture,
+  fixtureOffsetMs,
   instrumentation: {
     frameTrace: !!process.env.ARGUS_GPUI_FRAME_TRACE,
     viewTrace: !!process.env.ARGUS_GPUI_VIEW_TRACE,
     gpuTiming: !!process.env.ARGUS_GPUI_GPU_TIMING,
-    chartLayersDisabled: !!process.env.ARGUS_GPUI_DISABLE_CHART_LAYERS,
-    chartBackdropCacheDisabled: !!process.env.ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE,
+    chartLayersDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_CHART_LAYERS"),
+    chartBackdropCacheDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE"),
     opaqueWindow: process.argv.includes("--opaque-window") || ["1", "true"].includes(process.env.ARGUS_GPUI_OPAQUE_WINDOW),
-    testChartLayers: !!process.env.ARGUS_GPUI_TEST_CHART_LAYERS,
-    prefixCompositionDisabled: !!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION,
-    linearAreaDisabled: !!process.env.ARGUS_GPUI_DISABLE_LINEAR_AREA,
-    sceneCacheDisabled: !!process.env.ARGUS_GPUI_DISABLE_SCENE_CACHE,
+    testChartLayers: Object.hasOwn(process.env, "ARGUS_GPUI_TEST_CHART_LAYERS"),
+    prefixCompositionDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION"),
+    linearAreaDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_LINEAR_AREA"),
+    sceneCacheDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_SCENE_CACHE"),
     performanceCores: !!process.env.ARGUS_PROBE_PERFORMANCE_CORES,
   },
   events: [],
@@ -110,7 +122,7 @@ const child = spawn(
     "--hidden",
     "--test", "--identifier", identifier, "--stop-after", String(Math.ceil(warmup + phases.reduce((total, phase) => total + durationOf(phase) + 10, 0) + 120)),
     ...(process.argv.includes("--opaque-window") ? ["--opaque-window"] : []),
-    ...(fixture ? ["--fixture", resolve(fixture)] : []),
+    ...(launchFixture ? ["--fixture", launchFixture] : []),
   ],
   {
     windowsHide: true,
@@ -200,6 +212,8 @@ function summarize(tag, before, after) {
     gpuBusiestEnginePercent: Math.max(0, ...Object.values(engines)),
     gpuEngines: engines,
     privateMiB: sum(after.processes, "privateBytes") / 1048576,
+    privateWorkingSetMiB: after.processes.every(p => Number.isFinite(p.privateWorkingSet))
+      ? sum(after.processes, "privateWorkingSet") / 1048576 : null,
     workingSetMiB: sum(after.processes, "workingSet") / 1048576,
     ...frames,
   };
@@ -207,6 +221,10 @@ function summarize(tag, before, after) {
 try {
   for (let i = 0; i < 1200 && !shown && !exited; i++) await sleep(50);
   assert(shown, `Window unavailable: ${stderr}`);
+  if (streamFixture) {
+    const limit = result.events.find(e => e.event === "started")?.jobCommitLimit;
+    assert(limit > 0 && limit <= 2 * 1024 ** 3, "streamed replay requires a window probe with the 2 GiB job commit limit");
+  }
   send(`size ${width} ${height}`);
   for (let i = 0; i < 200 && !result.events.some((event) => event.event === "resized") && !exited; i++)
     await sleep(50);

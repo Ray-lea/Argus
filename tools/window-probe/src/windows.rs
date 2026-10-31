@@ -21,7 +21,9 @@ use windows::{
         System::{
             Diagnostics::ToolHelp::*,
             Performance::*,
-            ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX},
+            ProcessStatus::{
+                GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX, PROCESS_MEMORY_COUNTERS_EX2,
+            },
             Threading::*,
             WindowsProgramming::QueryProcessCycleTime,
         },
@@ -36,6 +38,36 @@ use windows::{
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
+}
+
+const TEST_JOB_COMMIT_LIMIT: usize = 2 * 1024 * 1024 * 1024;
+
+/// The child was created suspended. Its only thread can start user code once
+/// the kernel has assigned the process to the limited job.
+fn resume_owned_child(pid: u32) -> Result<()> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows::Win32::Foundation::HANDLE;
+    unsafe {
+        let snapshot =
+            OwnedHandle::from_raw_handle(CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)?.0);
+        let handle = HANDLE(snapshot.as_raw_handle());
+        let mut entry = THREADENTRY32 {
+            dwSize: size_of::<THREADENTRY32>() as u32,
+            ..Default::default()
+        };
+        Thread32First(handle, &mut entry)?;
+        while entry.th32OwnerProcessID != pid {
+            Thread32Next(handle, &mut entry)?;
+        }
+        let thread = OwnedHandle::from_raw_handle(
+            OpenThread(THREAD_SUSPEND_RESUME, false, entry.th32ThreadID)?.0,
+        );
+        anyhow::ensure!(
+            ResumeThread(HANDLE(thread.as_raw_handle())) != u32::MAX,
+            "resume owned test thread"
+        );
+    }
+    Ok(())
 }
 /// Read-only inspection includes hidden windows; it never changes focus or visibility.
 pub fn inspect(pid: u32) -> Result<()> {
@@ -174,6 +206,7 @@ pub fn startup(args: &[String]) -> Result<()> {
         ..Default::default()
     };
     let mut information = PROCESS_INFORMATION::default();
+    let job = Arc::new(Job::limited()?);
     unsafe {
         CreateProcessW(
             PCWSTR(wide(&args[0]).as_ptr()),
@@ -189,21 +222,7 @@ pub fn startup(args: &[String]) -> Result<()> {
         )?;
     }
     let process = Process(information);
-    let job = Arc::new(Job(unsafe { CreateJobObjectW(None, PCWSTR::null())? }));
-    let limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
-        BasicLimitInformation: JOBOBJECT_BASIC_LIMIT_INFORMATION {
-            LimitFlags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
     unsafe {
-        SetInformationJobObject(
-            job.0,
-            JobObjectExtendedLimitInformation,
-            (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
-            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-        )?;
         if let Err(error) = AssignProcessToJobObject(job.0, process.0.hProcess) {
             let _ = TerminateProcess(process.0.hProcess, 1);
             return Err(error.into());
@@ -276,6 +295,39 @@ struct Job(windows::Win32::Foundation::HANDLE);
 unsafe impl Send for Job {}
 unsafe impl Sync for Job {}
 impl Job {
+    fn limited() -> Result<Self> {
+        let job = Self(unsafe { CreateJobObjectW(None, None)? });
+        let limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+            BasicLimitInformation: JOBOBJECT_BASIC_LIMIT_INFORMATION {
+                LimitFlags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_JOB_MEMORY,
+                ..Default::default()
+            },
+            JobMemoryLimit: TEST_JOB_COMMIT_LIMIT,
+            ..Default::default()
+        };
+        unsafe {
+            SetInformationJobObject(
+                job.0,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )?;
+        }
+        Ok(job)
+    }
+    fn peak_commit(&self) -> Result<usize> {
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        unsafe {
+            QueryInformationJobObject(
+                Some(self.0),
+                JobObjectExtendedLimitInformation,
+                (&mut limits as *mut JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                None,
+            )?;
+        }
+        Ok(limits.PeakJobMemoryUsed)
+    }
     fn pids(&self) -> Result<HashSet<u32>> {
         let mut buffer = vec![0usize; 1025];
         unsafe {
@@ -641,8 +693,8 @@ fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
             ) else {
                 continue;
             };
-            let mut memory = PROCESS_MEMORY_COUNTERS_EX {
-                cb: size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+            let mut memory = PROCESS_MEMORY_COUNTERS_EX2 {
+                cb: size_of::<PROCESS_MEMORY_COUNTERS_EX2>() as u32,
                 ..Default::default()
             };
             let mut created = FILETIME::default();
@@ -655,20 +707,29 @@ fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
             let cycles = QueryProcessCycleTime(handle, &mut cycles)
                 .is_ok()
                 .then_some(cycles);
-            let mem_ok = GetProcessMemoryInfo(
+            let extended = GetProcessMemoryInfo(
                 handle,
-                (&mut memory as *mut PROCESS_MEMORY_COUNTERS_EX).cast(),
-                size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+                (&mut memory as *mut PROCESS_MEMORY_COUNTERS_EX2).cast(),
+                size_of::<PROCESS_MEMORY_COUNTERS_EX2>() as u32,
             )
             .is_ok();
+            let mem_ok = extended || {
+                memory.cb = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+                GetProcessMemoryInfo(
+                    handle,
+                    (&mut memory as *mut PROCESS_MEMORY_COUNTERS_EX2).cast(),
+                    memory.cb,
+                )
+                .is_ok()
+            };
             let _ = CloseHandle(handle);
             if time_ok && mem_ok {
-                processes.push(serde_json::json!({"pid":pid,"created":ticks(created),"cpuMs":(ticks(kernel)+ticks(user)) as f64/10000.,"cpuCycles":cycles,"privateBytes":memory.PrivateUsage,"workingSet":memory.WorkingSetSize}));
+                processes.push(serde_json::json!({"pid":pid,"created":ticks(created),"cpuMs":(ticks(kernel)+ticks(user)) as f64/10000.,"cpuCycles":cycles,"privateBytes":memory.PrivateUsage,"peakPrivateBytes":memory.PeakPagefileUsage,"privateWorkingSet":extended.then_some(memory.PrivateWorkingSetSize),"workingSet":memory.WorkingSetSize}));
             }
         }
     }
     Ok(
-        serde_json::json!({"processes":processes,"system":{"idle":ticks(idle),"kernel":ticks(kernel),"user":ticks(user)},"gpu":gpu.map(|gpu|gpu.sample(&pids)),"threads":gpu.map(|_|thread_times(&pids)).transpose()?}),
+        serde_json::json!({"processes":processes,"peakJobCommit":job.peak_commit()?,"system":{"idle":ticks(idle),"kernel":ticks(kernel),"user":ticks(user)},"gpu":gpu.map(|gpu|gpu.sample(&pids)),"threads":gpu.map(|_|thread_times(&pids)).transpose()?}),
     )
 }
 
@@ -765,20 +826,10 @@ pub fn run(args: &[String]) -> Result<()> {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
     let gpu = Gpu::new()?;
-    let job = Arc::new(Job(unsafe { CreateJobObjectW(None, None)? }));
-    let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    unsafe {
-        SetInformationJobObject(
-            job.0,
-            JobObjectExtendedLimitInformation,
-            (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
-            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-        )?;
-    }
+    let job = Arc::new(Job::limited()?);
     let mut child = Command::new(&args[0])
         .args(&args[1..])
-        .creation_flags(0x08000000)
+        .creation_flags((CREATE_NO_WINDOW | CREATE_SUSPENDED).0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -809,6 +860,7 @@ pub fn run(args: &[String]) -> Result<()> {
         return Err(error.into());
     }
     let monitor = ForegroundMonitor::start(root, job.clone());
+    resume_owned_child(root)?;
     // Keep the owned background test comparable to a foreground application.
     // An explicit control bit prevents Windows from automatically selecting EcoQoS.
     let power = PROCESS_POWER_THROTTLING_STATE {
@@ -858,7 +910,7 @@ pub fn run(args: &[String]) -> Result<()> {
     };
     println!(
         "{}",
-        serde_json::json!({"event":"started","pid":root,"unixMs":crate::unix_ms(),"powerThrottling":false,"performanceCoreAffinity":affinity})
+        serde_json::json!({"event":"started","pid":root,"unixMs":crate::unix_ms(),"powerThrottling":false,"performanceCoreAffinity":affinity,"jobCommitLimit":TEST_JOB_COMMIT_LIMIT})
     );
     #[cfg(feature = "capture")]
     {
