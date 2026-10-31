@@ -1116,15 +1116,17 @@ pub fn run(args: &[String]) -> Result<()> {
                             break;
                         }
                         GetWindowRect(search.hwnd, &mut outer)?;
-                        SetWindowPos(
-                            search.hwnd,
-                            Some(HWND_BOTTOM),
-                            0,
-                            0,
-                            size[0] + outer.right - outer.left - client.right,
-                            size[1] + outer.bottom - outer.top - client.bottom,
-                            SWP_NOACTIVATE | SWP_NOMOVE,
-                        )?;
+                        let width = size[0] + outer.right - outer.left - client.right;
+                        let height = size[1] + outer.bottom - outer.top - client.bottom;
+                        let mut flags = SWP_NOACTIVATE | SWP_NOMOVE;
+                        // Allow an explicitly requested off-screen client size on the owned
+                        // test window. Default tracking limits otherwise clamp it to the desktop.
+                        if width > GetSystemMetrics(SM_CXMAXTRACK)
+                            || height > GetSystemMetrics(SM_CYMAXTRACK)
+                        {
+                            flags |= SWP_NOSENDCHANGING;
+                        }
+                        SetWindowPos(search.hwnd, Some(HWND_BOTTOM), 0, 0, width, height, flags)?;
                         std::thread::sleep(Duration::from_millis(50));
                     }
                     GetClientRect(search.hwnd, &mut client)?;
