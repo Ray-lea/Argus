@@ -733,6 +733,7 @@ impl DirectXRenderer {
     }
 
     pub(crate) fn release_hidden_chart_layers(&mut self) -> Result<bool> {
+        self.release_path_targets();
         let Some(comp) = &mut self.direct_composition else {
             return Ok(false);
         };

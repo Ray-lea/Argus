@@ -2,6 +2,8 @@
 
 Large polychrome atlas pages fit the requested strip on 64-texel boundaries. A page enters the atlas after its first tile succeeds and is released with its last tile. Diagnostics report the size and lifetime of each page through `gpu-atlas-page`.
 
+The full-window MSAA and resolve textures for vector paths are allocated at the first path batch. A scene with no paths, a resize, or a hidden window releases these targets. Diagnostics report their creation and release through `gpu-path-targets`.
+
 In a grid with many opaque chart clips, the column scan also compares each actual pixel with the reference column on the same row. Eligible charts use a single moving opaque base and a sparse DirectComposition surface for the differing columns. Only the correction lanes are initialized. They use the same subpixel phases and blended colors as ordinary backdrop strips. A failed virtual-surface update falls back to the ordinary opaque cache for the device. [DirectComposition virtual surfaces](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice-createvirtualsurface)
 
 Thin rasters use eighth-pixel samples across uniform backdrop spans to preserve the antialiased ends of near-flat curves. Taller rasters retain their quarter-pixel spacing and texture budget.
