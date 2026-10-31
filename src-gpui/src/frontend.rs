@@ -147,6 +147,7 @@ struct Desktop {
     queries: HashMap<String, String>,
     host: Host,
     options: Options,
+    fixture_icons: Vec<Option<Arc<[u8]>>>,
     sequence: u64,
     palette: Palette,
     snapshot: Value,
@@ -294,6 +295,13 @@ struct Desktop {
     settings_section: String,
 }
 impl Desktop {
+    fn icon_png(&self, id: u32) -> Option<Arc<[u8]>> {
+        if self.options.fixture.is_some() {
+            return self.fixture_icons.get(id as usize)?.clone();
+        }
+        self.host.state::<AppState>().meta.icon_png(id)
+    }
+
     fn new(
         host: Host,
         options: Options,
@@ -313,6 +321,7 @@ impl Desktop {
             host: host.clone(),
             options: options.clone(),
             sequence: 0,
+            fixture_icons: Vec::new(),
             palette,
             snapshot: Value::Null,
             timeline: model::Timeline::new(),
@@ -473,6 +482,11 @@ impl Desktop {
                 .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
             {
                 Some(fixture) => {
+                    use base64::{Engine as _, engine::general_purpose::STANDARD};
+                    this.fixture_icons = values(&fixture["icons"])
+                        .iter()
+                        .map(|value| Some(STANDARD.decode(value.as_str()?).ok()?.into()))
+                        .collect();
                     if let Some(data) = fixture.as_object() {
                         for (key, value) in data {
                             this.data.insert(key.clone(), value.clone());

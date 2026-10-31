@@ -817,7 +817,7 @@ impl TableDelegate for NativeTable {
             && let Some(id) = icon_id(&self.rows[row_index].raw)
             && !self.icons.contains_key(&id)
             && let Some(owner) = self.owner.upgrade()
-            && let Some(png) = owner.read(cx).host.state::<AppState>().meta.icon_png(id)
+            && let Some(png) = owner.read(cx).icon_png(id)
         {
             self.icons.insert(
                 id,

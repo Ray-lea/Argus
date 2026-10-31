@@ -14,6 +14,9 @@ const retained = process.argv.includes("--retained");
 const chartScroll = process.argv.includes("--chart-scroll");
 const opaqueWindow = process.argv.includes("--opaque-window");
 const snapshots = process.argv.includes("--snapshots");
+const previewFlag = process.argv.indexOf("--readme");
+const preview = previewFlag < 0 ? null : process.argv[previewFlag + 1];
+if (previewFlag >= 0) assert(["zh-CN", "en-US"].includes(preview) && !(live || retained || chartScroll || snapshots));
 assert(!(chartScroll && (live || retained || snapshots)), "chart scroll checks use a fixed CPU spike");
 assert(!(live && retained), "retained comparisons require a fixed fixture");
 assert(!(snapshots && (live || retained)), "snapshot comparisons require a fixed fixture");
@@ -25,10 +28,14 @@ const [config] = testDirectories(identifier);
 mkdirSync(config, { recursive: true });
 writeFileSync(
   resolve(config, "settings.json"),
-  JSON.stringify({ language: "zh-CN", theme: "dark", closeToTray: false, updateCheck: false }),
+  JSON.stringify({ language: preview ?? "zh-CN", theme: "dark", closeToTray: false, updateCheck: false }),
 );
 let fixture;
-if (!live) {
+if (preview) {
+  const { previewFixture } = await import("./lib/readme-fixture.mjs");
+  fixture = previewFixture(preview);
+  writeFileSync(resolve(output, "fixture.json"), JSON.stringify(fixture));
+} else if (!live) {
   const fixtureFlag = process.argv.indexOf("--fixture");
   fixture = JSON.parse(readFileSync(fixtureFlag >= 0 ? process.argv[fixtureFlag + 1] : "tools/window-probe/fixtures/desktop.json"));
   if (chartScroll) {
@@ -71,6 +78,7 @@ const child = spawn(
     "180",
     ...(opaqueWindow ? ["--opaque-window"] : []),
     ...(live ? [] : ["--fixture", resolve(output, "fixture.json")]),
+    ...(preview ? ["--width", "1440", "--height", "900"] : []),
   ],
   { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained || chartScroll ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}), ...(snapshots ? { ARGUS_GPUI_FRAME_TRACE: "1" } : {}) } },
 );
@@ -124,7 +132,18 @@ try {
   for (let i = 0; i < 600 && !shown && !exited; i++) await sleep(50);
   if (!shown) throw Error(`Window unavailable: ${error}`);
   await sleep(2500);
-  if (live) {
+  if (preview) {
+    send({ page: "processes", view: "apps", navPosition: "top", details: true, sort: "name" });
+    for (const theme of ["light", "dark"]) {
+      send({ theme, pointerOutside: true });
+      await sleep(1200);
+      await capture(theme);
+      const state = events.findLast(e => e.event === "ui-render-counts" && e.label === theme);
+      assert(state?.sort === "name" && state.descending === false, "README preview must use ascending name order");
+      const conditions = events.findLast(e => e.event === "ui-conditions" && e.label === theme);
+      assert.equal(conditions?.processes, fixture.snapshot.processes.length, "README preview fixture missing");
+    }
+  } else if (live) {
     if (process.argv.includes("--exercise-updates")) {
       for (let step=0;step<80;step++) {
         send({page:"processes",query:step%2?"argus":"__argus_snapshot_no_match__",view:step%2?"apps":"tree",sort:step%2?"cpu":"mem"});
@@ -419,7 +438,7 @@ for (const event of events.filter((e) => e.event === "ui-caption" && !e.label.en
   assert(event.actionsAreClient, `${event.label}: toolbar controls were classified as draggable caption`);
   assert(event.minimize && event.maximize && event.close, `${event.label}: native caption controls were lost`);
 }
-if (!live && !retained && !snapshots && !chartScroll) {
+if (!live && !retained && !snapshots && !chartScroll && !preview) {
   for (const [label, sort, descending] of [["sorted-name", "name", false], ["sorted-name-reversed", "name", true], ["sorted-cpu", "cpu", true]]) {
     const state = events.find((event) => event.event === "ui-render-counts" && event.label === label);
     assert(state && state.sort === sort && state.descending === descending, `${label}: clicking the full header did not sort`);

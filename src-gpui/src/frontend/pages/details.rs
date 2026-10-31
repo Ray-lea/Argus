@@ -1090,7 +1090,7 @@ impl Desktop {
             .as_u64()
             .or_else(|| process["icon"].as_u64());
         if let Some(id) = id
-            && let Some(png) = self.host.state::<AppState>().meta.icon_png(id as u32)
+            && let Some(png) = self.icon_png(id as u32)
         {
             // Decoded once per icon while the pane keeps showing it.
             let image = window

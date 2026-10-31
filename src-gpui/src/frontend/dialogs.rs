@@ -2662,7 +2662,7 @@ impl Desktop {
             if let Some(image) = cache.get(&id) {
                 return Some(image.clone());
             }
-            let png = self.host.state::<AppState>().meta.icon_png(id)?;
+            let png = self.icon_png(id)?;
             let image = Arc::new(Image::from_bytes(ImageFormat::Png, png.to_vec()));
             cache.insert(id, image.clone());
             Some(image)
