@@ -315,6 +315,14 @@ fn create(name: &str, sd: &security::Descriptor, first: bool) -> Result<Handle> 
     Ok(Handle(handle))
 }
 
+fn disconnect(pipe: HANDLE) -> Result<()> {
+    match unsafe { DisconnectNamedPipe(pipe) }.map_err(win) {
+        // A peer may already have closed an aborted or refused connection.
+        Ok(()) | Err(233) => Ok(()),
+        Err(code) => Err(code),
+    }
+}
+
 pub fn serve(name: &str, owner: String, stop: Arc<Handle>, ready: impl FnOnce()) -> Result<()> {
     let descriptor = security::pipe_descriptor(&owner)?;
     serve_with_descriptor(
@@ -361,6 +369,13 @@ fn serve_with_descriptor(
             ) {
                 Err(995) => return Ok(()),
                 Err(1460) => continue,
+                Err(109 | 232 | 233) => {
+                    // A client can close between CreateNamedPipe and accept.
+                    // Reuse this instance to keep the pipe name claimed and
+                    // avoid consuming another slot in the bounded instance pool.
+                    disconnect(listener.0)?;
+                    continue;
+                }
                 Err(e) => return Err(e),
                 Ok(_) => {}
             }
@@ -371,7 +386,7 @@ fn serve_with_descriptor(
             }
         }
         if workers.len() >= CLIENTS {
-            unsafe { DisconnectNamedPipe(listener.0) }.map_err(win)?;
+            disconnect(listener.0)?;
             continue;
         }
         // Create the next listener before handing off the connected instance;
@@ -482,6 +497,49 @@ pub(crate) mod tests {
             }
             self.thread.take().unwrap().join().unwrap().unwrap();
         }
+    }
+
+    #[test]
+    fn client_closed_before_accept_keeps_the_service_available() {
+        let name = name();
+        let stop = Arc::new(event().unwrap());
+        let (ready, waiting) = std::sync::mpsc::channel();
+        let (resume, gate) = std::sync::mpsc::channel();
+        let thread = {
+            let name = name.clone();
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                let owner = security::current_sid().unwrap();
+                let sd = security::Descriptor::new(&format!("D:P(A;;GA;;;{owner})")).unwrap();
+                serve_with_descriptor(
+                    &name,
+                    owner,
+                    stop,
+                    &sd,
+                    Arc::new(Context::testing()),
+                    || {
+                        ready.send(()).unwrap();
+                        gate.recv_timeout(Duration::from_secs(5)).unwrap();
+                    },
+                )
+            })
+        };
+        waiting.recv_timeout(Duration::from_secs(5)).unwrap();
+        // Connect and close while the server is deliberately still before accept.
+        drop(connect(&name).unwrap());
+        resume.send(()).unwrap();
+        let reply = request_with_timeout(
+            &name,
+            std::process::id(),
+            Operation::Ping,
+            Duration::from_secs(2),
+        );
+        unsafe {
+            SetEvent(stop.0).unwrap();
+        }
+        let result = thread.join().unwrap();
+        assert_eq!(result, Ok(()), "client disconnect terminated the listener");
+        assert!(matches!(reply, Ok(Reply::Pong { .. })));
     }
 
     #[test]

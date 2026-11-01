@@ -5,6 +5,25 @@ use std::{
     path::PathBuf,
     sync::Mutex,
 };
+use time::{OffsetDateTime, UtcOffset};
+
+fn timestamp(now: OffsetDateTime) -> String {
+    let offset = now.offset().whole_seconds();
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}{}{:02}:{:02}",
+        now.year(),
+        u8::from(now.month()),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second(),
+        now.millisecond(),
+        if offset < 0 { '-' } else { '+' },
+        offset.unsigned_abs() / 3600,
+        offset.unsigned_abs() / 60 % 60,
+    )
+}
+
 struct Logger {
     file: Mutex<File>,
     path: PathBuf,
@@ -31,10 +50,11 @@ impl log::Log for Logger {
                 *file = next;
             }
         }
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let now = OffsetDateTime::now_utc();
+        // Resolve the offset for each record so a long-running host follows
+        // daylight-saving and time-zone changes without ambiguous local times.
+        let offset = UtcOffset::local_offset_at(now).unwrap_or(UtcOffset::UTC);
+        let now = timestamp(now.to_offset(offset));
         let _ = writeln!(file, "{now} {} {}", record.level(), record.args());
         let _ = file.flush();
     }
@@ -63,4 +83,46 @@ pub fn init(directory: PathBuf) -> anyhow::Result<()> {
         }
     }));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::format_description::well_known::Rfc3339;
+
+    #[test]
+    fn timestamps_keep_milliseconds_and_unambiguous_offsets() {
+        let utc = OffsetDateTime::parse("2026-11-01T02:03:04.005Z", &Rfc3339).unwrap();
+        for (offset, expected) in [
+            (UtcOffset::UTC, "2026-11-01T02:03:04.005+00:00"),
+            (
+                UtcOffset::from_hms(8, 0, 0).unwrap(),
+                "2026-11-01T10:03:04.005+08:00",
+            ),
+            (
+                UtcOffset::from_hms(-8, 0, 0).unwrap(),
+                "2026-10-31T18:03:04.005-08:00",
+            ),
+            (
+                UtcOffset::from_hms(5, 45, 0).unwrap(),
+                "2026-11-01T07:48:04.005+05:45",
+            ),
+            (
+                UtcOffset::from_hms(0, -30, 0).unwrap(),
+                "2026-11-01T01:33:04.005-00:30",
+            ),
+        ] {
+            let formatted = timestamp(utc.to_offset(offset));
+            assert_eq!(formatted, expected);
+            assert_eq!(OffsetDateTime::parse(&formatted, &Rfc3339).unwrap(), utc);
+        }
+    }
+
+    #[test]
+    fn repeated_local_hour_remains_distinct_across_daylight_saving() {
+        let before = OffsetDateTime::parse("2026-11-01T01:30:00.000-07:00", &Rfc3339).unwrap();
+        let after = OffsetDateTime::parse("2026-11-01T01:30:00.000-08:00", &Rfc3339).unwrap();
+        assert_ne!(timestamp(before), timestamp(after));
+        assert_eq!(after - before, time::Duration::hours(1));
+    }
 }

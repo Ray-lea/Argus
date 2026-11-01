@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(issue(Some(util::message(1460))).as_deref(), Some("timeout"));
         assert_eq!(
             issue(Some(util::message(109))).as_deref(),
-            Some("os error 109")
+            Some("pipe closed (os error 109)")
         );
         assert_eq!(
             issue(Some(util::message(5))).as_deref(),

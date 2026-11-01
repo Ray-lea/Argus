@@ -15,7 +15,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{
-    ERROR_ALREADY_EXISTS, ERROR_CANCELLED, ERROR_SUCCESS, GetLastError,
+    ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, ERROR_CANCELLED, ERROR_SUCCESS, GetLastError,
 };
 use windows::Win32::System::Diagnostics::Etw::{
     CONTROLTRACE_HANDLE, CloseTrace, ControlTraceW, EVENT_CONTROL_CODE_ENABLE_PROVIDER,
@@ -117,14 +117,16 @@ impl NetworkTracker {
         if status != ERROR_SUCCESS {
             // A standard user's local trace may be denied; the host can still
             // obtain the same counters from its authorized service.
-            crate::diagnostics::warn(
-                "network ETW StartTraceW",
-                format!(
-                    "{}; elevated={}; service_fallback_possible=true",
-                    crate::diagnostics::code(status.0),
-                    crate::privilege::is_elevated()
-                ),
+            let elevated = crate::privilege::is_elevated();
+            let detail = format!(
+                "{}; elevated={elevated}; service_fallback_possible=true",
+                crate::diagnostics::code(status.0),
             );
+            if status == ERROR_ACCESS_DENIED && !elevated {
+                log::info!(target: "argus_diagnostics", "network ETW local trace unavailable: {detail}");
+            } else {
+                crate::diagnostics::warn("network ETW StartTraceW", detail);
+            }
             return None;
         }
         let enabled = unsafe {

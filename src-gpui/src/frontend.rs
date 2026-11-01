@@ -679,6 +679,12 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                     scrim,
                 })
             })
+            .inspect_err(|error| {
+                argus_core::diagnostics::warn(
+                    "native window creation",
+                    argus_core::diagnostics::error_chain(error.as_ref()),
+                );
+            })
             .expect("create native window");
             cx.on_app_quit(move |_| {
                 owner.exit(0);

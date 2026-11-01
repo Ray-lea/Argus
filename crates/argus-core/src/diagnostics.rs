@@ -296,7 +296,8 @@ fn category(code: u32) -> Option<&'static str> {
         32 | 33 | 170 => "in use",
         80 | 183 => "already exists",
         13 | 87 => "invalid or unsupported data",
-        258 | 1460 | 10060 | 12002 => "timeout",
+        109 | 232 | 233 => "pipe closed",
+        121 | 258 | 1460 | 10060 | 12002 => "timeout",
         1223 => "cancelled",
         10061 | 11001 | 12007 | 12029 => "network error",
         _ => return None,
@@ -385,7 +386,9 @@ mod tests {
 
     #[test]
     fn numeric_and_chained_failures_keep_codes_without_free_form_messages() {
-        for value in [5, 1813, 0x80004005, 0x20000106, 0xc0000022] {
+        for value in [
+            5, 109, 121, 232, 233, 1813, 0x80004005, 0x20000106, 0xc0000022,
+        ] {
             let output = code(value);
             assert!(output.contains(&format!("0x{value:08x}")));
             assert!(output.contains(&format!("code={value}")));
@@ -495,7 +498,22 @@ mod tests {
                 "操作已被用户取消。 (0x800704C7)",
                 "cancelled (os error 1223)",
             ),
-            ("信号灯超时时间已到。 (os error 121)", "os error 121"),
+            (
+                "信号灯超时时间已到。 (os error 121)",
+                "timeout (os error 121)",
+            ),
+            (
+                "The pipe has been ended. (os error 109)",
+                "pipe closed (os error 109)",
+            ),
+            (
+                "管道正在被关闭。 (os error 232)",
+                "pipe closed (os error 232)",
+            ),
+            (
+                "No process is on the other end of the pipe. (0x800700e9)",
+                "pipe closed (os error 233)",
+            ),
             ("没有注册类 (0x80040154)", "hresult 0x80040154"),
         ] {
             assert_eq!(failure(text), class, "{text}");

@@ -2,6 +2,7 @@ use std::fs::{self, OpenOptions};
 use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::FromRawHandle;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -32,6 +33,35 @@ use crate::util::{
 static MANAGING: AtomicBool = AtomicBool::new(false);
 const OWNER_FILE: &str = "owner.sid";
 const LOCK_FILE: &str = "install.lock";
+
+#[derive(Default)]
+struct StoppedFailure(Option<(u32, u32)>);
+
+impl StoppedFailure {
+    fn observe(&mut self, status: Option<&SERVICE_STATUS_PROCESS>) -> Option<(u32, u32)> {
+        let failure = status
+            .filter(|s| s.dwCurrentState == SERVICE_STOPPED && s.dwWin32ExitCode != 0)
+            .map(|s| (s.dwWin32ExitCode, s.dwServiceSpecificExitCode));
+        let changed = std::mem::replace(&mut self.0, failure) != failure;
+        failure.filter(|_| changed)
+    }
+}
+
+fn note_state(status: Option<&SERVICE_STATUS_PROCESS>) {
+    static STOPPED: Mutex<StoppedFailure> = Mutex::new(StoppedFailure(None));
+    // SCM retains the last exit code until the next start. Polling that same
+    // stopped state is not another failure; recovery re-arms the observation.
+    let failure = STOPPED.lock().unwrap().observe(status);
+    if let Some((code, specific)) = failure {
+        argus_core::diagnostics::warn(
+            "privileged service stopped",
+            format!(
+                "{}; service_specific_exit={specific}",
+                argus_core::diagnostics::code(code),
+            ),
+        );
+    }
+}
 
 struct Service(SC_HANDLE);
 impl Drop for Service {
@@ -99,7 +129,10 @@ fn open(manager: &Service, access: u32) -> Result<Option<Service>> {
         )
     } {
         Ok(h) => Ok(Some(Service(h))),
-        Err(e) if e.code() == ERROR_SERVICE_DOES_NOT_EXIST.to_hresult() => Ok(None),
+        Err(e) if e.code() == ERROR_SERVICE_DOES_NOT_EXIST.to_hresult() => {
+            note_state(None);
+            Ok(None)
+        }
         Err(e) => crate::util::stage("service OpenServiceW", Err(win(e))),
     }
 }
@@ -125,6 +158,7 @@ fn query(service: &Service) -> Result<SERVICE_STATUS_PROCESS> {
             argus_core::diagnostics::code(*code),
         )
     })?;
+    note_state(Some(&status));
     Ok(status)
 }
 
@@ -213,14 +247,6 @@ fn inspect() -> Result<ServiceStatus> {
         status.error = Some(message(OTHER_OWNER));
     } else if s.dwCurrentState == SERVICE_STOPPED && s.dwWin32ExitCode != 0 {
         status.error_code = Some(s.dwWin32ExitCode);
-        argus_core::diagnostics::warn(
-            "privileged service stopped",
-            format!(
-                "{}; service_specific_exit={}",
-                argus_core::diagnostics::code(s.dwWin32ExitCode),
-                s.dwServiceSpecificExitCode
-            ),
-        );
         status.error = Some(message(s.dwWin32ExitCode));
     }
     Ok(status)
@@ -749,6 +775,36 @@ pub fn manage(action: &str) -> std::result::Result<ServiceStatus, String> {
 mod tests {
     use super::*;
     use crate::util::INCOMPATIBLE;
+
+    #[test]
+    fn stopped_state_logs_changes_and_rearms_after_recovery_or_removal() {
+        let mut observed = StoppedFailure::default();
+        let mut failed = SERVICE_STATUS_PROCESS {
+            dwCurrentState: SERVICE_STOPPED,
+            dwWin32ExitCode: 232,
+            ..Default::default()
+        };
+        assert_eq!(observed.observe(Some(&failed)), Some((232, 0)));
+        for _ in 0..5000 {
+            assert_eq!(observed.observe(Some(&failed)), None);
+        }
+        failed.dwWin32ExitCode = 1066;
+        failed.dwServiceSpecificExitCode = 1;
+        assert_eq!(observed.observe(Some(&failed)), Some((1066, 1)));
+        failed.dwServiceSpecificExitCode = 2;
+        assert_eq!(observed.observe(Some(&failed)), Some((1066, 2)));
+        for state in [SERVICE_RUNNING, SERVICE_START_PENDING, SERVICE_STOPPED] {
+            let healthy = SERVICE_STATUS_PROCESS {
+                dwCurrentState: state,
+                ..Default::default()
+            };
+            assert_eq!(observed.observe(Some(&healthy)), None);
+            assert_eq!(observed.observe(Some(&failed)), Some((1066, 2)));
+            assert_eq!(observed.observe(Some(&failed)), None);
+        }
+        assert_eq!(observed.observe(None), None);
+        assert_eq!(observed.observe(Some(&failed)), Some((1066, 2)));
+    }
 
     fn pinged(ping: Result<crate::Reply>) -> ServiceStatus {
         let mut status = ServiceStatus {
