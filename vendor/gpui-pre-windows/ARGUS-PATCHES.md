@@ -1,6 +1,6 @@
 # Argus patches
 
-Large polychrome atlas pages fit the requested strip on 64-texel boundaries. A page enters the atlas after its first tile succeeds and is released with its last tile. Diagnostics report the size and lifetime of each page through `gpu-atlas-page`.
+Large polychrome atlas pages fit the requested strip on 64-texel boundaries. A page enters the atlas after its first tile succeeds. Empty dedicated color pages are detached and can serve an exact-size replacement before presentation, with a limit of eight pages and 16 MiB. Presentation, hiding, resizing and device loss release unmatched pages. Diagnostics distinguish physical lifetimes (`gpu-atlas-page`) from replacement uploads (`gpu-atlas-reuse`).
 
 The full-window MSAA and resolve textures for vector paths are allocated at the first path batch. A scene with no paths, a resize, or a hidden window releases these targets. Diagnostics report their creation and release through `gpu-path-targets`.
 

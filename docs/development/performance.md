@@ -2,7 +2,7 @@
 
 `scripts/perf-native.mjs --stream-fixture` 将样本时间整体平移到回放开始时刻，原始文件保留在原处。Windows 窗口探针在隔离进程开始执行前为整个作业设置 2 GiB 提交上限。结果分别记录专用工作集、私有提交和作业提交峰值。
 
-`scripts/ui-smoke.mjs <标识> --chart-gap` 在受限作业内回放相隔八天多的采样，检查 CPU 总图、多核图及进程概览的曲线尺寸与并行构建峰值。`ui-chart-work.peakRasterBuildBytes` 是位图及遮罩的预留峰值。`ARGUS_GPUI_DIAGNOSTICS=1` 下的 `gpu-atlas-page` 事件记录各类图集页的创建、释放、尺寸和字节数。
+`scripts/ui-smoke.mjs <标识> --chart-gap` 在受限作业内回放相隔八天多的采样，检查 CPU 总图、多核图及进程概览的曲线尺寸与并行构建峰值。`ui-chart-work.peakRasterBuildBytes` 是位图及遮罩的预留峰值。`ARGUS_GPUI_DIAGNOSTICS=1` 下的 `gpu-atlas-page` 事件记录各类图集页的实际创建、释放、尺寸和字节数。同尺寸空页在上传阶段复用时单独记录 `gpu-atlas-reuse`。
 
 测量使用发行构建、独立应用标识与相同数据源，记录窗口客户区物理尺寸、DPI、刷新间隔、曲线模式、设备、主题和实际呈现帧率。CPU 与 GPU 比较需保持相同的实际画面和节拍，并以窗口捕获测得的实际 FPS 为准。
 

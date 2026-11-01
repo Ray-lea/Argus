@@ -788,6 +788,7 @@ impl DirectXRenderer {
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
         crate::frame_trace::record(6, u64::from(scene.animated_order.is_some()));
+        self.atlas.finish_page_updates(true);
         if self.skip_draws {
             // skip drawing this frame, we just recovered from a device lost event
             // and so likely do not have the textures anymore that are required for drawing
@@ -1220,6 +1221,7 @@ impl DirectXRenderer {
         if self.width == width && self.height == height {
             return Ok(());
         }
+        self.atlas.finish_page_updates(false);
         self.release_path_targets();
         self.width = width;
         self.height = height;

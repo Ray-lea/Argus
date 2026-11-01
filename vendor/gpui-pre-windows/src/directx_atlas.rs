@@ -15,6 +15,10 @@ use gpui::{
 
 pub(crate) struct DirectXAtlas(Mutex<AtlasState<DirectXAtlasTextures>>);
 
+const SHARED_PAGE_SIDE: i32 = 1024;
+const MAX_SPARE_PAGES: usize = 8;
+const MAX_SPARE_BYTES: u64 = 16 << 20;
+
 struct DirectXAtlasTextures {
     // Vertical ink extents of polychrome tiles used to size compositor surfaces.
     chart_rows: Option<std::collections::BTreeMap<(u32, u32), std::ops::Range<u32>>>,
@@ -26,6 +30,10 @@ struct DirectXAtlasTextures {
     monochrome_textures: AtlasTextureList<DirectXAtlasTexture>,
     polychrome_textures: AtlasTextureList<DirectXAtlasTexture>,
     subpixel_textures: AtlasTextureList<DirectXAtlasTexture>,
+    // Empty dedicated color pages, detached from the live atlas until a
+    // replacement upload in this batch needs the same physical dimensions.
+    spares: Vec<DirectXAtlasTexture>,
+    recycle_pages: bool,
 }
 
 struct DirectXAtlasTexture {
@@ -57,6 +65,8 @@ impl DirectXAtlas {
             monochrome_textures: Default::default(),
             polychrome_textures: Default::default(),
             subpixel_textures: Default::default(),
+            spares: Vec::new(),
+            recycle_pages: false,
         })))
     }
 
@@ -91,6 +101,7 @@ impl DirectXAtlas {
     ) {
         let mut lock = self.0.lock();
         lock.clear(|textures| {
+            textures.finish_page_updates(false);
             textures.chart_rows = chart_layers.then(Default::default);
             textures.gpu_timing = crate::gpu_timing::GpuTimings::from_environment(
                 device,
@@ -110,6 +121,12 @@ impl DirectXAtlas {
     pub(crate) fn upload_stats(&self) -> (u64, u64) {
         let lock = self.0.lock();
         (lock.backend.upload_calls, lock.backend.upload_bytes)
+    }
+
+    /// Release unmatched pages before presentation. Hidden or resizing
+    /// windows also stop collecting them until the next draw.
+    pub(crate) fn finish_page_updates(&self, visible: bool) {
+        self.0.lock().backend.finish_page_updates(visible);
     }
 }
 
@@ -148,19 +165,22 @@ impl AtlasBackend for DirectXAtlasTextures {
             let texture = self
                 .texture(tile.texture_id)
                 .ok_or_else(|| anyhow::anyhow!("allocated tile refers to a missing texture"))?;
-            if let Some(uploaded) = texture.upload(&self.device_context, tile.bounds, bytes) {
-                if kind == AtlasTextureKind::Polychrome
-                    && let Some(rows) = &mut self.chart_rows
-                {
-                    let height = size.height.0 as u32;
-                    let ink = ink_rows(&bytes[..uploaded], size.width.0 as usize, height);
-                    if ink != (0..height) {
-                        rows.insert((tile.texture_id.index, tile.tile_id.0), ink);
-                    }
+            let Some(uploaded) = texture.upload(&self.device_context, tile.bounds, bytes) else {
+                // Do not publish a stale image when the replacement upload is incomplete.
+                self.remove(tile);
+                anyhow::bail!("atlas upload has fewer bytes than the tile requires");
+            };
+            if kind == AtlasTextureKind::Polychrome
+                && let Some(rows) = &mut self.chart_rows
+            {
+                let height = size.height.0 as u32;
+                let ink = ink_rows(&bytes[..uploaded], size.width.0 as usize, height);
+                if ink != (0..height) {
+                    rows.insert((tile.texture_id.index, tile.tile_id.0), ink);
                 }
-                self.upload_calls = self.upload_calls.wrapping_add(1);
-                self.upload_bytes = self.upload_bytes.wrapping_add(uploaded as u64);
             }
+            self.upload_calls = self.upload_calls.wrapping_add(1);
+            self.upload_bytes = self.upload_bytes.wrapping_add(uploaded as u64);
             crate::frame_trace::record(11, bytes.len() as u64);
             Ok(tile)
         })();
@@ -201,8 +221,24 @@ impl AtlasBackend for DirectXAtlasTextures {
             texture.allocator.deallocate(tile.tile_id.into());
             texture.decrement_ref_count();
             if texture.is_unreferenced() {
-                texture.trace_page("release");
-                textures.free_list.push(texture.id.index as usize);
+                let size = texture.allocator.size();
+                if self.recycle_pages
+                    && id.kind == AtlasTextureKind::Polychrome
+                    && size.width.max(size.height) > SHARED_PAGE_SIDE
+                    && self.spares.len() < MAX_SPARE_PAGES
+                    && texture.bytes()
+                        + self
+                            .spares
+                            .iter()
+                            .map(DirectXAtlasTexture::bytes)
+                            .sum::<u64>()
+                        <= MAX_SPARE_BYTES
+                {
+                    texture.allocator.clear();
+                    self.spares.push(texture);
+                } else {
+                    textures.free_list.push(id.index as usize);
+                }
             } else {
                 *texture_slot = Some(texture);
             }
@@ -226,6 +262,15 @@ fn ink_rows(bytes: &[u8], width: usize, height: u32) -> std::ops::Range<u32> {
 }
 
 impl DirectXAtlasTextures {
+    fn finish_page_updates(&mut self, visible: bool) {
+        self.recycle_pages = visible;
+        for page in self.spares.drain(..) {
+            self.polychrome_textures
+                .free_list
+                .push(page.id.index as usize);
+        }
+    }
+
     fn allocate(
         &mut self,
         size: Size<DevicePixels>,
@@ -261,8 +306,8 @@ impl DirectXAtlasTextures {
         kind: AtlasTextureKind,
     ) -> Option<AtlasTile> {
         const DEFAULT_ATLAS_SIZE: Size<DevicePixels> = Size {
-            width: DevicePixels(1024),
-            height: DevicePixels(1024),
+            width: DevicePixels(SHARED_PAGE_SIDE),
+            height: DevicePixels(SHARED_PAGE_SIDE),
         };
         let size = if kind == AtlasTextureKind::Polychrome
             && (min_size.width > DEFAULT_ATLAS_SIZE.width
@@ -274,6 +319,21 @@ impl DirectXAtlasTextures {
         } else {
             min_size.max(&DEFAULT_ATLAS_SIZE)
         };
+        if kind == AtlasTextureKind::Polychrome
+            && let Some(i) = self
+                .spares
+                .iter()
+                .position(|page| page.allocator.size() == device_size_to_etagere(size))
+        {
+            let mut page = self.spares.swap_remove(i);
+            let index = page.id.index as usize;
+            if let Some(tile) = page.allocate(min_size) {
+                page.trace_page("reuse");
+                self.polychrome_textures.textures[index] = Some(page);
+                return Some(tile);
+            }
+            self.polychrome_textures.free_list.push(index);
+        }
         let pixel_format;
         let bind_flag;
         let bytes_per_pixel;
@@ -344,8 +404,8 @@ impl DirectXAtlasTextures {
             live_atlas_keys: 0,
         };
         // Publish an atlas page only once it contains its first tile.
-        let tile = atlas_texture.allocate(min_size)?;
         atlas_texture.trace_page("create");
+        let tile = atlas_texture.allocate(min_size)?;
         if let Some(ix) = texture_list.free_list.pop() {
             texture_list.textures[ix] = Some(atlas_texture);
         } else {
@@ -365,18 +425,28 @@ impl DirectXAtlasTextures {
 }
 
 impl DirectXAtlasTexture {
+    fn bytes(&self) -> u64 {
+        let size = self.allocator.size();
+        size.width as u64 * size.height as u64 * u64::from(self.bytes_per_pixel)
+    }
     fn trace_page(&self, action: &str) {
         static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         if *ENABLED.get_or_init(|| std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some()) {
-            let mut desc = D3D11_TEXTURE2D_DESC::default();
-            unsafe { self.texture.GetDesc(&mut desc) };
-            println!(
-                "{{\"event\":\"gpu-atlas-page\",\"action\":\"{action}\",\"kind\":\"{:?}\",\"index\":{},\"width\":{},\"height\":{},\"bytes\":{}}}",
+            use std::io::Write;
+            let size = self.allocator.size();
+            let event = if action == "reuse" {
+                "gpu-atlas-reuse"
+            } else {
+                "gpu-atlas-page"
+            };
+            let _ = writeln!(
+                std::io::stdout().lock(),
+                "{{\"event\":\"{event}\",\"action\":\"{action}\",\"kind\":\"{:?}\",\"index\":{},\"width\":{},\"height\":{},\"bytes\":{}}}",
                 self.id.kind,
                 self.id.index,
-                desc.Width,
-                desc.Height,
-                u64::from(desc.Width) * u64::from(desc.Height) * u64::from(self.bytes_per_pixel)
+                size.width,
+                size.height,
+                self.bytes()
             );
         }
     }
@@ -445,6 +515,12 @@ impl DirectXAtlasTexture {
 
     fn is_unreferenced(&mut self) -> bool {
         self.live_atlas_keys == 0
+    }
+}
+
+impl Drop for DirectXAtlasTexture {
+    fn drop(&mut self) {
+        self.trace_page("release");
     }
 }
 
@@ -581,6 +657,114 @@ mod tests {
                 .flatten()
                 .count(),
             0
+        );
+    }
+
+    #[test]
+    fn chart_revisions_reuse_the_device_page_and_replace_its_ink() {
+        let Some(atlas) = create_atlas() else { return };
+        atlas.0.lock().backend.chart_rows = Some(Default::default());
+        atlas.finish_page_updates(true);
+        let insert = |key: AtlasKey, w, h, ink: usize| {
+            atlas
+                .get_or_insert_with(key, &mut || {
+                    let mut bytes = vec![0; (w * h * 4) as usize];
+                    bytes[ink * w as usize * 4 + 3] = 255;
+                    Ok(Some((
+                        Size {
+                            width: DevicePixels(w),
+                            height: DevicePixels(h),
+                        },
+                        Cow::Owned(bytes),
+                    )))
+                })
+                .unwrap()
+                .unwrap()
+        };
+        let old = make_image_key(20);
+        let a = insert(old.clone(), 1560, 105, 6);
+        let view = atlas.get_texture_view(a.texture_id).unwrap();
+        assert_eq!(atlas.chart_rows(&a), 6..7);
+        atlas.remove(&old);
+        assert!(atlas.get_texture_view(a.texture_id).is_none());
+        let next = make_image_key(21);
+        let b = insert(next.clone(), 1580, 117, 113);
+        assert_eq!(atlas.get_texture_view(b.texture_id).unwrap(), view);
+        assert_eq!(atlas.chart_rows(&b), 113..114);
+        atlas.remove(&next);
+        // A short upload must not expose data from either earlier revision.
+        assert!(
+            atlas
+                .get_or_insert_with(make_image_key(22), &mut || Ok(Some((
+                    Size {
+                        width: DevicePixels(1580),
+                        height: DevicePixels(117)
+                    },
+                    Cow::Borrowed(&[0; 4])
+                ))))
+                .is_err()
+        );
+        assert!(atlas.get_texture_view(b.texture_id).is_none());
+        assert!(
+            atlas
+                .0
+                .lock()
+                .backend
+                .chart_rows
+                .as_ref()
+                .unwrap()
+                .is_empty()
+        );
+        atlas.finish_page_updates(true);
+        assert!(atlas.0.lock().backend.spares.is_empty());
+    }
+
+    #[test]
+    fn spare_pages_are_bounded_and_released_when_the_window_is_inactive() {
+        let Some(atlas) = create_atlas() else { return };
+        atlas.finish_page_updates(true);
+        let mut lock = atlas.0.lock();
+        let backend = &mut lock.backend;
+        let allocate = |backend: &mut DirectXAtlasTextures, w, h| {
+            backend
+                .allocate(
+                    Size {
+                        width: DevicePixels(w),
+                        height: DevicePixels(h),
+                    },
+                    AtlasTextureKind::Polychrome,
+                )
+                .unwrap()
+        };
+        let tiles = (0..MAX_SPARE_PAGES + 2)
+            .map(|_| allocate(backend, 1088, 64))
+            .collect::<Vec<_>>();
+        for t in tiles {
+            backend.remove(t);
+        }
+        assert_eq!(backend.spares.len(), MAX_SPARE_PAGES);
+        backend.finish_page_updates(true);
+        let a = allocate(backend, 4096, 640);
+        let b = allocate(backend, 4096, 640);
+        backend.remove(a);
+        backend.remove(b);
+        assert_eq!(backend.spares.len(), 1);
+        assert!(
+            backend
+                .spares
+                .iter()
+                .map(DirectXAtlasTexture::bytes)
+                .sum::<u64>()
+                <= MAX_SPARE_BYTES
+        );
+        backend.finish_page_updates(false);
+        assert!(backend.spares.is_empty());
+        let inactive = allocate(backend, 4096, 640);
+        backend.remove(inactive);
+        assert!(backend.spares.is_empty());
+        assert_eq!(
+            backend.polychrome_textures.free_list.len(),
+            backend.polychrome_textures.textures.len()
         );
     }
 }
