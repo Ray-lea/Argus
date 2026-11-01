@@ -83,13 +83,7 @@ impl Collector {
             self.network = None;
         }
         if let Some(network) = &mut self.network {
-            let rates = network.rates();
-            for p in &mut processes {
-                if let Some(&(sent, received)) = rates.get(&p.pid) {
-                    p.net_sent = sent;
-                    p.net_received = received;
-                }
-            }
+            network.apply_rates(&mut processes);
         }
 
         let apps = app_windows::owners();

@@ -255,12 +255,16 @@ impl Rates {
             .previous
             .as_ref()
             .filter(|p| p.epoch == frame.epoch && p.elapsed_us <= frame.elapsed_us);
-        let new_frame = same_epoch.is_none_or(|p| p.elapsed_us != frame.elapsed_us);
+        let advance = same_epoch.is_none_or(|p| {
+            argus_core::net_process::rate_window_ready(Duration::from_micros(
+                frame.elapsed_us - p.elapsed_us,
+            ))
+        });
         if same_epoch.is_none() {
             self.values.clear();
         }
         if let Some(previous) = same_epoch
-            && previous.elapsed_us < frame.elapsed_us
+            && advance
         {
             let old: HashMap<_, _> = previous
                 .counters
@@ -307,10 +311,10 @@ impl Rates {
                 p.net_received = received;
             }
         }
-        if new_frame {
+        if advance {
             self.identities = processes.iter().map(|p| (p.pid, p.create_time)).collect();
+            self.previous = Some(frame);
         }
-        self.previous = Some(frame);
     }
 }
 
@@ -638,6 +642,61 @@ mod tests {
         assert_eq!(processes[0].net_sent, 0);
         rates.apply(frame("b", 2, 901000), &mut processes);
         assert_eq!(processes[0].net_sent, 1000);
+    }
+
+    #[test]
+    fn half_second_samples_share_complete_etw_rate_windows() {
+        let mut rates = Rates::default();
+        let mut processes = vec![process(42, 10)];
+        for tick in 0..10 {
+            rates.apply(
+                Arc::new(NetworkFrame {
+                    epoch: "half-second".into(),
+                    elapsed_us: 1_000_000 + tick * 500_000,
+                    counters: vec![(42, 1, 1, tick / 2 * 1000, tick / 2 * 2000)],
+                }),
+                &mut processes,
+            );
+            if tick >= 2 {
+                assert_eq!(
+                    (processes[0].net_sent, processes[0].net_received),
+                    (1000, 2000),
+                    "tick {tick}"
+                );
+            }
+        }
+        for tick in 10..14 {
+            rates.apply(
+                Arc::new(NetworkFrame {
+                    epoch: "half-second".into(),
+                    elapsed_us: 1_000_000 + tick * 500_000,
+                    counters: vec![(42, 1, 1, 4000, 8000)],
+                }),
+                &mut processes,
+            );
+            assert_eq!((processes[0].net_sent, processes[0].net_received), (0, 0));
+        }
+    }
+
+    #[test]
+    fn fast_network_frames_tolerate_clock_jitter_and_clear_on_new_epoch() {
+        let mut rates = Rates::default();
+        let mut processes = vec![process(42, 10)];
+        let sample = |epoch: &str, us, bytes| {
+            Arc::new(NetworkFrame {
+                epoch: epoch.into(),
+                elapsed_us: us,
+                counters: vec![(42, 1, 0, bytes, bytes * 2)],
+            })
+        };
+        rates.apply(sample("a", 1_000_000, 0), &mut processes);
+        rates.apply(sample("a", 1_500_000, 500_000), &mut processes);
+        rates.apply(sample("a", 1_999_000, 999_000), &mut processes);
+        assert_eq!(processes[0].net_sent, 1_000_000);
+        rates.apply(sample("a", 2_500_000, 999_000), &mut processes);
+        assert_eq!(processes[0].net_sent, 1_000_000);
+        rates.apply(sample("b", 10, 0), &mut processes);
+        assert_eq!(processes[0].net_sent, 0);
     }
 
     #[test]

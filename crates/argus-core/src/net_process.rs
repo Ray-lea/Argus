@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{
     ERROR_ALREADY_EXISTS, ERROR_CANCELLED, ERROR_SUCCESS, GetLastError,
@@ -37,12 +37,67 @@ const INVALID_TRACE: u64 = u64::MAX;
 /// Bytes since the last read, by PID.
 type Totals = Mutex<HashMap<u32, (u64, u64)>>;
 
+/// ETW's real-time flush timer has one-second resolution. Accept small
+/// scheduling/IPC jitter around that window, then use its actual duration.
+pub fn rate_window_ready(elapsed: Duration) -> bool {
+    elapsed >= Duration::from_millis(950)
+}
+
+#[derive(Default)]
+struct RateWindow {
+    last: Option<Instant>,
+    identities: HashMap<u32, i64>,
+    values: HashMap<u32, (i64, u64, u64)>,
+}
+
+impl RateWindow {
+    fn sample(
+        &mut self,
+        now: Instant,
+        identities: impl Iterator<Item = (u32, i64)>,
+        take: impl FnOnce() -> HashMap<u32, (u64, u64)>,
+    ) {
+        let Some(last) = self.last else {
+            take();
+            self.last = Some(now);
+            self.identities = identities.collect();
+            return;
+        };
+        let elapsed = now.saturating_duration_since(last);
+        if !rate_window_ready(elapsed) {
+            return;
+        }
+        let current: HashMap<_, _> = identities.collect();
+        let rate = |bytes: u64| {
+            (u128::from(bytes) * 1_000_000 / elapsed.as_micros()).min(u64::MAX as u128) as u64
+        };
+        self.values = take()
+            .into_iter()
+            .filter_map(|(pid, (sent, received))| {
+                let &created = current
+                    .get(&pid)
+                    .filter(|created| self.identities.get(&pid) == Some(*created))?;
+                Some((pid, (created, rate(sent), rate(received))))
+            })
+            .collect();
+        self.identities = current;
+        self.last = Some(now);
+    }
+
+    fn value(&self, pid: u32, created: i64) -> (u64, u64) {
+        self.values
+            .get(&pid)
+            .filter(|value| value.0 == created)
+            .map_or((0, 0), |value| (value.1, value.2))
+    }
+}
+
 pub struct NetworkTracker {
     session: CONTROLTRACE_HANDLE,
     trace: PROCESSTRACE_HANDLE,
     totals: Arc<Totals>,
     consumer: Option<JoinHandle<()>>,
-    last: Instant,
+    rates: RateWindow,
 }
 
 impl NetworkTracker {
@@ -142,22 +197,23 @@ impl NetworkTracker {
             trace,
             totals,
             consumer: Some(consumer),
-            last: Instant::now(),
+            rates: RateWindow::default(),
         })
     }
 
-    /// Bytes per second each process sent and received since the last call.
-    pub fn rates(&mut self) -> HashMap<u32, (u64, u64)> {
-        let secs = self.last.elapsed().as_secs_f64().max(0.001);
-        self.last = Instant::now();
-        let totals = self.take_bytes();
-        totals
-            .into_iter()
-            .map(|(pid, (sent, received))| {
-                let rate = |b: u64| (b as f64 / secs) as u64;
-                (pid, (rate(sent), rate(received)))
-            })
-            .collect()
+    /// Apply a complete network measurement, retaining it between faster UI
+    /// samples. Process identity prevents reuse of a previous PID's reading.
+    pub fn apply_rates(&mut self, processes: &mut [crate::process::ProcessRow]) {
+        let totals = &self.totals;
+        self.rates.sample(
+            Instant::now(),
+            processes.iter().map(|p| (p.pid, p.create_time)),
+            || std::mem::take(&mut *totals.lock().unwrap()),
+        );
+        for process in processes {
+            (process.net_sent, process.net_received) =
+                self.rates.value(process.pid, process.create_time);
+        }
     }
 
     /// Raw deltas for a service that maintains non-destructive cumulative
@@ -222,7 +278,7 @@ impl Properties {
         // QueryPerformanceCounter timestamps.
         props.Wnode.ClientContext = 1;
         props.LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
-        // Deliver at least once a second, so rates track samples.
+        // ETW accepts whole seconds here. Rate windows cover this delivery cadence.
         props.FlushTimer = 1;
         props.BufferSize = 64;
         props.MinimumBuffers = 4;
@@ -259,5 +315,68 @@ unsafe extern "system" fn on_event(record: *mut EVENT_RECORD) {
         } else {
             entry.1 += size;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fast_reads_keep_bytes_until_the_network_window_and_idle_returns_zero() {
+        let mut rates = RateWindow::default();
+        let at = Instant::now();
+        let ids = [(42, 10)];
+        rates.sample(at, ids.into_iter(), HashMap::new);
+        rates.sample(at + Duration::from_millis(500), ids.into_iter(), || {
+            panic!("early read drained the ETW buffer")
+        });
+        rates.sample(at + Duration::from_secs(1), ids.into_iter(), || {
+            HashMap::from([(42, (1000, 2000))])
+        });
+        assert_eq!(rates.value(42, 10), (1000, 2000));
+        rates.sample(at + Duration::from_millis(1500), ids.into_iter(), || {
+            panic!("early read drained the ETW buffer")
+        });
+        assert_eq!(rates.value(42, 10), (1000, 2000));
+        rates.sample(at + Duration::from_secs(2), ids.into_iter(), HashMap::new);
+        assert_eq!(rates.value(42, 10), (0, 0));
+    }
+
+    #[test]
+    fn jitter_and_longer_sampling_use_the_actual_elapsed_time() {
+        let mut rates = RateWindow::default();
+        let at = Instant::now();
+        let ids = [(42, 10)];
+        rates.sample(at, ids.into_iter(), HashMap::new);
+        rates.sample(at + Duration::from_millis(999), ids.into_iter(), || {
+            HashMap::from([(42, (999_000, 1_998_000))])
+        });
+        assert_eq!(rates.value(42, 10), (1_000_000, 2_000_000));
+        rates.sample(at + Duration::from_millis(5999), ids.into_iter(), || {
+            HashMap::from([(42, (5000, 10000))])
+        });
+        assert_eq!(rates.value(42, 10), (1000, 2000));
+    }
+
+    #[test]
+    fn retained_rates_do_not_cross_process_instances() {
+        let mut rates = RateWindow::default();
+        let at = Instant::now();
+        rates.sample(at, [(42, 10)].into_iter(), HashMap::new);
+        rates.sample(at + Duration::from_secs(1), [(42, 10)].into_iter(), || {
+            HashMap::from([(42, (1000, 2000))])
+        });
+        assert_eq!(rates.value(42, 10), (1000, 2000));
+        assert_eq!(rates.value(42, 20), (0, 0));
+        rates.sample(at + Duration::from_secs(2), [(42, 20)].into_iter(), || {
+            HashMap::from([(42, (90000, 180000))])
+        });
+        assert_eq!(rates.value(42, 20), (0, 0));
+        rates.sample(at + Duration::from_secs(3), [(42, 20)].into_iter(), || {
+            HashMap::from([(42, (1000, 2000))])
+        });
+        assert_eq!(rates.value(42, 20), (1000, 2000));
+        assert_eq!(rates.value(42, 10), (0, 0));
     }
 }
