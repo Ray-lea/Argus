@@ -2,7 +2,7 @@
 
 Changed stationary ink outside all moving clips patches the existing composition backdrop after a bounded render, preserving chart surfaces and submitting both updates together. Paints overlapping chart ink and grouped foreground overlays keep the rebuild path. Frame-trace phase 15 records the patched area.
 
-New paint revisions can reuse an existing chart tree when all stationary draws, image resources, clips and bar styles match. Frame-trace phase 14 records these replays. A one-shot `Scene::force_full_redraw` bypasses reuse and rebuilds the pixel caches for independent validation.
+New paint revisions can reuse an existing chart tree when all stationary draws, image resources, clips and bar styles match. Frame-trace phase 14 records these replays. A one-shot `Scene::force_full_redraw` bypasses reuse and rebuilds the pixel caches for independent validation. The system-clipboard integration test is ignored by default and requires an explicitly isolated desktop.
 
 Vertically rescaled charts use cropped opaque composition surfaces with the existing area-filter shader over a GPU-verified backdrop. Phase sheets exceeding the shared memory budget can use the same bounded path. Other eligible layers keep their cached position updates. Matching scratch textures and surfaces are reused across data revisions; incompatible spares are dropped before allocating replacements, and hide/resize/device loss release the pool. `gpu-chart-dynamic` reports the allocations, frame-trace phase 9 records updated pixels, and isolated `--test` processes can force this path with `ARGUS_GPUI_TEST_DYNAMIC_CHARTS=1`.
 
