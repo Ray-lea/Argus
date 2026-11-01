@@ -14,7 +14,9 @@
 
 `gpu-window-surface` 记录实际创建的交换链类型、格式和 Alpha 模式。`gpu-chart-layers` 中的 `images` 是可见曲线图像数，`opaqueImages` 和 `opaqueStrips` 分别记录已与底色合成的图像数和区段数，`imageSheets` 是存放这些曲线的纹理表面数。使用同一发行程序，分别以默认模式和 `--opaque-window` 启动，设置 `ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE=1` 可对照填充曲线在窗口内逐帧合成的开销。资源对照关闭窗口捕获和跟踪，实际帧率另外通过窗口捕获测量。单独开启 `ARGUS_GPUI_FRAME_TRACE=1` 可比较同一场景的绘制次数与 Present1 次数。
 
-`scripts/ui-smoke.mjs <标识> --chart-scroll --require-chart-layers` 在鼠标停在图表外时逐帧跟踪固定 CPU 峰值。测试分别覆盖正常采样和采样间插入整帧重绘，记录回移的最大物理像素数。实色窗口可追加 `--opaque-window`。帧跟踪阶段 7 记录缓存树提交，阶段 8 记录通过同一根节点提交的完整画面。比较 GPU 提交开销时，这两项与 Present1 分别计数。
+`scripts/ui-smoke.mjs <标识> --chart-scroll --require-chart-layers` 在鼠标停在图表外时逐帧跟踪固定 CPU 峰值。追加 `--missing-preview` 可验证 GPU 预览缺少读数时其他曲线继续滚动，以及读数恢复后预览重新出现。测试分别覆盖正常采样和采样间插入整帧重绘，记录回移的最大物理像素数。实色窗口可追加 `--opaque-window`。帧跟踪阶段 7 记录缓存树提交，阶段 8 记录通过同一根节点提交的完整画面。比较 GPU 提交开销时，这两项与 Present1 分别计数。
+
+`--chart-scroll --clipped-preview` 使用多设备侧栏验证部分可见小图的裁剪。检查包括 CPU 曲线正常滚动、额外重绘，以及滚动侧栏后被裁曲线重新出现。`ui-chart-states` 按图表列出裁剪范围、位图范围和当前绘制状态，便于定位阻止快速滚动的预览。
 
 `--retained --require-chart-layers` 对比进程概览、详情、CPU 多核网格和各设备性能页的滚动帧与完整重绘。`gpu-chart-layers.sparseImages` 记录使用虚拟表面修正局部背景的曲线数。多核页应一并核对 `images`、`opaqueImages`、实际呈现帧率与进程 GPU 占用。`--snapshots` 另行检查历史页移入、完整重绘和移出后的画面。
 

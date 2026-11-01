@@ -1174,6 +1174,12 @@ impl Desktop {
                 "{}",
                 json!({"event":"ui-retained-frames","label":label,"fastFrames":fast_frames})
             );
+            if let Some(layer) = &self.chart_layer {
+                println!(
+                    "{}",
+                    json!({"event":"ui-chart-states","label":label,"charts":layer.read(cx).diagnostics(window)})
+                );
+            }
             println!(
                 "{}",
                 json!({"event":"ui-work","label":label,"serializeUs":self.work.serialize_us,"backgroundGroupUs":self.work.background_group_us,"timelineUs":self.work.timeline_us,"rowsUs":self.work.rows_us,"rowsMaxUs":self.work.rows_max_us,"rowBuilds":self.work.row_builds})

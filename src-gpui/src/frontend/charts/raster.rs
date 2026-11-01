@@ -76,6 +76,8 @@ pub(super) fn metrics() -> (u64, u64, usize) {
 #[derive(Default)]
 struct Cache {
     key: Option<u64>,
+    /// The completed revision has no drawable segment in the raster window.
+    empty: bool,
     requested: Option<u64>,
     /// The series the latest request shows; a texture of other series is never kept.
     requested_content: Option<u64>,
@@ -125,6 +127,7 @@ impl Cache {
             }
             self.texture = texture;
             self.key = Some(revision);
+            self.empty = false;
         }
     }
     /// Whether a texture of these series is at hand.
@@ -149,8 +152,43 @@ struct Texture {
     top: f32,
     content: u64,
 }
+#[derive(Default)]
+pub(in crate::frontend) struct Surface {
+    // A completed empty paint has an owner and no image. A pending paint has neither.
+    owner: Option<EntityId>,
+    pub(super) image: Option<ImageSurface>,
+}
+
+impl Surface {
+    pub(super) fn diagnostics(&self, plot: &TimePlot, bounds: Bounds<Pixels>, end: f64) -> Value {
+        let Some(image) = &self.image else {
+            return serde_json::json!({"state":if self.owner.is_some() {"empty"} else {"pending"}});
+        };
+        let at = image.bounds_at(plot, bounds, end);
+        let state = match &image.handle {
+            Some(handle) if handle.is_clipped_out() => "clipped",
+            Some(_) => "painted",
+            None => "unpainted",
+        };
+        serde_json::json!({"state":state,"bounds":[f32::from(at.left()),f32::from(at.top()),f32::from(at.size.width),f32::from(at.size.height)]})
+    }
+
+    pub(super) fn translate(
+        &self,
+        plot: &TimePlot,
+        bounds: Bounds<Pixels>,
+        end: f64,
+        window: &mut Window,
+    ) -> bool {
+        self.owner.is_some()
+            && self
+                .image
+                .as_ref()
+                .is_none_or(|image| image.translate(plot, bounds, end, window))
+    }
+}
+
 pub(in crate::frontend) struct ImageSurface {
-    owner: EntityId,
     handle: Option<PaintedPrimitive>,
     _image: Arc<RenderImage>,
     offset: Point<Pixels>,
@@ -299,14 +337,10 @@ fn cache(plot: &TimePlot, window: &mut Window, cx: &mut App) -> Entity<Cache> {
         let surface = Rc::downgrade(&plot.image_surface);
         let owner = cx.entity().entity_id();
         cx.on_release(move |cache: &mut Cache, cx| {
-            if let Some(surface) = surface.upgrade() {
-                let owned = surface
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|image| image.owner == owner);
-                if owned {
-                    surface.borrow_mut().take();
-                }
+            if let Some(surface) = surface.upgrade()
+                && surface.borrow().owner == Some(owner)
+            {
+                *surface.borrow_mut() = Surface::default();
             }
             if let Some(texture) = cache.texture.take() {
                 cx.defer(move |cx| {
@@ -343,9 +377,26 @@ pub(super) fn prepare(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Wind
             return;
         }
         let input = Input::new(plot, bounds.size, density);
-        let layout = extent(&input);
-        let bytes = layout.map_or(0, |layout| layout.working_bytes);
-        let Some(reservation) = Reservation::try_new(&IN_FLIGHT, bytes, MAX_IN_FLIGHT_BYTES) else {
+        let Some(layout) = extent(&input) else {
+            // Missing readings leave the plot empty until the next data or layout
+            // revision. It has no moving primitive and needs no raster worker.
+            if !cache.empty && std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some() {
+                println!(
+                    "{}",
+                    serde_json::json!({"event":"chart-empty","chart":plot.id.as_ref()})
+                );
+            }
+            cache.pending = None;
+            if let Some(previous) = cache.texture.take() {
+                let _ = window.drop_image(previous.image);
+            }
+            cache.key = Some(revision);
+            cache.empty = true;
+            return;
+        };
+        let Some(reservation) =
+            Reservation::try_new(&IN_FLIGHT, layout.working_bytes, MAX_IN_FLIGHT_BYTES)
+        else {
             // No work was queued. Retry the current revision when workers release space.
             window.request_animation_frame();
             return;
@@ -364,9 +415,7 @@ pub(super) fn prepare(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Wind
         let landing = slot.clone();
         let task = cx.background_executor().spawn(async move {
             let start = Instant::now();
-            let texture = layout.and_then(|layout| {
-                draw_raster(&input, layout, thread_count(layout.width, layout.rows))
-            });
+            let texture = draw_raster(&input, layout, thread_count(layout.width, layout.rows));
             BUILDS.fetch_add(1, Ordering::Relaxed);
             BUILD_MICROS.fetch_add(start.elapsed().as_micros() as u64, Ordering::Relaxed);
             *landing.result.lock().unwrap_or_else(|e| e.into_inner()) = Some(texture);
@@ -390,7 +439,13 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
         // Nothing of these series yet (a first display, another device): wait
         // for the raster rather than show the chart without its curve.
         if !cache.shows(plot.content())
-            && let Some(Pending { started, slot, .. }) = cache.pending.clone()
+            && let Some(Pending {
+                started,
+                slot,
+                content,
+                ..
+            }) = cache.pending.clone()
+            && content == plot.content()
         {
             let deadline = started + FIRST_PAINT_WAIT;
             let waited = Instant::now();
@@ -423,11 +478,14 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
             .filter(|texture| texture.content == plot.content())
         else {
             // Nothing of these series yet; never show another device's curve.
-            plot.image_surface.borrow_mut().take();
+            *plot.image_surface.borrow_mut() = Surface {
+                owner: (cache.empty && cache.key == cache.requested)
+                    .then_some(cx.entity().entity_id()),
+                image: None,
+            };
             return;
         };
         let mut surface = ImageSurface {
-            owner: cx.entity().entity_id(),
             handle: None,
             _image: texture.image.clone(),
             offset: texture.offset,
@@ -461,7 +519,10 @@ pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window
                 }
             }
         });
-        *plot.image_surface.borrow_mut() = Some(surface);
+        *plot.image_surface.borrow_mut() = Surface {
+            owner: Some(cx.entity().entity_id()),
+            image: Some(surface),
+        };
     });
 }
 

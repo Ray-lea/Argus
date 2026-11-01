@@ -1270,8 +1270,15 @@ pub struct PaintedPrimitive {
     layer: Bounds<ScaledPixels>,
     image: Option<(crate::ImageId, usize)>,
     background: Option<Background>,
+    // A fully clipped image has no scene primitive. Keep its effective device
+    // mask so invisible translations can still complete without a new paint.
+    culled_mask: Option<Bounds<ScaledPixels>>,
 }
 impl PaintedPrimitive {
+    /// Whether the last full paint found this image entirely outside its clip.
+    pub fn is_clipped_out(&self) -> bool {
+        self.culled_mask.is_some()
+    }
     fn find_index(&self, scene: &Scene) -> Option<usize> {
         use crate::scene::{PaintOperation, Primitive};
         match scene.paint_operations.get(self.operation)? {
@@ -5533,16 +5540,19 @@ impl Window {
         let handle = self.paint_layer(region, |window| {
             let operation = window.next_frame.scene.len();
             window.next_frame.scene.insert_primitive(sprite);
-            (window.next_frame.scene.len() == operation + 1).then_some(PaintedPrimitive {
+            let culled_mask =
+                (window.next_frame.scene.len() == operation).then_some(content_mask.bounds);
+            PaintedPrimitive {
                 window_id: window.handle.window_id(),
                 generation: window.paint_generation,
                 operation,
                 layer,
                 image: Some((data.id, frame_index)),
                 background: None,
-            })
+                culled_mask,
+            }
         });
-        Ok(handle)
+        Ok(Some(handle))
     }
 
     /// Paint an antialiased solid rectangle, with optionally rounded corners, in
@@ -5595,6 +5605,7 @@ impl Window {
                 layer,
                 image: None,
                 background: Some(background),
+                culled_mask: None,
             })
         })
     }
@@ -5642,6 +5653,12 @@ impl Window {
         } else {
             None
         };
+        let requested = bounds.scale(self.scale_factor());
+        if let Some(mask) = handle.culled_mask {
+            // Entering the visible region needs a full paint to create the
+            // primitive and its order. Remaining outside changes no pixels.
+            return requested.intersect(&mask).is_empty();
+        }
         let scene = &self.rendered_frame.scene;
         let Some(index) = *self
             .painted_primitive_indices
@@ -5650,7 +5667,6 @@ impl Window {
         else {
             return false;
         };
-        let requested = bounds.scale(self.scale_factor());
         let bar = match (tile, handle.background.and_then(|b| b.as_solid())) {
             (None, Some(color)) => Some(self.retained_bar(bounds, color, handle.layer.top())),
             _ => None,

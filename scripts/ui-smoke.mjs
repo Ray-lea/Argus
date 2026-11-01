@@ -12,6 +12,10 @@ if (!/^[a-z0-9-]+$/.test(label)) throw Error("Invalid test label");
 const live = process.argv.includes("--live");
 const retained = process.argv.includes("--retained");
 const chartScroll = process.argv.includes("--chart-scroll");
+const missingPreview = process.argv.includes("--missing-preview");
+assert(!missingPreview || chartScroll, "missing-preview checks require chart scrolling");
+const clippedPreview = process.argv.includes("--clipped-preview");
+assert(!clippedPreview || chartScroll, "clipped-preview checks require chart scrolling");
 const chartGap = process.argv.includes("--chart-gap");
 const opaqueWindow = process.argv.includes("--opaque-window");
 const snapshots = process.argv.includes("--snapshots");
@@ -46,6 +50,17 @@ if (preview) {
   if (chartScroll) {
     fixture.snapshot.system.cpu = 12;
     fixture.snapshot.system.cpuKernel = 4;
+    if (clippedPreview) {
+      const nic = fixture.snapshot.hardware.nics?.[0];
+      assert(nic, "clipped-preview fixture requires a network adapter");
+      fixture.snapshot.hardware.nics = Array.from({ length: 24 }, (_, i) => ({
+        ...structuredClone(nic), info: { ...nic.info, id: String(i + 1), name: `Ethernet ${i + 1}` }, rx: 0, tx: 0,
+      }));
+    }
+    if (missingPreview) {
+      assert(fixture.snapshot.hardware.gpus?.length, "missing-preview fixture requires a GPU");
+      fixture.snapshot.hardware.gpus[0].util = null;
+    }
   }
   const samples = JSON.parse(readFileSync("resources/motion.json")).chartSamples;
   const history = fixture.historySeries ?? [];
@@ -285,6 +300,11 @@ try {
     await sleep(300);
     const layout = events.findLast(e => e.event === "ui-layout" && e.label === "scroll-plot");
     assert(layout?.cpuPlot, "missing CPU plot bounds");
+    const clipped = clippedPreview
+      ? events.findLast(e => e.event === "ui-chart-states" && e.label === "scroll-plot")?.charts
+        .find(c => c.surface.state === "clipped" && c.clip[2] > 0 && c.clip[3] > 0)
+      : null;
+    if (clippedPreview) assert(clipped, "fixture did not place an image outside a partially visible preview");
     const [x, y, w, h] = layout.cpuPlot.map(v => v * layout.scaleFactor);
     const crop = [x + w * 0.04, y + h * 0.35, w * 0.49, Math.min(12, h * 0.025)].map(Math.round);
     let seq = 0;
@@ -316,6 +336,43 @@ try {
       assert(track.maxReversePx <= 0.75, `CPU chart moved backwards: ${result.stdout}`);
       if (process.argv.includes("--require-chart-layers")) {
         assert(events.slice(start).some(e => e.event === "gpu-chart-handoff"), `${phase}: no chart handoff observed`);
+      }
+    }
+    if (clippedPreview) {
+      send({ inspectLayout: "clipped-preview-scroll" });
+      await sleep(250);
+      const before = events.find(e => e.event === "ui-retained-frames" && e.label === "scroll-plot");
+      const after = events.findLast(e => e.event === "ui-retained-frames" && e.label === "clipped-preview-scroll");
+      assert(before && after && after.fastFrames > before.fastFrames + 50, "clipped preview blocked chart motion");
+      send({ chartTime: Date.now() });
+      send({ wheel: { x: clipped.clip[0] + clipped.clip[2] / 2, y: clipped.clip[1] + clipped.clip[3] / 2, lines: -4 } });
+      await sleep(600);
+      await capture("revealed-preview");
+      const states = events.findLast(e => e.event === "ui-chart-states" && e.label === "revealed-preview");
+      assert(states?.charts.some(c => c.chart === clipped.chart && c.surface.state === "painted"), "scrolling did not reveal the clipped curve");
+      send({ fullPaint: true });
+      await sleep(250);
+      await capture("revealed-preview-full", false, false);
+      const difference = compareCaptures("revealed-preview", "revealed-preview-full");
+      events.push({ event: "pixel-comparison", label: "revealed-preview", ...difference });
+      assert(difference.maxChannelDelta <= 1, "revealed curve changed after a full paint");
+    }
+    if (missingPreview) {
+      const chart = `device-preview-gpu:${fixture.snapshot.hardware.gpus[0].info.id}`;
+      assert(events.some(e => e.event === "chart-empty" && e.chart === chart), "GPU preview never entered its empty state");
+      send({inspectLayout:"empty-preview-scroll"});
+      await sleep(250);
+      const begin = events.find(e => e.event === "ui-retained-frames" && e.label === "scroll-plot");
+      const end = events.findLast(e => e.event === "ui-retained-frames" && e.label === "empty-preview-scroll");
+      assert(begin && end && end.fastFrames > begin.fastFrames + 50, "empty device preview blocked chart motion");
+      const previous = events.findLast(e => e.event === "gpu-chart-layers");
+      const start = events.length;
+      for (const value of [30, 40, 50, 60, 70]) {
+        send({ sample: { at: 0, set: { "/hardware/gpus/0/util": value } } });
+        await sleep(650);
+      }
+      if (process.argv.includes("--require-chart-layers")) {
+        assert(previous && events.slice(start).some(e => e.event === "gpu-chart-layers" && e.images > previous.images), "GPU preview did not reappear with new readings");
       }
     }
   } else if (snapshots) {
@@ -471,7 +528,7 @@ try {
         // blend rounds antialiased curve pixels up to two code values away from
         // the fixed-function blend; larger changes indicate a real regression.
         assert(difference.maxChannelDelta <= (picture === animated ? 2 : 1),
-          `${picture}: retained rendering differs from a full paint: ${compared.stdout}`);
+          `${picture}: retained rendering differs from a full paint: ${JSON.stringify(difference)}`);
         }
       }
       if (process.argv.includes("--require-chart-layers")) {

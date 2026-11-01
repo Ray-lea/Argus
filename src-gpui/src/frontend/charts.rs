@@ -398,7 +398,7 @@ pub struct TimePlot {
     pub geometry_start: f64,
     pub measured_width: Rc<Cell<f32>>,
     pub live_clock: Option<Rc<RefCell<motion::Clock>>>,
-    pub image_surface: Rc<RefCell<Option<raster::ImageSurface>>>,
+    pub image_surface: Rc<RefCell<raster::Surface>>,
     pub bar_surfaces: Rc<RefCell<Vec<BarSurface>>>,
     /// Each load bar's glide to its latest sample, kept from sample to sample.
     pub bar_glides: Rc<RefCell<Vec<BarGlide>>>,
@@ -702,6 +702,27 @@ pub(super) struct ChartLayer {
     pub(super) frozen_groups: HashSet<String>,
 }
 impl ChartLayer {
+    pub(super) fn diagnostics(&self, window: &Window) -> Vec<Value> {
+        let active = self.active.borrow();
+        let placements = self.placements.borrow();
+        let clock = self.clock.borrow();
+        let now = clock.end(Instant::now());
+        let mut plots = active.iter().filter_map(|id| {
+            let placement = placements.get(id)?;
+            let plot = placement.plot.borrow();
+            let clip = placement.bounds.intersect(&placement.mask);
+            let surface = plot.image_surface.borrow();
+            Some(serde_json::json!({
+                "chart":id,"transformed":placement.transformed(),
+                "hovered":plot.interactive && clip.contains(&window.mouse_position()),
+                "clip":[f32::from(clip.left()),f32::from(clip.top()),f32::from(clip.size.width),f32::from(clip.size.height)],
+                "surface":surface.diagnostics(&plot, placement.bounds, plot_end(&plot, &clock, now))
+            }))
+        }).collect::<Vec<_>>();
+        plots.sort_by(|a, b| a["chart"].as_str().cmp(&b["chart"].as_str()));
+        plots
+    }
+
     pub(super) fn new(
         placements: Placements,
         clock: Rc<RefCell<motion::Clock>>,
@@ -791,9 +812,9 @@ impl ChartLayer {
                         window.update_painted_bounds(&handle, bounds)
                     })
                 } else {
-                    plot.image_surface.borrow().as_ref().is_some_and(|surface| {
-                        surface.translate(&plot, placement.bounds, end, window)
-                    })
+                    plot.image_surface
+                        .borrow()
+                        .translate(&plot, placement.bounds, end, window)
                 }
             });
             if fast {
@@ -1300,7 +1321,7 @@ impl Plot for TimePlot {
             move |_, _, window, _| {
                 let surface = plot.image_surface.borrow();
                 for &(color, value) in &marks {
-                    let y = match surface.as_ref() {
+                    let y = match &surface.image {
                         Some(surface) => surface.curve_y(&plot, bounds, value),
                         None => bounds.top() + plot.y_of(value, bounds),
                     };
