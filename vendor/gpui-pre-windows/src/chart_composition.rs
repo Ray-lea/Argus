@@ -38,8 +38,9 @@ pub(super) struct ChartComposition {
     bars: Vec<(BarKey, IDCompositionSurface)>,
 }
 
-// Query the active scheduler. A saved registry setting may still await reboot.
-fn software_scheduled(device: &IDXGIDevice) -> bool {
+// Both WDDM scheduler modes can move retained charts without drawing them
+// into the swap chain on every frame. Keep the existing hardware capability gate.
+fn chart_layers_supported(device: &IDXGIDevice) -> bool {
     unsafe {
         let Ok(desc) = device.GetAdapter().and_then(|a| a.GetDesc()) else {
             return false;
@@ -62,11 +63,17 @@ fn software_scheduled(device: &IDXGIDevice) -> bool {
             hAdapter: adapter.hAdapter,
         });
         // HwSchSupported is bit zero, HwSchEnabled is bit one.
-        let test_layers = std::env::var_os("ARGUS_GPUI_TEST_CHART_LAYERS").is_some()
-            && std::env::args_os().any(|arg| arg == "--test");
-        status.is_ok()
-            && caps.Anonymous.Value & 1 != 0
-            && (caps.Anonymous.Value & 2 == 0 || test_layers)
+        let hardware_scheduling = status.is_ok() && caps.Anonymous.Value & 2 != 0;
+        let clock = crate::vsync::compositor_clock_available();
+        let supported =
+            status.is_ok() && caps.Anonymous.Value & 1 != 0 && (!hardware_scheduling || clock);
+        if std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some() {
+            println!(
+                "{{\"event\":\"gpu-chart-policy\",\"queryOk\":{},\"supported\":{supported},\"hardwareScheduling\":{hardware_scheduling},\"compositorClock\":{clock}}}",
+                status.is_ok(),
+            );
+        }
+        supported
     }
 }
 
@@ -1395,7 +1402,7 @@ impl ChartComposition {
         Self {
             tree_budget,
             unavailable: std::env::var_os("ARGUS_GPUI_DISABLE_CHART_LAYERS").is_some()
-                || !software_scheduled(device),
+                || !chart_layers_supported(device),
             ..Self::default()
         }
     }

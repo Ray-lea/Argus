@@ -7,10 +7,34 @@ use anyhow::{Context, Result};
 use gpui::FrameRequestSource;
 use gpui_util::ResultExt;
 use windows::Win32::{
-    Foundation::HWND,
+    Foundation::{HANDLE, HWND},
     Graphics::Dwm::{DWM_TIMING_INFO, DwmFlush, DwmGetCompositionTimingInfo},
-    System::Performance::QueryPerformanceFrequency,
+    System::{
+        LibraryLoader::{GetModuleHandleW, GetProcAddress},
+        Performance::QueryPerformanceFrequency,
+    },
 };
+use windows::core::{s, w};
+
+type CompositorClock = unsafe extern "system" fn(u32, *const HANDLE, u32) -> u32;
+
+fn compositor_clock() -> Option<CompositorClock> {
+    static CLOCK: LazyLock<Option<CompositorClock>> = LazyLock::new(|| unsafe {
+        // The renderer already links dcomp.dll. Resolve the Windows 11 export
+        // dynamically so the executable still loads on Windows 10.
+        let module = GetModuleHandleW(w!("dcomp.dll")).ok()?;
+        let entry = GetProcAddress(module, s!("DCompositionWaitForCompositorClock"))?;
+        Some(std::mem::transmute::<
+            unsafe extern "system" fn() -> isize,
+            CompositorClock,
+        >(entry))
+    });
+    *CLOCK
+}
+
+pub(crate) fn compositor_clock_available() -> bool {
+    compositor_clock().is_some()
+}
 
 static QPC_TICKS_PER_SECOND: LazyLock<u64> = LazyLock::new(|| {
     let mut frequency = 0;
@@ -26,6 +50,7 @@ const DEFAULT_VSYNC_INTERVAL: Duration = Duration::from_micros(16_666); // ~60Hz
 pub(crate) struct VSyncProvider {
     interval: Duration,
     f: Box<dyn Fn() -> bool>,
+    compositor_clock: bool,
 }
 
 impl VSyncProvider {
@@ -34,28 +59,48 @@ impl VSyncProvider {
             .context("Failed to get DWM interval")
             .log_err()
             .unwrap_or(DEFAULT_VSYNC_INTERVAL);
-        let f = Box::new(|| unsafe { DwmFlush().is_ok() });
-        Self { interval, f }
+        let clock = std::env::var_os("ARGUS_GPUI_USE_DWM_FLUSH")
+            .is_none()
+            .then(compositor_clock)
+            .flatten();
+        let f: Box<dyn Fn() -> bool> = if let Some(wait) = clock {
+            Box::new(move || unsafe { wait(0, std::ptr::null(), 1000) == 0 })
+        } else {
+            Box::new(|| unsafe { DwmFlush().is_ok() })
+        };
+        if std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some() {
+            println!(
+                "{{\"event\":\"gpu-frame-clock\",\"source\":\"{}\"}}",
+                if clock.is_some() {
+                    "compositor"
+                } else {
+                    "dwm-flush"
+                }
+            );
+        }
+        Self {
+            interval,
+            f,
+            compositor_clock: clock.is_some(),
+        }
     }
 
     pub(crate) fn wait_for_vsync(&self) -> FrameRequestSource {
         let vsync_start = Instant::now();
         let wait_succeeded = (self.f)();
         let elapsed = vsync_start.elapsed();
-        // DwmFlush and DCompositionWaitForCompositorClock returns very early
-        // instead of waiting until vblank when the monitor goes to sleep or is
-        // unplugged (nothing to present due to desktop occlusion). We use 1ms as
-        // a threshold for the duration of the wait functions and fallback to
-        // Sleep() if it returns before that. This could happen during normal
-        // operation for the first call after the vsync thread becomes non-idle,
-        // but it shouldn't happen often.
-        let source = if !wait_succeeded || elapsed < VSYNC_INTERVAL_THRESHOLD {
-            log::trace!("VSyncProvider::wait_for_vsync() took less time than expected");
-            std::thread::sleep(self.interval);
-            FrameRequestSource::LocalSchedule
-        } else {
-            FrameRequestSource::NativeCallback
-        };
+        // A successful compositor-clock wait denotes a tick, even when called
+        // just before it. Occlusion and failures have distinct status codes.
+        // The legacy flush can return early while unavailable, so retain its
+        // duration guard and the bounded local cadence for unavailable waits.
+        let source =
+            if !wait_succeeded || (!self.compositor_clock && elapsed < VSYNC_INTERVAL_THRESHOLD) {
+                log::trace!("VSyncProvider is using the local refresh interval");
+                std::thread::sleep(self.interval);
+                FrameRequestSource::LocalSchedule
+            } else {
+                FrameRequestSource::NativeCallback
+            };
         crate::frame_trace::record(
             0,
             elapsed.as_micros() as u64 * 2
@@ -98,6 +143,7 @@ mod tests {
     fn successful_compositor_wait_reports_native_callback() {
         let provider = VSyncProvider {
             interval: Duration::ZERO,
+            compositor_clock: false,
             f: Box::new(|| {
                 std::thread::sleep(VSYNC_INTERVAL_THRESHOLD * 2);
                 true
@@ -114,12 +160,36 @@ mod tests {
     fn failed_compositor_wait_reports_local_schedule_even_after_threshold() {
         let provider = VSyncProvider {
             interval: Duration::ZERO,
+            compositor_clock: false,
             f: Box::new(|| {
                 std::thread::sleep(VSYNC_INTERVAL_THRESHOLD * 2);
                 false
             }),
         };
 
+        assert_eq!(provider.wait_for_vsync(), FrameRequestSource::LocalSchedule);
+    }
+
+    #[test]
+    fn successful_short_clock_wait_preserves_the_native_tick() {
+        let provider = VSyncProvider {
+            interval: Duration::ZERO,
+            compositor_clock: true,
+            f: Box::new(|| true),
+        };
+        assert_eq!(
+            provider.wait_for_vsync(),
+            FrameRequestSource::NativeCallback
+        );
+    }
+
+    #[test]
+    fn unavailable_clock_uses_local_schedule() {
+        let provider = VSyncProvider {
+            interval: Duration::ZERO,
+            compositor_clock: true,
+            f: Box::new(|| false),
+        };
         assert_eq!(provider.wait_for_vsync(), FrameRequestSource::LocalSchedule);
     }
 }

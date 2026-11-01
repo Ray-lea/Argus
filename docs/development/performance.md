@@ -8,9 +8,11 @@
 
 跨机器或驱动比较时，记录 Windows 构建、显示驱动版本与活动 HAGS（硬件加速 GPU 计划）状态。活动状态通过设备能力查询或重启后的 DxDiag 核验；图形设置中保存的配置需重启后生效。GPU 频率、最忙引擎占用和实际 FPS 一并记录，调度模式变更单独做同机对照。D3D11 与 D3D12 工作可能出现在不同引擎，统计时覆盖目标进程的全部 GPU 引擎。
 
-检查 Windows 图表合成时，在同一发行构建上设置 `ARGUS_GPUI_DISABLE_CHART_LAYERS=1` 可测量交换链路径。开启诊断后，`gpu-chart-layers` 事件记录已提交的曲线和图层数量。在支持且关闭 HAGS 的 SDR 环境，可用 `scripts/ui-smoke.mjs` 的 `--retained --require-chart-layers` 参数核对图层路径的实际画面。正式资源测量关闭诊断，分别记录应用 GPU 引擎、DWM、显卡时钟和窗口实际呈现帧率。
+检查 Windows 图表合成时，在同一发行构建上设置 `ARGUS_GPUI_DISABLE_CHART_LAYERS=1` 可测量交换链路径。开启诊断后，`gpu-chart-policy` 记录设备能力查询结果与活动 HAGS 状态，`gpu-chart-layers` 记录已提交的曲线和图层数量。在支持的 SDR 环境，可用 `scripts/ui-smoke.mjs` 的 `--retained --require-chart-layers` 参数核对图层路径的实际画面。正式资源测量关闭诊断，分别记录应用 GPU 引擎、DWM、显卡时钟和窗口实际呈现帧率。
 
-在支持且开启 HAGS 的设备上，可给隔离的 `--test` 进程设置 `ARGUS_GPUI_TEST_CHART_LAYERS=1` 复查同一条图层路径。测试仍检查 SDR 输出和显存预算。`--require-chart-layers` 会逐场景确认图层实际启用。`gpu-chart-layers` 的 `imageBytes` 和 `untrimmedImageBytes` 分别记录裁剪后和按整图计算的曲线表面字节数。`groupBytes` 按每像素 8 字节估算图表合成区域的中间缓冲，并计入预算。驱动实际分配量由探针的进程专用显存计数记录。
+在具备 HAGS 能力的 Windows 11 设备上，两种调度模式默认均启用曲线合成缓存，并检查 SDR 输出和显存预算。`--require-chart-layers` 会逐场景确认图层实际启用。`gpu-chart-layers` 的 `imageBytes` 和 `untrimmedImageBytes` 分别记录裁剪后和按整图计算的曲线表面字节数。`groupBytes` 按每像素 8 字节估算图表合成区域的中间缓冲，并计入预算。驱动实际分配量由探针的进程专用显存计数记录。
+
+`gpu-frame-clock` 记录实际同步源，Windows 11 默认使用 `compositor`，Windows 10 使用 `dwm-flush`。诊断时可设置 `ARGUS_GPUI_USE_DWM_FLUSH=1`，在同一 EXE 上对照旧同步源的呈现节拍。逐秒 GPU 波动可用场景中的 `probe: "mark tick"` 与一秒等待取样，再按相邻 QPC 时间和累计引擎时间计算；同时保留显卡频率和 DWM 计数。
 
 `gpu-window-surface` 记录实际创建的交换链类型、格式和 Alpha 模式。`gpu-chart-layers` 中的 `images` 是可见曲线图像数，`opaqueImages` 和 `opaqueStrips` 分别记录已与底色合成的图像数和区段数，`imageSheets` 是存放这些曲线的纹理表面数。使用同一发行程序，分别以默认模式和 `--opaque-window` 启动，设置 `ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE=1` 可对照填充曲线在窗口内逐帧合成的开销。资源对照关闭窗口捕获和跟踪，实际帧率另外通过窗口捕获测量。单独开启 `ARGUS_GPUI_FRAME_TRACE=1` 可比较同一场景的绘制次数与 Present1 次数。
 
