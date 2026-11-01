@@ -162,6 +162,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           node scripts/release.mjs notes "$VERSION" > notes.md
+          cat >> notes.md <<'POLICY'
+
+          ---
+
+          [代码签名策略（Code signing policy）](https://github.com/Ray-lea/Argus/blob/main/README.md#code-signing-policy) · [Code signing policy (English)](https://github.com/Ray-lea/Argus/blob/main/README.en.md#code-signing-policy)
+          POLICY
           if [[ "$VERSION" == *-* ]]; then
             gh release create "$GITHUB_REF_NAME" assets/* --verify-tag --prerelease \
               --title "Argus $GITHUB_REF_NAME" --notes-file notes.md

@@ -134,7 +134,7 @@ gh run watch    # 选择刚开始的 Check，等待结束
 | `SHA256SUMS.txt` | 上面两个文件的 SHA-256，可用 `sha256sum -c SHA256SUMS.txt` 校验 |
 | `latest.json`、`beta.json` | 应用内更新的清单，只在稳定版上，见[更新通道](#更新通道) |
 
-带预发布后缀的版本标记为 Pre-release。程序没有代码签名，首次运行时 Windows SmartScreen 会提示“未知发布者”。
+带预发布后缀的版本标记为 Pre-release。当前正式发布文件尚无 Windows Authenticode 代码签名，运行时可能出现“未知发布者”提示。对外说明见 [Code signing policy](../../README.md#code-signing-policy)；GitHub Release 正文附上中英文策略链接。
 
 ## 更新签名密钥
 
