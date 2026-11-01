@@ -2,6 +2,8 @@
 
 SignPath Foundation 的测试签名使用组织提供的自签名证书。它用于核对签名、打包和安装流程，未获得 Windows 的公开信任，不作为正式发布产物。
 
+对外公开的 [Code signing policy](../../README.md#code-signing-policy) 与[英文版](../../README.en.md#code-signing-policy)说明签名状态、负责成员及[隐私策略](../../PRIVACY.md)。首页、下载区域及 GitHub Release 正文均须提供该策略的入口；签名状态变化时同步更新中英文说明。
+
 ## SignPath 配置
 
 组织 ID 为 `82b3b085-ac3e-4e09-a287-9d29857fb8a6`，项目 slug 为 `Argus`，测试策略为 `test-signing`。使用具有该策略提交者权限的 CI 用户，将其令牌保存在 GitHub 仓库的 Actions Secret `SIGNPATH_API_TOKEN` 中。
@@ -35,12 +37,17 @@ SignPath Foundation 的测试签名使用组织提供的自签名证书。它用
 
 ## 正式签名与更新签名
 
-正式证书由基金会复核接入后签发。获得正式证书后，才将经过验证的流程接入发布工作流，并使用 `release-signing` 策略；不得将测试策略作为正式签名失败时的替代。
+正式证书签发给 SignPath Foundation，由基金会在复核后提供项目使用。获准使用正式证书后，才将经过验证的流程接入发布工作流，并使用 `release-signing` 策略；不得将测试策略作为正式签名失败时的替代。
+
+按照基金会条款，代码提交与审查、签名审批均由公开策略列出的成员负责，外部贡献须经审查，每个正式签名请求须人工批准；相关成员在 GitHub 与 SignPath 均须使用多因素认证。所有签名目标须设置并约束产品名和产品版本，同次构建的版本保持一致，具体限制在 SignPath 制品配置中维护。
+
+隐私策略按实际行为描述默认开启的更新检查、自动代理回退和手动 PawnIO 下载。基金会对收集用户数据并传往非用户指定系统的功能，还要求在安装期间显示隐私策略并提供关闭选项；正式接入时须同步处理安装流程中的告知与选项。
 
 Windows Authenticode 与 Minisign 更新签名用途不同：前者证明可执行文件的签名者，后者由已安装的 Argus 用内置公钥验证更新内容。正式接入时须先完成 Authenticode 签名，再对最终安装包生成现有 Minisign 更新签名和下载哈希；更新公钥与 `requireSignedVersion` 保持不变。
 
 ## 官方资料
 
+- [SignPath Foundation 条款](https://signpath.org/terms)
 - [GitHub Actions 集成](https://docs.signpath.io/trusted-build-systems/github)
 - [制品配置](https://docs.signpath.io/artifact-configuration/)
 - [项目和签名策略](https://docs.signpath.io/projects)

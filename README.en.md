@@ -14,7 +14,7 @@
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
 [![Rust](https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![GPUI Kit](https://img.shields.io/badge/UI-GPUI%20Kit-3178C6)](https://gpui-kit.com/)
 
 [Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community)
 
@@ -54,7 +54,7 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 | 🔍 | **File locks** | Drop a file or folder onto the window to identify which processes are holding it. Combines Restart Manager with handle enumeration (including processes' current working directories), with broader coverage across elevated processes when the privileged service is enabled. |
 | 🕘 | **History** | Automatically records resource usage charts over the past 7 days; click any point in time to inspect the busiest processes at that moment. |
 | 📌 | **System tray** | Show or hide the window anytime with the global shortcut Ctrl+Alt+Esc (which can be changed or turned off); uses minimal resources while hidden, with separate refresh rates for minimized and tray states. |
-| 🔄 | **In-app updates** | New versions download quietly in the background and notify in the title bar; preview all changes since the current version before installing, and review what's new the first time the window opens after an update. Offers Stable and Beta channels with optional GitHub proxies, and installs only updates that pass signature verification. |
+| 🔄 | **In-app updates** | New versions download quietly in the background and notify in the title bar; preview all changes since the current version before installing, and review what's new the first time the window opens after an update. Offers Stable and Beta channels; downloads try GitHub first and fall back to proxies by default, with controls in Settings. Installs only updates that pass update signature verification. |
 | 🎨 | **Native look** | Features Mica backdrop on Windows 11 and a clean solid background on Windows 10; the system accent color and light or dark theme follow Windows by default, with a theme override in Settings. |
 | 🌍 | **Languages** | Available in English and Simplified Chinese, following the Windows display language by default; includes a welcome guide on first launch to configure essential settings. |
 | 👤 | **No administrator rights needed** | View executable paths and resource usage across all processes as a standard user. |
@@ -73,7 +73,7 @@ Get the latest release from [GitHub Releases](https://github.com/Ray-lea/Argus/r
 | `SHA256SUMS.txt` | SHA-256 checksums of the release files above. |
 
 > [!NOTE]
-> Argus is not code-signed yet, so Windows SmartScreen may warn about an "unknown publisher" the first time it runs.
+> Current official release files have no Windows Authenticode signature and may show an "unknown publisher" warning. See the [Code signing policy](#code-signing-policy) for signing status and the [Privacy policy](PRIVACY.md#english) for network activity and controls.
 
 ## 💻 System requirements
 
@@ -147,6 +147,20 @@ Issues and pull requests are welcome; please read the [contributing guide](.gith
 
 See the [roadmap](docs/roadmap.md) (in Chinese) for full details.
 
+<a id="code-signing-policy"></a>
+
+## 🔐 Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+Test signing is integrated; official releases currently ship without Windows Authenticode signatures. Once production signing is enabled, it will cover the Argus application, Task Manager helpers, uninstaller, and installer built from this repository's source by GitHub Actions. Bundled third-party programs retain their original signatures.
+
+- **Committers and reviewers**: [@Ray-lea](https://github.com/Ray-lea), responsible for maintaining the code and reviewing external contributions.
+- **Approvers**: [@Ray-lea](https://github.com/Ray-lea), responsible for manually approving each production signing request.
+- **Privacy policy**: [English](PRIVACY.md#english) · [简体中文](PRIVACY.md#简体中文). Covers update checks enabled by default, proxy fallback, on-demand PawnIO downloads, voluntary feedback, and third-party data handling.
+
+In-app updates use a separate Minisign release key to verify installers and version numbers; Windows Authenticode identifies the signer of an executable.
+
 ## 🙏 Acknowledgements
 
 Argus is built upon the following open-source projects, with sincere thanks:
@@ -164,6 +178,8 @@ Argus is built upon the following open-source projects, with sincere thanks:
 All third-party components and their license notices are listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
 
 Thanks to the [LINUX DO](https://linux.do/) community for its support.
+
+Thanks to SignPath.io and SignPath Foundation for open-source code signing support; see the [Code signing policy](#code-signing-policy) for integration status.
 
 ## 📄 License
 

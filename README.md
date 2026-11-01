@@ -14,7 +14,7 @@
 [![许可证](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
 [![Rust](https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![GPUI Kit](https://img.shields.io/badge/UI-GPUI%20Kit-3178C6)](https://gpui-kit.com/)
 
 [特性](#-特性) · [下载](#-下载) · [从源码构建](#-从源码构建) · [快捷键](#-快捷键) · [文档](#-文档) · [交流与反馈](#-交流与反馈)
 
@@ -54,7 +54,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 | 🔍 | **文件占用** | 将文件或文件夹拖放到窗口即可定位占用进程。结合 Restart Manager 与句柄枚举（涵盖进程的当前工作目录），借助特权服务可进一步检查高权限进程。 |
 | 🕘 | **历史回溯** | 自动记录最近 7 天的资源占用曲线，单击任意时刻即可回看当时最繁忙的进程。 |
 | 📌 | **常驻托盘** | 通过全局快捷键 Ctrl+Alt+Esc（可更改或停用）随时显示或隐藏窗口；隐藏时资源开销极低，最小化与后台常驻时的刷新间隔可分别设置。 |
-| 🔄 | **应用内更新** | 新版本在后台静默下载，就绪后于标题栏提示；安装前可预览当前版本之后的全部更新内容，更新后首次打开窗口时也会呈现新版变化。提供稳定版与测试版双通道，可选配 GitHub 加速代理，且仅安装通过数字签名校验的版本。 |
+| 🔄 | **应用内更新** | 新版本在后台静默下载，就绪后于标题栏提示；安装前可预览当前版本之后的全部更新内容，更新后首次打开窗口时也会呈现新版变化。提供稳定版与测试版双通道，下载默认优先连接 GitHub、失败时使用加速代理，可在设置中调整；仅安装通过更新签名校验的版本。 |
 | 🎨 | **原生外观** | Windows 11 采用 Mica 云母材质，Windows 10 使用实色背景；系统强调色及浅色、深色主题默认跟随系统，也可在设置中单独指定。 |
 | 🌍 | **多语言** | 支持简体中文与英文界面，默认跟随 Windows 显示语言；提供首次启动引导，协助快速完成常用设置。 |
 | 👤 | **无需管理员权限** | 在标准权限下即可完整查看全部进程的路径与各项资源占用。 |
@@ -73,7 +73,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 | `SHA256SUMS.txt` | 上述发布文件的 SHA-256 校验值。 |
 
 > [!NOTE]
-> 程序目前尚未进行代码签名，首次运行时 Windows SmartScreen 可能会提示“未知发布者”。
+> 当前正式发布文件尚无 Windows Authenticode 代码签名，运行时可能出现“未知发布者”提示。接入状态见[代码签名策略（Code signing policy）](#code-signing-policy)，联网行为与关闭方式见[隐私策略](PRIVACY.md#简体中文)。
 
 ## 💻 系统要求
 
@@ -145,6 +145,22 @@ start.bat build     # 发布构建：生成 target\release\argus.exe
 
 完整进展参见[路线图](docs/roadmap.md)。
 
+<a id="code-signing-policy"></a>
+
+## 🔐 代码签名策略（Code signing policy）
+
+免费代码签名服务由 [SignPath.io](https://about.signpath.io/) 提供，代码签名证书由 [SignPath Foundation](https://signpath.org/) 提供。
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+当前已接入测试签名，正式发布仍使用未签署 Windows Authenticode 的文件。正式签名启用后，签名范围为本仓库源码经 GitHub Actions 构建的 Argus 主程序、任务管理器辅助程序、卸载程序与安装程序；随附的第三方程序保留其原有签名。
+
+- **代码提交与审查（Committers and reviewers）**：[@Ray-lea](https://github.com/Ray-lea)，负责维护代码及审查外部贡献。
+- **签名审批（Approvers）**：[@Ray-lea](https://github.com/Ray-lea)，负责人工批准每个正式签名请求。
+- **隐私策略（Privacy policy）**：[简体中文](PRIVACY.md#简体中文) · [English](PRIVACY.md#english)。说明默认开启的更新检查、代理回退、按需下载 PawnIO、主动反馈及第三方服务的数据处理。
+
+应用内更新使用独立的 Minisign 发布密钥校验安装包与版本号；Windows Authenticode 用于验证可执行文件的签名者。
+
 ## 🙏 致谢
 
 Argus 构建于以下开源项目之上，谨致谢忱：
@@ -162,6 +178,8 @@ Argus 构建于以下开源项目之上，谨致谢忱：
 全部第三方组件及其许可证声明见 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。
 
 感谢 [LINUX DO](https://linux.do/) 社区的支持。
+
+感谢 SignPath.io 与 SignPath Foundation 提供开源代码签名支持，接入状态见[代码签名策略](#code-signing-policy)。
 
 ## 📄 许可证
 
