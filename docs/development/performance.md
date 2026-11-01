@@ -22,6 +22,8 @@
 
 `--retained --require-chart-layers` 对比进程概览、详情、CPU 多核网格和各设备性能页的滚动帧与完整重绘。`gpu-chart-layers.sparseImages` 记录使用虚拟表面修正局部背景的曲线数。多核页应一并核对 `images`、`opaqueImages`、实际呈现帧率与进程 GPU 占用。`--snapshots` 另行检查历史页移入、完整重绘和移出后的画面。
 
+追加 `--hover-retained` 可对照深浅主题下的顶部、核心条和列表列说明。`gpu-chart-layers.foregroundBytes` 记录前景缓存空间，`foregroundGrouped` 标识同组合成路径；`gpu-chart-foreground-plan` 与拒绝事件用于排查绘制顺序和图元类型。性能场景的 `hover` 字段在布局稳定后单次设置指针，再开始测量，便于观察静止悬停。例如 `hover: { hoverChart: "vital-cpu" }`；`hoverAt` 可指定图表内的归一化位置。
+
 窗口探针可为独立测试窗口设置大于当前桌面的客户区，用于复查高分辨率布局和缓存开销。记录实际客户区尺寸、缩放和显示器刷新率，实体屏观察使用对应分辨率的测试机。
 
 tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内存及 GPU 引擎时间，通过 Windows.Graphics.Capture 观察目标窗口的呈现间隔。DWM 消耗包含整个桌面的合成工作，单独记录。忙碌开发机上的进程占用结果需要多轮交替与稳定性判断。

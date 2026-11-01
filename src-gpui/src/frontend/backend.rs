@@ -1108,10 +1108,26 @@ impl Desktop {
                 window.dispatch_event(input, cx);
             });
         }
-        if let Some(id) = control["hoverChart"].as_str()
-            && let Some(bounds) = self.chart_bounds(id)
+        if let Some(bounds) = control["hoverChart"]
+            .as_str()
+            .and_then(|id| self.chart_bounds(id))
+            .or_else(|| {
+                control["hoverHeader"]
+                    .as_str()
+                    .and_then(|id| self.header_bounds.borrow().get(id).copied())
+            })
         {
-            let position = bounds.center();
+            let fraction = |index| {
+                control["hoverAt"][index]
+                    .as_f64()
+                    .unwrap_or(0.5)
+                    .clamp(0., 1.) as f32
+            };
+            let position = bounds.origin
+                + point(
+                    bounds.size.width * fraction(0),
+                    bounds.size.height * fraction(1),
+                );
             // Dispatch after releasing Desktop; hover listeners may update it.
             window.defer(cx, move |window, cx| {
                 window.dispatch_event(

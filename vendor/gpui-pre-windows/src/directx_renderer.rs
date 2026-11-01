@@ -97,6 +97,14 @@ struct DirectXResources {
     viewport: D3D11_VIEWPORT,
 }
 
+struct ForegroundTexture {
+    size: (u32, u32),
+    origin: windows::Win32::Foundation::POINT,
+    texture: ID3D11Texture2D,
+    target: ID3D11RenderTargetView,
+    view: ID3D11ShaderResourceView,
+}
+
 struct PathTargets {
     resolved: ID3D11Texture2D,
     srv: Option<ID3D11ShaderResourceView>,
@@ -118,11 +126,19 @@ impl PathTargets {
 }
 
 fn split_batches(scene: &Scene, boundary: Option<DrawOrder>) -> Vec<PrimitiveBatch> {
+    split_primitive_batches(scene, scene.batches(), boundary)
+}
+
+fn split_primitive_batches(
+    scene: &Scene,
+    source: impl Iterator<Item = PrimitiveBatch>,
+    boundary: Option<DrawOrder>,
+) -> Vec<PrimitiveBatch> {
     let Some(boundary) = boundary else {
-        return scene.batches().collect();
+        return source.collect();
     };
     let mut batches = Vec::new();
-    for batch in scene.batches() {
+    for batch in source {
         macro_rules! split {
             ($items:expr, $range:expr, $make:expr) => {{
                 let range = $range;
@@ -1094,6 +1110,154 @@ impl DirectXRenderer {
             timing.finish(|| format!("\"ok\":{},\"reused\":{reuse_prefix},\"composed\":{composed},\"width\":{},\"height\":{},\"drawCalls\":{},\"instanceUploadBytes\":{},\"textureUploads\":{},\"textureUploadBytes\":{},\"copyCalls\":{},\"copyPixels\":{},\"clearCalls\":{},\"resolveCalls\":{},\"resolvePixels\":{},\"dirtyPixels\":{dirty_pixels},\"renderCpuUs\":{cpu_us}", result.is_ok(), self.width, self.height, stats_after.0.wrapping_sub(stats_before.0), stats_after.1.wrapping_sub(stats_before.1), atlas_delta.0, atlas_delta.1, work.copies, work.copy_pixels, work.clears, work.resolves, work.resolve_pixels));
         }
         result
+    }
+
+    fn paint_foreground(
+        &mut self,
+        scene: &Scene,
+        batches: &[PrimitiveBatch],
+        bounds: RECT,
+        previous: Option<ForegroundTexture>,
+    ) -> Result<ForegroundTexture> {
+        let devices = self.devices.clone().context("foreground device")?;
+        let size = (
+            (bounds.right - bounds.left).max(1) as u32,
+            (bounds.bottom - bounds.top).max(1) as u32,
+        );
+        let size = (size.0.next_multiple_of(16), size.1.next_multiple_of(16));
+        let mut foreground = match previous.filter(|f| f.size == size) {
+            Some(foreground) => foreground,
+            None => unsafe {
+                let desc = D3D11_TEXTURE2D_DESC {
+                    Width: size.0,
+                    Height: size.1,
+                    MipLevels: 1,
+                    ArraySize: 1,
+                    Format: RENDER_TARGET_FORMAT,
+                    SampleDesc: DXGI_SAMPLE_DESC {
+                        Count: 1,
+                        Quality: 0,
+                    },
+                    Usage: D3D11_USAGE_DEFAULT,
+                    BindFlags: (D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE).0 as u32,
+                    ..Default::default()
+                };
+                let (mut texture, mut target, mut view) = (None, None, None);
+                devices
+                    .device
+                    .CreateTexture2D(&desc, None, Some(&mut texture))?;
+                let texture = texture.context("foreground texture")?;
+                devices
+                    .device
+                    .CreateRenderTargetView(&texture, None, Some(&mut target))?;
+                devices
+                    .device
+                    .CreateShaderResourceView(&texture, None, Some(&mut view))?;
+                ForegroundTexture {
+                    size,
+                    origin: Default::default(),
+                    texture,
+                    target: target.context("foreground target")?,
+                    view: view.context("foreground view")?,
+                }
+            },
+        };
+        foreground.origin = windows::Win32::Foundation::POINT {
+            x: bounds.left,
+            y: bounds.top,
+        };
+        let offset = gpui::point(
+            ScaledPixels(-(bounds.left as f32)),
+            ScaledPixels(-(bounds.top as f32)),
+        );
+        let mut local = Scene::default();
+        macro_rules! copy {
+            ($field:ident, $range:expr) => {
+                for item in &scene.$field[$range.clone()] {
+                    let mut item = *item;
+                    item.bounds = item.bounds + offset;
+                    item.content_mask.bounds = item.content_mask.bounds + offset;
+                    local.$field.push(item);
+                }
+            };
+        }
+        for batch in batches {
+            match batch {
+                PrimitiveBatch::Quads(range) => copy!(quads, range),
+                PrimitiveBatch::Underlines(range) => copy!(underlines, range),
+                PrimitiveBatch::MonochromeSprites { range, .. } => {
+                    for item in &scene.monochrome_sprites[range.clone()] {
+                        let mut item = *item;
+                        item.transformation.translation[0] += offset.x.0;
+                        item.transformation.translation[1] += offset.y.0;
+                        item.content_mask.bounds = item.content_mask.bounds + offset;
+                        local.monochrome_sprites.push(item);
+                    }
+                }
+                PrimitiveBatch::PolychromeSprites { range, .. } => copy!(polychrome_sprites, range),
+                _ => anyhow::bail!("unsupported cached foreground batch"),
+            }
+        }
+        let batches = local.batches().collect::<Vec<_>>();
+        let resources = self.resources.as_mut().context("foreground resources")?;
+        let target = resources.render_target.replace(foreground.texture.clone());
+        let view = resources
+            .render_target_view
+            .replace(foreground.target.clone());
+        let compose = std::mem::replace(&mut resources.compose_prefix, false);
+        let viewport = std::mem::replace(
+            &mut resources.viewport,
+            D3D11_VIEWPORT {
+                Width: size.0 as f32,
+                Height: size.1 as f32,
+                MinDepth: 0.,
+                MaxDepth: 1.,
+                ..Default::default()
+            },
+        );
+        let work = self.work;
+        self.pipelines.uploaded_revision = None;
+        let result = (|| {
+            self.pre_draw(&[0.; 4], false)?;
+            self.upload_scene_buffers(&local)?;
+            self.globals.batch_params.prepare(
+                &devices.device,
+                &devices.device_context,
+                &batches,
+            )?;
+            for (index, batch) in batches.iter().enumerate() {
+                self.globals.batch_params.active = index;
+                match batch {
+                    PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
+                    PrimitiveBatch::Underlines(range) => {
+                        self.draw_underlines(range.start, range.len())
+                    }
+                    PrimitiveBatch::MonochromeSprites { texture_id, range } => {
+                        self.draw_monochrome_sprites(*texture_id, range.start, range.len())
+                    }
+                    PrimitiveBatch::PolychromeSprites { texture_id, range } => {
+                        self.draw_polychrome_sprites(*texture_id, range.start, range.len())
+                    }
+                    _ => anyhow::bail!("unsupported cached foreground batch"),
+                }?;
+            }
+            Ok(())
+        })();
+        let resources = self.resources.as_mut().context("foreground resources")?;
+        resources.render_target = target;
+        resources.render_target_view = view;
+        resources.compose_prefix = compose;
+        resources.viewport = viewport;
+        unsafe {
+            devices
+                .device_context
+                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+        }
+        self.globals.last_params = None;
+        self.pipelines.uploaded_revision = None;
+        self.work = work;
+        result?;
+        Ok(foreground)
     }
 
     fn save_scene_prefix(&mut self, key: (u64, usize, bool)) -> Result<()> {

@@ -107,6 +107,23 @@ fn animated_boundary_splits_a_shared_batch_without_reordering() {
 }
 
 #[test]
+fn foreground_boundary_keeps_static_quads_after_animated_bars() {
+    let mut scene = Scene::default();
+    scene.quads = [0, 1, 2, 2, 3, 4]
+        .map(|order| Quad {
+            order,
+            ..Default::default()
+        })
+        .to_vec();
+    let animated = split_batches(&scene, Some(2));
+    let batches = super::split_primitive_batches(&scene, animated.into_iter(), Some(3));
+    assert_eq!(batches.len(), 3);
+    assert!(matches!(&batches[0], PrimitiveBatch::Quads(range) if *range == (0..2)));
+    assert!(matches!(&batches[1], PrimitiveBatch::Quads(range) if *range == (2..4)));
+    assert!(matches!(&batches[2], PrimitiveBatch::Quads(range) if *range == (4..6)));
+}
+
+#[test]
 fn damage_restores_the_mask_when_a_bar_shrinks_to_zero() {
     let mut scene = Scene::default();
     scene.quads.push(Quad {

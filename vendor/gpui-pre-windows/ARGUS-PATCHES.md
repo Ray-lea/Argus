@@ -1,5 +1,7 @@
 # Argus patches
 
+Static foreground draws above retained charts are partitioned by primitive identity and checked against overlapping moving ink. Spatial draw-order levels can interleave disjoint content. A cropped, 16-texel-aligned BGRA scratch texture preserves the foreground, including translated glyph geometry. Opaque chart strips include overlapping foreground pixels; bar overlaps and costly strip plans use a foreground image in the same composition group. The foreground allocations share the existing budget and are released on hide, resize or device changes. Diagnostics report the plan, foreground bytes and group choice.
+
 Large polychrome atlas pages fit the requested strip on 64-texel boundaries. A page enters the atlas after its first tile succeeds. Empty dedicated color pages are detached and can serve an exact-size replacement before presentation, with a limit of eight pages and 16 MiB. Presentation, hiding, resizing and device loss release unmatched pages. Diagnostics distinguish physical lifetimes (`gpu-atlas-page`) from replacement uploads (`gpu-atlas-reuse`).
 
 The full-window MSAA and resolve textures for vector paths are allocated at the first path batch. A scene with no paths, a resize, or a hidden window releases these targets. Diagnostics report their creation and release through `gpu-path-targets`.

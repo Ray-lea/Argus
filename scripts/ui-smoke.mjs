@@ -11,6 +11,8 @@ const label = process.argv[2] ?? `smoke-${Date.now()}`;
 if (!/^[a-z0-9-]+$/.test(label)) throw Error("Invalid test label");
 const live = process.argv.includes("--live");
 const retained = process.argv.includes("--retained");
+const hoverRetained = process.argv.includes("--hover-retained");
+assert(!hoverRetained || retained, "hover-retained requires retained checks");
 const chartScroll = process.argv.includes("--chart-scroll");
 const missingPreview = process.argv.includes("--missing-preview");
 assert(!missingPreview || chartScroll, "missing-preview checks require chart scrolling");
@@ -483,7 +485,7 @@ try {
     const gpuPage = gpu ? { page: "performance", device: `gpu:${gpu.info.id}` } : null;
     // Light-theme cards are translucent white over the backdrop: composited
     // curve pixels must cover it exactly as a full paint does.
-    for (const [name, state] of [
+    const cases = [
       ["processes", { page: "processes", theme: "dark" }],
       ["processes-details", { page: "processes", selectRow: 1, details: true }],
       ...(gpuPage ? [["gpu", gpuPage]] : []),
@@ -495,11 +497,21 @@ try {
       ...(gpuPage ? [["gpu-light", gpuPage]] : []),
       ["overall-light", { page: "performance", device: "cpu", cpuMode: "overall" }],
       ["logical-light", { page: "performance", device: "cpu", cpuMode: "logical" }],
-    ]) {
+    ];
+    const hoverCases = ["dark", "light"].flatMap(theme => [
+      [`vital-tooltip-${theme}`, { page: "processes", theme, details: true }, { hoverChart: "vital-cpu" }],
+      [`core-tooltip-${theme}`, { page: "processes", theme }, { hoverChart: "vital-core-bars", hoverAt: [0.05, 0.05] }],
+      [`column-tooltip-${theme}`, { page: "processes", theme }, { hoverHeader: "name" }],
+    ]);
+    for (const [name, state, hover] of hoverRetained ? hoverCases : cases) {
       send({ ...state, uiMotion: "off", pointerOutside: true });
       await sleep(1500);
       send({ pointerOutside: true });
       await sleep(250);
+      if (hover) {
+        send(hover);
+        await sleep(1400);
+      }
       const settled = events.length;
       for (const [index, offset] of [50, 200, 700].entries()) {
         // Give the asynchronous backdrop scan its own presentation before measuring.
@@ -541,6 +553,7 @@ try {
             `${name}: a filled chart was presented as a transparent layer`);
           assert(layers.every(e => e.imageBytes <= e.untrimmedImageBytes),
             `${name}: trimmed chart surfaces exceeded their full-height size`);
+          if (hover) assert(layers.some(e => e.foregroundBytes > 0), `${name}: static foreground was not cached`);
           assert(events.slice(settled).some(e => e.event === "gpu-chart-handoff" && layers.some(l => l.revision === e.revision)),
             `${name}: no complete frame was presented on the chart composition root`);
         }
@@ -548,7 +561,10 @@ try {
     }
     const steps = events.filter((event) => event.event === "ui-chart-step");
     assert.equal(steps.length, expectedSteps);
-    assert(steps.every((event) => event.retained), "comparison did not exercise retained presentation");
+    // The first two requests prepare the backdrop. The third is captured and
+    // must use retained presentation.
+    const measuredSteps = steps.filter((_, index) => index % 3 === 2);
+    assert(measuredSteps.every((event) => event.retained), "a captured frame did not exercise retained presentation");
     const chartLayers = events.some((event) => event.event === "gpu-chart-layers" && event.images > 0);
     if (process.env.ARGUS_GPUI_DISABLE_CHART_LAYERS) assert(!chartLayers, "disabled chart visuals were presented");
     if (!process.env.ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION)

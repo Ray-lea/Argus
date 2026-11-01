@@ -18,6 +18,7 @@ cbuffer BatchParams: register(b1) {
 
 Texture2D<float4> t_sprite: register(t0);
 Texture2D<float4> t_prefix: register(t2);
+Texture2D<float4> t_foreground: register(t3);
 SamplerState s_sprite: register(s0);
 
 struct SubpixelSpriteFragmentOutput {
@@ -1249,6 +1250,8 @@ cbuffer ChartFilterParams : register(b2) {
     int chart_backdrop_x;
     int chart_screen_y;
     uint chart_precompose;
+    int2 chart_foreground_origin;
+    uint2 chart_reserved;
 };
 
 float4 chart_filter_vertex(uint id : SV_VertexID) : SV_Position {
@@ -1262,31 +1265,40 @@ float4 chart_backdrop_vertex(uint id : SV_VertexID) : SV_Position {
 // One R8 flag per screen column. Test the actual static pixels, including
 // horizontal and vertical grid intersections, rather than inferring their colors.
 float4 chart_backdrop_fragment(float4 position : SV_Position) : SV_Target {
+    if ((chart_precompose & 0x40000000u) != 0u) {
+        int2 p = int2(position.xy) - chart_update_offset;
+        float4 foreground = t_foreground.Load(int3(p - chart_foreground_origin, 0));
+        return foreground + t_prefix.Load(int3(p, 0)) * (1.0 - foreground.a);
+    }
     int x = int(position.x);
+    bool has_foreground = (chart_precompose & 0x80000000u) != 0u;
     uint changed = 0u;
     [loop] for (int y = 0; y < chart_tile_size.y; ++y) {
         int2 p = chart_tile_origin + int2(x, y);
         float4 pixel = t_prefix.Load(int3(p, 0));
         if (pixel.a != 1.0) return float4(2.0 / 255.0, 0, 0, 1);
-        if (x > 0 && any(pixel != t_prefix.Load(int3(p - int2(1,0), 0)))) changed |= 1u;
-        if (any(pixel != t_prefix.Load(int3(chart_first_x, p.y, 0)))) changed |= 4u;
+        if (x > 0 && (any(pixel != t_prefix.Load(int3(p - int2(1,0), 0))) ||
+            (has_foreground && any(t_foreground.Load(int3(p - chart_foreground_origin, 0)) != t_foreground.Load(int3(p - int2(1,0) - chart_foreground_origin, 0)))))) changed |= 1u;
+        if (any(pixel != t_prefix.Load(int3(chart_first_x, p.y, 0))) ||
+            (has_foreground && any(t_foreground.Load(int3(p - chart_foreground_origin, 0)) != t_foreground.Load(int3(int2(chart_first_x, p.y) - chart_foreground_origin, 0))))) changed |= 4u;
     }
     return float4(float(changed) / 255.0, 0, 0, 1);
 }
 
 float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
+    uint precompose = chart_precompose & 0x7fffffffu;
     int2 pixel = int2(position.xy) - chart_update_offset;
     int column = 0;
     float center_x;
-    if (chart_precompose > 2u) {
+    if (precompose > 2u) {
         // Consecutive texels within a lane cover eighth-pixel scroll phases
         // for one stationary screen column. The visual samples all lanes at
         // the same phase as the curve moves.
-        int stride = int(chart_precompose);
+        int stride = int(precompose);
         column = pixel.x / stride;
         center_x = 0.25 * float(chart_first_x + 8 * column + pixel.x % stride);
     } else {
-        center_x = (chart_precompose == 2u ? 0.25 : 0.5) * float(chart_first_x + pixel.x);
+        center_x = (precompose == 2u ? 0.25 : 0.5) * float(chart_first_x + pixel.x);
     }
     float center_y = chart_first_y + float(pixel.y) * chart_y_scale;
     float low = center_y - 0.5 * chart_y_scale;
@@ -1309,9 +1321,15 @@ float4 chart_filter_fragment(float4 position : SV_Position) : SV_Target {
     float edge_x = 0.5 * min(center_x, float(chart_tile_size.x) - center_x);
     float edge_y = min(center_y, float(chart_tile_size.y) - center_y) / chart_y_scale;
     filtered *= saturate(0.5 + min(edge_x, edge_y));
-    if (chart_precompose != 0u) {
-        float3 backdrop = t_prefix.Load(int3(chart_backdrop_x + column, chart_screen_y + pixel.y, 0)).rgb;
-        return float4(filtered.rgb + backdrop * (1.0 - filtered.a), 1.0);
+    if (precompose != 0u) {
+        int3 screen = int3(chart_backdrop_x + column, chart_screen_y + pixel.y, 0);
+        float3 backdrop = t_prefix.Load(screen).rgb;
+        float3 result = filtered.rgb + backdrop * (1.0 - filtered.a);
+        if ((chart_precompose & 0x80000000u) != 0u) {
+            float4 foreground = t_foreground.Load(int3(screen.xy - chart_foreground_origin, 0));
+            result = foreground.rgb + result * (1.0 - foreground.a);
+        }
+        return float4(result, 1.0);
     }
     float3 color = filtered.rgb / max(filtered.a, 1e-8);
     // The FP16 composition surface is linear scRGB; the atlas is sRGB.

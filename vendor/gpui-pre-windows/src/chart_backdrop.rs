@@ -211,6 +211,8 @@ impl Scan {
         devices: &DirectXRendererDevices,
         filter: &Filter,
         prefix: &ID3D11ShaderResourceView,
+        foreground: Option<&ID3D11ShaderResourceView>,
+        foreground_origin: POINT,
     ) -> Result<Self> {
         let width = regions
             .iter()
@@ -260,10 +262,11 @@ impl Scan {
             ctx.VSSetShader(&filter.vertex, None);
             ctx.PSSetShader(&filter.columns, None);
             ctx.PSSetShaderResources(2, Some(&[Some(prefix.clone())]));
+            ctx.PSSetShaderResources(3, Some(&[foreground.cloned()]));
             ctx.PSSetConstantBuffers(2, Some(&[Some(filter.params.clone())]));
             let draw: Result<()> = (|| {
                 for (index, (_, r)) in regions.iter().enumerate() {
-                    let mut params = [0i32; 12];
+                    let mut params = [0i32; 16];
                     params[..4].copy_from_slice(&[
                         r.left,
                         r.top,
@@ -271,6 +274,9 @@ impl Scan {
                         r.bottom - r.top,
                     ]);
                     params[8] = reference_x(*r);
+                    params[11] = if foreground.is_some() { i32::MIN } else { 0 };
+                    params[12] = foreground_origin.x;
+                    params[13] = foreground_origin.y;
                     update_buffer(ctx, &filter.params, &params)?;
                     ctx.RSSetViewports(Some(&[viewport(
                         0.,
@@ -283,6 +289,7 @@ impl Scan {
                 Ok(())
             })();
             ctx.PSSetShaderResources(2, Some(&[None]));
+            ctx.PSSetShaderResources(3, Some(&[None]));
             ctx.OMSetRenderTargets(None, None);
             draw?;
             ctx.CopyResource(&readback, &texture);

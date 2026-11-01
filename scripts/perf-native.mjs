@@ -262,6 +262,21 @@ try {
       assert(physicalPixelsMatch(layout.width, conditions.dpiScale, width), "native physical width mismatch");
       assert(physicalPixelsMatch(layout.height, conditions.dpiScale, height), "native physical height mismatch");
     }
+    if (phase.hover) {
+      let hover = phase.hover;
+      if (hover.hoverChart && hover.hoverAt) {
+        app({ inspectLayout: `${tag}-hover-bounds` });
+        await sleep(250);
+        const plot = result.events.findLast(event => event.event === "ui-chart-states" && event.label === `${tag}-hover-bounds`)
+          ?.charts.find(chart => chart.chart === hover.hoverChart);
+        assert(plot, "hover chart bounds unavailable");
+        hover = { mouse: { type: "move", x: plot.clip[0] + plot.clip[2] * hover.hoverAt[0], y: plot.clip[1] + plot.clip[3] * hover.hoverAt[1] } };
+      }
+      app(hover);
+      await sleep(1800);
+      app({ inspectLayout: `${tag}-hover-ready` });
+      await sleep(250);
+    }
     const before = await mark(`${tag}-begin`);
     if (phase.repeat) {
       const until = performance.now() + durationOf(phase) * 1000;
