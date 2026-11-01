@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
 import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
+import { compareChartPixels } from "./lib/capture-pixels.mjs";
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
 const label = process.argv[2] ?? `smoke-${Date.now()}`;
@@ -21,9 +22,11 @@ assert(!clippedPreview || chartScroll, "clipped-preview checks require chart scr
 const chartGap = process.argv.includes("--chart-gap");
 const opaqueWindow = process.argv.includes("--opaque-window");
 const snapshots = process.argv.includes("--snapshots");
+const interactions = process.argv.includes("--interactions");
+assert(!(interactions && (live || retained || chartScroll || chartGap || snapshots)), "interaction comparisons require a dedicated fixed replay");
 const previewFlag = process.argv.indexOf("--readme");
 const preview = previewFlag < 0 ? null : process.argv[previewFlag + 1];
-if (previewFlag >= 0) assert(["zh-CN", "en-US"].includes(preview) && !(live || retained || chartScroll || chartGap || snapshots));
+if (previewFlag >= 0) assert(["zh-CN", "en-US"].includes(preview) && !(live || retained || chartScroll || chartGap || snapshots || interactions));
 assert(!(chartGap && (live || retained || chartScroll || snapshots)), "chart gap checks use a dedicated fixture replay");
 assert(!(chartScroll && (live || retained || snapshots)), "chart scroll checks use a fixed CPU spike");
 assert(!(live && retained), "retained comparisons require a fixed fixture");
@@ -178,6 +181,16 @@ const compareCaptures = (left, right) => {
   });
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
+};
+const compareCompositedCaptures = (left, right, layoutLabel) => {
+  const native = compareCaptures(left, right);
+  const state = events.findLast(e => e.event === "ui-chart-states" && e.label === layoutLabel);
+  const conditions = events.findLast(e => e.event === "ui-conditions" && e.label === layoutLabel);
+  assert(state && conditions, "comparison chart bounds missing");
+  const scoped = compareChartPixels(resolve(output, `${left}.png`), resolve(output, `${right}.png`), state.charts, conditions.dpiScale);
+  assert.equal(scoped.maxChannelDelta, native.maxChannelDelta, "pixel decoder disagrees with native probe");
+  assert.equal(scoped.changedPixels, native.changedPixels, "pixel count disagrees with native probe");
+  return scoped;
 };
 try {
   for (let i = 0; i < 600 && !shown && !exited; i++) await sleep(50);
@@ -337,7 +350,9 @@ try {
       assert(track.tracked >= track.frames * 0.95 && track.travelPx > w * 0.04, `CPU spike did not traverse the recording: ${result.stdout}`);
       assert(track.maxReversePx <= 0.75, `CPU chart moved backwards: ${result.stdout}`);
       if (process.argv.includes("--require-chart-layers")) {
-        assert(events.slice(start).some(e => e.event === "gpu-chart-handoff"), `${phase}: no chart handoff observed`);
+        const frames = events.slice(start);
+        const revisions = new Set(frames.filter(e => e.event === "gpu-chart-layers" && e.images > 0).map(e => e.revision));
+        assert(frames.some(e => e.event === "gpu-chart-handoff") || revisions.size > 1, `${phase}: chart roots were not refreshed`);
       }
     }
     if (clippedPreview) {
@@ -355,9 +370,9 @@ try {
       send({ fullPaint: true });
       await sleep(250);
       await capture("revealed-preview-full", false, false);
-      const difference = compareCaptures("revealed-preview", "revealed-preview-full");
+      const difference = compareCompositedCaptures("revealed-preview", "revealed-preview-full", "revealed-preview");
       events.push({ event: "pixel-comparison", label: "revealed-preview", ...difference });
-      assert(difference.maxChannelDelta <= 1, "revealed curve changed after a full paint");
+      assert(difference.maxChannelDelta <= 2 && difference.maxOutsideCharts <= 1, "revealed curve changed after a full paint");
     }
     if (missingPreview) {
       const chart = `device-preview-gpu:${fixture.snapshot.hardware.gpus[0].info.id}`;
@@ -479,6 +494,34 @@ try {
       const minimumEndpoint = name === "engine-grid-entry" ? 6 : 50;
       assert(endpoints > minimumEndpoint && lowest >= endpoints * 0.75, `${name}: contrast fell from ${endpoints} to ${lowest}`);
     }
+  } else if (interactions) {
+    for (const theme of ["dark", "light"]) {
+      send({ page: "processes", theme, details: true, uiMotion: "off", motion: "fluid", pointerOutside: true });
+      await sleep(1600);
+      send({ chartTime: fixture.snapshot.timestamp + 700 });
+      await sleep(500);
+      for (const [name, state] of [
+        ["row-a", { mouse: { type: "move", x: 150, y: 300 } }],
+        ["row-b", { mouse: { type: "move", x: 150, y: 360 } }],
+        ["column", { hoverHeader: "name" }],
+        ["picked", { selectRow: 1, pointerOutside: true }],
+        ["details", { hoverChart: "details-cpu" }],
+        ["details-outside", { mouse: { type: "move", x: 1000, y: 510 } }],
+        ["cleared", { selectRow: 1, pointerOutside: true }],
+        ["outside", { pointerOutside: true }],
+      ]) {
+        send(state);
+        await sleep(700);
+        const before = `${theme}-${name}-cached`, after = `${theme}-${name}-full`;
+        await capture(before, false, false);
+        send({ fullPaint: true });
+        await sleep(250);
+        await capture(after, false, false);
+        const difference = compareCaptures(before, after);
+        events.push({ event: "pixel-comparison", label: before, ...difference });
+        assert(difference.maxChannelDelta <= 2, `${before}: interaction cache differs from full rendering: ${JSON.stringify(difference)}`);
+      }
+    }
   } else if (retained) {
     let expectedSteps = 0;
     const gpu = fixture.snapshot.hardware?.gpus?.[0];
@@ -533,14 +576,12 @@ try {
         await sleep(250);
         await capture(after, false, false);
         for (const picture of [animated, before]) {
-        const difference = compareCaptures(picture, after);
-        events.push({ event: "pixel-comparison", label: picture, ...difference });
-        // A parent redraw replays the same draws: one code value of rounding at
-        // most. Animation frames may composite curves in the shader, whose float
-        // blend rounds antialiased curve pixels up to two code values away from
-        // the fixed-function blend; larger changes indicate a real regression.
-        assert(difference.maxChannelDelta <= (picture === animated ? 2 : 1),
-          `${picture}: retained rendering differs from a full paint: ${JSON.stringify(difference)}`);
+        const scoped = compareCompositedCaptures(picture, after, `${before}-reuse`);
+        events.push({ event: "pixel-comparison", label: picture, ...scoped });
+        // An unchanged parent can keep the composited charts. Their floating
+        // blend allows two code values; static ink outside their clips allows one.
+        assert(scoped.maxChannelDelta <= 2 && scoped.maxOutsideCharts <= 1,
+          `${picture}: retained rendering differs from a full paint: ${JSON.stringify(scoped)}`);
         }
       }
       if (process.argv.includes("--require-chart-layers")) {
@@ -554,8 +595,12 @@ try {
           assert(layers.every(e => e.imageBytes <= e.untrimmedImageBytes),
             `${name}: trimmed chart surfaces exceeded their full-height size`);
           if (hover) assert(layers.some(e => e.foregroundBytes > 0), `${name}: static foreground was not cached`);
-          assert(events.slice(settled).some(e => e.event === "gpu-chart-handoff" && layers.some(l => l.revision === e.revision)),
-            `${name}: no complete frame was presented on the chart composition root`);
+          // A complete paint can install its tree immediately now that images
+          // and bars are marked before presentation. A pending scan uses the
+          // flat-frame handoff; both rebuild from the forced complete paint.
+          const handoff = events.slice(settled).some(e => e.event === "gpu-chart-handoff" && layers.some(l => l.revision === e.revision));
+          assert(handoff || new Set(layers.map(e => e.revision)).size > 1,
+            `${name}: neither a complete-frame handoff nor a fresh tree was presented`);
         }
       }
     }
@@ -660,7 +705,7 @@ for (const event of events.filter((e) => e.event === "ui-caption" && !e.label.en
   assert(event.actionsAreClient, `${event.label}: toolbar controls were classified as draggable caption`);
   assert(event.minimize && event.maximize && event.close, `${event.label}: native caption controls were lost`);
 }
-if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview) {
+if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview && !interactions) {
   for (const [label, sort, descending] of [["sorted-name", "name", false], ["sorted-name-reversed", "name", true], ["sorted-cpu", "cpu", true]]) {
     const state = events.find((event) => event.event === "ui-render-counts" && event.label === label);
     assert(state && state.sort === sort && state.descending === descending, `${label}: clicking the full header did not sort`);

@@ -1040,7 +1040,7 @@ impl Desktop {
             return;
         }
         if self.options.fixture.is_some() && control["fullPaint"].as_bool() == Some(true) {
-            window.refresh();
+            window.invalidate_render_cache();
             return;
         }
         if control["exit"].as_bool() == Some(true) {

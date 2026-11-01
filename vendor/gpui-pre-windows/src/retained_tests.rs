@@ -107,6 +107,40 @@ fn animated_boundary_splits_a_shared_batch_without_reordering() {
 }
 
 #[test]
+fn complete_paints_keep_bar_metadata_attached_after_scene_sorting() {
+    let mut scene = Scene::default();
+    scene.quads = [10, 2, 5]
+        .map(|order| Quad {
+            order,
+            ..Default::default()
+        })
+        .to_vec();
+    scene.retained_bars.insert(
+        0,
+        gpui::RetainedBar {
+            bounds: Bounds::new(
+                point(ScaledPixels(8.), ScaledPixels(12.)),
+                size(ScaledPixels(4.), ScaledPixels(18.)),
+            ),
+            ceiling: ScaledPixels(2.),
+            color: gpui::white(),
+        },
+    );
+    scene.finish();
+    assert_eq!(scene.animated_order, Some(10));
+    assert_eq!(
+        scene.retained_bars.keys().copied().collect::<Vec<_>>(),
+        vec![2]
+    );
+    assert_eq!(scene.retained_bars[&2].ceiling, ScaledPixels(2.));
+    scene.finish();
+    assert_eq!(
+        scene.retained_bars.keys().copied().collect::<Vec<_>>(),
+        vec![2]
+    );
+}
+
+#[test]
 fn foreground_boundary_keeps_static_quads_after_animated_bars() {
     let mut scene = Scene::default();
     scene.quads = [0, 1, 2, 2, 3, 4]
@@ -121,6 +155,31 @@ fn foreground_boundary_keeps_static_quads_after_animated_bars() {
     assert!(matches!(&batches[0], PrimitiveBatch::Quads(range) if *range == (0..2)));
     assert!(matches!(&batches[1], PrimitiveBatch::Quads(range) if *range == (2..4)));
     assert!(matches!(&batches[2], PrimitiveBatch::Quads(range) if *range == (4..6)));
+}
+
+#[test]
+fn a_retained_bar_does_not_move_to_an_identical_static_quad() {
+    let mut scene = Scene::default();
+    scene.quads = vec![
+        Quad {
+            order: 3,
+            ..Default::default()
+        };
+        2
+    ];
+    scene.retained_bars.insert(
+        1,
+        gpui::RetainedBar {
+            bounds: Bounds::default(),
+            ceiling: ScaledPixels(0.),
+            color: gpui::white(),
+        },
+    );
+    scene.finish();
+    assert_eq!(
+        scene.retained_bars.keys().copied().collect::<Vec<_>>(),
+        vec![1]
+    );
 }
 
 #[test]

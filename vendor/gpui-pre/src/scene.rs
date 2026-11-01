@@ -41,6 +41,8 @@ impl From<bool> for PaddedBool32 {
 pub struct Scene {
     /// Unique identity for a complete paint, preserved by bounds-only animation.
     pub paint_revision: u64,
+    /// One-shot request to rebuild platform render caches from this scene.
+    pub force_full_redraw: std::cell::Cell<bool>,
     /// Earliest draw order that can change without a complete paint.
     pub animated_order: Option<DrawOrder>,
     /// Source geometry of retained load bars, indexed after scene sorting.
@@ -65,6 +67,7 @@ impl Scene {
     pub fn clear(&mut self) {
         static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         self.paint_revision = REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.force_full_redraw.set(false);
         self.animated_order = None;
         self.retained_bars.clear();
         self.paint_operations.clear();
@@ -123,11 +126,12 @@ impl Scene {
             None => visual,
         };
         self.transform_stack.push(composed);
-        self.paint_operations.push(PaintOperation::PushLiveTransform {
-            transform,
-            anchor,
-            scale_factor,
-        });
+        self.paint_operations
+            .push(PaintOperation::PushLiveTransform {
+                transform,
+                anchor,
+                scale_factor,
+            });
     }
 
     pub fn pop_transform(&mut self) {
@@ -248,6 +252,31 @@ impl Scene {
     }
 
     pub fn finish(&mut self) {
+        let mut retained = std::mem::take(&mut self.retained_bars)
+            .into_iter()
+            .peekable();
+        if retained.peek().is_some() {
+            // Stable sorting preserves each quad's ordinal within its order.
+            // This linear pass also keeps identical static and animated quads distinct.
+            let mut counts = std::collections::BTreeMap::new();
+            let mut ranked = Vec::with_capacity(retained.len());
+            for (index, quad) in self.quads.iter().enumerate() {
+                let ordinal = counts.entry(quad.order).or_insert(0usize);
+                if retained.peek().is_some_and(|(i, _)| *i == index) {
+                    ranked.push((quad.order, *ordinal, retained.next().unwrap().1));
+                }
+                *ordinal += 1;
+            }
+            let mut offset = 0;
+            for count in counts.values_mut() {
+                let length = *count;
+                *count = offset;
+                offset += length;
+            }
+            for (order, ordinal, bar) in ranked {
+                self.retained_bars.insert(counts[&order] + ordinal, bar);
+            }
+        }
         self.shadows.sort_by_key(|shadow| shadow.order);
         self.quads.sort_by_key(|quad| quad.order);
         self.paths.sort_by_key(|path| path.order);
@@ -259,6 +288,15 @@ impl Scene {
         self.polychrome_sprites
             .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
         self.surfaces.sort_by_key(|surface| surface.order);
+        for order in self
+            .polychrome_sprites
+            .iter()
+            .filter(|s| s.pad != 0)
+            .map(|s| s.order)
+            .chain(self.retained_bars.keys().map(|i| self.quads[*i].order))
+        {
+            self.animated_order = Some(self.animated_order.map_or(order, |old| old.min(order)));
+        }
     }
 
     #[cfg_attr(
@@ -955,7 +993,7 @@ impl PrimitiveBatch {
     }
 }
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct Quad {
@@ -1016,7 +1054,7 @@ impl From<Quad> for Primitive {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct Underline {
@@ -1172,7 +1210,7 @@ impl Default for TransformationMatrix {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct MonochromeSprite {
@@ -1192,7 +1230,7 @@ impl From<MonochromeSprite> for Primitive {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct SubpixelSprite {
@@ -1211,7 +1249,7 @@ impl From<SubpixelSprite> for Primitive {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct PolychromeSprite {

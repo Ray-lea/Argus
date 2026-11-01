@@ -1375,6 +1375,7 @@ pub struct Window {
     hovered: Rc<Cell<bool>>,
     pub(crate) needs_present: Rc<Cell<bool>>,
     painted_primitive_indices: FxHashMap<usize, Option<usize>>,
+    force_full_render: bool,
     paint_generation: u64,
     /// Tracks recent input event timestamps to determine if input is arriving at a high rate.
     /// Used to selectively enable VRR optimization only when input rate exceeds 60fps.
@@ -2273,6 +2274,7 @@ impl Window {
             hovered,
             needs_present,
             painted_primitive_indices: FxHashMap::default(),
+            force_full_render: false,
             paint_generation: 0,
             input_rate_tracker,
             #[cfg(feature = "profiler")]
@@ -3675,6 +3677,10 @@ impl Window {
         self.layout_engine.as_mut().unwrap().clear();
         self.text_system().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
+        self.next_frame
+            .scene
+            .force_full_redraw
+            .set(std::mem::take(&mut self.force_full_render));
 
         self.invalidator.set_phase(DrawPhase::Focus);
         let previous_focus_path = self.rendered_frame.focus_path();
@@ -5569,9 +5575,9 @@ impl Window {
         use crate::scene::{PaintOperation, Primitive};
         let layer = self.cover_bounds(region.intersect(&self.content_mask().bounds));
         // The fill as painted, with the element opacity applied.
-        let bar = self
-            .retained_bar(bounds, color.opacity(self.element_opacity()), layer.top())
-            .paint();
+        let retained =
+            self.retained_bar(bounds, color.opacity(self.element_opacity()), layer.top());
+        let bar = retained.paint();
         self.paint_layer(region, |window| {
             let operation = window.next_frame.scene.len();
             window.paint_quad(crate::fill(region, color).corner_radii(corner_radius));
@@ -5598,6 +5604,7 @@ impl Window {
                 None => quad.background = background.opacity(0.),
             }
             *recorded = *quad;
+            scene.retained_bars.insert(scene.quads.len() - 1, retained);
             Some(PaintedPrimitive {
                 window_id: window.handle.window_id(),
                 generation: window.paint_generation,
@@ -5610,9 +5617,15 @@ impl Window {
         })
     }
 
+    /// Request a complete paint and rebuild the platform's cached drawing.
+    pub fn invalidate_render_cache(&mut self) {
+        self.force_full_render = true;
+        self.refresh();
+    }
+
     /// Update a decorative image translation or bar extent in an otherwise clean
-    /// scene from an `on_next_frame` callback. Dirty views, expired handles, image
-    /// resizes, and movement outside the reserved region require a full redraw.
+    /// scene from an `on_next_frame` callback. Dirty views, expired handles,
+    /// incompatible image resizes and movement outside the reserved region require a full redraw.
     pub fn update_painted_bounds(
         &mut self,
         handle: &PaintedPrimitive,
@@ -5692,7 +5705,9 @@ impl Window {
                 };
                 if sprite.tile != tile
                     || recorded.tile != tile
-                    || sprite.bounds.size != requested.size
+                    || (sprite.bounds.size != requested.size
+                        && !(sprite.pad == PolychromeSprite::IN_SCENE_AREA_FILTER
+                            && sprite.bounds.size.width == requested.size.width))
                     || !fits(requested, sprite.content_mask.bounds)
                 {
                     return false;

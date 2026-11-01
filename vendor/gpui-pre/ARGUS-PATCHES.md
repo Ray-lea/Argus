@@ -1,5 +1,9 @@
 # Argus patches
 
+Complete paints register decorative image and load-bar animation before presentation. Scene sorting remaps bar records to their sorted quads. `Window::invalidate_render_cache` requests a one-shot full platform redraw, used by isolated pixel comparisons.
+
+In-scene area-filtered chart images can update their vertical extent through a retained bounds handle. Width, atlas identity, clipping and clean-scene checks still apply. GPU primitive value equality supports bounded static-prefix comparisons in the Windows renderer.
+
 Completely clipped filtered images retain a decorative handle and the effective device-pixel mask. Translating within the clipped region needs no new paint. Entering the visible region, dirty views and expired handles request a full repaint.
 
 `Window::paint_image_subpixel_in_scene` retains the bounds handle of a premultiplied image and marks it for composition with its actual backdrop before presentation. Windows shares the opaque-window request between its host and renderer at window creation.
@@ -21,7 +25,7 @@ Local changes:
 - Paint-cache replay retains native window-control hitboxes along with cursor styles and input handlers. Cached title bars keep their drag, minimize, maximize, and close regions on every frame.
 - `paint_image_subpixel` retains fractional device coordinates for continuously translated raster layers and clips through the existing content mask. Regular image controls retain their original pixel snapping. These images carry `PolychromeSprite::AREA_FILTER` in the sprite's former padding field, asking the Windows renderer to sample them by area; renderers that ignore it keep treating the field as padding.
 - Decorative images and bars (optionally with rounded corners) can update their bounds in a clean presented scene. Handles expire on full draws, reserve fixed paint layers, and validate window identity, atlas lifetime, clip bounds and primitive type. Cached paint operations are updated with their corresponding scene entries; dirty scenes and interactions use normal drawing. Animated bars snap their sides and baseline to device pixels but keep a fractional top edge, drawn as a one-device-pixel coverage ramp (a vertical gradient), so their height changes smoothly instead of a whole pixel row at a time. The quad starts where the ramp starts, half a pixel above the top edge (but not above the bar's region), so its rounded corners move with the edge; anchored to the pixel row holding the edge, they jumped a whole row each time the edge crossed one.
-- Scene revisions and the earliest animated draw order let renderers retain immutable pixels before the animated primitives. A complete paint invalidates the prefix, including when cached views replay into it.
+- Scene revisions and the earliest animated draw order let renderers retain immutable pixels before the animated primitives. A complete paint advances the revision; the Windows renderer compares the static draws to retain identical prefixes or repair their changed regions.
 - The runnable counter uses `AtomicUsize::try_update`, the current name of `fetch_update` on the workspace Rust toolchain. Ordering and checked subtraction are unchanged.
 - Text measurement reuses matching wrap/truncation constraints and unwrapped text that fits the new width. Truncated or wrapped results cannot answer wider intrinsic probes. Line wrappers are acquired only for actual truncation, and decoration storage follows the number of style runs.
 - Inherited text styles cache their resolved prefix, and text without background decorations skips the empty background paint pass.

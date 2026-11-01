@@ -39,9 +39,11 @@ pub(super) struct ChartComposition {
     foreground: Option<(FrameKey, ForegroundTexture)>,
     foreground_overlay: Option<(FrameKey, IDCompositionSurface)>,
     grouped_foreground: Option<FrameKey>,
+    dynamic_budget: Option<FrameKey>,
+    dynamic_pool: Vec<DynamicImage>,
 }
 
-fn transformed_glyph_bounds(sprite: &gpui::MonochromeSprite) -> Bounds<ScaledPixels> {
+pub(super) fn transformed_glyph_bounds(sprite: &gpui::MonochromeSprite) -> Bounds<ScaledPixels> {
     let b = sprite.bounds;
     let mut low = [f32::INFINITY; 2];
     let mut high = [f32::NEG_INFINITY; 2];
@@ -116,7 +118,7 @@ fn foreground_bounds(
     area
 }
 
-fn separate_foreground(
+pub(super) fn separate_foreground(
     scene: &Scene,
     batches: Vec<PrimitiveBatch>,
 ) -> (Vec<PrimitiveBatch>, Vec<PrimitiveBatch>) {
@@ -271,6 +273,16 @@ fn standard_sdr_window(hwnd: HWND) -> bool {
 struct Tree {
     key: FrameKey,
     layers: Vec<Layer>,
+    stationary: Option<scene_cache::Snapshot>,
+    bar_count: usize,
+    clips: Vec<RECT>,
+    grouped_foreground: bool,
+}
+
+pub(super) struct BackdropPatch {
+    key: FrameKey,
+    stationary: scene_cache::Snapshot,
+    rect: RECT,
 }
 
 /// The backing bitmap and root stay attached while a marked chart alternates
@@ -288,8 +300,11 @@ struct Layer {
 }
 
 enum LayerContent {
+    Dynamic(DynamicImage),
     Image {
         index: usize,
+        size: Size<ScaledPixels>,
+        template: PolychromeSprite,
         y_phase: f32,
         first_row: u32,
         strips: Vec<Strip>,
@@ -304,6 +319,59 @@ enum LayerContent {
         bottom: f32,
         visual: IDCompositionVisual,
     },
+}
+
+struct DynamicImage {
+    index: usize,
+    template: PolychromeSprite,
+    rect: RECT,
+    bitmap: IDCompositionSurface,
+    scratch: Option<ForegroundTexture>,
+    painted: Bounds<ScaledPixels>,
+}
+
+fn dynamic_image_supported(s: &PolychromeSprite) -> bool {
+    s.pad == PolychromeSprite::IN_SCENE_AREA_FILTER
+        && s.opacity == 1.
+        && s.grayscale == false.into()
+        && s.corner_radii == Corners::default()
+        && s.tile.bounds.size.width.0 > 0
+        && s.tile.bounds.size.height.0 > 0
+        && s.bounds.size.width.0.is_finite()
+        && s.bounds.size.height.0.is_finite()
+        && s.bounds.size.width.0 > 0.
+        && s.bounds.size.height.0 > 0.
+}
+
+fn copy_dynamic_surface(
+    bitmap: &IDCompositionSurface,
+    devices: &DirectXRendererDevices,
+    scratch: &ForegroundTexture,
+    rect: RECT,
+) -> Result<()> {
+    let source = D3D11_BOX {
+        left: 0,
+        top: 0,
+        front: 0,
+        right: (rect.right - rect.left) as u32,
+        bottom: (rect.bottom - rect.top) as u32,
+        back: 1,
+    };
+    draw_surface(bitmap, devices, None, |target, at| {
+        unsafe {
+            devices.device_context.CopySubresourceRegion(
+                target,
+                0,
+                at.x as u32,
+                at.y as u32,
+                0,
+                &scratch.texture,
+                0,
+                Some(&source),
+            );
+        }
+        Ok(())
+    })
 }
 
 struct PhaseMotion {
@@ -393,13 +461,26 @@ fn row_phase(top: f32) -> f32 {
 impl Layer {
     fn compatible(&self, scene: &Scene) -> bool {
         match self.content {
+            LayerContent::Dynamic(ref layer) => {
+                scene.polychrome_sprites.get(layer.index).is_some_and(|s| {
+                    let mut value = *s;
+                    value.bounds = layer.template.bounds;
+                    value == layer.template && dynamic_image_supported(s)
+                })
+            }
             LayerContent::Image {
                 index,
+                size,
+                template,
                 y_phase,
                 ref strips,
                 ..
             } => scene.polychrome_sprites.get(index).is_some_and(|s| {
-                (row_phase(s.bounds.top().0) - y_phase).abs() <= 1e-5
+                let mut value = *s;
+                value.bounds.origin = template.bounds.origin;
+                value == template
+                    && s.bounds.size == size
+                    && (row_phase(s.bounds.top().0) - y_phase).abs() <= 1e-5
                     && strips.iter().all(|strip| strip.fits(s.bounds))
             }),
             LayerContent::Bar {
@@ -409,7 +490,8 @@ impl Layer {
                 bottom,
                 ..
             } => scene.retained_bars.get(&index).is_some_and(|bar| {
-                bar.bounds.left().0 == left
+                BarKey::new(*bar, &scene.quads[index]) == Some(key)
+                    && bar.bounds.left().0 == left
                     && (bar.bounds.bottom().0 - bottom).abs() < 1e-3
                     && bar.bounds.size.width.0 == key.width as f32
             }),
@@ -418,6 +500,7 @@ impl Layer {
 
     fn place(&mut self, scene: &Scene) -> Result<bool> {
         let (x, y) = match self.content {
+            LayerContent::Dynamic(_) => return Ok(false),
             LayerContent::Image {
                 index, first_row, ..
             } => {
@@ -441,6 +524,7 @@ impl Layer {
         }
         unsafe {
             match &self.content {
+                LayerContent::Dynamic(_) => unreachable!(),
                 LayerContent::Image {
                     transform,
                     phases,
@@ -885,6 +969,97 @@ fn child(
 }
 
 impl DirectXRenderer {
+    pub(super) fn plan_chart_backdrop(
+        &self,
+        scene: &Scene,
+        background: WindowBackgroundAppearance,
+    ) -> Option<BackdropPatch> {
+        let comp = self.direct_composition.as_ref()?;
+        let tree = comp.charts.tree.as_ref()?;
+        let next = key(scene, self.width, self.height, background)?;
+        if tree.key == next
+            || tree.key.order != next.order
+            || tree.key.size != next.size
+            || tree.key.opaque != next.opaque
+            || tree.grouped_foreground
+            || comp.charts.unavailable
+            || comp.charts.standard_sdr != Some(true)
+            || tree.bar_count != scene.retained_bars.len()
+            || comp.charts.output.is_none()
+            || !tree.layers.iter().all(|layer| layer.compatible(scene))
+        {
+            return None;
+        }
+        let stationary = scene_cache::Snapshot::stationary(scene)?;
+        let scene_cache::Repair::Region(rect) =
+            stationary.repair(tree.stationary.as_ref()?, self.width, self.height)?
+        else {
+            return None;
+        };
+        if tree.clips.iter().any(|r| {
+            rect.left < r.right && r.left < rect.right && rect.top < r.bottom && r.top < rect.bottom
+        }) {
+            return None;
+        }
+        Some(BackdropPatch {
+            key: next,
+            stationary,
+            rect,
+        })
+    }
+
+    pub(super) fn patch_chart_backdrop(
+        &mut self,
+        scene: &Scene,
+        background: WindowBackgroundAppearance,
+        patch: BackdropPatch,
+    ) -> Result<bool> {
+        let comp = self
+            .direct_composition
+            .as_mut()
+            .context("chart backdrop composition")?;
+        let output = comp
+            .charts
+            .output
+            .as_ref()
+            .context("chart backdrop output")?;
+        let source = self
+            .resources
+            .as_ref()
+            .and_then(|r| r.render_target.as_ref())
+            .context("chart backdrop source")?;
+        copy_scene(
+            &output.bitmap,
+            self.devices.as_ref().context("chart backdrop device")?,
+            source,
+            Some(patch.rect),
+        )?;
+        let tree = comp.charts.tree.as_mut().context("chart backdrop tree")?;
+        if comp.charts.dynamic_budget == Some(tree.key) {
+            comp.charts.dynamic_budget = Some(patch.key);
+        }
+        if comp.charts.skipped == Some(tree.key) {
+            comp.charts.skipped = Some(patch.key);
+        }
+        tree.key = patch.key;
+        tree.stationary = Some(patch.stationary);
+        let mut comp = self
+            .direct_composition
+            .take()
+            .context("chart backdrop commit")?;
+        let updated = self.update_chart_tree_with(scene, background, &mut comp, true);
+        self.direct_composition = Some(comp);
+        let updated = updated?;
+        if updated {
+            crate::frame_trace::record(
+                15,
+                (patch.rect.right - patch.rect.left) as u64
+                    * (patch.rect.bottom - patch.rect.top) as u64,
+            );
+        }
+        Ok(updated)
+    }
+
     /// A cached tree and its next fully painted frame must enter the same
     /// compositor transaction stream. Reattaching the flip chain here can
     /// expose its last presented chart position for one refresh.
@@ -944,7 +1119,16 @@ impl DirectXRenderer {
             }
             comp.comp_device.Commit()?;
         }
-        comp.charts.tree = None;
+        if let Some(tree) = comp.charts.tree.take() {
+            comp.charts.dynamic_pool = tree
+                .layers
+                .into_iter()
+                .filter_map(|layer| match layer.content {
+                    LayerContent::Dynamic(dynamic) => Some(dynamic),
+                    _ => None,
+                })
+                .collect();
+        }
         crate::frame_trace::record(8, u64::from(previous.is_some()));
         if diagnostics()
             && let Some(key) = previous
@@ -957,9 +1141,45 @@ impl DirectXRenderer {
         Ok(true)
     }
 
+    #[cfg(test)]
+    pub(super) fn prepare_dynamic_test(&mut self, scene: &Scene) {
+        let charts = &mut self
+            .direct_composition
+            .as_mut()
+            .expect("test compositor")
+            .charts;
+        charts.unavailable = false;
+        charts.standard_sdr = Some(true);
+        charts.dynamic_budget = key(
+            scene,
+            self.width,
+            self.height,
+            WindowBackgroundAppearance::Transparent,
+        );
+    }
+
+    #[cfg(test)]
+    pub(super) fn dynamic_test_texture(&self) -> Option<(RECT, ID3D11Texture2D)> {
+        self.direct_composition
+            .as_ref()?
+            .charts
+            .tree
+            .as_ref()?
+            .layers
+            .iter()
+            .find_map(|layer| match &layer.content {
+                LayerContent::Dynamic(d) => Some((d.rect, d.scratch.as_ref()?.texture.clone())),
+                _ => None,
+            })
+    }
+
     pub(crate) fn release_hidden_chart_layers(&mut self) -> Result<bool> {
         self.atlas.finish_page_updates(false);
         self.release_path_targets();
+        if let Some(r) = self.resources.as_mut() {
+            r.prefix_snapshot = None;
+            r.suffix_damage = None;
+        }
         let Some(comp) = &mut self.direct_composition else {
             return Ok(false);
         };
@@ -984,6 +1204,8 @@ impl DirectXRenderer {
             r.prefix_key = None;
             r.prefix_view = None;
             r.prefix = None;
+            r.prefix_snapshot = None;
+            r.suffix_damage = None;
         }
         if let Some(devices) = &self.devices {
             unsafe {
@@ -1004,26 +1226,115 @@ impl DirectXRenderer {
         scene: &Scene,
         background: WindowBackgroundAppearance,
     ) -> Result<bool> {
-        let Some(comp) = &mut self.direct_composition else {
+        let Some(mut comp) = self.direct_composition.take() else {
             return Ok(false);
         };
+        let result = self.update_chart_tree_with(scene, background, &mut comp, false);
+        self.direct_composition = Some(comp);
+        result
+    }
+
+    fn update_chart_tree_with(
+        &mut self,
+        scene: &Scene,
+        background: WindowBackgroundAppearance,
+        comp: &mut DirectComposition,
+        commit_background: bool,
+    ) -> Result<bool> {
         let Some(tree) = &mut comp.charts.tree else {
             return Ok(false);
         };
-        if Some(tree.key) != key(scene, self.width, self.height, background)
-            || comp.charts.unavailable
-            || comp.charts.standard_sdr != Some(true)
-        {
+        let Some(next_key) = key(scene, self.width, self.height, background) else {
+            return Ok(false);
+        };
+        if comp.charts.unavailable || comp.charts.standard_sdr != Some(true) {
+            return Ok(false);
+        }
+        if tree.bar_count != scene.retained_bars.len() {
+            comp.charts.skipped = None;
             return Ok(false);
         }
         if !tree.layers.iter().all(|layer| layer.compatible(scene)) {
             return Ok(false);
         }
+        if tree.key != next_key {
+            if tree.key.order != next_key.order
+                || tree.key.size != next_key.size
+                || tree.key.opaque != next_key.opaque
+                || !tree
+                    .stationary
+                    .as_ref()
+                    .zip(scene_cache::Snapshot::stationary(scene))
+                    .is_some_and(|(a, b)| a.matches(&b))
+            {
+                return Ok(false);
+            }
+            if comp.charts.dynamic_budget == Some(tree.key) {
+                comp.charts.dynamic_budget = Some(next_key);
+            }
+            if comp.charts.skipped == Some(tree.key) {
+                comp.charts.skipped = Some(next_key);
+            }
+            tree.key = next_key;
+            if let Some(r) = &mut self.resources {
+                r.prefix_key = Some((next_key.revision, next_key.order as usize, next_key.opaque));
+            }
+            crate::frame_trace::record(14, 1);
+        }
+        if comp.charts.dynamic_budget != Some(tree.key)
+            && tree
+                .layers
+                .iter()
+                .any(|l| matches!(l.content, LayerContent::Dynamic(_)))
+            && tree.layers.iter().all(|l| match &l.content {
+                LayerContent::Dynamic(d) => supported_image(&scene.polychrome_sprites[d.index]),
+                _ => true,
+            })
+        {
+            comp.charts.skipped = None;
+            return Ok(false);
+        }
         let mut changed = false;
+        let mut dynamic_pixels = 0u64;
         for layer in &mut tree.layers {
+            if let LayerContent::Dynamic(dynamic) = &mut layer.content {
+                let sprite = scene.polychrome_sprites[dynamic.index];
+                if sprite.bounds != dynamic.painted {
+                    let prefix = self
+                        .resources
+                        .as_ref()
+                        .and_then(|r| r.prefix.clone())
+                        .context("dynamic chart prefix")?;
+                    let batches = [PrimitiveBatch::PolychromeSprites {
+                        texture_id: sprite.tile.texture_id,
+                        range: dynamic.index..dynamic.index + 1,
+                    }];
+                    let scratch = self.paint_foreground(
+                        scene,
+                        &batches,
+                        dynamic.rect,
+                        dynamic.scratch.take(),
+                        Some(&prefix),
+                    )?;
+                    copy_dynamic_surface(
+                        &dynamic.bitmap,
+                        self.devices.as_ref().context("dynamic chart device")?,
+                        &scratch,
+                        dynamic.rect,
+                    )?;
+                    dynamic.scratch = Some(scratch);
+                    dynamic.painted = sprite.bounds;
+                    dynamic_pixels += (dynamic.rect.right - dynamic.rect.left) as u64
+                        * (dynamic.rect.bottom - dynamic.rect.top) as u64;
+                    changed = true;
+                }
+            }
             changed |= layer.place(scene)?;
         }
-        if changed {
+        if dynamic_pixels > 0 {
+            crate::frame_trace::record(9, dynamic_pixels);
+        }
+        if changed || commit_background {
             unsafe {
                 comp.comp_device.Commit()?;
             }
@@ -1053,6 +1364,13 @@ impl DirectXRenderer {
         let Some(key) = key(scene, self.width, self.height, background) else {
             return Ok(false);
         };
+        static FORCE_DYNAMIC: OnceLock<bool> = OnceLock::new();
+        if *FORCE_DYNAMIC.get_or_init(|| {
+            std::env::var_os("ARGUS_GPUI_TEST_DYNAMIC_CHARTS").is_some()
+                && std::env::args_os().any(|arg| arg == "--test")
+        }) {
+            comp.charts.dynamic_budget = Some(key);
+        }
         if comp.charts.unavailable || comp.charts.skipped == Some(key) {
             return Ok(false);
         }
@@ -1120,6 +1438,7 @@ impl DirectXRenderer {
             comp.charts.grouped_foreground = None;
             None
         } else {
+            comp.charts.dynamic_pool.clear();
             let Some(bounds) =
                 foreground_bounds(scene, &foreground_batches, self.width, self.height)
             else {
@@ -1133,6 +1452,8 @@ impl DirectXRenderer {
             Some(bounds)
         };
         let mut bar_keys = Vec::new();
+        let mut dynamic_images = std::collections::BTreeSet::new();
+        let mut dynamic_bytes = 0u64;
         let mut grouped_foreground = comp.charts.grouped_foreground == Some(key);
         let mut images = 0;
         let mut image_bytes = 0u64;
@@ -1146,11 +1467,24 @@ impl DirectXRenderer {
                 PrimitiveBatch::PolychromeSprites { range, .. } => {
                     for i in range.clone() {
                         let s = &scene.polychrome_sprites[i];
-                        if !supported_image(s)
+                        let dynamic = foreground_rect.is_none()
+                            && dynamic_image_supported(s)
+                            && (!supported_image(s) || comp.charts.dynamic_budget == Some(key));
+                        if (!supported_image(s) && !dynamic)
                             || self.atlas.get_texture_view(s.tile.texture_id).is_none()
                             || (foreground_rect.is_some()
                                 && s.pad != PolychromeSprite::IN_SCENE_AREA_FILTER)
                         {
+                            // A rescale keeps its scene revision. Retry promotion
+                            // when the eased image returns to its native density.
+                            if s.pad == PolychromeSprite::IN_SCENE_AREA_FILTER
+                                && (s.bounds.size.height.0 * 2.
+                                    - s.tile.bounds.size.height.0 as f32)
+                                    .abs()
+                                    >= 0.01
+                            {
+                                comp.charts.skipped = None;
+                            }
                             return Ok(false);
                         }
                         let mut rows = filtered_rows(
@@ -1160,6 +1494,19 @@ impl DirectXRenderer {
                             self.atlas.chart_rows(&s.tile),
                         );
                         let mut mask = clip(s.content_mask.bounds, self.width, self.height);
+                        if dynamic && mask.left < mask.right && mask.top < mask.bottom {
+                            let w = (mask.right - mask.left) as u64;
+                            let h = (mask.bottom - mask.top) as u64;
+                            dynamic_bytes +=
+                                (w.next_multiple_of(16) * h.next_multiple_of(16) + w * h) * 4;
+                            dynamic_images.insert(i);
+                            marked_masks.push(masks.len());
+                            scan_regions.push((i, mask));
+                            masks.push(mask);
+                            image_rows.push(0..h as u32);
+                            images += 1;
+                            continue;
+                        }
                         if s.pad == PolychromeSprite::IN_SCENE_AREA_FILTER {
                             // Interaction/full paints use the same source-over operation in the
                             // scene. Promote only pixels that we can finish on an opaque backdrop.
@@ -1280,6 +1627,7 @@ impl DirectXRenderer {
         let fixed_bytes = bar_bytes
             + group_bytes
             + u64::from(self.width) * u64::from(self.height) * 4
+            + dynamic_bytes
             + foreground_bytes;
         if fixed_bytes > comp.charts.tree_budget {
             return Ok(false);
@@ -1297,6 +1645,7 @@ impl DirectXRenderer {
                 &foreground_batches,
                 foreground_rect.context("foreground bounds")?,
                 previous,
+                None,
             )?;
             comp.charts.foreground = Some((key, surface));
         }
@@ -1411,6 +1760,9 @@ impl DirectXRenderer {
                 return Ok(false);
             };
             for (&i, columns) in &regions {
+                if dynamic_images.contains(&i) {
+                    continue;
+                }
                 let s = &scene.polychrome_sprites[i];
                 // A thin stroke ends inside a handful of rows. Eight phases
                 // resolve its sharply antialiased cap at a small texture cost.
@@ -1449,6 +1801,9 @@ impl DirectXRenderer {
             // visuals. The common backdrop and its sparse exceptions need two.
             if opaque_strips > 128 && !comp.charts.sparse_unavailable {
                 for (i, columns) in regions {
+                    if dynamic_images.contains(&i) {
+                        continue;
+                    }
                     let plan = composed.get_mut(&i).context("missing opaque chart plan")?;
                     if plan.clips() < 5 {
                         continue;
@@ -1484,6 +1839,14 @@ impl DirectXRenderer {
             || bar_bytes > MAX_BAR_BYTES
             || tree_bytes > comp.charts.tree_budget
         {
+            if tree_bytes > comp.charts.tree_budget
+                && foreground_rect.is_none()
+                && comp.charts.dynamic_budget != Some(key)
+                && images > 0
+            {
+                comp.charts.dynamic_budget = Some(key);
+                comp.charts.skipped = None;
+            }
             if foreground_rect.is_some() && !grouped_foreground {
                 comp.charts.grouped_foreground = Some(key);
                 comp.charts.skipped = None;
@@ -1498,6 +1861,30 @@ impl DirectXRenderer {
         }
         let dev = &comp.comp_device;
         let charts = &mut comp.charts;
+        // Reuse matching surfaces from the preceding flat-frame handoff. Drop
+        // unmatched allocations before making replacements within the budget.
+        let mut needed = std::collections::BTreeMap::new();
+        for &i in &dynamic_images {
+            let r = clip(
+                scene.polychrome_sprites[i].content_mask.bounds,
+                self.width,
+                self.height,
+            );
+            *needed
+                .entry((r.right - r.left, r.bottom - r.top))
+                .or_insert(0usize) += 1;
+        }
+        charts.dynamic_pool.retain(|d| {
+            let count = needed
+                .entry((d.rect.right - d.rect.left, d.rect.bottom - d.rect.top))
+                .or_default();
+            if *count == 0 {
+                false
+            } else {
+                *count -= 1;
+                true
+            }
+        });
         charts.bars.retain(|(k, _)| bar_keys.contains(k));
         let filter = charts.filter.as_ref().context("chart filter")?;
         let root = unsafe { dev.CreateVisual()? };
@@ -1506,17 +1893,16 @@ impl DirectXRenderer {
         } else {
             DXGI_ALPHA_MODE_PREMULTIPLIED
         };
-        let previous = charts
-            .output
-            .as_ref()
-            .filter(|frame| opaque_strips > 0 && frame.size == key.size);
+        let previous = charts.output.as_ref().filter(|frame| {
+            (opaque_strips > 0 || !dynamic_images.is_empty()) && frame.size == key.size
+        });
         let background = match previous {
             Some(frame) => frame.bitmap.clone(),
             None => unsafe {
                 dev.CreateSurface(self.width, self.height, RENDER_TARGET_FORMAT, alpha)?
             },
         };
-        let output = if opaque_strips == 0 {
+        let output = if opaque_strips == 0 && dynamic_images.is_empty() {
             None
         } else if let Some(frame) = previous {
             Some(frame.clone())
@@ -1557,9 +1943,11 @@ impl DirectXRenderer {
             }
         };
         let mut layers = Vec::new();
-        let opaque_images = composed.len();
+        let opaque_images = composed.len() + dynamic_images.len();
+        let dynamic_count = dynamic_images.len();
         let mut image_sheets = 0;
         let mut visual_count = 0;
+        let chart_clips = masks.clone();
         let mut image_rows = image_rows.into_iter();
         let mut masks = masks.into_iter();
         for b in suffix {
@@ -1570,6 +1958,60 @@ impl DirectXRenderer {
                         let rows = image_rows.next().context("missing chart rows")?;
                         let mask = masks.next().context("missing chart clip")?;
                         if rows.is_empty() {
+                            continue;
+                        }
+                        if dynamic_images.contains(&i) {
+                            let batches = [PrimitiveBatch::PolychromeSprites {
+                                texture_id: s.tile.texture_id,
+                                range: i..i + 1,
+                            }];
+                            let previous = charts
+                                .dynamic_pool
+                                .iter()
+                                .position(|d| {
+                                    d.rect.right - d.rect.left == mask.right - mask.left
+                                        && d.rect.bottom - d.rect.top == mask.bottom - mask.top
+                                })
+                                .map(|i| charts.dynamic_pool.swap_remove(i));
+                            let (prior_scratch, prior_bitmap) =
+                                previous.map_or((None, None), |d| (d.scratch, Some(d.bitmap)));
+                            let scratch = self.paint_foreground(
+                                scene,
+                                &batches,
+                                mask,
+                                prior_scratch,
+                                Some(&prefix),
+                            )?;
+                            let bitmap = match prior_bitmap {
+                                Some(bitmap) => bitmap,
+                                None => unsafe {
+                                    dev.CreateSurface(
+                                        (mask.right - mask.left) as u32,
+                                        (mask.bottom - mask.top) as u32,
+                                        RENDER_TARGET_FORMAT,
+                                        DXGI_ALPHA_MODE_PREMULTIPLIED,
+                                    )?
+                                },
+                            };
+                            copy_dynamic_surface(&bitmap, &devices, &scratch, mask)?;
+                            let visual = child(dev, &group, mask, &bitmap)?;
+                            unsafe {
+                                visual.SetOffsetX2(mask.left as f32)?;
+                                visual.SetOffsetY2(mask.top as f32)?;
+                            }
+                            layers.push(Layer {
+                                position: None,
+                                content: LayerContent::Dynamic(DynamicImage {
+                                    index: i,
+                                    template: *s,
+                                    rect: mask,
+                                    bitmap,
+                                    scratch: Some(scratch),
+                                    painted: s.bounds,
+                                }),
+                            });
+                            image_sheets += 1;
+                            visual_count += 1;
                             continue;
                         }
                         let backdrop::Plan {
@@ -1679,6 +2121,8 @@ impl DirectXRenderer {
                             position: None,
                             content: LayerContent::Image {
                                 index: i,
+                                size: s.bounds.size,
+                                template: *s,
                                 y_phase: row_phase(s.bounds.top().0),
                                 first_row: rows.start,
                                 strips,
@@ -1767,13 +2211,26 @@ impl DirectXRenderer {
         }
         crate::frame_trace::record(7, opaque_strips as u64);
         if diagnostics() {
+            if dynamic_count > 0 {
+                println!(
+                    "{{\"event\":\"gpu-chart-dynamic\",\"images\":{dynamic_count},\"bytes\":{dynamic_bytes},\"budgetFallback\":{}}}",
+                    charts.dynamic_budget == Some(key)
+                );
+            }
             println!(
                 "{{\"event\":\"gpu-chart-layers\",\"images\":{images},\"layers\":{visual_count},\"imageSheets\":{image_sheets},\"bytes\":{tree_bytes},\"opaqueImages\":{opaque_images},\"opaqueStrips\":{opaque_strips},\"sparseImages\":{sparse_images},\"imageBytes\":{},\"untrimmedImageBytes\":{},\"barBytes\":{bar_bytes},\"groupBytes\":{group_bytes},\"foregroundBytes\":{foreground_bytes},\"foregroundGrouped\":{grouped_foreground},\"revision\":{}}}",
                 image_bytes, untrimmed_bytes, key.revision
             );
         }
         charts.output = output;
-        charts.tree = Some(Tree { key, layers });
+        charts.tree = Some(Tree {
+            key,
+            layers,
+            stationary: scene_cache::Snapshot::stationary(scene),
+            bar_count: scene.retained_bars.len(),
+            clips: chart_clips,
+            grouped_foreground,
+        });
         charts.used_since_hide = true;
         Ok(true)
     }
@@ -1858,6 +2315,11 @@ mod tests {
 }
 
 impl ChartComposition {
+    pub(super) fn invalidate_frame_cache(&mut self) {
+        self.backdrop_scan = None;
+        self.skipped = None;
+    }
+
     pub(super) fn enabled(&self) -> bool {
         !self.unavailable
     }
@@ -1880,6 +2342,8 @@ impl ChartComposition {
         }
     }
     pub(super) fn display_changed(&mut self) {
+        self.dynamic_budget = None;
+        self.dynamic_pool.clear();
         self.backdrop_scan = None;
         self.foreground = None;
         self.foreground_overlay = None;
@@ -1894,6 +2358,8 @@ impl ChartComposition {
         self.tree.is_some()
     }
     pub(super) fn disable(&mut self) {
+        self.dynamic_budget = None;
+        self.dynamic_pool.clear();
         self.backdrop_scan = None;
         self.foreground = None;
         self.foreground_overlay = None;
@@ -1902,6 +2368,8 @@ impl ChartComposition {
         self.bars.clear();
     }
     pub(super) fn deactivate(&mut self) {
+        self.dynamic_budget = None;
+        self.dynamic_pool.clear();
         self.foreground = None;
         self.foreground_overlay = None;
         self.grouped_foreground = None;
