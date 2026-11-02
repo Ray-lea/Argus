@@ -47,4 +47,10 @@ cargo run -p argus-core --example app_windows --release     # 归入“应用”
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 ```
 
+`network_cadence` 无参数运行时启动原生诊断入口，在程序目录写入 `network-launcher.log` 和 `network-results-*` 结果目录；目录只读时使用系统临时目录。它依次对照既有服务、本地完整快照、半秒刷新和 ETW 原始字节数，流量限于本机回环，每项超时为 60 秒。本地 ETW 采集需要相应权限。自动化运行可使用 `--suite --no-wait`；单项参数为 `<间隔毫秒> <时长秒>`，`--collector` 每轮重新采集进程快照，`--local` 使用独立 ETW 会话，`--local --raw-local` 输出原始字节数。
+
+`--local --dual-local` 同时开启两个独立会话，在第 8 秒关闭其中一个，用于核对另一会话继续收集。`cargo run -p argus-service --example network_provider --release -- --no-wait` 对照 manifest 提供者的原始订阅、同步启用、完整筛选和私有系统网络通道，记录事件元数据、丢失计数及测试进程的收发字节数。系统通道的隔离方式见 [Windows 系统跟踪会话](https://learn.microsoft.com/en-us/windows/win32/etw/configuring-and-starting-a-systemtraceprovider-session)。
+
+`network_cadence` 的 `--alternating` 让测试流量每半秒交替变化，用于检查每次刷新是否重新计算速率。快速事件送达使用 [ControlTrace 的 FLUSH 操作](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-controltracew)，在独立线程执行。
+
 `gpu_diagnostics` 输出带时间戳的 JSONL，包括目标进程的引擎身份、原始计数区间、整体读数和可用的 NVIDIA 核心读数；不记录进程命令行，不录制屏幕，不修改 GPU 设置。对照时应保持相同负载，核对适配器、引擎与采样区间。`gpu_compute` 在 12 秒内以 40 ms 提交、160 ms 休息的节拍运行短 CUDA 内核；提交占空比为 20%，GPU 实际利用率由计数器测量。
