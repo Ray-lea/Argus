@@ -645,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    fn half_second_samples_share_complete_etw_rate_windows() {
+    fn half_second_samples_compute_distinct_rates_and_clear_when_idle() {
         let mut rates = Rates::default();
         let mut processes = vec![process(42, 10)];
         for tick in 0..10 {
@@ -653,14 +653,14 @@ mod tests {
                 Arc::new(NetworkFrame {
                     epoch: "half-second".into(),
                     elapsed_us: 1_000_000 + tick * 500_000,
-                    counters: vec![(42, 1, 1, tick / 2 * 1000, tick / 2 * 2000)],
+                    counters: vec![(42, 1, 1, tick * tick * 250, tick * tick * 500)],
                 }),
                 &mut processes,
             );
-            if tick >= 2 {
+            if tick >= 1 {
                 assert_eq!(
                     (processes[0].net_sent, processes[0].net_received),
-                    (1000, 2000),
+                    ((2 * tick - 1) * 500, (2 * tick - 1) * 1000),
                     "tick {tick}"
                 );
             }
@@ -670,7 +670,7 @@ mod tests {
                 Arc::new(NetworkFrame {
                     epoch: "half-second".into(),
                     elapsed_us: 1_000_000 + tick * 500_000,
-                    counters: vec![(42, 1, 1, 4000, 8000)],
+                    counters: vec![(42, 1, 1, 20250, 40500)],
                 }),
                 &mut processes,
             );
@@ -693,8 +693,12 @@ mod tests {
         rates.apply(sample("a", 1_500_000, 500_000), &mut processes);
         rates.apply(sample("a", 1_999_000, 999_000), &mut processes);
         assert_eq!(processes[0].net_sent, 1_000_000);
-        rates.apply(sample("a", 2_500_000, 999_000), &mut processes);
+        rates.apply(sample("a", 1_999_000, 999_000), &mut processes);
         assert_eq!(processes[0].net_sent, 1_000_000);
+        rates.apply(sample("a", 2_200_000, 999_000), &mut processes);
+        assert_eq!(processes[0].net_sent, 1_000_000);
+        rates.apply(sample("a", 2_500_000, 999_000), &mut processes);
+        assert_eq!(processes[0].net_sent, 0);
         rates.apply(sample("b", 10, 0), &mut processes);
         assert_eq!(processes[0].net_sent, 0);
     }
