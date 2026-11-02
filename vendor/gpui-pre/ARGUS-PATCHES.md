@@ -14,6 +14,8 @@ The vendored package omits standalone examples and their media, the package-loca
 
 Local changes:
 
+- Window display notifications try to borrow the app before updating it. Synchronous native placement changes coalesce into one deferred notification while the app is borrowed; a nested native message loop retries after the outer update releases the borrow. The update reads the latest platform display and preserves synchronous delivery when the app is available. `TestAppContext::test_window` is public for integration tests of native callback reentry.
+
 - `Window::defer_presentation_until_layout` marks a measurement frame during prepaint. The compositor keeps displaying the previous scene until the scheduled draw has laid out the chart grid. The chart layer checks `Window::is_layout_only` before preparing textures.
 
 - A retained scene records the physical bar geometry and source color used by the Windows compositor. Both render paths use the same leading-edge coverage calculation. An unchanged bar no longer requests a presentation.

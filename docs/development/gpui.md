@@ -27,3 +27,5 @@ frontend 不持有 HWND；窗口绑定、显隐和系统事件由 platform 管�
 GPUI 0.3.9 的本地补丁位于 vendor/gpui-pre：仅位置变化不再使整页布局失效，原生标题栏使用当前指针位置命中，重放缓存绘制时保留窗口控制区域，文字换行遵循 UAX #14 及 ICU 的中日文调整规则。补丁边界见该目录的 ARGUS-PATCHES.md；更新上游时需复验拖曳、缩放与多帧缓存下的窗口按钮，以及 `text_system/line_break.rs` 的单元测试。Windows 平台层 vendor/gpui-pre-windows 另有渲染、文字与内容缩放（界面缩放）补丁，同样记录在该目录的 ARGUS-PATCHES.md。
 
 `pnpm test:startup` 通过真实开发脚本验证默认显示与 `--hidden` 启动。它创建不切换到前台的独立 Windows 桌面，保持正常窗口创建逻辑，仅观察可见性，不调用显示窗口的方法。该测试补充窗口捕获探针主动显示实例的路径，避免启动器隐藏主窗口的问题被测试辅助操作掩盖。
+
+`cargo test -p argus --test display_reentry` 检查显示器回调在窗口更新期间重入、连续通知合并、原生嵌套消息循环及窗口关闭后的延迟处理。`cargo run -p argus --example display_reentry` 在自身隐藏窗口的初始化回调内发送 `WM_DISPLAYCHANGE`，检查真实 Windows 消息路径；它保持窗口隐藏，不更改显示器设置。

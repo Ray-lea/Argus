@@ -2074,7 +2074,32 @@ impl Window {
         }));
         platform_window.on_display_changed(Box::new({
             let cx = cx.to_async();
-            move || cx.update(|cx| Window::display_changed(handle, cx))
+            let pending = Rc::new(Cell::new(false));
+            move || {
+                if pending.get() || Window::try_display_changed(handle, &cx) {
+                    return;
+                }
+
+                // Restoring native placement can synchronously report a monitor
+                // change while App is borrowed. Coalesce those notifications and
+                // read the latest platform display once the borrow is released.
+                pending.set(true);
+                let pending = pending.clone();
+                let cx = cx.clone();
+                cx.foreground_executor().clone().spawn(async move {
+                    loop {
+                        // Observers may cause another move while this update runs.
+                        pending.set(false);
+                        if Window::try_display_changed(handle, &cx) {
+                            break;
+                        }
+                        pending.set(true);
+                        // A native modal loop may run this task before returning
+                        // to the outer update. Keep one pending retry in that case.
+                        cx.background_executor().timer(Duration::from_millis(1)).await;
+                    }
+                }).detach();
+            }
         }));
         platform_window.on_appearance_changed(Box::new({
             let cx = cx.to_async();
@@ -2922,6 +2947,17 @@ impl Window {
         self.bounds_observers
             .clone()
             .retain(&(), |callback| callback(self, cx));
+    }
+
+    fn try_display_changed(handle: AnyWindowHandle, cx: &crate::AsyncApp) -> bool {
+        let Some(app) = cx.app.upgrade() else {
+            return true;
+        };
+        let Ok(mut app) = app.try_borrow_mut() else {
+            return false;
+        };
+        app.update(|cx| Self::display_changed(handle, cx));
+        true
     }
 
     fn display_changed(handle: AnyWindowHandle, cx: &mut App) {

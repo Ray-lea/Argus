@@ -10,6 +10,8 @@
 
 `crates/argus-app/src/preferences.rs` 将界面偏好与窗口位置原子保存到配置目录的 `preferences.json`，同一配置目录下的启动入口共享偏好。文件中偏好保存在 `values`，窗口位置保存在 `window`，更新时保留已有偏好；早期原生版本把偏好写在顶层，读取时按偏好处理，下次保存时改写为上述格式。`src-gpui/src/window_state.rs` 保存 `WINDOWPLACEMENT` 的普通窗口矩形与最大化标记，移动或缩放结束后保存，关闭和退出前补写；隐藏启动延迟到首次显示时恢复最大化，不恢复最小化状态；测试实例不恢复窗口位置。
 
+恢复跨显示器的位置可在 `SetWindowPlacement` 内同步触发显示器变更回调。GPUI 上下文正在更新时，窗口将这些通知合并并延后处理，释放借用后读取最新显示器及刷新间隔，避免原生回调重入导致启动崩溃。上下文空闲时仍立即处理通知。
+
 `admin.rs` 处理管理员启动策略与权限交接，在单实例及窗口创建前路由；设置中立即切换，引导中延后应用，详见[管理员启动](administrator-startup.md)。开机启动项（`commands/autostart.rs`）在已有管理员启动记录时使用受保护的稳定启动器。安装程序与卸载程序以 `argus.exe --argus-close-copies` 运行（不检查单实例、不创建窗口），由 `leftovers.rs` 结束任务管理器替换与管理员启动目录中正在运行的界面副本：Restart Manager 只关闭安装目录的 `argus.exe`，留下的副本会占着单实例并保留内存中的设置。
 
 `native_runtime.rs` 提供进程内状态、通知合并和主线程调度；`commands.rs` 连接应用服务与现有系统能力。耗时命令在工作线程执行，界面通过有界通知更新。没有跨浏览器 IPC。

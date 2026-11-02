@@ -41,6 +41,8 @@ rfd = "0.16"
 [features]
 default = []
 
+[dev-dependencies]
+gpui_test = { package = "gpui-pre", version = "=0.3.9", features = ["test-support"] }
 
 [build-dependencies]
 embed-resource = "3"
