@@ -5,6 +5,7 @@
 mod battery;
 mod cpu;
 mod disk;
+pub mod disk_details;
 mod gpu;
 mod kernel_sensors;
 mod memory;

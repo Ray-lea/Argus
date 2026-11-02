@@ -329,7 +329,7 @@ fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> DiskInfo {
 }
 
 /// Maps physical disk number to the drive letters that live on it.
-fn volume_map() -> HashMap<u32, Vec<String>> {
+pub(super) fn volume_map() -> HashMap<u32, Vec<String>> {
     let mut map: HashMap<u32, Vec<String>> = HashMap::new();
     let mask = unsafe { GetLogicalDrives() };
     for i in 0..26u8 {
@@ -347,12 +347,22 @@ fn volume_map() -> HashMap<u32, Vec<String>> {
             continue;
         };
         let mut buf = AlignedBuf::with_capacity(512);
-        if ioctl(h.0, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, None, &mut buf).is_none() {
+        let Some(returned) = ioctl(h.0, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, None, &mut buf)
+        else {
+            continue;
+        };
+        let offset = std::mem::offset_of!(VOLUME_DISK_EXTENTS, Extents);
+        let returned = (returned as usize).min(buf.len());
+        if returned < offset {
             continue;
         }
         let ext = unsafe { &*(buf.as_ptr() as *const VOLUME_DISK_EXTENTS) };
         let n = ext.NumberOfDiskExtents as usize;
-        let extents = unsafe { std::slice::from_raw_parts(ext.Extents.as_ptr(), n.min(16)) };
+        let available = (returned - offset) / std::mem::size_of_val(&ext.Extents[0]);
+        if n > available {
+            continue;
+        }
+        let extents = unsafe { std::slice::from_raw_parts(ext.Extents.as_ptr(), n) };
         for e in extents {
             let list = map.entry(e.DiskNumber).or_default();
             if !list.contains(&letter) {

@@ -126,6 +126,10 @@ pub fn process_details(pid: u32, path: Option<String>) -> ProcessDetails {
     details::query(pid, path.as_deref())
 }
 
+pub fn disk_details(index: u32) -> argus_core::hardware::disk_details::DiskDetails {
+    argus_core::hardware::disk_details::query(index)
+}
+
 /// Runs `operation` in the privileged service when one runs for this account,
 /// else `local` with Argus's own rights. `replied` takes the service's answer,
 /// None for one this host does not expect.
