@@ -34,6 +34,10 @@
 | `i18n.rs` | 原生层的文案：编译时嵌入 `locales/*/native.json`，`tr!` 按当前语言查找；进程级语言默认取父进程通过 `ARGUS_LOCALE` 传入的值，否则为 Windows 显示语言，宿主再按设置覆盖 |
 | `nt.rs` | `windows` crate 没有（完整）提供的原生结构，布局按 phnt 头文件的 x64 版本 |
 
+## 进程附加计数
+
+进程列的附加计数来自同一次 `SystemProcessInformation`：用户态／内核态 CPU 时间按 100 ns 转为毫秒，工作集峰值、虚拟内存与累计 I/O 保持字节，缺页保留次数。`ProcessCounters` 展平到进程 JSON 中，采样不增加逐进程系统调用。界面仍以 PID 与创建时间关联进程实例。结构字段与单位可参考 [Windows 进程快照](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerysysteminformation)及[内存计数](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-process_memory_counters)。
+
 ## CPU 占用
 
 整体与各逻辑处理器的占用使用 `SystemProcessorIdleInformation` 的独立空闲时间，以及 `SystemProcessorPerformanceInformation` 的总时间差量。独立空闲时间可避开部分系统旧 `IdleTime` 将短时运行计入空闲的问题。处理器按 `(group, processor)` 配对；整体占用先合计原始时间再换算，避免将各核量化误差截断后累加。来源缺失时只使用同一来源的成对读数，计数重置或分组变化时重新建立基线。内核占用保留 Windows 时间计数器实际报告的内核运行量，不把新旧空闲时间的差额归为内核工作。

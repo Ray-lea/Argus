@@ -16,6 +16,8 @@ frontend 不持有 HWND；窗口绑定、显隐和系统事件由 platform 管�
 
 当前构建目标为 Windows x64。macOS 支持仍需完成采集、进程操作、托盘、快捷键、权限和分发等适配，见[路线图](../roadmap.md)。
 
+进程表的列目录位于 `frontend/columns.rs`，分类选列对话框位于 `frontend/columns/dialog.rs`。`processColumns` 偏好保存选择、自动宽度与手动宽度；读取时去重、检查字段和宽度，并固定名称列。`tables.rs` 共用该目录构建表头及单元格，按布局变化计算自动宽度。`model.rs` 区分资源汇总、单实例数值与共同文字值，文字排序沿用缓存的本地化排序键。
+
 ## 界面验证
 
 `tools/window-probe` 以独立标识、隐藏启动和不激活显示运行测试实例，监视前台变化，仅通过 Windows.Graphics.Capture 捕获目标窗口。模拟快照位于该工具的 fixtures 目录。实机验证可以省略 fixture，保持测试标识与测试模式，关闭规则执行和历史写入。
