@@ -119,7 +119,8 @@ impl Collector {
             return;
         };
         let mut usage = tracker.sample();
-        if usage.is_empty() {
+        let available = tracker.memory_available();
+        if usage.is_empty() && !available.iter().any(|available| *available) {
             return;
         }
         // Adapters are numbered as on the performance page.
@@ -149,6 +150,8 @@ impl Collector {
             }
         }
         for p in processes {
+            p.gpu_dedicated = available[0].then_some(0);
+            p.gpu_shared = available[1].then_some(0);
             let Some(g) = usage.remove(&p.pid) else {
                 continue;
             };

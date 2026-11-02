@@ -757,11 +757,25 @@ impl Desktop {
             ));
             rows.push((
                 label("details.gpuDedicated"),
-                theme::memory(sum("gpuDedicated")).into_any_element(),
+                members
+                    .iter()
+                    .try_fold(0., |sum, member| {
+                        member["gpuDedicated"].as_f64().map(|value| sum + value)
+                    })
+                    .map(theme::memory)
+                    .unwrap_or_else(|| label("format.missing"))
+                    .into_any_element(),
             ));
             rows.push((
                 label("details.gpuShared"),
-                theme::memory(sum("gpuShared")).into_any_element(),
+                members
+                    .iter()
+                    .try_fold(0., |sum, member| {
+                        member["gpuShared"].as_f64().map(|value| sum + value)
+                    })
+                    .map(theme::memory)
+                    .unwrap_or_else(|| label("format.missing"))
+                    .into_any_element(),
             ));
         }
         rows.push((

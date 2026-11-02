@@ -438,8 +438,10 @@ pub fn heat_alpha(field: &str, value: f64) -> f32 {
     let heat = &design()["heat"];
     let kind = match field {
         "cpu" | "gpu" => "percent",
-        "mem" => "memory",
-        _ => "rate",
+        "mem" | "workingSet" | "commit" | "gpuDedicated" | "gpuShared" => "memory",
+        "io" | "ioRead" | "ioWrite" | "ioOther" | "diskRead" | "diskWrite" | "net"
+        | "netReceived" | "netSent" => "rate",
+        _ => return 0.,
     };
     let rule = &heat[kind];
     let minimum = rule["minimum"].as_f64().expect("heat threshold");
@@ -735,6 +737,34 @@ pub fn network(value: f64, bits: bool) -> String {
 #[cfg(test)]
 mod tests {
     use gpui_kit::gpui::LineWrapper;
+
+    #[test]
+    fn heat_is_limited_to_live_resource_usage() {
+        for field in [
+            "virtualSize",
+            "peakWorkingSet",
+            "pageFaults",
+            "cpuTime",
+            "ioReadTotal",
+            "ioWriteTotal",
+            "ioOtherTotal",
+        ] {
+            assert_eq!(super::heat_alpha(field, 2_199_023_255_552.), 0.);
+        }
+        for field in [
+            "cpu",
+            "gpu",
+            "workingSet",
+            "commit",
+            "gpuDedicated",
+            "gpuShared",
+            "net",
+            "io",
+        ] {
+            assert!(super::heat_alpha(field, 1_000_000_000.) > 0.);
+        }
+        assert_eq!(super::bytes(2_199_023_255_552., false), "2.0 TB");
+    }
 
     /// Every string in the Chinese interface text.
     fn chinese_strings() -> Vec<String> {

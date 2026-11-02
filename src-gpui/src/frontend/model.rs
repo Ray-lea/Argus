@@ -239,6 +239,11 @@ impl Row {
         Self::new(raw, depth, title, detail, sort_name)
     }
     pub fn metric(&self, key: &str) -> Option<f64> {
+        if matches!(key, "gpuDedicated" | "gpuShared") {
+            return self.members.iter().try_fold(0., |sum, member| {
+                member[key].as_f64().map(|value| sum + value)
+            });
+        }
         if columns::definition(key).is_some_and(|column| !column.aggregate) {
             if self.section.is_some() || self.members.len() != 1 {
                 return None;
@@ -283,6 +288,11 @@ impl Row {
     pub fn column_text(&self, key: &str) -> Option<&str> {
         if self.section.is_some() {
             return None;
+        }
+        if key == "gpuEngine"
+            && let Some(usage) = &self.gpu
+        {
+            return usage.engine.as_deref();
         }
         let key = columns::raw_key(key);
         let first = self.members.first()?[key]
@@ -978,8 +988,8 @@ mod tests {
     #[test]
     fn optional_process_columns_keep_instance_identity_and_group_resource_totals() {
         let processes = vec![
-            json!({"pid":1,"ppid":9,"sessionId":1,"basePriority":8,"createTime":100,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":1000,"cpuUserTime":200,"ioReadTotal":400}),
-            json!({"pid":2,"ppid":9,"sessionId":1,"basePriority":8,"createTime":200,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":2000,"cpuUserTime":300,"ioReadTotal":600}),
+            json!({"pid":1,"ppid":9,"sessionId":1,"basePriority":8,"createTime":100,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":1000,"cpuUserTime":200,"ioReadTotal":400,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":3000,"gpuDedicated":0,"gpuShared":null}),
+            json!({"pid":2,"ppid":9,"sessionId":1,"basePriority":8,"createTime":200,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":2000,"cpuUserTime":300,"ioReadTotal":600,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":4000,"gpuDedicated":4096,"gpuShared":2048}),
         ];
         let rows = rows_of(&processes, "apps", "", "workingSet", true, &HashMap::new());
         assert_eq!(rows.len(), 1);
@@ -987,7 +997,17 @@ mod tests {
         assert_eq!(row.metric("workingSet"), Some(3000.));
         assert_eq!(row.metric("cpuUserTime"), Some(500.));
         assert_eq!(row.metric("ioReadTotal"), Some(1000.));
-        for key in ["pid", "ppid", "sessionId", "createTime", "basePriority"] {
+        assert_eq!(row.metric("gpuDedicated"), Some(4096.));
+        assert_eq!(row.metric("gpuShared"), None);
+        for key in [
+            "pid",
+            "ppid",
+            "sessionId",
+            "createTime",
+            "basePriority",
+            "virtualSize",
+            "peakWorkingSet",
+        ] {
             assert_eq!(row.metric(key), None);
         }
         assert_eq!(row.column_text("path"), Some("C:/sample.exe"));
@@ -995,6 +1015,9 @@ mod tests {
         let process = Row::process(processes[0].clone(), 0);
         assert_eq!(process.metric("ppid"), Some(9.));
         assert_eq!(process.metric("basePriority"), Some(8.));
+        assert_eq!(process.metric("virtualSize"), Some(2_199_023_255_552.));
+        assert_eq!(process.metric("peakWorkingSet"), Some(3000.));
+        assert_eq!(process.metric("gpuDedicated"), Some(0.));
         assert_eq!(process.column_text("imageName"), Some("sample.exe"));
     }
 
@@ -1261,6 +1284,7 @@ mod tests {
         let rows = rows_of(&processes, "apps", "", "name", false, &HashMap::new());
         let group = rows.iter().find(|row| row.members.len() == 2).unwrap();
         assert_eq!(group.metric("gpu"), Some(40.));
+        assert_eq!(group.column_text("gpuEngine"), Some("GPU 0 - 3D"));
         // The heading folds the group in by engine: 40% + 30% on one 3D node.
         assert_eq!(rows[0].section.as_deref(), Some("background"));
         assert_eq!(rows[0].metric("gpu"), Some(70.));

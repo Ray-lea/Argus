@@ -33,6 +33,7 @@ enum CellKind {
     Duration,
     Timestamp,
     ProcessBoolean,
+    AddressSpace,
 }
 /// A CSS grid track from the tables: a fixed width or `minmax(min, fr)`.
 #[derive(Clone, Copy, PartialEq)]
@@ -179,6 +180,7 @@ fn process_fields(preferences: &columns::Preferences, network: bool) -> Vec<Fiel
                 Format::Count => CellKind::Count,
                 Format::Percent => CellKind::Percent,
                 Format::Memory => CellKind::Memory,
+                Format::AddressSpace => CellKind::AddressSpace,
                 Format::Rate => CellKind::Rate,
                 Format::Network => CellKind::NetworkRate,
                 Format::Duration => CellKind::Duration,
@@ -230,6 +232,10 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::Timestamp => row
             .metric(field.key)
             .map(pages::date_time)
+            .unwrap_or_else(missing),
+        CellKind::AddressSpace => row
+            .metric(field.key)
+            .map(|value| theme::bytes(value, false))
             .unwrap_or_else(missing),
         CellKind::ProcessBoolean => row
             .metric(field.key)

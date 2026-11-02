@@ -30,7 +30,7 @@
   "column": {
     "name": {
       "label": "Name",
-      "title": "Sort by name"
+      "title": "Application name or file description, with the executable name beside it."
     },
     "pid": {
       "label": "PID",
@@ -126,19 +126,19 @@
     },
     "workingSet": {
       "label": "Working set",
-      "title": "Resident physical memory, including private and shared pages."
+      "title": "Resident physical memory, including shared pages. Groups sum member working sets."
     },
     "peakWorkingSet": {
       "label": "Peak working set",
-      "title": "Peak working set over the process lifetime; groups sum the individual peaks."
+      "title": "Peak working set of one process since startup. Expand an app group to view its processes."
     },
     "commit": {
       "label": "Commit size",
       "title": "Private committed memory of the process."
     },
     "virtualSize": {
-      "label": "Virtual size",
-      "title": "Current size of the virtual address space used by the process."
+      "label": "Virtual address space",
+      "title": "Reserved and committed address ranges of one process. Commit size shows committed private memory."
     },
     "pageFaults": {
       "label": "Page faults",
@@ -182,11 +182,11 @@
     },
     "gpuDedicated": {
       "label": "Dedicated GPU memory",
-      "title": "Dedicated GPU memory used by the process."
+      "title": "Current resident dedicated GPU memory attributed to the process. Groups sum member counters."
     },
     "gpuShared": {
       "label": "Shared GPU memory",
-      "title": "Shared GPU memory used by the process."
+      "title": "Current resident shared GPU memory attributed to the process. Groups sum member counters."
     }
   },
   "noMatch": "No processes match “{query}”",

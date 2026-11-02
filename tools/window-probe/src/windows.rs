@@ -453,8 +453,8 @@ impl Gpu {
         for (name, path) in [
             ("gpuTime100ns", r"\GPU Engine(*)\Running Time"),
             ("gpuPercent", r"\GPU Engine(*)\Utilization Percentage"),
-            ("gpuDedicated", r"\GPU Process Memory(*)\Dedicated Usage"),
-            ("gpuShared", r"\GPU Process Memory(*)\Shared Usage"),
+            ("gpuDedicated", r"\GPU Process Memory(*)\Local Usage"),
+            ("gpuShared", r"\GPU Process Memory(*)\Non Local Usage"),
             ("cpuMhz", r"\Processor Information(*)\Actual Frequency"),
         ] {
             let mut counter = Default::default();

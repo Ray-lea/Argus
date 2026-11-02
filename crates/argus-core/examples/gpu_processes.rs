@@ -30,10 +30,10 @@ fn main() {
                     .map(|(l, n)| format!("{l:x}/{n}"))
                     .unwrap_or_default();
                 println!(
-                    "  pid {pid:6}  {:5.1}%  {engine:24}  dedicated {:6.1} MB  shared {:6.1} MB",
+                    "  pid {pid:6}  {:5.1}%  {engine:24}  dedicated {:?} MB  shared {:?} MB",
                     g.util,
-                    g.dedicated as f64 / 1048576.0,
-                    g.shared as f64 / 1048576.0
+                    g.dedicated.map(|value| value as f64 / 1048576.0),
+                    g.shared.map(|value| value as f64 / 1048576.0)
                 );
             }
         }

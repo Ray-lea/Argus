@@ -70,9 +70,9 @@ pub struct ProcessRow {
     pub gpu_engine: Option<Arc<str>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub gpu_engines: Vec<crate::gpu_process::GpuEngineUsage>,
-    /// GPU memory in use, bytes: video memory and system memory.
-    pub gpu_dedicated: u64,
-    pub gpu_shared: u64,
+    /// Resident GPU memory, bytes; absent while the provider cannot report it.
+    pub gpu_dedicated: Option<u64>,
+    pub gpu_shared: Option<u64>,
     /// Network bytes per second, when per-process traffic is measured (ETW).
     pub net_sent: u64,
     pub net_received: u64,
@@ -97,6 +97,7 @@ pub struct ProcessCounters {
     pub cpu_user_time: u64,
     pub cpu_kernel_time: u64,
     pub peak_working_set: u64,
+    /// Reserved and committed virtual address ranges, in bytes.
     pub virtual_size: u64,
     /// All page faults reported for this process, including soft faults.
     pub page_faults: u32,
@@ -360,9 +361,9 @@ impl ProcessTracker {
                 icon: meta.and_then(|m| m.icon),
                 web_view: None,
                 cpu,
-                cpu_time: (cpu_ticks / 10_000) as u64,
+                cpu_time: (cpu_ticks.max(0) / 10_000) as u64,
                 counters: ProcessCounters::from_snapshot(p),
-                private_ws: p.working_set_private_size as u64,
+                private_ws: p.working_set_private_size.max(0) as u64,
                 working_set: p.working_set_size as u64,
                 commit: p.private_page_count as u64,
                 io_read: rates[0],
@@ -373,8 +374,8 @@ impl ProcessTracker {
                 gpu: 0.0,
                 gpu_engine: None,
                 gpu_engines: Vec::new(),
-                gpu_dedicated: 0,
-                gpu_shared: 0,
+                gpu_dedicated: None,
+                gpu_shared: None,
                 net_sent: 0,
                 net_received: 0,
                 threads: p.number_of_threads,

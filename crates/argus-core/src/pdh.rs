@@ -56,12 +56,25 @@ pub(crate) fn array(counter: PDH_HCOUNTER, buf: &mut AlignedBuf) -> Vec<(String,
 /// Calls `f` with every instance of a wildcard counter, without allocating per
 /// instance (the name is only valid during the call).
 pub(crate) fn each(counter: PDH_HCOUNTER, buf: &mut AlignedBuf, mut f: impl FnMut(&str, f64)) {
+    each_value(counter, buf, |name, value| {
+        if let Some(value) = value {
+            f(name, value);
+        }
+    });
+}
+
+/// Includes unavailable instances so consumers can distinguish missing values from zero.
+pub(crate) fn each_value(
+    counter: PDH_HCOUNTER,
+    buf: &mut AlignedBuf,
+    mut f: impl FnMut(&str, Option<f64>),
+) -> bool {
     let (mut size, mut count) = (0u32, 0u32);
     let status = unsafe {
         PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, None)
     };
     if status != PDH_MORE_DATA || size == 0 {
-        return;
+        return false;
     }
     // The items are followed by the instance name strings they point into.
     if buf.len() < size as usize {
@@ -72,18 +85,21 @@ pub(crate) fn each(counter: PDH_HCOUNTER, buf: &mut AlignedBuf, mut f: impl FnMu
         PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, Some(items))
     } != 0
     {
-        return;
+        return false;
     }
     let mut name = String::new();
     for i in 0..count as usize {
         let item = unsafe { &*items.add(i) };
-        // 0 and 1 are "valid" and "new data"; anything else failed this round.
-        if item.FmtValue.CStatus > 1 {
-            continue;
-        }
         name.clear();
         let wide = unsafe { item.szName.as_wide() };
         name.extend(char::decode_utf16(wide.iter().copied()).map(|c| c.unwrap_or('\u{FFFD}')));
-        f(&name, unsafe { item.FmtValue.Anonymous.doubleValue });
+        // 0 and 1 are valid/new data; other states retain the instance as unavailable.
+        let value = if item.FmtValue.CStatus <= 1 {
+            Some(unsafe { item.FmtValue.Anonymous.doubleValue })
+        } else {
+            None
+        };
+        f(&name, value);
     }
+    true
 }

@@ -23,9 +23,9 @@ pub struct ProcessGpu {
     pub util: f32,
     /// Adapter (LUID, as in `GpuInfo::id`) and name of that engine.
     pub engine: Option<(u64, Arc<str>)>,
-    /// GPU memory in use, bytes: video memory and system memory.
-    pub dedicated: u64,
-    pub shared: u64,
+    /// Resident/budgeted GPU memory, bytes; absent when its source is unavailable.
+    pub dedicated: Option<u64>,
+    pub shared: Option<u64>,
     pub engines: Vec<ProcessGpuEngine>,
 }
 
@@ -55,6 +55,8 @@ pub struct GpuProcessTracker {
     buf: AlignedBuf,
     /// Pretty engine names by counter engine type (`VideoDecode` -> `Video Decode`).
     names: HashMap<String, Arc<str>>,
+    memory_available: [bool; 2],
+    memory: HashMap<(u32, u64, u32), Option<u64>>,
 }
 
 // PDH handles are process-wide; the sampler uses them from one thread at a time.
@@ -65,8 +67,10 @@ impl GpuProcessTracker {
     pub fn new() -> Option<Self> {
         let query = Query::open()?;
         let engines = query.add(w!(r"\GPU Engine(*)\Utilization Percentage"));
-        let dedicated = query.add(w!(r"\GPU Process Memory(*)\Dedicated Usage"));
-        let shared = query.add(w!(r"\GPU Process Memory(*)\Shared Usage"));
+        // Local/Non Local Usage report resident budget usage. Dedicated/Shared Usage
+        // are committed counters and can inflate on affected Windows/driver versions.
+        let dedicated = query.add(w!(r"\GPU Process Memory(*)\Local Usage"));
+        let shared = query.add(w!(r"\GPU Process Memory(*)\Non Local Usage"));
         if engines.is_none() && dedicated.is_none() && shared.is_none() {
             return None;
         }
@@ -79,12 +83,15 @@ impl GpuProcessTracker {
             shared,
             buf: AlignedBuf::with_capacity(256 * 1024),
             names: HashMap::new(),
+            memory_available: [false; 2],
+            memory: HashMap::new(),
         })
     }
 
     /// GPU usage of every process that has any, by PID.
     pub fn sample(&mut self) -> HashMap<u32, ProcessGpu> {
         let mut out: HashMap<u32, ProcessGpu> = HashMap::new();
+        self.memory_available = [false; 2];
         if !self.query.collect() {
             return out;
         }
@@ -128,24 +135,69 @@ impl GpuProcessTracker {
                 }
             });
         }
-        // One instance per process and adapter.
-        for (counter, dedicated) in [(self.dedicated, true), (self.shared, false)] {
+        // Retain distinct physical adapters, but count duplicate instances once.
+        for (index, counter) in [self.dedicated, self.shared].into_iter().enumerate() {
             let Some(c) = counter else { continue };
-            pdh::each(c, buf, |instance, value| {
-                if !value.is_finite() || value < 1.0 {
-                    return;
-                }
-                let Some(i) = parse(instance) else { return };
-                let entry = out.entry(i.pid).or_default();
-                if dedicated {
-                    entry.dedicated = entry.dedicated.saturating_add(value as u64);
-                } else {
-                    entry.shared = entry.shared.saturating_add(value as u64);
-                }
+            self.memory.clear();
+            self.memory_available[index] = pdh::each_value(c, buf, |instance, value| {
+                record_memory(&mut self.memory, instance, value);
             });
+            let mut totals: HashMap<u32, Option<u64>> = HashMap::new();
+            for ((pid, _, _), value) in &self.memory {
+                let total = totals.entry(*pid).or_insert(Some(0));
+                *total = total.zip(*value).map(|(a, b)| a.saturating_add(b));
+            }
+            if self.memory_available[index] {
+                for entry in out.values_mut() {
+                    if index == 0 {
+                        entry.dedicated = Some(0);
+                    } else {
+                        entry.shared = Some(0);
+                    }
+                }
+            }
+            for (pid, value) in totals {
+                let entry = out.entry(pid).or_insert_with(|| ProcessGpu {
+                    dedicated: self.memory_available[0].then_some(0),
+                    shared: self.memory_available[1].then_some(0),
+                    ..Default::default()
+                });
+                if index == 0 {
+                    entry.dedicated = value;
+                } else {
+                    entry.shared = value;
+                }
+            }
         }
         out
     }
+
+    pub fn memory_available(&self) -> [bool; 2] {
+        self.memory_available
+    }
+}
+
+fn record_memory(
+    values: &mut HashMap<(u32, u64, u32), Option<u64>>,
+    instance: &str,
+    value: Option<f64>,
+) {
+    let Some(instance) = parse(instance).filter(|i| i.node.is_none()) else {
+        return;
+    };
+    let value = value
+        .filter(|value| value.is_finite() && *value >= 0. && *value < u64::MAX as f64)
+        .map(|value| value as u64);
+    values
+        .entry((instance.pid, instance.luid, instance.physical))
+        .and_modify(|known| {
+            *known = match (*known, value) {
+                (Some(a), Some(b)) => Some(a.max(b)),
+                (Some(a), None) => Some(a),
+                (None, value) => value,
+            }
+        })
+        .or_insert(value);
 }
 
 struct Instance<'a> {
@@ -160,6 +212,10 @@ struct Instance<'a> {
 /// `pid_1234_luid_0x00000000_0x0000D1F3_phys_0_eng_0_engtype_VideoDecode`
 /// (engine counters) or `pid_1234_luid_0x00000000_0x0000D1F3_phys_0` (memory).
 fn parse(instance: &str) -> Option<Instance<'_>> {
+    let instance = instance
+        .rsplit_once('#')
+        .filter(|(_, suffix)| !suffix.is_empty() && suffix.bytes().all(|c| c.is_ascii_digit()))
+        .map_or(instance, |(name, _)| name);
     let rest = instance.strip_prefix("pid_")?;
     let (pid, rest) = rest.split_once('_')?;
     let rest = rest.strip_prefix("luid_0x")?;
@@ -186,7 +242,32 @@ fn parse(instance: &str) -> Option<Instance<'_>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, utilization};
+    use super::{parse, record_memory, utilization};
+    use std::collections::HashMap;
+
+    #[test]
+    fn memory_deduplicates_physical_instances_and_keeps_zero_and_missing_distinct() {
+        let mut memory = HashMap::new();
+        let instance = "pid_42_luid_0x00000000_0x00010A2B_phys_0";
+        record_memory(&mut memory, instance, Some(128.));
+        record_memory(&mut memory, &format!("{instance}#1"), Some(128.));
+        assert_eq!(memory.len(), 1);
+        assert_eq!(memory[&(42, 0x10A2B, 0)], Some(128));
+        record_memory(
+            &mut memory,
+            "pid_42_luid_0x00000000_0x00010A2B_phys_1",
+            Some(0.),
+        );
+        record_memory(&mut memory, "pid_7_luid_0x00000000_0x00010A2B_phys_0", None);
+        record_memory(
+            &mut memory,
+            "pid_8_luid_0x00000000_0x00010A2B_phys_0",
+            Some(f64::INFINITY),
+        );
+        assert_eq!(memory[&(42, 0x10A2B, 1)], Some(0));
+        assert_eq!(memory[&(7, 0x10A2B, 0)], None);
+        assert_eq!(memory[&(8, 0x10A2B, 0)], None);
+    }
 
     #[test]
     fn invalid_provider_values_do_not_turn_into_100_percent() {
