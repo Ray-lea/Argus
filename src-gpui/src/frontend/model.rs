@@ -325,8 +325,8 @@ pub fn summarize_services(names: &[String]) -> String {
         )
     }
 }
-/// The rows of the process table in the interface's arrangement: the apps view
-/// titles a row by its description, the tree and list by the executable name.
+/// The Name column prefers the application/file description in every view.
+/// Expanded app members retain their executable identities below the app row.
 pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row> {
     let mut rows = group_rows(processes, &options);
     // A service host's description says nothing; the services it runs do. App
@@ -417,18 +417,17 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
                 .is_some_and(|names| names.iter().any(|name| contains(name)))
     };
     let compare = |a: &Row, b: &Row| compare_rows(a, b, options.sort, options.descending);
-    // The tree and list name a process by its executable, its description beside it.
-    let named_by_executable = |p: &Value, depth: usize| {
+    let named_process = |p: &Value, depth: usize| {
         let name = text(p, "name");
-        match service_title(p, options.hosted) {
-            Some(service) => Row::labeled(p.clone(), depth, service, name.to_owned()),
-            None => Row::labeled(
-                p.clone(),
-                depth,
-                web_title(p).unwrap_or_else(|| name.to_owned()),
-                process_detail(p),
-            ),
-        }
+        let primary = service_title(p, options.hosted).unwrap_or_else(|| title(p));
+        let detail = if !p["webView"].is_null() {
+            process_detail(p)
+        } else if primary != name {
+            name.to_owned()
+        } else {
+            String::new()
+        };
+        Row::labeled(p.clone(), depth, primary, detail)
     };
     let mut top = Vec::new();
     match options.mode {
@@ -503,12 +502,12 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
                 top.push(row);
             }
         }
-        "tree" => return tree_rows(processes, options, &query, &matches, &named_by_executable),
+        "tree" => return tree_rows(processes, options, &query, &matches, &named_process),
         _ => {
             top = processes
                 .iter()
                 .filter(|p| matches(p))
-                .map(|p| named_by_executable(p, 0))
+                .map(|p| named_process(p, 0))
                 .collect();
         }
     }
@@ -951,6 +950,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn name_and_image_columns_keep_their_roles_in_every_view() {
+        let processes = vec![
+            json!({"pid":1,"createTime":1,"name":"zeta.exe","description":"Alpha App","appWindow":true}),
+            json!({"pid":2,"createTime":2,"name":"alpha.exe","description":"Zulu App","appWindow":true}),
+        ];
+        for mode in ["apps", "list", "tree"] {
+            let rows = rows_of(&processes, mode, "", "name", false, &HashMap::new());
+            assert_eq!(pids(&rows), [1, 2]);
+            let first = rows.iter().find(|row| row.section.is_none()).unwrap();
+            assert_eq!(first.title, "Alpha App");
+            assert_eq!(first.detail, "zeta.exe");
+            assert_eq!(first.column_text("imageName"), Some("zeta.exe"));
+        }
+        let unknown = rows_of(
+            &[json!({"pid":3,"createTime":1,"name":"unknown.exe"})],
+            "list",
+            "",
+            "cpu",
+            false,
+            &HashMap::new(),
+        );
+        assert_eq!(unknown[0].title, "unknown.exe");
+        assert!(unknown[0].detail.is_empty());
+    }
+
+    #[test]
     fn optional_process_columns_keep_instance_identity_and_group_resource_totals() {
         let processes = vec![
             json!({"pid":1,"ppid":9,"sessionId":1,"basePriority":8,"createTime":100,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":1000,"cpuUserTime":200,"ioReadTotal":400}),
@@ -1124,7 +1149,7 @@ mod tests {
             let rows = rows_of(&processes, mode, "", "pid", false, &none);
             assert_eq!(
                 (rows[0].title.as_str(), rows[0].detail.as_str()),
-                ("app.exe", "App")
+                ("App", "app.exe")
             );
             assert_eq!(rows[1].title, apps[1].title);
             assert_eq!(rows[1].detail, apps[1].detail);
