@@ -735,6 +735,7 @@ mod tests {
 
     fn proc(pid: u32, name: &str, cpu: f32, mem: u64) -> ProcessRow {
         ProcessRow {
+            counters: Default::default(),
             pid,
             ppid: 0,
             create_time: 1,

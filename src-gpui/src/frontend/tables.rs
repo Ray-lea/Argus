@@ -27,6 +27,12 @@ enum CellKind {
     StartType,
     Enabled,
     StartupLocation,
+    ProcessText,
+    Identifier,
+    NetworkRate,
+    Duration,
+    Timestamp,
+    ProcessBoolean,
 }
 /// A CSS grid track from the tables: a fixed width or `minmax(min, fr)`.
 #[derive(Clone, Copy, PartialEq)]
@@ -41,6 +47,11 @@ struct Field {
     kind: CellKind,
     track: Track,
     end: bool,
+}
+
+struct TableLayout<'a> {
+    available: Pixels,
+    columns: &'a columns::Preferences,
 }
 /// Header and row geometry of the tables.
 const ROW_HEIGHT: f32 = 30.;
@@ -58,7 +69,7 @@ fn process_header_band() -> Pixels {
 pub(super) fn process_header_height() -> Pixels {
     px(4.) + process_header_band()
 }
-fn fields(page: &str, network: bool, available: f32) -> Vec<Field> {
+fn fields(page: &str, network: bool, _available: f32) -> Vec<Field> {
     use CellKind::*;
     use Track::*;
     let definitions: Vec<(&str, &str, CellKind, Track)> = match page {
@@ -137,76 +148,7 @@ fn fields(page: &str, network: bool, available: f32) -> Vec<Field> {
             ),
             ("state", "common.status", ConnectionState, Fixed(96.)),
         ],
-        _ => {
-            // The process table drops secondary columns as it narrows, like the
-            // responsive column priorities: first threads and handles, then PID and I/O.
-            let (name, drop_opt, drop_opt2) = if network {
-                (
-                    if available <= 920. {
-                        160.
-                    } else if available <= 1080. {
-                        200.
-                    } else {
-                        220.
-                    },
-                    available <= 1080.,
-                    available <= 920.,
-                )
-            } else {
-                (
-                    if available <= 840. {
-                        160.
-                    } else if available <= 980. {
-                        200.
-                    } else {
-                        220.
-                    },
-                    available <= 980.,
-                    available <= 840.,
-                )
-            };
-            vec![
-                ("name", "processes.column.name.label", Name, Flex(name, 1.)),
-                ("pid", "processes.column.pid.label", Pid, Fixed(72.)),
-                ("cpu", "processes.column.cpu.label", Percent, Fixed(70.)),
-                ("mem", "processes.column.mem.label", Memory, Fixed(96.)),
-                (
-                    "diskRead",
-                    "processes.column.diskRead.label",
-                    Rate,
-                    Fixed(104.),
-                ),
-                (
-                    "diskWrite",
-                    "processes.column.diskWrite.label",
-                    Rate,
-                    Fixed(104.),
-                ),
-                ("io", "processes.column.io.label", Rate, Fixed(92.)),
-                ("gpu", "processes.column.gpu.label", Percent, Fixed(70.)),
-                ("net", "processes.column.net.label", Rate, Fixed(92.)),
-                (
-                    "threads",
-                    "processes.column.threads.label",
-                    Count,
-                    Fixed(62.),
-                ),
-                (
-                    "handles",
-                    "processes.column.handles.label",
-                    Count,
-                    Fixed(76.),
-                ),
-            ]
-            .into_iter()
-            .filter(|(key, ..)| match *key {
-                "net" => network,
-                "threads" | "handles" => !drop_opt,
-                "pid" | "io" => !drop_opt2,
-                _ => true,
-            })
-            .collect()
-        }
+        _ => return process_fields(&columns::Preferences::default(), network),
     };
     definitions
         .into_iter()
@@ -222,11 +164,84 @@ fn fields(page: &str, network: bool, available: f32) -> Vec<Field> {
         })
         .collect()
 }
+
+fn process_fields(preferences: &columns::Preferences, network: bool) -> Vec<Field> {
+    use columns::Format;
+    preferences
+        .visible(network)
+        .into_iter()
+        .map(|column| {
+            let kind = match column.format {
+                Format::Name => CellKind::Name,
+                Format::Text => CellKind::ProcessText,
+                Format::Identifier if column.key == "pid" => CellKind::Pid,
+                Format::Identifier => CellKind::Identifier,
+                Format::Count => CellKind::Count,
+                Format::Percent => CellKind::Percent,
+                Format::Memory => CellKind::Memory,
+                Format::Rate => CellKind::Rate,
+                Format::Network => CellKind::NetworkRate,
+                Format::Duration => CellKind::Duration,
+                Format::Timestamp => CellKind::Timestamp,
+                Format::Boolean => CellKind::ProcessBoolean,
+            };
+            Field {
+                key: column.key,
+                label: label(&format!("processes.column.{}.label", column.key)),
+                kind,
+                track: if !preferences.auto_width {
+                    Track::Fixed(
+                        preferences
+                            .widths
+                            .get(column.key)
+                            .copied()
+                            .unwrap_or(column.width),
+                    )
+                } else if column.key == "name" {
+                    Track::Flex(column.width, 1.)
+                } else {
+                    Track::Fixed(column.width)
+                },
+                end: !matches!(
+                    column.format,
+                    Format::Name | Format::Text | Format::Timestamp | Format::Boolean
+                ),
+            }
+        })
+        .collect()
+}
 fn cell(row: &Row, field: &Field) -> String {
     let raw = &row.raw;
     let missing = || label("format.missing");
     match field.kind {
         CellKind::Name => row.title.clone(),
+        CellKind::ProcessText => row
+            .column_text(field.key)
+            .map(str::to_owned)
+            .unwrap_or_else(missing),
+        CellKind::Identifier => row
+            .metric(field.key)
+            .map(|value| format!("{value:.0}"))
+            .unwrap_or_else(missing),
+        CellKind::Duration => row
+            .metric(field.key)
+            .map(pages::cpu_time)
+            .unwrap_or_else(missing),
+        CellKind::Timestamp => row
+            .metric(field.key)
+            .map(pages::date_time)
+            .unwrap_or_else(missing),
+        CellKind::ProcessBoolean => row
+            .metric(field.key)
+            .map(|value| {
+                label(match (field.key, value > 0.) {
+                    ("suspended", true) => "processes.columns.yes",
+                    ("suspended", false) => "processes.columns.no",
+                    (_, true) => "common.on",
+                    (_, false) => "common.off",
+                })
+            })
+            .unwrap_or_else(missing),
         CellKind::Dim | CellKind::Mono | CellKind::MonoDim => {
             let value = &raw[field.key];
             value.as_str().map(str::to_owned).unwrap_or_else(|| {
@@ -265,9 +280,15 @@ fn cell(row: &Row, field: &Field) -> String {
             .unwrap_or_else(missing),
         CellKind::Memory => row
             .metric(field.key)
-            .map(theme::memory)
+            .map(|value| {
+                if field.key.starts_with("io") && field.key.ends_with("Total") {
+                    theme::bytes(value, false)
+                } else {
+                    theme::memory(value)
+                }
+            })
             .unwrap_or_else(missing),
-        CellKind::Rate => row
+        CellKind::Rate | CellKind::NetworkRate => row
             .metric(field.key)
             .map(|v| theme::bytes(v, true))
             .unwrap_or_else(missing),
@@ -310,6 +331,8 @@ pub(super) struct NativeTable {
     columns: Vec<Column>,
     icons: HashMap<u32, Arc<Image>>,
     available: Pixels,
+    process_columns: columns::Preferences,
+    font_size: Pixels,
     /// A row the desktop selected itself; the table's select event for it is ignored.
     echo: Option<usize>,
     /// Cell hints (`tips`): the row under the pointer reports its hinted
@@ -426,6 +449,8 @@ impl NativeTable {
             columns: vec![],
             icons: HashMap::new(),
             available: px(0.),
+            process_columns: columns::Preferences::default(),
+            font_size: px(0.),
             echo: None,
         }
     }
@@ -434,14 +459,25 @@ impl NativeTable {
         page: &str,
         rows: Arc<Vec<Row>>,
         network: bool,
-        available: Pixels,
+        layout: TableLayout<'_>,
         sort: (&str, bool),
-        _cx: &App,
+        cx: &App,
     ) -> bool {
+        let TableLayout {
+            available,
+            columns: preferences,
+        } = layout;
         self.rows = rows;
-        let fields = fields(page, network, f32::from(available));
+        let mut fields = if page == "processes" {
+            process_fields(preferences, network)
+        } else {
+            fields(page, network, f32::from(available))
+        };
+        let font_size = theme::font(12.);
         if self.page == page
             && self.available == available
+            && self.font_size == font_size
+            && (page != "processes" || &self.process_columns == preferences)
             && self
                 .fields
                 .iter()
@@ -451,7 +487,27 @@ impl NativeTable {
             return false;
         }
         self.available = available;
+        self.font_size = font_size;
+        self.process_columns = preferences.clone();
         self.page = page.into();
+        if page == "processes" && preferences.auto_width {
+            let text_system = gpui_kit::gpui::WindowTextSystem::new(cx.text_system().clone());
+            for field in &mut fields {
+                let run = theme::text_run(&field.label, theme::LABEL_WEIGHT, cx);
+                let header = f32::from(
+                    text_system
+                        .layout_line(&field.label, font_size, &[run], None)
+                        .width,
+                )
+                .ceil()
+                    + CELL_PADDING * 2.
+                    + 14.;
+                field.track = match field.track {
+                    Track::Fixed(width) => Track::Fixed(width.max(header)),
+                    Track::Flex(width, fr) => Track::Flex(width.max(header), fr),
+                };
+            }
+        }
         self.fields = fields;
         self.header_totals.borrow_mut().clear();
         // Resolve the grid tracks like CSS: fixed tracks first, then the flexible
@@ -522,6 +578,8 @@ impl NativeTable {
             .map(|(index, (field, width))| {
                 let column = Column::new(field.key, field.label.clone())
                     .width(width)
+                    .min_width(48.)
+                    .resizable(page != "processes" || !preferences.auto_width)
                     .paddings(Edges::all(px(0.)))
                     .sort(if field.key == sort.0 {
                         if sort.1 {
@@ -605,6 +663,16 @@ impl TableDelegate for NativeTable {
         // row (`process_header_height`).
         div()
             .id("native-table-header")
+            .when(self.page == "processes", |d| {
+                let owner = self.owner.clone();
+                d.on_mouse_down(MouseButton::Right, move |_, window, cx| {
+                    cx.stop_propagation();
+                    let owner = owner.clone();
+                    window.defer(cx, move |window, cx| {
+                        let _ = owner.update(cx, |this, cx| this.process_header_menu(window, cx));
+                    });
+                })
+            })
             .px(px(ROW_INSET))
             .pt(px(4.))
             .when(filtered.is_none(), |d| d.pb(px(4.)))
@@ -828,7 +896,7 @@ impl TableDelegate for NativeTable {
         let field = &self.fields[column];
         let p = Palette::current(cx);
         let faint = p.faint;
-        let value = if field.key == "net" {
+        let value = if field.kind == CellKind::NetworkRate {
             let bits = self.owner.upgrade().is_some_and(|owner| {
                 owner
                     .read(cx)
@@ -836,7 +904,7 @@ impl TableDelegate for NativeTable {
                     .get::<String>("netUnit", "bytes".into())
                     == "bits"
             });
-            row.metric("net")
+            row.metric(field.key)
                 .map(|value| {
                     if value < 1. {
                         "0".into()
@@ -864,7 +932,7 @@ impl TableDelegate for NativeTable {
             && row.section.is_none()
             && matches!(
                 field.kind,
-                CellKind::Percent | CellKind::Memory | CellKind::Rate
+                CellKind::Percent | CellKind::Memory | CellKind::Rate | CellKind::NetworkRate
             )
             && let Some(value) = row.metric(field.key)
         {
@@ -987,7 +1055,10 @@ impl TableDelegate for NativeTable {
                     )
                     .child(self.hint_text(div().truncate().child(value), row, field.key, hint));
             }
-            CellKind::Dim | CellKind::ServicePid | CellKind::StartupLocation => {
+            CellKind::Dim
+            | CellKind::ServicePid
+            | CellKind::StartupLocation
+            | CellKind::ProcessText => {
                 element = element.text_color(faint).child(self.hint_text(
                     div().truncate().child(value),
                     row,
@@ -995,7 +1066,7 @@ impl TableDelegate for NativeTable {
                     hint,
                 ));
             }
-            CellKind::Pid => {
+            CellKind::Pid | CellKind::Identifier => {
                 element = element.text_color(faint).child(value);
             }
             _ => {
@@ -1003,7 +1074,7 @@ impl TableDelegate for NativeTable {
                 let reading = row.metric(field.key);
                 let dim = match field.kind {
                     CellKind::Percent => reading.is_none_or(|v| v < 0.05),
-                    CellKind::Rate => reading.is_none_or(|v| v < 1.),
+                    CellKind::Rate | CellKind::NetworkRate => reading.is_none_or(|v| v < 1.),
                     _ => false,
                 };
                 element = element.when(dim, |d| d.text_color(faint)).child(value);
@@ -1211,6 +1282,9 @@ impl NativeTable {
             }
             ("services", "description") | ("startup", "command") => {
                 Some(text(raw, field.key).to_owned()).filter(|hint| !hint.is_empty())
+            }
+            ("processes", _) if field.kind == CellKind::ProcessText => {
+                row.column_text(field.key).map(str::to_owned)
             }
             ("startup", "enabled") => raw["blocked"]
                 .as_str()
@@ -1598,6 +1672,7 @@ impl Desktop {
             let page = self.page.clone();
             let network = boolean(&self.snapshot, "processNetwork");
             let sort = (self.sort.as_str(), self.descending);
+            let column_preferences = columns::Preferences::load(&self.prefs);
             let selected = self
                 .selected
                 .get(&page)
@@ -1607,10 +1682,17 @@ impl Desktop {
                 if available <= px(0.) {
                     return;
                 }
-                if state
-                    .delegate_mut()
-                    .configure(&page, rows, network, available, sort, cx)
-                {
+                if state.delegate_mut().configure(
+                    &page,
+                    rows,
+                    network,
+                    TableLayout {
+                        available,
+                        columns: &column_preferences,
+                    },
+                    sort,
+                    cx,
+                ) {
                     state.refresh(cx);
                 }
                 if selected != state.selected_row() {
@@ -1670,7 +1752,24 @@ impl Desktop {
             self.subscriptions.push(cx.subscribe_in(
                 &table,
                 window,
-                |this, _, event, window, cx| match event {
+                |this, source, event, window, cx| match event {
+                    TableEvent::ColumnWidthsChanged(widths) => {
+                        let source = source.read(cx);
+                        if source.delegate().page != "processes" {
+                            return;
+                        }
+                        let mut preferences = columns::Preferences::load(&this.prefs);
+                        if preferences.auto_width {
+                            return;
+                        }
+                        for (field, width) in source.delegate().fields.iter().zip(widths) {
+                            preferences
+                                .widths
+                                .insert(field.key.into(), f32::from(*width).clamp(48., 1200.));
+                        }
+                        this.prefs.set(columns::PREFERENCE, preferences);
+                        cx.notify();
+                    }
                     TableEvent::SelectRow(index) => {
                         let echo = this.table.as_ref().is_some_and(|table| {
                             table.update(cx, |state, _| state.delegate_mut().echo.take())
@@ -1746,6 +1845,7 @@ impl Desktop {
         let page = self.page.clone();
         let network = boolean(&self.snapshot, "processNetwork");
         let sort = (self.sort.as_str(), self.descending);
+        let column_preferences = columns::Preferences::load(&self.prefs);
         let available = window.viewport_size().width
             - px(24.)
             - px(if self.page == "processes" && self.details_open {
@@ -1766,11 +1866,20 @@ impl Desktop {
             let mut changed = false;
             if !Arc::ptr_eq(&state.delegate().rows, &rows)
                 || state.delegate().available != available
+                || (page == "processes" && state.delegate().process_columns != column_preferences)
+                || state.delegate().font_size != theme::font(12.)
             {
-                if state
-                    .delegate_mut()
-                    .configure(&page, rows, network, available, sort, cx)
-                {
+                if state.delegate_mut().configure(
+                    &page,
+                    rows,
+                    network,
+                    TableLayout {
+                        available,
+                        columns: &column_preferences,
+                    },
+                    sort,
+                    cx,
+                ) {
                     state.refresh(cx);
                 }
                 changed = true;
@@ -1883,6 +1992,64 @@ impl Desktop {
 /// Case-insensitive comparison that orders digit runs by value, like `Intl.Collator`
 /// with `numeric: true`.
 impl Desktop {
+    pub(in crate::frontend) fn process_columns_diagnostics(&self, cx: &App) -> Value {
+        let table = self.tables.get("processes").map(|pair| &pair.0);
+        let visible=table.map(|table| {
+            let state=table.read(cx);
+            state.delegate().fields.iter().enumerate().map(|(index,field)|json!({
+                "key":field.key,"width":state.col_width(index).map(f32::from),
+                "resizable":state.delegate().columns[index].resizable,
+                "bounds":self.header_bounds.borrow().get(field.key).map(|b|[f32::from(b.left()),f32::from(b.top()),f32::from(b.size.width),f32::from(b.size.height)])
+            })).collect::<Vec<_>>()
+        }).unwrap_or_default();
+        let anchors = self
+            .ui
+            .anchors
+            .borrow()
+            .iter()
+            .filter(|(key, _)| key.starts_with("column-"))
+            .map(|(key, b)| {
+                (
+                    key.to_string(),
+                    json!([
+                        f32::from(b.left()),
+                        f32::from(b.top()),
+                        f32::from(b.size.width),
+                        f32::from(b.size.height)
+                    ]),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        json!({"preferences":columns::Preferences::load(&self.prefs),"visible":visible,"anchors":anchors,
+            "popup":self.popup.is_some(),"modal":self.modal.as_ref().filter(|modal|modal.kind=="columns").map(|modal|&modal.args)})
+    }
+
+    pub(in crate::frontend) fn capture_process_widths(
+        &self,
+        preferences: &mut columns::Preferences,
+        cx: &App,
+    ) {
+        let table = self
+            .tables
+            .get("processes")
+            .map(|pair| &pair.0)
+            .or_else(|| {
+                (self.page == "processes")
+                    .then_some(self.table.as_ref())
+                    .flatten()
+            });
+        if let Some(table) = table {
+            let state = table.read(cx);
+            for (index, field) in state.delegate().fields.iter().enumerate() {
+                if let Some(width) = state.col_width(index) {
+                    preferences
+                        .widths
+                        .insert(field.key.into(), f32::from(width).clamp(48., 1200.));
+                }
+            }
+        }
+    }
+
     /// Puts the table's own selection back on the selected row (or none), after
     /// a click the desktop did not turn into a selection.
     pub(in crate::frontend) fn sync_table_selection(&self, cx: &mut Context<Self>) {
@@ -2095,6 +2262,9 @@ fn sort_columns(page: &str) -> Option<SortColumns> {
 /// Whether `page`'s table sorts by the column `key`; the table disables the
 /// headers of the others (a column without `sortValue`).
 pub(super) fn sortable(page: &str, key: &str) -> bool {
+    if page == "processes" {
+        return columns::definition(key).is_some();
+    }
     sort_columns(page).is_none_or(|(_, columns)| columns.iter().any(|(field, _)| *field == key))
 }
 /// A saved `tableSort.<table>` value as a sort of `page`, if it names one of
@@ -2154,7 +2324,15 @@ pub(super) fn saved_filters(prefs: &prefs::Prefs) -> HashMap<String, String> {
 /// Text columns start ascending and figures descending, the useful first view.
 pub(super) fn descending_first(page: &str, key: &str) -> bool {
     match page {
-        "processes" => !matches!(key, "name" | "pid"),
+        "processes" => columns::definition(key).is_some_and(|column| {
+            !matches!(
+                column.format,
+                columns::Format::Name
+                    | columns::Format::Text
+                    | columns::Format::Identifier
+                    | columns::Format::Timestamp
+            )
+        }),
         "services" => key == "pid",
         "startup" => key == "enabled",
         "network" => matches!(key, "pid" | "localPort" | "remotePort"),

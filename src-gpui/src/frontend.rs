@@ -4,6 +4,7 @@ mod assets;
 mod backend;
 mod charts;
 mod collation;
+mod columns;
 mod dialogs;
 mod gpu_usage;
 mod inline;

@@ -235,6 +235,7 @@ mod tests {
 
     fn process(pid: u32, disk: Option<u64>) -> argus_core::ProcessRow {
         argus_core::ProcessRow {
+            counters: Default::default(),
             pid,
             ppid: 0,
             create_time: 10,

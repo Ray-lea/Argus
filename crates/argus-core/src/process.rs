@@ -50,6 +50,8 @@ pub struct ProcessRow {
     pub cpu: f32,
     /// Total CPU time consumed, ms.
     pub cpu_time: u64,
+    #[serde(flatten)]
+    pub counters: ProcessCounters,
     /// Private working set (what Task Manager calls "Memory").
     pub private_ws: u64,
     pub working_set: u64,
@@ -85,6 +87,38 @@ pub struct ProcessRow {
     pub app_window: bool,
     /// Windows component identity for display grouping, not an action safety check.
     pub windows_process: bool,
+}
+
+/// Additional columns from the same system snapshot, without per-process queries.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessCounters {
+    /// Accumulated processor time, milliseconds.
+    pub cpu_user_time: u64,
+    pub cpu_kernel_time: u64,
+    pub peak_working_set: u64,
+    pub virtual_size: u64,
+    /// All page faults reported for this process, including soft faults.
+    pub page_faults: u32,
+    /// Lifetime transfer totals, bytes, across file, network, and device I/O.
+    pub io_read_total: u64,
+    pub io_write_total: u64,
+    pub io_other_total: u64,
+}
+
+impl ProcessCounters {
+    fn from_snapshot(p: &crate::nt::SystemProcessInformation) -> Self {
+        Self {
+            cpu_user_time: (p.user_time.max(0) / 10_000) as u64,
+            cpu_kernel_time: (p.kernel_time.max(0) / 10_000) as u64,
+            peak_working_set: p.peak_working_set_size as u64,
+            virtual_size: p.virtual_size as u64,
+            page_faults: p.page_fault_count,
+            io_read_total: p.read_transfer_count.max(0) as u64,
+            io_write_total: p.write_transfer_count.max(0) as u64,
+            io_other_total: p.other_transfer_count.max(0) as u64,
+        }
+    }
 }
 
 fn kernel_process(pid: u32, parent: u32, name: &str, has_path: bool) -> bool {
@@ -327,6 +361,7 @@ impl ProcessTracker {
                 web_view: None,
                 cpu,
                 cpu_time: (cpu_ticks / 10_000) as u64,
+                counters: ProcessCounters::from_snapshot(p),
                 private_ws: p.working_set_private_size as u64,
                 working_set: p.working_set_size as u64,
                 commit: p.private_page_count as u64,
@@ -538,6 +573,31 @@ pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extra_counters_keep_native_units_and_clamp_invalid_signed_values() {
+        // This native record contains only integer fields and nullable pointers.
+        let mut snapshot: crate::nt::SystemProcessInformation = unsafe { std::mem::zeroed() };
+        snapshot.user_time = 12_345_678;
+        snapshot.kernel_time = 45_678_901;
+        snapshot.peak_working_set_size = 12_345;
+        snapshot.virtual_size = 67_890;
+        snapshot.page_fault_count = 456;
+        snapshot.read_transfer_count = 9_876_543;
+        snapshot.write_transfer_count = 123;
+        snapshot.other_transfer_count = -1;
+        let counters = ProcessCounters::from_snapshot(&snapshot);
+        assert_eq!(counters.cpu_user_time, 1234);
+        assert_eq!(counters.cpu_kernel_time, 4567);
+        assert_eq!(counters.peak_working_set, 12_345);
+        assert_eq!(counters.virtual_size, 67_890);
+        assert_eq!(counters.page_faults, 456);
+        assert_eq!(counters.io_read_total, 9_876_543);
+        assert_eq!(counters.io_write_total, 123);
+        assert_eq!(counters.io_other_total, 0);
+        snapshot.user_time = -1;
+        assert_eq!(ProcessCounters::from_snapshot(&snapshot).cpu_user_time, 0);
+    }
 
     #[test]
     fn only_kernel_owned_imageless_instances_use_the_special_system_category() {

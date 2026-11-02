@@ -1014,6 +1014,12 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(label) = control["inspectColumns"].as_str() {
+            println!(
+                "{}",
+                json!({"event":"ui-process-columns","label":label,"state":self.process_columns_diagnostics(cx)})
+            );
+        }
         if let Some(groups) = control["freezeChartGroups"].as_array()
             && let Some(layer) = self.chart_layer.clone()
         {
@@ -1087,22 +1093,27 @@ impl Desktop {
         if let Some(mouse) = control.get("mouse") {
             // A left-button pointer step at a point (test only): {"type":"move|down|up","x":…,"y":…}.
             let position = point(px(number(mouse, "x") as f32), px(number(mouse, "y") as f32));
+            let button = if mouse["button"].as_str() == Some("right") {
+                MouseButton::Right
+            } else {
+                MouseButton::Left
+            };
             let input = match mouse["type"].as_str() {
                 Some("down") => PlatformInput::MouseDown(MouseDownEvent {
                     position,
-                    button: MouseButton::Left,
+                    button,
                     click_count: 1,
                     ..Default::default()
                 }),
                 Some("up") => PlatformInput::MouseUp(MouseUpEvent {
                     position,
-                    button: MouseButton::Left,
+                    button,
                     click_count: 1,
                     ..Default::default()
                 }),
                 Some("drag") => PlatformInput::MouseMove(MouseMoveEvent {
                     position,
-                    pressed_button: Some(MouseButton::Left),
+                    pressed_button: Some(button),
                     ..Default::default()
                 }),
                 _ => PlatformInput::MouseMove(MouseMoveEvent {

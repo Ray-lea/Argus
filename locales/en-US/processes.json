@@ -22,13 +22,28 @@
       "crashpad": "Crash handler"
     }
   },
-  "total": { "one": "{count} process", "other": "{count} processes" },
+  "total": {
+    "one": "{count} process",
+    "other": "{count} processes"
+  },
   "filtered": "The list is filtered by the search",
   "column": {
-    "name": { "label": "Name", "title": "Sort by name" },
-    "pid": { "label": "PID", "title": "Process ID" },
-    "cpu": { "label": "CPU", "title": "Share of total processor capacity" },
-    "mem": { "label": "Memory", "title": "Private working set: physical memory used by this process alone" },
+    "name": {
+      "label": "Name",
+      "title": "Sort by name"
+    },
+    "pid": {
+      "label": "PID",
+      "title": "Process ID"
+    },
+    "cpu": {
+      "label": "CPU",
+      "title": "Share of total processor capacity"
+    },
+    "mem": {
+      "label": "Memory",
+      "title": "Private working set: physical memory used by this process alone"
+    },
     "diskRead": {
       "label": "Disk read",
       "title": "Disk bytes read per second; excludes network and other device I/O"
@@ -37,11 +52,142 @@
       "label": "Disk write",
       "title": "Disk bytes written per second; excludes network and other device I/O"
     },
-    "io": { "label": "I/O", "title": "All read, write and other I/O, including files, network and devices" },
-    "gpu": { "label": "GPU", "title": "Share of time the process uses its busiest GPU engine" },
-    "net": { "label": "Network", "title": "Bytes sent and received per second" },
-    "threads": { "label": "Threads", "title": "Number of threads" },
-    "handles": { "label": "Handles", "title": "Number of handles" }
+    "io": {
+      "label": "I/O",
+      "title": "All read, write and other I/O, including files, network and devices"
+    },
+    "gpu": {
+      "label": "GPU",
+      "title": "Share of time the process uses its busiest GPU engine"
+    },
+    "net": {
+      "label": "Network",
+      "title": "Bytes sent and received per second"
+    },
+    "threads": {
+      "label": "Threads",
+      "title": "Number of threads"
+    },
+    "handles": {
+      "label": "Handles",
+      "title": "Number of handles"
+    },
+    "imageName": {
+      "label": "Image name",
+      "title": "Name of the executable file."
+    },
+    "ppid": {
+      "label": "Parent PID",
+      "title": "Parent process ID recorded at creation."
+    },
+    "path": {
+      "label": "Image path",
+      "title": "Full path of the process executable."
+    },
+    "description": {
+      "label": "Description",
+      "title": "Executable file description or packaged app name."
+    },
+    "company": {
+      "label": "Company",
+      "title": "Company name from the executable version information."
+    },
+    "sessionId": {
+      "label": "Session ID",
+      "title": "Windows session that contains the process."
+    },
+    "createTime": {
+      "label": "Start time",
+      "title": "Process creation time in the local time zone."
+    },
+    "suspended": {
+      "label": "Suspended",
+      "title": "All threads of the process are waiting in the suspended state."
+    },
+    "efficiency": {
+      "label": "Efficiency mode",
+      "title": "EcoQoS power efficiency state of the process."
+    },
+    "cpuTime": {
+      "label": "CPU time",
+      "title": "Accumulated user and kernel CPU time; groups show the member total."
+    },
+    "cpuUserTime": {
+      "label": "User CPU time",
+      "title": "Accumulated CPU time spent in user mode."
+    },
+    "cpuKernelTime": {
+      "label": "Kernel CPU time",
+      "title": "Accumulated CPU time spent in kernel mode."
+    },
+    "basePriority": {
+      "label": "Base priority",
+      "title": "Numeric process base priority reported by Windows."
+    },
+    "workingSet": {
+      "label": "Working set",
+      "title": "Resident physical memory, including private and shared pages."
+    },
+    "peakWorkingSet": {
+      "label": "Peak working set",
+      "title": "Peak working set over the process lifetime; groups sum the individual peaks."
+    },
+    "commit": {
+      "label": "Commit size",
+      "title": "Private committed memory of the process."
+    },
+    "virtualSize": {
+      "label": "Virtual size",
+      "title": "Current size of the virtual address space used by the process."
+    },
+    "pageFaults": {
+      "label": "Page faults",
+      "title": "Accumulated page faults, including soft and hard faults."
+    },
+    "ioRead": {
+      "label": "I/O read",
+      "title": "I/O bytes read per second, including files, network and devices."
+    },
+    "ioWrite": {
+      "label": "I/O write",
+      "title": "I/O bytes written per second, including files, network and devices."
+    },
+    "ioOther": {
+      "label": "Other I/O",
+      "title": "Bytes transferred per second by other I/O operations."
+    },
+    "ioReadTotal": {
+      "label": "Total I/O read",
+      "title": "Total I/O bytes read over the process lifetime."
+    },
+    "ioWriteTotal": {
+      "label": "Total I/O write",
+      "title": "Total I/O bytes written over the process lifetime."
+    },
+    "ioOtherTotal": {
+      "label": "Total other I/O",
+      "title": "Total bytes transferred by other I/O over the process lifetime."
+    },
+    "netReceived": {
+      "label": "Network receive",
+      "title": "Network traffic received by the process per second."
+    },
+    "netSent": {
+      "label": "Network send",
+      "title": "Network traffic sent by the process per second."
+    },
+    "gpuEngine": {
+      "label": "GPU engine",
+      "title": "The busiest GPU engine of the process."
+    },
+    "gpuDedicated": {
+      "label": "Dedicated GPU memory",
+      "title": "Dedicated GPU memory used by the process."
+    },
+    "gpuShared": {
+      "label": "Shared GPU memory",
+      "title": "Shared GPU memory used by the process."
+    }
   },
   "noMatch": "No processes match “{query}”",
   "efficiencyCount": {
@@ -67,7 +213,10 @@
     "idle": "Low"
   },
   "menu": {
-    "endAll": { "one": "End {count} process", "other": "End all {count} processes" },
+    "endAll": {
+      "one": "End {count} process",
+      "other": "End all {count} processes"
+    },
     "setPriority": "Set priority",
     "addRule": "Add rule",
     "copyPid": "Copy PID",
@@ -81,5 +230,25 @@
     "diskActive": "Active {value}%",
     "netTitle": "R: received, S: sent",
     "netRates": "R: {received} S: {sent}"
+  },
+  "columns": {
+    "choose": "Select columns",
+    "autoWidth": "Automatic widths",
+    "yes": "Yes",
+    "no": "No",
+    "reset": "Restore default columns",
+    "apply": "OK",
+    "description": "Choose the process columns to display by category.",
+    "nameRequired": "The Name column is always visible.",
+    "networkUnavailable": "Selected network columns appear when traffic data is available.",
+    "selected": "Selected columns: {count}",
+    "category": {
+      "general": "General",
+      "cpu": "CPU",
+      "memory": "Memory",
+      "io": "Disk and I/O",
+      "network": "Network",
+      "gpu": "GPU"
+    }
   }
 }

@@ -4,6 +4,7 @@ mod history;
 mod performance;
 mod settings;
 use super::*;
+pub(super) use details::{cpu_time, date_time};
 use gpui_kit::component::ActiveTheme;
 impl Desktop {
     pub(in crate::frontend) fn page_content(
@@ -691,6 +692,19 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         match key {
+            "processColumnsAutoWidth" => {
+                let mut preferences = columns::Preferences::load(&self.prefs);
+                preferences.auto_width = value.as_bool().unwrap_or(true);
+                if !preferences.auto_width && preferences.widths.is_empty() {
+                    self.capture_process_widths(&mut preferences, cx);
+                }
+                self.set_process_columns(preferences, cx);
+                return;
+            }
+            "processColumnsReset" => {
+                self.set_process_columns(columns::Preferences::default(), cx);
+                return;
+            }
             "finishOnboarding" => {
                 self.finish_onboarding(window, cx);
                 return;

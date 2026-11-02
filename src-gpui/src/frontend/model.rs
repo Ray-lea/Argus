@@ -1,5 +1,6 @@
 //! Renderer-independent view state and deterministic process identity/grouping.
 use super::collation::{self, SortKey};
+use super::columns;
 use super::gpu_usage::{self, GpuUsage};
 use serde_json::{Value, json};
 use std::borrow::Cow;
@@ -238,6 +239,15 @@ impl Row {
         Self::new(raw, depth, title, detail, sort_name)
     }
     pub fn metric(&self, key: &str) -> Option<f64> {
+        if columns::definition(key).is_some_and(|column| !column.aggregate) {
+            if self.section.is_some() || self.members.len() != 1 {
+                return None;
+            }
+            let value = &self.members[0][columns::raw_key(key)];
+            return value
+                .as_f64()
+                .or_else(|| value.as_bool().map(|value| f64::from(u8::from(value))));
+        }
         let key = match key {
             "mem" => "privateWs",
             other => other,
@@ -267,6 +277,21 @@ impl Row {
             .iter()
             .filter_map(|p| p[key].as_f64())
             .reduce(|sum, value| sum + value)
+    }
+
+    /// Shared identity text is shown for an app group; mixed values stay unknown.
+    pub fn column_text(&self, key: &str) -> Option<&str> {
+        if self.section.is_some() {
+            return None;
+        }
+        let key = columns::raw_key(key);
+        let first = self.members.first()?[key]
+            .as_str()
+            .filter(|value| !value.is_empty())?;
+        self.members
+            .iter()
+            .all(|member| member[key].as_str() == Some(first))
+            .then_some(first)
     }
     /// The GPU usage a heading folds in: a group's aggregate or the process's own reading.
     pub fn gpu_usage(&self) -> Cow<'_, GpuUsage> {
@@ -342,6 +367,17 @@ fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
     let order = match sort {
         "name" => direct(by_name()),
         "pid" => direct(pid(a).cmp(&pid(b))),
+        key if columns::definition(key)
+            .is_some_and(|column| column.format == columns::Format::Text) =>
+        {
+            match (a.column_text(key), b.column_text(key)) {
+                (Some(a), Some(b)) => direct(collation::compare(a, b)),
+                (None, None) => Ordering::Equal,
+                (None, _) => Ordering::Greater,
+                (_, None) => Ordering::Less,
+            }
+            .then_with(by_name)
+        }
         key => {
             let scale = match key {
                 "cpu" | "gpu" => 10.,
@@ -913,6 +949,82 @@ impl Timeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn optional_process_columns_keep_instance_identity_and_group_resource_totals() {
+        let processes = vec![
+            json!({"pid":1,"ppid":9,"sessionId":1,"basePriority":8,"createTime":100,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":1000,"cpuUserTime":200,"ioReadTotal":400}),
+            json!({"pid":2,"ppid":9,"sessionId":1,"basePriority":8,"createTime":200,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":2000,"cpuUserTime":300,"ioReadTotal":600}),
+        ];
+        let rows = rows_of(&processes, "apps", "", "workingSet", true, &HashMap::new());
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.metric("workingSet"), Some(3000.));
+        assert_eq!(row.metric("cpuUserTime"), Some(500.));
+        assert_eq!(row.metric("ioReadTotal"), Some(1000.));
+        for key in ["pid", "ppid", "sessionId", "createTime", "basePriority"] {
+            assert_eq!(row.metric(key), None);
+        }
+        assert_eq!(row.column_text("path"), Some("C:/sample.exe"));
+        assert_eq!(row.column_text("company"), Some("Example"));
+        let process = Row::process(processes[0].clone(), 0);
+        assert_eq!(process.metric("ppid"), Some(9.));
+        assert_eq!(process.metric("basePriority"), Some(8.));
+        assert_eq!(process.column_text("imageName"), Some("sample.exe"));
+    }
+
+    #[test]
+    fn extra_text_and_numeric_columns_sort_with_missing_values_last() {
+        let processes = vec![
+            json!({"pid":1,"createTime":1,"name":"one.exe","company":"Team10","workingSet":40}),
+            json!({"pid":2,"createTime":2,"name":"two.exe","company":"Team2","workingSet":20}),
+            json!({"pid":3,"createTime":3,"name":"three.exe"}),
+        ];
+        assert_eq!(
+            pids(&rows_of(
+                &processes,
+                "list",
+                "",
+                "company",
+                false,
+                &HashMap::new()
+            )),
+            [2, 1, 3]
+        );
+        assert_eq!(
+            pids(&rows_of(
+                &processes,
+                "list",
+                "",
+                "company",
+                true,
+                &HashMap::new()
+            )),
+            [1, 2, 3]
+        );
+        assert_eq!(
+            pids(&rows_of(
+                &processes,
+                "list",
+                "",
+                "workingSet",
+                false,
+                &HashMap::new()
+            )),
+            [2, 1, 3]
+        );
+        assert_eq!(
+            pids(&rows_of(
+                &processes,
+                "list",
+                "",
+                "workingSet",
+                true,
+                &HashMap::new()
+            )),
+            [1, 2, 3]
+        );
+    }
     fn rows_of(
         processes: &[Value],
         mode: &str,

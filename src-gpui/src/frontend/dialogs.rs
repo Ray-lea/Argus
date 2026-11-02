@@ -220,12 +220,15 @@ impl Desktop {
     pub(in crate::frontend) fn open_dialog(
         &mut self,
         kind: &str,
-        args: Value,
+        mut args: Value,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.close_menu(window, cx);
         self.close_select();
+        if kind == "columns" {
+            args = json!({"draft":columns::Preferences::load(&self.prefs),"category":"general"});
+        }
         let name = text(&args, "name").to_owned();
         let members = values(&args["members"]).to_vec();
         let first = members.first().cloned().unwrap_or(Value::Null);
@@ -332,6 +335,7 @@ impl Desktop {
             ),
             "task" => (label("tasks.title"), label("tasks.description"), None),
             "filelock" => (label("fileLock.title"), label("fileLock.intro"), None),
+            "columns" => (label("processes.columns.choose"), String::new(), None),
             "note" => (label("common.marks.note"), name.clone(), None),
             "update" => (String::new(), String::new(), None),
             "license" => (
@@ -966,6 +970,12 @@ impl Desktop {
                 let dialog = self.surface(dialog, id, 780., 24., window, cx);
                 self.shortcuts_dialog(dialog, id, cx)
             }
+            "columns" => {
+                let dialog = self
+                    .surface(dialog, id, 800., 16., window, cx)
+                    .overlay_closable(false);
+                self.process_columns_dialog(dialog, &modal, window, cx)
+            }
             "license" | "notices" => {
                 let dialog = self.surface(dialog, id, 720., 16., window, cx);
                 self.document_dialog(dialog, &modal, cx)
@@ -1112,6 +1122,7 @@ impl Desktop {
         }
         match modal.kind.as_str() {
             "task" => self.run_task(window, cx),
+            "columns" => self.apply_process_columns(window, cx),
             "note" => self.confirm_dialog(window, cx),
             "onboarding" => self.onboarding_next(window, cx),
             "license" | "notices" | "shortcuts" | "whatsnew" => self.close_overlay(window, cx),
@@ -1140,6 +1151,10 @@ impl Desktop {
                     self.close_overlay(window, cx);
                     (ask.then)(self, window, cx);
                 }
+                return;
+            }
+            "columns" => {
+                self.apply_process_columns(window, cx);
                 return;
             }
             "restartExplorer" => {

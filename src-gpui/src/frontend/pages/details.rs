@@ -1787,7 +1787,7 @@ fn bit_rate(bytes_per_second: f64) -> String {
 }
 
 /// CPU time as h:mm:ss.
-fn cpu_time(milliseconds: f64) -> String {
+pub(in crate::frontend) fn cpu_time(milliseconds: f64) -> String {
     let seconds = (milliseconds.max(0.) / 1000.) as u64;
     format!(
         "{}:{:02}:{:02}",
@@ -1799,7 +1799,7 @@ fn cpu_time(milliseconds: f64) -> String {
 
 /// Month, day and time of day in the interface language's usual order, as
 /// `Intl.DateTimeFormat` writes them; a zero start is system startup.
-fn date_time(unix_ms: f64) -> String {
+pub(in crate::frontend) fn date_time(unix_ms: f64) -> String {
     if unix_ms <= 0. || !unix_ms.is_finite() {
         return label("format.sinceBoot");
     }

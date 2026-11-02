@@ -25,17 +25,166 @@
   "total": "{count} 个进程",
   "filtered": "列表已按搜索内容筛选",
   "column": {
-    "name": { "label": "名称", "title": "按名称排序" },
-    "pid": { "label": "PID", "title": "进程 ID" },
-    "cpu": { "label": "CPU", "title": "占全部处理器能力的百分比" },
-    "mem": { "label": "内存", "title": "专用工作集：进程独占的物理内存" },
-    "diskRead": { "label": "磁盘读取", "title": "每秒磁盘读取字节数，不包含网络及其他设备 I/O" },
-    "diskWrite": { "label": "磁盘写入", "title": "每秒磁盘写入字节数，不包含网络及其他设备 I/O" },
-    "io": { "label": "I/O", "title": "读、写及其他 I/O 合计，包含文件、网络和设备访问" },
-    "gpu": { "label": "GPU", "title": "进程在最忙的 GPU 引擎上占用的时间比例" },
-    "net": { "label": "网络", "title": "每秒发送和接收的字节数" },
-    "threads": { "label": "线程", "title": "线程数" },
-    "handles": { "label": "句柄", "title": "句柄数" }
+    "name": {
+      "label": "名称",
+      "title": "按名称排序"
+    },
+    "pid": {
+      "label": "PID",
+      "title": "进程 ID"
+    },
+    "cpu": {
+      "label": "CPU",
+      "title": "占全部处理器能力的百分比"
+    },
+    "mem": {
+      "label": "内存",
+      "title": "专用工作集：进程独占的物理内存"
+    },
+    "diskRead": {
+      "label": "磁盘读取",
+      "title": "每秒磁盘读取字节数，不包含网络及其他设备 I/O"
+    },
+    "diskWrite": {
+      "label": "磁盘写入",
+      "title": "每秒磁盘写入字节数，不包含网络及其他设备 I/O"
+    },
+    "io": {
+      "label": "I/O",
+      "title": "读、写及其他 I/O 合计，包含文件、网络和设备访问"
+    },
+    "gpu": {
+      "label": "GPU",
+      "title": "进程在最忙的 GPU 引擎上占用的时间比例"
+    },
+    "net": {
+      "label": "网络",
+      "title": "每秒发送和接收的字节数"
+    },
+    "threads": {
+      "label": "线程",
+      "title": "线程数"
+    },
+    "handles": {
+      "label": "句柄",
+      "title": "句柄数"
+    },
+    "imageName": {
+      "label": "映像名称",
+      "title": "可执行文件的名称。"
+    },
+    "ppid": {
+      "label": "父进程 ID",
+      "title": "创建时记录的父进程 ID。"
+    },
+    "path": {
+      "label": "映像路径",
+      "title": "进程可执行文件的完整路径。"
+    },
+    "description": {
+      "label": "描述",
+      "title": "可执行文件描述或打包应用名称。"
+    },
+    "company": {
+      "label": "公司名称",
+      "title": "可执行文件版本信息中的公司名称。"
+    },
+    "sessionId": {
+      "label": "会话 ID",
+      "title": "进程所属的 Windows 会话编号。"
+    },
+    "createTime": {
+      "label": "启动时间",
+      "title": "进程创建时间，以本地时间显示。"
+    },
+    "suspended": {
+      "label": "已暂停",
+      "title": "进程的全部线程处于暂停等待状态。"
+    },
+    "efficiency": {
+      "label": "效率模式",
+      "title": "进程的 EcoQoS 节能状态。"
+    },
+    "cpuTime": {
+      "label": "CPU 时间",
+      "title": "累计用户态与内核态 CPU 时间；分组显示成员合计。"
+    },
+    "cpuUserTime": {
+      "label": "用户 CPU 时间",
+      "title": "进程累计使用的用户态 CPU 时间。"
+    },
+    "cpuKernelTime": {
+      "label": "内核 CPU 时间",
+      "title": "进程累计使用的内核态 CPU 时间。"
+    },
+    "basePriority": {
+      "label": "基本优先级",
+      "title": "Windows 报告的进程基本优先级数值。"
+    },
+    "workingSet": {
+      "label": "工作集",
+      "title": "当前驻留的物理内存，含专用与共享页面。"
+    },
+    "peakWorkingSet": {
+      "label": "工作集峰值",
+      "title": "进程生存期内的工作集峰值；分组显示成员各自峰值之和。"
+    },
+    "commit": {
+      "label": "提交大小",
+      "title": "进程专用的已提交内存。"
+    },
+    "virtualSize": {
+      "label": "虚拟内存大小",
+      "title": "进程当前占用的虚拟地址空间大小。"
+    },
+    "pageFaults": {
+      "label": "缺页次数",
+      "title": "累计缺页次数，包含软缺页与硬缺页。"
+    },
+    "ioRead": {
+      "label": "I/O 读取",
+      "title": "每秒 I/O 读取字节数，含文件、网络和设备访问。"
+    },
+    "ioWrite": {
+      "label": "I/O 写入",
+      "title": "每秒 I/O 写入字节数，含文件、网络和设备访问。"
+    },
+    "ioOther": {
+      "label": "其他 I/O",
+      "title": "其他 I/O 操作每秒传输的字节数。"
+    },
+    "ioReadTotal": {
+      "label": "累计 I/O 读取",
+      "title": "进程生存期内累计读取的 I/O 字节数。"
+    },
+    "ioWriteTotal": {
+      "label": "累计 I/O 写入",
+      "title": "进程生存期内累计写入的 I/O 字节数。"
+    },
+    "ioOtherTotal": {
+      "label": "累计其他 I/O",
+      "title": "进程生存期内其他 I/O 累计传输的字节数。"
+    },
+    "netReceived": {
+      "label": "网络接收",
+      "title": "进程每秒接收的网络流量。"
+    },
+    "netSent": {
+      "label": "网络发送",
+      "title": "进程每秒发送的网络流量。"
+    },
+    "gpuEngine": {
+      "label": "GPU 引擎",
+      "title": "进程当前最忙的 GPU 引擎。"
+    },
+    "gpuDedicated": {
+      "label": "专用 GPU 内存",
+      "title": "进程使用的专用 GPU 内存。"
+    },
+    "gpuShared": {
+      "label": "共享 GPU 内存",
+      "title": "进程使用的共享 GPU 内存。"
+    }
   },
   "noMatch": "没有与“{query}”匹配的进程",
   "efficiencyCount": "{count} 个进程处于效率模式",
@@ -72,5 +221,25 @@
     "diskActive": "活动 {value}%",
     "netTitle": "接收 / 发送",
     "netRates": "收 {received} 发 {sent}"
+  },
+  "columns": {
+    "choose": "选择列",
+    "autoWidth": "自动宽度",
+    "yes": "是",
+    "no": "否",
+    "reset": "恢复默认列",
+    "apply": "确定",
+    "description": "按类别选择进程列表中显示的列。",
+    "nameRequired": "名称列固定显示。",
+    "networkUnavailable": "已选网络列将在采集可用时显示。",
+    "selected": "已选择 {count} 列",
+    "category": {
+      "general": "基本信息",
+      "cpu": "CPU",
+      "memory": "内存",
+      "io": "磁盘与 I/O",
+      "network": "网络",
+      "gpu": "GPU"
+    }
   }
 }

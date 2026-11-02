@@ -569,6 +569,7 @@ mod tests {
 
     fn process(pid: u32, created: i64) -> ProcessRow {
         ProcessRow {
+            counters: Default::default(),
             pid,
             ppid: 0,
             create_time: created,
