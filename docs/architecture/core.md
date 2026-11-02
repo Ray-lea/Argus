@@ -23,7 +23,7 @@
 | `filelock.rs` | 文件占用：通过 Restart Manager 找出打开文件或加载 DLL 的进程，不需要管理员；整批查询被拒时二分重试，隔离出无法检查的文件 |
 | `handles.rs` | 按需枚举系统 File 句柄，复制后用 `NtQueryObject` 查询类型与名称，以文件 ID 匹配文件（含硬链接）、以路径边界匹配目录及其后代。只在辅助进程运行，流式报告进度与匹配项 |
 | `actions.rs` | 结束进程 / 进程树、设置优先级、开关效率模式（EcoQoS 加低优先级，与系统任务管理器相同）：都先校验 PID 与启动时间，防止 PID 被复用；结束时拦截关键系统进程 |
-| `gpu_process.rs` | 每进程 GPU：每次采样一个 PDH 查询，读出各引擎占用和专用 / 共享 GPU 内存，拒绝无效百分比；除最忙引擎外保留非零节点贡献及完整 LUID、物理适配器和节点身份，供应用与分类汇总使用，避免相加独立引擎 |
+| `gpu_process.rs` | 每进程 GPU：每次采样一个 PDH 查询，读出各引擎占用；显存使用 `GPU Process Memory` 的 `Local Usage` / `Non Local Usage` 驻留计数，按 PID、完整 LUID 与物理适配器去重，区分缺失和零值；除最忙引擎外保留非零节点贡献及完整身份，供应用与分类汇总使用 |
 | `disk_process.rs` | 优先复用普通进程信息中的磁盘计数尾部，旧系统回退完整进程信息的扩展记录，按 PID、创建时间和来源采样时间换算速率；逐条检查扩展线程数组与磁盘记录边界，不读取字符串及账户数据。Windows 10 的完整记录尾部按 UTF-16 对齐，数值按字节解码，以兼容未按 8 字节对齐的后续记录。普通尾部需同时通过系统版本、返回长度及图像名称边界校验；完整信息查询由管理员宿主的后台读取器或特权服务执行 |
 | `net_process.rs` | 每进程网络：优先使用独立 GUID 的私有系统 ETW 会话，仅启用 `NETWORK_TCPIP`；系统会话不可用时回退到 `Microsoft-Windows-Kernel-Network`。按提供者区分事件 ID 与操作码，解析 TCP / UDP、IPv4 / IPv6 收发字节，排除重传和复制事件。本地与服务客户端随采样周期换算速率，最短统计窗口为 0.5 秒，容许 50 ms 的调度与 IPC 抖动，并校验进程实例。快速采样时，独立线程每 250 ms 将事件送入实时消费者；最近 1.5 秒没有快速读取时停止额外刷新，采用 ETW 自身的一秒刷新定时器。关闭会话前先停止刷新线程。服务通过 `take_bytes` 维护多读者的累计计数。启动会话需要相应权限；GUI 与服务保留独立会话名，清理各自残留会话。日志记录选用的来源，并在启动后 5 秒及后续每 30 秒检查 ETW 丢失计数 |
 | `rules.rs` | 规则引擎：按程序名匹配，新进程出现时套用一次；`apply_with` 允许宿主后台线程选择本地或服务执行器，规则或权限来源改变时重新检查。分别统计已应用、权限不足和其他执行失败的次数 |
@@ -36,7 +36,9 @@
 
 ## 进程附加计数
 
-进程列的附加计数来自同一次 `SystemProcessInformation`：用户态／内核态 CPU 时间按 100 ns 转为毫秒，工作集峰值、虚拟内存与累计 I/O 保持字节，缺页保留次数。`ProcessCounters` 展平到进程 JSON 中，采样不增加逐进程系统调用。界面仍以 PID 与创建时间关联进程实例。结构字段与单位可参考 [Windows 进程快照](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerysysteminformation)及[内存计数](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-process_memory_counters)。
+进程列的附加计数来自同一次 `SystemProcessInformation`：用户态／内核态 CPU 时间按 100 ns 转为毫秒，工作集峰值、虚拟地址空间与累计 I/O 保持字节，缺页保留次数。虚拟地址空间包含预留与已提交范围；它和工作集峰值均按单进程展示。`ProcessCounters` 展平到进程 JSON 中，采样不增加逐进程系统调用。界面仍以 PID 与创建时间关联进程实例。结构字段与单位可参考 [Windows 进程快照](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerysysteminformation)及[内存计数](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-process_memory_counters)。
+
+进程显存使用驻留计数，与 DXGI 的预算用量口径对应。`Dedicated Usage` / `Shared Usage` 属于另一组提交计数，部分 Windows／驱动组合下会累积异常，因此不作为驻留计数的回退来源。来源关系可参照 [System Informer 的 GPU 计数实现](https://github.com/winsiderss/systeminformer/blob/master/plugins/ExtendedTools/counters.c)与 [Microsoft 的计数异常说明](https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/gpu-process-memory-counters-report-wrong-value)。应用分组累加成员的有效读数，任一成员缺失时保留未知；整机显存继续取适配器统计，避免重复归属的共享资源进入物理总量。
 
 ## CPU 占用
 

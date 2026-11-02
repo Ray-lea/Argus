@@ -37,6 +37,7 @@ README 预览在启用透明效果的 Windows 11 上生成。探针保持测试�
 ```bash
 cargo run -p argus-core --example dump --release       # 进程（按 CPU 排序）
 cargo run -p argus-core --example process_columns --release # 新增进程计数与采样耗时
+cargo run -p argus-core --example gpu_memory --release -- <PID> # 进程显存与原生预算用量对照
 cargo run -p argus-core --example hardware --release   # CPU、传感器、内存、磁盘、网络、GPU、电池
 cargo run -p argus-core --example disk_details --release -- 0 # 磁盘 0 的单次详情与查询耗时
 cargo run -p argus-service --example network_cadence --release -- 500 # 既有服务的半秒网络速率对照
