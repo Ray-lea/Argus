@@ -1515,6 +1515,7 @@ impl Desktop {
             "coreFilter",
             "uiMotion",
             "historyRange",
+            "netUnit",
             "fontSize",
             "uiScale",
         ] {

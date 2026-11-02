@@ -373,8 +373,7 @@ impl Desktop {
             .map(|n| number(n, "tx"))
             .sum::<f64>();
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
-        // Rate charts get a round top in the unit they read in, with a floor so idle
-        // noise does not fill the chart.
+        // Overview charts share throughput steps with device and history charts.
         let peak = |key: &str| {
             self.timeline
                 .samples
@@ -439,8 +438,8 @@ impl Desktop {
                 "totals.disk",
                 p.io,
                 Some(charts::rate_ceiling(
-                    peak("totals.disk").max(1048576.),
-                    false,
+                    peak("totals.disk"),
+                    charts::RateScale::Disk,
                 )),
                 disk_value.0,
                 disk_value.1,
@@ -465,8 +464,8 @@ impl Desktop {
                 "totals.network",
                 p.network,
                 Some(charts::rate_ceiling(
-                    peak("totals.network").max(131072.),
-                    bits,
+                    peak("totals.network"),
+                    charts::RateScale::Network(bits),
                 )),
                 net_value.0,
                 net_value.1,

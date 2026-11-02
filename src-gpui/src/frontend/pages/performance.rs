@@ -1,5 +1,5 @@
 use super::*;
-use charts::{ChartHeight, GIB, KIB, Line, Look, MIB, MetricFormat, Scale};
+use charts::{ChartHeight, GIB, KIB, Line, Look, MIB, MetricFormat, RateScale, Scale};
 use gpui_kit::base::ElementExt;
 mod cpu_motion;
 mod engines;
@@ -480,10 +480,7 @@ impl Desktop {
                     Line::new(format!("hardware.nics.{}.rx", device.index), c),
                     Line::new(format!("hardware.nics.{}.tx", device.index), c).dashed(),
                 ],
-                Scale::Rate {
-                    floor: 16. * KIB,
-                    bits: self.net_bits(),
-                },
+                Scale::Rate(RateScale::Network(self.net_bits())),
             ),
             "gpu" => (
                 vec![Line::new(format!("hardware.gpus.{}.util", device.index), c)],
@@ -2252,10 +2249,7 @@ impl Desktop {
                                 .dashed()
                                 .label(label("performance.disk.write")),
                         ],
-                        Some(Scale::Rate {
-                            floor: MIB,
-                            bits: false,
-                        }),
+                        Some(Scale::Rate(RateScale::Disk)),
                         ChartHeight::Fill,
                         Look::boxed(label("performance.disk.transferRate"))
                             .format(MetricFormat::ByteRate)
@@ -2416,10 +2410,7 @@ impl Desktop {
                         .dashed()
                         .label(label("performance.network.send")),
                 ],
-                Some(Scale::Rate {
-                    floor: 64. * KIB,
-                    bits,
-                }),
+                Some(Scale::Rate(RateScale::Network(bits))),
                 ChartHeight::Fill,
                 Look::boxed(label("performance.network.throughput"))
                     .format(MetricFormat::NetworkAlt(bits))

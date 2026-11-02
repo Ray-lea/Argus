@@ -1,7 +1,7 @@
 //! History: what the machine and its busiest processes did, up to a week back. The
 //! charts are drawn once per query; pointing at them only moves the cursor marks.
 use super::*;
-use charts::{GIB, KIB, MIB};
+use charts::GIB;
 
 pub(super) const RANGES: [(&str, i64); 4] = [
     ("1h", 3_600_000),
@@ -569,12 +569,12 @@ impl Desktop {
             let (max, scale) = match metric.field {
                 "memUsed" => (highest("memTotal").max(1.), None),
                 "disk" => {
-                    let top = charts::rate_ceiling(highest("disk").max(MIB), false);
+                    let top = charts::rate_ceiling(highest("disk"), charts::RateScale::Disk);
                     (top, Some(charts::rate_ceiling_label(top, false)))
                 }
                 "net" => {
-                    let floor = if bits { 125_000. } else { 100. * KIB };
-                    let top = charts::rate_ceiling(highest("net").max(floor), bits);
+                    let top =
+                        charts::rate_ceiling(highest("net"), charts::RateScale::Network(bits));
                     (top, Some(charts::rate_ceiling_label(top, bits)))
                 }
                 _ => (100., None),

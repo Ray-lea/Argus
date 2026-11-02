@@ -1,6 +1,10 @@
 //! Time-series adapter for GPUI's native plot primitives. Unknown samples remain gaps.
 use super::*;
 mod raster;
+mod rate;
+pub(in crate::frontend) use rate::{
+    RateScale, ceiling as rate_ceiling, label as rate_ceiling_label,
+};
 pub(super) fn raster_metrics() -> (u64, u64, usize) {
     raster::metrics()
 }
@@ -101,11 +105,8 @@ impl Line {
 #[derive(Clone, Copy, PartialEq)]
 pub(in crate::frontend) enum Scale {
     Fixed(f64),
-    /// A round rate in the unit its label shows, at least `floor` bytes per second.
-    Rate {
-        floor: f64,
-        bits: bool,
-    },
+    /// A configured disk or network throughput step in the displayed unit.
+    Rate(RateScale),
     /// A round number (watts and the like), at least `floor`, labelled in `unit`.
     Round {
         floor: f64,
@@ -316,40 +317,6 @@ pub(in crate::frontend) fn round_ceiling(x: f64) -> f64 {
     } else {
         (x / 10. - EPSILON).ceil() * 10.
     }
-}
-fn rate_units(bits: bool) -> [(f64, &'static str); 3] {
-    if bits {
-        [(1e3 / 8., "Kbps"), (1e6 / 8., "Mbps"), (1e9 / 8., "Gbps")]
-    } else {
-        [(KIB, "KB/s"), (MIB, "MB/s"), (GIB, "GB/s")]
-    }
-}
-fn rate_unit_of(bytes: f64, units: &[(f64, &str)]) -> usize {
-    let mut index = 0;
-    while index + 1 < units.len() && bytes >= units[index + 1].0 * (1. - EPSILON) {
-        index += 1;
-    }
-    index
-}
-/// A round top for a rate chart whose highest point is `peak` bytes per second.
-pub(in crate::frontend) fn rate_ceiling(peak: f64, bits: bool) -> f64 {
-    let units = rate_units(bits);
-    let mut index = rate_unit_of(peak.max(0.), &units);
-    loop {
-        let top = round_ceiling(peak / units[index].0) * units[index].0;
-        // Rounded up into the next unit: round there, "1 MB/s" rather than "1030 KB/s".
-        if index + 1 < units.len() && top >= units[index + 1].0 * (1. - EPSILON) {
-            index += 1;
-            continue;
-        }
-        return top;
-    }
-}
-/// A rate chart's top as its label shows it: "8 MB/s", "150 Mbps".
-pub(in crate::frontend) fn rate_ceiling_label(top: f64, bits: bool) -> String {
-    let units = rate_units(bits);
-    let (size, unit) = units[rate_unit_of(top, &units)];
-    format!("{} {unit}", (top / size).round())
 }
 /// The time a live chart spans at the current refresh interval: "60 s", "2 min".
 pub(in crate::frontend) fn span_label(interval: u64) -> String {
@@ -713,7 +680,7 @@ impl ChartLayer {
             let clip = placement.bounds.intersect(&placement.mask);
             let surface = plot.image_surface.borrow();
             Some(serde_json::json!({
-                "chart":id,"transformed":placement.transformed(),
+                "chart":id,"transformed":placement.transformed(),"range":[plot.min,plot.max],
                 "hovered":plot.interactive && clip.contains(&window.mouse_position()),
                 "clip":[f32::from(clip.left()),f32::from(clip.top()),f32::from(clip.size.width),f32::from(clip.size.height)],
                 "surface":surface.diagnostics(&plot, placement.bounds, plot_end(&plot, &clock, now))
@@ -1006,7 +973,7 @@ const FRAME_OPACITY: f32 = 0.45;
 /// The top-right caption a scale implies.
 fn scale_label(scale: Option<Scale>, max: f64) -> Option<String> {
     match scale? {
-        Scale::Rate { bits, .. } => Some(rate_ceiling_label(max, bits)),
+        Scale::Rate(rate) => Some(rate_ceiling_label(max, rate.bits())),
         Scale::Round { unit, .. } => Some(format!("{max} {unit}")),
         Scale::Fixed(_) => None,
     }
@@ -1761,7 +1728,7 @@ impl Desktop {
             .fold(0f64, f64::max);
         let max = match scale {
             Some(Scale::Fixed(max)) => max.max(f64::EPSILON),
-            Some(Scale::Rate { floor, bits }) => rate_ceiling(observed.max(floor), bits),
+            Some(Scale::Rate(rate)) => rate_ceiling(observed, rate),
             Some(Scale::Round { floor, .. }) => round_ceiling(observed.max(floor)),
             None => nice_max(observed),
         };
