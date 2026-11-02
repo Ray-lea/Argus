@@ -1640,7 +1640,7 @@ impl Desktop {
             note,
             error,
             controls,
-            Some(label("settings.administrator.scope")),
+            None,
         )
     }
 

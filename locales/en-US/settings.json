@@ -412,8 +412,7 @@
     "currentStandard": "Current process: standard permissions",
     "restart": "Argus restarts after switching, keeping settings and history.",
     "afterOnboarding": "Continue setup after authorizing. Argus restarts with the selected permissions when setup finishes.",
-    "standardAccount": "This account has no administrator identity, so automatic administrator startup is unavailable. The privileged service can perform supported administrative actions.",
-    "scope": "This authorization only starts Argus and stores no password. The privileged service and hardware sensor permissions remain separate. Windows may restrict files dragged from standard applications; use Choose file instead."
+    "standardAccount": "This account has no administrator identity, so automatic administrator startup is unavailable. The privileged service can perform supported administrative actions."
   },
   "appearance": {
     "scaleTitle": "Interface scale",
