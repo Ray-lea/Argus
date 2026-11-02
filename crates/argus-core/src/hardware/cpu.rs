@@ -65,6 +65,22 @@ impl CpuInfo {
 
 const CPU_KEY: PCWSTR = w!(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
 
+fn virtualization_enabled(
+    firmware: bool,
+    cpuid: impl Fn(u32) -> std::arch::x86_64::CpuidResult,
+) -> bool {
+    if firmware {
+        return true;
+    }
+    // Hyper-V consumes the extensions in its root partition, where Windows
+    // can report PF_VIRT_FIRMWARE_ENABLED as false. The Hv#1 interface's
+    // CreatePartitions privilege distinguishes that host from ordinary guests.
+    cpuid(1).ecx & (1 << 31) != 0
+        && cpuid(0x4000_0000).eax >= 0x4000_0003
+        && cpuid(0x4000_0001).eax == u32::from_le_bytes(*b"Hv#1")
+        && cpuid(0x4000_0003).ebx & 1 != 0
+}
+
 pub fn cpu_info() -> CpuInfo {
     let mut info = CpuInfo {
         name: reg_string(CPU_KEY, w!("ProcessorNameString"))
@@ -72,7 +88,10 @@ pub fn cpu_info() -> CpuInfo {
             .unwrap_or_default(),
         reference_mhz: reg_dword(CPU_KEY, w!("~MHz")).unwrap_or(0),
         logical: unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) },
-        virtualization: unsafe { IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED) }.as_bool(),
+        virtualization: virtualization_enabled(
+            unsafe { IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED) }.as_bool(),
+            std::arch::x86_64::__cpuid,
+        ),
         ..Default::default()
     };
     identify(&mut info);
@@ -322,5 +341,54 @@ fn identify(info: &mut CpuInfo) {
             data[offset..offset + 4].try_into().unwrap(),
         ))
         .filter(|v| *v != 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn virtualization_distinguishes_hyper_v_hosts_from_guests() {
+        assert!(virtualization_enabled(true, |_| panic!(
+            "firmware already available"
+        )));
+        for (present, max_leaf, interface, privileges, expected) in [
+            (
+                true,
+                0x4000_000c,
+                u32::from_le_bytes(*b"Hv#1"),
+                2865663,
+                true,
+            ),
+            (
+                true,
+                0x4000_000a,
+                u32::from_le_bytes(*b"Hv#1"),
+                32768,
+                false,
+            ),
+            (false, 0x4000_000c, u32::from_le_bytes(*b"Hv#1"), 1, false),
+            (true, 0x4000_0001, u32::from_le_bytes(*b"Hv#1"), 1, false),
+            (true, 0x4000_000c, 0, 1, false),
+        ] {
+            let read = |leaf| {
+                let mut value = std::arch::x86_64::CpuidResult {
+                    eax: 0,
+                    ebx: 0,
+                    ecx: 0,
+                    edx: 0,
+                };
+                match leaf {
+                    1 => value.ecx = u32::from(present) << 31,
+                    0x4000_0000 => value.eax = max_leaf,
+                    0x4000_0001 => value.eax = interface,
+                    0x4000_0003 => value.ebx = privileges,
+                    _ => panic!("unexpected CPUID leaf"),
+                }
+                value
+            };
+            assert_eq!(virtualization_enabled(false, read), expected);
+        }
     }
 }

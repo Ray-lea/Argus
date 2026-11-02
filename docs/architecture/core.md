@@ -59,6 +59,8 @@
 | `kernel_sensors.rs` | 与特权服务共享的固定 CPU 传感器快照；枚举定义的功耗、电压、电流、时钟和限制，每个物理核心的读数、SMU 状态及主板风扇、电源轨和温度，另有可选的核显温度、频率与 VID。宿主按开关异步补充；核显字段与 PP1 功耗仅映射到单插槽 Intel 系统中 PCI `0:2:0` 上唯一的 Intel 适配器，保留显卡原有读数，不使用 CPU 温度或封装功耗替代 |
 | `nvml.rs` | NVIDIA 板卡功耗、功耗上限及可选的 GPU 核心利用率：只从 System32 加载驱动附带的 `nvml.dll`，按 PCI 位置匹配，不支持或无效的读数不参与补充。核心利用率用于覆盖部分驱动原生节点计时遗漏的 CUDA 等负载，不替代单独的 Windows 引擎曲线 |
 
+CPU 虚拟化状态优先使用 Windows 的可用标志；Hyper-V 或 VBS 占用虚拟化扩展时，结合 `Hv#1` 接口的 `CreatePartitions` 权限识别宿主。普通虚拟机客体继续按其可用的虚拟化扩展判断。权限位定义见 [Hyper-V 分区权限](https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)。
+
 ## 示例
 
 `examples/` 下的示例直接打印采集结果（`dump`、`hardware`、`m3`、`lockers`、`gpu_processes`、`gpu_diagnostics`、`history`）；`gpu_compute` 提供有界的 CUDA 测试负载。用法见[环境与命令](../development/README.md#验证采集数据)。
