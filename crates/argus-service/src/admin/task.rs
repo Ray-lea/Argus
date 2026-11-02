@@ -23,14 +23,25 @@ impl Scheduler {
         let initialized = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         // The native UI can already have initialized this thread as an STA.
         if initialized.is_err() && initialized.0 as u32 != 0x80010106 {
-            return Err(initialized.0 as u32);
+            return util::stage(
+                "administrator COM initialization",
+                Err(initialized.0 as u32),
+            );
         }
         let result = (|| unsafe {
-            let service: ITaskService =
-                CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER)?;
+            let service: ITaskService = util::stage(
+                "administrator TaskScheduler creation",
+                CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER).map_err(win),
+            )?;
             let empty = VARIANT::default();
-            service.Connect(&empty, &empty, &empty, &empty)?;
-            service.GetFolder(&BSTR::from("\\"))
+            util::stage(
+                "administrator ITaskService::Connect",
+                service.Connect(&empty, &empty, &empty, &empty).map_err(win),
+            )?;
+            util::stage(
+                "administrator ITaskService::GetFolder",
+                service.GetFolder(&BSTR::from("\\")).map_err(win),
+            )
         })();
         match result {
             Ok(folder) => Ok(Self {
@@ -41,7 +52,7 @@ impl Scheduler {
                 if initialized.is_ok() {
                     unsafe { CoUninitialize() };
                 }
-                Err(win(e))
+                Err(e)
             }
         }
     }
@@ -57,18 +68,21 @@ impl Scheduler {
     pub fn register(&self, id: &str, sid: &str, image: &Path) -> Result<()> {
         let xml = xml(sid, image);
         let acl = format!("O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;{sid})");
-        unsafe {
-            self.folder.RegisterTask(
-                &BSTR::from(name(id, sid)),
-                &BSTR::from(xml),
-                TASK_CREATE_OR_UPDATE.0 | TASK_DONT_ADD_PRINCIPAL_ACE.0,
-                &VARIANT::from(sid),
-                &VARIANT::default(),
-                TASK_LOGON_INTERACTIVE_TOKEN,
-                &VARIANT::from(acl.as_str()),
-            )
-        }
-        .map_err(win)?;
+        util::stage(
+            "administrator ITaskFolder::RegisterTask",
+            unsafe {
+                self.folder.RegisterTask(
+                    &BSTR::from(name(id, sid)),
+                    &BSTR::from(xml),
+                    TASK_CREATE_OR_UPDATE.0 | TASK_DONT_ADD_PRINCIPAL_ACE.0,
+                    &VARIANT::from(sid),
+                    &VARIANT::default(),
+                    TASK_LOGON_INTERACTIVE_TOKEN,
+                    &VARIANT::from(acl.as_str()),
+                )
+            }
+            .map_err(win),
+        )?;
         Ok(())
     }
 }
@@ -153,4 +167,30 @@ pub(super) fn run(id: &str, sid: &str, image: &Path, ticket: &str) -> Result<()>
     }
     .map_err(win)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "creates a temporary scheduled task in an explicitly configured disposable VM"]
+    fn vm_ambiguous_account_principal() {
+        assert_eq!(std::env::var("ARGUS_VM_TEST").as_deref(), Ok("1"));
+        let account = std::env::var("ARGUS_VM_ACCOUNT").expect("VM account name");
+        let computer = std::env::var("COMPUTERNAME").unwrap();
+        assert!(account.eq_ignore_ascii_case(&computer));
+        let sid = security::account_sid(&format!("{computer}\\{account}")).unwrap();
+        let id = "dev.argus.taskmanager.test.account";
+        let image = std::env::current_exe().unwrap();
+        let scheduler = Scheduler::new().unwrap();
+        scheduler.register(id, &sid, &image).unwrap();
+        let result = checked(id, &sid, &image);
+        scheduler.remove(id, &sid).unwrap();
+        assert!(
+            result.is_ok(),
+            "normalized task principal rejected: {:?}",
+            result.err()
+        );
+    }
 }

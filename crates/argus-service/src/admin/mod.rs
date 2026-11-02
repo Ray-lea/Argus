@@ -1,5 +1,6 @@
 //! A per-account grant to start only this protected Argus build. Task Scheduler
 //! supplies an interactive administrator token; it never stores a password.
+mod image;
 mod links;
 mod task;
 mod ticket;
@@ -368,7 +369,12 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
     }
     sweep(&dir, Some(&record.image));
     if same_account {
-        links::retarget(id, &record.source, &dir.join("argus-launcher.exe"))?;
+        // The grant is committed. Optional shortcut/compatibility migration
+        // failures must not report that the working authorization failed.
+        let _ = util::stage(
+            "administrator shortcut refresh",
+            links::retarget(id, &record.source, &dir.join("argus-launcher.exe")),
+        );
     }
     Ok(())
 }
@@ -394,9 +400,12 @@ fn read_launch(dir: &Path) -> Result<Grant> {
     Ok(value)
 }
 fn outdated(dir: &Path, record: &Grant) -> bool {
-    crate::taskmgr::image_version(&dir.join(&record.image)).is_some_and(|version| {
+    let image = dir.join(&record.image);
+    crate::taskmgr::image_version(&image).is_some_and(|version| {
         crate::taskmgr::older(version, crate::VERSION)
-            || crate::taskmgr::image_version(&record.source).is_some_and(|source| source > version)
+            || crate::taskmgr::image_version(&record.source).is_some_and(|source| {
+                source > version || (source == version && image::changed(&image, &record.source))
+            })
     })
 }
 
@@ -552,7 +561,10 @@ pub fn manage(id: &str, enable: bool) -> std::result::Result<Status, String> {
             nShow: SW_HIDE.0,
             ..Default::default()
         };
-        unsafe { ShellExecuteExW(&mut info) }.map_err(win)?;
+        util::stage(
+            "administrator ShellExecuteExW (UAC)",
+            unsafe { ShellExecuteExW(&mut info) }.map_err(win),
+        )?;
         let child = Handle(info.hProcess);
         if unsafe { WaitForSingleObject(child.0, INFINITE) } != WAIT_OBJECT_0 {
             return Err(6);

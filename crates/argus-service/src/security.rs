@@ -2,7 +2,7 @@ use std::ffi::c_void;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use windows::Win32::Security::{LookupAccountNameW, SID_NAME_USE};
+use windows::Win32::Security::{LookupAccountNameW, SID_NAME_USE, SidTypeDomain, SidTypeUser};
 
 use windows::Win32::Foundation::{HANDLE, HLOCAL, LocalFree};
 use windows::Win32::Security::Authorization::{
@@ -127,6 +127,22 @@ pub(crate) fn account_sid(name: &str) -> Result<String> {
     if validate_sid(name).is_ok() {
         return Ok(name.into());
     }
+    let (sid, domain, kind) = lookup_account(name)?;
+    if kind == SidTypeUser {
+        return Ok(sid);
+    }
+    // A bare user name matching the computer can resolve to its domain SID.
+    // Qualify only that ambiguity, and still require a user account result.
+    if kind == SidTypeDomain && !domain.is_empty() && !name.contains(['\\', '@']) {
+        let (sid, _, kind) = lookup_account(&format!("{domain}\\{name}"))?;
+        if kind == SidTypeUser {
+            return Ok(sid);
+        }
+    }
+    Err(13)
+}
+
+fn lookup_account(name: &str) -> Result<(String, String, SID_NAME_USE)> {
     let mut bytes = [0u64; 32];
     let mut size = size_of_val(&bytes) as u32;
     let mut domain = [0u16; 256];
@@ -145,7 +161,9 @@ pub(crate) fn account_sid(name: &str) -> Result<String> {
         )
     }
     .map_err(win)?;
-    sid_string(sid)
+    let end = domain.iter().position(|c| *c == 0).unwrap_or(domain.len());
+    let domain = String::from_utf16(&domain[..end]).map_err(|_| 13u32)?;
+    Ok((sid_string(sid)?, domain, kind))
 }
 
 /// A sandboxed process of the owner (restricted or AppContainer token) runs

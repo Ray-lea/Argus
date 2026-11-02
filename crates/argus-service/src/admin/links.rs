@@ -140,7 +140,15 @@ pub(super) fn retarget(id: &str, source: &Path, launcher: &Path) -> Result<()> {
     }
     clear_run_as_admin(source)?;
     let _com = task::Scheduler::new()?;
-    let mut roots = vec![known(&FOLDERID_Desktop)?, known(&FOLDERID_Programs)?];
+    let mut roots = Vec::new();
+    for (folder, stage) in [
+        (&FOLDERID_Desktop, "administrator desktop folder lookup"),
+        (&FOLDERID_Programs, "administrator programs folder lookup"),
+    ] {
+        if let Ok(path) = util::stage(stage, known(folder)) {
+            roots.push(path);
+        }
+    }
     if let Ok(roaming) = known(&FOLDERID_RoamingAppData) {
         roots.push(roaming.join(r"Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar"));
     }
