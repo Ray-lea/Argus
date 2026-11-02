@@ -121,10 +121,59 @@ pub(super) fn raw_key(key: &str) -> &str {
     }
 }
 
+pub(super) fn matching(
+    preferences: &Preferences,
+    category: &str,
+    query: &str,
+) -> Vec<&'static Definition> {
+    let terms = query
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>();
+    let candidates = if terms.is_empty() && category == "selected" {
+        preferences
+            .ordered_selected()
+            .into_iter()
+            .filter_map(definition)
+            .collect()
+    } else {
+        DEFINITIONS.iter().collect::<Vec<_>>()
+    };
+    candidates
+        .into_iter()
+        .filter(|column| {
+            if terms.is_empty() {
+                return category == "all" || category == "selected" || column.category == category;
+            }
+            let text = format!(
+                "{} {} {} {}",
+                column.key,
+                label(&format!("processes.column.{}.label", column.key)),
+                label(&format!("processes.column.{}.title", column.key)),
+                if column.key == "virtualSize" {
+                    label("processes.columns.virtualAliases")
+                } else {
+                    String::new()
+                }
+            )
+            .to_lowercase();
+            let compact = text
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect::<String>();
+            terms
+                .iter()
+                .all(|term| text.contains(term) || compact.contains(term))
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub(super) struct Preferences {
     pub selected: Vec<String>,
+    /// All known columns retain a position, including temporarily hidden columns.
+    pub order: Vec<String>,
     pub auto_width: bool,
     pub widths: BTreeMap<String, f32>,
 }
@@ -133,6 +182,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             selected: DEFAULTS.iter().map(|s| (*s).into()).collect(),
+            order: Vec::new(),
             auto_width: true,
             widths: BTreeMap::new(),
         }
@@ -151,6 +201,7 @@ impl Preferences {
             .selected
             .retain(|key| definition(key).is_some() && key != "name" && seen.insert(key.clone()));
         preferences.selected.insert(0, "name".into());
+        preferences.normalize_order();
         preferences.widths.retain(|key, width| {
             definition(key).is_some() && width.is_finite() && (48. ..=1200.).contains(width)
         });
@@ -158,8 +209,8 @@ impl Preferences {
     }
 
     pub(super) fn visible(&self, network: bool) -> Vec<&'static Definition> {
-        self.selected
-            .iter()
+        self.ordered_selected()
+            .into_iter()
             .filter_map(|key| definition(key))
             .filter(|column| network || column.category != "network")
             .collect()
@@ -169,6 +220,7 @@ impl Preferences {
         if key == "name" || definition(key).is_none() {
             return;
         }
+        self.normalize_order();
         if enabled {
             if !self.selected.iter().any(|saved| saved == key) {
                 self.selected.push(key.into());
@@ -176,6 +228,65 @@ impl Preferences {
         } else {
             self.selected.retain(|saved| saved != key);
         }
+        self.normalize_order();
+    }
+
+    fn normalize_order(&mut self) {
+        let mut seen = HashSet::new();
+        self.order
+            .retain(|key| key != "name" && definition(key).is_some() && seen.insert(key.clone()));
+        self.order.insert(0, "name".into());
+        seen.insert("name".into());
+        for key in &self.selected {
+            if seen.insert(key.clone()) {
+                self.order.push(key.clone());
+            }
+        }
+        for column in DEFINITIONS {
+            if seen.insert(column.key.into()) {
+                self.order.push(column.key.into());
+            }
+        }
+        let selected: HashSet<_> = self.selected.iter().cloned().collect();
+        self.selected = self
+            .order
+            .iter()
+            .filter(|key| selected.contains(*key))
+            .cloned()
+            .collect();
+    }
+
+    pub(super) fn ordered_selected(&self) -> Vec<&str> {
+        let order = if self.order.is_empty() {
+            &self.selected
+        } else {
+            &self.order
+        };
+        order
+            .iter()
+            .filter(|key| self.selected.contains(key))
+            .map(String::as_str)
+            .collect()
+    }
+
+    pub(super) fn move_before(&mut self, key: &str, before: Option<&str>) -> bool {
+        if key == "name"
+            || !self.selected.iter().any(|value| value == key)
+            || before.is_some_and(|target| {
+                target == "name" || target == key || definition(target).is_none()
+            })
+        {
+            return false;
+        }
+        self.normalize_order();
+        let previous = self.order.clone();
+        self.order.retain(|value| value != key);
+        let index = before
+            .and_then(|target| self.order.iter().position(|value| value == target))
+            .unwrap_or(self.order.len());
+        self.order.insert(index, key.into());
+        self.normalize_order();
+        self.order != previous
     }
 }
 
@@ -214,6 +325,37 @@ mod tests {
                 .collect::<HashSet<_>>()
                 .len(),
             DEFINITIONS.len()
+        );
+    }
+
+    #[test]
+    fn order_migrates_and_survives_hiding_a_column_and_restart() {
+        let mut prefs = Preferences::parse(&json!({"selected":["name","gpu","cpu","net","mem"]}));
+        assert_eq!(
+            prefs.ordered_selected(),
+            ["name", "gpu", "cpu", "net", "mem"]
+        );
+        assert!(prefs.move_before("mem", Some("gpu")));
+        assert_eq!(
+            prefs.ordered_selected(),
+            ["name", "mem", "gpu", "cpu", "net"]
+        );
+        prefs.set_selected("gpu", false);
+        prefs.set_selected("gpu", true);
+        let reloaded = Preferences::parse(&serde_json::to_value(&prefs).unwrap());
+        assert_eq!(
+            reloaded.ordered_selected(),
+            ["name", "mem", "gpu", "cpu", "net"]
+        );
+        assert!(!prefs.move_before("name", None));
+        assert!(!prefs.move_before("cpu", Some("name")));
+        assert_eq!(
+            prefs
+                .visible(false)
+                .iter()
+                .map(|field| field.key)
+                .collect::<Vec<_>>(),
+            ["name", "mem", "gpu", "cpu"]
         );
     }
 

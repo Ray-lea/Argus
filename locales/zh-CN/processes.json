@@ -229,8 +229,7 @@
     "no": "否",
     "reset": "恢复默认列",
     "apply": "确定",
-    "description": "按类别选择进程列表中显示的列。",
-    "nameRequired": "名称列固定显示。",
+    "description": "选择要显示的列，拖动表头可调整顺序。",
     "networkUnavailable": "已选网络列将在采集可用时显示。",
     "selected": "已选择 {count} 列",
     "category": {
@@ -239,7 +238,17 @@
       "memory": "内存",
       "io": "磁盘与 I/O",
       "network": "网络",
-      "gpu": "GPU"
-    }
+      "gpu": "GPU",
+      "all": "全部列",
+      "selected": "已选列"
+    },
+    "search": "搜索列名或说明",
+    "searchResults": "搜索结果",
+    "selectAll": "全选",
+    "clear": "清空",
+    "noMatch": "没有匹配的列",
+    "fixed": "固定",
+    "selectionSummary": "已选 {count} 列",
+    "virtualAliases": "虚拟内存 虚拟字节 地址预留"
   }
 }

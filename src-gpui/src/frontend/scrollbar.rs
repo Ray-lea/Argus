@@ -288,6 +288,7 @@ impl Element for Scrollbar {
                 "offset":f32::from(-self.handle.offset().y),"max":f32::from(self.handle.max_offset().y),
                 "view":f32::from(self.handle.bounds().size.height),
                 "maxX":f32::from(self.handle.max_offset().x),"viewW":f32::from(self.handle.bounds().size.width),
+                "offsetX":f32::from(-self.handle.offset().x),
                 "thumb":geometry.map(|g| [f32::from(g.thumb.left()), f32::from(g.thumb.top()), f32::from(g.thumb.size.width), f32::from(g.thumb.size.height)])})
             );
         }
@@ -549,8 +550,13 @@ pub(in crate::frontend) fn fresh_handle(name: &'static str, generation: u64) -> 
 /// Wheel notches over a scroller whose own wheel handling jumps (the tables'
 /// virtual lists) glide instead, as everywhere else. Paint it before the
 /// scroller: it takes the notch in the capture phase. `view` paints the scroller.
-pub(in crate::frontend) fn wheel_glide(handle: &ScrollHandle, view: EntityId) -> impl IntoElement {
-    let handle = handle.clone();
+pub(in crate::frontend) fn wheel_glide(
+    vertical: &ScrollHandle,
+    horizontal: &ScrollHandle,
+    view: EntityId,
+) -> impl IntoElement {
+    let vertical = vertical.clone();
+    let horizontal = horizontal.clone();
     canvas(
         |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
         move |_, hitbox, window, _| {
@@ -558,18 +564,34 @@ pub(in crate::frontend) fn wheel_glide(handle: &ScrollHandle, view: EntityId) ->
                 if phase != DispatchPhase::Capture
                     || event.touch_phase != TouchPhase::Moved
                     || !hitbox.should_handle_scroll(window)
-                    || !handle.bounds().contains(&event.position)
                 {
                     return;
                 }
-                // Lines come from a wheel; Shift turns them sideways, left to the table.
                 let ScrollDelta::Lines(lines) = event.delta else {
                     return;
                 };
-                if lines.y == 0. {
+                let (axis, lines) = wheel_axis(lines, event.modifiers.shift);
+                let body = vertical.bounds();
+                let header = horizontal.bounds();
+                let rail = Bounds::new(
+                    point(header.left(), body.bottom()),
+                    size(header.size.width, px(SIZE)),
+                );
+                if !body.contains(&event.position)
+                    && (axis == Axis::Vertical
+                        || (!header.contains(&event.position) && !rail.contains(&event.position)))
+                {
                     return;
                 }
-                if handle.scroll_by_lines(point(0., lines.y)) {
+                let handle = if axis == Axis::Horizontal {
+                    &horizontal
+                } else {
+                    &vertical
+                };
+                if lines.x == 0. && lines.y == 0. {
+                    return;
+                }
+                if handle.scroll_by_lines(lines) {
                     cx.notify(view);
                     cx.stop_propagation();
                 } else if handle.wheel_target() != handle.offset() {
@@ -584,6 +606,18 @@ pub(in crate::frontend) fn wheel_glide(handle: &ScrollHandle, view: EntityId) ->
     )
     .absolute()
     .size_full()
+}
+
+fn wheel_axis(lines: Point<f32>, shift: bool) -> (Axis, Point<f32>) {
+    // Windows already maps Shift+wheel to x. Synthetic and other platform events
+    // can retain y, so only map it when x is empty.
+    if shift && lines.x == 0. {
+        (Axis::Horizontal, point(lines.y, 0.))
+    } else if lines.x.abs() > lines.y.abs() {
+        (Axis::Horizontal, point(lines.x, 0.))
+    } else {
+        (Axis::Vertical, point(0., lines.y))
+    }
 }
 
 /// Gives the component library's own scrollbars (dialog bodies, popup lists)
@@ -630,4 +664,28 @@ pub(in crate::frontend) fn style_library(dark: bool, cx: &mut App) {
                         .min_length(px(MIN_THUMB))
                 }),
         );
+}
+
+#[cfg(test)]
+mod wheel_tests {
+    use super::{Axis, point, wheel_axis};
+    #[test]
+    fn horizontal_wheels_and_shift_wheels_keep_their_direction() {
+        assert_eq!(
+            wheel_axis(point(0., -3.), true),
+            (Axis::Horizontal, point(-3., 0.))
+        );
+        assert_eq!(
+            wheel_axis(point(3., 0.), true),
+            (Axis::Horizontal, point(3., 0.))
+        );
+        assert_eq!(
+            wheel_axis(point(-3., 0.), false),
+            (Axis::Horizontal, point(-3., 0.))
+        );
+        assert_eq!(
+            wheel_axis(point(0., -3.), false),
+            (Axis::Vertical, point(0., -3.))
+        );
+    }
 }

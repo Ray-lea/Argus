@@ -238,8 +238,7 @@
     "no": "No",
     "reset": "Restore default columns",
     "apply": "OK",
-    "description": "Choose the process columns to display by category.",
-    "nameRequired": "The Name column is always visible.",
+    "description": "Choose visible columns. Drag column headers to change their order.",
     "networkUnavailable": "Selected network columns appear when traffic data is available.",
     "selected": "Selected columns: {count}",
     "category": {
@@ -248,7 +247,17 @@
       "memory": "Memory",
       "io": "Disk and I/O",
       "network": "Network",
-      "gpu": "GPU"
-    }
+      "gpu": "GPU",
+      "all": "All columns",
+      "selected": "Selected"
+    },
+    "search": "Search columns or descriptions",
+    "searchResults": "Search results",
+    "selectAll": "Select all",
+    "clear": "Clear",
+    "noMatch": "No matching columns",
+    "fixed": "Fixed",
+    "selectionSummary": "{count} selected",
+    "virtualAliases": "virtual memory virtual bytes address reservation"
   }
 }

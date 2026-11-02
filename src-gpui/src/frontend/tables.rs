@@ -396,7 +396,7 @@ impl Render for TableFrame {
             // The process table keeps a rail for sideways scrolling below its
             // rows, even when the columns fit (`.hscroll`).
             .when(processes, |d| d.pb(px(scrollbar::SIZE)))
-            .child(scrollbar::wheel_glide(&rows, table))
+            .child(scrollbar::wheel_glide(&rows, &columns, table))
             .child(
                 DataTable::new(&self.state)
                     .small()
@@ -623,6 +623,7 @@ impl NativeTable {
                     .width(width)
                     .min_width(48.)
                     .resizable(page != "processes" || !preferences.auto_width)
+                    .movable(page == "processes" && field.key != "name")
                     .paddings(Edges::all(px(0.)))
                     .sort(if field.key == sort.0 {
                         if sort.1 {
@@ -646,6 +647,26 @@ impl NativeTable {
     }
 }
 impl TableDelegate for NativeTable {
+    fn move_column(
+        &mut self,
+        from: usize,
+        to: usize,
+        _: &mut Window,
+        _: &mut Context<TableState<Self>>,
+    ) {
+        if self.page != "processes"
+            || from == 0
+            || to == 0
+            || from >= self.fields.len()
+            || to >= self.fields.len()
+        {
+            return;
+        }
+        let field = self.fields.remove(from);
+        self.fields.insert(to, field);
+        let column = self.columns.remove(from);
+        self.columns.insert(to, column);
+    }
     fn columns_count(&self, _cx: &App) -> usize {
         self.columns.len()
     }
@@ -1766,11 +1787,12 @@ impl Desktop {
         if self.table.is_none() {
             let owner = cx.entity().downgrade();
             let tips = self.tips.clone();
+            let movable = self.page == "processes";
             let table = cx.new(|cx| {
                 let mut state = TableState::new(NativeTable::new(owner, tips), window, cx)
                     .col_selectable(false)
                     .sortable(false)
-                    .col_movable(false);
+                    .col_movable(movable);
                 let list = state.vertical_scroll_handle.0.borrow().base_handle.clone();
                 let horizontal = state.horizontal_scroll_handle.as_ref().clone();
                 state.delegate_mut().list = Some(list);
@@ -1781,6 +1803,22 @@ impl Desktop {
                 &table,
                 window,
                 |this, source, event, window, cx| match event {
+                    TableEvent::MoveColumn(_, to) => {
+                        let state = source.read(cx);
+                        if state.delegate().page != "processes" {
+                            return;
+                        }
+                        let fields = &state.delegate().fields;
+                        let Some(moved) = fields.get(*to) else {
+                            return;
+                        };
+                        let mut preferences = columns::Preferences::load(&this.prefs);
+                        if preferences
+                            .move_before(moved.key, fields.get(to + 1).map(|field| field.key))
+                        {
+                            this.set_process_columns(preferences, cx);
+                        }
+                    }
                     TableEvent::ColumnWidthsChanged(widths) => {
                         let source = source.read(cx);
                         if source.delegate().page != "processes" {

@@ -227,7 +227,7 @@ impl Desktop {
         self.close_menu(window, cx);
         self.close_select();
         if kind == "columns" {
-            args = json!({"draft":columns::Preferences::load(&self.prefs),"category":"general"});
+            args = json!({"draft":columns::Preferences::load(&self.prefs),"category":"all","query":""});
         }
         let name = text(&args, "name").to_owned();
         let members = values(&args["members"]).to_vec();
@@ -381,6 +381,24 @@ impl Desktop {
             self.close_all_modals(window, cx);
             self.forms.clear();
             match kind {
+                "columns" => {
+                    self.form("columnsSearch", "", window, cx);
+                    let input = self.forms.get("columnsSearch").unwrap().clone();
+                    self.ui.input_subscriptions.push(cx.subscribe_in(
+                        &input,
+                        window,
+                        |this, input, event, window, cx| {
+                            if matches!(event, InputEvent::Change)
+                                && let Some(modal) =
+                                    this.modal.as_mut().filter(|modal| modal.kind == "columns")
+                            {
+                                modal.args["query"] = json!(input.read(cx).value().to_string());
+                                window.refresh();
+                                cx.notify();
+                            }
+                        },
+                    ));
+                }
                 "task" => {
                     self.form("value", text(&args, "command"), window, cx);
                     if let Some(input) = self.forms.get("value").cloned() {
@@ -471,6 +489,11 @@ impl Desktop {
         }
         let _ = id;
         if let Some(input) = self.forms.get("value").filter(|_| !stacking) {
+            input.update(cx, |state, cx| state.focus(window, cx));
+        }
+        if kind == "columns"
+            && let Some(input) = self.forms.get("columnsSearch")
+        {
             input.update(cx, |state, cx| state.focus(window, cx));
         }
         cx.notify();
@@ -623,7 +646,7 @@ impl Desktop {
                 cx,
             );
         }
-        if closed.kind == "task" {
+        if matches!(closed.kind.as_str(), "task" | "columns") {
             self.ui.input_subscriptions.clear();
         }
         if !self
@@ -972,7 +995,7 @@ impl Desktop {
             }
             "columns" => {
                 let dialog = self
-                    .surface(dialog, id, 800., 16., window, cx)
+                    .surface(dialog, id, 900., 16., window, cx)
                     .overlay_closable(false);
                 self.process_columns_dialog(dialog, &modal, window, cx)
             }
@@ -1122,7 +1145,8 @@ impl Desktop {
         }
         match modal.kind.as_str() {
             "task" => self.run_task(window, cx),
-            "columns" => self.apply_process_columns(window, cx),
+            "columns" if !in_input => self.apply_process_columns(window, cx),
+            "columns" => {}
             "note" => self.confirm_dialog(window, cx),
             "onboarding" => self.onboarding_next(window, cx),
             "license" | "notices" | "shortcuts" | "whatsnew" => self.close_overlay(window, cx),

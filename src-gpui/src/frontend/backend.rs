@@ -1020,6 +1020,14 @@ impl Desktop {
                 json!({"event":"ui-process-columns","label":label,"state":self.process_columns_diagnostics(cx)})
             );
         }
+        if self.options.fixture.is_some()
+            && let Some(value) = control["columnSearch"].as_str()
+            && let Some(input) = self.forms.get("columnsSearch").cloned()
+        {
+            input.update(cx, |state, cx| {
+                state.replace_all(value.to_owned(), window, cx)
+            });
+        }
         if let Some(groups) = control["freezeChartGroups"].as_array()
             && let Some(layer) = self.chart_layer.clone()
         {
@@ -1074,9 +1082,15 @@ impl Desktop {
             // A mouse-wheel notch at a point (test only): {"x":…,"y":…,"lines":…}.
             let event = ScrollWheelEvent {
                 position: point(px(number(wheel, "x") as f32), px(number(wheel, "y") as f32)),
-                delta: ScrollDelta::Lines(point(0., number(wheel, "lines") as f32)),
+                delta: ScrollDelta::Lines(point(
+                    number(wheel, "linesX") as f32,
+                    number(wheel, "lines") as f32,
+                )),
+                modifiers: Modifiers {
+                    shift: boolean(wheel, "shift"),
+                    ..Default::default()
+                },
                 touch_phase: TouchPhase::Moved,
-                ..Default::default()
             };
             window.defer(cx, move |window, cx| {
                 if let Some(ms) = scrollbar::trace_ms() {
