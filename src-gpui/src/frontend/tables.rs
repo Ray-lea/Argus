@@ -1,5 +1,6 @@
 //! Native virtual tables share one column model and preserve process-instance identity.
 use super::*;
+mod widths;
 use gpui_kit::base::ElementExt;
 use gpui_kit::component::{
     ActiveTheme, Disableable, Sizable,
@@ -53,6 +54,9 @@ struct Field {
 struct TableLayout<'a> {
     available: Pixels,
     columns: &'a columns::Preferences,
+    totals: HashMap<String, String>,
+    bits: bool,
+    scope: (&'a str, &'a str),
 }
 /// Header and row geometry of the tables.
 const ROW_HEIGHT: f32 = 30.;
@@ -329,6 +333,22 @@ fn cell(row: &Row, field: &Field) -> String {
         }
     }
 }
+
+fn display_cell(row: &Row, field: &Field, bits: bool) -> String {
+    if field.kind == CellKind::NetworkRate {
+        row.metric(field.key)
+            .map(|value| {
+                if value < 1. {
+                    "0".into()
+                } else {
+                    theme::network(value, bits)
+                }
+            })
+            .unwrap_or_else(|| label("format.missing"))
+    } else {
+        cell(row, field)
+    }
+}
 pub(super) struct NativeTable {
     owner: WeakEntity<Desktop>,
     page: String,
@@ -339,6 +359,13 @@ pub(super) struct NativeTable {
     available: Pixels,
     process_columns: columns::Preferences,
     font_size: Pixels,
+    locale: argus_core::i18n::Locale,
+    bits: bool,
+    scope: (String, String),
+    totals: HashMap<String, String>,
+    auto_widths: widths::AutoWidths,
+    cell_values: widths::CellValues,
+    horizontal: Option<ScrollHandle>,
     /// A row the desktop selected itself; the table's select event for it is ignored.
     echo: Option<usize>,
     /// Cell hints (`tips`): the row under the pointer reports its hinted
@@ -349,12 +376,7 @@ pub(super) struct NativeTable {
     near_due: bool,
     /// Why disk readings are missing, as of a sample.
     disk_hint: RefCell<Option<(u64, String)>>,
-    /// Process header totals, where each laid out unclipped: the frame paints
-    /// them over the header (`header_totals`).
-    header_totals: HeaderTotals,
 }
-/// A process header total by column key: its text and its laid-out bounds.
-type HeaderTotals = Rc<RefCell<HashMap<String, (Bounds<Pixels>, SharedString)>>>;
 pub(super) struct TableFrame {
     state: Entity<TableState<NativeTable>>,
 }
@@ -394,50 +416,13 @@ impl Render for TableFrame {
                 d.child(scrollbar::scrollbar("table-scrollbar", &rows, dark).view(table))
             })
             .when(processes, |d| {
-                d.child(header_totals(state.delegate().header_totals.clone(), cx))
-                    .child(
-                        scrollbar::scrollbar("table-columns-scrollbar", &columns, dark)
-                            .rail_below(&rows)
-                            .view(table),
-                    )
+                d.child(
+                    scrollbar::scrollbar("table-columns-scrollbar", &columns, dark)
+                        .rail_below(&rows)
+                        .view(table),
+                )
             })
     }
-}
-/// The process header totals, painted over the header without the cells'
-/// clip: a total wider than its column runs into the one before it, as the
-/// interface's overflowing header text does (at large font sizes).
-fn header_totals(totals: HeaderTotals, cx: &App) -> impl IntoElement {
-    let ink = Palette::current(cx).ink;
-    let family = theme::display_font(cx);
-    let size = theme::font(15.);
-    canvas(
-        |_, _, _| {},
-        move |_, _, window, cx| {
-            for (bounds, text) in totals.borrow().values() {
-                let run = TextRun {
-                    len: text.len(),
-                    font: font(family.clone()),
-                    color: ink,
-                    background_color: None,
-                    underline: None,
-                    strikethrough: None,
-                };
-                let line = window
-                    .text_system()
-                    .shape_line(text.clone(), size, &[run], None);
-                let _ = line.paint(
-                    bounds.origin,
-                    size * 1.25,
-                    TextAlign::Left,
-                    None,
-                    window,
-                    cx,
-                );
-            }
-        },
-    )
-    .absolute()
-    .inset_0()
 }
 impl NativeTable {
     fn new(owner: WeakEntity<Desktop>, tips: tips::Tips) -> Self {
@@ -448,7 +433,6 @@ impl NativeTable {
             near: None,
             near_due: false,
             disk_hint: RefCell::new(None),
-            header_totals: Rc::default(),
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -457,6 +441,13 @@ impl NativeTable {
             available: px(0.),
             process_columns: columns::Preferences::default(),
             font_size: px(0.),
+            locale: argus_core::i18n::locale(),
+            bits: false,
+            scope: (String::new(), String::new()),
+            totals: HashMap::new(),
+            auto_widths: Default::default(),
+            cell_values: HashMap::new(),
+            horizontal: None,
             echo: None,
         }
     }
@@ -472,50 +463,96 @@ impl NativeTable {
         let TableLayout {
             available,
             columns: preferences,
+            totals,
+            bits,
+            scope,
         } = layout;
+        let rows_changed = !Arc::ptr_eq(&self.rows, &rows);
+        let totals_changed = self.totals != totals;
+        let locale = argus_core::i18n::locale();
+        if rows_changed || bits != self.bits || self.locale != locale {
+            self.cell_values.clear();
+        }
         self.rows = rows;
+        self.totals = totals;
+        self.bits = bits;
+        if self.page == page && !self.fields.is_empty() && cx.has_active_drag() {
+            return false;
+        }
         let mut fields = if page == "processes" {
             process_fields(preferences, network)
         } else {
             fields(page, network, f32::from(available))
         };
         let font_size = theme::font(12.);
-        if self.page == page
+        let same_layout = self.page == page
             && self.available == available
             && self.font_size == font_size
+            && self.locale == locale
+            && self.scope.0 == scope.0
+            && self.scope.1 == scope.1
             && (page != "processes" || &self.process_columns == preferences)
             && self
                 .fields
                 .iter()
                 .map(|f| (&f.key, &f.label))
-                .eq(fields.iter().map(|f| (&f.key, &f.label)))
+                .eq(fields.iter().map(|f| (&f.key, &f.label)));
+        let gliding = self
+            .horizontal
+            .as_ref()
+            .is_some_and(|h| h.wheel_target() != h.offset());
+        if same_layout && (!preferences.auto_width || (!rows_changed && !totals_changed) || gliding)
         {
             return false;
         }
+        if !same_layout {
+            self.auto_widths
+                .reset(self.font_size != font_size || self.locale != locale);
+        }
+        self.locale = locale;
+        self.scope = (scope.0.into(), scope.1.into());
         self.available = available;
         self.font_size = font_size;
         self.process_columns = preferences.clone();
         self.page = page.into();
         if page == "processes" && preferences.auto_width {
-            let text_system = gpui_kit::gpui::WindowTextSystem::new(cx.text_system().clone());
-            for field in &mut fields {
-                let run = theme::text_run(&field.label, theme::LABEL_WEIGHT, cx);
-                let header = f32::from(
-                    text_system
-                        .layout_line(&field.label, font_size, &[run], None)
-                        .width,
-                )
-                .ceil()
-                    + CELL_PADDING * 2.
-                    + 14.;
-                field.track = match field.track {
-                    Track::Fixed(width) => Track::Fixed(width.max(header)),
-                    Track::Flex(width, fr) => Track::Flex(width.max(header), fr),
-                };
-            }
+            let (first, count) = self
+                .list
+                .as_ref()
+                .map(|list| {
+                    let height = f32::from(list.bounds().size.height);
+                    (
+                        (f32::from(-list.offset().y).max(0.) / ROW_HEIGHT) as usize,
+                        if height > 0. {
+                            (height / ROW_HEIGHT).ceil() as usize + 4
+                        } else {
+                            64
+                        },
+                    )
+                })
+                .unwrap_or((0, 64));
+            self.auto_widths.apply(
+                &mut fields,
+                widths::Contents {
+                    rows: &self.rows,
+                    range: first..(first + count.min(96)).min(self.rows.len()),
+                    totals: &self.totals,
+                    values: &mut self.cell_values,
+                    bits,
+                },
+                cx,
+            );
         }
+        let changed = !same_layout
+            || !self
+                .fields
+                .iter()
+                .map(|field| field.track)
+                .eq(fields.iter().map(|field| field.track));
         self.fields = fields;
-        self.header_totals.borrow_mut().clear();
+        if !changed {
+            return false;
+        }
         // Resolve the grid tracks like CSS: fixed tracks first, then the flexible
         // ones share what is left by their fractions without going below their minimum.
         // The rows sit 4 px in from each side and the scrollbar keeps its gutter.
@@ -774,13 +811,7 @@ impl TableDelegate for NativeTable {
             && let Some(owner) = self.owner.upgrade()
         {
             let app = owner.read(cx);
-            let total = SharedString::from(app.column_total(field.key));
-            // A total wider than its column runs into the next one. Since
-            // the table clips each cell, the frame paints it
-            // (`header_totals`) where this transparent copy is laid out.
-            let painted = field.key != "name";
-            let totals = self.header_totals.clone();
-            let measured = (field.key.to_owned(), total.clone());
+            let total = self.totals.get(field.key).cloned().unwrap_or_default();
             cell = cell.child(
                 div()
                     .flex()
@@ -789,19 +820,10 @@ impl TableDelegate for NativeTable {
                     .text_size(theme::font(15.))
                     .line_height(relative(1.25))
                     .font_family(theme::display_font(cx))
-                    .text_color(if painted {
-                        gpui_kit::gpui::transparent_black()
-                    } else {
-                        p.ink
-                    })
+                    .text_color(p.ink)
                     .whitespace_nowrap()
-                    .when(painted, |d| {
-                        d.on_prepaint(move |bounds, _, _| {
-                            totals
-                                .borrow_mut()
-                                .insert(measured.0.clone(), (bounds, measured.1.clone()));
-                        })
-                    })
+                    .max_w_full()
+                    .overflow_hidden()
                     .when(field.key == "name" && !app.query.trim().is_empty(), |d| {
                         let tip = label("processes.filtered");
                         d.child(
@@ -831,15 +853,21 @@ impl TableDelegate for NativeTable {
             .flex()
             .items_center()
             .gap(px(2.))
+            .min_w_0()
+            .max_w_full()
             .text_size(theme::font(12.))
             .line_height(relative(1.4))
             .when(processes, |d| d.mt(px(1.)))
             .whitespace_nowrap()
             .text_color(if sort.0 { p.ink } else { p.muted })
             .when(sort.0, |d| d.font_weight(theme::LABEL_WEIGHT))
-            .child(field.label.clone())
+            .child(div().min_w_0().truncate().child(field.label.clone()))
             .when(sort.0, |d| {
-                d.child(icon(if sort.1 { "ChevronDown" } else { "ChevronUp" }, p.ink).size(px(12.)))
+                d.child(
+                    icon(if sort.1 { "ChevronDown" } else { "ChevronUp" }, p.ink)
+                        .size(px(12.))
+                        .flex_shrink_0(),
+                )
             });
         let hover = p.hover;
         let press = p.press;
@@ -902,26 +930,12 @@ impl TableDelegate for NativeTable {
         let field = &self.fields[column];
         let p = Palette::current(cx);
         let faint = p.faint;
-        let value = if field.kind == CellKind::NetworkRate {
-            let bits = self.owner.upgrade().is_some_and(|owner| {
-                owner
-                    .read(cx)
-                    .prefs
-                    .get::<String>("netUnit", "bytes".into())
-                    == "bits"
-            });
-            row.metric(field.key)
-                .map(|value| {
-                    if value < 1. {
-                        "0".into()
-                    } else {
-                        theme::network(value, bits)
-                    }
-                })
-                .unwrap_or_else(|| label("format.missing"))
-        } else {
-            cell(row, field)
-        };
+        let bits = self.bits;
+        let value = self
+            .cell_values
+            .entry((row_index, field.key))
+            .or_insert_with(|| display_cell(row, field, bits))
+            .clone();
         let owner = self.owner.clone();
         let mut element = div()
             .text_size(cx.theme().font_size)
@@ -1679,6 +1693,9 @@ impl Desktop {
             let network = boolean(&self.snapshot, "processNetwork");
             let sort = (self.sort.as_str(), self.descending);
             let column_preferences = columns::Preferences::load(&self.prefs);
+            let totals = self.process_column_totals(&column_preferences);
+            let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
+            let scope = (self.view.as_str(), self.query.as_str());
             let selected = self
                 .selected
                 .get(&page)
@@ -1695,6 +1712,9 @@ impl Desktop {
                     TableLayout {
                         available,
                         columns: &column_preferences,
+                        totals,
+                        bits,
+                        scope,
                     },
                     sort,
                     cx,
@@ -1752,7 +1772,9 @@ impl Desktop {
                     .sortable(false)
                     .col_movable(false);
                 let list = state.vertical_scroll_handle.0.borrow().base_handle.clone();
+                let horizontal = state.horizontal_scroll_handle.as_ref().clone();
                 state.delegate_mut().list = Some(list);
+                state.delegate_mut().horizontal = Some(horizontal);
                 state
             });
             self.subscriptions.push(cx.subscribe_in(
@@ -1852,6 +1874,9 @@ impl Desktop {
         let network = boolean(&self.snapshot, "processNetwork");
         let sort = (self.sort.as_str(), self.descending);
         let column_preferences = columns::Preferences::load(&self.prefs);
+        let totals = self.process_column_totals(&column_preferences);
+        let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
+        let scope = (self.view.as_str(), self.query.as_str());
         let available = window.viewport_size().width
             - px(24.)
             - px(if self.page == "processes" && self.details_open {
@@ -1874,6 +1899,8 @@ impl Desktop {
                 || state.delegate().available != available
                 || (page == "processes" && state.delegate().process_columns != column_preferences)
                 || state.delegate().font_size != theme::font(12.)
+                || state.delegate().bits != bits
+                || state.delegate().locale != argus_core::i18n::locale()
             {
                 if state.delegate_mut().configure(
                     &page,
@@ -1882,6 +1909,9 @@ impl Desktop {
                     TableLayout {
                         available,
                         columns: &column_preferences,
+                        totals,
+                        bits,
+                        scope,
                     },
                     sort,
                     cx,
@@ -1998,6 +2028,16 @@ impl Desktop {
 /// Case-insensitive comparison that orders digit runs by value, like `Intl.Collator`
 /// with `numeric: true`.
 impl Desktop {
+    fn process_column_totals(&self, preferences: &columns::Preferences) -> HashMap<String, String> {
+        if self.page != "processes" {
+            return HashMap::new();
+        }
+        preferences
+            .selected
+            .iter()
+            .map(|key| (key.clone(), self.column_total(key)))
+            .collect()
+    }
     pub(in crate::frontend) fn process_columns_diagnostics(&self, cx: &App) -> Value {
         let table = self.tables.get("processes").map(|pair| &pair.0);
         let visible=table.map(|table| {
@@ -2005,6 +2045,8 @@ impl Desktop {
             state.delegate().fields.iter().enumerate().map(|(index,field)|json!({
                 "key":field.key,"width":state.col_width(index).map(f32::from),
                 "resizable":state.delegate().columns[index].resizable,
+                "movable":state.delegate().columns[index].movable,
+                "autoWidth":state.delegate().auto_widths.widths.get(field.key),
                 "bounds":self.header_bounds.borrow().get(field.key).map(|b|[f32::from(b.left()),f32::from(b.top()),f32::from(b.size.width),f32::from(b.size.height)])
             })).collect::<Vec<_>>()
         }).unwrap_or_default();
@@ -2026,7 +2068,14 @@ impl Desktop {
                 )
             })
             .collect::<serde_json::Map<_, _>>();
+        let scroll = table.map(|table| {
+            let state = table.read(cx);
+            let handle = state.horizontal_scroll_handle.as_ref();
+            json!({"x":f32::from(handle.offset().x),"maxX":f32::from(handle.max_offset().x),
+                "y":f32::from(state.vertical_scroll_handle.0.borrow().base_handle.offset().y)})
+        });
         json!({"preferences":columns::Preferences::load(&self.prefs),"visible":visible,"anchors":anchors,
+            "scroll":scroll,"sort":{"key":self.sort,"desc":self.descending},
             "popup":self.popup.is_some(),"modal":self.modal.as_ref().filter(|modal|modal.kind=="columns").map(|modal|&modal.args)})
     }
 
