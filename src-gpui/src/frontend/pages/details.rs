@@ -1807,7 +1807,7 @@ pub(in crate::frontend) fn date_time(unix_ms: f64) -> String {
     else {
         return label("format.missing");
     };
-    let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+    let offset = time::UtcOffset::local_offset_at(value).unwrap_or(time::UtcOffset::UTC);
     let value = value.to_offset(offset);
     let (month, day) = (u8::from(value.month()), value.day());
     let (hour, minute, second) = (value.hour(), value.minute(), value.second());
