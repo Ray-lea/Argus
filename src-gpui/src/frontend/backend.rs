@@ -230,6 +230,12 @@ impl Desktop {
                 "argus-restored" => self.restored(&event.value),
                 "argus-hotkey-changed" => self.hotkey_changed(window, cx),
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
+                "argus-files-dropped" => {
+                    if let Ok(paths) = serde_json::from_value::<Vec<String>>(event.value) {
+                        changed = true;
+                        self.accept_file_paths(paths, window, cx);
+                    }
+                }
                 "argus-taskmgr-ready" => {
                     self.request("task_manager_ready", json!({}), None, window, cx)
                 }

@@ -1931,6 +1931,37 @@ impl Desktop {
             )
     }
 
+    pub(in crate::frontend) fn accept_dropped_files(
+        &mut self,
+        paths: &ExternalPaths,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let paths = paths
+            .paths()
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        cx.stop_propagation();
+        self.accept_file_paths(paths, window, cx);
+    }
+
+    pub(in crate::frontend) fn accept_file_paths(
+        &mut self,
+        paths: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if paths.is_empty() {
+            return;
+        }
+        match self.modal.as_ref().map(|modal| modal.kind.as_str()) {
+            Some("filelock") => self.search_lockers(paths, window, cx),
+            None => self.open_dialog("filelock", json!({"paths":paths}), window, cx),
+            _ => {}
+        }
+    }
+
     /// Checks the chosen paths for lockers.
     pub(in crate::frontend) fn search_lockers(
         &mut self,
@@ -2113,25 +2144,28 @@ impl Desktop {
             .child(picker);
         dialog
             .child(
-                self.dialog_body(id).child(
-                    div()
-                        .pt(px(22.))
-                        .pl(px(24.))
-                        // The body keeps its scrollbar's gutter (`scrollbar-gutter: stable`).
-                        .pr(px(24. + scrollbar::SIZE))
-                        .pb(px(20.))
-                        .flex()
-                        .flex_col()
-                        .line_height(relative(1.4))
-                        .child(
-                            self.dialog_title(modal.title.clone())
-                                .line_height(relative(1.4))
-                                .mb(px(10.)),
-                        )
-                        .child(div().text_color(p.muted).child(modal.body.clone()))
-                        .child(chosen)
-                        .child(result),
-                ),
+                self.dialog_body(id)
+                    .id(("filelock-drop", id))
+                    .on_drop(cx.listener(Self::accept_dropped_files))
+                    .child(
+                        div()
+                            .pt(px(22.))
+                            .pl(px(24.))
+                            // The body keeps its scrollbar's gutter (`scrollbar-gutter: stable`).
+                            .pr(px(24. + scrollbar::SIZE))
+                            .pb(px(20.))
+                            .flex()
+                            .flex_col()
+                            .line_height(relative(1.4))
+                            .child(
+                                self.dialog_title(modal.title.clone())
+                                    .line_height(relative(1.4))
+                                    .mb(px(10.)),
+                            )
+                            .child(div().text_color(p.muted).child(modal.body.clone()))
+                            .child(chosen)
+                            .child(result),
+                    ),
             )
             .footer(
                 self.measure(id, 1).child(

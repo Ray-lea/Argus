@@ -3,6 +3,9 @@ use crate::{AppState, Options, native_runtime::Host, sampler::Control};
 use gpui_kit::{App, Window};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+#[path = "file_drop.rs"]
+mod file_drop;
+
 pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window, cx: &mut App) {
     if let Ok(handle) = window.window_handle()
         && let RawWindowHandle::Win32(handle) = handle.as_raw()
@@ -30,6 +33,7 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
         }
         crate::shell::follow_visibility(&native);
         if let Ok(hwnd) = native.hwnd() {
+            file_drop::install(host, hwnd);
             argus_service::admin::window_relaunch(&host.config().identifier, hwnd);
             crate::window_motion::install(hwnd);
         }

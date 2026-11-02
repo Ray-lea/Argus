@@ -1306,26 +1306,7 @@ impl Render for Desktop {
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::key_down))
             .on_modifiers_changed(cx.listener(Self::modifiers_changed))
-            .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| {
-                let paths = paths
-                    .paths()
-                    .iter()
-                    .map(|path| path.to_string_lossy().into_owned())
-                    .collect::<Vec<_>>();
-                this.open_dialog("filelock", json!({"paths":paths}), window, cx);
-                if let Some(input) = this.forms.get("value") {
-                    input.update(cx, |state, cx| {
-                        state.set_value(paths.join("\n"), window, cx)
-                    });
-                }
-                this.request(
-                    "find_lockers",
-                    json!({"paths":paths}),
-                    Some("lockers"),
-                    window,
-                    cx,
-                );
-            }))
+            .on_drop(cx.listener(Self::accept_dropped_files))
             // Before any text input, which then takes over from it.
             .children(composer)
             .when(self.drag.is_some(), |d| d.child(self.drag_capture(cx)))

@@ -4,6 +4,8 @@
 
 窗口、托盘、全局快捷键和后台采样状态在原生平台适配层管理。隐藏和最小化时停止曲线绘制，采样按各自的设置继续。恢复时请求新快照，曲线仍使用源时间戳，不压缩后台采样间隔。
 
+文件拖放由前端的 OLE 接收与 Windows 原生文件消息共同接入。管理员窗口使用原生文件消息通道接收普通权限程序的文件投递；解码限制文件数量、单路径长度及总长度，随后交给现有文件占用查询。窗口销毁时移除消息子类并释放宿主引用。接口见 [DragAcceptFiles](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-dragacceptfiles) 与 [ChangeWindowMessageFilterEx](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-changewindowmessagefilterex)。
+
 `window_motion.rs` 让窗口在显示、隐藏到托盘、最小化和还原时原地淡入淡出（显示 180 ms，离开 140 ms），关闭 DWM 的缩放动画；仅在淡入淡出期间给窗口加分层样式，跟随界面动画设置。其他线程的请求转到窗口线程执行；标题栏的最小化按钮发送 `SC_MINIMIZE`，任务栏还原和其他程序直接显示窗口时同样淡入。
 
 `crates/argus-app/src/preferences.rs` 将界面偏好与窗口位置原子保存到配置目录的 `preferences.json`，同一配置目录下的启动入口共享偏好。文件中偏好保存在 `values`，窗口位置保存在 `window`，更新时保留已有偏好；早期原生版本把偏好写在顶层，读取时按偏好处理，下次保存时改写为上述格式。`src-gpui/src/window_state.rs` 保存 `WINDOWPLACEMENT` 的普通窗口矩形与最大化标记，移动或缩放结束后保存，关闭和退出前补写；隐藏启动延迟到首次显示时恢复最大化，不恢复最小化状态；测试实例不恢复窗口位置。
