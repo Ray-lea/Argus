@@ -1,11 +1,49 @@
 //! Bounded diagnostics for the native host; only reviewed Argus records are kept.
 use std::{
     fs::{File, OpenOptions},
-    io::Write,
-    path::PathBuf,
+    io::{Read, Write},
+    path::{Path, PathBuf},
     sync::Mutex,
 };
 use time::{OffsetDateTime, UtcOffset};
+
+fn rotate(file: &mut File, path: &Path) -> std::io::Result<()> {
+    file.flush()?;
+    for index in (1..3).rev() {
+        let source = path.with_extension(format!("{index}.log"));
+        if source.exists() {
+            std::fs::copy(source, path.with_extension(format!("{}.log", index + 1)))?;
+        }
+    }
+    // Preserve the current records before truncating, including format upgrades.
+    std::fs::copy(path, path.with_extension("1.log"))?;
+    *file = File::create(path)?;
+    Ok(())
+}
+
+fn open_current_log(path: &Path) -> std::io::Result<(File, Option<std::io::Error>)> {
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    let mut archive_error = None;
+    let mut prefix = Vec::new();
+    if let Ok(reader) = File::open(path)
+        && reader.take(64).read_to_end(&mut prefix).is_ok()
+        && !prefix.is_empty()
+    {
+        let end = prefix
+            .iter()
+            .position(u8::is_ascii_whitespace)
+            .unwrap_or(prefix.len());
+        let current = std::str::from_utf8(&prefix[..end])
+            .ok()
+            .is_some_and(|value| {
+                OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339).is_ok()
+            });
+        if !current {
+            archive_error = rotate(&mut file, path).err();
+        }
+    }
+    Ok((file, archive_error))
+}
 
 fn timestamp(now: OffsetDateTime) -> String {
     let offset = now.offset().whole_seconds();
@@ -38,17 +76,7 @@ impl log::Log for Logger {
         }
         let mut file = self.file.lock().unwrap();
         if file.metadata().is_ok_and(|m| m.len() > 1024 * 1024) {
-            let _ = file.flush();
-            for index in (1..3).rev() {
-                let _ = std::fs::copy(
-                    self.path.with_extension(format!("{index}.log")),
-                    self.path.with_extension(format!("{}.log", index + 1)),
-                );
-            }
-            let _ = std::fs::copy(&self.path, self.path.with_extension("1.log"));
-            if let Ok(next) = File::create(&self.path) {
-                *file = next;
-            }
+            let _ = rotate(&mut file, &self.path);
         }
         let now = OffsetDateTime::now_utc();
         // Resolve the offset for each record so a long-running host follows
@@ -65,12 +93,15 @@ impl log::Log for Logger {
 pub fn init(directory: PathBuf) -> anyhow::Result<()> {
     std::fs::create_dir_all(&directory)?;
     let path = directory.join("argus.log");
-    let file = OpenOptions::new().create(true).append(true).open(&path)?;
+    let (file, archive_error) = open_current_log(&path)?;
     log::set_boxed_logger(Box::new(Logger {
         file: Mutex::new(file),
-        path,
+        path: path.clone(),
     }))?;
     log::set_max_level(log::LevelFilter::Info);
+    if let Some(error) = archive_error {
+        argus_core::diagnostics::file_failure("diagnostic log format archive", &path, &error);
+    }
     std::panic::set_hook(Box::new(|panic| {
         if let Some(at) = panic.location() {
             log::error!(
@@ -89,6 +120,51 @@ pub fn init(directory: PathBuf) -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use time::format_description::well_known::Rfc3339;
+
+    #[test]
+    fn legacy_formats_are_archived_once_without_rewriting_records() {
+        let directory = std::env::temp_dir().join(format!(
+            "argus-log-format-{}-{}",
+            std::process::id(),
+            OffsetDateTime::now_utc().unix_timestamp_nanos()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let path = directory.join("argus.log");
+        let backup = path.with_extension("1.log");
+        for previous in [
+            "1793536516 INFO previous\n",
+            "[2026-10-19][10:19:57][INFO] previous\n",
+        ] {
+            std::fs::write(&path, previous).unwrap();
+            let (mut file, error) = open_current_log(&path).unwrap();
+            assert!(error.is_none());
+            assert_eq!(std::fs::read_to_string(&backup).unwrap(), previous);
+            assert_eq!(file.metadata().unwrap().len(), 0);
+            let current = "2026-11-01T04:39:36.824-08:00 INFO current\n";
+            file.write_all(current.as_bytes()).unwrap();
+            drop(file);
+            let (file, error) = open_current_log(&path).unwrap();
+            assert!(error.is_none());
+            drop(file);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), current);
+            assert_eq!(std::fs::read_to_string(&backup).unwrap(), previous);
+            std::fs::remove_file(&backup).unwrap();
+        }
+        // An archive destination error preserves the log and allows startup.
+        std::fs::write(&path, "1793536516 INFO previous\n").unwrap();
+        std::fs::create_dir(&backup).unwrap();
+        let (mut file, error) = open_current_log(&path).unwrap();
+        assert!(error.is_some());
+        file.write_all(b"current\n").unwrap();
+        drop(file);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "1793536516 INFO previous\ncurrent\n"
+        );
+        std::fs::remove_dir(&backup).unwrap();
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(directory).unwrap();
+    }
 
     #[test]
     fn timestamps_keep_milliseconds_and_unambiguous_offsets() {
