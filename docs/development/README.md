@@ -27,6 +27,7 @@ README 预览在启用透明效果的 Windows 11 上生成。探针保持测试�
 - [性能测量](performance.md)
 - [多语言](i18n.md)
 - [提交与发布](release.md)
+- [官网与发行镜像](website.md)
 - [Windows 代码签名](signing.md)
 - [依赖安全](security.md)
 

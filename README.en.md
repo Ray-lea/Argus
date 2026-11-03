@@ -54,7 +54,7 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 | 🔍 | **File locks** | Drop a file or folder onto the window to identify which processes are holding it. Combines Restart Manager with handle enumeration (including processes' current working directories), with broader coverage across elevated processes when the privileged service is enabled. |
 | 🕘 | **History** | Automatically records resource usage charts over the past 7 days; click any point in time to inspect the busiest processes at that moment. |
 | 📌 | **System tray** | Show or hide the window anytime with the global shortcut Ctrl+Alt+Esc (which can be changed or turned off); uses minimal resources while hidden, with separate refresh rates for minimized and tray states. |
-| 🔄 | **In-app updates** | New versions download quietly in the background and notify in the title bar; preview all changes since the current version before installing, and review what's new the first time the window opens after an update. Offers Stable and Beta channels; downloads try GitHub first and fall back to proxies by default, with controls in Settings. Installs only updates that pass update signature verification. |
+| 🔄 | **In-app updates** | New versions download quietly in the background and notify in the title bar; preview all changes since the current version before installing, and review what's new the first time the window opens after an update. Offers Stable and Beta channels; the default route tries GitHub, the official mirror, then GitHub proxies, with controls in Settings. Installs only updates that pass update signature verification. |
 | 🎨 | **Native look** | Features Mica backdrop on Windows 11 and a clean solid background on Windows 10; the system accent color and light or dark theme follow Windows by default, with a theme override in Settings. |
 | 🌍 | **Languages** | Available in English and Simplified Chinese, following the Windows display language by default; includes a welcome guide on first launch to configure essential settings. |
 | 👤 | **No administrator rights needed** | View executable paths and resource usage across all processes as a standard user. |
@@ -64,7 +64,7 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 
 ## 📦 Download
 
-Get the latest release from [GitHub Releases](https://github.com/Ray-lea/Argus/releases):
+Get the latest stable build and SHA-256 checksums from the [official download page](https://argustask.com/en/download/). All versions are available on [GitHub Releases](https://github.com/Ray-lea/Argus/releases).
 
 | File | Description |
 |---|---|
@@ -72,8 +72,7 @@ Get the latest release from [GitHub Releases](https://github.com/Ray-lea/Argus/r
 | `Argus_<version>_x64.exe` | **Portable version.** Runs directly as a standalone executable and shares settings and history with the installed version; does not support automatic updates. |
 | `SHA256SUMS.txt` | SHA-256 checksums of the release files above. |
 
-> [!NOTE]
-> Current official release files have no Windows Authenticode signature and may show an "unknown publisher" warning. See the [Code signing policy](#code-signing-policy) for signing status and the [Privacy policy](PRIVACY.md#english) for network activity and controls.
+[Code signing policy](#code-signing-policy) · [Privacy policy](PRIVACY.md#english) · [Stable documentation (Chinese)](https://argustask.com/docs/)
 
 ## 💻 System requirements
 
