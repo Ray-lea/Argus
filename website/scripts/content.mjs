@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFile, copyFile } from "node:fs/promises";
+import { readFile, copyFile, cp, glob } from "node:fs/promises";
 import { join } from "node:path";
 import MarkdownIt from "markdown-it";
 import GithubSlugger from "github-slugger";
@@ -41,91 +41,114 @@ function desktopFramework(ref) {
   return major ? "Tauri " + major : "Tauri";
 }
 
-async function prepareEdition(input, ref, development, label) {
+export function documentPage(file, text, base, label) {
+  const path = routeFor(file, base);
+  const source = text.replace(/\r\n/g, "\n");
+  const heading = /^# (.+)$/m.exec(source);
+  if (!heading) throw Error("Missing document title in " + file);
+  const title = heading[1].trim();
+  const afterTitle = source
+    .slice(heading.index + heading[0].length)
+    .trimStart();
+  // The older index starts with an ASCII folder tree. The edition navigation covers that tree.
+  const body =
+    file === "docs/README.md"
+      ? afterTitle.replace(/^`{3}[^\n]*\ndocs\/\n[\s\S]*?\n`{3}\s*/, "")
+      : afterTitle;
+  const lead = markdown
+    .parse(body, {})
+    .find((t) => t.type === "inline" && t.content.length > 25);
+  const summary = lead?.children
+    ?.map((t) => t.content)
+    .join("")
+    .replace(/\s+/g, " ")
+    .slice(0, 145);
+  const breadcrumb = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Argus", item: origin + "/" },
+      ...(path === base
+        ? []
+        : [
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: label,
+              item: origin + base,
+            },
+          ]),
+      {
+        "@type": "ListItem",
+        position: path === base ? 2 : 3,
+        name: title,
+        item: origin + path,
+      },
+    ],
+  };
+  const head = [
+    { tag: "title", content: title + " · " + label + " · Argus 文档" },
+    {
+      tag: "script",
+      attrs: { type: "application/ld+json" },
+      content: JSON.stringify(breadcrumb),
+    },
+  ];
+  const front = [
+    "---",
+    "title: " + JSON.stringify(title),
+    "description: " + JSON.stringify(label + " · " + (summary || title)),
+    "head: " + JSON.stringify(head),
+    "---",
+  ];
+  // Starlight owns the visible H1. Preserve the GitHub fragment used by earlier releases.
+  const anchor = new GithubSlugger()
+    .slug(title)
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;");
+  return {
+    path,
+    markdown:
+      front.join("\n") + '\n\n<span id="' + anchor + '"></span>\n\n' + body,
+  };
+}
+
+export async function workspaceDocuments() {
+  return (await Array.fromAsync(glob("docs/**/*.md", { cwd: root })))
+    .map((name) => name.replaceAll("\\", "/"))
+    .filter((name) => !name.endsWith("/AGENTS.md"))
+    .sort();
+}
+
+async function prepareEdition(input, ref, development, label, worktree) {
   const base = development ? "/docs/dev/" : "/docs/";
-  const names = git(["ls-tree", "-r", "-z", "--name-only", ref, "--", "docs"])
-    .toString()
-    .split("\0")
-    .filter(Boolean);
+  const names = worktree
+    ? await workspaceDocuments()
+    : git(["ls-tree", "-r", "-z", "--name-only", ref, "--", "docs"])
+        .toString()
+        .split("\0");
   const routes = {};
   for (const file of names.filter(
     (f) => f.endsWith(".md") && !f.endsWith("/AGENTS.md"),
   )) {
-    const path = routeFor(file, base);
-    const source = fileAt(ref, file).toString("utf8").replace(/\r\n/g, "\n");
-    const heading = /^# (.+)$/m.exec(source);
-    if (!heading) throw Error("Missing document title in " + file);
-    const title = heading[1].trim();
-    const afterTitle = source
-      .slice(heading.index + heading[0].length)
-      .trimStart();
-    // The older index starts with an ASCII folder tree. The edition navigation covers that tree.
-    const body =
-      file === "docs/README.md"
-        ? afterTitle.replace(/^`{3}[^\n]*\ndocs\/\n[\s\S]*?\n`{3}\s*/, "")
-        : afterTitle;
-    const lead = markdown
-      .parse(body, {})
-      .find((t) => t.type === "inline" && t.content.length > 25);
-    const summary = lead?.children
-      ?.map((t) => t.content)
-      .join("")
-      .replace(/\s+/g, " ")
-      .slice(0, 145);
-    const sections = path.split("/").filter(Boolean);
-    const breadcrumb = {
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Argus", item: origin + "/" },
-        ...(path === base
-          ? []
-          : [
-              {
-                "@type": "ListItem",
-                position: 2,
-                name: label,
-                item: origin + base,
-              },
-            ]),
-        {
-          "@type": "ListItem",
-          position: path === base ? 2 : 3,
-          name: title,
-          item: origin + path,
-        },
-      ],
-    };
-    const head = [
-      { tag: "title", content: title + " · " + label + " · Argus 文档" },
-      {
-        tag: "script",
-        attrs: { type: "application/ld+json" },
-        content: JSON.stringify(breadcrumb),
-      },
-    ];
-    const front = [
-      "---",
-      "title: " + JSON.stringify(title),
-      "description: " + JSON.stringify(label + " · " + (summary || title)),
-      "head: " + JSON.stringify(head),
-      "---",
-    ];
-    // Starlight owns the visible H1. Preserve the GitHub fragment used by earlier releases.
-    const anchor = new GithubSlugger()
-      .slug(title)
-      .replaceAll("&", "&amp;")
-      .replaceAll('"', "&quot;");
-    await put(
-      input,
-      "content/" + sections.join("/") + "/index.md",
-      front.join("\n") + '\n\n<span id="' + anchor + '"></span>\n\n' + body,
-    );
-    routes[file] = path;
+    const text = worktree
+      ? await readFile(join(root, file), "utf8")
+      : fileAt(ref, file).toString("utf8");
+    const page = documentPage(file, text, base, label);
+    await put(input, "content" + page.path + "index.md", page.markdown);
+    routes[file] = page.path;
   }
   if (!routes["docs/README.md"])
     throw Error("Missing " + label + " documentation index");
   return { ref, label, base, routes, framework: desktopFramework(ref) };
+}
+
+export function prepareDevelopmentEdition(input, worktree) {
+  const source = worktree ? "HEAD" : (process.env.ARGUS_DOCS_DEV_REF ?? "HEAD");
+  const ref = git(["rev-parse", "--verify", source + "^{commit}"])
+    .toString()
+    .trim();
+  return prepareEdition(input, ref, true, "开发版", worktree);
 }
 
 function section(source, heading) {
@@ -148,17 +171,14 @@ function render(source, rewrite) {
   return markdown.renderer.render(tokens, markdown.options, {});
 }
 
-export async function prepareContent(input, release) {
-  const devRef = git([
-    "rev-parse",
-    "--verify",
-    (process.env.ARGUS_DOCS_DEV_REF ?? "HEAD") + "^{commit}",
-  ])
-    .toString()
-    .trim();
+export async function prepareContent(
+  input,
+  release,
+  { worktree = false } = {},
+) {
   const editions = [
     await prepareEdition(input, release.tag, false, "稳定版 " + release.tag),
-    await prepareEdition(input, devRef, true, "开发版"),
+    await prepareDevelopmentEdition(input, worktree),
   ];
   const privacy = await readFile(join(root, "PRIVACY.md"), "utf8");
   const translations = {};
@@ -179,7 +199,11 @@ export async function prepareContent(input, release) {
         (en ? "en-" : "") +
         (dev ? "dark" : "light") +
         ".png";
-      const preview = sharp(fileAt(edition.ref, imagePath));
+      const preview = sharp(
+        dev && worktree
+          ? await readFile(join(root, imagePath))
+          : fileAt(edition.ref, imagePath),
+      );
       const { width, height } = await preview.metadata();
       const cover = await preview
         .extract({
@@ -337,8 +361,5 @@ export async function prepareContent(input, release) {
     "robots.txt",
     "User-agent: *\nAllow: /\nSitemap: " + origin + "/sitemap.xml\n",
   );
-  await copyFile(
-    join(websiteRoot, "public/_headers"),
-    join(publicDir, "_headers"),
-  );
+  await cp(join(websiteRoot, "public"), publicDir, { recursive: true });
 }

@@ -5,6 +5,7 @@ Windows 开发环境使用 Visual Studio C++ Build Tools 和 stable MSVC Rust。
 | 命令 | 用途 |
 |---|---|
 | `start.bat` / `start.bat dev` | 启动原生 GPUI 开发版，监听 Rust 与资源变更 |
+| `start-website.bat` | 启动官网开发服务器，实时预览页面、组件、样式和开发版文档 |
 | `start.bat check` | 文案、格式、生成代码、脚本测试、Clippy 与 Rust 测试 |
 | `start.bat build` | 构建原生程序 `target/release/argus.exe`，内含任务管理器辅助程序 |
 | `start.bat build installer` | 构建原生程序并生成 NSIS 安装包 |

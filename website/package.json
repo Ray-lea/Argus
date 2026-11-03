@@ -6,7 +6,7 @@
     "build": "node scripts/build.mjs",
     "check": "astro check && node scripts/verify.mjs",
     "check:browser": "node scripts/check-navigation.mjs",
-    "dev": "astro dev",
+    "dev": "astro dev --config astro.dev.config.mjs",
     "preview": "astro preview"
   },
   "devDependencies": {

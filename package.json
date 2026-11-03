@@ -20,6 +20,7 @@
     "dev": "node scripts/desktop.mjs dev",
     "build": "node scripts/build.mjs",
     "bundle": "node scripts/build.mjs --installer",
+    "site:dev": "pnpm --dir website run dev",
     "site:build": "pnpm --filter @argus/website run build",
     "site:check": "pnpm --filter @argus/website run check",
     "check:generated": "node scripts/native-dispatch.mjs --check",
