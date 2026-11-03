@@ -15,7 +15,7 @@ rust-version = "1.99.1"
 license = "AGPL-3.0-or-later"
 authors = ["Argus contributors"]
 repository = "https://github.com/Ray-lea/Argus"
-homepage = "https://github.com/Ray-lea/Argus"
+homepage = "https://argustask.com"
 
 [workspace.dependencies]
 # Shared Windows API features used by collection, services and the native host.

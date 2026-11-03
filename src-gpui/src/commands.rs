@@ -676,10 +676,14 @@ pub fn open_sensor_driver_page() -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Opens the project's page on GitHub in the default browser.
+/// Opens the same project homepage shown in Settings and the installer.
 pub fn open_homepage() -> Result<(), String> {
     std::process::Command::new("explorer.exe")
-        .arg(crate::updater::REPO)
+        .arg(
+            argus_app::config::manifest()["homepage"]
+                .as_str()
+                .expect("project homepage"),
+        )
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())

@@ -309,7 +309,7 @@
       "downloadedOf": "Downloaded {received} of {total} from {source}.",
       "checked": "Last checked: {time}.",
       "checkedFrom": "Last checked: {time}, from {source}.",
-      "source": "Updates come from GitHub Releases, and an installer is installed only after its signature is verified."
+      "source": "Updates come from GitHub Releases or the official Argus mirror. Argus verifies the installer signature before installation."
     },
     "restart": "Restart and update",
     "download": "Download",
@@ -333,13 +333,13 @@
     "route": {
       "label": "Download source",
       "desc": "GitHub proxies are run by third parties and can see this PC's IP address and the files it downloads. Installer signatures also cover the version number, so a proxy can't tamper with an update or pass off an old version as a new one.",
-      "auto": "Automatic (GitHub first, then a GitHub proxy)",
+      "auto": "Automatic (GitHub, official mirror, then proxies)",
       "direct": "GitHub only",
       "proxy": "GitHub proxy only"
     },
     "proxy": {
       "label": "GitHub proxy",
-      "fallback": "When GitHub can't be reached, this proxy is tried first, then the other built-in proxies.",
+      "fallback": "If GitHub and the official mirror are unavailable, Argus tries this proxy, then the other built-in proxies.",
       "only": "All update requests go through this proxy.",
       "custom": "Custom…"
     },
@@ -359,7 +359,7 @@
     "quit": "Exit Argus",
     "homepage": {
       "title": "Project page",
-      "desc": "Source code, issues and every release are at {url}. If you find Argus useful, a star on the project page helps it grow.",
+      "desc": "Visit {url} for stable downloads, documentation and project contacts.",
       "open": "Visit project page"
     },
     "onboarding": {

@@ -4,7 +4,7 @@
 //! is downloaded right away but installed only when the user asks, because
 //! installing exits Argus. Each channel has a manifest attached to the latest
 //! stable release (`latest.json`, `beta.json`, written by the release
-//! workflow), fetched from GitHub directly or through a GitHub proxy. The
+//! workflow), fetched from GitHub, the official mirror, or a GitHub proxy. The
 //! installer must carry a signature from the key in resources/app.json that also
 //! covers its version (`requireSignedVersion`), so a proxy can withhold an
 //! update but not alter or downgrade one. The release notes the update dialog
@@ -30,8 +30,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::settings::{SettingsStore, UpdateChannel, UpdateRoute};
 
-/// The project's page on GitHub: releases live under it, and Settings > About links to it.
+/// The upstream repository and its official release distribution hosts.
 pub(crate) const REPO: &str = "https://github.com/Ray-lea/Argus";
+const OFFICIAL_FEEDS: &str = "https://update.argustask.com";
+const OFFICIAL_DOWNLOADS: &str = "https://dl.argustask.com";
 /// Public GitHub proxies that served release downloads byte for byte when
 /// they were picked (2026-10). They come and go; users can enter their own.
 pub use argus_app::config::PROXY_PRESETS;
@@ -412,30 +414,77 @@ pub fn reset(app: &Host) {
     }
 }
 
-/// Where requests go, in order: `None` is GitHub itself, `Some` a proxy prefix.
-fn sources(route: UpdateRoute, proxy: &str) -> Vec<Option<String>> {
-    let mut list = Vec::new();
-    if route != UpdateRoute::Proxy {
-        list.push(None);
-    }
-    if route != UpdateRoute::Direct {
-        list.push(Some(proxy.to_string()));
-    }
-    if route == UpdateRoute::Auto {
-        for preset in PROXY_PRESETS {
-            if preset != proxy {
-                list.push(Some(preset.to_string()));
-            }
-        }
-    }
-    list
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ReleaseSource {
+    GitHub,
+    Official,
+    Proxy(String),
 }
 
-fn label(source: Option<&str>) -> String {
-    source
-        .and_then(|prefix| Url::parse(prefix).ok())
-        .and_then(|url| url.host_str().map(str::to_string))
-        .unwrap_or_else(|| "GitHub".into())
+impl ReleaseSource {
+    fn label(&self) -> String {
+        match self {
+            Self::GitHub => "GitHub".into(),
+            Self::Official => "argustask.com".into(),
+            Self::Proxy(prefix) => Url::parse(prefix)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_owned))
+                .unwrap_or_else(|| "proxy".into()),
+        }
+    }
+
+    fn manifest(&self, channel: UpdateChannel) -> Result<Url, String> {
+        let file = match channel {
+            UpdateChannel::Stable => "latest.json",
+            UpdateChannel::Beta => "beta.json",
+        };
+        match self {
+            Self::Official => via(&format!("{OFFICIAL_FEEDS}/{file}"), None),
+            Self::GitHub => via(&format!("{REPO}/releases/latest/download/{file}"), None),
+            Self::Proxy(prefix) => via(
+                &format!("{REPO}/releases/latest/download/{file}"),
+                Some(prefix),
+            ),
+        }
+    }
+
+    fn artifact(&self, original: &Url, version: &str) -> Result<Url, String> {
+        let file = file_name(version).ok_or_else(|| tr!("updater.invalidVersion"))?;
+        let upstream = format!("{REPO}/releases/download/v{version}/{file}");
+        let mirror = format!("{OFFICIAL_DOWNLOADS}/v{version}/{file}");
+        let github_url = if original.as_str() == mirror {
+            upstream.as_str()
+        } else {
+            original.as_str()
+        };
+        match self {
+            Self::GitHub => via(github_url, None),
+            Self::Proxy(prefix) => via(github_url, Some(prefix)),
+            Self::Official if github_url == upstream => via(&mirror, None),
+            Self::Official => Err(tr!("updater.notFound")),
+        }
+    }
+}
+
+fn sources(route: UpdateRoute, proxy: &str) -> Vec<ReleaseSource> {
+    match route {
+        UpdateRoute::Direct => vec![ReleaseSource::GitHub],
+        UpdateRoute::Proxy => vec![ReleaseSource::Proxy(proxy.into())],
+        UpdateRoute::Auto => {
+            let mut all = vec![
+                ReleaseSource::GitHub,
+                ReleaseSource::Official,
+                ReleaseSource::Proxy(proxy.into()),
+            ];
+            all.extend(
+                PROXY_PRESETS
+                    .into_iter()
+                    .filter(|preset| *preset != proxy)
+                    .map(|preset| ReleaseSource::Proxy(preset.into())),
+            );
+            all
+        }
+    }
 }
 
 fn via(url: &str, source: Option<&str>) -> Result<Url, String> {
@@ -457,14 +506,6 @@ pub fn normalize_proxy(proxy: &str) -> Result<String, String> {
     } else {
         format!("{proxy}/")
     })
-}
-
-fn manifest_url(channel: UpdateChannel) -> String {
-    let name = match channel {
-        UpdateChannel::Stable => "latest.json",
-        UpdateChannel::Beta => "beta.json",
-    };
-    format!("{REPO}/releases/latest/download/{name}")
 }
 
 fn describe(e: &Error) -> String {
@@ -625,9 +666,13 @@ fn notes_for(
     }
 }
 
-async fn find(app: &Host, manifest: &str, source: Option<&str>) -> Result<Option<Update>, Failed> {
+async fn find(
+    app: &Host,
+    channel: UpdateChannel,
+    source: &ReleaseSource,
+) -> Result<Option<Update>, Failed> {
     crate::update_transport::check(
-        via(manifest, source).map_err(Failed::address)?,
+        source.manifest(channel).map_err(Failed::address)?,
         &pubkey(app),
         MANIFEST_TIMEOUT,
     )
@@ -685,13 +730,12 @@ async fn check_once(app: &Host, generation: u64) {
 
     let settings = app.state::<SettingsStore>().get();
     let sources = sources(settings.update_route, &settings.update_proxy);
-    let manifest = manifest_url(settings.update_channel);
     // What each source said: for the dialog, and (`causes`) for the log.
     let mut failures = Vec::new();
     let mut causes = Vec::new();
     let mut found = None;
     for (index, source) in sources.iter().enumerate() {
-        match find(app, &manifest, source.as_deref()).await {
+        match find(app, settings.update_channel, source).await {
             Ok(update) => {
                 found = Some((index, update));
                 break;
@@ -699,7 +743,7 @@ async fn check_once(app: &Host, generation: u64) {
             Err(e) => {
                 failures.push(tr!(
                     "updater.sourceFailed",
-                    source = label(source.as_deref()),
+                    source = source.label(),
                     error = e.shown
                 ));
                 causes.push(e.logged);
@@ -721,7 +765,7 @@ async fn check_once(app: &Host, generation: u64) {
         });
         return;
     };
-    let source = label(sources[index].as_deref());
+    let source = sources[index].label();
     let Some(update) = update else {
         // Nothing newer than this version: a kept installer is no longer
         // offered (a withdrawn release).
@@ -788,7 +832,7 @@ async fn check_once(app: &Host, generation: u64) {
     }
 
     // Start with the source that answered, then try the others.
-    let original = update.download_url.to_string();
+    let original = &update.download_url;
     let mut order: Vec<_> = sources[index..]
         .iter()
         .chain(&sources[..index])
@@ -799,7 +843,7 @@ async fn check_once(app: &Host, generation: u64) {
     causes.clear();
     for source in order {
         let mut attempt = update.clone();
-        attempt.download_url = match via(&original, source.as_deref()) {
+        attempt.download_url = match source.artifact(original, &update.version) {
             Ok(url) => url,
             Err(e) => {
                 let e = Failed::address(e);
@@ -828,7 +872,7 @@ async fn check_once(app: &Host, generation: u64) {
             .await;
         match result {
             Ok(bytes) => {
-                let host = label(source.as_deref());
+                let host = source.label();
                 let pending = Pending {
                     version: update.version.clone(),
                     channel: settings.update_channel,
@@ -873,7 +917,7 @@ async fn check_once(app: &Host, generation: u64) {
                 let failed = Failed::of(&e);
                 failures.push(tr!(
                     "updater.sourceFailed",
-                    source = label(source.as_deref()),
+                    source = source.label(),
                     error = failed.shown
                 ));
                 causes.push(failed.logged);
@@ -1289,15 +1333,19 @@ mod tests {
     #[test]
     fn sources_follow_the_route() {
         let proxy = "https://example.org/";
-        assert_eq!(sources(UpdateRoute::Direct, proxy), vec![None]);
+        assert_eq!(
+            sources(UpdateRoute::Direct, proxy),
+            vec![ReleaseSource::GitHub]
+        );
         assert_eq!(
             sources(UpdateRoute::Proxy, proxy),
-            vec![Some(proxy.to_string())]
+            vec![ReleaseSource::Proxy(proxy.into())]
         );
         let auto = sources(UpdateRoute::Auto, PROXY_PRESETS[1]);
-        assert_eq!(auto[0], None);
-        assert_eq!(auto[1].as_deref(), Some(PROXY_PRESETS[1]));
-        assert_eq!(auto.len(), 1 + PROXY_PRESETS.len());
+        assert_eq!(auto[0], ReleaseSource::GitHub);
+        assert_eq!(auto[1], ReleaseSource::Official);
+        assert_eq!(auto[2], ReleaseSource::Proxy(PROXY_PRESETS[1].into()));
+        assert_eq!(auto.len(), 2 + PROXY_PRESETS.len());
     }
 
     #[test]
@@ -1311,8 +1359,53 @@ mod tests {
             url.as_str(),
             "https://gh-proxy.com/https://github.com/a/b/x.json"
         );
-        assert_eq!(label(Some("https://gh-proxy.com/")), "gh-proxy.com");
-        assert_eq!(label(None), "GitHub");
+        assert_eq!(
+            ReleaseSource::Proxy("https://gh-proxy.com/".into()).label(),
+            "gh-proxy.com"
+        );
+        assert_eq!(ReleaseSource::GitHub.label(), "GitHub");
+    }
+
+    #[test]
+    fn mirrored_manifests_and_installers_fall_back_to_the_same_upstream_version() {
+        let version = "1.2.3-beta.1";
+        let upstream = Url::parse(&format!(
+            "{REPO}/releases/download/v{version}/Argus_{version}_x64-setup.exe"
+        ))
+        .unwrap();
+        let mirror = ReleaseSource::Official
+            .artifact(&upstream, version)
+            .unwrap();
+        assert_eq!(mirror.host_str(), Some("dl.argustask.com"));
+        assert_eq!(
+            ReleaseSource::GitHub.artifact(&mirror, version).unwrap(),
+            upstream
+        );
+        assert_eq!(
+            ReleaseSource::Proxy("https://example.org/".into())
+                .artifact(&mirror, version)
+                .unwrap()
+                .as_str(),
+            format!("https://example.org/{upstream}")
+        );
+        assert!(
+            ReleaseSource::Official
+                .artifact(&upstream, "1.2.2")
+                .is_err()
+        );
+        for (channel, file) in [
+            (UpdateChannel::Stable, "latest.json"),
+            (UpdateChannel::Beta, "beta.json"),
+        ] {
+            assert_eq!(
+                ReleaseSource::Official.manifest(channel).unwrap().as_str(),
+                format!("{OFFICIAL_FEEDS}/{file}")
+            );
+            assert_eq!(
+                ReleaseSource::GitHub.manifest(channel).unwrap().as_str(),
+                format!("{REPO}/releases/latest/download/{file}")
+            );
+        }
     }
 
     #[test]

@@ -3,6 +3,7 @@
 
 # Development tools
 node_modules/
+.wrangler/
 *.local
 
 # Editors / OS

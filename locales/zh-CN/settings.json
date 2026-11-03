@@ -300,7 +300,7 @@
       "downloadedOf": "已下载 {received} / {total}，来自 {source}。",
       "checked": "上次检查：{time}。",
       "checkedFrom": "上次检查：{time}，来自 {source}。",
-      "source": "更新来自 GitHub Releases，安装包通过签名校验后才会安装。"
+      "source": "更新来自 GitHub Releases 或 Argus 官方镜像，安装前校验安装包签名。"
     },
     "restart": "重启并更新",
     "download": "前往下载",
@@ -324,13 +324,13 @@
     "route": {
       "label": "下载线路",
       "desc": "加速代理由第三方提供，可获知本机的 IP 地址及所下载的文件。安装包签名同时覆盖版本号，代理无法篡改更新，也无法以旧版本冒充新版本。",
-      "auto": "自动（优先连接 GitHub，失败时使用加速代理）",
+      "auto": "自动（GitHub、官方镜像、加速代理）",
       "direct": "仅连接 GitHub",
       "proxy": "仅使用加速代理"
     },
     "proxy": {
       "label": "加速代理",
-      "fallback": "无法连接 GitHub 时，依次尝试此代理和其他内置代理。",
+      "fallback": "GitHub 和官方镜像均连接失败时，依次尝试此代理和其他内置代理。",
       "only": "所有更新请求均经由此代理。",
       "custom": "自定义…"
     },
@@ -350,7 +350,7 @@
     "quit": "退出 Argus",
     "homepage": {
       "title": "项目主页",
-      "desc": "源代码、问题反馈与各版本下载都在 {url}。如果觉得 Argus 好用，欢迎在项目主页点亮 Star，这能帮助项目成长。",
+      "desc": "访问 {url} 获取稳定版下载、使用文档和项目联系方式。",
       "open": "访问项目主页"
     },
     "onboarding": {

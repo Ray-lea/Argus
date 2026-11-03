@@ -1,0 +1,12 @@
+{
+  "name": "argustask-website",
+  "compatibility_date": "2026-11-03",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "argustask.com", "custom_domain": true }],
+  "assets": {
+    "directory": "../target/official-web/dist/site",
+    "html_handling": "force-trailing-slash",
+    "not_found_handling": "404-page",
+  },
+}
