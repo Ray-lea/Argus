@@ -1,7 +1,19 @@
 import { useState } from "react";
 import { Lens } from "./magicui/Lens";
 import type { Language } from "../lib/site";
-
+type Scene = "window" | "processes" | "signals";
+const scenes = {
+  zh: {
+    window: ["窗口概览", "按应用查看运行中的进程"],
+    processes: ["进程列表", "对照进程名称和资源列"],
+    signals: ["资源读数", "聚焦 CPU、内存与磁盘"],
+  },
+  en: {
+    window: ["Overview", "Processes grouped by app"],
+    processes: ["Process table", "Process names and resource columns"],
+    signals: ["Resource readings", "Inspect CPU, memory and disk"],
+  },
+} as const;
 export default function ProductPreview({
   lang,
   tag,
@@ -9,69 +21,121 @@ export default function ProductPreview({
   lang: Language;
   tag: string;
 }) {
-  const en = lang === "en";
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const en = lang === "en",
+    labels = scenes[lang];
+  const [scene, setScene] = useState<Scene>("window"),
+    [theme, setTheme] = useState<"dark" | "light">("dark");
   const asset = `/assets/preview-${lang}-${theme}`;
+  const isFull = scene === "window";
+  const src = isFull ? asset + "-1280.webp" : asset + "-" + scene + ".webp";
   return (
     <figure className="preview">
-      <div className="preview-tools flex items-center justify-between gap-3">
-        <span className="preview-title">
-          <i aria-hidden="true" />
-          {en ? "Process view" : "进程视图"}
-        </span>
-        <div
-          className="preview-switch"
-          role="group"
-          aria-label={en ? "Screenshot appearance" : "截图主题"}
-        >
-          {(["dark", "light"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              aria-pressed={theme === t}
-              onClick={() => setTheme(t)}
-            >
-              {en
-                ? t === "dark"
-                  ? "Dark"
-                  : "Light"
-                : t === "dark"
-                  ? "深色"
-                  : "浅色"}
-            </button>
-          ))}
+      <div
+        className="scene-rail"
+        role="group"
+        aria-label={en ? "Preview region" : "预览区域"}
+      >
+        {(Object.keys(labels) as Scene[]).map((key) => (
+          <button
+            type="button"
+            key={key}
+            className="scene-button"
+            aria-pressed={scene === key}
+            title={labels[key][1]}
+            onClick={() => setScene(key)}
+          >
+            <img
+              src={asset + "-thumb-" + key + ".webp"}
+              alt=""
+              width="100"
+              height="62"
+              loading="lazy"
+            />
+            <span>
+              <strong>{labels[key][0]}</strong>
+              <small>{labels[key][1]}</small>
+            </span>
+            <i aria-hidden="true">›</i>
+          </button>
+        ))}
+      </div>
+      <div className="studio-stack">
+        <div className="preview-workspace">
+          <div className="preview-tools">
+            <span className="preview-title">
+              <i /> {labels[scene][0]}
+            </span>
+            <div className="screenshot-tools">
+              <span>{en ? "Screenshot" : "截图外观"}</span>
+              <div
+                className="preview-switch"
+                role="group"
+                aria-label={en ? "Screenshot appearance" : "截图主题"}
+              >
+                {(["dark", "light"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    aria-pressed={theme === t}
+                    onClick={() => setTheme(t)}
+                  >
+                    {en
+                      ? t === "dark"
+                        ? "Dark"
+                        : "Light"
+                      : t === "dark"
+                        ? "深色"
+                        : "浅色"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <Lens
+            label={
+              en
+                ? "Inspect screenshot. Move the pointer or use arrow keys to magnify."
+                : "查看界面截图。移动指针或按方向键放大，按 Esc 收起。"
+            }
+          >
+            <picture>
+              {isFull && (
+                <source
+                  media="(max-width:600px)"
+                  srcSet={asset + "-detail.webp"}
+                />
+              )}
+              <img
+                src={src}
+                srcSet={
+                  isFull
+                    ? asset + "-720.webp 720w, " + asset + "-1280.webp 1280w"
+                    : undefined
+                }
+                sizes={isFull ? "(max-width:720px) 90vw, 70vw" : undefined}
+                width="1280"
+                height="800"
+                loading="eager"
+                alt={
+                  en
+                    ? labels[scene][0] + " in Argus for Windows"
+                    : "Argus " + labels[scene][0] + "截图"
+                }
+              />
+            </picture>
+          </Lens>
+          <div className="preview-caption">
+            <span>Argus {tag}</span>
+            <a href={asset + ".png"}>
+              {en ? "Open full screenshot" : "查看完整原图"} ↗
+            </a>
+          </div>
         </div>
       </div>
-      <Lens
-        label={
-          en
-            ? "Inspect the process table. Move the pointer or use the arrow keys to magnify."
-            : "查看进程表。移动指针或使用方向键放大读数。"
-        }
-      >
-        <picture>
-          <source media="(max-width: 900px)" srcSet={asset + "-detail.webp"} />
-          <img
-            src={asset + "-1280.webp"}
-            srcSet={asset + "-720.webp 720w, " + asset + "-1280.webp 1280w"}
-            sizes="(max-width: 900px) 92vw, 55vw"
-            width="1920"
-            height="1200"
-            fetchPriority="high"
-            alt={
-              en
-                ? "Argus process view with CPU, memory, disk, network and GPU readings"
-                : "Argus 进程视图及 CPU、内存、磁盘、网络与 GPU 读数"
-            }
-          />
-        </picture>
-      </Lens>
-      <figcaption className="preview-caption">
-        <span>Argus {tag}</span>
-        <a href={asset + ".png"}>
-          {en ? "Open full screenshot" : "打开完整截图"}{" "}
-          <span aria-hidden="true">↗</span>
-        </a>
+      <figcaption className="sr-only">
+        {en
+          ? "Argus " + tag + " interactive preview"
+          : "Argus " + tag + " 界面预览"}
       </figcaption>
     </figure>
   );

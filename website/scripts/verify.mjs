@@ -34,7 +34,11 @@ function inspectPage(source) {
     links = [],
     alternates = new Map(),
     schemas = [];
-  let canonical, policy;
+  let canonical,
+    policy,
+    themeBoot = false,
+    themePicker = false,
+    editionMenu = false;
   const executableHashes = [],
     scriptSources = [];
   function walk(node) {
@@ -42,6 +46,17 @@ function inspectPage(source) {
       (node.attrs ?? []).map((a) => [a.name, a.value]),
     );
     if (attrs.id) ids.add(attrs.id);
+    if (
+      node.tagName === "script" &&
+      attrs.src &&
+      node.parentNode?.tagName === "head" &&
+      "data-site-theme-init" in attrs
+    )
+      themeBoot = true;
+    if (node.tagName === "select" && "data-site-theme" in attrs)
+      themePicker = true;
+    if (node.tagName === "details" && "data-edition-menu" in attrs)
+      editionMenu = true;
     if (node.tagName === "script" && attrs.src) scriptSources.push(attrs.src);
     for (const key of ["href", "src", "component-url", "renderer-url"])
       if (attrs[key]) links.push(attrs[key]);
@@ -87,9 +102,16 @@ function inspectPage(source) {
     policy,
     executableHashes,
     scriptSources,
+    themeBoot,
+    themePicker,
+    editionMenu,
   };
 }
-function checkScripts(page, url) {
+function checkPageShell(page, url) {
+  assert(
+    page.themeBoot && page.themePicker && page.editionMenu,
+    url + ": missing theme or documentation navigation",
+  );
   const policy = page.policy
     ?.split(";")
     .find((d) => d.trim().startsWith("script-src "));
@@ -120,7 +142,7 @@ async function local() {
   let links = 0;
   for (const [file, page] of pages) {
     const from = origin + "/" + file.replace(/index\.html$/, "");
-    checkScripts(page, from);
+    checkPageShell(page, from);
     for (const href of page.links) {
       const url = new URL(href, from);
       if (url.origin !== origin) continue;
@@ -281,7 +303,7 @@ async function online(service) {
                 res.headers.get("cache-control")?.includes("no-transform"),
                 url + ": missing HTML cache policy",
               );
-              checkScripts(inspectPage(body), url);
+              checkPageShell(inspectPage(body), url);
             }
             assert(
               url.endsWith("security.txt")

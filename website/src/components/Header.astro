@@ -1,5 +1,7 @@
 ---
 import Icon from "./Icon.astro";
+import ThemePicker from "./ThemePicker.astro";
+import EditionMenu from "./EditionMenu.astro";
 import { localized, repo, text, type Language } from "../lib/site";
 interface Props {
   lang: Language;
@@ -7,37 +9,40 @@ interface Props {
   alternate?: boolean;
 }
 const { lang, path, alternate = true } = Astro.props,
-  t = text[lang];
+  t = text[lang],
+  en = lang === "en";
 ---
 
 <header class="mast">
-  <div class="wrap flex items-center justify-between gap-4">
-    <a class="brand flex items-center gap-2.5" href={localized(lang)}>
-      <img src="/assets/argus.svg" width="34" height="34" alt="" />
+  <div class="wrap mast-row">
+    <a class="brand" href={localized(lang)}>
+      <img src="/assets/argus.svg" width="32" height="32" alt="" />
       Argus
     </a>
-    <nav
-      aria-label={lang === "en" ? "Main navigation" : "主导航"}
-      class="navlinks flex items-center"
-    >
+    <nav aria-label={en ? "Main navigation" : "主导航"} class="navlinks">
       <a
+        class="nav-download"
         href={localized(lang, "/download/")}
         aria-current={path === "/download/" ? "page" : undefined}
       >
         {t.download}
       </a>
-      <a href="/docs/">{t.docs}</a>
+      <EditionMenu lang={lang} />
+      <a class="nav-search" href="/search/"><Icon name="search" size={16}/>{en?"Search docs":"搜索文档"}</a>
       <a class="nav-repo" href={repo}>
-        GitHub <Icon name="external" size={14} />
+        GitHub <Icon name="external" size={13} />
       </a>
+      <ThemePicker lang={lang} />
       {alternate && (
         <a
           class="lang"
-          href={localized(lang === "zh" ? "en" : "zh", path)}
-          lang={lang === "zh" ? "en" : "zh-CN"}
+          href={localized(en ? "zh" : "en", path)}
+          lang={en ? "zh-CN" : "en"}
+          aria-label={t.language}
         >
-          <Icon name="language" size={17} />
-          {t.language}
+          <Icon name="language" size={16} />
+          <span class="lang-full">{t.language}</span>
+          <span class="lang-short">{en ? "中文" : "EN"}</span>
         </a>
       )}
     </nav>

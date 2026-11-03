@@ -33,6 +33,7 @@ jobs:
       - run: pnpm site:build
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          ARGUS_DOCS_DEV_REF: refs/remotes/origin/main
       - run: pnpm site:check
       - name: Publish files before manifests and download links
         env:

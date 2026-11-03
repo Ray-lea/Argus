@@ -24,7 +24,7 @@ function editionSidebar(edition) {
   const chapters = groups
     .map(([directory, label]) => ({
       label,
-      collapsed: true,
+      collapsed: directory !== "guide" && directory !== "architecture",
       items: entries
         .filter(([file]) => file.startsWith("docs/" + directory + "/"))
         .sort(
@@ -67,14 +67,12 @@ export default defineConfig({
         "form-action 'self'",
         "base-uri 'none'",
       ],
-      // Starlight's early theme, search shortcut and sidebar scripts are emitted as is:inline.
+      // Starlight's search shortcut and sidebar scripts are emitted as is:inline.
       // verify.mjs checks the bytes of every executable inline script after each build.
       scriptDirective: {
         resources: ["'self'", "'wasm-unsafe-eval'"],
         hashes: [
-          "sha256-VWo5Wp4aqSj6nSgMpeAp9cKieaoIfwFUAunAVugI5gA=",
           "sha256-f/zAUE74ucc3JYp4r4QQvkJofoQdkOIhHYK+jeZ6eko=",
-          "sha256-GkZBRnvSuhtx/cvzvukVkX2JJZW+DdPlVr7BX8Tefqo=",
           "sha256-wX2yOADeV+NMngflD5uYi3vl50SHC4sfM1EmylVjlX4=",
           "sha256-7eCV4jtsr4t4knb3c4FCRPeu7GGZeOUGE3XvWix0XOQ=",
         ],
@@ -114,10 +112,14 @@ export default defineConfig({
         },
       ],
       components: {
+        Header: "./src/components/docs/Header.astro",
+        MarkdownContent: "./src/components/docs/MarkdownContent.astro",
+        ThemeProvider: "./src/components/ThemeProvider.astro",
+        ThemeSelect: "./src/components/ThemePicker.astro",
         PageTitle: "./src/components/docs/PageTitle.astro",
         Footer: "./src/components/docs/Footer.astro",
-        SiteTitle: "./src/components/docs/SiteTitle.astro",
       },
+      routeMiddleware: "./src/lib/docs-navigation.ts",
       sidebar: editions.map(editionSidebar),
     }),
   ],

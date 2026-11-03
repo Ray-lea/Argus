@@ -1,19 +1,92 @@
 ---
 import Default from "@astrojs/starlight/components/PageTitle.astro";
-import { site } from "../../lib/site";
-const path = Astro.url.pathname;
-const dev = path.startsWith("/docs/dev/");
+import { site, repo } from "../../lib/site";
+import Icon from "../Icon.astro";
+const path = Astro.url.pathname,
+  dev = path.startsWith("/docs/dev/");
 const current = site.editions[dev ? 1 : 0],
   other = site.editions[dev ? 0 : 1];
 const file = Object.keys(current.routes).find(
   (key) => current.routes[key] === path,
 );
+const counterpart = (file && other.routes[file]) || other.base;
+const index = path === current.base;
+const chapters: Record<string, string> = {
+  guide: "使用指南",
+  development: "开发指南",
+  architecture: "架构",
+  design: "设计",
+};
+const chapterKey = path.slice(current.base.length).split("/")[0];
+const chapter = chapters[chapterKey];
 ---
 
-<p class="edition" data-pagefind-ignore>
-  {current.label} <span aria-hidden="true">/</span>{" "}
-  <a href={(file && other.routes[file]) || other.base}>
-    {dev ? "查看稳定版" : "查看开发版"}
-  </a>
-</p>
-<Default {...Astro.props} />
+<div class="manual-crumb" data-pagefind-ignore>
+  <a href={current.base}>文档</a>
+  <span>/</span>
+  {chapter && path !== current.base + chapterKey + "/" && (
+    <>
+      <a href={current.base + chapterKey + "/"}>{chapter}</a>
+      <span>/</span>
+    </>
+  )}
+  <span>{index ? "概览" : Astro.locals.starlightRoute.entry.data.title}</span>
+</div>
+{index ? (
+  <div class="manual-cover">
+    <div>
+      <p class="book-mark">
+        {current.label}
+        {current.framework && " · " + current.framework}
+      </p>
+      <h1 id="_top">{dev ? "开发版文档" : "稳定版使用手册"}</h1>
+      <p>
+        {dev
+          ? "跟随 main 分支了解原生界面、采集实现与正在开发的功能。"
+          : "从已安装的版本开始，查阅进程操作、硬件读数与权限设置。"}
+      </p>
+    </div>
+  </div>
+) : (
+  <Default {...Astro.props} />
+)}
+<div class="manual-meta" data-pagefind-ignore>
+  {!index && (
+    <span class="book-mark">
+      {current.label}
+      {current.framework && " · " + current.framework}
+    </span>
+  )}
+  <span class="edition">
+    <a href={counterpart}>
+      {dev ? "查看稳定版" : "查看开发版"}
+      {other.framework && " · " + other.framework}{" "}
+      <Icon name="arrow" size={13} />
+    </a>
+  </span>
+  {file && (
+    <a class="manual-source" href={repo + "/blob/" + current.ref + "/" + file}>
+      查看源文件 <Icon name="external" size={13} />
+    </a>
+  )}
+</div>
+{index && (
+  <div class="manual-start" data-pagefind-ignore>
+    <a href={current.base + "guide/"}>
+      <Icon name="book" />
+      <span>
+        <strong>使用指南</strong>
+        <small>了解各页面与常用操作</small>
+      </span>
+      <Icon name="arrow" size={16} />
+    </a>
+    <a href={current.base + "architecture/tech-stack/"}>
+      <Icon name="layers" />
+      <span>
+        <strong>技术栈</strong>
+        <small>{current.framework || "架构"} · 源码与模块</small>
+      </span>
+      <Icon name="arrow" size={16} />
+    </a>
+  </div>
+)}

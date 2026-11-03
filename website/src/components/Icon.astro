@@ -7,7 +7,14 @@ interface Props {
     | "language"
     | "search"
     | "windows"
-    | "expand";
+    | "expand"
+    | "theme"
+    | "chevron"
+    | "book"
+    | "layers"
+    | "activity"
+    | "folder"
+    | "cpu";
   size?: number;
 }
 const { name, size = 18 } = Astro.props;
@@ -20,6 +27,13 @@ const paths = {
   search: "M21 21l-5-5m2-6a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
   windows: "M3 4l8-1v8H3zm10-1 8-1v9h-8zM3 13h8v8l-8-1zm10 0h8v9l-8-1z",
   expand: "M3 9V3h6m6 0h6v6m0 6v6h-6M9 21H3v-6",
+  theme: "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18Zm0 0v18",
+  chevron: "m6 9 6 6 6-6",
+  book: "M3 5c3-1 6-1 9 1 3-2 6-2 9-1v15c-3-1-6-1-9 1-3-2-6-2-9-1zm9 1v15",
+  layers: "m3 8 9-5 9 5-9 5zm0 5 9 5 9-5M3 17l9 5 9-5",
+  activity: "M2 12h5l3-8 4 16 3-8h5",
+  folder: "M3 7V5h6l2 2h10v13H3z",
+  cpu: "M7 7h10v10H7zM4 9H2m2 6H2m18-6h2m-2 6h2M9 4V2m6 2V2M9 20v2m6-2v2M5 5h14v14H5z",
 };
 ---
 

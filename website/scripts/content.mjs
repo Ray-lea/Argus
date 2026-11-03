@@ -20,6 +20,27 @@ function routeFor(file, base) {
   return base + relative;
 }
 
+// Read the application manifest from the same ref as the documentation.
+function desktopFramework(ref) {
+  const manifest = git([
+    "ls-tree",
+    "-r",
+    "--name-only",
+    ref,
+    "--",
+    "src-gpui/Cargo.toml",
+    "src-tauri/Cargo.toml",
+  ])
+    .toString()
+    .trim();
+  if (manifest === "src-gpui/Cargo.toml") return "GPUI";
+  if (manifest !== "src-tauri/Cargo.toml") return "";
+  const major = fileAt(ref, manifest)
+    .toString()
+    .match(/^tauri\s*=\s*(?:\{[^}\n]*?version\s*=\s*)?"[\^~=]?(\d+)/m)?.[1];
+  return major ? "Tauri " + major : "Tauri";
+}
+
 async function prepareEdition(input, ref, development, label) {
   const base = development ? "/docs/dev/" : "/docs/";
   const names = git(["ls-tree", "-r", "-z", "--name-only", ref, "--", "docs"])
@@ -35,7 +56,14 @@ async function prepareEdition(input, ref, development, label) {
     const heading = /^# (.+)$/m.exec(source);
     if (!heading) throw Error("Missing document title in " + file);
     const title = heading[1].trim();
-    const body = source.slice(heading.index + heading[0].length).trimStart();
+    const afterTitle = source
+      .slice(heading.index + heading[0].length)
+      .trimStart();
+    // The older index starts with an ASCII folder tree. The edition navigation covers that tree.
+    const body =
+      file === "docs/README.md"
+        ? afterTitle.replace(/^`{3}[^\n]*\ndocs\/\n[\s\S]*?\n`{3}\s*/, "")
+        : afterTitle;
     const lead = markdown
       .parse(body, {})
       .find((t) => t.type === "inline" && t.content.length > 25);
@@ -97,7 +125,7 @@ async function prepareEdition(input, ref, development, label) {
   }
   if (!routes["docs/README.md"])
     throw Error("Missing " + label + " documentation index");
-  return { ref, label, base, routes };
+  return { ref, label, base, routes, framework: desktopFramework(ref) };
 }
 
 function section(source, heading) {
@@ -121,7 +149,13 @@ function render(source, rewrite) {
 }
 
 export async function prepareContent(input, release) {
-  const devRef = git(["rev-parse", "HEAD"]).toString().trim();
+  const devRef = git([
+    "rev-parse",
+    "--verify",
+    (process.env.ARGUS_DOCS_DEV_REF ?? "HEAD") + "^{commit}",
+  ])
+    .toString()
+    .trim();
   const editions = [
     await prepareEdition(input, release.tag, false, "稳定版 " + release.tag),
     await prepareEdition(input, devRef, true, "开发版"),
@@ -138,6 +172,31 @@ export async function prepareContent(input, release) {
     const en = lang === "en";
     const prefix = en ? "/en" : "";
     const readme = en ? "README.en.md" : "README.md";
+    for (const edition of editions) {
+      const dev = edition.base === "/docs/dev/";
+      const imagePath =
+        "docs/images/screenshot-" +
+        (en ? "en-" : "") +
+        (dev ? "dark" : "light") +
+        ".png";
+      const preview = sharp(fileAt(edition.ref, imagePath));
+      const { width, height } = await preview.metadata();
+      const cover = await preview
+        .extract({
+          left: 0,
+          top: Math.round(height * 0.07),
+          width: Math.round(width * 0.81),
+          height: Math.round(height * 0.34),
+        })
+        .resize({ width: 820 })
+        .webp({ quality: 87 })
+        .toBuffer();
+      await put(
+        publicDir,
+        "assets/handbook-" + lang + "-" + (dev ? "dev" : "stable") + ".webp",
+        cover,
+      );
+    }
     const current = await readFile(join(root, readme), "utf8");
     const stable = fileAt(release.tag, readme).toString("utf8");
     const requirements = section(
@@ -172,6 +231,36 @@ export async function prepareContent(input, release) {
       const asset = "assets/preview-" + lang + "-" + theme;
       await put(publicDir, asset + ".png", png);
       const { width, height } = await sharp(png).metadata();
+      // Detail views are crops of the same release capture, including its own light/dark readings.
+      for (const [scene, box] of Object.entries({
+        window: null,
+        processes: [0.011, 0.285, 0.64, 0.64],
+        signals: [0.011, 0.115, 0.47, 0.47],
+      })) {
+        const image = sharp(png);
+        if (box) {
+          image.extract({
+            left: Math.round(width * box[0]),
+            top: Math.round(height * box[1]),
+            width: Math.round(width * box[2]),
+            height: Math.round(height * box[3]),
+          });
+          await put(
+            publicDir,
+            asset + "-" + scene + ".webp",
+            await image
+              .clone()
+              .resize({ width: 1050, withoutEnlargement: true })
+              .webp({ quality: 94, nearLossless: true })
+              .toBuffer(),
+          );
+        }
+        await put(
+          publicDir,
+          asset + "-thumb-" + scene + ".webp",
+          await image.resize({ width: 200 }).webp({ quality: 82 }).toBuffer(),
+        );
+      }
       const region = Math.round(width * 0.36);
       const detail = await sharp(png)
         .extract({
@@ -212,6 +301,10 @@ export async function prepareContent(input, release) {
   const contact = JSON.parse(
     await readFile(join(websiteRoot, "public-settings.json"), "utf8"),
   ).emailRoutingVerified;
+  await copyFile(
+    new URL("./LICENSE", import.meta.resolve("@fontsource-variable/geist")),
+    join(publicDir, "assets/geist-license.txt"),
+  );
   await put(
     input,
     "site.json",

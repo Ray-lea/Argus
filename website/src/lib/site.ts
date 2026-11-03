@@ -18,6 +18,7 @@ interface Download {
 }
 interface Edition {
   ref: string;
+  framework: string;
   label: string;
   base: string;
   routes: Record<string, string>;
@@ -45,6 +46,12 @@ interface Snapshot {
 export const site: Snapshot = JSON.parse(
   readFileSync(join(siteInput(), "site.json"), "utf8"),
 );
+export function editionName(edition: Edition, lang: Language) {
+  if (lang === "zh") return edition.label;
+  return edition.base === "/docs/"
+    ? "Stable " + site.release.tag
+    : "Development";
+}
 export const text = {
   zh: {
     home: "首页",

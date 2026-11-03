@@ -1,6 +1,6 @@
 # Argus 官网
 
-官网是 pnpm 工作区中的 `@argus/website` 包。Astro 生成静态页面，Tailwind CSS 管理样式。React 岛只承载截图放大与主题切换。文档由 Starlight 渲染，Pagefind 在构建完成后生成中文搜索索引。
+官网是 pnpm 工作区中的 `@argus/website` 包。Astro 生成静态页面，Tailwind CSS 管理样式。React 岛提供真实界面截图的区域切换、放大镜与采样曲线回放。官网和文档共用页头主题控件，偏好可选跟随系统、浅色或深色。文档由 Starlight 渲染，Pagefind 在构建完成后生成中文搜索索引。
 
 | 目录 | 职责 |
 | --- | --- |
@@ -22,6 +22,6 @@ pnpm site:check
 pnpm --dir website dev
 ```
 
-首次构建需要完整 Git 标签和 GitHub Releases 访问权限。开发服务器复用最近一次成功构建的输入。`target/official-web/dist/input/` 是构建用的文档与发行数据快照，`site/` 是要部署的网页。`/docs/` 对应稳定版标签，`/docs/dev/` 对应本次构建的 Git 提交。文档正文维护在仓库的 [docs](../docs/README.md)。
+首次构建需要完整 Git 标签和 GitHub Releases 访问权限。开发服务器复用最近一次成功构建的输入。`target/official-web/dist/input/` 是构建用的文档与发行数据快照，`site/` 是要部署的网页。`/docs/` 对应稳定版标签，生产部署的 `/docs/dev/` 读取 `origin/main`，本地预览默认取 `HEAD`。两个入口从各自的源码清单识别界面技术栈。文档正文维护在仓库的 [docs](../docs/README.md)。
 
-部署和更新清单的发布顺序见[官网与发行镜像](../docs/development/website.md)。视觉复核采用 [Taste Skill](https://github.com/Leonxlnx/taste-skill/tree/12af471f627f866411b4bd785b19646d3672784c/skills/taste-skill) 的 1440、768 和 390 px 截图，并单独检查键盘、触摸及减少动态效果设置下的操作。
+部署和更新清单的发布顺序见[官网与发行镜像](../docs/development/website.md)。视觉复核使用仓库内的 [Taste Skill](../.agents/skills/design-taste-frontend/SKILL.md)，上游固定为 [`12af471f`](https://github.com/Leonxlnx/taste-skill/tree/12af471f627f866411b4bd785b19646d3672784c/skills/taste-skill)。从仓库根目录运行 `node .agents/skills/design-taste-frontend/scripts/inspect.mjs <预览地址> --widths 1440,768,390 --out target/official-web/design-review` 获取原始截图与报告。`pnpm --dir website check:browser <预览地址>` 在独立浏览器中检查主题记忆、版本菜单和采样回放。

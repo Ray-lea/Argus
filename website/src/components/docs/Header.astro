@@ -1,0 +1,37 @@
+---
+import Search from "@astrojs/starlight/components/Search.astro";
+import EditionMenu from "../EditionMenu.astro";
+import ThemePicker from "../ThemePicker.astro";
+import Icon from "../Icon.astro";
+import { repo, site } from "../../lib/site";
+const edition = site.editions.findLast((item) =>
+  Astro.url.pathname.startsWith(item.base),
+)!;
+---
+
+<div class="manual-mast">
+  <div class="manual-identity">
+    <a class="manual-brand" href="/">
+      <img src="/assets/argus.svg" width="29" height="29" alt="" />
+      Argus
+    </a>
+    <span class="manual-slash" aria-hidden="true">
+      /
+    </span>
+    <EditionMenu documentPath={Astro.url.pathname} />
+  </div>
+  <nav class="manual-sections" aria-label="章节导航">
+    <a href={edition.base + "guide/"}>使用指南</a>
+    <a href={edition.base + "architecture/"}>技术架构</a>
+  </nav>
+  <div class="manual-search">
+    <Search />
+  </div>
+  <div class="manual-tools">
+    <a href="/download/">下载</a>
+    <a href={repo} class="manual-git">
+      GitHub <Icon name="external" size={13} />
+    </a>
+    <ThemePicker />
+  </div>
+</div>

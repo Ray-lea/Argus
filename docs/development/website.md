@@ -11,7 +11,7 @@
 
 ## 构建与部署
 
-在具有完整发行标签的检出目录执行 `pnpm install --frozen-lockfile`、`pnpm site:build`、`pnpm site:check`。Astro 使用经校验的发行数据生成产品页。`/docs/` 与产品截图来自同一稳定版标签，`/docs/dev/` 来自构建所用的 Git 提交；Starlight 页内提供对应版本的链接。Pagefind 索引两套中文文档。目录分工和本地预览命令见 [website/README.md](../../website/README.md)。
+在具有完整发行标签的检出目录执行 `pnpm install --frozen-lockfile`、`pnpm site:build`、`pnpm site:check`。Astro 使用经校验的发行数据生成产品页。`/docs/` 与产品截图来自同一稳定版标签，`/docs/dev/` 在官网部署时读取 `main` 分支，按当次提交固定内容。页头“文档”菜单同时显示版本号和对应技术栈，阅读文章时可切换到另一版本的同篇内容。Pagefind 索引两套中文文档。页头“主题”在官网与文档间共用跟随系统、浅色和深色偏好，截图的外观可独立选择。目录分工和本地预览命令见 [website/README.md](../../website/README.md)。
 
 构建按公开 SHA-256 核对两种 EXE，并用客户端的公钥校验安装包及签名发布说明。当前通道的文件优先由镜像提供。超过单文件 25 MiB 的文件及历史版本链接回相同版本的 GitHub 发行文件。Free 额度变化时同步核对 [Cloudflare 限制](https://developers.cloudflare.com/workers/platform/limits/)。
 

@@ -1,0 +1,76 @@
+@font-face {
+  font-family: "Geist Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2")
+    format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+@custom-variant argus-dark {
+  &:where([data-theme="dark"]) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme])) {
+      @slot;
+    }
+  }
+}
+:root {
+  color-scheme: light dark;
+  --argus-font:
+    "Geist Variable", "Segoe UI Variable", "PingFang SC", "Microsoft YaHei UI",
+    system-ui, sans-serif;
+  --paper: #fff;
+  --surface: #fff;
+  --wash: #f6f7fb;
+  --ink: #151622;
+  --muted: #54586b;
+  --faint: #74788b;
+  --line: #dfe1ea;
+  --soft: #f0f1f8;
+  --accent: #5144ca;
+  --accent-ink: white;
+  --accent-soft: #eeedff;
+  --control: #191926;
+  --control-text: #fff;
+  --nav-bg: #ffffffeb;
+  --silver: #eaf1fb;
+  --hero-ground: #f4f4fc;
+  --atmosphere-a: #d6f0ff;
+  --atmosphere-b: #e0d6fb;
+  --book-a: #f0f5ff;
+  --book-b: #f4effa;
+  --code-background: #f3f4f8;
+  @variant argus-dark {
+    color-scheme: dark;
+    --paper: #101117;
+    --surface: #181a23;
+    --wash: #151720;
+    --ink: #f0eff7;
+    --muted: #b0afc2;
+    --faint: #9596aa;
+    --line: #333541;
+    --soft: #252634;
+    --accent: #afa4ff;
+    --accent-ink: #171423;
+    --accent-soft: #2d2745;
+    --control: #eeedf9;
+    --control-text: #181823;
+    --nav-bg: #111219eb;
+    --silver: #212635;
+    --hero-ground: #171924;
+    --atmosphere-a: #182d43;
+    --atmosphere-b: #332647;
+    --book-a: #1c263a;
+    --book-b: #292237;
+    --code-background: #222430;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}

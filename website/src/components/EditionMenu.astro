@@ -1,0 +1,159 @@
+---
+import Icon from "./Icon.astro";
+import { site, editionName, type Language } from "../lib/site";
+interface Props {
+  lang?: Language;
+  documentPath?: string;
+}
+const { lang = "zh", documentPath } = Astro.props;
+const current = site.editions.findLast((edition) =>
+  documentPath?.startsWith(edition.base),
+);
+const file =
+  current &&
+  Object.keys(current.routes).find(
+    (key) => current.routes[key] === documentPath,
+  );
+const en = lang === "en";
+---
+
+<details class="docs-nav" data-edition-menu name="argus-doc-editions">
+  <summary aria-label={en ? "Documentation versions" : "文档版本"}>
+    {current
+      ? current.base === "/docs/"
+        ? "稳定版"
+        : "开发版"
+      : en
+        ? "Docs"
+        : "文档"}{" "}
+    <Icon name="chevron" size={14} />
+  </summary>
+  <div class="docs-nav-panel">
+    {site.editions.map((edition) => (
+      <a
+        href={(file && edition.routes[file]) || edition.base}
+        aria-current={current === edition ? "true" : undefined}
+      >
+        <strong>{editionName(edition, lang)}</strong>
+        <small>
+          {[
+            edition.framework,
+            edition.base === "/docs/"
+              ? en
+                ? "Released guide"
+                : "随正式版发布"
+              : en
+                ? "main branch"
+                : "main 分支",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </small>
+      </a>
+    ))}
+  </div>
+</details>
+<script>
+  for (const menu of document.querySelectorAll<HTMLDetailsElement>(
+    "[data-edition-menu]",
+  )) {
+    document.addEventListener("pointerdown", (event) => {
+      if (
+        menu.open &&
+        event.target instanceof Node &&
+        !menu.contains(event.target)
+      )
+        menu.open = false;
+    });
+    menu.addEventListener("focusout", (event) => {
+      if (
+        event.relatedTarget instanceof Node &&
+        !menu.contains(event.relatedTarget)
+      )
+        menu.open = false;
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && menu.open) {
+        event.preventDefault();
+        event.stopPropagation();
+        menu.open = false;
+        menu.querySelector("summary")?.focus();
+      }
+    });
+  }
+</script>
+<style>
+  .docs-nav {
+    position: relative;
+    z-index: 5;
+    color: inherit;
+    font: inherit;
+  }
+  summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 36px;
+    cursor: pointer;
+    list-style: none;
+    white-space: nowrap;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  .docs-nav[open] summary svg {
+    transform: rotate(180deg);
+  }
+  .docs-nav-panel {
+    position: absolute;
+    inset-inline-start: 0;
+    top: calc(100% + 8px);
+    min-width: 14rem;
+    padding: 6px;
+    border: 1px solid var(--menu-line, var(--line));
+    background: var(--menu-bg, var(--surface));
+    color: var(--menu-ink, var(--ink));
+    border-radius: 12px;
+    box-shadow: 0 12px 35px #1316261a;
+  }
+  .docs-nav .docs-nav-panel a {
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border-radius: 7px;
+    text-decoration: none;
+    white-space: nowrap;
+    color: inherit;
+    line-height: 1.5;
+  }
+  .docs-nav-panel a:is(:hover, :focus-visible) {
+    background: var(--menu-hover, var(--soft));
+  }
+  .docs-nav-panel strong {
+    font-size: 15px;
+    font-weight: 620;
+  }
+  .docs-nav-panel small {
+    font-size: 13px;
+    color: var(--menu-muted, var(--muted));
+  }
+  summary:focus-visible,
+  .docs-nav-panel a:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  @media (max-width: 720px) {
+    .docs-nav {
+      position: static;
+    }
+    .docs-nav-panel {
+      inset-inline: 0;
+      width: auto;
+      min-width: 0;
+      z-index: 4;
+    }
+  }
+</style>
