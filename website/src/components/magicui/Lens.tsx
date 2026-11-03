@@ -3,6 +3,7 @@
 // Adapted from Magic UI's Lens (MIT). The upstream license ships in /assets/magicui-license.txt.
 import { useId, useState, type PointerEvent, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useInteractive } from "../../lib/use-interactive";
 
 type Point = { x: number; y: number };
 export function Lens({
@@ -14,6 +15,7 @@ export function Lens({
 }) {
   const [point, setPoint] = useState<Point | null>(null);
   const reduced = useReducedMotion();
+  const interactive = useInteractive();
   const id = useId();
   function move(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "touch") return;
@@ -34,7 +36,7 @@ export function Lens({
       }}
       onBlur={() => setPoint(null)}
       role="region"
-      tabIndex={0}
+      tabIndex={interactive ? 0 : -1}
       aria-label={label}
       aria-describedby={id}
       onKeyDown={(e) => {

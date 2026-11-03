@@ -1,0 +1,117 @@
+---
+import Icon from "./Icon.astro";
+import SamplePlot from "./SamplePlot.astro";
+import gpu from "../data/gpu-sample.json";
+import etw from "../data/etw-sample.json";
+import type { Language } from "../lib/site";
+interface Props {
+  lang: Language;
+}
+const en = Astro.props.lang === "en";
+---
+
+<section class="features wrap" aria-labelledby="features-title">
+  <h2 id="features-title">
+    {en ? "A closer look at what’s running" : "从系统读数找到具体进程"}
+  </h2>
+  <div class="feature-grid">
+    <article class="feature-card feature-lock">
+      <h3>{en ? "Find what’s locking a file" : "定位并解除文件占用"}</h3>
+      <p>
+        {en
+          ? "Drop a file or folder to see which process holds it. Close the app normally, or confirm End process in Argus to release the file."
+          : "拖入文件或文件夹，即可找到持有句柄的进程。关闭对应应用，或在 Argus 中确认结束进程，即可释放占用。"}
+      </p>
+      <a href="/docs/guide/#文件占用">
+        {en ? "File lock guide" : "查看文件占用指南"}{" "}
+        <Icon name="arrow" size={15} />
+      </a>
+      <div class="lock-evidence">
+        <img
+          src="/features/file-lock-result.webp"
+          width="585"
+          height="218"
+          loading="lazy"
+          alt={
+            en
+              ? "Argus finds Visual Studio Code holding the locked-folder directory and offers End process."
+              : "文件占用查询结果：Visual Studio Code 持有 locked-folder 的句柄，右侧可选择结束进程。"
+          }
+        />
+      </div>
+    </article>
+    <article class="feature-card feature-gpu">
+      <h3>{en ? "Track dedicated GPU memory" : "看清 GPU 专用显存"}</h3>
+      <p>
+        {en
+          ? "Compare dedicated and shared memory on each adapter. Check engine load, temperature and power alongside it when the hardware exposes them."
+          : "按显卡区分专用显存与共享内存。结合引擎负载，以及硬件提供的温度、功率读数，判断瓶颈。"}
+      </p>
+      <a href="/docs/guide/hardware-data/">
+        {en ? "Hardware readings" : "查看硬件监控说明"}{" "}
+        <Icon name="arrow" size={15} />
+      </a>
+      <SamplePlot
+        samples={gpu}
+        divisor={1048576}
+        step={10}
+        unit="MiB"
+        label={en ? "Dedicated memory in use" : "专用显存用量"}
+      />
+    </article>
+    <article class="feature-card feature-etw">
+      <h3>
+        {en ? "Trace network traffic to a process" : "用 ETW 追踪进程流量"}
+      </h3>
+      <p>
+        {en
+          ? "With administrator access or the authorized service, Argus counts TCP and UDP bytes sent and received by each process. This trace captures one process sending bursts over loopback."
+          : "通过管理员权限或已授权的特权服务，按进程统计 TCP、UDP 收发字节。下图记录了一个进程在回环测试中分批发送数据的过程。"}
+      </p>
+      <a href="/docs/guide/hardware-data/">
+        {en ? "Network data sources" : "查看网络采集来源"}{" "}
+        <Icon name="arrow" size={15} />
+      </a>
+      <SamplePlot
+        samples={etw}
+        divisor={1024}
+        step={200}
+        zero
+        unit="KiB/s"
+        label={en ? "Process send rate" : "单进程发送速率"}
+      />
+    </article>
+    <article class="feature-card feature-native">
+      <h3>
+        {en
+          ? "Native when visible. Quiet in the tray."
+          : "Rust 原生界面，轻量常驻"}
+      </h3>
+      <p>
+        {en
+          ? "The GPUI development build pairs a Rust collector with a native Windows interface. Use smooth scrolling charts and Windows 11 Mica in the foreground; hide the window to pause drawing while history continues."
+          : "GPUI 开发版采用 Rust 采集和原生界面，支持 Windows 11 云母材质与高帧率曲线。隐藏到托盘后，窗口暂停绘制，采样与历史记录继续运行。"}
+      </p>
+      <a href="/docs/dev/guide/resident-mode/">
+        {en ? "Tray and background settings" : "查看常驻设置"}{" "}
+        <Icon name="arrow" size={15} />
+      </a>
+      <dl class="render-states">
+        <div>
+          <dt>
+            <Icon name="windows" />
+            {en ? "Window visible" : "窗口显示"}
+          </dt>
+          <dd>{en ? "Render charts" : "绘制曲线"}</dd>
+        </div>
+        <div>
+          <dt>
+            <Icon name="layers" />
+            {en ? "Hidden in tray" : "隐藏到托盘"}
+          </dt>
+          <dd>{en ? "Pause drawing" : "暂停绘制"}</dd>
+        </div>
+      </dl>
+    </article>
+  </div>
+</section>

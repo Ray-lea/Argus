@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import type { Language } from "../lib/site";
+import { useInteractive } from "../lib/use-interactive";
 type Sample = { ms: number; cpu: number; memory: number; gpu: number };
 type Metric = "cpu" | "memory" | "gpu";
 export default function ResourceReplay({
@@ -11,6 +12,7 @@ export default function ResourceReplay({
 }) {
   const en = lang === "en",
     [metric, setMetric] = useState<Metric>("cpu");
+  const interactive = useInteractive();
   const [index, setIndex] = useState(() =>
     samples.reduce((best, p, i) => (p.cpu > samples[best].cpu ? i : best), 0),
   );
@@ -21,12 +23,24 @@ export default function ResourceReplay({
     point = samples[index],
     id = useId();
   const x = (s: Sample) => ((s.ms - first.ms) * 560) / span;
-  const y = (s: Sample) => 130 - s[metric] * 1.2;
+  // A narrow, labeled scale keeps small changes in memory use readable.
+  const values = samples.map((s) => s[metric]);
+  const low = metric === "memory" ? Math.floor(Math.min(...values)) : 0;
+  const high =
+    metric === "memory"
+      ? Math.max(low + 1, Math.ceil(Math.max(...values)))
+      : 100;
+  const y = (s: Sample) => 130 - ((s[metric] - low) / (high - low)) * 120;
   const path = samples
     .map((s, i) => (i ? "L" : "M") + x(s).toFixed(1) + " " + y(s).toFixed(1))
     .join(" ");
   return (
-    <div className={"replay-frame metric-" + metric}>
+    <figure className={"replay-frame metric-" + metric}>
+      <figcaption className="sr-only">
+        {en
+          ? "Recorded resource utilization over one minute"
+          : "一分钟实测资源使用率"}
+      </figcaption>
       <div className="replay-bar">
         <span>
           <i />
@@ -37,6 +51,7 @@ export default function ResourceReplay({
             <button
               type="button"
               key={m}
+              disabled={!interactive}
               aria-pressed={m === metric}
               onClick={() => setMetric(m)}
             >
@@ -54,22 +69,38 @@ export default function ResourceReplay({
           {label[metric]} · {((point.ms - first.ms) / 1000).toFixed(0)} s
         </span>
       </div>
-      <svg
-        viewBox="0 0 560 140"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={
-          en
-            ? label[metric] + " recorded utilization"
-            : label[metric] + " 使用率记录"
-        }
-      >
-        <path d="M0 10H560M0 70H560M0 130H560" className="plot-grid" />
-        <path d={path + " L560 130H0Z"} className="plot-fill" />
-        <path d={path} className="plot-line" />
-        <path d={"M" + x(point) + " 5V130"} className="plot-cursor" />
-        <circle r="4.8" cx={x(point)} cy={y(point)} className="plot-dot" />
-      </svg>
+      <div className="replay-chart">
+        <div className="replay-axis" aria-hidden="true">
+          <span>{high}%</span>
+          <span>{low}%</span>
+        </div>
+        <svg
+          viewBox="0 0 560 140"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={
+            en
+              ? label[metric] +
+                " recorded utilization, scale " +
+                low +
+                "–" +
+                high +
+                "%"
+              : label[metric] +
+                " 使用率记录，纵轴 " +
+                low +
+                "% 至 " +
+                high +
+                "%"
+          }
+        >
+          <path d="M0 10H560M0 70H560M0 130H560" className="plot-grid" />
+          <path d={path + " L560 130H0Z"} className="plot-fill" />
+          <path d={path} className="plot-line" />
+          <path d={"M" + x(point) + " 5V130"} className="plot-cursor" />
+          <circle r="4.8" cx={x(point)} cy={y(point)} className="plot-dot" />
+        </svg>
+      </div>
       <div className="replay-time">
         <span>0 s</span>
         <label htmlFor={id}>{en ? "Sample time" : "采样时刻"}</label>
@@ -78,6 +109,7 @@ export default function ResourceReplay({
       <input
         id={id}
         type="range"
+        disabled={!interactive}
         min="0"
         max={samples.length - 1}
         value={index}
@@ -91,6 +123,6 @@ export default function ResourceReplay({
           "%"
         }
       />
-    </div>
+    </figure>
   );
 }

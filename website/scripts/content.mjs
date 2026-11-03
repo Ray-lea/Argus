@@ -248,14 +248,15 @@ export async function prepareContent(
       ),
     };
     for (const theme of ["dark", "light"]) {
-      const png = fileAt(
-        release.tag,
-        "docs/images/screenshot-" + (en ? "en-" : "") + theme + ".png",
-      );
+      const capture =
+        "docs/images/screenshot-" + (en ? "en-" : "") + theme + ".png";
+      const png = worktree
+        ? await readFile(join(root, capture))
+        : fileAt(editions[1].ref, capture);
       const asset = "assets/preview-" + lang + "-" + theme;
       await put(publicDir, asset + ".png", png);
       const { width, height } = await sharp(png).metadata();
-      // Detail views are crops of the same release capture, including its own light/dark readings.
+      // All interactive views use the same development capture and recorded workload.
       for (const [scene, box] of Object.entries({
         window: null,
         processes: [0.011, 0.285, 0.64, 0.64],

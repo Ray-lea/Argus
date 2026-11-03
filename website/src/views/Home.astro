@@ -3,6 +3,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 import Icon from "../components/Icon.astro";
 import ProductPreview from "../components/ProductPreview";
 import ResourceReplay from "../components/ResourceReplay";
+import FeatureGrid from "../components/FeatureGrid.astro";
+import ToolComparison from "../components/ToolComparison.astro";
 import trace from "../../../tools/window-probe/fixtures/readme-trace.json";
 import {
   localized,
@@ -14,6 +16,7 @@ import {
   type Language,
 } from "../lib/site";
 import "../styles/home.css";
+import "../styles/features.css";
 interface Props {
   lang: Language;
 }
@@ -79,25 +82,32 @@ const intro = en
           </a>
         </div>
         <p class="hero-info">
-          <span>Windows x64</span>
-          <span aria-hidden="true">·</span>
-          <a href="/docs/dev/">
-            {site.editions[1].framework}{" "}
-            {en ? "development docs" : "开发版文档"}
+          <a href={repo + "/blob/" + r.tag + "/LICENSE"}>
+            <Icon name="book" size={15} />
+            {en ? "AGPL-3.0 open source" : "AGPL-3.0 开源"}
           </a>
-          <span aria-hidden="true">·</span>
-          <a href={localized(lang, "/download/")}>
+          <a href="/docs/dev/architecture/tech-stack/">
+            <Icon name="cpu" size={15} />
+            {en ? "Built with Rust" : "Rust 构建"}
+          </a>
+          <a href={r.files.portable.url}>
+            <Icon name="download" size={15} />
             {en ? "Portable edition" : "免安装版"}
           </a>
+          <span>Windows x64</span>
         </p>
       </div>
-      <div
+      <section
         class="product-studio wrap"
         id="workspace"
         aria-label={en ? "Interactive product preview" : "交互式产品预览"}
       >
-        <ProductPreview client:visible lang={lang} tag={r.tag} />
-      </div>
+        <ProductPreview
+          client:visible
+          lang={lang}
+          framework={site.editions[1].framework}
+        />
+      </section>
     </section>
     <section class="replay-section" aria-labelledby="replay-title">
       <div class="replay-grid wrap">
@@ -111,8 +121,8 @@ const intro = en
           </h2>
           <p>
             {en
-              ? "Argus records the busiest processes alongside system activity. Scrub this one-minute sample to inspect each reading."
-              : "Argus 在记录整机负载的同时保存当时的高占用进程。拖动这段一分钟采样的游标，查看每个时刻的读数。"}
+              ? "With history enabled, Argus keeps seven days of system readings and the busiest processes on this PC. Scrub the minute of recorded activity shown here."
+              : "开启历史记录后，最近七天的整机负载和当时最忙的进程会保存在本机。拖动游标，可逐点查看这段一分钟实测记录。"}
           </p>
           <a class="text-link" href="/docs/guide/#历史">
             {en ? "Read the history guide (中文)" : "打开历史记录指南"}
@@ -131,6 +141,8 @@ const intro = en
         />
       </div>
     </section>
+    <FeatureGrid lang={lang} />
+    <ToolComparison lang={lang} />
     <section
       id="handbooks"
       class="handbooks wrap"

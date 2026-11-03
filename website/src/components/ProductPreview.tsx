@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Lens } from "./magicui/Lens";
+import { useInteractive } from "../lib/use-interactive";
 import type { Language } from "../lib/site";
 type Scene = "window" | "processes" | "signals";
 const scenes = {
@@ -16,16 +17,18 @@ const scenes = {
 } as const;
 export default function ProductPreview({
   lang,
-  tag,
+  framework,
 }: {
   lang: Language;
-  tag: string;
+  framework: string;
 }) {
   const en = lang === "en",
     labels = scenes[lang];
+  const interactive = useInteractive();
   const [scene, setScene] = useState<Scene>("window"),
     [theme, setTheme] = useState<"dark" | "light">("dark");
   const asset = `/assets/preview-${lang}-${theme}`;
+  const edition = en ? framework + " development build" : framework + " 开发版";
   const isFull = scene === "window";
   const src = isFull ? asset + "-1280.webp" : asset + "-" + scene + ".webp";
   return (
@@ -40,6 +43,7 @@ export default function ProductPreview({
             type="button"
             key={key}
             className="scene-button"
+            disabled={!interactive}
             aria-pressed={scene === key}
             title={labels[key][1]}
             onClick={() => setScene(key)}
@@ -75,6 +79,7 @@ export default function ProductPreview({
                 {(["dark", "light"] as const).map((t) => (
                   <button
                     key={t}
+                    disabled={!interactive}
                     type="button"
                     aria-pressed={theme === t}
                     onClick={() => setTheme(t)}
@@ -116,6 +121,7 @@ export default function ProductPreview({
                 width="1280"
                 height="800"
                 loading="eager"
+                fetchPriority="high"
                 alt={
                   en
                     ? labels[scene][0] + " in Argus for Windows"
@@ -125,7 +131,7 @@ export default function ProductPreview({
             </picture>
           </Lens>
           <div className="preview-caption">
-            <span>Argus {tag}</span>
+            <span>Argus · {edition}</span>
             <a href={asset + ".png"}>
               {en ? "Open full screenshot" : "查看完整原图"} ↗
             </a>
@@ -134,8 +140,8 @@ export default function ProductPreview({
       </div>
       <figcaption className="sr-only">
         {en
-          ? "Argus " + tag + " interactive preview"
-          : "Argus " + tag + " 界面预览"}
+          ? "Argus process view with a minute of recorded CPU, memory, disk, network and GPU readings."
+          : "Argus 进程页，顶部五张曲线回放一分钟的 CPU、内存、磁盘、网络与 GPU 采样。"}
       </figcaption>
     </figure>
   );

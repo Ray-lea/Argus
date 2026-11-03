@@ -1,0 +1,94 @@
+---
+import type { Language } from "../lib/site";
+interface Props {
+  lang: Language;
+}
+const en = Astro.props.lang === "en";
+const legend = {
+  yes: ["✓", en ? "Built in" : "内置支持"],
+  via: ["◐", en ? "Via another tool" : "需其他工具"],
+  no: ["×", en ? "Not built in" : "未内置"],
+} as const;
+type Status = keyof typeof legend;
+type Capability = [Status, string];
+const rows: { task: string; cells: Capability[] }[] = [
+  {
+    task: en ? "7-day peak history" : "7 天峰值回溯",
+    cells: [
+      ["yes", en ? "Timeline + processes" : "曲线与进程"],
+      ["no", en ? "App totals only" : "仅累计用量"],
+      ["no", en ? "Session graphs" : "仅会话曲线"],
+    ],
+  },
+  {
+    task: en ? "Find file locks" : "查找文件占用",
+    cells: [
+      ["yes", en ? "Drop a file" : "拖入文件"],
+      ["via", en ? "Resource Monitor" : "资源监视器"],
+      ["yes", en ? "Handle search" : "搜索句柄"],
+    ],
+  },
+  {
+    task: en ? "Dark interface" : "深色界面",
+    cells: [
+      ["yes", en ? "Win 11 Mica" : "Win 11 云母"],
+      ["yes", en ? "System theme" : "系统主题"],
+      ["yes", en ? "Dark theme" : "深色主题"],
+    ],
+  },
+];
+---
+
+<section class="comparison wrap" aria-labelledby="compare-title">
+  <div class="compare-heading">
+    <h2 id="compare-title">{en ? "Feature comparison" : "功能对比"}</h2>
+    <ul class="compare-legend" aria-label={en ? "Legend" : "标识说明"}>
+      {Object.entries(legend).map(([status, [symbol, label]]) => (
+        <li>
+          <span class={"cap-mark cap-" + status} aria-hidden="true">
+            {symbol}
+          </span>
+          {label}
+        </li>
+      ))}
+    </ul>
+  </div>
+  <table aria-labelledby="compare-title">
+    <thead>
+      <tr>
+        <th scope="col">{en ? "Feature" : "功能"}</th>
+        <th scope="col">Argus</th>
+        <th scope="col">
+          <a href="https://support.microsoft.com/en-us/accessibility/windows/use-a-screen-reader-to-navigate-windows-support-tools">
+            {en ? "Windows Task Manager" : "Windows 任务管理器"}
+          </a>
+        </th>
+        <th scope="col">
+          <a href="https://learn.microsoft.com/en-us/sysinternals/downloads/process-explorer">
+            Process Explorer
+          </a>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map(({ task, cells }) => (
+        <tr>
+          <th scope="row">{task}</th>
+          {cells.map(([status, value]) => (
+            <td>
+              <span class="capability">
+                <span class={"cap-mark cap-" + status} aria-hidden="true">
+                  {legend[status][0]}
+                </span>
+                <span>
+                  <span class="sr-only">{legend[status][1]}: </span>
+                  {value}
+                </span>
+              </span>
+            </td>
+          ))}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</section>

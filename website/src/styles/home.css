@@ -439,11 +439,28 @@
   color: #bfcae3;
   font-variant-numeric: tabular-nums;
 }
-.replay-frame > svg {
-  display: block;
-  width: 100%;
-  height: clamp(100px, 10vw, 150px);
+.replay-chart {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
   margin-block: 10px;
+}
+.replay-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-block: 5px;
+  min-width: 3.5ch;
+  text-align: end;
+  color: #bfcae3;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.replay-chart > svg {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  height: clamp(100px, 10vw, 150px);
 }
 .plot-grid {
   stroke: #343b52;

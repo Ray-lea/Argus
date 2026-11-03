@@ -71,6 +71,37 @@ try {
     [1440, 900],
     [390, 844],
   ]) {
+    const staticPage = await browser.newPage({
+      width,
+      height,
+      reducedMotion: true,
+    });
+    try {
+      await staticPage.send("Emulation.setScriptExecutionDisabled", {
+        value: true,
+      });
+      await staticPage.goto(base + (width < 500 ? "/en/" : "/"));
+      const initial = await staticPage.eval(() => ({
+        screenshot: document.querySelector(".lens img")?.naturalWidth,
+        curves: [...document.querySelectorAll(".plot-line,.sample-trace")].map(
+          (p) => p.getBBox().height,
+        ),
+        comparison: document
+          .querySelector(".comparison table")
+          ?.getBoundingClientRect().height,
+        overflow: document.documentElement.scrollWidth - innerWidth,
+      }));
+      assert(
+        initial.screenshot > 0 && initial.comparison > 0 && !initial.overflow,
+      );
+      assert(
+        initial.curves.length === 3 &&
+          initial.curves.every((height) => height > 1),
+        "Static preview needs recorded, non-flat curves",
+      );
+    } finally {
+      await staticPage.close();
+    }
     const page = await browser.newPage({
       width,
       height,
@@ -117,6 +148,24 @@ try {
     );
     await page.screenshot({ path: join(output, "versions-" + width + ".jpg") });
     await press(page, "Escape", 27);
+    await waitFor(page, () => !document.querySelector("header details").open);
+    await page.eval(() =>
+      document.querySelector("header details summary").click(),
+    );
+    await page.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      button: "left",
+      clickCount: 1,
+      x: 2,
+      y: 420,
+    });
+    await page.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      button: "left",
+      clickCount: 1,
+      x: 2,
+      y: 420,
+    });
     await waitFor(page, () => !document.querySelector("header details").open);
     await page.eval(() =>
       document.querySelector("header details summary").click(),
