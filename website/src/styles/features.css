@@ -1,8 +1,7 @@
 .features {
   padding-block: clamp(44px, 6vw, 82px) 0;
 }
-.features h2,
-.comparison h2 {
+.features h2 {
   margin-bottom: clamp(20px, 3vw, 34px);
   text-wrap: balance;
 }
@@ -189,122 +188,6 @@
     --trace: #6ad6b5;
   }
 }
-.comparison {
-  --yes-ink: light-dark(#00644c, #8be7bf);
-  --yes-bg: light-dark(#def4e9, #183b31);
-  --via-ink: light-dark(#845500, #ffce71);
-  --via-bg: light-dark(#fff0cb, #41351c);
-  padding-block: clamp(26px, 4vw, 46px) 0;
-}
-.compare-heading,
-.compare-legend,
-.compare-legend li,
-.capability {
-  display: flex;
-  align-items: center;
-}
-.compare-heading {
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  margin-bottom: 14px;
-}
-.home-page .compare-heading h2 {
-  margin: 0;
-}
-.compare-legend {
-  flex-wrap: wrap;
-  gap: 6px 15px;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-  color: var(--muted);
-  font-size: 12px;
-}
-.compare-legend li,
-.capability {
-  gap: 7px;
-}
-.cap-mark {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  font:
-    700 16px/1 system-ui,
-    sans-serif;
-}
-.cap-yes {
-  background: var(--yes-bg);
-  color: var(--yes-ink);
-}
-.cap-via {
-  background: var(--via-bg);
-  color: var(--via-ink);
-}
-.cap-no {
-  background: light-dark(#fce8ea, #462831);
-  color: light-dark(#9e3445, #ffb0bc);
-}
-.compare-legend .cap-mark {
-  width: 17px;
-  height: 17px;
-  font-size: 12px;
-}
-.comparison tbody tr > :nth-child(2) {
-  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
-}
-@media (max-width: 600px) {
-  .compare-heading {
-    display: grid;
-  }
-  .capability {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-  }
-}
-.home-page .comparison h2 {
-  font-size: clamp(18px, 1.5vw, 22px);
-  margin-bottom: 12px;
-  letter-spacing: -0.02em;
-}
-.comparison table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: 14px;
-  line-height: 1.5;
-}
-.comparison :is(th, td) {
-  text-align: start;
-  vertical-align: middle;
-  padding: 9px 8px;
-  border-bottom: 1px solid var(--line);
-  overflow-wrap: break-word;
-}
-.comparison tr > :first-child {
-  padding-inline-start: 0;
-  width: 16%;
-}
-.comparison th {
-  font-weight: 580;
-}
-.comparison thead th:nth-child(2) {
-  color: var(--accent);
-}
-.comparison thead a {
-  color: inherit;
-  text-decoration: none;
-}
-.comparison thead a:hover {
-  text-decoration: underline;
-}
-.comparison tbody td {
-  color: var(--muted);
-}
 .hero-introduction .hero-info {
   justify-content: center;
   flex-wrap: wrap;
@@ -333,11 +216,5 @@
   }
   .feature-card > a {
     margin-bottom: 18px;
-  }
-  .comparison table {
-    font-size: 13px;
-  }
-  .comparison :is(th, td) {
-    padding: 8px 4px;
   }
 }

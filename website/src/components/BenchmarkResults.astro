@@ -1,0 +1,115 @@
+---
+import recorded from "../data/windows-interaction.json";
+import type { Language } from "../lib/site";
+interface Props {
+  lang: Language;
+}
+type Run = { tool: "argus" | "native" | "pe"; operation: string; ms: number[] };
+const data: Run[] = recorded as Run[];
+const en = Astro.props.lang === "en";
+const tools = ["argus", "native", "pe"] as const;
+const names = ["Argus", en ? "Task Manager" : "任务管理器", "Process Explorer"];
+const ops = [
+  ["cpu-out", "进程 → CPU 性能", "Processes → CPU"],
+  ["cpu-back", "CPU 性能 → 进程", "CPU → Processes"],
+  ["svc-out", "进程 → 服务", "Processes → Services"],
+  ["svc-back", "服务 → 进程", "Services → Processes"],
+  ["sort-up", "PID 列升序", "Sort PID ascending"],
+  ["sort-down", "PID 列降序", "Sort PID descending"],
+  ["row", "选中另一行进程", "Select another process"],
+];
+const rows = ops.map(([op, zh, english]) => {
+  const cells = tools.map((tool) => {
+    const samples = data
+      .filter((r) => r.tool === tool && r.operation === op)
+      .flatMap((r) => r.ms)
+      .sort((a, b) => a - b);
+    const n = samples.length;
+    if (
+      !n &&
+      !(tool === "pe" && (op.startsWith("cpu-") || op.startsWith("svc-")))
+    ) {
+      throw new Error("Missing Windows benchmark: " + tool + " / " + op);
+    }
+    return n
+      ? (samples[Math.floor((n - 1) / 2)] + samples[Math.floor(n / 2)]) / 2
+      : null;
+  });
+  return {
+    op,
+    label: en ? english : zh,
+    cells,
+    max: Math.max(1, ...cells.map((c) => c ?? 0)),
+  };
+});
+---
+
+<section class="latency-panel" aria-labelledby="latency-title">
+  <div class="latency-head">
+    <div>
+      <h3 id="latency-title">
+        {en ? "Click to visible content" : "从点击到画面出现"}
+      </h3>
+      <p>{en ? "Median latency · bars share a scale within each row" : "中位耗时 · 同行色条越短越快"}</p>
+    </div>
+    <span class="bench-device">
+      {en ? "Physical PC · 3 Nov 2026" : "物理机实测 · 2026 年 11 月 3 日"}
+    </span>
+  </div>
+  <table class="speed-table">
+    <thead>
+      <tr>
+        <th scope="col">{en ? "Operation" : "操作"}</th>
+        {names.map((name, i) => (
+          <th scope="col">
+            <i class={"series-key " + tools[i]}></i>
+            {name}
+          </th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map((row) => (
+        <tr>
+          <th scope="row">{row.label}</th>
+          {row.cells.map((c, i) => (
+            <td>
+              {c ? (
+                <div class="time-value">
+                  <span>
+                    <strong>{Math.round(c)}</strong> ms
+                  </span>
+                  <svg
+                    viewBox="0 0 100 4"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      class={tools[i]}
+                      width={(100 * c) / row.max}
+                      height="4"
+                      rx="1"
+                    />
+                  </svg>
+                </div>
+              ) : (
+                <span
+                  class="no-peer"
+                  aria-label={en ? "No equivalent page" : "无对应页面"}
+                >
+                  —
+                </span>
+              )}
+            </td>
+          ))}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+  <div class="bench-footer">
+    <span>Core i5-13500HX · RTX 4060 Laptop · Windows 11 26H2</span>
+    <a href="/benchmarks/windows-interaction.json">
+      {en ? "Test data" : "测试数据"} ↗
+    </a>
+  </div>
+</section>

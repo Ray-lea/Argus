@@ -1,94 +1,97 @@
 ---
+import BenchmarkResults from "./BenchmarkResults.astro";
+import { groups, type Support } from "../data/tool-comparison";
 import type { Language } from "../lib/site";
+import "../styles/comparison.css";
 interface Props {
   lang: Language;
 }
-const en = Astro.props.lang === "en";
-const legend = {
-  yes: ["✓", en ? "Built in" : "内置支持"],
-  via: ["◐", en ? "Via another tool" : "需其他工具"],
-  no: ["×", en ? "Not built in" : "未内置"],
-} as const;
-type Status = keyof typeof legend;
-type Capability = [Status, string];
-const rows: { task: string; cells: Capability[] }[] = [
-  {
-    task: en ? "7-day peak history" : "7 天峰值回溯",
-    cells: [
-      ["yes", en ? "Timeline + processes" : "曲线与进程"],
-      ["no", en ? "App totals only" : "仅累计用量"],
-      ["no", en ? "Session graphs" : "仅会话曲线"],
-    ],
-  },
-  {
-    task: en ? "Find file locks" : "查找文件占用",
-    cells: [
-      ["yes", en ? "Drop a file" : "拖入文件"],
-      ["via", en ? "Resource Monitor" : "资源监视器"],
-      ["yes", en ? "Handle search" : "搜索句柄"],
-    ],
-  },
-  {
-    task: en ? "Dark interface" : "深色界面",
-    cells: [
-      ["yes", en ? "Win 11 Mica" : "Win 11 云母"],
-      ["yes", en ? "System theme" : "系统主题"],
-      ["yes", en ? "Dark theme" : "深色主题"],
-    ],
-  },
-];
+const { lang } = Astro.props;
+const en = lang === "en",
+  i = en ? 1 : 0;
+const labels: Record<Support, [string, string]> = {
+  builtIn: ["✓", en ? "Built in" : "内置"],
+  different: ["≈", en ? "Related view" : "不同口径"],
+  external: ["↗", en ? "Companion tool" : "外部工具"],
+  absent: ["×", en ? "Not built in" : "未内置"],
+};
 ---
 
-<section class="comparison wrap" aria-labelledby="compare-title">
-  <div class="compare-heading">
-    <h2 id="compare-title">{en ? "Feature comparison" : "功能对比"}</h2>
-    <ul class="compare-legend" aria-label={en ? "Legend" : "标识说明"}>
-      {Object.entries(legend).map(([status, [symbol, label]]) => (
-        <li>
-          <span class={"cap-mark cap-" + status} aria-hidden="true">
-            {symbol}
-          </span>
-          {label}
-        </li>
-      ))}
-    </ul>
-  </div>
-  <table aria-labelledby="compare-title">
-    <thead>
-      <tr>
-        <th scope="col">{en ? "Feature" : "功能"}</th>
-        <th scope="col">Argus</th>
-        <th scope="col">
-          <a href="https://support.microsoft.com/en-us/accessibility/windows/use-a-screen-reader-to-navigate-windows-support-tools">
-            {en ? "Windows Task Manager" : "Windows 任务管理器"}
-          </a>
-        </th>
-        <th scope="col">
-          <a href="https://learn.microsoft.com/en-us/sysinternals/downloads/process-explorer">
-            Process Explorer
-          </a>
-        </th>
-      </tr>
-    </thead>
-    <tbody>
-      {rows.map(({ task, cells }) => (
-        <tr>
-          <th scope="row">{task}</th>
-          {cells.map(([status, value]) => (
-            <td>
-              <span class="capability">
-                <span class={"cap-mark cap-" + status} aria-hidden="true">
-                  {legend[status][0]}
-                </span>
-                <span>
-                  <span class="sr-only">{legend[status][1]}: </span>
-                  {value}
-                </span>
+<section class="tool-study" aria-labelledby="study-title">
+  <div class="wrap">
+    <h2 id="study-title">
+      {en
+        ? "Three tools on the same Windows PC"
+        : "同一台 Windows 电脑上的三款工具"}
+    </h2>
+    <p class="study-intro">
+      {en
+        ? "Argus GPUI development build, Windows Task Manager and Process Explorer 17.2 on Windows 11."
+        : "Windows 11 实测 · Argus GPUI 开发版、系统任务管理器与 Process Explorer 17.2"}
+    </p>
+    <BenchmarkResults lang={lang} />
+    <section class="feature-matrix" aria-labelledby="compare-title">
+      <div class="matrix-heading">
+        <h3 id="compare-title">
+          {en ? "Features and inspection depth" : "功能与信息明细"}
+        </h3>
+        <ul class="support-key">
+          {Object.entries(labels).map(([status, [symbol, label]]) => (
+            <li>
+              <span class={"support " + status} aria-hidden="true">
+                {symbol}
               </span>
-            </td>
+              {label}
+            </li>
           ))}
-        </tr>
+        </ul>
+      </div>
+      {groups.map((group) => (
+        <table class="cap-table">
+          <caption>{group.title[i]}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{en ? "Task" : "排查任务"}</th>
+              <th scope="col">Argus</th>
+              <th scope="col">{en ? "Task Manager" : "任务管理器"}</th>
+              <th scope="col">Process Explorer</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.rows.map(([task, ...cells]) => (
+              <tr>
+                <th scope="row">{task[i]}</th>
+                {cells.map(([status, zh, english]) => (
+                  <td>
+                    <div>
+                      <span class={"support " + status} aria-hidden="true">
+                        {labels[status][0]}
+                      </span>
+                      <span>
+                        <span class="sr-only">{labels[status][1]} · </span>
+                        {en ? english : zh}
+                      </span>
+                    </div>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       ))}
-    </tbody>
-  </table>
+      <p class="study-sources">
+        {en
+          ? "The matrix combines observed screens with the product manuals. Sensor readings depend on the adapter, driver and permissions."
+          : "功能明细结合实测界面和产品手册。传感器读数取决于硬件、驱动与授权。"}{" "}
+        <a href="/docs/dev/guide/">Argus</a> ·{" "}
+        <a href="https://support.microsoft.com/en-us/accessibility/windows/use-a-screen-reader-to-navigate-windows-support-tools">
+          Windows Task Manager
+        </a>{" "}
+        ·{" "}
+        <a href="https://learn.microsoft.com/en-us/sysinternals/downloads/process-explorer">
+          Process Explorer
+        </a>
+      </p>
+    </section>
+  </div>
 </section>

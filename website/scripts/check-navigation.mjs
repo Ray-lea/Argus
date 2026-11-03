@@ -87,7 +87,7 @@ try {
           (p) => p.getBBox().height,
         ),
         comparison: document
-          .querySelector(".comparison table")
+          .querySelector(".cap-table")
           ?.getBoundingClientRect().height,
         overflow: document.documentElement.scrollWidth - innerWidth,
       }));

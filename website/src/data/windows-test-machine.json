@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-03",
+  "environment": "Physical PC",
+  "os": "Windows 11 26H2 (26300.9711)",
+  "cpu": "Intel Core i5-13500HX",
+  "logicalProcessors": 20,
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "memoryGiB": 96,
+  "clientPixels": [
+    960,
+    620
+  ],
+  "dpi": 96,
+  "tools": {
+    "argus": "0.3.4 GPUI development build",
+    "argusExeSHA256": "59928e95f09bd21ce791dbe5a138cd40cd9f5a8abf2b409d67a44c6ee5950768",
+    "native": "Task Manager 10.0.26100.9549",
+    "pe": "Process Explorer 17.2"
+  },
+  "clock": "Mouse input QPC to matching Windows Graphics Capture SystemRelativeTime",
+  "graphics": "CPU performance view: all 20 logical processors",
+  "readiness": "Stable, distinct pixels in the target window content, excluding navigation. Warm the view and confirm the source before each click.",
+  "sort": "Click the PID column header repeatedly, alternating ascending and descending. Match pixels in the resulting process rows, excluding the header.",
+  "row": "Select alternating process rows with a fixed PID order. Match their selection state with the pointer outside the measured rows.",
+  "privileges": "Administrator",
+  "virtualMachineSamplesIncluded": false
+}
