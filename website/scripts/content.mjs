@@ -244,9 +244,8 @@ export async function prepareContent(input, release) {
     "robots.txt",
     "User-agent: *\nAllow: /\nSitemap: " + origin + "/sitemap.xml\n",
   );
-  await put(
-    publicDir,
-    "_headers",
-    "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: DENY\n  Content-Security-Policy: frame-ancestors 'none'; form-action 'self'; base-uri 'none'\n  Permissions-Policy: camera=(), microphone=(), geolocation=()\n  Cache-Control: public, max-age=300\n",
+  await copyFile(
+    join(websiteRoot, "public/_headers"),
+    join(publicDir, "_headers"),
   );
 }

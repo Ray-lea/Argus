@@ -35,12 +35,14 @@ function inspectPage(source) {
     alternates = new Map(),
     schemas = [];
   let canonical, policy;
-  const executableHashes = [];
+  const executableHashes = [],
+    scriptSources = [];
   function walk(node) {
     const attrs = Object.fromEntries(
       (node.attrs ?? []).map((a) => [a.name, a.value]),
     );
     if (attrs.id) ids.add(attrs.id);
+    if (node.tagName === "script" && attrs.src) scriptSources.push(attrs.src);
     for (const key of ["href", "src", "component-url", "renderer-url"])
       if (attrs[key]) links.push(attrs[key]);
     if (attrs.srcset && !attrs.srcset.startsWith("data:")) {
@@ -84,7 +86,28 @@ function inspectPage(source) {
     canonical,
     policy,
     executableHashes,
+    scriptSources,
   };
+}
+function checkScripts(page, url) {
+  const policy = page.policy
+    ?.split(";")
+    .find((d) => d.trim().startsWith("script-src "));
+  assert(
+    policy && !policy.includes("'unsafe-inline'"),
+    url + ": invalid script policy",
+  );
+  for (const hash of page.executableHashes)
+    assert(
+      policy.includes("'" + hash + "'"),
+      url + ": inline script blocked by CSP: " + hash,
+    );
+  for (const src of page.scriptSources)
+    assert.equal(
+      new URL(src, url).origin,
+      origin,
+      url + ": unexpected external script",
+    );
 }
 async function local() {
   const dir = join(dist, "site");
@@ -97,18 +120,7 @@ async function local() {
   let links = 0;
   for (const [file, page] of pages) {
     const from = origin + "/" + file.replace(/index\.html$/, "");
-    const scripts = page.policy
-      ?.split(";")
-      .find((d) => d.trim().startsWith("script-src "));
-    assert(
-      scripts && !scripts.includes("'unsafe-inline'"),
-      file + ": invalid script policy",
-    );
-    for (const hash of page.executableHashes)
-      assert(
-        scripts.includes("'" + hash + "'"),
-        file + ": inline script blocked by CSP: " + hash,
-      );
+    checkScripts(page, from);
     for (const href of page.links) {
       const url = new URL(href, from);
       if (url.origin !== origin) continue;
@@ -264,6 +276,13 @@ async function online(service) {
             );
           } else {
             const body = await res.text();
+            if (url.endsWith("/")) {
+              assert(
+                res.headers.get("cache-control")?.includes("no-transform"),
+                url + ": missing HTML cache policy",
+              );
+              checkScripts(inspectPage(body), url);
+            }
             assert(
               url.endsWith("security.txt")
                 ? body.includes("Expires:") &&

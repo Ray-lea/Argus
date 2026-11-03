@@ -1,0 +1,35 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'; form-action 'self'; base-uri 'none'
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Keep the bytes of CSP-hashed HTML intact at the edge.
+/
+  Cache-Control: public, max-age=300, no-transform
+/en/*
+  Cache-Control: public, max-age=300, no-transform
+/docs/*
+  Cache-Control: public, max-age=300, no-transform
+/download/*
+  Cache-Control: public, max-age=300, no-transform
+/questions/*
+  Cache-Control: public, max-age=300, no-transform
+/privacy/*
+  Cache-Control: public, max-age=300, no-transform
+/signing/*
+  Cache-Control: public, max-age=300, no-transform
+/security/*
+  Cache-Control: public, max-age=300, no-transform
+/search/*
+  Cache-Control: public, max-age=300, no-transform
+/404.html
+  Cache-Control: public, max-age=300, no-transform
+
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+/assets/*
+  Cache-Control: public, max-age=300
+/pagefind/pagefind-entry.json
+  Cache-Control: public, max-age=0, must-revalidate
