@@ -1,33 +1,25 @@
 # GPUI 开发
 
-应用和开发入口均使用 GPUI：`start.bat` 调用 scripts/desktop.mjs，`start.bat build` 调用 scripts/build.mjs。无需浏览器开发服务器、渲染器选择或界面回退配置。
+`start.bat` 通过 `scripts/desktop.mjs` 启动 GPUI 开发实例，`start.bat build` 通过 `scripts/build.mjs` 构建发行版。界面代码在 [`src-gpui/src/frontend`](../../src-gpui/src/frontend)，应用元数据、色板、字体、动画参数和快捷键表在 [`resources`](../../resources)。
 
-公共定义集中在 resources：应用元数据、色板、字体、刷新模式、CPU 指标与快捷键规则。界面用原生表格、菜单、输入框、对话框和曲线组织信息层级。
+进程列定义在 `frontend/columns.rs`，分类选择对话框在 `frontend/columns/dialog.rs`。`processColumns` 保存列的选择、顺序与宽度，名称列固定。表格、滚动和文本布局见[原生界面](../architecture/frontend.md)。
 
-性能概览先布局实时指标和规格，曲线填满剩余高度；逻辑处理器网格使用实际测得的可用区域排布。仅当窗口不足以容纳最小可读图表和读数时出现滚动。CPU 详情单独承载较长的传感器内容。设置保持连续页面，左侧导航定位段落，并随滚动更新选中项。
-
-曲线使用保持单调性的平滑插值、统一线宽与渐变填充，未知样本仍断开。曲线纹理随采样更新并缓存，滚动帧仅移动缓存纹理。界面过渡、分段指示、开关和网格重排遵循减少动画设置；曲线刷新模式独立控制。
-
-采集、操作、设置与历史由 Rust 服务层复用。曲线按快照时间推进，未知样本断开，后台排队的快照不按接收时间挤到一起。快照转换与进程分组在后台执行，每次仅准备一份快照，完成后读取最新来源；筛选、排序、语言或折叠状态已改变时，不应用过期的分组结果。表格状态在绘制前更新，无变化的查询结果不触发重建。
+采样、存储和系统操作由后台 Rust 模块执行。界面按快照时间更新读数，动画帧平移已有曲线纹理。新增图表时应保留采样时间戳、缺测断点和窗口可见性判断，细节见[曲线与时间轴](../design/charts.md)。
 
 ## 平台边界
 
-frontend 不持有 HWND；窗口绑定、显隐和系统事件由 platform 管理。托盘、快捷键、单实例、安装和任务启动属于平台宿主；采集与特权服务属于平台数据适配。macOS 扩展应为这些接口提供对应实现与能力状态，缺失能力显示不可用，不伪造 Windows 数据。
-
-当前构建目标为 Windows x64。macOS 支持仍需完成采集、进程操作、托盘、快捷键、权限和分发等适配，见[路线图](../roadmap.md)。
-
-进程表的列目录位于 `frontend/columns.rs`，分类选列对话框位于 `frontend/columns/dialog.rs`。`processColumns` 偏好保存选择、自动宽度与手动宽度；读取时去重、检查字段和宽度，并固定名称列。`tables.rs` 共用该目录构建表头及单元格，按布局变化计算自动宽度。`model.rs` 区分资源汇总、单实例数值与共同文字值，文字排序沿用缓存的本地化排序键。
+Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘、全局快捷键、单实例、安装与任务启动。当前构建目标为 Windows x64，其他平台的采集和系统集成计划见[路线图](../roadmap.md)。
 
 ## 界面验证
 
 `tools/window-probe` 以独立标识、隐藏启动和不激活显示运行测试实例，监视前台变化，仅通过 Windows.Graphics.Capture 捕获目标窗口。模拟快照位于该工具的 fixtures 目录。实机验证可以省略 fixture，保持测试标识与测试模式，关闭规则执行和历史写入。
 
-测试控制输入只在 --test 下用于页面、主题、语言和对话框状态，开发控制输入仅接受退出。使用模拟快照时，测试控制还可挂起命令（`hold`，界面停在等待状态）或以给定结果完成命令（`resolve`，经正常的完成与失败流程），用于检查文件占用等对话框的查询、出错与重新检查；结束进程、重新启动资源管理器等操作在模拟快照下不会执行。完整检查由 start.bat check 执行。
+`--test` 实例可通过测试控制切换页面、主题和对话框。模拟快照下，`hold` 可挂起命令，`resolve` 提供返回值，经正常的成功或失败流程更新界面。开发实例的控制接口仅接受退出请求。
 
-`node scripts/ui-smoke.mjs <标识>` 使用模拟快照捕获各页面、主题、语言和窄窗口；同时验证完整表头的排序点击、性能概览首屏布局，以及标题栏空白处与按钮的原生命中区域。`--dev` 使用开发构建；`--live --fluid --move` 采集实际呈现节拍，并在不激活窗口的前提下验证连续移动、隐藏和恢复。测试结果留在 target/native-validation，不写入产品文档。
+`node scripts/ui-smoke.mjs <标识>` 用固定样本检查各页面、主题、语言和窄窗口，覆盖表头排序、性能页首屏及窗口命中区域。`--dev` 使用开发构建，`--live --fluid --move` 检查实际呈现节拍与连续移动、隐藏和恢复。结果在 `target/native-validation`。
 
-GPUI 0.3.9 的本地补丁位于 vendor/gpui-pre：仅位置变化不再使整页布局失效，原生标题栏使用当前指针位置命中，重放缓存绘制时保留窗口控制区域，文字换行遵循 UAX #14 及 ICU 的中日文调整规则。补丁边界见该目录的 ARGUS-PATCHES.md；更新上游时需复验拖曳、缩放与多帧缓存下的窗口按钮，以及 `text_system/line_break.rs` 的单元测试。Windows 平台层 vendor/gpui-pre-windows 另有渲染、文字与内容缩放（界面缩放）补丁，同样记录在该目录的 ARGUS-PATCHES.md。
+本地补丁分别记录在 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)。更新上游时，复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行及 Windows 渲染。
 
-`pnpm test:startup` 通过真实开发脚本验证默认显示与 `--hidden` 启动。它创建不切换到前台的独立 Windows 桌面，保持正常窗口创建逻辑，仅观察可见性，不调用显示窗口的方法。该测试补充窗口捕获探针主动显示实例的路径，避免启动器隐藏主窗口的问题被测试辅助操作掩盖。
+`pnpm test:startup` 在独立 Windows 桌面运行开发脚本，检查默认启动和 `--hidden` 的窗口可见性。
 
 `cargo test -p argus --test display_reentry` 检查显示器回调在窗口更新期间重入、连续通知合并、原生嵌套消息循环及窗口关闭后的延迟处理。`cargo run -p argus --example display_reentry` 在自身隐藏窗口的初始化回调内发送 `WM_DISPLAYCHANGE`，检查真实 Windows 消息路径；它保持窗口隐藏，不更改显示器设置。

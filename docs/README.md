@@ -1,14 +1,6 @@
 # Argus 文档
 
-```
-docs/
-├── guide/            使用指南：界面与操作、常驻与快捷键、设置、硬件数据
-├── development/      开发指南：环境与命令、构建与缓存、性能基线与测量、提交与发布、多语言
-├── architecture/     架构：分层与数据流、技术栈、采集层、原生宿主、前端
-├── design/           设计：设计原则、曲线动画、窗口外观、全局快捷键
-├── roadmap.md        路线图
-└── known-issues.md   已知问题
-```
+从[使用指南](guide/README.md)了解界面操作，从[开发指南](development/README.md)配置构建环境。[架构](architecture/README.md)介绍各模块的职责，[设计](design/README.md)说明界面与交互的取舍。
 
 ## 使用指南
 
@@ -21,7 +13,7 @@ docs/
 
 - [环境与命令](development/README.md)：环境要求、`start.bat`、开发版隔离、验证采集数据、代码规范
 - [构建与缓存](development/build.md)：缓存优化、链接器与工具链
-- [性能基线与测量](development/performance.md)
+- [性能测量](development/performance.md)
 - [GPUI 原生界面](development/gpui.md)：开发入口、原生组件、共享定义与平台边界
 - [提交与发布](development/release.md)：持续集成、提交信息规范、版本号、发布步骤、更新签名与通道、发布后发现严重问题时的处理
 - [官网与发行镜像](development/website.md)：静态站构建、版本文件、更新清单与域名邮箱

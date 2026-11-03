@@ -1,6 +1,6 @@
 # 全局快捷键
 
-显示或隐藏 Argus 的全局快捷键由 `src-gpui/src/hotkey.rs` 在主窗口上调用 Windows 的 `RegisterHotKey` 注册，录制在设置页完成（`src-gpui/src/frontend/dialogs.rs` 的 `record_hotkey`）。可用的键和不允许的组合写在 `resources/hotkey-table.json`，原生侧与设置页共用，测试读取统一用例（`src-gpui/tests/hotkey-cases.json`）。用法见[设置](../guide/settings.md#快捷键)。
+Windows 宿主在主窗口上调用 `RegisterHotKey` 注册显示或隐藏窗口的组合，通过 `WM_HOTKEY` 接收通知。宿主和设置页共用[键位与保留组合表](../../resources/hotkey-table.json)和[校验用例](../../src-gpui/tests/hotkey-cases.json)。操作方法见[设置](../guide/settings.md#快捷键)。
 
 ## RegisterHotKey 的行为
 
@@ -18,12 +18,9 @@
 
 另外，`Shift+A`、`Ctrl+C`、`Ctrl+1`、`Alt+Space`、`Alt+PrintScreen` 都能注册成功；Alt+F4、Alt+Tab、Ctrl+Esc、Ctrl+Shift+Esc、无修饰键的 F12 和大多数 Win+字母返回 `ERROR_HOTKEY_ALREADY_REGISTERED`。
 
-## 由此做出的决定
+## 录制与注册
 
-- **只用 RegisterHotKey**：它不区分左右、不支持仅修饰键或 CapsLock 作修饰键，也不支持两个普通键的组合（只匹配修饰键加一个键），但没有常驻开销，也不让每一次按键经过 Argus。低级键盘钩子能做到这些，代价是全系统的每次按键都要等 Argus 的回调，回调超过 `LowLevelHooksTimeout` 时会被系统静默移除，前台为管理员窗口时收不到按键，也容易被安全软件当作键盘记录。
-- **规则由 Argus 拦截**：系统接受的组合里有会破坏正常使用的（只含 Shift 的组合让所有程序无法输入大写字母，Ctrl+C 让复制失效），所以新组合须含 Ctrl、Alt 或 Win（F13–F24 例外，Shift+F1–F9、Shift+F11 需确认），并拒绝表中的保留与编辑组合和锁定键。带 Ctrl 的 Pause 组合也拒绝：按住 Ctrl 时 Pause 键发出 Break，Windows 报为 `VK_CANCEL`，注册在 `VK_PAUSE` 上的热键不会触发。已保存的旧值启动时照常注册，规则收紧不会让已有的快捷键失效。
-- **主键松开时才保存**：按下时保存，快捷键就在主键还按着时注册，按住稍久就会被自动重复触发，窗口当场隐藏。
-- **录制期间暂停当前快捷键**：注册着的组合到不了页面，再按一次当前快捷键只会隐藏窗口。窗口隐藏或 60 秒后，原生侧自动恢复。
-- **按虚拟键码录制**：录制器按页面的 `keyCode`（Chromium 在 Windows 上给出的虚拟键码）查表，注册用的也是虚拟键码；只有输入法处理中的按键（229）和没有键码的事件按物理位置（`code`）查表。表中没有的键码（例如 `VK_OEM_8`）不能使用，不按物理位置换成美式键盘上的另一个键。
-- **页面收不到的按键**：被其他程序注册的组合，主键按下不会到达页面；只按着修饰键 1.5 秒仍没有主键时，设置页提示该组合可能已被占用。PrintScreen 在 Windows 上只有 keyup，修饰键按住时按 keyup 补录。
-- **更改是事务**：先注册新组合，保存成功后再注销旧组合；保存失败时撤销新组合。
+- 设置页将 GPUI 的按键名称、当前布局字符和修饰键交给 [`Recording`](../../src-gpui/src/frontend/recorder.rs)，映射为共享键表中的主键。左右修饰键共用标记，修饰键先于主键按下，松开主键时提交组合。
+- 录制时暂停原快捷键并忽略自动重复。仅按住修饰键 1.5 秒时提示主键可能已被其他程序占用。结束或取消录制时恢复注册，窗口隐藏或暂停达到 60 秒时宿主也会恢复。
+- 新组合通常须含 Ctrl、Alt 或 Win。F13–F24 可单独使用，部分 Shift 加功能键的组合需确认。设置页拦截系统保留键、锁定键和常用编辑组合。Ctrl 加 Pause 会产生 Break 的虚拟键码，录制器拒绝这一组合。
+- [`hotkey.rs`](../../src-gpui/src/hotkey.rs) 把共享键表中的主键转换为 Windows 虚拟键码，以 `MOD_NOREPEAT` 注册。更改时先注册新组合，写入设置成功后释放旧组合，写入失败则撤销新注册。启动时从设置恢复已保存的组合。

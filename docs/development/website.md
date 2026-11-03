@@ -17,10 +17,10 @@
 
 生产配置为 `website/wrangler.<服务>.jsonc`。依次部署 `downloads`、`updates`、`site`、`www`，每一步使用 `node website/verify.mjs <服务>` 从公网验证结果，再继续下一步。可先运行 `pnpm dlx wrangler@4.156.2 deploy --dry-run --config website/wrangler.site.jsonc`。正式部署使用相同命令去掉 `--dry-run`。撤回发布后，从最新正式发布重新运行构建与部署，并视需要在 Cloudflare 清除被撤回的缓存文件。
 
-GitHub 仓库启用自动部署需要 Actions Secret `CLOUDFLARE_API_TOKEN`、变量 `CLOUDFLARE_ACCOUNT_ID` 和 `ARGUS_WEBSITE_DEPLOY=true`。部署令牌只授予对应账户和域的 Workers 发布及自定义域路由权限。发布工作流在 GitHub Release 完成后调用 [`website.yml`](../../.github/workflows/website.yml)，也可以从 Actions 手动运行。个人 Wrangler 登录凭据仅用于本机操作。
+GitHub Actions 使用 Secret `CLOUDFLARE_API_TOKEN` 和变量 `CLOUDFLARE_ACCOUNT_ID`。部署令牌对四个 `argustask-*` Worker 使用 `Individual Workers Editor`，对 `argustask.com` 使用 `Workers Routes Write`。`ARGUS_WEBSITE_DEPLOY=true` 时，GitHub Release 发布完成后调用 [`website.yml`](../../.github/workflows/website.yml)，也可从 Actions 手动部署。
 
 ## 邮件与分发清单
 
-`security@argustask.com` 和 `contact@argustask.com` 使用 Cloudflare 免费入站路由。确认目的地址已验证、两条规则已启用后，在 `website/public-settings.json` 将 `emailRoutingVerified` 设为 `true` 并重新发布官网。收件箱地址仅在 Cloudflare 中管理。`security.txt` 使用构建日期生成有效期，发布时刷新。
+`contact@argustask.com` 接收一般联系，`security@argustask.com` 接收私密漏洞报告。两个地址通过 Cloudflare Email Routing 转发至已验证的收件箱。`website/public-settings.json` 中的 `emailRoutingVerified` 控制中英文页脚、安全报告页和 `security.txt` 的邮件入口。目的地址在 Cloudflare 中管理，`security.txt` 的有效期在构建时刷新。
 
 构建同时在 `target/official-web/dist/packages/` 生成 WinGet 和 Scoop 清单草案，使用版本化的上游 URL 和相应文件的 SHA-256。WinGet 清单可用 `winget validate --manifest <清单目录>` 核对。软件源审核合并并验证安装后，再公布相应安装命令。

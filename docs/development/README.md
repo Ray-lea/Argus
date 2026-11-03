@@ -1,22 +1,22 @@
 # 开发指南
 
-需要 stable MSVC Rust（最低版本见 Cargo.toml）、Visual Studio C++ Build Tools、Node.js（见 .node-version）和 pnpm（见 package.json）。仓库使用本地 MSVC override，不修改全局默认工具链。
+Windows 开发环境使用 Visual Studio C++ Build Tools 和 stable MSVC Rust。Rust 最低版本见 [Cargo.toml](../../Cargo.toml)，Node.js 与 pnpm 版本分别见 [.node-version](../../.node-version) 和 [package.json](../../package.json)。在仓库目录设置 MSVC 工具链 override。
 
 | 命令 | 用途 |
 |---|---|
 | `start.bat` / `start.bat dev` | 启动原生 GPUI 开发版，监听 Rust 与资源变更 |
 | `start.bat check` | 文案、格式、生成代码、脚本测试、Clippy 与 Rust 测试 |
-| `start.bat build` | 构建辅助程序并嵌入原生 target/release/argus.exe |
-| `start.bat build installer` | 构建并打包 NSIS 安装程序，不运行安装程序 |
+| `start.bat build` | 构建原生程序 `target/release/argus.exe`，内含任务管理器辅助程序 |
+| `start.bat build installer` | 构建原生程序并生成 NSIS 安装包 |
 | `node scripts/readme-previews.mjs` | 从当前发行构建生成中英文 README 的浅色和深色进程页截图 |
 | `start.bat clean` | 清理应用产物，保留依赖缓存 |
 | `start.bat clean all` | 清空 Cargo 构建缓存 |
 
-开发脚本只管理自身启动的实例。编译成功后，将 EXE 复制到独立运行目录，再请求旧开发实例退出；编译失败时保留正在运行的版本。关闭控制台前可按 Ctrl+C 请求退出。开发标识在编译时按工作区路径生成，复制运行副本不会改变标识；不同工作区的设置和单实例锁相互隔离。
+开发脚本在编译成功后将 EXE 复制到独立目录，再请求上一份开发实例退出。编译失败时可继续使用正在运行的版本。不同工作区使用独立的设置与单实例锁。
 
-启动后，终端显示进程 ID 并持续监听文件变更；终端不退出属于正常行为。程序退出或启动失败会显示对应信息。默认启动显示主窗口，显式的 `--hidden` 参数才让窗口保持隐藏；主程序不可使用 Node 的 `windowsHide` 启动选项。
+终端显示进程 ID、编译结果和退出状态，并持续监听源文件。默认显示主窗口，传入 `--hidden` 可隐藏启动。按 Ctrl+C 结束开发会话。
 
-安装打包需要 NSIS 3.13；可安装到默认目录，或通过 ARGUS_NSIS 指定 makensis.exe。构建日志、缓存与验证产物位于 target。
+安装程序使用 NSIS 3.13。可安装到默认目录，或通过 `ARGUS_NSIS` 指定 `makensis.exe`。构建产物和验证结果位于 `target/`，详见[构建与缓存](build.md)。
 
 README 预览在启用透明效果的 Windows 11 上生成。探针保持测试窗口位于底层，通过 `WM_NCACTIVATE` 让 Windows 绘制激活态 Mica，并与同一主题的失活截图对照。导出时，用 16 位浮点窗口采样补足云母底色的渐变，以有序抖动写入 sRGB PNG。底色以原生 SDR 读数为准，其余区域直接使用窗口原始像素。键盘焦点保留在当前应用。
 
@@ -59,4 +59,4 @@ cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史
 
 `network_cadence` 的 `--alternating` 让测试流量每半秒交替变化，用于检查每次刷新是否重新计算速率。快速事件送达使用 [ControlTrace 的 FLUSH 操作](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-controltracew)，在独立线程执行。
 
-`gpu_diagnostics` 输出带时间戳的 JSONL，包括目标进程的引擎身份、原始计数区间、整体读数和可用的 NVIDIA 核心读数；不记录进程命令行，不录制屏幕，不修改 GPU 设置。对照时应保持相同负载，核对适配器、引擎与采样区间。`gpu_compute` 在 12 秒内以 40 ms 提交、160 ms 休息的节拍运行短 CUDA 内核；提交占空比为 20%，GPU 实际利用率由计数器测量。
+`gpu_diagnostics` 输出带时间戳的 JSONL，包含目标进程的引擎身份、计数区间、整机占用和可用的 NVIDIA 核心读数。对照时保持相同负载，核对适配器、引擎与采样区间。`gpu_compute` 在 12 秒内重复提交 40 ms、休息 160 ms 的短 CUDA 负载，实际 GPU 利用率以计数器为准。

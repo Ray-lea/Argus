@@ -4,14 +4,15 @@
 
 ## 持续集成
 
-检查与正式发布由以下 GitHub Actions 工作流负责，另有独立的 [SignPath 测试签名工作流](signing.md#测试工作流)。构建与测试在 Windows 上用 stable Rust（MSVC）运行；提交信息检查和标签核对只用 git 与 Node，在 Ubuntu 上运行。
+以下 GitHub Actions 工作流分别负责检查、发布和官网部署。Windows 构建与测试使用 stable MSVC Rust。另有独立的 [SignPath 测试签名流程](signing.md#测试工作流)。
 
 | 工作流 | 触发 | 内容 |
 |---|---|---|
 | `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；Biome、文案检查、生成代码检查、脚本测试、rustfmt、Clippy、Rust 测试、第三方许可声明是否最新 |
 | `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md`、已译完的 `CHANGELOG.en.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；为更新对话框显示的更新内容签名并校验；静默安装，核对卸载项及安装文件、运行副本、免安装下载的更新类型，再静默卸载；生成更新清单并发布 GitHub Release |
+| [`website.yml`](../../.github/workflows/website.yml) | 手动运行，或发布完成后由 `release.yml` 调用 | 以已发布的稳定版构建文档和下载页，同步两条更新清单，逐项校验公网下载和域名跳转。配置见[官网与发行镜像](website.md) |
 
-推送到分支不会触发检查，也没有 nightly 或定时构建。推送前在本地运行 `start.bat check`：它包含文案、脚本测试、生成代码检查、rustfmt、Clippy 与 Rust 测试，许可声明另由 node scripts/notices.mjs --check 检查。
+推送前在本地运行 `start.bat check`，使用 `node scripts/notices.mjs --check` 核对第三方许可声明。
 
 ## 提交信息
 
@@ -102,8 +103,8 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
    pnpm release 1.0.0-beta.1 # 或指定版本
    ```
 
-   脚本修改四处版本号，把发布说明加到 `CHANGELOG.md` 开头，把由它生成的英文草稿加到 `CHANGELOG.en.md` 开头（小节标题已是英文，条目仍是中文），提交 `chore(release): vX.Y.Z` 并创建附注标签 `vX.Y.Z`，不会推送。仓库还没有任何标签时，默认发布当前版本号。
-5. 检查 `CHANGELOG.md`。润色只改正文：标题行 `## [X.Y.Z](比较链接) - YYYY-MM-DD` 由脚本生成，应用和发布工作流都按这个格式查找条目，日期后不能再有文字；`##` 只用于版本条目的标题，条目内的小节用 `###`。然后把 `CHANGELOG.en.md` 中的草稿译成英文：与中文条目逐条对应，标题行同样不改，用词与界面的英文文案（`locales/en-US`）一致；之后润色中文时同步修改英文。修改后 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 把标签移到新提交上。也可以在运行 `pnpm release` 之前先把该版本的条目写进 `CHANGELOG.md` 和 `CHANGELOG.en.md` 并提交：脚本会沿用已有条目，只把标题换成带比较链接和日期的格式（首个版本的发布说明就是这样预先写好的）。两份文件中出现条目标题以外的二级标题时，脚本会列出对应行并停止修改。
+   脚本在本地同步四处版本号，写入中文发布说明与对应的英文草稿，创建 `chore(release): vX.Y.Z` 提交和附注标签 `vX.Y.Z`。首次打标签时默认使用当前版本号。
+5. 润色 `CHANGELOG.md`，把 `CHANGELOG.en.md` 的草稿逐条译成英文，用词与 `locales/en-US` 一致。保留脚本生成的二级版本标题 `## [X.Y.Z](比较链接) - YYYY-MM-DD`，条目内用三级标题。修改后执行 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 将本地标签移到最终提交。也可事先提交两种语言的条目，由发布脚本补入比较链接和日期。
 6. 推送前在本地核对：`node scripts/release.mjs verify vX.Y.Z`。它与发布工作流的第一步做同样的核对，读取条目的规则与应用相同：英文条目缺失、仍含中文（链接地址除外）或日期与中文条目不同时不通过；另外确认标签指向当前提交、版本文件和两份更新日志没有未提交的改动。`node scripts/release.mjs notes X.Y.Z` 打印 GitHub Release 的正文：先是“简体中文”一节，后是“English”一节。
 7. 推送分支和标签：`git push --atomic origin main vX.Y.Z`。`release.yml` 随即开始检查和构建，完成后版本出现在 GitHub Releases。
 
@@ -129,12 +130,12 @@ gh run watch    # 选择刚开始的 Check，等待结束
 
 | 文件 | 说明 |
 |---|---|
-| `Argus_<版本>_x64-setup.exe` | NSIS 安装程序：为所有用户安装到 Program Files（需要管理员授权）、按 Windows 显示语言使用简体中文或英文界面、不允许降级；单页安装界面，已安装旧版本时原地升级；卸载时询问是否一并卸载特权服务，并做任务管理器恢复检查。界面见[安装程序](#安装程序) |
+| `Argus_<版本>_x64-setup.exe` | NSIS 安装程序，经管理员授权安装到 Program Files，可原地升级旧版本。卸载时可一并移除特权服务，并检查系统任务管理器是否已恢复。见[安装程序](#安装程序) |
 | `Argus_<版本>_x64.exe` | 免安装版主程序（即 `argus.exe`）。与安装版使用相同的设置、历史和开机启动项，数据同样在 `%APPDATA%`、`%LOCALAPPDATA%`，不能应用内更新。放在标准用户可写的文件夹时，安装特权服务存在被替换提权的风险，见[设置 → 权限](../guide/settings.md#权限) |
 | `SHA256SUMS.txt` | 上面两个文件的 SHA-256，可用 `sha256sum -c SHA256SUMS.txt` 校验 |
 | `latest.json`、`beta.json` | 应用内更新的清单，只在稳定版上，见[更新通道](#更新通道) |
 
-带预发布后缀的版本标记为 Pre-release。当前正式发布文件尚无 Windows Authenticode 代码签名，运行时可能出现“未知发布者”提示。对外说明见 [Code signing policy](../../README.md#code-signing-policy)；GitHub Release 正文附上中英文策略链接。
+带预发布后缀的版本标记为 Pre-release。GitHub Release 正文包含中英文[代码签名策略](../../README.md#code-signing-policy)链接。
 
 ## 更新签名密钥
 
@@ -144,23 +145,23 @@ Windows Authenticode 的测试接入见 [Windows 代码签名](signing.md)。测
 
 仓库继续使用现有发布密钥、公钥与 Actions Secrets，迁移不生成新密钥。发布工作流将已有 Secrets 映射为 ARGUS_SIGNING_PRIVATE_KEY 与 ARGUS_SIGNING_PRIVATE_KEY_PASSWORD，仅在签名工具进程内读取；私钥不得写进命令行或日志。
 
-本地构建（`start.bat build installer`）不生成更新签名，不需要私钥；发布工作流使用 argus-update-signer 为最终安装包签名，签名后用 `node scripts/release.mjs check-signature` 以 `resources/app.json` 中的公钥校验，Secrets 里的私钥与公钥不配对时在发布前失败。
+发布工作流使用 `argus-update-signer` 为最终安装包签名，再用 `node scripts/release.mjs check-signature` 和 `resources/app.json` 中的公钥校验。本地构建安装包使用 `start.bat build installer`。
 
 更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `CHANGELOG.md` 条目（JSON），每个条目以 `translations` 附上 `CHANGELOG.en.md` 中同一版本的英文译文（0.3 之前的版本忽略这个字段），`cargo run -p argus-update-signer -- <版本> <文件>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。签名工具接收既有 Base64 私钥文本，环境变量须保存密钥的 Base64 内容。应用只显示验签通过且版本号一致的更新内容，并按界面语言选用译文；没有译文的版本显示中文，列表下方加以说明。
 
 ## 更新通道
 
-应用读取最新稳定版 Release 上的清单：稳定版通道读 `releases/latest/download/latest.json`，测试版通道读同一位置的 `beta.json`。
+GitHub 上最新稳定版 Release 提供 `releases/latest/download/latest.json`（稳定版）与同目录的 `beta.json`（测试版）。官网在 `update.argustask.com` 提供对应清单，发布流程校验版本与签名。
 
 - 发布稳定版时，两份清单都指向这个版本，随 Release 一起上传。
 - 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。仓库还没有稳定版时测试版通道收不到更新，工作流会给出警告。
 - 清单由 `node scripts/release.mjs manifest` 生成。`notes` 取自 `CHANGELOG.md` 的对应条目，转成纯文本并去掉提交范围（`core`、`ui` 等），供 0.2 之前的版本显示；`argus.releaseNotes` 与 `argus.signature` 是上一节签名的更新内容原文及其签名，新版本的更新对话框只读这两项。
 
-应用依次尝试 GitHub 与加速代理（见[设置 → 更新](../guide/settings.md#更新)）。代理只在 GitHub 地址前加前缀，清单和安装包都不变。
+自动线路依次尝试 GitHub、Argus 官方镜像和加速代理。代理使用加前缀的 GitHub 地址，官方镜像使用版本化下载地址。见[设置 → 更新](../guide/settings.md#更新)。
 
 ## 发布后发现严重问题时
 
-已升级的用户无法回到旧版本：安装程序不允许降级，应用内更新只提供比当前版本新的版本。能做的是先停止推送，再尽快发布修订版本。
+撤回出现严重问题的版本时，先恢复各分发源的更新清单，再发布更高版本号的修订版。自动更新仅安装比当前版本新的软件包，已升级用户通过修订版获得修复。
 
 1. 停止推送：把有问题的版本改为 Pre-release，并把上一个稳定版设为 Latest，然后确认应用读取的清单已回到上一个版本。可在 Release 说明开头写明问题。
 
@@ -189,9 +190,9 @@ curl -sL https://github.com/Ray-lea/Argus/releases/latest/download/beta.json   #
 
 ## 安装程序
 
-安装与卸载界面不使用 NSIS 的向导页面，由两部分组成：
+安装与卸载由以下两个 NSIS 文件定义。
 
-- `packaging/windows/installer-template.nsi`：原生 NSIS 模板，保留已有安装与卸载页面、服务刷新和数据清理流程。scripts/bundle.mjs 注入 resources/app.json 的元数据与当前构建路径；修改模板后直接重新打包。
+- [`installer-template.nsi`](../../packaging/windows/installer-template.nsi) 定义安装与卸载流程、服务刷新和数据清理。`scripts/bundle.mjs` 注入 `resources/app.json` 中的元数据和构建路径。
 - `packaging/windows/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案按语言写在文件开头的 `LangString` 中。
 
 已安装旧版本时，安装页显示“将从版本 X 升级到 Y”，覆盖安装而不先卸载（与应用内更新相同）；已安装更新的版本时按钮不可用，需先卸载。被动模式（应用内更新）只显示进度页，静默安装（`/S`）不显示界面，保留 /P、/UPDATE、/R、/ARGS 与 /S 参数。
@@ -204,4 +205,4 @@ NSIS 的 `SetCtlColors` 只接受编译时的颜色，界面使用 Argus 的默�
 
 ## 发布到 winget
 
-第一个稳定版发布后，可以用 [wingetcreate](https://github.com/microsoft/winget-create) 向 `microsoft/winget-pkgs` 提交清单，安装包使用 `Argus_<版本>_x64-setup.exe`（支持 `/S` 静默安装）。之后的版本用 `wingetcreate update` 提交新地址。提交会创建公开的拉取请求，由维护者手动执行。
+官网构建会生成 WinGet 清单草案，使用版本化的 GitHub 安装包地址和 SHA-256。维护者验证清单后可通过 [wingetcreate](https://github.com/microsoft/winget-create) 向 `microsoft/winget-pkgs` 提交拉取请求。生成位置见[官网与发行镜像](website.md#邮件与分发清单)。

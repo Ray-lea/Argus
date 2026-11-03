@@ -1,6 +1,6 @@
 # Windows 代码签名
 
-SignPath Foundation 的测试签名使用组织提供的自签名证书。它用于核对签名、打包和安装流程，未获得 Windows 的公开信任，不作为正式发布产物。
+SignPath 测试流程使用组织提供的自签名证书，在隔离的 Windows 运行器中验证签名、打包和安装。
 
 对外公开的 [Code signing policy](../../README.md#code-signing-policy) 与[英文版](../../README.en.md#code-signing-policy)说明签名状态、负责成员及[隐私策略](../../PRIVACY.md)。首页、下载区域及 GitHub Release 正文均须提供该策略的入口；签名状态变化时同步更新中英文说明。
 
@@ -20,7 +20,7 @@ SignPath Foundation 的测试签名使用组织提供的自签名证书。它用
 
 ## 测试工作流
 
-在 GitHub Actions 中手动运行 **SignPath test signing**，选择需要验证的分支。所有编译及签名提交均在 GitHub 托管的 Windows 环境中完成，不复用二进制构建缓存。
+在 GitHub Actions 中手动运行 **SignPath test signing** 并选择分支。托管的 Windows 运行器从源码构建并提交签名。
 
 签名顺序如下：
 
@@ -31,9 +31,9 @@ SignPath Foundation 的测试签名使用组织提供的自签名证书。它用
 
 最终打包直接使用 已经生成的 NSIS 脚本，避免再次调用 bundler 改写主程序的包类型标记、破坏现有签名。卸载程序回填前必须与第一阶段生成的原文件逐字节一致；每次签名返回后也校验 PE 内容，只允许签名区域、校验和与对齐填充变化。
 
-自签名证书仅导入临时 GitHub 托管运行器的计算机信任存储，以便用 Windows 验证完整签名，并避免当前用户根证书存储的交互确认阻塞无人值守运行。运行器使用已有的管理员权限，不在开发机导入证书。各阶段必须使用同一证书。工作流随后静默安装，核对安装后的主程序和卸载程序与已签输入一致，再卸载。
+各签名阶段使用同一张测试证书，并仅在临时 GitHub 运行器的计算机信任存储中信任该证书。工作流静默安装，核对已安装的主程序和卸载程序与已签输入一致，再卸载。
 
-成功后的 Actions 制品包含测试版单文件、安装程序、SHA-256 校验值、公开测试证书和签名验证结果。文件名含 `signpath-test` 与提交编号。该工作流不创建 Release、不更新应用内更新清单，也不读取 发布更新私钥。
+测试结果作为 GitHub Actions 制品提供，名称包含 `signpath-test` 和提交编号，内含免安装程序、安装包、SHA-256、公开测试证书及验证结果。
 
 ## 正式签名与更新签名
 
@@ -43,7 +43,7 @@ SignPath Foundation 的测试签名使用组织提供的自签名证书。它用
 
 隐私策略按实际行为描述默认开启的更新检查、自动代理回退和手动 PawnIO 下载。基金会对收集用户数据并传往非用户指定系统的功能，还要求在安装期间显示隐私策略并提供关闭选项；正式接入时须同步处理安装流程中的告知与选项。
 
-Windows Authenticode 与 Minisign 更新签名用途不同：前者证明可执行文件的签名者，后者由已安装的 Argus 用内置公钥验证更新内容。正式接入时须先完成 Authenticode 签名，再对最终安装包生成现有 Minisign 更新签名和下载哈希；更新公钥与 `requireSignedVersion` 保持不变。
+Windows Authenticode 标识可执行文件的签名者。Minisign 供 Argus 客户端验证更新包和更新说明。正式流程先完成 Authenticode 签名，再对最终安装包生成 Minisign 签名和下载哈希。保留客户端信任的更新公钥和 `requireSignedVersion` 校验。
 
 ## 官方资料
 

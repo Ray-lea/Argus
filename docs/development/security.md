@@ -1,9 +1,9 @@
 # 依赖与安全维护
 
-依赖和工具链分别由 Cargo.lock、pnpm-lock.yaml、Cargo.toml、.node-version 与 package.json 管理。运行 pnpm check:security 检查 npm 与 Rust 依赖；升级后运行完整检查并重新生成第三方声明。
+`Cargo.toml`、`.node-version` 与 `package.json` 声明工具链版本，`Cargo.lock` 和 `pnpm-lock.yaml` 锁定依赖。`pnpm check:security` 检查依赖漏洞。升级依赖后运行 `node scripts/notices.mjs` 更新第三方声明，再运行 `start.bat check`。
 
-原生界面通过本地 Rust 适配器访问应用服务，不加载网页。系统操作仍校验目标进程身份与现有授权边界；管理员或驱动能力只使用可选的现有特权服务。数据不足时保持未知状态。
+涉及进程的操作按 PID 与创建时间核对目标身份。特权服务根据调用账户和命令类型授权，内核传感器通过固定的 PawnIO 模块读取。权限边界见[特权服务](../architecture/privileged-service.md)。
 
-更新包与更新说明使用既有公钥验签，签名必须绑定版本；公钥在 resources/app.json。禁止替换公钥或关闭 requireSignedVersion。发布签名工具在工作流中读取既有 Secrets，密钥不写入仓库或命令行。
+客户端使用 `resources/app.json` 中的公钥验证更新包和更新说明的签名与版本。保留已安装客户端信任的公钥及 `requireSignedVersion` 要求，签名工作流从 GitHub Secrets 读取私钥。具体流程见[提交与发布](release.md)。
 
-诊断日志遵循最小化与限频原则，不记录命令行、凭据、账户名、文件内容或未经筛选的异常。安装程序与服务变更在隔离环境验证。
+诊断日志记录失败阶段、系统错误码及直接参与失败的路径，重复错误按类别限频。安装、卸载和服务变更在隔离环境验证。
