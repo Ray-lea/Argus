@@ -5,6 +5,7 @@ mod performance;
 mod settings;
 use super::*;
 pub(super) use details::{cpu_time, date_time};
+use gpui_kit::base::ElementExt;
 use gpui_kit::component::ActiveTheme;
 impl Desktop {
     pub(in crate::frontend) fn page_content(
@@ -346,6 +347,26 @@ impl Desktop {
         let p = self.palette;
         let sys = &self.snapshot["system"];
         let hw = &self.snapshot["hardware"];
+        let cpu_metrics = [
+            hw["cpuMhz"].as_f64().map(|v| {
+                (
+                    format!("{:.2} GHz", v / 1000.),
+                    label("performance.cpu.speed"),
+                )
+            }),
+            performance::cpu_temperature(hw).map(|v| {
+                (
+                    format!("{v:.0} °C"),
+                    label(if performance::has_die_temperature(hw) {
+                        "common.resource.temperature"
+                    } else {
+                        "processes.vitals.acpiTemperature"
+                    }),
+                )
+            }),
+            performance::cpu_power(&hw["power"])
+                .map(|(v, source)| (format!("{} W", charts::watts(v)), label(source))),
+        ];
         let disk = values(&hw["disks"])
             .iter()
             .map(|d| number(d, "read") + number(d, "write"))
@@ -518,6 +539,7 @@ impl Desktop {
                     .min(theme::font_dimension("figureSize"))
                     .max(px(16.)),
                 (content * 0.15).min(theme::font(15.)).max(px(9.)),
+                content,
             )
         };
         let mut band = div()
@@ -532,7 +554,7 @@ impl Desktop {
         for (index, (id, device, key, color, max, figure, unit, detail)) in
             cards.into_iter().enumerate()
         {
-            let (figure_size, unit_size) = fit(id, index);
+            let (figure_size, unit_size, content) = fit(id, index);
             let plot = self.chart(
                 &format!("vital-{id}"),
                 &[(key, color)],
@@ -562,7 +584,48 @@ impl Desktop {
                 );
             if id == "cpu" && !values(&sys["cores"]).is_empty() {
                 header = header.child(self.core_comb(cx));
-            } else if !detail.is_empty() {
+            } else if id == "gpu" {
+                let gpu = gpu.expect("GPU card has a device");
+                let metrics = [
+                    gpu["temperature"]
+                        .as_f64()
+                        .map(|v| (format!("{v:.0} °C"), label("performance.gpu.temperature"))),
+                    gpu["boardPower"]
+                        .as_f64()
+                        .map(|v| format!("{} W", charts::watts(v)))
+                        .or_else(|| {
+                            gpu["power"]
+                                .as_f64()
+                                .filter(|v| *v > 0.)
+                                .map(|v| format!("{v:.0}% TDP"))
+                        })
+                        .map(|v| (v, label("performance.gpu.power"))),
+                ];
+                let available =
+                    (content - theme::text_width(&name, theme::font(12.), window, cx) - px(12.))
+                        .max(px(1.));
+                let references = ["999 °C", "999% TDP"];
+                let widths = references
+                    .map(|v| self.vital_text_width(v, theme::font(12.), false, window, cx));
+                let ratio = ((f32::from(available) - 6.).max(1.)
+                    / f32::from(widths[0] + widths[1]).max(1.))
+                .min(1.);
+                let font = (theme::font(12.) * ratio).max(px(9.)).min(theme::font(12.));
+                header = header.child(div().flex().gap(px(6.)).h(theme::font(12.) * 1.4).children(
+                    metrics.into_iter().enumerate().map(|(i, value)| {
+                        self.vital_metric(
+                            if i == 0 {
+                                "vital-gpu-temperature"
+                            } else {
+                                "vital-gpu-power"
+                            },
+                            value,
+                            widths[i] * ratio,
+                            font,
+                        )
+                    }),
+                ));
+            } else if id != "cpu" && !detail.is_empty() {
                 header = header.child(
                     div()
                         .id(("vital-detail", index))
@@ -624,8 +687,9 @@ impl Desktop {
                             .flex()
                             .items_baseline()
                             .gap(px(10.))
-                            // Not clipped: in a narrow card the unit runs on
-                            // into the next one.
+                            .w_full()
+                            .min_w_0()
+                            .overflow_hidden()
                             .whitespace_nowrap()
                             .child(
                                 div()
@@ -648,13 +712,58 @@ impl Desktop {
                                             .child(unit),
                                     ),
                             )
-                            .when(id == "cpu" && !detail.is_empty(), |d| {
-                                d.child(
-                                    div()
-                                        .text_size(theme::font(12.))
-                                        .text_color(p.muted)
-                                        .child(detail),
-                                )
+                            .when(id == "cpu", |d| {
+                                let left =
+                                    self.vital_text_width("100", figure_size, true, window, cx)
+                                        + self.vital_text_width("%", unit_size, true, window, cx)
+                                        + px(12.);
+                                let available = (content - left).max(px(1.));
+                                let reference = ["99.99 GHz", "999 °C", "9999 W"];
+                                let widths = reference.map(|v| {
+                                    self.vital_text_width(v, theme::font(12.), false, window, cx)
+                                });
+                                let two_rows =
+                                    available < widths.iter().copied().sum::<Pixels>() + px(12.);
+                                let needed = if two_rows {
+                                    widths[0].max(widths[1] + widths[2] + px(6.))
+                                } else {
+                                    widths.iter().copied().sum::<Pixels>() + px(12.)
+                                };
+                                let ratio =
+                                    (f32::from(available) / f32::from(needed).max(1.)).min(1.);
+                                let font =
+                                    (theme::font(12.) * ratio).max(px(9.)).min(theme::font(12.));
+                                let gap = px(6.) * ratio;
+                                let line = font * 1.4;
+                                let ids = [
+                                    "vital-cpu-frequency",
+                                    "vital-cpu-temperature",
+                                    "vital-cpu-power",
+                                ];
+                                let group = div()
+                                    .absolute()
+                                    .left(left)
+                                    .bottom(figure_size * 0.14)
+                                    .w(available)
+                                    .h(line * if two_rows { 2. } else { 1. })
+                                    .flex()
+                                    .when(two_rows, |d| d.flex_col())
+                                    .when(!two_rows, |d| d.gap(gap))
+                                    .child(self.vital_metric(
+                                        ids[0],
+                                        cpu_metrics[0].clone(),
+                                        widths[0] * ratio,
+                                        font,
+                                    ))
+                                    .child(div().flex().gap(gap).children((1..3).map(|i| {
+                                        self.vital_metric(
+                                            ids[i],
+                                            cpu_metrics[i].clone(),
+                                            widths[i] * ratio,
+                                            font,
+                                        )
+                                    })));
+                                d.child(group)
                             })
                             .when_some(figure_tip, |d, tip| {
                                 d.tooltip(move |window, cx| {
@@ -683,6 +792,65 @@ impl Desktop {
             .child(self.chart_bars("vital-core-bars", &keys, self.palette.cpu, px(26.), cx))
             .tooltip(|window, cx| widgets::tooltip(label("processes.vitals.cores"), window, cx))
             .into_any_element()
+    }
+    fn vital_text_width(
+        &self,
+        text: &str,
+        size: Pixels,
+        display: bool,
+        window: &Window,
+        cx: &App,
+    ) -> Pixels {
+        let mut run = theme::text_run(
+            text,
+            if display {
+                FontWeight(330.)
+            } else {
+                FontWeight::NORMAL
+            },
+            cx,
+        );
+        if display {
+            run.font.family = theme::display_font(cx);
+        }
+        run.font.features = FontFeatures(Arc::new(vec![("tnum".into(), 1)]));
+        window
+            .text_system()
+            .layout_line(text, size, &[run], None)
+            .width
+    }
+    fn vital_metric(
+        &self,
+        id: &str,
+        reading: Option<(String, String)>,
+        width: Pixels,
+        font: Pixels,
+    ) -> Stateful<Div> {
+        let anchors = self.ui.anchors.clone();
+        let key: SharedString = id.to_owned().into();
+        let hint = reading
+            .as_ref()
+            .map(|(value, hint)| format!("{hint}\n{value}"));
+        div()
+            .id(key.clone())
+            .w(width)
+            .h(font * 1.4)
+            .flex_shrink_0()
+            .min_w_0()
+            .text_size(font)
+            .text_color(self.palette.muted)
+            .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
+            .text_right()
+            .truncate()
+            .child(reading.map(|(value, _)| value).unwrap_or_default())
+            .when_some(hint, |d, hint| {
+                d.tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx))
+            })
+            .when(self.options.test, |d| {
+                d.on_prepaint(move |bounds, _, _| {
+                    anchors.borrow_mut().insert(key.clone(), bounds);
+                })
+            })
     }
     pub(in crate::frontend) fn preference(
         &mut self,

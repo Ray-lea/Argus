@@ -221,7 +221,7 @@ fn disk_kind(info: &Value) -> String {
     .join(" ")
 }
 /// A die reading takes priority; ACPI remains an explicitly labelled fallback.
-fn cpu_temperature(hw: &Value) -> Option<f64> {
+pub(super) fn cpu_temperature(hw: &Value) -> Option<f64> {
     let sensors = &hw["cpuSensors"];
     sensors["packageCelsius"]
         .as_f64()
@@ -240,7 +240,7 @@ fn cpu_temperature(hw: &Value) -> Option<f64> {
 }
 /// The CPU's one power figure and the label naming its source: the package,
 /// or the cores where the package has no reading.
-fn cpu_power(power: &Value) -> Option<(f64, &'static str)> {
+pub(super) fn cpu_power(power: &Value) -> Option<(f64, &'static str)> {
     [
         ("package", "performance.cpu.packagePower"),
         ("cores", "performance.cpu.corePower"),
@@ -248,7 +248,7 @@ fn cpu_power(power: &Value) -> Option<(f64, &'static str)> {
     .into_iter()
     .find_map(|(field, source)| power[field].as_f64().map(|watts| (watts, source)))
 }
-fn has_die_temperature(hw: &Value) -> bool {
+pub(super) fn has_die_temperature(hw: &Value) -> bool {
     let sensors = &hw["cpuSensors"];
     sensors["packageCelsius"].is_number() || !values(&sensors["coreTemperatures"]).is_empty()
 }

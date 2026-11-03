@@ -1014,6 +1014,30 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(label) = control["inspectVitals"].as_str() {
+            let bounds = self
+                .ui
+                .anchors
+                .borrow()
+                .iter()
+                .filter(|(key, _)| key.starts_with("vital-"))
+                .map(|(key, b)| {
+                    (
+                        key.to_string(),
+                        json!([
+                            f32::from(b.left()),
+                            f32::from(b.top()),
+                            f32::from(b.size.width),
+                            f32::from(b.size.height)
+                        ]),
+                    )
+                })
+                .collect::<serde_json::Map<_, _>>();
+            println!(
+                "{}",
+                json!({"event":"ui-vitals","label":label,"bounds":bounds})
+            );
+        }
         if let Some(label) = control["inspectColumns"].as_str() {
             println!(
                 "{}",

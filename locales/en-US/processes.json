@@ -229,7 +229,8 @@
     "open": "View {device} in Performance",
     "diskActive": "Active {value}%",
     "netTitle": "R: received, S: sent",
-    "netRates": "R: {received} S: {sent}"
+    "netRates": "R: {received} S: {sent}",
+    "acpiTemperature": "ACPI thermal-zone temperature"
   },
   "columns": {
     "choose": "Select columns",
