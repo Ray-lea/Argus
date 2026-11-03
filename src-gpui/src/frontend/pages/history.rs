@@ -624,7 +624,7 @@ impl Desktop {
                             .bg(p.chart_surface)
                             .child(charts::TimePlot {
                                 id: format!("history-{}", metric.field).into(),
-                                series,
+                                series: Arc::new(series),
                                 start: from,
                                 end: to,
                                 max,

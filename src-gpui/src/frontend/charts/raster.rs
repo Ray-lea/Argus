@@ -136,9 +136,32 @@ impl Cache {
             .as_ref()
             .is_some_and(|texture| texture.content == content)
     }
+
+    fn use_displayed_sample(&self, plot: &mut TimePlot) {
+        let Some(texture) = &self.texture else { return };
+        if self.key == self.requested
+            || Some(texture.content) != self.requested_content
+            || !plot
+                .live_clock
+                .as_ref()
+                .is_some_and(|clock| clock.borrow().mode == motion::Mode::Off)
+        {
+            return;
+        }
+        // Off mode steps to each sample. Keep the endpoint and its readout
+        // together until the worker supplies the next complete curve.
+        // A separately positioned clock (e.g. pause) keeps its chosen time.
+        if plot.start == plot.geometry_start {
+            let span = plot.end - plot.start;
+            plot.end = texture.geometry_start + texture.span;
+            plot.start = plot.end - span;
+        }
+        plot.series = texture.series.clone();
+    }
 }
 struct Texture {
     image: Arc<RenderImage>,
+    series: Arc<Vec<Series>>,
     #[cfg(target_os = "windows")]
     has_fill: bool,
     offset: Point<Pixels>,
@@ -152,6 +175,7 @@ struct Texture {
     top: f32,
     content: u64,
 }
+
 #[derive(Default)]
 pub(in crate::frontend) struct Surface {
     // A completed empty paint has an owner and no image. A pending paint has neither.
@@ -243,7 +267,7 @@ impl ImageSurface {
     }
 }
 struct Input {
-    series: Vec<Series>,
+    series: Arc<Vec<Series>>,
     geometry_start: f64,
     span: f64,
     min: f64,
@@ -308,7 +332,7 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
     plot.fill.hash(&mut key);
     plot.smooth.hash(&mut key);
     plot.content().hash(&mut key);
-    for series in &plot.series {
+    for series in plot.series.iter() {
         series.geometry_key.hash(&mut key);
         series.dashed.hash(&mut key);
         series.fill.to_bits().hash(&mut key);
@@ -360,7 +384,12 @@ fn cache(plot: &TimePlot, window: &mut Window, cx: &mut App) -> Entity<Cache> {
 /// (one of other series, such as the previous device's, is superseded and its
 /// result dropped). Called from prepaint, so every chart on screen starts
 /// before the first one paints.
-pub(super) fn prepare(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+pub(super) fn prepare(
+    plot: &mut TimePlot,
+    bounds: Bounds<Pixels>,
+    window: &mut Window,
+    cx: &mut App,
+) {
     let density = density(window);
     let revision = key(plot, bounds.size, density);
     let cache = cache(plot, window, cx);
@@ -430,10 +459,10 @@ pub(super) fn prepare(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Wind
         })
         .detach();
     });
+    cache.read(cx).use_displayed_sample(plot);
 }
 
 pub(super) fn paint(plot: &TimePlot, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-    prepare(plot, bounds, window, cx);
     let cache = cache(plot, window, cx);
     cache.update(cx, |cache, cx| {
         // Nothing of these series yet (a first display, another device): wait
@@ -1005,7 +1034,7 @@ fn extent(plot: &Input) -> Option<Extent> {
     };
     let (mut first, mut last) = (0f32, width);
     let (mut top, mut bottom) = (f32::INFINITY, f32::NEG_INFINITY);
-    for series in &plot.series {
+    for series in plot.series.iter() {
         for run in series.geometry.iter() {
             let points = &run[visible_samples(run, time)];
             if points.len() < 2 {
@@ -1299,6 +1328,7 @@ fn draw_raster(plot: &Input, layout: Extent, threads: usize) -> Option<Texture> 
     }
     Some(Texture {
         image: Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])),
+        series: plot.series.clone(),
         #[cfg(target_os = "windows")]
         has_fill: fill,
         offset: point(px(left), px(first_row as f32 / density)),
@@ -1378,7 +1408,7 @@ mod tests {
     }
     use crate::frontend::charts::{MetricFormat, Series, TimePlot};
     use gpui_kit::gpui::{px, rgb, size};
-    use std::{cell::Cell, rc::Rc};
+    use std::{cell::Cell, rc::Rc, sync::Arc};
     fn plot(points: Vec<(f64, Option<f64>)>) -> TimePlot {
         TimePlot {
             id: "raster-test".into(),
@@ -1387,7 +1417,8 @@ mod tests {
                 points,
                 rgb(0x28b8e0).into(),
                 MetricFormat::Percent,
-            )],
+            )]
+            .into(),
             start: 0.,
             end: 100.,
             max: 100.,
@@ -1425,14 +1456,54 @@ mod tests {
             vec![(0., Some(30.)), (100., Some(65.))],
             rgb(0x28b8e0).into(),
             MetricFormat::Percent,
-        )];
+        )]
+        .into();
         assert_ne!(before, key(&p, size, 2.));
+    }
+    #[test]
+    fn off_mode_advances_the_endpoint_and_readout_with_the_finished_raster() {
+        use crate::frontend::motion::{Clock, Mode};
+        let first = plot(vec![(0., Some(30.)), (100., Some(60.))]);
+        let mut next = plot(vec![(100., Some(60.)), (200., Some(80.))]);
+        next.start = 100.;
+        next.geometry_start = 100.;
+        next.end = 200.;
+        let clock = Rc::new(std::cell::RefCell::new(Clock::new(Mode::Off)));
+        next.live_clock = Some(clock.clone());
+        let input = |plot: &TimePlot| Input::new(plot, size(px(100.), px(40.)), 2.);
+        let mut cache = super::Cache {
+            texture: rasterize(&input(&first)),
+            key: Some(1),
+            requested: Some(2),
+            requested_content: Some(next.content()),
+            ..Default::default()
+        };
+        let shown = |cache: &super::Cache, plot: &TimePlot| {
+            let mut frame = plot.clone();
+            cache.use_displayed_sample(&mut frame);
+            (
+                frame.start,
+                frame.end,
+                frame.series[0].points.last().unwrap().1,
+            )
+        };
+        assert_eq!(shown(&cache, &next), (0., 100., Some(60.)));
+        let mut paused = next.clone();
+        paused.start = -10.;
+        paused.end = 90.;
+        assert_eq!(shown(&cache, &paused), (-10., 90., Some(60.)));
+        clock.borrow_mut().mode = Mode::Fluid;
+        assert_eq!(shown(&cache, &next), (100., 200., Some(80.)));
+        clock.borrow_mut().mode = Mode::Off;
+        cache.texture = rasterize(&input(&next));
+        cache.key = cache.requested;
+        assert_eq!(shown(&cache, &next), (100., 200., Some(80.)));
     }
     #[test]
     fn distant_samples_clip_before_bitmap_allocation_and_dash_expansion() {
         let jump = 731_339_910.;
         let mut p = plot(vec![(0., Some(10.)), (jump, Some(80.))]);
-        p.series[0] = p.series[0].clone().dashed(true);
+        Arc::make_mut(&mut p.series)[0].dashed = true;
         p.geometry_start = jump - 59_000.;
         p.start = p.geometry_start;
         p.end = jump;
@@ -1544,12 +1615,12 @@ mod tests {
         };
         let draw = |p: &TimePlot| rasterize(&Input::new(p, size(px(337.), px(60.)), 2.)).unwrap();
         let mut p = plot(points(0));
-        p.series[0] = p.series[0].clone().dashed(true);
+        Arc::make_mut(&mut p.series)[0].dashed = true;
         p.end = 11_000.;
         let a = draw(&p);
         let phases = p.dash_phases.clone();
         let mut q = plot(points(1));
-        q.series[0] = q.series[0].clone().dashed(true);
+        Arc::make_mut(&mut q.series)[0].dashed = true;
         q.dash_phases = phases;
         q.start = 1000.;
         q.end = 12_000.;
@@ -1652,7 +1723,7 @@ mod tests {
         for filled in [false, true] {
             let mut p = plot(vec![(0., Some(8.)), (50., Some(10.)), (100., Some(9.))]);
             p.fill = filled;
-            p.series[0] = p.series[0].clone().fill(if filled { 0.3 } else { 0. });
+            Arc::make_mut(&mut p.series)[0].fill = if filled { 0.3 } else { 0. };
             let input = Input::new(&p, size(px(224.), px(114.)), 2.);
             let clipped = super::extent(&input).unwrap();
             assert!(clipped.first_row > 150 && clipped.rows < 40);
@@ -1691,8 +1762,9 @@ mod tests {
         let mut p = plot(points(1));
         p.end = 59.;
         p.fill = true;
-        p.series[0] = p.series[0].clone().fill(0.3);
-        p.series.push(
+        let series = Arc::make_mut(&mut p.series);
+        series[0].fill = 0.3;
+        series.push(
             Series::new(
                 String::new(),
                 points(2),

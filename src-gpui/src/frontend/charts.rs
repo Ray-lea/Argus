@@ -347,7 +347,7 @@ fn ago(seconds: f64) -> String {
 #[derive(Clone)]
 pub struct TimePlot {
     pub id: SharedString,
-    pub series: Vec<Series>,
+    pub series: Arc<Vec<Series>>,
     pub start: f64,
     pub end: f64,
     pub max: f64,
@@ -1826,7 +1826,7 @@ impl Desktop {
         }
         let plot = TimePlot {
             id: id.to_owned().into(),
-            series,
+            series: Arc::new(series),
             start,
             end,
             max,
@@ -2134,7 +2134,8 @@ mod tests {
                 vec![(0., Some(30.)), (1000., Some(60.))],
                 rgb(0x28b8e0).into(),
                 MetricFormat::Percent,
-            )],
+            )]
+            .into(),
             start: 0.,
             end: 1000.,
             max: 100.,
