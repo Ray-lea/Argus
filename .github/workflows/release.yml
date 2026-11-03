@@ -185,3 +185,10 @@ jobs:
             gh release create "$GITHUB_REF_NAME" assets/* latest.json beta.json --verify-tag \
               --title "Argus $GITHUB_REF_NAME" --notes-file notes.md
           fi
+
+  website:
+    needs: publish
+    if: ${{ vars.ARGUS_WEBSITE_DEPLOY == 'true' }}
+    uses: ./.github/workflows/website.yml
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
