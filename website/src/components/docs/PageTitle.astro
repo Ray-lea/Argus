@@ -1,0 +1,19 @@
+---
+import Default from "@astrojs/starlight/components/PageTitle.astro";
+import { site } from "../../lib/site";
+const path = Astro.url.pathname;
+const dev = path.startsWith("/docs/dev/");
+const current = site.editions[dev ? 1 : 0],
+  other = site.editions[dev ? 0 : 1];
+const file = Object.keys(current.routes).find(
+  (key) => current.routes[key] === path,
+);
+---
+
+<p class="edition" data-pagefind-ignore>
+  {current.label} <span aria-hidden="true">/</span>{" "}
+  <a href={(file && other.routes[file]) || other.base}>
+    {dev ? "查看稳定版" : "查看开发版"}
+  </a>
+</p>
+<Default {...Astro.props} />

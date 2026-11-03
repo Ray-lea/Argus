@@ -1,0 +1,45 @@
+---
+import Icon from "./Icon.astro";
+import { localized, repo, text, type Language } from "../lib/site";
+interface Props {
+  lang: Language;
+  path: string;
+  alternate?: boolean;
+}
+const { lang, path, alternate = true } = Astro.props,
+  t = text[lang];
+---
+
+<header class="mast">
+  <div class="wrap flex items-center justify-between gap-4">
+    <a class="brand flex items-center gap-2.5" href={localized(lang)}>
+      <img src="/assets/argus.svg" width="34" height="34" alt="" />
+      Argus
+    </a>
+    <nav
+      aria-label={lang === "en" ? "Main navigation" : "主导航"}
+      class="navlinks flex items-center"
+    >
+      <a
+        href={localized(lang, "/download/")}
+        aria-current={path === "/download/" ? "page" : undefined}
+      >
+        {t.download}
+      </a>
+      <a href="/docs/">{t.docs}</a>
+      <a class="nav-repo" href={repo}>
+        GitHub <Icon name="external" size={14} />
+      </a>
+      {alternate && (
+        <a
+          class="lang"
+          href={localized(lang === "zh" ? "en" : "zh", path)}
+          lang={lang === "zh" ? "en" : "zh-CN"}
+        >
+          <Icon name="language" size={17} />
+          {t.language}
+        </a>
+      )}
+    </nav>
+  </div>
+</header>

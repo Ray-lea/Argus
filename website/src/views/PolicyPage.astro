@@ -1,0 +1,75 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro";
+import {
+  localized,
+  repo,
+  site,
+  text,
+  type Language,
+  type Policy,
+} from "../lib/site";
+interface Props {
+  lang: Language;
+  policy: Policy;
+}
+const { lang, policy } = Astro.props,
+  en = lang === "en",
+  t = text[lang],
+  title = t[policy];
+const summary = {
+  privacy: en
+    ? "How Argus stores data and connects to update services."
+    : "Argus 的本地数据存储、更新请求与网络连接。",
+  signing: en
+    ? "The project's public code signing policy."
+    : "Argus 项目的公开代码签名策略。",
+  security: en
+    ? "Report a vulnerability privately to the Argus maintainers."
+    : "向 Argus 维护者私下报告安全漏洞。",
+}[policy];
+---
+
+<SiteLayout
+  lang={lang}
+  path={"/" + policy + "/"}
+  title={title + " · Argus"}
+  description={summary}
+>
+  <article class="wrap inner-page article-page">
+    <header class="page-heading">
+      <a class="back" href={localized(lang)}>
+        Argus /
+      </a>
+      <h1>{title}</h1>
+    </header>
+    <div class="prose">
+      {policy === "security" ? (
+        <>
+          <p>
+            {en
+              ? "Send the affected Argus and Windows versions, reproduction steps and expected impact to the maintainers."
+              : "请提供受影响的 Argus 与 Windows 版本、复现步骤和可能的影响。"}
+          </p>
+          <ul>
+            <li>
+              <a href={repo + "/security/advisories/new"}>
+                {en
+                  ? "GitHub private vulnerability report"
+                  : "GitHub 私密漏洞报告"}
+              </a>
+            </li>
+            {site.contact && (
+              <li>
+                <a href="mailto:security@argustask.com">
+                  security@argustask.com
+                </a>
+              </li>
+            )}
+          </ul>
+        </>
+      ) : (
+        <Fragment set:html={site.translations[lang][policy]} />
+      )}
+    </div>
+  </article>
+</SiteLayout>

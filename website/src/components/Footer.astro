@@ -1,0 +1,33 @@
+---
+import { localized, repo, site, text, type Language } from "../lib/site";
+interface Props {
+  lang?: Language;
+}
+const { lang = "zh" } = Astro.props,
+  t = text[lang];
+---
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <a class="brand" href={localized(lang)}>
+        Argus
+      </a>
+      <p>
+        © Argus contributors ·{" "}
+        <a href={repo + "/blob/main/LICENSE"}>AGPL-3.0</a>
+      </p>
+    </div>
+    <nav aria-label={lang === "en" ? "Project links" : "项目信息"}>
+      <a href={localized(lang, "/questions/")}>{t.questions}</a>
+      <a href={localized(lang, "/privacy/")}>{t.privacy}</a>
+      <a href={localized(lang, "/signing/")}>{t.signing}</a>
+      <a href={localized(lang, "/security/")}>{t.security}</a>
+      <a
+        href={site.contact ? "mailto:contact@argustask.com" : repo + "/issues"}
+      >
+        {t.contact}
+      </a>
+    </nav>
+  </div>
+</footer>

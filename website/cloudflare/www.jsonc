@@ -4,5 +4,5 @@
   "workers_dev": false,
   "preview_urls": false,
   "routes": [{ "pattern": "www.argustask.com", "custom_domain": true }],
-  "assets": { "directory": "../target/official-web/dist/www" },
+  "assets": { "directory": "../../target/official-web/dist/www" },
 }

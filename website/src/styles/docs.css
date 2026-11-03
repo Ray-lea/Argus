@@ -1,0 +1,53 @@
+:root {
+  --sl-color-accent-low: #1a2947;
+  --sl-color-accent: #668aff;
+  --sl-color-accent-high: #c4d5ff;
+  --sl-font: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e8eeff;
+  --sl-color-accent: #354fc3;
+  --sl-color-accent-high: #182868;
+}
+.docs-brand,
+.docs-label,
+.edition,
+.docs-footer {
+  font-family: var(--sl-font);
+}
+.docs-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--sl-color-text-accent);
+  font-weight: 700;
+  font-size: 1.35rem;
+  text-decoration: none;
+}
+.docs-label {
+  margin-inline-start: 0.6rem;
+  color: var(--sl-color-text);
+  font-size: 0.94rem;
+  text-decoration: none;
+}
+.edition {
+  color: var(--sl-color-gray-2);
+  font-size: 0.875rem;
+  font-weight: 550;
+  margin-block: 0 0.5rem;
+}
+.edition span {
+  padding: 0 0.4rem;
+  color: var(--sl-color-gray-4);
+}
+.edition a,
+.docs-footer a {
+  color: var(--sl-color-text-accent);
+}
+.docs-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: 0.9rem;
+  margin-top: 2rem;
+}

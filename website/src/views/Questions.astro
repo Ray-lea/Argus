@@ -1,0 +1,97 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro";
+import { site, type Language } from "../lib/site";
+interface Props {
+  lang: Language;
+}
+const { lang } = Astro.props,
+  en = lang === "en";
+const title = en ? "Using Argus on Windows" : "Windows 上的 Argus 常见问题";
+const items = en
+  ? [
+      [
+        "file-locks",
+        "How do I find which process has a file open?",
+        "Open File locks, choose the file or folder and inspect the matching processes. The optional privileged service expands the handle scan. Protected processes and recent changes can limit the results.",
+        "/docs/guide/#文件占用",
+      ],
+      [
+        "history",
+        "What does Argus keep in its seven-day history?",
+        "While recording is enabled, Argus stores system samples and the busiest processes on this computer. Select a point on the history chart to inspect the processes recorded at that time.",
+        "/docs/guide/#历史",
+      ],
+      [
+        "gpu-memory",
+        "Where can I see how much dedicated GPU memory is in use?",
+        "Open Performance and select the GPU to see the adapter's dedicated memory usage. Process details show memory attributed to that process. Shared resources can appear in more than one process.",
+        "/docs/guide/hardware-data/",
+      ],
+      [
+        "permissions",
+        "When is administrator permission useful?",
+        "Start with the standard Windows account. The optional privileged service handles authorized operations such as controlling services, inspecting handles and collecting per-process network activity.",
+        "/docs/guide/settings/#权限",
+      ],
+    ]
+  : [
+      [
+        "file-locks",
+        "怎样找到占用文件的进程？",
+        "打开“文件占用”，选择文件或文件夹即可查看匹配的进程。可选的特权服务可扩大句柄查询范围。受保护进程或查询期间发生的文件变化可能影响结果。",
+        "/docs/guide/#文件占用",
+      ],
+      [
+        "history",
+        "七天历史记录中保存了什么？",
+        "开启记录后，Argus 在本机保存系统资源采样及当时占用最高的进程。到历史页选中曲线上的一个时刻，即可查看对应读数和进程列表。",
+        "/docs/guide/#历史",
+      ],
+      [
+        "gpu-memory",
+        "在哪里查看整张显卡的专用显存用量？",
+        "在“性能”页选择对应 GPU，查看适配器的专用显存用量。进程详情显示归属于该进程的显存，共享资源可能出现在多个进程中。",
+        "/docs/guide/hardware-data/",
+      ],
+      [
+        "permissions",
+        "哪些操作需要管理员权限？",
+        "日常查看可使用普通账户。启用并授权特权服务后，可由服务执行服务控制、句柄查询和每进程网络采集等操作。",
+        "/docs/guide/settings/#权限",
+      ],
+    ];
+---
+
+<SiteLayout
+  lang={lang}
+  path="/questions/"
+  title={title + " · Argus"}
+  description={
+    en
+      ? "Practical answers on file locks, resource history and Windows permissions."
+      : "关于文件占用、资源历史记录和 Windows 权限的操作说明。"
+  }
+>
+  <article class="wrap inner-page article-page">
+    <header class="page-heading">
+      <p class="release-line">
+        {en ? "Stable release" : "稳定版"} · {site.release.tag}
+      </p>
+      <h1>{title}</h1>
+    </header>
+    {items.map(([id, question, answer, link]) => (
+      <section id={id} class="prose answer">
+        <h2>{question}</h2>
+        <p>{answer}</p>
+        <a href={link}>
+          {en ? "Read the stable guide (中文)" : "阅读稳定版使用指南"} →
+        </a>
+      </section>
+    ))}
+    <p class="edition-link">
+      <a href="/docs/dev/">
+        {en ? "Development documentation (中文)" : "开发版文档"} ↗
+      </a>
+    </p>
+  </article>
+</SiteLayout>

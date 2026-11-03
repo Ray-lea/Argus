@@ -1,0 +1,155 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro";
+import Icon from "../components/Icon.astro";
+import ProductPreview from "../components/ProductPreview";
+import Trace from "../components/Trace.astro";
+import {
+  localized,
+  origin,
+  repo,
+  site,
+  text,
+  type Language,
+} from "../lib/site";
+interface Props {
+  lang: Language;
+}
+const { lang } = Astro.props,
+  en = lang === "en",
+  t = text[lang],
+  r = site.release;
+const title = en
+  ? "Argus — Open-source Windows task manager"
+  : "Argus 开源 Windows 任务管理器";
+const intro = en
+  ? "Find the process behind a CPU spike, see which app holds a file, and revisit the last seven days of system activity."
+  : "找出推高 CPU 占用的进程，查看哪个程序锁住了文件，回看过去七天的系统活动。";
+const topics = en
+  ? [
+      [
+        "Find the busy process",
+        "Group related processes by application, compare CPU, memory and GPU usage, then inspect the individual process.",
+        "/docs/guide/",
+      ],
+      [
+        "Find who has a file open",
+        "Choose a file or folder to see which processes are holding it.",
+        "/en/questions/#file-locks",
+      ],
+      [
+        "Inspect hardware readings",
+        "Read the source of each measurement and see which sensors need the privileged service.",
+        "/docs/guide/hardware-data/",
+      ],
+    ]
+  : [
+      [
+        "定位高占用进程",
+        "按应用归拢相关进程，对照 CPU、内存和 GPU 用量，再展开查看单个进程。",
+        "/docs/guide/",
+      ],
+      [
+        "查找文件占用",
+        "选择文件或文件夹，查看持有它的进程，判断下一步该关闭哪个程序。",
+        "/questions/#file-locks",
+      ],
+      [
+        "了解传感器读数",
+        "查看温度、功耗和频率的来源，以及哪些硬件读数需要特权服务。",
+        "/docs/guide/hardware-data/",
+      ],
+    ];
+---
+
+<SiteLayout
+  lang={lang}
+  path="/"
+  title={title}
+  description={intro}
+  schema={{
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": origin + "/#website",
+    name: "Argus",
+    url: origin + "/",
+    inLanguage: ["zh-CN", "en"],
+  }}
+>
+  <section class="hero wrap">
+    <div class="hero-copy">
+      <h1>
+        <span class="hero-name">Argus</span>
+        <span class="hero-category">
+          {en ? "Open-source Windows task manager" : "开源 Windows 任务管理器"}
+        </span>
+      </h1>
+      <p class="lead">{intro}</p>
+      <div class="hero-actions">
+        <a class="button" href={r.files.installer.url}>
+          <Icon name="download" />
+          {t.install}
+        </a>
+        <a class="text-link" href={localized(lang, "/download/")}>
+          {en ? "All downloads" : "全部下载"} <Icon name="arrow" size={16} />
+        </a>
+      </div>
+      <p class="release-line">
+        <a href={repo + "/releases/tag/" + r.tag}>{r.tag}</a>
+        <span aria-hidden="true">/</span>Windows · x64
+      </p>
+    </div>
+    <div class="product-stage">
+      <ProductPreview client:visible lang={lang} tag={r.tag} />
+    </div>
+  </section>
+  <section class="history-section">
+    <div class="wrap history-grid">
+      <div>
+        <h2>{en ? "Look back at the spike." : "回看刚才的峰值。"}</h2>
+        <p>
+          {en
+            ? "A brief slowdown can be over before you open the window. Select a moment in history to see the busiest processes recorded then."
+            : "打开窗口时，卡顿可能已经过去。在历史曲线上选中那个时刻，就能查看当时记录的高占用进程。"}
+        </p>
+        <a class="text-link" href="/docs/guide/#历史">
+          {en ? "Explore resource history (中文)" : "查看历史记录指南"}
+          <Icon name="arrow" size={16} />
+        </a>
+      </div>
+      <Trace lang={lang} />
+    </div>
+  </section>
+  <section class="wrap topics">
+    <div class="topics-heading">
+      <h2>{en ? "Inspect your system" : "从一个问题开始"}</h2>
+      <a class="text-link" href="/docs/">
+        {en ? "Documentation (中文)" : "完整文档"}
+        <Icon name="arrow" size={16} />
+      </a>
+      <figure class="detail-crop">
+        <img
+          src={"/assets/process-list-" + lang + ".webp"}
+          width="902"
+          height="288"
+          loading="lazy"
+          alt={
+            en
+              ? "A closer look at the process names and resource columns in Argus"
+              : "Argus 浅色主题下的进程列表局部，可对照名称与资源列"
+          }
+        />
+      </figure>
+    </div>
+    <div class="topic-list">
+      {topics.map(([h, desc, href]) => (
+        <a href={href} class="topic">
+          <div>
+            <h3>{h}</h3>
+            <p>{desc}</p>
+          </div>
+          <Icon name="arrow" />
+        </a>
+      ))}
+    </div>
+  </section>
+</SiteLayout>

@@ -42,6 +42,6 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID"
           for service in downloads updates site www; do
-            pnpm dlx wrangler@4.156.2 deploy --config "website/wrangler.$service.jsonc"
-            node website/verify.mjs "$service"
+            pnpm dlx wrangler@4.156.2 deploy --config "website/cloudflare/$service.jsonc"
+            node website/scripts/verify.mjs "$service"
           done

@@ -1,0 +1,45 @@
+---
+import trace from "../../../tools/window-probe/fixtures/readme-trace.json";
+import type { Language } from "../lib/site";
+const { lang } = Astro.props as { lang: Language },
+  en = lang === "en";
+const t0 = trace[0].ms,
+  elapsed = trace[trace.length - 1].ms - t0;
+const coords = trace.map((p) => [((p.ms - t0) * 500) / elapsed, 110 - p.cpu]);
+const line = coords
+  .map(([x, y], i) => (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1))
+  .join(" ");
+const peak = Math.max(...trace.map((p) => p.cpu));
+const peakPoint = coords[trace.findIndex((p) => p.cpu === peak)];
+---
+
+<figure class="trace-figure">
+  <figcaption>
+    <span>
+      <i></i> CPU
+    </span>
+    <span>{en ? "Recorded sample" : "采样示例"}</span>
+  </figcaption>
+  <svg
+    role="img"
+    aria-label={
+      en
+        ? "Recorded CPU utilization over one minute"
+        : "一分钟内实际采样的 CPU 占用率"
+    }
+    viewBox="0 0 500 125"
+    preserveAspectRatio="none"
+  >
+    <path class="trace-grid" d="M0 10H500M0 60H500M0 110H500" />
+    <path class="trace-fill" d={line + " L500 110 H0 Z"} />
+    <path class="trace-line" d={line} />
+    <circle cx={peakPoint[0]} cy={peakPoint[1]} r="3.6" class="peak" />
+  </svg>
+  <div class="trace-ticks">
+    <span>0 s</span>
+    <span>
+      {en ? "Peak" : "峰值"} {peak.toFixed(1)}%
+    </span>
+    <span>{Math.round(elapsed / 1000)} s</span>
+  </div>
+</figure>

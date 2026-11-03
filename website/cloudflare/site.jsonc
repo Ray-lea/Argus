@@ -5,7 +5,7 @@
   "preview_urls": false,
   "routes": [{ "pattern": "argustask.com", "custom_domain": true }],
   "assets": {
-    "directory": "../target/official-web/dist/site",
+    "directory": "../../target/official-web/dist/site",
     "html_handling": "force-trailing-slash",
     "not_found_handling": "404-page",
   },

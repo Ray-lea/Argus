@@ -5,7 +5,7 @@
   "preview_urls": false,
   "routes": [{ "pattern": "dl.argustask.com", "custom_domain": true }],
   "assets": {
-    "directory": "../target/official-web/dist/downloads",
+    "directory": "../../target/official-web/dist/downloads",
     "html_handling": "none",
     "not_found_handling": "none",
   },

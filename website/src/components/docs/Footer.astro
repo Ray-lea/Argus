@@ -1,0 +1,14 @@
+---
+import Default from "@astrojs/starlight/components/Footer.astro";
+import { site, repo } from "../../lib/site";
+---
+
+<Default {...Astro.props} />
+<nav class="docs-footer" aria-label="项目链接">
+  <a href="/">Argus 官网</a>
+  <a href="/download/">下载</a>
+  <a href="/security/">安全报告</a>
+  <a href={site.contact ? "mailto:contact@argustask.com" : repo + "/issues"}>
+    联系维护者
+  </a>
+</nav>

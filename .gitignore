@@ -4,6 +4,7 @@
 # Development tools
 node_modules/
 .wrangler/
+/website/.astro/
 *.local
 
 # Editors / OS
