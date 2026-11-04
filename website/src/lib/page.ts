@@ -12,6 +12,12 @@ export interface PageInfo {
   noindex?: boolean;
 }
 
+// The link preview: the process page of the documented build.
+export const previewImage = (lang: Language) => ({
+  url: origin + "/assets/preview-" + lang + "-dark.png",
+  alt: lang === "en" ? "The Argus window showing the process list" : "Argus 窗口中的进程列表",
+});
+
 // Head tags of the site's own pages: canonical and language alternates,
 // Open Graph. The root layouts add the icon, site name and Twitter card.
 export function pageMetadata({
@@ -45,7 +51,7 @@ export function pageMetadata({
       title,
       description,
       url,
-      images: origin + "/assets/preview-" + lang + "-dark.png",
+      images: previewImage(lang),
       locale: lang === "zh" ? "zh_CN" : "en_US",
     },
   };
@@ -58,10 +64,10 @@ export function pageGraph({
   title,
   noindex = false,
   schema,
-}: Pick<PageInfo, "lang" | "path" | "title" | "noindex"> & { schema?: unknown }) {
+}: Pick<PageInfo, "lang" | "path" | "title" | "noindex"> & { schema?: object | object[] }) {
   const url = origin + localized(lang, path);
   return [
-    schema,
+    ...[schema ?? []].flat(),
     path !== "/" &&
       !noindex && {
         "@context": "https://schema.org",

@@ -12,7 +12,18 @@ import { BookOpen, Code, Layers, Map, Palette, TriangleAlert } from "lucide-reac
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentProps, FC } from "react";
-import { breadcrumbSchema, canonicalPath, editionOf, markdownUrl, pageTitle, resolveHref } from "@/lib/docs";
+import {
+  articleSchema,
+  breadcrumbSchema,
+  canonicalPath,
+  editionOf,
+  editionSummary,
+  markdownUrl,
+  pageDescription,
+  pageTitle,
+  resolveHref,
+} from "@/lib/docs";
+import { previewImage } from "@/lib/page";
 import { development, jsonLd, origin, repo, stable } from "@/lib/site";
 import { pathOf, source } from "@/lib/source";
 
@@ -42,16 +53,13 @@ export default async function Page({ params }: Props) {
   return (
     <DocsPage toc={toc}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(breadcrumbSchema(page)) }} />
+      {!home && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(articleSchema(page)) }} />
+      )}
       {/* Earlier links to the page used GitHub's fragment for the title. */}
       <span id={page.data.anchor} />
       <h1 className="text-[1.75em] font-semibold">{page.data.heading}</h1>
-      {home && (
-        <p className="mb-2 text-lg text-fd-muted-foreground">
-          {edition === development
-            ? "main 分支上的最新文档，包含尚未发布的改动。"
-            : "与 " + edition.label.replace("稳定版 ", "") + " 一同发布的使用指南、开发指南、架构与设计说明。"}
-        </p>
-      )}
+      {home && <p className="mb-2 text-lg text-fd-muted-foreground">{editionSummary(edition)}</p>}
       {!home && (
         <div className="mb-6 flex flex-row flex-wrap items-center gap-2 border-b pb-6">
           <MarkdownCopyButton markdownUrl={markdownUrl(page)} />
@@ -131,17 +139,27 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const page = source.getPage((await params).slug);
   if (!page) notFound();
-  const title = pageTitle(page);
+  const title = pageTitle(page),
+    description = pageDescription(page),
+    home = page.data.source === "docs/README.md";
   return {
     title: { absolute: title },
-    description: page.data.description,
-    alternates: { canonical: origin + canonicalPath(page) },
+    description,
+    alternates: {
+      canonical: origin + canonicalPath(page),
+      // The same page as Markdown, for language models and other tools.
+      types: home ? undefined : { "text/markdown": origin + markdownUrl(page) },
+    },
+    // A page's openGraph replaces the layout's, so the shared fields repeat here.
     openGraph: {
+      type: home ? "website" : "article",
+      siteName: "Argus",
       title,
-      description: page.data.description,
+      description,
       url: origin + pathOf(page),
-      images: "/assets/preview-zh-dark.png",
+      images: previewImage("zh"),
       locale: "zh_CN",
+      ...(!home && page.data.updated && { modifiedTime: page.data.updated }),
     },
   };
 }

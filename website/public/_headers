@@ -33,6 +33,14 @@
   Cache-Control: public, max-age=300
 /docs-search.json
   Cache-Control: public, max-age=300
+/llms.txt
+  Cache-Control: public, max-age=300
+  Content-Type: text/plain; charset=utf-8
+/llms-full.txt
+  Cache-Control: public, max-age=300
+  Content-Type: text/plain; charset=utf-8
+# The Markdown copies of the documents serve tools; search results show the pages.
 /llms.mdx/*
   Cache-Control: public, max-age=300
   Content-Type: text/markdown; charset=utf-8
+  X-Robots-Tag: noindex

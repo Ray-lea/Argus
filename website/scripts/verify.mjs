@@ -162,7 +162,7 @@ async function local() {
       assert.equal(page.canonical, origin + "/" + prefix + path);
       assert.equal(page.alternates.get("en"), origin + "/en/" + path);
       assert.equal(page.alternates.get("zh-CN"), origin + "/" + path);
-      if (path === "download/") {
+      if (path === "" || path === "download/") {
         const app = page.schemas.find(
           (s) => s["@type"] === "SoftwareApplication",
         );
@@ -170,6 +170,12 @@ async function local() {
         assert.equal(app.downloadUrl, release.files.installer.url);
         assert.equal(app.offers.price, "0");
       }
+      if (path === "")
+        assert(
+          page.schemas.find((s) => s["@type"] === "FAQPage")?.mainEntity
+            .length,
+          prefix + ": missing FAQ structured data",
+        );
     }
   }
   const { editions } = JSON.parse(
@@ -215,7 +221,23 @@ async function local() {
     search.includes('"stable"') && search.includes('"dev"'),
     "The search index is missing an edition",
   );
-  assert(siteFiles.has("sitemap.xml"), "Missing sitemap.xml");
+  const llms = await readFile(join(dir, "llms.txt"), "utf8");
+  assert(
+    llms.startsWith("# Argus\n\n> ") && llms.includes(release.files.installer.url),
+    "Invalid llms.txt",
+  );
+  for (const [, url] of llms.matchAll(/\]\((https:[^)]+)\)/g)) {
+    const { pathname } = new URL(url);
+    if (url.startsWith(origin))
+      assert(
+        siteFiles.has(
+          decodeURIComponent(pathname).slice(1) +
+            (pathname.endsWith("/") ? "index.html" : ""),
+        ),
+        "llms.txt: missing " + url,
+      );
+  }
+  assert(siteFiles.has("llms-full.txt"), "Missing llms-full.txt");
   const security = await readFile(join(dir, ".well-known/security.txt"), "utf8");
   assert(
     security.includes("Expires:") &&

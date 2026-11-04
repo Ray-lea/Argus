@@ -4,7 +4,7 @@
 
 | 域名 | 内容 |
 | --- | --- |
-| `argustask.com` | 中英文首页（含常见问题）、下载、更新日志、政策、稳定版与开发版文档、文档搜索和 `/.well-known/security.txt` |
+| `argustask.com` | 中英文首页（含常见问题）、下载、更新日志、政策、稳定版与开发版文档、文档搜索、供语言模型读取的 `/llms.txt` 和 `/.well-known/security.txt` |
 | `www.argustask.com` | 永久跳转到主域名的相同路径 |
 | `dl.argustask.com` | 按版本提供安装包、免安装版和 `SHA256SUMS.txt` |
 | `update.argustask.com` | `latest.json` 与 `beta.json`，缓存时间为两分钟 |
@@ -20,6 +20,12 @@
 生产配置为 `website/cloudflare/<服务>.jsonc`。依次部署 `downloads`、`updates`、`site`、`www`，每一步使用 `node website/scripts/verify.mjs <服务>` 从公网验证结果，再继续下一步；官网页面须与本次构建逐字节一致。可先运行 `pnpm dlx wrangler@4.156.2 deploy --dry-run --config website/cloudflare/site.jsonc`。正式部署使用相同命令去掉 `--dry-run`。撤回发布后，从最新正式发布重新运行构建与部署，并视需要在 Cloudflare 清除被撤回的缓存文件。
 
 GitHub Actions 使用 Secret `CLOUDFLARE_API_TOKEN` 和变量 `CLOUDFLARE_ACCOUNT_ID`。部署令牌对四个 `argustask-*` Worker 使用 `Individual Workers Editor`，对 `argustask.com` 使用 `Workers Routes Write`。`ARGUS_WEBSITE_DEPLOY=true` 时，GitHub Release 发布完成后调用 [`website.yml`](../../.github/workflows/website.yml)，也可从 Actions 对 `main` 手动部署。工作流只从 `main` 或版本标签发布，来源不符或缺少令牌、账户 ID 时在构建前终止。
+
+## 搜索引擎与语言模型
+
+页面的标题、描述、规范地址、语言互链和结构化数据在构建时生成：首页声明网站、应用及常见问题，下载页声明应用，文档页声明文章与面包屑。开发版中稳定版也有的页面以稳定版为规范地址，只在开发版中的页面以自身为规范地址；站点地图只列出规范地址，并以发布日期或文档最后提交日期标注更新时间。文档的描述取正文第一段，截至 150 字以内的最后一个完整句子。
+
+`/llms.txt` 按 [llms.txt](https://llmstxt.org/) 的格式汇总首页的介绍、与任务管理器的差异、常见问题和稳定版各文档的 Markdown 地址，内容取自首页与文档的数据，随构建更新；`/llms-full.txt` 是稳定版文档全文。各文档的 Markdown 副本（`/llms.mdx/docs/…/content.md`）供工具读取，响应头 `X-Robots-Tag: noindex` 使其不出现在搜索结果中。`robots.txt` 允许抓取全部页面，仅排除 Next.js 的导航数据文件。
 
 ## 邮件与分发清单
 

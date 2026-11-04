@@ -27,7 +27,7 @@ export function Policy({ lang, policy }: { lang: Language; policy: PolicyName })
   const en = lang === "en",
     title = text[lang][policy];
   return (
-    <SiteFrame lang={lang} path={"/" + policy + "/"} title={title + " · Argus"}>
+    <SiteFrame lang={lang} path={"/" + policy + "/"} title={title}>
       <div className="site-wrap">
         <header className="page-head">
           <h1 data-rise="">{title}</h1>

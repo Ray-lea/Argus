@@ -94,7 +94,7 @@ export function Download({ lang }: { lang: Language }) {
     },
   ];
   return (
-    <SiteFrame lang={lang} path="/download/" title={title(lang)} schema={softwareSchema(lang, description(lang))}>
+    <SiteFrame lang={lang} path="/download/" title={title(lang)} schema={softwareSchema(lang)}>
       <div className="site-wrap download">
         <header className="dl-hero" data-motion="">
           <div className="cta-mark" aria-hidden="true">

@@ -4,7 +4,7 @@
 
 | 目录 | 职责 |
 | --- | --- |
-| `src/app/` | 公共 URL：`(zh)/` 为中文页面与文档（`docs/`），`en/` 为英文页面，另有搜索索引、Markdown 视图与站点地图 |
+| `src/app/` | 公共 URL：`(zh)/` 为中文页面与文档（`docs/`），`en/` 为英文页面，另有搜索索引、Markdown 视图、站点地图与供语言模型读取的 `llms.txt`、`llms-full.txt` |
 | `src/views/` | 首页、下载、更新日志与政策页的内容和组合 |
 | `src/components/` | 页头、页脚、主题与搜索；`replica/` 是应用窗口演示，`home/` 是首页的其他交互部分 |
 | `src/lib/`、`src/styles/` | 站点与首页数据、文档来源与链接解析、设计变量与样式：`app.css` 全站共用，首页和下载、更新日志页各自的样式经 `home-route.css`、`pages-route.css` 只随这些页面加载；`docs.css` 把 Fumadocs 的强调色和字体换成应用的 |

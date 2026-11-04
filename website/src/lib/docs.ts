@@ -27,6 +27,44 @@ export const markdownUrl = (page: DocsPage) => "/llms.mdx" + pathOf(page) + "con
 export const canonicalPath = (page: DocsPage) =>
   (editionOf(page) === development && stable.routes[page.data.source]) || pathOf(page);
 
+// The description of an edition's home, as its subtitle reads.
+export const editionSummary = (edition: Edition) =>
+  edition === development
+    ? "main 分支上的最新文档，包含尚未发布的改动。"
+    : "与 " + edition.label.replace("稳定版 ", "") + " 一同发布的使用指南、开发指南、架构与设计说明。";
+
+export const pageDescription = (page: DocsPage) =>
+  page.data.source === "docs/README.md" ? editionSummary(editionOf(page)) : page.data.description;
+
+// The page's Markdown below its title, for language models and "Copy Markdown":
+// links resolved to absolute addresses, headings without the [#id] that sets their anchors.
+export async function markdownBody(page: DocsPage) {
+  const edition = editionOf(page);
+  return (await page.data.getText("processed"))
+    .replace(/^(#{1,6} .*?) \[#[^\]\n]+\]$/gm, "$1")
+    .replace(/(\]\()([^)\s]+)(\))/g, (_, open, href: string, close) => {
+      let resolved = resolveHref(edition, page.data.source, href) ?? href;
+      if (resolved.startsWith("#")) resolved = pathOf(page) + resolved;
+      return open + (resolved.startsWith("/") ? origin + resolved : resolved) + close;
+    });
+}
+
+export function articleSchema(page: DocsPage) {
+  const url = origin + pathOf(page);
+  return {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "@id": url + "#article",
+    headline: page.data.heading,
+    description: pageDescription(page),
+    url,
+    inLanguage: "zh-CN",
+    dateModified: page.data.updated || undefined,
+    isPartOf: { "@id": origin + "/#website" },
+    about: { "@id": origin + "/#software" },
+  };
+}
+
 export function pageTitle(page: DocsPage) {
   const edition = editionOf(page);
   const name = page.data.source === "docs/README.md" ? "Argus 文档" : page.data.heading;

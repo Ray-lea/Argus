@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { markdownBody } from "@/lib/docs";
 import { source } from "@/lib/source";
 
 export const revalidate = false;
@@ -8,7 +9,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   // The last segment is the appended "content.md".
   const page = source.getPage((await params).slug?.slice(0, -1));
   if (!page) notFound();
-  return new Response("# " + page.data.heading + "\n\n" + (await page.data.getText("processed")), {
+  return new Response("# " + page.data.heading + "\n\n" + (await markdownBody(page)), {
     headers: { "Content-Type": "text/markdown; charset=utf-8" },
   });
 }

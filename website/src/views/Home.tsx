@@ -15,7 +15,7 @@ import { SiteFrame } from "@/components/site/SiteFrame";
 import { SiteLink } from "@/components/site/SiteLink";
 import { differences, docs, fastest, latency, questions } from "@/lib/home-content";
 import { pageMetadata } from "@/lib/page";
-import { localized, mebibytes, origin, site, stable, text, type Language } from "@/lib/site";
+import { about, localized, mebibytes, origin, releases, site, softwareSchema, stable, text, type Language } from "@/lib/site";
 
 const r = site.release,
   installer = r.files.installer;
@@ -24,16 +24,11 @@ const releasedOn = (lang: Language) => {
   const note = site.changelog[lang][0];
   return note?.version === r.version ? note.date : r.published.slice(0, 10);
 };
-const releases = (lang: Language) => site.changelog[lang].filter((note) => !note.withdrawn);
 const copy = {
   en: {
-    title: "Argus · A fast, modern, information-rich Windows task manager",
-    description:
-      "Argus is an open-source task manager for Windows: a native GPU-drawn interface, curves at the display's refresh rate, ports, file locks, per-process disk I/O and seven days of history.",
     h1: ["A fast, modern,", "information-rich task manager"],
     pill: ["Released ", "What's new"],
     replace: ["Replaces Task Manager", "opens Argus"],
-    lead: "Argus reads Windows directly in Rust and draws its window on the GPU. Processes, performance, services, startup apps, network connections and file locks share one fluid window.",
     download: "Download for Windows",
     other: "Portable and checksums",
     facts: [r.tag + " · installer " + mebibytes(installer.size) + " MiB", "Windows 10 / 11 · x64", "Open source · AGPL-3.0"],
@@ -61,13 +56,9 @@ const copy = {
     install: "Download installer",
   },
   zh: {
-    title: "Argus · 快速、现代、信息丰富的 Windows 任务管理器",
-    description:
-      "Argus 是开源的 Windows 任务管理器：原生 GPU 绘制界面，曲线随刷新率流动，可查端口、文件占用、每进程磁盘读写和最近 7 天的历史。",
     h1: ["快速、现代、信息丰富的", "Windows 任务管理器"],
     pill: ["发布于 ", "查看更新内容"],
     replace: ["可替换系统任务管理器", "即打开 Argus"],
-    lead: "Argus 用 Rust 直接读取 Windows 原生接口，界面由 GPU 绘制。进程、性能、服务、启动项、网络连接与文件占用，集中在一个流畅的窗口里。",
     download: "下载 Windows 版",
     other: "免安装版与校验值",
     facts: [r.tag + " · 安装版 " + mebibytes(installer.size) + " MiB", "Windows 10 / 11 · x64", "开源 · AGPL-3.0"],
@@ -97,7 +88,37 @@ const copy = {
 };
 
 export const homeMetadata = (lang: Language) =>
-  pageMetadata({ lang, path: "/", title: copy[lang].title, description: copy[lang].description });
+  pageMetadata({ lang, path: "/", title: about[lang].title, description: about[lang].description });
+
+// The site, the application with what it adds to Task Manager, and the questions below.
+const homeSchema = (lang: Language) => [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": origin + "/#website",
+    name: "Argus",
+    url: origin + "/",
+    description: about[lang].description,
+    inLanguage: ["zh-CN", "en"],
+    about: { "@id": origin + "/#software" },
+  },
+  softwareSchema(
+    lang,
+    differences(lang).map(([need, argus]) => need + (lang === "en" ? ": " : "：") + argus),
+  ),
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "@id": origin + localized(lang) + "#faq",
+    inLanguage: lang === "en" ? "en" : "zh-CN",
+    mainEntity: questions(lang).map(([id, question, answer]) => ({
+      "@type": "Question",
+      "@id": origin + localized(lang) + "#" + id,
+      name: question,
+      acceptedAnswer: { "@type": "Answer", text: answer },
+    })),
+  },
+];
 
 // The window comes from the route, so each language loads only its own: the
 // English one carries its dictionary (EnglishReplica.tsx).
@@ -108,15 +129,8 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
     <SiteFrame
       lang={lang}
       path="/"
-      title={t.title}
-      schema={{
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "@id": origin + "/#website",
-        name: "Argus",
-        url: origin + "/",
-        inLanguage: ["zh-CN", "en"],
-      }}
+      title={about[lang].title}
+      schema={homeSchema(lang)}
     >
       <section className="hero" aria-labelledby="hero-title">
         <div className="site-wrap hero-copy">
@@ -147,7 +161,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
               {t.replace[1]}
             </span>
           </p>
-          <p className="lead">{t.lead}</p>
+          <p className="lead">{about[lang].lead}</p>
           <div className="button-row">
             <DownloadButton primary href={installer.url} started={text[lang].started}>
               {t.download}

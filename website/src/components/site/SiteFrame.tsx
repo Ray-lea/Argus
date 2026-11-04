@@ -14,7 +14,7 @@ interface Props {
   title: string;
   alternate?: boolean;
   noindex?: boolean;
-  schema?: unknown;
+  schema?: object | object[];
   footer?: boolean;
   children: ReactNode;
 }

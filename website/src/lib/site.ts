@@ -120,11 +120,29 @@ export const text = {
     themeOptions: { auto: "System", light: "Light", dark: "Dark" },
   },
 } as const;
+// What Argus is: the home page's head tags and lead, the structured data and llms.txt.
+export const about = {
+  zh: {
+    title: "Argus · 快速、现代、信息丰富的 Windows 任务管理器",
+    description:
+      "Argus 是开源的 Windows 任务管理器：原生 GPU 绘制界面，曲线随刷新率流动，可查端口、文件占用、每进程磁盘读写和最近 7 天的历史。",
+    lead: "Argus 用 Rust 直接读取 Windows 原生接口，界面由 GPU 绘制。进程、性能、服务、启动项、网络连接与文件占用，集中在一个流畅的窗口里。",
+  },
+  en: {
+    title: "Argus · A fast, modern, information-rich Windows task manager",
+    description:
+      "Argus is an open-source task manager for Windows: a native GPU-drawn interface, curves at the display's refresh rate, ports, file locks, per-process disk I/O and seven days of history.",
+    lead: "Argus reads Windows directly in Rust and draws its window on the GPU. Processes, performance, services, startup apps, network connections and file locks share one fluid window.",
+  },
+};
 export const jsonLd = (data: unknown) =>
   JSON.stringify(data).replaceAll("<", "\\u003c");
 export const sourceFor = (lang: Language) => (lang === "en" ? "en" : "zh-CN");
 export const mebibytes = (bytes: number) => (bytes / 1048576).toFixed(1);
-export function softwareSchema(lang: Language, description: string) {
+// The withdrawn releases are left out; the last entry is the first release.
+export const releases = (lang: Language) => site.changelog[lang].filter((note) => !note.withdrawn);
+// The same entity on every page that describes it; the home page adds its features.
+export function softwareSchema(lang: Language, features?: string[]) {
   const { release } = site;
   return {
     "@context": "https://schema.org",
@@ -132,14 +150,24 @@ export function softwareSchema(lang: Language, description: string) {
     "@id": origin + "/#software",
     name: "Argus",
     url: origin + localized(lang),
-    description,
+    description: about[lang].description,
+    image: origin + "/assets/argus.svg",
+    screenshot: origin + "/assets/preview-" + lang + "-dark.png",
     applicationCategory: "UtilitiesApplication",
     operatingSystem: site.translations[lang].operatingSystem,
+    inLanguage: ["zh-CN", "en"],
     softwareVersion: release.version,
+    datePublished: releases(lang).at(-1)?.date,
     dateModified: release.published.slice(0, 10),
     downloadUrl: release.files.installer.url,
-    releaseNotes: repo + "/releases/tag/" + release.tag,
+    installUrl: origin + localized(lang, "/download/"),
+    fileSize: mebibytes(release.files.installer.size) + " MiB",
+    releaseNotes: origin + localized(lang, "/changelog/"),
+    softwareHelp: { "@type": "CreativeWork", url: origin + stable.base },
+    featureList: features,
     license: repo + "/blob/" + release.tag + "/LICENSE",
+    isAccessibleForFree: true,
+    sameAs: [repo],
     offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
   };
 }
