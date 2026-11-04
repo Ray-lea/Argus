@@ -10,7 +10,7 @@
 |---|---|---|
 | `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；Biome、文案检查、生成代码检查、脚本测试、rustfmt、Clippy、Rust 测试、第三方许可声明是否最新 |
 | `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md`、已译完的 `CHANGELOG.en.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；为更新对话框显示的更新内容签名并校验；静默安装，核对卸载项及安装文件、运行副本、免安装下载的更新类型，再静默卸载；生成更新清单并发布 GitHub Release |
-| [`website.yml`](../../.github/workflows/website.yml) | 手动运行，或发布完成后由 `release.yml` 调用 | 以已发布的稳定版构建文档和下载页，同步两条更新清单，逐项校验公网下载和域名跳转。配置见[官网与发行镜像](website.md) |
+| [`website.yml`](../../.github/workflows/website.yml) | 手动运行（`main`），或发布完成后由 `release.yml` 调用 | 以已发布的稳定版构建文档和下载页，同步两条更新清单，逐项校验公网下载、更新清单、官网页面和域名跳转。配置见[官网与发行镜像](website.md) |
 
 推送前在本地运行 `start.bat check`，使用 `node scripts/notices.mjs --check` 核对第三方许可声明。
 
