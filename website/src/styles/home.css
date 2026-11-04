@@ -1670,16 +1670,6 @@
 .faq-list details {
   border-bottom: 1px solid var(--stroke);
 }
-.faq-list details::details-content {
-  block-size: 0;
-  overflow: clip;
-  transition:
-    block-size 320ms var(--ease),
-    content-visibility 320ms allow-discrete;
-}
-.faq-list details[open]::details-content {
-  block-size: auto;
-}
 .faq-list summary {
   display: flex;
   align-items: center;
@@ -1703,7 +1693,7 @@
   color: var(--ink-3);
   transition: transform 260ms var(--ease);
 }
-.faq-list details[open] summary svg {
+.faq-list details[open]:not(.is-closing) summary svg {
   transform: rotate(45deg);
 }
 .faq-answer {

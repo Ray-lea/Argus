@@ -359,7 +359,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
         </header>
         <div className="faq-list" data-rise="2">
           {questions(lang).map(([id, question, answer, link], i) => (
-            <details id={id} key={id} name="faq" open={i === 0}>
+            <details id={id} key={id} open={i === 0} data-disclose="">
               <summary>
                 {question}
                 <Icon name="plus" size={18} />

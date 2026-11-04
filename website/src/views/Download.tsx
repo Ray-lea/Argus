@@ -154,7 +154,7 @@ export function Download({ lang }: { lang: Language }) {
               </a>
               <div className="package-file">
                 <span className="figures">{pkg.file.name}</span>
-                <details>
+                <details data-disclose="">
                   <summary>SHA-256</summary>
                   <span className="package-hash">
                     <code>{pkg.file.sha256}</code>
