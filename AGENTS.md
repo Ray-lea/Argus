@@ -5,7 +5,7 @@
 - `crates/argus-core/AGENTS.md`：采集层
 - `src-gpui/AGENTS.md`：原生宿主、窗口与界面
 - `docs/AGENTS.md`：文档的组织与写法
-- `website/AGENTS.md`：官网设计与本地 Taste Skill 复核
+- `website/AGENTS.md`：官网设计与浏览器复核
 
 ## 项目
 
