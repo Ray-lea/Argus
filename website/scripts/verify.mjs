@@ -11,6 +11,7 @@ import {
   feedOrigin,
   filenames,
   origin,
+  repo,
 } from "./release.mjs";
 
 const dist = resolve(
@@ -205,8 +206,13 @@ async function local() {
     search.includes('"stable"') && search.includes('"dev"'),
     "The search index is missing an edition",
   );
+  assert(siteFiles.has("sitemap.xml"), "Missing sitemap.xml");
+  const security = await readFile(join(dir, ".well-known/security.txt"), "utf8");
   assert(
-    siteFiles.has("sitemap.xml") && siteFiles.has(".well-known/security.txt"),
+    security.includes("Expires:") &&
+      security.includes(`Canonical: ${origin}/.well-known/security.txt`) &&
+      security.includes(`${repo}/security/advisories/new`),
+    "Invalid security.txt",
   );
   for (const service of ["site", "downloads", "updates", "www"]) {
     const items = await files(join(dist, service));
@@ -264,6 +270,7 @@ async function online(service) {
           ? [["https://www.argustask.com/download/", null]]
           : [
               [origin + "/", null],
+              [origin + "/en/", null],
               [origin + "/en/download/", null],
               [origin + "/docs/guide/", null],
               [origin + "/docs/dev/", null],
@@ -295,26 +302,26 @@ async function online(service) {
               JSON.parse(await readFile(join(dist, "updates", name), "utf8")),
             );
           } else {
-            const body = await res.text();
-            if (url.endsWith("/")) {
+            if (url.endsWith("/"))
               assert(
                 res.headers.get("cache-control")?.includes("no-transform"),
                 url + ": missing HTML cache policy",
               );
-              checkPageShell(inspectPage(body), url);
-            }
+            // Exactly the files local() checked: an older deployment or an edge
+            // rewrite would also break the CSP hashes of the inline scripts.
+            const { pathname } = new URL(url);
+            const built = await readFile(
+              join(
+                dist,
+                "site",
+                decodeURIComponent(pathname) +
+                  (pathname.endsWith("/") ? "index.html" : ""),
+              ),
+            );
+            const body = Buffer.from(await res.arrayBuffer());
             assert(
-              url.endsWith("security.txt")
-                ? body.includes("Expires:") &&
-                    body.includes(
-                      `Canonical: ${origin}/.well-known/security.txt`,
-                    ) &&
-                    body.includes(
-                      "https://github.com/Ray-lea/Argus/security/advisories/new",
-                    )
-                : url.endsWith("docs-search.json")
-                  ? body.includes('"dev"')
-                  : body.includes("Argus") && body.includes("<main"),
+              body.equals(built),
+              `${url}: serves ${body.length} bytes that differ from the ${built.length}-byte build`,
             );
           }
         }

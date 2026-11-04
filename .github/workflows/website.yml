@@ -18,7 +18,27 @@ jobs:
   website:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER: wrangler@4.156.2
+      WRANGLER_SEND_METRICS: 'false'
     steps:
+      # Before the build: production comes from main or a release tag only.
+      - name: Deployment source and Cloudflare settings
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/main | refs/tags/v*) ;;
+            *)
+              echo "::error::官网只从 main 或版本标签发布，当前为 $GITHUB_REF"
+              exit 1
+              ;;
+          esac
+          if [ "$HAS_TOKEN" != true ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::缺少 Secret CLOUDFLARE_API_TOKEN 或变量 CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -35,14 +55,30 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           ARGUS_DOCS_DEV_REF: refs/remotes/origin/main
       - run: pnpm site:check
-      - name: Publish files before manifests and download links
+
+      # Files go out before the manifests and pages that link to them. Each step
+      # checks the public result before the next one starts.
+      - name: Publish download mirror
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_SEND_METRICS: 'false'
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID"
-          for service in downloads updates site www; do
-            pnpm dlx wrangler@4.156.2 deploy --config "website/cloudflare/$service.jsonc"
-            node website/scripts/verify.mjs "$service"
-          done
+          pnpm dlx "$WRANGLER" deploy --config website/cloudflare/downloads.jsonc
+          node website/scripts/verify.mjs downloads
+      - name: Publish update manifests
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          pnpm dlx "$WRANGLER" deploy --config website/cloudflare/updates.jsonc
+          node website/scripts/verify.mjs updates
+      - name: Publish website
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          pnpm dlx "$WRANGLER" deploy --config website/cloudflare/site.jsonc
+          node website/scripts/verify.mjs site
+      - name: Publish www redirect
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          pnpm dlx "$WRANGLER" deploy --config website/cloudflare/www.jsonc
+          node website/scripts/verify.mjs www
