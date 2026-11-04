@@ -41,13 +41,16 @@ export default function CurveCompare({ lang }: { lang: "zh" | "en" }) {
   }, []);
   useEffect(() => {
     if (!visible) return;
-    const id = setInterval(() => {
+    // A sample at once, so the curve moves as soon as it comes into view;
+    // out of view it rests where the last scroll ended.
+    const sample = () => {
       advanceClock(clock, 1000);
       setTick((v) => v + 1);
-    }, 1000);
+    };
+    sample();
+    const id = setInterval(sample, 1000);
     return () => {
       clearInterval(id);
-      // Until the next sample the curve rests where the last scroll ended.
       clock.rest = true;
     };
   }, [visible, clock]);

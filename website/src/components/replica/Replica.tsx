@@ -271,15 +271,22 @@ export default function Replica({
       document.removeEventListener("visibilitychange", vis);
     };
   }, []);
+  const sampledBefore = useRef(false);
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => {
+    // A sample at once when sampling resumes, so the curves move as soon as
+    // the window comes back into view; while it is held they rest where the
+    // last scroll ended. Not on the first start: the window has just been
+    // drawn, and drawing it again at once doubled the page's longest task.
+    const sample = () => {
       advanceClock(sampleClock, interval);
       setTick((t) => t + 1);
-    }, interval);
+    };
+    if (sampledBefore.current) sample();
+    sampledBefore.current = true;
+    const id = setInterval(sample, interval);
     return () => {
       clearInterval(id);
-      // Until the next sample the curves rest where the last scroll ended.
       sampleClock.rest = true;
     };
   }, [running, interval]);
