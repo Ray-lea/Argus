@@ -72,7 +72,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 | `Argus_<版本>_x64.exe` | **免安装版**。单文件直接运行，与安装版共用设置与历史数据，不支持自动更新。 |
 | `SHA256SUMS.txt` | 上述发布文件的 SHA-256 校验值。 |
 
-[代码签名策略（Code signing policy）](#code-signing-policy) · [隐私策略](PRIVACY.md#简体中文) · [稳定版文档](https://argustask.com/docs/)
+[代码签名策略（Code signing policy）](#code-signing-policy) · [隐私策略](PRIVACY.md#简体中文) · [在线文档](https://argustask.com/docs/)
 
 ## 💻 系统要求
 

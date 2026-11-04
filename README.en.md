@@ -72,7 +72,7 @@ Get the latest stable build and SHA-256 checksums from the [official download pa
 | `Argus_<version>_x64.exe` | **Portable version.** Runs directly as a standalone executable and shares settings and history with the installed version; does not support automatic updates. |
 | `SHA256SUMS.txt` | SHA-256 checksums of the release files above. |
 
-[Code signing policy](#code-signing-policy) · [Privacy policy](PRIVACY.md#english) · [Stable documentation (Chinese)](https://argustask.com/docs/)
+[Code signing policy](#code-signing-policy) · [Privacy policy](PRIVACY.md#english) · [Online documentation (Chinese)](https://argustask.com/docs/)
 
 ## 💻 System requirements
 
