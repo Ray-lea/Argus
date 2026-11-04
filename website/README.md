@@ -1,6 +1,6 @@
 # Argus 官网
 
-官网是 pnpm 工作区中的 `@argus/website` 包，由 Next.js 静态导出，文档部分使用 [Fumadocs](https://fumadocs.dev)（以 `create-fumadocs-app` 的静态导出模板为基础），布局与 fumadocs.dev 相同（Spacious）。首页的应用窗口演示和实测耗时回放是 React 组件：窗口沿用应用 `resources/theme.json` 的颜色与尺寸，进程等数据为模拟值，系统读数回放仓库的[一分钟实测记录](../tools/window-probe/fixtures/readme-trace.json)。文档渲染仓库 `docs/` 下的 Markdown，分为稳定版（`/docs/`，取自最新发行标签）和开发版（`/docs/dev/`，取自 main）；两版是两个根目录，侧栏顶部的版本选择器打开另一版本的同一篇。搜索索引在构建时导出，在浏览器内按词切分中文并按版本筛选。页面之间由 Next.js 路由切换，链接进入视口或指针停留时预先取回，单击后只替换变化的部分，浏览器不重新加载页面。官网和文档共用主题偏好（跟随系统、浅色或深色），保存在 `argus-theme`。
+官网是 pnpm 工作区中的 `@argus/website` 包，由 Next.js 静态导出，文档部分使用 [Fumadocs](https://fumadocs.dev)（以 `create-fumadocs-app` 的静态导出模板为基础），布局与 fumadocs.dev 相同（Spacious）。首页的应用窗口演示和实测耗时回放是 React 组件：窗口沿用应用 `resources/theme.json` 的颜色与尺寸，进程等数据为模拟值，系统读数回放仓库的[一分钟实测记录](../tools/window-probe/fixtures/readme-trace.json)；英文首页运行同一个演示，文字在渲染时译为英文。文档渲染仓库 `docs/` 下的 Markdown，分为稳定版（`/docs/`，取自最新发行标签）和开发版（`/docs/dev/`，取自 main）；两版是两个根目录，侧栏顶部的版本选择器打开另一版本的同一篇。搜索索引在构建时导出，在浏览器内按词切分中文并按版本筛选。页面之间由 Next.js 路由切换，链接进入视口或指针停留时预先取回，单击后只替换变化的部分，浏览器不重新加载页面。官网和文档共用主题偏好（跟随系统、浅色或深色），保存在 `argus-theme`。
 
 | 目录 | 职责 |
 | --- | --- |

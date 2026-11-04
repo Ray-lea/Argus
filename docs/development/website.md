@@ -13,7 +13,7 @@
 
 本地开发运行仓库根目录的 `start-website.bat`，默认地址为 `http://localhost:4321`。开发服务器将工作区的 Markdown 映射到 `/docs/dev/`，保存后可在浏览器查看；`/docs/` 保留稳定版文档。依次运行 `start-website.bat build` 和 `start-website.bat preview` 可预览完整的静态站点。
 
-在具有完整发行标签的检出目录执行 `pnpm install --frozen-lockfile`、`pnpm site:build`、`pnpm site:check`。Next.js 以经校验的发行数据静态导出下载页和版本信息，构建脚本再为每个页面写入只允许其内联脚本哈希的内容安全策略。`/docs/` 来自稳定版标签；`/docs/dev/`、下载页的系统要求和首页的英文截图在部署时读取同一 `main` 提交。文档侧栏顶部可切换到另一版本的同一篇。早先的 `/questions/` 地址永久跳转到首页的常见问题。首页数据来源见[采样说明](../../website/src/data/README.md)；首页、下载页和更新日志页的版本说明取自稳定版标签的 `CHANGELOG.md` 与 `CHANGELOG.en.md`，提交统计取自开发版提交，GitHub 星标、复刻与下载次数在构建时读取 GitHub API（本地预览每小时最多读取一次，读取失败时沿用上次结果，没有结果时页面不显示这些数字）。文档使用 Fumadocs，搜索索引只包含文档，搜索框按版本筛选。官网与文档共用跟随系统、浅色和深色的主题偏好。目录分工、本地预览和浏览器检查命令见 [website/README.md](../../website/README.md)。
+在具有完整发行标签的检出目录执行 `pnpm install --frozen-lockfile`、`pnpm site:build`、`pnpm site:check`。Next.js 以经校验的发行数据静态导出下载页和版本信息，构建脚本再为每个页面写入只允许其内联脚本哈希的内容安全策略。`/docs/` 来自稳定版标签；`/docs/dev/`、下载页的系统要求和链接预览图在部署时读取同一 `main` 提交。文档侧栏顶部可切换到另一版本的同一篇。早先的 `/questions/` 地址永久跳转到首页的常见问题。首页数据来源见[采样说明](../../website/src/data/README.md)；首页、下载页和更新日志页的版本说明取自稳定版标签的 `CHANGELOG.md` 与 `CHANGELOG.en.md`，提交统计取自开发版提交，GitHub 星标、复刻与下载次数在构建时读取 GitHub API（本地预览每小时最多读取一次，读取失败时沿用上次结果，没有结果时页面不显示这些数字）。文档使用 Fumadocs，搜索索引只包含文档，搜索框按版本筛选。官网与文档共用跟随系统、浅色和深色的主题偏好。目录分工、本地预览和浏览器检查命令见 [website/README.md](../../website/README.md)。
 
 构建按公开 SHA-256 核对两种 EXE，并用客户端的公钥校验安装包及签名发布说明。当前通道的文件优先由镜像提供。超过单文件 25 MiB 的文件及历史版本链接回相同版本的 GitHub 发行文件。Free 额度变化时同步核对 [Cloudflare 限制](https://developers.cloudflare.com/workers/platform/limits/)。
 
