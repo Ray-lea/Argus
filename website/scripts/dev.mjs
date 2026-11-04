@@ -46,8 +46,6 @@ const siteSources = new Set([
   "website/public-settings.json",
   "docs/images/screenshot-dark.png",
   "docs/images/screenshot-en-dark.png",
-  "docs/images/screenshot-light.png",
-  "docs/images/screenshot-en-light.png",
 ]);
 const isDocument = (file) =>
   file.startsWith("docs/") && file.endsWith(".md") && !file.endsWith("/AGENTS.md");

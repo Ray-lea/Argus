@@ -1,3 +1,4 @@
+/** @jsxImportSource @/components/replica/i18n */
 "use client";
 import {
   useMemo,
@@ -9,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import Curve, { type Motion } from "./Curve";
+import { language, translate } from "./i18n";
 import { Icon, ProcessIcon, type UiIcon } from "./icons";
 import {
   bytes,
@@ -91,6 +93,7 @@ function matches(proc: Process, query: string) {
   if (/^\d+$/.test(q)) return String(proc.pid).startsWith(q);
   return (
     proc.name.toLowerCase().includes(q) ||
+    translate(proc.name).toLowerCase().includes(q) ||
     proc.exe.toLowerCase().includes(q) ||
     proc.path.toLowerCase().includes(q) ||
     hostedServices(proc.pid).some((s) => s.toLowerCase().includes(q))
@@ -111,7 +114,9 @@ interface BuildOptions {
 // falls into the Task Manager categories; any other sort keeps one list.
 export function buildRows(o: BuildOptions): Row[] {
   const byPid = new Map(o.list.map((p) => [p.pid, p]));
-  const collator = new Intl.Collator("zh-CN", { numeric: true });
+  // Names sort as they read in the page's language.
+  const collator = new Intl.Collator(language() === "en" ? "en" : "zh-CN", { numeric: true });
+  const name = (row: Row) => translate(row.label);
   const scale: Record<Metric, number> = {
     cpu: 10,
     gpu: 10,
@@ -123,12 +128,12 @@ export function buildRows(o: BuildOptions): Row[] {
   };
   const compare = (a: Row, b: Row) => {
     let c: number;
-    if (o.sort === "name") c = collator.compare(a.label, b.label);
+    if (o.sort === "name") c = collator.compare(name(a), name(b));
     else if (o.sort === "pid") c = (a.count === 1 ? a.pids[0] : 1e9) - (b.count === 1 ? b.pids[0] : 1e9);
     else {
       const k = o.sort;
       c = Math.round(a.values[k] * scale[k]) - Math.round(b.values[k] * scale[k]);
-      if (c === 0) return collator.compare(a.label, b.label) || a.key.localeCompare(b.key);
+      if (c === 0) return collator.compare(name(a), name(b)) || a.key.localeCompare(b.key);
     }
     if (c === 0) c = a.key.localeCompare(b.key);
     return o.descending ? -c : c;

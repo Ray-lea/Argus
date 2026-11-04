@@ -1,3 +1,4 @@
+/** @jsxImportSource @/components/replica/i18n */
 "use client";
 import {
   useEffect,
@@ -10,6 +11,7 @@ import {
 } from "react";
 import { Icon, ProcessIcon, type UiIcon } from "./icons";
 import type { Motion } from "./Curve";
+import { language, translate } from "./i18n";
 import {
   bytes,
   connections,
@@ -89,12 +91,13 @@ function Header<K extends string>({
     </div>
   );
 }
-const collator = new Intl.Collator("zh-CN", { numeric: true });
 function sorted<T>(rows: T[], value: (row: T) => string | number, desc: boolean) {
+  // Text sorts as it reads in the page's language.
+  const collator = new Intl.Collator(language() === "en" ? "en" : "zh-CN", { numeric: true });
   return [...rows].sort((a, b) => {
     const x = value(a);
     const y = value(b);
-    const c = typeof x === "number" && typeof y === "number" ? x - y : collator.compare(String(x), String(y));
+    const c = typeof x === "number" && typeof y === "number" ? x - y : collator.compare(translate(String(x)), translate(String(y)));
     return desc ? -c : c;
   });
 }
@@ -212,7 +215,7 @@ export function Services({
         </div>
         <footer className="a-list-foot">
           <span>
-            正在运行 {running} / 共 {list.length} 个服务
+            {`正在运行 ${running} / 共 ${list.length} 个服务`}
           </span>
         </footer>
       </div>
@@ -320,7 +323,7 @@ export function Startup({
         </div>
         <footer className="a-list-foot">
           <span>
-            已启用 {enabled} / 共 {items.length} 项
+            {`已启用 ${enabled} / 共 ${items.length} 项`}
           </span>
           <span>禁用操作与任务管理器的“启动应用”使用同一开关，可重新启用；“所有用户”的项需要管理员权限。</span>
         </footer>

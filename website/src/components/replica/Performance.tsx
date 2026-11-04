@@ -1,3 +1,4 @@
+/** @jsxImportSource @/components/replica/i18n */
 "use client";
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Curve, { type Motion, type Readout, type Series } from "./Curve";

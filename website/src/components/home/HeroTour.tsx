@@ -1,5 +1,7 @@
+/** @jsxImportSource @/components/replica/i18n */
 "use client";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { setLanguage, translate, type Language } from "../replica/i18n";
 import { store, useShared } from "../replica/store";
 
 // A guided demo of the window above it, in chapters the visitor can pick: a
@@ -21,12 +23,14 @@ interface Chapter {
   label: string;
   steps: Step[];
 }
+// Targets are found by their text as the page shows it, in its language.
 const byText = (root: ParentNode, selector: string, text: string) =>
-  [...root.querySelectorAll(selector)].find((el) => el.textContent?.trim().startsWith(text));
+  [...root.querySelectorAll(selector)].find((el) => el.textContent?.trim().startsWith(translate(text)));
+const labelled = (selector: string, label: string) => `${selector}[aria-label="${translate(label)}"]`;
 const nav = (id: string, text: string): Find => (app) =>
   app.querySelector(`[data-tour="nav-${id}"]`) ?? byText(app, ".a-nav button", text);
 const tour = (id: string): Find => (app) => app.querySelector(`[data-tour="${id}"]`);
-const titled = (title: string): Find => (app) => app.querySelector(`button[title="${title}"]`);
+const titled = (title: string): Find => (app) => app.querySelector(`button[title="${translate(title)}"]`);
 const segment = (text: string): Find => (app) => byText(app, ".a-window button[aria-checked]", text);
 let startupItem = "";
 
@@ -70,7 +74,7 @@ const chapters: Chapter[] = [
       { label: "打开服务页", find: nav("services", "服务") },
       {
         label: "选中正在运行的服务",
-        find: (a) => [...a.querySelectorAll(".a-services .a-tr")].find((row) => row.textContent?.includes("正在运行")),
+        find: (a) => [...a.querySelectorAll(".a-services .a-tr")].find((row) => row.textContent?.includes(translate("正在运行"))),
       },
       { label: "重新启动服务，状态随即更新", find: titled("重新启动服务"), hold: 2400 },
     ],
@@ -82,12 +86,16 @@ const chapters: Chapter[] = [
       {
         label: "禁用登录时启动的项目，下次登录时生效",
         find: (a) => {
-          const toggle = a.querySelector<HTMLElement>('.a-startup button[aria-label^="禁用 "]');
-          startupItem = toggle?.getAttribute("aria-label")?.slice(3) ?? "";
+          const prefix = translate("禁用 ");
+          const toggle = a.querySelector<HTMLElement>(`.a-startup button[aria-label^="${prefix}"]`);
+          startupItem = toggle?.getAttribute("aria-label")?.slice(prefix.length) ?? "";
           return toggle;
         },
       },
-      { label: "重新启用该项目", find: (a) => a.querySelector(`.a-startup button[aria-label="启用 ${CSS.escape(startupItem)}"]`) },
+      {
+        label: "重新启用该项目",
+        find: (a) => a.querySelector(`.a-startup button[aria-label="${translate("启用 ")}${CSS.escape(startupItem)}"]`),
+      },
     ],
   },
   {
@@ -108,7 +116,7 @@ const chapters: Chapter[] = [
       {
         label: "列出占用该文件的进程，可直接结束",
         find: (a) => a.querySelector(".a-dialog.is-lock"),
-        run: () => store.set({ command: { action: "lock", names: ["会议记录.txt"], at: Date.now() } }),
+        run: () => store.set({ command: { action: "lock", names: [translate("会议记录.txt")], at: Date.now() } }),
         hold: 2800,
       },
       { label: "关闭对话框", find: (a) => a.querySelector(".a-dialog.is-lock .a-dialog-foot [data-primary]") },
@@ -126,9 +134,9 @@ const chapters: Chapter[] = [
   {
     label: "托盘",
     steps: [
-      { label: "最大化窗口", find: (a) => a.querySelector('.a-caption [aria-label="最大化"]') },
-      { label: "向下还原", find: (a) => a.querySelector('.a-caption [aria-label="向下还原"]') },
-      { label: "关闭后留在托盘，采样、历史记录与规则继续运行", find: (a) => a.querySelector('.a-caption [aria-label="关闭"]'), hold: 2400 },
+      { label: "最大化窗口", find: (a) => a.querySelector(labelled(".a-caption ", "最大化")) },
+      { label: "向下还原", find: (a) => a.querySelector(labelled(".a-caption ", "向下还原")) },
+      { label: "关闭后留在托盘，采样、历史记录与规则继续运行", find: (a) => a.querySelector(labelled(".a-caption ", "关闭")), hold: 2400 },
       { label: "打开任务栏的隐藏图标", find: (_, s) => s.querySelector(".tb-tray > .tb-small") },
       { label: "单击托盘图标显示窗口，也可按 Ctrl+Alt+Esc", find: (_, s) => s.querySelector(".tb-flyout .tb-small") },
     ],
@@ -153,7 +161,8 @@ const pointIn = (el: Element, fx: number) => {
   return { clientX: r.left + r.width * fx, clientY: r.top + r.height / 2 };
 };
 
-export default function HeroTour() {
+export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
+  setLanguage(lang);
   const self = useRef<HTMLDivElement>(null);
   const cursor = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"waiting" | "playing" | "paused">("waiting");
@@ -353,6 +362,7 @@ export default function HeroTour() {
               type="button"
               key={c.label}
               aria-pressed={i === chapter}
+              data-i18n="nav"
               style={{ "--p": i === chapter ? (playing ? progress : 1) : 0 } as CSSProperties}
               onClick={() => {
                 touched.current = false;

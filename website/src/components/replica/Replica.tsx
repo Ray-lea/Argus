@@ -1,3 +1,4 @@
+/** @jsxImportSource @/components/replica/i18n */
 "use client";
 import {
   useCallback,
@@ -12,6 +13,7 @@ import {
   type MouseEvent,
 } from "react";
 import { sampleClock, type Motion } from "./Curve";
+import { setLanguage, type Language } from "./i18n";
 import FileLock, { inspect, type LockResult } from "./FileLock";
 import { CaptionIcon, Icon, type UiIcon } from "./icons";
 import {
@@ -152,7 +154,9 @@ function useToolbarFit(key: string, hasSearch: boolean, searchFit: number) {
   return { bar, start, trailing, level, search };
 }
 
-export default function Replica({ initialPage = "processes" }: { initialPage?: Page }) {
+export default function Replica({ initialPage = "processes", lang = "zh" }: { initialPage?: Page; lang?: Language }) {
+  // Text below is translated as it renders (./i18n).
+  setLanguage(lang);
   const root = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const shared = useShared();
@@ -1310,11 +1314,12 @@ function Navigation({
               aria-current={page === id ? "page" : undefined}
               title={`${label}（Ctrl+${i + 1}）`}
               data-tour={"nav-" + id}
+              data-i18n="nav"
               onClick={() => onPage(id)}
             >
               <Icon name={icon} className="a-nav-icon" />
-              <span className="a-nav-label" data-text={label}>
-                <span>{label}</span>
+              <span className="a-nav-label" data-text={label} data-i18n="nav">
+                <span data-i18n="nav">{label}</span>
               </span>
             </button>
           </span>

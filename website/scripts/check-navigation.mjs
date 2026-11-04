@@ -178,9 +178,9 @@ try {
     assert(await page.eval(() => window.argusSamePage === true), "Search opens results without reloading");
     await clean(page, target);
 
-    // The English home shows the real window capture.
+    // The English home runs the same window, in English.
     await page.goto(base + "/en/");
-    assert((await page.eval(() => document.querySelector(".shot-dark")?.naturalWidth)) > 0, "English capture");
+    await page.waitFor(() => document.querySelector(".stage .a-nav")?.textContent.includes("Processes"));
     await clean(page, "/en/");
     results.push({ width, theme: home.theme, app, article: target, searchResults: hits });
     await page.close();

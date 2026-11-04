@@ -171,28 +171,8 @@ export function Home({ lang }: { lang: Language }) {
               <i className="petal p3"></i>
               <i className="petal p4"></i>
             </div>
-            <DeskWindow width={en ? 1280 : 1600} height={en ? 800 : 900} resizable={!en}>
-              {en ? (
-                <figure className="shot">
-                  <img
-                    className="shot-dark"
-                    src="/assets/preview-en-dark-1280.webp"
-                    width="1280"
-                    height="800"
-                    alt="Argus Processes page: apps grouped by name with CPU, memory, disk, network and GPU columns under five live curves."
-                  />
-                  <img
-                    className="shot-light"
-                    src="/assets/preview-en-light-1280.webp"
-                    width="1280"
-                    height="800"
-                    alt=""
-                    loading="lazy"
-                  />
-                </figure>
-              ) : (
-                <Replica />
-              )}
+            <DeskWindow width={1600} height={900}>
+              <Replica lang={lang} />
             </DeskWindow>
             <Taskbar lang={lang} />
           </div>
@@ -200,7 +180,7 @@ export function Home({ lang }: { lang: Language }) {
             <Icon name="rotate" size={18} />
             {t.rotate}
           </p>
-          {!en && <HeroTour />}
+          <HeroTour lang={lang} />
         </div>
       </section>
 
@@ -316,7 +296,7 @@ export function Home({ lang }: { lang: Language }) {
                   <th scope="row">{need}</th>
                   <td className="yes">
                     {argus}
-                    {page && !en && <ShowPage page={page}>在演示中查看</ShowPage>}
+                    {page && <ShowPage page={page}>{en ? "See it in the demo" : "在演示中查看"}</ShowPage>}
                   </td>
                   <td className="no">{native}</td>
                 </tr>

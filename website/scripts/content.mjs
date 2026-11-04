@@ -3,12 +3,10 @@
 // images the pages link to. Files are written only when they change, so a
 // running development server reloads just what moved.
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { readFile, glob } from "node:fs/promises";
 import { join, posix } from "node:path";
 import MarkdownIt from "markdown-it";
 import GithubSlugger from "github-slugger";
-import sharp from "sharp";
 import {
   assetsDir,
   contentDir,
@@ -376,27 +374,14 @@ async function repository() {
   }
 }
 
-// Link previews and the English first screen use the documented build's process page.
+// Link previews use the documented build's process page.
 async function previews(at) {
-  const cache = join(workDir, "cache", "previews");
   for (const lang of ["zh", "en"])
-    for (const theme of ["dark", "light"]) {
-      const png = await source(at, "docs/images/screenshot-" + (lang === "en" ? "en-" : "") + theme + ".png");
-      const name = "preview-" + lang + "-" + theme;
-      if (theme === "dark") await putIfChanged(assetsDir, name + ".png", png);
-      const key = createHash("sha256").update(png).digest("hex").slice(0, 24) + "-1280.webp";
-      let webp;
-      try {
-        webp = await readFile(join(cache, key));
-      } catch {
-        webp = await sharp(png)
-          .resize({ width: 1280, height: 800, fit: "fill" })
-          .webp({ quality: 90 })
-          .toBuffer();
-        await putIfChanged(cache, key, webp);
-      }
-      await putIfChanged(assetsDir, name + "-1280.webp", webp);
-    }
+    await putIfChanged(
+      assetsDir,
+      "preview-" + lang + "-dark.png",
+      await source(at, "docs/images/screenshot-" + (lang === "en" ? "en-" : "") + "dark.png"),
+    );
 }
 
 export async function prepareContent(release, { worktree = !process.env.ARGUS_DOCS_DEV_REF } = {}) {

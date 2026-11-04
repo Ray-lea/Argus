@@ -1,3 +1,4 @@
+/** @jsxImportSource @/components/replica/i18n */
 "use client";
 import { useRef } from "react";
 import { Icon, ProcessIcon } from "./icons";
