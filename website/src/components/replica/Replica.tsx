@@ -12,7 +12,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
-import { sampleClock, type Motion } from "./Curve";
+import { advanceClock, sampleClock, type Motion } from "./Curve";
 import { registerDictionary, setLanguage, type Dictionary, type Language } from "./i18n";
 import FileLock, { inspect, type LockResult } from "./FileLock";
 import { CaptionIcon, Icon, type UiIcon } from "./icons";
@@ -273,13 +273,15 @@ export default function Replica({
   }, []);
   useEffect(() => {
     if (!running) return;
-    // Until the next sample the curves rest where the last scroll ended.
-    sampleClock.at = performance.now() - interval;
     const id = setInterval(() => {
-      sampleClock.at = performance.now();
+      advanceClock(sampleClock, interval);
       setTick((t) => t + 1);
     }, interval);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      // Until the next sample the curves rest where the last scroll ended.
+      sampleClock.rest = true;
+    };
   }, [running, interval]);
   useEffect(() => {
     if (!toast) return;

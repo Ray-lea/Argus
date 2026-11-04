@@ -155,6 +155,21 @@ function setValue(input: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
+// Runs step on every frame for ms, with progress from 0 to 1 eased in and out.
+const glide = (ms: number, signal: AbortSignal, step: (progress: number) => void) =>
+  new Promise<void>((resolve, reject) => {
+    const begin = performance.now();
+    let frame = requestAnimationFrame(function next(now) {
+      const t = Math.min(1, (now - begin) / ms);
+      step((1 - Math.cos(Math.PI * t)) / 2);
+      if (t < 1) frame = requestAnimationFrame(next);
+      else resolve();
+    });
+    signal.addEventListener("abort", () => {
+      cancelAnimationFrame(frame);
+      reject(new DOMException("stopped", "AbortError"));
+    });
+  });
 // A point across the element, in the middle of its height.
 const pointIn = (el: Element, fx: number) => {
   const r = el.getBoundingClientRect();
@@ -276,15 +291,15 @@ export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
       move(x, y);
       await wait(760, signal);
       if (step.sweep) {
-        // The readout follows the pointer along the curve, frame by frame.
+        // The pointer glides along the curve and the readout follows it on
+        // every frame, as it follows a real pointer.
         const [from, to] = step.sweep;
-        pointer.style.transition = "transform 60ms linear, opacity 300ms ease";
-        for (let i = 0; i <= 30; i++) {
-          const at = pointIn(target, from + ((to - from) * i) / 30);
+        pointer.style.transition = "opacity 300ms ease";
+        await glide(1700, signal, (progress) => {
+          const at = pointIn(target, from + (to - from) * progress);
           target.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, ...at }));
           move(at.clientX, at.clientY);
-          await wait(55, signal);
-        }
+        });
         await wait((step.hold ?? 1500) - 900, signal);
         pointer.style.transition = "";
         target.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, relatedTarget: stage }));

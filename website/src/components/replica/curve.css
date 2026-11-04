@@ -42,7 +42,9 @@
 }
 .curve-dot {
   position: absolute;
+  top: 0;
   left: calc(var(--x) * 100%);
+  will-change: transform;
   width: 8px;
   height: 8px;
   border: 2px solid var(--a-flyout);

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import Curve from "../replica/Curve";
+import Curve, { advanceClock, type SampleClock } from "../replica/Curve";
 import { sampleAt, span } from "../replica/model";
 
 const text = {
@@ -32,6 +32,8 @@ export default function CurveCompare({ lang }: { lang: "zh" | "en" }) {
   const [tick, setTick] = useState(0);
   const [visible, setVisible] = useState(false);
   const [hz, setHz] = useState<number | null>(null);
+  // Its own sample clock: the demo window's stops while the window is off screen.
+  const [clock] = useState<SampleClock>(() => ({ at: 0, rest: true }));
   useEffect(() => {
     const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting));
     if (root.current) io.observe(root.current);
@@ -39,9 +41,16 @@ export default function CurveCompare({ lang }: { lang: "zh" | "en" }) {
   }, []);
   useEffect(() => {
     if (!visible) return;
-    const id = setInterval(() => setTick((v) => v + 1), 1000);
-    return () => clearInterval(id);
-  }, [visible]);
+    const id = setInterval(() => {
+      advanceClock(clock, 1000);
+      setTick((v) => v + 1);
+    }, 1000);
+    return () => {
+      clearInterval(id);
+      // Until the next sample the curve rests where the last scroll ended.
+      clock.rest = true;
+    };
+  }, [visible, clock]);
   // Count animation frames for a second, then snap to the nearest common refresh rate.
   useEffect(() => {
     if (!visible || hz) return;
@@ -75,6 +84,7 @@ export default function CurveCompare({ lang }: { lang: "zh" | "en" }) {
           interval={1000}
           motion={smooth ? "smooth" : "step"}
           running={visible}
+          clock={clock}
         />
       </div>
     </div>
