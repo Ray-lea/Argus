@@ -3,6 +3,7 @@ import { pageGraph } from "@/lib/page";
 import { jsonLd, text, type Language } from "@/lib/site";
 import { Footer } from "./Footer";
 import { Header } from "./Header";
+import { MotionGate } from "./MotionGate";
 import { Spotlight } from "./Spotlight";
 
 interface Props {
@@ -37,6 +38,7 @@ export function SiteFrame({
       <main id="main">{children}</main>
       {footer && <Footer lang={lang} />}
       <Spotlight />
+      <MotionGate />
       {graph.map((item, i) => (
         <script key={i} type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(item) }} />
       ))}

@@ -1,0 +1,2 @@
+/* The download and changelog pages' styles, loaded by those routes alone. */
+@import "./pages.css" layer(site);

@@ -824,6 +824,15 @@
   font-size: 0.8125rem;
 }
 
+/* Below the first screen, a section is laid out and painted only as it nears
+   the viewport; once seen, its real height is remembered. */
+.intro,
+.section,
+.cta {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 900px;
+}
+
 /* Statement */
 .intro {
   margin-top: clamp(112px, 12vw, 176px);
@@ -929,20 +938,49 @@
   margin-bottom: auto;
   padding-bottom: 28px;
 }
+/* The key's thick lower edge and its pressed tint are layers of their own,
+   so a press only moves and fades layers on the compositor. */
 .keys kbd {
+  position: relative;
+  isolation: isolate;
   display: grid;
   place-items: center;
   min-width: 64px;
   height: 58px;
-  padding: 0 16px;
+  padding: 0 16px 3px;
   border: 1px solid var(--stroke-2);
-  border-bottom-width: 4px;
   border-radius: 10px;
   background: var(--surface-2);
   font-family: var(--display);
   font-size: 1.375rem;
   font-weight: 500;
   box-shadow: 0 6px 16px rgb(0 0 0 / 0.16);
+}
+.keys kbd::before,
+.keys kbd::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+}
+/* The accent at 18% over the key's own colour is the same colour as the
+   two mixed, which the press used to switch the background to. */
+.keys kbd::before {
+  inset: -1px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  opacity: 0;
+}
+.keys kbd::after {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 0 0 9px 9px;
+  background: var(--stroke-2);
+  transform-origin: bottom;
+}
+.keys kbd span {
+  display: block;
 }
 .mini-window {
   display: grid;
@@ -959,10 +997,25 @@
   .keys kbd {
     animation: key-press 4.4s var(--ease) infinite;
   }
-  .keys kbd:nth-child(2) {
+  .keys kbd::before {
+    animation: key-tint 4.4s var(--ease) infinite;
+  }
+  .keys kbd::after {
+    animation: key-edge 4.4s var(--ease) infinite;
+  }
+  .keys kbd span {
+    animation: key-label 4.4s var(--ease) infinite;
+  }
+  .keys kbd:nth-child(2),
+  .keys kbd:nth-child(2)::before,
+  .keys kbd:nth-child(2)::after,
+  .keys kbd:nth-child(2) span {
     animation-delay: 120ms;
   }
-  .keys kbd:nth-child(3) {
+  .keys kbd:nth-child(3),
+  .keys kbd:nth-child(3)::before,
+  .keys kbd:nth-child(3)::after,
+  .keys kbd:nth-child(3) span {
     animation-delay: 240ms;
   }
   .mini-window {
@@ -975,13 +1028,48 @@
   30%,
   100% {
     transform: none;
-    border-bottom-width: 4px;
   }
   18%,
   24% {
     transform: translateY(3px);
-    border-bottom-width: 1px;
-    background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+  }
+}
+/* Only the pressed frames set the tint: it rises from the start of the cycle
+   and fades out over the rest, as the background colour did. */
+@keyframes key-tint {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  18%,
+  24% {
+    opacity: 1;
+  }
+}
+/* The thick lower edge thins from the top, as the border it replaces did. */
+@keyframes key-edge {
+  0%,
+  12%,
+  30%,
+  100% {
+    transform: none;
+  }
+  18%,
+  24% {
+    transform: scaleY(0);
+  }
+}
+/* The label sinks half the edge further: the key's face grows as it thins. */
+@keyframes key-label {
+  0%,
+  12%,
+  30%,
+  100% {
+    transform: none;
+  }
+  18%,
+  24% {
+    transform: translateY(1.5px);
   }
 }
 @keyframes window-toggle {
@@ -1016,17 +1104,24 @@
   display: grid;
   justify-items: center;
 }
-.pipeline li + li::before {
-  content: "";
+/* The beam slides inside the line it travels: a moved layer, not a repaint. */
+.pipe-line {
   position: absolute;
   top: 22px;
   right: 50%;
   width: calc(100% - 52px);
   margin-right: 26px;
   height: 2px;
+  overflow: hidden;
   border-radius: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent) 50%, transparent) -100% 0 / 50% 100% no-repeat,
-    var(--stroke-2);
+  background: var(--stroke-2);
+}
+.pipe-line i {
+  display: block;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--accent) 50%, transparent);
+  transform: translateX(-100%);
 }
 .pipe-node {
   display: grid;
@@ -1035,6 +1130,7 @@
   text-align: center;
 }
 .pipe-node b {
+  position: relative;
   display: grid;
   place-items: center;
   width: 46px;
@@ -1047,37 +1143,74 @@
   font-weight: 600;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
+/* The node's lit ring fades in over its resting border, and its 4px halo
+   shows behind it, as the border colour and box shadow used to. */
+.pipe-node b::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  opacity: 0;
+}
+.pipe-node b::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: -1;
+  border-radius: 16px;
+  background: var(--glow);
+  opacity: 0;
+}
 .pipe-node small {
   margin-top: 8px;
   color: var(--ink-3);
   font-size: 0.75rem;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .pipeline li + li::before {
+  .pipe-line i {
     animation: beam 2.4s linear infinite;
     animation-delay: calc(var(--i) * 300ms);
   }
-  .pipe-node b {
+  .pipe-node b::after {
     animation: node-glow 2.4s ease-in-out infinite;
+    animation-delay: calc(var(--i) * 300ms + 400ms);
+  }
+  .pipe-node b::before {
+    animation: node-halo 2.4s ease-in-out infinite;
     animation-delay: calc(var(--i) * 300ms + 400ms);
   }
 }
 @keyframes beam {
+  from {
+    transform: translateX(-100%);
+  }
   to {
-    background-position:
-      200% 0,
-      0 0;
+    transform: translateX(200%);
   }
 }
 @keyframes node-glow {
   0%,
   70%,
   100% {
-    border-color: var(--stroke-2);
+    opacity: 0;
   }
   20% {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 4px var(--glow);
+    opacity: 1;
+  }
+}
+/* The shadow it replaces could not blend with the node's inset highlight, so
+   it switched halfway through each stretch: on at 10% of the cycle, off at 60%. */
+@keyframes node-halo {
+  0%,
+  9.99%,
+  60%,
+  100% {
+    opacity: 0;
+  }
+  10%,
+  59.99% {
+    opacity: 1;
   }
 }
 
@@ -1248,18 +1381,6 @@
 }
 .release.is-latest .release-body > p:not(.release-counts) {
   color: var(--ink);
-}
-.release-badge {
-  padding: 1px 9px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent-text);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.release-badge.is-muted {
-  background: var(--surface-2);
-  color: var(--ink-3);
 }
 .release.is-withdrawn .release-body {
   opacity: 0.72;
@@ -1623,41 +1744,6 @@
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
   backdrop-filter: blur(24px);
   text-align: center;
-}
-.cta-mark {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 96px;
-  height: 96px;
-}
-.cta-mark::before,
-.cta-mark::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 1px solid var(--accent);
-  border-radius: 28px;
-  opacity: 0;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .cta-mark::before,
-  .cta-mark::after {
-    animation: ring 3.6s var(--ease) infinite;
-  }
-  .cta-mark::after {
-    animation-delay: 1.8s;
-  }
-}
-@keyframes ring {
-  from {
-    opacity: 0.5;
-    transform: scale(0.7);
-  }
-  to {
-    opacity: 0;
-    transform: scale(1.5);
-  }
 }
 .cta-inner h2 {
   margin-top: 4px;
@@ -2105,7 +2191,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 20px;
   }
-  .pipeline li:nth-child(3)::before {
+  .pipeline li:nth-child(3) .pipe-line {
     display: none;
   }
   .diff-table thead {

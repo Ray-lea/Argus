@@ -95,7 +95,7 @@ export function Download({ lang }: { lang: Language }) {
   return (
     <SiteFrame lang={lang} path="/download/" title={title(lang)} schema={softwareSchema(lang, description(lang))}>
       <div className="site-wrap download">
-        <header className="dl-hero">
+        <header className="dl-hero" data-motion="">
           <div className="cta-mark" aria-hidden="true">
             <img src="/assets/argus.svg" width="64" height="64" alt="" />
           </div>

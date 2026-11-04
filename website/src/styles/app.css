@@ -15,8 +15,4 @@
 
 @import "./tokens.css" layer(site);
 @import "./global.css" layer(site);
-@import "./home.css" layer(site);
-@import "./pages.css" layer(site);
-@import "../components/replica/replica.css" layer(site);
-@import "../components/replica/curve.css" layer(site);
 @import "./docs.css";

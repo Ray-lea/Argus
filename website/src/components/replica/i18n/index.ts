@@ -1,11 +1,14 @@
-import { exact, patterns } from "./en";
-
 // The demo is written in Chinese, as the app's source text is. On the English
 // home page the same components render in English: every text child and text
 // attribute of an HTML element passes through translate() as the element is
 // created (./jsx-runtime.ts), and Chinese text is looked up in ./en.ts — exact
 // strings first, then patterns for messages that carry names and numbers.
+// Only the English page loads ./en.ts (EnglishReplica.tsx hands it over).
 export type Language = "zh" | "en";
+export interface Dictionary {
+  exact: Record<string, string>;
+  patterns: [string, string][];
+}
 
 // One language per document: the server sets it as it renders a page's demo,
 // the browser reads it from the page.
@@ -17,20 +20,29 @@ export const language = (): Language =>
   typeof document === "undefined" ? rendering : document.documentElement.lang.startsWith("en") ? "en" : "zh";
 
 const chinese = /[　-〿一-鿿＀-￯“”‘’]/;
-const compiled = patterns.map(([from, to]) => {
-  const names: string[] = [];
-  const source = from
-    .split(/(\{\w+\})/)
-    .map((part) => {
-      const hole = /^\{(\w+)\}$/.exec(part);
-      if (!hole) return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      names.push(hole[1]);
-      return "(.+?)";
-    })
-    .join("");
-  return { re: new RegExp("^" + source + "$"), names, to };
-});
+let exact: Record<string, string> = {};
+let compiled: { re: RegExp; names: string[]; to: string }[] = [];
 const memo = new Map<string, string>();
+let current: Dictionary | null = null;
+export function registerDictionary(dictionary: Dictionary) {
+  if (current === dictionary) return;
+  current = dictionary;
+  exact = dictionary.exact;
+  compiled = dictionary.patterns.map(([from, to]) => {
+    const names: string[] = [];
+    const source = from
+      .split(/(\{\w+\})/)
+      .map((part) => {
+        const hole = /^\{(\w+)\}$/.exec(part);
+        if (!hole) return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        names.push(hole[1]);
+        return "(.+?)";
+      })
+      .join("");
+    return { re: new RegExp("^" + source + "$"), names, to };
+  });
+  memo.clear();
+}
 const missing = new Set<string>();
 
 // A word that reads differently in one place (进程 is the page "Processes" in

@@ -1180,11 +1180,12 @@
   gap: 2px;
   height: 26px;
 }
+/* No clip: a gliding bar under a rounded clip makes the browser rebuild its
+   layer tree every frame, and the fill never leaves its track anyway. */
 .a-cores i {
   position: relative;
   width: 4px;
   height: 100%;
-  overflow: hidden;
   border-radius: 1.5px;
   background: color-mix(in srgb, var(--a-cpu) 14%, transparent);
 }

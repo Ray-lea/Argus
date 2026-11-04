@@ -13,10 +13,11 @@ import {
   type MouseEvent,
 } from "react";
 import { sampleClock, type Motion } from "./Curve";
-import { setLanguage, type Language } from "./i18n";
+import { registerDictionary, setLanguage, type Dictionary, type Language } from "./i18n";
 import FileLock, { inspect, type LockResult } from "./FileLock";
 import { CaptionIcon, Icon, type UiIcon } from "./icons";
 import {
+  historyRanges,
   processes,
   readings,
   sampleAt,
@@ -28,24 +29,44 @@ import {
   type Reading,
   type Service,
 } from "./model";
-import Performance from "./Performance";
-import {
-  Connections,
-  History,
-  historyRanges,
-  Services,
-  Settings,
-  Startup,
-  type ConnectionFilter,
-  type HistoryRange,
-  type MenuEntry,
-  type ServiceFilter,
-  type ServiceState,
-  type ThemeChoice,
-} from "./Pages";
+import type { ConnectionFilter, HistoryRange, MenuEntry, ServiceFilter, ServiceState, ThemeChoice } from "./Pages";
 import { buildRows, Details, ProcessTable, Vitals, type Device, type Row, type SortKey, type View } from "./Processes";
 import { useShared, type Page } from "./store";
 import { Button, localRect, scaleOf, Segments, Select, useIsoLayoutEffect } from "./widgets";
+
+// Only the processes page shows at first; the others' code loads off the
+// first paint's path. React.lazy would hold a page that loads late behind a
+// fallback for another 300 ms, so the modules are kept in state instead:
+// loaded when the browser is idle, or at once when their page opens first.
+const loadPages = () => import("./Pages");
+const loadPerformance = () => import("./Performance");
+function useLater<T>(load: () => Promise<T>, needed: boolean): T | null {
+  const [loaded, setLoaded] = useState<T | null>(null);
+  useEffect(() => {
+    if (loaded) return;
+    let live = true;
+    const get = () => void load().then((m) => live && setLoaded(() => m));
+    if (needed) {
+      get();
+      return () => {
+        live = false;
+      };
+    }
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(get, { timeout: 4000 });
+      return () => {
+        live = false;
+        cancelIdleCallback(id);
+      };
+    }
+    const id = setTimeout(get, 1500);
+    return () => {
+      live = false;
+      clearTimeout(id);
+    };
+  }, [load, needed, loaded]);
+  return loaded;
+}
 
 const pages: [Page, string, UiIcon][] = [
   ["processes", "进程", "processes"],
@@ -154,9 +175,18 @@ function useToolbarFit(key: string, hasSearch: boolean, searchFit: number) {
   return { bar, start, trailing, level, search };
 }
 
-export default function Replica({ initialPage = "processes", lang = "zh" }: { initialPage?: Page; lang?: Language }) {
+export default function Replica({
+  initialPage = "processes",
+  lang = "zh",
+  dictionary,
+}: {
+  initialPage?: Page;
+  lang?: Language;
+  dictionary?: Dictionary;
+}) {
   // Text below is translated as it renders (./i18n).
   setLanguage(lang);
+  if (dictionary) registerDictionary(dictionary);
   const root = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const shared = useShared();
@@ -214,6 +244,9 @@ export default function Replica({ initialPage = "processes", lang = "zh" }: { in
   );
   const [onScreen, setOnScreen] = useState(true);
   const [tick, setTick] = useState(0);
+  const later = useLater(loadPages, page !== "processes" && page !== "performance");
+  const { Services, Startup, Connections, History, Settings } = later ?? {};
+  const Performance = useLater(loadPerformance, page === "performance")?.default;
   const sampled = page === "processes" || page === "performance";
   const running = !paused && !(ctrlHeld && sampled) && onScreen && !tray;
 
@@ -930,71 +963,73 @@ export default function Replica({ initialPage = "processes", lang = "zh" }: { in
                   </div>
                 </div>
               )}
-              {page === "performance" && (
-                <Performance
-                  tick={tick}
-                  interval={interval}
-                  running={running}
-                  motion={motion}
-                  device={device}
-                  processCount={alive.length}
-                  threads={threads}
-                  handles={handles}
-                  onDevice={setDevice}
-                />
-              )}
-              {page === "services" && (
-                <Services
-                  list={services}
-                  states={serviceStates}
-                  filter={serviceFilter}
-                  query={queries.services ?? ""}
-                  selected={service}
-                  onSelect={setService}
-                  onMenu={serviceMenu}
-                />
-              )}
-              {page === "startup" && (
-                <Startup
-                  items={startup}
-                  query={queries.startup ?? ""}
-                  onMenu={(event, items) => showMenu({ x: event.clientX, y: event.clientY }, items)}
-                  onToggle={(name) => {
-                    const item = startup.find((i) => i.name === name)!;
-                    setStartup(startup.map((i) => (i.name === name ? { ...i, enabled: !i.enabled } : i)));
-                    say(item.enabled ? `已禁用“${name}”，下次登录时生效。` : `已启用“${name}”，下次登录时生效。`);
-                  }}
-                />
-              )}
-              {page === "connections" && (
-                <Connections
-                  alive={alive}
-                  filter={connectionFilter}
-                  query={queries.connections ?? ""}
-                  onOpen={showPid}
-                  onMenu={(event, items) => showMenu({ x: event.clientX, y: event.clientY }, items)}
-                />
-              )}
-              {page === "history" && (
-                <History range={historyRange} cursor={historyAt} onCursor={setHistoryAt} onOpen={showPid} />
-              )}
-              {page === "settings" && (
-                <Settings
-                  theme={theme}
-                  onTheme={setTheme}
-                  motion={motion}
-                  onMotion={setMotion}
-                  navLeft={navLeft}
-                  onNav={setNavLeft}
-                  interval={interval}
-                  onInterval={setIntervalMs}
-                  scale={scale}
-                  onScale={setScale}
-                  fontSize={fontSize}
-                  onFontSize={setFontSize}
-                  onSay={(text) => say(text, "info")}
-                />
-              )}
+              <>
+                {page === "performance" && Performance && (
+                  <Performance
+                    tick={tick}
+                    interval={interval}
+                    running={running}
+                    motion={motion}
+                    device={device}
+                    processCount={alive.length}
+                    threads={threads}
+                    handles={handles}
+                    onDevice={setDevice}
+                  />
+                )}
+                {page === "services" && Services && (
+                  <Services
+                    list={services}
+                    states={serviceStates}
+                    filter={serviceFilter}
+                    query={queries.services ?? ""}
+                    selected={service}
+                    onSelect={setService}
+                    onMenu={serviceMenu}
+                  />
+                )}
+                {page === "startup" && Startup && (
+                  <Startup
+                    items={startup}
+                    query={queries.startup ?? ""}
+                    onMenu={(event, items) => showMenu({ x: event.clientX, y: event.clientY }, items)}
+                    onToggle={(name) => {
+                      const item = startup.find((i) => i.name === name)!;
+                      setStartup(startup.map((i) => (i.name === name ? { ...i, enabled: !i.enabled } : i)));
+                      say(item.enabled ? `已禁用“${name}”，下次登录时生效。` : `已启用“${name}”，下次登录时生效。`);
+                    }}
+                  />
+                )}
+                {page === "connections" && Connections && (
+                  <Connections
+                    alive={alive}
+                    filter={connectionFilter}
+                    query={queries.connections ?? ""}
+                    onOpen={showPid}
+                    onMenu={(event, items) => showMenu({ x: event.clientX, y: event.clientY }, items)}
+                  />
+                )}
+                {page === "history" && History && (
+                  <History range={historyRange} cursor={historyAt} onCursor={setHistoryAt} onOpen={showPid} />
+                )}
+                {page === "settings" && Settings && (
+                  <Settings
+                    theme={theme}
+                    onTheme={setTheme}
+                    motion={motion}
+                    onMotion={setMotion}
+                    navLeft={navLeft}
+                    onNav={setNavLeft}
+                    interval={interval}
+                    onInterval={setIntervalMs}
+                    scale={scale}
+                    onScale={setScale}
+                    fontSize={fontSize}
+                    onFontSize={setFontSize}
+                    onSay={(text) => say(text, "info")}
+                  />
+                )}
+              </>
             </main>
             <footer className="a-status">
               <span className="a-status-figures">

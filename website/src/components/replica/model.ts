@@ -61,6 +61,15 @@ export interface Sample {
   gpu: number;
 }
 
+// History ranges: the toolbar (Replica.tsx) and the page (Pages.tsx) both use them.
+export type HistoryRange = "1h" | "6h" | "1d" | "7d";
+export const historyRanges: { value: HistoryRange; label: string; hours: number; tick: number }[] = [
+  { value: "1h", label: "1 小时", hours: 1, tick: 10 },
+  { value: "6h", label: "6 小时", hours: 6, tick: 60 },
+  { value: "1d", label: "1 天", hours: 24, tick: 180 },
+  { value: "7d", label: "7 天", hours: 168, tick: 1440 },
+];
+
 export const totalMemory = 32 * 1024 ** 3;
 export const span = 60;
 // What a curve receives: the shown span, one interval to scroll and two hidden samples beyond each edge (Curve.tsx).

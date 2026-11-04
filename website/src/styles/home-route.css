@@ -1,0 +1,4 @@
+/* The home page's own styles, loaded by its two routes alone. */
+@import "./home.css" layer(site);
+@import "../components/replica/replica.css" layer(site);
+@import "../components/replica/curve.css" layer(site);

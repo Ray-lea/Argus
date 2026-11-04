@@ -25,6 +25,8 @@ import {
   type Process,
   type Service,
   type StartupItem,
+  historyRanges,
+  type HistoryRange,
 } from "./model";
 import { Button, scaleOf, Segments, Select, Switch } from "./widgets";
 
@@ -488,13 +490,7 @@ export function Connections({
 
 // History: one recorded series per resource over the chosen range, every
 // strip on a shared time axis; a click picks a moment for the table below.
-export type HistoryRange = "1h" | "6h" | "1d" | "7d";
-export const historyRanges: { value: HistoryRange; label: string; hours: number; tick: number }[] = [
-  { value: "1h", label: "1 小时", hours: 1, tick: 10 },
-  { value: "6h", label: "6 小时", hours: 6, tick: 60 },
-  { value: "1d", label: "1 天", hours: 24, tick: 180 },
-  { value: "7d", label: "7 天", hours: 168, tick: 1440 },
-];
+export type { HistoryRange };
 const POINTS = 240;
 // The demo's clock: Tuesday 3 November, 21:36.
 const NOW_MINUTE = 21 * 60 + 36;

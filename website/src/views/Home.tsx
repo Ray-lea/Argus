@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import AccentPicker from "@/components/home/AccentPicker";
 import CurveCompare from "@/components/home/CurveCompare";
 import DeskWindow from "@/components/home/DeskWindow";
@@ -9,7 +9,6 @@ import { OpenSource, ProjectStats } from "@/components/home/OpenSource";
 import Releases, { longDate } from "@/components/home/Releases";
 import ShowPage from "@/components/home/ShowPage";
 import Taskbar from "@/components/home/Taskbar";
-import Replica from "@/components/replica/Replica";
 import { Icon } from "@/components/site/Icon";
 import { SiteFrame } from "@/components/site/SiteFrame";
 import { SiteLink } from "@/components/site/SiteLink";
@@ -99,7 +98,9 @@ const copy = {
 export const homeMetadata = (lang: Language) =>
   pageMetadata({ lang, path: "/", title: copy[lang].title, description: copy[lang].description });
 
-export function Home({ lang }: { lang: Language }) {
+// The window comes from the route, so each language loads only its own: the
+// English one carries its dictionary (EnglishReplica.tsx).
+export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
   const en = lang === "en",
     t = copy[lang];
   return (
@@ -163,7 +164,7 @@ export function Home({ lang }: { lang: Language }) {
         </div>
         {/* A 1920 × 1080 desktop drawn at the width of the page; the window can be
             resized and maximized, and the desktop shown full screen. */}
-        <div className="stage">
+        <div className="stage" data-motion="">
           <div className="desk">
             <div className="wallpaper" aria-hidden="true">
               <i className="petal p1"></i>
@@ -172,7 +173,7 @@ export function Home({ lang }: { lang: Language }) {
               <i className="petal p4"></i>
             </div>
             <DeskWindow width={1600} height={900}>
-              <Replica lang={lang} />
+              {demo}
             </DeskWindow>
             <Taskbar lang={lang} />
           </div>
@@ -239,11 +240,17 @@ export function Home({ lang }: { lang: Language }) {
               <AccentPicker />
             </article>
           )}
-          <article className="cell cell-keys" data-spotlight="" data-rise="2">
+          <article className="cell cell-keys" data-spotlight="" data-rise="2" data-motion="">
             <div className="keys" aria-hidden="true">
-              <kbd>Ctrl</kbd>
-              <kbd>Alt</kbd>
-              <kbd>Esc</kbd>
+              <kbd>
+                <span>Ctrl</span>
+              </kbd>
+              <kbd>
+                <span>Alt</span>
+              </kbd>
+              <kbd>
+                <span>Esc</span>
+              </kbd>
               <span className="mini-window">
                 <img src="/assets/argus.svg" width="18" height="18" alt="" />
               </span>
@@ -251,12 +258,17 @@ export function Home({ lang }: { lang: Language }) {
             <h3>{t.keys[0]}</h3>
             <p>{t.keys[1]}</p>
           </article>
-          <article className="cell cell-native" data-spotlight="" data-rise="3">
+          <article className="cell cell-native" data-spotlight="" data-rise="3" data-motion="">
             <h3>{t.native[0]}</h3>
             <p>{t.native[1]}</p>
             <ol className="pipeline" aria-hidden="true">
               {t.pipe.map(([name, detail], i) => (
                 <li key={name} style={{ "--i": i } as CSSProperties}>
+                  {i > 0 && (
+                    <i className="pipe-line">
+                      <i />
+                    </i>
+                  )}
                   <span className="pipe-node">
                     <b>{name}</b>
                     <small>{detail}</small>
@@ -304,7 +316,7 @@ export function Home({ lang }: { lang: Language }) {
             </tbody>
           </table>
           {!en && (
-            <aside className="cell drop" data-spotlight="">
+            <aside className="cell drop" data-spotlight="" data-motion="">
               <h3>把文件拖到这里</h3>
               <p>只读取文件名，在浏览器内演示查询结果，不会上传。</p>
               <FileDrop />
@@ -364,7 +376,7 @@ export function Home({ lang }: { lang: Language }) {
       </section>
 
       <section className="site-wrap cta" aria-labelledby="cta-title">
-        <div className="cta-inner" data-spotlight="" data-rise="">
+        <div className="cta-inner" data-spotlight="" data-rise="" data-motion="">
           <div className="cta-mark" aria-hidden="true">
             <img src="/assets/argus.svg" width="64" height="64" alt="" />
           </div>

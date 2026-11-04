@@ -1,32 +1,56 @@
 "use client";
 import { useEffect } from "react";
 
-// Cards marked data-spotlight take a soft light under the pointer.
+// Cards marked data-spotlight take a soft light under the pointer. Only cards
+// on screen are measured, and a card's style changes only when its light
+// moves or switches, so a pointer moving elsewhere restyles nothing.
 export function Spotlight() {
   useEffect(() => {
-    let frame = 0;
+    const visible = new Set<HTMLElement>();
+    const lit = new Set<HTMLElement>();
+    const off = (card: HTMLElement) => {
+      if (lit.delete(card)) card.style.setProperty("--lit", "0");
+    };
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const card = entry.target as HTMLElement;
+        if (entry.isIntersecting) visible.add(card);
+        else {
+          visible.delete(card);
+          off(card);
+        }
+      }
+    });
+    for (const card of document.querySelectorAll<HTMLElement>("[data-spotlight]")) observer.observe(card);
+    let frame = 0,
+      x = 0,
+      y = 0;
+    const update = () => {
+      frame = 0;
+      for (const card of visible) {
+        const box = card.getBoundingClientRect();
+        if (x < box.left - 80 || x > box.right + 80 || y < box.top - 80 || y > box.bottom + 80) {
+          off(card);
+          continue;
+        }
+        card.style.setProperty("--x", x - box.left + "px");
+        card.style.setProperty("--y", y - box.top + "px");
+        if (!lit.has(card)) {
+          lit.add(card);
+          card.style.setProperty("--lit", "1");
+        }
+      }
+    };
     const move = (event: PointerEvent) => {
       if (event.pointerType !== "mouse") return;
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        for (const card of document.querySelectorAll<HTMLElement>("[data-spotlight]")) {
-          const box = card.getBoundingClientRect();
-          const inside =
-            event.clientX >= box.left - 80 &&
-            event.clientX <= box.right + 80 &&
-            event.clientY >= box.top - 80 &&
-            event.clientY <= box.bottom + 80;
-          card.style.setProperty("--lit", inside ? "1" : "0");
-          if (inside) {
-            card.style.setProperty("--x", event.clientX - box.left + "px");
-            card.style.setProperty("--y", event.clientY - box.top + "px");
-          }
-        }
-      });
+      x = event.clientX;
+      y = event.clientY;
+      if (!frame) frame = requestAnimationFrame(update);
     };
     document.addEventListener("pointermove", move, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
+      observer.disconnect();
       document.removeEventListener("pointermove", move);
     };
   }, []);

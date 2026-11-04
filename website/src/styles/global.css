@@ -559,6 +559,14 @@ button {
   pointer-events: none;
 }
 
+/* Loops in a section scrolled out of view hold still (MotionGate). Scroll-linked
+   animations are left out: held, they would lose their place on the scroll. */
+[data-still] :is(.wallpaper, .tour-dot, .keys kbd, .keys kbd span, .mini-window, .pipe-line i, .file-hint, .argus-app *),
+[data-still] :is(.keys kbd, .pipe-node b, .cta-mark)::before,
+[data-still] :is(.keys kbd, .pipe-node b, .cta-mark)::after {
+  animation-play-state: paused !important;
+}
+
 /* Parts rise once as they enter the viewport. Without scroll timelines they are simply there. */
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
@@ -580,4 +588,54 @@ button {
     opacity: 0;
     transform: translateY(22px);
   }
+}
+
+/* Shared with the inner pages: the app's mark with its rings (download, home)
+   and the release badges (home, download, changelog). */
+.cta-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+}
+.cta-mark::before,
+.cta-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--accent);
+  border-radius: 28px;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cta-mark::before,
+  .cta-mark::after {
+    animation: ring 3.6s var(--ease) infinite;
+  }
+  .cta-mark::after {
+    animation-delay: 1.8s;
+  }
+}
+@keyframes ring {
+  from {
+    opacity: 0.5;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+.release-badge {
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.release-badge.is-muted {
+  background: var(--surface-2);
+  color: var(--ink-3);
 }
