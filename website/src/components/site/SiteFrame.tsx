@@ -4,6 +4,7 @@ import { jsonLd, text, type Language } from "@/lib/site";
 import { Disclosure } from "./Disclosure";
 import { Footer } from "./Footer";
 import { Header } from "./Header";
+import { HashLanding } from "./IntentLink";
 import { MotionGate } from "./MotionGate";
 import { Spotlight } from "./Spotlight";
 
@@ -46,6 +47,7 @@ export function SiteFrame({
       </ViewTransition>
       <Spotlight />
       <Disclosure />
+      <HashLanding />
       <MotionGate />
       {graph.map((item, i) => (
         <script key={i} type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(item) }} />

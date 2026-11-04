@@ -15,5 +15,5 @@ const sameRoot = (lang: Language, href: string) => {
 type Props = ComponentPropsWithoutRef<"a"> & { lang: Language; href: string };
 
 export function SiteLink({ lang, href, ...props }: Props) {
-  return sameRoot(lang, href) ? <IntentLink href={href} {...props} /> : <a href={href} {...props} />;
+  return sameRoot(lang, href) ? <IntentLink href={href} inPage {...props} /> : <a href={href} {...props} />;
 }
