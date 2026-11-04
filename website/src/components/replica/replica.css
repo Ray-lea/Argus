@@ -245,7 +245,8 @@
   gap: 8px;
   min-width: 0;
   padding: 14px 4px 10px 12px;
-  overflow: hidden;
+  /* Clipped sideways only: the refresh and filter lists drop below the row. */
+  overflow: clip visible;
 }
 .a-start,
 .a-trailing {
