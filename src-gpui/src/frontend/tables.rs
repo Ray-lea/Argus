@@ -553,9 +553,10 @@ impl NativeTable {
         {
             return false;
         }
-        if !same_layout {
-            self.auto_widths
-                .reset(self.font_size != font_size || self.locale != locale);
+        // Widths last through window sizes, views, pages and column order:
+        // only another text size or language measures them anew.
+        if self.font_size != font_size || self.locale != locale {
+            self.auto_widths.reset();
         }
         self.locale = locale;
         self.scope = (scope.0.into(), scope.1.into());
