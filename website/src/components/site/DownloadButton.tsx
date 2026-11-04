@@ -11,6 +11,7 @@ export function DownloadButton({
   primary = false,
   className,
   started,
+  quiet = false,
   children,
   extra,
 }: {
@@ -19,6 +20,8 @@ export function DownloadButton({
   className?: string;
   /** The label once clicked. */
   started: string;
+  /** Keep the label (a small button): only the icon shows the download starting. */
+  quiet?: boolean;
   children: ReactNode;
   /** Shown after the label, such as the file's size. */
   extra?: ReactNode;
@@ -59,9 +62,11 @@ export function DownloadButton({
       </svg>
       <span className="dl-label">
         <span className="dl-label-idle">{children}</span>
-        <span className="dl-label-done" aria-hidden="true">
-          {started}
-        </span>
+        {!quiet && (
+          <span className="dl-label-done" aria-hidden="true">
+            {started}
+          </span>
+        )}
       </span>
       {extra}
       <span className="sr-only" aria-live="polite">

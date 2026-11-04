@@ -1,6 +1,8 @@
 import { ViewTransition } from "react";
 import { localized, repo, site, text, type Language } from "@/lib/site";
 import { compact } from "@/components/home/OpenSource";
+import { DownloadButton } from "./DownloadButton";
+import { LanguageLink, LanguageSwitch } from "./LanguageSwitch";
 import { MastMenu, SearchButton, ThemePicker } from "./HeaderTools";
 import { Icon } from "./Icon";
 import { SiteLink } from "./SiteLink";
@@ -60,23 +62,34 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
             href={repo}
             aria-label={stars === undefined ? "GitHub" : "GitHub · " + stars + (en ? " stars" : " 个星标")}
           >
-            <Icon name="github" size={16} />
+            <span className="gh-mark">
+              <Icon name="github" size={16} />
+            </span>
             {stars !== undefined && (
-              <span className="figures">
-                <Icon name="star" size={12} />
+              <span className="figures gh-count">
+                <span className="gh-star">
+                  <Icon name="star" size={12} />
+                </span>
                 {compact(stars)}
               </span>
             )}
           </a>
           <ThemePicker label={t.theme} options={t.themeOptions} />
           {alternate && (
-            <a className="tool lang" href={other} lang={en ? "zh-CN" : "en"} aria-label={t.language}>
-              {en ? "中文" : "EN"}
-            </a>
+            <>
+              <LanguageSwitch lang={lang} href={other} label={t.language} />
+              {/* The other language's page is prepared while the pointer rests on the switch, so it opens at once. */}
+              <script
+                type="speculationrules"
+                dangerouslySetInnerHTML={{
+                  __html: JSON.stringify({ prerender: [{ source: "document", where: { selector_matches: ".lang-switch" }, eagerness: "moderate" }] }),
+                }}
+              />
+            </>
           )}
-          <a className="btn is-small is-primary" href={site.release.files.installer.url}>
+          <DownloadButton primary quiet className="is-small mast-get" href={site.release.files.installer.url} started={t.started}>
             {t.download}
-          </a>
+          </DownloadButton>
           <MastMenu label={menu}>
             {links.map((link) => (
               <SiteLink lang={lang} key={link.href} href={link.href}>
@@ -85,10 +98,10 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
             ))}
             <a href={repo}>GitHub</a>
             {alternate && (
-              <a href={other} lang={en ? "zh-CN" : "en"}>
+              <LanguageLink href={other} lang={en ? "zh-CN" : "en"}>
                 <Icon name="language" />
                 {t.language}
-              </a>
+              </LanguageLink>
             )}
           </MastMenu>
         </div>

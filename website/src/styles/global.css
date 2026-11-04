@@ -435,18 +435,24 @@ button {
   white-space: nowrap;
   transition:
     color 120ms ease,
-    background-color 120ms ease;
+    background-color 120ms ease,
+    border-color 120ms ease,
+    transform 160ms var(--ease);
 }
 .tool:hover {
+  border-color: var(--stroke-2);
   color: var(--ink);
   background: var(--surface-2);
+}
+.tool:active {
+  transform: scale(0.95);
 }
 .tool kbd {
   font: inherit;
   color: var(--ink-3);
 }
 /* GitHub with its star count, the way open-source sites show it. */
-.gh-stars span {
+.gh-count {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -455,9 +461,105 @@ button {
   color: var(--ink);
   font-weight: 600;
 }
-.gh-stars span svg {
+.gh-star svg {
   color: var(--series-io);
   fill: currentColor;
+}
+/* Under the pointer the mark leans in and the star turns a point and lifts. */
+.gh-mark,
+.gh-star {
+  display: inline-grid;
+  transition: transform 460ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.gh-stars:hover .gh-mark {
+  transform: rotate(-8deg) scale(1.08);
+}
+.gh-stars:hover .gh-star {
+  transform: rotate(72deg) scale(1.25);
+}
+/* The language switch (LanguageSwitch.tsx): both languages, a thumb under the
+   one shown. Under the pointer the other lights up; pressed, the thumb leans
+   toward it; changing pages, the thumb glides over (its own view transition). */
+.lang-switch {
+  gap: 0;
+  padding: 2px;
+  isolation: isolate;
+}
+.lang-switch span[lang] {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  color: var(--ink-3);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: color 160ms ease;
+}
+.lang-switch[data-lang="zh"] span[lang="zh-CN"],
+.lang-switch[data-lang="en"] span[lang="en"] {
+  color: var(--ink);
+}
+.lang-switch[data-lang="zh"]:hover span[lang="en"],
+.lang-switch[data-lang="en"]:hover span[lang="zh-CN"] {
+  color: var(--accent-text);
+}
+.lang-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: 30px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--stroke-2);
+  transition: transform 320ms var(--ease);
+  view-transition-name: lang-thumb;
+}
+.lang-switch[data-lang="en"] .lang-thumb {
+  transform: translateX(30px);
+}
+.lang-switch[data-lang="zh"]:active .lang-thumb {
+  transform: translateX(6px);
+}
+.lang-switch[data-lang="en"]:active .lang-thumb {
+  transform: translateX(24px);
+}
+/* Between the two languages' pages the old one dissolves and the new one
+   sharpens into place; the header stays, and the thumb glides across. */
+@media (prefers-reduced-motion: no-preference) {
+  html:active-view-transition-type(lang)::view-transition-old(root) {
+    animation: lang-out 200ms ease-in both;
+  }
+  html:active-view-transition-type(lang)::view-transition-new(root) {
+    animation: lang-in 420ms var(--ease) 60ms both;
+  }
+  html:active-view-transition-type(lang)::view-transition-group(lang-thumb) {
+    animation-duration: 420ms;
+    animation-timing-function: var(--ease);
+  }
+}
+@keyframes lang-out {
+  to {
+    opacity: 0;
+    filter: blur(8px);
+  }
+}
+@keyframes lang-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+}
+/* The header's download button keeps its label; its icon tells the download started. */
+.btn.is-small .dl-glyph {
+  width: 15px;
+  height: 15px;
+}
+.mast-get {
+  gap: 6px;
+  padding: 0 12px;
 }
 .theme-picker {
   position: relative;
@@ -470,6 +572,35 @@ button {
 .theme-trigger[aria-expanded="true"] {
   background: var(--surface-2);
   color: var(--ink);
+}
+.theme-icon {
+  display: inline-grid;
+  transition: transform 420ms var(--ease);
+}
+.theme-trigger:hover .theme-icon {
+  transform: rotate(20deg);
+}
+/* A newly chosen theme's icon turns over into place. */
+@media (prefers-reduced-motion: no-preference) {
+  .theme-icon.is-turning {
+    animation: theme-turn 520ms var(--ease);
+  }
+}
+@keyframes theme-turn {
+  from {
+    opacity: 0;
+    transform: rotate(-120deg) scale(0.4);
+  }
+}
+/* While the theme changes, the new page spreads from the button (HeaderTools.tsx):
+   the header joins the page in it, and no cross-fade plays under the circle. */
+:root.is-theme-change :is(.mast, .lang-thumb) {
+  view-transition-name: none;
+}
+:root.is-theme-change::view-transition-old(root),
+:root.is-theme-change::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 /* The menu drops below its button: the app's flyout look, one row per theme. */
 .theme-menu {
@@ -510,6 +641,27 @@ button {
 .theme-menu button[aria-checked="true"] {
   color: var(--ink);
 }
+@media (prefers-reduced-motion: no-preference) {
+  .theme-menu button {
+    animation: theme-item 260ms var(--ease) both;
+    animation-delay: calc(40ms + var(--i, 0) * 35ms);
+  }
+  .theme-menu button > svg:last-child:not(:first-child) {
+    animation: theme-check 360ms cubic-bezier(0.34, 1.56, 0.64, 1) 160ms both;
+  }
+}
+@keyframes theme-item {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes theme-check {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
 .theme-menu button > svg:last-child:not(:first-child) {
   margin-left: auto;
   color: var(--accent-text);
@@ -533,7 +685,7 @@ button {
   .mast-nav,
   .mast-tools .label,
   .mast-tools kbd,
-  .mast-tools .lang,
+  .mast-tools .lang-switch,
   .mast-tools .gh-stars {
     display: none;
   }

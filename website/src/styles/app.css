@@ -16,3 +16,9 @@
 @import "./tokens.css" layer(site);
 @import "./global.css" layer(site);
 @import "./docs.css";
+
+/* A page reached by a full load (the other language, or the documentation
+   from the English site) fades in over the last one instead of flashing. */
+@view-transition {
+  navigation: auto;
+}

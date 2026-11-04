@@ -10,11 +10,15 @@ const executable = (attributes) => {
   const type = /\stype\s*=\s*["']?([^"'\s>]+)/i.exec(attributes)?.[1]?.toLowerCase();
   return !type || ["module", "text/javascript", "application/javascript"].includes(type);
 };
+// Speculation rules (the language switch's prerender) are data, not code, but
+// an inline set is allowed only by its hash where a policy lists hashes.
+const hashed = (attributes) =>
+  executable(attributes) || /\stype\s*=\s*["']?speculationrules/i.test(attributes);
 
 export function policyFor(html) {
   const hashes = new Set();
   for (const [, attributes, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi))
-    if (executable(attributes))
+    if (hashed(attributes))
       hashes.add("'sha256-" + createHash("sha256").update(body).digest("base64") + "'");
   return [
     "default-src 'none'",
