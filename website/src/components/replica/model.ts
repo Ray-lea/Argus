@@ -1,7 +1,6 @@
-// Mock data for the interactive window. System totals replay the repository's
-// one-minute workload recording; process rows share those totals out, so the
+// Mock data for the interactive window. System totals are made up afresh for
+// every sample (sampleAt); process rows share those totals out, so the
 // columns add up the way they do in the app.
-import trace from "../../../../tools/window-probe/fixtures/readme-trace.json";
 
 export type Group = "app" | "background" | "windows";
 export type Glyph =
@@ -81,20 +80,6 @@ const local = "NT AUTHORITY\\LOCAL SERVICE";
 const network = "NT AUTHORITY\\NETWORK SERVICE";
 const win = "C:\\Windows\\System32\\";
 
-const recorded: Sample[] = trace.map((p) => ({
-  cpu: p.cpu,
-  kernel: p.kernel,
-  mem: p.memoryPercent,
-  read: p.readKiB * 1024,
-  write: p.writeKiB * 1024,
-  active: p.active,
-  rx: p.rxKiB * 1024,
-  tx: p.txKiB * 1024,
-  gpu: p.gpu,
-}));
-export const sampleAt = (tick: number) =>
-  recorded[((tick % recorded.length) + recorded.length) % recorded.length];
-
 // Deterministic noise in [0, 1): the server and the browser draw the same first frame.
 export function noise(seed: number, tick: number) {
   let h = Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(tick, 0xc2b2ae35);
@@ -104,6 +89,64 @@ export function noise(seed: number, tick: number) {
   h = Math.imul(h, 0x297a2d39);
   h ^= h >>> 15;
   return (h >>> 0) / 4294967296;
+}
+// Noise that eases from one value to the next over `period` samples.
+function drift(seed: number, tick: number, period: number) {
+  const x = tick / period,
+    i = Math.floor(x),
+    f = x - i,
+    s = f * f * (3 - 2 * f);
+  return noise(seed, i) * (1 - s) + noise(seed, i + 1) * s;
+}
+// A load in [0, 1) that changes slowly, with quicker changes on top.
+const load = (seed: number, tick: number) =>
+  drift(seed, tick, 23) * 0.5 + drift(seed + 1, tick, 7) * 0.32 + drift(seed + 2, tick, 2.5) * 0.13 + noise(seed + 3, tick) * 0.05;
+// Now and then (in `chance` of the blocks of `every` samples) a burst of a few
+// samples: it rises at once and falls back over its length. 0 outside them.
+function burst(seed: number, tick: number, every: number, chance: number) {
+  const block = Math.floor(tick / every);
+  let peak = 0;
+  for (const b of [block - 1, block]) {
+    if (noise(seed, b) >= chance) continue;
+    const length = 2 + Math.floor(noise(seed + 2, b) * 5);
+    const at = tick - (b * every + Math.floor(noise(seed + 1, b) * every));
+    if (at < 0 || at > length) continue;
+    const shape = at === 0 ? 0.65 : 1 - (at - 1) / length;
+    peak = Math.max(peak, shape * (0.5 + noise(seed + 3, b) * 0.5));
+  }
+  return peak;
+}
+// A busy desktop, made up: never the same minute twice, yet any sample can be
+// drawn again from its tick alone.
+function draw(tick: number): Sample {
+  const busy = burst(110, tick, 12, 0.55);
+  const cpu = Math.min(97, 14 + load(100, tick) * 38 + busy * 42);
+  const read = 160 + load(140, tick) ** 2 * 1600 + burst(150, tick, 9, 0.25) * 22000;
+  const write = 1500 + load(160, tick) ** 2 * 7000 + burst(170, tick, 11, 0.45) * 46000;
+  const rx = 9500 + load(180, tick) * 9000 + burst(190, tick, 10, 0.4) * 9000;
+  const tx = 5000 + load(200, tick) * 6500 + burst(210, tick, 10, 0.35) * 3000;
+  return {
+    cpu,
+    kernel: cpu * (0.3 + drift(120, tick, 9) * 0.18),
+    mem: 39 + drift(130, tick, 40) * 3.2 + busy * 0.8,
+    read: read * 1024,
+    write: write * 1024,
+    active: Math.min(100, 1.5 + (read + write) / 1500),
+    rx: rx * 1024,
+    tx: tx * 1024,
+    gpu: Math.min(98, 22 + load(220, tick) * 38 + burst(230, tick, 14, 0.5) * 30),
+  };
+}
+// Each tick is read by many cells and charts; the recent ones are kept.
+const drawn = new Map<number, Sample>();
+export function sampleAt(tick: number) {
+  let sample = drawn.get(tick);
+  if (!sample) {
+    sample = draw(tick);
+    drawn.set(tick, sample);
+    if (drawn.size > 512) drawn.delete(drawn.keys().next().value as number);
+  }
+  return sample;
 }
 const smooth = (seed: number, tick: number) =>
   (noise(seed, tick) + noise(seed, tick - 1) * 0.6 + noise(seed, tick - 2) * 0.3) /
