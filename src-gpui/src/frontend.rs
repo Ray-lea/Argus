@@ -607,6 +607,20 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
         .run(move |cx| {
             gpui_kit::init(cx);
             theme::install_surface(cx);
+            let manifest = argus_app::config::manifest();
+            let minimum = size(
+                px(manifest["window"]["minWidth"]
+                    .as_f64()
+                    .expect("minimum width") as f32),
+                px(manifest["window"]["minHeight"]
+                    .as_f64()
+                    .expect("minimum height") as f32),
+            );
+            // The minimum never exceeds the work area: a 1080p laptop at 150 %
+            // offers about 1280 × 670 logical pixels, less than its height.
+            let minimum = cx.primary_display().map_or(minimum, |display| {
+                minimum.min(&display.visible_bounds().size)
+            });
             let opts = WindowOptions {
                 window_bounds: Some(WindowBounds::centered(
                     size(px(options.width), px(options.height)),
@@ -615,14 +629,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 focus: !options.hidden && !options.test,
                 show: !options.hidden,
                 app_id: Some(options.identifier.clone()),
-                window_min_size: Some(size(
-                    px(argus_app::config::manifest()["window"]["minWidth"]
-                        .as_f64()
-                        .expect("minimum width") as f32),
-                    px(argus_app::config::manifest()["window"]["minHeight"]
-                        .as_f64()
-                        .expect("minimum height") as f32),
-                )),
+                window_min_size: Some(minimum),
                 inactive_frame_interval: None,
                 window_background: if crate::platform::supports_backdrop() {
                     WindowBackgroundAppearance::MicaBackdrop
