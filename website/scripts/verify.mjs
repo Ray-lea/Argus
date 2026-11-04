@@ -179,12 +179,21 @@ async function local() {
     editions.map((edition) => edition.base),
     ["/docs/", "/docs/dev/"],
   );
+  const sitemap = await readFile(join(dir, "sitemap.xml"), "utf8");
   for (const edition of editions) {
     const index = pages.get(edition.base.slice(1) + "index.html");
-    for (const url of Object.values(edition.routes)) {
+    for (const [file, url] of Object.entries(edition.routes)) {
       const page = pages.get(url.slice(1) + "index.html");
       assert(page, "Missing document " + url);
-      assert.equal(page.canonical, origin + url);
+      // Development pages that the stable edition also has defer to it.
+      const canonical =
+        (edition.id === "dev" && editions[0].routes[file]) || url;
+      assert.equal(page.canonical, origin + canonical);
+      assert.equal(
+        sitemap.includes("<loc>" + origin + url + "</loc>"),
+        canonical === url,
+        "Sitemap entry for " + url,
+      );
       assert(
         index.links.includes(url),
         "Document missing from navigation: " + url,

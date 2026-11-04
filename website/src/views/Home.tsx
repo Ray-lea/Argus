@@ -131,9 +131,9 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
               <Icon name="arrow" size={14} />
             </span>
           </a>
+          {/* The lines are grid items; the space only keeps the words apart in the text. */}
           <h1 id="hero-title">
-            <span>{t.h1[0]}</span>
-            <span>{t.h1[1]}</span>
+            <span>{t.h1[0]}</span> <span>{t.h1[1]}</span>
           </h1>
           <p className="hero-replace">
             <span className="hero-replace-what">

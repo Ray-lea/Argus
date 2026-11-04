@@ -26,8 +26,9 @@ export function pageMetadata({
   return {
     title: { absolute: title },
     description,
+    // A page kept out of the index names no canonical address.
     alternates: {
-      canonical: url,
+      canonical: noindex ? undefined : url,
       languages: alternate
         ? {
             "zh-CN": origin + localized("zh", path),

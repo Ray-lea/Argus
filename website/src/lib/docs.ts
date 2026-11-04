@@ -21,6 +21,12 @@ export function resolveHref(edition: Edition, source: string, href?: string) {
 
 export const markdownUrl = (page: DocsPage) => "/llms.mdx" + pathOf(page) + "content.md";
 
+// A development page that the stable edition also has points search engines
+// at the stable one, which describes the released version; pages only in
+// development stand on their own until the next release.
+export const canonicalPath = (page: DocsPage) =>
+  (editionOf(page) === development && stable.routes[page.data.source]) || pathOf(page);
+
 export function pageTitle(page: DocsPage) {
   const edition = editionOf(page);
   const name = page.data.source === "docs/README.md" ? "Argus 文档" : page.data.heading;

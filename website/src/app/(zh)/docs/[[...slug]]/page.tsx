@@ -12,7 +12,7 @@ import { BookOpen, Code, Layers, Map, Palette, TriangleAlert } from "lucide-reac
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentProps, FC } from "react";
-import { breadcrumbSchema, editionOf, markdownUrl, pageTitle, resolveHref } from "@/lib/docs";
+import { breadcrumbSchema, canonicalPath, editionOf, markdownUrl, pageTitle, resolveHref } from "@/lib/docs";
 import { development, jsonLd, origin, repo, stable } from "@/lib/site";
 import { pathOf, source } from "@/lib/source";
 
@@ -135,7 +135,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: { absolute: title },
     description: page.data.description,
-    alternates: { canonical: origin + pathOf(page) },
+    alternates: { canonical: origin + canonicalPath(page) },
     openGraph: {
       title,
       description: page.data.description,

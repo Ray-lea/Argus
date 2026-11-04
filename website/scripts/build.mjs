@@ -70,7 +70,13 @@ await put(
     origin +
     "/security/\nPreferred-Languages: zh, en\n",
 );
-await put(dir.site, "robots.txt", "User-agent: *\nAllow: /\nSitemap: " + origin + "/sitemap.xml\n");
+// Every page is open to crawlers; the .txt files beside each page are the
+// Next.js navigation data, not pages.
+await put(
+  dir.site,
+  "robots.txt",
+  "User-agent: *\nAllow: /\nDisallow: /*index.txt$\nDisallow: /*__next.\nSitemap: " + origin + "/sitemap.xml\n",
+);
 
 // Only completed builds replace the disposable output beneath this project's target directory.
 if (

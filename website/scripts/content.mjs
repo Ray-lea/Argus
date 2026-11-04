@@ -79,6 +79,16 @@ const pageIcons = {
   "docs/known-issues.md": "TriangleAlert",
 };
 
+// A page's description: its opening paragraph up to the last whole sentence
+// that fits the length search results show, cut with an ellipsis only when the
+// first sentence alone is too long.
+export function excerpt(text, limit = 150) {
+  if (text.length <= limit) return text;
+  const cut = text.slice(0, limit);
+  const end = Math.max(...["。", "！", "？", ". "].map((mark) => cut.lastIndexOf(mark)));
+  return end >= 40 ? cut.slice(0, end + 1).trimEnd() : cut.slice(0, limit - 1) + "…";
+}
+
 export function documentPage(file, text, id, { updated = "", label = "" } = {}) {
   const body = text.replace(/\r\n/g, "\n");
   const heading = /^# (.+)$/m.exec(body);
@@ -94,11 +104,12 @@ export function documentPage(file, text, id, { updated = "", label = "" } = {}) 
   const lead = markdown
     .parse(content, {})
     .find((t) => t.type === "inline" && t.content.length > 25);
-  const summary = lead?.children
-    ?.map((t) => t.content)
-    .join("")
-    .replace(/\s+/g, " ")
-    .slice(0, 145);
+  const summary = excerpt(
+    lead?.children
+      ?.map((t) => t.content)
+      .join("")
+      .replace(/\s+/g, " ") ?? "",
+  );
   const front = {
     // The sidebar and search use the chapter name from the index; the page shows its own title.
     title: label || title,
