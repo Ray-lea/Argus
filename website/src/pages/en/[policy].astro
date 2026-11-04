@@ -1,8 +1,0 @@
----
-import PolicyPage from "../../views/PolicyPage.astro";
-import { policies } from "../../lib/site";
-export const getStaticPaths = () =>
-  policies.map((policy) => ({ params: { policy }, props: { policy } }));
----
-
-<PolicyPage lang="en" policy={Astro.props.policy} />

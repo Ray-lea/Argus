@@ -1,0 +1,695 @@
+/* Inner pages: download. The app's mark and the release up top, the two
+   packages side by side, the first steps, then notes, requirements and checks. */
+.dl-hero {
+  display: grid;
+  justify-items: center;
+  padding: clamp(48px, 7vw, 88px) 0 clamp(36px, 4vw, 52px);
+  text-align: center;
+}
+.dl-hero h1 {
+  margin-top: 18px;
+  font-size: clamp(2.25rem, 1.5rem + 2.2vw, 3.5rem);
+}
+.dl-lead {
+  max-width: 36em;
+  margin-top: 14px;
+  color: var(--ink-2);
+  font-size: 1.125rem;
+  text-wrap: pretty;
+}
+.dl-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.dl-meta li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+}
+.dl-meta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.dl-meta svg {
+  color: var(--ink-3);
+}
+.dl-meta a svg {
+  color: inherit;
+}
+
+.packages {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.package {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+  padding: clamp(24px, 2.6vw, 34px);
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+  backdrop-filter: blur(24px);
+  transition: border-color 200ms ease;
+}
+.package:hover {
+  border-color: var(--stroke-2);
+}
+.package.is-primary {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke));
+  background:
+    radial-gradient(120% 80% at 100% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%),
+    var(--surface);
+}
+.package-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.package-head h2 {
+  font-size: clamp(1.5rem, 1.25rem + 0.8vw, 1.875rem);
+}
+.package-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--stroke-2);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.package.is-primary .package-icon {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-text);
+}
+.package-badge {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.package-points {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+}
+.package-points li {
+  display: flex;
+  gap: 10px;
+}
+.package-points svg {
+  flex: none;
+  margin-top: 0.2em;
+  color: var(--series-net);
+}
+.package-get {
+  justify-content: center;
+  height: 46px;
+  margin-top: auto;
+  font-size: 1rem;
+}
+.package-size {
+  padding-left: 10px;
+  border-left: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  opacity: 0.8;
+  font-size: 0.875rem;
+}
+.package-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  color: var(--ink-3);
+  font-size: 0.8125rem;
+}
+.package-file details summary {
+  color: var(--ink-3);
+  cursor: pointer;
+  list-style: none;
+}
+.package-file details summary::-webkit-details-marker {
+  display: none;
+}
+.package-file details summary:hover,
+.package-file details[open] summary {
+  color: var(--ink-2);
+}
+.package-file details[open] {
+  flex-basis: 100%;
+}
+.package-hash {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.package-hash code {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.copy-button {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-2);
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+.copy-button:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.copy-button.is-done {
+  color: var(--series-net);
+}
+
+/* The first steps after downloading, numbered along a line. */
+.dl-steps {
+  margin-top: clamp(72px, 9vw, 120px);
+}
+.dl-steps header {
+  margin-bottom: 32px;
+  text-align: center;
+}
+.dl-steps h2 {
+  font-size: clamp(1.75rem, 1.4rem + 1.2vw, 2.5rem);
+}
+.dl-steps header p {
+  margin-top: 10px;
+  color: var(--ink-2);
+  font-size: 1.0625rem;
+}
+.dl-steps ol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dl-steps li {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 24px 24px 26px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.dl-steps li p {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+.dl-steps h3 {
+  font-size: 1.125rem;
+}
+.dl-step-number {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Notes of this release and the earlier ones beside the requirements and checks. */
+.dl-more {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  align-items: start;
+  gap: 16px;
+  margin-top: clamp(72px, 9vw, 120px);
+}
+.dl-side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.dl-more h2 {
+  margin: 0 0 12px;
+  font-size: 1.375rem;
+}
+.dl-notes-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.dl-history-title {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--stroke);
+  font-size: 1rem;
+}
+.dl-history {
+  display: grid;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.dl-history li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0;
+  font-size: 0.9375rem;
+}
+.dl-history li + li {
+  border-top: 1px solid var(--stroke);
+}
+.dl-history a {
+  min-width: 64px;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.dl-history a:hover {
+  color: var(--accent-text);
+}
+.dl-history time {
+  color: var(--ink-3);
+}
+.dl-history-note {
+  margin-top: 10px;
+  color: var(--ink-3);
+  font-size: 0.8125rem;
+}
+.dl-fine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 0 4px;
+  color: var(--ink-3);
+  font-size: 0.8125rem;
+}
+.dl-fine a {
+  color: var(--ink-2);
+}
+.dl-fine a:hover {
+  color: var(--accent-text);
+}
+@media (max-width: 960px) {
+  .dl-steps ol,
+  .dl-more {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 860px) {
+  .packages {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Changelog: the version index beside the releases, each release a section
+   with its groups of entries; new features as cards, the rest as lists. */
+.cl-head {
+  display: grid;
+  justify-items: center;
+  padding: clamp(48px, 7vw, 88px) 0 clamp(40px, 5vw, 64px);
+  text-align: center;
+}
+.cl-head h1 {
+  font-size: clamp(2.25rem, 1.5rem + 2.2vw, 3.5rem);
+}
+.cl-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 18px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-3);
+  font-size: 0.875rem;
+}
+.cl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 26px;
+}
+.cl-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: start;
+}
+.cl-nav {
+  position: sticky;
+  top: calc(var(--header) + 40px);
+}
+.cl-nav ol {
+  position: relative;
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cl-nav ol::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 4.5px;
+  width: 1px;
+  background: var(--stroke-2);
+}
+.cl-nav a {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  padding: 7px 10px 7px 24px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  text-decoration: none;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+.cl-nav a::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 1px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--bg);
+  border-radius: 50%;
+  background: var(--ink-3);
+  box-sizing: content-box;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.cl-nav a:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.cl-nav a[aria-current] {
+  color: var(--ink);
+}
+.cl-nav a[aria-current]::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--glow);
+}
+.cl-nav b {
+  font-weight: 600;
+}
+.cl-nav span {
+  grid-column: 1 / -1;
+  color: var(--ink-3);
+  font-size: 0.75rem;
+}
+.cl-nav small {
+  align-self: center;
+  color: var(--ink-3);
+  font-size: 0.6875rem;
+}
+.cl-list {
+  display: grid;
+  min-width: 0;
+}
+.cl-release {
+  display: grid;
+  gap: 18px;
+  padding: 0 0 clamp(48px, 6vw, 72px);
+  scroll-margin-top: calc(var(--header) + 32px);
+}
+.cl-release + .cl-release {
+  padding-top: clamp(40px, 5vw, 56px);
+  border-top: 1px solid var(--stroke);
+}
+.cl-release-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.cl-release-head h2 {
+  font-family: var(--display);
+  font-size: clamp(1.75rem, 1.4rem + 1vw, 2.25rem);
+  letter-spacing: -0.01em;
+}
+.cl-release-head h2 a {
+  color: var(--ink);
+  text-decoration: none;
+}
+.cl-release-head time {
+  color: var(--ink-3);
+  font-size: 0.9375rem;
+}
+.cl-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-left: auto;
+  font-size: 0.8125rem;
+}
+.cl-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+.cl-links a:hover {
+  color: var(--accent-text);
+}
+.cl-release.is-withdrawn .cl-release-head h2 a {
+  color: var(--ink-3);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.cl-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--series-io) 40%, var(--stroke));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--series-io) 8%, transparent);
+  color: var(--ink);
+  font-size: 0.9375rem;
+}
+.cl-notice svg {
+  flex: none;
+  color: var(--series-io);
+}
+.cl-intro {
+  color: var(--ink);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+.cl-group {
+  --kind: var(--ink-3);
+  display: grid;
+  gap: 12px;
+}
+.cl-group.is-feature {
+  --kind: var(--series-net);
+}
+.cl-group.is-fix {
+  --kind: var(--series-cpu);
+}
+.cl-group.is-performance {
+  --kind: var(--series-io);
+}
+.cl-group.is-breaking {
+  --kind: var(--series-gpu);
+}
+.cl-group.is-upgrade {
+  --kind: var(--series-mem);
+}
+.cl-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9375rem;
+}
+.cl-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 11px 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kind) 14%, transparent);
+  color: color-mix(in srgb, var(--kind) 70%, var(--ink));
+  font-weight: 600;
+}
+.cl-kind::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--kind);
+}
+.cl-group h3 small {
+  color: var(--ink-3);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+.cl-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cl-cards li {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+  transition: border-color 200ms ease;
+}
+.cl-cards li:hover {
+  border-color: color-mix(in srgb, var(--kind) 40%, var(--stroke-2));
+}
+.cl-cards b {
+  color: var(--ink);
+}
+.cl-cards span {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+.cl-items {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cl-items li {
+  position: relative;
+  padding: 8px 0 8px 20px;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+.cl-items li::before {
+  content: "";
+  position: absolute;
+  top: 1.05em;
+  left: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--kind);
+}
+.cl-items b {
+  margin-right: 0.5em;
+  color: var(--ink);
+}
+.cl-list a:not(.cl-release-head a),
+.dl-release a {
+  color: var(--accent-text);
+}
+.dl-release {
+  display: grid;
+  gap: 18px;
+  margin-top: 10px;
+}
+.cl-list code,
+.dl-release code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 0.86em;
+}
+@media (max-width: 960px) {
+  .cl-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  /* The index becomes a row of versions that scrolls sideways. */
+  .cl-nav {
+    position: static;
+    margin: 0 calc(-1 * var(--pad));
+    padding: 0 var(--pad);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .cl-nav ol {
+    display: flex;
+    gap: 6px;
+  }
+  .cl-nav ol::before {
+    display: none;
+  }
+  .cl-nav a {
+    display: inline-flex;
+    padding: 6px 12px;
+    border: 1px solid var(--stroke);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .cl-nav a::before,
+  .cl-nav span {
+    display: none;
+  }
+  .cl-nav a[aria-current] {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--stroke));
+  }
+  .cl-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cl-links {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}

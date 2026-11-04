@@ -1,0 +1,22 @@
+/* The site's own styles sit above Tailwind's reset and below Fumadocs'
+   components and utilities, so home-page rules never restyle the docs. */
+@layer theme, base, site, components, utilities;
+
+/* Fumadocs ships its component styles prebuilt; only our own files are
+   scanned, so plain class names in the home page (.grid, .table) never
+   pick up utilities. */
+@import "tailwindcss" source(none);
+@source "../components/search-dialog.tsx";
+@source "../app";
+/* The same imports as fumadocs.dev. */
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/generated/spacious.css";
+@import "fumadocs-ui/css/preset.css";
+
+@import "./tokens.css" layer(site);
+@import "./global.css" layer(site);
+@import "./home.css" layer(site);
+@import "./pages.css" layer(site);
+@import "../components/replica/replica.css" layer(site);
+@import "../components/replica/curve.css" layer(site);
+@import "./docs.css";

@@ -1,16 +1,19 @@
-import { build as buildAstro } from "astro";
-import { copyFile, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { cp, mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { buildRelease } from "./release.mjs";
 import { writeDistribution } from "./distribution.mjs";
 import { prepareContent } from "./content.mjs";
+import { secureHtml } from "./csp.mjs";
 import {
+  contentDir,
   repoRoot as root,
   websiteRoot,
   workDir as work,
   put,
 } from "./paths.mjs";
+import { origin, repo } from "./release.mjs";
 
 const output = join(work, "dist");
 await mkdir(work, { recursive: true });
@@ -31,16 +34,43 @@ const release = await buildRelease(
   dir.updates,
 );
 await writeDistribution(root, dir, release);
-await prepareContent(dir.input, release);
+await prepareContent(release);
 await put(stage, "release.json", JSON.stringify(release, null, 2) + "\n");
+await put(dir.input, "site.json", await readFile(join(contentDir, "site.json")));
 
-process.env.ARGUS_SITE_INPUT = dir.input;
-process.env.ASTRO_TELEMETRY_DISABLED = "1";
-await buildAstro({ root: websiteRoot, outDir: dir.site });
-await copyFile(
-  join(dir.site, "sitemap-index.xml"),
-  join(dir.site, "sitemap.xml"),
+// Next.js exports the static pages into website/out.
+const next = spawnSync(
+  process.execPath,
+  [join(websiteRoot, "node_modules/next/dist/bin/next"), "build"],
+  {
+    cwd: websiteRoot,
+    stdio: "inherit",
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", ARGUS_NEXT_DIR: "" },
+  },
 );
+if (next.status !== 0) throw Error("next build failed");
+await cp(join(websiteRoot, "out"), dir.site, { recursive: true });
+await secureHtml(dir.site);
+const { contact } = JSON.parse(await readFile(join(contentDir, "site.json"), "utf8"));
+const expires = new Date(Date.now() + 350 * 86400000)
+  .toISOString()
+  .replace(/\.\d{3}Z$/, "Z");
+await put(
+  dir.site,
+  ".well-known/security.txt",
+  "Contact: " +
+    repo +
+    "/security/advisories/new\n" +
+    (contact ? "Contact: mailto:security@argustask.com\n" : "") +
+    "Expires: " +
+    expires +
+    "\nCanonical: " +
+    origin +
+    "/.well-known/security.txt\nPolicy: " +
+    origin +
+    "/security/\nPreferred-Languages: zh, en\n",
+);
+await put(dir.site, "robots.txt", "User-agent: *\nAllow: /\nSitemap: " + origin + "/sitemap.xml\n");
 
 // Only completed builds replace the disposable output beneath this project's target directory.
 if (

@@ -1,0 +1,88 @@
+.curve {
+  position: relative;
+  pointer-events: none;
+}
+.curve-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.curve-track {
+  position: absolute;
+  inset: 0 auto 0 0;
+  will-change: transform;
+}
+.curve-track svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The hover readout (charts.rs `readout`): a line at the pointer, a dot on each
+   series, and a tip beside the line that turns to the left past the middle. */
+.curve.is-readout {
+  pointer-events: auto;
+}
+.curve-readout {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.curve-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--x) * 100%);
+  width: 1px;
+  background: color-mix(in srgb, var(--a-ink) 30%, transparent);
+}
+.curve-dot {
+  position: absolute;
+  left: calc(var(--x) * 100%);
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--a-flyout);
+  border-radius: 50%;
+  box-sizing: content-box;
+  translate: calc(0.5px - 50%) -50%;
+}
+.curve-tip {
+  position: absolute;
+  top: 6px;
+  left: calc(var(--x) * 100% + 10px);
+  display: flex;
+  flex-direction: column;
+  padding: 5px 9px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 6px;
+  background: var(--a-flyout);
+  color: var(--a-ink);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.curve-tip.is-flipped {
+  right: calc((1 - var(--x)) * 100% + 10px);
+  left: auto;
+}
+.curve-age {
+  color: var(--a-ink-2);
+}
+.curve-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.curve-row b {
+  margin-left: auto;
+  padding-left: 8px;
+  font-weight: 600;
+}
+.curve-swatch {
+  width: 12px;
+  height: 0;
+  border-top: 2px solid currentColor;
+}
+.curve-swatch.is-dashed {
+  border-top-style: dashed;
+}

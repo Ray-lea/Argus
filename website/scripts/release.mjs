@@ -125,6 +125,30 @@ function verify(root, version, path, signature) {
   );
 }
 
+// Public figures of the repository for the home page: stars, forks, published
+// releases and how often their executables were downloaded from GitHub.
+export async function repositoryStats() {
+  const [info, releases] = await Promise.all(
+    ["", "/releases?per_page=100"].map(async (path) =>
+      JSON.parse(await smallText("https://api.github.com/repos/Ray-lea/Argus" + path)),
+    ),
+  );
+  const published = releases.filter((r) => !r.draft);
+  const stats = {
+    stars: info.stargazers_count,
+    forks: info.forks_count,
+    releases: published.filter((r) => !r.prerelease).length,
+    downloads: published
+      .flatMap((r) => r.assets)
+      .filter((a) => a.name.endsWith(".exe"))
+      .reduce((sum, a) => sum + a.download_count, 0),
+    checked: new Date().toISOString(),
+  };
+  if (Object.values(stats).some((v) => v === undefined || Number.isNaN(v)))
+    throw Error("Unexpected GitHub repository data");
+  return stats;
+}
+
 export async function buildRelease(root, cache, downloads, feeds) {
   const release = JSON.parse(
     await smallText(

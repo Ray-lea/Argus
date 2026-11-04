@@ -10,67 +10,83 @@
     U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
     U+2215, U+FEFF, U+FFFD;
 }
-@custom-variant argus-dark {
-  &:where([data-theme="dark"]) {
-    @slot;
-  }
-  @media (prefers-color-scheme: dark) {
-    &:where(:not([data-theme])) {
-      @slot;
-    }
-  }
-}
+
+/* The site speaks the app's visual language: Segoe UI Variable, the Windows
+   accent blue, Mica and Acrylic surfaces with 1px strokes, and the five data
+   colours of the overview strip. Geist covers Latin text where Segoe is missing. */
 :root {
-  color-scheme: light dark;
-  --argus-font:
-    "Geist Variable", "Segoe UI Variable", "PingFang SC", "Microsoft YaHei UI",
-    system-ui, sans-serif;
-  --paper: #fff;
-  --surface: #fff;
-  --wash: #f6f7fb;
-  --ink: #151622;
-  --muted: #54586b;
-  --faint: #74788b;
-  --line: #dfe1ea;
-  --soft: #f0f1f8;
-  --accent: #5144ca;
-  --accent-ink: white;
-  --accent-soft: #eeedff;
-  --control: #191926;
-  --control-text: #fff;
-  --nav-bg: #ffffffeb;
-  --silver: #eaf1fb;
-  --hero-ground: #f4f4fc;
-  --atmosphere-a: #d6f0ff;
-  --atmosphere-b: #e0d6fb;
-  --book-a: #f0f5ff;
-  --book-b: #f4effa;
-  --code-background: #f3f4f8;
-  @variant argus-dark {
-    color-scheme: dark;
-    --paper: #101117;
-    --surface: #181a23;
-    --wash: #151720;
-    --ink: #f0eff7;
-    --muted: #b0afc2;
-    --faint: #9596aa;
-    --line: #333541;
-    --soft: #252634;
-    --accent: #afa4ff;
-    --accent-ink: #171423;
-    --accent-soft: #2d2745;
-    --control: #eeedf9;
-    --control-text: #181823;
-    --nav-bg: #111219eb;
-    --silver: #212635;
-    --hero-ground: #171924;
-    --atmosphere-a: #182d43;
-    --atmosphere-b: #332647;
-    --book-a: #1c263a;
-    --book-b: #292237;
-    --code-background: #222430;
-  }
-}
-:root[data-theme="light"] {
   color-scheme: light;
+  --font:
+    "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Geist Variable",
+    system-ui, "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
+  --display:
+    "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI",
+    "Geist Variable", system-ui, "Microsoft YaHei UI", "PingFang SC",
+    "Noto Sans SC", sans-serif;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  --pad: clamp(20px, 4vw, 48px);
+  --max: 1180px;
+  --radius: 12px;
+  --radius-sm: 6px;
+  --header: 56px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-fluent: cubic-bezier(0.1, 0.9, 0.2, 1);
+
+  --bg: #eef1f6;
+  --surface: rgb(255 255 255 / 0.66);
+  --surface-solid: #f8f9fb;
+  --surface-2: rgb(0 0 0 / 0.05);
+  --stroke: rgb(0 0 0 / 0.08);
+  --stroke-2: rgb(0 0 0 / 0.14);
+  --ink: #1b1c22;
+  --ink-2: #555a68;
+  --ink-3: #6c7080;
+  --accent: #0067c0;
+  --accent-hover: #1975c5;
+  --accent-text: #0062b6;
+  --on-accent: #ffffff;
+  --glow: rgb(0 103 192 / 0.12);
+  --shadow: 0 10px 30px rgb(20 40 80 / 0.1);
+  --series-cpu: #0a8bbd;
+  --series-mem: #6a52ec;
+  --series-io: #c27a00;
+  --series-net: #1f9d55;
+  --series-gpu: #d6336c;
+  --wall: #cfdcf0;
+  --petal-a: #6aa7ec;
+  --petal-b: #9cc8f5;
+  --petal-c: #3f7fd6;
+  --glass: rgb(243 243 243 / 0.74);
+  --taskbar: rgb(238 240 244 / 0.82);
+  --selection: rgb(0 103 192 / 0.22);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0b0d;
+  --surface: rgb(255 255 255 / 0.04);
+  --surface-solid: #16171a;
+  --surface-2: rgb(255 255 255 / 0.07);
+  --stroke: rgb(255 255 255 / 0.08);
+  --stroke-2: rgb(255 255 255 / 0.14);
+  --ink: #f1f2f6;
+  --ink-2: #a9adbb;
+  --ink-3: #868a98;
+  --accent: #4cc2ff;
+  --accent-hover: #6ccdff;
+  --accent-text: #6fcfff;
+  --on-accent: #00213b;
+  --glow: rgb(76 194 255 / 0.1);
+  --shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  --series-cpu: #46cff4;
+  --series-mem: #9b8cff;
+  --series-io: #f4b446;
+  --series-net: #4fd18b;
+  --series-gpu: #ff7aa8;
+  --wall: #07142b;
+  --petal-a: #1c5fbf;
+  --petal-b: #2f86d8;
+  --petal-c: #0e3a86;
+  --glass: rgb(32 32 32 / 0.72);
+  --taskbar: rgb(28 28 30 / 0.8);
+  --selection: rgb(76 194 255 / 0.28);
 }

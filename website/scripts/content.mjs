@@ -1,115 +1,127 @@
+// Prepares the generated inputs of the website: the documentation of both
+// editions as Fumadocs content, the release snapshot in site.json, and the
+// images the pages link to. Files are written only when they change, so a
+// running development server reloads just what moved.
 import { execFileSync } from "node:child_process";
-import { readFile, copyFile, cp, glob } from "node:fs/promises";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { readFile, glob } from "node:fs/promises";
+import { join, posix } from "node:path";
 import MarkdownIt from "markdown-it";
 import GithubSlugger from "github-slugger";
 import sharp from "sharp";
-import { put, repoRoot as root, websiteRoot } from "./paths.mjs";
-import { origin, repo } from "./release.mjs";
+import {
+  assetsDir,
+  contentDir,
+  prune,
+  putIfChanged,
+  repoRoot as root,
+  siteFormat,
+  websiteRoot,
+  workDir,
+} from "./paths.mjs";
+import { repo, repositoryStats } from "./release.mjs";
 
 const git = (args) =>
   execFileSync("git", args, { cwd: root, maxBuffer: 32 * 1024 * 1024 });
 const fileAt = (ref, file) => git(["show", ref + ":" + file]);
 const markdown = new MarkdownIt({ html: false });
+export const bases = { stable: "/docs/", dev: "/docs/dev/" };
+// Folders in parentheses add nothing to the URL: the stable edition lives at /docs/.
+export const folders = { stable: "(stable)", dev: "dev" };
+const notes = { stable: "随正式版发布", dev: "main 分支 · 含未发布改动" };
+const icons = { stable: "BookMarked", dev: "GitBranch" };
 
-function routeFor(file, base) {
-  const relative = file
-    .slice("docs/".length)
-    .replace(/(^|\/)README\.md$/, "$1")
-    .replace(/\.md$/, "/");
-  return base + relative;
+// Read a repository file from the working tree (development) or from the documented commit.
+const source = (docs, file) =>
+  docs.worktree ? readFile(join(root, file)) : fileAt(docs.ref, file);
+
+export function routeFor(file, base) {
+  return (
+    base +
+    file
+      .slice("docs/".length)
+      .replace(/(^|\/)README\.md$/, "$1")
+      .replace(/\.md$/, "/")
+  );
 }
+// docs/guide/README.md is the folder's index page; other names keep their stem.
+const pageName = (file) =>
+  file.slice("docs/".length).replace(/(^|\/)README\.md$/, "$1index.md").replace(/\.md$/, "");
+export const contentFile = (file, id) => "docs/" + folders[id] + "/" + pageName(file) + ".md";
 
-// Read the application manifest from the same ref as the documentation.
-function desktopFramework(ref) {
-  const manifest = git([
-    "ls-tree",
-    "-r",
-    "--name-only",
-    ref,
-    "--",
-    "src-gpui/Cargo.toml",
-    "src-tauri/Cargo.toml",
-  ])
-    .toString()
-    .trim();
-  if (manifest === "src-gpui/Cargo.toml") return "GPUI";
-  if (manifest !== "src-tauri/Cargo.toml") return "";
-  const major = fileAt(ref, manifest)
-    .toString()
-    .match(/^tauri\s*=\s*(?:\{[^}\n]*?version\s*=\s*)?"[\^~=]?(\d+)/m)?.[1];
-  return major ? "Tauri " + major : "Tauri";
-}
+// Sidebar icons (lucide names, resolved in src/lib/source.ts); a new document simply has none.
+const pageIcons = {
+  "docs/README.md": "BookOpen",
+  "docs/guide/README.md": "MousePointerClick",
+  "docs/guide/resident-mode.md": "Keyboard",
+  "docs/guide/settings.md": "Settings",
+  "docs/guide/hardware-data.md": "Cpu",
+  "docs/development/README.md": "Terminal",
+  "docs/development/build.md": "Hammer",
+  "docs/development/performance.md": "Gauge",
+  "docs/development/gpui.md": "AppWindow",
+  "docs/development/release.md": "Rocket",
+  "docs/development/website.md": "Globe",
+  "docs/development/signing.md": "BadgeCheck",
+  "docs/development/i18n.md": "Languages",
+  "docs/development/security.md": "ShieldCheck",
+  "docs/architecture/README.md": "LayoutDashboard",
+  "docs/architecture/tech-stack.md": "Layers",
+  "docs/architecture/core.md": "Activity",
+  "docs/architecture/host.md": "Monitor",
+  "docs/architecture/privileged-service.md": "Shield",
+  "docs/architecture/administrator-startup.md": "KeyRound",
+  "docs/architecture/task-manager.md": "ArrowLeftRight",
+  "docs/architecture/frontend.md": "PanelsTopLeft",
+  "docs/design/README.md": "Palette",
+  "docs/design/charts.md": "ChartSpline",
+  "docs/design/window.md": "PanelTop",
+  "docs/design/hotkey.md": "Command",
+  "docs/roadmap.md": "Map",
+  "docs/known-issues.md": "TriangleAlert",
+};
 
-export function documentPage(file, text, base, label) {
-  const path = routeFor(file, base);
-  const source = text.replace(/\r\n/g, "\n");
-  const heading = /^# (.+)$/m.exec(source);
+export function documentPage(file, text, id, { updated = "", label = "" } = {}) {
+  const body = text.replace(/\r\n/g, "\n");
+  const heading = /^# (.+)$/m.exec(body);
   if (!heading) throw Error("Missing document title in " + file);
   const title = heading[1].trim();
-  const afterTitle = source
+  let content = body
     .slice(heading.index + heading[0].length)
-    .trimStart();
-  // The older index starts with an ASCII folder tree. The edition navigation covers that tree.
-  const body =
-    file === "docs/README.md"
-      ? afterTitle.replace(/^`{3}[^\n]*\ndocs\/\n[\s\S]*?\n`{3}\s*/, "")
-      : afterTitle;
+    .trimStart()
+    // Older indexes open with an ASCII folder tree; the sidebar shows the same structure.
+    .replace(/^`{3}[^\n]*\ndocs\/\n[\s\S]*?\n`{3}\s*/, "");
+  // The documentation index becomes cards for each chapter group; keep its introduction.
+  if (file === "docs/README.md") content = content.split(/^## /m)[0].trim() + "\n";
   const lead = markdown
-    .parse(body, {})
+    .parse(content, {})
     .find((t) => t.type === "inline" && t.content.length > 25);
   const summary = lead?.children
     ?.map((t) => t.content)
     .join("")
     .replace(/\s+/g, " ")
     .slice(0, 145);
-  const breadcrumb = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Argus", item: origin + "/" },
-      ...(path === base
-        ? []
-        : [
-            {
-              "@type": "ListItem",
-              position: 2,
-              name: label,
-              item: origin + base,
-            },
-          ]),
-      {
-        "@type": "ListItem",
-        position: path === base ? 2 : 3,
-        name: title,
-        item: origin + path,
-      },
-    ],
+  const front = {
+    // The sidebar and search use the chapter name from the index; the page shows its own title.
+    title: label || title,
+    heading: title,
+    description: summary || title,
+    source: file,
+    updated,
+    // Earlier links to the page used GitHub's fragment for the title.
+    anchor: new GithubSlugger().slug(title),
+    ...(pageIcons[file] && { icon: pageIcons[file] }),
   };
-  const head = [
-    { tag: "title", content: title + " · " + label + " · Argus 文档" },
-    {
-      tag: "script",
-      attrs: { type: "application/ld+json" },
-      content: JSON.stringify(breadcrumb),
-    },
-  ];
-  const front = [
-    "---",
-    "title: " + JSON.stringify(title),
-    "description: " + JSON.stringify(label + " · " + (summary || title)),
-    "head: " + JSON.stringify(head),
-    "---",
-  ];
-  // Starlight owns the visible H1. Preserve the GitHub fragment used by earlier releases.
-  const anchor = new GithubSlugger()
-    .slug(title)
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;");
   return {
-    path,
+    path: routeFor(file, bases[id]),
+    file: contentFile(file, id),
     markdown:
-      front.join("\n") + '\n\n<span id="' + anchor + '"></span>\n\n' + body,
+      "---\n" +
+      Object.entries(front)
+        .map(([key, value]) => key + ": " + JSON.stringify(value))
+        .join("\n") +
+      "\n---\n\n" +
+      content,
   };
 }
 
@@ -120,39 +132,129 @@ export async function workspaceDocuments() {
     .sort();
 }
 
-async function prepareEdition(input, ref, development, label, worktree) {
-  const base = development ? "/docs/dev/" : "/docs/";
-  const names = worktree
-    ? await workspaceDocuments()
-    : git(["ls-tree", "-r", "-z", "--name-only", ref, "--", "docs"])
-        .toString()
-        .split("\0");
-  const routes = {};
-  for (const file of names.filter(
-    (f) => f.endsWith(".md") && !f.endsWith("/AGENTS.md"),
-  )) {
-    const text = worktree
-      ? await readFile(join(root, file), "utf8")
-      : fileAt(ref, file).toString("utf8");
-    const page = documentPage(file, text, base, label);
-    await put(input, "content" + page.path + "index.md", page.markdown);
-    routes[file] = page.path;
+// The documentation index lists every chapter in reading order; the sidebar follows it.
+export function navigation(index, routes) {
+  const groups = [];
+  let group;
+  for (const line of index.replace(/\r\n/g, "\n").split("\n")) {
+    const heading = /^## (.+)$/.exec(line);
+    if (heading) {
+      group = { label: heading[1].trim(), items: [] };
+      groups.push(group);
+      continue;
+    }
+    const item = /^[-*] \[([^\]]+)\]\(([^)#]+)\)(?:\s*[：:]\s*(.+))?/.exec(line);
+    if (!item || !group) continue;
+    const file = posix.normalize(posix.join("docs", item[2]));
+    if (routes[file] && !group.items.some((i) => i.file === file))
+      group.items.push({
+        label: item[1],
+        file,
+        path: routes[file],
+        note: item[3]?.replaceAll("`", "").trim() ?? "",
+      });
   }
-  if (!routes["docs/README.md"])
-    throw Error("Missing " + label + " documentation index");
-  return { ref, label, base, routes, framework: desktopFramework(ref) };
+  const listed = new Set(groups.flatMap((g) => g.items.map((i) => i.file)));
+  const rest = Object.keys(routes).filter(
+    (file) => file !== "docs/README.md" && !listed.has(file),
+  );
+  if (rest.length)
+    groups.push({
+      label: "其他页面",
+      items: rest.map((file) => ({
+        label: file.slice(5, -3),
+        file,
+        path: routes[file],
+        note: "",
+      })),
+    });
+  return groups.filter((g) => g.items.length);
 }
 
-export function prepareDevelopmentEdition(input, worktree) {
-  const source = worktree ? "HEAD" : (process.env.ARGUS_DOCS_DEV_REF ?? "HEAD");
-  const ref = git(["rev-parse", "--verify", source + "^{commit}"])
+// The edition folder's meta.json: a root folder, so the selector at the top of
+// the sidebar lists both editions and moves to the same page in the other one.
+export function editionMeta(edition) {
+  return JSON.stringify(
+    {
+      title: edition.label,
+      description: edition.note,
+      icon: icons[edition.id],
+      root: true,
+      pages: [
+        "index",
+        ...edition.nav.flatMap((group) => [
+          "---" + group.label + "---",
+          ...group.items.map((item) => pageName(item.file)),
+        ]),
+      ],
+    },
+    null,
+    2,
+  );
+}
+
+async function prepareEdition({ id, label, requested, worktree }, written) {
+  const base = bases[id];
+  const ref = git(["rev-parse", "--verify", requested + "^{commit}"])
     .toString()
     .trim();
-  return prepareEdition(input, ref, true, "开发版", worktree);
+  const docs = { ref, worktree };
+  const names = (
+    worktree
+      ? await workspaceDocuments()
+      : git(["ls-tree", "-r", "-z", "--name-only", ref, "--", "docs"])
+          .toString()
+          .split("\0")
+  ).filter((f) => f.startsWith("docs/") && f.endsWith(".md") && !f.endsWith("/AGENTS.md"));
+  const routes = Object.fromEntries(names.map((file) => [file, routeFor(file, base)]));
+  if (!routes["docs/README.md"]) throw Error("Missing " + label + " documentation index");
+  const nav = navigation((await source(docs, "docs/README.md")).toString(), routes);
+  const labels = new Map(nav.flatMap((group) => group.items.map((i) => [i.file, i.label])));
+  // One git call gives the date of the last commit that touched each document in this edition.
+  const updated = {};
+  let date = "";
+  for (const line of git(["log", "--format=%x00%cs", "--name-only", ref, "--", "docs"])
+    .toString()
+    .split("\n")) {
+    if (line.startsWith("\0")) date = line.slice(1);
+    else if (line && !updated[line]) updated[line] = date;
+  }
+  for (const file of names) {
+    const page = documentPage(file, (await source(docs, file)).toString(), id, {
+      updated: updated[file] ?? "",
+      label: file === "docs/README.md" ? "文档首页" : labels.get(file),
+    });
+    await putIfChanged(contentDir, page.file, page.markdown);
+    written.add(join(contentDir, page.file));
+  }
+  const edition = { id, label, note: notes[id], ref, base, folder: folders[id], routes, nav };
+  const meta = "docs/" + folders[id] + "/meta.json";
+  await putIfChanged(contentDir, meta, editionMeta(edition));
+  written.add(join(contentDir, meta));
+  return edition;
 }
 
-function section(source, heading) {
-  const match = source.match(
+// The development edition follows the working tree locally and the deployed main commit in CI.
+export function prepareDevelopmentEdition(written, worktree = !process.env.ARGUS_DOCS_DEV_REF) {
+  return prepareEdition(
+    {
+      id: "dev",
+      label: "开发版",
+      requested: worktree ? "HEAD" : process.env.ARGUS_DOCS_DEV_REF,
+      worktree,
+    },
+    written,
+  );
+}
+export function prepareStableEdition(written, release) {
+  return prepareEdition(
+    { id: "stable", label: "稳定版 " + release.tag, requested: release.tag, worktree: false },
+    written,
+  );
+}
+
+function section(text, heading) {
+  const match = text.match(
     new RegExp(
       "^## [^\\n]*" + heading + "[^\\n]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))",
       "im",
@@ -161,8 +263,8 @@ function section(source, heading) {
   if (!match) throw Error("Missing Markdown section: " + heading);
   return match[1].trim();
 }
-function render(source, rewrite) {
-  const tokens = markdown.parse(source, {});
+function render(text, rewrite) {
+  const tokens = markdown.parse(text, {});
   for (const token of tokens)
     for (const part of token.children ?? []) {
       if (part.type === "link_open")
@@ -171,196 +273,206 @@ function render(source, rewrite) {
   return markdown.renderer.render(tokens, markdown.options, {});
 }
 
-export async function prepareContent(
-  input,
-  release,
-  { worktree = false } = {},
-) {
+// Release notes of the published versions, newest first, as CHANGELOG.md and
+// CHANGELOG.en.md read at the stable tag: each version's intro and its groups
+// of labelled entries, in plain text for summaries and as HTML with links.
+const plain = (text) =>
+  text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+const groupKinds = [
+  ["feature", /^(新功能|功能|Features)$/i],
+  ["fix", /^(修复|Fixes)$/i],
+  ["performance", /^(性能|Performance)$/i],
+  ["breaking", /^(破坏性变更|Breaking changes)$/i],
+  ["upgrade", /^(升级提示|Upgrading)$/i],
+  ["known", /^(已知问题|已知限制|Known issues|Known limitations)$/i],
+];
+function inline(text, rewrite) {
+  const tokens = markdown.parseInline(text, {});
+  for (const token of tokens)
+    for (const part of token.children ?? [])
+      if (part.type === "link_open") part.attrSet("href", rewrite(part.attrGet("href")));
+  return markdown.renderer.render(tokens, markdown.options, {});
+}
+export function releaseNotes(text, tag) {
+  const rewrite = (href) =>
+    /^[a-z]+:/i.test(href) || href.startsWith("#") ? href : repo + "/blob/" + tag + "/" + href;
+  return text
+    .replace(/\r\n/g, "\n")
+    .split(/^## /m)
+    .slice(1)
+    .map((part) => {
+      const [head, ...lines] = part.split("\n");
+      const match = /^\[?(\d+\.\d+\.\d+)\]?(?:\(([^)]*)\))?\s+-\s+(\d{4}-\d{2}-\d{2})/.exec(head);
+      if (!match) throw Error("Unreadable changelog heading: " + head);
+      const intro = [],
+        groups = [];
+      let notice = "",
+        group = null;
+      for (const line of lines) {
+        const heading = /^### (.+)$/.exec(line);
+        const item = /^[-*] (?:\*\*([^*]+)\*\*\s*[：:]\s*)?(.+)$/.exec(line);
+        if (heading) {
+          const title = heading[1].trim();
+          groups.push((group = { title, kind: groupKinds.find(([, p]) => p.test(title))?.[0] ?? "other", items: [] }));
+        } else if (group && item) group.items.push({ label: item[1]?.trim() ?? "", md: item[2] });
+        else if (group && /^\s+\S/.test(line) && group.items.length) group.items.at(-1).md += " " + line.trim();
+        else if (!group && line.trim())
+          // A paragraph in bold alone is a notice, such as a withdrawn release.
+          if (/^\*\*[^*]+\*\*$/.test(line.trim())) notice = plain(line);
+          else intro.push(line.trim());
+      }
+      return {
+        version: match[1],
+        date: match[3],
+        compare: match[2] ?? "",
+        notice,
+        withdrawn: /撤回|withdrawn/i.test(notice),
+        intro: plain(intro.join(" ")),
+        introHtml: intro.length ? inline(intro.join(" "), rewrite) : "",
+        groups: groups.map((g) => ({
+          ...g,
+          items: g.items.map(({ label, md }) => ({ label, text: plain(md), html: inline(md, rewrite) })),
+        })),
+      };
+    });
+}
+
+// Commits per day over the five weeks up to the documented development commit.
+function activity(ref) {
+  const dates = git(["log", "--format=%cs", ref]).toString().trim().split("\n");
+  const counts = new Map();
+  for (const date of dates) counts.set(date, (counts.get(date) ?? 0) + 1);
+  const first = dates.at(-1),
+    end = Date.parse(dates[0] + "T00:00:00Z");
+  const days = [];
+  for (let i = 34; i >= 0; i--) {
+    const day = new Date(end - i * 86400000).toISOString().slice(0, 10);
+    if (day >= first) days.push([day, counts.get(day) ?? 0]);
+  }
+  return { total: dates.length, first, days };
+}
+
+// GitHub's figures for the repository, fetched at most hourly; without the
+// network the last ones fetched stand in, and the pages leave them out when
+// there are none.
+async function repository() {
+  const cache = join(workDir, "cache");
+  let cached = null;
+  try {
+    cached = JSON.parse(await readFile(join(cache, "repository.json"), "utf8"));
+  } catch {}
+  if (cached && Date.now() - Date.parse(cached.checked) < 3600000) return cached;
+  try {
+    const stats = await repositoryStats();
+    await putIfChanged(cache, "repository.json", JSON.stringify(stats));
+    return stats;
+  } catch (error) {
+    console.warn("[website] GitHub repository figures unavailable: " + error.message);
+    return cached;
+  }
+}
+
+// Link previews and the English first screen use the documented build's process page.
+async function previews(at) {
+  const cache = join(workDir, "cache", "previews");
+  for (const lang of ["zh", "en"])
+    for (const theme of ["dark", "light"]) {
+      const png = await source(at, "docs/images/screenshot-" + (lang === "en" ? "en-" : "") + theme + ".png");
+      const name = "preview-" + lang + "-" + theme;
+      if (theme === "dark") await putIfChanged(assetsDir, name + ".png", png);
+      const key = createHash("sha256").update(png).digest("hex").slice(0, 24) + "-1280.webp";
+      let webp;
+      try {
+        webp = await readFile(join(cache, key));
+      } catch {
+        webp = await sharp(png)
+          .resize({ width: 1280, height: 800, fit: "fill" })
+          .webp({ quality: 90 })
+          .toBuffer();
+        await putIfChanged(cache, key, webp);
+      }
+      await putIfChanged(assetsDir, name + "-1280.webp", webp);
+    }
+}
+
+export async function prepareContent(release, { worktree = !process.env.ARGUS_DOCS_DEV_REF } = {}) {
+  const written = new Set();
   const editions = [
-    await prepareEdition(input, release.tag, false, "稳定版 " + release.tag),
-    await prepareDevelopmentEdition(input, worktree),
+    await prepareStableEdition(written, release),
+    await prepareDevelopmentEdition(written, worktree),
   ];
+  const docs = editions[1];
+  // The download page and the English capture describe the build about to ship, as main does.
+  const at = { ref: docs.ref, worktree };
   const privacy = await readFile(join(root, "PRIVACY.md"), "utf8");
   const translations = {};
-  const publicDir = join(input, "public");
-  await put(
-    publicDir,
-    "assets/argus.svg",
-    await readFile(join(root, "resources/logo.svg")),
-  );
   for (const lang of ["zh", "en"]) {
     const en = lang === "en";
     const prefix = en ? "/en" : "";
-    const readme = en ? "README.en.md" : "README.md";
-    for (const edition of editions) {
-      const dev = edition.base === "/docs/dev/";
-      const imagePath =
-        "docs/images/screenshot-" +
-        (en ? "en-" : "") +
-        (dev ? "dark" : "light") +
-        ".png";
-      const preview = sharp(
-        dev && worktree
-          ? await readFile(join(root, imagePath))
-          : fileAt(edition.ref, imagePath),
-      );
-      const { width, height } = await preview.metadata();
-      const cover = await preview
-        .extract({
-          left: 0,
-          top: Math.round(height * 0.07),
-          width: Math.round(width * 0.81),
-          height: Math.round(height * 0.34),
-        })
-        .resize({ width: 820 })
-        .webp({ quality: 87 })
-        .toBuffer();
-      await put(
-        publicDir,
-        "assets/handbook-" + lang + "-" + (dev ? "dev" : "stable") + ".webp",
-        cover,
-      );
-    }
-    const current = await readFile(join(root, readme), "utf8");
-    const stable = fileAt(release.tag, readme).toString("utf8");
-    const requirements = section(
-      stable,
-      en ? "System requirements" : "系统要求",
-    );
+    const readme = (await source(at, en ? "README.en.md" : "README.md")).toString();
+    const requirements = section(readme, en ? "System requirements" : "系统要求");
     translations[lang] = {
       operatingSystem:
         requirements
-          .match(
-            /^[-*]\s+\*\*(?:Operating system|操作系统)\*\*\s*[:：]\s*(.+)$/im,
-          )?.[1]
+          .match(/^[-*]\s+\*\*(?:Operating system|操作系统)\*\*\s*[:：]\s*(.+)$/im)?.[1]
           ?.trim() ?? "Windows x64",
       requirements: render(requirements, (href) => {
         const [target, fragment] = href.split("#");
-        return editions[0].routes[target]
-          ? editions[0].routes[target] + (fragment ? "#" + fragment : "")
+        return docs.routes[target]
+          ? docs.routes[target] + (fragment ? "#" + fragment : "")
           : href;
       }),
       privacy: render(section(privacy, en ? "English" : "简体中文"), (href) =>
         href.startsWith("docs/") ? repo + "/blob/main/" + href : href,
       ),
-      signing: render(section(current, "code signing policy"), (href) =>
+      signing: render(section(readme, "code signing policy"), (href) =>
         href.startsWith("PRIVACY.md") ? prefix + "/privacy/" : href,
       ),
     };
-    for (const theme of ["dark", "light"]) {
-      const capture =
-        "docs/images/screenshot-" + (en ? "en-" : "") + theme + ".png";
-      const png = worktree
-        ? await readFile(join(root, capture))
-        : fileAt(editions[1].ref, capture);
-      const asset = "assets/preview-" + lang + "-" + theme;
-      await put(publicDir, asset + ".png", png);
-      const { width, height } = await sharp(png).metadata();
-      // All interactive views use the same development capture and recorded workload.
-      for (const [scene, box] of Object.entries({
-        window: null,
-        processes: [0.011, 0.285, 0.64, 0.64],
-        signals: [0.011, 0.115, 0.47, 0.47],
-      })) {
-        const image = sharp(png);
-        if (box) {
-          image.extract({
-            left: Math.round(width * box[0]),
-            top: Math.round(height * box[1]),
-            width: Math.round(width * box[2]),
-            height: Math.round(height * box[3]),
-          });
-          await put(
-            publicDir,
-            asset + "-" + scene + ".webp",
-            await image
-              .clone()
-              .resize({ width: 1050, withoutEnlargement: true })
-              .webp({ quality: 94, nearLossless: true })
-              .toBuffer(),
-          );
-        }
-        await put(
-          publicDir,
-          asset + "-thumb-" + scene + ".webp",
-          await image.resize({ width: 200 }).webp({ quality: 82 }).toBuffer(),
-        );
-      }
-      const region = Math.round(width * 0.36);
-      const detail = await sharp(png)
-        .extract({
-          left: 0,
-          top: Math.round(height * 0.08),
-          width: region,
-          height: Math.min(Math.round(region / 1.62), Math.floor(height * 0.9)),
-        })
-        .resize({ width: 760, withoutEnlargement: true })
-        .webp({ quality: 94, nearLossless: true })
-        .toBuffer();
-      await put(publicDir, asset + "-detail.webp", detail);
-      if (theme === "light") {
-        const rows = sharp(png).extract({
-          left: Math.round(width * 0.016),
-          top: Math.round(height * 0.37),
-          width: Math.round(width * 0.47),
-          height: Math.round(height * 0.24),
-        });
-        await put(
-          publicDir,
-          "assets/process-list-" + lang + ".webp",
-          await rows.webp({ quality: 94, nearLossless: true }).toBuffer(),
-        );
-      }
-      for (const width of [720, 1280]) {
-        await put(
-          publicDir,
-          asset + "-" + width + ".webp",
-          await sharp(png)
-            .resize({ width, withoutEnlargement: true })
-            .webp({ quality: 92, nearLossless: true })
-            .toBuffer(),
-        );
-      }
-    }
   }
+  await putIfChanged(assetsDir, "argus.svg", await readFile(join(root, "resources/logo.svg")));
+  // Browsers ask for /favicon.ico regardless of the declared icon.
+  await putIfChanged(join(websiteRoot, "public"), "favicon.ico", await readFile(join(root, "resources/icons/icon.ico")));
+  await putIfChanged(
+    assetsDir,
+    "geist-license.txt",
+    await readFile(new URL("./LICENSE", import.meta.resolve("@fontsource-variable/geist"))),
+  );
+  await previews(at);
   const contact = JSON.parse(
     await readFile(join(websiteRoot, "public-settings.json"), "utf8"),
   ).emailRoutingVerified;
-  await copyFile(
-    new URL("./LICENSE", import.meta.resolve("@fontsource-variable/geist")),
-    join(publicDir, "assets/geist-license.txt"),
-  );
-  await put(
-    input,
+  // Root folders are listed in the order of the switcher.
+  await putIfChanged(contentDir, "docs/meta.json", JSON.stringify({ title: "文档", pages: editions.map((e) => e.folder) }, null, 2));
+  written.add(join(contentDir, "docs/meta.json"));
+  await prune(join(contentDir, "docs"), written);
+  const changelog = {};
+  for (const lang of ["zh", "en"])
+    changelog[lang] = releaseNotes(
+      fileAt(release.tag, lang === "en" ? "CHANGELOG.en.md" : "CHANGELOG.md").toString(),
+      release.tag,
+    );
+  await putIfChanged(
+    contentDir,
     "site.json",
-    JSON.stringify({ release, translations, editions, contact }),
+    JSON.stringify(
+      {
+        format: siteFormat,
+        release,
+        translations,
+        editions,
+        contact,
+        changelog,
+        activity: activity(docs.ref),
+        repository: await repository(),
+      },
+      null,
+      2,
+    ),
   );
-  await copyFile(
-    join(websiteRoot, "src/components/magicui/LICENSE"),
-    join(publicDir, "assets/magicui-license.txt"),
-  );
-  const expires = new Date(Date.now() + 350 * 86400000)
-    .toISOString()
-    .replace(/\.\d{3}Z$/, "Z");
-  await put(
-    publicDir,
-    ".well-known/security.txt",
-    "Contact: " +
-      repo +
-      "/security/advisories/new\n" +
-      (contact ? "Contact: mailto:security@argustask.com\n" : "") +
-      "Expires: " +
-      expires +
-      "\nCanonical: " +
-      origin +
-      "/.well-known/security.txt\nPolicy: " +
-      origin +
-      "/security/\nPreferred-Languages: zh, en\n",
-  );
-  await put(
-    publicDir,
-    "robots.txt",
-    "User-agent: *\nAllow: /\nSitemap: " + origin + "/sitemap.xml\n",
-  );
-  await cp(join(websiteRoot, "public"), publicDir, { recursive: true });
+  return { editions };
 }

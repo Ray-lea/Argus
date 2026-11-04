@@ -14,6 +14,8 @@
   Cache-Control: public, max-age=300, no-transform
 /download/*
   Cache-Control: public, max-age=300, no-transform
+/changelog/*
+  Cache-Control: public, max-age=300, no-transform
 /questions/*
   Cache-Control: public, max-age=300, no-transform
 /privacy/*
@@ -22,14 +24,15 @@
   Cache-Control: public, max-age=300, no-transform
 /security/*
   Cache-Control: public, max-age=300, no-transform
-/search/*
-  Cache-Control: public, max-age=300, no-transform
 /404.html
   Cache-Control: public, max-age=300, no-transform
 
-/_astro/*
+/_next/static/*
   Cache-Control: public, max-age=31536000, immutable
 /assets/*
   Cache-Control: public, max-age=300
-/pagefind/pagefind-entry.json
-  Cache-Control: public, max-age=0, must-revalidate
+/docs-search.json
+  Cache-Control: public, max-age=300
+/llms.mdx/*
+  Cache-Control: public, max-age=300
+  Content-Type: text/markdown; charset=utf-8

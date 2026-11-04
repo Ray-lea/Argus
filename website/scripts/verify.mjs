@@ -36,9 +36,7 @@ function inspectPage(source) {
     schemas = [];
   let canonical,
     policy,
-    themeBoot = false,
-    themePicker = false,
-    editionMenu = false;
+    themeBoot = false;
   const executableHashes = [],
     scriptSources = [];
   function walk(node) {
@@ -46,19 +44,15 @@ function inspectPage(source) {
       (node.attrs ?? []).map((a) => [a.name, a.value]),
     );
     if (attrs.id) ids.add(attrs.id);
+    // next-themes applies the stored theme before the first paint.
     if (
       node.tagName === "script" &&
-      attrs.src &&
-      node.parentNode?.tagName === "head" &&
-      "data-site-theme-init" in attrs
+      !attrs.src &&
+      node.childNodes.some((n) => n.value?.includes("argus-theme"))
     )
       themeBoot = true;
-    if (node.tagName === "select" && "data-site-theme" in attrs)
-      themePicker = true;
-    if (node.tagName === "details" && "data-edition-menu" in attrs)
-      editionMenu = true;
     if (node.tagName === "script" && attrs.src) scriptSources.push(attrs.src);
-    for (const key of ["href", "src", "component-url", "renderer-url"])
+    for (const key of ["href", "src"])
       if (attrs[key]) links.push(attrs[key]);
     if (attrs.srcset && !attrs.srcset.startsWith("data:")) {
       for (const item of attrs.srcset.split(","))
@@ -103,15 +97,10 @@ function inspectPage(source) {
     executableHashes,
     scriptSources,
     themeBoot,
-    themePicker,
-    editionMenu,
   };
 }
 function checkPageShell(page, url) {
-  assert(
-    page.themeBoot && page.themePicker && page.editionMenu,
-    url + ": missing theme or documentation navigation",
-  );
+  assert(page.themeBoot, url + ": missing theme script");
   const policy = page.policy
     ?.split(";")
     .find((d) => d.trim().startsWith("script-src "));
@@ -161,7 +150,7 @@ async function local() {
   for (const path of [
     "",
     "download/",
-    "questions/",
+    "changelog/",
     "security/",
     "privacy/",
     "signing/",
@@ -185,27 +174,36 @@ async function local() {
   const { editions } = JSON.parse(
     await readFile(join(dist, "input/site.json"), "utf8"),
   );
-  for (const edition of editions)
+  assert.deepEqual(
+    editions.map((edition) => edition.base),
+    ["/docs/", "/docs/dev/"],
+  );
+  for (const edition of editions) {
+    const index = pages.get(edition.base.slice(1) + "index.html");
     for (const url of Object.values(edition.routes)) {
       const page = pages.get(url.slice(1) + "index.html");
       assert(page, "Missing document " + url);
       assert.equal(page.canonical, origin + url);
-      const index = pages.get(edition.base.slice(1) + "index.html");
       assert(
         index.links.includes(url),
         "Document missing from navigation: " + url,
       );
-      assert(
-        page.schemas.some((s) => s["@type"] === "BreadcrumbList"),
-        url,
-      );
+      assert(page.schemas.some((s) => s["@type"] === "BreadcrumbList"), url);
+      // "Copy Markdown" and "View as Markdown" read this file.
+      assert(siteFiles.has("llms.mdx" + url + "content.md"), "Missing Markdown for " + url);
     }
+  }
+  const moved = await readFile(join(dir, "_redirects"), "utf8");
+  for (const from of ["/questions/", "/en/questions/", "/search/"])
+    assert(
+      moved.split("\n").some((line) => line.startsWith(from + " ")),
+      "Missing redirect for " + from,
+    );
+  // The search dialog filters by edition; both must be in the exported index.
+  const search = await readFile(join(dir, "docs-search.json"), "utf8");
   assert(
-    siteFiles.has("pagefind/pagefind.js") &&
-      [...siteFiles].some(
-        (f) => f.startsWith("pagefind/") && f.endsWith(".pf_index"),
-      ),
-    "Missing Pagefind index",
+    search.includes('"stable"') && search.includes('"dev"'),
+    "The search index is missing an edition",
   );
   assert(
     siteFiles.has("sitemap.xml") && siteFiles.has(".well-known/security.txt"),
@@ -269,7 +267,7 @@ async function online(service) {
               [origin + "/en/download/", null],
               [origin + "/docs/guide/", null],
               [origin + "/docs/dev/", null],
-              [origin + "/pagefind/pagefind.js", null],
+              [origin + "/docs-search.json", null],
               [origin + "/.well-known/security.txt", null],
             ];
   for (const [url, hash, mirrored] of targets) {
@@ -314,8 +312,8 @@ async function online(service) {
                     body.includes(
                       "https://github.com/Ray-lea/Argus/security/advisories/new",
                     )
-                : url.endsWith("pagefind.js")
-                  ? body.includes("search")
+                : url.endsWith("docs-search.json")
+                  ? body.includes('"dev"')
                   : body.includes("Argus") && body.includes("<main"),
             );
           }
