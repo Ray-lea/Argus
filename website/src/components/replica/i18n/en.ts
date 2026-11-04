@@ -583,6 +583,9 @@ export const exact: Record<string, string> = {
   "单击托盘图标显示窗口，也可按 Ctrl+Alt+Esc": "Click the tray icon to show the window, or press Ctrl+Alt+Esc",
   "演示已暂停，可直接操作窗口": "Demo paused; the window is yours to use",
   "界面演示 · 模拟数据": "Interface demo · simulated data",
+  "关于此演示": "About this demo",
+  "此演示在网页中重现 Argus 的界面与交互，仅供参考。受浏览器技术所限，动画、流畅度与细节可能不及实际程序，新版本的功能也可能尚未同步。请以实际程序为准。":
+    "This demo recreates Argus's interface and interactions in the browser, for reference only. Browser limits mean its animation, smoothness and details may fall short of the app itself, and features from new releases may not be in it yet. The app itself is what counts.",
   "暂停": "Pause",
   "播放演示": "Play demo",
   "演示章节": "Demo chapters",

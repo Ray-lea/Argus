@@ -710,6 +710,80 @@
   background: var(--accent);
   color: var(--on-accent);
 }
+/* What the demo is, in a tip above the bar: under the pointer, on focus, or tapped. */
+.tour-note {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  margin-right: -4px;
+}
+.tour-chip .tour-note-button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-3);
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+.tour-chip .tour-note-button:hover,
+.tour-note[data-open] .tour-note-button {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.tour-note-tip {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  z-index: 20;
+  width: 300px;
+  padding: 10px 12px;
+  border: 1px solid var(--stroke-2);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-solid) 94%, transparent);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.24);
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  white-space: normal;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity 160ms ease,
+    transform 220ms var(--ease),
+    visibility 0s linear 220ms;
+  pointer-events: none;
+}
+/* The tip's pointer, down to the button. */
+.tour-note-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-right: 1px solid var(--stroke-2);
+  border-bottom: 1px solid var(--stroke-2);
+  background: inherit;
+  transform: rotate(45deg);
+}
+.tour-note:hover .tour-note-tip,
+.tour-note-button:focus-visible + .tour-note-tip,
+.tour-note[data-open] .tour-note-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition:
+    opacity 160ms ease,
+    transform 220ms var(--ease),
+    visibility 0s;
+}
 
 /* Entrance: the copy rises, the window opens the way Windows 11 opens one. */
 @media (prefers-reduced-motion: no-preference) {

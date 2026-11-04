@@ -189,6 +189,8 @@ export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
   const [start, setStart] = useState({ chapter: 0, at: 0 });
   const touched = useRef(false);
   const [full, setFull] = useState(false);
+  // The note on what the demo is: shown under the pointer or focus, and on a tap.
+  const [note, setNote] = useState(false);
   const { request } = useShared();
   // A comparison row asked the window to show a page: the visitor has taken over.
   useEffect(() => {
@@ -359,6 +361,25 @@ export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
           <span className="tour-dot" aria-hidden="true" />
           <span className="tour-text" aria-live="polite">
             {playing ? label : mode === "paused" ? "演示已暂停，可直接操作窗口" : "界面演示 · 模拟数据"}
+          </span>
+          <span className="tour-note" data-open={note ? "" : undefined}>
+            <button
+              type="button"
+              className="tour-note-button"
+              aria-label="关于此演示"
+              aria-describedby="tour-note"
+              aria-expanded={note}
+              onClick={() => setNote(!note)}
+              onBlur={() => setNote(false)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v5.5M12 7.6v.1" />
+              </svg>
+            </button>
+            <span className="tour-note-tip" role="tooltip" id="tour-note">
+              此演示在网页中重现 Argus 的界面与交互，仅供参考。受浏览器技术所限，动画、流畅度与细节可能不及实际程序，新版本的功能也可能尚未同步。请以实际程序为准。
+            </span>
           </span>
           <button
             type="button"
