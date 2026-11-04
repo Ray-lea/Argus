@@ -2,10 +2,14 @@
   position: relative;
   pointer-events: none;
 }
+/* clip-path, not overflow: the scrolling track is a compositor layer, and an
+   overflow clip lets it bleed into the next screen pixel in some frames, which
+   in the scaled demo is often a divider or a border. Curve.tsx puts the clip's
+   edges on whole screen pixels. */
 .curve-clip {
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  clip-path: inset(0);
 }
 .curve-track {
   position: absolute;

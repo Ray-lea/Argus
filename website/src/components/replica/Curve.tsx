@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 export interface Series {
   values: number[];
@@ -105,6 +105,41 @@ export default function Curve({
 }: Props) {
   const id = useId().replace(/:/g, "");
   const track = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const clip = useRef<HTMLDivElement>(null);
+  // The demo is drawn scaled, so a curve's box seldom starts or ends on a whole
+  // screen pixel. Its clip keeps to the screen pixels wholly inside the box:
+  // the curve never shares a pixel with the divider or border beside it (which
+  // it would paint over in some frames and not in others as it scrolls), and it
+  // ends on a crisp column, as in the app. Each sample re-renders the curve, so
+  // a move that changes no size is caught within one interval.
+  const snap = useCallback(() => {
+    const outer = box.current,
+      inner = clip.current;
+    if (!outer || !inner || !outer.offsetWidth) return;
+    const r = outer.getBoundingClientRect(),
+      ratio = devicePixelRatio,
+      k = r.width / outer.offsetWidth;
+    const left = r.left * ratio,
+      right = r.right * ratio;
+    // A hair inside the whole pixel: an edge a rounding error past it is
+    // rounded out to the neighbouring pixel.
+    const inset = (px: number) => ((px + 0.05) / ratio / k).toFixed(3) + "px";
+    inner.style.left = inset(Math.ceil(left - 0.001) - left);
+    inner.style.right = inset(right - Math.floor(right + 0.001));
+  }, []);
+  useLayoutEffect(snap);
+  useEffect(() => {
+    const outer = box.current;
+    if (!outer) return;
+    const observer = new ResizeObserver(snap);
+    observer.observe(outer);
+    addEventListener("resize", snap);
+    return () => {
+      observer.disconnect();
+      removeEventListener("resize", snap);
+    };
+  }, [snap]);
   const count = series[0]?.values.length ?? 2;
   const margin = count >= 2 * MARGIN + 4 ? MARGIN : 0;
   const drawn = Math.max(2, count - 1);
@@ -171,6 +206,7 @@ export default function Curve({
 
   return (
     <div
+      ref={box}
       className={"curve " + (readout ? "is-readout " : "") + (className ?? "")}
       role={label ? "img" : undefined}
       aria-label={label}
@@ -184,7 +220,7 @@ export default function Curve({
       }
       onPointerLeave={readout ? () => setHover(null) : undefined}
     >
-      <div className="curve-clip">
+      <div className="curve-clip" ref={clip}>
         <div className="curve-track" ref={track} style={{ width: `${(drawn / shown) * 100}%`, transform: at(1) }}>
           <svg viewBox={`0 0 ${drawn} 100`} preserveAspectRatio="none" aria-hidden="true">
             <defs>

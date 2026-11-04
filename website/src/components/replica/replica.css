@@ -1072,16 +1072,6 @@
 .a-vital:last-child .a-vital-plot {
   right: 8px;
 }
-/* Unlike the app, the demo is drawn scaled, so each divider lands on a
-   fractional pixel. A curve running up to it would share that pixel and, as it
-   scrolls, paint over the line in some frames and not in others; between
-   cards the plots stop 2px short of the divider instead. */
-.a-vital + .a-vital .a-vital-plot {
-  left: 2px;
-}
-.a-vital:not(:last-child) .a-vital-plot {
-  right: 2px;
-}
 .a-vital-plot .curve {
   position: absolute;
   inset: 0;
