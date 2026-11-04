@@ -1,5 +1,33 @@
 /* Inner pages: download. The app's mark and the release up top, the two
    packages side by side, the first steps, then notes, requirements and checks. */
+
+/* The head of the download and changelog pages as the page opens: the title
+   and the lead are there at once (faded in, they would hold back the page's
+   first paint), the mark grows in and the release facts and actions rise in
+   after them. */
+@media (prefers-reduced-motion: no-preference) {
+  .dl-hero > .cta-mark {
+    animation: mark-in 760ms var(--ease) both;
+  }
+  :is(.dl-meta, .cl-facts, .cl-actions) {
+    animation: head-in 560ms var(--ease) 120ms both;
+  }
+  .cl-actions {
+    animation-delay: 200ms;
+  }
+}
+@keyframes head-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes mark-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+}
 .dl-hero {
   display: grid;
   justify-items: center;
@@ -28,6 +56,7 @@
 }
 .dl-meta li {
   display: inline-flex;
+  transition: border-color 160ms ease;
   align-items: center;
   gap: 7px;
   height: 30px;
@@ -37,6 +66,9 @@
   background: var(--surface);
   color: var(--ink-2);
   font-size: 0.8125rem;
+}
+.dl-meta li:hover {
+  border-color: var(--stroke-2);
 }
 .dl-meta a {
   display: inline-flex;
@@ -69,10 +101,15 @@
   background: var(--surface);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
   backdrop-filter: blur(24px);
-  transition: border-color 200ms ease;
+  transition:
+    border-color 200ms ease,
+    transform 320ms var(--ease),
+    box-shadow 320ms var(--ease);
 }
 .package:hover {
   border-color: var(--stroke-2);
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px -24px rgb(0 0 0 / 0.45);
 }
 .package.is-primary {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke));
@@ -99,6 +136,12 @@
   background: var(--surface-2);
   color: var(--ink);
 }
+.package-icon svg {
+  transition: transform 420ms var(--ease);
+}
+.package:hover .package-icon svg {
+  transform: translateY(-2px) rotate(-4deg);
+}
 .package.is-primary .package-icon {
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -124,6 +167,22 @@
 .package-points li {
   display: flex;
   gap: 10px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .package:hover .package-points svg {
+    animation: point-tick 420ms var(--ease) both;
+  }
+  .package:hover .package-points li:nth-child(2) svg {
+    animation-delay: 60ms;
+  }
+  .package:hover .package-points li:nth-child(3) svg {
+    animation-delay: 120ms;
+  }
+}
+@keyframes point-tick {
+  40% {
+    transform: scale(1.25);
+  }
 }
 .package-points svg {
   flex: none;
@@ -234,6 +293,13 @@
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   background: var(--surface);
+  transition:
+    border-color 200ms ease,
+    transform 320ms var(--ease);
+}
+.dl-steps li:hover {
+  border-color: var(--stroke-2);
+  transform: translateY(-2px);
 }
 .dl-steps li p {
   color: var(--ink-2);
@@ -254,6 +320,13 @@
   color: var(--accent-text);
   font-size: 0.875rem;
   font-weight: 600;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
+}
+.dl-steps li:hover .dl-step-number {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 /* Notes of this release and the earlier ones beside the requirements and checks. */
@@ -298,6 +371,20 @@
   gap: 14px;
   padding: 8px 0;
   font-size: 0.9375rem;
+}
+.dl-history a::after {
+  content: "→";
+  display: inline-block;
+  margin-left: 6px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity 160ms ease,
+    transform 220ms var(--ease);
+}
+.dl-history a:hover::after {
+  opacity: 1;
+  transform: none;
 }
 .dl-history li + li {
   border-top: 1px solid var(--stroke);
@@ -391,7 +478,10 @@
   padding: 0;
   list-style: none;
 }
-.cl-nav ol::before {
+/* The line, filled in the accent down to the release being read, where a dot
+   rests; the dot slides along it as the reading moves on. */
+.cl-nav::before,
+.cl-nav-fill {
   content: "";
   position: absolute;
   top: 12px;
@@ -399,6 +489,26 @@
   left: 4.5px;
   width: 1px;
   background: var(--stroke-2);
+}
+.cl-nav-fill {
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  transform-origin: top;
+  transition: transform 420ms var(--ease);
+}
+.cl-nav-dot {
+  position: absolute;
+  top: 0;
+  left: 1px;
+  z-index: 1;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--bg);
+  border-radius: 50%;
+  background: var(--accent);
+  box-sizing: content-box;
+  box-shadow: 0 0 0 4px var(--glow);
+  transition: transform 420ms var(--ease);
+  pointer-events: none;
 }
 .cl-nav a {
   position: relative;
@@ -435,9 +545,12 @@
 .cl-nav a[aria-current] {
   color: var(--ink);
 }
-.cl-nav a[aria-current]::before {
+.cl-nav:not([data-ready]) a[aria-current]::before {
   background: var(--accent);
   box-shadow: 0 0 0 4px var(--glow);
+}
+.cl-nav a[data-read]::before {
+  background: color-mix(in srgb, var(--accent) 55%, var(--ink-3));
 }
 .cl-nav b {
   font-weight: 600;
@@ -452,25 +565,173 @@
   color: var(--ink-3);
   font-size: 0.6875rem;
 }
+.cl-main {
+  display: grid;
+  gap: 28px;
+  min-width: 0;
+}
 .cl-list {
   display: grid;
   min-width: 0;
 }
+
+/* The kinds of entries to show, as a segmented control with a sliding pill. */
+.cl-filter {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  justify-self: start;
+  max-width: 100%;
+  padding: 3px;
+  overflow-x: auto;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: var(--surface);
+  scroll-margin-top: calc(var(--header) + 24px);
+  scrollbar-width: none;
+}
+.cl-filter button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+.cl-filter button:hover,
+.cl-filter button[aria-checked="true"] {
+  color: var(--ink);
+}
+.cl-filter button[data-kind]::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--kind, var(--ink-3));
+}
+.cl-filter [data-kind="feature"] {
+  --kind: var(--series-net);
+}
+.cl-filter [data-kind="fix"] {
+  --kind: var(--series-cpu);
+}
+.cl-filter [data-kind="performance"] {
+  --kind: var(--series-io);
+}
+.cl-filter [data-kind="breaking"] {
+  --kind: var(--series-gpu);
+}
+.cl-filter [data-kind="upgrade"] {
+  --kind: var(--series-mem);
+}
+.cl-filter small {
+  color: var(--ink-3);
+  font-size: 0.75rem;
+}
+/* Before the script has measured the pill, the chosen option has its own face. */
+.cl-filter:not(:has(.cl-filter-pill)) button[aria-checked="true"],
+.cl-filter-pill {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--stroke-2);
+}
+.cl-filter-pill {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: 999px;
+  transition:
+    transform 340ms var(--ease),
+    width 340ms var(--ease);
+}
+
 .cl-release {
+  position: relative;
   display: grid;
   gap: 18px;
   padding: 0 0 clamp(48px, 6vw, 72px);
   scroll-margin-top: calc(var(--header) + 32px);
 }
-.cl-release + .cl-release {
+/* A rule between releases; with some hidden by the filter, between the shown ones. */
+.cl-release:not([hidden]) ~ .cl-release {
   padding-top: clamp(40px, 5vw, 56px);
   border-top: 1px solid var(--stroke);
 }
 .cl-release-head {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 14px;
+}
+/* A link to the release, offered beside its date under the pointer. */
+.cl-copy {
+  width: 26px;
+  height: 26px;
+  margin-left: -6px;
+  border-color: transparent;
+  opacity: 0;
+  transition:
+    opacity 160ms ease,
+    color 120ms ease,
+    background-color 120ms ease;
+}
+.cl-release-head:hover .cl-copy,
+.cl-copy:focus-visible,
+.cl-copy.is-done {
+  opacity: 1;
+}
+@media (hover: none) {
+  .cl-copy {
+    opacity: 1;
+  }
+}
+/* A release chosen in the index lights up as the page arrives at it. */
+@media (prefers-reduced-motion: no-preference) {
+  .cl-release.is-arrived .cl-release-head h2 a {
+    animation: cl-arrive 1.6s var(--ease);
+  }
+  .cl-release.is-arrived .cl-release-head::before {
+    content: "";
+    position: absolute;
+    top: 0.35em;
+    bottom: 0.35em;
+    left: -18px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    transform-origin: top;
+    animation: cl-arrive-bar 1.6s var(--ease) both;
+  }
+}
+@keyframes cl-arrive {
+  from {
+    color: var(--accent-text);
+  }
+}
+@keyframes cl-arrive-bar {
+  from {
+    opacity: 1;
+    transform: scaleY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+  }
 }
 .cl-release-head h2 {
   font-family: var(--display);
@@ -593,10 +854,13 @@
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
-  transition: border-color 200ms ease;
+  transition:
+    border-color 200ms ease,
+    transform 320ms var(--ease);
 }
 .cl-cards li:hover {
   border-color: color-mix(in srgb, var(--kind) 40%, var(--stroke-2));
+  transform: translateY(-2px);
 }
 .cl-cards b {
   color: var(--ink);
@@ -629,6 +893,16 @@
   height: 6px;
   border-radius: 50%;
   background: var(--kind);
+  transition: transform 220ms var(--ease);
+}
+.cl-items li {
+  transition: color 160ms ease;
+}
+.cl-items li:hover {
+  color: var(--ink);
+}
+.cl-items li:hover::before {
+  transform: scale(1.5);
 }
 .cl-items b {
   margin-right: 0.5em;
@@ -668,7 +942,10 @@
     display: flex;
     gap: 6px;
   }
-  .cl-nav ol::before {
+  .cl-nav::before,
+  .cl-nav-fill,
+  .cl-nav-dot,
+  .cl-nav a[data-read]::before {
     display: none;
   }
   .cl-nav a {
@@ -684,6 +961,9 @@
   }
   .cl-nav a[aria-current] {
     border-color: color-mix(in srgb, var(--accent) 50%, var(--stroke));
+  }
+  .cl-release.is-arrived .cl-release-head::before {
+    left: -12px;
   }
   .cl-cards {
     grid-template-columns: minmax(0, 1fr);

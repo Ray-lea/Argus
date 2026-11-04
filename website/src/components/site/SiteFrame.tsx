@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { ViewTransition, type ReactNode } from "react";
 import { pageGraph } from "@/lib/page";
 import { jsonLd, text, type Language } from "@/lib/site";
 import { Disclosure } from "./Disclosure";
@@ -36,8 +36,14 @@ export function SiteFrame({
         {text[lang].skip}
       </a>
       <Header lang={lang} path={path} alternate={alternate} />
-      <main id="main">{children}</main>
-      {footer && <Footer lang={lang} />}
+      {/* Moving to another page, this one leaves and the next rises into place
+          (global.css); the header stays where it is. */}
+      <ViewTransition enter="page-enter" exit="page-exit" default="none">
+        <div className="page">
+          <main id="main">{children}</main>
+          {footer && <Footer lang={lang} />}
+        </div>
+      </ViewTransition>
       <Spotlight />
       <Disclosure />
       <MotionGate />

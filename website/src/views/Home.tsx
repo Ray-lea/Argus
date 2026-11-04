@@ -9,12 +9,13 @@ import { OpenSource, ProjectStats } from "@/components/home/OpenSource";
 import Releases, { longDate } from "@/components/home/Releases";
 import ShowPage from "@/components/home/ShowPage";
 import Taskbar from "@/components/home/Taskbar";
+import { DownloadButton } from "@/components/site/DownloadButton";
 import { Icon } from "@/components/site/Icon";
 import { SiteFrame } from "@/components/site/SiteFrame";
 import { SiteLink } from "@/components/site/SiteLink";
 import { differences, docs, fastest, latency, questions } from "@/lib/home-content";
 import { pageMetadata } from "@/lib/page";
-import { localized, mebibytes, origin, site, stable, type Language } from "@/lib/site";
+import { localized, mebibytes, origin, site, stable, text, type Language } from "@/lib/site";
 
 const r = site.release,
   installer = r.files.installer;
@@ -148,10 +149,9 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
           </p>
           <p className="lead">{t.lead}</p>
           <div className="button-row">
-            <a className="btn is-primary" href={installer.url}>
-              <Icon name="download" size={18} />
+            <DownloadButton primary href={installer.url} started={text[lang].started}>
               {t.download}
-            </a>
+            </DownloadButton>
             <SiteLink lang={lang} className="btn" href={localized(lang, "/download/")}>
               {t.other}
             </SiteLink>
@@ -383,10 +383,9 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
           <h2 id="cta-title">{t.cta[0]}</h2>
           <p>{t.cta[1]}</p>
           <div className="button-row">
-            <a className="btn is-primary" href={installer.url}>
-              <Icon name="download" size={18} />
+            <DownloadButton primary href={installer.url} started={text[lang].started}>
               {t.install}
-            </a>
+            </DownloadButton>
             <SiteLink lang={lang} className="btn" href={localized(lang, "/download/")}>
               {t.other}
             </SiteLink>

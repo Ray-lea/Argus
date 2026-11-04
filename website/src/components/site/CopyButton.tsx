@@ -1,9 +1,21 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 
 // Copies a checksum or a command; the icon turns into a tick for a moment.
-export function CopyButton({ text, label, done }: { text: string; label: string; done: string }) {
+export function CopyButton({
+  text,
+  label,
+  done,
+  icon = "copy",
+  className,
+}: {
+  text: string;
+  label: string;
+  done: string;
+  icon?: IconName;
+  className?: string;
+}) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -13,12 +25,12 @@ export function CopyButton({ text, label, done }: { text: string; label: string;
   return (
     <button
       type="button"
-      className={"copy-button" + (copied ? " is-done" : "")}
+      className={"copy-button" + (copied ? " is-done" : "") + (className ? " " + className : "")}
       aria-label={copied ? done : label}
       title={copied ? done : label}
       onClick={() => navigator.clipboard?.writeText(text).then(() => setCopied(true), () => {})}
     >
-      <Icon name={copied ? "check" : "copy"} size={15} />
+      <Icon name={copied ? "check" : icon} size={15} />
     </button>
   );
 }

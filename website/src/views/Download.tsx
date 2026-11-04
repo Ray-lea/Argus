@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { longDate } from "@/components/home/Releases";
 import { CopyButton } from "@/components/site/CopyButton";
+import { DownloadButton } from "@/components/site/DownloadButton";
 import { ReleaseBody } from "@/views/Changelog";
 import { Icon, type IconName } from "@/components/site/Icon";
 import { SiteFrame } from "@/components/site/SiteFrame";
@@ -99,11 +100,11 @@ export function Download({ lang }: { lang: Language }) {
           <div className="cta-mark" aria-hidden="true">
             <img src="/assets/argus.svg" width="64" height="64" alt="" />
           </div>
-          <h1 data-rise="">{t.h1}</h1>
-          <p className="dl-lead" data-rise="2">
+          <h1>{t.h1}</h1>
+          <p className="dl-lead">
             {t.lead}
           </p>
-          <ul className="dl-meta" data-rise="2">
+          <ul className="dl-meta">
             <li>
               <a href={repo + "/releases/tag/" + r.tag}>
                 <Icon name="tag" size={15} />
@@ -147,11 +148,15 @@ export function Download({ lang }: { lang: Language }) {
                   </li>
                 ))}
               </ul>
-              <a className={i === 0 ? "btn is-primary package-get" : "btn package-get"} href={pkg.file.url}>
-                <Icon name="download" size={18} />
+              <DownloadButton
+                primary={i === 0}
+                className="package-get"
+                href={pkg.file.url}
+                started={text[lang].started}
+                extra={<span className="package-size figures">{mebibytes(pkg.file.size)} MiB</span>}
+              >
                 {pkg.action}
-                <span className="package-size figures">{mebibytes(pkg.file.size)} MiB</span>
-              </a>
+              </DownloadButton>
               <div className="package-file">
                 <span className="figures">{pkg.file.name}</span>
                 <details data-disclose="">

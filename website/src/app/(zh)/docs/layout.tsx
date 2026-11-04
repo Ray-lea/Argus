@@ -1,6 +1,6 @@
 import { DocsLayout } from "fumadocs-ui/layouts/spacious";
 import { Download, House } from "lucide-react";
-import type { ReactNode } from "react";
+import { ViewTransition, type ReactNode } from "react";
 import { repo, site } from "@/lib/site";
 import { source } from "@/lib/source";
 
@@ -8,6 +8,9 @@ import { source } from "@/lib/source";
 // edition selector and search, the page on an inset panel beside it.
 export default function Layout({ children }: { children: ReactNode }) {
   return (
+    // Coming from the site's pages the documentation rises into place, as they
+    // do (global.css); between its own pages it changes as on fumadocs.dev.
+    <ViewTransition enter="page-enter" exit="page-exit" default="none">
     <DocsLayout
       tree={source.getPageTree()}
       nav={{
@@ -41,5 +44,6 @@ export default function Layout({ children }: { children: ReactNode }) {
     >
       {children}
     </DocsLayout>
+    </ViewTransition>
   );
 }

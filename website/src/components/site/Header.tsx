@@ -1,3 +1,4 @@
+import { ViewTransition } from "react";
 import { localized, repo, site, text, type Language } from "@/lib/site";
 import { compact } from "@/components/home/OpenSource";
 import { MastMenu, SearchButton, ThemePicker } from "./HeaderTools";
@@ -39,6 +40,12 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
               aria-current={link.current ? "page" : undefined}
             >
               {link.label}
+              {link.current && (
+                // Moving between pages, the mark slides from one link to the next.
+                <ViewTransition name="mast-current" share="mast-current" default="none">
+                  <i className="mast-current" aria-hidden="true" />
+                </ViewTransition>
+              )}
             </SiteLink>
           ))}
         </nav>
