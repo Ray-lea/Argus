@@ -6,6 +6,7 @@ mod charts;
 mod collation;
 mod columns;
 mod dialogs;
+mod flip;
 mod gpu_usage;
 mod inline;
 mod layout;
@@ -95,6 +96,10 @@ struct MenuItem {
     icon: Option<&'static str>,
     danger: bool,
     hint: Option<&'static str>,
+    /// A quiet figure at the end of the row, such as "4/13".
+    detail: Option<String>,
+    /// A check that toggles in place: the menu stays open for the next one.
+    stay: bool,
     separator: bool,
     children: Vec<MenuItem>,
 }
@@ -108,6 +113,8 @@ impl MenuItem {
             icon: None,
             danger: false,
             hint: None,
+            detail: None,
+            stay: false,
             separator: false,
             children: Vec::new(),
         }

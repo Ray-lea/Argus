@@ -1194,6 +1194,94 @@ impl Desktop {
                 );
             });
         }
+        // Pointer input at a remembered element (`ui.anchors`): hover its
+        // middle, click it, or drag it to a fraction of another's height.
+        let anchor = |name: &Value| {
+            name.as_str().and_then(|name| {
+                self.ui
+                    .anchors
+                    .borrow()
+                    .get(&SharedString::from(name.to_owned()))
+                    .copied()
+            })
+        };
+        let mut pointer = Vec::new();
+        let moved = |position, pressed| {
+            PlatformInput::MouseMove(MouseMoveEvent {
+                position,
+                pressed_button: pressed,
+                ..Default::default()
+            })
+        };
+        let press = |position, down: bool| {
+            if down {
+                PlatformInput::MouseDown(MouseDownEvent {
+                    position,
+                    button: MouseButton::Left,
+                    click_count: 1,
+                    ..Default::default()
+                })
+            } else {
+                PlatformInput::MouseUp(MouseUpEvent {
+                    position,
+                    button: MouseButton::Left,
+                    click_count: 1,
+                    ..Default::default()
+                })
+            }
+        };
+        if let Some(bounds) = anchor(&control["hoverAnchor"]) {
+            pointer.push(moved(bounds.center(), None));
+        }
+        if let Some(bounds) = anchor(&control["clickAnchor"]) {
+            let at = bounds.center();
+            pointer.extend([moved(at, None), press(at, true), press(at, false)]);
+        }
+        if let (Some(from), Some(to)) = (
+            anchor(&control["dragAnchor"][0]),
+            anchor(&control["dragAnchor"][1]),
+        ) {
+            let fraction = control["dragAnchor"][2].as_f64().unwrap_or(0.5) as f32;
+            let start = from.center();
+            let end = point(to.center().x, to.top() + to.size.height * fraction);
+            pointer.extend([moved(start, None), press(start, true)]);
+            for step in 1..=8 {
+                let t = step as f32 / 8.;
+                pointer.push(moved(start + (end - start) * t, Some(MouseButton::Left)));
+            }
+            pointer.push(press(end, false));
+        }
+        // One step of a slower gesture: a hover, down, a move holding the button or
+        // up, at a remembered element (or `header:<key>`) moved by `dx`, `dy`.
+        let step = &control["pointer"];
+        let target = step["at"]
+            .as_str()
+            .and_then(|name| match name.strip_prefix("header:") {
+                Some(key) => self.header_bounds.borrow().get(key).copied(),
+                None => anchor(&step["at"]),
+            });
+        if let Some(bounds) = target {
+            let at = bounds.center()
+                + point(
+                    px(step["dx"].as_f64().unwrap_or(0.) as f32),
+                    px(step["dy"].as_f64().unwrap_or(0.) as f32),
+                );
+            pointer.push(match step["event"].as_str() {
+                Some("down") => press(at, true),
+                Some("up") => press(at, false),
+                Some("hover") => moved(at, None),
+                _ => moved(at, Some(MouseButton::Left)),
+            });
+        }
+        if !pointer.is_empty() {
+            window.defer(cx, move |window, cx| {
+                for input in pointer {
+                    window.dispatch_event(input, cx);
+                }
+            });
+            // An idle window would hold the input until its next frame.
+            window.refresh();
+        }
         if let Some(label) = control["inspectLayout"].as_str() {
             if std::env::var_os("ARGUS_GPUI_VIEW_TRACE").is_some() {
                 use gpui_kit::gpui::profiler::{self, FrameEvent, FrameTimingCollector};
@@ -1598,6 +1686,15 @@ impl Desktop {
             && let Some(row) = self.rows.get(index as usize)
         {
             self.act(Action::Select(row.key.clone()), window, cx);
+        }
+        if let Some(key) = control["headerMenu"].as_str() {
+            // As a right press at the start of that column's header would.
+            let at = self
+                .header_bounds
+                .borrow()
+                .get(key)
+                .map(|bounds| point(bounds.left() + px(16.), bounds.bottom()));
+            self.process_header_menu(Some(key.into()), at, window, cx);
         }
         if let Some(index) = control["rowMenu"].as_u64()
             && let Some(row) = self.rows.get(index as usize).cloned()

@@ -873,6 +873,22 @@ impl Desktop {
                 self.set_process_columns(columns::Preferences::default(), cx);
                 return;
             }
+            "processSort" => {
+                if let Some(key) = value["key"].as_str() {
+                    self.sort_processes(key, value["desc"].as_bool().unwrap_or(false), cx);
+                }
+                return;
+            }
+            "toggleProcessColumn" => {
+                if let Some(key) = value.as_str() {
+                    self.toggle_process_column(key, cx);
+                }
+                return;
+            }
+            "columnsCategory" => {
+                self.column_category(value.as_str().unwrap_or("all"), window, cx);
+                return;
+            }
             "finishOnboarding" => {
                 self.finish_onboarding(window, cx);
                 return;

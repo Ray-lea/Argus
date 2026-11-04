@@ -38,6 +38,8 @@ pub struct Palette {
     pub flyout: Hsla,
     /// The Fluent control face (`--control`), unmixed by the component theme.
     pub face: Hsla,
+    /// The raised layer over a card, opaque: what passes under it stays hidden.
+    pub raised: Hsla,
     /// Fluent controls: translucent faces
     /// (`--control`, `--control-hover`, `--control-checked`) over whatever
     /// is behind, a 1 px stroke, and a stronger bottom edge (`control_edge`).
@@ -119,6 +121,7 @@ impl Palette {
             // Opaque equivalents of the translucent control colours over a card:
             // stacked translucent fills darken on the transparent window surface.
             face: on_card("control", dark),
+            raised: on_card("layer-strong", dark),
             control_face: token("control", dark),
             control_hover: token("control-hover", dark),
             control_checked: token("control-checked", dark),

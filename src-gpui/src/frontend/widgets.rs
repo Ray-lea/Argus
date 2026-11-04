@@ -92,6 +92,10 @@ pub(in crate::frontend) struct UiState {
     /// The drop-down list that just closed, fading out (`.menu.leaving`).
     pub select_leaving: Option<(OpenSelect, Instant)>,
     pub anchors: Rc<RefCell<HashMap<SharedString, Bounds<Pixels>>>>,
+    /// A shown column dragged in the column dialog's order list, and the
+    /// places gliding there (`flip`).
+    pub order_drag: RefCell<Option<flip::Drag>>,
+    pub order_flips: flip::Flips,
     pub focus: RefCell<HashMap<SharedString, FocusHandle>>,
     /// Dialogs under the top one (`Desktop::modal`), bottom first.
     pub below: Vec<dialogs::Modal>,

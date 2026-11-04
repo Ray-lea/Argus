@@ -108,6 +108,35 @@ fn tidy(items: Vec<MenuItem>) -> Vec<MenuItem> {
     out
 }
 
+/// Flips a staying check where it is drawn; an owner showing a count of its
+/// checked entries counts again.
+fn toggle_in_place(popup: &mut Popup, entry: Entry) {
+    match entry {
+        Entry::Top(index) => {
+            if let Some(item) = popup.items.get_mut(index) {
+                item.checked = !item.checked;
+            }
+        }
+        Entry::Sub(index) => {
+            let Some(owner) = popup
+                .sub
+                .as_ref()
+                .and_then(|sub| popup.items.get_mut(sub.owner))
+            else {
+                return;
+            };
+            if let Some(item) = owner.children.get_mut(index) {
+                item.checked = !item.checked;
+            }
+            if owner.detail.is_some() {
+                let entries = owner.children.iter().filter(|item| !item.separator);
+                let checked = entries.clone().filter(|item| item.checked).count();
+                owner.detail = Some(format!("{checked}/{}", entries.count()));
+            }
+        }
+    }
+}
+
 /// A menu's border box and where each entry starts in it.
 struct MenuLayout {
     size: Size<Pixels>,
@@ -132,6 +161,9 @@ fn measure(items: &[MenuItem], window: &Window, cx: &App) -> MenuLayout {
         let mut row = GAP + ICON + GAP + width(&item.label, text) + GAP;
         if let Some(hint_text) = item.hint {
             row += GAP + width(hint_text, hint);
+        }
+        if let Some(detail) = &item.detail {
+            row += GAP + width(detail, hint);
         }
         if !item.children.is_empty() {
             row += GAP + CHEVRON;
@@ -194,6 +226,18 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let at = window.mouse_position();
+        self.open_popup_at(items, at, window, cx);
+    }
+
+    /// Opens `items` at `at`, taking the keyboard.
+    pub(in crate::frontend) fn open_popup_at(
+        &mut self,
+        items: Vec<MenuItem>,
+        at: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let interval = self.interval;
         let items = tidy(
             items
@@ -223,7 +267,7 @@ impl Desktop {
         self.popup = Some(Popup {
             focus: first.map_or(MenuFocus::None, MenuFocus::Top),
             items,
-            position: window.mouse_position(),
+            position: at,
             viewport: window.viewport_size(),
             opened: Instant::now(),
             focus_handle,
@@ -378,14 +422,21 @@ impl Desktop {
         let Some(popup) = &mut self.popup else {
             return;
         };
-        let Some((owner, action)) = popup
+        let Some((owner, action, stay)) = popup
             .item(entry)
             .filter(|item| !item.disabled && !item.separator)
-            .map(|item| (!item.children.is_empty(), item.action.clone()))
+            .map(|item| (!item.children.is_empty(), item.action.clone(), item.stay))
         else {
             return;
         };
         popup.timer = None;
+        if stay {
+            toggle_in_place(popup, entry);
+            self.act(action, window, cx);
+            window.refresh();
+            cx.notify();
+            return;
+        }
         if let Entry::Top(index) = entry
             && owner
         {
@@ -659,10 +710,19 @@ impl Desktop {
                             .child(hint),
                     )
                 })
-                .when(owner, |d| {
+                .when_some(item.detail.clone(), |d, detail| {
                     d.child(
                         div()
                             .ml_auto()
+                            .text_size(theme::font(12.))
+                            .text_color(p.faint)
+                            .child(detail),
+                    )
+                })
+                .when(owner, |d| {
+                    d.child(
+                        div()
+                            .when(item.detail.is_none(), |d| d.ml_auto())
                             .flex_shrink_0()
                             .child(icon("ChevronRight", p.faint).size(px(CHEVRON))),
                     )
@@ -747,6 +807,15 @@ impl MenuItem {
     }
     pub(super) fn submenu(mut self, children: Vec<MenuItem>) -> Self {
         self.children = children;
+        self
+    }
+    pub(super) fn detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+    /// A check toggled in place, the menu staying open.
+    pub(super) fn stay(mut self) -> Self {
+        self.stay = true;
         self
     }
 }

@@ -121,29 +121,18 @@ pub(super) fn raw_key(key: &str) -> &str {
     }
 }
 
-pub(super) fn matching(
-    preferences: &Preferences,
-    category: &str,
-    query: &str,
-) -> Vec<&'static Definition> {
+/// The columns of `category` ("all" for every one), or those matching every
+/// word of `query` by key, name or description.
+pub(super) fn matching(category: &str, query: &str) -> Vec<&'static Definition> {
     let terms = query
         .split_whitespace()
         .map(str::to_lowercase)
         .collect::<Vec<_>>();
-    let candidates = if terms.is_empty() && category == "selected" {
-        preferences
-            .ordered_selected()
-            .into_iter()
-            .filter_map(definition)
-            .collect()
-    } else {
-        DEFINITIONS.iter().collect::<Vec<_>>()
-    };
-    candidates
-        .into_iter()
+    DEFINITIONS
+        .iter()
         .filter(|column| {
             if terms.is_empty() {
-                return category == "all" || category == "selected" || column.category == category;
+                return category == "all" || column.category == category;
             }
             let text = format!(
                 "{} {} {} {}",

@@ -228,6 +228,9 @@ impl Desktop {
         self.close_select();
         if kind == "columns" {
             args = json!({"draft":columns::Preferences::load(&self.prefs),"category":"all","query":""});
+            // The order list is laid out anew: nothing glides in from last time.
+            self.ui.order_flips.clear();
+            self.ui.order_drag.borrow_mut().take();
         }
         let name = text(&args, "name").to_owned();
         let members = values(&args["members"]).to_vec();

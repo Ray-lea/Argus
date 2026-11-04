@@ -376,6 +376,50 @@ pub(super) struct NativeTable {
     near_due: bool,
     /// Why disk readings are missing, as of a sample.
     disk_hint: RefCell<Option<(u64, String)>>,
+    /// A process header being dragged: its column follows the pointer while
+    /// the others make room, gliding to their new places (`flip`).
+    header_drag: Option<HeaderDrag>,
+    /// Columns gliding to new places after the dragged one passed them.
+    flips: flip::Flips,
+    /// The header band, which clips gliding header cells.
+    header_band: Rc<Cell<Bounds<Pixels>>>,
+    /// The column raised under the pointer, until it has glided into place.
+    lifted: Option<&'static str>,
+}
+/// What a dragged process header carries; the table keeps the drag itself.
+struct HeaderPayload;
+/// Nothing follows the pointer but the column itself.
+struct HeaderGhost;
+impl Render for HeaderGhost {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+/// A process header being dragged.
+struct HeaderDrag {
+    key: &'static str,
+    /// The pointer's x when it took the header, and now.
+    grab: f32,
+    pointer: f32,
+    /// Where the column started, and where each column is laid out now
+    /// (`NativeTable::column_places`).
+    start: f32,
+    places: HashMap<&'static str, f32>,
+    /// How far left and right the column can go: within the scrolled
+    /// columns, after the fixed name.
+    lo: f32,
+    hi: f32,
+}
+impl HeaderDrag {
+    /// Where the pointer has taken the column: its start moved as far as the
+    /// pointer has. It decides the column's place, even past either end.
+    fn reach(&self) -> f32 {
+        self.start + self.pointer - self.grab
+    }
+    /// Where the column is drawn: where it reaches, within the scrolled columns.
+    fn at(&self) -> f32 {
+        self.reach().clamp(self.lo, self.hi.max(self.lo))
+    }
 }
 pub(super) struct TableFrame {
     state: Entity<TableState<NativeTable>>,
@@ -433,6 +477,10 @@ impl NativeTable {
             near: None,
             near_due: false,
             disk_hint: RefCell::new(None),
+            header_drag: None,
+            flips: Default::default(),
+            header_band: Rc::new(Cell::new(Bounds::default())),
+            lifted: None,
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -721,19 +769,53 @@ impl TableDelegate for NativeTable {
                 (!app.query.trim().is_empty(), app.details_open)
             });
         let p = Palette::current(cx);
+        let now = Instant::now();
+        // A drag released away from the header (no drop here) settles too.
+        if self.header_drag.is_some() && !cx.has_active_drag() {
+            self.settle_header_drag(!cx.reduce_motion(), now);
+        }
+        if self.header_drag.is_some() || self.flips.active(now) {
+            window.request_animation_frame();
+        }
+        let band = self.header_band.clone();
+        let strip = self.lifted_strip(now, cx);
         // The process header band ends in its own separator row, so the 4 px
         // below the labels are inside it (see `render_th`): no bottom padding.
         // While filtering, the workspace draws the accent separator over that
         // row (`process_header_height`).
         div()
             .id("native-table-header")
+            .on_prepaint(move |bounds, _, _| band.set(bounds))
+            .children(strip)
+            .on_drag_move(
+                cx.listener(|state, event: &DragMoveEvent<HeaderPayload>, window, cx| {
+                    Self::follow_header(state, event, window, cx)
+                }),
+            )
+            .on_drop(cx.listener(|state, _: &HeaderPayload, _, cx| {
+                let animate = !cx.reduce_motion();
+                state
+                    .delegate_mut()
+                    .settle_header_drag(animate, Instant::now());
+                cx.notify();
+            }))
             .when(self.page == "processes", |d| {
                 let owner = self.owner.clone();
-                d.on_mouse_down(MouseButton::Right, move |_, window, cx| {
+                d.on_mouse_down(MouseButton::Right, move |event, window, cx| {
                     cx.stop_propagation();
                     let owner = owner.clone();
+                    let at = event.position;
                     window.defer(cx, move |window, cx| {
-                        let _ = owner.update(cx, |this, cx| this.process_header_menu(window, cx));
+                        let _ = owner.update(cx, |this, cx| {
+                            // The column under the pointer, for its own items.
+                            let column = this
+                                .header_bounds
+                                .borrow()
+                                .iter()
+                                .find(|(_, bounds)| bounds.contains(&at))
+                                .map(|(key, _)| key.clone());
+                            this.process_header_menu(column, None, window, cx)
+                        });
                     });
                 })
             })
@@ -899,7 +981,7 @@ impl TableDelegate for NativeTable {
         // A column the table cannot sort by has a disabled header: no
         // hover or press fill, and a click does nothing (`.th:disabled`).
         let sortable = sortable(&self.page, &key);
-        Button::new(("column-sort", index))
+        let button = Button::new(("column-sort", index))
             .size_full()
             .min_w_0()
             .rounded(px(4.))
@@ -927,15 +1009,381 @@ impl TableDelegate for NativeTable {
                 window.defer(cx, move |window, cx| {
                     let _ = owner.update(cx, |this, cx| this.act(Action::Sort(key), window, cx));
                 });
-            })
+            });
+        self.header_cell(index, button, cx)
     }
     fn render_td(
         &mut self,
         row_index: usize,
         column: usize,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
+        let content = self.td_content(row_index, column, window, cx);
+        self.gliding_cell(column, false, content)
+    }
+    fn render_tr(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> Stateful<Div> {
+        if std::mem::take(&mut self.near_due) {
+            self.near = self
+                .list
+                .as_ref()
+                .and_then(|list| tips::row_under(list, ROW_HEIGHT, self.rows.len(), window));
+        }
+        let p = Palette::current(cx);
+        let row = &self.rows[index];
+        let (selected, fresh, searching) = self
+            .owner
+            .upgrade()
+            .map(|owner| {
+                let app = owner.read(cx);
+                (
+                    app.selected
+                        .get(&self.page)
+                        .is_some_and(|key| *key == row.key),
+                    self.page == "processes" && app.is_fresh(row),
+                    !app.query.trim().is_empty(),
+                )
+            })
+            .unwrap_or_default();
+        // A heading cannot fold while a search shows every match; its row says so.
+        let locked = (row.section.is_some() && searching && self.is_near(index))
+            .then(|| label("processes.sectionSearching"));
+        // Pinned rows lead the list; a line under the last one ends them.
+        let last_pinned = row.pinned && self.rows.get(index + 1).is_some_and(|next| !next.pinned);
+        // A double-click folds a group (the table reports the first, click
+        // count 2). Another double-click right after it arrives as clicks 3 and
+        // 4 within the system's double-click time and would be lost until that
+        // time passed: every completed pair folds again. A category heading
+        // folds on every press instead (its select event), as the interface's
+        // `onClick`: no pair folds it again.
+        let refold =
+            (self.page == "processes" && row.expandable && row.section.is_none()).then(|| {
+                let owner = self.owner.clone();
+                let key = row.key.clone();
+                move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
+                    let count = event.click_count();
+                    if count >= 4 && count.is_multiple_of(2) {
+                        let owner = owner.clone();
+                        let key = key.clone();
+                        window.defer(cx, move |window, cx| {
+                            let _ = owner
+                                .update(cx, |this, cx| this.act(Action::Fold(key), window, cx));
+                        });
+                    }
+                }
+            });
+        let tr = div()
+            .id(("native-row", index))
+            .relative()
+            .border_b_0()
+            .rounded(px(4.));
+        let tr = match locked {
+            Some(hint) => self
+                .tips
+                .target(tr, tips::id((&self.page, &row.key, "row")), hint),
+            None => tr,
+        };
+        tr.when_some(refold, |d, refold| d.on_click(refold))
+            .when(fresh, |d| d.bg(p.network.opacity(0.15)))
+            .when(selected, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top(px(8.))
+                        .bottom(px(8.))
+                        .w(px(3.))
+                        .rounded(px(2.))
+                        .bg(p.accent),
+                )
+            })
+            .when(last_pinned, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .left(px(8.))
+                        .right(px(8.))
+                        .bottom(px(-1.))
+                        .h(px(1.))
+                        .bg(p.stroke_strong),
+                )
+            })
+    }
+    // Row menus open from the desktop (see `RightClickedRow`), where submenus can nest.
+    fn context_menu(
+        &mut self,
+        _index: usize,
+        menu: PopupMenu,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) -> PopupMenu {
+        menu
+    }
+}
+impl NativeTable {
+    /// Where each column starts, from the left of the first, at the table's widths.
+    fn column_places(state: &TableState<Self>) -> HashMap<&'static str, f32> {
+        let mut left = 0.;
+        state
+            .delegate()
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                let place = left;
+                left += state.col_width(index).map(f32::from).unwrap_or(0.);
+                (field.key, place)
+            })
+            .collect()
+    }
+    /// How far from its layout a column is drawn: the dragged one under the
+    /// pointer, the others where their glides have taken them.
+    fn column_shift(&self, key: &str, now: Instant) -> f32 {
+        match &self.header_drag {
+            Some(drag) if drag.key == key => {
+                drag.at() - drag.places.get(key).copied().unwrap_or(drag.start)
+            }
+            _ => self.flips.offset(key, now),
+        }
+    }
+    /// A process header, which can be dragged to another place.
+    fn header_cell(
+        &mut self,
+        index: usize,
+        button: Button,
+        cx: &mut Context<TableState<Self>>,
+    ) -> AnyElement {
+        let movable = self.page == "processes"
+            && self.columns.get(index).is_some_and(|column| column.movable);
+        let button = match self.fields.get(index).filter(|_| movable) {
+            Some(field) => {
+                let key = field.key;
+                let table = cx.entity().downgrade();
+                button.on_drag(HeaderPayload, move |_, _, window, cx| {
+                    let pointer = f32::from(window.mouse_position().x);
+                    let _ = table.update(cx, |state, cx| {
+                        let places = Self::column_places(state);
+                        let start = places.get(key).copied().unwrap_or(0.);
+                        let fields = &state.delegate().fields;
+                        let index = fields.iter().position(|field| field.key == key);
+                        let width = index
+                            .and_then(|index| state.col_width(index))
+                            .map(f32::from)
+                            .unwrap_or(0.);
+                        let lo = fields
+                            .get(1)
+                            .and_then(|field| places.get(field.key))
+                            .copied()
+                            .unwrap_or(start);
+                        let end = fields
+                            .len()
+                            .checked_sub(1)
+                            .and_then(|last| {
+                                let place = places.get(fields[last].key)?;
+                                Some(place + f32::from(state.col_width(last)?))
+                            })
+                            .unwrap_or(start + width);
+                        let delegate = state.delegate_mut();
+                        delegate.header_drag = Some(HeaderDrag {
+                            key,
+                            grab: pointer,
+                            pointer,
+                            start,
+                            places,
+                            lo,
+                            hi: end - width,
+                        });
+                        delegate.lifted = Some(key);
+                        cx.notify();
+                    });
+                    cx.new(|_| HeaderGhost)
+                })
+            }
+            None => button,
+        };
+        self.gliding_cell(index, true, button.into_any_element())
+    }
+    /// A cell's content drawn where its column is on its way to, over the
+    /// cells beside it; the dragged column raised above the others.
+    fn gliding_cell(&mut self, column: usize, header: bool, content: AnyElement) -> AnyElement {
+        let Some(key) = self.fields.get(column).map(|field| field.key) else {
+            return content;
+        };
+        let dragged = self
+            .header_drag
+            .as_ref()
+            .is_some_and(|drag| drag.key == key);
+        let dx = self.column_shift(key, Instant::now());
+        if dx == 0. && !dragged {
+            return content;
+        }
+        // The scrolled columns' lane, across the header band or the rows.
+        let Some(lane) = self.horizontal.as_ref().map(|handle| handle.bounds()) else {
+            return content;
+        };
+        let band = if header {
+            self.header_band.get()
+        } else {
+            self.list
+                .as_ref()
+                .map(|list| list.bounds())
+                .unwrap_or_default()
+        };
+        let clip = Bounds::from_corners(
+            point(lane.left(), band.top()),
+            point(lane.right(), band.bottom()),
+        );
+        // The dragged column's cells go over its raised strip (`lifted_strip`),
+        // which goes over the columns gliding past it.
+        flip::escaping(
+            super::shift::shifted(content, point(px(dx), px(0.)), 1.),
+            clip,
+            if dragged { 3 } else { 1 },
+        )
+        .into_any_element()
+    }
+    /// Follows the dragged header: once its middle passes a neighbour's, the
+    /// two trade places at once and the one passed glides to its new place.
+    fn follow_header(
+        state: &mut TableState<Self>,
+        event: &DragMoveEvent<HeaderPayload>,
+        window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) {
+        let animate = !cx.reduce_motion();
+        let Some(drag) = state.delegate_mut().header_drag.as_mut() else {
+            return;
+        };
+        drag.pointer = f32::from(event.event.position.x);
+        let key = drag.key;
+        let now = Instant::now();
+        loop {
+            let step = {
+                let delegate = state.delegate();
+                let Some(drag) = &delegate.header_drag else {
+                    break;
+                };
+                let fields = &delegate.fields;
+                let Some(index) = fields.iter().position(|field| field.key == key) else {
+                    break;
+                };
+                let width = |at: usize| state.col_width(at).map(f32::from).unwrap_or(0.);
+                let middle_of = |at: usize| {
+                    drag.places.get(fields[at].key).copied().unwrap_or(0.) + width(at) / 2.
+                };
+                let middle = drag.reach() + width(index) / 2.;
+                if index + 1 < fields.len() && middle > middle_of(index + 1) {
+                    Some((index, index + 1))
+                } else if index > 1 && middle < middle_of(index - 1) {
+                    Some((index, index - 1))
+                } else {
+                    None
+                }
+            };
+            let Some((from, to)) = step else {
+                break;
+            };
+            let before = Self::column_places(state);
+            state.delegate_mut().move_column(from, to, window, cx);
+            // A move the table refused would otherwise be tried forever.
+            if state.delegate().fields.get(to).map(|field| field.key) != Some(key) {
+                break;
+            }
+            state.refresh(cx);
+            let after = Self::column_places(state);
+            let delegate = state.delegate_mut();
+            if animate {
+                for (moved, place) in &after {
+                    if *moved != key
+                        && let Some(old) = before.get(moved)
+                        && old != place
+                    {
+                        delegate.flips.moved(moved, place - old, now);
+                    }
+                }
+            }
+            if let Some(drag) = delegate.header_drag.as_mut() {
+                drag.places = after;
+            }
+            // The desktop saves the same order (`TableEvent::MoveColumn`): the
+            // table keeps its layout, widths included, once the drag ends.
+            let next = delegate.fields.get(to + 1).map(|field| field.key);
+            delegate.process_columns.move_before(key, next);
+            cx.emit(TableEvent::MoveColumn(from, to));
+        }
+        cx.notify();
+    }
+    /// Ends a header drag: the column glides from under the pointer into its place.
+    fn settle_header_drag(&mut self, animate: bool, now: Instant) {
+        let Some(drag) = self.header_drag.take() else {
+            return;
+        };
+        if animate {
+            let place = drag.places.get(drag.key).copied().unwrap_or(drag.start);
+            self.flips.moved(drag.key, place - drag.at(), now);
+        }
+    }
+    /// The raised column: one strip from the top of the header to the bottom
+    /// of the rows, under the column's own cells and over the others, so its
+    /// edges run straight through. Placed in window coordinates; it stays
+    /// within the scrolled columns (`HeaderDrag::lo`), so both edges show.
+    fn lifted_strip(&mut self, now: Instant, cx: &App) -> Option<AnyElement> {
+        let key = self.lifted?;
+        let index = self.fields.iter().position(|field| field.key == key)?;
+        let offset = self.column_shift(key, now);
+        if self.header_drag.is_none() && offset == 0. {
+            self.lifted = None;
+            return None;
+        }
+        let place = self.columns[..index]
+            .iter()
+            .map(|column| f32::from(column.width))
+            .sum::<f32>();
+        let name = self
+            .columns
+            .first()
+            .map_or(0., |column| f32::from(column.width));
+        let width = f32::from(self.columns[index].width);
+        let handle = self.horizontal.as_ref()?;
+        let lane = handle.bounds();
+        let band = self.header_band.get();
+        let bottom = self.list.as_ref()?.bounds().bottom();
+        let left = lane.left() + px(place + offset - name) + handle.offset().x;
+        let p = Palette::current(cx);
+        Some(
+            deferred(
+                anchored().position(point(left, band.top())).child(
+                    div()
+                        .w(px(width))
+                        .h(bottom - band.top())
+                        .rounded(px(6.))
+                        .bg(p.raised)
+                        .child(
+                            div()
+                                .size_full()
+                                .rounded(px(6.))
+                                .border_1()
+                                .border_color(p.accent.opacity(0.45))
+                                .bg(p.accent.opacity(0.07)),
+                        ),
+                ),
+            )
+            .with_priority(2)
+            .into_any_element(),
+        )
+    }
+    fn td_content(
+        &mut self,
+        row_index: usize,
+        column: usize,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> AnyElement {
         if column == 0
             && let Some(id) = icon_id(&self.rows[row_index].raw)
             && !self.icons.contains_key(&id)
@@ -1124,108 +1572,6 @@ impl TableDelegate for NativeTable {
             }
         }
         element.into_any_element()
-    }
-    fn render_tr(
-        &mut self,
-        index: usize,
-        window: &mut Window,
-        cx: &mut Context<TableState<Self>>,
-    ) -> Stateful<Div> {
-        if std::mem::take(&mut self.near_due) {
-            self.near = self
-                .list
-                .as_ref()
-                .and_then(|list| tips::row_under(list, ROW_HEIGHT, self.rows.len(), window));
-        }
-        let p = Palette::current(cx);
-        let row = &self.rows[index];
-        let (selected, fresh, searching) = self
-            .owner
-            .upgrade()
-            .map(|owner| {
-                let app = owner.read(cx);
-                (
-                    app.selected
-                        .get(&self.page)
-                        .is_some_and(|key| *key == row.key),
-                    self.page == "processes" && app.is_fresh(row),
-                    !app.query.trim().is_empty(),
-                )
-            })
-            .unwrap_or_default();
-        // A heading cannot fold while a search shows every match; its row says so.
-        let locked = (row.section.is_some() && searching && self.is_near(index))
-            .then(|| label("processes.sectionSearching"));
-        // Pinned rows lead the list; a line under the last one ends them.
-        let last_pinned = row.pinned && self.rows.get(index + 1).is_some_and(|next| !next.pinned);
-        // A double-click folds a group (the table reports the first, click
-        // count 2). Another double-click right after it arrives as clicks 3 and
-        // 4 within the system's double-click time and would be lost until that
-        // time passed: every completed pair folds again. A category heading
-        // folds on every press instead (its select event), as the interface's
-        // `onClick`: no pair folds it again.
-        let refold =
-            (self.page == "processes" && row.expandable && row.section.is_none()).then(|| {
-                let owner = self.owner.clone();
-                let key = row.key.clone();
-                move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
-                    let count = event.click_count();
-                    if count >= 4 && count.is_multiple_of(2) {
-                        let owner = owner.clone();
-                        let key = key.clone();
-                        window.defer(cx, move |window, cx| {
-                            let _ = owner
-                                .update(cx, |this, cx| this.act(Action::Fold(key), window, cx));
-                        });
-                    }
-                }
-            });
-        let tr = div()
-            .id(("native-row", index))
-            .relative()
-            .border_b_0()
-            .rounded(px(4.));
-        let tr = match locked {
-            Some(hint) => self
-                .tips
-                .target(tr, tips::id((&self.page, &row.key, "row")), hint),
-            None => tr,
-        };
-        tr.when_some(refold, |d, refold| d.on_click(refold))
-            .when(fresh, |d| d.bg(p.network.opacity(0.15)))
-            .when(selected, |d| {
-                d.child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .top(px(8.))
-                        .bottom(px(8.))
-                        .w(px(3.))
-                        .rounded(px(2.))
-                        .bg(p.accent),
-                )
-            })
-            .when(last_pinned, |d| {
-                d.child(
-                    div()
-                        .absolute()
-                        .left(px(8.))
-                        .right(px(8.))
-                        .bottom(px(-1.))
-                        .h(px(1.))
-                        .bg(p.stroke_strong),
-                )
-            })
-    }
-    // Row menus open from the desktop (see `RightClickedRow`), where submenus can nest.
-    fn context_menu(
-        &mut self,
-        _index: usize,
-        menu: PopupMenu,
-        _window: &mut Window,
-        _cx: &mut Context<TableState<Self>>,
-    ) -> PopupMenu {
-        menu
     }
 }
 /// Shows the desktop's selection in the table without the side effects of a
@@ -1787,12 +2133,12 @@ impl Desktop {
         if self.table.is_none() {
             let owner = cx.entity().downgrade();
             let tips = self.tips.clone();
-            let movable = self.page == "processes";
             let table = cx.new(|cx| {
                 let mut state = TableState::new(NativeTable::new(owner, tips), window, cx)
                     .col_selectable(false)
                     .sortable(false)
-                    .col_movable(movable);
+                    // Process headers are dragged by the table itself (`HeaderDrag`).
+                    .col_movable(false);
                 let list = state.vertical_scroll_handle.0.borrow().base_handle.clone();
                 let horizontal = state.horizontal_scroll_handle.as_ref().clone();
                 state.delegate_mut().list = Some(list);
