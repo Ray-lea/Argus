@@ -263,6 +263,10 @@ struct Desktop {
     device: String,
     cpu_mode: String,
     cpu_page: String,
+    disk_page: String,
+    /// The disk whose details page is open (PhysicalDrive number and
+    /// `page_epoch`) and when it was opened: each opening reads once.
+    disk_details_open: Option<(u64, u64, Instant)>,
     interval: u64,
     paused: bool,
     control_paused: bool,
@@ -419,6 +423,8 @@ impl Desktop {
             device: prefs.get("perfDevice", "cpu".into()),
             cpu_mode: prefs.get("cpuMode", "overall".into()),
             cpu_page: prefs.get("cpuPage", "overview".into()),
+            disk_page: prefs.get("diskPage", "overview".into()),
+            disk_details_open: None,
             interval: prefs.get("interval", 1000),
             paused: false,
             control_paused: false,

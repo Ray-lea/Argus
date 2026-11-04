@@ -48,7 +48,7 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 |:---:|---|---|
 | 🧮 | **Processes** | Browse by app, process tree, or flat list, with real-time CPU, memory, disk read/write rates, and GPU usage for each process (plus network traffic when the privileged service is enabled or running as administrator). Sort, search, and end a process or its entire tree; inspect the command line, user, integrity level, and more in the details pane. |
 | ⚡ | **Priority and efficiency mode** | Adjust them on the fly from the context menu, or create rules that apply automatically whenever a program starts. |
-| 📈 | **Performance** | Monitor CPU (per-core load, P-cores and E-cores, frequency, temperature, and power), memory, disks, network, GPU, and battery in detail. |
+| 📈 | **Performance** | Monitor CPU (per-core load, P-cores and E-cores, frequency, temperature, and power), memory, disks (including NVMe health and SMART attributes), network, GPU, and battery in detail. |
 | 🧩 | **Services and startup apps** | Start and stop Windows services and change their startup type; enable or disable startup apps, staying in sync with Windows Task Manager. |
 | 🌐 | **Connections and ports** | Inspect active TCP and UDP endpoints alongside their owning processes, with exact port filtering and the ability to close connections. |
 | 🔍 | **File locks** | Drop a file or folder onto the window to identify which processes are holding it. Combines Restart Manager with handle enumeration (including processes' current working directories), with broader coverage across elevated processes when the privileged service is enabled. |

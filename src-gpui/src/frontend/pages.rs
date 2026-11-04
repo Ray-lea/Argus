@@ -932,6 +932,13 @@ impl Desktop {
                 window.refresh();
                 return;
             }
+            "diskPage" => self.disk_page = value.as_str().unwrap_or("overview").into(),
+            "refreshDiskDetails" => {
+                if let Some(index) = value.as_u64() {
+                    self.read_disk_details(index, window, cx);
+                }
+                return;
+            }
             "navPosition" => self.nav_top = value.as_str() != Some("side"),
             "navExpanded" => self.nav_expanded = value.as_bool().unwrap_or(false),
             "historyRange" => {

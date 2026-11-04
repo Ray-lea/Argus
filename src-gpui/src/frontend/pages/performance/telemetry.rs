@@ -552,7 +552,7 @@ impl Desktop {
         ])
     }
     /// A reading: small label, larger value with its unit.
-    fn sensor_reading(&self, name: String, value: String, unit: &str) -> Div {
+    pub(super) fn sensor_reading(&self, name: String, value: String, unit: &str) -> Div {
         div()
             .min_w_0()
             .flex()
@@ -581,7 +581,7 @@ impl Desktop {
             )
     }
     /// Readings in columns at least 125 px wide.
-    fn reading_grid(&self, readings: Vec<AnyElement>, width: f32) -> AnyElement {
+    pub(super) fn reading_grid(&self, readings: Vec<AnyElement>, width: f32) -> AnyElement {
         let columns = ((width + 18.) / (125. + 18.)).floor().max(1.) as u16;
         div()
             .grid()

@@ -1562,6 +1562,7 @@ impl Desktop {
             "navPosition",
             "navExpanded",
             "coreFilter",
+            "diskPage",
             "uiMotion",
             "historyRange",
             "netUnit",

@@ -2,6 +2,7 @@ use super::*;
 use charts::{ChartHeight, GIB, KIB, Line, Look, MIB, MetricFormat, RateScale, Scale};
 use gpui_kit::base::ElementExt;
 mod cpu_motion;
+mod disk_details;
 mod engines;
 mod telemetry;
 
@@ -506,6 +507,7 @@ impl Desktop {
             .position(|d| d.id == self.device)
             .unwrap_or(0);
         let selected = devices.get(selected_index).cloned();
+        self.open_disk_details(selected.as_ref(), window, cx);
         let p = self.palette;
         let page = self.page_width(window);
         let side_width = self.side_width(page);
@@ -1118,7 +1120,11 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let details = device.kind == "cpu" && self.cpu_page == "details";
+        let details = match device.kind {
+            "cpu" => self.cpu_page == "details",
+            "disk" => self.disk_page == "details",
+            _ => false,
+        };
         let body = div()
             .flex()
             .flex_col()
@@ -2141,6 +2147,40 @@ impl Desktop {
         let p = self.palette;
         let disk = &self.snapshot["hardware"]["disks"][device.index];
         let info = &disk["info"];
+        let details = self.disk_page == "details";
+        let pages = self.segments(
+            "disk-page",
+            ["overview", "details"]
+                .into_iter()
+                .map(|page| {
+                    (
+                        label(&format!("performance.disk.page.{page}")),
+                        None,
+                        Action::Preference("diskPage".into(), json!(page)),
+                        self.disk_page == page,
+                    )
+                })
+                .collect(),
+            cx,
+        );
+        let controls = div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(pages)
+            .when_some(info["index"].as_u64().filter(|_| details), |d, index| {
+                d.child(self.disk_refresh_button(index, cx))
+            })
+            .into_any_element();
+        let head = self.perf_head(
+            device.title.clone(),
+            Some(device.model.clone()),
+            Some(controls),
+            cx,
+        );
+        if details {
+            return vec![head, self.disk_details(device, window, cx)];
+        }
         let prefix = format!("hardware.disks.{}", device.index);
         let mut stats = vec![
             self.stat(
@@ -2222,7 +2262,7 @@ impl Desktop {
             ));
         }
         vec![
-            self.perf_head(device.title.clone(), Some(device.model.clone()), None, cx),
+            head,
             self.chart_view(
                 "disk-active",
                 &[Line::new(format!("{prefix}.active"), p.io)],
