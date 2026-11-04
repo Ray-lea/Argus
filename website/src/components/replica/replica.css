@@ -489,9 +489,14 @@
 }
 .a-seg button[aria-checked="true"] {
   color: var(--a-ink);
+  transition: color 83ms linear;
 }
+/* Before the selection is measured, the chosen option draws the selection's
+   face and ring itself, exactly where the selection then appears: no
+   background fades out under it (it showed doubled, brighter, for a moment). */
 .a-seg:not([data-ready]) button[aria-checked="true"] {
   background: var(--a-control-checked);
+  box-shadow: 0 0 0 1px var(--a-stroke);
 }
 .a-seg button[aria-checked="false"]:hover {
   background: var(--a-hover);
@@ -926,22 +931,6 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-}
-.a-content.is-entering {
-  animation: a-enter 300ms var(--a-ease);
-}
-.is-nav-left .a-content.is-entering {
-  animation-name: a-enter-y;
-}
-@keyframes a-enter {
-  from {
-    transform: translateX(calc(var(--dir, 1) * 32px));
-  }
-}
-@keyframes a-enter-y {
-  from {
-    transform: translateY(calc(var(--dir, 1) * 24px));
-  }
 }
 @keyframes a-fade {
   from {
@@ -1551,20 +1540,11 @@ button.a-th:active {
   min-height: 0;
   border-left: 1px solid var(--a-stroke);
 }
-.a-details.is-entering {
-  animation: a-pane 250ms var(--a-ease);
-}
-@keyframes a-pane {
-  from {
-    transform: translateX(24px);
-  }
-}
 .a-details-body {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  animation: a-settle 250ms var(--a-ease);
 }
 @keyframes a-settle {
   from {
@@ -1980,20 +1960,32 @@ button.a-th:active {
   background: var(--a-layer);
   scrollbar-gutter: stable;
 }
+/* What moves in (widgets.tsx slideIn) keeps its own layer for good: the
+   layer dropped when a move ended, a scrolling list inside was drawn again a
+   fraction of a pixel aside, and its text shifted after the page had settled. */
+.a-content,
+.a-perf-body,
+.a-details {
+  will-change: transform;
+}
+.a-details-body {
+  will-change: transform, opacity;
+}
+/* The device view's moves stay inside this clip (Performance.tsx). */
+.a-perf-stage {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  overflow: clip;
+}
 .a-perf-body {
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
   padding: 16px 20px 20px;
-  animation: a-arrive 250ms var(--a-ease);
 }
 .a-perf-body.is-details {
   flex: none;
-}
-@keyframes a-arrive {
-  from {
-    transform: translateY(calc(var(--dir, 1) * 16px));
-  }
 }
 .a-perf-head {
   display: flex;
@@ -2237,7 +2229,6 @@ button.a-th:active {
 @keyframes a-core {
   from {
     opacity: 0;
-    transform: scale(0.96);
   }
 }
 .a-core-head {

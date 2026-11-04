@@ -27,6 +27,47 @@ export function localRect(el: Element) {
 // Layout effects only run in the browser; the server render skips them quietly.
 export const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
+// The interface's entrance curve (--a-ease, cubic-bezier(0.1, 0.9, 0.2, 1)) at time t.
+function enterEase(t: number) {
+  const [x1, y1, x2, y2] = [0.1, 0.9, 0.2, 1];
+  const at = (u: number, a: number, b: number) => 3 * (1 - u) * (1 - u) * u * a + 3 * (1 - u) * u * u * b + u * u * u;
+  let lo = 0,
+    hi = 1,
+    u = t;
+  for (let i = 0; i < 24; i++) {
+    u = (lo + hi) / 2;
+    if (at(u, x1, x2) < t) lo = u;
+    else hi = u;
+  }
+  return at(u, y1, y2);
+}
+
+/**
+ * Moves an element in from an offset (in its own pixels) to its place, and
+ * fades it in if asked. The demo is drawn scaled: moved by fractions of a
+ * screen pixel, a page's text shows blurred until the move ends, then
+ * settles with a jump. These keyframes hold each step on a whole screen
+ * pixel; the compositor plays them as it plays a CSS animation.
+ */
+export function slideIn(el: HTMLElement | null, { x = 0, y = 0, duration = 250, fade = false }) {
+  if (!el || (!x && !y && !fade) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const box = el.getBoundingClientRect(),
+    s = el.offsetWidth ? (box.width * devicePixelRatio) / el.offsetWidth : devicePixelRatio;
+  const steps = Math.max(1, Math.round(duration / 4)),
+    frames: Keyframe[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const left = 1 - enterEase(i / steps);
+    const frame: Keyframe = {
+      offset: i / steps,
+      transform: `translate(${Math.round(x * s * left) / s}px, ${Math.round(y * s * left) / s}px)`,
+      easing: "step-end",
+    };
+    if (fade) frame.opacity = 1 - left;
+    frames.push(frame);
+  }
+  el.animate(frames, { duration, easing: "linear" });
+}
+
 export interface SegItem<T extends string> {
   value: T;
   label?: string;

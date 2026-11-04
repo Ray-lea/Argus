@@ -19,7 +19,7 @@ import {
   thousands,
   totalMemory,
 } from "./model";
-import { Segments, Select } from "./widgets";
+import { Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
 
 interface Props {
   tick: number;
@@ -162,6 +162,9 @@ export default function Performance(p: Props) {
       dir: Math.sign(devices.indexOf(p.device) - devices.indexOf(last.current.device)) || 1,
     };
   }
+  // A device's view moves in from the side of its entry in the list.
+  const view = useRef<HTMLDivElement>(null);
+  useIsoLayoutEffect(() => slideIn(view.current, { y: last.current.dir * 16 }), [p.device]);
   const markMoves = useRef(false);
   const s = sampleAt(p.tick);
   const h = useSystemHistory(p.tick);
@@ -762,12 +765,16 @@ export default function Performance(p: Props) {
       </nav>
       <div className="a-perf-gap" />
       <div className="a-perf-main a-scroll">
-        <div
-          key={p.device}
-          className={"a-perf-body" + (p.device === "cpu" && cpuPage === "details" ? " is-details" : "")}
-          style={{ "--dir": last.current.dir } as CSSProperties}
-        >
-          {body}
+        {/* The view moves inside a clip: moved in the scroll area itself, its
+            offset counted in the scroll range and showed a scrollbar. */}
+        <div className="a-perf-stage">
+          <div
+            key={p.device}
+            ref={view}
+            className={"a-perf-body" + (p.device === "cpu" && cpuPage === "details" ? " is-details" : "")}
+          >
+            {body}
+          </div>
         </div>
       </div>
     </div>

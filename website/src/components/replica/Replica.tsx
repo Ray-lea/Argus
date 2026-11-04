@@ -32,7 +32,7 @@ import {
 import type { ConnectionFilter, HistoryRange, MenuEntry, ServiceFilter, ServiceState, ThemeChoice } from "./Pages";
 import { buildRows, Details, ProcessTable, Vitals, type Device, type Row, type SortKey, type View } from "./Processes";
 import { useShared, type Page } from "./store";
-import { Button, localRect, scaleOf, Segments, Select, useIsoLayoutEffect } from "./widgets";
+import { Button, localRect, scaleOf, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
 
 // Only the processes page shows at first; the others' code loads off the
 // first paint's path. React.lazy would hold a page that loads late behind a
@@ -316,6 +316,12 @@ export default function Replica({
     };
   }, [ctrlHeld]);
 
+  // A new page moves in from the side of its tab (from below with the rail on the left).
+  const content = useRef<HTMLElement>(null);
+  useIsoLayoutEffect(() => {
+    if (dir) slideIn(content.current, navLeft ? { y: dir * 24, duration: 300 } : { x: dir * 32, duration: 300 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
   const go = useCallback(
     (next: Page) => {
       setMenu(null);
@@ -665,6 +671,7 @@ export default function Replica({
   const controls =
     page === "processes" ? (
       <Segments
+        key="processes"
         label="视图"
         value={view}
         onChange={setView}
@@ -677,6 +684,7 @@ export default function Replica({
       />
     ) : page === "services" ? (
       <Segments
+        key="services"
         label="筛选"
         value={serviceFilter}
         onChange={setServiceFilter}
@@ -688,6 +696,7 @@ export default function Replica({
       />
     ) : page === "connections" ? (
       <Segments
+        key="connections"
         label="筛选"
         value={connectionFilter}
         onChange={setConnectionFilter}
@@ -701,6 +710,7 @@ export default function Replica({
     ) : page === "history" ? (
       <>
         <Segments
+          key="history"
           label="时间范围"
           value={historyRange}
           onChange={(v) => {
@@ -894,8 +904,8 @@ export default function Replica({
           <div className="a-body">
             <main
               key={page}
-              className={"a-content" + (dir ? " is-entering" : "")}
-              style={{ "--dir": dir || 1 } as CSSProperties}
+              ref={content}
+              className="a-content"
               aria-label={pages[pageIndex][1]}
             >
               {page === "processes" && (

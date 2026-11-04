@@ -34,6 +34,7 @@ import {
   type Process,
   type Reading,
 } from "./model";
+import { slideIn, useIsoLayoutEffect } from "./widgets";
 
 export type View = "apps" | "tree" | "list";
 export type SortKey = "name" | "pid" | "cpu" | "mem" | "read" | "write" | "io" | "gpu" | "net";
@@ -733,11 +734,18 @@ function PathRow({ path, onCopy }: { path: string; onCopy: (text: string, what: 
     </div>
   );
 }
+// A details card settles into place as it opens: up from 6 px below, fading in.
+const settle = (el: HTMLDivElement | null) => slideIn(el, { y: 6, fade: true });
 export function Details(d: DetailsProps) {
   const row = d.row;
   const proc = row ? d.list.find((p) => p.pid === row.pids[0]) : undefined;
+  // The pane, opened, moves in from the right.
+  const pane = useRef<HTMLElement>(null);
+  useIsoLayoutEffect(() => {
+    if (d.entering) slideIn(pane.current, { x: 24 });
+  }, [d.entering]);
   return (
-    <aside className={"a-details" + (d.entering ? " is-entering" : "")} aria-label="详细信息面板" data-tour="details">
+    <aside className="a-details" ref={pane} aria-label="详细信息面板" data-tour="details">
       {row && proc ? (
         <ProcessDetails key={row.key} {...d} row={row} proc={proc} />
       ) : (
@@ -769,7 +777,7 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
     ["句柄", total("handles")],
   ];
   return (
-    <div className="a-details-body">
+    <div className="a-details-body" ref={settle}>
       <div className="a-details-scroll a-scroll">
         <header className="a-details-head">
           <span className="a-head-glyph">
@@ -917,7 +925,7 @@ function Overview({ onDevice, onCopy }: { onDevice: (device: Device) => void; on
   const [visible, setVisible] = useState(true);
   const text = ["本机配置", ...parts.map((p) => `${p.kind}：${p.name}\n${p.detail}`)].join("\n\n");
   return (
-    <div className="a-details-body">
+    <div className="a-details-body" ref={settle}>
       <div className="a-details-scroll a-scroll">
         <header className="a-details-head is-center">
           <span className="a-head-glyph">
