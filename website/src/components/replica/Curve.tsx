@@ -1,6 +1,7 @@
 /** @jsxImportSource @/components/replica/i18n */
 "use client";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { DASH, MARGIN, OVERRUN, heightAt, pathOf, tangents, type Frame, type Geometry, type Message } from "./curve-math";
 import { translate } from "./i18n";
 
 export interface Series {
@@ -25,15 +26,6 @@ export interface SampleClock {
 /** The window's clock: the window advances it, its charts follow it. */
 export const sampleClock: SampleClock = { at: 0, rest: true };
 
-// Samples drawn beyond each edge but never shown. The tangents at the ends of
-// the data (and the limiter that adjusts them) change as samples arrive and
-// leave; the app likewise keeps a scroll margin on both sides of its window.
-const MARGIN = 2;
-// How far past the next sample the scroll runs on, in samples. A sample whose
-// render commits late (a page of many charts takes a while) then finds the
-// curve still moving, instead of stopped at the end of its step and jumping on.
-// It runs into the hidden margin, whose last tangent may still change.
-const OVERRUN = 0.25;
 /**
  * A sample has arrived. Its scroll begins one interval after the last one's,
  * however late the timer fired: began at the firing, the curves would step
@@ -53,75 +45,67 @@ export function advanceClock(clock: SampleClock, interval: number) {
 /** How far into its step a curve on this clock is, in ms. */
 const elapsed = (clock: SampleClock, interval: number) =>
   Math.min(interval * (1 + OVERRUN), clock.rest ? interval : Math.max(0, performance.now() - clock.at));
-// The dash pattern of a dashed series (4 on, 3 off), in pixels.
-const DASH = [4, 3];
-
-// Monotone cubic interpolation (Fritsch–Carlson), as the app joins adjacent readings.
-function tangents(ys: number[]) {
-  const n = ys.length;
-  const d = ys.slice(1).map((y, i) => y - ys[i]);
-  const m = ys.map((_, i) =>
-    i === 0
-      ? d[0]
-      : i === n - 1
-        ? d[n - 2]
-        : d[i - 1] * d[i] <= 0
-          ? 0
-          : (d[i - 1] + d[i]) / 2,
-  );
-  for (let i = 0; i < n - 1; i++) {
-    if (d[i] === 0) {
-      m[i] = m[i + 1] = 0;
-      continue;
-    }
-    const a = m[i] / d[i],
-      b = m[i + 1] / d[i],
-      s = a * a + b * b;
-    if (s > 9) {
-      const t = 3 / Math.sqrt(s);
-      m[i] = t * a * d[i];
-      m[i + 1] = t * b * d[i];
-    }
-  }
-  return m;
-}
-function pathOf(ys: number[], m: number[]) {
-  const f = (v: number) => +v.toFixed(2);
-  let path = `M0 ${f(ys[0])}`;
-  for (let i = 0; i < ys.length - 1; i++)
-    path += `C${f(i + 1 / 3)} ${f(ys[i] + m[i] / 3)} ${f(i + 2 / 3)} ${f(ys[i + 1] - m[i + 1] / 3)} ${i + 1} ${f(ys[i + 1])}`;
-  return path;
-}
-// The curve's height at x: its control points sit at thirds, so x is the Bézier parameter.
-function heightAt(ys: number[], m: number[], x: number) {
-  const i = Math.max(0, Math.min(ys.length - 2, Math.floor(x)));
-  const t = Math.max(0, Math.min(1, x - i)),
-    u = 1 - t;
-  const a = ys[i],
-    b = ys[i] + m[i] / 3,
-    c = ys[i + 1] - m[i + 1] / 3,
-    d = ys[i + 1];
-  return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
-}
-// The drawn length of the first `count` segments, at sx and sy pixels per unit.
-function lengthTo(ys: number[], m: number[], count: number, sx: number, sy: number) {
-  let length = 0;
-  for (let i = 0; i < Math.min(count, ys.length - 1); i++) {
-    let px = i * sx,
-      py = ys[i] * sy;
-    for (let k = 1; k <= 24; k++) {
-      const t = k / 24;
-      const x = (i + t) * sx,
-        y = heightAt(ys, m, i + t) * sy;
-      length += Math.hypot(x - px, y - py);
-      px = x;
-      py = y;
-    }
-  }
-  return length;
-}
 // Seconds as the app's readout shows them: tenths below ten.
 const ago = (seconds: number) => (seconds < 10 ? String(Math.round(seconds * 10) / 10) : String(Math.round(seconds)));
+
+/*
+ * The curves are drawn by a worker (curve.worker.ts), each on a canvas laid
+ * on whole device pixels. One that scrolls is drawn again on every display
+ * frame where its clock puts it, as the app draws its charts. A texture moved
+ * by the compositor instead would show the line's antialiasing and the clip
+ * at its ends shifting from frame to frame, and its scroll, restarted for
+ * every sample, could start a frame late and step back.
+ */
+let painter: Worker | null | undefined;
+const charts = new Map<number, { repaint: () => void; drawn: () => void }>();
+const given = new WeakMap<HTMLCanvasElement, number>();
+const leaving = new Map<number, ReturnType<typeof setTimeout>>();
+let ids = 0;
+function getPainter() {
+  if (painter !== undefined) return painter;
+  painter = null;
+  try {
+    if (typeof OffscreenCanvas === "undefined" || !("transferControlToOffscreen" in HTMLCanvasElement.prototype)) return null;
+    const worker = new Worker(new URL("./curve.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = ({ data }) => {
+      if (data?.kind === "drawn") charts.get(data.id)?.drawn();
+    };
+    worker.onerror = () => {
+      painter = null;
+    };
+    painter = worker;
+    // The site's theme changes the curves' colours without a render.
+    new MutationObserver(() => charts.forEach((c) => c.repaint())).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "style", "data-theme"],
+    });
+  } catch {
+    painter = null;
+  }
+  return painter;
+}
+const post = (message: Message, transfer: Transferable[] = []) => painter?.postMessage(message, transfer);
+// A CSS colour as [r, g, b, a], read once per colour.
+const colors = new Map<string, number[]>();
+let probe: CanvasRenderingContext2D | null = null;
+function rgba(css: string) {
+  const known = colors.get(css);
+  if (known) return known;
+  probe ??= document.createElement("canvas").getContext("2d");
+  if (!probe) return [0, 0, 0, 1];
+  probe.fillStyle = "#000";
+  probe.fillStyle = css;
+  const value = String(probe.fillStyle);
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(value);
+  const numbers = (value.match(/[\d.]+/g) ?? []).map(Number);
+  const parts = hex
+    ? [parseInt(hex[1], 16), parseInt(hex[2], 16), parseInt(hex[3], 16), 1]
+    : value.startsWith("color(")
+      ? [...numbers.slice(0, 3).map((n) => Math.round(n * 255)), numbers[3] ?? 1]
+      : numbers.concat(1).slice(0, 4);
+  colors.set(css, parts);
+  return parts;
+}
 
 /** A performance chart's hover readout: series names and how values read. */
 export interface Readout {
@@ -142,12 +126,6 @@ interface Props {
   clock?: SampleClock;
 }
 
-/*
- * The track holds one more interval than the frame shows, and the hidden
- * margins beyond that. Each new sample re-draws the path one step to the left
- * and the compositor carries the track back across that step over the refresh
- * interval, so the line moves at the display's frame rate without per-frame script.
- */
 export default function Curve({
   series,
   max,
@@ -161,42 +139,11 @@ export default function Curve({
   clock = sampleClock,
 }: Props) {
   const id = useId().replace(/:/g, "");
-  const track = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
-  const clip = useRef<HTMLDivElement>(null);
-  // The demo is drawn scaled, so a curve's box seldom starts or ends on a whole
-  // screen pixel. Its clip keeps to the screen pixels wholly inside the box:
-  // the curve never shares a pixel with the divider or border beside it (which
-  // it would paint over in some frames and not in others as it scrolls), and it
-  // ends on a crisp column, as in the app. Each sample re-renders the curve, so
-  // a move that changes no size is caught within one interval.
-  const snap = useCallback(() => {
-    const outer = box.current,
-      inner = clip.current;
-    if (!outer || !inner || !outer.offsetWidth) return;
-    const r = outer.getBoundingClientRect(),
-      ratio = devicePixelRatio,
-      k = r.width / outer.offsetWidth;
-    const left = r.left * ratio,
-      right = r.right * ratio;
-    // A hair inside the whole pixel: an edge a rounding error past it is
-    // rounded out to the neighbouring pixel.
-    const inset = (px: number) => ((px + 0.05) / ratio / k).toFixed(3) + "px";
-    inner.style.left = inset(Math.ceil(left - 0.001) - left);
-    inner.style.right = inset(right - Math.floor(right + 0.001));
-  }, []);
-  useLayoutEffect(snap);
-  useEffect(() => {
-    const outer = box.current;
-    if (!outer) return;
-    const observer = new ResizeObserver(snap);
-    observer.observe(outer);
-    addEventListener("resize", snap);
-    return () => {
-      observer.disconnect();
-      removeEventListener("resize", snap);
-    };
-  }, [snap]);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const ring = useRef<HTMLElement>(null);
+  const strokes = useRef<(SVGPathElement | null)[]>([]);
+  const chart = useRef<number | null>(null);
   const count = series[0]?.values.length ?? 2;
   const margin = count >= 2 * MARGIN + 4 ? MARGIN : 0;
   const drawn = Math.max(2, count - 1);
@@ -213,62 +160,143 @@ export default function Curve({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [series, max],
   );
-  useLayoutEffect(() => {
-    const el = track.current;
-    if (!el) return;
-    for (const a of el.getAnimations()) a.cancel();
-    if (motion !== "smooth" || !running) return;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const animation = el.animate([{ transform: at(0) }, { transform: at(1 + OVERRUN) }], {
-      duration: interval * (1 + OVERRUN),
-      easing: "linear",
-      fill: "forwards",
-    });
-    // A curve shown between samples joins the scroll where the others are;
-    // until the first sample after a pause they rest at the end of the step.
-    animation.currentTime = elapsed(clock, interval);
-    if (clock.rest) animation.pause();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, motion, running, interval, drawn, margin]);
-  // How far the scroll has carried the track, in samples.
-  const phase = () => {
-    const time = track.current?.getAnimations()[0]?.currentTime;
-    return typeof time === "number" ? Math.min(1 + OVERRUN, time / interval) : 1;
-  };
+  // The curve scrolls unless it is held, stepped or motion is reduced. Held
+  // while it scrolls, it stays where it is (the worker keeps it there too).
+  const still = () => clock.rest || !running || motion !== "smooth" || matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const held = useRef<number | null>(null),
+    moved = useRef(false);
+  const phase = () => (still() ? (held.current ?? 1) : elapsed(clock, interval) / interval);
 
-  // Dashes keep their place on the curve as it scrolls (the app keeps a dash
-  // phase per series): each sample re-draws the path from one sample later,
-  // so its pattern starts that much further along.
-  const dashed = useRef<(SVGPathElement | null)[]>([]);
-  const dash = useRef<{ tick: number; lines: typeof lines; offsets: number[] } | null>(null);
+  // The demo is drawn scaled, so a curve's box seldom starts or ends on a
+  // whole screen pixel. The canvas lies on whole device pixels around the box,
+  // with room for the readout's dots beyond its edges, and the curve is cut
+  // exactly at the box's edges: the column the edge crosses shows the curve
+  // in the part inside the box, next to the border in the rest (cut at the
+  // first whole pixel inside, a column of background showed between them).
+  // Each sample re-renders the curve, so a move that changes no size is caught
+  // within one interval.
+  const geometry = useRef("");
+  const snap = useCallback(() => {
+    const outer = box.current,
+      surface = canvas.current;
+    if (!outer || !surface || !outer.offsetWidth || chart.current === null) return;
+    const r = outer.getBoundingClientRect(),
+      ratio = devicePixelRatio,
+      k = r.width / outer.offsetWidth;
+    const left = r.left * ratio,
+      right = r.right * ratio,
+      top = r.top * ratio,
+      bottom = r.bottom * ratio;
+    const scale = k * ratio,
+      room = Math.ceil(7 * scale);
+    const x = Math.floor(left) - room,
+      y = Math.floor(top) - room;
+    const g: Geometry = {
+      width: Math.ceil(right) + room - x,
+      height: Math.ceil(bottom) + room - y,
+      left: left - x,
+      top: top - y,
+      boxWidth: right - left,
+      boxHeight: bottom - top,
+      clipLeft: left - x,
+      clipRight: right - x,
+      scale,
+    };
+    const key = JSON.stringify(g);
+    if (key === geometry.current) return;
+    geometry.current = key;
+    const css = (px: number) => (px / scale).toFixed(4) + "px";
+    Object.assign(surface.style, { left: css(x - left), top: css(y - top), width: css(g.width), height: css(g.height) });
+    post({ kind: "geometry", id: chart.current, geometry: g });
+  }, []);
+  // The latest data, its clock and colours, sent together.
+  const send = useRef(() => {});
   useLayoutEffect(() => {
-    if (!series.some((s) => s.dashed)) return;
-    const outer = box.current;
-    const last = dash.current;
-    const offsets = lines.map((_, i) => last?.offsets[i] ?? 0);
-    if (outer && last && last.lines !== lines && tick === last.tick + 1) {
-      // Pixels per unit, as the stroke is drawn: in the curve's own box, before the demo's scale.
-      const sx = outer.offsetWidth / shown,
-        sy = outer.offsetHeight / 100;
-      const period = DASH[0] + DASH[1];
-      lines.forEach((line, i) => {
-        const before = last.lines[i];
-        if (!before) return;
-        // Measured to the first sample shown, past the ends whose tangents differ.
-        const moved = lengthTo(before.ys, before.m, margin + 1, sx, sy) - lengthTo(line.ys, line.m, margin, sx, sy);
-        offsets[i] = (((offsets[i] + moved) % period) + period) % period;
+    send.current = () => {
+      const moving = !still();
+      if (moving) held.current = null;
+      else held.current ??= moved.current ? elapsed(clock, interval) / interval : 1;
+      moved.current = moving;
+      if (chart.current === null) return;
+      const frame: Frame = {
+        series: series.map((s, i) => ({
+          ys: lines[i].ys,
+          color: rgba(getComputedStyle(strokes.current[i] ?? document.body).stroke),
+          fill: s.fill !== false,
+          faint: !!s.faint,
+          dashed: !!s.dashed,
+        })),
+        drawn,
+        shown,
+        margin,
+        interval,
+        at: still() ? null : performance.timeOrigin + clock.at,
+        tick,
+        ring: rgba(ring.current ? getComputedStyle(ring.current).color : "#000"),
+      };
+      post({ kind: "frame", id: chart.current, frame });
+    };
+  });
+  useLayoutEffect(() => {
+    snap();
+    send.current();
+  });
+  useEffect(() => {
+    const outer = box.current,
+      surface = canvas.current;
+    if (!outer || !surface) return;
+    const worker = getPainter();
+    let number: number | undefined;
+    if (worker) {
+      number = given.get(surface);
+      if (number === undefined) {
+        number = ++ids;
+        given.set(surface, number);
+        const offscreen = surface.transferControlToOffscreen();
+        post({ kind: "add", id: number, canvas: offscreen }, [offscreen]);
+      } else clearTimeout(leaving.get(number));
+      chart.current = number;
+      geometry.current = "";
+      charts.set(number, {
+        repaint: () => send.current(),
+        // The first frame on the canvas: the server's drawing gives way to it.
+        drawn: () => outer.setAttribute("data-live", ""),
       });
+      snap();
+      send.current();
     }
-    dash.current = { tick, lines, offsets };
-    offsets.forEach((offset, i) => dashed.current[i]?.setAttribute("stroke-dashoffset", offset.toFixed(2)));
-  }, [lines, tick, series, margin, shown]);
+    const observer = new ResizeObserver(snap);
+    observer.observe(outer);
+    addEventListener("resize", snap);
+    // So does the demo's own theme or accent, on its window.
+    const restyle = new MutationObserver(() => send.current());
+    const app = outer.closest(".argus-app");
+    if (app) restyle.observe(app, { attributes: true, attributeFilter: ["class", "style", "data-mode"] });
+    const sight = new IntersectionObserver(([entry]) => {
+      if (number !== undefined) post({ kind: "visible", id: number, visible: entry.isIntersecting });
+    });
+    sight.observe(outer);
+    return () => {
+      observer.disconnect();
+      restyle.disconnect();
+      sight.disconnect();
+      removeEventListener("resize", snap);
+      if (number === undefined) return;
+      const gone = number;
+      charts.delete(gone);
+      chart.current = null;
+      // Re-mounted at once (React's strict mode), the canvas stays with the worker.
+      leaving.set(
+        gone,
+        setTimeout(() => post({ kind: "remove", id: gone })),
+      );
+    };
+  }, [snap]);
 
-  // The readout: a line at the pointer, a dot on each curve that rides it every
-  // frame, and text that reads the curve ten times a second, and at once when
-  // the pointer moves or a sample arrives. It is placed outside React's
-  // rendering: in the event that moves the pointer, on each frame, and after a
-  // sample's commit has restarted the scroll. A render reads the scroll before
-  // that restart, and would draw the dots a step off for a frame.
+  // The readout: a line at the pointer, a dot on each curve and text that
+  // reads the curve ten times a second, and at once when the pointer moves or
+  // a sample arrives. The worker draws the dots with the curve; the text reads
+  // the same clock.
   const [hovering, setHovering] = useState(false);
   const pointer = useRef(0);
   const readoutBox = useRef<HTMLDivElement>(null);
@@ -283,24 +311,15 @@ export default function Curve({
       const el = readoutBox.current;
       if (!el || !readout) return;
       const fraction = pointer.current;
-      // While the readout shows, this script places the scroll too, on the same
-      // frame as the dots: on the compositor it would run ahead of them in any
-      // frame the page is busy, and the dots would wobble on the line.
-      const scroll = track.current?.getAnimations()[0];
-      if (scroll) {
-        if (scroll.playState === "running") scroll.pause();
-        scroll.currentTime = elapsed(clock, interval);
-      }
       const x = margin + phase() + fraction * shown;
       el.style.setProperty("--x", String(fraction));
       tip.current?.classList.toggle("is-flipped", fraction > 0.5);
       const heights = lines.map((line) => heightAt(line.ys, line.m, x));
-      // Moved on their own layer by a fraction of a pixel at a time: placed by
-      // `top`, a dot would be drawn on whole pixels and wobble against the line.
-      const box = el.offsetHeight;
+      // Without the worker, the dots are placed here, on their own layer.
+      const height = el.offsetHeight;
       heights.forEach((h, i) => {
         const dot = dots.current[i];
-        if (dot) dot.style.transform = `translateY(${((h / 100) * box).toFixed(2)}px)`;
+        if (dot) dot.style.transform = `translateY(${((h / 100) * height).toFixed(2)}px)`;
       });
       const now = performance.now();
       if (!read && now - lastRead.current < 100) return;
@@ -320,16 +339,9 @@ export default function Curve({
       place.current(false);
       frame = requestAnimationFrame(ride);
     });
-    return () => {
-      cancelAnimationFrame(frame);
-      // The compositor takes the scroll back from where it is now.
-      const scroll = track.current?.getAnimations()[0];
-      if (scroll?.playState === "paused" && !clock.rest) {
-        scroll.currentTime = elapsed(clock, interval);
-        scroll.play();
-      }
-    };
-  }, [hovering, interval, clock]);
+    return () => cancelAnimationFrame(frame);
+  }, [hovering]);
+  const point = (at: number | null) => chart.current !== null && post({ kind: "pointer", id: chart.current, at });
 
   return (
     <div
@@ -342,15 +354,24 @@ export default function Curve({
           ? (event) => {
               const box = event.currentTarget.getBoundingClientRect();
               pointer.current = Math.max(0, Math.min(1, (event.clientX - box.left) / box.width));
+              point(pointer.current);
               if (hovering) place.current(true);
               else setHovering(true);
             }
           : undefined
       }
-      onPointerLeave={readout ? () => setHovering(false) : undefined}
+      onPointerLeave={
+        readout
+          ? () => {
+              point(null);
+              setHovering(false);
+            }
+          : undefined
+      }
     >
-      <div className="curve-clip" ref={clip}>
-        <div className="curve-track" ref={track} style={{ width: `${(drawn / shown) * 100}%`, transform: at(1) }}>
+      {/* The server's drawing, and the curve where no worker can draw it. */}
+      <div className="curve-clip">
+        <div className="curve-track" style={{ width: `${(drawn / shown) * 100}%`, transform: at(1) }}>
           <svg viewBox={`0 0 ${drawn} 100`} preserveAspectRatio="none" aria-hidden="true">
             <defs>
               {series.map((s, i) =>
@@ -367,7 +388,7 @@ export default function Curve({
                 {s.fill !== false && <path d={`${lines[i].path}L${drawn} 100L0 100Z`} fill={`url(#${id}-${i})`} />}
                 <path
                   ref={(el) => {
-                    dashed.current[i] = s.dashed ? el : null;
+                    strokes.current[i] = el;
                   }}
                   d={lines[i].path}
                   fill="none"
@@ -383,6 +404,8 @@ export default function Curve({
           </svg>
         </div>
       </div>
+      <canvas className="curve-canvas" ref={canvas} aria-hidden="true" />
+      <i className="curve-ring" ref={ring} aria-hidden="true" />
       {readout && hovering && (
         <div className="curve-readout" ref={readoutBox} aria-hidden="true">
           <i className="curve-cursor" />

@@ -2,10 +2,8 @@
   position: relative;
   pointer-events: none;
 }
-/* clip-path, not overflow: the scrolling track is a compositor layer, and an
-   overflow clip lets it bleed into the next screen pixel in some frames, which
-   in the scaled demo is often a divider or a border. Curve.tsx puts the clip's
-   edges on whole screen pixels. */
+/* The server's drawing of the curve, shown until the worker's canvas has
+   drawn (or where there is no worker). */
 .curve-clip {
   position: absolute;
   inset: 0;
@@ -14,7 +12,27 @@
 .curve-track {
   position: absolute;
   inset: 0 auto 0 0;
-  will-change: transform;
+}
+/* The worker's canvas (Curve.tsx): on whole device pixels around the box,
+   with room for the readout's dots. Once it has drawn, the server's drawing
+   underneath gives way. */
+.curve-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.curve[data-live] .curve-clip,
+.curve[data-live] .curve-dot {
+  display: none;
+}
+/* The colour the readout dots' ring takes, read by the script. */
+.curve-ring {
+  display: none;
+  color: var(--a-flyout);
 }
 .curve-track svg {
   display: block;
@@ -54,6 +72,7 @@
 }
 .curve-tip {
   position: absolute;
+  z-index: 2;
   top: 6px;
   left: calc(var(--x) * 100% + 10px);
   display: flex;
