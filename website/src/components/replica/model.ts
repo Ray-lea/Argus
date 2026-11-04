@@ -116,11 +116,16 @@ function burst(seed: number, tick: number, every: number, chance: number) {
   }
   return peak;
 }
+// A restless load for the processor: quicker swings carry more weight.
+const restless = (seed: number, tick: number) =>
+  drift(seed, tick, 19) * 0.36 + drift(seed + 1, tick, 6) * 0.3 + drift(seed + 2, tick, 2.2) * 0.2 + noise(seed + 3, tick) * 0.14;
 // A busy desktop, made up: never the same minute twice, yet any sample can be
-// drawn again from its tick alone.
+// drawn again from its tick alone. The processor has short bursts of two
+// kinds and, now and then, a stretch of sustained work.
 function draw(tick: number): Sample {
-  const busy = burst(110, tick, 12, 0.55);
-  const cpu = Math.min(97, 14 + load(100, tick) * 38 + busy * 42);
+  const busy = burst(110, tick, 9, 0.5);
+  const work = Math.max(0, drift(105, tick, 45) - 0.55) / 0.45;
+  const cpu = Math.min(97, 9 + restless(100, tick) * 40 + work * 24 + busy * 40 + burst(115, tick, 17, 0.4) * 26);
   const read = 160 + load(140, tick) ** 2 * 1600 + burst(150, tick, 9, 0.25) * 22000;
   const write = 1500 + load(160, tick) ** 2 * 7000 + burst(170, tick, 11, 0.45) * 46000;
   const rx = 9500 + load(180, tick) * 9000 + burst(190, tick, 10, 0.4) * 9000;

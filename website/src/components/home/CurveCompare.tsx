@@ -30,6 +30,10 @@ export default function CurveCompare({ lang }: { lang: "zh" | "en" }) {
   const t = text[lang];
   const root = useRef<HTMLDivElement>(null);
   const [tick, setTick] = useState(0);
+  // Each visit shows another stretch of the made-up load. The server draws the
+  // first; the cell is below the first screen, so the change goes unseen.
+  const [from, setFrom] = useState(0);
+  useEffect(() => setFrom(1000 + Math.floor(Math.random() * 1_000_000)), []);
   const [visible, setVisible] = useState(false);
   const [hz, setHz] = useState<number | null>(null);
   // Its own sample clock: the demo window's stops while the window is off screen.
@@ -72,7 +76,9 @@ export default function CurveCompare({ lang }: { lang: "zh" | "en" }) {
     handle = requestAnimationFrame(count);
     return () => cancelAnimationFrame(handle);
   }, [visible, hz]);
-  const values = Array.from({ length: span + 2 }, (_, i) => sampleAt(tick - span - 1 + i).cpu);
+  // Under the pointer each curve shows its reading at that moment, as in the app.
+  const readout = { format: (v: number) => Math.round(v) + "%" };
+  const values = Array.from({ length: span + 2 }, (_, i) => sampleAt(from + tick - span - 1 + i).cpu);
   const lane = (name: string, note: string, smooth: boolean) => (
     <div className={"compare-lane" + (smooth ? " is-own" : "")}>
       <p>
@@ -88,6 +94,7 @@ export default function CurveCompare({ lang }: { lang: "zh" | "en" }) {
           motion={smooth ? "smooth" : "step"}
           running={visible}
           clock={clock}
+          readout={readout}
         />
       </div>
     </div>

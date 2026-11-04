@@ -1947,6 +1947,13 @@
   position: absolute;
   inset: 0;
 }
+/* The hover readout (replica/curve.css) in the site's colours. */
+.compare {
+  --a-flyout: var(--surface-solid);
+  --a-ink: var(--ink);
+  --a-ink-2: var(--ink-2);
+  --a-stroke-strong: var(--stroke-2);
+}
 .compare-rate {
   color: var(--ink-2);
   font-size: 0.875rem;
