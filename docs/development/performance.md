@@ -42,6 +42,8 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 定位帧率损失时，可设置 `ARGUS_GPUI_FRAME_TRACE=1`，记录显示同步、绘制、提交、纹理上传和文字排版的时间点，以及完整绘制各阶段耗时。该记录不包含界面内容。`ARGUS_GPUI_VIEW_TRACE=1` 另外启用详细视图分析，用于定位调用路径；正式 A/B 时关闭分析器，以消除其额外开销。显示队列可能舍弃已提交的帧，实际呈现仍以窗口捕获为准。
 
+缩放后的旧画面滞留用 `ui-shots` 测量：录制标题栏一带（`crop` 取窗口顶部几十行），期间以 `probe: "size W H"` 逐步改变宽度。录制帧时间是该帧的显示时刻，比合成时刻晚一次刷新。帧宽已是新尺寸、关闭按钮到右缘的距离仍与稳定后不同的帧，即新尺寸配旧内容；帧宽仍是旧尺寸而按钮位置已变的帧，是新内容先于新尺寸显示。帧跟踪的阶段 16 记录在 `WM_NCCALCSIZE` 中预先绘制的客户区尺寸，阶段 17 记录 `WM_SIZE`。设置 `ARGUS_GPUI_DEFER_RESIZE_PAINT=1` 可在同一 EXE 上恢复为 `WM_SIZE` 之后才绘制新尺寸，用于对照。
+
 `ARGUS_GPUI_GPU_TIMING=1` 启用 D3D11 GPU 时间戳抽样，每 17 次操作采一次，至少延后 4 次操作读取，使用 `DONOTFLUSH` 查询，未完成时留待后续读取。查询池与日志队列有固定容量，耗尽时跳过样本。`gpu-timing` 的 `kind=render` 中，`gpuUs` 依次记录背景恢复、实例上传、静态前缀绘制与缓存、动态后缀绘制；`kind=atlas-upload` 记录纹理分配与上传。`totalGpuUs` 为各段之和，`presentCpuUs` 单独记录 CPU 调用 Present1 的耗时。每组时间戳均使用该组查询的 `Frequency` 换算，频率失效或计数不连续时输出 `valid=false`。时间戳与 [TIMESTAMP_DISJOINT](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_query_data_timestamp_disjoint) 配合使用，结果与呈现 FPS 分别解读。
 
 渲染样本还记录实际绘制、背景复制、清屏、MSAA 解析的调用数与像素量，以及实例和纹理上传字节数、脏区面积与缓存分支。纹理计数是相邻渲染调用之间的增量，包含该帧之前准备的资源。首段包含渲染目标与管线状态准备；时间戳间隔会包含 GPU 队列停顿和资源依赖等待，需结合实际命令数量与引擎忙碌时间分析。例如零复制、零清屏时的首段长间隔，应继续检查交换链和调度等待。纹理上传独立抽样。诊断结束后关闭该开关，再做正式资源对照。
