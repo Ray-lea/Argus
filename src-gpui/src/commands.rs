@@ -674,46 +674,30 @@ pub fn open_release_page(version: String) -> Result<(), String> {
 }
 
 pub fn open_sensor_driver_page() -> Result<(), String> {
-    std::process::Command::new("explorer.exe")
-        .arg("https://pawnio.eu/")
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    crate::shell::open_url("https://pawnio.eu/")
 }
 
 /// Opens the same project homepage shown in Settings and the installer.
 pub fn open_homepage() -> Result<(), String> {
-    std::process::Command::new("explorer.exe")
-        .arg(
-            argus_app::config::manifest()["homepage"]
-                .as_str()
-                .expect("project homepage"),
-        )
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    crate::shell::open_url(
+        argus_app::config::manifest()["homepage"]
+            .as_str()
+            .expect("project homepage"),
+    )
 }
 
 /// Opens the source repository, where releases and issues are too.
 pub fn open_repository() -> Result<(), String> {
-    std::process::Command::new("explorer.exe")
-        .arg(updater::REPO)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    crate::shell::open_url(updater::REPO)
 }
 
 /// Opens the group invitation in the default browser, which hands it to QQ.
 pub fn open_community() -> Result<(), String> {
-    std::process::Command::new("explorer.exe")
-        .arg(
-            argus_app::config::manifest()["community"]["url"]
-                .as_str()
-                .expect("community URL"),
-        )
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    crate::shell::open_url(
+        argus_app::config::manifest()["community"]["url"]
+            .as_str()
+            .expect("community URL"),
+    )
 }
 
 /// Opens the folder with `argus.log`, for attaching to bug reports.

@@ -1290,11 +1290,7 @@ pub fn open_release_page(version: &str) -> Result<(), String> {
     {
         return Err(tr!("updater.invalidVersion"));
     }
-    std::process::Command::new("explorer.exe")
-        .arg(format!("{REPO}/releases/tag/v{version}"))
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    crate::shell::open_url(&format!("{REPO}/releases/tag/v{version}"))
 }
 
 #[cfg(test)]

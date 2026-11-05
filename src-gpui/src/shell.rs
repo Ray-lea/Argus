@@ -135,6 +135,36 @@ unsafe fn create_badged_icon(base: HICON) -> Option<HICON> {
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
 }
+/// Opens a web address in the default browser, from a command thread. The
+/// shell hands it to the browser directly: a new `explorer.exe` process
+/// would start first and pass it on to the running shell, a noticeable wait
+/// before the page appears.
+pub fn open_url(url: &str) -> Result<(), String> {
+    use windows::Win32::System::Com::{
+        COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
+    };
+    use windows::core::HSTRING;
+    // Shell extensions that handle the address may need COM on this thread.
+    let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
+    // The click that asked for it lets a browser already running come forward
+    // with the page.
+    let _ = unsafe { AllowSetForegroundWindow(ASFW_ANY) };
+    let file = HSTRING::from(url);
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI,
+        lpVerb: w!("open"),
+        lpFile: PCWSTR(file.as_ptr()),
+        nShow: SW_SHOWNORMAL.0,
+        ..Default::default()
+    };
+    let opened = unsafe { ShellExecuteExW(&mut info) }.map_err(|e| e.to_string());
+    if com.is_ok() {
+        unsafe { CoUninitialize() };
+    }
+    opened
+}
+
 pub fn app_title() -> String {
     argus_app::config::app_title()
 }
