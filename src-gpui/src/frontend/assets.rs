@@ -137,6 +137,7 @@ ui_icons![
     "note",
     "notes",
     "panel",
+    "panel-auto",
     "pause",
     "pin",
     "play",

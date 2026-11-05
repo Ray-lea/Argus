@@ -37,7 +37,7 @@ impl Desktop {
                 let table = self.table_view(window, cx);
                 // The pane follows its handle without easing while dragged.
                 let dragging = self.drag.as_ref().is_some_and(|drag| drag.0 == "details");
-                let target = if self.details_open {
+                let target = if self.details_shown() {
                     px(self.details_display_width(window))
                 } else {
                     px(0.)
@@ -1033,8 +1033,7 @@ impl Desktop {
                 return;
             }
             "openDetails" => {
-                self.details_open = true;
-                self.prefs.set("detailsPanel", true);
+                self.reveal_details();
                 if let Some(key) = value.as_str()
                     && self.selected.get(&self.page).map(String::as_str) != Some(key)
                 {
@@ -1119,8 +1118,7 @@ impl Desktop {
             self.sections.iter().collect::<Vec<_>>(),
         );
         self.rebuild_rows(false, cx);
-        self.details_open = true;
-        self.prefs.set("detailsPanel", true);
+        self.reveal_details();
         let identity = model::identity(process);
         self.last_select = None;
         self.act(Action::Select(identity.clone()), window, cx);

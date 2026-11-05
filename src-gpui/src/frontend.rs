@@ -73,7 +73,8 @@ enum Action {
     View(String),
     Select(String),
     Fold(String),
-    Details,
+    /// The details pane's next mode, or the one given.
+    Details(Option<DetailsMode>),
     Pause,
     Interval(u64),
     Device(String),
@@ -86,6 +87,42 @@ enum Action {
     Copy(String, &'static str),
     CloseOverlay,
     Confirm,
+}
+/// When the process page shows its details pane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DetailsMode {
+    /// Always, with this computer's parts while no row is selected.
+    Open,
+    /// While a row is selected: it slides in on a click and out once the
+    /// selection is cleared.
+    Auto,
+    Closed,
+}
+impl DetailsMode {
+    /// The saved choice; earlier versions saved whether the pane was open.
+    fn parse(value: &Value) -> Self {
+        match value {
+            Value::Bool(false) => Self::Closed,
+            Value::String(mode) if mode == "auto" => Self::Auto,
+            Value::String(mode) if mode == "closed" => Self::Closed,
+            _ => Self::Open,
+        }
+    }
+    fn key(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Auto => "auto",
+            Self::Closed => "closed",
+        }
+    }
+    /// The button's next choice: always, when selected, never.
+    fn next(self) -> Self {
+        match self {
+            Self::Open => Self::Auto,
+            Self::Auto => Self::Closed,
+            Self::Closed => Self::Open,
+        }
+    }
 }
 #[derive(Clone)]
 struct MenuItem {
@@ -264,7 +301,7 @@ struct Desktop {
     nav_expanded: bool,
     /// The side navigation's expanded width (`navWidth`), set by dragging its edge.
     nav_width: f32,
-    details_open: bool,
+    details_mode: DetailsMode,
     details_width: f32,
     perf_sidebar_width: f32,
     device: String,
@@ -419,7 +456,7 @@ impl Desktop {
             nav_top: prefs.get::<String>("navPosition", "top".into()) == "top",
             nav_expanded: prefs.get("navExpanded", false),
             nav_width: Desktop::clamp_nav_width(prefs.get("navWidth", layout::NAV_WIDTH)),
-            details_open: prefs.get("detailsPanel", true),
+            details_mode: DetailsMode::parse(&prefs.get("detailsPanel", Value::Bool(true))),
             details_width: prefs
                 .get("detailsWidth", f32::from(theme::dimension("detailsWidth")))
                 .clamp(Self::DETAILS_MIN_WIDTH, Self::DETAILS_MAX_WIDTH),
@@ -760,8 +797,22 @@ impl Render for DesktopRoot {
 
 #[cfg(test)]
 mod tests {
-    use super::{PAGES, start_page, start_pages};
+    use super::{DetailsMode, PAGES, start_page, start_pages};
     use serde_json::{Value, json};
+
+    #[test]
+    fn the_details_mode_keeps_an_earlier_choice_and_cycles_through_three() {
+        // Earlier versions saved whether the pane was open.
+        assert_eq!(DetailsMode::parse(&json!(true)), DetailsMode::Open);
+        assert_eq!(DetailsMode::parse(&json!(false)), DetailsMode::Closed);
+        assert_eq!(DetailsMode::parse(&Value::Null), DetailsMode::Open);
+        for mode in [DetailsMode::Open, DetailsMode::Auto, DetailsMode::Closed] {
+            assert_eq!(DetailsMode::parse(&json!(mode.key())), mode);
+        }
+        assert_eq!(DetailsMode::Open.next(), DetailsMode::Auto);
+        assert_eq!(DetailsMode::Auto.next(), DetailsMode::Closed);
+        assert_eq!(DetailsMode::Closed.next(), DetailsMode::Open);
+    }
 
     #[test]
     fn a_start_opens_a_saved_page_other_than_settings() {

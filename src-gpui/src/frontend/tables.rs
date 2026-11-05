@@ -767,7 +767,7 @@ impl TableDelegate for NativeTable {
             .flatten()
             .map(|owner| {
                 let app = owner.read(cx);
-                (!app.query.trim().is_empty(), app.details_open)
+                (!app.query.trim().is_empty(), app.details_shown())
             });
         let p = Palette::current(cx);
         let now = Instant::now();
@@ -2264,7 +2264,7 @@ impl Desktop {
         let scope = (self.view.as_str(), self.query.as_str());
         let available = window.viewport_size().width
             - px(24.)
-            - px(if self.page == "processes" && self.details_open {
+            - px(if self.page == "processes" && self.details_shown() {
                 self.details_display_width(window)
             } else {
                 0.

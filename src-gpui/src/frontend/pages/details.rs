@@ -4,6 +4,50 @@ use gpui_kit::base::ElementExt;
 use gpui_kit::base::SelectableText;
 use std::hash::{Hash, Hasher};
 
+impl Desktop {
+    /// Whether the process page shows its details pane now.
+    pub(in crate::frontend) fn details_shown(&self) -> bool {
+        match self.details_mode {
+            DetailsMode::Open => true,
+            DetailsMode::Closed => false,
+            DetailsMode::Auto => self
+                .selected
+                .get("processes")
+                .is_some_and(|key| !key.is_empty()),
+        }
+    }
+    /// Sets when the details pane shows, and keeps the choice.
+    pub(in crate::frontend) fn set_details_mode(&mut self, mode: DetailsMode) {
+        self.details_mode = mode;
+        self.prefs.set("detailsPanel", mode.key());
+    }
+    /// The details button's menu: each mode, the current one checked.
+    pub(in crate::frontend) fn details_menu(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let items = [DetailsMode::Open, DetailsMode::Auto, DetailsMode::Closed]
+            .into_iter()
+            .map(|mode| {
+                MenuItem::new(
+                    label(&format!("shell.details.mode.{}", mode.key())),
+                    Action::Details(Some(mode)),
+                )
+                .checked(self.details_mode == mode)
+            })
+            .collect();
+        self.open_popup(items, window, cx);
+    }
+    /// A row asked for its details: a hidden pane opens and stays open. The
+    /// automatic pane shows them already, the row being selected.
+    pub(in crate::frontend) fn reveal_details(&mut self) {
+        if self.details_mode == DetailsMode::Closed {
+            self.set_details_mode(DetailsMode::Open);
+        }
+    }
+}
+
 /// The selected row resolved against the latest processes, so filtering or
 /// folding the table never makes a running process look exited.
 struct Picked<'a> {

@@ -585,22 +585,37 @@ impl Desktop {
             .tooltip(|window, cx| widgets::tooltip(label("shell.fileLock.title"), window, cx)),
         );
         if self.page == "processes" {
-            let tip = label(if self.details_open {
-                "shell.details.hide"
-            } else {
-                "shell.details.show"
-            });
+            // Three modes in turn: always, when a process is selected, never.
+            // Lit while the pane can show; the automatic one has its own glyph.
+            let mode = self.details_mode;
+            let name = |mode: DetailsMode| label(&format!("shell.details.mode.{}", mode.key()));
+            let tip = format!(
+                "{}\n{}",
+                tr!("shell.details.current", mode = name(mode)),
+                tr!("shell.details.next", mode = name(mode.next()))
+            );
             trailing = trailing.child(
                 self.tool_button(
                     "details",
                     String::new(),
-                    Some("PanelIcon"),
-                    Action::Details,
-                    self.details_open,
+                    Some(if mode == DetailsMode::Auto {
+                        "PanelAutoIcon"
+                    } else {
+                        "PanelIcon"
+                    }),
+                    Action::Details(None),
+                    mode != DetailsMode::Closed,
                     cx,
                 )
                 .accessibility_label(label("shell.details.label"))
-                .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx)),
+                .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(|this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.details_menu(window, cx);
+                    }),
+                ),
             );
         }
         if let Some(updates) = self.update_button() {

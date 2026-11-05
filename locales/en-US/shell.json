@@ -67,8 +67,9 @@
   },
   "details": {
     "label": "Details pane",
-    "show": "Show details",
-    "hide": "Hide details"
+    "mode": { "open": "Always show", "auto": "Show when a process is selected", "closed": "Hide" },
+    "current": "Details pane: {mode}",
+    "next": "Click for “{mode}”; right-click to choose"
   },
   "search": {
     "processes": "Search name, PID, path or service",

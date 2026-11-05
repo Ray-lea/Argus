@@ -675,9 +675,8 @@ impl Desktop {
                 }
                 self.rebuild_rows(false, cx);
             }
-            Action::Details => {
-                self.details_open = !self.details_open;
-                self.prefs.set("detailsPanel", self.details_open);
+            Action::Details(mode) => {
+                self.set_details_mode(mode.unwrap_or(self.details_mode.next()));
             }
             Action::Pause => {
                 self.paused = !self.paused;
@@ -954,8 +953,7 @@ impl Desktop {
     ) {
         match self.page.as_str() {
             "processes" => {
-                self.details_open = true;
-                self.prefs.set("detailsPanel", true);
+                self.reveal_details();
                 cx.notify();
             }
             "startup" => {
@@ -1715,8 +1713,8 @@ impl Desktop {
         if let Some(mode) = control["cpuMode"].as_str() {
             self.act(Action::CpuMode(mode.into()), window, cx);
         }
-        if let Some(value) = control["details"].as_bool() {
-            self.details_open = value;
+        if !control["details"].is_null() {
+            self.details_mode = DetailsMode::parse(&control["details"]);
         }
         if let Some(dialog) = control["dialog"].as_str() {
             self.open_dialog(dialog, control["args"].clone(), window, cx);

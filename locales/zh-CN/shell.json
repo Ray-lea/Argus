@@ -67,8 +67,9 @@
   },
   "details": {
     "label": "详细信息面板",
-    "show": "显示详细信息",
-    "hide": "隐藏详细信息"
+    "mode": { "open": "始终显示", "auto": "选中进程时显示", "closed": "隐藏" },
+    "current": "详细信息面板：{mode}",
+    "next": "单击改为“{mode}”，右键可直接选择"
   },
   "search": {
     "processes": "搜索名称、PID、路径或服务",

@@ -577,6 +577,7 @@ pub fn icon_name(name: &str) -> IconName {
         "PlayIcon" => IconName::Play,
         "LockIcon" => IconName::Lock,
         "PanelIcon" => IconName::PanelRight,
+        "PanelAutoIcon" => IconName::PanelRight,
         "RunTaskIcon" => IconName::SquareTerminal,
         "ChevronDown" => IconName::ChevronDown,
         "ChevronRight" => IconName::ChevronRight,
