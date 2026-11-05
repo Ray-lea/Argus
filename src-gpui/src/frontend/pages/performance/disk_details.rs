@@ -2,6 +2,16 @@
 //! log as cards, read once each time the page opens (`hardware::disk_details`).
 use super::*;
 
+/// Protocol identity describes the manufacturer's device. Windows' generic
+/// serial can be a namespace identifier (NGUID/EUI64), so it is the fallback.
+fn identity_text<'a>(details: &'a Value, field: &str) -> Option<&'a str> {
+    ["nvmeIdentity", "ataIdentity", "scsiIdentity", "identity"]
+        .into_iter()
+        .filter_map(|source| details[source][field].as_str())
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+}
+
 /// Tiles under the health card's title: three a row where each gets this
 /// much, else one a row (two would leave the third alone).
 const TILE_MIN: f32 = 170.;
@@ -804,9 +814,7 @@ impl Desktop {
         let nvme = &details["nvmeIdentity"];
         let plain = |value: String| div().child(value).into_any_element();
         let either = |key: &str| {
-            identity[key]
-                .as_str()
-                .or_else(|| nvme[key].as_str())
+            identity_text(details, key)
                 .map(String::from)
                 .unwrap_or_else(missing)
         };
@@ -838,14 +846,7 @@ impl Desktop {
             ),
             (
                 label("performance.disk.serial"),
-                self.disk_serial(
-                    identity["serialNumber"]
-                        .as_str()
-                        .or_else(|| nvme["serialNumber"].as_str()),
-                    index,
-                    window,
-                    cx,
-                ),
+                self.disk_serial(identity_text(details, "serialNumber"), index, window, cx),
             ),
             (label("performance.disk.capacity"), plain(capacity)),
             (
@@ -1101,8 +1102,27 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     // Not a glob: GPUI's own `test` attribute would shadow the standard one.
-    use super::{Condition, Value, assess, attributes, balance, grouped, link, sector};
+    use super::{
+        Condition, Value, assess, attributes, balance, grouped, identity_text, link, sector,
+    };
     use serde_json::json;
+
+    #[test]
+    fn manufacturer_serial_precedes_namespace_and_bridge_identity() {
+        let mut details = json!({"identity": {"serialNumber": "0000_0000_0000_0000_0123_4567_89AB_CDEF."},
+            "nvmeIdentity": {"serialNumber": "  0000FactorySN  "}, "ataIdentity": {"serialNumber": "AtaSN"}});
+        assert_eq!(
+            identity_text(&details, "serialNumber"),
+            Some("0000FactorySN")
+        );
+        details["nvmeIdentity"]["serialNumber"] = json!(" ");
+        assert_eq!(identity_text(&details, "serialNumber"), Some("AtaSN"));
+        details["ataIdentity"] = Value::Null;
+        assert_eq!(
+            identity_text(&details, "serialNumber"),
+            details["identity"]["serialNumber"].as_str()
+        );
+    }
 
     fn healthy() -> Value {
         json!({
