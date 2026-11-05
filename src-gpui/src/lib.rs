@@ -181,7 +181,7 @@ pub fn run() -> anyhow::Result<()> {
     logging::init(host.path().app_log_dir()?.join("diagnostics"))?;
     log::info!(
         "Argus {} started; renderer=GPUI; hidden={}; isolated_test={}",
-        env!("CARGO_PKG_VERSION"),
+        env!("ARGUS_VERSION"),
         options.hidden,
         options.test
     );

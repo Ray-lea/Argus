@@ -1,11 +1,15 @@
 #[path = "../build-support/app-resource.rs"]
 mod app_resource;
+#[path = "../build-support/build-version.rs"]
+mod build_version;
 #[path = "../build-support/windows-runtime.rs"]
 mod windows_runtime;
 
 fn main() {
     windows_runtime::configure();
-    app_resource::configure();
+    let version = build_version::detect();
+    println!("cargo:rustc-env=ARGUS_VERSION={}", version.full);
+    app_resource::configure(&version.full, version.build);
     let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     println!("cargo:rerun-if-env-changed=ARGUS_BUILD_ASSETS");
     let assets = std::env::var_os("ARGUS_BUILD_ASSETS")

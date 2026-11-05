@@ -81,7 +81,11 @@ pub fn task_manager_ready(app: crate::native_runtime::Host) {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
+    /// The release version, for comparisons.
     version: &'static str,
+    /// The version shown: a build that is not of a release adds its commit
+    /// (`build-support/build-version.rs`).
+    build: &'static str,
     elevated: bool,
     accent: Option<AccentColors>,
     /// Whether the native window supplies a Mica backdrop.
@@ -98,6 +102,7 @@ pub struct AppInfo {
 pub fn app_info(state: State<'_, AppState>) -> AppInfo {
     AppInfo {
         version: env!("CARGO_PKG_VERSION"),
+        build: env!("ARGUS_VERSION"),
         elevated: state.elevated,
         accent: theme::accent_colors(),
         mica: shell::supports_mica(),

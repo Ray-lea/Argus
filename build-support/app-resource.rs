@@ -1,6 +1,8 @@
 use std::{env, fs, path::PathBuf};
 
-pub fn configure() {
+/// `version` is the version the build shows; `build` the last part of the
+/// numeric file version.
+pub fn configure(version: &str, build: u16) {
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
@@ -9,8 +11,10 @@ pub fn configure() {
     let metadata: serde_json::Value =
         serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    let version = env::var("CARGO_PKG_VERSION").unwrap();
-    let numeric = version.split('-').next().unwrap().replace('.', ",") + ",0";
+    let numeric = format!(
+        "{},{build}",
+        version.split(['-', '+']).next().unwrap().replace('.', ",")
+    );
     let quote = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
     let icon = root
         .join("resources/icons/icon.ico")

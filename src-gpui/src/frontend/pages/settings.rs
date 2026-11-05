@@ -146,6 +146,15 @@ pub(in crate::frontend) fn administrator_view(
 }
 
 impl Desktop {
+    /// The version shown for this build: a test build's names its commit
+    /// (`0.3.4+583.g4c638d7`); comparisons use `info.version`.
+    pub(in crate::frontend) fn shown_version(&self) -> &str {
+        let info = &self.data["info"];
+        Some(text(info, "build"))
+            .filter(|build| !build.is_empty())
+            .unwrap_or_else(|| text(info, "version"))
+    }
+
     /// A card glyph at the cards' 20 px.
     fn glyph(&self, name: &str) -> AnyElement {
         icon(name, self.palette.ink)
@@ -2625,7 +2634,7 @@ impl Desktop {
         };
         let current = tr!(
             "settings.update.current",
-            version = text(&self.data["info"], "version"),
+            version = self.shown_version(),
             channel = label(&format!(
                 "updates.dialog.{}",
                 text(settings, "updateChannel")
@@ -3043,7 +3052,7 @@ impl Desktop {
                                     div()
                                         .text_size(theme::font(13.))
                                         .text_color(p.muted)
-                                        .child(text(&self.data["info"], "version").to_owned()),
+                                        .child(self.shown_version().to_owned()),
                                 ),
                         )
                         .child(
