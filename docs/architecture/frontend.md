@@ -36,6 +36,6 @@
 
 `theme` 从 [`theme.json`](../../resources/theme.json) 读取色板、字体和行高。西文使用 Segoe UI Variable，大号数字使用 Display 光学尺寸，简体中文回退至微软雅黑 UI。选中标签和分组标题使用 500 字重。提示框单独设置系统提示字体和行高。正文默认行高为字号的 1.4 倍，换行采用 UAX #14 与 ICU 的中日文调整规则。
 
-云母窗口将 DirectWrite 的子像素覆盖率按亮度加权为灰阶遮罩，合成时应用系统对比度和伽马。整窗实色模式可按系统设置使用 RGB ClearType。区域级 ClearType 方案及取舍见[窗口外观](../design/window.md)。
+字形按 DirectWrite 为该字体、字号和缩放推荐的渲染方式栅格化，与 Windows 和 Chromium 一致：微软雅黑 UI 的字号不超过 21 设备像素时按字体的网格对齐仅做水平抗锯齿，更大时双向抗锯齿；Segoe UI Variable 始终双向抗锯齿。行的上伸与下伸取文字所请求字体的度量，不取回退字体，纯中文、纯西文与中西混排在相同行高中基线一致。云母窗口将 DirectWrite 的子像素覆盖率按亮度加权为灰阶遮罩，合成时应用系统对比度和伽马。整窗实色模式可按系统设置使用 RGB ClearType。区域级 ClearType 方案及取舍见[窗口外观](../design/window.md)。
 
 `inline` 用等宽占位将按钮和键帽嵌入一行文字，使控件随文本整体换行。数字与单位、标题与型号按首行基线对齐，基线取整到设备像素。相关补丁见 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)。

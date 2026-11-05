@@ -644,14 +644,23 @@ impl DirectWriteState {
                 layout
             };
 
+            // Argus patch: the line's ascent and descent come from the fonts
+            // the runs ask for, as the strut of a CSS line box does, not from
+            // the fallback fonts DirectWrite substitutes. Its line metrics took Microsoft
+            // YaHei UI's for a line of Chinese alone, which centred it 0.4 to
+            // 0.5 px higher in the line height than Latin or mixed text, a
+            // whole pixel higher once rounded about half the time.
             let (ascent, descent) = {
-                let mut first_metrics = [DWRITE_LINE_METRICS::default(); 4];
-                let mut line_count = 0u32;
-                text_layout.GetLineMetrics(Some(&mut first_metrics), &mut line_count)?;
-                (
-                    px(first_metrics[0].baseline),
-                    px(first_metrics[0].height - first_metrics[0].baseline),
-                )
+                let mut ascent = 0f32;
+                let mut descent = 0f32;
+                for run in font_runs {
+                    let mut metrics = DWRITE_FONT_METRICS1::default();
+                    self.fonts[run.font_id.0].font_face.GetMetrics(&mut metrics);
+                    let scale = font_size.as_f32() / f32::from(metrics.Base.designUnitsPerEm);
+                    ascent = ascent.max(f32::from(metrics.Base.ascent) * scale);
+                    descent = descent.max(f32::from(metrics.Base.descent) * scale);
+                }
+                (px(ascent), px(descent))
             };
             let mut break_ligatures = true;
             for run in &font_runs[1..] {
@@ -797,15 +806,7 @@ impl DirectWriteState {
                 &mut grid_fit_mode,
             )?;
         }
-        // Smooth edges on both axes. Keep the face's recommended grid fitting
-        // so closely spaced strokes still have distinct gaps at small sizes.
-        let rendering_mode = match rendering_mode {
-            DWRITE_RENDERING_MODE1_NATURAL
-            | DWRITE_RENDERING_MODE1_GDI_CLASSIC
-            | DWRITE_RENDERING_MODE1_GDI_NATURAL
-            | DWRITE_RENDERING_MODE1_OUTLINE => DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
-            mode => mode,
-        };
+        let rendering_mode = rasterizing_mode(rendering_mode);
 
         // Sample the three LCD positions even for translucent windows. Their
         // atlas stores a single neutral coverage value for normal alpha blending.
@@ -1819,6 +1820,23 @@ fn font_style_from_dwrite(value: DWRITE_FONT_STYLE) -> FontStyle {
     }
 }
 
+/// Argus patch: the rendering mode for a glyph run analysis, from the one
+/// DirectWrite recommends for the face, size and scale. The recommendation
+/// follows the font's `gasp` table: a hinted face that asks for horizontal
+/// smoothing only (Microsoft YaHei UI up to 21 pixels per em) is drawn in
+/// `NATURAL`, as Windows and Chromium draw it. Its hints place stroke ends on
+/// whole pixels for that mode; with vertical smoothing as well
+/// (`NATURAL_SYMMETRIC` on the same grid fitting) they moved some by a pixel,
+/// so that the stem of 忄 in 性 stopped above the bottom stroke and 启 reached
+/// a row below the characters beside it. Glyph run analysis does not support
+/// `OUTLINE`, which large sizes get.
+fn rasterizing_mode(recommended: DWRITE_RENDERING_MODE1) -> DWRITE_RENDERING_MODE1 {
+    match recommended {
+        DWRITE_RENDERING_MODE1_OUTLINE => DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
+        mode => mode,
+    }
+}
+
 /// Argus patch: a variable font requested between its named instances is laid
 /// out at exactly that weight, as browsers do, instead of at the nearest instance
 /// (Segoe UI Variable has none between Regular 400 and Semibold 600).
@@ -2063,18 +2081,25 @@ const DEFAULT_LOCALE_NAME: PCWSTR = windows::core::w!("en-US");
 
 #[cfg(test)]
 mod tests {
-    use super::{DirectWriteState, DirectWriteTextSystem, GPUState, GlyphLayerTexture};
+    use super::{
+        DirectWriteState, DirectWriteTextSystem, GPUState, GlyphLayerTexture, rasterizing_mode,
+    };
     use crate::direct_write::ClusterAnalyzer;
     use crate::directx_devices::DirectXDevices;
     use anyhow::Result;
     use gpui::{
-        DevicePixels, Font, PlatformTextSystem, RenderGlyphParams, Rgba, bounds, point, px, size,
+        DevicePixels, Font, FontRun, PlatformTextSystem, RenderGlyphParams, Rgba, bounds, point,
+        px, size,
     };
     use std::ffi::c_void;
     use windows::Win32::Graphics::Direct3D11::{
         D3D11_BIND_RENDER_TARGET, D3D11_RENDER_TARGET_VIEW_DESC, D3D11_RENDER_TARGET_VIEW_DESC_0,
         D3D11_RTV_DIMENSION_TEXTURE2D, D3D11_SUBRESOURCE_DATA, D3D11_TEX2D_RTV,
         D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+    };
+    use windows::Win32::Graphics::DirectWrite::{
+        DWRITE_RENDERING_MODE1_NATURAL, DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
+        DWRITE_RENDERING_MODE1_OUTLINE,
     };
     use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 
@@ -2159,6 +2184,99 @@ mod tests {
             }
         }
         assert!(levels.into_iter().filter(|used| *used).count() > 32);
+        Ok(())
+    }
+
+    #[test]
+    fn fallback_glyphs_keep_the_requested_fonts_ascent_and_descent() -> Result<()> {
+        let system = DirectWriteTextSystem::new(None)?;
+        let font_id = system.font_id(&gpui::font("Segoe UI"))?;
+        let metrics = system.font_metrics(font_id);
+        let size = px(14.);
+        let expected_ascent = size * (metrics.ascent / metrics.units_per_em as f32);
+        let expected_descent = size * (-metrics.descent / metrics.units_per_em as f32);
+        // Latin alone, Chinese alone (laid out in a fallback font where the
+        // system has one) and both.
+        for text in [
+            "Argus",
+            "\u{8fdb}\u{7a0b}",
+            "Argus \u{5f00}\u{53d1}\u{7248}",
+        ] {
+            let layout = system.layout_line(
+                text,
+                size,
+                &[FontRun {
+                    len: text.len(),
+                    font_id,
+                }],
+            );
+            assert!(
+                (layout.ascent - expected_ascent).abs() < px(0.001),
+                "{text}"
+            );
+            assert!(
+                (layout.descent - expected_descent).abs() < px(0.001),
+                "{text}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rendering_follows_the_recommended_smoothing() {
+        assert_eq!(
+            rasterizing_mode(DWRITE_RENDERING_MODE1_NATURAL),
+            DWRITE_RENDERING_MODE1_NATURAL
+        );
+        assert_eq!(
+            rasterizing_mode(DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC),
+            DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC
+        );
+        assert_eq!(
+            rasterizing_mode(DWRITE_RENDERING_MODE1_OUTLINE),
+            DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC
+        );
+    }
+
+    /// Microsoft YaHei UI at 13 px asks for horizontal smoothing only. Drawn
+    /// that way, the stem of 忄 in 性 reaches the row of the bottom stroke of
+    /// 生, as in Windows and Chromium; with vertical smoothing on the same
+    /// hints it stopped a row short. Skipped where the font is not installed.
+    #[test]
+    fn hinted_chinese_strokes_keep_their_length() -> Result<()> {
+        let system = DirectWriteTextSystem::new(None)?;
+        let Ok(font_id) = system.font_id(&gpui::font("Microsoft YaHei UI")) else {
+            return Ok(());
+        };
+        let Some(glyph_id) = system.glyph_for_char(font_id, '\u{6027}') else {
+            return Ok(());
+        };
+        let params = RenderGlyphParams {
+            font_id,
+            glyph_id,
+            font_size: px(13.),
+            subpixel_variant: point(0, 0),
+            scale_factor: 1.0,
+            is_emoji: false,
+            subpixel_rendering: false,
+            dilation: 0,
+        };
+        let bounds = system.glyph_raster_bounds(&params)?;
+        let (size, alpha) = system.rasterize_glyph(&params, bounds)?;
+        let (width, height) = (size.width.0 as usize, size.height.0 as usize);
+        let inked = |column: usize, row: usize| alpha[row * width + column] >= 128;
+        let last_row = (0..height)
+            .rev()
+            .find(|&row| (0..width).any(|column| inked(column, row)))
+            .expect("inked glyph");
+        // The stem is the tallest column in the left third.
+        let stem = (0..width / 3)
+            .max_by_key(|&column| (0..height).filter(|&row| inked(column, row)).count())
+            .expect("left third");
+        assert!(
+            inked(stem, last_row),
+            "the stem ends above the bottom stroke"
+        );
         Ok(())
     }
 
