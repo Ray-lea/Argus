@@ -136,6 +136,8 @@ pub(in crate::frontend) struct UiState {
     pub dialog_frames: RefCell<HashMap<u64, dialogs::DialogFrame>>,
     /// Segmented controls: where each one's selection was and is (x, width).
     pub slides: Rc<RefCell<HashMap<SharedString, Slide>>>,
+    /// Link cards easing between rest, hover and press.
+    pub lifts: HashMap<&'static str, Lift>,
     /// When each dialog was first drawn visible: its entrance runs from there,
     /// not from a first frame that may take long to build.
     pub dialog_shown: RefCell<HashMap<u64, Instant>>,
@@ -188,6 +190,26 @@ pub(in crate::frontend) struct ToolbarFit {
     pub need: [Pixels; 4],
     /// The level the toolbar was last drawn at: its regions measure that one.
     pub drawn: Option<u8>,
+}
+
+/// A card that eases between rest, hover and press with live transforms
+/// (`shift::live`): the page replays its paint while the parts move.
+#[derive(Clone, Default)]
+pub(in crate::frontend) struct Lift {
+    /// How far into its hover and its press (0 to 1) the card is drawn.
+    pub hover: Rc<Cell<f32>>,
+    pub press: Rc<Cell<f32>>,
+    /// Where they are heading: hovered, held down.
+    pub hovered: bool,
+    pub pressed: bool,
+    /// The card (raised by hover, pressed in), its hover face, its mark, the
+    /// line along its top edge and its arrow (muted, and in its colour).
+    pub card: LiveTransform,
+    pub face: LiveTransform,
+    pub mark: LiveTransform,
+    pub line: LiveTransform,
+    pub arrow: LiveTransform,
+    pub lit: LiveTransform,
 }
 
 /// The sliding selection of one segmented control.

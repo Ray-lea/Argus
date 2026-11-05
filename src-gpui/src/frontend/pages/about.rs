@@ -7,6 +7,49 @@ use crate::frontend::widgets::{ToastKind, Tone, service_connected};
 /// The column's width, as the settings page's content.
 const CONTENT: f32 = 780.;
 
+/// A link card's hover (the interface's `t-med`, decelerating) and press.
+const HOVER: Duration = Duration::from_millis(167);
+const PRESS: Duration = Duration::from_millis(100);
+/// The line along a link card's top edge, and how much longer hover draws it.
+const LINE: f32 = 32.;
+const LINE_HOVER: f32 = 3.;
+
+/// A link card's parts drawn for how far into its hover and press it is:
+/// raised by 2 px and its face in, its mark 6 % larger, its line three times
+/// as long and its arrow out by 2 px in the link's colour; a press sets it
+/// 1.5 % deeper.
+fn lift_values(lift: &widgets::Lift) {
+    let (hover, press) = (lift.hover.get(), lift.press.get());
+    let scale = 1. - 0.015 * press;
+    lift.card.set(LiveTransformValue {
+        offset: point(px(0.), px(-2. * hover * (1. - press))),
+        scale_x: scale,
+        scale_y: scale,
+        ..LiveTransformValue::default()
+    });
+    lift.face.set(LiveTransformValue {
+        opacity: hover,
+        ..LiveTransformValue::default()
+    });
+    lift.mark
+        .set(LiveTransformValue::zoom(1. + 0.06 * hover, 1.));
+    lift.line.set(LiveTransformValue {
+        scale_x: 1. + (LINE_HOVER - 1.) * hover,
+        ..LiveTransformValue::default()
+    });
+    let out = point(px(2. * hover), px(-2. * hover));
+    lift.arrow.set(LiveTransformValue {
+        offset: out,
+        opacity: 1. - hover,
+        ..LiveTransformValue::default()
+    });
+    lift.lit.set(LiveTransformValue {
+        offset: out,
+        opacity: hover,
+        ..LiveTransformValue::default()
+    });
+}
+
 /// Figures that keep their width (`tnum`).
 fn tabular() -> FontFeatures {
     FontFeatures(Arc::new(vec![("tnum".into(), 1)]))
@@ -274,7 +317,7 @@ impl Desktop {
     /// The project's two places on the web, side by side, each in its own
     /// colours: the website under the app's mark and accent, the repository
     /// under GitHub's mark in ink. A whole card opens its address.
-    fn project_links(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn project_links(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let manifest = argus_app::config::manifest();
         let address = |url: &str| {
@@ -327,7 +370,7 @@ impl Desktop {
     /// One of the project's links: its mark, name and address in `tone`, what
     /// is there, and the arrow that says it leaves the app.
     fn project_link(
-        &self,
+        &mut self,
         id: &'static str,
         mark: AnyElement,
         address: String,
@@ -335,12 +378,26 @@ impl Desktop {
         command: &'static str,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        use super::super::shift::{Anchor, live};
         let p = self.palette;
         let title = label(&format!("settings.about.links.{id}.title"));
         let fill = theme::mix(p.layer, tone, 0.06);
-        let hover = theme::mix(p.layer, tone, 0.11);
-        let edge = tone.opacity(0.28);
-        gpui_kit::base::Button::new(SharedString::from(format!("about-link-{id}")))
+        let lifted = theme::mix(p.layer, tone, 0.12);
+        let lift = self
+            .ui
+            .lifts
+            .entry(id)
+            .or_insert_with(|| {
+                let lift = widgets::Lift::default();
+                lift_values(&lift);
+                lift
+            })
+            .clone();
+        let anchor = || Rc::new(Cell::new(Point::default()));
+        let arrow = |color: Hsla| icon("ExternalIcon", color).size(px(15.));
+        let anchors = self.ui.anchors.clone();
+        let test = self.options.test;
+        let card = gpui_kit::base::Button::new(SharedString::from(format!("about-link-{id}")))
             .relative()
             .w_full()
             .min_w_0()
@@ -355,31 +412,71 @@ impl Desktop {
             .pt(px(16.))
             .pb(px(16.))
             .border_1()
-            .border_color(edge)
+            .border_color(tone.opacity(0.28))
             .rounded(px(8.))
             .bg(fill)
-            .hover(move |s| s.bg(hover).border_color(tone.opacity(0.5)))
             .role(Role::Link)
             .accessibility_label(title.clone())
-            // A line of the link's colour along the top edge.
-            .child(
+            // The hover face, fading in over the card's own: a stronger
+            // fill and edge in the link's colour.
+            .child(live(
+                div()
+                    .absolute()
+                    .top(px(-1.))
+                    .bottom(px(-1.))
+                    .left(px(-1.))
+                    .right(px(-1.))
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(tone.opacity(0.55))
+                    .bg(lifted),
+                lift.face.clone(),
+                Anchor::TopLeft,
+                anchor(),
+            ))
+            // A line of the link's colour along the top edge, longer on hover.
+            .child(live(
                 div()
                     .absolute()
                     .top_0()
                     .left(px(18.))
-                    .w(px(32.))
+                    .w(px(LINE))
                     .h(px(2.))
                     .rounded(px(1.))
                     .bg(tone),
-            )
+                lift.line.clone(),
+                Anchor::TopLeft,
+                anchor(),
+            ))
+            // The arrow leans out on hover and takes the link's colour.
             .child(
                 div()
                     .absolute()
                     .top(px(14.))
                     .right(px(14.))
-                    .child(icon("ExternalIcon", p.muted).size(px(15.))),
+                    .size(px(15.))
+                    .child(live(
+                        div().absolute().inset_0().child(arrow(p.muted)),
+                        lift.arrow.clone(),
+                        Anchor::TopLeft,
+                        anchor(),
+                    ))
+                    .child(live(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .child(arrow(theme::mix(tone, p.ink, 0.25))),
+                        lift.lit.clone(),
+                        Anchor::TopLeft,
+                        anchor(),
+                    )),
             )
-            .child(div().mb(px(10.)).child(mark))
+            .child(div().mb(px(10.)).child(live(
+                div().child(mark),
+                lift.mark.clone(),
+                Anchor::Center,
+                anchor(),
+            )))
             .child(
                 div()
                     .font_family(theme::DISPLAY_FONT)
@@ -405,9 +502,97 @@ impl Desktop {
                     .text_left()
                     .child(label(&format!("settings.about.links.{id}.desc"))),
             )
+            // Where tests take hold of it.
+            .when(test, |d| {
+                d.child(
+                    canvas(
+                        move |bounds, _, _| {
+                            anchors
+                                .borrow_mut()
+                                .insert(format!("about-link-{id}").into(), bounds);
+                        },
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+            })
+            .on_hover(cx.listener(move |this, hovered: &bool, window, cx| {
+                this.lift(id, Some(*hovered), None, window, cx)
+            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, window, cx| this.lift(id, None, Some(true), window, cx)),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(move |this, _, window, cx| {
+                    this.lift(id, None, Some(false), window, cx)
+                }),
+            )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(move |this, _, window, cx| {
+                    this.lift(id, None, Some(false), window, cx)
+                }),
+            )
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.request(command, json!({}), None, window, cx)
-            }))
-            .into_any_element()
+            }));
+        live(card, lift.card, Anchor::Center, anchor()).into_any_element()
+    }
+
+    /// Eases a link card toward hovered or not, pressed or not, from where
+    /// it is drawn now; under reduced motion it goes there at once.
+    fn lift(
+        &mut self,
+        id: &'static str,
+        hovered: Option<bool>,
+        pressed: Option<bool>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(lift) = self.ui.lifts.get_mut(id) else {
+            return;
+        };
+        if let Some(hovered) = hovered {
+            lift.hovered = hovered;
+            // Leaving lets go of a press.
+            lift.pressed &= hovered;
+        }
+        if let Some(pressed) = pressed {
+            lift.pressed = pressed;
+        }
+        let lift = lift.clone();
+        let (hover, press) = (f32::from(lift.hovered), f32::from(lift.pressed));
+        let key = format!("about-link-{id}");
+        if cx.reduce_motion() {
+            self.live_motions.stop(&key);
+            lift.hover.set(hover);
+            lift.press.set(press);
+            lift_values(&lift);
+        } else {
+            let (from_hover, from_press) = (lift.hover.get(), lift.press.get());
+            let stepped = lift.clone();
+            self.live_motions.start(
+                key,
+                HOVER,
+                move |elapsed| {
+                    let ease = |span: Duration| {
+                        theme::ease_out((elapsed.as_secs_f32() / span.as_secs_f32()).min(1.))
+                    };
+                    stepped
+                        .hover
+                        .set(from_hover + (hover - from_hover) * ease(HOVER));
+                    stepped
+                        .press
+                        .set(from_press + (press - from_press) * ease(PRESS));
+                    lift_values(&stepped);
+                },
+                |_| {},
+            );
+        }
+        // A frame to begin on; the chart layer asks for the rest.
+        window.refresh();
     }
 }
