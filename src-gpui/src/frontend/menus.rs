@@ -280,6 +280,35 @@ impl Desktop {
         cx.notify();
     }
 
+    /// The open menu as tests see it: whether it has the keyboard, the item
+    /// the keyboard is on, and the open submenu (test control `inspectMenu`).
+    pub(in crate::frontend) fn menu_state(&self, window: &Window) -> Value {
+        let Some(popup) = &self.popup else {
+            return json!({"open": false});
+        };
+        let item = |items: &[MenuItem], index: usize| {
+            items
+                .get(index)
+                .map(|item| json!({"label": item.label, "checked": item.checked}))
+        };
+        let (place, index) = match popup.focus {
+            MenuFocus::None => ("none", None),
+            MenuFocus::Top(index) => ("menu", Some(index)),
+            MenuFocus::Sub(index) => ("submenu", Some(index)),
+        };
+        let focused = index.and_then(|index| match popup.focus {
+            MenuFocus::Sub(_) => item(popup.children(), index),
+            _ => item(&popup.items, index),
+        });
+        json!({
+            "open": true,
+            "keyboard": popup.focus_handle.is_focused(window),
+            "focus": {"in": place, "index": index, "item": focused},
+            "submenu": popup.sub.as_ref().map(|sub| sub.owner),
+            "items": popup.items.iter().map(|item| &item.label).collect::<Vec<_>>(),
+        })
+    }
+
     /// Closes the menu, which fades out. The keyboard goes back to the window
     /// unless an item gave it to something else.
     pub(in crate::frontend) fn close_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {

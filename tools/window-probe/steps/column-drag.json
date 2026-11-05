@@ -1,0 +1,18 @@
+{
+  "window": [1500, 1000],
+  "steps": [
+    { "note": "Drag the CPU header right past two columns: the columns trade places as it goes." },
+    { "control": { "page": "processes", "sort": "name", "pointerOutside": true }, "wait": 1500, "capture": "before" },
+    { "drag": { "at": "header:cpu", "dx": 200, "steps": 24, "interval": 30 }, "record": { "name": "header-drag", "ms": 1800 }, "wait": 900 },
+    { "inspect": "columns", "label": "after-header", "capture": "after",
+      "expect": { "state.visible.2.key": "mem", "state.visible.3.key": "diskRead", "state.visible.4.key": "cpu",
+                  "state.preferences.selected.4": "cpu" } },
+    { "sheet": { "name": "header-drag-sheet", "from": "header-drag", "region": [400, 236, 740, 130], "every": 4 } },
+    { "note": "The column dialog: drag the third place down past two others." },
+    { "control": { "dialog": "columns" }, "wait": 1200, "capture": "dialog" },
+    { "drag": { "at": "column-order-2", "dy": 80, "steps": 16, "interval": 30 }, "record": { "name": "order-drag", "ms": 1400 }, "wait": 700 },
+    { "inspect": "columns", "label": "after-order", "capture": "dialog-after",
+      "expect": { "state.modal.draft.selected.2": "diskRead", "state.modal.draft.selected.3": "cpu", "state.modal.draft.selected.4": "mem" } },
+    { "sheet": { "name": "order-drag-sheet", "from": "order-drag", "region": [920, 340, 256, 420], "columns": 6, "every": 6 } }
+  ]
+}

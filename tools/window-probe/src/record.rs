@@ -1,6 +1,7 @@
 //! Records every presented frame of the owned window for a short span, so an
 //! animation can be judged frame by frame. Each frame's crop is read back on
-//! the capture thread and kept in memory; PNGs are written once recording ends.
+//! the capture thread and kept in memory; PNGs are written on the recording's
+//! own thread once it ends, so the probe keeps forwarding commands meanwhile.
 use std::{
     path::PathBuf,
     sync::{
@@ -82,7 +83,11 @@ impl Recorder {
             thread: Some(thread),
         }
     }
-    /// Whether the recording span has elapsed (the thread is writing or done).
+    /// Ends the recording early without waiting for its frames to be written.
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+    /// Whether the recording has ended and its frames are written.
     pub fn finished(&self) -> bool {
         self.thread.as_ref().is_none_or(|t| t.is_finished())
     }

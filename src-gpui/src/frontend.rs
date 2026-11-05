@@ -21,6 +21,7 @@ mod regions;
 mod scrollbar;
 mod shift;
 mod tables;
+mod test_control;
 mod theme;
 mod tips;
 mod type_search;

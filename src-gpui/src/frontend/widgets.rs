@@ -96,6 +96,8 @@ pub(in crate::frontend) struct UiState {
     /// places gliding there (`flip`).
     pub order_drag: RefCell<Option<flip::Drag>>,
     pub order_flips: flip::Flips,
+    /// Where a test's pointer gesture began (test control `pointer`).
+    pub gesture_origin: Cell<Option<Point<Pixels>>>,
     pub focus: RefCell<HashMap<SharedString, FocusHandle>>,
     /// Dialogs under the top one (`Desktop::modal`), bottom first.
     pub below: Vec<dialogs::Modal>,

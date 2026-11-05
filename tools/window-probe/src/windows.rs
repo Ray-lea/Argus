@@ -959,10 +959,19 @@ pub fn run(args: &[String]) -> Result<()> {
     let mut observer: Option<crate::frames::Observer> = None;
     #[cfg(feature = "capture")]
     let mut recorder: Option<crate::record::Recorder> = None;
+    // Recordings told to stop that are still writing their frames: reported
+    // once written, while commands keep flowing to the app.
+    #[cfg(feature = "capture")]
+    let mut finishing: Vec<crate::record::Recorder> = Vec::new();
     loop {
         #[cfg(feature = "capture")]
         if recorder.as_ref().is_some_and(|r| r.finished()) {
             println!("{}", recorder.take().unwrap().finish());
+            io::stdout().flush()?;
+        }
+        #[cfg(feature = "capture")]
+        while let Some(done) = finishing.iter().position(|r| r.finished()) {
+            println!("{}", finishing.swap_remove(done).finish());
             io::stdout().flush()?;
         }
         anyhow::ensure!(
@@ -1064,7 +1073,7 @@ pub fn run(args: &[String]) -> Result<()> {
                     #[cfg(feature = "capture")]
                     drop(observer.take());
                     #[cfg(feature = "capture")]
-                    if let Some(recorder) = recorder.take() {
+                    for recorder in recorder.take().into_iter().chain(finishing.drain(..)) {
                         println!("{}", recorder.finish());
                     }
                     let _ = PostMessageW(
@@ -1097,8 +1106,11 @@ pub fn run(args: &[String]) -> Result<()> {
                         width: numbers[3],
                         height: numbers[4],
                     });
+                    // The last recording stops and writes in the background
+                    // instead of holding up the commands after this one.
                     if let Some(previous) = recorder.take() {
-                        println!("{}", previous.finish());
+                        previous.stop();
+                        finishing.push(previous);
                     }
                     recorder = Some(crate::record::Recorder::start(
                         search.hwnd,

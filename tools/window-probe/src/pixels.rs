@@ -132,6 +132,115 @@ pub fn track_chart(directory: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A rectangle of an image in pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Region {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Region {
+    fn parse(values: &[String]) -> anyhow::Result<Self> {
+        let [x, y, width, height] = values else {
+            anyhow::bail!("region needs X Y WIDTH HEIGHT");
+        };
+        Ok(Self {
+            x: x.parse()?,
+            y: y.parse()?,
+            width: width.parse()?,
+            height: height.parse()?,
+        })
+    }
+}
+
+/// `region` of an RGB image (clamped to it), each pixel repeated `scale`
+/// times across and down so small details read at a glance.
+fn cut(width: u32, height: u32, pixels: &[u8], region: Region, scale: u32) -> (u32, u32, Vec<u8>) {
+    let x = region.x.min(width);
+    let y = region.y.min(height);
+    let (w, h) = (region.width.min(width - x), region.height.min(height - y));
+    let scale = scale.max(1);
+    let (out_width, out_height) = (w * scale, h * scale);
+    let mut out = Vec::with_capacity((out_width * out_height * 3) as usize);
+    for row in 0..out_height {
+        let source = (y + row / scale) * width;
+        for col in 0..out_width {
+            let i = ((source + x + col / scale) * 3) as usize;
+            out.extend_from_slice(&pixels[i..i + 3]);
+        }
+    }
+    (out_width, out_height, out)
+}
+
+fn write_rgb(path: &str, width: u32, height: u32, pixels: &[u8]) -> anyhow::Result<()> {
+    let mut encoder =
+        png::Encoder::new(std::io::BufWriter::new(File::create(path)?), width, height);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.write_header()?.write_image_data(pixels)?;
+    Ok(())
+}
+
+/// `crop IN OUT X Y WIDTH HEIGHT [SCALE]`: one region of a capture, enlarged.
+pub fn crop(args: &[String]) -> anyhow::Result<()> {
+    ensure!(args.len() >= 6, "crop IN OUT X Y WIDTH HEIGHT [SCALE]");
+    let (width, height, pixels) = read(&args[0])?;
+    let scale = args.get(6).map(|s| s.parse()).transpose()?.unwrap_or(1);
+    let (w, h, out) = cut(width, height, &pixels, Region::parse(&args[2..6])?, scale);
+    ensure!(w > 0 && h > 0, "the region is outside the image");
+    write_rgb(&args[1], w, h, &out)?;
+    println!("{}", serde_json::json!({"width":w,"height":h}));
+    Ok(())
+}
+
+/// Places tiles left to right in rows of `columns`, `GAP` apart on a dark ground.
+fn tile(tiles: &[(u32, u32, Vec<u8>)], columns: u32) -> (u32, u32, Vec<u8>) {
+    const GAP: u32 = 4;
+    let columns = columns.max(1).min(tiles.len().max(1) as u32);
+    let rows = (tiles.len() as u32).div_ceil(columns);
+    let cell_width = tiles.iter().map(|t| t.0).max().unwrap_or(0);
+    let cell_height = tiles.iter().map(|t| t.1).max().unwrap_or(0);
+    let width = columns * cell_width + (columns + 1) * GAP;
+    let height = rows * cell_height + (rows + 1) * GAP;
+    let mut out = vec![24u8; (width * height * 3) as usize];
+    for (index, (w, h, pixels)) in tiles.iter().enumerate() {
+        let left = GAP + (index as u32 % columns) * (cell_width + GAP);
+        let top = GAP + (index as u32 / columns) * (cell_height + GAP);
+        for row in 0..*h {
+            let from = (row * w * 3) as usize;
+            let to = (((top + row) * width + left) * 3) as usize;
+            out[to..to + (w * 3) as usize].copy_from_slice(&pixels[from..from + (w * 3) as usize]);
+        }
+    }
+    (width, height, out)
+}
+
+/// `sheet OUT X Y WIDTH HEIGHT COLUMNS SCALE IN...`: the same region of each
+/// capture side by side, in order, to judge a sequence of frames at once.
+pub fn sheet(args: &[String]) -> anyhow::Result<()> {
+    ensure!(
+        args.len() >= 8,
+        "sheet OUT X Y WIDTH HEIGHT COLUMNS SCALE IN..."
+    );
+    let region = Region::parse(&args[1..5])?;
+    let columns = args[5].parse()?;
+    let scale = args[6].parse()?;
+    let mut tiles = Vec::with_capacity(args.len() - 7);
+    for path in &args[7..] {
+        let (width, height, pixels) = read(path).with_context(|| path.clone())?;
+        tiles.push(cut(width, height, &pixels, region, scale));
+    }
+    let (width, height, out) = tile(&tiles, columns);
+    write_rgb(&args[0], width, height, &out)?;
+    println!(
+        "{}",
+        serde_json::json!({"width":width,"height":height,"tiles":tiles.len()})
+    );
+    Ok(())
+}
+
 pub fn compare(left: &str, right: &str) -> anyhow::Result<()> {
     let (width, height, before) = read(left)?;
     let (other_width, other_height, after) = read(right)?;
@@ -165,7 +274,43 @@ pub fn compare(left: &str, right: &str) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::stroke_x;
+    use super::{Region, cut, stroke_x, tile};
+
+    #[test]
+    fn a_cut_is_clamped_to_the_image_and_scaled_by_repeating_pixels() {
+        // 2 × 2: red, green / blue, white.
+        let image = [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255];
+        let region = Region {
+            x: 1,
+            y: 0,
+            width: 5,
+            height: 5,
+        };
+        let (w, h, pixels) = cut(2, 2, &image, region, 2);
+        assert_eq!((w, h), (2, 4));
+        assert_eq!(&pixels[..6], &[0, 255, 0, 0, 255, 0]);
+        assert_eq!(&pixels[18..], &[255, 255, 255, 255, 255, 255]);
+        let outside = Region {
+            x: 9,
+            y: 9,
+            width: 3,
+            height: 3,
+        };
+        assert_eq!(cut(2, 2, &image, outside, 1).0, 0);
+    }
+
+    #[test]
+    fn tiles_fill_rows_in_order_with_gaps() {
+        let one = (1, 1, vec![9, 9, 9]);
+        let (width, height, pixels) = tile(&[one.clone(), one.clone(), one], 2);
+        // Two columns and two rows of 1 px cells, 4 px apart and from the edges.
+        assert_eq!((width, height), (2 + 3 * 4, 2 + 3 * 4));
+        let at = |x: u32, y: u32| &pixels[((y * width + x) * 3) as usize..][..3];
+        assert_eq!(at(4, 4), [9, 9, 9]);
+        assert_eq!(at(9, 4), [9, 9, 9]);
+        assert_eq!(at(4, 9), [9, 9, 9]);
+        assert_eq!(at(9, 9), [24, 24, 24]);
+    }
 
     #[test]
     fn cyan_stroke_position_keeps_subpixels_and_ignores_gray_pixels() {
