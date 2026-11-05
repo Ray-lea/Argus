@@ -4676,7 +4676,6 @@
     "language": "zh-CN",
     "onboarding": 1,
     "seenVersion": "0.1.0",
-    "locale": "zh-CN",
     "theme": "system",
     "closeToTray": true,
     "minimizedInterval": 5000,
@@ -4698,11 +4697,8 @@
   "info": {
     "version": "0.1.0",
     "elevated": false,
-    "accent": null,
-    "mica": false,
     "updated": false,
-    "taskManager": false,
-    "locale": "zh-CN"
+    "taskManager": false
   },
   "services": [
     {

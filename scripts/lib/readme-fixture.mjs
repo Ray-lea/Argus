@@ -111,6 +111,8 @@ export function previewFixture(language) {
   });
   fixture.snapshot = frames.pop();
   fixture.snapshots = frames;
-  fixture.settings.language = fixture.settings.locale = fixture.info.locale = language;
+  fixture.settings.language = language;
+  // The status bar shows the release this README describes; seen, so no notes open.
+  fixture.info.version = fixture.settings.seenVersion = json("resources/app.json").version;
   return fixture;
 }
