@@ -3,7 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::time::{Duration, Instant};
 
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, DeleteObject, GetDC, GetDIBits,
@@ -33,11 +34,28 @@ pub struct FileMeta {
     pub icon: Option<u32>,
 }
 
+/// How often paths no process runs any more are looked for, and how long one
+/// stays cached after that: a program that starts again soon (a shell, a
+/// compiler) keeps its entry, while the executables a build or an installer
+/// runs once do not pile up for as long as Argus runs.
+const SWEEP_EVERY: Duration = Duration::from_secs(60);
+const KEEP_IDLE: Duration = Duration::from_secs(10 * 60);
+
+struct Cached {
+    meta: Arc<FileMeta>,
+    /// Since when nothing but the store has held `meta`.
+    idle_since: Option<Instant>,
+}
+
 #[derive(Default)]
 struct Inner {
-    by_path: HashMap<String, Arc<FileMeta>>,
+    by_path: HashMap<String, Cached>,
     pending: HashSet<String>,
+    /// Icon ids stay valid for good: rows and the UI refer to them.
     icons: Vec<Arc<[u8]>>,
+    /// Icon ids by PNG content. Most executables show one of a few icons
+    /// (the generic program icon above all), so each image is kept once.
+    icon_ids: HashMap<Arc<[u8]>, u32>,
     /// By package full name and app ID: one package version's app.
     apps: HashMap<(Box<str>, Box<str>), Arc<AppMeta>>,
     apps_pending: HashSet<(Box<str>, Box<str>)>,
@@ -49,6 +67,7 @@ pub struct MetaStore {
     /// Apps resolve on their own thread: the shell takes 10–50 ms per app,
     /// which would hold up every executable's icon queued behind it.
     apps: Sender<Identity>,
+    last_sweep: Mutex<Option<Instant>>,
 }
 
 impl MetaStore {
@@ -60,6 +79,7 @@ impl MetaStore {
             inner: RwLock::default(),
             queue: tx,
             apps: apps_tx,
+            last_sweep: Mutex::new(None),
         });
         let weak = Arc::downgrade(&store);
         std::thread::Builder::new()
@@ -79,8 +99,8 @@ impl MetaStore {
         let key = path.to_lowercase();
         {
             let inner = self.inner.read().unwrap();
-            if let Some(m) = inner.by_path.get(&key) {
-                return Some(m.clone());
+            if let Some(cached) = inner.by_path.get(&key) {
+                return Some(cached.meta.clone());
             }
             if inner.pending.contains(&key) {
                 return None;
@@ -117,6 +137,36 @@ impl MetaStore {
         self.inner.read().unwrap().icons.get(id as usize).cloned()
     }
 
+    /// Forgets the paths no process has run for `KEEP_IDLE`. Called on every
+    /// sample; looks at most once every `SWEEP_EVERY`.
+    pub(crate) fn sweep(&self) {
+        self.sweep_at(Instant::now());
+    }
+
+    fn sweep_at(&self, now: Instant) {
+        {
+            let mut last = self.last_sweep.lock().unwrap();
+            if last.is_some_and(|last| now.saturating_duration_since(last) < SWEEP_EVERY) {
+                return;
+            }
+            *last = Some(now);
+        }
+        let mut inner = self.inner.write().unwrap();
+        // Processes hold their executable's metadata while they run.
+        inner.by_path.retain(|_, cached| {
+            if Arc::strong_count(&cached.meta) > 1 {
+                cached.idle_since = None;
+                return true;
+            }
+            let since = *cached.idle_since.get_or_insert(now);
+            now.saturating_duration_since(since) < KEEP_IDLE
+        });
+        let reserve = inner.by_path.len() + 64;
+        if inner.by_path.capacity() > reserve * 2 {
+            inner.by_path.shrink_to(reserve);
+        }
+    }
+
     fn insert(
         &self,
         path: &str,
@@ -127,8 +177,14 @@ impl MetaStore {
         let key = path.to_lowercase();
         let mut inner = self.inner.write().unwrap();
         let icon = icon_png.map(|png| {
-            inner.icons.push(png.into());
-            (inner.icons.len() - 1) as u32
+            let png: Arc<[u8]> = png.into();
+            if let Some(&id) = inner.icon_ids.get(&png) {
+                return id;
+            }
+            let id = inner.icons.len() as u32;
+            inner.icons.push(png.clone());
+            inner.icon_ids.insert(png, id);
+            id
         });
         let meta = FileMeta {
             windows_component: windows_component(path, &version, system_root),
@@ -137,7 +193,13 @@ impl MetaStore {
             icon,
         };
         inner.pending.remove(&key);
-        inner.by_path.insert(key, Arc::new(meta));
+        inner.by_path.insert(
+            key,
+            Cached {
+                meta: Arc::new(meta),
+                idle_since: None,
+            },
+        );
     }
 
     fn insert_app(&self, identity: Identity, app: AppMeta) {
@@ -525,5 +587,47 @@ mod category_tests {
             &VersionInfo::default(),
             r"C:\Windows"
         ));
+    }
+
+    #[test]
+    fn executables_with_the_same_icon_share_one_image() {
+        let store = MetaStore::new();
+        let add = |path: &str, png: &[u8]| {
+            store.insert(path, VersionInfo::default(), Some(png.to_vec()), "");
+            store.get_or_request(path).unwrap().icon.unwrap()
+        };
+        let first = add(r"C:\build\a\build-script-build.exe", &[1, 2, 3]);
+        let second = add(r"C:\build\b\build-script-build.exe", &[1, 2, 3]);
+        let other = add(r"C:\Apps\tool.exe", &[4, 5, 6]);
+        assert_eq!(first, second);
+        assert_ne!(first, other);
+        assert_eq!(store.inner.read().unwrap().icons.len(), 2);
+        assert_eq!(&*store.icon_png(other).unwrap(), &[4, 5, 6]);
+    }
+
+    #[test]
+    fn paths_no_process_runs_are_forgotten_after_a_while() {
+        let store = MetaStore::new();
+        let cached = |path: &str| store.inner.read().unwrap().by_path.contains_key(path);
+        for path in [r"c:\apps\running.exe", r"c:\build\once.exe"] {
+            store.insert(path, VersionInfo::default(), None, "");
+        }
+        let running = store.get_or_request(r"C:\Apps\running.exe").unwrap();
+        let start = Instant::now();
+        store.sweep_at(start);
+        assert!(cached(r"c:\build\once.exe"));
+        // Not yet idle for long enough, and not swept again within a minute.
+        store.sweep_at(start + KEEP_IDLE - SWEEP_EVERY / 2);
+        store.sweep_at(start + KEEP_IDLE + SWEEP_EVERY / 4);
+        assert!(cached(r"c:\build\once.exe"));
+        let later = start + KEEP_IDLE + SWEEP_EVERY;
+        store.sweep_at(later);
+        assert!(!cached(r"c:\build\once.exe"));
+        assert!(cached(r"c:\apps\running.exe"));
+        // Once its last process exits, the running one goes the same way.
+        drop(running);
+        store.sweep_at(later + SWEEP_EVERY);
+        store.sweep_at(later + SWEEP_EVERY * 2 + KEEP_IDLE);
+        assert!(!cached(r"c:\apps\running.exe"));
     }
 }

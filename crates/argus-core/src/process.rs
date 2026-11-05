@@ -416,6 +416,8 @@ impl ProcessTracker {
         if self.by_pid.capacity() > reserve * 2 {
             self.by_pid.shrink_to(reserve);
         }
+        // The exited processes have let go of their executables' metadata.
+        self.meta.sweep();
         for i in 0..self.webviews.len() {
             let (index, key) = self.webviews[i];
             let get = |pid| {
