@@ -1,6 +1,12 @@
 //! Native onboarding, release notes and the update dialog.
 use super::*;
 use gpui_kit::component::dialog::Dialog;
+use release_notes::{Kind, Note};
+
+/// Figures that keep their width (`tnum`).
+fn tabular() -> FontFeatures {
+    FontFeatures(Arc::new(vec![("tnum".into(), 1)]))
+}
 use widgets::{ButtonExt, Handler, ToastKind, Tone};
 
 pub(super) fn configuration() -> &'static Value {
@@ -1309,7 +1315,12 @@ impl Desktop {
             .into_any_element()
     }
 
-    /// The releases between two versions, each folded under its heading.
+    /// The releases between two versions, read as the website's changelog:
+    /// each release's notice, introduction and changes grouped by kind
+    /// (`release_body`). A single release reads on its own (the title above
+    /// names it); several come in one list under their versions and dates,
+    /// after a count of their changes by kind, the newest open and the others
+    /// folded (all open with `open_all`).
     pub(in crate::frontend) fn release_reader(
         &self,
         status: &Value,
@@ -1330,7 +1341,7 @@ impl Desktop {
             && !all.is_empty()
             && from.is_some_and(|from| all.iter().all(|r| version(&r.version) > version(from)));
         let entries = between(all, from, to);
-        let reader = div().flex().flex_col().gap(px(6.));
+        let reader = div().flex().flex_col().gap(px(12.));
         if entries.is_empty() {
             let notes = text(status, "notes");
             return if notes.is_empty() {
@@ -1351,100 +1362,101 @@ impl Desktop {
                     .into_any_element()
             };
         }
-        let folded = self
-            .ui
-            .errors
-            .get("releaseFolds")
-            .cloned()
-            .unwrap_or_default();
+        let notes = entries
+            .iter()
+            .map(|release| release_notes::parse(&release.notes))
+            .collect::<Vec<_>>();
         let mut reader = reader;
-        for (index, release) in entries.iter().enumerate() {
-            let key = format!("|{}|", release.version);
-            let default_open = open_all || index == 0;
-            let open = default_open != folded.contains(&key);
-            let changes = release
-                .notes
-                .lines()
-                .filter(|line| {
-                    line.trim_start().starts_with("- ") || line.trim_start().starts_with("* ")
-                })
-                .count();
-            reader = reader.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .border_1()
-                    .border_color(p.stroke)
-                    .rounded(px(6.))
-                    .bg(p.layer)
-                    .child(
-                        gpui_kit::base::Button::new(SharedString::from(format!(
-                            "release-{}",
-                            release.version
-                        )))
-                        .w_full()
-                        .h(px(36.))
-                        .px(px(12.))
-                        .gap(px(8.))
-                        .justify_start()
-                        .rounded(px(6.))
-                        .hover(move |s| s.bg(p.hover))
+        if let [note] = notes.as_slice() {
+            reader = reader.child(div().pt(px(14.)).border_t_1().border_color(p.stroke).child(
+                self.release_body(&format!("release-notes-{}", entries[0].version), note, 2),
+            ));
+        } else {
+            let folded = self
+                .ui
+                .errors
+                .get("releaseFolds")
+                .cloned()
+                .unwrap_or_default();
+            let mut list = div()
+                .flex()
+                .flex_col()
+                .border_1()
+                .border_color(p.stroke)
+                .rounded(px(8.))
+                .bg(p.layer);
+            for (index, (release, note)) in entries.iter().zip(&notes).enumerate() {
+                let key = format!("|{}|", release.version);
+                let open = (open_all || index == 0) != folded.contains(&key);
+                list = list.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .when(index > 0, |d| d.border_t_1().border_color(p.stroke))
                         .child(
-                            icon(if open { "ChevronDown" } else { "ChevronRight" }, p.muted)
-                                .size(px(12.)),
-                        )
-                        .child(
-                            div()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(release.version.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(theme::font(12.))
-                                .text_color(p.muted)
-                                .child(release.date.clone()),
-                        )
-                        .when(changes > 0, |b| {
-                            b.child(
+                            gpui_kit::base::Button::new(SharedString::from(format!(
+                                "release-{}",
+                                release.version
+                            )))
+                            .w_full()
+                            .h(px(44.))
+                            .px(px(14.))
+                            .gap(px(10.))
+                            .justify_start()
+                            .rounded(px(7.))
+                            .hover(move |s| s.bg(p.hover))
+                            .child(
+                                icon(if open { "ChevronDown" } else { "ChevronRight" }, p.muted)
+                                    .size(px(12.)),
+                            )
+                            .child(
+                                div()
+                                    .text_size(theme::font(14.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(format!("v{}", release.version)),
+                            )
+                            .when(offer && index == 0, |b| {
+                                b.child(self.release_badge(label("updates.dialog.next"), p.accent))
+                            })
+                            .child(
+                                div()
+                                    .text_size(theme::font(12.))
+                                    .text_color(p.muted)
+                                    .child(release.date.clone()),
+                            )
+                            .child(
                                 div()
                                     .ml_auto()
                                     .text_size(theme::font(12.))
                                     .text_color(p.muted)
-                                    .child(tr!("updates.dialog.changes", count = changes)),
+                                    .child(tr!("updates.dialog.changes", count = note.changes())),
                             )
-                        })
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                let folds =
-                                    this.ui.errors.entry("releaseFolds".into()).or_default();
-                                if folds.contains(&key) {
-                                    *folds = folds.replace(&key, "");
-                                } else {
-                                    folds.push_str(&key);
-                                }
-                                window.refresh();
-                                cx.notify();
-                            },
-                        )),
-                    )
-                    .when(open, |d| {
-                        d.child(
-                            div()
-                                .px(px(14.))
-                                .pb(px(12.))
-                                .text_size(theme::font(13.))
-                                // `.update-entry-body`
-                                .line_height(relative(1.6))
-                                .child(gpui_kit::component::text::TextView::markdown(
-                                    SharedString::from(format!(
-                                        "release-notes-{}",
-                                        release.version
-                                    )),
-                                    release.notes.clone(),
-                                )),
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    let folds =
+                                        this.ui.errors.entry("releaseFolds".into()).or_default();
+                                    if folds.contains(&key) {
+                                        *folds = folds.replace(&key, "");
+                                    } else {
+                                        folds.push_str(&key);
+                                    }
+                                    window.refresh();
+                                    cx.notify();
+                                },
+                            )),
                         )
-                    }),
-            );
+                        .when(open, |d| {
+                            d.child(div().px(px(16.)).pt(px(2.)).pb(px(16.)).child(
+                                self.release_body(
+                                    &format!("release-notes-{}", release.version),
+                                    note,
+                                    2,
+                                ),
+                            ))
+                        }),
+                );
+            }
+            reader = reader.child(self.change_summary(&notes)).child(list);
         }
         if earlier {
             reader = reader.child(
@@ -1455,6 +1467,32 @@ impl Desktop {
             );
         }
         reader.into_any_element()
+    }
+
+    /// How many changes of each kind several releases bring, in the
+    /// website's order of kinds, under the changelog's own headings.
+    fn change_summary(&self, notes: &[Note]) -> AnyElement {
+        const ORDER: [Kind; 7] = [
+            Kind::Feature,
+            Kind::Fix,
+            Kind::Performance,
+            Kind::Breaking,
+            Kind::Upgrade,
+            Kind::Known,
+            Kind::Other,
+        ];
+        let groups = notes.iter().flat_map(|note| &note.groups);
+        div()
+            .flex()
+            .flex_wrap()
+            .gap(px(6.))
+            .children(ORDER.into_iter().filter_map(|kind| {
+                let mut of_kind = groups.clone().filter(|group| group.kind == kind);
+                let first = of_kind.next()?;
+                let count = first.items.len() + of_kind.map(|g| g.items.len()).sum::<usize>();
+                Some(self.kind_tag(kind, &first.title, count))
+            }))
+            .into_any_element()
     }
 
     /// The update dialog's main action: install a ready update, or open the
@@ -1688,11 +1726,13 @@ impl Desktop {
                                 },
                             )
                         })
+                        // An offer opens its newest release; the notes of an
+                        // update installed open every release it brought.
                         .child(self.release_reader(
                             &reader_status,
                             from.as_deref(),
                             &target,
-                            true,
+                            !offer,
                             window,
                             cx,
                         ))
@@ -1723,5 +1763,201 @@ impl Desktop {
                 ),
             )
             .footer(self.measure(id, 1).child(footer))
+    }
+}
+
+impl Desktop {
+    /// A small tag beside a release's version.
+    fn release_badge(&self, text: String, color: Hsla) -> AnyElement {
+        div()
+            .flex_shrink_0()
+            .h(px(20.))
+            .px(px(7.))
+            .flex()
+            .items_center()
+            .rounded(px(10.))
+            .bg(color.opacity(0.14))
+            .text_size(theme::font(11.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(theme::mix(color, self.palette.ink, 0.3))
+            .child(text)
+            .into_any_element()
+    }
+
+    /// A kind's tag: its colour's dot, the heading and the number of changes.
+    fn kind_tag(&self, kind: Kind, title: &str, count: usize) -> AnyElement {
+        let p = self.palette;
+        let color = self.kind_color(kind);
+        div()
+            .h(px(22.))
+            .px(px(8.))
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .rounded(px(11.))
+            .bg(color.opacity(0.13))
+            .text_size(theme::font(12.))
+            .child(div().size(px(6.)).rounded_full().bg(color))
+            .when(!title.is_empty(), |d| {
+                d.child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(theme::mix(color, p.ink, 0.3))
+                        .child(title.to_owned()),
+                )
+            })
+            .child(
+                div()
+                    .text_color(p.muted)
+                    .font_features(tabular())
+                    .child(count.to_string()),
+            )
+            .into_any_element()
+    }
+
+    /// The colour a kind of change is marked with, as on the website.
+    fn kind_color(&self, kind: Kind) -> Hsla {
+        let p = self.palette;
+        match kind {
+            Kind::Feature => p.network,
+            Kind::Fix => p.cpu,
+            Kind::Performance => p.io,
+            Kind::Breaking => p.gpu,
+            Kind::Upgrade => p.memory,
+            Kind::Known | Kind::Other => p.muted,
+        }
+    }
+
+    /// A release's notice, introduction and groups of changes: each group
+    /// under its kind's tag with the number of changes, new features as
+    /// cards (in `columns`), other changes as a list. `id` keeps the text
+    /// views of one place apart from another's.
+    pub(in crate::frontend) fn release_body(
+        &self,
+        id: &str,
+        note: &Note,
+        columns: usize,
+    ) -> AnyElement {
+        let p = self.palette;
+        let markdown = |key: String, text: &str| {
+            gpui_kit::component::text::TextView::markdown(
+                SharedString::from(key),
+                SharedString::from(text.to_owned()),
+            )
+        };
+        let mut body = div()
+            .flex()
+            .flex_col()
+            .gap(px(14.))
+            .text_size(theme::font(13.))
+            // `.update-entry-body`
+            .line_height(relative(1.6));
+        if let Some(notice) = &note.notice {
+            body = body.child(
+                div()
+                    .flex()
+                    .items_start()
+                    .gap(px(8.))
+                    .px(px(12.))
+                    .py(px(8.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(p.io.opacity(0.35))
+                    .bg(p.io.opacity(0.08))
+                    .child(
+                        div()
+                            .mt(px(3.))
+                            .child(icon("WarningIcon", p.io).size(px(14.))),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .font_weight(theme::LABEL_WEIGHT)
+                            .child(notice.clone()),
+                    ),
+            );
+        }
+        for (index, intro) in note.intro.iter().enumerate() {
+            body = body.child(
+                div()
+                    .text_size(theme::font(14.))
+                    .font_weight(theme::LABEL_WEIGHT)
+                    .child(markdown(format!("{id}-intro-{index}"), intro)),
+            );
+        }
+        for (g, group) in note.groups.iter().enumerate() {
+            let color = self.kind_color(group.kind);
+            let tag =
+                div()
+                    .flex()
+                    .child(self.kind_tag(group.kind, &group.title, group.items.len()));
+            let cards =
+                group.kind == Kind::Feature && group.items.iter().all(|item| item.label.is_some());
+            let items = if cards {
+                div()
+                    .grid()
+                    .grid_cols(columns.max(1) as u16)
+                    .gap(px(8.))
+                    .children(group.items.iter().enumerate().map(|(i, item)| {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .px(px(12.))
+                            .py(px(10.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(p.stroke)
+                            .bg(p.layer_strong)
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(item.label.clone().unwrap_or_default()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(theme::font(12.5))
+                                    .line_height(relative(1.55))
+                                    .text_color(p.muted)
+                                    .child(markdown(format!("{id}-{g}-{i}"), &item.body)),
+                            )
+                    }))
+                    .into_any_element()
+            } else {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .children(group.items.iter().enumerate().map(|(i, item)| {
+                        let text = match &item.label {
+                            Some(label) => format!("**{label}** {}", item.body),
+                            None => item.body.clone(),
+                        };
+                        div()
+                            .flex()
+                            .gap(px(10.))
+                            .child(
+                                div()
+                                    .mt(px(8.))
+                                    .size(px(5.))
+                                    .flex_shrink_0()
+                                    .rounded_full()
+                                    .bg(color),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    // Softer than the headings: the labels stand out by weight.
+                                    .text_color(theme::mix(p.ink, p.muted, 0.35))
+                                    .child(markdown(format!("{id}-{g}-{i}"), &text)),
+                            )
+                    }))
+                    .into_any_element()
+            };
+            body = body.child(div().flex().flex_col().gap(px(8.)).child(tag).child(items));
+        }
+        body.into_any_element()
     }
 }

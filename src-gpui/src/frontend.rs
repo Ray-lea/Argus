@@ -18,6 +18,7 @@ mod pages;
 mod prefs;
 mod recorder;
 mod regions;
+mod release_notes;
 mod scrollbar;
 mod shift;
 mod tables;
