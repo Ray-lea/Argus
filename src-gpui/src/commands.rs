@@ -694,6 +694,15 @@ pub fn open_homepage() -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Opens the source repository, where releases and issues are too.
+pub fn open_repository() -> Result<(), String> {
+    std::process::Command::new("explorer.exe")
+        .arg(updater::REPO)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// Opens the group invitation in the default browser, which hands it to QQ.
 pub fn open_community() -> Result<(), String> {
     std::process::Command::new("explorer.exe")

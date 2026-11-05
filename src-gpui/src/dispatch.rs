@@ -279,6 +279,9 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         "open_homepage" => crate::commands::open_homepage()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "open_repository" => crate::commands::open_repository()
+            .map(|value| serde_json::to_value(value).expect("serializable command response"))
+            .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "open_community" => crate::commands::open_community()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),

@@ -115,6 +115,7 @@ ui_icons![
     "gauge",
     "generic-app",
     "generic-app-fill",
+    "github",
     "globe",
     "go-to",
     "gpu",

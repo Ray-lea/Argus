@@ -357,10 +357,15 @@
     "whatsNew": "What's new",
     "quit": "Exit Argus",
     "support": "Project and support",
-    "homepage": {
-      "title": "Project page",
-      "desc": "Visit {url} for stable downloads, documentation and project contacts.",
-      "open": "Visit project page"
+    "links": {
+      "website": {
+        "title": "Argus website",
+        "desc": "Download stable releases and read the documentation, FAQ and changelog."
+      },
+      "repository": {
+        "title": "GitHub repository",
+        "desc": "Browse the source code, report problems or suggest changes, and get the installer of any release."
+      }
     },
     "onboarding": {
       "title": "Welcome guide",
