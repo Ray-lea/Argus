@@ -1,20 +1,16 @@
 {
   "filter": {
     "all": {
-      "label": "全部",
-      "title": "所有 TCP 和 UDP 端点"
+      "label": "全部"
     },
     "listen": {
-      "label": "监听",
-      "title": "正在等待连接的 TCP 端口"
+      "label": "监听"
     },
     "established": {
-      "label": "已连接",
-      "title": "已建立的 TCP 连接"
+      "label": "已连接"
     },
     "udp": {
-      "label": "UDP",
-      "title": "UDP 端点"
+      "label": "UDP"
     }
   },
   "state": {
@@ -30,15 +26,12 @@
     "timeWait": "等待超时",
     "closed": "已关闭"
   },
-  "loadFailed": "无法读取网络连接",
   "menu": {
     "end": "结束 {name}",
     "close": "断开此连接",
     "copyLocal": "复制本地地址",
     "copyRemote": "复制远程地址"
   },
-  "closed": "已断开连接。",
-  "closeFailed": "无法断开连接",
   "copied": {
     "local": "本地地址",
     "remote": "远程地址"
@@ -57,9 +50,5 @@
   "noMatch": "没有匹配的连接",
   "noMatchPort": "没有匹配的连接：没有程序在使用端口 {port}",
   "clearFilter": "清除筛选",
-  "note": "每 2 秒刷新一次。双击某行可转到对应进程。",
-  "markTarget": {
-    "local": "{name} · 本地端口 {port}",
-    "remote": "{name} · 远程 {endpoint}"
-  }
+  "note": "每 2 秒刷新一次。双击某行可转到对应进程。"
 }

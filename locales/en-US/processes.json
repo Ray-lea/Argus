@@ -7,7 +7,6 @@
     "service": "No disk reading. Couldn't read it from the privileged service; check the service status in Settings.",
     "unavailable": "No disk reading. Per-process disk counters can't be read right now."
   },
-  "label": "Processes",
   "serviceHost": "Service host: {names}",
   "webView": {
     "host": "WebView2: {name}",
@@ -224,7 +223,6 @@
     "details": "Details"
   },
   "vitals": {
-    "label": "System overview",
     "open": "View {device} in Performance",
     "diskActive": "Active {value}%",
     "netTitle": "R: received, S: sent",

@@ -51,6 +51,5 @@
     "other": "Restart Manager couldn't check {count} more files, possibly because of permissions or changes to the files."
   },
   "truncated": "The folder has too many files; only the first {count} were checked.",
-  "footerHint": "The handle query also finds folders in use as a working directory; protected processes may still be out of reach.",
-  "drop": "Release to find the processes using these files"
+  "footerHint": "The handle query also finds folders in use as a working directory; protected processes may still be out of reach."
 }

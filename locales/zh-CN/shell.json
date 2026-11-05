@@ -1,14 +1,5 @@
 {
   "loadingProcesses": "正在读取进程…",
-  "toolbar": "工具栏",
-  "devTitle": "Argus 开发版",
-  "caption": {
-    "minimize": "最小化",
-    "maximize": "最大化",
-    "restore": "向下还原",
-    "close": "关闭"
-  },
-  "pages": "页面",
   "nav": {
     "expand": "展开导航",
     "collapse": "收起导航",
@@ -25,7 +16,6 @@
     "about": "关于"
   },
   "pageTitle": "{page}（Ctrl+{key}）",
-  "updateAvailable": "有新版本",
   "elevation": {
     "admin": "管理员",
     "adminHint": "Argus 正以管理员身份运行，可查看和结束绝大多数进程",
@@ -59,9 +49,6 @@
   },
   "pause": "暂停刷新",
   "resume": "继续刷新",
-  "keepPaused": "保持暂停（松开 Ctrl 后仍暂停）",
-  "resumeAfterControl": "取消手动暂停（松开 Ctrl 后继续）",
-  "pauseError": "无法更改刷新状态：{error}",
   "fileLock": {
     "title": "查找文件占用（也可将文件拖放到窗口）",
     "label": "查找占用文件的进程"
@@ -76,19 +63,15 @@
     "processes": "搜索名称、PID、路径或服务",
     "clear": "清除搜索"
   },
-  "view": "视图",
   "viewMode": {
     "apps": {
-      "label": "按应用",
-      "title": "按应用：同一程序的多个进程合并为一行"
+      "label": "按应用"
     },
     "tree": {
-      "label": "进程树",
-      "title": "进程树：按父子关系显示"
+      "label": "进程树"
     },
     "list": {
-      "label": "列表",
-      "title": "列表：所有进程平铺显示"
+      "label": "列表"
     }
   },
   "status": {

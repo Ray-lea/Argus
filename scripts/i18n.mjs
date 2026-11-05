@@ -123,7 +123,6 @@ for (const [locale, namespaces] of catalogs) {
 
 const rustDirs = ["src-gpui/src", "crates/argus-core/src", "crates/argus-service/src", "crates/argus-app/src"];
 const rustFiles = rustDirs.flatMap((d) => walk(join(root, d))).filter((f) => f.endsWith(".rs"));
-const uiFiles = [];
 
 // Rust lookups: tr!("key") and tr!("key", name = value, …).
 const native = source.get("native") ?? new Map();
@@ -157,17 +156,14 @@ for (const file of rustFiles.filter((file) => rel(file).startsWith("src-gpui/src
 }
 
 // Text written into the code instead of a catalog.
-const exempt = new Set();
-for (const file of [...rustFiles, ...uiFiles]) {
+for (const file of rustFiles) {
   const name = rel(file);
-  if (exempt.has(name)) continue;
-  const rust = file.endsWith(".rs");
   let inTest = false;
   let inBlock = false;
   readFileSync(file, "utf8")
     .split("\n")
     .forEach((line, i) => {
-      if (rust && /#\[cfg\(test\)\]/.test(line)) inTest = true;
+      if (/#\[cfg\(test\)\]/.test(line)) inTest = true;
       if (inTest || line.includes("i18n-ignore")) return;
       let code = line;
       if (inBlock) {
@@ -182,7 +178,7 @@ for (const file of [...rustFiles, ...uiFiles]) {
         inBlock = true;
       }
       // Line comments (but not "//" inside a string such as a URL).
-      code = code.replace(/(^|[^:"'`])\/\/.*$/, "$1");
+      code = code.replace(/(^|[^:"'])\/\/.*$/, "$1");
       if (/^\s*\*/.test(code)) return;
       if (HAN.test(code)) error(`${name}:${i + 1}`, `text in code: ${code.trim().slice(0, 80)}`);
     });
@@ -191,15 +187,20 @@ for (const file of [...rustFiles, ...uiFiles]) {
 // ---- Unused keys (informational) --------------------------------------------------------
 
 if (process.argv.includes("--unused")) {
-  const code = [...rustFiles, ...uiFiles].map((f) => readFileSync(f, "utf8")).join("\n");
-  // Keys built from template literals, e.g. `shell.page.${p}`, as patterns.
-  const dynamic = [...code.matchAll(/`([\w.]+\.)\$\{[^}]+\}([\w.]*)`/g)].map(
-    (m) => new RegExp(`^${m[1].replaceAll(".", "\\.")}[\\w]+${m[2].replaceAll(".", "\\.")}$`),
+  const literals = new Set(
+    rustFiles.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/"((?:[^"\\\n]|\\.)*)"/g)].map((m) => m[1])),
   );
+  // Keys built with format!, e.g. "shell.page.{page}", as patterns.
+  const dynamic = [...literals]
+    .filter((l) => l.includes("{") && /^[a-zA-Z]+\.[\w.{}:?]*$/.test(l))
+    .map((l) => new RegExp(`^${l.split(/\{[^}]*\}/).map((s) => s.replaceAll(".", "\\.")).join("[\\w.]+")}$`));
+  // A parent below the namespace written on its own ("settings.privilege.install")
+  // is extended at run time ("{prefix}.title").
+  const extended = (key) => key.split(".").some((_, i, parts) => i >= 2 && literals.has(parts.slice(0, i).join(".")));
   for (const [ns, keys] of source) {
     for (const key of keys.keys()) {
       const full = ns === "native" ? key : `${ns}.${key}`;
-      if (code.includes(`"${full}"`) || dynamic.some((re) => re.test(full))) continue;
+      if (literals.has(full) || dynamic.some((re) => re.test(full)) || extended(full)) continue;
       console.log(`unused? ${ns}: ${key}`);
     }
   }

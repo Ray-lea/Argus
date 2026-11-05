@@ -7,7 +7,6 @@
     "service": "暂无磁盘读数：未能从特权服务读取，可在设置中查看服务状态。",
     "unavailable": "暂无磁盘读数：暂时无法读取每个进程的磁盘计数。"
   },
-  "label": "进程",
   "serviceHost": "服务主机：{names}",
   "webView": {
     "host": "WebView2：{name}",
@@ -215,7 +214,6 @@
     "details": "详细信息"
   },
   "vitals": {
-    "label": "系统概况",
     "open": "在“性能”中查看{device}",
     "diskActive": "活动 {value}%",
     "netTitle": "接收 / 发送",

@@ -29,18 +29,6 @@
     "openConsole": "Open Services",
     "openConsoleTitle": "Open the Windows Services console"
   },
-  "done": {
-    "start": "Started “{name}”.",
-    "stop": "Stopped “{name}”.",
-    "restart": "Restarted “{name}”."
-  },
-  "failed": {
-    "start": "Couldn't start “{name}”",
-    "stop": "Couldn't stop “{name}”",
-    "restart": "Couldn't restart “{name}”"
-  },
-  "startTypeChanged": "Changed the startup type of “{name}” to {type}.",
-  "startTypeFailed": "Couldn't change the startup type of “{name}”",
   "menu": {
     "startType": "Startup type: {type}",
     "copyName": "Copy service name"

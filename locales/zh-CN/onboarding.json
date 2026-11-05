@@ -1,5 +1,4 @@
 {
-  "step": "第 {current} 步，共 {total} 步",
   "skip": "跳过",
   "back": "上一步",
   "next": "下一步",

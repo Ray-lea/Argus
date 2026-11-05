@@ -7,15 +7,6 @@
     "commonFolder": "Startup folder (all users)",
     "package": "App package (current user)"
   },
-  "loadFailed": "Couldn't read startup apps",
-  "done": {
-    "enable": "Enabled “{name}”. Takes effect at next sign-in.",
-    "disable": "Disabled “{name}”. Takes effect at next sign-in."
-  },
-  "failed": {
-    "enable": "Couldn't enable “{name}”",
-    "disable": "Couldn't disable “{name}”"
-  },
   "menu": {
     "copyCommand": "Copy command"
   },
@@ -40,7 +31,6 @@
     "unavailable": "The state of this startup task could not be read. No changes were made."
   },
   "unavailable": "Unavailable",
-  "title": "Startup apps",
   "loading": "Reading startup apps…",
   "noMatch": "No matching startup apps",
   "summary": "{enabled} of {total} enabled",

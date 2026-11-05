@@ -29,18 +29,6 @@
     "openConsole": "服务管理器",
     "openConsoleTitle": "打开 Windows 服务管理器"
   },
-  "done": {
-    "start": "已启动“{name}”。",
-    "stop": "已停止“{name}”。",
-    "restart": "已重新启动“{name}”。"
-  },
-  "failed": {
-    "start": "无法启动“{name}”",
-    "stop": "无法停止“{name}”",
-    "restart": "无法重新启动“{name}”"
-  },
-  "startTypeChanged": "“{name}”的启动类型已改为{type}。",
-  "startTypeFailed": "无法更改“{name}”的启动类型",
   "menu": {
     "startType": "启动类型：{type}",
     "copyName": "复制服务名称"

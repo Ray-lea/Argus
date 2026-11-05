@@ -1,31 +1,8 @@
 {
-  "prototype": {
-    "title": "Argus 原型",
-    "processes": "进程",
-    "cores": "逻辑处理器",
-    "cpu": "CPU",
-    "memory": "内存",
-    "name": "名称",
-    "pid": "PID",
-    "read": "读取",
-    "write": "写入",
-    "gpu": "GPU",
-    "threads": "线程",
-    "live": "实时采集",
-    "replay": "采样回放",
-    "fluid": "流畅",
-    "off": "关闭动画",
-    "count": "进程数",
-    "unavailable": "—",
-    "seconds": "秒",
-    "replayRequired": "此平台的原生采集适配器尚未实现，请选择采样回放文件"
-  },
   "app": {
     "invalidRequest": "请求参数无效。",
-    "windowUnavailable": "主窗口尚未就绪。",
     "devTitle": "Argus 开发版",
-    "join": "{first}；{second}",
-    "instanceUnavailable": "无法向已运行的 Argus 交接请求：{error}。详细原因已记录到日志文件夹的 taskmgr.log 中。"
+    "join": "{first}；{second}"
   },
   "installer": {
     "title": "Argus 安装",
@@ -49,7 +26,6 @@
     "show": "显示 Argus",
     "quit": "退出",
     "update": "更新到 {version}…",
-    "updateReady": "新版本 {version} 已就绪",
     "tooltip": "CPU {cpu}%  内存 {memory}%"
   },
   "startup": {
@@ -59,8 +35,6 @@
   },
   "host": {
     "desktopShellTerminate": "无法直接结束桌面资源管理器，请使用“重新启动”。",
-    "webViewProfileFailed": "无法准备界面启动环境，Argus 未启动。可尝试以当前登录账户的普通权限启动。详细原因已记录到日志。错误码：{code}",
-    "restoreDesktopForWebView": "Windows 资源管理器未运行，无法初始化管理员界面。是否先以当前桌面账户的普通权限恢复资源管理器，再继续启动 Argus？选择“否”将取消本次启动。",
     "serviceReply": "特权服务返回了无法识别的结果，请更新服务",
     "fileMissing": "文件不存在",
     "samplerStalled": "采样线程没有响应",
@@ -68,8 +42,7 @@
     "pickFile": "选择要检查的文件",
     "pickTask": "选择要运行的程序或文件",
     "invalidInterval": "不支持此刷新间隔",
-    "autostartNotInstalled": "此窗口由任务管理器替换打开，未找到已安装的 Argus，无法在此开启开机启动。请退出 Argus，直接运行 Argus 后再开启。",
-    "savePreferencesFailed": "无法保存界面偏好。"
+    "autostartNotInstalled": "此窗口由任务管理器替换打开，未找到已安装的 Argus，无法在此开启开机启动。请退出 Argus，直接运行 Argus 后再开启。"
   },
   "updater": {
     "devBuild": "开发版不检查更新。",

@@ -15,7 +15,6 @@
   "none": "None",
   "name": "Name",
   "status": "Status",
-  "path": "Path",
   "command": "Command",
   "copyName": "Copy name",
   "copyPath": "Copy path",
@@ -25,7 +24,6 @@
   "endProcessTree": "End process tree",
   "efficiencyMode": "Efficiency mode",
   "privilegedService": "Privileged service",
-  "filter": "Filter",
   "listSeparator": ", ",
   "resource": {
     "cpu": "CPU",

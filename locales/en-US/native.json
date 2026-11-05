@@ -1,31 +1,8 @@
 {
-  "prototype": {
-    "title": "Argus Prototype",
-    "processes": "Processes",
-    "cores": "Logical processors",
-    "cpu": "CPU",
-    "memory": "Memory",
-    "name": "Name",
-    "pid": "PID",
-    "read": "Read",
-    "write": "Write",
-    "gpu": "GPU",
-    "threads": "Threads",
-    "live": "Live collection",
-    "replay": "Sample replay",
-    "fluid": "Fluid",
-    "off": "Animation off",
-    "count": "Processes",
-    "unavailable": "—",
-    "seconds": "seconds",
-    "replayRequired": "Native collection is not implemented on this platform; select a recording for replay"
-  },
   "app": {
     "invalidRequest": "The request parameters are invalid.",
-    "windowUnavailable": "The main window is not ready.",
     "devTitle": "Argus Dev",
-    "join": "{first}; {second}",
-    "instanceUnavailable": "Couldn't pass the request to the running Argus instance: {error}. Details are in taskmgr.log in the log folder."
+    "join": "{first}; {second}"
   },
   "installer": {
     "title": "Argus Setup",
@@ -49,7 +26,6 @@
     "show": "Show Argus",
     "quit": "Exit",
     "update": "Update to {version}…",
-    "updateReady": "Version {version} is ready",
     "tooltip": "CPU {cpu}%  Memory {memory}%"
   },
   "startup": {
@@ -59,8 +35,6 @@
   },
   "host": {
     "desktopShellTerminate": "Desktop Explorer cannot be ended directly. Use Restart instead.",
-    "webViewProfileFailed": "Argus could not prepare its interface startup environment and did not start. Try starting it with standard permissions as the signed-in account. Details were recorded in the log. Error code: {code}",
-    "restoreDesktopForWebView": "Windows Explorer is not running, so the administrator interface cannot initialize. Restore Explorer with the current desktop account's standard permissions and continue starting Argus? Choosing No cancels this startup.",
     "serviceReply": "The privileged service returned an unrecognized result; update the service",
     "fileMissing": "The file doesn't exist",
     "samplerStalled": "The sampling thread isn't responding",
@@ -68,8 +42,7 @@
     "pickFile": "Select a file to check",
     "pickTask": "Choose an app or file to run",
     "invalidInterval": "This refresh interval isn't supported",
-    "autostartNotInstalled": "This window was opened by the Task Manager replacement and no installed Argus was found, so starting at sign-in can't be turned on here. Quit Argus, run it directly, then turn this on.",
-    "savePreferencesFailed": "Could not save interface preferences."
+    "autostartNotInstalled": "This window was opened by the Task Manager replacement and no installed Argus was found, so starting at sign-in can't be turned on here. Quit Argus, run it directly, then turn this on."
   },
   "updater": {
     "devBuild": "Dev builds don't check for updates.",

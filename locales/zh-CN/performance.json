@@ -1,6 +1,4 @@
 {
-  "devices": "设备",
-  "resizeList": "调整设备列表宽度",
   "span": {
     "seconds": "{count} 秒",
     "minutes": "{count} 分钟"
@@ -243,7 +241,6 @@
   "memory": {
     "sub": "{used} / {total} GB（{percent}%）",
     "usage": "内存使用量",
-    "composition": "内存组成",
     "legendInUse": "使用中 {value}",
     "legendModified": "已修改 {value}",
     "legendStandby": "备用 {value}",
@@ -269,7 +266,6 @@
     "title": "磁盘 {index}",
     "titleVolumes": "磁盘 {index} ({volumes})",
     "removableMedia": "可移动",
-    "removed": "该磁盘已移除。",
     "activeTime": "活动时间",
     "transferRate": "磁盘传输速率",
     "read": "读取",
@@ -456,7 +452,6 @@
     },
     "showAll": "展开全部 {count} 个",
     "showFewer": "收起",
-    "disconnected": "该网络连接已断开。",
     "throughput": "吞吐量",
     "receive": "接收",
     "send": "发送",
@@ -473,7 +468,6 @@
       "process": "进程引擎计数",
       "nvml": "NVIDIA 核心"
     },
-    "notFound": "找不到该 GPU。",
     "engineUtilization": "引擎利用率",
     "dedicatedMemory": "专用 GPU 内存",
     "sharedMemory": "共享 GPU 内存",
@@ -521,18 +515,11 @@
     "engineType": "图中显示的引擎",
     "engineSmart": "智能显示",
     "engineSmartTitle": "仅显示曲线时间范围内有占用的引擎",
-    "layout": "引擎图布局",
     "layouts": {
       "grid": "网格",
       "focus": "焦点",
       "rows": "列表"
     },
-    "layoutTitles": {
-      "grid": "引擎图均匀排列",
-      "focus": "放大第一个引擎，其余排在旁边",
-      "rows": "每个引擎占一整行，便于对照时间"
-    },
-    "resize": "调整引擎图高度",
     "maxCoreClock": "最高核心频率",
     "powerSource": "功耗来源",
     "sources": {
@@ -566,7 +553,6 @@
     "minutes": "{minutes} 分钟",
     "timeLeft": "剩余 {time}",
     "onBattery": "使用电池",
-    "removed": "电池已移除。",
     "chargeRate": "充电功率",
     "dischargeRate": "放电功率",
     "level": "电量",

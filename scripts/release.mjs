@@ -597,7 +597,7 @@ function cmdManifest([version, installer, signature, releaseNotes, releaseNotesS
 }
 
 /**
- * Verifies a minisign signature the way the updater does (`requireSignedVersion`),
+ * Verifies a minisign signature the way the updater does, signed version included,
  * so a release signed with a key that does not match the public key never ships.
  */
 function cmdCheckSignature([version, file, signature]) {

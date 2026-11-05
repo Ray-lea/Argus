@@ -18,7 +18,7 @@ const sources = {
 };
 const SMALL_MAX = 32;
 const ICO_SIZES = [16, 24, 32, 48, 64, 256];
-const PNG_OUTPUTS = { "32x32.png": 32, "128x128.png": 128, "128x128@2x.png": 256, "icon.png": 512 };
+const PNG_OUTPUTS = { "32x32.png": 32 };
 
 const edge = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",

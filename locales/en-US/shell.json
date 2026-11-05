@@ -1,14 +1,5 @@
 {
   "loadingProcesses": "Reading processes…",
-  "toolbar": "Toolbar",
-  "devTitle": "Argus Dev",
-  "caption": {
-    "minimize": "Minimize",
-    "maximize": "Maximize",
-    "restore": "Restore Down",
-    "close": "Close"
-  },
-  "pages": "Pages",
   "nav": {
     "expand": "Expand navigation",
     "collapse": "Collapse navigation",
@@ -25,7 +16,6 @@
     "about": "About"
   },
   "pageTitle": "{page} (Ctrl+{key})",
-  "updateAvailable": "Update available",
   "elevation": {
     "admin": "Administrator",
     "adminHint": "Argus is running as administrator and can view and end almost every process",
@@ -59,9 +49,6 @@
   },
   "pause": "Pause updates",
   "resume": "Resume updates",
-  "keepPaused": "Keep paused after releasing Ctrl",
-  "resumeAfterControl": "Resume when Ctrl is released",
-  "pauseError": "Could not change the update state: {error}",
   "fileLock": {
     "title": "Find what's using a file (or drop files onto the window)",
     "label": "Find processes using a file"
@@ -76,19 +63,15 @@
     "processes": "Search name, PID, path or service",
     "clear": "Clear search"
   },
-  "view": "View",
   "viewMode": {
     "apps": {
-      "label": "Apps",
-      "title": "Apps: an app's processes on one row"
+      "label": "Apps"
     },
     "tree": {
-      "label": "Tree",
-      "title": "Tree: processes under their parents"
+      "label": "Tree"
     },
     "list": {
-      "label": "List",
-      "title": "List: every process on its own row"
+      "label": "List"
     }
   },
   "status": {
