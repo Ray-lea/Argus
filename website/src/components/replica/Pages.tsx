@@ -1184,20 +1184,25 @@ export function About({
             <Button onClick={onQuit}>退出 Argus</Button>
           </div>
         </div>
-        <h2>项目与支持</h2>
-        <Setting
-          icon="star"
-          title="项目主页"
-          desc={
-            <span data-i18n="homepage">
-              访问 <b>argustask.com</b> 获取稳定版下载、使用文档和项目联系方式。
+        <div className="a-about-links">
+          <a className="a-link-card" href="https://argustask.com/" target="_blank" rel="noopener">
+            <Icon name="external" size={15} />
+            <img className="a-link-mark" src="/assets/argus.svg" width="44" height="44" alt="" />
+            <strong>Argus 官网</strong>
+            <span className="a-link-address">argustask.com</span>
+            <span>下载稳定版，阅读使用文档、常见问题和更新日志。</span>
+          </a>
+          <a className="a-link-card is-repo" href="https://github.com/Ray-lea/Argus" target="_blank" rel="noopener">
+            <Icon name="external" size={15} />
+            <span className="a-link-mark">
+              <Icon name="github" size={26} />
             </span>
-          }
-        >
-          <Button tone="accent" icon="external">
-            访问项目主页
-          </Button>
-        </Setting>
+            <strong>GitHub 仓库</strong>
+            <span className="a-link-address">github.com/Ray-lea/Argus</span>
+            <span>查看源代码，报告问题或提出建议，获取各版本的安装包。</span>
+          </a>
+        </div>
+        <h2>项目与支持</h2>
         <Setting icon="chat" title="交流与反馈" desc="加入 QQ 群 453803497，反馈问题、提出建议或交流使用心得。">
           <Button onClick={() => onCopy("453803497", "群号")}>复制群号</Button>
           <Button tone="accent">加入 QQ 群</Button>

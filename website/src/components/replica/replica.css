@@ -2801,12 +2801,6 @@ button.a-th:active {
   font: inherit;
   font-size: calc(12px * var(--a-text));
 }
-/* A highlighted value inside a card's description, such as an address. */
-.a-setting-text b {
-  color: var(--a-ink);
-  font-weight: inherit;
-}
-
 /* About: one column as wide as the settings' content, centred. */
 .a-about {
   display: block;
@@ -2874,6 +2868,86 @@ button.a-th:active {
   color: var(--a-ink-2);
   font-size: calc(13px * var(--a-text));
   font-variant-numeric: tabular-nums;
+}
+/* The website and the repository side by side, each in its own colour: the
+   accent under the app's mark, ink under GitHub's. A whole card is the link. */
+.a-about-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.a-link-card {
+  --tone: var(--a-accent);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  min-height: 132px;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--tone) 28%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tone) 6%, var(--a-layer));
+  color: var(--a-ink);
+  line-height: 1.45;
+  text-decoration: none;
+}
+.a-link-card.is-repo {
+  --tone: var(--a-ink);
+}
+.a-link-card:hover {
+  border-color: color-mix(in srgb, var(--tone) 50%, transparent);
+  background: color-mix(in srgb, var(--tone) 11%, var(--a-layer));
+}
+/* A line of the link's colour along the top edge. */
+.a-link-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 18px;
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--tone);
+}
+.a-link-card > .ico {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  color: var(--a-ink-2);
+}
+.a-link-mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 10px;
+}
+/* GitHub's mark in the window's own opaque background on an ink square. */
+.is-repo .a-link-mark {
+  border-radius: 10px;
+  background: var(--a-ink);
+  color: var(--a-window);
+}
+.a-link-card strong {
+  font-family: var(--a-display);
+  font-size: calc(16px * var(--a-text));
+  font-weight: 600;
+}
+.a-link-card .a-link-address {
+  color: color-mix(in srgb, var(--tone), var(--a-ink) 25%);
+  font-size: calc(12.5px * var(--a-text));
+  font-weight: 500;
+  white-space: nowrap;
+}
+.a-link-card span:last-child {
+  margin-top: 2px;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
 }
 
 /* Floating surfaces. Menus and lists have no shadow; dialogs keep theirs over a scrim. */
