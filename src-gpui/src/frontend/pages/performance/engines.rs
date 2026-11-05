@@ -279,6 +279,36 @@ fn place(shape: Shape, count: usize) -> Plan {
         stack: shape.rows,
     }
 }
+/// `tile` at `at` in `plan`'s grid, in fractions of the grid: its tracks'
+/// share of the grid, less its part of the gaps (with `n` tracks, each gap
+/// is shared out `gap / n` to the tracks on either side of it).
+fn in_fractions(tile: Div, at: Placement, plan: &Plan, gap: Pixels) -> AnyElement {
+    let span = |first: usize, count: usize, of: usize| {
+        let (first, of) = (first.saturating_sub(1), of.max(1));
+        let end = (first + count).min(of);
+        (
+            first as f32 / of as f32,
+            (end - first) as f32 / of as f32,
+            gap * first as f32 / of as f32,
+            gap * (of - end) as f32 / of as f32,
+        )
+    };
+    let (left, width, inset_left, inset_right) = span(at.column, at.columns, plan.columns);
+    let (top, height, inset_top, inset_bottom) = span(at.row, at.rows, plan.rows);
+    div()
+        .absolute()
+        .left(relative(left))
+        .top(relative(top))
+        .w(relative(width))
+        .h(relative(height))
+        .child(
+            tile.left(inset_left)
+                .right(inset_right)
+                .top(inset_top)
+                .bottom(inset_bottom),
+        )
+        .into_any_element()
+}
 /// One unit's readable size in the area, and whether it is as large as a cell may be.
 fn unit(shape: Shape, width: f32, height: f32, cell: Size<Pixels>, gap: f32) -> (bool, f32) {
     let w = (width - (shape.columns - 1) as f32 * gap) / shape.columns as f32;
@@ -572,6 +602,13 @@ impl Desktop {
             cell,
             f32::from(gap),
         );
+        // The arrangement drawn last. Another size of it places the charts in
+        // the grid's fractions, so that they follow it in the frame it changes
+        // (from the measured size, every step of a resize drew one frame at
+        // the previous size and then glided); another arrangement glides.
+        let drawn_plan = window.use_keyed_state("gpu-engine-plan", cx, |_, _| None::<Plan>);
+        let same_plan = drawn_plan.read(cx).as_ref() == Some(&plan);
+        drawn_plan.update(cx, |drawn, _| *drawn = Some(plan.clone()));
         let track_width = (px(width) - gap * (plan.columns - 1) as f32) / plan.columns as f32;
         let track_height =
             ((measured.height - gap * (plan.rows - 1) as f32) / plan.rows as f32).max(cell.height);
@@ -632,10 +669,16 @@ impl Desktop {
                     track_height * at.rows as f32 + gap * (at.rows - 1) as f32,
                 ),
             );
+            // Kept at the target meanwhile, so that the next arrangement
+            // glides from where the chart is.
             let bounds = gpui_kit::base::motion::transition(
                 SharedString::from(format!("gpu-engine-bounds-{name}")),
                 target,
-                policy.clone(),
+                if same_plan {
+                    gpui_kit::base::motion::Transition::new(std::time::Duration::ZERO)
+                } else {
+                    policy.clone()
+                },
                 window,
                 cx,
             );
@@ -643,9 +686,10 @@ impl Desktop {
                 &format!("gpu-engine-{index}"),
                 &[Line::new(format!("{prefix}.engines.{index}"), p.gpu)],
                 Some(Scale::Fixed(100.)),
-                (bounds.size.height - header).max(px(1.)),
+                ChartHeight::Fill,
                 Look {
                     frame: true,
+                    min_height: Some(px(1.)),
                     ..Look::default()
                 },
                 cx,
@@ -701,19 +745,22 @@ impl Desktop {
                                 .child("%"),
                         ),
                 );
-            grid = grid.child(
-                div()
-                    .absolute()
-                    .left(bounds.origin.x)
+            let tile = div()
+                .absolute()
+                .overflow_hidden()
+                .flex()
+                .flex_col()
+                .child(head)
+                .child(chart);
+            grid = grid.child(if same_plan {
+                in_fractions(tile, at, &plan, gap)
+            } else {
+                tile.left(bounds.origin.x)
                     .top(bounds.origin.y)
                     .w(bounds.size.width)
                     .h(bounds.size.height)
-                    .overflow_hidden()
-                    .flex()
-                    .flex_col()
-                    .child(head)
-                    .child(chart),
-            );
+                    .into_any_element()
+            });
         }
         let handle_state = share_state.clone();
         let handle = div()
