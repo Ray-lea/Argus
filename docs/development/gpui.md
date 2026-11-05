@@ -18,6 +18,41 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 `node scripts/ui-smoke.mjs <标识>` 用固定样本检查各页面、主题、语言和窄窗口，覆盖表头排序、性能页首屏及窗口命中区域。`--dev` 使用开发构建，`--live --fluid --move` 检查实际呈现节拍与连续移动、隐藏和恢复。结果在 `target/native-validation`。
 
+### 截图与录制
+
+`node scripts/ui-shots.mjs <标签> <步骤文件>` 按步骤驱动一个隔离、不激活的测试窗口，用于核对新界面和做回归检查。默认使用开发构建 `target/debug/argus.exe` 和模拟快照 `tools/window-probe/fixtures/desktop.json`；`--release` 换成发布构建，`--live` 改用实时数据（此时按键、单击与拖动不生效），`--fixture` 指定其他快照，`--theme`、`--language` 设定外观与语言，`--width`、`--height` 指定客户区物理尺寸。探针需先以 `cargo build --release -p argus-window-probe --features capture` 构建。截图、录制帧、拼图和 `results.json` 写入 `target/native-validation/<标签>`，测试标识的数据目录在结束时删除；有断言未满足时以退出码 1 结束。
+
+步骤文件是步骤数组，或 `{ "window": [宽, 高], "steps": [...] }`。一个步骤可组合以下几项，按表中顺序执行：
+
+| 键 | 作用 |
+|---|---|
+| `note` | 打印说明 |
+| `control` | 发送测试控制，见下表 |
+| `probe` | 发送探针命令，如 `size 1200 900` |
+| `record` | `{ "name", "ms", "crop"? }`：录制这段时间内呈现的每一帧 |
+| `wait` | 等待毫秒数 |
+| `inspect` | `columns`、`menu`、`layout` 或 `vitals`，配合 `label` 命名，结果写入 `results.json` |
+| `expect` | 以点分路径核对 `inspect` 的结果，如 `{ "state.focus.item.label": "CPU 时间" }` |
+| `capture` | 捕获窗口为 PNG |
+| `crop` | `{ "from", "name", "region": [x, y, 宽, 高], "scale"? }`：裁剪并放大一张截图 |
+| `sheet` | `{ "name", "from", "region", "columns"?, "scale"?, "every"?, "limit"? }`：把一段录制（或若干截图）的同一区域按顺序拼成一张图 |
+
+`drag` 是简写：`{ "drag": { "at", "dx", "dy", "steps", "interval" } }` 展开为悬停、按下、均匀分步移动和松开，可附带 `record` 与 `wait`。示例见 `tools/window-probe/steps`：`header-menu.json` 用键盘操作表头菜单并逐步断言，`column-drag.json` 录制表头与“选择列”对话框的拖动并拼图。
+
+测试控制除页面、主题、对话框等既有项外，还包括：
+
+| 控制 | 作用 |
+|---|---|
+| `preference` | `{ "键": 值 }`，经正常的偏好路径设置任意偏好 |
+| `keys` | 按键序列，经正常派发路径；仅模拟快照 |
+| `hoverAnchor` | 指针移到已记录元素的中心 |
+| `clickAnchor`、`dragAnchor` | 单击元素；从一个元素拖到另一个元素高度的某一比例处；仅模拟快照 |
+| `pointer` | `{ "at"?, "event", "dx"?, "dy"? }`：悬停、按下、按住移动或松开。`at` 为已记录元素或 `header:<列>`；省略时相对于手势起点，元素在拖动中移动也不影响 |
+| `headerMenu` | 打开某一列的表头菜单 |
+| `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项与展开的子菜单 |
+
+合成输入经 `window.defer` 派发，控制同时请求一帧，空闲窗口不会把输入留到下一次采样。探针 `crop`、`sheet` 子命令也可单独使用；开始新的录制时，上一段录制在后台写出帧，不阻塞后续命令。
+
 本地补丁分别记录在 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)。更新上游时，复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行及 Windows 渲染。
 
 `pnpm test:startup` 在独立 Windows 桌面运行开发脚本，检查默认启动和 `--hidden` 的窗口可见性。
