@@ -15,6 +15,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { macroCalls } from "./lib/rust-calls.mjs";
 
 const root = join(import.meta.dirname, "..");
 const SOURCE = "zh-CN";
@@ -129,16 +130,17 @@ const native = source.get("native") ?? new Map();
 const application = new Map([...source].filter(([ns]) => ns !== "native").flatMap(([ns, keys]) => [...keys].map(([key, value]) => [`${ns}.${key}`, value])));
 for (const file of rustFiles) {
   const text = readFileSync(file, "utf8");
-  for (const m of text.matchAll(/\btr!\(\s*"([^"]+)"((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)/g)) {
-    const [, key, rest] = m;
-    const line = text.slice(0, m.index).split("\n").length;
+  // Each call on its own, with only its own arguments: one nested in another's
+  // arguments is checked too, and lends the outer call none of its names.
+  for (const { key, names, index } of macroCalls(text, "tr")) {
+    const line = text.slice(0, index).split("\n").length;
     const where = `${rel(file)}:${line}`;
     const template = native.get(key) ?? (rel(file).startsWith("src-gpui/") ? application.get(key) : undefined);
     if (template === undefined) {
       error(where, `tr!("${key}") is not in locales/${SOURCE}/native.json`);
       continue;
     }
-    const args = new Set([...rest.matchAll(/(?:^|,)\s*(\w+)\s*=(?!=)/g)].map((a) => a[1]));
+    const args = new Set(names);
     const want = placeholders(template);
     if (!same(args, want)) error(where, `tr!("${key}") passes ${list(args)}, the text has ${list(want)}`);
   }
