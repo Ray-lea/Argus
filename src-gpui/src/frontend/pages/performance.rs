@@ -704,9 +704,11 @@ impl Desktop {
         )
         .within_viewport(viewport)
         .into_any_element();
+        let anchors = self.ui.anchors.clone();
         let splitter = div()
             .id("perf-sidebar-splitter")
             .group("perf-splitter")
+            .relative()
             .w(px(PAGE_GAP))
             .h_full()
             .flex_shrink_0()
@@ -723,6 +725,21 @@ impl Desktop {
                     .group_hover("perf-splitter", |s| s.visible())
                     .bg(p.stroke_strong),
             )
+            // Where tests take hold of it.
+            .when(self.options.test, |d| {
+                d.child(
+                    canvas(
+                        move |bounds, _, _| {
+                            anchors
+                                .borrow_mut()
+                                .insert("perf-sidebar-splitter".into(), bounds);
+                        },
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+            })
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, window, cx| {

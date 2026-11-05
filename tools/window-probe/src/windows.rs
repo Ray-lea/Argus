@@ -1199,6 +1199,9 @@ pub fn run(args: &[String]) -> Result<()> {
                         .collect::<std::result::Result<_, _>>()?;
                     let mut client = RECT::default();
                     let mut outer = RECT::default();
+                    // When the window took its new size (SetWindowPos returns
+                    // once the window has handled it), on the capture clock.
+                    let mut set_at = None;
                     // Custom caption implementations can change non-client
                     // insets on the first resize. Reconcile against the actual
                     // client rectangle instead of assuming the old insets hold.
@@ -1219,6 +1222,7 @@ pub fn run(args: &[String]) -> Result<()> {
                             flags |= SWP_NOSENDCHANGING;
                         }
                         SetWindowPos(search.hwnd, Some(HWND_BOTTOM), 0, 0, width, height, flags)?;
+                        set_at.get_or_insert(qpc_time_100ns()?);
                         std::thread::sleep(Duration::from_millis(50));
                     }
                     GetClientRect(search.hwnd, &mut client)?;
@@ -1228,7 +1232,7 @@ pub fn run(args: &[String]) -> Result<()> {
                     );
                     println!(
                         "{}",
-                        serde_json::json!({"event":"resized","width":client.right,"height":client.bottom})
+                        serde_json::json!({"event":"resized","width":client.right,"height":client.bottom,"qpc100ns":set_at})
                     );
                 }
                 if let Some(value) = command.strip_prefix("move ") {

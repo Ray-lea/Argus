@@ -47,6 +47,9 @@ struct Frame {
     time: i64,
     width: u32,
     height: u32,
+    /// The window had grown past the capture surface: only its top left
+    /// part was captured (the next frames come at its new size).
+    clipped: bool,
     rgb: Vec<u8>,
 }
 
@@ -122,13 +125,19 @@ fn write(dir: &std::path::Path, frames: &[Frame]) -> anyhow::Result<()> {
         encoder.set_color(png::ColorType::Rgb);
         encoder.set_depth(png::BitDepth::Eight);
         encoder.write_header()?.write_image_data(&frame.rgb)?;
-        index.push(serde_json::json!({"file":name,"time100ns":frame.time}));
+        index.push(serde_json::json!({"file":name,"time100ns":frame.time,"clipped":frame.clipped}));
     }
     std::fs::write(
         dir.join("index.json"),
         serde_json::to_string(&serde_json::json!({ "frames": index }))?,
     )?;
     Ok(())
+}
+
+/// The capture API's handle to `device` (not `Send`, so made where it is used).
+fn winrt_device(device: &ID3D11Device) -> windows::core::Result<IDirect3DDevice> {
+    let dxgi: IDXGIDevice = device.cast()?;
+    unsafe { CreateDirect3D11DeviceFromDXGIDevice(&dxgi)? }.cast()
 }
 
 fn record(
@@ -161,11 +170,21 @@ fn record(
     let factory: IGraphicsCaptureItemInterop =
         windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
     let item: GraphicsCaptureItem = unsafe { factory.CreateForWindow(hwnd)? };
+    // Surfaces as large as the desktop, so that a window growing while it is
+    // recorded arrives whole rather than cut to the size it began at.
+    let mut room = item.Size()?;
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+        };
+        room.Width = room.Width.max(GetSystemMetrics(SM_CXVIRTUALSCREEN));
+        room.Height = room.Height.max(GetSystemMetrics(SM_CYVIRTUALSCREEN));
+    }
     let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
         &runtime,
         DirectXPixelFormat::B8G8R8A8UIntNormalized,
         4,
-        item.Size()?,
+        room,
     )?;
     let session = pool.CreateCaptureSession(&item)?;
     session.SetIsCursorCaptureEnabled(false)?;
@@ -194,7 +213,16 @@ fn record(
             let content = frame.ContentSize()?;
             let access: IDirect3DDxgiInterfaceAccess = frame.Surface()?.cast()?;
             let texture: ID3D11Texture2D = unsafe { access.GetInterface()? };
-            let (cw, ch) = (content.Width as u32, content.Height as u32);
+            // The pool keeps the size it was made with: a window grown past
+            // it arrives cut to that size until the pool is made again.
+            let mut surface = D3D11_TEXTURE2D_DESC::default();
+            unsafe { texture.GetDesc(&mut surface) };
+            let clipped =
+                content.Width as u32 > surface.Width || content.Height as u32 > surface.Height;
+            let (cw, ch) = (
+                (content.Width as u32).min(surface.Width),
+                (content.Height as u32).min(surface.Height),
+            );
             let area = crop.unwrap_or(Crop {
                 x: 0,
                 y: 0,
@@ -207,6 +235,14 @@ fn record(
             let height = area.height.min(ch - y);
             if width == 0 || height == 0 {
                 frame.Close()?;
+                if clipped {
+                    pool.Recreate(
+                        &winrt_device(&device)?,
+                        DirectXPixelFormat::B8G8R8A8UIntNormalized,
+                        4,
+                        content,
+                    )?;
+                }
                 continue;
             }
             if slot.as_ref().is_none_or(|s| s.1 != width || s.2 != height) {
@@ -249,12 +285,21 @@ fn record(
             }
             unsafe { context.Unmap(target, 0) };
             frame.Close()?;
+            if clipped {
+                pool.Recreate(
+                    &winrt_device(&device)?,
+                    DirectXPixelFormat::B8G8R8A8UIntNormalized,
+                    4,
+                    content,
+                )?;
+            }
             let mut list = sink.lock().unwrap();
             if list.len() < MAX_FRAMES {
                 list.push(Frame {
                     time,
                     width,
                     height,
+                    clipped,
                     rgb,
                 });
             }
