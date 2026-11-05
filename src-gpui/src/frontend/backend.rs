@@ -28,7 +28,6 @@ impl Desktop {
                     | "app_info"
                     | "set_interval"
                     | "set_paused"
-                    | "refresh"
                     | "update_status"
                     | "set_theme"
                     | "set_language"
@@ -54,15 +53,11 @@ impl Desktop {
                 | "set_language"
                 | "set_interval"
                 | "set_paused"
-                | "refresh"
                 | "set_hotkey"
                 | "set_hotkey_enabled"
                 | "suspend_hotkey"
                 | "resume_hotkey"
-                | "minimize_main"
-                | "set_window_motion"
                 | "quit"
-                | "page_painted"
                 | "task_manager_ready"
         );
         if main {

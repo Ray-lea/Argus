@@ -95,8 +95,8 @@ impl Completion {
     }
 }
 
-/// Called by the frontend only after it is mounted, and on each explicit
-/// activation request. An expired parent cannot make a late UI steal focus.
+/// Called by the UI once it is ready, and on each explicit activation
+/// request. An expired parent cannot make a late UI steal focus.
 pub fn complete() -> Vec<Completion> {
     let requests = std::mem::take(&mut *PENDING.lock().unwrap());
     requests

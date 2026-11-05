@@ -12,10 +12,9 @@ use windows::Win32::System::Threading::{
 };
 
 #[derive(Debug)]
-pub struct ProfileError {
+pub struct IdentityError {
     pub stage: &'static str,
     pub code: u32,
-    pub path: Option<std::path::PathBuf>,
 }
 use crate::tasks::{Handle, token_buffer};
 
@@ -32,10 +31,9 @@ unsafe extern "system" {
     ) -> i32;
 }
 
-fn failure(stage: &'static str, error: windows::core::Error) -> ProfileError {
+fn failure(stage: &'static str, error: windows::core::Error) -> IdentityError {
     let code = error.code().0 as u32;
-    ProfileError {
-        path: None,
+    IdentityError {
         stage,
         code: if code & 0xffff0000 == 0x80070000 {
             code & 0xffff
@@ -48,22 +46,21 @@ fn failure(stage: &'static str, error: windows::core::Error) -> ProfileError {
 fn data(
     token: HANDLE,
     class: windows::Win32::Security::TOKEN_INFORMATION_CLASS,
-) -> Result<Vec<usize>, ProfileError> {
-    token_buffer(token, class).map_err(|e| ProfileError {
-        path: None,
+) -> Result<Vec<usize>, IdentityError> {
+    token_buffer(token, class).map_err(|e| IdentityError {
         stage: "desktop recovery token",
         code: e.code,
     })
 }
 
-fn token(process: HANDLE) -> Result<Handle, ProfileError> {
+fn token(process: HANDLE) -> Result<Handle, IdentityError> {
     let mut handle = HANDLE::default();
     unsafe { OpenProcessToken(process, TOKEN_QUERY | TOKEN_DUPLICATE, &mut handle) }
         .map_err(|e| failure("desktop recovery token", e))?;
     Ok(Handle(handle))
 }
 
-fn object_name(object: *mut std::ffi::c_void) -> Result<String, ProfileError> {
+fn object_name(object: *mut std::ffi::c_void) -> Result<String, IdentityError> {
     let mut buffer = [0u16; 256];
     let mut needed = 0;
     if unsafe {
@@ -86,14 +83,13 @@ fn object_name(object: *mut std::ffi::c_void) -> Result<String, ProfileError> {
 }
 
 /// Match the window station's logon SID, not a process name or the foreground window.
-pub fn desktop_token() -> Result<Handle, ProfileError> {
+pub fn desktop_token() -> Result<Handle, IdentityError> {
     let station = unsafe { GetProcessWindowStation() };
     let desktop = unsafe { GetThreadDesktop(GetCurrentThreadId()) };
     if !object_name(station)?.eq_ignore_ascii_case("WinSta0")
         || !object_name(desktop)?.eq_ignore_ascii_case("Default")
     {
-        return Err(ProfileError {
-            path: None,
+        return Err(IdentityError {
             stage: "desktop recovery requires the interactive desktop",
             code: 50,
         });
@@ -116,8 +112,7 @@ pub fn desktop_token() -> Result<Handle, ProfileError> {
         ));
     }
     if needed == 0 {
-        return Err(ProfileError {
-            path: None,
+        return Err(IdentityError {
             stage: "desktop recovery logon SID absent",
             code: 1168,
         });
@@ -135,7 +130,7 @@ pub fn desktop_token() -> Result<Handle, ProfileError> {
         let Ok(token) = token(process.0) else {
             continue;
         };
-        let eligible = (|| -> Result<bool, ProfileError> {
+        let eligible = (|| -> Result<bool, IdentityError> {
             if data(token.0, TokenSessionId)?[0] != session
                 || data(token.0, TokenElevation)?[0] != 0
                 || data(token.0, TokenIsAppContainer)?[0] != 0
@@ -161,8 +156,7 @@ pub fn desktop_token() -> Result<Handle, ProfileError> {
             return Ok(token);
         }
     }
-    Err(ProfileError {
-        path: None,
+    Err(IdentityError {
         stage: "desktop recovery account unavailable",
         code: 1168,
     })

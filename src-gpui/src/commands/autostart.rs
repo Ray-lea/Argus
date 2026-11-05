@@ -1,5 +1,5 @@
-//! The sign-in entry (`Run` value named after the product). The autostart
-//! plugin writes the running executable. Run by the task manager replacement,
+//! The sign-in entry (`Run` value named after the product). Enabling it
+//! writes the running executable. Run by the task manager replacement,
 //! that is an interface copy in the privileged service's folder: it never gets
 //! updates, and the next enable or restore of the replacement deletes it. So a
 //! copy names the installed argus.exe instead, and the installed Argus points
@@ -19,7 +19,7 @@ use windows::core::{PCWSTR, w};
 const RUN: PCWSTR = w!(r"Software\Microsoft\Windows\CurrentVersion\Run");
 const APPROVED: PCWSTR =
     w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run");
-/// As `lib.rs` configures the autostart plugin.
+/// The entry starts Argus in the tray.
 const ARGS: &str = "--hidden";
 
 fn wide(s: &str) -> Vec<u16> {
@@ -65,7 +65,7 @@ fn write(root: HKEY, key: PCWSTR, name: &str, value: &str) -> Result<(), WIN32_E
     if result.is_ok() { Ok(()) } else { Err(result) }
 }
 
-/// Marks the entry enabled in the Startup apps list, as the plugin does.
+/// Marks the entry enabled in the Startup apps list.
 fn approve(name: &str) {
     let mut key = HKEY::default();
     if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, APPROVED, None, KEY_SET_VALUE, &mut key) }.is_ok()
@@ -93,7 +93,7 @@ pub fn is_interface_copy(path: &Path) -> bool {
 }
 
 /// The program and the arguments of a `Run` command: quoted, or unquoted up
-/// to `.exe` as the plugin writes it.
+/// to `.exe` as releases up to 0.3.4 wrote it.
 fn split(command: &str) -> Option<(&str, &str)> {
     let command = command.trim_start();
     if let Some(rest) = command.strip_prefix('"') {
@@ -424,7 +424,7 @@ mod tests {
 
     #[test]
     fn run_commands_split_into_program_and_arguments() {
-        // As the plugin writes it: unquoted, with spaces in the path.
+        // As releases up to 0.3.4 wrote it: unquoted, with spaces in the path.
         assert_eq!(
             split(r"C:\Program Files\Argus Privileged\argus-taskmgr-ui-1.exe --hidden"),
             Some((

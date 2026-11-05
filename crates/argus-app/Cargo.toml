@@ -1,6 +1,6 @@
 [package]
 name = "argus-app"
-description = "Shared Argus application services for desktop renderers"
+description = "Shared Argus application services for the desktop host"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

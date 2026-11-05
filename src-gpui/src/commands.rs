@@ -12,7 +12,6 @@ use argus_core::history::{self, HistoryMoment, HistoryPoint, HistoryUsage};
 use argus_core::rules::{ProcessRule, RuleStats};
 use argus_core::services::{ServiceAction, ServiceInfo, StartType};
 use argus_core::startup::{self, StartupItem};
-use argus_core::theme::{self, AccentColors};
 use argus_core::tr;
 use argus_service::{Operation, Reply, Routed, ServiceStatus};
 use serde::Serialize;
@@ -26,12 +25,6 @@ use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
 
 pub(crate) mod autostart;
-
-pub fn minimize_main(window: crate::native_runtime::NativeWindow) {
-    if let Ok(hwnd) = window.hwnd() {
-        crate::window_motion::minimize(hwnd);
-    }
-}
 
 pub fn desktop_shell() -> Option<crate::explorer::Identity> {
     crate::explorer::current()
@@ -87,16 +80,11 @@ pub struct AppInfo {
     /// (`build-support/build-version.rs`).
     build: &'static str,
     elevated: bool,
-    accent: Option<AccentColors>,
-    /// Whether the native window supplies a Mica backdrop.
-    mica: bool,
     /// Relaunched by the installer of an update.
     updated: bool,
     /// Started by the task manager replacement: the system may be struggling,
     /// so the UI holds back what is not urgent.
     task_manager: bool,
-    /// The UI language, resolved; the UI renders nothing before it knows.
-    locale: argus_core::i18n::Locale,
 }
 
 pub fn app_info(state: State<'_, AppState>) -> AppInfo {
@@ -104,11 +92,8 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         build: env!("ARGUS_VERSION"),
         elevated: state.elevated,
-        accent: theme::accent_colors(),
-        mica: shell::supports_mica(),
         updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
         task_manager: state.task_manager_start,
-        locale: argus_core::i18n::locale(),
     }
 }
 
@@ -121,10 +106,6 @@ pub fn set_interval(state: State<'_, AppState>, ms: u64) {
 
 pub fn set_paused(state: State<'_, AppState>, paused: bool) {
     state.sampler.send(Control::SetPaused(paused));
-}
-
-pub fn refresh(state: State<'_, AppState>) {
-    state.sampler.send(Control::Refresh);
 }
 
 pub fn process_details(pid: u32, path: Option<String>) -> ProcessDetails {
@@ -316,7 +297,6 @@ fn settings_view(app: &crate::native_runtime::Host) -> SettingsView {
     SettingsView {
         settings: store.get(),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
-        locale: argus_core::i18n::locale(),
         hotkey_error: crate::hotkey::error(app),
         default_hotkey: crate::settings::DEFAULT_HOTKEY,
     }
@@ -346,8 +326,8 @@ pub fn manage_privileged_service(
     Ok(status)
 }
 
-/// Switches the language of the native text (tray, errors); the UI follows
-/// the returned `locale`.
+/// Switches the language of all text; the tray follows at once and the UI
+/// redraws on `argus-language`.
 pub fn set_language(
     app: crate::native_runtime::Host,
     language: Language,
@@ -499,7 +479,7 @@ pub fn set_autostart(
     } else if let Some(path) = argus_service::admin::launcher(&app.config().identifier) {
         autostart::enable_admin(&app, &path)?;
     } else if autostart::running_as_copy() {
-        // The plugin would name this copy of the task manager replacement.
+        // Enabling as usual would name this copy of the task manager replacement.
         autostart::enable_installed(&app.package_info().name)?;
     } else {
         launcher.enable().map_err(|e| e.to_string())?;

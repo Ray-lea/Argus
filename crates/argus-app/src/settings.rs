@@ -112,7 +112,7 @@ pub struct Settings {
     pub language: Language,
     pub theme: Theme,
     /// The onboarding version last completed or skipped; 0 before the first.
-    /// The UI owns the numbering (`ONBOARDING_VERSION` in Onboarding.tsx).
+    /// The UI owns the numbering (`onboardingVersion` in resources/desktop.json).
     pub onboarding: u32,
     /// The version whose first start has been dealt with: its changes shown
     /// or announced, or nothing to show (a fresh install). Empty until a
@@ -214,8 +214,6 @@ pub struct SettingsView<E> {
     #[serde(flatten)]
     pub settings: Settings,
     pub autostart: bool,
-    /// The language in effect (`language` resolved).
-    pub locale: Locale,
     /// Why the hotkey is not active (e.g. taken by another app).
     pub hotkey_error: Option<E>,
     pub default_hotkey: &'static str,

@@ -346,21 +346,6 @@ pub fn action(value: &str) -> &'static str {
     }
 }
 
-pub fn exception(value: &str) -> &'static str {
-    match value {
-        "TypeError" => "TypeError",
-        "RangeError" => "RangeError",
-        "ReferenceError" => "ReferenceError",
-        "SyntaxError" => "SyntaxError",
-        "URIError" => "URIError",
-        "EvalError" => "EvalError",
-        "AbortError" => "AbortError",
-        "NetworkError" => "NetworkError",
-        "Error" => "Error",
-        _ => "unknown exception",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -551,10 +536,8 @@ mod tests {
     }
 
     #[test]
-    fn only_fixed_action_and_exception_names_are_recorded() {
+    fn only_fixed_action_names_are_recorded() {
         assert_eq!(action("install"), "install");
-        assert_eq!(exception("TypeError"), "TypeError");
         assert_eq!(action(r"C:\Users\Someone\tool"), action("unknown"));
-        assert_eq!(exception("TypeError: Alice Smith"), exception("unknown"));
     }
 }

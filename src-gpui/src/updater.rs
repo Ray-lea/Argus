@@ -6,15 +6,15 @@
 //! stable release (`latest.json`, `beta.json`, written by the release
 //! workflow), fetched from GitHub, the official mirror, or a GitHub proxy. The
 //! installer must carry a signature from the key in resources/app.json that also
-//! covers its version (`requireSignedVersion`), so a proxy can withhold an
-//! update but not alter or downgrade one. The release notes the update dialog
-//! shows are signed the same way; notes that fail the check are not shown.
+//! covers its version (the trusted comment's `version:`), so a proxy can
+//! withhold an update but not alter or downgrade one. The release notes the
+//! update dialog shows are signed the same way; notes that fail the check are
+//! not shown.
 //!
 //! A downloaded installer is kept in the app's local data folder together
 //! with what the dialog shows about it, so it survives a restart. It is
 //! checked again when Argus starts and right before it runs, and removed once
-//! its version is installed. Argus starts it itself, as the plugin would: the
-//! plugin can only install an update it checked during this run.
+//! its version is installed.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -579,9 +579,9 @@ fn signature_error(e: &Error) -> bool {
     matches!(e, Error::Minisign | Error::MissingSignedVersion)
 }
 
-/// Checks a minisign signature the way the updater plugin does, with the
-/// version it was signed for (`requireSignedVersion`). The error is for the
-/// log only.
+/// Checks a minisign signature and the version it was signed for (the
+/// trusted comment's `version:`), as releases up to 0.3.4 do. The error is
+/// for the log only.
 pub(crate) fn verify_signed(
     data: &[u8],
     signature: &str,
@@ -1200,8 +1200,8 @@ impl Failure {
     }
 }
 
-/// Checks the kept installer once more and runs it the way the updater plugin
-/// would: passive, in update mode, relaunching Argus as the user with our own
+/// Checks the kept installer once more and runs it as earlier releases did:
+/// passive, in update mode, relaunching Argus as the user with our own
 /// arguments (the current ones may carry a one-time task manager handshake).
 /// Exits the process when the installer started.
 fn launch(app: &Host, ready: &Ready) -> Failure {

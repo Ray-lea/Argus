@@ -371,10 +371,6 @@ pub fn hide(hwnd: HWND) {
     dispatch(hwnd, Op::Go(Target::Hidden));
 }
 
-pub fn minimize(hwnd: HWND) {
-    dispatch(hwnd, Op::Go(Target::Minimized));
-}
-
 unsafe extern "system" fn procedure(
     hwnd: HWND,
     msg: u32,

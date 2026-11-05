@@ -67,13 +67,6 @@ pub fn query(pid: u32, path: Option<&str>) -> ProcessDetails {
     d
 }
 
-/// One process's command line, on its own (no other details).
-pub fn command_line_of(pid: u32) -> Option<String> {
-    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
-    let handle = OwnedHandle(handle);
-    command_line(handle.0)
-}
-
 /// One process's executable path, on its own.
 pub fn image_path_of(pid: u32) -> Option<String> {
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;

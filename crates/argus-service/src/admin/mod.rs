@@ -33,9 +33,10 @@ pub const HANDOFF: &str = "--argus-admin-handoff";
 pub use ticket::{Prepared, acknowledge, handoff_args, prepare, trusted_handoff};
 
 static SUPPORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-/// A persistent grant must never load a mutable development frontend.
-pub fn configure_support(embedded: bool) {
-    let _ = SUPPORTED.set(embedded);
+/// A persistent grant is offered by release builds only, never by a mutable
+/// development build.
+pub fn configure_support(release: bool) {
+    let _ = SUPPORTED.set(release);
 }
 pub fn supported() -> bool {
     SUPPORTED.get().copied().unwrap_or(false)

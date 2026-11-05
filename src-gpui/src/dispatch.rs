@@ -13,13 +13,6 @@ fn argument<T: serde::de::DeserializeOwned>(args: &Value, key: &str) -> Result<T
 }
 pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
     match name {
-        "minimize_main" => {
-            crate::commands::minimize_main(
-                host.get_window("main")
-                    .ok_or_else(|| serde_json::json!(argus_core::tr!("app.windowUnavailable")))?,
-            );
-            Ok(Value::Null)
-        }
         "desktop_shell" => Ok(serde_json::to_value(crate::commands::desktop_shell())
             .expect("serializable command response")),
         "restart_explorer" => crate::commands::restart_explorer(
@@ -57,10 +50,6 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         }
         "set_paused" => {
             crate::commands::set_paused(host.state(), argument::<bool>(&args, "paused")?);
-            Ok(Value::Null)
-        }
-        "refresh" => {
-            crate::commands::refresh(host.state());
             Ok(Value::Null)
         }
         "process_details" => Ok(serde_json::to_value(crate::commands::process_details(

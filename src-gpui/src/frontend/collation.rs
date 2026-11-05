@@ -208,7 +208,7 @@ mod tests {
         names.into_iter().map(|(_, name)| name).collect()
     }
 
-    // Expected orders are those of the interface's WebView2 Intl.Collator.
+    // Expected orders are those of ICU's collation for each locale.
     const NAMES: [&str; 14] = [
         "Argus",
         "东方财富终端",

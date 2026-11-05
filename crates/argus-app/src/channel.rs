@@ -1,5 +1,5 @@
 use std::sync::Arc;
-/// An application subscriber supplied by a renderer adapter.
+/// An application subscriber supplied by the host.
 pub struct Channel<T>(Arc<dyn Fn(T) -> anyhow::Result<()> + Send + Sync>);
 impl<T> Clone for Channel<T> {
     fn clone(&self) -> Self {

@@ -1,10 +1,8 @@
 //! Native interface preferences, stored atomically alongside application settings.
 //!
-//! `preferences.json` keeps the layout the WebView interface wrote, so an
+//! `preferences.json` keeps the layout releases up to 0.3.4 wrote, so an
 //! update carries the preferences over: `{"values": {key: value}, "window":
-//! placement}`. Other top-level fields are kept. A file holding the values at
-//! its top level (earlier native builds) is read as values and rewritten in
-//! that layout on the next change.
+//! placement}`. Other top-level fields are kept.
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
@@ -45,15 +43,7 @@ fn read_root(path: &Path) -> io::Result<Map<String, Value>> {
     }
 }
 
-/// Whether the top level holds the values themselves (an earlier native build's file).
-fn flat(root: &Map<String, Value>) -> bool {
-    !root.is_empty() && !root.contains_key("values") && !root.contains_key("window")
-}
-
 fn values_of(root: &Map<String, Value>) -> Preferences {
-    if flat(root) {
-        return root.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    }
     match root.get("values") {
         Some(Value::Object(values)) => values.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         _ => Preferences::new(),
@@ -95,9 +85,6 @@ fn update(
     let _lock = WRITE.lock().unwrap();
     let mut root = read_root(path)?;
     let mut values = values_of(&root);
-    if flat(&root) {
-        root.clear();
-    }
     change(&mut values, &mut root);
     root.insert("values".into(), Value::Object(values.into_iter().collect()));
     save(path, &root)
@@ -159,8 +146,8 @@ mod tests {
         fs::remove_file(file).unwrap();
     }
     #[test]
-    fn the_webview_interface_layout_is_read_and_kept() {
-        let file = path("webview");
+    fn the_layout_of_earlier_releases_is_read_and_kept() {
+        let file = path("release");
         fs::write(
             &file,
             br#"{"values":{"sort":{"key":"mem","desc":false}},"window":{"rect":[-1500,40,-200,850],"maximized":true}}"#,
@@ -181,18 +168,6 @@ mod tests {
         save_window(&file, moved).unwrap();
         assert_eq!(window(&file), Some(moved));
         assert_eq!(load(&file).unwrap()["sort"]["key"], "mem");
-        fs::remove_file(file).unwrap();
-    }
-    #[test]
-    fn a_flat_native_file_becomes_values() {
-        let file = path("flat");
-        fs::write(&file, br#"{"view":"tree","detailsWidth":400}"#).unwrap();
-        assert_eq!(load(&file).unwrap()["view"], "tree");
-        set(&file, "page".into(), "network".into()).unwrap();
-        let root: Map<String, Value> = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
-        assert_eq!(root["values"]["view"], "tree");
-        assert_eq!(root["values"]["page"], "network");
-        assert!(!root.contains_key("view"));
         fs::remove_file(file).unwrap();
     }
     #[test]

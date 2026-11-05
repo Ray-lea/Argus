@@ -2,7 +2,7 @@
 //! page), after the website's changelog: a notice, an introduction, and the
 //! changes grouped by kind under their headings, each change with its bold
 //! label apart from its text. The headings are those `scripts/release.mjs`
-//! writes and `scripts/lib/release-notes.ts` reads, in either language.
+//! writes, in either language.
 
 /// What a group of changes is, for its colour and its order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

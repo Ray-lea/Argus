@@ -132,10 +132,7 @@ impl Host {
     pub fn emit(&self, name: &str, value: impl Serialize) -> Result<()> {
         let value = serde_json::to_value(value)?;
         let mut queue = self.0.events.lock().unwrap();
-        if matches!(
-            name,
-            "update-status" | "argus-theme" | "argus-language" | "argus-caption-maximize"
-        ) {
+        if matches!(name, "update-status" | "argus-theme" | "argus-language") {
             queue.retain(|event| event.name != name);
         }
         queue.push_back(Event {

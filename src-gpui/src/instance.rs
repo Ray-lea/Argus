@@ -223,7 +223,7 @@ fn acquire_with_timeout(
             if sent.0 != 0 && reply == 1 {
                 if switching {
                     // The old host accepted a verified bootstrap. It must fully
-                    // exit before this process opens the shared WebView profile.
+                    // exit before this process takes over its history and settings.
                     let deadline = Instant::now() + timeout;
                     while Instant::now() < deadline {
                         match unsafe { WaitForSingleObject(handle.0, 50) } {

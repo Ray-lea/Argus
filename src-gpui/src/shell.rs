@@ -240,9 +240,6 @@ pub fn resync_visibility(hwnd: HWND) {
     } else {
         *AWAY.lock().unwrap() = Some((next == WindowState::Hidden, Some(Instant::now())));
     }
-    if let Some(app) = HOST.get() {
-        let _ = app.emit("argus-visibility", next == WindowState::Shown);
-    }
 }
 pub fn follow_visibility(window: &NativeWindow) {
     let Ok(hwnd) = window.hwnd() else {
@@ -396,7 +393,6 @@ pub fn set_tray_update(app: &Host, version: Option<&str>) {
             let _ = Shell_NotifyIconW(NIM_MODIFY, &data);
         }
     }
-    let _ = app.emit("argus-tray-update", version);
 }
 fn tray_menu(app: &Host, hwnd: HWND) {
     unsafe {

@@ -32,7 +32,6 @@ pub enum WindowState {
 }
 
 type Probe = Box<dyn Fn() -> WindowState + Send>;
-type Observer = Box<dyn Fn(&Snapshot) + Send>;
 
 pub enum Control {
     Subscribe(Channel<Snapshot>),
@@ -48,8 +47,6 @@ pub enum Control {
     Refresh,
     /// Tells what the window is currently doing.
     SetWindowProbe(Probe),
-    /// Called with every snapshot on the sampler thread (tray tooltip).
-    SetObserver(Observer),
     /// Starts recording history into this folder, or stops with None.
     SetHistoryDir(Option<PathBuf>),
     /// Deletes the history in this folder; replies once the files are gone.
@@ -165,7 +162,6 @@ impl Sampler {
                 let mut kernel_sensors = false;
                 let mut subscriber: Option<Channel<Snapshot>> = None;
                 let mut window: Option<Probe> = None;
-                let mut observer: Option<Observer> = None;
                 let mut history: Option<HistoryRecorder> = None;
                 let mut interval = DEFAULT_INTERVAL;
                 let mut minimized = BACKGROUND_INTERVAL;
@@ -208,10 +204,6 @@ impl Sampler {
                             window = Some(probe);
                             continue;
                         }
-                        Ok(Control::SetObserver(f)) => {
-                            observer = Some(f);
-                            continue;
-                        }
                         Ok(Control::SetHistoryDir(dir)) => {
                             history = dir.map(HistoryRecorder::new);
                             continue;
@@ -234,7 +226,7 @@ impl Sampler {
                     if !forced {
                         schedule.tick(now, period);
                     }
-                    if subscriber.is_none() && observer.is_none() {
+                    if subscriber.is_none() {
                         continue;
                     }
                     if forced && !schedule.demand(now, period) {
@@ -252,9 +244,6 @@ impl Sampler {
                     rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);
-                    }
-                    if let Some(f) = &observer {
-                        f(&snapshot);
                     }
                     // A paused view stays as it is, except right after an action.
                     if let Some(ch) = &subscriber

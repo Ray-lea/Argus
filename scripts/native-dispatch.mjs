@@ -8,7 +8,6 @@ const re = /pub fn (\w+)\s*\(/g;
 let match;
 while ((match = re.exec(source))) {
   const name = match[1];
-  if (name === "subscribe") continue;
   let i = re.lastIndex,
     level = 1;
   for (; i < source.length && level; i++) {
@@ -42,8 +41,6 @@ while ((match = re.exec(source))) {
         type = s.slice(at + 1).trim();
       if (type.includes("Host")) return "host.clone()";
       if (type.startsWith("State<")) return "host.state()";
-      if (type.includes("NativeWindow"))
-        return 'host.get_window("main").ok_or_else(||serde_json::json!(argus_core::tr!("app.windowUnavailable")))?';
       return `argument::<${type}>(&args,${JSON.stringify(camel(key))})?`;
     });
   const call = `crate::commands::${name}(${args.join(",")})`;

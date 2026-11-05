@@ -270,12 +270,6 @@ impl TreeKillReport {
 }
 
 /// Terminates a process and all of its descendants, deepest first.
-pub fn terminate_tree(pid: u32, create_time: i64) -> Result<TreeKillReport, ActionError> {
-    terminate_tree_with(pid, create_time, |pid, created| {
-        terminate(pid, created, false)
-    })
-}
-
 /// Enumerates locally while allowing the host to route individual operations
 /// through its privileged service. Every target retains its creation time.
 pub fn terminate_tree_with(
@@ -325,7 +319,7 @@ mod tests {
 
     #[test]
     fn errors_keep_their_wire_form() {
-        // The UI (types.ts) and the service protocol read these tags.
+        // The UI (`actions.error.<kind>`) and the service protocol read these tags.
         let json = |e: ActionError| serde_json::to_string(&e).unwrap();
         assert_eq!(
             json(ActionError::AccessDenied),
@@ -360,7 +354,7 @@ mod tests {
         report.note(Ok(()));
         assert_eq!((report.terminated, report.failed), (2, 3));
         assert!(report.service_outdated);
-        // As the UI (types.ts) reads it.
+        // As the UI and the service protocol read it.
         assert_eq!(
             serde_json::to_string(&report).unwrap(),
             r#"{"terminated":2,"failed":3,"serviceOutdated":true}"#

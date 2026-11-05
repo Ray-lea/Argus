@@ -1,7 +1,7 @@
 //! What the log records for bug reports, beyond operation failures: the
 //! environment at start, which sensors this PC offers (once, after the first
-//! sample), the state of the privileged features, and errors the page did not
-//! handle. Reviewed failure paths are explicit fields; raw errors, command
+//! sample) and the state of the privileged features. Reviewed failure paths
+//! are explicit fields; raw errors, command
 //! arguments, account names, machine names and network addresses are excluded.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};

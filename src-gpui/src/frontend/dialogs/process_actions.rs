@@ -34,7 +34,7 @@ impl Desktop {
     }
 
     /// Runs one process action on each member off the UI thread and reports
-    /// the outcome once, as actions.ts does with Promise.allSettled.
+    /// the outcome once, after every member has finished.
     pub(super) fn process_batch(
         &mut self,
         kind: &str,

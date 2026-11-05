@@ -24,7 +24,7 @@ const IF_TYPE_WIFI: u32 = 71;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NicInfo {
-    /// Stable interface LUID, as a string (JS numbers cannot hold it).
+    /// Stable interface LUID, as a string.
     pub id: String,
     /// User-visible connection name, e.g. `以太网`, `WLAN`.
     pub name: String,

@@ -139,7 +139,7 @@ fn event(nonce: &str, suffix: &str, create: bool) -> Result<Handle> {
     }
 }
 
-/// A bootstrap is ready, but no second WebView/profile/history writer exists.
+/// A bootstrap is ready, but no second history or settings writer exists.
 pub struct Prepared {
     commit: Handle,
     _ready: Handle,

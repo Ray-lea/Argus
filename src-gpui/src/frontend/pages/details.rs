@@ -1817,7 +1817,7 @@ fn duration_of(key: &str) -> Duration {
         .unwrap_or_else(theme::motion_duration)
 }
 
-/// Byte rate with its unit even when idle (format.ts `fmtRate(v, false)`).
+/// Byte rate with its unit even when idle.
 fn byte_rate(bytes_per_second: f64) -> String {
     if bytes_per_second < 1. {
         "0 KB/s".into()
