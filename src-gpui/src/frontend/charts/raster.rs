@@ -641,6 +641,65 @@ fn dot_image(fill: Hsla, ring: Hsla, density: f32) -> Option<Arc<RenderImage>> {
     Some(image)
 }
 
+/// Paints `piece` of a horizontal fade stretched over `card`, in `color`:
+/// opaque up to `stops.0` of the card's width and clear from `stops.1`. Drawn
+/// as a plain image, which the Windows renderer keeps with the static content
+/// over moving curves; a gradient there would have them drawn again with
+/// every frame.
+pub(in crate::frontend) fn paint_fade(
+    window: &mut Window,
+    card: Bounds<Pixels>,
+    piece: Bounds<Pixels>,
+    corners: Corners<Pixels>,
+    color: Hsla,
+    stops: (f32, f32),
+) {
+    let Some(image) = fade_image(color, stops) else {
+        return;
+    };
+    if let Err(error) = window.paint_image(piece, card, corners, image, 0, false) {
+        argus_core::diagnostics::warn(
+            "chart fade paint",
+            argus_core::diagnostics::error_chain(error.as_ref()),
+        );
+    }
+}
+
+/// A fade's image in straight BGRA, stretched over the card. Its 512 steps
+/// stay finer than a device pixel across a card. Its rows are alike, and as
+/// many as a card is tall: a stretched image is sampled past its edges, and
+/// a single row would fade out towards the card's top and bottom.
+fn fade_image(color: Hsla, stops: (f32, f32)) -> Option<Arc<RenderImage>> {
+    const WIDTH: u32 = 512;
+    const HEIGHT: u32 = 128;
+    thread_local! {
+        static FADES: RefCell<HashMap<u64, Arc<RenderImage>>> = RefCell::new(HashMap::new());
+    }
+    let color: Rgba = color.into();
+    let key =
+        super::hash_of([color.r, color.g, color.b, color.a, stops.0, stops.1].map(f32::to_bits));
+    if let Some(image) = FADES.with_borrow(|fades| fades.get(&key).cloned()) {
+        return Some(image);
+    }
+    let byte = |value: f32| (value.clamp(0., 1.) * 255.).round() as u8;
+    let row = (0..WIDTH)
+        .flat_map(|i| {
+            let along = (i as f32 + 0.5) / WIDTH as f32;
+            let alpha = (stops.1 - along) / (stops.1 - stops.0).max(f32::EPSILON);
+            [
+                byte(color.b),
+                byte(color.g),
+                byte(color.r),
+                byte(alpha.clamp(0., 1.) * color.a),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let buffer = image::RgbaImage::from_raw(WIDTH, HEIGHT, row.repeat(HEIGHT as usize))?;
+    let image = Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]));
+    FADES.with_borrow_mut(|fades| fades.insert(key, image.clone()));
+    Some(image)
+}
+
 /// One piece of a curve between two samples, as a cubic Bezier (start,
 /// control, control, end) in texture coordinates.
 #[derive(Clone, Copy)]

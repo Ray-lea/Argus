@@ -6,7 +6,6 @@ mod settings;
 mod vitals;
 use super::*;
 pub(super) use details::{cpu_time, date_time};
-use gpui_kit::base::ElementExt;
 use gpui_kit::component::ActiveTheme;
 impl Desktop {
     pub(in crate::frontend) fn page_content(

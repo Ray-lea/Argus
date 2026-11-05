@@ -2,6 +2,7 @@
 use super::*;
 mod raster;
 mod rate;
+pub(in crate::frontend) use raster::paint_fade;
 pub(in crate::frontend) use rate::{
     RateScale, ceiling as rate_ceiling, label as rate_ceiling_label,
 };
@@ -132,6 +133,17 @@ pub(in crate::frontend) struct Look {
     pub legend: Vec<(String, bool)>,
     /// One load bar per series at its latest sample instead of curves.
     pub bars: bool,
+    /// What the chart layer draws over the curve.
+    pub overlay: Option<Rc<Overlay>>,
+}
+/// What the chart layer draws over a curve, in the box around the plot (a
+/// vital card): the chart layer draws curves over the page, so text that the
+/// curve passes under is drawn here, after it. Painted when the layer draws
+/// in full; the frames that only move curves keep it as painted.
+pub(in crate::frontend) struct Overlay {
+    /// Where the plot's edges sit inside the box.
+    pub inset: Edges<Pixels>,
+    pub build: Box<dyn Fn() -> AnyElement>,
 }
 impl Look {
     /// A framed chart with captions and a readout.
@@ -578,6 +590,7 @@ pub(super) struct Placement {
     slide: Option<DeviceSlide>,
     /// Captions the chart layer draws inside the frame.
     captions: Option<Rc<FrameCaptions>>,
+    overlay: Option<Rc<Overlay>>,
     /// The live transforms the page draws the chart and its surroundings
     /// inside, outermost first (`shift::live`): the chart layer draws the
     /// curve inside the same ones, so that it moves, scales and fades with
@@ -813,6 +826,12 @@ struct Drawn {
     alpha: f32,
     lives: Vec<Live>,
     translation: Point<Pixels>,
+    overlay: Option<DrawnOverlay>,
+}
+/// A chart's overlay, prepainted in the box around the plot.
+struct DrawnOverlay {
+    element: AnyElement,
+    clip: Bounds<Pixels>,
 }
 fn plot_end(plot: &TimePlot, clock: &motion::Clock, now: f64) -> f64 {
     if clock.mode == motion::Mode::Pixel {
@@ -899,6 +918,27 @@ impl Render for ChartLayer {
                             element.layout_as_root(plot_bounds.size.into(), window, cx);
                             element.prepaint_at(plot_bounds.origin, window, cx);
                         });
+                        let overlay = placement.overlay.as_ref().map(|overlay| {
+                            let inset = overlay.inset;
+                            let frame = Bounds::from_corners(
+                                plot_bounds.origin - point(inset.left, inset.top),
+                                plot_bounds.bottom_right() + point(inset.right, inset.bottom),
+                            );
+                            let clip = frame.intersect(&(mask + shift)).intersect(&bounds);
+                            let mut element = div()
+                                .size_full()
+                                .opacity(alpha)
+                                .child((overlay.build)())
+                                .into_any_element();
+                            window.with_content_mask(
+                                Some(ContentMask { bounds: clip }),
+                                |window| {
+                                    element.layout_as_root(frame.size.into(), window, cx);
+                                    element.prepaint_at(frame.origin, window, cx);
+                                },
+                            );
+                            DrawnOverlay { element, clip }
+                        });
                         elements.push(Drawn {
                             element,
                             clip,
@@ -907,6 +947,7 @@ impl Render for ChartLayer {
                             alpha,
                             lives: placement.lives.clone(),
                             translation,
+                            overlay,
                         });
                     }
                     // Bars occupy the foreground of compact CPU plots. A stable
@@ -935,6 +976,7 @@ impl Render for ChartLayer {
                             )
                         });
                     }
+                    let mut overlays = Vec::new();
                     window.paint_layer(bounds, |window| {
                         for mut drawn in elements {
                             with_lives(&drawn.lives, drawn.translation, window, |window| {
@@ -943,8 +985,25 @@ impl Render for ChartLayer {
                                     |window| drawn.element.paint(window, cx),
                                 )
                             });
+                            if let Some(overlay) = drawn.overlay {
+                                overlays.push((overlay, drawn.lives, drawn.translation));
+                            }
                         }
                     });
+                    // Outside the curves' layer, so that they take a later
+                    // draw order than the curves they cover. Windows composes
+                    // the moving curves apart only while what stays put is
+                    // drawn over all that moves under it.
+                    for (mut overlay, lives, translation) in overlays {
+                        with_lives(&lives, translation, window, |window| {
+                            window.with_content_mask(
+                                Some(ContentMask {
+                                    bounds: overlay.clip,
+                                }),
+                                |window| overlay.element.paint(window, cx),
+                            )
+                        });
+                    }
                 },
             )
             .size_full(),
@@ -1428,6 +1487,7 @@ impl Desktop {
         let placed_plot = plot_rc.clone();
         let slide = self.chart_slide.clone();
         let lives = self.chart_lives.borrow().clone();
+        let overlay = look.overlay.clone();
         // The name and top above the frame, the span and zero below it; in a
         // short performance card, inside the frame (drawn by the chart layer).
         let captions = look.caption.as_ref().map(|caption| {
@@ -1463,6 +1523,7 @@ impl Desktop {
                         plot: placed_plot.clone(),
                         slide: slide.clone(),
                         captions: inside.clone(),
+                        overlay: overlay.clone(),
                         lives: lives.clone(),
                     },
                 );

@@ -1,6 +1,316 @@
 //! The vitals band over the process list: a card per resource with its figure,
 //! readings and recent curve.
+//!
+//! The curve fills its card under a headroom that holds the top of its scale,
+//! and fades out to the left under the card's text. The chart layer draws
+//! curves over the page, so it also draws that text and the scrim that fades
+//! the curve out under it (`charts::Overlay`); the page lays the same text out
+//! with transparent ink, for its tooltips, test anchors and the core bars.
 use super::*;
+use charts::{Line, Look, Overlay, Scale};
+use gpui_kit::gpui::transparent_black;
+
+/// Across the card, where the scrim over the curve begins to fade and where
+/// it has faded out.
+const SCRIM: (f32, f32) = (0.22, 0.66);
+/// The plot's right edge inside the card.
+const PLOT_INSET: f32 = 8.;
+/// The scale's top line, in the series colour.
+const SCALE_LINE: f32 = 0.3;
+/// The curve's area fill at the top of the card, fading out downwards.
+const FILL: f32 = 0.2;
+/// The headroom's row: its top, the core bars' height and their gap to the
+/// scale's label.
+const HEADROOM_TOP: f32 = 3.;
+const COMB_HEIGHT: f32 = 14.;
+const COMB_GAP: f32 = 8.;
+
+/// A vitals card before layout: id, device to open, series, colour, scale top
+/// and its label, figure and unit, readings and the figure's tooltip.
+struct Card {
+    id: &'static str,
+    device: String,
+    key: &'static str,
+    color: Hsla,
+    top: f64,
+    scale: String,
+    figure: String,
+    unit: String,
+    readings: Readings,
+    figure_tip: Option<String>,
+}
+enum Readings {
+    /// One line, with its tooltip.
+    Detail(String, Option<String>),
+    /// Readings with their test anchors and tooltips (value, hint), in a font
+    /// that fits the card.
+    Metrics(Vec<(&'static str, (String, String))>, Pixels),
+}
+/// A vital card's text, laid out alike by the page and by the chart layer.
+struct Face {
+    index: usize,
+    first: bool,
+    last: bool,
+    name: String,
+    color: Hsla,
+    figure: String,
+    unit: String,
+    figure_size: Pixels,
+    unit_size: Pixels,
+    figure_tip: Option<String>,
+    readings: Readings,
+    /// The core bars' size, in the headroom (CPU).
+    comb: Option<Size<Pixels>>,
+    /// Where the scale's top is drawn, and its label in the headroom above.
+    top: Pixels,
+    scale: String,
+    scale_width: Pixels,
+    /// Where the plot begins inside the card.
+    plot_left: Pixels,
+    family: SharedString,
+    display: SharedString,
+    palette: Palette,
+}
+fn tabular() -> FontFeatures {
+    FontFeatures(Arc::new(vec![("tnum".into(), 1)]))
+}
+impl Face {
+    /// The text, filling the card: name, figure and readings. With `desktop`
+    /// it takes transparent ink and its hit targets, as the page lays it out;
+    /// without, it is drawn as it is, over the curve.
+    fn body(&self, desktop: Option<&Desktop>) -> Div {
+        let ink = |color: Hsla| {
+            if desktop.is_some() {
+                transparent_black()
+            } else {
+                color
+            }
+        };
+        let tip = |text: &Option<String>| text.clone().filter(|_| desktop.is_some());
+        let p = &self.palette;
+        let small = theme::font(12.);
+        let name = div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .h(small * 1.4)
+            .text_size(small)
+            .text_color(ink(p.muted))
+            .whitespace_nowrap()
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .size(px(6.))
+                    .rounded_full()
+                    .bg(ink(self.color)),
+            )
+            .child(self.name.clone());
+        let figure = div()
+            .id(("vital-figure", self.index))
+            .flex()
+            .items_baseline()
+            .min_w_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .font_family(self.display.clone())
+            .font_features(tabular())
+            .child(
+                div()
+                    .text_size(self.figure_size)
+                    .font_weight(FontWeight(330.))
+                    .line_height(relative(1.05))
+                    .text_color(ink(p.ink))
+                    .child(self.figure.clone()),
+            )
+            .child(
+                div()
+                    .ml(px(3.))
+                    .text_size(self.unit_size)
+                    .text_color(ink(p.muted))
+                    .child(self.unit.clone()),
+            )
+            .when_some(tip(&self.figure_tip), |d, tip| {
+                d.tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+            });
+        let readings = match &self.readings {
+            Readings::Detail(text, hint) => div()
+                .id(("vital-detail", self.index))
+                .min_w_0()
+                .truncate()
+                .text_size(small)
+                .font_features(tabular())
+                .text_color(ink(p.muted))
+                .child(text.clone())
+                .when_some(tip(hint), |d, hint| {
+                    d.tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx))
+                })
+                .into_any_element(),
+            Readings::Metrics(metrics, font) => div()
+                .flex()
+                .gap(*font * 0.75)
+                .h(*font * 1.4)
+                .min_w_0()
+                .overflow_hidden()
+                .children(metrics.iter().map(|(id, reading)| {
+                    match desktop {
+                        Some(desktop) => desktop
+                            .vital_metric(id, reading.clone(), *font)
+                            .into_any_element(),
+                        None => div()
+                            .flex_shrink_0()
+                            .h(*font * 1.4)
+                            .text_size(*font)
+                            .font_features(tabular())
+                            .text_color(p.muted)
+                            .child(reading.0.clone())
+                            .into_any_element(),
+                    }
+                }))
+                .into_any_element(),
+        };
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .pt(px(11.))
+            .px(px(16.))
+            .flex()
+            .flex_col()
+            .gap(px(5.))
+            .overflow_hidden()
+            .font_family(self.family.clone())
+            .line_height(relative(1.4))
+            .child(name)
+            .child(figure)
+            .child(readings)
+    }
+    /// The headroom's row at the top right: the core bars (CPU) and the
+    /// scale's label. The page passes the core bars and lays the label out
+    /// transparent; the chart layer leaves the bars' place empty.
+    fn headroom(&self, comb: Option<AnyElement>, shown: bool) -> Div {
+        let font = theme::font(11.);
+        div()
+            .absolute()
+            .top(px(HEADROOM_TOP))
+            .right(px(2. * PLOT_INSET))
+            .h(font * 1.4)
+            .flex()
+            .items_center()
+            .gap(px(COMB_GAP))
+            .font_family(self.family.clone())
+            .when_some(self.comb, |d, size| {
+                d.child(match comb {
+                    Some(comb) => comb,
+                    None => div().w(size.width).h(size.height).into_any_element(),
+                })
+            })
+            .child(
+                div()
+                    .text_size(font)
+                    .line_height(relative(1.4))
+                    .font_features(tabular())
+                    .text_color(if shown {
+                        self.palette.muted
+                    } else {
+                        transparent_black()
+                    })
+                    .whitespace_nowrap()
+                    .child(self.scale.clone()),
+            )
+    }
+    /// What the chart layer draws over the curve: the scale's top line, the
+    /// scrim that fades the curve out under the text, the card's hover and
+    /// press tints, the headroom's row and the text.
+    fn overlay(&self) -> AnyElement {
+        let p = self.palette;
+        let group = SharedString::from(format!("vital-face-{}", self.index));
+        let (first, last) = (self.first, self.last);
+        let round = |on: bool| if on { px(7.) } else { px(0.) };
+        // The scrim leaves out the core bars' corner, which it would dim
+        // where it has not yet faded out.
+        let bars = self.comb.map(|comb| {
+            (
+                comb.width + px(COMB_GAP) + self.scale_width + px(2. * PLOT_INSET + 2.),
+                self.top - px(2.),
+            )
+        });
+        let scrim = canvas(
+            |_, _, _| {},
+            move |card, _, window, _| {
+                let pieces = match bars {
+                    Some((width, top)) => {
+                        let split = (card.size.width - width).max(px(0.));
+                        vec![
+                            (
+                                Bounds::new(card.origin, size(split, card.size.height)),
+                                Corners {
+                                    top_left: round(first),
+                                    bottom_left: round(first),
+                                    ..Corners::default()
+                                },
+                            ),
+                            (
+                                Bounds::from_corners(
+                                    card.origin + point(split, top),
+                                    card.bottom_right(),
+                                ),
+                                Corners {
+                                    bottom_right: round(last),
+                                    ..Corners::default()
+                                },
+                            ),
+                        ]
+                    }
+                    None => vec![(
+                        card,
+                        Corners {
+                            top_left: round(first),
+                            top_right: round(last),
+                            bottom_right: round(last),
+                            bottom_left: round(first),
+                        },
+                    )],
+                };
+                for (piece, corners) in pieces {
+                    charts::paint_fade(window, card, piece, corners, p.chart_surface, SCRIM);
+                }
+            },
+        )
+        .absolute()
+        .inset_0();
+        div()
+            .id(group.clone())
+            .group(group.clone())
+            .relative()
+            .size_full()
+            .child(
+                div()
+                    .absolute()
+                    .top(self.top - px(0.5))
+                    .left(self.plot_left)
+                    .right(px(PLOT_INSET))
+                    .h(px(1.))
+                    .bg(self.color.opacity(SCALE_LINE)),
+            )
+            .child(scrim)
+            // Over the curve and the scrim alike, so that the card takes one
+            // tint (the page leaves its own out).
+            .child(
+                div()
+                    .id("vital-tint")
+                    .absolute()
+                    .inset_0()
+                    .when(first, |d| d.rounded_l(px(7.)))
+                    .when(last, |d| d.rounded_r(px(7.)))
+                    .group_hover(group.clone(), move |s| s.bg(p.hover))
+                    .group_active(group, move |s| s.bg(p.press)),
+            )
+            .child(self.headroom(None, true))
+            .child(self.body(None))
+            .into_any_element()
+    }
+}
 impl Desktop {
     pub(in crate::frontend) fn vitals(
         &self,
@@ -11,24 +321,33 @@ impl Desktop {
         let sys = &self.snapshot["system"];
         let hw = &self.snapshot["hardware"];
         let cpu_metrics = [
-            hw["cpuMhz"].as_f64().map(|v| {
-                (
-                    format!("{:.2} GHz", v / 1000.),
-                    label("performance.cpu.speed"),
-                )
-            }),
-            performance::cpu_temperature(hw).map(|v| {
-                (
-                    format!("{v:.0} °C"),
-                    label(if performance::has_die_temperature(hw) {
-                        "common.resource.temperature"
-                    } else {
-                        "processes.vitals.acpiTemperature"
-                    }),
-                )
-            }),
-            performance::cpu_power(&hw["power"])
-                .map(|(v, source)| (format!("{} W", charts::watts(v)), label(source))),
+            (
+                "vital-cpu-frequency",
+                hw["cpuMhz"].as_f64().map(|v| {
+                    (
+                        format!("{:.2} GHz", v / 1000.),
+                        label("performance.cpu.speed"),
+                    )
+                }),
+            ),
+            (
+                "vital-cpu-temperature",
+                performance::cpu_temperature(hw).map(|v| {
+                    (
+                        format!("{v:.0} °C"),
+                        label(if performance::has_die_temperature(hw) {
+                            "common.resource.temperature"
+                        } else {
+                            "processes.vitals.acpiTemperature"
+                        }),
+                    )
+                }),
+            ),
+            (
+                "vital-cpu-power",
+                performance::cpu_power(&hw["power"])
+                    .map(|(v, source)| (format!("{} W", charts::watts(v)), label(source))),
+            ),
         ];
         let disk = values(&hw["disks"])
             .iter()
@@ -44,11 +363,6 @@ impl Desktop {
                 Some(b) if number(g, "util") <= number(b, "util") => Some(b),
                 _ => Some(g),
             });
-        // Where the GPU figure comes from: Windows engines, process engines or NVML.
-        let gpu_source = gpu.map(|g| {
-            let source = g["utilSource"].as_str().unwrap_or("windows");
-            label(&format!("performance.gpu.utilSource.{source}"))
-        });
         let rx = values(&hw["nics"])
             .iter()
             .map(|n| number(n, "rx"))
@@ -87,98 +401,133 @@ impl Desktop {
         } else {
             theme::network(rx + tx, bits)
         });
-        let mem_percent = (number(sys, "memUsed") / number(sys, "memTotal").max(1.) * 100.).round();
-        let mut cards: Vec<VitalCard> = vec![
-            (
-                "cpu",
-                "cpu".into(),
-                "system.cpu",
-                p.cpu,
-                Some(100.),
-                format!("{}", number(sys, "cpu").round()),
-                "%".into(),
-                hw["cpuMhz"]
-                    .as_f64()
-                    .map(|v| format!("{:.2} GHz", v / 1000.))
-                    .unwrap_or_default(),
-            ),
-            (
-                "memory",
-                "memory".into(),
-                "system.memUsed",
-                p.memory,
-                Some(number(sys, "memTotal").max(1.)),
-                gb(number(sys, "memUsed")),
-                format!("/ {} GB", gb(number(sys, "memTotal"))),
-                format!("{mem_percent}%"),
-            ),
-            (
-                "disk",
-                format!(
+        let mem_total = number(sys, "memTotal").max(1.);
+        let mem_percent = (number(sys, "memUsed") / mem_total * 100.).round();
+        let disk_top = charts::rate_ceiling(peak("totals.disk"), charts::RateScale::Disk);
+        let net_top =
+            charts::rate_ceiling(peak("totals.network"), charts::RateScale::Network(bits));
+        let known = |metrics: Vec<(&'static str, Option<(String, String)>)>| {
+            Readings::Metrics(
+                metrics
+                    .into_iter()
+                    .filter_map(|(id, reading)| Some((id, reading?)))
+                    .collect(),
+                theme::font(12.),
+            )
+        };
+        let mut cards = vec![
+            Card {
+                id: "cpu",
+                device: "cpu".into(),
+                key: "system.cpu",
+                color: p.cpu,
+                top: 100.,
+                scale: "100%".into(),
+                figure: format!("{}", number(sys, "cpu").round()),
+                unit: "%".into(),
+                readings: known(cpu_metrics.into()),
+                figure_tip: None,
+            },
+            Card {
+                id: "memory",
+                device: "memory".into(),
+                key: "system.memUsed",
+                color: p.memory,
+                top: mem_total,
+                scale: format!("{} GB", gb(mem_total)),
+                figure: gb(number(sys, "memUsed")),
+                unit: format!("/ {} GB", gb(mem_total)),
+                readings: Readings::Detail(format!("{mem_percent}%"), None),
+                figure_tip: None,
+            },
+            Card {
+                id: "disk",
+                device: format!(
                     "disk:{}",
                     busiest
                         .map(|d| d["info"]["index"].clone())
                         .unwrap_or(json!(0))
                 ),
-                "totals.disk",
-                p.io,
-                Some(charts::rate_ceiling(
-                    peak("totals.disk"),
-                    charts::RateScale::Disk,
-                )),
-                disk_value.0,
-                disk_value.1,
-                busiest
-                    .map(|d| {
-                        tr!(
-                            "processes.vitals.diskActive",
-                            value = number(d, "active").round() as u64
-                        )
-                    })
-                    .unwrap_or_default(),
-            ),
-            (
-                "network",
-                format!(
+                key: "totals.disk",
+                color: p.io,
+                top: disk_top,
+                scale: charts::rate_ceiling_label(disk_top, false),
+                figure: disk_value.0,
+                unit: disk_value.1,
+                readings: Readings::Detail(
+                    busiest
+                        .map(|d| {
+                            tr!(
+                                "processes.vitals.diskActive",
+                                value = number(d, "active").round() as u64
+                            )
+                        })
+                        .unwrap_or_default(),
+                    None,
+                ),
+                figure_tip: None,
+            },
+            Card {
+                id: "network",
+                device: format!(
                     "nic:{}",
                     values(&hw["nics"])
                         .first()
                         .map(|n| text(&n["info"], "id"))
                         .unwrap_or_default()
                 ),
-                "totals.network",
-                p.network,
-                Some(charts::rate_ceiling(
-                    peak("totals.network"),
-                    charts::RateScale::Network(bits),
-                )),
-                net_value.0,
-                net_value.1,
-                tr!(
-                    "processes.vitals.netRates",
-                    received = theme::network(rx, bits),
-                    sent = theme::network(tx, bits)
+                key: "totals.network",
+                color: p.network,
+                top: net_top,
+                scale: charts::rate_ceiling_label(net_top, bits),
+                figure: net_value.0,
+                unit: net_value.1,
+                readings: Readings::Detail(
+                    tr!(
+                        "processes.vitals.netRates",
+                        received = theme::network(rx, bits),
+                        sent = theme::network(tx, bits)
+                    ),
+                    Some(label("processes.vitals.netTitle")),
                 ),
-            ),
+                figure_tip: None,
+            },
         ];
         if let Some(gpu) = gpu {
-            cards.push((
-                "gpu",
-                format!("gpu:{}", text(&gpu["info"], "id")),
-                "totals.gpu",
-                p.gpu,
-                Some(100.),
-                format!("{}", number(gpu, "util").round()),
-                "%".into(),
-                gpu["temperature"]
-                    .as_f64()
-                    .map(|v| format!("{v:.0} °C"))
-                    .unwrap_or_default(),
-            ));
+            let power = gpu["boardPower"]
+                .as_f64()
+                .map(|v| format!("{} W", charts::watts(v)))
+                .or_else(|| {
+                    gpu["power"]
+                        .as_f64()
+                        .filter(|v| *v > 0.)
+                        .map(|v| format!("{v:.0}% TDP"))
+                })
+                .map(|v| (v, label("performance.gpu.power")));
+            // Where the GPU figure comes from: Windows engines, process engines or NVML.
+            let source = gpu["utilSource"].as_str().unwrap_or("windows");
+            cards.push(Card {
+                id: "gpu",
+                device: format!("gpu:{}", text(&gpu["info"], "id")),
+                key: "totals.gpu",
+                color: p.gpu,
+                top: 100.,
+                scale: "100%".into(),
+                figure: format!("{}", number(gpu, "util").round()),
+                unit: "%".into(),
+                readings: known(vec![
+                    (
+                        "vital-gpu-temperature",
+                        gpu["temperature"]
+                            .as_f64()
+                            .map(|v| (format!("{v:.0} °C"), label("performance.gpu.temperature"))),
+                    ),
+                    ("vital-gpu-power", power),
+                ]),
+                figure_tip: Some(label(&format!("performance.gpu.utilSource.{source}"))),
+            });
         }
         let count = cards.len();
-        let hover = p.hover;
-        let press = p.press;
         // The figures fit their card, which large text or scale can make
         // narrow: `clamp(16px, 33cqw, 34rem / 13)` of the card's content width,
         // the unit `clamp(9px, 15cqw, 15rem / 13)`. The band spans the page
@@ -191,7 +540,7 @@ impl Desktop {
         let band_width = window.viewport_size().width - navigation - px(2. * 12. + 2.);
         let parts = cards
             .iter()
-            .map(|card| if card.0 == "cpu" { 1.3 } else { 1. })
+            .map(|card| if card.id == "cpu" { 1.3 } else { 1. })
             .sum::<f32>();
         let fit = |id: &str, index: usize| {
             let share = if id == "cpu" { 1.3 } else { 1. } / parts.max(1.);
@@ -205,6 +554,16 @@ impl Desktop {
                 content,
             )
         };
+        // The scale's top sits under a headroom that holds its label: the
+        // chart's top is raised so that the scale's top is drawn there.
+        let height = theme::dimension("vitalsHeight") - px(2.);
+        let headroom = px(HEADROOM_TOP) + theme::font(11.) * 1.4 + px(2.);
+        let stroke = theme::dimension("chartStrokeWidth");
+        let stretch = f64::from(f32::from(height - stroke / 2.))
+            / f64::from(f32::from(height - headroom).max(1.));
+        let family = cx.theme().font_family.clone();
+        let display = theme::display_font(cx);
+        let cores = values(&sys["cores"]).len();
         let mut band = div()
             .flex()
             .flex_shrink_0()
@@ -214,98 +573,89 @@ impl Desktop {
             .border_color(p.stroke)
             .rounded(px(8.))
             .bg(p.chart_surface);
-        for (index, (id, device, key, color, max, figure, unit, detail)) in
-            cards.into_iter().enumerate()
-        {
+        for (index, card) in cards.into_iter().enumerate() {
+            let Card {
+                id,
+                device,
+                key,
+                color,
+                top,
+                scale,
+                figure,
+                unit,
+                readings,
+                figure_tip,
+            } = card;
             let (figure_size, unit_size, content) = fit(id, index);
-            let plot = self.chart(
-                &format!("vital-{id}"),
-                &[(key, color)],
-                max,
-                theme::dimension("vitalsHeight") - px(63.),
-                false,
-                cx,
-            );
+            let readings = match readings {
+                Readings::Metrics(metrics, small) => {
+                    // Smaller text before cut readings, as the card narrows.
+                    let needed = metrics
+                        .iter()
+                        .map(|(_, (value, _))| self.vital_text_width(value, small, window, cx))
+                        .sum::<Pixels>()
+                        + small * 0.75 * metrics.len().saturating_sub(1) as f32;
+                    let ratio = (f32::from(content) / f32::from(needed).max(1.)).min(1.);
+                    Readings::Metrics(metrics, (small * ratio).max(px(9.)).min(small))
+                }
+                detail => detail,
+            };
             let name = if matches!(id, "cpu" | "gpu") {
                 id.to_uppercase()
             } else {
                 label(&format!("common.resource.{id}"))
             };
-            let mut header = div()
-                .relative()
-                .flex()
-                .w_full()
-                .items_start()
-                .justify_between()
-                .gap(px(12.))
-                .child(
-                    div()
-                        .flex_shrink_0()
-                        .text_size(theme::font(12.))
-                        .text_color(p.muted)
-                        .child(name.clone()),
-                );
-            if id == "cpu" && !values(&sys["cores"]).is_empty() {
-                header = header.child(self.core_comb(cx));
-            } else if id == "gpu" {
-                let gpu = gpu.expect("GPU card has a device");
-                let metrics = [
-                    gpu["temperature"]
-                        .as_f64()
-                        .map(|v| (format!("{v:.0} °C"), label("performance.gpu.temperature"))),
-                    gpu["boardPower"]
-                        .as_f64()
-                        .map(|v| format!("{} W", charts::watts(v)))
-                        .or_else(|| {
-                            gpu["power"]
-                                .as_f64()
-                                .filter(|v| *v > 0.)
-                                .map(|v| format!("{v:.0}% TDP"))
-                        })
-                        .map(|v| (v, label("performance.gpu.power"))),
-                ];
-                let available =
-                    (content - theme::text_width(&name, theme::font(12.), window, cx) - px(12.))
-                        .max(px(1.));
-                let references = ["999 °C", "999% TDP"];
-                let widths = references
-                    .map(|v| self.vital_text_width(v, theme::font(12.), false, window, cx));
-                let ratio = ((f32::from(available) - 6.).max(1.)
-                    / f32::from(widths[0] + widths[1]).max(1.))
-                .min(1.);
-                let font = (theme::font(12.) * ratio).max(px(9.)).min(theme::font(12.));
-                header = header.child(div().flex().gap(px(6.)).h(theme::font(12.) * 1.4).children(
-                    metrics.into_iter().enumerate().map(|(i, value)| {
-                        self.vital_metric(
-                            if i == 0 {
-                                "vital-gpu-temperature"
-                            } else {
-                                "vital-gpu-power"
-                            },
-                            value,
-                            widths[i] * ratio,
-                            font,
-                        )
-                    }),
-                ));
-            } else if id != "cpu" && !detail.is_empty() {
-                header = header.child(
-                    div()
-                        .id(("vital-detail", index))
-                        .min_w_0()
-                        .truncate()
-                        .text_size(theme::font(12.))
-                        .text_color(p.muted)
-                        .child(detail.clone())
-                        .when(id == "network", |d| {
-                            d.tooltip(|window, cx| {
-                                widgets::tooltip(label("processes.vitals.netTitle"), window, cx)
-                            })
-                        }),
-                );
-            }
+            let plot_left = px(if index == 0 { 8. } else { 0. });
+            let comb = (id == "cpu" && cores > 0).then(|| self.core_comb(cx));
+            let face = Rc::new(Face {
+                index,
+                first: index == 0,
+                last: index + 1 == count,
+                name: name.clone(),
+                color,
+                figure,
+                unit,
+                figure_size,
+                unit_size,
+                figure_tip,
+                readings,
+                comb: comb
+                    .is_some()
+                    .then(|| size(charts::bars_width(cores), px(COMB_HEIGHT))),
+                top: headroom,
+                scale_width: self.vital_text_width(&scale, theme::font(11.), window, cx),
+                scale,
+                plot_left,
+                family: family.clone(),
+                display: display.clone(),
+                palette: p,
+            });
+            let overlay = Rc::new(Overlay {
+                // Keep the ink on the opaque part of the rounded band at every
+                // DPI, and the curves clear of the cards' right edges.
+                inset: Edges {
+                    top: px(0.),
+                    right: px(PLOT_INSET),
+                    bottom: px(0.),
+                    left: plot_left,
+                },
+                build: Box::new({
+                    let face = face.clone();
+                    move || face.overlay()
+                }),
+            });
+            let plot = self.chart_view(
+                &format!("vital-{id}"),
+                &[Line::new(key, color).fill(FILL)],
+                Some(Scale::Fixed(top * stretch)),
+                height,
+                Look {
+                    overlay: Some(overlay),
+                    ..Look::default()
+                },
+                cx,
+            );
             let open = tr!("processes.vitals.open", device = name);
-            let figure_tip = gpu_source.clone().filter(|_| id == "gpu");
             band = band.child(
                 Button::new(format!("vital-{id}"))
                     .relative()
@@ -315,125 +665,20 @@ impl Desktop {
                     .h_full()
                     .when(index == 0, |b| b.rounded_l(px(7.)))
                     .when(index + 1 == count, |b| b.rounded_r(px(7.)))
-                    .pt(px(11.))
-                    .px(px(16.))
-                    // The card content sits in the
-                    // middle of what the top padding leaves, in the body's 1.4
-                    // line height.
-                    .flex()
-                    .flex_col()
-                    .items_start()
-                    .justify_center()
-                    .line_height(relative(1.4))
-                    .text_color(p.ink)
-                    .hover(move |s| s.bg(hover))
-                    .active(move |s| s.bg(press))
                     .when(index > 0, |d| d.border_l_1().border_color(p.stroke))
                     .accessibility_label(open.clone())
                     .tooltip(move |window, cx| widgets::tooltip(open.clone(), window, cx))
                     .child(
                         div()
                             .absolute()
-                            .top(px(62.))
+                            .top_0()
                             .bottom_0()
-                            // Keep the ink on the opaque part of the rounded band at every DPI.
-                            .left(px(if index == 0 { 8. } else { 0. }))
-                            .right(px(if index + 1 == count { 8. } else { 0. }))
+                            .left(plot_left)
+                            .right(px(PLOT_INSET))
                             .child(plot),
                     )
-                    .child(header)
-                    .child(
-                        div()
-                            .id(("vital-figure", index))
-                            .relative()
-                            .mt(px(-2.))
-                            .flex()
-                            .items_baseline()
-                            .gap(px(10.))
-                            .w_full()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_baseline()
-                                    .child(
-                                        div()
-                                            .font_family(theme::display_font(cx))
-                                            .text_size(figure_size)
-                                            .font_weight(FontWeight(330.))
-                                            .line_height(relative(1.1))
-                                            .child(figure),
-                                    )
-                                    .child(
-                                        div()
-                                            .ml(px(2.))
-                                            .font_family(theme::display_font(cx))
-                                            .text_size(unit_size)
-                                            .text_color(p.muted)
-                                            .child(unit),
-                                    ),
-                            )
-                            .when(id == "cpu", |d| {
-                                let left =
-                                    self.vital_text_width("100", figure_size, true, window, cx)
-                                        + self.vital_text_width("%", unit_size, true, window, cx)
-                                        + px(12.);
-                                let available = (content - left).max(px(1.));
-                                let reference = ["99.99 GHz", "999 °C", "9999 W"];
-                                let widths = reference.map(|v| {
-                                    self.vital_text_width(v, theme::font(12.), false, window, cx)
-                                });
-                                let two_rows =
-                                    available < widths.iter().copied().sum::<Pixels>() + px(12.);
-                                let needed = if two_rows {
-                                    widths[0].max(widths[1] + widths[2] + px(6.))
-                                } else {
-                                    widths.iter().copied().sum::<Pixels>() + px(12.)
-                                };
-                                let ratio =
-                                    (f32::from(available) / f32::from(needed).max(1.)).min(1.);
-                                let font =
-                                    (theme::font(12.) * ratio).max(px(9.)).min(theme::font(12.));
-                                let gap = px(6.) * ratio;
-                                let line = font * 1.4;
-                                let ids = [
-                                    "vital-cpu-frequency",
-                                    "vital-cpu-temperature",
-                                    "vital-cpu-power",
-                                ];
-                                let group = div()
-                                    .absolute()
-                                    .left(left)
-                                    .bottom(figure_size * 0.14)
-                                    .w(available)
-                                    .h(line * if two_rows { 2. } else { 1. })
-                                    .flex()
-                                    .when(two_rows, |d| d.flex_col())
-                                    .when(!two_rows, |d| d.gap(gap))
-                                    .child(self.vital_metric(
-                                        ids[0],
-                                        cpu_metrics[0].clone(),
-                                        widths[0] * ratio,
-                                        font,
-                                    ))
-                                    .child(div().flex().gap(gap).children((1..3).map(|i| {
-                                        self.vital_metric(
-                                            ids[i],
-                                            cpu_metrics[i].clone(),
-                                            widths[i] * ratio,
-                                            font,
-                                        )
-                                    })));
-                                d.child(group)
-                            })
-                            .when_some(figure_tip, |d, tip| {
-                                d.tooltip(move |window, cx| {
-                                    widgets::tooltip(tip.clone(), window, cx)
-                                })
-                            }),
-                    )
+                    .child(face.body(Some(self)))
+                    .child(face.headroom(comb, false))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.act(Action::Device(device.clone()), window, cx)
                     })),
@@ -451,80 +696,59 @@ impl Desktop {
             .id("vital-cores")
             .flex_shrink_0()
             .w(charts::bars_width(keys.len()))
-            .h(px(26.))
-            .child(self.chart_bars("vital-core-bars", &keys, self.palette.cpu, px(26.), cx))
+            .h(px(COMB_HEIGHT))
+            .child(self.chart_bars(
+                "vital-core-bars",
+                &keys,
+                self.palette.cpu,
+                px(COMB_HEIGHT),
+                cx,
+            ))
             .tooltip(|window, cx| widgets::tooltip(label("processes.vitals.cores"), window, cx))
             .into_any_element()
     }
-    fn vital_text_width(
-        &self,
-        text: &str,
-        size: Pixels,
-        display: bool,
-        window: &Window,
-        cx: &App,
-    ) -> Pixels {
-        let mut run = theme::text_run(
-            text,
-            if display {
-                FontWeight(330.)
-            } else {
-                FontWeight::NORMAL
-            },
-            cx,
-        );
-        if display {
-            run.font.family = theme::display_font(cx);
-        }
-        run.font.features = FontFeatures(Arc::new(vec![("tnum".into(), 1)]));
+    /// The width of a reading at `size`, in tabular figures.
+    fn vital_text_width(&self, text: &str, size: Pixels, window: &Window, cx: &App) -> Pixels {
+        let mut run = theme::text_run(text, FontWeight::NORMAL, cx);
+        run.font.features = tabular();
         window
             .text_system()
             .layout_line(text, size, &[run], None)
             .width
     }
+    /// A reading as the page lays it out: transparent (the chart layer draws
+    /// it), with its tooltip and test anchor.
     fn vital_metric(
         &self,
         id: &str,
-        reading: Option<(String, String)>,
-        width: Pixels,
+        (value, hint): (String, String),
         font: Pixels,
     ) -> Stateful<Div> {
         let anchors = self.ui.anchors.clone();
         let key: SharedString = id.to_owned().into();
-        let hint = reading
-            .as_ref()
-            .map(|(value, hint)| format!("{hint}\n{value}"));
+        let hint = format!("{hint}\n{value}");
         div()
             .id(key.clone())
-            .w(width)
-            .h(font * 1.4)
             .flex_shrink_0()
-            .min_w_0()
+            .h(font * 1.4)
             .text_size(font)
-            .text_color(self.palette.muted)
-            .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
-            .text_right()
-            .truncate()
-            .child(reading.map(|(value, _)| value).unwrap_or_default())
-            .when_some(hint, |d, hint| {
-                d.tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx))
-            })
+            .text_color(transparent_black())
+            .font_features(tabular())
+            .child(value)
+            .tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx))
+            // Measured over the reading's own box: `on_prepaint`'s probe sits
+            // where the flow leaves it, under the text.
             .when(self.options.test, |d| {
-                d.on_prepaint(move |bounds, _, _| {
-                    anchors.borrow_mut().insert(key.clone(), bounds);
-                })
+                d.child(
+                    canvas(
+                        move |bounds, _, _| {
+                            anchors.borrow_mut().insert(key.clone(), bounds);
+                        },
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
             })
     }
 }
-
-/// A vitals segment: id, device to open, series, colour, chart top, figure, unit, detail.
-type VitalCard = (
-    &'static str,
-    String,
-    &'static str,
-    Hsla,
-    Option<f64>,
-    String,
-    String,
-    String,
-);
