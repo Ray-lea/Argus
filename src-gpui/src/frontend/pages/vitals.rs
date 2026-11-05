@@ -5,7 +5,7 @@
 //! and fades out to the left under the card's text. The chart layer draws
 //! curves over the page, so it also draws that text and the scrim that fades
 //! the curve out under it (`charts::Overlay`); the page lays the same text out
-//! with transparent ink, for its tooltips, test anchors and the core bars.
+//! with transparent ink, for its tooltips and test anchors.
 use super::*;
 use charts::{Line, Look, Overlay, Scale};
 use gpui_kit::gpui::transparent_black;
@@ -13,17 +13,19 @@ use gpui_kit::gpui::transparent_black;
 /// Across the card, where the scrim over the curve begins to fade and where
 /// it has faded out.
 const SCRIM: (f32, f32) = (0.22, 0.66);
-/// The plot's right edge inside the card.
-const PLOT_INSET: f32 = 8.;
+/// The plot's bottom over the card's: the band's rounded bottom corners
+/// leave the window's backdrop showing, where curves would stand out of the
+/// band and Windows would draw them again with every frame. The curves meet
+/// the cards' sides.
+const BASELINE: f32 = 8.;
+/// The band's corners inside its border.
+const CORNER: f32 = 7.;
 /// The scale's top line, in the series colour.
 const SCALE_LINE: f32 = 0.3;
 /// The curve's area fill at the top of the card, fading out downwards.
 const FILL: f32 = 0.2;
-/// The headroom's row: its top, the core bars' height and their gap to the
-/// scale's label.
-const HEADROOM_TOP: f32 = 3.;
-const COMB_HEIGHT: f32 = 14.;
-const COMB_GAP: f32 = 8.;
+/// The scale's label, in the headroom above its line.
+const LABEL_TOP: f32 = 3.;
 
 /// A vitals card before layout: id, device to open, series, colour, scale top
 /// and its label, figure and unit, readings and the figure's tooltip.
@@ -59,14 +61,9 @@ struct Face {
     unit_size: Pixels,
     figure_tip: Option<String>,
     readings: Readings,
-    /// The core bars' size, in the headroom (CPU).
-    comb: Option<Size<Pixels>>,
     /// Where the scale's top is drawn, and its label in the headroom above.
     top: Pixels,
     scale: String,
-    scale_width: Pixels,
-    /// Where the plot begins inside the card.
-    plot_left: Pixels,
     family: SharedString,
     display: SharedString,
     palette: Palette,
@@ -185,96 +182,58 @@ impl Face {
             .child(figure)
             .child(readings)
     }
-    /// The headroom's row at the top right: the core bars (CPU) and the
-    /// scale's label. The page passes the core bars and lays the label out
-    /// transparent; the chart layer leaves the bars' place empty.
-    fn headroom(&self, comb: Option<AnyElement>, shown: bool) -> Div {
-        let font = theme::font(11.);
+    /// The scale's top line across the card and its label in the headroom
+    /// above. The page draws them, under the curve, which keeps below them:
+    /// what the chart layer draws over the curve Windows has to blend into
+    /// every frame of the moving curve it covers.
+    fn scale(&self) -> Div {
         div()
             .absolute()
-            .top(px(HEADROOM_TOP))
-            .right(px(2. * PLOT_INSET))
-            .h(font * 1.4)
-            .flex()
-            .items_center()
-            .gap(px(COMB_GAP))
-            .font_family(self.family.clone())
-            .when_some(self.comb, |d, size| {
-                d.child(match comb {
-                    Some(comb) => comb,
-                    None => div().w(size.width).h(size.height).into_any_element(),
-                })
-            })
+            .inset_0()
             .child(
                 div()
-                    .text_size(font)
+                    .absolute()
+                    .top(self.top - px(0.5))
+                    .left_0()
+                    .right_0()
+                    .h(px(1.))
+                    .bg(self.color.opacity(SCALE_LINE)),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top(px(LABEL_TOP))
+                    .right(px(16.))
+                    .font_family(self.family.clone())
+                    .text_size(theme::font(11.))
                     .line_height(relative(1.4))
                     .font_features(tabular())
-                    .text_color(if shown {
-                        self.palette.muted
-                    } else {
-                        transparent_black()
-                    })
+                    .text_color(self.palette.muted)
                     .whitespace_nowrap()
                     .child(self.scale.clone()),
             )
     }
-    /// What the chart layer draws over the curve: the scale's top line, the
-    /// scrim that fades the curve out under the text, the card's hover and
-    /// press tints, the headroom's row and the text.
+    /// What the chart layer draws over the curve: the scrim that fades the
+    /// curve out under the text (only as far as it is not yet clear), the
+    /// card's hover and press tints, and the text.
     fn overlay(&self) -> AnyElement {
         let p = self.palette;
         let group = SharedString::from(format!("vital-face-{}", self.index));
         let (first, last) = (self.first, self.last);
-        let round = |on: bool| if on { px(7.) } else { px(0.) };
-        // The scrim leaves out the core bars' corner, which it would dim
-        // where it has not yet faded out.
-        let bars = self.comb.map(|comb| {
-            (
-                comb.width + px(COMB_GAP) + self.scale_width + px(2. * PLOT_INSET + 2.),
-                self.top - px(2.),
-            )
-        });
+        let round = move |on: bool| if on { px(CORNER) } else { px(0.) };
         let scrim = canvas(
             |_, _, _| {},
             move |card, _, window, _| {
-                let pieces = match bars {
-                    Some((width, top)) => {
-                        let split = (card.size.width - width).max(px(0.));
-                        vec![
-                            (
-                                Bounds::new(card.origin, size(split, card.size.height)),
-                                Corners {
-                                    top_left: round(first),
-                                    bottom_left: round(first),
-                                    ..Corners::default()
-                                },
-                            ),
-                            (
-                                Bounds::from_corners(
-                                    card.origin + point(split, top),
-                                    card.bottom_right(),
-                                ),
-                                Corners {
-                                    bottom_right: round(last),
-                                    ..Corners::default()
-                                },
-                            ),
-                        ]
-                    }
-                    None => vec![(
-                        card,
-                        Corners {
-                            top_left: round(first),
-                            top_right: round(last),
-                            bottom_right: round(last),
-                            bottom_left: round(first),
-                        },
-                    )],
+                let piece = Bounds::new(
+                    card.origin,
+                    size(card.size.width * SCRIM.1, card.size.height),
+                );
+                let corners = Corners {
+                    top_left: round(first),
+                    bottom_left: round(first),
+                    ..Corners::default()
                 };
-                for (piece, corners) in pieces {
-                    charts::paint_fade(window, card, piece, corners, p.chart_surface, SCRIM);
-                }
+                charts::paint_fade(window, card, piece, corners, p.chart_surface, SCRIM);
             },
         )
         .absolute()
@@ -284,29 +243,19 @@ impl Face {
             .group(group.clone())
             .relative()
             .size_full()
-            .child(
-                div()
-                    .absolute()
-                    .top(self.top - px(0.5))
-                    .left(self.plot_left)
-                    .right(px(PLOT_INSET))
-                    .h(px(1.))
-                    .bg(self.color.opacity(SCALE_LINE)),
-            )
             .child(scrim)
-            // Over the curve and the scrim alike, so that the card takes one
-            // tint (the page leaves its own out).
+            // Over the curve and the scrim alike, so that the whole card takes
+            // one tint (the page leaves its own out).
             .child(
                 div()
                     .id("vital-tint")
                     .absolute()
                     .inset_0()
-                    .when(first, |d| d.rounded_l(px(7.)))
-                    .when(last, |d| d.rounded_r(px(7.)))
+                    .when(first, |d| d.rounded_l(px(CORNER)))
+                    .when(last, |d| d.rounded_r(px(CORNER)))
                     .group_hover(group.clone(), move |s| s.bg(p.hover))
                     .group_active(group, move |s| s.bg(p.press)),
             )
-            .child(self.headroom(None, true))
             .child(self.body(None))
             .into_any_element()
     }
@@ -556,14 +505,13 @@ impl Desktop {
         };
         // The scale's top sits under a headroom that holds its label: the
         // chart's top is raised so that the scale's top is drawn there.
-        let height = theme::dimension("vitalsHeight") - px(2.);
-        let headroom = px(HEADROOM_TOP) + theme::font(11.) * 1.4 + px(2.);
+        let height = theme::dimension("vitalsHeight") - px(2. + BASELINE);
+        let headroom = px(LABEL_TOP) + theme::font(11.) * 1.4 + px(2.);
         let stroke = theme::dimension("chartStrokeWidth");
         let stretch = f64::from(f32::from(height - stroke / 2.))
             / f64::from(f32::from(height - headroom).max(1.));
         let family = cx.theme().font_family.clone();
         let display = theme::display_font(cx);
-        let cores = values(&sys["cores"]).len();
         let mut band = div()
             .flex()
             .flex_shrink_0()
@@ -605,8 +553,6 @@ impl Desktop {
             } else {
                 label(&format!("common.resource.{id}"))
             };
-            let plot_left = px(if index == 0 { 8. } else { 0. });
-            let comb = (id == "cpu" && cores > 0).then(|| self.core_comb(cx));
             let face = Rc::new(Face {
                 index,
                 first: index == 0,
@@ -619,26 +565,18 @@ impl Desktop {
                 unit_size,
                 figure_tip,
                 readings,
-                comb: comb
-                    .is_some()
-                    .then(|| size(charts::bars_width(cores), px(COMB_HEIGHT))),
                 top: headroom,
-                scale_width: self.vital_text_width(&scale, theme::font(11.), window, cx),
                 scale,
-                plot_left,
                 family: family.clone(),
                 display: display.clone(),
                 palette: p,
             });
             let overlay = Rc::new(Overlay {
-                // Keep the ink on the opaque part of the rounded band at every
-                // DPI, and the curves clear of the cards' right edges.
                 inset: Edges {
-                    top: px(0.),
-                    right: px(PLOT_INSET),
-                    bottom: px(0.),
-                    left: plot_left,
+                    bottom: px(BASELINE),
+                    ..Edges::default()
                 },
+                covers: SCRIM.0,
                 build: Box::new({
                     let face = face.clone();
                     move || face.overlay()
@@ -663,8 +601,8 @@ impl Desktop {
                     .when(id == "cpu", |b| b.flex_grow(1.3))
                     .min_w_0()
                     .h_full()
-                    .when(index == 0, |b| b.rounded_l(px(7.)))
-                    .when(index + 1 == count, |b| b.rounded_r(px(7.)))
+                    .when(index == 0, |b| b.rounded_l(px(CORNER)))
+                    .when(index + 1 == count, |b| b.rounded_r(px(CORNER)))
                     .when(index > 0, |d| d.border_l_1().border_color(p.stroke))
                     .accessibility_label(open.clone())
                     .tooltip(move |window, cx| widgets::tooltip(open.clone(), window, cx))
@@ -672,40 +610,19 @@ impl Desktop {
                         div()
                             .absolute()
                             .top_0()
-                            .bottom_0()
-                            .left(plot_left)
-                            .right(px(PLOT_INSET))
+                            .left_0()
+                            .right_0()
+                            .bottom(px(BASELINE))
                             .child(plot),
                     )
+                    .child(face.scale())
                     .child(face.body(Some(self)))
-                    .child(face.headroom(comb, false))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.act(Action::Device(device.clone()), window, cx)
                     })),
             );
         }
         band.into_any_element()
-    }
-    /// Per-core load, one 4 px bar per logical processor over a faint track,
-    /// gliding with the chart clock.
-    fn core_comb(&self, cx: &mut Context<Self>) -> AnyElement {
-        let keys = (0..values(&self.snapshot["system"]["cores"]).len())
-            .map(|index| format!("system.cores.{index}"))
-            .collect::<Vec<_>>();
-        div()
-            .id("vital-cores")
-            .flex_shrink_0()
-            .w(charts::bars_width(keys.len()))
-            .h(px(COMB_HEIGHT))
-            .child(self.chart_bars(
-                "vital-core-bars",
-                &keys,
-                self.palette.cpu,
-                px(COMB_HEIGHT),
-                cx,
-            ))
-            .tooltip(|window, cx| widgets::tooltip(label("processes.vitals.cores"), window, cx))
-            .into_any_element()
     }
     /// The width of a reading at `size`, in tabular figures.
     fn vital_text_width(&self, text: &str, size: Pixels, window: &Window, cx: &App) -> Pixels {

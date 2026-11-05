@@ -72,7 +72,7 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 `--retained --require-chart-layers` 对比进程概览、详情、CPU 多核网格和各设备性能页的滚动帧与完整重绘。`gpu-chart-layers.sparseImages` 记录使用虚拟表面修正局部背景的曲线数。多核页应一并核对 `images`、`opaqueImages`、实际呈现帧率与进程 GPU 占用。`--snapshots` 另行检查历史页移入、完整重绘和移出后的画面。
 
-追加 `--hover-retained` 可对照深浅主题下的顶部、核心条和列表列说明。`gpu-chart-layers.foregroundBytes` 记录前景缓存空间，`foregroundGrouped` 标识同组合成路径；`gpu-chart-foreground-plan` 与拒绝事件用于排查绘制顺序和图元类型。性能场景的 `hover` 字段在布局稳定后单次设置指针，再开始测量，便于观察静止悬停。例如 `hover: { hoverChart: "vital-cpu" }`；`hoverAt` 可指定图表内的归一化位置。
+追加 `--hover-retained` 可对照深浅主题下的顶部曲线和列表列说明。`gpu-chart-layers.foregroundBytes` 记录前景缓存空间，`foregroundGrouped` 标识同组合成路径；`gpu-chart-foreground-plan` 与拒绝事件用于排查绘制顺序和图元类型。性能场景的 `hover` 字段在布局稳定后单次设置指针，再开始测量，便于观察静止悬停。例如 `hover: { hoverChart: "vital-cpu" }`；`hoverAt` 可指定图表内的归一化位置。
 
 帧跟踪阶段 14 记录新场景复用未变化的合成树。测试控制 `fullPaint` 会清除平台渲染缓存并重新绘制，作为缓存像素对照的独立参照。
 
@@ -82,8 +82,8 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 `node scripts/ui-smoke.mjs <标签> --retained --executable <EXE路径> --probe <探针路径>` 使用固定快照，在进程页、CPU 总览与多核页推进动画时间，逐像素比较局部更新与完整重绘。探针需启用 `capture` 功能。普通模拟快照检查覆盖页面、主题、语言、排序和布局；`--live --fluid --move --exercise-updates` 检查持续采样、悬停、窗口移动、缩放与隐藏恢复。
 
-静态截图还覆盖字号上下限与界面缩放。切换后的等待需长于核心条的一次采样过渡；移出指针的测试控制会延迟到绘制帧执行，因此捕获前另留出绘制时间，避免将残留悬停提示当成视觉差异。
+静态截图还覆盖字号上下限与界面缩放。移出指针的测试控制会延迟到绘制帧执行，因此捕获前另留出绘制时间，避免将残留悬停提示当成视觉差异。
 
 `--snapshots` 使用固定数据检查采样更新的绘制边界：确认状态栏数值确实变化，比较缓存页面与强制完整重绘的像素，并检查传感器状态改变时设置页仍重新构建。页面与设备切换时还会逐帧测量标题和图表区域的亮度对比度，捕捉页面、设备及首次显示 GPU 引擎网格时的空白帧。资源占用另行测量。
 
-测试控制 `freezeChartGroups` 可按区域冻结动画：`vitals` 为顶部曲线、`cores` 为核心小条、`details` 为详情图、`other` 为其他图表，传空数组恢复。采样刷新继续更新读数。区域共用绘制后缀时，冻结其中一组后仍可能绘制该后缀中的静态图元，需结合提交次数、脏区面积与合成记录解释结果。渲染器几何回归用 `cargo test --locked -p gpui-pre-windows --lib --target-dir target/rust-analyzer retained_tests` 运行。
+测试控制 `freezeChartGroups` 可按区域冻结动画：`vitals` 为顶部曲线、`details` 为详情图、`other` 为其他图表，传空数组恢复。采样刷新继续更新读数。区域共用绘制后缀时，冻结其中一组后仍可能绘制该后缀中的静态图元，需结合提交次数、脏区面积与合成记录解释结果。渲染器几何回归用 `cargo test --locked -p gpui-pre-windows --lib --target-dir target/rust-analyzer retained_tests` 运行。

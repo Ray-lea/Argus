@@ -225,7 +225,6 @@
   },
   "vitals": {
     "label": "System overview",
-    "cores": "Usage of each logical processor",
     "open": "View {device} in Performance",
     "diskActive": "Active {value}%",
     "netTitle": "R: received, S: sent",

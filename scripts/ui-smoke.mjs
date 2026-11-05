@@ -543,7 +543,6 @@ try {
     ];
     const hoverCases = ["dark", "light"].flatMap(theme => [
       [`vital-tooltip-${theme}`, { page: "processes", theme, details: true }, { hoverChart: "vital-cpu" }],
-      [`core-tooltip-${theme}`, { page: "processes", theme }, { hoverChart: "vital-core-bars", hoverAt: [0.05, 0.05] }],
       [`column-tooltip-${theme}`, { page: "processes", theme }, { hoverHeader: "name" }],
     ]);
     for (const [name, state, hover] of hoverRetained ? hoverCases : cases) {
