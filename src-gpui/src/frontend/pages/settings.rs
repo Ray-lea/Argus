@@ -840,20 +840,26 @@ impl Desktop {
                 };
                 width.max(f32::from(text.ceil()) + controls + dot)
             });
-        let narrow = width <= NARROW + (rail_width - MIN_RAIL);
-        let layout = if narrow {
-            (width - 8.).max(0.)
-        } else {
-            (width - 8.).min(rail_width + GAP + CONTENT)
-        };
-        let left = (width - layout) / 2.;
-        let content_left = left + if narrow { 0. } else { rail_width + GAP };
-        let content_width = layout - if narrow { 0. } else { rail_width + GAP };
+        // Only whether the list of sections fits beside the cards follows the
+        // measured width; the column itself is centred and capped by layout,
+        // so that it follows the window in the frame it is resized in (laid
+        // out from a measurement, every step of a slow resize drew one frame
+        // at the previous width and the text wrapped back and forth).
+        let threshold = NARROW + (rail_width - MIN_RAIL);
+        let narrow = width <= threshold;
+        let layout = rail_width + GAP + CONTENT;
+        let lead = if narrow { 0. } else { rail_width + GAP };
+        // One column of the page's width at most `layout`, 4 px in from its
+        // sides and centred: the sections, and the list over them.
+        let column = || div().w_full().max_w(px(layout));
         let sections = SECTIONS
             .into_iter()
             .enumerate()
             .map(|(index, section)| {
-                self.settings_section_view(index, section, &settings, window, cx)
+                column()
+                    .flex_shrink_0()
+                    .pl(px(lead))
+                    .child(self.settings_section_view(index, section, &settings, window, cx))
             })
             .collect::<Vec<_>>();
         let body = div()
@@ -863,10 +869,9 @@ impl Desktop {
             .track_scroll(&self.settings_scroll)
             .flex()
             .flex_col()
-            .pl(px(content_left))
-            .pr(px(
-                (width - content_left - content_width).max(0.) + scrollbar::SIZE
-            ))
+            .items_center()
+            .pl(px(4.))
+            .pr(px(4. + scrollbar::SIZE))
             .pt(px(4.))
             .pb(px(32.))
             .children(sections)
@@ -897,7 +902,7 @@ impl Desktop {
         let rail = div()
             .absolute()
             .top(px(4.))
-            .left(px(left))
+            .left_0()
             .w(px(rail_width))
             .flex()
             .flex_col()
@@ -961,6 +966,15 @@ impl Desktop {
                     }))
                 },
             ));
+        // Over the scrolled column, in the same place as its sections.
+        let rail = div()
+            .absolute()
+            .inset_0()
+            .pl(px(4.))
+            .pr(px(4. + scrollbar::SIZE))
+            .flex()
+            .justify_center()
+            .child(column().relative().child(rail));
         let measured = self.ui.settings_width.clone();
         let owner = cx.entity().downgrade();
         div()
@@ -972,8 +986,12 @@ impl Desktop {
                     .relative()
                     .size_full()
                     .on_prepaint(move |bounds, window, cx| {
-                        if measured.get() != bounds.size.width {
-                            measured.set(bounds.size.width);
+                        let width = bounds.size.width;
+                        if measured.replace(width) == width {
+                            return;
+                        }
+                        // Drawn again only when the list moves in or out.
+                        if (f32::from(width) - scrollbar::SIZE <= threshold) != narrow {
                             window.defer(cx, move |_, cx| {
                                 let _ = owner.update(cx, |_, cx| cx.notify());
                             });
