@@ -46,7 +46,7 @@ use std::{
     time::{Duration, Instant},
 };
 use theme::{Palette, icon, label};
-const PAGES: [(&str, &str); 7] = [
+const PAGES: [(&str, &str); 8] = [
     ("processes", "ProcessesIcon"),
     ("performance", "PulseIcon"),
     ("services", "ServicesIcon"),
@@ -54,10 +54,14 @@ const PAGES: [(&str, &str); 7] = [
     ("network", "GlobeIcon"),
     ("history", "HistoryIcon"),
     ("settings", "SettingsIcon"),
+    ("about", "InfoIcon"),
 ];
-/// The pages a start can open on (the `startPage` preference): all but Settings.
+/// The pages a start can open on (the `startPage` preference): all but
+/// Settings and About.
 fn start_pages() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
-    PAGES.iter().filter(|(page, _)| *page != "settings")
+    PAGES
+        .iter()
+        .filter(|(page, _)| !matches!(*page, "settings" | "about"))
 }
 /// The page a start opens on: the saved `startPage` when it names one of
 /// `start_pages`, the process page otherwise.
@@ -231,6 +235,7 @@ struct Desktop {
     grid_bounds: RefCell<HashMap<String, Bounds<Pixels>>>,
     core_grid_size: Rc<Cell<Size<Pixels>>>,
     settings_scroll: ScrollHandle,
+    about_scroll: ScrollHandle,
     device_scroll: ScrollHandle,
     settings_target: Option<usize>,
     page: String,
@@ -391,6 +396,7 @@ impl Desktop {
             grid_bounds: RefCell::new(HashMap::new()),
             core_grid_size: Rc::new(Cell::new(size(px(0.), px(0.)))),
             settings_scroll: ScrollHandle::new(),
+            about_scroll: ScrollHandle::new(),
             device_scroll: ScrollHandle::new(),
             settings_target: None,
             // A start opens the chosen page, wherever the last run ended; an

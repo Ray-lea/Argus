@@ -353,8 +353,11 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let status_only = matches!(self.page.as_str(), "services" | "startup" | "network")
-            || (self.page == "settings" && values(&self.data["settings"]["rules"]).is_empty());
+        let status_only = matches!(
+            self.page.as_str(),
+            "services" | "startup" | "network" | "about"
+        ) || (self.page == "settings"
+            && values(&self.data["settings"]["rules"]).is_empty());
         let visible = self.host.get_window("main").is_some_and(|window| {
             window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
         });
@@ -487,6 +490,7 @@ impl Desktop {
                 cx,
             ),
             "settings" => self.poll_settings(window, cx),
+            "about" => self.poll_about(window, cx),
             "history" => self.load_history(window, cx),
             _ => {}
         }

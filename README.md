@@ -102,7 +102,7 @@ start.bat build     # 发布构建：生成 target\release\argus.exe
 
 | 操作 | 按键 |
 |---|---|
-| 切换页面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>7</kbd> |
+| 切换页面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
 | 搜索进程 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 临时暂停刷新 | 按住 <kbd>Ctrl</kbd>，松开后恢复（进程页、性能页） |
 | 打开详细信息 | <kbd>Enter</kbd> |

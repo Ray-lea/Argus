@@ -8,8 +8,7 @@
     "motion": "动画",
     "data": "数据与历史",
     "rules": "规则",
-    "update": "更新",
-    "about": "关于"
+    "update": "更新"
   },
   "toggle": {
     "on": "开",
@@ -348,6 +347,7 @@
     "standard": "正在以标准权限运行，部分系统进程的信息与操作受限。",
     "whatsNew": "更新内容",
     "quit": "退出 Argus",
+    "support": "项目与支持",
     "homepage": {
       "title": "项目主页",
       "desc": "访问 {url} 获取稳定版下载、使用文档和项目联系方式。",

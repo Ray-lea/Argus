@@ -21,7 +21,8 @@
     "startup": "Startup",
     "network": "Connections",
     "history": "History",
-    "settings": "Settings"
+    "settings": "Settings",
+    "about": "About"
   },
   "pageTitle": "{page} (Ctrl+{key})",
   "updateAvailable": "Update available",

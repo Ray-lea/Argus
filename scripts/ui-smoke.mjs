@@ -653,7 +653,7 @@ try {
       ["settings-permission", { settingsSection: "privilege" }],
       ["settings-motion", { settingsSection: "motion" }],
       ["settings-data", { settingsSection: "data" }],
-      ["settings-about", { settingsSection: "about" }],
+      ["about", { page: "about" }],
       ["memory", { device: "memory" }],
       ...fixture.snapshot.hardware.disks.map((d, i) => [`disk-${i}`, { device: `disk:${d.info.index}` }]),
       ...fixture.snapshot.hardware.gpus.map((g, i) => [`gpu-${i}`, { device: `gpu:${g.info.id}` }]),

@@ -8,8 +8,7 @@
     "motion": "Animations",
     "data": "Data and history",
     "rules": "Rules",
-    "update": "Updates",
-    "about": "About"
+    "update": "Updates"
   },
   "toggle": {
     "on": "On",
@@ -357,6 +356,7 @@
     "standard": "Running as a standard user. Information and actions for some system processes are limited.",
     "whatsNew": "What's new",
     "quit": "Exit Argus",
+    "support": "Project and support",
     "homepage": {
       "title": "Project page",
       "desc": "Visit {url} for stable downloads, documentation and project contacts.",

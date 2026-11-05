@@ -21,7 +21,8 @@
     "startup": "启动",
     "network": "连接",
     "history": "历史",
-    "settings": "设置"
+    "settings": "设置",
+    "about": "关于"
   },
   "pageTitle": "{page}（Ctrl+{key}）",
   "updateAvailable": "有新版本",
