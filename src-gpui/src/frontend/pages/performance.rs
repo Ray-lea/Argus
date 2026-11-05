@@ -1454,7 +1454,11 @@ impl Desktop {
             let live = lives(&ghost);
             self.chart_lives.borrow_mut().push(live.clone());
             let graphs = if was_logical {
-                self.core_layout(hybrid, &ghost_cards, None, None, px(0.), false, cx)
+                let cards = ghost_cards
+                    .iter()
+                    .map(|(index, card)| (*index, *card, None))
+                    .collect::<Vec<_>>();
+                self.core_layout(hybrid, &cards, None, None, px(0.), false, cx)
             } else {
                 self.cpu_overall_chart(cx)
             };
@@ -1568,8 +1572,13 @@ impl Desktop {
         );
         previous.update(cx, |state, _| *state = (visible.len(), columns));
         let rows = visible.len().div_ceil(columns).max(1);
-        let width = (available - gap * (columns - 1) as f32) / columns as f32;
-        let height = ((measured.height - gap * (rows - 1) as f32) / rows as f32).max(fit_height);
+        let arrangement = cpu_motion::Grid {
+            columns,
+            rows,
+            gap,
+            min_height: fit_height,
+        };
+        let area = size(available, measured.height);
         let grid_size = self.core_grid_size.clone();
         let first_layout = here.is_none() && !visible.is_empty();
         let owner = cx.entity().downgrade();
@@ -1606,18 +1615,7 @@ impl Desktop {
             .iter()
             .enumerate()
             .filter(|_| place)
-            .map(|(ordinal, index)| {
-                (
-                    *index,
-                    Bounds::new(
-                        point(
-                            (width + gap) * (ordinal % columns) as f32,
-                            (height + gap) * (ordinal / columns) as f32,
-                        ),
-                        size(width, height),
-                    ),
-                )
-            })
+            .map(|(ordinal, index)| (*index, arrangement.bounds(ordinal, area)))
             .collect::<Vec<_>>();
         let animate = !cx.reduce_motion();
         let enter_scale = theme::design()["layout"]["coreEnterScale"]
@@ -1629,6 +1627,8 @@ impl Desktop {
             cores.update(
                 filter,
                 &targets,
+                arrangement,
+                area,
                 here.is_some(),
                 animate,
                 header,
@@ -1637,6 +1637,18 @@ impl Desktop {
                 done,
             )
         });
+        // The cards of the arrangement take their places in its fractions, so
+        // that they follow the grid in the frame it changes size; cards going
+        // stay where they were.
+        let slot = |index: usize| {
+            targets
+                .iter()
+                .position(|(target, _)| *target == index)
+                .map(|ordinal| cpu_motion::Slot {
+                    grid: arrangement,
+                    ordinal,
+                })
+        };
         let cards = match &moving {
             Some(moving) => moving
                 .cards
@@ -1645,9 +1657,10 @@ impl Desktop {
                     (
                         card.index,
                         cpu_motion::Card {
-                            bounds: card.layout,
+                            bounds: card.layout(),
                             presence: 1.,
                         },
+                        card.stays().then(|| slot(card.index)).flatten(),
                     )
                 })
                 .collect(),
@@ -1660,6 +1673,7 @@ impl Desktop {
                             bounds: *bounds,
                             presence: 1.,
                         },
+                        slot(*index),
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -1682,7 +1696,7 @@ impl Desktop {
     fn core_layout(
         &self,
         hybrid: bool,
-        cards: &[(usize, cpu_motion::Card)],
+        cards: &[(usize, cpu_motion::Card, Option<cpu_motion::Slot>)],
         moving: Option<&cpu_motion::Rearrangement>,
         measure: Option<AnyElement>,
         min_height: Pixels,
@@ -1706,7 +1720,7 @@ impl Desktop {
             .flex_1()
             .min_h(min_height)
             .children(measure);
-        for (index, card) in cards {
+        for (index, card, slot) in cards {
             let lives = moving.and_then(|moving| {
                 moving
                     .cards
@@ -1717,6 +1731,7 @@ impl Desktop {
             grid = grid.child(self.core_card(
                 *index,
                 *card,
+                *slot,
                 lives,
                 hybrid,
                 interactive,
@@ -1747,6 +1762,7 @@ impl Desktop {
         &self,
         index: usize,
         card: cpu_motion::Card,
+        slot: Option<cpu_motion::Slot>,
         lives: Option<cpu_motion::CardLives>,
         hybrid: bool,
         interactive: bool,
@@ -1795,9 +1811,10 @@ impl Desktop {
             &format!("cpu-{index}"),
             &[Line::new(key, color)],
             Some(Scale::Fixed(100.)),
-            (bounds.size.height - header).max(px(1.)),
+            ChartHeight::Fill,
             Look {
                 frame: true,
+                min_height: Some(px(1.)),
                 ..Look::default()
             },
             cx,
@@ -1924,10 +1941,17 @@ impl Desktop {
             .child(load);
         let cell = div()
             .absolute()
-            .left(bounds.origin.x)
-            .top(bounds.origin.y)
-            .w(bounds.size.width)
-            .h(bounds.size.height)
+            .map(|d| match slot {
+                Some(slot) => {
+                    let (left, right, top, bottom) = slot.insets();
+                    d.left(left).right(right).top(top).bottom(bottom)
+                }
+                None => d
+                    .left(bounds.origin.x)
+                    .top(bounds.origin.y)
+                    .w(bounds.size.width)
+                    .h(bounds.size.height),
+            })
             // A card gliding from a larger size draws its frame past its bounds.
             .when(lives.is_none(), |d| d.overflow_hidden())
             .flex()
@@ -1941,9 +1965,23 @@ impl Desktop {
         } else {
             cell.into_any_element()
         };
-        match whole {
+        let cell = match whole {
             Some(whole) => {
                 live(cell, whole.transform, Anchor::Center, whole.anchor).into_any_element()
+            }
+            None => cell,
+        };
+        match slot {
+            Some(slot) => {
+                let (left, top, width, height) = slot.fractions();
+                div()
+                    .absolute()
+                    .left(relative(left))
+                    .top(relative(top))
+                    .w(relative(width))
+                    .h(relative(height))
+                    .child(cell)
+                    .into_any_element()
             }
             None => cell,
         }

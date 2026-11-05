@@ -10,14 +10,19 @@
 //! processors' cards: cards that stay glide to their new place and size (their
 //! frame and curve stretch, their captions move with its corners), cards that
 //! go fade out and shrink a little where they were, and cards that come grow
-//! in at theirs. Another size of the grid moves the cards along the same way
-//! on the theme's transition.
+//! in at theirs. Another number of columns moves the cards along the same way
+//! on the theme's transition. The cards are laid out in fractions of the grid
+//! (`Slot`), so that another size of the same arrangement (the window or the
+//! device list resized) stretches them in the very frame the grid changes,
+//! with no animation; a rearrangement under way heads for the places they
+//! take meanwhile instead of starting over.
+use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 #[cfg(test)]
 use std::time::Instant;
 
-use gpui_kit::{App, Bounds, LiveTransform, LiveTransformValue, Pixels, point, px, size};
+use gpui_kit::{App, Bounds, LiveTransform, LiveTransformValue, Pixels, Size, point, px, size};
 
 use super::super::super::{shift::LiveMotions, theme};
 
@@ -171,10 +176,71 @@ pub(super) struct CardLives {
     pub(super) frame: LiveTransform,
 }
 
+/// The grid's arrangement: so many columns and rows with `gap` between them,
+/// the rows at least `min_height` tall.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct Grid {
+    pub(super) columns: usize,
+    pub(super) rows: usize,
+    pub(super) gap: Pixels,
+    pub(super) min_height: Pixels,
+}
+impl Grid {
+    /// The card at `ordinal` in a grid of `area`.
+    pub(super) fn bounds(&self, ordinal: usize, area: Size<Pixels>) -> Bounds<Pixels> {
+        let (columns, rows) = (self.columns.max(1), self.rows.max(1));
+        let width = (area.width - self.gap * (columns - 1) as f32) / columns as f32;
+        let height =
+            ((area.height - self.gap * (rows - 1) as f32) / rows as f32).max(self.min_height);
+        Bounds::new(
+            point(
+                (width + self.gap) * (ordinal % columns) as f32,
+                (height + self.gap) * (ordinal / columns) as f32,
+            ),
+            size(width, height),
+        )
+    }
+}
+
+/// A card's place in the arrangement, laid out in fractions of the grid: its
+/// column's and row's share of the grid, less its part of the gaps.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Slot {
+    pub(super) grid: Grid,
+    pub(super) ordinal: usize,
+}
+impl Slot {
+    /// The share of the grid's width and height its column and row begin
+    /// at, and the share they take.
+    pub(super) fn fractions(&self) -> (f32, f32, f32, f32) {
+        let (columns, rows) = (self.grid.columns.max(1), self.grid.rows.max(1));
+        let (column, row) = (self.ordinal % columns, self.ordinal / columns);
+        (
+            column as f32 / columns as f32,
+            row as f32 / rows as f32,
+            1. / columns as f32,
+            1. / rows as f32,
+        )
+    }
+    /// How far the card stands in from its column's and row's share on each
+    /// side (left, right, top, bottom): together the gaps between them.
+    pub(super) fn insets(&self) -> (Pixels, Pixels, Pixels, Pixels) {
+        let (columns, rows) = (self.grid.columns.max(1), self.grid.rows.max(1));
+        let (column, row) = (self.ordinal % columns, self.ordinal / columns);
+        let share = |at: usize, of: usize| {
+            let gap = self.grid.gap / of as f32;
+            (gap * at as f32, gap * (of - 1 - at) as f32)
+        };
+        let (left, right) = share(column, columns);
+        let (top, bottom) = share(row.min(rows - 1), rows);
+        (left, right, top, bottom)
+    }
+}
+
 /// What rearranges the cards.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Reflow {
-    /// Another size of the grid: the cards follow it on the theme's transition.
+    /// Another number of columns: the cards follow on the theme's transition.
     Resize,
     /// Another core type: cards glide, go and come.
     Filter,
@@ -184,11 +250,22 @@ enum Reflow {
 pub(super) struct Moving {
     pub(super) index: usize,
     from: Card,
-    to: Card,
+    /// Where it goes; for a card that stays or comes, it follows the grid's
+    /// size while the rearrangement runs (`Rearrangement::retarget`).
+    to: Cell<Card>,
     /// Where the card is laid out meanwhile: where it goes, or where it was
     /// for a card that goes.
-    pub(super) layout: Bounds<Pixels>,
+    layout: Cell<Bounds<Pixels>>,
     pub(super) lives: CardLives,
+}
+impl Moving {
+    pub(super) fn layout(&self) -> Bounds<Pixels> {
+        self.layout.get()
+    }
+    /// Whether it stays or comes (rather than going).
+    pub(super) fn stays(&self) -> bool {
+        self.to.get().presence > 0.
+    }
 }
 
 /// The cards moving from where they were drawn to a new arrangement.
@@ -222,11 +299,11 @@ impl Rearrangement {
             cards.push(Moving {
                 index: *index,
                 from,
-                to: Card {
+                to: Cell::new(Card {
                     bounds: *bounds,
                     presence: 1.,
-                },
-                layout: *bounds,
+                }),
+                layout: Cell::new(*bounds),
                 lives: CardLives::default(),
             });
         }
@@ -235,11 +312,11 @@ impl Rearrangement {
                 cards.push(Moving {
                     index: *index,
                     from: *card,
-                    to: Card {
+                    to: Cell::new(Card {
                         bounds: card.bounds,
                         presence: 0.,
-                    },
-                    layout: card.bounds,
+                    }),
+                    layout: Cell::new(card.bounds),
                     lives: CardLives::default(),
                 });
             }
@@ -262,7 +339,7 @@ impl Rearrangement {
 
     /// A card `elapsed` into the rearrangement.
     fn sample(&self, card: &Moving, elapsed: Duration) -> Card {
-        let (from, to) = (card.from, card.to);
+        let (from, to) = (card.from, card.to.get());
         let elapsed = ms(elapsed);
         let (moved, came) = match self.reflow {
             Reflow::Resize => {
@@ -298,6 +375,21 @@ impl Rearrangement {
             .collect()
     }
 
+    /// The grid took another size while the cards move: those that stay or
+    /// come head for their places at it, without starting over.
+    fn retarget(&self, targets: &[(usize, Bounds<Pixels>)], elapsed: Duration) {
+        for card in self.cards.iter().filter(|card| card.stays()) {
+            if let Some((_, bounds)) = targets.iter().find(|(index, _)| *index == card.index) {
+                card.layout.set(*bounds);
+                card.to.set(Card {
+                    bounds: *bounds,
+                    presence: 1.,
+                });
+            }
+        }
+        self.apply(elapsed.min(self.duration()));
+    }
+
     /// Sets the cards' live transforms for `elapsed`.
     fn apply(&self, elapsed: Duration) {
         let header = self.header;
@@ -309,7 +401,7 @@ impl Rearrangement {
         };
         for card in &self.cards {
             let drawn = self.sample(card, elapsed);
-            let laid = card.layout;
+            let laid = card.layout.get();
             let scale = lerp(self.enter_scale, 1., drawn.presence);
             card.lives.card.set(LiveTransformValue::zoom(
                 scale,
@@ -345,21 +437,27 @@ pub(super) struct CoreMotion {
     /// Whether the grid has been laid out at its real size in this display:
     /// until then the cards take their places at once.
     settled: bool,
-    /// Where the cards belong.
+    /// Where the cards belong, in `grid` at `area`.
     targets: Vec<(usize, Bounds<Pixels>)>,
+    grid: Grid,
+    area: Size<Pixels>,
     moving: Option<Rc<Rearrangement>>,
 }
 impl CoreMotion {
     /// The rearrangement to draw, if one runs, given where the cards of
-    /// `filter` belong (`targets`) and whether the grid has its real size
-    /// (`measured`). A first display, or reduced motion, places the cards at
-    /// once; another core type or another arrangement starts a
+    /// `filter` belong (`targets`, arranged in `grid` at its size `area`)
+    /// and whether the grid has its real size (`measured`). A first display,
+    /// or reduced motion, places the cards at once, as does another size of
+    /// the same arrangement (the cards are laid out in fractions of the
+    /// grid); another core type or another arrangement starts a
     /// rearrangement from where the cards are drawn.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn update(
         &mut self,
         filter: &str,
         targets: &[(usize, Bounds<Pixels>)],
+        grid: Grid,
+        area: Size<Pixels>,
         measured: bool,
         animate: bool,
         header: Pixels,
@@ -378,17 +476,32 @@ impl CoreMotion {
             motions.stop(CORES_KEY);
             self.moving = None;
             self.targets = targets.to_vec();
+            self.grid = grid;
+            self.area = area;
             return None;
         }
+        let same_order = self.targets.len() == targets.len()
+            && self
+                .targets
+                .iter()
+                .zip(targets)
+                .all(|((was, _), (is, _))| was == is);
         let reflow = if filtered {
             Some(Reflow::Filter)
-        } else if self.targets != targets {
+        } else if !same_order || self.grid != grid {
             Some(Reflow::Resize)
         } else {
             None
         };
+        if reflow.is_none() && self.targets != targets {
+            // The same arrangement at another size: the cards have followed
+            // the grid already; those moving head for their new places.
+            if let (Some(moving), Some(elapsed)) = (&self.moving, motions.elapsed(CORES_KEY)) {
+                moving.retarget(targets, elapsed);
+            }
+        }
         if let Some(reflow) = reflow {
-            let drawn = self.drawn(motions);
+            let drawn = self.drawn_at(motions, area);
             let moving = Rc::new(Rearrangement::new(
                 reflow,
                 &drawn,
@@ -396,7 +509,6 @@ impl CoreMotion {
                 header,
                 enter_scale,
             ));
-            self.targets = targets.to_vec();
             self.moving = Some(moving.clone());
             let stepped = moving.clone();
             motions.start(
@@ -406,6 +518,9 @@ impl CoreMotion {
                 done,
             );
         }
+        self.targets = targets.to_vec();
+        self.grid = grid;
+        self.area = area;
         self.moving.clone()
     }
 
@@ -418,16 +533,28 @@ impl CoreMotion {
 
     /// The cards as drawn now.
     pub(super) fn drawn(&self, motions: &LiveMotions) -> Vec<(usize, Card)> {
+        self.drawn_at(motions, self.area)
+    }
+
+    /// The cards as drawn in a grid that has become `area` large: at rest,
+    /// they have followed it in their arrangement since it changed.
+    fn drawn_at(&self, motions: &LiveMotions, area: Size<Pixels>) -> Vec<(usize, Card)> {
         match (&self.moving, motions.elapsed(CORES_KEY)) {
             (Some(moving), Some(elapsed)) => moving.drawn(elapsed),
             _ => self
                 .targets
                 .iter()
-                .map(|(index, bounds)| {
+                .enumerate()
+                .map(|(ordinal, (index, bounds))| {
+                    let bounds = if area == self.area {
+                        *bounds
+                    } else {
+                        self.grid.bounds(ordinal, area)
+                    };
                     (
                         *index,
                         Card {
-                            bounds: *bounds,
+                            bounds,
                             presence: 1.,
                         },
                     )
@@ -470,13 +597,49 @@ mod tests {
     fn bounds(x: f32) -> Bounds<Pixels> {
         Bounds::new(point(px(x), px(0.)), size(px(100.), px(50.)))
     }
+    const AREA: Size<Pixels> = size(px(210.), px(50.));
+    fn grid(columns: usize) -> Grid {
+        Grid {
+            columns,
+            rows: 1,
+            gap: px(10.),
+            min_height: px(20.),
+        }
+    }
     fn update(
         motion: &mut CoreMotion,
         motions: &LiveMotions,
         filter: &str,
         targets: &[(usize, Bounds<Pixels>)],
     ) -> Option<Rc<Rearrangement>> {
-        motion.update(filter, targets, true, true, px(20.), 0.96, motions, |_| {})
+        arranged(motion, motions, filter, targets, grid(2), AREA)
+    }
+    fn arranged(
+        motion: &mut CoreMotion,
+        motions: &LiveMotions,
+        filter: &str,
+        targets: &[(usize, Bounds<Pixels>)],
+        grid: Grid,
+        area: Size<Pixels>,
+    ) -> Option<Rc<Rearrangement>> {
+        motion.update(
+            filter,
+            targets,
+            grid,
+            area,
+            true,
+            true,
+            px(20.),
+            0.96,
+            motions,
+            |_| {},
+        )
+    }
+    /// The cards of `grid` at `area`, numbered from 0.
+    fn placed(grid: Grid, count: usize, area: Size<Pixels>) -> Vec<(usize, Bounds<Pixels>)> {
+        (0..count)
+            .map(|index| (index, grid.bounds(index, area)))
+            .collect()
     }
     /// Frames at 165 Hz, as the chart layer steps the animations.
     struct Frames {
@@ -506,6 +669,8 @@ mod tests {
         let moving = motion.update(
             "p",
             &[(1, bounds(0.))],
+            grid(2),
+            AREA,
             true,
             false,
             px(20.),
@@ -538,9 +703,9 @@ mod tests {
         let moving = update(&mut motion, &motions, "p", &only).expect("rearrangement");
         let card = |index: usize| moving.cards.iter().find(|c| c.index == index).unwrap();
         // Laid out where they go (where it was, for the card going).
-        assert_eq!(card(1).layout, bounds(0.));
-        assert_eq!(card(0).layout, bounds(0.));
-        assert_eq!(card(2).layout, bounds(110.));
+        assert_eq!(card(1).layout(), bounds(0.));
+        assert_eq!(card(0).layout(), bounds(0.));
+        assert_eq!(card(2).layout(), bounds(110.));
         // The change's own frame draws the cards as they were.
         assert_eq!(card(1).lives.left.get().offset.x, px(110.));
         assert_eq!(card(2).lives.card.get().opacity, 0.);
@@ -643,6 +808,108 @@ mod tests {
         let before = switch.area.get();
         switch.ready(&motions, |_| {});
         assert_eq!(switch.area.get(), before);
+    }
+
+    #[test]
+    fn another_size_of_the_same_arrangement_places_cards_at_once() {
+        let motions = LiveMotions::default();
+        let mut motion = CoreMotion::default();
+        let wide = size(px(410.), px(50.));
+        arranged(
+            &mut motion,
+            &motions,
+            "all",
+            &placed(grid(2), 2, AREA),
+            grid(2),
+            AREA,
+        );
+        let wider = placed(grid(2), 2, wide);
+        let moving = arranged(&mut motion, &motions, "all", &wider, grid(2), wide);
+        assert!(moving.is_none() && !motions.active());
+        assert_eq!(motion.drawn(&motions)[1].1.bounds, wider[1].1);
+    }
+
+    #[test]
+    fn another_number_of_columns_glides_from_the_grid_as_drawn() {
+        let motions = LiveMotions::default();
+        let mut frames = Frames::new();
+        let mut motion = CoreMotion::default();
+        let two = Grid { rows: 2, ..grid(1) };
+        let tall = size(px(100.), px(110.));
+        arranged(
+            &mut motion,
+            &motions,
+            "all",
+            &placed(two, 2, tall),
+            two,
+            tall,
+        );
+        // The grid grew wide enough for two columns: the cards were drawn
+        // stretched in one column at the new size before it was measured.
+        let wide = size(px(210.), px(110.));
+        let side = Grid { rows: 1, ..grid(2) };
+        let moving = arranged(
+            &mut motion,
+            &motions,
+            "all",
+            &placed(side, 2, wide),
+            side,
+            wide,
+        )
+        .expect("rearrangement");
+        let second = &moving.cards[1];
+        let from = two.bounds(1, wide);
+        assert_eq!(
+            second.lives.left.get().offset,
+            from.origin - second.layout().origin
+        );
+        // Wider again on the way: it heads there without starting over.
+        frames.run(&motions, 60);
+        let elapsed = motions.elapsed(CORES_KEY).unwrap();
+        let wider = size(px(310.), px(110.));
+        let again = arranged(
+            &mut motion,
+            &motions,
+            "all",
+            &placed(side, 2, wider),
+            side,
+            wider,
+        )
+        .expect("still moving");
+        assert!(Rc::ptr_eq(&again, &moving));
+        assert_eq!(motions.elapsed(CORES_KEY), Some(elapsed));
+        assert_eq!(second.layout(), side.bounds(1, wider));
+        frames.run(&motions, 300);
+        assert!(!motions.active());
+        assert_eq!(second.lives.left.get(), LiveTransformValue::default());
+    }
+
+    #[test]
+    fn a_slot_shares_the_gaps() {
+        let grid = Grid {
+            columns: 3,
+            rows: 2,
+            gap: px(6.),
+            min_height: px(0.),
+        };
+        let area = size(px(306.), px(206.));
+        for ordinal in 0..6 {
+            let slot = Slot { grid, ordinal };
+            let (x, y, w, h) = slot.fractions();
+            let (left, right, top, bottom) = slot.insets();
+            let laid = Bounds::new(
+                point(area.width * x + left, area.height * y + top),
+                size(
+                    area.width * w - left - right,
+                    area.height * h - top - bottom,
+                ),
+            );
+            let expected = grid.bounds(ordinal, area);
+            assert!((f32::from(laid.origin.x - expected.origin.x)).abs() < 1e-3);
+            assert!((f32::from(laid.origin.y - expected.origin.y)).abs() < 1e-3);
+            assert!((f32::from(laid.size.width - expected.size.width)).abs() < 1e-3);
+            assert!((f32::from(laid.size.height - expected.size.height)).abs() < 1e-3);
+        }
     }
 
     const MAX_STEP_FOR_TESTS: Duration = Duration::from_micros(16_667);
