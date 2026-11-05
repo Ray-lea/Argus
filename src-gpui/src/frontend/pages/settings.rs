@@ -899,6 +899,7 @@ impl Desktop {
         let pending_update = self.data.get("updates").is_some_and(|s| {
             matches!(text(s, "state"), "ready" | "available") && s["version"].is_string()
         });
+        let (test, anchors) = (self.options.test, self.ui.anchors.clone());
         let rail = div()
             .absolute()
             .top(px(4.))
@@ -960,10 +961,30 @@ impl Desktop {
                                 .bg(p.accent),
                         )
                     })
+                    // Where tests take hold of it.
+                    .when(test, |b| {
+                        let anchors = anchors.clone();
+                        b.child(
+                            canvas(
+                                move |bounds, _, _| {
+                                    anchors
+                                        .borrow_mut()
+                                        .insert(format!("settings-nav-{section}").into(), bounds);
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .inset_0(),
+                        )
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.jump_to_section(index, cx);
                         cx.notify();
                     }))
+                    // The list lies over the cards: a press here is not one in
+                    // them, which would hand the mark back to the scroll before
+                    // the click and send it down to the last section first.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 },
             ));
         // Over the scrolled column, in the same place as its sections.
