@@ -100,6 +100,8 @@
     "orderHeld": "指针位于列表上，暂停重新排序",
     "orderHeldHint": "鼠标移出列表后按当前排序重新排列",
     "paused": "已暂停刷新",
-    "interval": "每 {seconds} 秒刷新"
+    "interval": "每 {seconds} 秒刷新",
+    "version": "v{version}",
+    "versionHint": "Argus {version} · {channel}\n单击查看本版本的更新内容，右键复制版本号"
   }
 }

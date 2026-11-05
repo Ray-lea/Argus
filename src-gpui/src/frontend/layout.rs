@@ -1055,9 +1055,71 @@ impl Desktop {
         )
         .child(div().w(px(1.)).h(px(20.)).mx_1().bg(p.stroke))
     }
-    pub(in crate::frontend) fn statusbar(&self) -> AnyElement {
+    pub(in crate::frontend) fn statusbar(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let sys = &self.snapshot["system"];
+        // The version, a test build's commit count with it (the hash is in the
+        // tooltip): it opens this version's notes, and copies the full version
+        // on a right click.
+        let build = self.shown_version().to_owned();
+        let copied = build.clone();
+        let short = match build.split_once('+') {
+            Some((release, meta)) => {
+                format!("{release}+{}", meta.split('.').next().unwrap_or(meta))
+            }
+            None => build.clone(),
+        };
+        let version_hint = tr!(
+            "shell.status.versionHint",
+            version = build,
+            channel = label(&format!(
+                "updates.dialog.{}",
+                text(&self.data["settings"], "updateChannel")
+            ))
+        );
+        let version = Button::new("version-badge")
+            .flex()
+            .items_center()
+            .h(px(20.))
+            .my(px(-2.))
+            .px(px(8.))
+            .border_1()
+            .border_color(p.stroke)
+            .rounded_full()
+            .text_color(p.muted)
+            .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
+            .hover(move |s| s.bg(p.hover).text_color(p.ink))
+            .active(move |s| s.bg(p.press))
+            .accessibility_label(version_hint.clone())
+            .tooltip(move |window, cx| widgets::tooltip(version_hint.clone(), window, cx))
+            .child(tr!("shell.status.version", version = short))
+            .when(self.options.test, |d| {
+                let anchors = self.ui.anchors.clone();
+                d.child(
+                    canvas(
+                        move |bounds, _, _| {
+                            anchors.borrow_mut().insert("version-badge".into(), bounds);
+                        },
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+            })
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_dialog("whatsnew", json!({}), window, cx)
+            }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.act(
+                        Action::Copy(copied.clone(), "actions.copyWhat.version"),
+                        window,
+                        cx,
+                    );
+                }),
+            );
         let mut figures = div()
             .flex()
             .flex_wrap()
@@ -1127,6 +1189,7 @@ impl Desktop {
             .text_size(theme::font(12.))
             .text_color(p.faint)
             .whitespace_nowrap()
+            .child(version)
             .child(figures)
             .when(
                 self.held_order && self.pointer_in_table && !self.paused,
@@ -1277,7 +1340,7 @@ impl Render for Desktop {
             StyleRefinement::default().size_full(),
             cx,
         );
-        let footer = self.statusbar();
+        let footer = self.statusbar(cx);
         let body = div()
             .flex_1()
             .min_h_0()

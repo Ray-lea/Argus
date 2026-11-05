@@ -64,6 +64,7 @@
   "staleProcess": "进程实例信息已失效，请刷新后重试。",
   "copyWhat": {
     "path": "路径",
-    "name": "名称"
+    "name": "名称",
+    "version": "版本号"
   }
 }

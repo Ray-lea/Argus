@@ -100,6 +100,8 @@
     "orderHeld": "Sorting paused while the pointer is over the list",
     "orderHeldHint": "Rows re-sort once the pointer leaves the list",
     "paused": "Updates paused",
-    "interval": "Updates every {seconds} s"
+    "interval": "Updates every {seconds} s",
+    "version": "v{version}",
+    "versionHint": "Argus {version} · {channel}\nClick to see what’s new in this version; right-click to copy the version number"
   }
 }

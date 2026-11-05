@@ -88,6 +88,7 @@
   "staleProcess": "The process information is out of date. Refresh and try again.",
   "copyWhat": {
     "path": "path",
-    "name": "name"
+    "name": "name",
+    "version": "version number"
   }
 }
