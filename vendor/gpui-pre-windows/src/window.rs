@@ -59,6 +59,9 @@ pub struct WindowsWindowState {
     /// The content zoom (`PlatformWindow::set_content_zoom`), 1 by default.
     pub zoom: Cell<f32>,
     pub restore_from_minimized: Cell<Option<Box<dyn FnMut(RequestFrameOptions)>>>,
+    /// A client size already applied and painted on `WM_NCCALCSIZE`, before
+    /// the system resized the window; its `WM_SIZE` has nothing left to do.
+    pub(crate) presized: Cell<Option<Size<DevicePixels>>>,
 
     pub callbacks: Callbacks,
     pub frame_signal: Arc<PlatformFrameSignal>,
@@ -177,6 +180,7 @@ impl WindowsWindowState {
             dpi_scale: Cell::new(scale_factor),
             zoom: Cell::new(1.),
             restore_from_minimized: Cell::new(restore_from_minimized),
+            presized: Cell::new(None),
             min_size,
             callbacks,
             frame_signal: Arc::new(PlatformFrameSignal::new()),

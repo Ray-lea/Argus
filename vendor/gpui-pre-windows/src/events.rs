@@ -1,4 +1,4 @@
-use std::{cell::Cell, rc::Rc, sync::atomic::Ordering};
+use std::{cell::Cell, rc::Rc, sync::OnceLock, sync::atomic::Ordering};
 
 use anyhow::Context as _;
 use gpui_util::ResultExt;
@@ -242,6 +242,8 @@ impl WindowsWindowInner {
         let width = lparam.loword().max(1) as i32;
         let height = lparam.hiword().max(1) as i32;
         let new_size = size(DevicePixels(width), DevicePixels(height));
+        let presized = self.state.presized.take() == Some(new_size);
+        crate::frame_trace::record(17, u64::from(presized));
 
         let scale_factor = self.state.scale_factor.get();
         let mut should_resize_renderer = false;
@@ -250,6 +252,8 @@ impl WindowsWindowInner {
                 .callbacks
                 .request_frame
                 .set(Some(restore_from_minimized));
+        } else if presized {
+            return Some(0);
         } else {
             should_resize_renderer = true;
         }
@@ -801,7 +805,7 @@ impl WindowsWindowInner {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> Option<isize> {
-        if !self.hide_title_bar || self.state.is_fullscreen() || wparam.0 == 0 {
+        if wparam.0 == 0 {
             return None;
         }
 
@@ -809,13 +813,64 @@ impl WindowsWindowInner {
             let params = lparam.0 as *mut NCCALCSIZE_PARAMS;
             let saved_top = (*params).rgrc[0].top;
             let result = DefWindowProcW(handle, WM_NCCALCSIZE, wparam, lparam);
-            (*params).rgrc[0].top = saved_top;
-            if self.state.is_maximized() {
-                let dpi = GetDpiForWindow(handle);
-                (*params).rgrc[0].top += get_frame_thicknessx(dpi);
+            if self.hide_title_bar && !self.state.is_fullscreen() {
+                (*params).rgrc[0].top = saved_top;
+                if self.state.is_maximized() {
+                    let dpi = GetDpiForWindow(handle);
+                    (*params).rgrc[0].top += get_frame_thicknessx(dpi);
+                }
             }
+            self.draw_before_resize(handle, (*params).rgrc[0]);
             Some(result.0 as isize)
         }
+    }
+
+    /// Paints and presents the client size the system is about to apply.
+    ///
+    /// The window takes its new rectangle when this message returns, and DWM
+    /// composes that rectangle at its next frame, while `WM_SIZE` arrives only
+    /// at the end of `SetWindowPos` (4–13 ms later when another process
+    /// resized the window). A frame first painted for `WM_SIZE` left the new
+    /// size showing the old content, with the window background in the
+    /// uncovered strip and the caption buttons at their old place, for two or
+    /// three refreshes.
+    fn draw_before_resize(&self, handle: HWND, client: RECT) {
+        static DEFERRED: OnceLock<bool> = OnceLock::new();
+        if *DEFERRED.get_or_init(|| std::env::var_os("ARGUS_GPUI_DEFER_RESIZE_PAINT").is_some()) {
+            return;
+        }
+        let new_size = size(
+            DevicePixels((client.right - client.left).max(1)),
+            DevicePixels((client.bottom - client.top).max(1)),
+        );
+        let mut current = RECT::default();
+        unsafe {
+            if !IsWindowVisible(handle).as_bool()
+                || IsIconic(handle).as_bool()
+                || GetClientRect(handle, &mut current).is_err()
+            {
+                return;
+            }
+        }
+        // A draw in progress may hold the renderer, and a minimized window has
+        // no frame callback until `WM_SIZE` restores it: both keep the
+        // `WM_SIZE` path.
+        if new_size == size(DevicePixels(current.right), DevicePixels(current.bottom))
+            || self.state.draw_coordinator.drawing.get()
+        {
+            return;
+        }
+        let Some(request_frame) = self.state.callbacks.request_frame.take() else {
+            return;
+        };
+        self.state.callbacks.request_frame.set(Some(request_frame));
+        crate::frame_trace::record(
+            16,
+            (new_size.width.0 as u64) << 16 | new_size.height.0 as u64,
+        );
+        self.handle_size_change(new_size, self.state.scale_factor.get(), true);
+        self.state.presized.set(Some(new_size));
+        self.draw_window(handle, false);
     }
 
     fn handle_activate_msg(self: &Rc<Self>, wparam: WPARAM) -> Option<isize> {
