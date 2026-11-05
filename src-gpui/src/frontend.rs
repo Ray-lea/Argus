@@ -247,6 +247,9 @@ struct Desktop {
     page_switched: Instant,
     /// The entrance starts with the first frame drawn after a page change.
     page_enter_pending: bool,
+    /// Set while a frame of the entering page only measures layout and is
+    /// not presented (`hold_entrance`).
+    page_unseen: Rc<Cell<bool>>,
     render_count: u64,
     regions: regions::Regions,
     work: WorkCounters,
@@ -414,6 +417,7 @@ impl Desktop {
             page_direction: 0.,
             page_switched: Instant::now(),
             page_enter_pending: false,
+            page_unseen: Rc::new(Cell::new(false)),
             render_count: 0,
             regions: regions::Regions::default(),
             work: WorkCounters::default(),

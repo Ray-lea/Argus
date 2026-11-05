@@ -1576,7 +1576,21 @@ impl Desktop {
             self.page_shift.set(Point::default());
             return element.into_any_element();
         }
-        let progress = theme::ease_out(
+        // Frames that only measure layout are not presented: the slide waits.
+        let unseen = self.page_unseen.clone();
+        let element = element.child(
+            canvas(
+                move |_, window, _| {
+                    if window.is_layout_only() {
+                        unseen.set(true);
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_0(),
+        );
+        let progress = theme::ease_enter(
             (self.page_switched.elapsed().as_secs_f32() / PAGE_ENTER.as_secs_f32()).min(1.),
         );
         window.request_animation_frame();
@@ -1590,6 +1604,19 @@ impl Desktop {
         self.page_shift.set(offset);
         super::shift::shifted(element, offset, 1.).into_any_element()
     }
+    /// Starts the page's slide again after each frame until the entering page
+    /// has been presented, and once more after that frame. Its first frame
+    /// lays out and draws the whole page, or only measures its layout and is
+    /// not presented: counted from before it, the slide's fast start was spent
+    /// before anything showed, and the page jumped halfway in.
+    pub(in crate::frontend) fn hold_entrance(&self, window: &mut Window, cx: &mut Context<Self>) {
+        cx.on_next_frame(window, |this, window, cx| {
+            this.page_switched = Instant::now();
+            if this.page_unseen.replace(false) {
+                this.hold_entrance(window, cx);
+            }
+        });
+    }
     /// Whether the page is still entering after a page change.
     pub(in crate::frontend) fn page_entering(&self, cx: &App) -> bool {
         !cx.reduce_motion()
@@ -1598,8 +1625,9 @@ impl Desktop {
     }
 }
 
-/// How long a page takes to enter after a page change (300 ms, `EASE_OUT`).
-pub(in crate::frontend) const PAGE_ENTER: Duration = Duration::from_millis(300);
+/// How long a page takes to enter after a page change, as long as the
+/// navigation's selection takes to glide to its tab (`theme::ease_enter`).
+pub(in crate::frontend) const PAGE_ENTER: Duration = Duration::from_millis(250);
 
 /// The shadow of dialogs (`--shadow-flyout`); the interface's menus, lists and
 /// toasts have none.

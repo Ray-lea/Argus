@@ -1322,6 +1322,7 @@ impl Render for Desktop {
         if std::mem::take(&mut self.page_enter_pending) {
             // As a CSS animation: it starts when first drawn, after the switch's work.
             self.page_switched = Instant::now();
+            self.hold_entrance(window, cx);
         }
         let p = self.palette;
         let toolbar_level = self.fit_toolbar(window, cx);

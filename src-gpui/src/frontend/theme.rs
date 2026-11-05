@@ -512,6 +512,13 @@ pub fn mix(from: Hsla, to: Hsla, t: f32) -> Hsla {
 pub fn ease_out(t: f32) -> f32 {
     bezier(0.1, 0.9, 0.2, 1., t)
 }
+/// The page's entrance, which slides in without fading: an ease-out cubic.
+/// Fluent's entrance curve leaves the move to a fade and front-loads it: a
+/// page drawn in place at once jumped most of the way in its first frames,
+/// then crept the last pixels.
+pub fn ease_enter(t: f32) -> f32 {
+    bezier(0.33, 1., 0.68, 1., t)
+}
 /// Fluent's accelerating exit curve.
 pub fn ease_in(t: f32) -> f32 {
     bezier(0.7, 0., 1., 0.5, t)
