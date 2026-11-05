@@ -106,14 +106,14 @@ function paint(c: Chart) {
   f.series.forEach((s, i) => {
     const line = c.lines[i];
     if (!line || line.ys.length < 2) return;
-    if (s.fill) {
+    if (s.fill > 0) {
       ctx.beginPath();
       trace(line.ys, line.m);
       ctx.lineTo(X(f.drawn), Y(100));
       ctx.lineTo(X(0), Y(100));
       ctx.closePath();
       const gradient = ctx.createLinearGradient(0, Y(0), 0, Y(100));
-      gradient.addColorStop(0, rgba(s.color, 0.3));
+      gradient.addColorStop(0, rgba(s.color, s.fill));
       gradient.addColorStop(1, rgba(s.color, 0));
       ctx.fillStyle = gradient;
       ctx.fill();

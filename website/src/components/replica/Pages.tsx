@@ -48,6 +48,10 @@ export type MenuEntry =
       disabled?: boolean;
       checked?: boolean;
       children?: MenuEntry[];
+      /** Quiet text at the end of the item, such as a submenu's checked count. */
+      detail?: string;
+      /** A check toggled in place, the menu staying open. */
+      stay?: boolean;
       run?: () => void;
     };
 type OpenMenu = (event: MouseEvent, items: MenuEntry[]) => void;

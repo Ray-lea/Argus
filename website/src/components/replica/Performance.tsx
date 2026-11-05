@@ -2,6 +2,7 @@
 "use client";
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Curve, { type Motion, type Readout, type Series } from "./Curve";
+import DiskDetails from "./DiskDetails";
 import { Icon } from "./icons";
 import { cpuPower, cpuTemperature, gpuPower, gpuTemperature, useSystemHistory, type Device } from "./Processes";
 import {
@@ -19,7 +20,7 @@ import {
   thousands,
   totalMemory,
 } from "./model";
-import { Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
+import { Button, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
 
 interface Props {
   tick: number;
@@ -153,6 +154,10 @@ export default function Performance(p: Props) {
   const [graph, setGraph] = useState<"overall" | "logical">("overall");
   const [filter, setFilter] = useState<"all" | "p" | "e">("all");
   const [cpuPage, setCpuPage] = useState<"overview" | "details">("overview");
+  const [diskPage, setDiskPage] = useState<"overview" | "details">("overview");
+  // The tick at which the disk's details were last read: each time its
+  // details page opens, and again from the head's button.
+  const [diskRead, setDiskRead] = useState(0);
   const [engineCount, setEngineCount] = useState<"smart" | "3" | "6">("smart");
   const [engineLayout, setEngineLayout] = useState<"grid" | "focus" | "rows">("grid");
   const last = useRef({ device: p.device, dir: 1 });
@@ -165,6 +170,11 @@ export default function Performance(p: Props) {
   // A device's view moves in from the side of its entry in the list.
   const view = useRef<HTMLDivElement>(null);
   useIsoLayoutEffect(() => slideIn(view.current, { y: last.current.dir * 16 }), [p.device]);
+  // The disk's details are read as their page opens (another device and
+  // back, or the overview and back), not with every sample.
+  useIsoLayoutEffect(() => {
+    if (p.device === "disk" && diskPage === "details") setDiskRead(p.tick);
+  }, [p.device, diskPage]);
   const markMoves = useRef(false);
   const s = sampleAt(p.tick);
   const h = useSystemHistory(p.tick);
@@ -497,47 +507,73 @@ export default function Performance(p: Props) {
   } else if (p.device === "disk") {
     const [readValue, readUnit] = split(s.read < 1 ? "0 KB/s" : rate(s.read));
     const [writeValue, writeUnit] = split(s.write < 1 ? "0 KB/s" : rate(s.write));
-    body = (
-      <>
-        <Head title="磁盘 0 (C:)" model={machine.disk} />
-        <div className="a-stack is-fill">
-          <Chart title="活动时间" top="100%" max={100} curve={curve} color="var(--a-io)" series={[{ values: h.active, color: "var(--a-io)" }]} />
-          <Chart
-            title="磁盘传输速率"
-            top={rateLabel(diskMax)}
-            max={diskMax}
-            curve={curve}
-            readout={{ names: ["读取", "写入"], format: rate }}
-            color="var(--a-io)"
-            series={[
-              { values: h.read, color: "var(--a-io)" },
-              { values: h.write, color: "var(--a-io)", dashed: true, fill: false },
+    const head = (
+      <Head title="磁盘 0 (C:)" model={machine.disk}>
+        <div className="a-disk-controls">
+          <Segments
+            label="磁盘页面"
+            value={diskPage}
+            onChange={setDiskPage}
+            items={[
+              { value: "overview", label: "概览" },
+              { value: "details", label: "详情" },
             ]}
           />
+          {diskPage === "details" && (
+            <Button icon="restart" small tone="ghost" title="重新读取" onClick={() => setDiskRead(p.tick)} />
+          )}
         </div>
-        <Legend
-          items={[
-            ["读取", "var(--a-io)"],
-            ["写入", "var(--a-io)", "dashed"],
-          ]}
-        />
-        <Stats
-          figures={[
-            ["活动时间", Math.round(s.active), "%"],
-            ["平均响应时间", (0.2 + noise(51, p.tick) * 0.4).toFixed(1), "毫秒"],
-            ["读取速度", readValue, readUnit],
-            ["写入速度", writeValue, writeUnit],
-            ["温度", "41", "°C"],
-          ]}
-          specs={[
-            ["容量", "1.8 TB"],
-            ["类型", "SSD (NVMe)"],
-            ["卷", "C:"],
-            ["警告温度", "90 °C"],
-          ]}
-        />
-      </>
+      </Head>
     );
+    if (diskPage === "details")
+      body = (
+        <>
+          {head}
+          <DiskDetails read={diskRead} interval={p.interval} />
+        </>
+      );
+    else
+      body = (
+        <>
+          {head}
+          <div className="a-stack is-fill">
+            <Chart title="活动时间" top="100%" max={100} curve={curve} color="var(--a-io)" series={[{ values: h.active, color: "var(--a-io)" }]} />
+            <Chart
+              title="磁盘传输速率"
+              top={rateLabel(diskMax)}
+              max={diskMax}
+              curve={curve}
+              readout={{ names: ["读取", "写入"], format: rate }}
+              color="var(--a-io)"
+              series={[
+                { values: h.read, color: "var(--a-io)" },
+                { values: h.write, color: "var(--a-io)", dashed: true, fill: false },
+              ]}
+            />
+          </div>
+          <Legend
+            items={[
+              ["读取", "var(--a-io)"],
+              ["写入", "var(--a-io)", "dashed"],
+            ]}
+          />
+          <Stats
+            figures={[
+              ["活动时间", Math.round(s.active), "%"],
+              ["平均响应时间", (0.2 + noise(51, p.tick) * 0.4).toFixed(1), "毫秒"],
+              ["读取速度", readValue, readUnit],
+              ["写入速度", writeValue, writeUnit],
+              ["温度", "41", "°C"],
+            ]}
+            specs={[
+              ["容量", "1.8 TB"],
+              ["类型", "SSD (NVMe)"],
+              ["卷", "C:"],
+              ["警告温度", "90 °C"],
+            ]}
+          />
+        </>
+      );
   } else if (p.device === "wifi") {
     const [rxValue, rxUnit] = split(s.rx < 1 ? "0 KB/s" : rate(s.rx));
     const [txValue, txUnit] = split(s.tx < 1 ? "0 KB/s" : rate(s.tx));
@@ -771,7 +807,10 @@ export default function Performance(p: Props) {
           <div
             key={p.device}
             ref={view}
-            className={"a-perf-body" + (p.device === "cpu" && cpuPage === "details" ? " is-details" : "")}
+            className={
+              "a-perf-body" +
+              ((p.device === "cpu" && cpuPage === "details") || (p.device === "disk" && diskPage === "details") ? " is-details" : "")
+            }
           >
             {body}
           </div>

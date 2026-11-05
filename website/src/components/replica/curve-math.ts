@@ -82,7 +82,7 @@ export const DASH = [4, 3] as const;
 
 /** One chart as the worker draws it. Times are epoch milliseconds. */
 export interface Frame {
-  series: { ys: number[]; color: number[]; fill: boolean; faint: boolean; dashed: boolean }[];
+  series: { ys: number[]; color: number[]; fill: number; faint: boolean; dashed: boolean }[];
   /** Data units: `drawn` samples wide, 100 high. */
   drawn: number;
   shown: number;

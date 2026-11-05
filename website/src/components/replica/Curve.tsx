@@ -8,11 +8,13 @@ export interface Series {
   values: number[];
   color: string;
   dashed?: boolean;
-  fill?: boolean;
+  /** The area fill's opacity at the top, fading out downwards (0.3), or none. */
+  fill?: boolean | number;
   /** A compact chart's secondary series: solid, at 55% (dashes break up at preview sizes). */
   faint?: boolean;
 }
 export type Motion = "smooth" | "step";
+const fillOf = (s: Series) => (s.fill === false ? 0 : s.fill === true || s.fill === undefined ? 0.3 : s.fill);
 
 /**
  * When the latest sample's scroll began (a curve that mounts between samples
@@ -222,7 +224,7 @@ export default function Curve({
         series: series.map((s, i) => ({
           ys: lines[i].ys,
           color: rgba(getComputedStyle(strokes.current[i] ?? document.body).stroke),
-          fill: s.fill !== false,
+          fill: fillOf(s),
           faint: !!s.faint,
           dashed: !!s.dashed,
         })),
@@ -377,7 +379,7 @@ export default function Curve({
               {series.map((s, i) =>
                 s.fill === false ? null : (
                   <linearGradient key={i} id={`${id}-${i}`} gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="100">
-                    <stop offset="0" stopColor={s.color} stopOpacity="0.3" />
+                    <stop offset="0" stopColor={s.color} stopOpacity={fillOf(s)} />
                     <stop offset="1" stopColor={s.color} stopOpacity="0" />
                   </linearGradient>
                 ),

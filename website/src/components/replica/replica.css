@@ -1011,6 +1011,8 @@
   border-radius: 8px;
   background: var(--a-surface);
 }
+/* A card: name, figure and readings over a curve that fills it under a 20 px
+   headroom, fading out to the left under the text, as the app's. */
 .a-vital {
   --fig: calc(clamp(16px, 33cqw, 34px) * var(--a-text));
   --unit: calc(clamp(9px, 15cqw, 15px) * var(--a-text));
@@ -1018,8 +1020,9 @@
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 5px;
   min-width: 0;
   padding: 11px 16px 0;
   border: 0;
@@ -1027,7 +1030,6 @@
   color: var(--a-ink);
   text-align: start;
   container-type: inline-size;
-  transition: background-color 83ms linear;
 }
 .a-vital.is-cpu {
   flex-grow: 1.3;
@@ -1041,62 +1043,87 @@
 .a-vital:last-child {
   border-radius: 0 7px 7px 0;
 }
-.a-vital:hover {
-  background: var(--a-hover);
-}
-.a-vital:active {
-  background: var(--a-press);
-}
-.a-vital-plot {
+/* The scale's top line and its label, under the curve. */
+.a-vital-scale {
   position: absolute;
-  top: 62px;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  inset: 0;
+  padding: 3px 16px 0 0;
+  color: var(--a-ink-2);
+  font-size: calc(11px * var(--a-text));
+  line-height: 1.4;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   pointer-events: none;
 }
-.a-vital:first-child .a-vital-plot {
-  left: 8px;
+.a-vital-scale::after {
+  content: "";
+  position: absolute;
+  top: 19.5px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--c) 30%, transparent);
 }
-.a-vital:last-child .a-vital-plot {
-  right: 8px;
+/* The curve meets the card's sides; its bottom keeps 8 px clear of the
+   band's rounded corners. */
+.a-vital-plot {
+  position: absolute;
+  /* Keeps the curve's canvas (z-index 1) under the scrim and the text. */
+  z-index: 0;
+  inset: 0 0 8px;
+  pointer-events: none;
 }
 .a-vital-plot .curve {
   position: absolute;
   inset: 0;
 }
-.a-vital-head {
+.a-vital-scrim,
+.a-vital-tint {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.a-vital-scrim {
+  background: linear-gradient(90deg, var(--a-surface) 22%, transparent 66%);
+}
+/* Over the curve and the scrim alike, so that the whole card takes one tint. */
+.a-vital-tint {
+  transition: background-color 83ms linear;
+}
+.a-vital:hover .a-vital-tint {
+  background: var(--a-hover);
+}
+.a-vital:active .a-vital-tint {
+  background: var(--a-press);
+}
+.a-vital-name,
+.a-vital > .a-figure,
+.a-vital-readings {
   position: relative;
+}
+.a-vital-name {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
+  align-items: center;
+  gap: 6px;
+  height: calc(12px * 1.4 * var(--a-text));
   color: var(--a-ink-2);
   font-size: calc(12px * var(--a-text));
-}
-.a-vital-head > span:first-child {
-  flex: none;
-}
-.a-vital-aside {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
-.a-vital-aside i {
-  font-style: normal;
-}
-.a-vital-aside i + i {
-  margin-left: 6px;
+.a-vital-name::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c);
 }
 .a-figure {
-  position: relative;
   display: flex;
   align-items: baseline;
   width: 100%;
-  margin-top: -2px;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -1104,89 +1131,42 @@
   font-family: var(--a-display);
   font-size: var(--fig);
   font-weight: 330;
-  line-height: 1.1;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 .a-figure > small {
-  margin-left: 2px;
+  margin-left: 3px;
   color: var(--a-ink-2);
   font-family: var(--a-display);
   font-size: var(--unit);
 }
-.a-figure-metrics {
-  position: absolute;
-  left: calc(var(--fig) * 1.56 + var(--unit) * 0.75 + 14px);
-  right: 0;
-  bottom: calc(var(--fig) * 0.14);
+/* One line under the figure; separate readings take smaller text before they
+   would be cut, as the card narrows. */
+.a-vital-readings {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 6px;
+  gap: 0.75em;
+  min-width: 0;
+  overflow: hidden;
   color: var(--a-ink-2);
   font-size: calc(12px * var(--a-text));
   line-height: 1.4;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* Each reading right-aligned in the width of its widest value (99.99 GHz, 999 °C, 9999 W). */
-.a-figure-metrics > span {
-  min-width: 4.6em;
-  text-align: end;
-}
-.a-figure-metrics > span + span {
-  min-width: 3em;
-}
-.a-figure-metrics > span:last-child {
-  min-width: 3.4em;
-}
-.a-vital-aside i {
-  display: inline-block;
-  min-width: 3em;
-  text-align: end;
-}
-/* A narrow card puts the CPU readings on two rows, then leaves them out. */
-@container (max-width: 250px) {
-  .a-figure-metrics {
-    gap: 0 4px;
-    font-size: calc(11px * var(--a-text));
-  }
-  .a-figure-metrics > span:first-child {
-    flex-basis: 100%;
-  }
-  .a-figure-metrics > span,
-  .a-figure-metrics > span + span,
-  .a-figure-metrics > span:last-child {
-    min-width: 0;
-    text-align: start;
-  }
-}
-@container (max-width: 190px) {
-  .a-figure-metrics {
-    display: none;
-  }
-}
-.a-cores {
-  display: flex;
+.a-vital-readings > span {
   flex: none;
-  gap: 2px;
-  height: 26px;
 }
-/* No clip: a gliding bar under a rounded clip makes the browser rebuild its
-   layer tree every frame, and the fill never leaves its track anyway. */
-.a-cores i {
-  position: relative;
-  width: 4px;
-  height: 100%;
-  border-radius: 1.5px;
-  background: color-mix(in srgb, var(--a-cpu) 14%, transparent);
+.a-vital-readings:not(.is-split) > span {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.a-cores i::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 1.5px;
-  background: var(--a-cpu);
-  transform: scaleY(var(--v, 0));
-  transform-origin: bottom;
-  transition: transform var(--glide, 1000ms) linear;
+.a-vital.is-cpu .a-vital-readings {
+  font-size: calc(max(9px, min(12px, 9.4cqw)) * var(--a-text));
+}
+.a-vital:not(.is-cpu) .a-vital-readings.is-split {
+  font-size: calc(max(9px, min(12px, 15cqw)) * var(--a-text));
 }
 
 /* The list's card; a search rings it in the accent. */
@@ -2356,6 +2336,218 @@ button.a-th:active {
   font-size: calc(11px * var(--a-text));
   line-height: 20px;
 }
+
+/* Disk details (DiskDetails.tsx, the app's performance/disk_details.rs): the
+   head's page switch and refresh button; health tiles over the lifetime
+   totals, device information in two lists, the SMART log in even columns. */
+.a-disk-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.a-card.is-alert {
+  border-color: color-mix(in srgb, var(--a-danger) 45%, transparent);
+}
+.a-card.is-alert .a-card-head > span {
+  color: var(--a-danger);
+}
+.a-card-note {
+  margin-left: 6px;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+  font-weight: 400;
+}
+.a-disk-tiles {
+  display: grid;
+  gap: 18px 24px;
+}
+.a-disk-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.a-disk-label {
+  overflow: hidden;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.a-disk-figure {
+  display: flex;
+  align-items: baseline;
+  font-family: var(--a-display);
+  font-size: calc(20px * var(--a-text));
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.a-disk-figure small {
+  margin-left: 2px;
+  color: var(--a-ink-2);
+  font-size: calc(13px * var(--a-text));
+}
+.a-disk-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.a-disk-state::before {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--c);
+}
+/* A level bar: the colour at 18 % for the track, a 2 px mark for a threshold. */
+.a-disk-meter {
+  position: relative;
+  height: 6px;
+  margin-top: 10px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--c) 18%, transparent);
+}
+.a-disk-meter i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 3px;
+  background: var(--c);
+}
+.a-disk-meter b {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--a-ink) 50%, transparent);
+}
+.a-disk-tile p {
+  margin: 6px 0 0;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+/* Readings in columns at least 125 px wide, under a rule. */
+.a-disk-readings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(125px, 1fr));
+  gap: 12px 18px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--a-stroke);
+}
+.a-disk-reading {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.a-disk-reading > span {
+  overflow: hidden;
+  color: var(--a-ink-2);
+  font-size: calc(11px * var(--a-text));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.a-disk-reading > b {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: calc(16px * var(--a-text));
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.a-disk-reading small {
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.a-disk-device {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 28px;
+  align-items: start;
+}
+.a-disk-serial {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.a-disk-serial button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--a-accent);
+  font-size: calc(12px * var(--a-text));
+  cursor: pointer;
+}
+.a-disk-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.a-disk-tags span {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--a-ink) 6%, transparent);
+  color: var(--a-ink-2);
+  font-size: calc(11px * var(--a-text));
+  line-height: 16px;
+}
+.a-smart {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+}
+.a-smart-col {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.a-smart-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: calc(12px * var(--a-text));
+}
+.a-smart-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--a-stroke);
+  font-variant-numeric: tabular-nums;
+}
+.a-smart-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.a-smart-row > :nth-child(2) {
+  flex: none;
+  width: calc(96px * var(--a-text));
+  text-align: end;
+}
+.a-smart-row > :nth-child(3) {
+  flex: none;
+  width: calc(92px * var(--a-text));
+  color: var(--a-ink-2);
+  text-align: end;
+}
+.a-smart-row.is-head {
+  padding-top: 0;
+  color: var(--a-ink-2);
+}
+.a-smart-row.is-head > :first-child {
+  color: var(--a-ink);
+  font-size: calc(13px * var(--a-text));
+  font-weight: 500;
+}
+.a-smart-row .is-alert {
+  color: var(--a-danger);
+}
 .a-engine-head {
   display: inline-flex;
   align-items: center;
@@ -3451,22 +3643,463 @@ button.a-th:active {
   cursor: pointer !important;
 }
 
-/* The window adapts its columns and panes to the room it has, as the app does. */
-@container argus (max-width: 1299px) {
-  .a-processes .a-table {
-    --cols: minmax(180px, 1fr) 72px 70px 96px 104px 104px 70px 92px;
-  }
-  .a-processes .a-col-io {
-    display: none;
+/* ── Process columns (Columns.tsx) ────────────────────────────────────────
+   The columns the visitor picks, in their order. Header and rows are rows of
+   cells at fixed widths: the name takes the room the others leave (at least
+   180 px) and stays at the left while the others scroll sideways under it.
+   The header keeps its 4 px inset and the list's scrollbar gutter, so its
+   name is 4 px narrower and every other column lines up with the rows. */
+.a-ptable .a-thead {
+  display: block;
+  --a-head-line: var(--a-stroke);
+  --a-head-face: var(--a-surface);
+  /* The separator under the labels stays put as the header scrolls. */
+  background: linear-gradient(var(--a-head-line), var(--a-head-line)) no-repeat 4px 100% / calc(100% - 8px) 1px;
+  user-select: none;
+}
+.a-ptable .a-thead::after {
+  display: none;
+}
+.a-work.is-filtered .a-ptable .a-thead {
+  --a-head-line: color-mix(in srgb, var(--a-accent) 40%, transparent);
+  --a-head-face: color-mix(in srgb, var(--a-accent) 8%, var(--a-surface));
+  background:
+    linear-gradient(var(--a-head-line), var(--a-head-line)) no-repeat 0 100% / 100% 1px,
+    color-mix(in srgb, var(--a-accent) 8%, transparent);
+}
+.a-ptable .a-thead-row,
+.a-ptable .a-tr {
+  display: flex;
+  align-items: stretch;
+}
+.a-ptable .a-thead-row {
+  width: max(100%, calc(var(--a-row-min) - 4px));
+}
+.a-ptable .a-tr {
+  width: max(100%, var(--a-row-min));
+}
+.a-ptable .a-th,
+.a-ptable .a-td {
+  flex: none;
+}
+.a-ptable .a-col-name {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  flex: 1 0 180px;
+}
+/* Sticky offsets count from inside the header's 4 px inset already. */
+.a-ptable .a-thead .a-col-name {
+  flex-basis: 176px;
+}
+/* The selection mark rides on the name, which stays in view. */
+.a-ptable .a-tr.is-selected::before {
+  content: none;
+}
+.a-ptable .a-tr.is-selected > .a-col-name::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--a-accent);
+}
+/* Scrolled sideways, the name takes the card's face (and its row's tint) so
+   the columns passing under it stay hidden; a hairline ends it. */
+.a-ptable .a-tr {
+  --a-row-tint: transparent;
+}
+.a-ptable .a-tr:hover {
+  --a-row-tint: var(--a-hover);
+}
+.a-ptable .a-tr.is-selected {
+  --a-row-tint: color-mix(in srgb, var(--a-accent) 15%, transparent);
+}
+.a-ptable[data-scrolled] .a-tr > .a-col-name {
+  border-radius: 4px 0 0 4px;
+  background: linear-gradient(var(--a-row-tint), var(--a-row-tint)) var(--a-surface);
+  box-shadow: 1px 0 0 var(--a-stroke);
+}
+.a-ptable[data-scrolled] .a-thead .a-col-name {
+  background: var(--a-head-face);
+  box-shadow:
+    1px 0 0 var(--a-stroke),
+    inset 0 -1px 0 var(--a-head-line);
+}
+.a-ptable[data-scrolled] .a-thead .a-col-name:hover {
+  background: linear-gradient(var(--a-hover), var(--a-hover)) var(--a-head-face);
+}
+/* The header's 4 px inset before the name, covered alike. */
+.a-ptable[data-scrolled] .a-thead .a-col-name::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 1px;
+  left: -4px;
+  width: 4px;
+  background: var(--a-head-face);
+}
+/* A dragged header's column rides on a raised strip from the header to the
+   bottom of the rows, over the columns gliding past it (tables.rs). */
+.a-drag-lane {
+  position: absolute;
+  top: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.a-drag-strip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  border: 1px solid color-mix(in srgb, var(--a-accent) 45%, transparent);
+  border-radius: 6px;
+  background:
+    linear-gradient(color-mix(in srgb, var(--a-accent) 7%, transparent), color-mix(in srgb, var(--a-accent) 7%, transparent)),
+    linear-gradient(var(--a-layer-strong), var(--a-layer-strong)),
+    var(--a-surface);
+  translate: var(--a-strip-x, 0px) 0;
+}
+
+/* Menu items with a quiet count before their submenu arrow. */
+.a-menu-detail {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
+  font-variant-numeric: tabular-nums;
+}
+.a-menu-detail + .a-menu-more {
+  margin-left: 0;
+}
+
+/* "Select columns": the columns by category to check on the left, the shown
+   ones in order on the right to drag (columns/dialog.rs). */
+.a-dialog.is-columns {
+  width: min(900px, 100%);
+}
+.a-columns-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.a-columns-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.a-columns-head p {
+  margin: 0;
+  color: var(--a-ink-2);
+}
+/* A boxed text field: the control face, a 2 px accent edge while focused. */
+.a-field {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--a-stroke);
+  border-bottom-color: var(--a-stroke-strong);
+  border-radius: 4px;
+  background: var(--a-control);
+}
+.a-field:hover {
+  background: var(--a-control-hover);
+}
+.a-field:focus-within {
+  border-bottom-color: var(--a-stroke);
+  background: var(--a-layer-strong);
+  box-shadow: inset 0 -2px 0 var(--a-accent);
+}
+.a-field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--a-ink);
+  outline: none;
+}
+.a-field input:focus-visible {
+  outline: none;
+}
+.a-field input::placeholder {
+  color: var(--a-ink-3);
+  opacity: 1;
+}
+.a-field input::-webkit-search-cancel-button {
+  display: none;
+}
+.a-field .a-search-clear {
+  margin-right: 0;
+}
+.a-columns-panes {
+  display: flex;
+  flex: none;
+  gap: 16px;
+  height: 440px;
+}
+.a-columns-choices {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.a-columns-cats {
+  display: flex;
+  flex: none;
+}
+.a-columns-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  animation: a-columns-switch 140ms var(--a-ease);
+}
+@keyframes a-columns-switch {
+  from {
+    opacity: 0.35;
   }
 }
+.a-columns-section {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+}
+.a-columns-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  color: var(--a-ink-2);
+}
+.a-columns-section-name {
+  font-size: calc(12px * var(--a-text));
+  font-weight: 500;
+}
+.a-columns-section-count {
+  color: var(--a-ink-3);
+  font-size: calc(11px * var(--a-text));
+  font-variant-numeric: tabular-nums;
+}
+.a-columns-section-head .a-btn {
+  margin-left: auto;
+  color: var(--a-accent);
+}
+.a-columns-choice {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--a-ink);
+  text-align: start;
+  white-space: nowrap;
+  transition: background-color 83ms linear;
+}
+.a-columns-choice:not([aria-disabled]):hover {
+  background: var(--a-hover);
+}
+.a-columns-choice:not([aria-disabled]):active {
+  background: var(--a-press);
+}
+.a-columns-box {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 4px;
+  background: var(--a-control);
+  color: var(--a-on-accent);
+}
+.a-columns-box.is-on {
+  border-color: transparent;
+  background: var(--a-accent);
+}
+.a-columns-box.is-on.is-fixed {
+  background: color-mix(in srgb, var(--a-accent) 45%, transparent);
+}
+.a-columns-name {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.a-columns-desc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+  text-overflow: ellipsis;
+}
+.a-columns-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--a-ink) 6%, transparent);
+  color: var(--a-ink-2);
+  font-size: calc(11px * var(--a-text));
+  line-height: 18px;
+}
+.a-columns-none {
+  display: grid;
+  flex: none;
+  place-items: center;
+  height: 140px;
+  margin: 0;
+  color: var(--a-ink-2);
+}
+.a-columns-order {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: clamp(220px, 30%, 280px);
+  min-height: 0;
+  border: 1px solid var(--a-stroke);
+  border-radius: 8px;
+  background: var(--a-layer);
+}
+.a-columns-order-head {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+.a-columns-order-head b {
+  font-weight: 500;
+}
+.a-columns-order-head span {
+  color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
+}
+.a-order-list {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: 0 6px 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  user-select: none;
+}
+.a-order-row {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--a-ink);
+  white-space: nowrap;
+}
+.a-order-row .ico,
+.a-order-raised .ico {
+  color: var(--a-ink-3);
+}
+.a-order-row.is-movable {
+  cursor: grab;
+}
+.a-order-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.a-order-tag {
+  flex: none;
+  color: var(--a-ink-3);
+  font-size: calc(11px * var(--a-text));
+}
+/* Under the pointer, the category gives way to moving and removing. */
+.a-order-tools {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  visibility: hidden;
+}
+.a-order-tools .ico {
+  color: var(--a-ink-2);
+}
+.a-order-list:not(.is-dragging) .a-order-row.is-movable:hover {
+  background: var(--a-hover);
+}
+.a-order-list:not(.is-dragging) .a-order-row.is-movable:hover .a-order-tools {
+  visibility: visible;
+}
+.a-order-list:not(.is-dragging) .a-order-row.is-movable:hover .a-order-tag {
+  visibility: hidden;
+}
+/* The slot the dragged place will drop into, empty and tinted. */
+.a-order-row.is-slot {
+  background: color-mix(in srgb, var(--a-accent) 8%, transparent);
+}
+.a-order-row.is-slot > * {
+  visibility: hidden;
+}
+.a-order-raised {
+  position: absolute;
+  right: 6px;
+  left: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--a-accent) 60%, transparent);
+  border-radius: 6px;
+  background: var(--a-flyout);
+  color: var(--a-ink);
+  white-space: nowrap;
+  cursor: grabbing;
+}
+.a-columns-foot {
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.a-columns-actions {
+  display: flex;
+  gap: 8px;
+}
+.a-columns-actions .a-btn {
+  min-width: 82px;
+}
+
+/* The window adapts its columns and panes to the room it has, as the app does.
+   The process list keeps the columns the visitor picked and scrolls sideways
+   when they do not fit (Process columns, above). */
 @container argus (max-width: 1159px) {
-  .a-processes .a-table {
-    --cols: minmax(170px, 1fr) 64px 92px 96px 96px 64px 88px;
-  }
-  .a-processes .a-col-pid {
-    display: none;
-  }
   .a-services {
     --cols: minmax(200px, 1.3fr) minmax(100px, 0.6fr) 64px 100px 140px minmax(160px, 1.4fr);
   }
@@ -3507,23 +4140,12 @@ button.a-th:active {
   }
 }
 @container argus (max-width: 760px) {
-  .a-processes .a-table {
-    --cols: minmax(140px, 1fr) 56px 84px 80px;
-  }
-  .a-processes .a-col-read,
-  .a-processes .a-col-write,
-  .a-processes .a-col-gpu {
-    display: none;
-  }
   .a-vital:nth-child(3),
   .a-vital:nth-child(5) {
     display: none;
   }
   .a-vital:nth-child(4) {
     border-radius: 0 7px 7px 0;
-  }
-  .a-vital:nth-child(4) .a-vital-plot {
-    right: 8px;
   }
   .a-status-figures > :nth-child(n + 3) {
     display: none;
@@ -3650,10 +4272,6 @@ button.a-th:active {
   .a-trailing .a-select-wrap {
     display: none;
   }
-  .a-processes .a-table {
-    --cols: minmax(120px, 1fr) 50px 76px;
-  }
-  .a-processes .a-col-net,
   .a-td-name .a-exe {
     display: none;
   }
@@ -3662,12 +4280,6 @@ button.a-th:active {
   }
   .a-vital:nth-child(2) {
     border-radius: 0 7px 7px 0;
-  }
-  .a-vital:nth-child(2) .a-vital-plot {
-    right: 8px;
-  }
-  .a-figure-metrics {
-    display: none;
   }
   .a-status-figures {
     display: none;

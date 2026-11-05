@@ -9,16 +9,23 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import {
+  alignsEnd,
+  cellOf,
+  NAME_MIN,
+  useColumnWidths,
+  useHeaderDrag,
+  useTableScroll,
+  type CellContext,
+  type ColumnDef,
+} from "./Columns";
 import Curve, { type Motion } from "./Curve";
 import { language, translate } from "./i18n";
 import { Icon, ProcessIcon, type UiIcon } from "./icons";
 import {
   bytes,
   clock,
-  coreLoad,
   groupLabel,
-  heat,
-  logical,
   machine,
   noise,
   percent,
@@ -37,7 +44,8 @@ import {
 import { slideIn, useIsoLayoutEffect } from "./widgets";
 
 export type View = "apps" | "tree" | "list";
-export type SortKey = "name" | "pid" | "cpu" | "mem" | "read" | "write" | "io" | "gpu" | "net";
+/** A process column's key (Columns.tsx). */
+export type SortKey = string;
 export type Device = "cpu" | "memory" | "disk" | "wifi" | "gpu" | "battery";
 
 export interface Row {
@@ -58,18 +66,17 @@ export interface Row {
   suspended?: boolean;
 }
 
-type Metric = Exclude<SortKey, "name" | "pid">;
-const columns: { key: Exclude<SortKey, "name">; label: string; title: string }[] = [
-  { key: "pid", label: "PID", title: "进程 ID" },
-  { key: "cpu", label: "CPU", title: "占全部处理器能力的百分比" },
-  { key: "mem", label: "内存", title: "专用工作集：进程独占的物理内存" },
-  { key: "read", label: "磁盘读取", title: "每秒磁盘读取字节数，不包含网络及其他设备 I/O" },
-  { key: "write", label: "磁盘写入", title: "每秒磁盘写入字节数，不包含网络及其他设备 I/O" },
-  { key: "io", label: "I/O", title: "读、写及其他 I/O 合计，包含文件、网络和设备访问" },
-  { key: "gpu", label: "GPU", title: "进程在最忙的 GPU 引擎上占用的时间比例" },
-  { key: "net", label: "网络", title: "每秒发送和接收的字节数" },
-];
-const metrics: Metric[] = ["cpu", "mem", "read", "write", "io", "gpu", "net"];
+type Metric = keyof Reading;
+/** The columns that show a live reading as it is, by the reading they show. */
+const readingOf: Record<string, Metric> = {
+  cpu: "cpu",
+  mem: "mem",
+  diskRead: "read",
+  diskWrite: "write",
+  io: "io",
+  gpu: "gpu",
+  net: "net",
+};
 const zero: Reading = { cpu: 0, mem: 0, read: 0, write: 0, io: 0, gpu: 0, net: 0 };
 function sum(pids: number[], now: Map<number, Reading>): Reading {
   const out = { ...zero };
@@ -110,6 +117,8 @@ interface BuildOptions {
   now: Map<number, Reading>;
   open: Set<string>;
   closed: Set<string>;
+  /** What a column other than the name, PID and the live readings sorts by. */
+  sortValue?: (row: Row) => number | string;
 }
 // Rows as the app builds them (frontend/model.rs): sorted by name, the list
 // falls into the Task Manager categories; any other sort keeps one list.
@@ -131,9 +140,14 @@ export function buildRows(o: BuildOptions): Row[] {
     let c: number;
     if (o.sort === "name") c = collator.compare(name(a), name(b));
     else if (o.sort === "pid") c = (a.count === 1 ? a.pids[0] : 1e9) - (b.count === 1 ? b.pids[0] : 1e9);
-    else {
-      const k = o.sort;
+    else if (readingOf[o.sort]) {
+      const k = readingOf[o.sort];
       c = Math.round(a.values[k] * scale[k]) - Math.round(b.values[k] * scale[k]);
+      if (c === 0) return collator.compare(name(a), name(b)) || a.key.localeCompare(b.key);
+    } else {
+      const va = o.sortValue?.(a) ?? 0,
+        vb = o.sortValue?.(b) ?? 0;
+      c = typeof va === "number" && typeof vb === "number" ? Math.sign(va - vb) : collator.compare(String(va), String(vb));
       if (c === 0) return collator.compare(name(a), name(b)) || a.key.localeCompare(b.key);
     }
     if (c === 0) c = a.key.localeCompare(b.key);
@@ -303,10 +317,12 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
     color: string;
     values: number[];
     max: number;
+    /** The top of the curve's scale, named in the headroom. */
+    scale: string;
     figure: string;
     unit: string;
-    aside?: ReactNode;
-    metrics?: string[];
+    /** Separate readings (CPU, GPU), or one line. */
+    readings: string[];
   }[] = [
     {
       id: "cpu",
@@ -314,9 +330,10 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
       color: "var(--a-cpu)",
       values: h.cpu,
       max: 100,
+      scale: "100%",
       figure: String(Math.round(s.cpu)),
       unit: "%",
-      metrics: [
+      readings: [
         `${clock("p", tick).toFixed(2)} GHz`,
         `${Math.round(cpuTemperature(tick))} °C`,
         `${Math.round(cpuPower(tick))} W`,
@@ -328,9 +345,10 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
       color: "var(--a-mem)",
       values: h.mem,
       max: 100,
+      scale: "32.0 GB",
       figure: (used / 1024 ** 3).toFixed(1),
       unit: "/ 32.0 GB",
-      aside: `${Math.round(s.mem)}%`,
+      readings: [`${Math.round(s.mem)}%`],
     },
     {
       id: "disk",
@@ -338,9 +356,10 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
       color: "var(--a-io)",
       values: h.disk,
       max: diskMax,
+      scale: rate(diskMax),
       figure: diskValue,
       unit: diskUnit,
-      aside: `活动 ${Math.round(s.active)}%`,
+      readings: [`活动 ${Math.round(s.active)}%`],
     },
     {
       id: "wifi",
@@ -348,9 +367,10 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
       color: "var(--a-net)",
       values: h.net,
       max: netMax,
+      scale: rate(netMax),
       figure: netValue,
       unit: netUnit,
-      aside: `收 ${rate(s.rx)} 发 ${rate(s.tx)}`,
+      readings: [`收 ${rate(s.rx)} 发 ${rate(s.tx)}`],
     },
     {
       id: "gpu",
@@ -358,14 +378,10 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
       color: "var(--a-gpu)",
       values: h.gpu,
       max: 100,
+      scale: "100%",
       figure: String(Math.round(s.gpu)),
       unit: "%",
-      aside: (
-        <>
-          <i>{Math.round(gpuTemperature(tick))} °C</i>
-          <i>{Math.round(gpuPower(tick))} W</i>
-        </>
-      ),
+      readings: [`${Math.round(gpuTemperature(tick))} °C`, `${Math.round(gpuPower(tick))} W`],
     },
   ];
   return (
@@ -377,35 +393,33 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
             key={card.id}
             type="button"
             className={"a-vital" + (card.id === "cpu" ? " is-cpu" : "")}
+            style={{ "--c": card.color } as CSSProperties}
             onClick={() => onOpen(card.id)}
             aria-label={open}
             title={open}
           >
+            {/* Under the curve, which keeps below them, as the app draws them. */}
+            <span className="a-vital-scale" aria-hidden="true">
+              {card.scale}
+            </span>
             <span className="a-vital-plot">
-              <Curve series={[{ values: card.values, color: card.color }]} max={card.max} {...curve} />
+              <Curve
+                series={[{ values: card.values, color: card.color, fill: VITAL_FILL }]}
+                max={card.max * VITAL_STRETCH}
+                {...curve}
+              />
             </span>
-            <span className="a-vital-head">
-              <span>{card.name}</span>
-              {card.id === "cpu" ? (
-                <span className="a-cores" title="每个逻辑处理器的使用率" style={{ "--glide": `${interval}ms` } as CSSProperties}>
-                  {logical.map((core) => (
-                    <i key={core.index} style={{ "--v": (coreLoad(core.index, tick) / 100).toFixed(3) } as CSSProperties} />
-                  ))}
-                </span>
-              ) : (
-                <span className="a-vital-aside">{card.aside}</span>
-              )}
-            </span>
+            <span className="a-vital-scrim" aria-hidden="true" />
+            <span className="a-vital-tint" aria-hidden="true" />
+            <span className="a-vital-name">{card.name}</span>
             <span className="a-figure">
               <b>{card.figure}</b>
               <small>{card.unit}</small>
-              {card.metrics && (
-                <span className="a-figure-metrics">
-                  {card.metrics.map((m) => (
-                    <span key={m.slice(-3)}>{m}</span>
-                  ))}
-                </span>
-              )}
+            </span>
+            <span className={"a-vital-readings" + (card.readings.length > 1 ? " is-split" : "")}>
+              {card.readings.map((r) => (
+                <span key={r.slice(-3)}>{r}</span>
+              ))}
             </span>
           </button>
         );
@@ -413,11 +427,25 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
     </div>
   );
 }
+/** The overview curves' area fill at the top of the card, as the app's. */
+const VITAL_FILL = 0.2;
+/**
+ * The curve's scale tops out 20 px under the card's top, at its line, over
+ * a plot 118 px high: the chart's own top is raised to leave the headroom.
+ */
+const VITAL_STRETCH = 118 / 98;
 
 interface TableProps {
   tick: number;
   rows: Row[];
   total: number;
+  /** The columns shown, in their order, the name first (Columns.tsx). */
+  columns: ColumnDef[];
+  autoWidth: boolean;
+  /** The font size setting against its 13 px default. */
+  text: number;
+  list: Process[];
+  priority: Map<number, string>;
   sort: SortKey;
   descending: boolean;
   selected: string | null;
@@ -430,18 +458,24 @@ interface TableProps {
   onEnd: (row: Row, confirm: boolean) => void;
   onDetails: () => void;
   onHold: (hold: boolean) => void;
-  onHeaderMenu: (event: MouseEvent) => void;
-}
-const kindOf = (key: Metric) => (key === "cpu" || key === "gpu" ? "percent" : key === "mem" ? "memory" : "rate");
-function cell(key: Metric, v: Reading) {
-  const value = v[key];
-  const kind = kindOf(key);
-  const text = kind === "percent" ? percent(value) : kind === "memory" ? bytes(value) : rate(value);
-  const dim = kind === "percent" ? value < 0.05 : kind === "rate" ? value < 1 : false;
-  return { text, alpha: heat(kind, value), dim };
+  /** The header's menu, for the column under the pointer. */
+  onHeaderMenu: (event: MouseEvent, column: string | null) => void;
+  /** A dragged header took another place: before `before`, or last. */
+  onMoveColumn: (key: string, before: string | null) => void;
 }
 export function ProcessTable(t: TableProps) {
+  const table = useRef<HTMLDivElement>(null);
+  const head = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
+  const others = t.columns.slice(1);
+  const widths = useColumnWidths(t.columns, t.autoWidth, t.text);
+  const rowMin = others.reduce((a, c) => a + (widths.get(c.key) ?? c.width), NAME_MIN);
+  const ctx = useMemo<CellContext>(
+    () => ({ byPid: new Map(t.list.map((p) => [p.pid, p])), tick: t.tick, efficiency: t.efficiency, priority: t.priority }),
+    [t.list, t.tick, t.efficiency, t.priority],
+  );
+  useTableScroll(table, head, body);
+  const drag = useHeaderDrag({ table, head, body, columns: t.columns, widths, onMove: t.onMoveColumn });
   const reveal = (key: string) =>
     body.current?.querySelector(`[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: "nearest" });
   const keyed = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -502,52 +536,72 @@ export function ProcessTable(t: TableProps) {
   const sortMark = (key: SortKey) =>
     t.sort === key ? <Icon name={t.descending ? "chevronDown" : "chevronUp"} size={12} /> : null;
   const ariaSort = (key: SortKey) => (t.sort === key ? (t.descending ? "descending" : "ascending") : "none");
+  const width = (c: ColumnDef) => widths.get(c.key) ?? c.width;
+  const align = (c: ColumnDef) => (alignsEnd(c) ? " is-end" : "");
   return (
-    <div className="a-table" role="grid" aria-label="进程" aria-rowcount={t.rows.length + 1}>
+    <div
+      ref={table}
+      className="a-table a-ptable"
+      role="grid"
+      aria-label="进程"
+      aria-rowcount={t.rows.length + 1}
+      aria-colcount={t.columns.length}
+      data-moving={drag.lifted ? "" : undefined}
+      style={{ "--a-row-min": rowMin + "px" } as CSSProperties}
+    >
+      {drag.lifted && <style>{drag.style}</style>}
       <div
         className="a-thead"
-        role="row"
+        ref={head}
         onContextMenu={(event) => {
           event.preventDefault();
-          t.onHeaderMenu(event);
+          t.onHeaderMenu(event, (event.target as Element).closest("[data-col]")?.getAttribute("data-col") ?? null);
         }}
       >
-        <button
-          type="button"
-          role="columnheader"
-          className="a-th a-col-name"
-          aria-sort={ariaSort("name")}
-          title="应用名称或文件描述；次级文字显示可执行文件名。"
-          data-tour="col-name"
-          onClick={() => t.onSort("name")}
-        >
-          <span className="a-th-total">
-            {t.filtered && <Icon name="filter" size={13} />}
-            {t.total} 个进程
-          </span>
-          <span className="a-th-label">
-            <span>名称</span>
-            {sortMark("name")}
-          </span>
-        </button>
-        {columns.map((c) => (
+        <div className="a-thead-row" role="row">
           <button
-            key={c.key}
             type="button"
             role="columnheader"
-            className={`a-th is-end a-col-${c.key}`}
-            title={c.title}
-            aria-sort={ariaSort(c.key)}
-            data-tour={"col-" + c.key}
-            onClick={() => t.onSort(c.key)}
+            className="a-th a-col-name"
+            aria-sort={ariaSort("name")}
+            title="应用名称或文件描述；次级文字显示可执行文件名。"
+            data-tour="col-name"
+            data-col="name"
+            onClick={() => t.onSort("name")}
           >
-            <span className="a-th-total">{c.key === "pid" ? "" : <TotalFor column={c.key} tick={t.tick} />}</span>
+            <span className="a-th-total">
+              {t.filtered && <Icon name="filter" size={13} />}
+              {t.total} 个进程
+            </span>
             <span className="a-th-label">
-              <span>{c.label}</span>
-              {sortMark(c.key)}
+              <span>名称</span>
+              {sortMark("name")}
             </span>
           </button>
-        ))}
+          {others.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              role="columnheader"
+              className={`a-th a-col-${c.key}` + align(c)}
+              style={{ width: width(c) }}
+              title={c.title}
+              aria-sort={ariaSort(c.key)}
+              data-tour={"col-" + c.key}
+              data-col={c.key}
+              onPointerDown={(event) => drag.press(event, c.key)}
+              onClick={() => !drag.dragged() && t.onSort(c.key)}
+            >
+              <span className="a-th-total">
+                <TotalFor column={c.key} tick={t.tick} list={t.list} />
+              </span>
+              <span className="a-th-label">
+                <span data-i18n="column">{c.label}</span>
+                {sortMark(c.key)}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
       <div
         className="a-tbody a-scroll"
@@ -577,10 +631,9 @@ export function ProcessTable(t: TableProps) {
                 <span className="a-group-count">{row.count}</span>
                 <span className="a-group-rule" />
               </span>
-              <span role="gridcell" className="a-td a-col-pid" />
-              {metrics.map((k) => (
-                <span role="gridcell" key={k} className={`a-td is-end a-col-${k}`}>
-                  {cell(k, row.values).text}
+              {others.map((c) => (
+                <span role="gridcell" key={c.key} className={`a-td a-col-${c.key}` + align(c)} style={{ width: width(c) }}>
+                  {c.aggregate ? cellOf(c, row, ctx).text : ""}
                 </span>
               ))}
             </div>
@@ -642,19 +695,23 @@ export function ProcessTable(t: TableProps) {
                 )}
                 {row.suspended && <span className="a-tag">已暂停</span>}
               </span>
-              <span role="gridcell" className="a-td is-end is-faint a-col-pid">
-                {row.count === 1 ? row.pids[0] : ""}
-              </span>
-              {metrics.map((k) => {
-                const c = cell(k, row.values);
+              {others.map((c) => {
+                const cell = cellOf(c, row, ctx);
+                // Long text ends in an ellipsis; hovering shows all of it.
+                const long = c.format === "text" && !!cell.text;
                 return (
                   <span
                     role="gridcell"
-                    key={k}
-                    className={`a-td is-end a-col-${k}` + (c.dim ? " is-faint" : "") + (c.alpha ? " is-heat" : "")}
-                    style={c.alpha ? ({ "--h": c.alpha.toFixed(3) } as CSSProperties) : undefined}
+                    key={c.key}
+                    className={
+                      `a-td a-col-${c.key}` + align(c) + (cell.faint ? " is-faint" : "") + (cell.heat ? " is-heat" : "")
+                    }
+                    style={
+                      cell.heat ? ({ width: width(c), "--h": cell.heat.toFixed(3) } as CSSProperties) : { width: width(c) }
+                    }
+                    title={long ? cell.text : undefined}
                   >
-                    {c.text}
+                    {long ? <span className="a-cell-text">{cell.text}</span> : cell.text}
                   </span>
                 );
               })}
@@ -662,21 +719,32 @@ export function ProcessTable(t: TableProps) {
           ),
         )}
       </div>
+      {/* The raised strip under a dragged column, within the scrolled columns' lane. */}
+      {drag.lifted && (
+        <div
+          className="a-drag-lane"
+          style={{ left: drag.lifted.left, right: drag.lifted.right, bottom: drag.lifted.bottom }}
+          aria-hidden="true"
+        >
+          <div className="a-drag-strip" style={{ width: drag.lifted.width }} />
+        </div>
+      )}
     </div>
   );
 }
 
-// Column totals come from the system sample, as in the app's header band.
-function TotalFor({ column, tick }: { column: Metric; tick: number }) {
+// Column totals come from the system sample, as in the app's header band;
+// threads and handles count the whole system, as the status bar does.
+function TotalFor({ column, tick, list }: { column: string; tick: number; list: Process[] }) {
   const s = sampleAt(tick);
   switch (column) {
     case "cpu":
       return <>{Math.round(s.cpu)}%</>;
     case "mem":
       return <>{Math.round(s.mem)}%</>;
-    case "read":
+    case "diskRead":
       return <>{rate(s.read)}</>;
-    case "write":
+    case "diskWrite":
       return <>{rate(s.write)}</>;
     case "io":
       return <>{rate((s.read + s.write) * 1.12 + s.rx * 0.05)}</>;
@@ -684,6 +752,12 @@ function TotalFor({ column, tick }: { column: Metric; tick: number }) {
       return <>{Math.round(s.gpu)}%</>;
     case "net":
       return <>{rate(s.rx + s.tx)}</>;
+    case "threads":
+      return <>{thousands(list.reduce((a, p) => a + p.threads, 1180))}</>;
+    case "handles":
+      return <>{thousands(list.reduce((a, p) => a + p.handles, 52400))}</>;
+    default:
+      return null;
   }
 }
 

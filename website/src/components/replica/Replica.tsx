@@ -12,6 +12,17 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
+import {
+  ColumnsDialog,
+  columnSortValue,
+  defaultPrefs,
+  descendingFirst,
+  headerMenu,
+  moveBefore,
+  setSelected as selectColumn,
+  visibleColumns,
+  type ColumnPrefs,
+} from "./Columns";
 import { advanceClock, sampleClock, type Motion } from "./Curve";
 import { registerDictionary, setLanguage, type Dictionary, type Language } from "./i18n";
 import FileLock, { inspect, type LockResult } from "./FileLock";
@@ -105,7 +116,8 @@ type Dialog =
   | { kind: "run" }
   | { kind: "end"; row: Row; tree: boolean }
   | { kind: "realtime"; row: Row }
-  | { kind: "rule"; row: Row };
+  | { kind: "rule"; row: Row }
+  | { kind: "columns" };
 interface Toast {
   text: string;
   id: number;
@@ -176,6 +188,16 @@ function useToolbarFit(key: string, hasSearch: boolean, searchFit: number) {
   return { bar, start, trailing, level, search };
 }
 
+type DetailsMode = "open" | "auto" | "closed";
+const DETAILS_MODES: DetailsMode[] = ["open", "auto", "closed"];
+const DETAILS_MODE_NAMES: Record<DetailsMode, string> = {
+  open: "始终显示",
+  auto: "选中进程时显示",
+  closed: "隐藏",
+};
+const nextDetails = (mode: DetailsMode): DetailsMode =>
+  DETAILS_MODES[(DETAILS_MODES.indexOf(mode) + 1) % DETAILS_MODES.length];
+
 export default function Replica({
   initialPage = "processes",
   lang = "zh",
@@ -197,6 +219,9 @@ export default function Replica({
   const [view, setView] = useState<View>("apps");
   const [sort, setSort] = useState<SortKey>("name");
   const [descending, setDescending] = useState(false);
+  // The process columns shown and their order (Columns.tsx).
+  const [columnPrefs, setColumnPrefs] = useState<ColumnPrefs>(defaultPrefs);
+  const shownColumns = useMemo(() => visibleColumns(columnPrefs), [columnPrefs]);
   const [queries, setQueries] = useState<Partial<Record<Page, string>>>({});
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>("all");
@@ -204,7 +229,9 @@ export default function Replica({
   const [historyAt, setHistoryAt] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [service, setService] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  // When the details pane shows, as the app's toolbar button cycles it:
+  // always, while a process is selected, or never.
+  const [detailsMode, setDetailsMode] = useState<DetailsMode>("open");
   // The pane slides in when it is opened, not when the page is shown again.
   const [paneEnters, setPaneEnters] = useState(false);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
@@ -401,7 +428,18 @@ export default function Replica({
   );
 
   const query = queries.processes ?? "";
-  let rows = buildRows({ view, sort, descending, query, list: alive, now, open, closed });
+  const cellContext = { byPid, tick, efficiency, priority };
+  let rows = buildRows({
+    view,
+    sort,
+    descending,
+    query,
+    list: alive,
+    now,
+    open,
+    closed,
+    sortValue: (row) => columnSortValue(sort, row, cellContext),
+  });
   // While the pointer rests on the list the row order holds; values keep updating.
   if (hold && order.current.length) {
     const rank = new Map(order.current.map((key, i) => [key, i]));
@@ -409,6 +447,13 @@ export default function Replica({
     rows = [...known, ...rows.filter((r) => !rank.has(r.key))];
   } else order.current = rows.map((r) => r.key);
   const selectedRow = rows.find((r) => r.key === selected) ?? null;
+  const detailsOpen = detailsMode === "open" || (detailsMode === "auto" && selectedRow !== null);
+  // A row asked for its details: a hidden pane opens and stays open.
+  const revealDetails = () => setDetailsMode((mode) => (mode === "closed" ? "open" : mode));
+  const chooseDetails = (mode: DetailsMode) => {
+    setPaneEnters(true);
+    setDetailsMode(mode);
+  };
 
   const toggleRow = (row: Row) => {
     const folding = row.kind === "group" || view === "tree";
@@ -423,16 +468,40 @@ export default function Replica({
     if (key === sort) setDescending(!descending);
     else {
       setSort(key);
-      setDescending(key !== "name" && key !== "pid");
+      setDescending(descendingFirst(key));
     }
   };
+  // Hiding the column the list is sorted by sorts it by name, as the app does.
+  useIsoLayoutEffect(() => {
+    if (!columnPrefs.selected.includes(sort)) {
+      setSort("name");
+      setDescending(false);
+    }
+  }, [columnPrefs, sort]);
+  const toggleColumn = (key: string) => setColumnPrefs((p) => selectColumn(p, key, !p.selected.includes(key)));
+  const openHeaderMenu = (event: MouseEvent, column: string | null) =>
+    showMenu(
+      { x: event.clientX, y: event.clientY },
+      headerMenu({
+        column,
+        prefs: columnPrefs,
+        onSort: (key, desc) => {
+          setSort(key);
+          setDescending(desc);
+        },
+        onToggle: toggleColumn,
+        onChoose: () => setDialog({ kind: "columns" }),
+        onAutoWidth: () => setColumnPrefs((p) => ({ ...p, autoWidth: !p.autoWidth })),
+        onReset: () => setColumnPrefs(defaultPrefs()),
+      }),
+    );
   const showPid = (pid: number) => {
     go("processes");
     setQueries((q) => ({ ...q, processes: "" }));
     setView("list");
     setClosed(new Set());
     setSelected("p:" + pid);
-    setDetailsOpen(true);
+    revealDetails();
     setDialog(null);
     setTimeout(() => root.current?.querySelector(`[data-key="p:${pid}"]`)?.scrollIntoView({ block: "center" }), 60);
   };
@@ -564,7 +633,7 @@ export default function Replica({
         hint: "Enter",
         run: () => {
           setSelected(row.key);
-          setDetailsOpen(true);
+          revealDetails();
         },
       },
     ];
@@ -864,16 +933,26 @@ export default function Replica({
               )}
               <Button icon="lock" title="查找文件占用（也可将文件拖放到窗口）" label="查找占用文件的进程" onClick={() => setDialog({ kind: "lock" })} />
               {page === "processes" && (
-                <span data-details>
+                <span
+                  data-details
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    showMenu(
+                      { x: event.clientX, y: event.clientY },
+                      DETAILS_MODES.map((mode) => ({
+                        label: DETAILS_MODE_NAMES[mode],
+                        checked: detailsMode === mode,
+                        run: () => chooseDetails(mode),
+                      })),
+                    );
+                  }}
+                >
                   <Button
-                    icon="panel"
-                    title={detailsOpen ? "隐藏详细信息" : "显示详细信息"}
+                    icon={detailsMode === "auto" ? "panelAuto" : "panel"}
+                    title={`详细信息面板：${DETAILS_MODE_NAMES[detailsMode]}\n单击改为“${DETAILS_MODE_NAMES[nextDetails(detailsMode)]}”，右键可直接选择`}
                     label="详细信息面板"
-                    pressed={detailsOpen}
-                    onClick={() => {
-                      setPaneEnters(true);
-                      setDetailsOpen(!detailsOpen);
-                    }}
+                    pressed={detailsMode !== "closed"}
+                    onClick={() => chooseDetails(nextDetails(detailsMode))}
                   />
                 </span>
               )}
@@ -927,6 +1006,11 @@ export default function Replica({
                         tick={tick}
                         rows={rows}
                         total={alive.length}
+                        columns={shownColumns}
+                        autoWidth={columnPrefs.autoWidth}
+                        text={fontSize / 13}
+                        list={alive}
+                        priority={priority}
                         sort={sort}
                         descending={descending}
                         selected={selected}
@@ -937,21 +1021,10 @@ export default function Replica({
                         onSelect={setSelected}
                         onMenu={openRowMenu}
                         onEnd={end}
-                        onDetails={() => setDetailsOpen(true)}
+                        onDetails={revealDetails}
                         onHold={setHold}
-                        onHeaderMenu={(event) =>
-                          showMenu({ x: event.clientX, y: event.clientY }, [
-                            { label: "选择列", run: () => say("演示窗口使用默认列：名称、PID、CPU、内存、磁盘读写、I/O、GPU 和网络。", "info") },
-                            { label: "自动宽度", checked: true },
-                            {
-                              label: "恢复默认列",
-                              run: () => {
-                                setSort("name");
-                                setDescending(false);
-                              },
-                            },
-                          ])
-                        }
+                        onHeaderMenu={openHeaderMenu}
+                        onMoveColumn={(key, before) => setColumnPrefs((p) => moveBefore(p, key, before))}
                       />
                       {detailsOpen && (
                         <Details
@@ -1090,7 +1163,8 @@ export default function Replica({
           <div
             className="a-scrim"
             ref={focusDialog}
-            onPointerDown={(e) => e.target === e.currentTarget && setDialog(null)}
+            // The column dialog keeps its draft: only its own buttons and Esc close it.
+            onPointerDown={(e) => e.target === e.currentTarget && dialog.kind !== "columns" && setDialog(null)}
             onKeyDown={(event) => {
               // Enter confirms, as the dialog's primary button would.
               const target = event.target as HTMLElement;
@@ -1271,6 +1345,16 @@ export default function Replica({
                 </div>
               </div>
             )}
+            {dialog.kind === "columns" && (
+              <ColumnsDialog
+                prefs={columnPrefs}
+                onApply={(next) => {
+                  setColumnPrefs(next);
+                  setDialog(null);
+                }}
+                onClose={() => setDialog(null)}
+              />
+            )}
           </div>
         )}
         {dragging && (
@@ -1394,13 +1478,30 @@ function Navigation({
   );
 }
 
+// Flips a check that keeps its menu open where it is drawn (menus.rs
+// `toggle_in_place`); a submenu's owner showing a count of its checked entries
+// counts again.
+function flipInPlace(items: MenuEntry[], owner: number | null, index: number): MenuEntry[] {
+  const flip = (list: MenuEntry[]) =>
+    list.map((entry, i) => (i === index && entry !== "-" ? { ...entry, checked: !entry.checked } : entry));
+  if (owner === null) return flip(items);
+  return items.map((entry, i) => {
+    if (i !== owner || entry === "-") return entry;
+    const children = flip(entry.children ?? []);
+    const shown = children.filter((c) => c !== "-");
+    const detail = entry.detail === undefined ? undefined : `${shown.filter((c) => c.checked).length}/${shown.length}`;
+    return { ...entry, children, detail };
+  });
+}
+
 // A context menu with one level of submenu: 30 px items, 9 px separators; the
 // submenu opens beside its item after a short hover, or with → and Enter. Its
 // highlight lives here, so moving over it redraws only the menu.
 function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null);
   const subBox = useRef<HTMLDivElement>(null);
-  const items = menu.items;
+  // Kept here: a check that leaves the menu open flips where it is drawn.
+  const [items, setItems] = useState(menu.items);
   const usable = (list: MenuEntry[]) => list.map((e, i) => (e !== "-" && !e.disabled ? i : -1)).filter((i) => i >= 0);
   const [focus, setFocus] = useState<number | null>(menu.keyboard ? (usable(items)[0] ?? null) : null);
   const [sub, setSub] = useState<number | null>(null);
@@ -1456,6 +1557,11 @@ function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }
       clearTimeout(timer.current);
       setSub(index);
       setSubFocus(keyboard ? 0 : null);
+      return;
+    }
+    if (entry.stay) {
+      setItems((list) => flipInPlace(list, inSub ? sub : null, index));
+      entry.run?.();
       return;
     }
     onClose();
@@ -1561,6 +1667,7 @@ function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }
           <span className="a-menu-icon">{glyph && <Icon name={glyph} />}</span>
           {entry.label}
           {entry.hint && <kbd>{entry.hint}</kbd>}
+          {entry.detail && <span className="a-menu-detail">{entry.detail}</span>}
           {owner && (
             <span className="a-menu-more">
               <Icon name="chevronRight" size={12} />
