@@ -15,22 +15,14 @@ ManifestDPIAwareness PerMonitorV2
   SetCompressor /SOLID "{{compression}}"
 !endif
 
-; Keep above !include to stay ahead of any plugin command
-; see https://github.com/tauri-apps/tauri/pull/15422#discussion_r3289239624
-
-
 !include MUI2.nsh
 !include FileFunc.nsh
 !include x64.nsh
 !include WordFunc.nsh
 !include "utils.nsh"
-!include "FileAssociation.nsh"
 !include "Win\COM.nsh"
 !include "Win\Propkey.nsh"
 !include "Win\RestartManager.nsh"
-!include "StrFunc.nsh"
-${StrCase}
-${StrLoc}
 
 !include "{{installer_hooks}}"
 
@@ -41,7 +33,6 @@ ${StrLoc}
 !define VERSIONWITHBUILD "{{version_with_build}}"
 !define HOMEPAGE "{{homepage}}"
 !define INSTALLMODE "{{install_mode}}"
-!define LICENSE "{{license}}"
 !define INSTALLERICON "{{installer_icon}}"
 !define SIDEBARIMAGE "{{sidebar_image}}"
 !define HEADERIMAGE "{{header_image}}"
@@ -53,7 +44,6 @@ ${StrLoc}
 !define COPYRIGHT "{{copyright}}"
 !define OUTFILE "{{out_file}}"
 !define ARCH "{{arch}}"
-!define ADDITIONALPLUGINSPATH "{{additional_plugins_path}}"
 !define ALLOWDOWNGRADES "{{allow_downgrades}}"
 !define DISPLAYLANGUAGESELECTOR "{{display_language_selector}}"
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCTNAME}"
@@ -66,7 +56,6 @@ ${StrLoc}
 Var PassiveMode
 Var UpdateMode
 Var NoShortcutMode
-Var WixMode
 Var OldMainBinaryName
 
 Name "${PRODUCTNAME}"
@@ -335,19 +324,6 @@ Section Install
 
   ; Argus: the installer helper has copied the executable, with retry and native error logging.
 
-  ; Copy resources
-
-
-
-  ; Copy external binaries
-
-
-  ; Create file associations
-
-
-  ; Register deep links
-
-
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
@@ -461,21 +437,7 @@ Section Uninstall
   ${EndIf}
 
   ; Delete the app directory and its content from disk
-  ; Copy main executable
   Delete "$INSTDIR\${MAINBINARYNAME}.exe"
-
-  ; Delete resources
-
-
-  ; Delete external binaries
-
-
-  ; Delete app associations
-
-
-  ; Delete deep links
-
-
 
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
@@ -583,9 +545,6 @@ FunctionEnd
 Function SkipIfPassive
   ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
 FunctionEnd
-Function un.SkipIfPassive
-  ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
-FunctionEnd
 
 Function CreateOrUpdateStartMenuShortcut
   ; We used to use product name as MAINBINARYNAME
@@ -611,12 +570,9 @@ Function CreateOrUpdateStartMenuShortcut
   ${EndIf}
 
   ; Skip creating shortcut if in update mode or no shortcut mode
-  ; but always create if migrating from wix
-  ${If} $WixMode = 0
-    ${If} $UpdateMode = 1
-    ${OrIf} $NoShortcutMode = 1
-      Return
-    ${EndIf}
+  ${If} $UpdateMode = 1
+  ${OrIf} $NoShortcutMode = 1
+    Return
   ${EndIf}
 
   !if "${STARTMENUFOLDER}" != ""
@@ -640,12 +596,9 @@ Function CreateOrUpdateDesktopShortcut
   ${EndIf}
 
   ; Skip creating shortcut if in update mode or no shortcut mode
-  ; but always create if migrating from wix
-  ${If} $WixMode = 0
-    ${If} $UpdateMode = 1
-    ${OrIf} $NoShortcutMode = 1
-      Return
-    ${EndIf}
+  ${If} $UpdateMode = 1
+  ${OrIf} $NoShortcutMode = 1
+    Return
   ${EndIf}
 
   CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"

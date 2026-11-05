@@ -28,7 +28,6 @@ export function renderInstaller(metadata, paths) {
     version_with_build: metadata.version.split("-")[0] + ".0",
     homepage: metadata.homepage,
     install_mode: "perMachine",
-    license: "",
     installer_icon: paths.icon,
     uninstaller_icon: paths.icon,
     sidebar_image: "",
@@ -40,7 +39,6 @@ export function renderInstaller(metadata, paths) {
     copyright: metadata.copyright,
     out_file: paths.output,
     arch: "x64",
-    additional_plugins_path: "",
     allow_downgrades: "false",
     display_language_selector: "false",
     uninstaller_sign_cmd: "",
@@ -67,7 +65,7 @@ export function bundle() {
   const directory = join(root, "target/release/nsis/x64");
   mkdirSync(directory, { recursive: true });
   mkdirSync(dirname(output), { recursive: true });
-  for (const name of ["utils.nsh", "FileAssociation.nsh", "English.nsh", "SimpChinese.nsh"])
+  for (const name of ["utils.nsh", "English.nsh", "SimpChinese.nsh"])
     copyFileSync(join(root, "packaging/windows", name), join(directory, name));
   const script = join(directory, "installer.nsi");
   writeFileSync(

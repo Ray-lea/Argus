@@ -7,7 +7,7 @@
 !define ARGUS_DIR "${__FILEDIR__}"
 
 ; Sets OUT to the text in the installer's language: Simplified Chinese (2052)
-; or English. Keep in step with the languages in resources/app.json.
+; or English. Keep in step with the MUI_LANGUAGE lines of installer-template.nsi.
 !macro ARGUS_TEXT OUT ZH EN
   ${If} $LANGUAGE == 2052
     StrCpy ${OUT} "${ZH}"
