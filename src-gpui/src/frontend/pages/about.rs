@@ -92,7 +92,7 @@ impl Desktop {
             .border_color(p.stroke)
             .rounded(px(8.))
             .bg(p.layer)
-            .child(img("argus/logo.svg").size(px(64.)).flex_shrink_0())
+            .child(widgets::logo(64.))
             .child(
                 div()
                     .flex_1()
@@ -283,7 +283,7 @@ impl Desktop {
                 .to_owned()
         };
         let website = text(manifest, "homepage");
-        let website_mark = img("argus/logo.svg").size(px(44.)).into_any_element();
+        let website_mark = widgets::logo(44.).into_any_element();
         let repository_mark = div()
             .size(px(44.))
             .flex()

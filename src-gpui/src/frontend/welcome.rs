@@ -594,7 +594,7 @@ impl Desktop {
                             .justify_center()
                             .pt(px(8.))
                             .pb(px(4.))
-                            .child(img("argus/logo.svg").size(px(72.))),
+                            .child(widgets::logo(72.)),
                     )
                     .child(
                         self.dialog_title(label("onboarding.welcome.title"))
@@ -1187,7 +1187,7 @@ impl Desktop {
             .flex()
             .items_center()
             .gap(px(14.))
-            .child(img("argus/logo.svg").size(px(40.)).flex_shrink_0())
+            .child(widgets::logo(40.))
             .child(
                 div()
                     .flex_1()

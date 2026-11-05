@@ -282,6 +282,58 @@ pub(in crate::frontend) fn service_connected(status: &Value) -> bool {
 }
 
 /// The colour without its transparency (surfaces drawn without blur).
+/// The app's mark, `size` across. `img` would rasterize the 1024-unit SVG at
+/// twice its own size and sample that texture down some forty times without
+/// mipmaps, breaking its edges into steps; this draws a raster made for the
+/// window's scale at exactly the size shown, on whole device pixels. Up to
+/// 32 px it draws the small mark (a bigger eye, heavier strokes), as the
+/// app's icons do (`scripts/icons.mjs`).
+pub(in crate::frontend) fn logo(size: f32) -> impl IntoElement {
+    thread_local! {
+        static RASTERS: RefCell<HashMap<(bool, i32), Arc<RenderImage>>> = RefCell::default();
+    }
+    let small = size <= 32.;
+    let source: &'static [u8] = if small {
+        include_bytes!("../../../resources/icons/logo-small.svg")
+    } else {
+        include_bytes!("../../../resources/logo.svg")
+    };
+    canvas(
+        |_, _, _| {},
+        move |bounds, _, window, cx| {
+            let scale = window.scale_factor();
+            let pixels = (f32::from(bounds.size.width) * scale).round().max(1.) as i32;
+            let image = RASTERS.with(|rasters| {
+                if let Some(image) = rasters.borrow().get(&(small, pixels)) {
+                    return Some(image.clone());
+                }
+                let renderer = cx.svg_renderer();
+                let svg = renderer.parse_svg(source).ok()?;
+                let side = DevicePixels(pixels);
+                let image = renderer
+                    .render_parsed(&svg, SvgSize::ExactSize(gpui_kit::size(side, side)))
+                    .ok()?;
+                rasters.borrow_mut().insert((small, pixels), image.clone());
+                Some(image)
+            });
+            let Some(image) = image else {
+                return;
+            };
+            let side = px(pixels as f32 / scale);
+            let at = Bounds::new(
+                point(
+                    window.pixel_snap(bounds.origin.x),
+                    window.pixel_snap(bounds.origin.y),
+                ),
+                gpui_kit::size(side, side),
+            );
+            let _ = window.paint_image(at, at, Corners::default(), image, 0, false);
+        },
+    )
+    .size(px(size))
+    .flex_shrink_0()
+}
+
 pub(in crate::frontend) fn solid(color: Hsla) -> Hsla {
     Hsla { a: 1., ..color }
 }

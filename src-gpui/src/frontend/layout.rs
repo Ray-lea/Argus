@@ -688,7 +688,7 @@ impl Desktop {
                     })
                     .text_size(theme::font(12.))
                     .text_color(p.ink)
-                    .child(img("argus/logo.svg").size(px(18.)).flex_shrink_0())
+                    .child(widgets::logo(18.))
                     .child(argus_app::config::app_title()),
             )
             .on_prepaint(track_toolbar(
