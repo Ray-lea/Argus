@@ -163,6 +163,8 @@ Argus 从 GitHub Releases 获取新版本。自动线路支持 `update.argustask
 
 安装包缓存在 `%LOCALAPPDATA%\dev.argus.taskmanager\updates`。重新启动时校验缓存，通过后可直接安装。安装前再次验签，文件已修改或删除时重新下载，安装完成后清理缓存。
 
+从 0.3.4 及更早版本升级后，Argus 启动时在后台删除旧版界面的 WebView2 浏览器数据 `%LOCALAPPDATA%\dev.argus.taskmanager\EBWebView`，设置、历史与日志保留。文件仍被占用时，下次启动再删除。实现见[原生宿主](../architecture/host.md)。
+
 | 设置 | 说明 |
 |---|---|
 | 自动检查更新 | 默认开启。启动约 1 分钟后检查一次，此后每天检查一次；检查失败时 6 小时后重试。关闭后仅在单击“检查更新”时检查。 |

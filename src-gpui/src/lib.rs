@@ -229,10 +229,12 @@ pub fn run() -> anyhow::Result<()> {
     host.manage(settings);
     host.manage(hotkey::HotkeyState::default());
     host.manage(Latest::default());
-    let history = host.path().app_local_data_dir()?.join("history");
+    let local_data = host.path().app_local_data_dir()?;
+    let history = local_data.join("history");
     if !options.test {
         argus_core::history::prune_expired(&history);
     }
+    leftovers::remove_webview_data(local_data);
     host.manage(HistoryDir(history.clone()));
     let saved = host.state::<SettingsStore>().get();
     let state = host.state::<AppState>();
