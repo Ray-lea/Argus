@@ -201,22 +201,54 @@ pub(in crate::frontend) struct Slide {
     pub epoch: u64,
 }
 
-/// Records an element's bounds; a change draws the view it is in (its region)
-/// again once, so geometry that depends on layout (a sliding selection)
-/// catches up on the next frame. Notifying the desktop would draw every region
-/// and table again: a page's controls move on its first frame, in the middle
-/// of its entrance.
+/// An option of a segmented control and where its selection was drawn.
+struct Drawn {
+    /// The control's id (`ui.slides`) and its track's anchor.
+    control: SharedString,
+    track: SharedString,
+    slides: Rc<RefCell<HashMap<SharedString, Slide>>>,
+    option: usize,
+}
+
+/// Records the bounds of a segmented control's track or of one of its
+/// options. The sliding selection is placed by the chosen option's place in
+/// the track: when that changes from where the selection was drawn (`drawn`),
+/// or a part is measured for the first time, the view it is in (its region)
+/// draws again once, so that the selection catches up on the next frame. The
+/// control moving as a whole (a window resized under a right-aligned one)
+/// changes nothing drawn. Notifying the desktop would draw every region and
+/// table again: a page's controls move on its first frame, in the middle of
+/// its entrance.
 fn remember(
     key: SharedString,
     anchors: Rc<RefCell<HashMap<SharedString, Bounds<Pixels>>>>,
+    drawn: Option<Drawn>,
 ) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
     move |bounds, window, cx| {
-        if anchors.borrow().get(&key) == Some(&bounds) {
+        let previous = anchors.borrow_mut().insert(key.clone(), bounds);
+        if previous == Some(bounds) {
             return;
         }
-        anchors.borrow_mut().insert(key.clone(), bounds);
-        let view = window.current_view();
-        window.defer(cx, move |_, cx| cx.notify(view));
+        let moved = previous.is_none()
+            || drawn.as_ref().is_some_and(|drawn| {
+                let place = anchors.borrow().get(&drawn.track).map(|track| {
+                    (
+                        f32::from(bounds.left() - track.left()),
+                        f32::from(bounds.size.width),
+                    )
+                });
+                drawn
+                    .slides
+                    .borrow()
+                    .get(&drawn.control)
+                    .is_some_and(|slide| {
+                        slide.selected == drawn.option && place.is_some() && slide.to != place
+                    })
+            });
+        if moved {
+            let view = window.current_view();
+            window.defer(cx, move |_, cx| cx.notify(view));
+        }
     }
 }
 
@@ -549,7 +581,7 @@ impl Desktop {
             // The track's padding box, the frame the sliding selection is placed
             // in: `on_prepaint` would measure from where its probe happens to sit.
             .child({
-                let remember = remember(track_key, anchors.clone());
+                let remember = remember(track_key.clone(), anchors.clone(), None);
                 canvas(
                     move |bounds, window, cx| remember(bounds, window, cx),
                     |_, _, _, _| {},
@@ -628,7 +660,16 @@ impl Desktop {
                 .accessibility_label(accessible)
                 .when_some(glyph, |b, glyph| b.child(icon(glyph, color)))
                 .when(!icon_only, |b| b.child(name))
-                .on_prepaint(remember(item_key(index), anchors.clone()))
+                .on_prepaint(remember(
+                    item_key(index),
+                    anchors.clone(),
+                    Some(Drawn {
+                        control: id.clone(),
+                        track: track_key.clone(),
+                        slides: self.ui.slides.clone(),
+                        option: index,
+                    }),
+                ))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.act(action.clone(), window, cx);
                 }))

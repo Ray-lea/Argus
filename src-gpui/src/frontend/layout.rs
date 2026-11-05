@@ -1367,10 +1367,27 @@ fn track_region<const N: usize>(
     owner: WeakEntity<Desktop>,
 ) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
     move |bounds, window, cx| {
-        if regions.borrow()[index] == bounds {
+        let previous = regions.borrow()[index];
+        if previous == bounds {
             return;
         }
         regions.borrow_mut()[index] = bounds;
+        // The entries' container (the first region) only longer or shorter
+        // along its row or column, as when the window is resized, moves none
+        // of the entries (those that move are measured themselves): it is
+        // noted for the next render rather than drawing the desktop again.
+        let row = |b: Bounds<Pixels>| b.size.width > b.size.height;
+        let stretched = index == 0
+            && previous.origin == bounds.origin
+            && row(previous) == row(bounds)
+            && if row(bounds) {
+                previous.size.height == bounds.size.height
+            } else {
+                previous.size.width == bounds.size.width
+            };
+        if stretched {
+            return;
+        }
         let owner = owner.clone();
         window.defer(cx, move |_, cx| {
             let _ = owner.update(cx, |_, cx| cx.notify());
