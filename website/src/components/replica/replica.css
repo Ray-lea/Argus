@@ -2877,9 +2877,15 @@ button.a-th:active {
   gap: 8px;
   margin-top: 8px;
 }
+/* Hover raises a card by 2 px and fades in a face of stronger fill and edge,
+   grows its mark by 6 % and its top line to three times its length, and
+   leans its arrow out in the link's colour (167 ms, decelerating); a press
+   sets it 1.5 % deeper (100 ms). Only transforms and opacity move. */
 .a-link-card {
   --tone: var(--a-accent);
+  --lift: 167ms var(--a-ease);
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -2893,17 +2899,29 @@ button.a-th:active {
   color: var(--a-ink);
   line-height: 1.45;
   text-decoration: none;
+  transition: transform var(--lift);
 }
 .a-link-card.is-repo {
   --tone: var(--a-ink);
 }
 .a-link-card:hover {
-  border-color: color-mix(in srgb, var(--tone) 50%, transparent);
-  background: color-mix(in srgb, var(--tone) 11%, var(--a-layer));
+  transform: translateY(-2px);
 }
-/* A line of the link's colour along the top edge. */
-.a-link-card::before {
-  content: "";
+.a-link-card:hover:active {
+  transform: scale(0.985);
+  transition-duration: 100ms;
+}
+.a-link-face {
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border: 1px solid color-mix(in srgb, var(--tone) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tone) 12%, var(--a-layer));
+  opacity: 0;
+  transition: opacity var(--lift);
+}
+.a-link-line {
   position: absolute;
   top: 0;
   left: 18px;
@@ -2911,12 +2929,27 @@ button.a-th:active {
   height: 2px;
   border-radius: 1px;
   background: var(--tone);
+  transform-origin: left center;
+  transition: transform var(--lift);
 }
-.a-link-card > .ico {
+.a-link-arrow {
   position: absolute;
   top: 14px;
   right: 14px;
+  width: 15px;
+  height: 15px;
+}
+.a-link-arrow .ico {
+  position: absolute;
+  inset: 0;
   color: var(--a-ink-2);
+  transition:
+    transform var(--lift),
+    opacity var(--lift);
+}
+.a-link-arrow .is-lit {
+  color: color-mix(in srgb, var(--tone), var(--a-ink) 25%);
+  opacity: 0;
 }
 .a-link-mark {
   display: flex;
@@ -2926,6 +2959,23 @@ button.a-th:active {
   width: 44px;
   height: 44px;
   margin-bottom: 10px;
+  transition: transform var(--lift);
+}
+.a-link-card:hover .a-link-face,
+.a-link-card:hover .a-link-arrow .is-lit {
+  opacity: 1;
+}
+.a-link-card:hover .a-link-line {
+  transform: scaleX(3);
+}
+.a-link-card:hover .a-link-arrow .ico {
+  transform: translate(2px, -2px);
+}
+.a-link-card:hover .a-link-arrow .ico:not(.is-lit) {
+  opacity: 0;
+}
+.a-link-card:hover .a-link-mark {
+  transform: scale(1.06);
 }
 /* GitHub's mark in the window's own opaque background on an ink square. */
 .is-repo .a-link-mark {
@@ -2944,7 +2994,7 @@ button.a-th:active {
   font-weight: 500;
   white-space: nowrap;
 }
-.a-link-card span:last-child {
+.a-link-card > span:last-child {
   margin-top: 2px;
   color: var(--a-ink-2);
   font-size: calc(12px * var(--a-text));

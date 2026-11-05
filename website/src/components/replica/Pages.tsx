@@ -1154,6 +1154,21 @@ export function Settings({
   );
 }
 
+// A link card's moving parts (about.rs `project_link`): the hover face, the
+// line along its top edge, and its arrow, muted and in the link's colour.
+function LinkCardParts() {
+  return (
+    <>
+      <span className="a-link-face" aria-hidden="true" />
+      <span className="a-link-line" aria-hidden="true" />
+      <span className="a-link-arrow" aria-hidden="true">
+        <Icon name="external" size={15} />
+        <Icon name="external" size={15} className="is-lit" />
+      </span>
+    </>
+  );
+}
+
 // About (about.rs): the app and this build, then where to find help, in one
 // column as wide as the settings' content.
 export function About({
@@ -1186,14 +1201,14 @@ export function About({
         </div>
         <div className="a-about-links">
           <a className="a-link-card" href="https://argustask.com/" target="_blank" rel="noopener">
-            <Icon name="external" size={15} />
+            <LinkCardParts />
             <img className="a-link-mark" src="/assets/argus.svg" width="44" height="44" alt="" />
             <strong>Argus 官网</strong>
             <span className="a-link-address">argustask.com</span>
             <span>下载稳定版，阅读使用文档、常见问题和更新日志。</span>
           </a>
           <a className="a-link-card is-repo" href="https://github.com/Ray-lea/Argus" target="_blank" rel="noopener">
-            <Icon name="external" size={15} />
+            <LinkCardParts />
             <span className="a-link-mark">
               <Icon name="github" size={26} />
             </span>
