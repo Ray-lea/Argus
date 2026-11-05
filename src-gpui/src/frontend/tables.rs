@@ -1215,10 +1215,9 @@ impl NativeTable {
         let Some(key) = self.fields.get(column).map(|field| field.key) else {
             return content;
         };
-        let dragged = self
-            .header_drag
-            .as_ref()
-            .is_some_and(|drag| drag.key == key);
+        // Raised from the press until it has glided into place after the
+        // release: drawn over its strip all that time (`lifted_strip`).
+        let dragged = self.lifted == Some(key);
         let dx = self.column_shift(key, Instant::now());
         if dx == 0. && !dragged {
             return content;
