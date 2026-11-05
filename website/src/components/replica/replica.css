@@ -2801,23 +2801,79 @@ button.a-th:active {
   font: inherit;
   font-size: calc(12px * var(--a-text));
 }
+/* A highlighted value inside a card's description, such as an address. */
+.a-setting-text b {
+  color: var(--a-ink);
+  font-weight: inherit;
+}
+
+/* About: one column as wide as the settings' content, centred. */
+.a-about {
+  display: block;
+  padding: 0 12px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.a-about-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 4px 0 32px;
+}
+.a-about-inner h2 {
+  margin: 24px 0 6px;
+  font-size: calc(14px * var(--a-text));
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.a-about-hero {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 112px;
+  margin-top: 6px;
+  padding: 16px 20px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 8px;
+  background: var(--a-layer);
+}
 .a-about-logo {
-  width: 48px;
-  height: 48px;
+  flex: none;
+  width: 64px;
+  height: 64px;
+}
+.a-about-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.a-about-text p {
+  margin: 4px 0 0;
+}
+.a-about-text span {
+  margin-top: 2px;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
 }
 .a-about-name {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  column-gap: 10px;
+}
+.a-about-name strong {
   font-family: var(--a-display);
-  font-size: calc(18px * var(--a-text));
+  font-size: calc(24px * var(--a-text));
   font-weight: 500;
+  line-height: 1.3;
 }
 .a-about-name small {
   color: var(--a-ink-2);
-  font-family: inherit;
-  font-size: calc(12px * var(--a-text));
-  font-weight: 400;
+  font-size: calc(13px * var(--a-text));
+  font-variant-numeric: tabular-nums;
 }
 
 /* Floating surfaces. Menus and lists have no shadow; dialogs keep theirs over a scrim. */
@@ -3426,6 +3482,16 @@ button.a-th:active {
   .a-setting-controls {
     flex-wrap: wrap;
     margin-left: 36px;
+  }
+  .a-about-hero {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  .a-about-text {
+    flex: 1 1 calc(100% - 84px);
+  }
+  .a-about-hero .a-setting-controls {
+    margin-left: 84px;
   }
   .is-nav-left .a-frame {
     flex-direction: column;

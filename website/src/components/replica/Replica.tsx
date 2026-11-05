@@ -76,6 +76,7 @@ const pages: [Page, string, UiIcon][] = [
   ["connections", "连接", "globe"],
   ["history", "历史", "history"],
   ["settings", "设置", "settings"],
+  ["about", "关于", "info"],
 ];
 const critical = new Set([4, 148, 2864, 520, 812, 916, 904, 1004, 1068, 1088]);
 const searchHint: Partial<Record<Page, string>> = {
@@ -245,7 +246,7 @@ export default function Replica({
   const [onScreen, setOnScreen] = useState(true);
   const [tick, setTick] = useState(0);
   const later = useLater(loadPages, page !== "processes" && page !== "performance");
-  const { Services, Startup, Connections, History, Settings } = later ?? {};
+  const { Services, Startup, Connections, History, Settings, About } = later ?? {};
   const Performance = useLater(loadPerformance, page === "performance")?.default;
   const sampled = page === "processes" || page === "performance";
   const running = !paused && !(ctrlHeld && sampled) && onScreen && !tray;
@@ -615,7 +616,7 @@ export default function Replica({
     const target = event.target as HTMLElement;
     const typing = target.closest("input, textarea, [role=combobox], [role=menu]");
     if (event.key === "Control" && !event.repeat && sampled && !dialog) setCtrlHeld(true);
-    if (event.ctrlKey && !event.altKey && /^[1-7]$/.test(event.key)) {
+    if (event.ctrlKey && !event.altKey && /^[1-8]$/.test(event.key)) {
       event.preventDefault();
       go(pages[Number(event.key) - 1][0]);
     } else if (event.ctrlKey && event.key.toLowerCase() === "f" && searchHint[page]) {
@@ -1047,6 +1048,9 @@ export default function Replica({
                     onFontSize={setFontSize}
                     onSay={(text) => say(text, "info")}
                   />
+                )}
+                {page === "about" && About && (
+                  <About onCopy={copy} onQuit={() => setTray("exited")} onSay={(text) => say(text, "info")} />
                 )}
               </>
             </main>

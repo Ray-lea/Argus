@@ -15,7 +15,8 @@ export type Page =
   | "startup"
   | "connections"
   | "history"
-  | "settings";
+  | "settings"
+  | "about";
 interface State {
   accent: Accent | null;
   request: { page: Page; view?: "apps" | "tree" | "list"; at: number } | null;

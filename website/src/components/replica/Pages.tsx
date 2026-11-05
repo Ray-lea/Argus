@@ -770,7 +770,6 @@ const sections: [string, string, UiIcon][] = [
   ["data", "数据与历史", "history"],
   ["rules", "规则", "bolt"],
   ["update", "更新", "update"],
-  ["about", "关于", "info"],
 ];
 function Setting({ icon, title, desc, children }: { icon: UiIcon; title: string; desc?: ReactNode; children?: ReactNode }) {
   return (
@@ -1024,7 +1023,7 @@ export function Settings({
             <Switch state label="显示或隐藏 Argus" checked={values.hotkey} onChange={(v) => set("hotkey", v)} />
           </Setting>
           <Setting icon="keyboard" title="快捷键说明" desc="查看页面切换、刷新暂停、进程操作等快捷键。">
-            <Button onClick={() => onSay("Ctrl+1–7 切换页面；Ctrl+F 搜索进程；Delete 结束选中的进程；按住 Ctrl 暂停刷新。")}>
+            <Button onClick={() => onSay("Ctrl+1–8 切换页面；Ctrl+F 搜索进程；Delete 结束选中的进程；按住 Ctrl 暂停刷新。")}>
               查看快捷键
             </Button>
           </Setting>
@@ -1149,42 +1148,80 @@ export function Settings({
             <Switch state label="自动检查更新" checked={values.autoUpdate} onChange={(v) => set("autoUpdate", v)} />
           </Setting>
         </section>
-        <section>
-          <h2>关于</h2>
-          <div className="a-setting">
-            <img className="a-about-logo" src="/assets/argus.svg" width="48" height="48" alt="" />
-            <div className="a-setting-text">
-              <div className="a-about-name">
-                Argus <small>0.3.4</small>
-              </div>
-              <span>快速、现代、信息丰富的 Windows 任务管理器。</span>
-              <span>正在以管理员身份运行。</span>
-            </div>
-            <div className="a-setting-controls">
-              <Button>更新内容</Button>
-              <Button>退出 Argus</Button>
-            </div>
-          </div>
-          <Setting icon="star" title="项目主页" desc="访问 argustask.com 获取稳定版下载、使用文档和项目联系方式。">
-            <Button tone="accent" icon="external">
-              访问项目主页
-            </Button>
-          </Setting>
-          <Setting icon="sparkle" title="首次启动引导" desc="重新查看常用设置与使用提示。">
-            <Button>打开引导</Button>
-          </Setting>
-          <Setting
-            icon="document"
-            title="许可证"
-            desc="Argus 是自由软件，依据 GNU Affero General Public License 第 3 版或任何更高版本（AGPL-3.0-or-later）发布，可按该许可证的条款再分发和修改。Argus 不提供任何担保。"
-          >
-            <Button>查看许可证</Button>
-          </Setting>
-          <Setting icon="document" title="第三方组件" desc="Argus 包含的开源组件及其许可证与版权声明。">
-            <Button>查看许可声明</Button>
-          </Setting>
-        </section>
       </div>
+      </div>
+    </div>
+  );
+}
+
+// About (about.rs): the app and this build, then where to find help, in one
+// column as wide as the settings' content.
+export function About({
+  onCopy,
+  onQuit,
+  onSay,
+}: {
+  onCopy: (text: string, what: string) => void;
+  onQuit: () => void;
+  onSay: (text: string) => void;
+}) {
+  return (
+    <div className="a-page a-about a-scroll">
+      <div className="a-about-inner">
+        <div className="a-about-hero">
+          <img className="a-about-logo" src="/assets/argus.svg" width="64" height="64" alt="" />
+          <div className="a-about-text">
+            <div className="a-about-name">
+              <strong>Argus</strong>
+              <small>0.3.4</small>
+            </div>
+            <p>快速、现代、信息丰富的 Windows 任务管理器。</p>
+            <span>正在以管理员身份运行。</span>
+            <span>© 2026 Argus contributors</span>
+          </div>
+          <div className="a-setting-controls">
+            <Button onClick={() => onSay("演示窗口不显示更新内容，可在官网的“更新日志”页查看。")}>更新内容</Button>
+            <Button onClick={onQuit}>退出 Argus</Button>
+          </div>
+        </div>
+        <h2>项目与支持</h2>
+        <Setting
+          icon="star"
+          title="项目主页"
+          desc={
+            <span data-i18n="homepage">
+              访问 <b>argustask.com</b> 获取稳定版下载、使用文档和项目联系方式。
+            </span>
+          }
+        >
+          <Button tone="accent" icon="external">
+            访问项目主页
+          </Button>
+        </Setting>
+        <Setting icon="chat" title="交流与反馈" desc="加入 QQ 群 453803497，反馈问题、提出建议或交流使用心得。">
+          <Button onClick={() => onCopy("453803497", "群号")}>复制群号</Button>
+          <Button tone="accent">加入 QQ 群</Button>
+        </Setting>
+        <Setting icon="sparkle" title="首次启动引导" desc="重新查看常用设置与使用提示。">
+          <Button>打开引导</Button>
+        </Setting>
+        <Setting
+          icon="document"
+          title="许可证"
+          desc="Argus 是自由软件，依据 GNU Affero General Public License 第 3 版或任何更高版本（AGPL-3.0-or-later）发布，可按该许可证的条款再分发和修改。Argus 不提供任何担保。"
+        >
+          <Button>查看许可证</Button>
+        </Setting>
+        <Setting icon="document" title="第三方组件" desc="Argus 包含的开源组件及其许可证与版权声明。">
+          <Button>查看许可声明</Button>
+        </Setting>
+        <Setting
+          icon="storage"
+          title="日志"
+          desc="记录运行环境、功能状态、失败步骤、错误码及相关文件或目录的实际路径。仅保存在本机，每个文件最多 1 MB，并保留最近 3 份旧日志；不记录命令行、凭据或文件内容。缺陷报告请使用此入口打开的诊断日志。"
+        >
+          <Button onClick={() => onSay("演示窗口不会打开日志文件夹。")}>打开日志文件夹</Button>
+        </Setting>
       </div>
     </div>
   );

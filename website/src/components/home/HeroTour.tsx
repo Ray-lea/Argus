@@ -129,6 +129,7 @@ const chapters: Chapter[] = [
       { label: "切换浅色主题", find: segment("浅色") },
       { label: "切换深色主题", find: segment("深色") },
       { label: "主题跟随系统", find: segment("跟随系统") },
+      { label: "打开关于页，查看版本、当前权限与项目信息", find: nav("about", "关于"), hold: 2200 },
     ],
   },
   {
