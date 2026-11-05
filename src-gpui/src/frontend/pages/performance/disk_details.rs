@@ -1,6 +1,7 @@
-//! The disk details page: health, device information and the NVMe SMART/health
+//! The disk details page: health, device information and protocol-specific SMART
 //! log as cards, read once each time the page opens (`hardware::disk_details`).
 use super::*;
+mod legacy;
 
 /// Protocol identity describes the manufacturer's device. Windows' generic
 /// serial can be a namespace identifier (NGUID/EUI64), so it is the fallback.
@@ -480,14 +481,26 @@ impl Desktop {
         let mut cards = Vec::new();
         if health.is_object() {
             cards.push(self.disk_health(disk, details, read_at.take(), width, cx));
+        } else if details["smartHealth"].is_object() {
+            cards.push(self.disk_legacy_health(disk, details, read_at.take(), width));
         } else {
             let nvme = text(&details["identity"], "bus") == "nvme";
-            let status = failure("nvmeHealth").filter(|_| nvme);
+            let status = if nvme {
+                failure("nvmeHealth")
+            } else {
+                failure("service")
+                    .or_else(|| failure("smartAccess"))
+                    .or_else(|| failure("ataAttributes"))
+                    .or_else(|| failure("scsiHealth"))
+                    .or_else(|| failure("failurePrediction"))
+            };
             let message = label(&format!(
                 "performance.disk.healthMissing.{}",
                 match &status {
+                    _ if details["ataIdentity"]["smartEnabled"].as_bool() == Some(false) =>
+                        "smartDisabled",
                     Some(status) => text(status, "state"),
-                    None => "notNvme",
+                    None => "unsupported",
                 }
             ));
             cards.push(self.card(
@@ -507,6 +520,8 @@ impl Desktop {
                 false,
                 self.disk_attributes(health, width),
             ));
+        } else if details["smartHealth"].is_object() {
+            cards.extend(self.disk_legacy_attributes(details));
         }
         div()
             .flex()
@@ -902,7 +917,12 @@ impl Desktop {
             ));
         }
         let features = [
-            (details["nvmeHealth"].is_object(), "smart"),
+            (
+                details["nvmeHealth"].is_object()
+                    || details["smartHealth"].is_object()
+                    || boolean(&details["ataIdentity"], "smartSupported"),
+                "smart",
+            ),
             (
                 boolean(details, "trimEnabled") || boolean(nvme, "datasetManagement"),
                 "trim",
@@ -933,6 +953,12 @@ impl Desktop {
                             .child(name)
                     }))
                     .into_any_element(),
+            ));
+        }
+        if let Some(rpm) = details["ataIdentity"]["rotationRpm"].as_u64() {
+            link_rows.push((
+                label("performance.disk.rotation"),
+                plain(tr!("performance.disk.rpm", value = rpm)),
             ));
         }
         let wide = width >= 2. * 300. + GROUP_GAP;

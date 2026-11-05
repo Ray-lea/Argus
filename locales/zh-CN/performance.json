@@ -25,10 +25,19 @@
     "graph": "CPU 图表",
     "overall": "整体",
     "logical": "多核",
-    "modeTitle": { "overall": "所有逻辑处理器的整体利用率", "logical": "每个逻辑处理器一张曲线图" },
+    "modeTitle": {
+      "overall": "所有逻辑处理器的整体利用率",
+      "logical": "每个逻辑处理器一张曲线图"
+    },
     "pages": "CPU 页面",
-    "page": { "overview": "概览", "details": "详情" },
-    "filterShort": { "p": "P 核", "e": "E 核" },
+    "page": {
+      "overview": "概览",
+      "details": "详情"
+    },
+    "filterShort": {
+      "p": "P 核",
+      "e": "E 核"
+    },
     "utilizationChart": "利用率 %",
     "total": "总计",
     "kernel": "内核",
@@ -275,7 +284,10 @@
     "removable": "可移动",
     "yes": "是",
     "warningTemperature": "警告温度",
-    "page": { "overview": "概览", "details": "详情" },
+    "page": {
+      "overview": "概览",
+      "details": "详情"
+    },
     "refresh": "重新读取",
     "readAt": "读取于 {time}",
     "loading": "正在读取磁盘信息…",
@@ -283,7 +295,12 @@
     "openFailed": "无法打开此磁盘。",
     "errorCode": "Windows 错误码 {code}",
     "health": "健康状况",
-    "status": { "good": "良好", "caution": "注意", "bad": "异常" },
+    "status": {
+      "good": "良好",
+      "caution": "注意",
+      "bad": "异常",
+      "unknown": "未知"
+    },
     "lifeLeft": "剩余寿命 {percent}%",
     "warningAt": "警告 {value} °C",
     "criticalAt": "严重 {value} °C",
@@ -308,11 +325,13 @@
     },
     "noWarnings": "无",
     "healthMissing": {
-      "notNvme": "暂不支持读取此类磁盘的 SMART 属性，目前仅支持 NVMe 健康日志。",
-      "accessDenied": "无法读取 NVMe 健康日志：访问被拒绝。",
-      "unsupported": "设备或驱动未提供 NVMe 健康日志。",
-      "unavailable": "无法读取 NVMe 健康日志。",
-      "invalidData": "设备返回的 NVMe 健康日志无效。"
+      "accessDenied": "读取磁盘健康信息时访问被拒绝。",
+      "unsupported": "设备或驱动未提供可读取的磁盘健康信息。",
+      "unavailable": "磁盘健康信息暂不可用。",
+      "invalidData": "设备返回的磁盘健康数据无效。",
+      "serviceUnavailable": "更多 SMART 信息需要特权服务，可在“设置 → 权限”中安装并启动。",
+      "serviceOutdated": "读取更多 SMART 信息需要更新特权服务，可在“设置 → 权限”中更新。",
+      "smartDisabled": "设备的 SMART 功能已停用。"
     },
     "device": "设备信息",
     "model": "型号",
@@ -322,18 +341,37 @@
     "hide": "隐藏",
     "bytes": "{count} 字节",
     "interface": "接口",
-    "bus": { "virtual": "虚拟磁盘", "spaces": "存储空间", "other": "其他" },
+    "bus": {
+      "virtual": "虚拟磁盘",
+      "spaces": "存储空间",
+      "other": "其他"
+    },
     "transfer": "传输模式",
     "linkMaximum": "{current}（最高 {maximum}）",
     "standard": "标准",
     "sectors": "扇区大小",
     "sectorSizes": "逻辑 {logical}，物理 {physical}",
     "features": "支持的功能",
-    "feature": { "smart": "SMART", "trim": "TRIM", "writeCache": "易失性写入缓存" },
+    "feature": {
+      "smart": "SMART",
+      "trim": "TRIM",
+      "writeCache": "易失性写入缓存"
+    },
     "smart": "SMART 属性",
     "smartSource": "NVMe 健康日志",
-    "group": { "health": "健康", "usage": "使用情况", "temperature": "温度" },
-    "column": { "value": "数值", "raw": "原始值" },
+    "group": {
+      "health": "健康",
+      "usage": "使用情况",
+      "temperature": "温度"
+    },
+    "column": {
+      "value": "数值",
+      "raw": "原始值",
+      "attribute": "属性",
+      "current": "当前值",
+      "worst": "最差值",
+      "threshold": "阈值"
+    },
     "attribute": {
       "criticalWarning": "严重警告",
       "availableSpare": "可用备用空间",
@@ -356,7 +394,57 @@
       "thermalTransitions": "热管理温度 {index} 转换次数",
       "thermalTime": "热管理温度 {index} 总时间"
     },
-    "unit": { "hours": "小时", "minutes": "分钟", "seconds": "秒" }
+    "unit": {
+      "hours": "小时",
+      "minutes": "分钟",
+      "seconds": "秒"
+    },
+    "rotation": "转速",
+    "rpm": "{value} 转／分钟",
+    "sources": {
+      "windows": "Windows 故障预测",
+      "ata": "ATA SMART",
+      "sat": "ATA SMART（桥接）",
+      "scsi": "SCSI 健康日志"
+    },
+    "ata": {
+      "readErrors": "读取错误率",
+      "spinUp": "启动时间",
+      "startStop": "启停次数",
+      "reallocated": "重映射扇区",
+      "seekErrors": "寻道错误率",
+      "powerOn": "通电计数",
+      "spinRetry": "启动重试",
+      "powerCycles": "通电次数",
+      "endToEnd": "端到端错误",
+      "uncorrectable": "已报告不可校正错误",
+      "timeout": "命令超时",
+      "airflow": "气流温度",
+      "shock": "冲击事件",
+      "retract": "断电收回次数",
+      "loadCycles": "磁头加载次数",
+      "temperature": "温度",
+      "reallocationEvents": "重映射事件",
+      "pending": "待映射扇区",
+      "offlineUncorrectable": "离线不可校正扇区",
+      "crc": "接口 CRC 错误",
+      "vendor": "厂商属性",
+      "vendorHint": "属性名称采用常见含义，具体含义及原始值单位由厂商定义。原始值以十六进制显示。",
+      "thresholdsMissing": "部分属性未提供阈值，显示“—”。"
+    },
+    "scsi": {
+      "sense": "设备健康告警：ASC {asc}，ASCQ {ascq}",
+      "read": "读取",
+      "write": "写入",
+      "fast": "快速校正错误",
+      "delayed": "延迟校正错误",
+      "retry": "重读／重写次数",
+      "corrected": "已校正错误总数",
+      "corrections": "纠错算法调用次数",
+      "processedBytes": "已处理字节数",
+      "uncorrected": "未校正错误总数",
+      "counters": "读写错误统计"
+    }
   },
   "network": {
     "sub": "收 {rx}  发 {tx}",
@@ -434,7 +522,11 @@
     "engineSmart": "智能显示",
     "engineSmartTitle": "仅显示曲线时间范围内有占用的引擎",
     "layout": "引擎图布局",
-    "layouts": { "grid": "网格", "focus": "焦点", "rows": "列表" },
+    "layouts": {
+      "grid": "网格",
+      "focus": "焦点",
+      "rows": "列表"
+    },
     "layoutTitles": {
       "grid": "引擎图均匀排列",
       "focus": "放大第一个引擎，其余排在旁边",

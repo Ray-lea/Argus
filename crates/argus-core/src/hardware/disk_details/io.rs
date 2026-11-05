@@ -26,12 +26,12 @@ const DESCRIPTOR_SIZE: usize = size_of::<STORAGE_PROTOCOL_DATA_DESCRIPTOR>();
 
 #[derive(Debug)]
 pub(super) struct Failure {
-    state: DiskQueryState,
-    code: Option<u32>,
+    pub state: DiskQueryState,
+    pub code: Option<u32>,
 }
 
 impl Failure {
-    fn native(error: windows::core::Error) -> Self {
+    pub fn native(error: windows::core::Error) -> Self {
         let hresult = error.code().0 as u32;
         let code = if hresult >> 16 == 0x8007 {
             hresult & 0xffff
@@ -48,7 +48,7 @@ impl Failure {
         }
     }
 
-    fn invalid() -> Self {
+    pub fn invalid() -> Self {
         Self {
             state: DiskQueryState::InvalidData,
             code: None,
@@ -56,12 +56,12 @@ impl Failure {
     }
 }
 
-type Result<T> = std::result::Result<T, Failure>;
+pub(super) type Result<T> = std::result::Result<T, Failure>;
 
 pub(super) fn query(index: u32) -> DiskDetails {
     let mut result = DiskDetails::empty(index);
     let path = wide(&format!(r"\\.\PhysicalDrive{index}"));
-    // No GENERIC_READ/WRITE, pass-through commands, or privileged fallback.
+    // Base queries work with a zero-access handle. The service supplements them.
     let opened = unsafe {
         CreateFileW(
             PCWSTR(path.as_ptr()),
@@ -137,10 +137,17 @@ pub(super) fn query(index: u32) -> DiskDetails {
             });
         }
     }
+    if result.needs_smart_supplement() {
+        super::legacy::prediction(handle.0, &mut result);
+    }
     result
 }
 
-fn record<T>(details: &mut DiskDetails, query: DiskQuery, result: Result<T>) -> Option<T> {
+pub(super) fn record<T>(
+    details: &mut DiskDetails,
+    query: DiskQuery,
+    result: Result<T>,
+) -> Option<T> {
     match result {
         Ok(value) => {
             details.queries.push(DiskQueryStatus {
@@ -301,7 +308,8 @@ fn identity(data: &[u8]) -> Result<DiskIdentity> {
             16 => "spaces",
             17 => "nvme",
             _ => "other",
-        },
+        }
+        .into(),
         bus_code,
         removable: boolean(data[10])?,
     })

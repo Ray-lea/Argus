@@ -1,19 +1,34 @@
 //! On-demand, read-only disk information. Keep device queries off the sampler.
 
+mod ata;
 mod io;
+mod legacy;
 mod nvme;
 mod pcie;
+mod scsi;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
+
+pub use ata::{AtaAttribute, AtaIdentity};
+pub use legacy::{SmartHealth, SmartSource};
+pub use scsi::{ScsiCounter, ScsiIdentity};
 
 pub use nvme::{NvmeHealth, NvmeIdentity, NvmeTemperature, NvmeThermalManagement, NvmeVersion};
 pub use pcie::{PcieLink, PcieLinkRate};
 
 /// NVMe counters are 128-bit. Decimal strings survive JSON and UI round trips.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "String")]
 pub struct DiskCounter(pub u128);
+
+impl TryFrom<String> for DiskCounter {
+    type Error = std::num::ParseIntError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse().map(Self)
+    }
+}
 
 impl Serialize for DiskCounter {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -21,7 +36,7 @@ impl Serialize for DiskCounter {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiskDetails {
     pub index: u32,
@@ -38,22 +53,26 @@ pub struct DiskDetails {
     pub pcie_link: Option<PcieLink>,
     pub nvme_identity: Option<NvmeIdentity>,
     pub nvme_health: Option<NvmeHealth>,
+    pub ata_identity: Option<AtaIdentity>,
+    pub scsi_identity: Option<ScsiIdentity>,
+    pub smart_health: Option<SmartHealth>,
+    pub via_service: bool,
     pub queries: Vec<DiskQueryStatus>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiskIdentity {
     pub model: Option<String>,
     /// Returned only by this detail API; never added to periodic snapshots/logs.
     pub serial_number: Option<String>,
     pub firmware_revision: Option<String>,
-    pub bus: &'static str,
+    pub bus: String,
     pub bus_code: u32,
     pub removable: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DiskQuery {
     Open,
@@ -65,9 +84,21 @@ pub enum DiskQuery {
     PcieLink,
     NvmeIdentity,
     NvmeHealth,
+    FailurePrediction,
+    SmartAccess,
+    AtaIdentity,
+    AtaAttributes,
+    AtaThresholds,
+    AtaStatus,
+    ScsiIdentity,
+    ScsiHealth,
+    ScsiTemperature,
+    ScsiReadErrors,
+    ScsiWriteErrors,
+    Service,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DiskQueryState {
     Ready,
@@ -75,9 +106,11 @@ pub enum DiskQueryState {
     AccessDenied,
     Unavailable,
     InvalidData,
+    ServiceOutdated,
+    ServiceUnavailable,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiskQueryStatus {
     pub query: DiskQuery,
@@ -103,6 +136,10 @@ impl DiskDetails {
             pcie_link: None,
             nvme_identity: None,
             nvme_health: None,
+            ata_identity: None,
+            scsi_identity: None,
+            smart_health: None,
+            via_service: false,
             queries: Vec::new(),
         }
     }
@@ -116,6 +153,26 @@ pub fn query(index: u32) -> DiskDetails {
     io::query(index)
 }
 
+/// Fixed read-only ATA/SAT/SCSI queries, called by the existing service.
+/// Opening the device with read/write access grants IOCTL access only: every
+/// command below is an identity or health read. No settings or media are written.
+pub fn query_privileged(index: u32) -> DiskDetails {
+    let mut details = query(index);
+    legacy::supplement(&mut details);
+    details
+}
+
+impl DiskDetails {
+    pub fn needs_smart_supplement(&self) -> bool {
+        self.identity.as_ref().is_some_and(|i| {
+            matches!(
+                i.bus.as_str(),
+                "ata" | "sata" | "usb" | "scsi" | "sas" | "raid"
+            )
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,5 +182,11 @@ mod tests {
         let value = DiskCounter(u128::MAX);
         assert_eq!(serde_json::to_value(value).unwrap(), u128::MAX.to_string());
         assert_eq!(serde_json::to_value(DiskCounter(0)).unwrap(), "0");
+        assert_eq!(
+            serde_json::from_value::<DiskCounter>(serde_json::to_value(value).unwrap())
+                .unwrap()
+                .0,
+            u128::MAX
+        );
     }
 }

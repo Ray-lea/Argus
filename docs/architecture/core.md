@@ -59,7 +59,7 @@
 | `battery.rs` | 电池类驱动 IOCTL：电量、充放电功率、电压、设计 / 完全充电容量、循环次数。标准用户可以只读打开电池设备 |
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
 | `disk.rs` | 以 `FILE_ANY_ACCESS` 存储 IOCTL 查询型号、容量、介质、卷及温度，通过 `IOCTL_DISK_PERFORMANCE` 计算活动时间、传输速率和响应时间 |
-| `disk_details.rs`、`disk_details/` | 磁盘详情的单次只读查询：基本身份、扇区、TRIM、NVMe 控制器身份与 SMART 健康日志、PCIe 链路。只由前端明确请求触发，在命令工作线程执行，结果与周期采样分离 |
+| `disk_details.rs`、`disk_details/` | 磁盘详情的单次只读查询：基本身份、扇区、TRIM、NVMe 控制器身份与健康日志、PCIe 链路、Windows 故障预测；现有特权服务补充 ATA／SAT 身份与 SMART 属性、SCSI 健康日志。只由前端明确请求触发，结果与周期采样分离 |
 | `net.rs` | 网络适配器：接口表（`GetIfTable2`）取吞吐量，`GetAdaptersAddresses` 取地址 |
 | `gpu.rs` | 通过 D3DKMT 查询节点计时、显存和性能数据。逐节点维护计时基线，查询失败或计数重置后重建，可选的性能查询间隔 5 秒重试。占用率结合有效的进程引擎读数与 NVIDIA 核心利用率，并注明来源。PCI 地址用于匹配厂商设备 |
 | `vendor_gpu/` | AMD ADL2 PMLog / Overdrive 与 Intel IGCL 电源域及设备遥测，独立线程加载 System32 库、读取数据；容量为 1 的请求队列，最短 500 ms 采集间隔，过期缓存不进入快照。IGCL 温度、频率、电压及芯片能量不依赖电源域枚举；逐项校验支持标记、单位、类型与范围，有效零值保留，失败后间隔 5 秒重试。`ControlLib.dll` 加载后固定在进程中直至退出：它注册的 ETW 提供程序不随 `ctlClose` 和卸载注销，卸载后一旦有跟踪会话启用该提供程序，系统就会调用已卸载的回调，进程崩溃 |
@@ -70,7 +70,7 @@ CPU 虚拟化状态优先使用 Windows 的可用标志；Hyper-V 或 VBS 占用
 
 ## 磁盘详情接口
 
-宿主命令 `disk_details` 接受 `{ "index": 0 }`，调用 `hardware::disk_details::query(index)`，按 `PhysicalDrive` 编号返回 `DiskDetails`。每次请求读取一份新的 SMART 数据，完成后关闭句柄。磁盘温度和活动率另由周期采样维护。
+宿主命令 `disk_details` 接受 `{ "index": 0 }`，调用 `argus_service::disk_details(index)`，按 `PhysicalDrive` 编号返回 `DiskDetails`。先以本地零访问权限句柄调用 `hardware::disk_details::query(index)`；ATA、SATA、USB、SCSI、SAS、RAID 设备再通过已运行的特权服务补充读取。每次请求读取一份新的 SMART 数据，完成后关闭句柄。磁盘温度和活动率另由周期采样维护。
 
 设备以零访问权限打开，通过 Windows 存储属性查询读取；PCIe 参数通过匹配物理磁盘编号的 PnP 设备树取得，只采用最近 PCI 控制器节点的属性。使用系统现有权限，设备或驱动拒绝时返回对应状态。
 
@@ -81,11 +81,15 @@ CPU 虚拟化状态优先使用 Windows 的可用标志；Hyper-V 或 VBS 占用
 | `pcieLink` | 当前与控制器最大链路的 PCIe 代数、通道数；缺失的部分为 `null`，最大值取控制器端点能力 |
 | `nvmeIdentity` | NVMe 版本、固件与身份、易失性写入缓存能力、Dataset Management 能力、告警／严重温度阈值 |
 | `nvmeHealth` | 严重警告原始位、可用备用空间及阈值、已用寿命百分比、剩余寿命估计、累计读写量与命令数、忙碌分钟、通电次数与小时、不安全关机、介质错误、错误日志条数、超温分钟、八个温度传感器，以及 NVMe 1.3 及以上的热管理转换次数和持续秒数 |
+| `ataIdentity`、`scsiIdentity` | ATA 厂商型号、序列号、固件、SMART 支持与启用状态、设备报告的转速及介质类型；SCSI VPD 80h 单元序列号。界面依次优先使用 NVMe、ATA、SCSI 身份，再回退至通用存储描述符；保留厂商 SN 中合法的前导零 |
+| `smartHealth`、`viaService` | Windows／ATA／SAT／SCSI 来源、设备故障预测、ATA 当前值／最差值／阈值／六字节原始值、SCSI 温度与错误计数；是否经特权服务补充 |
 | `queriedAt`、`queries` | 请求开始时的 Unix 毫秒时间戳；各查询的 `ready`、`unsupported`、`accessDenied`、`unavailable`、`invalidData` 状态及原始 Win32 错误码 |
 
 NVMe 健康日志按控制器读取；同一控制器的多个命名空间可能共享计数。128 位累计计数序列化为十进制字符串，保留全部精度。读写数据单位按每单位 512,000 字节换算，原始计数同时返回；乘法溢出时换算值为 `null`。温度保留开尔文原值并提供摄氏度值，未报告的传感器保留槽位。寿命估计取 `max(0, 100 - percentageUsed)`，严重警告位独立返回，前端应分别展示。序列号只进入显式请求的详情结果，不写入诊断日志或周期快照。
 
-SATA、USB、RAID 等设备提供可读取的通用身份及存储属性；NVMe 专属字段保持 `null`。ATA 厂商 SMART 解释与 USB／RAID 透传覆盖见[路线图](../roadmap.md)。设备响应先校验实际返回字节数、结构版本、偏移和长度，再解析字段；缺失字段保持 `null`。
+普通权限下先查询 `IOCTL_STORAGE_PREDICT_FAILURE`；仅 ATA／SATA 总线的有效 SMART 扇区按 ATA 布局解析。服务使用固定的 ATA IDENTIFY、SMART READ DATA／READ THRESHOLDS／RETURN STATUS，经 ATA pass-through 或 SAT 16／12 字节命令读取；ATA 身份查询未成功时尝试 SCSI VPD 80h、LOG SENSE 2Fh／0Dh／03h／02h。每条透传命令超时为 2 秒，20 秒预算用尽后停止发起后续命令。服务内仅允许一个磁盘详情查询执行。查询不启用 SMART、不触发自检、不发送写入命令。
+
+ATA 扇区校验长度、校验和及重复属性编号，阈值按属性编号关联；仅预故障属性的有效阈值参与失败判定。厂商原始字段按字节保留，通电计数、寿命和读写量不套用通用换算。SCSI 页面校验页号、参数长度和重复编号，保留 ASC／ASCQ。缺失字段保持 `null`，未取得故障预测时健康状态显示“未知”。厂商专用 USB／RAID 命令及属性单位映射见[路线图](../roadmap.md)。
 
 接口依据：[Windows NVMe 查询](https://learn.microsoft.com/en-us/windows/win32/fileio/working-with-nvme-devices)、[NVMe 健康日志字段](https://learn.microsoft.com/en-us/windows/win32/api/nvme/ns-nvme-nvme_health_info_log)、[NVMe 控制器身份](https://learn.microsoft.com/en-us/windows/win32/api/nvme/ns-nvme-nvme_identify_controller_data)。
 

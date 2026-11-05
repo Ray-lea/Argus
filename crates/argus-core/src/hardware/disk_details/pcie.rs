@@ -2,7 +2,7 @@
 
 use std::mem::{offset_of, size_of};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
     CM_Get_DevNode_PropertyW, CM_Get_Device_IDW, CM_Get_Parent, CR_SUCCESS, DIGCF_DEVICEINTERFACE,
     DIGCF_PRESENT, HDEVINFO, SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
@@ -23,7 +23,7 @@ const DISK_INTERFACE: GUID = GUID::from_u128(0x53f56307_b6bf_11d0_94f2_00a0c91ef
 // Windows SDK pciprop.h, DEVPKEY_PciDevice_{Current,Max}Link{Speed,Width}.
 const PCI_PROPERTIES: GUID = GUID::from_u128(0x3ab22e31_8264_4b4e_9af5_a8d2d8e33e62);
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PcieLink {
     pub current: Option<PcieLinkRate>,
@@ -31,7 +31,7 @@ pub struct PcieLink {
     pub maximum: Option<PcieLinkRate>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PcieLinkRate {
     /// PCIe Link Speed encoding: 1 = 2.5 GT/s, 2 = 5, 3 = 8, 4 = 16, etc.

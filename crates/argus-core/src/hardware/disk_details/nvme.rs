@@ -1,10 +1,10 @@
 //! NVMe Identify Controller and SMART/Health log 02h, decoded from bounded bytes.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::DiskCounter;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NvmeIdentity {
     pub model: Option<String>,
@@ -17,7 +17,7 @@ pub struct NvmeIdentity {
     pub critical_temperature_celsius: Option<f32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NvmeVersion {
     pub major: u16,
@@ -25,11 +25,11 @@ pub struct NvmeVersion {
     pub tertiary: u8,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NvmeHealth {
     /// Log 02h describes the controller; namespaces can share these counters.
-    pub scope: &'static str,
+    pub scope: String,
     /// Preserve every warning bit, including bits introduced by newer revisions.
     pub critical_warning: u8,
     pub temperature: NvmeTemperature,
@@ -61,14 +61,14 @@ pub struct NvmeHealth {
     pub thermal_management: Option<NvmeThermalManagement>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NvmeTemperature {
     pub kelvin: u16,
     pub celsius: Option<f32>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NvmeThermalManagement {
     pub threshold1_transitions: u32,
@@ -112,7 +112,7 @@ pub(super) fn health(data: &[u8], version: Option<NvmeVersion>) -> Option<NvmeHe
     let units_read = counter(32);
     let units_written = counter(48);
     Some(NvmeHealth {
-        scope: "controller",
+        scope: "controller".into(),
         critical_warning: data[0],
         temperature: temperature(u16_at(data, 1)),
         available_spare_percent: (data[3] <= 100).then_some(data[3]),

@@ -127,7 +127,7 @@ pub fn process_details(pid: u32, path: Option<String>) -> ProcessDetails {
 }
 
 pub fn disk_details(index: u32) -> argus_core::hardware::disk_details::DiskDetails {
-    argus_core::hardware::disk_details::query(index)
+    argus_service::disk_details(index)
 }
 
 /// Runs `operation` in the privileged service when one runs for this account,

@@ -43,6 +43,9 @@ pub enum Operation {
     NetworkSnapshot,
     SensorSnapshot {},
     DiskSnapshot {},
+    DiskDetails {
+        index: u32,
+    },
     FindHandles {
         paths: Vec<String>,
     },
@@ -103,6 +106,7 @@ pub enum Reply {
     Disk(Option<argus_core::disk_process::DiskSnapshot>),
     /// The service's disk query failed: why, in fixed words and codes.
     DiskFailed(argus_core::disk_process::DiskFailure),
+    DiskDetails(Box<argus_core::hardware::disk_details::DiskDetails>),
     Sensors(Box<argus_core::hardware::CpuSensors>),
     Handles(argus_core::handles::HandleReport),
     Priority(Priority),
@@ -112,6 +116,11 @@ pub enum Reply {
 impl Operation {
     pub fn validate(&self) -> Result<(), ActionError> {
         match self {
+            Self::DiskDetails { index } => {
+                if *index > 4095 {
+                    return Err(ActionError::Refused);
+                }
+            }
             Self::FindHandles { paths } => argus_core::handles::validate_paths(paths)?,
             Self::ApplyRule {
                 pid, create_time, ..
@@ -163,6 +172,17 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
         return Reply::Error(e);
     }
     let result = match operation {
+        Operation::DiskDetails { index } => {
+            // Bound hardware work across clients; a blocked storage driver must
+            // not consume every connection or start concurrent reads of a disk.
+            static READING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+            let Ok(_reading) = READING.try_lock() else {
+                return Reply::Error(ActionError::Refused);
+            };
+            return Reply::DiskDetails(Box::new(
+                argus_core::hardware::disk_details::query_privileged(index),
+            ));
+        }
         Operation::RestoreTaskManager => crate::taskmgr::restore().map_err(ActionError::Os),
         Operation::FindHandles { paths } => {
             return Reply::Handles(crate::handles::scan_local(paths));
@@ -236,6 +256,44 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disk_details_accept_only_a_bounded_disk_number() {
+        for input in [
+            r#"{"op":"diskDetails","index":0,"command":176}"#,
+            r#"{"op":"diskDetails","index":0,"path":"C:"}"#,
+            r#"{"op":"diskDetails","index":-1}"#,
+        ] {
+            assert!(serde_json::from_str::<Operation>(input).is_err());
+        }
+        assert!(Operation::DiskDetails { index: 0 }.validate().is_ok());
+        assert!(Operation::DiskDetails { index: 4096 }.validate().is_err());
+    }
+
+    #[test]
+    fn disk_details_round_trip_preserves_protocol_specific_fields() {
+        let details = serde_json::from_value(serde_json::json!({
+            "index": 0, "queriedAt": 1, "volumes": [], "viaService": false, "queries": [],
+            "ataIdentity": {"model":"Disk", "serialNumber":"0000Factory", "smartSupported":true,
+                "smartEnabled":true, "rotationRpm":7200, "solidState":false},
+            "smartHealth": {"source":"sat", "predictFailure":null, "attributes":[
+                {"id":5,"flags":1,"current":100,"worst":90,"threshold":null,"raw":[1,2,3,4,5,6],"failing":false}
+            ],"counters":[]}
+        })).unwrap();
+        let bytes = serde_json::to_vec(&Reply::DiskDetails(Box::new(details))).unwrap();
+        assert!(bytes.len() < MAX_REPLY);
+        let Reply::DiskDetails(decoded) = serde_json::from_slice::<Reply>(&bytes).unwrap() else {
+            panic!("wrong reply");
+        };
+        assert_eq!(
+            decoded.ata_identity.unwrap().serial_number.as_deref(),
+            Some("0000Factory")
+        );
+        let health = decoded.smart_health.unwrap();
+        assert_eq!(health.predict_failure, None);
+        assert_eq!(health.attributes[0].raw, [1, 2, 3, 4, 5, 6]);
+        assert_eq!(health.attributes[0].threshold, None);
+    }
 
     #[test]
     fn disk_snapshot_is_fixed_and_fits_the_reply_budget() {

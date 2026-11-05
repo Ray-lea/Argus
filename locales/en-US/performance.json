@@ -36,8 +36,14 @@
       "logical": "One chart per logical processor"
     },
     "pages": "CPU pages",
-    "page": { "overview": "Overview", "details": "Details" },
-    "filterShort": { "p": "P-cores", "e": "E-cores" },
+    "page": {
+      "overview": "Overview",
+      "details": "Details"
+    },
+    "filterShort": {
+      "p": "P-cores",
+      "e": "E-cores"
+    },
     "utilizationChart": "% Utilization",
     "total": "Total",
     "kernel": "Kernel",
@@ -290,7 +296,10 @@
     "removable": "Removable",
     "yes": "Yes",
     "warningTemperature": "Warning temperature",
-    "page": { "overview": "Overview", "details": "Details" },
+    "page": {
+      "overview": "Overview",
+      "details": "Details"
+    },
     "refresh": "Read again",
     "readAt": "Read at {time}",
     "loading": "Reading disk information…",
@@ -298,7 +307,12 @@
     "openFailed": "This disk could not be opened.",
     "errorCode": "Windows error code {code}",
     "health": "Health",
-    "status": { "good": "Good", "caution": "Caution", "bad": "Bad" },
+    "status": {
+      "good": "Good",
+      "caution": "Caution",
+      "bad": "Bad",
+      "unknown": "Unknown"
+    },
     "lifeLeft": "{percent}% life remaining",
     "warningAt": "Warning {value} °C",
     "criticalAt": "Critical {value} °C",
@@ -323,11 +337,13 @@
     },
     "noWarnings": "None",
     "healthMissing": {
-      "notNvme": "SMART attributes cannot be read from this kind of disk yet; only the NVMe health log is supported.",
-      "accessDenied": "The NVMe health log could not be read: access denied.",
-      "unsupported": "The device or driver does not provide the NVMe health log.",
-      "unavailable": "The NVMe health log could not be read.",
-      "invalidData": "The device returned an invalid NVMe health log."
+      "accessDenied": "Access to disk health information was denied.",
+      "unsupported": "The device or driver does not provide readable disk health information.",
+      "unavailable": "Disk health information is temporarily unavailable.",
+      "invalidData": "The device returned invalid disk health data.",
+      "serviceUnavailable": "More SMART information requires the privileged service. Install and start it in Settings → Permissions.",
+      "serviceOutdated": "More SMART information requires an updated privileged service. Update it in Settings → Permissions.",
+      "smartDisabled": "SMART is disabled on this device."
     },
     "device": "Device information",
     "model": "Model",
@@ -337,18 +353,37 @@
     "hide": "Hide",
     "bytes": "{count} bytes",
     "interface": "Interface",
-    "bus": { "virtual": "Virtual disk", "spaces": "Storage Spaces", "other": "Other" },
+    "bus": {
+      "virtual": "Virtual disk",
+      "spaces": "Storage Spaces",
+      "other": "Other"
+    },
     "transfer": "Transfer mode",
     "linkMaximum": "{current} (up to {maximum})",
     "standard": "Standard",
     "sectors": "Sector size",
     "sectorSizes": "{logical} logical, {physical} physical",
     "features": "Features",
-    "feature": { "smart": "SMART", "trim": "TRIM", "writeCache": "Volatile write cache" },
+    "feature": {
+      "smart": "SMART",
+      "trim": "TRIM",
+      "writeCache": "Volatile write cache"
+    },
     "smart": "SMART attributes",
     "smartSource": "NVMe health log",
-    "group": { "health": "Health", "usage": "Usage", "temperature": "Temperature" },
-    "column": { "value": "Value", "raw": "Raw" },
+    "group": {
+      "health": "Health",
+      "usage": "Usage",
+      "temperature": "Temperature"
+    },
+    "column": {
+      "value": "Value",
+      "raw": "Raw",
+      "attribute": "Attribute",
+      "current": "Current",
+      "worst": "Worst",
+      "threshold": "Threshold"
+    },
     "attribute": {
       "criticalWarning": "Critical warning",
       "availableSpare": "Available spare",
@@ -371,7 +406,57 @@
       "thermalTransitions": "Thermal limit {index} transitions",
       "thermalTime": "Thermal limit {index} total time"
     },
-    "unit": { "hours": "h", "minutes": "min", "seconds": "s" }
+    "unit": {
+      "hours": "h",
+      "minutes": "min",
+      "seconds": "s"
+    },
+    "rotation": "Rotation speed",
+    "rpm": "{value} RPM",
+    "sources": {
+      "windows": "Windows failure prediction",
+      "ata": "ATA SMART",
+      "sat": "ATA SMART (bridge)",
+      "scsi": "SCSI health log"
+    },
+    "ata": {
+      "readErrors": "Read error rate",
+      "spinUp": "Spin-up time",
+      "startStop": "Start/stop count",
+      "reallocated": "Reallocated sectors",
+      "seekErrors": "Seek error rate",
+      "powerOn": "Power-on counter",
+      "spinRetry": "Spin retry count",
+      "powerCycles": "Power cycle count",
+      "endToEnd": "End-to-end errors",
+      "uncorrectable": "Reported uncorrectable errors",
+      "timeout": "Command timeouts",
+      "airflow": "Airflow temperature",
+      "shock": "Shock events",
+      "retract": "Power-off retract count",
+      "loadCycles": "Load cycle count",
+      "temperature": "Temperature",
+      "reallocationEvents": "Reallocation events",
+      "pending": "Pending sectors",
+      "offlineUncorrectable": "Offline uncorrectable sectors",
+      "crc": "Interface CRC errors",
+      "vendor": "Vendor attribute",
+      "vendorHint": "Attribute names use common meanings. Exact meanings and raw units are vendor-defined. Raw values are hexadecimal.",
+      "thresholdsMissing": "Some attributes do not report a threshold and show “—”."
+    },
+    "scsi": {
+      "sense": "Device health alert: ASC {asc}, ASCQ {ascq}",
+      "read": "Read",
+      "write": "Write",
+      "fast": "Fast corrected errors",
+      "delayed": "Delayed corrected errors",
+      "retry": "Rereads/rewrites",
+      "corrected": "Total corrected errors",
+      "corrections": "Correction algorithm invocations",
+      "processedBytes": "Bytes processed",
+      "uncorrected": "Total uncorrected errors",
+      "counters": "Read/write error counters"
+    }
   },
   "network": {
     "sub": "R: {rx}  S: {tx}",
@@ -443,13 +528,20 @@
     "maxTemperature": "Max temperature",
     "engines": "Engines",
     "engineCount": "Engines shown",
-    "engineCountOption": { "one": "{count} engine", "other": "{count} engines" },
+    "engineCountOption": {
+      "one": "{count} engine",
+      "other": "{count} engines"
+    },
     "engineCountAll": "All {count} engines",
     "engineType": "Engine in this chart",
     "engineSmart": "Smart",
     "engineSmartTitle": "Only the engines busy within the charts' time span",
     "layout": "Engine chart layout",
-    "layouts": { "grid": "Grid", "focus": "Focus", "rows": "List" },
+    "layouts": {
+      "grid": "Grid",
+      "focus": "Focus",
+      "rows": "List"
+    },
     "layoutTitles": {
       "grid": "Engine charts in an even grid",
       "focus": "The first engine large, the others beside it",

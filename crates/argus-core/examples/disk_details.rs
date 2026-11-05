@@ -1,5 +1,6 @@
 //! `cargo run -p argus-core --example disk_details --release -- 0`
 //! Prints one disk's detail API response. Serial numbers are redacted by default.
+//! `--extended` exercises the fixed ATA/SAT/SCSI reads with the current rights.
 
 use std::time::Instant;
 
@@ -13,11 +14,15 @@ fn main() {
         .unwrap_or(0);
     let include_serial = args.iter().any(|arg| arg == "--include-serial");
     let at = Instant::now();
-    let details = disk_details::query(index);
+    let details = if args.iter().any(|arg| arg == "--extended") {
+        disk_details::query_privileged(index)
+    } else {
+        disk_details::query(index)
+    };
     let query_ms = at.elapsed().as_secs_f64() * 1000.0;
     let mut value = serde_json::to_value(&details).expect("serializable disk details");
     if !include_serial {
-        for key in ["identity", "nvmeIdentity"] {
+        for key in ["identity", "nvmeIdentity", "ataIdentity", "scsiIdentity"] {
             if let Some(identity) = value[key].as_object_mut()
                 && identity.get("serialNumber").is_some_and(|v| !v.is_null())
             {

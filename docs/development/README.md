@@ -52,7 +52,7 @@ cargo run -p argus-core --example app_windows --release     # 归入“应用”
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 ```
 
-`disk_details` 使用普通权限，按指定物理磁盘编号读取一次后退出，输出 JSON、各查询状态及耗时。默认遮盖序列号；明确需要核对设备身份时可追加 `--include-serial`。此示例独立于应用与常驻采样，不修改设备配置。
+`disk_details` 使用普通权限，按指定物理磁盘编号读取一次后退出，输出 JSON、各查询状态及耗时。默认遮盖序列号；明确需要核对设备身份时可追加 `--include-serial`。`--extended` 在当前进程权限下执行服务使用的固定 ATA／SAT／SCSI 只读查询，权限不足时返回相应状态。此示例独立于应用与常驻采样，不修改设备配置。
 
 `network_cadence` 无参数运行时启动原生诊断入口，在程序目录写入 `network-launcher.log` 和 `network-results-*` 结果目录；目录只读时使用系统临时目录。它依次对照既有服务、本地完整快照、半秒刷新和 ETW 原始字节数，流量限于本机回环，每项超时为 60 秒。本地 ETW 采集需要相应权限。自动化运行可使用 `--suite --no-wait`；单项参数为 `<间隔毫秒> <时长秒>`，`--collector` 每轮重新采集进程快照，`--local` 使用独立 ETW 会话，`--local --raw-local` 输出原始字节数。
 

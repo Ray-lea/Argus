@@ -45,7 +45,7 @@ const REMOVE_ARG: &str = "--argus-service-remove";
 /// installed service in the same elevation.
 const REFRESH_ARG: &str = "--argus-service-refresh";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const PROTOCOL: u32 = 9;
+const PROTOCOL: u32 = 10;
 
 /// Handle service/helper modes before starting the native UI, its singleton or sampler.
 pub fn run_mode() -> Option<i32> {
@@ -144,6 +144,34 @@ pub fn find_handle_lockers(paths: Vec<String>) -> argus_core::handles::HandleRep
         });
     }
     report
+}
+
+/// On-demand disk reads reuse only an already-running, authenticated service.
+/// Basic identity and NVMe data remain available without it.
+pub fn disk_details(index: u32) -> argus_core::hardware::disk_details::DiskDetails {
+    use argus_core::hardware::disk_details::{self, DiskQuery, DiskQueryState, DiskQueryStatus};
+    let mut local = disk_details::query(index);
+    if !local.needs_smart_supplement() {
+        return local;
+    }
+    let state = match route(Operation::DiskDetails { index }) {
+        Ok(Routed::Replied(reply)) => match *reply {
+            Reply::DiskDetails(mut details) if details.index == index => {
+                details.via_service = true;
+                return *details;
+            }
+            _ => DiskQueryState::Unavailable,
+        },
+        Ok(Routed::Absent) => DiskQueryState::ServiceUnavailable,
+        Ok(Routed::Outdated) => DiskQueryState::ServiceOutdated,
+        Err(_) => DiskQueryState::Unavailable,
+    };
+    local.queries.push(DiskQueryStatus {
+        query: DiskQuery::Service,
+        state,
+        win32_error: None,
+    });
+    local
 }
 
 /// None means no service is installed. Once connected, never retry a mutation
