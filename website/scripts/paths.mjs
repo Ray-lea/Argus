@@ -35,7 +35,6 @@ export async function putIfChanged(base, relative, contents) {
   await rename(temporary, file);
   return true;
 }
-export const putAtomic = putIfChanged;
 
 // Remove files below `dir` that the last preparation did not write, then empty folders.
 export async function prune(dir, keep) {

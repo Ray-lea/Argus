@@ -36,7 +36,7 @@ pub fn run(path: &str, seconds: u64) -> anyhow::Result<()> {
     let (send, receive) = mpsc::sync_channel(1);
     let thread = std::thread::spawn(move || -> Result<()> {
         let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
-        let class = w!("ArgusPrototypeMessageLatency");
+        let class = w!("ArgusProbeMessageLatency");
         let definition = WNDCLASSW {
             lpfnWndProc: Some(procedure),
             hInstance: instance,

@@ -22,7 +22,7 @@ mkdirSync(output, { recursive: true });
 const executable = resolve(output, "argus.exe");
 const sourceExecutable = resolve(input ?? "target/release/argus.exe");
 copyFileSync(sourceExecutable, executable);
-if (process.env.ARGUS_PROTOTYPE_STACK_FILE && existsSync(resolve(dirname(sourceExecutable), "argus.pdb")))
+if (process.env.ARGUS_PROBE_STACK_FILE && existsSync(resolve(dirname(sourceExecutable), "argus.pdb")))
   copyFileSync(resolve(dirname(sourceExecutable), "argus.pdb"), resolve(output, "argus.pdb"));
 const identifier = flag("--identifier", `dev.argus.taskmanager.test.${label}`);
 const [config] = testDirectories(identifier);
@@ -104,7 +104,6 @@ const result = {
     chartLayersDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_CHART_LAYERS"),
     chartBackdropCacheDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_CHART_BACKDROP_CACHE"),
     opaqueWindow: process.argv.includes("--opaque-window") || ["1", "true"].includes(process.env.ARGUS_GPUI_OPAQUE_WINDOW),
-    testChartLayers: Object.hasOwn(process.env, "ARGUS_GPUI_TEST_CHART_LAYERS"),
     prefixCompositionDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION"),
     linearAreaDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_LINEAR_AREA"),
     sceneCacheDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_SCENE_CACHE"),

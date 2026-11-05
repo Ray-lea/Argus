@@ -1,17 +1,16 @@
 // Collects the license texts of the third-party code shipped in argus.exe:
-// the Rust crates linked into it and the npm packages bundled into the UI.
+// the Rust crates linked into it and the vendored components.
 // Writes THIRD-PARTY-NOTICES.txt; `--check` only reports whether it is current.
 // Needs the crate sources locally (any build or `cargo fetch` downloads them).
 // Usage: node scripts/notices.mjs [--check]
 
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const manifestRoot = root;
 const OUT = "THIRD-PARTY-NOTICES.txt";
 const TARGET = "x86_64-pc-windows-msvc";
 const LICENSE_FILE = /^(licen[cs]e|copying|copyright|notice|unlicense)([-_.].*)?$/i;
@@ -47,7 +46,7 @@ function crates() {
       execFileSync(
         "cargo",
         ["metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", TARGET],
-        { cwd: manifestRoot, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
+        { cwd: root, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
       ),
     );
   } catch (e) {
@@ -56,10 +55,9 @@ function crates() {
   const packages = new Map(metadata.packages.map((p) => [p.id, p]));
   const nodes = new Map(metadata.resolve.nodes.map((n) => [n.id, n]));
   const procMacro = (p) => p.targets.some((t) => t.kind.includes("proc-macro"));
-  const names = ["argus"];
-  const apps = metadata.packages.filter((p) => names.includes(p.name) && p.source === null);
+  const app = metadata.packages.find((p) => p.name === "argus" && p.source === null);
   const seen = new Set();
-  const stack = apps.map((app) => app.id);
+  const stack = [app.id];
   while (stack.length) {
     const id = stack.pop();
     if (seen.has(id)) continue;
@@ -81,39 +79,6 @@ function crates() {
     }));
 }
 
-/** npm packages bundled into the UI: the production dependencies and theirs. */
-function npmPackages() {
-  // A command line, not an argument list: pnpm is a .cmd shim that needs a shell.
-  const tree = JSON.parse(
-    execSync("pnpm list --prod --json --depth Infinity", {
-      cwd: root,
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    }),
-  )[0];
-  const found = new Map();
-  const walk = (deps) => {
-    for (const [name, dep] of Object.entries(deps ?? {})) {
-      const key = `${name}@${dep.version}`;
-      if (found.has(key)) continue;
-      const manifest = JSON.parse(readFileSync(join(dep.path, "package.json"), "utf8"));
-      // Type declarations only; nothing of them ends up in the bundle.
-      if (!manifest.main && !manifest.module && !manifest.exports) continue;
-      const repo = typeof manifest.repository === "string" ? manifest.repository : manifest.repository?.url;
-      found.set(key, {
-        name,
-        version: dep.version,
-        license: manifest.license ?? "未声明",
-        url: (repo ?? `https://www.npmjs.com/package/${name}`).replace(/^git\+/, "").replace(/\.git$/, ""),
-        texts: licenseTexts(dep.path),
-      });
-      walk(dep.dependencies);
-    }
-  };
-  walk(tree.dependencies);
-  return [...found.values()];
-}
-
 function vendored() {
   return ["pawnio", "cpu-layouts"].map((component) => {
     const dir = join(root, "crates/argus-service/vendor", component);
@@ -126,8 +91,8 @@ function vendored() {
   });
 }
 
-function render(rust, npm, native) {
-  const all = [...rust, ...npm, ...native];
+function render(rust, native) {
+  const all = [...rust, ...native];
   const byName = (a, b) => a.name.localeCompare(b.name, "en") || a.version.localeCompare(b.version, "en");
   const line = (p) => `  ${p.name} ${p.version}（${p.license}）${p.url}`;
   const rule = "=".repeat(80);
@@ -144,9 +109,6 @@ function render(rust, npm, native) {
     "",
     `Rust 组件（${rust.length} 个）`,
     ...rust.sort(byName).map(line),
-    "",
-    `界面组件（${npm.length} 个）`,
-    ...npm.sort(byName).map(line),
     "",
     `内核传感器模块（${native.length} 个组件）`,
     ...native.sort(byName).map(line),
@@ -197,7 +159,7 @@ function render(rust, npm, native) {
   return `${out.join("\n")}\n`;
 }
 
-const text = render(crates(), npmPackages(), [...vendored(),{name:"Native installer templates (Tauri-derived)",version:"2.12.3",license:"MIT OR Apache-2.0",url:"https://github.com/tauri-apps/tauri",texts:[readFileSync(join(root,"packaging/windows/LICENSE-TAURI-MIT"),"utf8"),readFileSync(join(root,"packaging/windows/LICENSE-TAURI-APACHE"),"utf8")]}]);
+const text = render(crates(), [...vendored(),{name:"Native installer templates (Tauri-derived)",version:"2.12.3",license:"MIT OR Apache-2.0",url:"https://github.com/tauri-apps/tauri",texts:[readFileSync(join(root,"packaging/windows/LICENSE-TAURI-MIT"),"utf8"),readFileSync(join(root,"packaging/windows/LICENSE-TAURI-APACHE"),"utf8")]}]);
 const path = join(root, OUT);
 if (process.argv.includes("--check")) {
   if (!existsSync(path) || readFileSync(path, "utf8") !== text) {

@@ -1004,7 +1004,7 @@ pub fn run(args: &[String]) -> Result<()> {
                 }
                 if !search.hwnd.0.is_null() {
                     #[cfg(target_arch = "x86_64")]
-                    if let Ok(path) = std::env::var("ARGUS_PROTOTYPE_STACK_FILE") {
+                    if let Ok(path) = std::env::var("ARGUS_PROBE_STACK_FILE") {
                         let thread = GetWindowThreadProcessId(search.hwnd, None);
                         stack_sampler =
                             Some(crate::stacks::Sampler::start(search.pid, thread, path));

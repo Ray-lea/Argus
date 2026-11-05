@@ -16,8 +16,6 @@
   Cache-Control: public, max-age=300, no-transform
 /changelog/*
   Cache-Control: public, max-age=300, no-transform
-/questions/*
-  Cache-Control: public, max-age=300, no-transform
 /privacy/*
   Cache-Control: public, max-age=300, no-transform
 /signing/*

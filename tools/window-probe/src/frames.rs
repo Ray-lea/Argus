@@ -1,4 +1,4 @@
-//! Identical, GPU-resident window capture observes both renderers without a pixel readback.
+//! GPU-resident window capture observes the presented frames without a pixel readback.
 use std::{
     sync::{
         Arc, Mutex,

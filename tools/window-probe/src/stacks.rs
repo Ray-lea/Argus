@@ -125,10 +125,7 @@ fn sample(pid: u32, main: u32, path: &str, stop: &AtomicBool) -> anyhow::Result<
                         let _ = LocalFree(Some(HLOCAL(description.0.cast())));
                     }
                 }
-                if entry.th32ThreadID == main
-                    || name == "prototype-frames"
-                    || name == "VSyncProvider"
-                {
+                if entry.th32ThreadID == main || name == "VSyncProvider" {
                     threads.push((
                         entry.th32ThreadID,
                         if entry.th32ThreadID == main {

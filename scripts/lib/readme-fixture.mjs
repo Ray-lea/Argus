@@ -39,8 +39,7 @@ export function previewFixture(language) {
   const fixture = json(`${source}/desktop.json`);
   fixture.icons = [...icons.values()].map(png => png.toString("base64"));
   const base = fixture.snapshot;
-  base.processes = base.processes.filter(p => p.webView?.hostName !== "argus.exe"
-    && !["steamwebhelper.exe", "WeChatAppEx.exe"].includes(p.name)
+  base.processes = base.processes.filter(p => !["steamwebhelper.exe", "WeChatAppEx.exe"].includes(p.name)
     && (!["steam.exe", "Weixin.exe"].includes(p.name) || p.appWindow));
   for (const p of base.processes) {
     if (replacements[p.name]) {

@@ -436,8 +436,6 @@ Rust 组件（426 个）
   zune-jpeg 0.4.21（MIT OR Apache-2.0 OR Zlib）https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg
   zune-jpeg 0.5.15（MIT OR Apache-2.0 OR Zlib）https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg
 
-界面组件（0 个）
-
 内核传感器模块（3 个组件）
   CPU sensor register layouts 869b7e825723+cd60f10f3290+def79d66d543（GPL-3.0-only AND MPL-2.0 AND MIT）https://github.com/irusanov/ZenStates-Core
   Native installer templates (Tauri-derived) 2.12.3（MIT OR Apache-2.0）https://github.com/tauri-apps/tauri
