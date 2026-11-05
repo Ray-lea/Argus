@@ -25,7 +25,6 @@
     "next": "16.4.2",
     "parse5": "^8.0.0",
     "postcss": "^8.5.32",
-    "prettier": "^3.9.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.4",
