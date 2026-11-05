@@ -72,8 +72,11 @@ jobs:
       # builds leave the updater artifacts off, so they need no key.
       - name: Install NSIS
         run: choco install nsis --version=3.13 -y --no-progress
+      # A release shows its version alone; other builds name their commit
+      # (build-support/build-version.rs).
       - name: Build
         env:
+          ARGUS_BUILD_METADATA: ""
           ARGUS_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           ARGUS_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
@@ -115,6 +118,8 @@ jobs:
           }
           $entry = Get-ItemProperty $key
           if ($entry.DisplayVersion -ne $env:VERSION) { throw "卸载项的版本是 $($entry.DisplayVersion)" }
+          $shown = (Get-Item (Join-Path $dir "argus.exe")).VersionInfo.ProductVersion
+          if ($shown -ne $env:VERSION) { throw "argus.exe 的版本是 $shown" }
           if ($entry.Publisher -ne "Argus contributors") { throw "卸载项的发布者是 $($entry.Publisher)" }
           # The installed image updates through the installer. Administrator and
           # Task Manager copies count by their protected folders and records
