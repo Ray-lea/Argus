@@ -12,7 +12,7 @@ body:
     id: version
     attributes:
       label: Argus 版本 / Argus version
-      description: 设置 → 关于 中显示的版本号。/ The version shown in Settings → About.
+      description: 关于页或状态栏左端显示的版本号。/ The version shown on the About page or at the left end of the status bar.
       placeholder: 例如 / e.g. 0.1.0
     validations:
       required: true
@@ -74,4 +74,4 @@ body:
     id: logs
     attributes:
       label: 日志与截图 / Logs and screenshots
-      description: 日志位于 设置 → 关于 → 打开日志文件夹。附上问题发生前后的相关内容；截图可直接粘贴。/ Logs are in Settings → About → Open log folder. Include the part around the problem; screenshots can be pasted directly.
+      description: 日志位于 关于 → 打开日志文件夹。附上问题发生前后的相关内容；截图可直接粘贴。/ Logs are in About → Open log folder. Include the part around the problem; screenshots can be pasted directly.

@@ -25,20 +25,19 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 不要把窗口调到前台、抢焦点，也不要截取整个桌面或用桌面复制录屏，那会拍到与项目无关的内容。要看 Argus，只抓它自己的窗口（Windows.Graphics.Capture 的窗口捕获，被挡住也能录）。
 - 测试实例用 `--test --identifier dev.argus.taskmanager.test.<标签>` 指定独立标识，测完删除该标识在 `%APPDATA%` 和 `%LOCALAPPDATA%` 下的目录。不换标识的实例与已安装的 Argus 共用单实例锁和设置：安装版正在运行时会转交给它，没在运行时会读写真实的设置。
 - 核对界面用开发构建（`cargo build -p argus --bin argus`，界面与采集 crate 为 opt-level 2，改一处约 1 分钟）；发布构建是 fat LTO 加单个 codegen unit，界面改动重编约 8–10 分钟，只用于性能测量和交付前的最终确认。截图、录制和检查用 `node scripts/ui-shots.mjs <标签> <步骤文件>`，它负责隔离标识、启动、清理和断言，用法见 `docs/development/gpui.md`。
-- 测试实例一律带 `--hidden` 启动，主窗口创建后用 `SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 不激活地显示在最底层，并全程监视前台（每 50 ms 查一次 `GetForegroundWindow`，前台不应落到测试进程或其子进程）。不要正常启动后再放到最底层：setup 显示窗口时已经激活了它，事后放到最底层也还不回前台，后台进程没有权限把前台交还原来的窗口。主窗口按进程 ID、窗口类 `Zed::Window` 和标题（发布版为 `Argus`）枚举顶层窗口查找，隐藏时也能找到；只按标题可能拿到同一进程弹出的消息框，`Process.MainWindowHandle` 可能拿到单实例插件的 6×6 辅助窗口。
+- 测试实例一律带 `--hidden` 启动，主窗口创建后用 `SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 不激活地显示在最底层，并全程监视前台（每 50 ms 查一次 `GetForegroundWindow`，前台不应落到测试进程或其子进程）。不要正常启动后再放到最底层：setup 显示窗口时已经激活了它，事后放到最底层也还不回前台，后台进程没有权限把前台交还原来的窗口。主窗口按进程 ID、窗口类 `Zed::Window` 和标题（发布版为 `Argus`）枚举顶层窗口查找，隐藏时也能找到；只按标题可能拿到同一进程弹出的消息框，只按进程 ID 可能拿到单实例转交用的隐藏辅助窗口（类名 `<标识>-sic`）。
 - 再次启动、快捷键、托盘和任务管理器替换都会请求激活窗口，不要在正在使用的桌面上自动触发这些路径。需要验证系统焦点时，用 CreateDesktop 创建独立桌面，不调用 SwitchDesktop，测试进程的 lpDesktop 指向独立桌面；通过 GetGUIThreadInfo 和窗口消息验证。
 - 不要改机器上真实的系统设置（启动项、服务等）。需要测试这些功能时用临时条目，测完清理。
 - 保留开发者自行启动的开发实例（`start.bat` 启动的 `target\native-dev\runs\...\argus.exe` 及其 Node 监视进程）。允许直接修改监视范围内的源文件，由开发脚本自动重建、重启并重新显示窗口，无需再次征求确认。
 - 自己启动的实例用完就关；测试控制仅使用隔离标识。
-- 不要强杀 Argus 后几秒内立刻重启：单实例插件会放进第二个实例。
 
 ## 命令
 
 - 改完代码必须通过 `start.bat check`（即 `pnpm check`），包含的步骤见 `docs/development/README.md`。
-- 脚本测试由 Node 直接运行 scripts/tests；release-notes.ts 保持可擦除的 TypeScript 语法，不依赖界面运行时。
+- 脚本测试由 Node 直接运行 scripts/tests；release-notes.ts 保持可擦除的 TypeScript 语法。
 - start.bat build 构建原生发行 EXE，start.bat build installer 使用 NSIS 打包。
 - 在部分代理沙箱里 cmd 不会在当前目录查找批处理文件，用绝对路径运行 `start.bat`。
-- 改链接器、工具链或 `RUSTFLAGS` 会让整个依赖缓存失效（重建时长见 `docs/development/build.md`），不要随手试。
+- 改链接器、工具链或 `RUSTFLAGS` 会让整个依赖缓存失效，不要随手试。
 
 ## 提交与发布
 
@@ -55,11 +54,11 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 发布说明有中英两份：`CHANGELOG.md` 和逐条对应的 `CHANGELOG.en.md`。`pnpm release` 在英文文件中写入由中文条目生成的草稿，推送标签前要把它译成英文，润色中文时同步修改英文，用词与 `locales/en-US` 的界面文案一致；`verify` 会拒绝仍含中文或日期与中文条目不同的英文条目。GitHub Release 正文含两种语言，应用按界面语言显示，缺译文的版本显示中文。
 - 不要给 CI 加 push 触发的检查、nightly 或定时构建（现有的触发方式见 `release.md`）；Rust 用 stable，不用 nightly 工具链。`.github/workflows/check.yml` 把 `pnpm check` 拆成了单独的步骤，改一边要同步另一边。
 - 改了 `scripts/release.mjs` 后先用 `pnpm release --dry-run` 看结果，再在临时克隆里走一遍完整发布（把克隆的推送地址设成无效值）；不要在真实仓库里打测试标签。
-- 更新签名公钥在 `resources/app.json` 的 `updater.pubkey`。不要生成新密钥替换它（已安装的版本只认旧公钥，用户会收不到更新），不要关掉 `requireSignedVersion`；私钥只在 GitHub Secrets 和维护者本机，不要读取或要求用户提供。测试签名流程用 scratchpad 里临时生成的密钥。
+- 更新签名公钥在 `resources/app.json` 的 `updater.pubkey`。不要生成新密钥替换它（已安装的版本只认旧公钥，用户会收不到更新），不要取消签名对版本号的校验；私钥只在 GitHub Secrets 和维护者本机，不要读取或要求用户提供。测试签名流程用 scratchpad 里临时生成的密钥。
 - 工作流里的 action 固定到提交 SHA，行尾注释对应的版本号；升级时用 `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` 解析新标签（附注标签还要再解一层），不要改回版本标签。
 - 增删或升级依赖后运行 `node scripts/notices.mjs` 并提交 `THIRD-PARTY-NOTICES.txt`，CI 会检查它是否最新。
 - 日志（`%LOCALAPPDATA%\<标识>\logs\diagnostics\argus.log`）会附在公开的缺陷报告里：记录启动信息、失败阶段、原始错误码及必要的实际路径。路径仅限直接参与失败的文件、目录或注册表键，用 `diagnostics::path` 限长并转义；不从任意错误文本提取路径。不要写入进程命令行、凭据、URL 参数、账户名、文件内容或未经筛选的异常原文。重复失败用 `diagnostics::warn` 限频，不用会耗尽的全局次数上限。
-- 加速代理预设写在 `src-gpui/src/updater.rs` 和 `src-gpui/src/frontend/pages/settings.rs` 两处，改一处同步另一处；加入新的代理前，用真实的 Release 文件实测它返回的内容与直连逐字节一致。
+- 加速代理预设只在 `crates/argus-app/src/config.rs` 的 `PROXY_PRESETS` 定义，更新器与设置页共用；加入新的代理前，用真实的 Release 文件实测它返回的内容与直连逐字节一致。
 - 不要在开发机上运行打包出来的安装程序：它会覆盖已安装 Argus 的卸载项和快捷方式。安装与卸载靠 `release.yml` 的静默安装测试和用户在虚拟机里的检查；卸载钩子的分支逻辑可以用 NSIS 的 makensis编一个替换了服务注册表项和 Program Files 路径的测试包，只写 scratchpad。
 
 ## 性能测量
@@ -72,7 +71,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 ## 约定
 
 - 代码注释用英文。
-- 用户可见的文字（界面、托盘、返回给界面的错误、SCM 显示名称）不写进代码，写进 `locales/`：先写简体中文源文案，再在 `en-US` 同一位置写译文；界面用 `t`/`rich`，Rust 用 `argus_core::tr!`。用法、复数、术语表见 `docs/development/i18n.md`。日志、panic 和注释不翻译。
+- 用户可见的文字（界面、托盘、返回给界面的错误、SCM 显示名称）不写进代码，写进 `locales/`：先写简体中文源文案，再在 `en-US` 同一位置写译文；界面用 `theme::label` 读取静态文案，带占位符的文案用 `argus_core::tr!`。用法、复数、术语表见 `docs/development/i18n.md`。日志、panic 和注释不翻译。
 - Rust 测试不要断言具体文案，也不要调用 `set_locale`（测试并行、语言是进程级的）。CI 在英文 Windows 上运行，本地用 `ARGUS_LOCALE=en-US cargo test --workspace` 模拟。
 - 安装程序钩子（`installer-hooks.nsh`）读不到 JSON 目录，提示文字用 `ARGUS_TEXT` 宏按 `$LANGUAGE` 写两种语言。
 - 中文界面文案、README 和使用指南用书面语：不用“你”等第二人称，不用口语（“由你决定”“几乎瞬间”“连不上”“这个”），用“单击”“可”“仅”“暂无”这类说法；同一概念的措辞与设置页保持一致。
@@ -80,7 +79,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 ## 环境与工具
 
-- 项目用 MSVC 工具链构建；开发机的默认工具链是 GNU，仓库目录上设了 `rustup override`（`stable-x86_64-pc-windows-msvc`，原因见 `docs/development/build.md`）。不要改用户的全局默认工具链，也不要删掉这个 override。
+- 项目用 MSVC 工具链构建；开发机的默认工具链是 GNU，仓库目录上设了 `rustup override`（`stable-x86_64-pc-windows-msvc`）。不要改用户的全局默认工具链，也不要删掉这个 override。
 - 辅助脚本用 node 写；仓库不依赖 Python 或 .NET。
 - Windows PowerShell 5.1：传给原生程序的参数里的双引号会被剥掉（把 JS 写进文件再传路径）；没有 BOM 的 .ps1 按 ANSI 读取，含中文的 .ps1 要存成 UTF-8 with BOM。
 - 在 Git Bash 里用 `node -e "…"`、`sed` 写入含反引号或 `$` 的文本时，它们会被 shell 当成命令替换或变量，悄悄改坏写入的 Rust 注释和文档；长 heredoc 也可能被工具层截断。多行或含这些字符的改动先用文件工具写成脚本文件再运行，或直接用编辑工具。不要运行 `python -`，它会一直等待标准输入。

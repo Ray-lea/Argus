@@ -93,7 +93,7 @@
 
 ## CPU 内核传感器
 
-`SensorSnapshot {}` 使用第 9 版协议及相同的令牌校验，拒绝额外字段。服务返回固定类型的温度、电压、电流、功耗、频率、限制状态、每核读数、风扇转速及主板传感器读数。模块、寄存器和 IOCTL 均由服务端固定。
+`SensorSnapshot {}` 使用相同的协议版本与令牌校验，拒绝额外字段。服务返回固定类型的温度、电压、电流、功耗、频率、限制状态、每核读数、风扇转速及主板传感器读数。模块、寄存器和 IOCTL 均由服务端固定。
 
 模块固定为 PawnIO.Modules 0.2.11 的 IntelMSR、IntelMCHBAR、AMDFamily10、AMDFamily17、RyzenSMU 与 LpcIO，编译时嵌入签名二进制。[PawnIO 模块目录](../../crates/argus-service/vendor/pawnio) 包含固定 SHA-256、上游版本、完整对应源码及 LGPL 许可证；许可生成脚本同时检查文件摘要。CPU 调用仅包含寄存器读取及固定的 SMU 表定位、刷新和读取；SMN 与 SMU 的访问通过 `Global\Access_PCI` 与其他监控工具协调，等待不超过 20 ms。模块本身具有的其他入口不向 IPC 开放。
 

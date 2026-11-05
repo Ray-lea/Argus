@@ -11,7 +11,7 @@
 
 ## 开发指南
 
-- [环境与命令](development/README.md)：环境要求、`start.bat`、开发版隔离、验证采集数据、代码规范
+- [环境与命令](development/README.md)：环境要求、`start.bat`、开发版隔离、验证采集数据
 - [构建与缓存](development/build.md)：缓存优化、链接器与工具链
 - [性能测量](development/performance.md)
 - [GPUI 原生界面](development/gpui.md)：开发入口、原生组件、共享定义与平台边界
