@@ -16,6 +16,7 @@ mod model;
 mod motion;
 mod pages;
 mod prefs;
+mod process_icons;
 mod recorder;
 mod regions;
 mod release_notes;
@@ -350,6 +351,10 @@ struct Desktop {
     settings_section: String,
 }
 impl Desktop {
+    fn process_image(&self, id: u32) -> Option<Arc<Image>> {
+        self.ui.icons.borrow_mut().get(id)
+    }
+
     fn icon_png(&self, id: u32) -> Option<Arc<[u8]>> {
         if self.options.fixture.is_some() {
             return self.fixture_icons.get(id as usize)?.clone();
@@ -551,10 +556,10 @@ impl Desktop {
                     }
                     this.take_connections();
                     for snapshot in values(&fixture["snapshots"]) {
-                        this.accept_snapshot(snapshot.clone(), cx);
+                        this.accept_snapshot(snapshot.clone(), window, cx);
                     }
                     if let Some(snapshot) = fixture.get("snapshot") {
-                        this.accept_snapshot(snapshot.clone(), cx);
+                        this.accept_snapshot(snapshot.clone(), window, cx);
                     }
                 }
                 None => log::warn!("fixture unavailable"),

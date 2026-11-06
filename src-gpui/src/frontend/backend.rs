@@ -306,7 +306,7 @@ impl Desktop {
                         let full = this.snapshot.is_null()
                             || this.snapshot["hardware"]["cpuSensors"]["state"]
                                 != model["hardware"]["cpuSensors"]["state"];
-                        this.accept_snapshot_prepared(model, rows, cx);
+                        this.accept_snapshot_prepared(model, rows, window, cx);
                         super::trace_work("snapshot", None, started);
                         // Pick up the newest source sequence without accumulating a UI queue.
                         this.notifications(window, cx);
@@ -335,8 +335,13 @@ impl Desktop {
             cx.notify();
         }
     }
-    pub(in crate::frontend) fn accept_snapshot(&mut self, snapshot: Value, cx: &mut Context<Self>) {
-        self.accept_snapshot_prepared(snapshot, None, cx);
+    pub(in crate::frontend) fn accept_snapshot(
+        &mut self,
+        snapshot: Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.accept_snapshot_prepared(snapshot, None, window, cx);
     }
 
     /// List data arrives through its own command/row notifications. A sample
@@ -372,6 +377,7 @@ impl Desktop {
         &mut self,
         snapshot: Value,
         rows: Option<Vec<Row>>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.chart_clock.borrow_mut().accept(
@@ -385,6 +391,22 @@ impl Desktop {
                 * 1000.,
         );
         self.sequence = snapshot["seq"].as_u64().unwrap_or(self.sequence + 1);
+        let icon_ids = values(&snapshot["processes"])
+            .iter()
+            .flat_map(|process| {
+                [
+                    process["icon"].as_u64(),
+                    process["webView"]["hostIcon"].as_u64(),
+                ]
+                .into_iter()
+                .flatten()
+                .filter_map(|id| u32::try_from(id).ok())
+            })
+            .collect();
+        self.ui
+            .icons
+            .borrow_mut()
+            .synchronize(icon_ids, |id| self.icon_png(id), window, cx);
         let start = Instant::now();
         self.timeline.push(&snapshot, self.interval as f64);
         self.work.timeline_us += start.elapsed().as_micros() as u64;

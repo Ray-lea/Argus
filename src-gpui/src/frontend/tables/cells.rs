@@ -10,17 +10,6 @@ impl NativeTable {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> AnyElement {
-        if column == 0
-            && let Some(id) = icon_id(&self.rows[row_index].raw)
-            && !self.icons.contains_key(&id)
-            && let Some(owner) = self.owner.upgrade()
-            && let Some(png) = owner.read(cx).icon_png(id)
-        {
-            self.icons.insert(
-                id,
-                Arc::new(Image::from_bytes(ImageFormat::Png, png.to_vec())),
-            );
-        }
         let row = &self.rows[row_index];
         let field = &self.fields[column];
         let p = Palette::current(cx);
@@ -424,7 +413,8 @@ impl NativeTable {
             };
         }
         if self.page != "services" {
-            let image = icon_id(&row.raw).and_then(|id| self.icons.get(&id).cloned());
+            let image =
+                icon_id(&row.raw).and_then(|id| self.owner.upgrade()?.read(cx).process_image(id));
             let kernel = processes && row.raw["path"].is_null() && row.members.len() <= 1;
             element = element.child(div().relative().size_4().flex_shrink_0().child(
                 if let Some(image) = image {

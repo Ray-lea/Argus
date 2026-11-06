@@ -1141,7 +1141,7 @@ impl Desktop {
     fn details_process_icon(
         &self,
         process: &Value,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
         let size = px(32.);
@@ -1149,17 +1149,8 @@ impl Desktop {
             .as_u64()
             .or_else(|| process["icon"].as_u64());
         if let Some(id) = id
-            && let Some(png) = self.icon_png(id as u32)
+            && let Some(image) = self.process_image(id as u32)
         {
-            // Decoded once per icon while the pane keeps showing it.
-            let image = window
-                .use_keyed_state(
-                    ElementId::NamedInteger("details-icon".into(), id),
-                    cx,
-                    move |_, _| Arc::new(Image::from_bytes(ImageFormat::Png, png.to_vec())),
-                )
-                .read(cx)
-                .clone();
             return img(image).size(size).into_any_element();
         }
         icon(

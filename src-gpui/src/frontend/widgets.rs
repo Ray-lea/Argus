@@ -129,7 +129,7 @@ pub(in crate::frontend) struct UiState {
     pub hotkey: HotkeyCard,
     pub system_motion: Option<bool>,
     pub ticks: u64,
-    pub icons: RefCell<HashMap<u32, Arc<Image>>>,
+    pub icons: RefCell<super::process_icons::ProcessIcons>,
     /// Measured heights of each dialog's body and footer, to size and place it.
     pub dialog_parts: Rc<RefCell<HashMap<(u64, u8), Pixels>>>,
     /// Where each shown dialog sits and the height it is drawn at.

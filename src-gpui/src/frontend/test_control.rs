@@ -407,6 +407,7 @@ impl Desktop {
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
+                "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),"scaleFactor":window.scale_factor(),"remSize":f32::from(window.rem_size()),
                 "cpuPlot":self.chart_bounds("cpu-overall-plot").map(|b|[f32::from(b.left()),f32::from(b.top()),f32::from(b.size.width),f32::from(b.size.height)]),
                 "performanceScrollY":f32::from(self.device_scroll.max_offset().y),
@@ -492,7 +493,7 @@ impl Desktop {
             let full = self.snapshot.is_null()
                 || self.snapshot["hardware"]["cpuSensors"]["state"]
                     != snapshot["hardware"]["cpuSensors"]["state"];
-            self.accept_snapshot(snapshot, cx);
+            self.accept_snapshot(snapshot, window, cx);
             if !self.fixture_samples {
                 self.fixture_samples = true;
                 self.chart_clock.borrow_mut().set_paused(false);
@@ -734,6 +735,24 @@ impl Desktop {
         }
         if let Some(device) = control["device"].as_str() {
             self.act(Action::Device(device.into()), window, cx);
+        }
+        if let Some(kind) = control["deviceKind"].as_str() {
+            let device = match kind {
+                "cpu" | "memory" => Some(kind.to_owned()),
+                "gpu" => self.snapshot["hardware"]["gpus"][0]["info"]["id"]
+                    .as_str()
+                    .map(|id| format!("gpu:{id}")),
+                "disk" => self.snapshot["hardware"]["disks"][0]["info"]["index"]
+                    .as_u64()
+                    .map(|id| format!("disk:{id}")),
+                "network" => self.snapshot["hardware"]["nics"][0]["info"]["id"]
+                    .as_str()
+                    .map(|id| format!("nic:{id}")),
+                _ => None,
+            };
+            if let Some(device) = device {
+                self.act(Action::Device(device), window, cx);
+            }
         }
         if let Some(mode) = control["cpuMode"].as_str() {
             self.act(Action::CpuMode(mode.into()), window, cx);

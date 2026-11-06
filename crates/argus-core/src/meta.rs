@@ -30,7 +30,7 @@ pub struct FileMeta {
     pub description: Option<Arc<str>>,
     pub company: Option<Arc<str>>,
     pub windows_component: bool,
-    /// Index into the icon table, served to the UI as a PNG.
+    /// Stable icon ID, served to the UI as a PNG.
     pub icon: Option<u32>,
 }
 
@@ -41,23 +41,35 @@ pub struct FileMeta {
 const SWEEP_EVERY: Duration = Duration::from_secs(60);
 const KEEP_IDLE: Duration = Duration::from_secs(10 * 60);
 
-struct Cached {
-    meta: Arc<FileMeta>,
+struct Cached<T> {
+    meta: Arc<T>,
     /// Since when nothing but the store has held `meta`.
     idle_since: Option<Instant>,
 }
 
+impl<T> Cached<T> {
+    fn keep(&mut self, now: Instant) -> bool {
+        if Arc::strong_count(&self.meta) > 1 {
+            self.idle_since = None;
+            return true;
+        }
+        let since = *self.idle_since.get_or_insert(now);
+        now.saturating_duration_since(since) < KEEP_IDLE
+    }
+}
+
 #[derive(Default)]
 struct Inner {
-    by_path: HashMap<String, Cached>,
+    by_path: HashMap<String, Cached<FileMeta>>,
     pending: HashSet<String>,
-    /// Icon ids stay valid for good: rows and the UI refer to them.
-    icons: Vec<Arc<[u8]>>,
+    /// IDs are never reused. A displayed snapshot pins its PNGs until replaced.
+    icons: HashMap<u32, Arc<[u8]>>,
+    next_icon: u32,
     /// Icon ids by PNG content. Most executables show one of a few icons
     /// (the generic program icon above all), so each image is kept once.
     icon_ids: HashMap<Arc<[u8]>, u32>,
     /// By package full name and app ID: one package version's app.
-    apps: HashMap<(Box<str>, Box<str>), Arc<AppMeta>>,
+    apps: HashMap<(Box<str>, Box<str>), Cached<AppMeta>>,
     apps_pending: HashSet<(Box<str>, Box<str>)>,
 }
 
@@ -119,7 +131,7 @@ impl MetaStore {
         {
             let inner = self.inner.read().unwrap();
             if let Some(app) = inner.apps.get(&key) {
-                return Some(app.clone());
+                return Some(app.meta.clone());
             }
             if inner.apps_pending.contains(&key) {
                 return None;
@@ -134,7 +146,7 @@ impl MetaStore {
 
     /// PNG bytes of a previously resolved icon.
     pub fn icon_png(&self, id: u32) -> Option<Arc<[u8]>> {
-        self.inner.read().unwrap().icons.get(id as usize).cloned()
+        self.inner.read().unwrap().icons.get(&id).cloned()
     }
 
     /// Forgets the paths no process has run for `KEEP_IDLE`. Called on every
@@ -153,17 +165,34 @@ impl MetaStore {
         }
         let mut inner = self.inner.write().unwrap();
         // Processes hold their executable's metadata while they run.
-        inner.by_path.retain(|_, cached| {
-            if Arc::strong_count(&cached.meta) > 1 {
-                cached.idle_since = None;
-                return true;
-            }
-            let since = *cached.idle_since.get_or_insert(now);
-            now.saturating_duration_since(since) < KEEP_IDLE
-        });
+        inner.by_path.retain(|_, cached| cached.keep(now));
+        inner.apps.retain(|_, cached| cached.keep(now));
+        let referenced: HashSet<_> = inner
+            .by_path
+            .values()
+            .filter_map(|entry| entry.meta.icon)
+            .collect();
+        // The two maps own one PNG reference each. Any other reference belongs
+        // to a consumer, including the UI's paused or hidden snapshot.
+        inner
+            .icons
+            .retain(|id, png| referenced.contains(id) || Arc::strong_count(png) > 2);
+        let Inner {
+            icons, icon_ids, ..
+        } = &mut *inner;
+        icon_ids.retain(|_, id| icons.contains_key(id));
         let reserve = inner.by_path.len() + 64;
         if inner.by_path.capacity() > reserve * 2 {
             inner.by_path.shrink_to(reserve);
+        }
+        let reserve = inner.apps.len() + 16;
+        if inner.apps.capacity() > reserve * 2 {
+            inner.apps.shrink_to(reserve);
+        }
+        let reserve = inner.icons.len() + 64;
+        if inner.icons.capacity() > reserve * 2 {
+            inner.icons.shrink_to(reserve);
+            inner.icon_ids.shrink_to(reserve);
         }
     }
 
@@ -176,15 +205,16 @@ impl MetaStore {
     ) {
         let key = path.to_lowercase();
         let mut inner = self.inner.write().unwrap();
-        let icon = icon_png.map(|png| {
+        let icon = icon_png.and_then(|png| {
             let png: Arc<[u8]> = png.into();
             if let Some(&id) = inner.icon_ids.get(&png) {
-                return id;
+                return Some(id);
             }
-            let id = inner.icons.len() as u32;
-            inner.icons.push(png.clone());
+            let id = inner.next_icon;
+            inner.next_icon = id.checked_add(1)?;
+            inner.icons.insert(id, png.clone());
             inner.icon_ids.insert(png, id);
-            id
+            Some(id)
         });
         let meta = FileMeta {
             windows_component: windows_component(path, &version, system_root),
@@ -206,7 +236,13 @@ impl MetaStore {
         let key = (identity.full_name, identity.aumid);
         let mut inner = self.inner.write().unwrap();
         inner.apps_pending.remove(&key);
-        inner.apps.insert(key, Arc::new(app));
+        inner.apps.insert(
+            key,
+            Cached {
+                meta: Arc::new(app),
+                idle_since: None,
+            },
+        );
     }
 }
 
@@ -511,6 +547,19 @@ mod category_tests {
     #[test]
     fn device_paths_need_a_win32_namespace_for_file_metadata() {
         use windows::Win32::Storage::FileSystem::QueryDosDeviceW;
+        use windows::Win32::System::Com::CoUninitialize;
+
+        // Mirror the resolver worker's COM apartment for the Shell calls below.
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
+            .ok()
+            .unwrap();
+        struct Apartment;
+        impl Drop for Apartment {
+            fn drop(&mut self) {
+                unsafe { CoUninitialize() };
+            }
+        }
+        let _apartment = Apartment;
 
         let root = windows_directory();
         let drive = wide(&root[..2]);
@@ -629,5 +678,149 @@ mod category_tests {
         store.sweep_at(later + SWEEP_EVERY);
         store.sweep_at(later + SWEEP_EVERY * 2 + KEEP_IDLE);
         assert!(!cached(r"c:\apps\running.exe"));
+    }
+
+    #[test]
+    fn unique_icons_and_package_versions_are_reclaimed_after_idle_expiry() {
+        let store = MetaStore::new();
+        let start = Instant::now();
+        for id in 0u32..4096 {
+            let mut png = vec![0; 4096];
+            png[..4].copy_from_slice(&id.to_le_bytes());
+            store.insert(
+                &format!(r"c:\build\{id}\app.exe"),
+                VersionInfo::default(),
+                Some(png),
+                "",
+            );
+            store.insert_app(
+                Identity {
+                    full_name: format!("TestPackage_{id}").into(),
+                    aumid: "TestPackage!App".into(),
+                },
+                AppMeta::default(),
+            );
+        }
+        store.sweep_at(start);
+        store.sweep_at(start + KEEP_IDLE + SWEEP_EVERY);
+        let inner = store.inner.read().unwrap();
+        assert!(inner.by_path.is_empty());
+        assert!(
+            inner.icons.is_empty(),
+            "{} orphaned icons remain after expiry",
+            inner.icons.len()
+        );
+        assert!(
+            inner.apps.is_empty(),
+            "{} obsolete package versions remain after expiry",
+            inner.apps.len()
+        );
+    }
+
+    #[test]
+    fn displayed_icons_survive_expiry_and_reclaimed_ids_are_never_reused() {
+        let store = MetaStore::new();
+        let path = r"c:\apps\paused.exe";
+        store.insert(path, VersionInfo::default(), Some(vec![1, 2, 3]), "");
+        let id = store.get_or_request(path).unwrap().icon.unwrap();
+        let displayed = store.icon_png(id).unwrap();
+        let start = Instant::now();
+        store.sweep_at(start);
+        store.sweep_at(start + KEEP_IDLE + SWEEP_EVERY);
+        assert!(store.inner.read().unwrap().by_path.is_empty());
+        assert!(Arc::ptr_eq(&displayed, &store.icon_png(id).unwrap()));
+        drop(displayed);
+        store.sweep_at(start + KEEP_IDLE + SWEEP_EVERY * 2);
+        assert!(store.icon_png(id).is_none());
+        store.insert(path, VersionInfo::default(), Some(vec![4, 5, 6]), "");
+        assert_ne!(store.get_or_request(path).unwrap().icon, Some(id));
+    }
+
+    #[test]
+    fn running_packaged_apps_keep_metadata_until_their_last_process_exits() {
+        let store = MetaStore::new();
+        let identity = Identity {
+            full_name: "TestPackage_1".into(),
+            aumid: "TestPackage!App".into(),
+        };
+        store.insert_app(identity.clone(), AppMeta::default());
+        let running = store.app_or_request(&identity).unwrap();
+        let start = Instant::now();
+        store.sweep_at(start);
+        store.sweep_at(start + KEEP_IDLE + SWEEP_EVERY);
+        assert!(Arc::ptr_eq(
+            &running,
+            &store.app_or_request(&identity).unwrap()
+        ));
+        drop(running);
+        let idle = start + KEEP_IDLE + SWEEP_EVERY * 2;
+        store.sweep_at(idle);
+        store.sweep_at(idle + KEEP_IDLE + SWEEP_EVERY);
+        assert!(store.inner.read().unwrap().apps.is_empty());
+    }
+
+    #[test]
+    fn thirty_days_of_metadata_churn_keep_only_live_icons() {
+        let store = MetaStore::new();
+        let start = Instant::now();
+        for hour in 0..720 {
+            for item in 0..128 {
+                let serial: u32 = hour * 128 + item;
+                store.insert(
+                    &format!(r"c:\build\{serial}\app.exe"),
+                    VersionInfo::default(),
+                    Some(serial.to_le_bytes().to_vec()),
+                    "",
+                );
+            }
+            let now = start + Duration::from_secs(u64::from(hour) * 3600);
+            store.sweep_at(now);
+            store.sweep_at(now + KEEP_IDLE + SWEEP_EVERY);
+            let inner = store.inner.read().unwrap();
+            assert!(inner.by_path.is_empty());
+            assert!(inner.icons.is_empty());
+            assert!(inner.icon_ids.is_empty());
+            assert!(inner.icons.capacity() <= 256);
+        }
+    }
+
+    #[test]
+    #[ignore = "live GDI resource soak; run alone with --test-threads=1"]
+    fn resource_soak_icon_extraction() {
+        use windows::Win32::System::Threading::{
+            GR_GDIOBJECTS, GR_USEROBJECTS, GetCurrentProcess, GetGuiResources,
+            GetProcessHandleCount,
+        };
+        let counts = || unsafe {
+            let process = GetCurrentProcess();
+            let mut handles = 0;
+            GetProcessHandleCount(process, &mut handles).unwrap();
+            (
+                handles,
+                GetGuiResources(process, GR_GDIOBJECTS),
+                GetGuiResources(process, GR_USEROBJECTS),
+            )
+        };
+        // GLOBALROOT uses direct PE icon extraction, without Shell extensions.
+        let path = format!(r"\\?\{}\explorer.exe", windows_directory());
+        for _ in 0..10 {
+            assert!(extract_icon_png(&path).is_some());
+        }
+        let before = counts();
+        for batch in 0..8 {
+            for _ in 0..250 {
+                assert!(extract_icon_png(&path).is_some());
+            }
+            let after = counts();
+            println!(
+                "icon extraction batch={} handles={} gdi={} user={}",
+                batch + 1,
+                after.0,
+                after.1,
+                after.2
+            );
+            assert!(after.0 <= before.0 + 4);
+            assert_eq!((after.1, after.2), (before.1, before.2));
+        }
     }
 }

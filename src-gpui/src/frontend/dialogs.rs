@@ -1365,16 +1365,7 @@ impl Desktop {
         cx: &App,
     ) -> AnyElement {
         let id = process.and_then(|p| p["icon"].as_u64()).map(|id| id as u32);
-        let image = id.and_then(|id| {
-            let mut cache = self.ui.icons.borrow_mut();
-            if let Some(image) = cache.get(&id) {
-                return Some(image.clone());
-            }
-            let png = self.icon_png(id)?;
-            let image = Arc::new(Image::from_bytes(ImageFormat::Png, png.to_vec()));
-            cache.insert(id, image.clone());
-            Some(image)
-        });
+        let image = id.and_then(|id| self.process_image(id));
         let _ = cx;
         match image {
             Some(image) => img(image).size(px(size)).flex_shrink_0().into_any_element(),
