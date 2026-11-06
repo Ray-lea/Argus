@@ -4,6 +4,41 @@
 
 User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This is the English edition of [CHANGELOG.md](CHANGELOG.md): `pnpm release` adds each release to both files, and the English entry is translated from the Chinese one before the release is published. The release notes on GitHub and in the app come from these entries.
 
+## [0.4.0](https://github.com/Ray-lea/Argus/compare/v0.3.4...v0.4.0) - 2026-11-06
+
+v0.4.0 moves the application interface from Tauri, SolidJS and WebView2 to a native Rust + GPUI Kit stack, rebuilds rendering and interaction, and optimizes resource use for live charts, sampling updates and background operation. It also adds customizable process columns, disk health details, more hardware readings and layout options. The [Argus website](https://argustask.com/en/) is now live.
+
+### Features
+
+- **Customizable process columns**: Show more CPU, memory, I/O, thread, handle and GDI/USER object statistics. Search for columns, drag to reorder them, and adjust widths automatically or manually.
+- **Disk health and details**: A new disk details view reads NVMe, ATA/SATA, USB-SAT and SCSI/SAS device information on demand, showing available health status, temperature, power-on time, SMART attributes and error statistics.
+- **System overview**: Redesigned overview cards on the Processes page show full-width curves and scale limits, with CPU temperature, CPU power and GPU power readings. Disk and network charts adjust their scales in fixed steps.
+- **Intel integrated graphics**: Expanded driver-reported temperature, clock, voltage and power readings, including support for Comet Lake integrated graphics. Values remain unknown when the hardware or driver does not provide them.
+- **Layout and start page**: Choose the default page, drag to resize the side navigation, and use the new "Show when a process is selected" details-pane mode, which closes the pane when the selection is cleared.
+- **Version and release notes**: About is now a separate page, opened with Ctrl+8. Click the status-bar version badge to read the current version's release notes, or right-click to copy the version. Release notes are grouped by category.
+
+### Performance
+
+- **Everyday interaction**: Optimized chart and list updates, text layout and repeated drawing to improve page switching, process selection, window resizing and the experience on high-refresh-rate displays.
+- **Background operation**: Drawing stops while the window is minimized or hidden, and idle graphics resources are reclaimed as needed to reduce background graphics overhead.
+- **Heavy load and low memory**: Improved interface and sampling responsiveness under load. Charts use smaller buffers and lower texture resolution when memory is tight, then restore full quality when space becomes available. Opening the window also handles large obstructing topmost windows more effectively.
+
+### Fixes
+
+- **Per-process network traffic**: Fixed readings staying at zero on some machines, and alternating zero readings or delayed updates at the 0.5-second refresh interval.
+- **Privileged service**: Fixed unexpected service exits when clients disconnect, and timeouts or false no-data results during frequent reads.
+- **Application names and icons**: Fixed some packaged apps showing executable descriptions instead of application names, and missing icons or file descriptions when device-path mappings are unavailable.
+- **Per-process GPU memory**: Corrected inflated or duplicate memory readings on some systems or drivers, and distinguished unavailable readings from zero usage.
+- **CPU virtualization status**: Fixed Hyper-V hosts showing hardware virtualization as disabled when it is enabled.
+- **Administrator startup authorization**: Fixed authorization failures when the user name matches the computer name.
+- **Memory use over long sessions**: Fixed executable metadata and icons accumulating as different programs are launched, and bounded queued requests while metadata resolvers are busy.
+
+### Upgrading
+
+- **System requirements**: Windows 10 22H2 (build 19045) or later, including Windows 11, x64 only, with a DirectX 11 capable graphics device and driver. The application interface no longer requires the WebView2 Runtime.
+- **Settings and history**: Application settings and history files are retained. Upgrades from v0.3.3 or v0.3.4 retain separately saved interface preferences. When upgrading directly from v0.3.2 or earlier, interface preferences stored only in the old WebView2 cache, such as layout, row notes and pins, return to their defaults and need to be set again. Argus cleans up its old WebView2 data in the background.
+- **Privileged service**: This version updates the service protocol. Upgrading with the installer also updates the installed service and Task Manager replacement copies. After replacing the portable executable, select "Update service" under Settings → Permissions → Privileged service and complete the administrator prompt.
+
 ## [0.3.4](https://github.com/Ray-lea/Argus/compare/v0.3.3...v0.3.4) - 2026-10-26
 
 ### Fixes
