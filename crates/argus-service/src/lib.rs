@@ -14,6 +14,7 @@ mod protocol;
 mod security;
 mod sensors;
 mod server;
+mod snapshot;
 pub mod taskmgr;
 mod util;
 

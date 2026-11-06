@@ -10,15 +10,22 @@ use argus_core::disk_process::{DiskFailure, DiskQuery, DiskRates, DiskSnapshot};
 const TIMEOUT: Duration = Duration::from_secs(2);
 /// At most this many distinct failures are handed to the host's log per run.
 const MAX_REPORTED: usize = 8;
+const POLICY: crate::snapshot::Policy = crate::snapshot::Policy {
+    period: Duration::from_millis(250),
+    max_age: Duration::from_secs(2),
+    idle: Duration::from_secs(15),
+};
 
 pub(crate) struct DiskMonitor {
-    query: Mutex<Option<DiskQuery>>,
+    reader: crate::snapshot::Reader<Result<DiskSnapshot, DiskFailure>>,
 }
 
 impl DiskMonitor {
     pub fn new() -> Self {
         Self {
-            query: Mutex::new(Some(DiskQuery::default())),
+            reader: crate::snapshot::Reader::spawn("argus-service-disk", POLICY, || {
+                NativeSource(None)
+            }),
         }
     }
 
@@ -26,14 +33,41 @@ impl DiskMonitor {
     /// failure goes back in the reply, and the host logs it
     /// (`DiskClient::new_failure`). None without a query.
     pub fn snapshot(&self) -> Option<Result<DiskSnapshot, DiskFailure>> {
-        Some(self.query.lock().ok()?.as_mut()?.read())
+        self.reader.snapshot().map(|frame| (*frame).clone())
     }
 
     #[cfg(test)]
     pub fn disabled() -> Self {
         Self {
-            query: Mutex::new(None),
+            reader: crate::snapshot::Reader::disabled(POLICY),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_reader(
+        read: impl FnMut() -> Result<DiskSnapshot, DiskFailure> + Send + 'static,
+    ) -> Self {
+        Self {
+            reader: crate::snapshot::Reader::spawn(
+                "disk-test",
+                crate::snapshot::Policy {
+                    period: Duration::from_millis(10),
+                    ..POLICY
+                },
+                move || crate::snapshot::tests::Callback(read),
+            ),
+        }
+    }
+}
+
+struct NativeSource(Option<DiskQuery>);
+impl crate::snapshot::Source for NativeSource {
+    type Value = Result<DiskSnapshot, DiskFailure>;
+    fn read(&mut self) -> Self::Value {
+        self.0.get_or_insert_with(DiskQuery::default).read()
+    }
+    fn idle(&mut self) {
+        self.0 = None;
     }
 }
 

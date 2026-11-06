@@ -8,80 +8,91 @@ use argus_core::hardware::{CpuSensors, SensorState};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-type Request = mpsc::Sender<CpuSensors>;
+const POLICY: crate::snapshot::Policy = crate::snapshot::Policy {
+    period: Duration::from_millis(500),
+    max_age: Duration::from_secs(3),
+    idle: Duration::from_secs(15),
+};
+
 pub(crate) struct SensorMonitor {
-    tx: mpsc::SyncSender<Request>,
+    reader: crate::snapshot::Reader<CpuSensors>,
 }
 
 impl SensorMonitor {
     pub fn spawn() -> Self {
-        let (tx, rx) = mpsc::sync_channel::<Request>(1);
-        let _ = std::thread::Builder::new()
-            .name("argus-service-sensors".into())
-            .spawn(move || {
-                let mut reader = None;
-                let mut attempt: Option<Instant> = None;
-                let mut last: Option<Instant> = None;
-                let mut frame = CpuSensors::default();
-                let mut driver_version = None;
-                loop {
-                    let request = match rx.recv_timeout(Duration::from_secs(15)) {
-                        Ok(request) => request,
-                        Err(mpsc::RecvTimeoutError::Timeout) => {
-                            reader = None;
-                            attempt = None;
-                            last = None;
-                            continue;
-                        }
-                        Err(mpsc::RecvTimeoutError::Disconnected) => return,
-                    };
-                    let current_version = if reader.is_none() {
-                        crate::driver::device_version()
-                    } else {
-                        driver_version
-                    };
-                    if reader.is_none()
-                        && (current_version != driver_version
-                            || attempt.is_none_or(|at| at.elapsed() >= Duration::from_secs(30)))
-                    {
-                        driver_version = current_version;
-                        attempt = Some(Instant::now());
-                        match cpu::CpuReader::open() {
-                            Ok(value) => reader = Some(value),
-                            Err(state) => frame = CpuSensors::unavailable(state),
-                        }
-                    }
-                    if let Some(reader) = &mut reader
-                        && last.is_none_or(|at| at.elapsed() >= Duration::from_millis(500))
-                    {
-                        frame = reader.sample();
-                        last = Some(Instant::now());
-                    }
-                    let _ = request.send(frame.clone());
-                }
-            })
-            .inspect_err(|error| {
-                argus_core::diagnostics::warn(
-                    "sensor service worker creation",
-                    argus_core::diagnostics::io(error),
-                )
-            });
-        Self { tx }
+        Self {
+            reader: crate::snapshot::Reader::spawn(
+                "argus-service-sensors",
+                POLICY,
+                NativeSource::default,
+            ),
+        }
     }
 
     #[cfg(test)]
     pub fn disabled() -> Self {
-        let (tx, _) = mpsc::sync_channel(1);
-        Self { tx }
+        Self {
+            reader: crate::snapshot::Reader::disabled(POLICY),
+        }
     }
 
     pub fn snapshot(&self) -> CpuSensors {
-        let (tx, rx) = mpsc::channel();
-        if self.tx.try_send(tx).is_err() {
-            return CpuSensors::unavailable(SensorState::Pending);
+        self.reader
+            .snapshot()
+            .map(|frame| (*frame).clone())
+            .unwrap_or_else(|| CpuSensors::unavailable(SensorState::Pending))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_reader(read: impl FnMut() -> CpuSensors + Send + 'static) -> Self {
+        Self {
+            reader: crate::snapshot::Reader::spawn(
+                "sensor-test",
+                crate::snapshot::tests::POLICY,
+                move || crate::snapshot::tests::Callback(read),
+            ),
         }
-        rx.recv_timeout(Duration::from_millis(800))
-            .unwrap_or_else(|_| CpuSensors::unavailable(SensorState::NoData))
+    }
+}
+
+#[derive(Default)]
+struct NativeSource {
+    reader: Option<cpu::CpuReader>,
+    attempt: Option<Instant>,
+    driver_version: Option<u32>,
+    state: SensorState,
+}
+
+impl crate::snapshot::Source for NativeSource {
+    type Value = CpuSensors;
+    fn read(&mut self) -> CpuSensors {
+        let version = if self.reader.is_none() {
+            crate::driver::device_version()
+        } else {
+            self.driver_version
+        };
+        if self.reader.is_none()
+            && (version != self.driver_version
+                || self
+                    .attempt
+                    .is_none_or(|at| at.elapsed() >= Duration::from_secs(30)))
+        {
+            self.driver_version = version;
+            self.attempt = Some(Instant::now());
+            match cpu::CpuReader::open() {
+                Ok(reader) => self.reader = Some(reader),
+                Err(state) => self.state = state,
+            }
+        }
+        self.reader
+            .as_mut()
+            .map(|reader| reader.sample())
+            .unwrap_or_else(|| CpuSensors::unavailable(self.state))
+    }
+    fn idle(&mut self) {
+        self.reader = None;
+        self.attempt = None;
+        self.state = SensorState::Pending;
     }
 }
 
@@ -275,6 +286,49 @@ impl SensorClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refreshing_sensors_keeps_the_recent_frame_without_waiting_for_hardware() {
+        let (release, gate) = mpsc::channel();
+        let (entered, started) = mpsc::channel();
+        let mut count = 0;
+        let mut monitor = SensorMonitor::with_reader(move || {
+            count += 1;
+            if count == 2 {
+                entered.send(()).unwrap();
+                let _ = gate.recv_timeout(Duration::from_secs(3));
+            }
+            CpuSensors {
+                state: SensorState::Ready,
+                package_celsius: Some(62.0),
+                ..Default::default()
+            }
+        });
+        assert_eq!(monitor.snapshot().state, SensorState::Ready);
+        std::thread::sleep(crate::snapshot::tests::POLICY.period * 2);
+        assert_eq!(monitor.snapshot().state, SensorState::Ready);
+        started.recv_timeout(Duration::from_secs(2)).unwrap();
+        let start = Instant::now();
+        let frame = monitor.snapshot();
+        let elapsed = start.elapsed();
+        release.send(()).unwrap();
+        monitor.reader.stop_and_join();
+        println!(
+            "refresh state={:?}; elapsed_ms={}",
+            frame.state,
+            elapsed.as_millis()
+        );
+        assert_eq!(frame.state, SensorState::Ready);
+        assert!(elapsed < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn backend_sensor_failure_is_reported_instead_of_retaining_a_ready_frame() {
+        let mut monitor =
+            SensorMonitor::with_reader(|| CpuSensors::unavailable(SensorState::NoData));
+        assert_eq!(monitor.snapshot().state, SensorState::NoData);
+        monitor.reader.stop_and_join();
+    }
 
     #[test]
     fn enrich_preserves_windows_power_and_keeps_zero_sensor_readings() {

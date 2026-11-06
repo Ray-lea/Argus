@@ -52,6 +52,8 @@ cargo test -p argus-service resource_soak_running_service_reads -- --ignored --n
 
 最后一项需要本构建对应的已授权服务正在运行，直接请求固定的网络、磁盘和 CPU 传感器快照，记录服务句柄、私有提交及各类回复数。测试不安装驱动或修改服务配置。
 
+`cargo test -p argus-service slow_native_reads_leave_the_pipe_responsive_and_keep_recent_snapshots -- --nocapture --test-threads=1` 通过普通权限下的独立管道，模拟 0.9–1.2 秒的底层读取，检查并发回复、有效快照、Ping 与采样推进。设置环境变量 `ARGUS_SERVICE_SOAK_SECONDS=30` 可延长到 30 秒，记录请求延迟、句柄和私有提交；延迟样本数量有固定上限。`cold_readers_coalesce_waiters_and_keep_ping_available` 检查冷读取期间的管道可用性，缓存过期、停止请求后的空闲开销和租期回收由 `snapshot` 模块测试覆盖。
+
 ## 帧跟踪与资源计数
 
 检查 Windows 图表合成时，在同一发行构建上设置 `ARGUS_GPUI_DISABLE_CHART_LAYERS=1` 可测量交换链路径。开启诊断后，`gpu-chart-policy` 记录设备能力查询结果与活动 HAGS 状态，`gpu-chart-layers` 记录已提交的曲线和图层数量。在支持的 SDR 环境，可用 `scripts/ui-smoke.mjs` 的 `--retained --require-chart-layers` 参数核对图层路径的实际画面。正式资源测量关闭诊断，分别记录应用 GPU 引擎、DWM、显卡时钟和窗口实际呈现帧率。

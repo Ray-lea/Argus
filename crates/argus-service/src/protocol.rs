@@ -33,6 +33,20 @@ impl Context {
             disk: crate::disk::DiskMonitor::disabled(),
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn with_readers(
+        network: crate::network::NetworkMonitor,
+        sensors: crate::sensors::SensorMonitor,
+        disk: crate::disk::DiskMonitor,
+    ) -> Self {
+        Self {
+            services: ServiceCatalog::default(),
+            network,
+            sensors,
+            disk,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

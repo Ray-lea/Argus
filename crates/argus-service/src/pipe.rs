@@ -1,4 +1,8 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+    mpsc,
+};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -344,7 +348,17 @@ fn serve_with_descriptor(
     ready: impl FnOnce(),
 ) -> Result<()> {
     let mut listener = create(name, descriptor, true)?;
-    let mut workers: Vec<std::thread::JoinHandle<()>> = Vec::new();
+    let active = Arc::new(AtomicUsize::new(0));
+    let (tx, rx) = mpsc::sync_channel::<ActiveClient>(CLIENTS);
+    let worker_stop = stop.clone();
+    let workers = spawn_workers(CLIENTS, rx, move |client: ActiveClient| {
+        let _ = handle_client(
+            client.pipe.as_ref().unwrap().0,
+            &owner,
+            worker_stop.0,
+            &context,
+        );
+    })?;
     ready();
     let result = (|| loop {
         if unsafe { WaitForSingleObject(stop.0, 0) } == WAIT_OBJECT_0 {
@@ -380,12 +394,7 @@ fn serve_with_descriptor(
                 Ok(_) => {}
             }
         }
-        for i in (0..workers.len()).rev() {
-            if workers[i].is_finished() {
-                let _ = workers.swap_remove(i).join();
-            }
-        }
-        if workers.len() >= CLIENTS {
+        if active.load(Ordering::Acquire) >= CLIENTS {
             disconnect(listener.0)?;
             continue;
         }
@@ -393,19 +402,58 @@ fn serve_with_descriptor(
         // there is never a gap in which another process can claim the pipe name.
         let next = create(name, descriptor, false)?;
         let client = std::mem::replace(&mut listener, next);
-        let owner = owner.clone();
-        let stop = stop.clone();
-        let context = context.clone();
-        workers.push(std::thread::spawn(move || {
-            let client = client;
-            let _ = handle_client(client.0, &owner, stop.0, &context);
-        }));
+        active.fetch_add(1, Ordering::AcqRel);
+        tx.try_send(ActiveClient {
+            pipe: Some(client),
+            active: active.clone(),
+        })
+        .map_err(|_| 31u32)?;
     })();
     drop(listener);
+    drop(tx);
     for worker in workers {
         let _ = worker.join();
     }
     result
+}
+
+struct ActiveClient {
+    pipe: Option<Handle>,
+    active: Arc<AtomicUsize>,
+}
+
+impl Drop for ActiveClient {
+    fn drop(&mut self) {
+        // Close the server endpoint before making its instance slot available.
+        drop(self.pipe.take());
+        self.active.fetch_sub(1, Ordering::Release);
+    }
+}
+
+fn spawn_workers<T: Send + 'static>(
+    count: usize,
+    rx: mpsc::Receiver<T>,
+    run: impl Fn(T) + Send + Sync + 'static,
+) -> Result<Vec<std::thread::JoinHandle<()>>> {
+    let rx = Arc::new(Mutex::new(rx));
+    let run = Arc::new(run);
+    (0..count)
+        .map(|_| {
+            let (rx, run) = (rx.clone(), run.clone());
+            std::thread::Builder::new()
+                .name("argus-service-ipc".into())
+                .spawn(move || {
+                    loop {
+                        let work = rx.lock().unwrap().recv();
+                        let Ok(work) = work else {
+                            break;
+                        };
+                        run(work);
+                    }
+                })
+                .map_err(crate::util::io)
+        })
+        .collect()
 }
 
 fn handle_client(pipe: HANDLE, owner: &str, stop: HANDLE, context: &Context) -> Result<()> {
@@ -435,6 +483,47 @@ pub(crate) mod tests {
 
     static NEXT: AtomicU32 = AtomicU32::new(0);
 
+    #[test]
+    fn persistent_workers_defer_thread_local_cleanup_until_shutdown() {
+        use std::cell::RefCell;
+        struct DelayedExit(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>);
+        impl Drop for DelayedExit {
+            fn drop(&mut self) {
+                let _ = self.0.send(());
+                let _ = self.1.recv_timeout(Duration::from_secs(3));
+            }
+        }
+        thread_local! { static EXIT: RefCell<Option<DelayedExit>> = const { RefCell::new(None) }; }
+        let (entered, waiting) = std::sync::mpsc::channel();
+        let (release, gate) = std::sync::mpsc::channel();
+        let teardown = Mutex::new(Some(DelayedExit(entered, gate)));
+        let (tx, rx) = mpsc::sync_channel(8);
+        let (answered, replies) = mpsc::channel();
+        let workers = spawn_workers(1, rx, move |()| {
+            EXIT.with(|exit| {
+                if exit.borrow().is_none() {
+                    *exit.borrow_mut() = teardown.lock().unwrap().take();
+                }
+            });
+            let _ = answered.send(std::thread::current().id());
+        })
+        .unwrap();
+        tx.send(()).unwrap();
+        let first = replies.recv_timeout(Duration::from_secs(2)).unwrap();
+        tx.send(()).unwrap();
+        let second = replies.recv_timeout(Duration::from_millis(150));
+        let idle = waiting.try_recv().is_err();
+        drop(tx);
+        let stopping = waiting.recv_timeout(Duration::from_secs(2)).is_ok();
+        release.send(()).unwrap();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        assert_eq!(second.unwrap(), first);
+        assert!(idle, "thread cleanup ran between requests");
+        assert!(stopping, "thread cleanup was not joined at shutdown");
+    }
+
     pub(crate) fn name() -> String {
         format!(
             r"\\.\pipe\Argus.Test.{}.{}",
@@ -451,6 +540,10 @@ pub(crate) mod tests {
 
     impl TestServer {
         fn new(owner: String) -> Self {
+            Self::with_context(owner, Context::testing())
+        }
+
+        fn with_context(owner: String, context: Context) -> Self {
             let name = name();
             let stop = Arc::new(event().unwrap());
             let (tx, rx) = std::sync::mpsc::channel();
@@ -463,14 +556,9 @@ pub(crate) mod tests {
                     // token the production authenticator is asked to verify.
                     let sid = security::current_sid().unwrap();
                     let sd = security::Descriptor::new(&format!("D:P(A;;GA;;;{sid})")).unwrap();
-                    serve_with_descriptor(
-                        &name,
-                        owner,
-                        stop,
-                        &sd,
-                        Arc::new(Context::testing()),
-                        || tx.send(()).unwrap(),
-                    )
+                    serve_with_descriptor(&name, owner, stop, &sd, Arc::new(context), || {
+                        tx.send(()).unwrap()
+                    })
                 })
             };
             rx.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -1112,6 +1200,8 @@ pub(crate) mod tests {
         let mut available_network = 0;
         let mut available_disk = 0;
         let mut request_errors = std::collections::BTreeMap::<u32, u32>::new();
+        let mut latencies = std::collections::BTreeMap::<String, Vec<u128>>::new();
+        let mut no_data_ms = Vec::new();
         let mut settled = None;
         for (name, operation) in [
             ("ping", Operation::Ping),
@@ -1134,6 +1224,12 @@ pub(crate) mod tests {
                     Operation::SensorSnapshot {},
                     Operation::DiskSnapshot {},
                 ] {
+                    let kind = match operation {
+                        Operation::NetworkSnapshot => "network",
+                        Operation::SensorSnapshot {} => "sensors",
+                        _ => "disk",
+                    };
+                    let started = Instant::now();
                     let reply = match request_with_timeout(
                         crate::PIPE_NAME,
                         pid,
@@ -1142,6 +1238,10 @@ pub(crate) mod tests {
                     ) {
                         Ok(reply) => reply,
                         Err(code) => {
+                            println!(
+                                "{}",
+                                serde_json::json!({"request":kind,"elapsedMs":started.elapsed().as_millis(),"error":code})
+                            );
                             *request_errors.entry(code).or_default() += 1;
                             assert!(
                                 request_errors.values().sum::<u32>() <= 8,
@@ -1150,9 +1250,14 @@ pub(crate) mod tests {
                             continue;
                         }
                     };
+                    let elapsed = started.elapsed().as_millis();
+                    latencies.entry(kind.into()).or_default().push(elapsed);
                     match reply {
                         Reply::Network(frame) => available_network += u32::from(frame.is_some()),
                         Reply::Sensors(frame) => {
+                            if frame.state == argus_core::hardware::SensorState::NoData {
+                                no_data_ms.push(elapsed);
+                            }
                             *sensor_states
                                 .entry(format!("{:?}", frame.state))
                                 .or_default() += 1
@@ -1175,5 +1280,321 @@ pub(crate) mod tests {
                 settled = Some(current);
             }
         }
+        for (kind, mut values) in latencies {
+            values.sort_unstable();
+            println!(
+                "{}",
+                serde_json::json!({"latency":kind,"count":values.len(),"medianMs":values[values.len()/2],"p95Ms":values[values.len()*95/100],"maxMs":values.last()})
+            );
+        }
+        println!("{}", serde_json::json!({"sensorNoDataMs":no_data_ms}));
+    }
+
+    #[test]
+    fn slow_native_reads_leave_the_pipe_responsive_and_keep_recent_snapshots() {
+        use argus_core::{
+            disk_process::DiskSnapshot,
+            hardware::{CpuSensors, SensorState},
+        };
+        use std::sync::atomic::{AtomicBool, AtomicUsize};
+        fn resources() -> (u32, usize) {
+            use windows::Win32::System::{
+                ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX},
+                Threading::{GetCurrentProcess, GetProcessHandleCount},
+            };
+            unsafe {
+                let mut handles = 0;
+                let mut memory = PROCESS_MEMORY_COUNTERS_EX::default();
+                GetProcessHandleCount(GetCurrentProcess(), &mut handles).unwrap();
+                GetProcessMemoryInfo(
+                    GetCurrentProcess(),
+                    (&mut memory as *mut PROCESS_MEMORY_COUNTERS_EX).cast(),
+                    std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+                )
+                .unwrap();
+                (handles, memory.PrivateUsage)
+            }
+        }
+        let seconds = std::env::var("ARGUS_SERVICE_SOAK_SECONDS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .filter(|s| (5..=300).contains(s));
+        let slow = Arc::new(AtomicBool::new(false));
+        let reads = Arc::new([
+            AtomicUsize::new(0),
+            AtomicUsize::new(0),
+            AtomicUsize::new(0),
+        ]);
+        let network = {
+            let (slow, reads) = (slow.clone(), reads.clone());
+            crate::network::NetworkMonitor::with_reader(move || {
+                if slow.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(1200));
+                }
+                let serial = reads[0].fetch_add(1, Ordering::Relaxed) as u64;
+                Some(crate::NetworkFrame {
+                    epoch: "isolated-test".into(),
+                    elapsed_us: serial * 1_200_000,
+                    counters: (0..512)
+                        .map(|pid| (pid + 42, 1, 0, serial * 100, serial * 200))
+                        .collect(),
+                })
+            })
+        };
+        let sensors = {
+            let (slow, reads) = (slow.clone(), reads.clone());
+            crate::sensors::SensorMonitor::with_reader(move || {
+                if slow.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(1100));
+                }
+                reads[1].fetch_add(1, Ordering::Relaxed);
+                CpuSensors {
+                    state: SensorState::Ready,
+                    package_celsius: Some(62.0),
+                    cores: (0..32)
+                        .map(|core| argus_core::hardware::CpuCoreSensors {
+                            core,
+                            celsius: Some(62.0),
+                            clock_mhz: Some(4200.0),
+                            ..Default::default()
+                        })
+                        .collect(),
+                    ..Default::default()
+                }
+            })
+        };
+        let disk = {
+            let (slow, reads) = (slow.clone(), reads.clone());
+            crate::disk::DiskMonitor::with_reader(move || {
+                if slow.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(900));
+                }
+                let serial = reads[2].fetch_add(1, Ordering::Relaxed) as u64;
+                Ok(DiskSnapshot {
+                    sampled_at_ms: serial * 900,
+                    counters: (0..512)
+                        .map(|pid| (pid + 42, 1, serial * 100, serial * 200))
+                        .collect(),
+                })
+            })
+        };
+        let server = TestServer::with_context(
+            security::current_sid().unwrap(),
+            Context::with_readers(network, sensors, disk),
+        );
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let a = matches!(
+                server.call(Operation::NetworkSnapshot).unwrap(),
+                Reply::Network(Some(_))
+            );
+            let b = matches!(server.call(Operation::SensorSnapshot {}).unwrap(), Reply::Sensors(frame) if frame.state == SensorState::Ready);
+            let c = matches!(
+                server.call(Operation::DiskSnapshot {}).unwrap(),
+                Reply::Disk(Some(_))
+            );
+            if a && b && c {
+                break;
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let before: Vec<_> = reads
+            .iter()
+            .map(|count| count.load(Ordering::Relaxed))
+            .collect();
+        slow.store(true, Ordering::Relaxed);
+        let name = &server.name;
+        let began = Instant::now();
+        let until = began
+            + seconds
+                .map(Duration::from_secs)
+                .unwrap_or(Duration::from_millis(2600));
+        let mut checkpoints = Vec::new();
+        let mut next_checkpoint = began + Duration::from_secs(5);
+        let samples = std::thread::scope(|scope| {
+            let clients: Vec<_> = (0..6)
+                .map(|client| {
+                    scope.spawn(move || {
+                        let mut elapsed = Vec::new();
+                        let mut count = 0usize;
+                        let mut max_us = 0u128;
+                        while Instant::now() < until {
+                            let operation = match client % 3 {
+                                0 => Operation::NetworkSnapshot,
+                                1 => Operation::SensorSnapshot {},
+                                _ => Operation::DiskSnapshot {},
+                            };
+                            let started = Instant::now();
+                            let reply = request_with_timeout(
+                                name,
+                                std::process::id(),
+                                operation,
+                                Duration::from_millis(500),
+                            )
+                            .unwrap();
+                            let micros = started.elapsed().as_micros();
+                            count += 1;
+                            max_us = max_us.max(micros);
+                            if elapsed.len() < 4096 {
+                                elapsed.push(micros);
+                            }
+                            match reply {
+                                Reply::Network(Some(_)) | Reply::Disk(Some(_)) => {}
+                                Reply::Sensors(frame) => {
+                                    assert_eq!(frame.state, SensorState::Ready)
+                                }
+                                _ => panic!("recent snapshot lost during a bounded slow read"),
+                            }
+                            std::thread::sleep(Duration::from_millis(2));
+                        }
+                        (count, max_us, elapsed)
+                    })
+                })
+                .collect();
+            while Instant::now() < until {
+                assert!(matches!(
+                    request_with_timeout(
+                        name,
+                        std::process::id(),
+                        Operation::Ping,
+                        Duration::from_millis(500)
+                    ),
+                    Ok(Reply::Pong { .. })
+                ));
+                std::thread::sleep(Duration::from_millis(10));
+                if Instant::now() >= next_checkpoint {
+                    let (handles, private) = resources();
+                    println!(
+                        "{}",
+                        serde_json::json!({"atMs":began.elapsed().as_millis(),"handles":handles,"privateBytes":private})
+                    );
+                    checkpoints.push((handles, private));
+                    next_checkpoint += Duration::from_secs(5);
+                }
+            }
+            clients
+                .into_iter()
+                .map(|client| client.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        let requests: usize = samples.iter().map(|sample| sample.0).sum();
+        let max_us = samples.iter().map(|sample| sample.1).max().unwrap();
+        let mut samples = samples
+            .into_iter()
+            .flat_map(|sample| sample.2)
+            .collect::<Vec<_>>();
+        samples.sort_unstable();
+        println!(
+            "{}",
+            serde_json::json!({"requests":requests,"latencySamples":samples.len(),"p95Us":samples[samples.len()*95/100],"maxUs":max_us,"readsBefore":before,"readsAfter":reads.iter().map(|count|count.load(Ordering::Relaxed)).collect::<Vec<_>>()})
+        );
+        for (count, before) in reads.iter().zip(before) {
+            assert!(count.load(Ordering::Relaxed) > before);
+        }
+        assert!(samples.len() > 100);
+        if let (Some(first), Some(last)) = (checkpoints.first(), checkpoints.last()) {
+            assert!(last.0 <= first.0 + 32, "handle growth during cached reads");
+            assert!(
+                last.1 <= first.1 + 8 * 1024 * 1024,
+                "commit growth during cached reads"
+            );
+        }
+    }
+
+    #[test]
+    fn cold_readers_coalesce_waiters_and_keep_ping_available() {
+        use argus_core::{
+            disk_process::DiskSnapshot,
+            hardware::{CpuSensors, SensorState},
+        };
+        use std::sync::atomic::AtomicBool;
+        let released = Arc::new(AtomicBool::new(false));
+        let (entered, started) = std::sync::mpsc::channel();
+        let blocked = || {
+            let released = released.clone();
+            let entered = entered.clone();
+            move || {
+                let _ = entered.send(());
+                let until = Instant::now() + Duration::from_secs(4);
+                while !released.load(Ordering::Relaxed) && Instant::now() < until {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+        };
+        let wait_network = blocked();
+        let wait_sensor = blocked();
+        let wait_disk = blocked();
+        let server = TestServer::with_context(
+            security::current_sid().unwrap(),
+            Context::with_readers(
+                crate::network::NetworkMonitor::with_reader(move || {
+                    wait_network();
+                    Some(crate::NetworkFrame {
+                        epoch: "cold-test".into(),
+                        elapsed_us: 1,
+                        counters: vec![],
+                    })
+                }),
+                crate::sensors::SensorMonitor::with_reader(move || {
+                    wait_sensor();
+                    CpuSensors {
+                        state: SensorState::Ready,
+                        ..Default::default()
+                    }
+                }),
+                crate::disk::DiskMonitor::with_reader(move || {
+                    wait_disk();
+                    Ok(DiskSnapshot {
+                        sampled_at_ms: 1,
+                        counters: vec![],
+                    })
+                }),
+            ),
+        );
+        let name = &server.name;
+        std::thread::scope(|scope| {
+            let waiting: Vec<_> = [
+                Operation::NetworkSnapshot,
+                Operation::SensorSnapshot {},
+                Operation::DiskSnapshot {},
+            ]
+            .into_iter()
+            .map(|op| {
+                scope.spawn(move || {
+                    request_with_timeout(name, std::process::id(), op, Duration::from_secs(2))
+                })
+            })
+            .collect();
+            for _ in 0..3 {
+                started.recv_timeout(Duration::from_secs(2)).unwrap();
+            }
+            let start = Instant::now();
+            for _ in 0..20 {
+                assert!(matches!(
+                    request_with_timeout(
+                        name,
+                        std::process::id(),
+                        Operation::NetworkSnapshot,
+                        Duration::from_millis(500)
+                    ),
+                    Ok(Reply::Network(None))
+                ));
+                assert!(matches!(
+                    request_with_timeout(
+                        name,
+                        std::process::id(),
+                        Operation::Ping,
+                        Duration::from_millis(500)
+                    ),
+                    Ok(Reply::Pong { .. })
+                ));
+            }
+            released.store(true, Ordering::Relaxed);
+            for client in waiting {
+                assert!(client.join().unwrap().is_ok());
+            }
+            assert!(start.elapsed() < Duration::from_millis(500));
+        });
     }
 }

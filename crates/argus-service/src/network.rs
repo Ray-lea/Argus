@@ -2,8 +2,6 @@
 //! traffic. Idle clients let the session close, including after a GUI crash.
 
 use std::collections::HashMap;
-use std::sync::mpsc::{self, RecvTimeoutError, SyncSender};
-use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use argus_core::net_process::NetworkTracker;
@@ -11,6 +9,11 @@ use serde::{Deserialize, Serialize};
 use windows::Win32::System::Com::CoCreateGuid;
 
 const IDLE: Duration = Duration::from_secs(15);
+const POLICY: crate::snapshot::Policy = crate::snapshot::Policy {
+    period: Duration::from_millis(250),
+    max_age: Duration::from_secs(2),
+    idle: IDLE,
+};
 const RETRY: Duration = Duration::from_secs(30);
 const RETAIN: Duration = Duration::from_secs(30);
 pub(crate) const MAX_COUNTERS: usize = 8192;
@@ -91,14 +94,8 @@ impl Counters {
     }
 }
 
-enum Control {
-    Read(mpsc::Sender<Option<NetworkFrame>>),
-    Stop,
-}
-
 pub(crate) struct NetworkMonitor {
-    tx: SyncSender<Control>,
-    thread: Option<JoinHandle<()>>,
+    reader: crate::snapshot::Reader<Option<NetworkFrame>>,
 }
 
 impl NetworkMonitor {
@@ -107,81 +104,91 @@ impl NetworkMonitor {
     }
 
     fn with_factory(factory: impl Fn() -> Option<NetworkTracker> + Send + 'static) -> Self {
-        let (tx, rx) = mpsc::sync_channel(8);
-        let thread = std::thread::Builder::new()
-            .name("argus-service-network".into())
-            .spawn(move || {
-                let mut tracker: Option<NetworkTracker> = None;
-                let mut counters: Option<Counters> = None;
-                let mut last_request: Option<Instant> = None;
-                let mut last_attempt: Option<Instant> = None;
-                loop {
-                    let control = match last_request {
-                        Some(last) => rx.recv_timeout(IDLE.saturating_sub(last.elapsed())),
-                        None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
-                    };
-                    match control {
-                        Ok(Control::Stop) | Err(RecvTimeoutError::Disconnected) => break,
-                        Err(RecvTimeoutError::Timeout) => {
-                            tracker = None;
-                            counters = None;
-                            last_request = None;
-                            last_attempt = None;
-                        }
-                        Ok(Control::Read(reply)) => {
-                            last_request = Some(Instant::now());
-                            if tracker.as_ref().is_some_and(|t| !t.is_active()) {
-                                tracker = None;
-                                counters = None;
-                            }
-                            if tracker.is_none()
-                                && last_attempt.is_none_or(|last| last.elapsed() >= RETRY)
-                            {
-                                last_attempt = Some(Instant::now());
-                                counters = Counters::new();
-                                if counters.is_some() {
-                                    tracker = factory();
-                                }
-                            }
-                            let frame = match (&mut tracker, &mut counters) {
-                                (Some(t), Some(c)) => c.update(t.take_bytes(), Instant::now()),
-                                _ => None,
-                            };
-                            if frame.is_none() {
-                                tracker = None;
-                                counters = None;
-                            }
-                            let _ = reply.send(frame);
-                        }
-                    }
-                }
-                // Tracker drop stops and joins the ETW consumer before SCM STOPPED.
-            })
-            .expect("spawn service network reader");
         Self {
-            tx,
-            thread: Some(thread),
+            reader: crate::snapshot::Reader::spawn("argus-service-network", POLICY, move || {
+                NativeSource {
+                    factory,
+                    tracker: None,
+                    counters: None,
+                    last_attempt: None,
+                }
+            }),
         }
     }
 
     pub fn snapshot(&self) -> Option<NetworkFrame> {
-        let (tx, rx) = mpsc::channel();
-        self.tx.try_send(Control::Read(tx)).ok()?;
-        rx.recv_timeout(Duration::from_secs(2)).ok().flatten()
+        self.reader.snapshot().and_then(|frame| (*frame).clone())
     }
 
     #[cfg(test)]
     pub fn disabled() -> Self {
-        Self::with_factory(|| None)
+        Self {
+            reader: crate::snapshot::Reader::disabled(POLICY),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_reader(read: impl FnMut() -> Option<NetworkFrame> + Send + 'static) -> Self {
+        Self {
+            reader: crate::snapshot::Reader::spawn(
+                "network-test",
+                crate::snapshot::Policy {
+                    period: Duration::from_millis(10),
+                    ..POLICY
+                },
+                move || crate::snapshot::tests::Callback(read),
+            ),
+        }
     }
 }
 
 impl Drop for NetworkMonitor {
     fn drop(&mut self) {
-        let _ = self.tx.send(Control::Stop);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
+        self.reader.stop_and_join();
+    }
+}
+
+struct NativeSource<F> {
+    factory: F,
+    tracker: Option<NetworkTracker>,
+    counters: Option<Counters>,
+    last_attempt: Option<Instant>,
+}
+
+impl<F: Fn() -> Option<NetworkTracker> + 'static> crate::snapshot::Source for NativeSource<F> {
+    type Value = Option<NetworkFrame>;
+    fn read(&mut self) -> Self::Value {
+        if self
+            .tracker
+            .as_ref()
+            .is_some_and(|tracker| !tracker.is_active())
+        {
+            self.tracker = None;
+            self.counters = None;
         }
+        if self.tracker.is_none() && self.last_attempt.is_none_or(|last| last.elapsed() >= RETRY) {
+            self.last_attempt = Some(Instant::now());
+            self.counters = Counters::new();
+            if self.counters.is_some() {
+                self.tracker = (self.factory)();
+            }
+        }
+        let frame = match (&mut self.tracker, &mut self.counters) {
+            (Some(tracker), Some(counters)) => {
+                counters.update(tracker.take_bytes(), Instant::now())
+            }
+            _ => None,
+        };
+        if frame.is_none() {
+            self.tracker = None;
+            self.counters = None;
+        }
+        frame
+    }
+    fn idle(&mut self) {
+        self.tracker = None;
+        self.counters = None;
+        self.last_attempt = None;
     }
 }
 
