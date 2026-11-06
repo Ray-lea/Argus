@@ -32,14 +32,14 @@ const copy = {
     download: "Download for Windows",
     other: "Portable and checksums",
     facts: [r.tag + " · installer " + mebibytes(installer.size) + " MiB", "Windows 10 / 11 · x64", "Open source · AGPL-3.0"],
-    intro: ["Made for finding what is wrong.", " Pages appear within tens of milliseconds and curves move with the display; ports, file locks, per-process disk I/O and seven days of history need no other tool."],
+    intro: ["Made for finding what is wrong.", " Pages appear within tens of milliseconds and curves move with the display; ports, file locks, per-process disk I/O, disk health and seven days of history are available in one place."],
     fast: ["Fast", "From a click to the page on screen, Argus needs a fraction of Task Manager's time.", " Back from CPU to Processes: " + fastest.argus + " ms against " + fastest.native + " ms."],
     note: "Median time from the mouse click until the window shows the target content.",
     raw: "Raw data",
     modern: ["Modern", "A native window drawn by the GPU, in step with every frame of the display.", " Look, accent and theme follow Windows."],
     curves: ["Curves that flow", "The same recorded load drawn two ways: Argus moves the curve at the display's refresh rate, Task Manager jumps once per update."],
     keys: ["Always one key away", "The global shortcut can be changed or turned off. Hidden in the tray, the window stops drawing while sampling, history and rules continue."],
-    native: ["Native from end to end", "Process and hardware data come from NT and Win32 interfaces; the window is drawn with Direct3D 11 and composed by DirectComposition."],
+    native: ["Native from end to end", "Rust and GPUI Kit power the interface. Process and hardware data come from NT and Win32 interfaces; Direct3D 11 draws the window and DirectComposition composes it."],
     pipe: [["Collect", "NT · Win32"], ["Draw", "Direct3D 11"], ["Compose", "DirectComposition"], ["Display", "Refresh rate"]],
     rich: ["Information-rich", "What Task Manager leaves to other tools, or does not show.", " Only the rows where the two differ."],
     head: ["When you need", "Argus", "Task Manager"],
@@ -50,7 +50,8 @@ const copy = {
     ],
     oss: ["Open source", "Argus is developed in the open on GitHub under AGPL-3.0.", " Code, issues and releases are public; feedback and contributions are welcome."],
     faq: "Questions",
-    more: "Read more (Chinese)",
+    more: "Read more",
+    moreChinese: "Read more (Chinese)",
     rotate: "Turn your phone sideways to see the full desktop",
     cta: ["Get Argus", "Free and open source. The installer downloads updates in the background and verifies each signature before installing."],
     install: "Download installer",
@@ -62,14 +63,14 @@ const copy = {
     download: "下载 Windows 版",
     other: "免安装版与校验值",
     facts: [r.tag + " · 安装版 " + mebibytes(installer.size) + " MiB", "Windows 10 / 11 · x64", "开源 · AGPL-3.0"],
-    intro: ["为排查而生的任务管理器。", "从单击到画面出现只需几十毫秒，曲线随屏幕刷新率流动；端口、文件占用、每进程磁盘读写和最近 7 天的历史，都不必再打开别的工具。"],
+    intro: ["为排查而生的任务管理器。", "从单击到画面出现只需几十毫秒，曲线随屏幕刷新率流动；端口、文件占用、每进程磁盘读写、磁盘健康和最近 7 天的历史，均可在同一窗口查看。"],
     fast: ["快速", "从单击到目标画面出现，Argus 只需要系统任务管理器的一小部分时间。", "从 CPU 性能回到进程页：" + fastest.argus + " 毫秒对 " + fastest.native + " 毫秒。"],
     note: "中位耗时：从鼠标单击开始，到窗口画面出现目标内容为止。",
     raw: "原始数据",
     modern: ["现代", "原生界面由 GPU 绘制，跟上显示器的每一帧。", "外观、强调色与深浅主题跟随 Windows。"],
     curves: ["曲线连续流动", "同一段实测负载的两种画法：Argus 按显示器的刷新率平移曲线，任务管理器每次刷新跳一格。"],
     keys: ["随时呼出，随时隐藏", "全局快捷键可更改或停用。隐藏到托盘后窗口停止绘制，采样、历史记录与规则继续运行。"],
-    native: ["从采集到绘制都是原生", "进程与硬件数据直接来自 NT 与 Win32 接口，窗口由 Direct3D 11 绘制、DirectComposition 合成。"],
+    native: ["从采集到绘制都是原生", "界面采用 Rust 与 GPUI Kit，进程与硬件数据直接来自 NT 与 Win32 接口，窗口由 Direct3D 11 绘制、DirectComposition 合成。"],
     pipe: [["采集", "NT · Win32"], ["绘制", "Direct3D 11"], ["合成", "DirectComposition"], ["显示", "随刷新率"]],
     rich: ["信息丰富", "任务管理器需要另开工具或无法查看的信息。", "下表只列出两者不同的地方。"],
     head: ["排查需求", "Argus", "任务管理器"],
@@ -381,7 +382,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
               <div className="faq-answer">
                 <p>{answer}</p>
                 <SiteLink lang={lang} className="text-link" href={link}>
-                  {t.more} <Icon name="arrow" size={14} />
+                  {en && link.startsWith("/docs/") ? copy.en.moreChinese : t.more} <Icon name="arrow" size={14} />
                 </SiteLink>
               </div>
             </details>

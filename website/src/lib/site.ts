@@ -77,6 +77,9 @@ if (data.format !== 6)
   throw Error("content/site.json is from an older version of the website scripts. Restart start-website.bat.");
 export const site = data as unknown as Snapshot;
 export const [stable, development] = site.editions;
+// The first native release documents the interface demonstrated on the home page.
+const [releaseMajor, releaseMinor] = site.release.version.split(".").map(Number);
+export const nativeStable = releaseMajor > 0 || (releaseMajor === 0 && releaseMinor >= 4);
 // The development base is nested inside the stable one; the last match is the closest.
 export const editionOf = (path: string) =>
   site.editions.findLast((edition) => path.startsWith(edition.base)) ?? stable;
