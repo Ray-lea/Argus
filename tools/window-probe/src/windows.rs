@@ -22,7 +22,8 @@ use windows::{
             Diagnostics::ToolHelp::*,
             Performance::*,
             ProcessStatus::{
-                GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX, PROCESS_MEMORY_COUNTERS_EX2,
+                GetPerformanceInfo, GetProcessMemoryInfo, PERFORMANCE_INFORMATION,
+                PROCESS_MEMORY_COUNTERS_EX, PROCESS_MEMORY_COUNTERS_EX2,
             },
             Threading::*,
             WindowsProgramming::QueryProcessCycleTime,
@@ -677,20 +678,49 @@ fn thread_times(pids: &HashSet<u32>) -> Result<Vec<serde_json::Value>> {
 
 fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
     let pids = job.pids()?;
+    // Additional processes are observed only; never attach them to the owned job.
+    let observed: HashSet<u32> = std::env::var("ARGUS_PROBE_OBSERVE_PIDS")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|pid| pid.parse().ok())
+        .collect();
     let (mut idle, mut kernel, mut user) = (
         FILETIME::default(),
         FILETIME::default(),
         FILETIME::default(),
     );
     unsafe { GetSystemTimes(Some(&mut idle), Some(&mut kernel), Some(&mut user))? };
+    let mut performance = PERFORMANCE_INFORMATION::default();
+    unsafe {
+        GetPerformanceInfo(
+            &mut performance,
+            size_of::<PERFORMANCE_INFORMATION>() as u32,
+        )?
+    };
+    let tracked = pids.union(&observed).copied().collect();
+    Ok(serde_json::json!({
+        "processes": process_resources(&pids),
+        "observedProcesses": process_resources(&observed),
+        "peakJobCommit": job.peak_commit()?,
+        "system": {"idle":ticks(idle),"kernel":ticks(kernel),"user":ticks(user),
+            "handles":performance.HandleCount,"processes":performance.ProcessCount,
+            "threads":performance.ThreadCount,"commitBytes":performance.CommitTotal * performance.PageSize},
+        "gpu":gpu.map(|gpu|gpu.sample(&tracked)),
+        "threads":gpu.map(|_|thread_times(&pids)).transpose()?
+    }))
+}
+
+fn process_resources(pids: &HashSet<u32>) -> Vec<serde_json::Value> {
     let mut processes = Vec::new();
-    for &pid in &pids {
+    for &pid in pids {
         unsafe {
             let Ok(handle) = OpenProcess(
                 PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
                 false,
                 pid,
-            ) else {
+            )
+            .or_else(|_| OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)) else {
+                processes.push(serde_json::json!({"pid":pid,"error":"process query denied"}));
                 continue;
             };
             let mut memory = PROCESS_MEMORY_COUNTERS_EX2 {
@@ -722,15 +752,19 @@ fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
                 )
                 .is_ok()
             };
+            let mut handles = 0;
+            let handles = GetProcessHandleCount(handle, &mut handles)
+                .is_ok()
+                .then_some(handles);
+            let gdi = GetGuiResources(handle, GR_GDIOBJECTS);
+            let user_objects = GetGuiResources(handle, GR_USEROBJECTS);
             let _ = CloseHandle(handle);
             if time_ok && mem_ok {
-                processes.push(serde_json::json!({"pid":pid,"created":ticks(created),"cpuMs":(ticks(kernel)+ticks(user)) as f64/10000.,"cpuCycles":cycles,"privateBytes":memory.PrivateUsage,"peakPrivateBytes":memory.PeakPagefileUsage,"privateWorkingSet":extended.then_some(memory.PrivateWorkingSetSize),"workingSet":memory.WorkingSetSize}));
+                processes.push(serde_json::json!({"pid":pid,"created":ticks(created),"cpuMs":(ticks(kernel)+ticks(user)) as f64/10000.,"cpuCycles":cycles,"privateBytes":memory.PrivateUsage,"peakPrivateBytes":memory.PeakPagefileUsage,"privateWorkingSet":extended.then_some(memory.PrivateWorkingSetSize),"workingSet":memory.WorkingSetSize,"handles":handles,"gdiObjects":gdi,"userObjects":user_objects}));
             }
         }
     }
-    Ok(
-        serde_json::json!({"processes":processes,"peakJobCommit":job.peak_commit()?,"system":{"idle":ticks(idle),"kernel":ticks(kernel),"user":ticks(user)},"gpu":gpu.map(|gpu|gpu.sample(&pids)),"threads":gpu.map(|_|thread_times(&pids)).transpose()?}),
-    )
+    processes
 }
 
 fn qpc_time_100ns() -> Result<i64> {
@@ -953,6 +987,7 @@ pub fn run(args: &[String]) -> Result<()> {
     };
     let mut measured = Instant::now();
     let mut closing = None;
+    let mut clock_installed = false;
     #[cfg(target_arch = "x86_64")]
     let mut stack_sampler = None;
     #[cfg(feature = "capture")]
@@ -1041,6 +1076,21 @@ pub fn run(args: &[String]) -> Result<()> {
                 }
             }
             while let Ok(command) = rx.try_recv() {
+                if command == "clock" {
+                    anyhow::ensure!(!clock_installed, "clock hook already installed");
+                    let hooks = crate::clock_hook::install(
+                        windows::Win32::Foundation::HANDLE(child.as_raw_handle()),
+                        root,
+                        args,
+                    )?;
+                    clock_installed = true;
+                    println!(
+                        "{}",
+                        serde_json::json!({"event":"clock-hook","pid":root,"imports":hooks})
+                    );
+                    io::stdout().flush()?;
+                    continue;
+                }
                 if let Some(tag) = command.strip_prefix("mark ") {
                     let at_ms = start.elapsed().as_secs_f64() * 1000.;
                     let qpc = qpc_time_100ns()?;

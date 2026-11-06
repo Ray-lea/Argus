@@ -212,4 +212,20 @@ mod tests {
     fn denied_trace_returns_unavailable_without_elevation() {
         assert!(NetworkMonitor::disabled().snapshot().is_none());
     }
+
+    #[test]
+    fn thirty_days_of_expiring_network_processes_do_not_accumulate_counters() {
+        let mut counters = Counters::new().unwrap();
+        for hour in 0..720u32 {
+            let now = counters.start + Duration::from_secs(u64::from(hour) * 3600);
+            let deltas = (0..128).map(|i| (hour * 128 + i, (100, 200))).collect();
+            let frame = counters.update(deltas, now).unwrap();
+            assert_eq!(frame.counters.len(), 128);
+            let expired = counters
+                .update(HashMap::new(), now + RETAIN + Duration::from_secs(1))
+                .unwrap();
+            assert!(expired.counters.is_empty());
+            assert!(counters.values.capacity() <= 512);
+        }
+    }
 }

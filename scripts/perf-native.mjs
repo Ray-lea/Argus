@@ -108,6 +108,7 @@ const result = {
     linearAreaDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_LINEAR_AREA"),
     sceneCacheDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_SCENE_CACHE"),
     performanceCores: !!process.env.ARGUS_PROBE_PERFORMANCE_CORES,
+    clockRate: process.env.ARGUS_PROBE_CLOCK_DLL ? Number(process.env.ARGUS_TEST_CLOCK_RATE) : null,
   },
   events: [],
   summaries: [],
@@ -166,7 +167,9 @@ async function stopWatching() {
 }
 async function mark(tag) {
   send(`mark ${tag}`);
-  for (let i = 0; i < 200 && !exited; i++) {
+  // PDH can briefly serialize with other collectors during process churn.
+  // Keep the mark's native QPC timestamp; receipt latency is not elapsed work.
+  for (let i = 0; i < 600 && !exited; i++) {
     const mark = result.events.find((event) => event.event === "mark" && event.tag === tag);
     if (mark) return mark;
     await sleep(50);
@@ -239,6 +242,11 @@ try {
       await sleep(Math.min(1000, Math.max(0, until - performance.now())));
     }
   } else await sleep(warmup * 1000);
+  if (process.env.ARGUS_PROBE_CLOCK_DLL) {
+    send("clock");
+    for (let i = 0; i < 400 && !exited && !result.events.some(e => e.event === "clock-hook"); i++) await sleep(50);
+    assert(result.events.some(e => e.event === "clock-hook"), "clock hook did not initialize");
+  }
   for (let cycle = 0; cycle < captureCycles; cycle++) {
     assert(await stopWatching(), "capture cycle teardown failed");
     send("watch");

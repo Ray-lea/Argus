@@ -1,6 +1,8 @@
 #[cfg(feature = "capture")]
 use anyhow::Context as _;
 
+#[cfg(windows)]
+mod clock_hook;
 #[cfg(all(windows, feature = "capture"))]
 mod frames;
 #[cfg(windows)]

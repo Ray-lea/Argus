@@ -30,6 +30,28 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 `--stream-fixture` 配合 `--fixture` 将整组时间戳平移到回放开始时刻，并在预热期间每秒推进一次样本。正式测量可用场景的 `repeat` 指定采样频率。探针在启动隔离进程前为整个作业设置 2 GiB 提交上限，结果分别记录专用工作集、进程私有提交和作业提交峰值。
 
+## 加速资源测试
+
+`node scripts/build-leak-tools.mjs` 构建测试用时钟 DLL 和短生命周期负载程序。`node scripts/leak-native.mjs <标签> <EXE路径> --rate 60 --seconds 60 --rounds 4 --load 600 --observe <服务PID>` 运行预热、重复切页/主题/对话框/显隐、静置与隐藏阶段；`--rate 1` 使用原始时钟作对照，`--capture` 同时记录窗口实际呈现，`--probe` 可指定探针路径。
+
+时钟 DLL 在已启动的隔离进程中替换主 EXE 的 IAT 项，覆盖 QPC、系统时间、运行时长及等待接口。Windows、探针、外部负载和既有服务保持各自的真实时钟。`clock.ndjson` 记录已替换接口、真实/虚拟时间及调用计数；`resources.json` 保存实际采样序号、句柄、GDI/USER 对象、私有提交、GPU 本地/非本地驻留量和服务计数。有限等待按倍数缩短，硬件采集和呈现仍受真实吞吐量约束，报告同时记录时间跨度与实际完成次数。
+
+外部负载在结果目录创建不同路径的短生命周期进程，执行临时文件写入及本机回环 UDP 通信；`external-load.json` 记录完成数和接收字节数。测试按 PID 和创建时间核对进程，服务只读观察，系统总句柄单独保存。比较相同场景的多个压力轮和静置后的残留，预热后持续增长作为进一步定位的依据。原始数据保存在 `target/native-validation/<标签>`。
+
+`node scripts/leak-icons.mjs <标签> <EXE路径> --probe <探针路径>` 将一个可见进程的图标轮换为 4,096 张不同 PNG，分四轮记录压力及静置、隐藏后的内存。模拟数据自身常驻内存，比较预热后的增量与各轮趋势。
+
+源码中的时间参数测试直接推进元数据和服务网络缓存的时钟，覆盖 30 天的条目创建、过期和回收。真实资源循环单独执行：
+
+```powershell
+cargo test -p argus-core thirty_days
+cargo test -p argus-service thirty_days
+cargo test -p argus-core resource_soak_icon_extraction -- --ignored --nocapture --test-threads=1
+cargo test -p argus-service resource_soak_requests_disconnects_and_shutdown -- --ignored --nocapture --test-threads=1
+cargo test -p argus-service resource_soak_running_service_reads -- --ignored --nocapture --test-threads=1
+```
+
+最后一项需要本构建对应的已授权服务正在运行，直接请求固定的网络、磁盘和 CPU 传感器快照，记录服务句柄、私有提交及各类回复数。测试不安装驱动或修改服务配置。
+
 ## 帧跟踪与资源计数
 
 检查 Windows 图表合成时，在同一发行构建上设置 `ARGUS_GPUI_DISABLE_CHART_LAYERS=1` 可测量交换链路径。开启诊断后，`gpu-chart-policy` 记录设备能力查询结果与活动 HAGS 状态，`gpu-chart-layers` 记录已提交的曲线和图层数量。在支持的 SDR 环境，可用 `scripts/ui-smoke.mjs` 的 `--retained --require-chart-layers` 参数核对图层路径的实际画面。正式资源测量关闭诊断，分别记录应用 GPU 引擎、DWM、显卡时钟和窗口实际呈现帧率。

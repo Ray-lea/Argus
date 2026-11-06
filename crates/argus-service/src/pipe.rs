@@ -1032,4 +1032,148 @@ pub(crate) mod tests {
         }
         thread.join().unwrap().unwrap();
     }
+
+    #[test]
+    #[ignore = "local broker resource soak; run alone with --test-threads=1"]
+    fn resource_soak_requests_disconnects_and_shutdown() {
+        use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessHandleCount};
+        let handles = || unsafe {
+            let mut value = 0;
+            GetProcessHandleCount(GetCurrentProcess(), &mut value).unwrap();
+            value
+        };
+        let before = handles();
+        println!("broker cold handles={before}");
+        let mut settled = None;
+        for cycle in 0..6 {
+            {
+                let server = TestServer::new(security::current_sid().unwrap());
+                for _ in 0..50 {
+                    assert!(matches!(
+                        server.call(Operation::Ping),
+                        Ok(Reply::Pong { .. })
+                    ));
+                }
+                let baseline = handles();
+                for batch in 0..8 {
+                    for _ in 0..500 {
+                        drop(server.connect());
+                        assert!(matches!(
+                            server.call(Operation::Ping),
+                            Ok(Reply::Pong { .. })
+                        ));
+                    }
+                    let current = handles();
+                    println!(
+                        "broker batch={} handles={} baseline={}",
+                        batch + 1,
+                        current,
+                        baseline
+                    );
+                    assert!(current <= baseline + CLIENTS as u32 * 4);
+                }
+            }
+            let after = handles();
+            println!("broker shutdown handles={after} initial={before}");
+            println!("broker lifecycle={cycle}");
+            if let Some(settled) = settled {
+                assert!(after <= settled + 2);
+            } else {
+                settled = Some(after);
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "read-only load of the already-running authorized broker"]
+    fn resource_soak_running_service_reads() {
+        use windows::Win32::System::{
+            ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX},
+            Threading::{GetProcessHandleCount, PROCESS_QUERY_LIMITED_INFORMATION},
+        };
+        let pid = crate::install::running_pid()
+            .unwrap()
+            .expect("existing authorized service required");
+        let process =
+            Handle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.unwrap());
+        let counts = || unsafe {
+            let mut handles = 0;
+            GetProcessHandleCount(process.0, &mut handles).unwrap();
+            let mut memory = PROCESS_MEMORY_COUNTERS_EX::default();
+            GetProcessMemoryInfo(
+                process.0,
+                (&mut memory as *mut PROCESS_MEMORY_COUNTERS_EX).cast(),
+                std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+            )
+            .unwrap();
+            (handles, memory.PrivateUsage)
+        };
+        let mut sensor_states = std::collections::BTreeMap::<String, u32>::new();
+        let mut available_network = 0;
+        let mut available_disk = 0;
+        let mut request_errors = std::collections::BTreeMap::<u32, u32>::new();
+        let mut settled = None;
+        for (name, operation) in [
+            ("ping", Operation::Ping),
+            ("network", Operation::NetworkSnapshot),
+            ("sensors", Operation::SensorSnapshot {}),
+            ("disk", Operation::DiskSnapshot {}),
+        ] {
+            let started = Instant::now();
+            let reply =
+                request_with_timeout(crate::PIPE_NAME, pid, operation, Duration::from_secs(2));
+            println!(
+                "{}",
+                serde_json::json!({"probe":name,"ms":started.elapsed().as_millis(),"error":reply.as_ref().err(),"ok":reply.is_ok()})
+            );
+        }
+        for batch in 0..8 {
+            for _ in 0..200 {
+                for operation in [
+                    Operation::NetworkSnapshot,
+                    Operation::SensorSnapshot {},
+                    Operation::DiskSnapshot {},
+                ] {
+                    let reply = match request_with_timeout(
+                        crate::PIPE_NAME,
+                        pid,
+                        operation,
+                        Duration::from_secs(2),
+                    ) {
+                        Ok(reply) => reply,
+                        Err(code) => {
+                            *request_errors.entry(code).or_default() += 1;
+                            assert!(
+                                request_errors.values().sum::<u32>() <= 8,
+                                "broker read failures: {request_errors:?}"
+                            );
+                            continue;
+                        }
+                    };
+                    match reply {
+                        Reply::Network(frame) => available_network += u32::from(frame.is_some()),
+                        Reply::Sensors(frame) => {
+                            *sensor_states
+                                .entry(format!("{:?}", frame.state))
+                                .or_default() += 1
+                        }
+                        Reply::Disk(frame) => available_disk += u32::from(frame.is_some()),
+                        Reply::DiskFailed(_) => {}
+                        _ => panic!("unexpected read-only broker reply"),
+                    }
+                }
+            }
+            let current = counts();
+            println!(
+                "{}",
+                serde_json::json!({"batch":batch+1,"pid":pid,"handles":current.0,"privateBytes":current.1,"networkReplies":available_network,"diskReplies":available_disk,"sensorStates":sensor_states,"requestErrors":request_errors})
+            );
+            if let Some((handles, bytes)) = settled {
+                assert!(current.0 <= handles + CLIENTS as u32 * 4);
+                assert!(current.1 <= bytes + 8 * 1024 * 1024);
+            } else {
+                settled = Some(current);
+            }
+        }
+    }
 }
