@@ -36,6 +36,7 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
             file_drop::install(host, hwnd);
             argus_service::admin::window_relaunch(&host.config().identifier, hwnd);
             crate::window_motion::install(hwnd);
+            crate::activation::install(hwnd);
         }
         crate::shell::apply_theme(
             host,
@@ -50,6 +51,8 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
             })));
         if !options.test {
             crate::hotkey::init(host, &native);
+        }
+        if !options.test || crate::shell::test_tray_delay().is_some() {
             let _ = crate::shell::build_tray(host);
         }
         if options.hidden {

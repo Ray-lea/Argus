@@ -75,6 +75,7 @@ pub(super) fn metrics() -> (u64, u64, usize) {
 
 #[derive(Default)]
 struct Cache {
+    reduced: bool,
     key: Option<u64>,
     /// The completed revision has no drawable segment in the raster window.
     empty: bool,
@@ -355,6 +356,12 @@ fn density(window: &Window) -> f32 {
             .expect("chart raster scale") as f32
 }
 
+fn reduced_density(size: Size<Pixels>, scale: f32) -> f32 {
+    let base = scale.min(1.);
+    let area = f32::from(size.width) * f32::from(size.height) * base * base;
+    base * ((512. * 1024.) / area.max(1.)).sqrt().min(1.)
+}
+
 fn cache(plot: &TimePlot, window: &mut Window, cx: &mut App) -> Entity<Cache> {
     window.use_keyed_state("argus-curve-texture", cx, |window, cx| {
         let handle = window.window_handle();
@@ -390,10 +397,25 @@ pub(super) fn prepare(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let density = density(window);
-    let revision = key(plot, bounds.size, density);
     let cache = cache(plot, window, cx);
+    let headroom = crate::memory_pressure::available_memory();
+    let reduced = crate::memory_pressure::reduced(headroom, cache.read(cx).reduced);
+    let density = if reduced {
+        reduced_density(bounds.size, window.scale_factor())
+    } else {
+        density(window)
+    };
+    let revision = key(plot, bounds.size, density);
     cache.update(cx, |cache, cx| {
+        if reduced != cache.reduced {
+            cache.pending = None;
+            cache.key = None;
+            if let Some(texture) = cache.texture.take() {
+                let _ = window.drop_image(texture.image);
+            }
+            *plot.image_surface.borrow_mut() = Surface::default();
+        }
+        cache.reduced = reduced;
         let content = plot.content();
         cache.requested = Some(revision);
         cache.requested_content = Some(content);
@@ -423,9 +445,17 @@ pub(super) fn prepare(
             cache.empty = true;
             return;
         };
-        let Some(reservation) =
-            Reservation::try_new(&IN_FLIGHT, layout.working_bytes, MAX_IN_FLIGHT_BYTES)
-        else {
+        let limit = if reduced {
+            4 << 20
+        } else {
+            MAX_IN_FLIGHT_BYTES
+        };
+        let reserve = if reduced { 8 << 20 } else { 32 << 20 };
+        let Some(reservation) = Reservation::try_new(
+            &IN_FLIGHT,
+            layout.working_bytes,
+            limit.min(headroom.saturating_sub(reserve)),
+        ) else {
             // No work was queued. Retry the current revision when workers release space.
             window.request_animation_frame();
             return;
@@ -1515,6 +1545,20 @@ mod tests {
         )]
         .into();
         assert_ne!(before, key(&p, size, 2.));
+    }
+    #[test]
+    fn large_charts_fit_the_reduced_working_budget() {
+        let mut plot = plot(vec![(0., Some(0.)), (100., Some(100.))]);
+        plot.fill = true;
+        for (width, height, scale) in [(1240., 800., 1.), (3840., 2160., 2.), (7680., 4320., 3.)] {
+            let size = size(px(width), px(height));
+            let density = super::reduced_density(size, scale);
+            let input = Input::new(&plot, size, density);
+            let layout = super::extent(&input).unwrap();
+            assert!(layout.working_bytes <= 4 << 20);
+            let image = rasterize(&input).unwrap();
+            assert!(image.image.size(0).width.0 > 0);
+        }
     }
     #[test]
     fn off_mode_advances_the_endpoint_and_readout_with_the_finished_raster() {

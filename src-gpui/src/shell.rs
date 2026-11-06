@@ -1,4 +1,5 @@
 //! Native window lifecycle, backdrop, tray and visibility-driven sampling.
+mod tray;
 use crate::{
     native_runtime::{Host, NativeWindow},
     sampler::{Control, WindowState},
@@ -6,7 +7,7 @@ use crate::{
 };
 use argus_core::tr;
 use std::sync::{
-    Mutex, OnceLock,
+    Arc, Mutex, OnceLock,
     atomic::{AtomicU8, Ordering},
 };
 use std::time::Instant;
@@ -23,9 +24,39 @@ static HOST: OnceLock<Host> = OnceLock::new();
 static VIEW: AtomicU8 = AtomicU8::new(WindowState::Hidden as u8);
 static AWAY: Mutex<Option<(bool, Option<Instant>)>> = Mutex::new(None);
 static UPDATE: Mutex<Option<String>> = Mutex::new(None);
-static BADGE_ICON: Mutex<Option<isize>> = Mutex::new(None);
+static TRAY: Mutex<Option<Arc<tray::Worker>>> = Mutex::new(None);
 const TRAY_MESSAGE: u32 = WM_APP + 82;
 const BADGE_COLOR: [u8; 4] = [0x38, 0xBD, 0xF8, 0xFF];
+
+/// Fault injection stays inside an explicitly isolated test instance.
+pub(crate) fn test_tray_delay() -> Option<std::time::Duration> {
+    static DELAY: OnceLock<Option<std::time::Duration>> = OnceLock::new();
+    *DELAY.get_or_init(|| {
+        let args: Vec<_> = std::env::args().collect();
+        if !args.iter().any(|arg| arg == "--test")
+            || !args.windows(2).any(|pair| {
+                pair[0] == "--identifier" && pair[1].starts_with("dev.argus.taskmanager.test.")
+            })
+        {
+            return None;
+        }
+        let millis = std::env::var("ARGUS_TEST_TRAY_DELAY_MS")
+            .ok()?
+            .parse::<u64>()
+            .ok()?;
+        (1..=10_000)
+            .contains(&millis)
+            .then(|| std::time::Duration::from_millis(millis))
+    })
+}
+
+fn notify_icon(message: NOTIFY_ICON_MESSAGE, data: &NOTIFYICONDATAW) -> bool {
+    if let Some(delay) = test_tray_delay() {
+        std::thread::sleep(delay);
+        return true;
+    }
+    unsafe { Shell_NotifyIconW(message, data).as_bool() }
+}
 
 pub fn draw_badge(rgba: &mut [u8], size: u32, color: [u8; 4]) {
     if size < 12 || rgba.len() < (size * size * 4) as usize {
@@ -319,80 +350,114 @@ pub fn apply_language(app: &Host) {
 pub fn tray_tooltip(usage: &str) -> String {
     format!("{}\n{usage}", app_title())
 }
-fn tray_data(app: &Host) -> Option<NOTIFYICONDATAW> {
-    Some(NOTIFYICONDATAW {
-        cbSize: size_of::<NOTIFYICONDATAW>() as u32,
-        hWnd: app.get_window("main")?.hwnd().ok()?,
-        uID: 1,
-        ..Default::default()
-    })
-}
 pub fn build_tray(app: &Host) -> anyhow::Result<()> {
-    let Some(mut data) = tray_data(app) else {
+    if app.exit_code().is_some() {
+        return Ok(());
+    }
+    let Some(window) = app.get_window("main") else {
         return Ok(());
     };
-    data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
-    data.uCallbackMessage = TRAY_MESSAGE;
-    unsafe {
-        data.hIcon = LoadIconW(Some(GetModuleHandleW(None)?.into()), PCWSTR(1usize as _))
-            .or_else(|_| LoadIconW(None, IDI_APPLICATION))?;
-        let title = wide(&app_title());
-        let n = title.len().min(data.szTip.len());
-        data.szTip[..n].copy_from_slice(&title[..n]);
-        anyhow::ensure!(
-            Shell_NotifyIconW(NIM_ADD, &data).as_bool(),
-            "tray creation failed"
-        );
+    let hwnd = window.hwnd()?.0 as isize;
+    let mut slot = TRAY.lock().unwrap();
+    if let Some(worker) = slot.as_ref() {
+        worker.recreate();
+        return Ok(());
     }
+    let mut native = NativeTray {
+        hwnd,
+        badge: None,
+        generation: None,
+    };
+    let worker = tray::Worker::spawn(app_title(), move |update| native.write(update)).inspect_err(
+        |error| {
+            argus_core::diagnostics::warn(
+                "tray worker creation",
+                argus_core::diagnostics::io(error),
+            )
+        },
+    )?;
+    worker.badge(UPDATE.lock().unwrap().is_some());
+    *slot = Some(Arc::new(worker));
     Ok(())
 }
-pub fn shutdown(app: &Host) {
-    if let Some(data) = tray_data(app) {
-        unsafe {
-            let _ = Shell_NotifyIconW(NIM_DELETE, &data);
-        }
-    }
-    if let Some(raw) = BADGE_ICON.lock().unwrap().take() {
-        unsafe {
-            let _ = DestroyIcon(HICON(raw as _));
-        }
+pub fn shutdown(_app: &Host) {
+    if let Some(worker) = TRAY.lock().unwrap().take() {
+        worker.shutdown(std::time::Duration::from_millis(100));
     }
 }
-pub fn set_tray_tooltip(app: &Host, text: &str) {
-    if let Some(mut data) = tray_data(app) {
-        data.uFlags = NIF_TIP;
-        let text = wide(text);
-        let n = (text.len() - 1).min(data.szTip.len() - 1);
-        data.szTip[..n].copy_from_slice(&text[..n]);
-        unsafe {
-            let _ = Shell_NotifyIconW(NIM_MODIFY, &data);
-        }
+pub fn set_tray_tooltip(_app: &Host, text: &str) {
+    if let Some(worker) = TRAY.lock().unwrap().clone() {
+        worker.title(text);
     }
 }
-pub fn set_tray_update(app: &Host, version: Option<&str>) {
+pub fn set_tray_update(_app: &Host, version: Option<&str>) {
     *UPDATE.lock().unwrap() = version.map(str::to_owned);
-    if let Some(mut data) = tray_data(app)
-        && let Ok(base) = unsafe { base_tray_icon() }
-    {
-        data.uFlags = NIF_ICON;
-        if version.is_some() {
-            let mut slot = BADGE_ICON.lock().unwrap();
-            let icon = slot
-                .map(|raw| HICON(raw as _))
-                .or_else(|| {
-                    let created = unsafe { create_badged_icon(base) }?;
-                    *slot = Some(created.0 as isize);
-                    Some(created)
-                })
-                .unwrap_or(base);
-            data.hIcon = icon;
-        } else {
-            data.hIcon = base;
+    if let Some(worker) = TRAY.lock().unwrap().clone() {
+        worker.badge(version.is_some());
+    }
+}
+
+struct NativeTray {
+    hwnd: isize,
+    badge: Option<isize>,
+    generation: Option<u64>,
+}
+
+impl NativeTray {
+    fn write(&mut self, update: tray::Update) {
+        let mut data = NOTIFYICONDATAW {
+            cbSize: size_of::<NOTIFYICONDATAW>() as u32,
+            hWnd: HWND(self.hwnd as _),
+            uID: 1,
+            ..Default::default()
+        };
+        if update.closed {
+            let _ = notify_icon(NIM_DELETE, &data);
+            return;
         }
-        unsafe {
-            let _ = Shell_NotifyIconW(NIM_MODIFY, &data);
+        let Ok(base) = (unsafe { base_tray_icon() }) else {
+            return;
+        };
+        if update.badge && self.badge.is_none() {
+            self.badge = unsafe { create_badged_icon(base) }.map(|icon| icon.0 as isize);
+        }
+        data.hIcon = if update.badge {
+            self.badge.map(|icon| HICON(icon as _)).unwrap_or(base)
+        } else {
+            base
+        };
+        data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+        data.uCallbackMessage = TRAY_MESSAGE;
+        let title = wide(&update.title);
+        let length = title.len().saturating_sub(1).min(data.szTip.len() - 1);
+        data.szTip[..length].copy_from_slice(&title[..length]);
+        let (first, retry) = if self.generation == Some(update.generation) {
+            (NIM_MODIFY, NIM_ADD)
+        } else {
+            (NIM_ADD, NIM_MODIFY)
+        };
+        if notify_icon(first, &data) || notify_icon(retry, &data) {
+            self.generation = Some(update.generation);
+        } else {
+            self.generation = None;
+            argus_core::diagnostics::warn("tray update", "Shell_NotifyIconW returned false");
         }
     }
+}
+
+impl Drop for NativeTray {
+    fn drop(&mut self) {
+        if let Some(icon) = self.badge.take() {
+            unsafe {
+                let _ = DestroyIcon(HICON(icon as _));
+            }
+        }
+    }
+}
+
+fn taskbar_created_message() -> u32 {
+    static MESSAGE: OnceLock<u32> = OnceLock::new();
+    *MESSAGE.get_or_init(|| unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) })
 }
 fn tray_menu(app: &Host, hwnd: HWND) {
     unsafe {
@@ -442,6 +507,12 @@ unsafe extern "system" fn procedure(
     _data: usize,
 ) -> LRESULT {
     if let Some(app) = HOST.get() {
+        if message != 0
+            && message == taskbar_created_message()
+            && let Some(worker) = TRAY.lock().unwrap().clone()
+        {
+            worker.recreate();
+        }
         if message == TRAY_MESSAGE {
             match l.0 as u32 {
                 WM_LBUTTONUP => toggle_main(app),

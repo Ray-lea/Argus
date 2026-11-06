@@ -33,6 +33,11 @@ impl Desktop {
                 json!({"event":"ui-vitals","label":label,"bounds":bounds})
             );
         }
+        if control["testTrayUpdate"].as_bool() == Some(true)
+            && crate::shell::test_tray_delay().is_some()
+        {
+            crate::shell::set_tray_update(&self.host, Some("test"));
+        }
         if let Some(label) = control["inspectMenu"].as_str() {
             println!(
                 "{}",
@@ -408,6 +413,7 @@ impl Desktop {
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
+                "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),"scaleFactor":window.scale_factor(),"remSize":f32::from(window.rem_size()),
                 "cpuPlot":self.chart_bounds("cpu-overall-plot").map(|b|[f32::from(b.left()),f32::from(b.top()),f32::from(b.size.width),f32::from(b.size.height)]),
                 "performanceScrollY":f32::from(self.device_scroll.max_offset().y),

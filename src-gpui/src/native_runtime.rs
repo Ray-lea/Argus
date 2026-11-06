@@ -229,10 +229,7 @@ impl NativeWindow {
         Ok(())
     }
     pub fn set_focus(&self) -> Result<()> {
-        unsafe {
-            let _ = SetForegroundWindow(self.hwnd()?);
-            let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(self.hwnd()?));
-        }
+        crate::activation::focus(self.hwnd()?);
         Ok(())
     }
 }

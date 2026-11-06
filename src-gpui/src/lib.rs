@@ -1,3 +1,4 @@
+mod activation;
 mod admin;
 mod async_runtime;
 
@@ -13,6 +14,7 @@ mod installer;
 mod instance;
 mod leftovers;
 mod logging;
+mod memory_pressure;
 mod native_runtime;
 mod packaging;
 mod platform;
@@ -253,7 +255,7 @@ pub fn run() -> anyhow::Result<()> {
         let test = options.test;
         move |snapshot: Snapshot| {
             diagnostics::log_hardware_once(&snapshot);
-            if !test {
+            if !test || shell::test_tray_delay().is_some() {
                 let mem = snapshot.system.mem_used as f64 / snapshot.system.mem_total.max(1) as f64
                     * 100.;
                 shell::set_tray_tooltip(
