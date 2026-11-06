@@ -2,7 +2,7 @@
 //! resolved off the sampling thread and cached by path or app.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::{Duration, Instant};
 
@@ -40,6 +40,9 @@ pub struct FileMeta {
 /// runs once do not pile up for as long as Argus runs.
 const SWEEP_EVERY: Duration = Duration::from_secs(60);
 const KEEP_IDLE: Duration = Duration::from_secs(10 * 60);
+const MAX_PENDING_PATHS: usize = 512;
+const MAX_PENDING_APPS: usize = 64;
+const MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
 
 struct Cached<T> {
     meta: Arc<T>,
@@ -61,7 +64,8 @@ impl<T> Cached<T> {
 #[derive(Default)]
 struct Inner {
     by_path: HashMap<String, Cached<FileMeta>>,
-    pending: HashSet<String>,
+    pending: HashMap<String, usize>,
+    pending_bytes: usize,
     /// IDs are never reused. A displayed snapshot pins its PNGs until replaced.
     icons: HashMap<u32, Arc<[u8]>>,
     next_icon: u32,
@@ -75,18 +79,18 @@ struct Inner {
 
 pub struct MetaStore {
     inner: RwLock<Inner>,
-    queue: Sender<String>,
+    queue: SyncSender<String>,
     /// Apps resolve on their own thread: the shell takes 10–50 ms per app,
     /// which would hold up every executable's icon queued behind it.
-    apps: Sender<Identity>,
+    apps: SyncSender<Identity>,
     last_sweep: Mutex<Option<Instant>>,
 }
 
 impl MetaStore {
     /// Creates the store and its background resolver threads.
     pub fn new() -> Arc<Self> {
-        let (tx, rx) = mpsc::channel();
-        let (apps_tx, apps_rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(MAX_PENDING_PATHS);
+        let (apps_tx, apps_rx) = mpsc::sync_channel(MAX_PENDING_APPS);
         let store = Arc::new(Self {
             inner: RwLock::default(),
             queue: tx,
@@ -94,15 +98,19 @@ impl MetaStore {
             last_sweep: Mutex::new(None),
         });
         let weak = Arc::downgrade(&store);
-        std::thread::Builder::new()
+        let _ = std::thread::Builder::new()
             .name("argus-meta".into())
             .spawn(move || worker(weak, rx))
-            .expect("spawn meta worker");
+            .inspect_err(|error| {
+                crate::diagnostics::warn("metadata worker creation", crate::diagnostics::io(error))
+            });
         let weak = Arc::downgrade(&store);
-        std::thread::Builder::new()
+        let _ = std::thread::Builder::new()
             .name("argus-apps".into())
             .spawn(move || app_worker(weak, apps_rx))
-            .expect("spawn app name worker");
+            .inspect_err(|error| {
+                crate::diagnostics::warn("app name worker creation", crate::diagnostics::io(error))
+            });
         store
     }
 
@@ -114,13 +122,22 @@ impl MetaStore {
             if let Some(cached) = inner.by_path.get(&key) {
                 return Some(cached.meta.clone());
             }
-            if inner.pending.contains(&key) {
+            if inner.pending.contains_key(&key) {
                 return None;
             }
         }
         let mut inner = self.inner.write().unwrap();
-        if inner.pending.insert(key) {
-            let _ = self.queue.send(path.to_owned());
+        if let Some(cached) = inner.by_path.get(&key) {
+            return Some(cached.meta.clone());
+        }
+        let bytes = key.capacity().saturating_add(path.len());
+        if !inner.pending.contains_key(&key)
+            && inner.pending.len() < MAX_PENDING_PATHS
+            && bytes <= MAX_PENDING_BYTES.saturating_sub(inner.pending_bytes)
+            && self.queue.try_send(path.to_owned()).is_ok()
+        {
+            inner.pending_bytes += bytes;
+            inner.pending.insert(key, bytes);
         }
         None
     }
@@ -138,8 +155,14 @@ impl MetaStore {
             }
         }
         let mut inner = self.inner.write().unwrap();
-        if inner.apps_pending.insert(key) {
-            let _ = self.apps.send(identity.clone());
+        if let Some(cached) = inner.apps.get(&key) {
+            return Some(cached.meta.clone());
+        }
+        if !inner.apps_pending.contains(&key)
+            && inner.apps_pending.len() < MAX_PENDING_APPS
+            && self.apps.try_send(identity.clone()).is_ok()
+        {
+            inner.apps_pending.insert(key);
         }
         None
     }
@@ -222,7 +245,9 @@ impl MetaStore {
             company: version.company.map(Into::into),
             icon,
         };
-        inner.pending.remove(&key);
+        if let Some(bytes) = inner.pending.remove(&key) {
+            inner.pending_bytes -= bytes;
+        }
         inner.by_path.insert(
             key,
             Cached {
@@ -543,6 +568,78 @@ fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod category_tests {
     use super::*;
+
+    #[test]
+    fn stalled_resolvers_keep_the_request_backlog_bounded_and_retryable() {
+        let (queue, pending) = mpsc::sync_channel(MAX_PENDING_PATHS);
+        let (apps, app_pending) = mpsc::sync_channel(MAX_PENDING_APPS);
+        let store = MetaStore {
+            inner: RwLock::default(),
+            queue,
+            apps,
+            last_sweep: Mutex::new(None),
+        };
+        let begin = Instant::now();
+        for serial in 0..20_000 {
+            store.get_or_request(&format!(r"c:\pressure\{serial}\app.exe"));
+            store.app_or_request(&Identity {
+                full_name: format!("package-{serial}").into(),
+                aumid: "Package!App".into(),
+            });
+        }
+        let inner = store.inner.read().unwrap();
+        println!(
+            "paths={} apps={} elapsed_ms={}",
+            inner.pending.len(),
+            inner.apps_pending.len(),
+            begin.elapsed().as_millis()
+        );
+        assert!(inner.pending.len() <= 512 && inner.apps_pending.len() <= 64);
+        drop(inner);
+        let path = pending.try_recv().unwrap();
+        store.insert(&path, VersionInfo::default(), None, "");
+        let identity = app_pending.try_recv().unwrap();
+        store.insert_app(identity, AppMeta::default());
+        store.get_or_request(r"c:\pressure\retry.exe");
+        let retry = Identity {
+            full_name: "retry-package".into(),
+            aumid: "Package!App".into(),
+        };
+        store.app_or_request(&retry);
+        let inner = store.inner.read().unwrap();
+        assert!(inner.pending.contains_key(r"c:\pressure\retry.exe"));
+        assert!(inner.apps_pending.contains(&(retry.full_name, retry.aumid)));
+    }
+
+    #[test]
+    fn pending_metadata_has_a_byte_budget_and_closed_workers_leave_no_pending_entries() {
+        let (queue, pending) = mpsc::sync_channel(MAX_PENDING_PATHS);
+        let (apps, app_pending) = mpsc::sync_channel(MAX_PENDING_APPS);
+        let store = MetaStore {
+            inner: RwLock::default(),
+            queue,
+            apps,
+            last_sweep: Mutex::new(None),
+        };
+        for n in 0..100 {
+            store.get_or_request(&format!("c:\\{n}\\{}.exe", "x".repeat(32 * 1024)));
+        }
+        let before = store.inner.read().unwrap().pending_bytes;
+        assert!(before > MAX_PENDING_BYTES / 2 && before <= MAX_PENDING_BYTES);
+        for path in pending.try_iter() {
+            store.insert(&path, VersionInfo::default(), None, "");
+        }
+        assert_eq!(store.inner.read().unwrap().pending_bytes, 0);
+        drop(pending);
+        drop(app_pending);
+        store.get_or_request(r"c:\closed-worker.exe");
+        store.app_or_request(&Identity {
+            full_name: "closed-worker".into(),
+            aumid: "Package!App".into(),
+        });
+        let inner = store.inner.read().unwrap();
+        assert!(inner.pending.is_empty() && inner.apps_pending.is_empty());
+    }
 
     #[test]
     fn device_paths_need_a_win32_namespace_for_file_metadata() {
