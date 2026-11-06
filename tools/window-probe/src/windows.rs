@@ -329,6 +329,30 @@ impl Job {
         }
         Ok(limits.PeakJobMemoryUsed)
     }
+
+    fn memory_limit(&self, bytes: usize) -> Result<()> {
+        anyhow::ensure!(
+            (128 << 20..=TEST_JOB_COMMIT_LIMIT).contains(&bytes),
+            "owned job limit outside test bounds"
+        );
+        let limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+            BasicLimitInformation: JOBOBJECT_BASIC_LIMIT_INFORMATION {
+                LimitFlags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_JOB_MEMORY,
+                ..Default::default()
+            },
+            JobMemoryLimit: bytes,
+            ..Default::default()
+        };
+        unsafe {
+            SetInformationJobObject(
+                self.0,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )?;
+        }
+        Ok(())
+    }
     fn pids(&self) -> Result<HashSet<u32>> {
         let mut buffer = vec![0usize; 1025];
         unsafe {
@@ -676,14 +700,9 @@ fn thread_times(pids: &HashSet<u32>) -> Result<Vec<serde_json::Value>> {
     Ok(out)
 }
 
-fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
+fn sample(job: &Job, gpu: Option<&Gpu>, observed: &HashSet<u32>) -> Result<serde_json::Value> {
     let pids = job.pids()?;
     // Additional processes are observed only; never attach them to the owned job.
-    let observed: HashSet<u32> = std::env::var("ARGUS_PROBE_OBSERVE_PIDS")
-        .unwrap_or_default()
-        .split(',')
-        .filter_map(|pid| pid.parse().ok())
-        .collect();
     let (mut idle, mut kernel, mut user) = (
         FILETIME::default(),
         FILETIME::default(),
@@ -697,14 +716,17 @@ fn sample(job: &Job, gpu: Option<&Gpu>) -> Result<serde_json::Value> {
             size_of::<PERFORMANCE_INFORMATION>() as u32,
         )?
     };
-    let tracked = pids.union(&observed).copied().collect();
+    let tracked = pids.union(observed).copied().collect();
     Ok(serde_json::json!({
         "processes": process_resources(&pids),
-        "observedProcesses": process_resources(&observed),
+        "observedProcesses": process_resources(observed),
         "peakJobCommit": job.peak_commit()?,
         "system": {"idle":ticks(idle),"kernel":ticks(kernel),"user":ticks(user),
             "handles":performance.HandleCount,"processes":performance.ProcessCount,
-            "threads":performance.ThreadCount,"commitBytes":performance.CommitTotal * performance.PageSize},
+            "threads":performance.ThreadCount,"commitBytes":performance.CommitTotal * performance.PageSize,
+            "commitLimitBytes":performance.CommitLimit * performance.PageSize,
+            "physicalTotalBytes":performance.PhysicalTotal * performance.PageSize,
+            "physicalAvailableBytes":performance.PhysicalAvailable * performance.PageSize},
         "gpu":gpu.map(|gpu|gpu.sample(&tracked)),
         "threads":gpu.map(|_|thread_times(&pids)).transpose()?
     }))
@@ -894,6 +916,14 @@ pub fn run(args: &[String]) -> Result<()> {
         return Err(error.into());
     }
     let monitor = ForegroundMonitor::start(root, job.clone());
+    if std::env::var_os("ARGUS_PROBE_HIGH_PRIORITY").is_some() {
+        unsafe {
+            SetPriorityClass(
+                windows::Win32::Foundation::HANDLE(child.as_raw_handle()),
+                HIGH_PRIORITY_CLASS,
+            )?;
+        }
+    }
     resume_owned_child(root)?;
     // Keep the owned background test comparable to a foreground application.
     // An explicit control bit prevents Windows from automatically selecting EcoQoS.
@@ -944,7 +974,7 @@ pub fn run(args: &[String]) -> Result<()> {
     };
     println!(
         "{}",
-        serde_json::json!({"event":"started","pid":root,"unixMs":crate::unix_ms(),"powerThrottling":false,"performanceCoreAffinity":affinity,"jobCommitLimit":TEST_JOB_COMMIT_LIMIT})
+        serde_json::json!({"event":"started","pid":root,"unixMs":crate::unix_ms(),"powerThrottling":false,"priorityClass":unsafe { GetPriorityClass(windows::Win32::Foundation::HANDLE(child.as_raw_handle())) },"performanceCoreAffinity":affinity,"jobCommitLimit":TEST_JOB_COMMIT_LIMIT})
     );
     #[cfg(feature = "capture")]
     {
@@ -988,6 +1018,11 @@ pub fn run(args: &[String]) -> Result<()> {
     let mut measured = Instant::now();
     let mut closing = None;
     let mut clock_installed = false;
+    let mut observed: HashSet<u32> = std::env::var("ARGUS_PROBE_OBSERVE_PIDS")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|pid| pid.parse().ok())
+        .collect();
     #[cfg(target_arch = "x86_64")]
     let mut stack_sampler = None;
     #[cfg(feature = "capture")]
@@ -1076,6 +1111,28 @@ pub fn run(args: &[String]) -> Result<()> {
                 }
             }
             while let Ok(command) = rx.try_recv() {
+                if let Some(pids) = command.strip_prefix("observe ") {
+                    observed = pids.split(',').filter_map(|pid| pid.parse().ok()).collect();
+                    println!(
+                        "{}",
+                        serde_json::json!({"event":"observing","pids":observed})
+                    );
+                    io::stdout().flush()?;
+                    continue;
+                }
+                if let Some(mib) = command.strip_prefix("commit-limit ") {
+                    let mib: usize = mib.parse()?;
+                    let bytes = mib
+                        .checked_mul(1 << 20)
+                        .context("owned memory limit overflow")?;
+                    job.memory_limit(bytes)?;
+                    println!(
+                        "{}",
+                        serde_json::json!({"event":"commit-limit","bytes":bytes})
+                    );
+                    io::stdout().flush()?;
+                    continue;
+                }
                 if command == "clock" {
                     anyhow::ensure!(!clock_installed, "clock hook already installed");
                     let hooks = crate::clock_hook::install(
@@ -1094,7 +1151,7 @@ pub fn run(args: &[String]) -> Result<()> {
                 if let Some(tag) = command.strip_prefix("mark ") {
                     let at_ms = start.elapsed().as_secs_f64() * 1000.;
                     let qpc = qpc_time_100ns()?;
-                    let mut value = sample(&job, Some(&gpu))?;
+                    let mut value = sample(&job, Some(&gpu), &observed)?;
                     value["event"] = "mark".into();
                     value["tag"] = tag.into();
                     value["atMs"] = at_ms.into();
@@ -1117,6 +1174,51 @@ pub fn run(args: &[String]) -> Result<()> {
                     continue;
                 }
                 if search.hwnd.0.is_null() {
+                    continue;
+                }
+                if let Some(milliseconds) = command.strip_prefix("stall-ui ") {
+                    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+                    let milliseconds: u32 = milliseconds.parse()?;
+                    anyhow::ensure!(
+                        (1..=10_000).contains(&milliseconds),
+                        "owned UI stall outside test bounds"
+                    );
+                    let tid = GetWindowThreadProcessId(search.hwnd, None);
+                    let thread = OwnedHandle::from_raw_handle(
+                        OpenThread(
+                            THREAD_SUSPEND_RESUME | THREAD_QUERY_LIMITED_INFORMATION,
+                            false,
+                            tid,
+                        )?
+                        .0,
+                    );
+                    let handle = windows::Win32::Foundation::HANDLE(thread.as_raw_handle());
+                    anyhow::ensure!(
+                        GetProcessIdOfThread(handle) == search.pid
+                            && job.pids()?.contains(&search.pid),
+                        "UI stall requires an owned thread"
+                    );
+                    anyhow::ensure!(
+                        SuspendThread(handle) != u32::MAX,
+                        "owned UI thread suspend failed"
+                    );
+                    struct Resume(windows::Win32::Foundation::HANDLE);
+                    impl Drop for Resume {
+                        fn drop(&mut self) {
+                            unsafe {
+                                ResumeThread(self.0);
+                            }
+                        }
+                    }
+                    let resume = Resume(handle);
+                    let began = Instant::now();
+                    std::thread::sleep(Duration::from_millis(u64::from(milliseconds)));
+                    drop(resume);
+                    println!(
+                        "{}",
+                        serde_json::json!({"event":"ui-stall","elapsedMs":began.elapsed().as_millis(),"requestedMs":milliseconds})
+                    );
+                    io::stdout().flush()?;
                     continue;
                 }
                 if command == "stop" {
@@ -1309,7 +1411,7 @@ pub fn run(args: &[String]) -> Result<()> {
             }
         }
         if measured.elapsed() >= Duration::from_millis(500) {
-            let mut value = sample(&job, None)?;
+            let mut value = sample(&job, None, &observed)?;
             #[cfg(feature = "capture")]
             if let Some(observer) = &observer {
                 value["capture"] = observer.sample();

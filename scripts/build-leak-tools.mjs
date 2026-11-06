@@ -29,7 +29,8 @@ const script = join(output, "build.cmd");
 writeFileSync(script, [
   "@echo off", `call ${quote(vcvars)} >nul`, "if errorlevel 1 exit /b %errorlevel%",
   compile("clock-hook", "/LD", "synchronization.lib"), "if errorlevel 1 exit /b %errorlevel%",
-  compile("load-worker", "", "ws2_32.lib"), "exit /b %errorlevel%", "",
+  compile("load-worker", "", "ws2_32.lib"), "if errorlevel 1 exit /b %errorlevel%",
+  compile("pressure-worker", "", ""), "exit /b %errorlevel%", "",
 ].join("\r\n"));
 const build = spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", script], {
   cwd: root, stdio: "inherit", windowsHide: true,

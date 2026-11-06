@@ -54,6 +54,18 @@ cargo test -p argus-service resource_soak_running_service_reads -- --ignored --n
 
 `cargo test -p argus-service slow_native_reads_leave_the_pipe_responsive_and_keep_recent_snapshots -- --nocapture --test-threads=1` 通过普通权限下的独立管道，模拟 0.9–1.2 秒的底层读取，检查并发回复、有效快照、Ping 与采样推进。设置环境变量 `ARGUS_SERVICE_SOAK_SECONDS=30` 可延长到 30 秒，记录请求延迟、句柄和私有提交；延迟样本数量有固定上限。`cold_readers_coalesce_waiters_and_keep_ping_available` 检查冷读取期间的管道可用性，缓存过期、停止请求后的空闲开销和租期回收由 `snapshot` 模块测试覆盖。
 
+## 故障与资源压力
+
+`node scripts/resilience-native.mjs <标签> <EXE路径> --tray-delay 2000 --expect-responsive --capture` 在隔离实例中让托盘调用延迟两秒，记录窗口响应和采样推进。故障路径仅在独立标识的 `--test` 实例启用，调用由测试接收端处理。托盘线程、阻塞解析器队列的容量、字节预算和重试分别有源码回归测试。
+
+`cargo test -p argus --lib activation::pressure_tests -- --ignored --nocapture --test-threads=1` 在独立桌面创建停止响应的置顶窗口，验证激活、层级恢复及已有置顶状态。测试不调用 `SwitchDesktop`，持续检查实际桌面的前台；桌面与内部 GUI 辅助线程随测试进程退出回收。
+
+`node scripts/build-leak-tools.mjs` 同时构建资源负载程序。`node scripts/pressure-native.mjs <标签> <EXE路径> --seconds 20 --headroom-mib 48 --rounds 3` 依次测量基线、CPU、GPU、三轮组合负载和恢复状态。CPU 负载使用固定亲和性并保留调度余量；内存负载保留系统可用内存，GPU 用有界 CUDA 批次并保留显存余量。结果同时记录实际系统 CPU 和 GPU 引擎占用、应用响应、呈现帧率、资源计数及采样序号，以观测到的负载标注覆盖范围。
+
+组合阶段把应用作业的提交上限设为当前提交量加指定余量，模拟分配空间紧张；该限制仅作用于测试进程。测试还将自身界面线程暂停五秒，恢复后检查响应与采样追赶。`--probe` 可指定探针路径，默认使用开发探针；性能对照使用发行版应用。结果与恢复后的窗口截图保存在 `target/native-validation/<标签>`。
+
+`--observe <PID列表>` 追加只读进程资源观测；`--service-test <argus-service测试EXE>` 在组合阶段运行四轮已有服务的只读压力测试，同时记录超时、传感器状态和服务资源计数。GPU 压力需要 NVIDIA CUDA 驱动，设备整体利用率由同一 PCI 设备的 NVML 读数补充，负载进程的引擎运行时间由窗口探针记录。
+
 ## 帧跟踪与资源计数
 
 检查 Windows 图表合成时，在同一发行构建上设置 `ARGUS_GPUI_DISABLE_CHART_LAYERS=1` 可测量交换链路径。开启诊断后，`gpu-chart-policy` 记录设备能力查询结果与活动 HAGS 状态，`gpu-chart-layers` 记录已提交的曲线和图层数量。在支持的 SDR 环境，可用 `scripts/ui-smoke.mjs` 的 `--retained --require-chart-layers` 参数核对图层路径的实际画面。正式资源测量关闭诊断，分别记录应用 GPU 引擎、DWM、显卡时钟和窗口实际呈现帧率。
