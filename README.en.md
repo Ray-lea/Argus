@@ -8,15 +8,16 @@
 
 [简体中文](README.md) · **English**
 
+[![Website & Live Demo](https://img.shields.io/badge/%F0%9F%8C%90_Website_%26_Live_Demo-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/en/)
+
+Try the full interactive interface and guided tour right in your browser on the [official website](https://argustask.com/en/) — no installation required
+
 [![Latest release](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases&sort=semver&label=release&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Downloads](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=downloads&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20x64-0078D4)](#-system-requirements)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
-[![Rust](https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![GPUI Kit](https://img.shields.io/badge/UI-GPUI%20Kit-3178C6)](https://gpui-kit.com/)
-
-[Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community)
+[Website & Live Demo](https://argustask.com/en/) · [Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community)
 
 </div>
 
@@ -29,7 +30,7 @@
 
 <br>
 
-Argus queries Windows native APIs directly in Rust, with an interface built on GPUI Kit native components. It brings processes, performance, services, startup apps, network connections, and 7-day history together in a single window, featuring charts that flow smoothly at the display's refresh rate. The project is named after Argus Panoptes, the hundred-eyed giant of Greek mythology.
+Argus queries Windows native APIs directly in Rust, with an interface built on GPUI Kit native components and charts that flow smoothly at the display's refresh rate. The project is named after Argus Panoptes, the hundred-eyed giant of Greek mythology.
 
 ## ⭐ Star history
 
@@ -46,21 +47,21 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 
 | | Feature | Description |
 |:---:|---|---|
-| 🧮 | **Processes** | Browse by app, process tree, or flat list, with real-time CPU, memory, disk read/write rates, and GPU usage for each process (plus network traffic when the privileged service is enabled or running as administrator). Sort, search, and end a process or its entire tree; inspect the command line, user, integrity level, and more in the details pane. |
+| 🧮 | **Processes** | Browse by app, process tree, or flat list, with real-time CPU, memory, disk read/write, network traffic, and GPU usage for each process. Sort, search, and end a process or its entire tree; inspect the command line, user, integrity level, and more in the details pane. |
 | ⚡ | **Priority and efficiency mode** | Adjust them on the fly from the context menu, or create rules that apply automatically whenever a program starts. |
 | 📈 | **Performance** | Monitor CPU (per-core load, P-cores and E-cores, frequency, temperature, and power), memory, disks (including health and SMART attributes), network, GPU, and battery in detail. |
 | 🧩 | **Services and startup apps** | Start and stop Windows services and change their startup type; enable or disable startup apps, staying in sync with Windows Task Manager. |
 | 🌐 | **Connections and ports** | Inspect active TCP and UDP endpoints alongside their owning processes, with exact port filtering and the ability to close connections. |
-| 🔍 | **File locks** | Drop a file or folder onto the window to identify which processes are holding it. Combines Restart Manager with handle enumeration (including processes' current working directories), with broader coverage across elevated processes when the privileged service is enabled. |
+| 🔍 | **File locks** | Drop a file or folder onto the window to identify which processes are holding it, combining Restart Manager with handle enumeration (including processes' current working directories). |
 | 🕘 | **History** | Automatically records resource usage charts over the past 7 days; click any point in time to inspect the busiest processes at that moment. |
-| 📌 | **System tray** | Show or hide the window anytime with the global shortcut Ctrl+Alt+Esc (which can be changed or turned off); uses minimal resources while hidden, with separate refresh rates for minimized and tray states. |
-| 🔄 | **In-app updates** | New versions download quietly in the background and notify in the title bar; preview all changes since the current version before installing, and review what's new the first time the window opens after an update. Offers Stable and Beta channels; the default route tries GitHub, the official mirror, then GitHub proxies, with controls in Settings. Installs only updates that pass update signature verification. |
+| 📌 | **System tray** | Show or hide the window anytime with a global keyboard shortcut; uses minimal resources while hidden, with separate refresh rates for minimized and tray states. |
+| 🔄 | **In-app updates** | Offers Stable and Beta channels; new versions download quietly in the background and notify in the title bar, with release notes available both before and after updating. The default download route tries GitHub, the official mirror, then GitHub proxies, and can be adjusted in Settings. |
 | 🎨 | **Native look** | Features Mica backdrop on Windows 11 and a clean solid background on Windows 10; the system accent color and light or dark theme follow Windows by default, with a theme override in Settings. |
 | 🌍 | **Languages** | Available in English and Simplified Chinese, following the Windows display language by default; includes a welcome guide on first launch to configure essential settings. |
 | 👤 | **No administrator rights needed** | View executable paths and resource usage across all processes as a standard user. |
 | 🔐 | **Optional administrator startup** | Authorize once in Settings or during the welcome guide to launch Argus as administrator from sign-in, shortcuts, and Task Manager entry points; can be turned off at any time. |
-| 🛡️ | **Optional privileged service** | After a one-time administrator approval, Argus running as a standard user can also manage system processes, apply rules automatically, control services, close connections, and measure per-process network traffic (as well as disk reads and writes on Windows 10 and Windows 11 prior to 24H2); can be uninstalled anytime in Settings. |
-| 🪟 | **Tasks and desktop** | Run new tasks from any page (optionally as administrator), or restart the current desktop's Windows Explorer. |
+| 🛡️ | **Optional privileged service** | After a one-time administrator approval, Argus running as a standard user can also manage system processes, inspect file locks held by elevated processes, apply rules automatically, control services, close connections, and measure per-process network traffic (as well as disk reads and writes on Windows 10 and Windows 11 prior to 24H2); can be uninstalled anytime in Settings. |
+| 🪟 | **Tasks and system integration** | Supports [replacing the default Windows Task Manager](docs/architecture/task-manager.md) (in Chinese), running new tasks from any page (optionally as administrator), or restarting the current desktop's Windows Explorer. |
 
 ## 📦 Download
 
@@ -72,7 +73,7 @@ Get the latest stable build and SHA-256 checksums from the [official download pa
 | `Argus_<version>_x64.exe` | **Portable version.** Runs directly as a standalone executable and shares settings and history with the installed version; does not support automatic updates. |
 | `SHA256SUMS.txt` | SHA-256 checksums of the release files above. |
 
-[Code signing policy](#code-signing-policy) · [Privacy policy](PRIVACY.md#english) · [Online documentation (Chinese)](https://argustask.com/docs/)
+[Code signing policy](#code-signing-policy) · [Privacy policy](PRIVACY.md#english)
 
 ## 💻 System requirements
 
@@ -113,7 +114,7 @@ The full shortcut list is available in Settings → Keyboard shortcut → View s
 
 ## 📚 Documentation
 
-The documentation is in Chinese.
+The documentation is in Chinese; [online documentation](https://argustask.com/docs/) (both stable and development editions) is also available.
 
 | Document | Overview |
 |---|---|
@@ -121,7 +122,6 @@ The documentation is in Chinese.
 | [Development guide](docs/development/README.md) | Environment and commands, builds and caches, performance baselines and measurement |
 | [Architecture](docs/architecture/README.md) | System layers and data flow, tech stack, module responsibilities |
 | [Design](docs/design/README.md) | Design principles, chart animation, window appearance and materials |
-| [Roadmap](docs/roadmap.md) | Completed and planned features |
 | [Known issues](docs/known-issues.md) | Known limitations of the current version |
 | [Changelog](CHANGELOG.en.md) | Detailed changes in each release |
 
@@ -129,7 +129,7 @@ The documentation is in Chinese.
 
 [![QQ group 453803497](https://img.shields.io/badge/QQ%20group-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
 
-Join the QQ group **453803497** (Chinese-speaking) to report problems, suggest features, or talk with other users: click the badge above, [this link](https://qm.qq.com/q/97YqJAQRNK), or About → Join QQ group in Argus.
+Join the Chinese-speaking QQ group to report problems, suggest features, or talk with other users (also accessible via About → Join QQ group in Argus).
 
 ## 🤝 Contributing
 
@@ -137,14 +137,10 @@ Issues and pull requests are welcome; please read the [contributing guide](.gith
 
 ## 🧭 Roadmap
 
-- [x] **M0–M3**: processes, performance, services, startup apps, network connections, and file locks
-- [x] **Languages, welcome guide, and in-app updates**
-- [x] **M4**: per-process GPU usage, disk reads and writes, and ETW network traffic; priority and efficiency mode rules; history
-- [x] **Optional hardware sensors**: per-core CPU readings, effective clocks, voltage, and power limits via the official PawnIO driver, plus AMD and Intel GPU telemetry (see [hardware coverage](docs/guide/hardware-data.md), in Chinese)
-- [ ] **M5**: optional privileged service, rules and network collection through it, handle-based file lock queries, and [Task Manager replacement](docs/architecture/task-manager.md) (in Chinese) are complete; consumer hardware coverage continues to expand
-- [ ] **Extended keyboard shortcuts**: distinguishing left and right modifiers, and supporting modifier-only or two-key combinations
+See the [roadmap](docs/roadmap.md) (in Chinese) for completed milestones and the full plan. Ongoing and planned work includes:
 
-See the [roadmap](docs/roadmap.md) (in Chinese) for full details.
+- [ ] **Expanded hardware sensors**: continuing to broaden consumer hardware sensor coverage through the official PawnIO driver (see [hardware coverage](docs/guide/hardware-data.md), in Chinese)
+- [ ] **Extended keyboard shortcuts**: distinguishing left and right modifiers, and supporting modifier-only or two-key combinations
 
 <a id="code-signing-policy"></a>
 
@@ -177,8 +173,6 @@ Argus is built upon the following open-source projects, with sincere thanks:
 All third-party components and their license notices are listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
 
 Thanks to the [LINUX DO](https://linux.do/) community for its support.
-
-Thanks to SignPath.io and SignPath Foundation for open-source code signing support; see the [Code signing policy](#code-signing-policy) for integration status.
 
 ## 📄 License
 
