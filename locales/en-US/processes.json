@@ -1,4 +1,5 @@
 {
+  "refreshPending": "Updating process data. Showing the last successfully collected reading.",
   "diskUnavailable": {
     "pending": "No disk reading yet. A process that has only just appeared gets one at the next refresh.",
     "enable": "No disk reading. Windows doesn't provide these counters directly, so they come from the privileged service, which can be enabled in Settings.",

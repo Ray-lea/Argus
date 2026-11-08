@@ -570,6 +570,7 @@ mod tests {
     fn process(pid: u32, created: i64) -> ProcessRow {
         ProcessRow {
             stale: false,
+            sample_reused: false,
             counters: Default::default(),
             pid,
             ppid: 0,

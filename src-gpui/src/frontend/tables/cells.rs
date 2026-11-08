@@ -181,7 +181,11 @@ impl NativeTable {
                     CellKind::Rate | CellKind::NetworkRate => reading.is_none_or(|v| v < 1.),
                     _ => false,
                 };
-                element = element.when(dim, |d| d.text_color(faint)).child(value);
+                let delayed = row.native_pending(field.key)
+                    && row.members.iter().any(|member| boolean(member, "stale"));
+                element = element
+                    .when(dim || delayed, |d| d.text_color(faint))
+                    .child(value);
                 // A figure's `title` covers its whole cell.
                 element = self.hint_text(element, row, field.key, hint);
             }
@@ -233,6 +237,12 @@ impl NativeTable {
     /// The hover hint for a cell other than the first, if any.
     pub(super) fn cell_hint(&self, row: &Row, field: &Field, cx: &App) -> Option<String> {
         let raw = &row.raw;
+        if self.page == "processes"
+            && row.native_pending(field.key)
+            && row.metric(field.key).is_some()
+        {
+            return Some(label("processes.refreshPending"));
+        }
         match (self.page.as_str(), field.key) {
             // Why a process has no disk reading. Working it out reads every
             // process, so once a sample, as the interface's memo.

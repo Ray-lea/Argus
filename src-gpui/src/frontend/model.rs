@@ -241,9 +241,13 @@ impl Row {
         Self::new(raw, depth, title, detail, sort_name)
     }
     pub fn metric(&self, key: &str) -> Option<f64> {
-        // GPU and network readings have independent collectors. Native process
-        // counters remain unknown until the bounded process query recovers.
-        if !matches!(
+        self.metric_value(key)
+    }
+
+    /// The value is the last successful reading while its source is pending.
+    /// Independent GPU/network samples and static identity fields remain current.
+    pub fn native_pending(&self, key: &str) -> bool {
+        !matches!(
             key,
             "pid"
                 | "ppid"
@@ -255,14 +259,15 @@ impl Row {
                 | "net"
                 | "netSent"
                 | "netReceived"
-        ) && self.members.iter().any(|member| boolean(member, "stale"))
-        {
-            return None;
-        }
-        self.metric_value(key)
+        ) && columns::definition(key).is_some_and(|column| {
+            !matches!(column.format, columns::Format::Name | columns::Format::Text)
+        }) && self
+            .members
+            .iter()
+            .any(|member| boolean(member, "stale") || boolean(member, "sampleReused"))
     }
 
-    /// Sorting retains the last known order while missing counters render as unknown.
+    /// Both display and sorting use the last successful counters; null stays unknown.
     fn metric_value(&self, key: &str) -> Option<f64> {
         if matches!(key, "gpuDedicated" | "gpuShared") {
             return self.members.iter().try_fold(0., |sum, member| {
@@ -988,7 +993,7 @@ impl Timeline {
                 }
             }
             let reading = |key: &str| {
-                if boolean(p, "stale") {
+                if boolean(p, "stale") || boolean(p, "sampleReused") {
                     f64::NAN
                 } else {
                     p[key].as_f64().unwrap_or(f64::NAN)
@@ -1492,7 +1497,34 @@ mod tests {
         let after = rows_of(&processes, "list", "", "cpu", true, &HashMap::new());
         assert_eq!(pids(&before), [1, 2]);
         assert_eq!(pids(&after), pids(&before));
-        assert!(after.iter().all(|row| row.metric("cpu").is_none()));
+        assert_eq!(
+            after
+                .iter()
+                .map(|row| row.metric("cpu"))
+                .collect::<Vec<_>>(),
+            [Some(80.), Some(10.)]
+        );
+    }
+
+    #[test]
+    fn pending_refresh_keeps_values_visible_without_repeating_the_graph() {
+        let mut timeline = Timeline::new();
+        for (index, reused) in [false, true, false].into_iter().enumerate() {
+            let process = json!({"pid":1,"createTime":1,"name":"app.exe","path":"C:/app.exe","cpu":30,"privateWs":1000,"stale":false,"sampleReused":reused});
+            let row = Row::process(process.clone(), 0);
+            assert_eq!(row.metric("cpu"), Some(30.));
+            assert_eq!(row.metric("mem"), Some(1000.));
+            timeline.push(
+                &json!({"timestamp":index*1000,"system":{"cpu":12},"processes":[process]}),
+                1000.,
+            );
+        }
+        for key in ["process.1:1.cpu", "group.g:image:c:\\app.exe.cpu"] {
+            assert_eq!(
+                timeline.points(key).unwrap(),
+                vec![(0., Some(30.)), (1000., None), (2000., Some(30.))]
+            );
+        }
     }
 
     #[test]
@@ -1503,14 +1535,19 @@ mod tests {
         ];
         let row = Row::process(processes[0].clone(), 0);
         assert_eq!(row.metric("pid"), Some(1.));
-        assert_eq!(row.metric("cpu"), None);
-        assert_eq!(row.metric("mem"), None);
-        assert_eq!(row.metric("io"), None);
+        assert_eq!(row.metric("cpu"), Some(30.));
+        assert_eq!(row.metric("mem"), Some(1000.));
+        assert_eq!(row.metric("io"), Some(100.));
+        assert!(row.native_pending("cpu"));
+        assert!(!row.native_pending("pid"));
+        assert!(!row.native_pending("gpu"));
+        assert!(!row.native_pending("net"));
+        assert_eq!(row.metric("diskRead"), None);
         assert_eq!(row.metric("gpu"), Some(20.));
         assert_eq!(row.metric("net"), Some(1000.));
         let rows = rows_of(&processes, "apps", "", "cpu", true, &HashMap::new());
-        assert_eq!(rows[0].metric("cpu"), None);
-        assert_eq!(rows[0].metric("mem"), None);
+        assert_eq!(rows[0].metric("cpu"), Some(40.));
+        assert_eq!(rows[0].metric("mem"), Some(1500.));
         assert_eq!(rows[0].metric("net"), Some(1500.));
 
         let mut timeline = Timeline::new();

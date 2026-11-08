@@ -270,6 +270,7 @@ mod tests {
     fn process(pid: u32, disk: Option<u64>) -> argus_core::ProcessRow {
         argus_core::ProcessRow {
             stale: false,
+            sample_reused: false,
             counters: Default::default(),
             pid,
             ppid: 0,

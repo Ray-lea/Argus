@@ -212,10 +212,10 @@ impl HistoryRecorder {
             w.battery_rate += rate;
             w.battery_rate_n += 1;
         }
-        if s.processes.iter().all(|p| !p.stale) {
+        if s.processes.iter().all(|p| !p.stale && !p.sample_reused) {
             w.process_samples += 1;
         }
-        for p in s.processes.iter().filter(|p| !p.stale) {
+        for p in s.processes.iter().filter(|p| !p.stale && !p.sample_reused) {
             let acc = w
                 .procs
                 .entry((p.pid, p.create_time))
@@ -741,6 +741,7 @@ mod tests {
     fn proc(pid: u32, name: &str, cpu: f32, mem: u64) -> ProcessRow {
         ProcessRow {
             stale: false,
+            sample_reused: false,
             counters: Default::default(),
             pid,
             ppid: 0,
@@ -890,6 +891,24 @@ mod tests {
             assert_eq!(day_number(&day_name(day)), Some(day));
         }
         assert_eq!(day_name(20_737), "2026-10-11");
+    }
+
+    #[test]
+    fn reused_readings_do_not_repeat_or_dilute_history() {
+        let dir = temp_dir("reused-processes");
+        let base = 20_737 * DAY_MS;
+        let mut rec = HistoryRecorder::new(dir.clone());
+        for i in 0..6 {
+            let mut process = proc(42, "busy.exe", if i == 0 { 30. } else { 90. }, 1 << 30);
+            process.sample_reused = i > 0;
+            rec.record(&snapshot(base + i * 1000, 10. + i as f32, vec![process]));
+        }
+        drop(rec);
+        let m = moment(&dir, base + 1000).unwrap();
+        assert_eq!(m.system.cpu, 12.);
+        assert_eq!(m.processes.len(), 1);
+        assert_eq!(m.processes[0].cpu, 30.);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

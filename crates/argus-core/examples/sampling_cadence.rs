@@ -53,6 +53,7 @@ fn main() {
                 "interval_ms": started.duration_since(previous).as_secs_f64() * 1000.,
                 "processes": snapshot.processes.len(),
                 "stale_processes": snapshot.processes.iter().filter(|process| process.stale).count(),
+                "reused_processes": snapshot.processes.iter().filter(|process| process.sample_reused).count(),
                 "timestamp": snapshot.timestamp,
             })
         );

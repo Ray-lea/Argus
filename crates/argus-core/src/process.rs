@@ -6,12 +6,11 @@
 
 use std::collections::{HashMap, hash_map::Entry};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use windows::Wdk::System::SystemInformation::SystemProcessInformation as SPI_CLASS;
 use windows::Win32::Foundation::{FILETIME, HANDLE};
-use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
 use windows::Win32::System::Threading::{
     GetProcessInformation, GetProcessTimes, OpenProcess, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
     PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
@@ -36,9 +35,12 @@ use query::ProcessQuery;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessRow {
-    /// Identity is retained while the native process counters are unavailable.
-    /// Consumers must not present or record its old counters as a fresh sample.
+    /// The last observation is older than the short retention window.
+    /// Display it as an older reading and exclude it from fresh time series.
     pub stale: bool,
+    /// A recent reading retained for display while the next query is pending.
+    /// It must not be counted again in time series or history averages.
+    pub sample_reused: bool,
     pub pid: u32,
     pub ppid: u32,
     /// Unix ms. Together with `pid` this identifies a process instance.
@@ -169,6 +171,10 @@ struct Package {
 }
 const PACKAGE_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
 
+fn cache_expired(observed: Option<Instant>, now: Instant) -> bool {
+    observed.is_none_or(|at| now.saturating_duration_since(at) > Duration::from_secs(10))
+}
+
 pub(crate) struct ProcessTracker {
     query: Option<ProcessQuery>,
     last_rows: Vec<ProcessRow>,
@@ -179,6 +185,7 @@ pub(crate) struct ProcessTracker {
     paths: PathResolver,
     meta: Arc<MetaStore>,
     last_instant: Option<Instant>,
+    last_aligned: bool,
     last_systime: i64,
     native_disk: bool,
     previous_cycles: Option<SystemCycles>,
@@ -197,6 +204,7 @@ impl ProcessTracker {
             paths: PathResolver::new(),
             meta,
             last_instant: None,
+            last_aligned: false,
             last_systime: 0,
             native_disk: crate::disk_process::standard_supported(),
             previous_cycles: None,
@@ -209,28 +217,42 @@ impl ProcessTracker {
         logical_cpus: u32,
         precise_idle_fraction: Option<f64>,
     ) -> Vec<ProcessRow> {
-        let Some((buf, returned)) = self.query.as_mut().and_then(ProcessQuery::read) else {
-            // The process baselines still span the failed interval. Re-prime the
-            // cycle budget before using it again, so both sides cover one window.
-            self.previous_cycles = None;
-            self.cycle_clock.clear();
+        let poll_started = Instant::now();
+        let Some((buf, returned, observed)) = self
+            .query
+            .as_mut()
+            .and_then(|query| query.read(logical_cpus))
+        else {
+            // Keep both counter baselines until another real observation arrives.
+            self.last_aligned = false;
+            let stale = cache_expired(self.last_instant, poll_started);
             return self
                 .last_rows
                 .iter()
                 .cloned()
                 .map(|mut row| {
-                    row.stale = true;
+                    row.stale = stale;
+                    row.sample_reused = true;
                     row
                 })
                 .collect();
         };
-        let now = Instant::now();
-        let systime = filetime_ticks(unsafe { GetSystemTimePreciseAsFileTime() });
-        let cycles = SystemCycles::read(logical_cpus);
-        let clock = self.cycle_clock.sample(logical_cpus);
+        let now = observed.clock.at;
+        let systime = observed.systime;
+        let mut cycles = observed.cycles;
+        if observed.logical_cpus != logical_cpus {
+            self.previous_cycles = None;
+            self.cycle_clock.clear();
+            cycles = None;
+        }
+        let clock = self.cycle_clock.sample(logical_cpus, &observed.clock);
         // The system's idle fraction spans one tick, whereas the recovered
         // process rates span the whole gap since their last successful query.
-        let precise_idle_fraction = self.previous_cycles.as_ref().and(precise_idle_fraction);
+        let aligned = now >= poll_started;
+        let precise_idle_fraction = (aligned && self.last_aligned)
+            .then_some(precise_idle_fraction)
+            .flatten();
+        self.last_aligned = aligned;
         let system_delta = cycles
             .as_ref()
             .zip(self.previous_cycles.as_ref())
@@ -243,6 +265,7 @@ impl ProcessTracker {
         let prev_systime = self.last_systime;
         self.last_instant = Some(now);
         self.last_systime = systime;
+        let stale = cache_expired(Some(now), Instant::now());
 
         let capacity_ticks = elapsed.map(|s| s * 1e7 * logical_cpus as f64);
         self.generation = !self.generation;
@@ -361,7 +384,8 @@ impl ProcessTracker {
                 });
             let meta = entry.meta.as_deref();
             rows.push(ProcessRow {
-                stale: false,
+                stale,
+                sample_reused: false,
                 pid,
                 ppid: p.inherited_from_unique_process_id.0 as usize as u32,
                 create_time: ticks_to_unix_ms(p.create_time),
@@ -596,6 +620,19 @@ pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pending_queries_keep_recent_readings_but_expire_a_stuck_source() {
+        let at = std::time::Instant::now();
+        assert!(!super::cache_expired(
+            Some(at),
+            at + std::time::Duration::from_secs(4)
+        ));
+        assert!(super::cache_expired(
+            Some(at),
+            at + std::time::Duration::from_secs(11)
+        ));
+        assert!(super::cache_expired(None, at));
+    }
     use super::*;
 
     #[test]

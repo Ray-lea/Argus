@@ -126,6 +126,24 @@ pub(crate) struct ClockInterval {
     rate: f64,
 }
 
+pub(crate) struct CycleStamp {
+    pub at: Instant,
+    cycles: u64,
+}
+
+impl CycleStamp {
+    pub fn capture() -> Self {
+        let cycles = unsafe {
+            std::arch::x86_64::_mm_lfence();
+            std::arch::x86_64::_rdtsc()
+        };
+        Self {
+            at: Instant::now(),
+            cycles,
+        }
+    }
+}
+
 /// A processor-clock denominator includes processes born and exited between polls.
 /// It is used only when Windows selected a user-mode QPC timebase, and its units
 /// agree with native cycle counters. No MHz/boost estimate is involved.
@@ -152,15 +170,11 @@ impl CycleClock {
         self.verified = false;
     }
 
-    pub fn sample(&mut self, logical_cpus: u32) -> Option<ClockInterval> {
+    pub fn sample(&mut self, logical_cpus: u32, stamp: &CycleStamp) -> Option<ClockInterval> {
         if !self.supported {
             return None;
         }
-        let cycles = unsafe {
-            std::arch::x86_64::_mm_lfence();
-            std::arch::x86_64::_rdtsc()
-        };
-        self.record(cycles, Instant::now(), logical_cpus)
+        self.record(stamp.cycles, stamp.at, logical_cpus)
     }
 
     fn record(&mut self, cycles: u64, now: Instant, count: u32) -> Option<ClockInterval> {
@@ -410,7 +424,7 @@ mod tests {
                 .is_none()
         );
         clock.supported = false;
-        assert!(clock.sample(8).is_none());
+        assert!(clock.sample(8, &CycleStamp::capture()).is_none());
     }
 
     #[test]
