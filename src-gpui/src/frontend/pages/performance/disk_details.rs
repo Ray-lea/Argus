@@ -41,6 +41,29 @@ impl Condition {
             Self::Bad => "bad",
         }
     }
+
+    fn color(self, palette: Palette) -> Hsla {
+        match self {
+            Self::Good => palette.network,
+            Self::Caution => palette.io,
+            Self::Bad => palette.danger,
+        }
+    }
+}
+
+fn temperature_condition(
+    value: Option<f64>,
+    warning: Option<f64>,
+    critical: Option<f64>,
+) -> Option<Condition> {
+    let value = value?;
+    Some(if critical.is_some_and(|limit| value >= limit) {
+        Condition::Bad
+    } else if warning.is_some_and(|limit| value >= limit) {
+        Condition::Caution
+    } else {
+        Condition::Good
+    })
 }
 /// Critical warning bits of the SMART/health log, the reason each names
 /// (`performance.disk.reason`) and what it says about the drive: running hot
@@ -608,7 +631,7 @@ impl Desktop {
             .mt(px(10.))
             .h(px(6.))
             .rounded(px(3.))
-            .bg(color.opacity(0.18))
+            .bg(self.palette.stroke_strong)
             .child(
                 div()
                     .absolute()
@@ -623,13 +646,13 @@ impl Desktop {
                 d.child(
                     div()
                         .absolute()
-                        .top(px(-3.))
-                        .h(px(12.))
+                        .top(px(-2.))
+                        .h(px(10.))
                         .left(relative(unit(mark)))
                         .ml(px(-1.))
                         .w(px(2.))
                         .rounded(px(1.))
-                        .bg(self.palette.ink.opacity(0.5)),
+                        .bg(self.palette.ink.opacity(0.65)),
                 )
             })
     }
@@ -673,11 +696,7 @@ impl Desktop {
         let health = &details["nvmeHealth"];
         let identity = &details["nvmeIdentity"];
         let (condition, reasons) = assess(health);
-        let tone = match condition {
-            Condition::Good => p.network,
-            Condition::Caution => p.io,
-            Condition::Bad => p.danger,
-        };
+        let tone = condition.color(p);
         let life = health["remainingLifePercent"].as_u64().unwrap_or(0);
         let state = div()
             .flex()
@@ -691,11 +710,7 @@ impl Desktop {
             .into_any_element();
         let mut tiles = vec![self.disk_tile(
             self.stat_element(label("common.status"), state, None, cx),
-            self.disk_meter(
-                life as f64 / 100.,
-                None,
-                if life <= WORN_PERCENT { p.danger } else { p.io },
-            ),
+            self.disk_meter(life as f64 / 100., None, tone),
             Some(tr!("performance.disk.lifeLeft", percent = life)),
             (!reasons.is_empty()).then(|| {
                 (
@@ -716,9 +731,9 @@ impl Desktop {
         let warning = identity["warningTemperatureCelsius"].as_f64();
         let critical = identity["criticalTemperatureCelsius"].as_f64();
         let top = critical.or(warning).unwrap_or(100.).max(1.);
-        let hot = temperature
-            .zip(warning)
-            .is_some_and(|(celsius, warning)| celsius >= warning);
+        let temperature_color = temperature_condition(temperature, warning, critical)
+            .map(|condition| condition.color(p))
+            .unwrap_or(p.muted);
         let limits = [
             warning.map(|v| tr!("performance.disk.warningAt", value = v.round())),
             critical.map(|v| tr!("performance.disk.criticalAt", value = v.round())),
@@ -740,7 +755,7 @@ impl Desktop {
                 self.disk_meter(
                     temperature.unwrap_or(0.) / top,
                     warning.filter(|_| critical.is_some()).map(|v| v / top),
-                    if hot { p.danger } else { p.io },
+                    temperature_color,
                 ),
                 (!limits.is_empty()).then(|| limits.join(" · ")),
                 None,
@@ -762,7 +777,11 @@ impl Desktop {
             self.disk_meter(
                 spare.unwrap_or(0) as f64 / 100.,
                 threshold.map(|v| v as f64 / 100.),
-                if low { p.danger } else { p.io },
+                if low {
+                    p.danger
+                } else {
+                    Condition::Good.color(p)
+                },
             ),
             threshold.map(|v| tr!("performance.disk.spareThreshold", percent = v)),
             None,
@@ -1163,6 +1182,7 @@ mod tests {
     // Not a glob: GPUI's own `test` attribute would shadow the standard one.
     use super::{
         Condition, Value, assess, attributes, balance, grouped, identity_text, link, sector,
+        temperature_condition,
     };
     use serde_json::json;
 
@@ -1197,6 +1217,31 @@ mod tests {
     #[test]
     fn a_quiet_log_is_good() {
         assert_eq!(assess(&healthy()), (Condition::Good, vec![]));
+    }
+
+    #[test]
+    fn temperature_meter_distinguishes_warning_and_critical_thresholds() {
+        assert_eq!(
+            temperature_condition(Some(49.), Some(90.), Some(95.)),
+            Some(Condition::Good)
+        );
+        assert_eq!(
+            temperature_condition(Some(90.), Some(90.), Some(95.)),
+            Some(Condition::Caution)
+        );
+        assert_eq!(
+            temperature_condition(Some(95.), Some(90.), Some(95.)),
+            Some(Condition::Bad)
+        );
+        assert_eq!(
+            temperature_condition(Some(96.), None, Some(95.)),
+            Some(Condition::Bad)
+        );
+        assert_eq!(temperature_condition(None, Some(90.), Some(95.)), None);
+        assert_eq!(
+            temperature_condition(Some(49.), None, None),
+            Some(Condition::Good)
+        );
     }
 
     #[test]

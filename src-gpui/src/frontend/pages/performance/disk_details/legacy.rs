@@ -135,9 +135,9 @@ impl Desktop {
         let (status, reasons) = assess_legacy(health, summary);
         let p = self.palette;
         let color = match status {
-            "bad" => p.danger,
-            "caution" => p.io,
-            "good" => p.network,
+            "bad" => Condition::Bad.color(p),
+            "caution" => Condition::Caution.color(p),
+            "good" => Condition::Good.color(p),
             _ => p.muted,
         };
         let temperature = disk["temperature"]
@@ -156,11 +156,7 @@ impl Desktop {
         let state = if let Some(life) = summary["remainingLifePercent"].as_u64() {
             self.disk_tile(
                 state,
-                self.disk_meter(
-                    life as f64 / 100.,
-                    None,
-                    if life <= WORN_PERCENT { p.danger } else { p.io },
-                ),
+                self.disk_meter(life as f64 / 100., None, color),
                 Some(tr!("performance.disk.lifeLeft", percent = life)),
                 None,
             )
@@ -187,7 +183,11 @@ impl Desktop {
                     self.disk_meter(
                         spare as f64 / 100.,
                         threshold.map(|value| value as f64 / 100.),
-                        p.io,
+                        if threshold.is_some_and(|threshold| spare < threshold) {
+                            p.danger
+                        } else {
+                            Condition::Good.color(p)
+                        },
                     ),
                     threshold.map(|value| tr!("performance.disk.spareThreshold", percent = value)),
                     None,
