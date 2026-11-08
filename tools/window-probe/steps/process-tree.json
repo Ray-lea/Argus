@@ -1,0 +1,33 @@
+{
+  "window": [1400, 1000],
+  "steps": [
+    {"control":{"page":"processes","view":"tree","details":false,"motion":"off","preference":{"processSort":{"key":"pid","desc":false}},"sample":{"set":{"/system/processCount":7,"/processes":[
+      {"pid":100,"ppid":0,"createTime":1,"name":"alpha.exe","description":"Alpha","path":"C:/Examples/alpha.exe","cpu":4,"privateWs":104857600,"appWindow":true},
+      {"pid":110,"ppid":100,"createTime":2,"name":"worker.exe","description":"Worker","path":"C:/Examples/worker.exe","cpu":2,"privateWs":52428800},
+      {"pid":111,"ppid":110,"createTime":3,"name":"leaf.exe","description":"Leaf","path":"C:/Examples/leaf.exe","cpu":1,"privateWs":26214400},
+      {"pid":120,"ppid":100,"createTime":4,"name":"helper.exe","description":"Helper","path":"C:/Examples/helper.exe","cpu":1,"privateWs":26214400},
+      {"pid":200,"ppid":0,"createTime":1,"name":"beta.exe","description":"Beta","path":"C:/Examples/beta.exe","cpu":3,"privateWs":83886080,"appWindow":true},
+      {"pid":210,"ppid":200,"createTime":2,"name":"task.exe","description":"Task","path":"C:/Examples/task.exe","cpu":1,"privateWs":26214400},
+      {"pid":300,"ppid":999,"createTime":3,"name":"orphan.exe","description":"Orphan","path":"C:/Examples/orphan.exe","cpu":0,"privateWs":10485760}
+    ]}}},"wait":500,"inspect":"layout","label":"default-folded","expect":{"processTree.visibleRows":3,"processTree.visibleChildren":0,"processTree.expandedParents":0},"capture":"default-folded"},
+    {"control":{"mouse":{"type":"move","x":160,"y":300}},"wait":50},
+    {"control":{"rowMenu":0},"wait":250,"inspect":"menu","label":"expand-menu","expect":{"state.focus.index":0},"capture":"expand-menu"},
+    {"control":{"keys":["enter"]},"wait":300,"inspect":"layout","label":"single-expanded","expect":{"processTree.visibleRows":5,"processTree.expandedParents":1}},
+    {"control":{"rowMenu":0},"wait":250,"inspect":"menu","label":"collapse-menu","expect":{"state.focus.index":1}},
+    {"control":{"keys":["enter"]},"wait":300,"inspect":"layout","label":"single-collapsed","expect":{"processTree.visibleRows":3,"processTree.visibleChildren":0}},
+    {"control":{"headerMenu":"name"},"wait":250,"inspect":"menu","label":"expand-all-menu","expect":{"state.focus.index":0,"state.disabled.1":true},"capture":"header-menu"},
+    {"control":{"keys":["enter"]},"wait":300,"inspect":"layout","label":"all-expanded","expect":{"processTree.visibleRows":7,"processTree.visibleChildren":4,"processTree.expandedParents":3},"capture":"all-expanded"},
+    {"control":{"foldRow":0},"wait":200,"inspect":"layout","label":"hidden-descendants","expect":{"processTree.visibleRows":4,"processTree.expandedParents":1}},
+    {"control":{"headerMenu":"cpu"},"wait":200,"inspect":"menu","label":"partial-all-menu","expect":{"state.disabled.0":false,"state.disabled.1":false}},
+    {"control":{"keys":["down","enter"]},"wait":200,"inspect":"layout","label":"all-collapsed","expect":{"processTree.visibleRows":3,"processTree.expandedParents":0}},
+    {"control":{"foldRow":0},"wait":200,"inspect":"layout","label":"descendants-were-collapsed","expect":{"processTree.visibleRows":5,"processTree.expandedParents":1}},
+    {"control":{"headerMenu":"name"},"wait":200},
+    {"control":{"keys":["down","enter"]},"wait":200},
+    {"control":{"query":"leaf"},"wait":300,"inspect":"layout","label":"search-ancestors","expect":{"processTree.visibleRows":3,"processTree.visibleChildren":2,"processTree.searching":true}},
+    {"control":{"headerMenu":"name"},"wait":200,"inspect":"menu","label":"search-disables-folding","expect":{"state.disabled.0":true,"state.disabled.1":true}},
+    {"control":{"keys":["escape"]},"wait":200,"inspect":"layout","label":"search-keeps-matches","expect":{"processTree.visibleRows":3,"processTree.visibleChildren":2}},
+    {"control":{"query":""},"wait":300,"inspect":"layout","label":"search-cleared","expect":{"processTree.visibleRows":3,"processTree.visibleChildren":0}},
+    {"control":{"preference":{"uiScale":150}},"wait":500},
+    {"control":{"headerMenu":"name"},"wait":250,"capture":"narrow-header-menu"}
+  ]
+}

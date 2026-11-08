@@ -84,6 +84,26 @@ impl Desktop {
         let preferences = Preferences::load(&self.prefs);
         let shown = |key: &str| preferences.selected.iter().any(|saved| saved == key);
         let mut items = Vec::new();
+        if self.view == "tree" {
+            let searching = !self.query.trim().is_empty();
+            for (expand, title, glyph) in [
+                (true, "processes.tree.expandAll", "ExpandAllIcon"),
+                (false, "processes.tree.collapseAll", "CollapseAllIcon"),
+            ] {
+                let disabled = searching
+                    || if expand {
+                        !self.rows.iter().any(|row| row.expandable && !row.expanded)
+                    } else {
+                        self.tree_expanded.is_empty()
+                    };
+                items.push(
+                    MenuItem::new(label(title), Action::TreeExpandAll(expand))
+                        .icon(glyph)
+                        .disabled(disabled),
+                );
+            }
+            items.push(MenuItem::separator());
+        }
         if let Some(key) = column
             .as_deref()
             .and_then(definition)

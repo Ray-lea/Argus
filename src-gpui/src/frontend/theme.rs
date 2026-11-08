@@ -589,6 +589,8 @@ pub fn icon_name(name: &str) -> IconName {
         "MenuIcon" => IconName::Menu,
         "AppsIcon" => IconName::LayoutGrid,
         "TreeIcon" => IconName::ListTree,
+        "ExpandAllIcon" => IconName::ChevronsUpDown,
+        "CollapseAllIcon" => IconName::ChevronsDownUp,
         "ListIcon" => IconName::List,
         "PauseIcon" => IconName::Pause,
         "PlayIcon" => IconName::Play,

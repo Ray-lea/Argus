@@ -213,6 +213,10 @@
     "copyPidWhat": " PID",
     "details": "详细信息"
   },
+  "tree": {
+    "expandAll": "展开所有",
+    "collapseAll": "折叠所有"
+  },
   "vitals": {
     "open": "在“性能”中查看{device}",
     "diskActive": "活动 {value}%",

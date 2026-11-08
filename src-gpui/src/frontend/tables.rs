@@ -1131,7 +1131,7 @@ impl Desktop {
                     sort: &self.sort,
                     descending: self.descending,
                     expanded: &self.expanded,
-                    collapsed: &self.collapsed,
+                    tree_expanded: &self.tree_expanded,
                     sections: &self.sections,
                     hosted: &self.hosted_services(),
                 },

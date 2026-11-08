@@ -319,7 +319,7 @@ pub struct ProcessOptions<'a> {
     pub sort: &'a str,
     pub descending: bool,
     pub expanded: &'a HashSet<String>,
-    pub collapsed: &'a HashSet<String>,
+    pub tree_expanded: &'a HashSet<String>,
     pub sections: &'a HashSet<String>,
     /// Display names of the services each service-hosting process runs, by PID.
     pub hosted: &'a HashMap<u64, Vec<String>>,
@@ -566,6 +566,30 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
     }
     out
 }
+fn parent_of<'a>(process: &Value, by_pid: &HashMap<u64, &'a Value>) -> Option<&'a Value> {
+    process["ppid"]
+        .as_u64()
+        .filter(|ppid| *ppid != 0)
+        .and_then(|ppid| by_pid.get(&ppid).copied())
+        .filter(|parent| {
+            parent["pid"] != process["pid"]
+                && number(parent, "createTime") <= number(process, "createTime")
+        })
+}
+
+/// Only actual parents are expanded; leaves that later gain children stay folded.
+pub fn tree_parents(processes: &[Value]) -> HashSet<String> {
+    let by_pid: HashMap<u64, &Value> = processes
+        .iter()
+        .filter_map(|process| process["pid"].as_u64().map(|pid| (pid, process)))
+        .collect();
+    processes
+        .iter()
+        .filter_map(|process| parent_of(process, &by_pid))
+        .map(identity)
+        .collect()
+}
+
 /// The process tree: children under the process that started them, each level
 /// sorted on its own. While searching, the ancestors of matches stay in place.
 fn tree_rows(
@@ -580,18 +604,10 @@ fn tree_rows(
         .filter_map(|p| p["pid"].as_u64().map(|pid| (pid, p)))
         .collect();
     // A parent must predate its child; otherwise the parent PID was reused.
-    let parent_of = |p: &Value| {
-        p["ppid"]
-            .as_u64()
-            .and_then(|ppid| by_pid.get(&ppid).copied())
-            .filter(|parent| {
-                parent["pid"] != p["pid"] && number(parent, "createTime") <= number(p, "createTime")
-            })
-    };
     let mut children: HashMap<String, Vec<&Value>> = HashMap::new();
     let mut roots = Vec::new();
     for p in processes {
-        match parent_of(p) {
+        match parent_of(p, &by_pid) {
             Some(parent) => children.entry(identity(parent)).or_default().push(p),
             None => roots.push(p),
         }
@@ -605,7 +621,7 @@ fn tree_rows(
                 if !visible.insert(identity(p)) {
                     break;
                 }
-                current = parent_of(p);
+                current = parent_of(p, &by_pid);
             }
         }
     }
@@ -613,7 +629,7 @@ fn tree_rows(
         children: &'a HashMap<String, Vec<&'a Value>>,
         visible: &'a HashSet<String>,
         searching: bool,
-        collapsed: &'a HashSet<String>,
+        expanded: &'a HashSet<String>,
         named: &'a F,
         sort: &'a str,
         descending: bool,
@@ -629,7 +645,7 @@ fn tree_rows(
                     let mut row = (self.named)(p, depth);
                     row.expandable = self.children.get(&row.key).is_some_and(|c| !c.is_empty());
                     row.expanded =
-                        row.expandable && (self.searching || !self.collapsed.contains(&row.key));
+                        row.expandable && (self.searching || self.expanded.contains(&row.key));
                     row
                 })
                 .collect();
@@ -650,7 +666,7 @@ fn tree_rows(
         children: &children,
         visible: &visible,
         searching,
-        collapsed: options.collapsed,
+        expanded: options.tree_expanded,
         named,
         sort: options.sort,
         descending: options.descending,
@@ -1114,7 +1130,7 @@ mod tests {
                 sort,
                 descending,
                 expanded: &empty,
-                collapsed: &empty,
+                tree_expanded: &empty,
                 sections: &empty,
                 hosted,
             },
@@ -1203,7 +1219,7 @@ mod tests {
         }
     }
     #[test]
-    fn the_tree_expands_parents_only_and_keeps_ancestors_of_matches() {
+    fn the_tree_starts_folded_and_expands_only_requested_parents() {
         let processes = vec![
             json!({"pid":1,"ppid":0,"createTime":1,"name":"root.exe"}),
             json!({"pid":2,"ppid":1,"createTime":2,"name":"child.exe"}),
@@ -1214,6 +1230,34 @@ mod tests {
         ];
         let none = HashMap::new();
         let rows = rows_of(&processes, "tree", "", "name", false, &none);
+        assert_eq!(pids(&rows), [5, 4, 1]);
+        assert!(rows[2].expandable && !rows[2].expanded);
+        let empty = HashSet::new();
+        let parents = tree_parents(&processes);
+        assert_eq!(
+            parents,
+            HashSet::from([identity(&processes[0]), identity(&processes[1])])
+        );
+        let expanded = |opened: &HashSet<String>| {
+            process_rows(
+                &processes,
+                ProcessOptions {
+                    mode: "tree",
+                    query: "",
+                    sort: "name",
+                    descending: false,
+                    expanded: &empty,
+                    tree_expanded: opened,
+                    sections: &empty,
+                    hosted: &none,
+                },
+            )
+        };
+        assert_eq!(
+            pids(&expanded(&HashSet::from([identity(&processes[0])]))),
+            [5, 4, 1, 2]
+        );
+        let rows = expanded(&parents);
         assert_eq!(pids(&rows), [5, 4, 1, 2, 3]);
         assert_eq!(
             rows.iter().map(|row| row.depth).collect::<Vec<_>>(),
@@ -1223,6 +1267,49 @@ mod tests {
         assert!(!rows[4].expandable && !rows[4].expanded);
         let found = rows_of(&processes, "tree", "leaf", "name", false, &none);
         assert_eq!(pids(&found), [1, 2, 3]);
+        assert_eq!(
+            pids(&rows_of(&processes, "tree", "", "name", false, &none)),
+            [5, 4, 1]
+        );
+    }
+
+    #[test]
+    fn a_reused_pid_does_not_inherit_the_previous_tree_expansion() {
+        let processes = vec![
+            json!({"pid":1,"ppid":0,"createTime":99,"name":"root.exe"}),
+            json!({"pid":2,"ppid":1,"createTime":100,"name":"child.exe"}),
+        ];
+        let empty = HashSet::new();
+        let old = HashSet::from(["1:1".into()]);
+        let rows = process_rows(
+            &processes,
+            ProcessOptions {
+                mode: "tree",
+                query: "",
+                sort: "pid",
+                descending: false,
+                expanded: &empty,
+                tree_expanded: &old,
+                sections: &empty,
+                hosted: &HashMap::new(),
+            },
+        );
+        assert_eq!(pids(&rows), [1]);
+        assert!(!rows[0].expanded);
+    }
+
+    #[test]
+    fn parent_zero_keeps_roots_outside_the_idle_process() {
+        let processes = vec![
+            json!({"pid":0,"ppid":0,"createTime":0,"name":"idle"}),
+            json!({"pid":4,"ppid":0,"createTime":1,"name":"system"}),
+            json!({"pid":8,"ppid":4,"createTime":2,"name":"worker"}),
+        ];
+        let rows = rows_of(&processes, "tree", "", "pid", false, &HashMap::new());
+        assert_eq!(pids(&rows), [0, 4]);
+        assert!(!rows[0].expandable);
+        assert!(rows[1].expandable);
+        assert_eq!(tree_parents(&processes), HashSet::from(["4:1".into()]));
     }
     #[test]
     fn expanded_members_sort_by_their_displayed_names() {
@@ -1240,7 +1327,7 @@ mod tests {
                 sort: "name",
                 descending: false,
                 expanded: &expanded,
-                collapsed: &empty,
+                tree_expanded: &empty,
                 sections: &empty,
                 hosted: &HashMap::new(),
             },
@@ -1269,7 +1356,7 @@ mod tests {
                 sort: "cpu",
                 descending: true,
                 expanded: &expanded,
-                collapsed: &empty,
+                tree_expanded: &empty,
                 sections: &empty,
                 hosted: &HashMap::new(),
             },
@@ -1358,7 +1445,7 @@ mod tests {
                 sort: "cpu",
                 descending: true,
                 expanded: &empty,
-                collapsed: &empty,
+                tree_expanded: &empty,
                 sections: &empty,
                 hosted: &HashMap::new(),
             },

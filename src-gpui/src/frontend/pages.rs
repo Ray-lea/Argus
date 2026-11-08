@@ -598,13 +598,23 @@ impl Desktop {
         if self.view == "apps" {
             self.expanded.insert(model::application_key(process));
         } else if self.view == "tree" {
-            let mut parent = process["ppid"].clone();
+            let mut child = process;
+            let mut visited = HashSet::from([model::identity(process)]);
             for _ in 0..processes.len() {
-                let Some(next) = processes.iter().find(|p| p["pid"] == parent) else {
+                let Some(parent_pid) = child["ppid"].as_u64().filter(|pid| *pid != 0) else {
                     break;
                 };
-                self.collapsed.remove(&model::identity(next));
-                parent = next["ppid"].clone();
+                let Some(next) = processes.iter().find(|p| {
+                    p["pid"].as_u64() == Some(parent_pid)
+                        && number(p, "createTime") <= number(child, "createTime")
+                }) else {
+                    break;
+                };
+                if !visited.insert(model::identity(next)) {
+                    break;
+                }
+                self.tree_expanded.insert(model::identity(next));
+                child = next;
             }
         }
         let section = if boolean(process, "appWindow") {

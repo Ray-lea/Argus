@@ -13,6 +13,8 @@ gpui_kit::assets::icon_assets!(
         ChevronDown,
         ChevronRight,
         ChevronUp,
+        ChevronsDownUp,
+        ChevronsUpDown,
         Circle,
         CircleX,
         Clock,

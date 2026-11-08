@@ -222,6 +222,10 @@
     "copyPidWhat": "PID",
     "details": "Details"
   },
+  "tree": {
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all"
+  },
   "vitals": {
     "open": "View {device} in Performance",
     "diskActive": "Active {value}%",

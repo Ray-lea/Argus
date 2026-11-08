@@ -416,6 +416,7 @@ impl Desktop {
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
+                "processTree":{"view":self.view,"visibleRows":self.rows.len(),"visibleChildren":self.rows.iter().filter(|row|row.depth > 0).count(),"expandedParents":self.rows.iter().filter(|row|row.expandable && row.expanded).count(),"searching":!self.query.trim().is_empty()},
                 "animations":{"ui":!cx.reduce_motion(),"window":crate::window_motion::enabled(),"charts":format!("{:?}",self.chart_clock.borrow().mode)},
                 "cpuTemperatureHistory":{"recentSamples":temperature.len().min(60),"recentMissing":temperature.iter().rev().take(60).filter(|(_,value)|value.is_none()).count(),"last":temperature.last().and_then(|(_,value)|*value)},
                 "systemBackdrop":crate::platform::supports_backdrop(),"backgroundAlpha":theme::Palette::current(cx).background.a,

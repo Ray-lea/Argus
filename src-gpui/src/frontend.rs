@@ -80,6 +80,8 @@ enum Action {
     View(String),
     Select(String),
     Fold(String),
+    TreeExpand(String, bool),
+    TreeExpandAll(bool),
     /// The details pane's next mode, or the one given.
     Details(Option<DetailsMode>),
     Pause,
@@ -282,7 +284,7 @@ struct Desktop {
     sort: String,
     descending: bool,
     expanded: HashSet<String>,
-    collapsed: HashSet<String>,
+    tree_expanded: HashSet<String>,
     sections: HashSet<String>,
     rows: Arc<Vec<Row>>,
     list: ListState,
@@ -447,7 +449,7 @@ impl Desktop {
             sort: saved_sort["key"].as_str().unwrap_or("cpu").into(),
             descending: saved_sort["desc"].as_bool().unwrap_or(true),
             expanded: HashSet::new(),
-            collapsed: HashSet::new(),
+            tree_expanded: HashSet::new(),
             sections: prefs
                 .get::<Vec<String>>("collapsedSections", vec![])
                 .into_iter()

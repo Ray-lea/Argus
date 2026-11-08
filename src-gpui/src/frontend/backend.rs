@@ -259,7 +259,7 @@ impl Desktop {
                     self.sort.clone(),
                     self.descending,
                     self.expanded.clone(),
-                    self.collapsed.clone(),
+                    self.tree_expanded.clone(),
                     self.sections.clone(),
                     self.hosted_services(),
                 );
@@ -277,7 +277,7 @@ impl Desktop {
                                 sort: &options.2,
                                 descending: options.3,
                                 expanded: &options.4,
-                                collapsed: &options.5,
+                                tree_expanded: &options.5,
                                 sections: &options.6,
                                 hosted: &options.7,
                             },
@@ -427,6 +427,8 @@ impl Desktop {
                 (id, first)
             })
             .collect();
+        self.tree_expanded
+            .retain(|key| self.first_seen.contains_key(key));
         if !previous.is_null() {
             cx.background_executor()
                 .spawn(async move { drop(previous) })
@@ -690,16 +692,48 @@ impl Desktop {
                         "collapsedSections",
                         self.sections.iter().collect::<Vec<_>>(),
                     );
+                } else if self.view == "tree" {
+                    if let Some(row) = self
+                        .rows
+                        .iter()
+                        .find(|row| row.key == key && row.expandable)
+                    {
+                        self.act(Action::TreeExpand(key, !row.expanded), window, cx);
+                    }
+                    return;
                 } else {
-                    let set = if self.view == "tree" {
-                        &mut self.collapsed
-                    } else {
-                        &mut self.expanded
-                    };
+                    let set = &mut self.expanded;
                     if !set.remove(&key) {
                         set.insert(key);
                     }
                 }
+                self.rebuild_rows(false, cx);
+            }
+            Action::TreeExpand(key, expand) => {
+                if self.page != "processes"
+                    || self.view != "tree"
+                    || !self.query.trim().is_empty()
+                    || !self.rows.iter().any(|row| row.key == key && row.expandable)
+                {
+                    return;
+                }
+                if expand {
+                    self.tree_expanded.insert(key);
+                } else {
+                    self.tree_expanded.remove(&key);
+                }
+                self.rebuild_rows(false, cx);
+            }
+            Action::TreeExpandAll(expand) => {
+                if self.page != "processes" || self.view != "tree" || !self.query.trim().is_empty()
+                {
+                    return;
+                }
+                self.tree_expanded = if expand {
+                    model::tree_parents(values(&self.snapshot["processes"]))
+                } else {
+                    HashSet::new()
+                };
                 self.rebuild_rows(false, cx);
             }
             Action::Details(mode) => {
@@ -893,7 +927,8 @@ impl Desktop {
         if matches!(key, "left" | "right") && self.page == "processes" {
             if let Some(index) = selected {
                 let row = self.rows[index].clone();
-                if row.expandable && row.expanded == (key == "left") {
+                if row.expandable && row.expanded == (key == "left") && self.query.trim().is_empty()
+                {
                     self.act(Action::Fold(row.key), window, cx);
                 } else {
                     let next = if key == "right" && row.expanded {

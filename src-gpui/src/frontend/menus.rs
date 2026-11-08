@@ -306,6 +306,7 @@ impl Desktop {
             "focus": {"in": place, "index": index, "item": focused},
             "submenu": popup.sub.as_ref().map(|sub| sub.owner),
             "items": popup.items.iter().map(|item| &item.label).collect::<Vec<_>>(),
+            "disabled": popup.items.iter().map(|item| item.disabled).collect::<Vec<_>>(),
         })
     }
 
@@ -906,7 +907,21 @@ impl Desktop {
     fn process_menu(&self, row: &Row) -> Vec<MenuItem> {
         let group = row.members.len() > 1;
         let args = json!({"members":row.members,"name":row.title});
-        let mut items = vec![
+        let mut items = Vec::new();
+        if self.view == "tree" && row.expandable {
+            for (expand, name, glyph) in [
+                (true, "common.expand", "ChevronDown"),
+                (false, "common.collapse", "ChevronRight"),
+            ] {
+                items.push(
+                    MenuItem::new(label(name), Action::TreeExpand(row.key.clone(), expand))
+                        .icon(glyph)
+                        .disabled(!self.query.trim().is_empty() || row.expanded == expand),
+                );
+            }
+            items.push(MenuItem::separator());
+        }
+        items.push(
             MenuItem::new(
                 if group {
                     tr!("processes.menu.endAll", count = row.members.len())
@@ -918,7 +933,7 @@ impl Desktop {
             .icon("EndIcon")
             .hint("Del")
             .danger(),
-        ];
+        );
         if !group {
             items.push(
                 MenuItem::new(
@@ -990,7 +1005,7 @@ impl Desktop {
             Action::Dialog("ruleScope".into(), json!({"name":text(&row.raw,"name")})),
         ));
         items.push(MenuItem::separator());
-        if row.expandable {
+        if row.expandable && self.view != "tree" {
             items.push(MenuItem::new(
                 label(if row.expanded {
                     "common.collapse"
