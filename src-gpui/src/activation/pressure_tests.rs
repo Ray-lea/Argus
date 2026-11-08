@@ -246,3 +246,96 @@ fn normal_and_previously_pinned_windows_keep_their_placement_policy() {
         drop(target);
     });
 }
+
+#[test]
+#[ignore = "creates windows on an inactive desktop"]
+fn deactivation_keeps_the_newly_active_normal_window_above_argus() {
+    on_desktop(|_| {
+        let target = window(false);
+        activation::install(target.0);
+        let blocker = window(true);
+        let next = window(false);
+        for _ in 0..4 {
+            activation::focus(target.0);
+            assert_ne!(
+                unsafe { GetWindowLongPtrW(target.0, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0,
+                0
+            );
+            unsafe {
+                // A different input queue can finish activation before the old
+                // window handles WM_ACTIVATE/WA_INACTIVE.
+                SetWindowPos(
+                    next.0,
+                    Some(HWND_TOP),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+                )
+                .unwrap();
+                SendMessageW(
+                    target.0,
+                    WM_ACTIVATE,
+                    Some(WPARAM(WA_INACTIVE as usize)),
+                    Some(LPARAM(next.0.0 as isize)),
+                );
+            }
+            assert_eq!(
+                unsafe { GetWindowLongPtrW(target.0, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0,
+                0
+            );
+            let mut previous = unsafe { GetWindow(target.0, GW_HWNDPREV) }.ok();
+            let mut next_is_above = false;
+            while let Some(hwnd) = previous {
+                if hwnd == next.0 {
+                    next_is_above = true;
+                    break;
+                }
+                previous = unsafe { GetWindow(hwnd, GW_HWNDPREV) }.ok();
+            }
+            assert!(
+                next_is_above,
+                "deactivation covered the newly active window"
+            );
+        }
+        drop(blocker);
+    });
+}
+
+#[test]
+#[ignore = "creates windows on an inactive desktop"]
+fn switching_to_a_topmost_window_and_hiding_both_end_temporary_elevation() {
+    on_desktop(|_| {
+        let target = window(false);
+        activation::install(target.0);
+        let blocker = window(true);
+        for hide in [false, true] {
+            activation::focus(target.0);
+            assert_ne!(
+                unsafe { GetWindowLongPtrW(target.0, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0,
+                0
+            );
+            unsafe {
+                if hide {
+                    let _ = ShowWindow(target.0, SW_HIDE);
+                } else {
+                    SendMessageW(
+                        target.0,
+                        WM_ACTIVATE,
+                        Some(WPARAM(WA_INACTIVE as usize)),
+                        Some(LPARAM(blocker.0.0 as isize)),
+                    );
+                }
+            }
+            assert_eq!(
+                unsafe { GetWindowLongPtrW(target.0, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0,
+                0
+            );
+            assert_ne!(
+                unsafe { GetWindowLongPtrW(blocker.0, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0,
+                0
+            );
+        }
+    });
+}

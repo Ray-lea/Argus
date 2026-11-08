@@ -160,6 +160,26 @@ pub(crate) fn focus(hwnd: HWND) {
     }
 }
 
+fn restore_after(hwnd: HWND, next: HWND) -> HWND {
+    unsafe {
+        for candidate in [GetForegroundWindow(), next] {
+            let root = GetAncestor(candidate, GA_ROOT);
+            if !root.is_invalid()
+                && root != hwnd
+                && GetAncestor(root, GA_ROOTOWNER) != hwnd
+                && IsWindowVisible(root).as_bool()
+                && GetWindowLongPtrW(root, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0 == 0
+            {
+                // Inserting behind a normal window also removes WS_EX_TOPMOST.
+                // HWND_NOTOPMOST alone would cover the newly active window if
+                // its input queue has already completed the foreground switch.
+                return root;
+            }
+        }
+    }
+    HWND_NOTOPMOST
+}
+
 unsafe extern "system" fn procedure(
     hwnd: HWND,
     message: u32,
@@ -179,11 +199,16 @@ unsafe extern "system" fn procedure(
         || (message == WM_SHOWWINDOW && w.0 == 0)
     {
         let restore = unsafe { &*(data as *const State) }.raised.replace(false);
+        let next = if message == WM_ACTIVATE {
+            HWND(l.0 as _)
+        } else {
+            HWND::default()
+        };
         if restore
             && unsafe {
                 SetWindowPos(
                     hwnd,
-                    Some(HWND_NOTOPMOST),
+                    Some(restore_after(hwnd, next)),
                     0,
                     0,
                     0,
