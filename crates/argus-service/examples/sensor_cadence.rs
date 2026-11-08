@@ -7,6 +7,10 @@ use std::time::{Duration, Instant};
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     let direct = args.iter().any(|arg| arg == "--direct");
+    let mut collector = args
+        .iter()
+        .any(|arg| arg == "--collector")
+        .then(|| argus_core::Collector::new(argus_core::MetaStore::new()));
     let count = args
         .iter()
         .find_map(|arg| arg.parse::<u32>().ok())
@@ -16,6 +20,9 @@ fn main() {
     let mut states = std::collections::BTreeMap::<String, usize>::new();
     let mut elapsed = Vec::new();
     for sample in 0..count {
+        if sample == count / 2 && args.iter().any(|arg| arg == "--pause") {
+            std::thread::sleep(Duration::from_secs(20));
+        }
         let start = Instant::now();
         let frame = if direct {
             match argus_service::request(Operation::SensorSnapshot {}) {
@@ -31,6 +38,9 @@ fn main() {
                 processes: vec![],
                 process_network: false,
             };
+            if let Some(collector) = &mut collector {
+                snapshot = collector.sample();
+            }
             client.enrich(&mut snapshot, true, Duration::from_secs(1));
             snapshot.hardware.cpu_sensors.unwrap_or_default()
         };
@@ -39,7 +49,7 @@ fn main() {
         *states.entry(format!("{:?}", frame.state)).or_default() += 1;
         println!(
             "{}",
-            serde_json::json!({"sample":sample,"direct":direct,"state":frame.state,"packageCelsius":frame.package_celsius,"cores":frame.cores.len(),"metrics":frame.metrics.len(),"elapsedMs":millis})
+            serde_json::json!({"sample":sample,"direct":direct,"state":frame.state,"packageCelsius":frame.package_celsius,"packageWatts":frame.package_watts,"cores":frame.cores.len(),"coreTemperatures":frame.cores.iter().filter(|c|c.celsius.is_some()).count(),"coreClocks":frame.cores.iter().filter(|c|c.clock_mhz.is_some()).count(),"coreEffective":frame.cores.iter().filter(|c|c.effective_mhz.is_some()).count(),"coreVid":frame.cores.iter().filter(|c|c.vid.is_some()).count(),"metrics":frame.metrics.len(),"metricKinds":frame.metrics.iter().map(|m|m.kind).collect::<Vec<_>>(),"coreIds":frame.cores.iter().map(|c|c.core).collect::<Vec<_>>(),"elapsedMs":millis})
         );
         std::thread::sleep(Duration::from_secs(1).saturating_sub(start.elapsed()));
     }

@@ -7,6 +7,7 @@ mod board;
 mod counters;
 mod igpu;
 mod intel;
+mod intel_threads;
 mod known_smu;
 mod smu;
 mod telemetry;
@@ -239,6 +240,7 @@ pub(super) struct CpuReader {
     smu: smu::Smu,
     board: board::Board,
     igpu: igpu::Reader,
+    intel_threads: Option<intel_threads::Readers>,
 }
 
 impl CpuReader {
@@ -247,6 +249,14 @@ impl CpuReader {
     }
 
     pub fn open() -> Result<Self, SensorState> {
+        Self::open_with_cores(true)
+    }
+
+    pub fn open_package() -> Result<Self, SensorState> {
+        Self::open_with_cores(false)
+    }
+
+    fn open_with_cores(with_cores: bool) -> Result<Self, SensorState> {
         let id = Identity::current().ok_or(SensorState::Unsupported)?;
         let blob = match (id.intel, id.family) {
             (true, 6) => INTEL,
@@ -285,7 +295,11 @@ impl CpuReader {
         } else {
             0.0
         };
+        let _affinity = Affinity::set(0, 0);
         let telemetry = telemetry::Telemetry::new(&module, id, &info, &processors);
+        let intel_threads = (id.intel && with_cores).then(|| {
+            intel_threads::Readers::new(std::sync::Arc::new(info.clone()), id, &processors)
+        });
         Ok(Self {
             module,
             id,
@@ -296,6 +310,7 @@ impl CpuReader {
             smu: smu::Smu::default(),
             board: board::Board::default(),
             igpu: igpu::Reader::new(&info),
+            intel_threads,
         })
     }
 
@@ -306,12 +321,17 @@ impl CpuReader {
             return CpuSensors::unavailable(SensorState::NoData);
         };
         if self.id.intel {
-            self.intel(&mut frame, true);
+            self.intel(&mut frame, false);
+            self.telemetry
+                .sample_package(&self.module, self.id, &mut frame);
+            if let Some(readers) = &self.intel_threads {
+                readers.sample(&mut frame);
+            }
         } else {
             self.amd(&mut frame);
+            self.telemetry
+                .sample(&self.module, self.id, &mut frame, started);
         }
-        self.telemetry
-            .sample(&self.module, self.id, &mut frame, started);
         if started.elapsed().as_millis() < 500 {
             self.igpu.sample(&mut frame);
         }

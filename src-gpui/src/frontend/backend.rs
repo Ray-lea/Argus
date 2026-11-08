@@ -409,6 +409,7 @@ impl Desktop {
             .synchronize(icon_ids, |id| self.icon_png(id), window, cx);
         let start = Instant::now();
         self.timeline.push(&snapshot, self.interval as f64);
+        self.sensor_layout.observe(&snapshot["hardware"]);
         self.work.timeline_us += start.elapsed().as_micros() as u64;
         let previous = std::mem::replace(&mut self.snapshot, snapshot);
         // New processes are tinted for a few samples.

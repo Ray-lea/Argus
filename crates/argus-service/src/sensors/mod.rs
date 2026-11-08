@@ -2,6 +2,7 @@
 //! IPC accepts only a snapshot request, never an address, module, or write.
 
 mod cpu;
+mod poll;
 
 use crate::{Operation, Reply};
 use argus_core::hardware::{CpuSensors, SensorState};
@@ -151,7 +152,12 @@ impl crate::snapshot::Source for NativeSource {
         {
             self.driver_version = version;
             self.attempt = Some(Instant::now());
-            match cpu::CpuReader::open() {
+            let opened = if self.package_only {
+                cpu::CpuReader::open_package()
+            } else {
+                cpu::CpuReader::open()
+            };
+            match opened {
                 Ok(reader) => self.reader = Some(reader),
                 Err(state) => self.state = state,
             }
@@ -178,7 +184,7 @@ impl crate::snapshot::Source for NativeSource {
 type CachedFrame = Option<(Instant, Arc<CpuSensors>)>;
 type Cache = Arc<Mutex<CachedFrame>>;
 pub struct SensorClient {
-    tx: mpsc::SyncSender<()>,
+    tx: mpsc::Sender<Option<Duration>>,
     cache: Cache,
     last_cache: CachedFrame,
     last: Option<Instant>,
@@ -244,18 +250,18 @@ impl SensorClient {
     }
 
     fn with_reader(mut read: impl FnMut() -> CpuSensors + Send + 'static) -> Self {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = mpsc::channel();
         let cache: Cache = Arc::default();
         let output = cache.clone();
         let _ = std::thread::Builder::new()
             .name("argus-sensor-client".into())
             .spawn(move || {
-                while rx.recv().is_ok() {
+                poll::run(rx, || {
                     let frame = Arc::new(read());
                     if let Ok(mut cache) = output.lock() {
                         *cache = Some((Instant::now(), frame));
                     }
-                }
+                });
             })
             .inspect_err(|error| {
                 argus_core::diagnostics::warn(
@@ -271,6 +277,13 @@ impl SensorClient {
         }
     }
 
+    pub fn disable(&mut self) {
+        if self.last.take().is_some() {
+            let _ = self.tx.send(None);
+        }
+        self.last_cache = None;
+    }
+
     pub fn enrich(
         &mut self,
         snapshot: &mut argus_core::Snapshot,
@@ -278,6 +291,7 @@ impl SensorClient {
         interval: Duration,
     ) {
         if !enabled {
+            self.disable();
             snapshot.hardware.cpu_sensors = None;
             self.last_cache = None;
             return;
@@ -285,7 +299,10 @@ impl SensorClient {
         if self
             .last
             .is_none_or(|at| at.elapsed() >= Duration::from_millis(500))
-            && self.tx.try_send(()).is_ok()
+            && self
+                .tx
+                .send(Some(interval.max(Duration::from_millis(500))))
+                .is_ok()
         {
             self.last = Some(Instant::now());
         }

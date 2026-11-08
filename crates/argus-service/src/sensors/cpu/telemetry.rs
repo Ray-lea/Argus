@@ -52,7 +52,6 @@ pub(super) struct Telemetry {
 
 impl Telemetry {
     pub fn new(module: &Module, id: Identity, info: &CpuInfo, processors: &[(u16, u8)]) -> Self {
-        let _affinity = Affinity::set(0, 0);
         let tsc = tsc_mhz();
         let nominal_ratio = if id.intel {
             module
@@ -166,6 +165,17 @@ impl Telemetry {
         started: Instant,
     ) {
         let power_unit = self.sample_package(module, id, frame);
+        self.sample_cores(module, id, frame, started, power_unit);
+    }
+
+    pub fn sample_cores(
+        &mut self,
+        module: &Module,
+        id: Identity,
+        frame: &mut CpuSensors,
+        started: Instant,
+        power_unit: Option<u64>,
+    ) {
         for core in &mut self.cores {
             if started.elapsed().as_millis() >= 500 {
                 break;

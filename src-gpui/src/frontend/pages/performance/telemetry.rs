@@ -134,7 +134,14 @@ fn reading(value: Option<f64>, digits: usize) -> String {
 }
 fn columns_of<'a>(list: &'a [Column], cores: &[Value]) -> Vec<&'a Column> {
     list.iter()
-        .filter(|column| cores.iter().any(|core| core[column.field].is_number()))
+        .filter(|column| {
+            cores.iter().any(|core| {
+                core[column.field].is_number()
+                    || values(&core["_knownFields"])
+                        .iter()
+                        .any(|field| field.as_str() == Some(column.field))
+            })
+        })
         .collect()
 }
 fn cell(core: &Value, column: &Column) -> String {
@@ -168,7 +175,11 @@ fn os_idle(idle: &[Value], key: &str) -> Option<f64> {
     Some(idle.iter().map(|value| number(value, key)).sum::<f64>() / idle.len() as f64)
 }
 fn limit_text(flags: &[Value], history: bool) -> String {
-    if flags.is_empty() {
+    if flags.is_empty()
+        || flags
+            .iter()
+            .any(|flag| !flag[if history { "occurred" } else { "active" }].is_boolean())
+    {
         return missing();
     }
     let reasons = flags
@@ -203,7 +214,7 @@ impl Desktop {
     ) -> AnyElement {
         let p = self.palette;
         let cpu = &hw["cpu"];
-        let sensors = &hw["cpuSensors"];
+        let sensors = self.sensor_layout.current();
         let mut cards = Vec::new();
 
         // Processor information.
@@ -468,7 +479,9 @@ impl Desktop {
                             label(&format!("performance.cpu.limits.{}", text(flag, "reason")))
                         })
                         .collect::<Vec<_>>();
-                    let summary = if reasons.is_empty() {
+                    let summary = if limits.iter().all(|flag| !flag["active"].is_boolean()) {
+                        missing()
+                    } else if reasons.is_empty() {
                         label("performance.cpu.limitsNone")
                     } else {
                         tr!(
@@ -601,7 +614,8 @@ impl Desktop {
         let card_width = (width - 34.).max(200.);
         let group_columns = ((card_width + 28.) / (280. + 28.)).floor().max(1.);
         let group_width = (card_width - 28. * (group_columns - 1.)) / group_columns;
-        let core_voltage = sensors["coreVoltage"].is_number()
+        let core_voltage = (sensors["coreVoltage"].is_number()
+            || self.sensor_layout.has_field("coreVoltage"))
             && !metrics.iter().any(|m| text(m, "kind") == "coreVoltage");
         let mut groups = Vec::new();
         for (group, title) in GROUPS {
@@ -617,7 +631,7 @@ impl Desktop {
                         .into_any_element(),
                     );
                 }
-                if sensors["coreVid"].is_number() {
+                if sensors["coreVid"].is_number() || self.sensor_layout.has_field("coreVid") {
                     readings.push(
                         self.sensor_reading(
                             label("performance.cpu.coreVid"),
@@ -629,7 +643,9 @@ impl Desktop {
                 }
             }
             if group == "temperature" {
-                if sensors["controlCelsius"].is_number() {
+                if sensors["controlCelsius"].is_number()
+                    || self.sensor_layout.has_field("controlCelsius")
+                {
                     readings.push(
                         self.sensor_reading(
                             label("performance.cpu.controlTemperature"),
@@ -804,10 +820,18 @@ impl Desktop {
         let p = self.palette;
         let columns = columns_of(&CORE_COLUMNS, cores);
         let hybrid = cores.iter().any(|core| boolean(core, "efficient"));
-        let limit_flags = cores.iter().any(|core| !values(&core["limits"]).is_empty());
-        let throttling = cores
-            .iter()
-            .any(|core| core["thermalThrottling"].is_boolean());
+        let limit_flags = cores.iter().any(|core| {
+            !values(&core["limits"]).is_empty()
+                || values(&core["_knownFields"])
+                    .iter()
+                    .any(|field| field.as_str() == Some("limits"))
+        });
+        let throttling = cores.iter().any(|core| {
+            core["thermalThrottling"].is_boolean()
+                || values(&core["_knownFields"])
+                    .iter()
+                    .any(|field| field.as_str() == Some("thermalThrottling"))
+        });
         let mut header = vec![self.head_cell(label("performance.cpu.columnCore"), None)];
         if hybrid {
             header.push(self.head_cell(label("performance.cpu.columnCoreType"), None));
@@ -900,19 +924,19 @@ impl Desktop {
                         .into_any_element(),
                     div()
                         .when(boolean(flag, "active"), |d| d.text_color(p.danger))
-                        .child(label(if boolean(flag, "active") {
-                            "performance.cpu.throttleActive"
-                        } else {
-                            "performance.cpu.throttleInactive"
-                        }))
+                        .child(match flag["active"].as_bool() {
+                            Some(true) => label("performance.cpu.throttleActive"),
+                            Some(false) => label("performance.cpu.throttleInactive"),
+                            None => missing(),
+                        })
                         .into_any_element(),
                     div()
                         .id(SharedString::from(format!("limit-history-{reason}")))
-                        .child(label(if boolean(flag, "occurred") {
-                            "performance.cpu.limitLogged"
-                        } else {
-                            "performance.cpu.limitNever"
-                        }))
+                        .child(match flag["occurred"].as_bool() {
+                            Some(true) => label("performance.cpu.limitLogged"),
+                            Some(false) => label("performance.cpu.limitNever"),
+                            None => missing(),
+                        })
                         .tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx))
                         .into_any_element(),
                 ]

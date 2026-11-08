@@ -6,6 +6,8 @@ use serde_json::{Value, json};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
+mod sensor_layout;
+pub use sensor_layout::SensorLayout;
 
 pub fn number(value: &Value, key: &str) -> f64 {
     value.get(key).and_then(Value::as_f64).unwrap_or(0.)

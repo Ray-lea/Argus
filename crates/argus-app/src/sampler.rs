@@ -175,6 +175,9 @@ impl Sampler {
                     let forced = match received {
                         Ok(Control::SetKernelSensors(enabled)) => {
                             kernel_sensors = enabled;
+                            if !enabled {
+                                sensors.disable();
+                            }
                             true
                         }
                         Ok(Control::Subscribe(ch)) => {
