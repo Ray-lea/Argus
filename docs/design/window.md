@@ -1,8 +1,8 @@
 # 窗口外观
 
-窗口使用 GPUI Kit 的 `TitleBar` 和 Windows 原生窗口管理。Windows 11 默认使用 Mica，Windows 10 使用不透明背景。窗口主题与界面色板同步，颜色定义见[主题配置](../../resources/theme.json)。
+窗口使用 GPUI Kit 的 `TitleBar` 和 Windows 原生窗口管理。Windows 11 22H2（内部版本 22621）及以上默认使用 Mica；Windows 11 21H2、Windows 10 或系统版本读取失败时使用不透明背景。云母能力判定与渲染器使用的 `DWMWA_SYSTEMBACKDROP_TYPE` 保持相同版本边界，避免在背景接口不可用时留下透明表面。窗口主题与界面色板同步，颜色定义见[主题配置](../../resources/theme.json)。
 
-Windows 启动参数 `--opaque-window` 选用绑定到 HWND 的不透明交换链，由 Argus 绘制主题底色。默认的 Windows 11 窗口保留云母材质。两种窗口均在显示前将曲线填充与底色混合。
+Windows 启动参数 `--opaque-window` 选用绑定到 HWND 的不透明交换链，由 Argus 绘制主题底色。支持云母背景的系统默认保留该材质。两种窗口均在显示前将曲线填充与底色混合。
 
 启动尺寸与最小尺寸来自[应用配置](../../resources/app.json)，两者均为 1240×800，界面按这个尺寸保证完整的布局。主显示器的可用区域（不含任务栏）小于最小尺寸时，例如 1920×1080 屏幕开启 150% 缩放，最小尺寸以可用区域为限。隐藏启动时，平台层按 DPI 校准初始客户区并保留当前桌面焦点。拖动、缩放、系统按钮和命中测试由原生框架处理。
 

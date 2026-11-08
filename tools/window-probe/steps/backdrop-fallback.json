@@ -1,0 +1,9 @@
+{
+  "window": [1240, 900],
+  "steps": [
+    {"control":{"theme":"light","page":"settings"},"wait":500,"inspect":"layout","label":"light-settings","expect":{"page":"settings","systemBackdrop":false,"backgroundAlpha":1},"capture":"light-settings"},
+    {"control":{"theme":"dark"},"wait":500,"inspect":"layout","label":"dark-settings","expect":{"systemBackdrop":false,"backgroundAlpha":1},"capture":"dark-settings"},
+    {"control":{"page":"performance","device":"cpu"},"wait":700,"inspect":"layout","label":"dark-performance","expect":{"page":"performance","systemBackdrop":false,"backgroundAlpha":1},"capture":"dark-performance"},
+    {"control":{"theme":"light"},"wait":500,"inspect":"layout","label":"light-performance","expect":{"systemBackdrop":false,"backgroundAlpha":1},"capture":"light-performance"}
+  ]
+}

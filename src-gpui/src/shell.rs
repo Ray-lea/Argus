@@ -285,6 +285,11 @@ pub fn follow_visibility(window: &NativeWindow) {
 }
 
 pub fn supports_mica() -> bool {
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    *SUPPORTED.get_or_init(detect_mica)
+}
+
+fn detect_mica() -> bool {
     // An HWND swap chain ignores alpha. Paint the theme background in that
     // mode so translucent controls and charts have the intended backdrop.
     if gpui_kit::gpui::windows_opaque_window_requested() {
@@ -299,7 +304,34 @@ pub fn supports_mica() -> bool {
         dwOSVersionInfoSize: size_of::<OSVERSIONINFOW>() as u32,
         ..Default::default()
     };
-    unsafe { RtlGetVersion(&mut info).is_ok() && info.dwBuildNumber >= 22000 }
+    let build = unsafe { RtlGetVersion(&mut info) }
+        .is_ok()
+        .then_some(info.dwBuildNumber);
+    // Only isolated development tests may substitute the backdrop's OS build.
+    // Keep the composition renderer unchanged to exercise the real solid fallback.
+    let test_build = if cfg!(debug_assertions) {
+        let args: Vec<_> = std::env::args().collect();
+        (args.iter().any(|arg| arg == "--test")
+            && args.windows(2).any(|pair| {
+                pair[0] == "--identifier" && pair[1].starts_with("dev.argus.taskmanager.test.")
+            }))
+        .then(|| {
+            std::env::var("ARGUS_TEST_BACKDROP_BUILD")
+                .ok()?
+                .parse()
+                .ok()
+        })
+        .flatten()
+    } else {
+        None
+    };
+    supports_system_backdrop(test_build.or(build))
+}
+
+fn supports_system_backdrop(build: Option<u32>) -> bool {
+    // The renderer uses DWMWA_SYSTEMBACKDROP_TYPE, introduced in Windows 11 22H2.
+    // On build 22000, requesting Mica would leave the transparent surface unfilled.
+    build.is_some_and(|build| build >= 22621)
 }
 
 pub fn dark(theme: Theme) -> bool {
@@ -530,6 +562,21 @@ mod tray_tests {
         };
         assert_eq!(restarted.data().guidItem, icon.data().guidItem);
         assert_ne!(restarted.data().hWnd, icon.data().hWnd);
+    }
+}
+
+#[cfg(test)]
+mod backdrop_tests {
+    use super::supports_system_backdrop;
+
+    #[test]
+    fn system_backdrop_requires_the_api_available_since_windows_11_22h2() {
+        for build in [None, Some(19045), Some(22000), Some(22620)] {
+            assert!(!supports_system_backdrop(build), "build={build:?}");
+        }
+        for build in [22621, 22631, 26100] {
+            assert!(supports_system_backdrop(Some(build)), "build={build}");
+        }
     }
 }
 

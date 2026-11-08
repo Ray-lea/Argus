@@ -412,6 +412,7 @@ impl Desktop {
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
+                "systemBackdrop":crate::platform::supports_backdrop(),"backgroundAlpha":theme::Palette::current(cx).background.a,
                 "dialog":self.dialog_test_state(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
