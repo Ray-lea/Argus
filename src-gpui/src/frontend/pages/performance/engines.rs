@@ -1037,6 +1037,34 @@ impl Desktop {
             label("performance.gpu.sharedMemory"),
             plain(format!("{} GB", gb(number(info, "sharedTotal")))),
         ));
+        for (field, title) in [
+            ("driverVersion", "performance.gpu.driverVersion"),
+            ("driverDate", "performance.gpu.driverDate"),
+        ] {
+            rows.push((
+                label(title),
+                plain(
+                    info[field]
+                        .as_str()
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_owned)
+                        .unwrap_or_else(missing),
+                ),
+            ));
+        }
+        let direct_x = &info["directX"];
+        let direct_x = direct_x["version"]
+            .as_u64()
+            .zip(direct_x["featureLevel"].as_str())
+            .map(|(version, level)| {
+                tr!(
+                    "performance.gpu.directXValue",
+                    version = version,
+                    level = level
+                )
+            })
+            .unwrap_or_else(missing);
+        rows.push((label("performance.gpu.directXVersion"), plain(direct_x)));
         if let Some(limit) = reading(gpu, "boardPowerLimit").filter(|v| *v != 0.) {
             rows.push((
                 label("performance.gpu.powerLimit"),

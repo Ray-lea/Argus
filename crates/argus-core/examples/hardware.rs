@@ -64,6 +64,10 @@ fn main() {
     }
     for g in &hw.gpus {
         println!(
+            "GPU metadata {}",
+            serde_json::to_string(g.info.as_ref()).expect("GPU metadata")
+        );
+        println!(
             "GPU {:?} id={} dedicated {}/{} MB shared {}/{} MB temp {:?} (max {:?}) fan {:?} power {:?}% board {:?}/{:?} W clock {:?}/{:?} MHz {:?} mV mem {:?} MHz",
             g.info.name,
             g.info.id,

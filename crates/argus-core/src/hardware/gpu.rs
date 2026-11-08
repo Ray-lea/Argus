@@ -29,6 +29,8 @@ use super::nvml::Nvml;
 use super::query::Retry;
 use super::vendor_gpu::{GpuPowerSource, Pci, VendorGpu};
 use crate::util::from_wide;
+mod metadata;
+pub use metadata::DirectXInfo;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +45,9 @@ pub struct GpuInfo {
     pub temperature_max: Option<f32>,
     /// Intel's processor graphics at PCI 0:2:0, verified by vendor ID.
     pub intel_integrated: bool,
+    pub driver_version: Option<String>,
+    pub driver_date: Option<String>,
+    pub direct_x: Option<DirectXInfo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -332,8 +337,9 @@ fn enumerate() -> Vec<Adapter> {
     list.truncate(e.NumAdapters as usize);
 
     let mut out = Vec::new();
+    let mut metadata = metadata::Metadata::new();
     for a in list {
-        match describe(&a) {
+        match describe(&a, &mut metadata) {
             Some(adapter) => out.push(adapter),
             None => {
                 let close = D3DKMT_CLOSEADAPTER {
@@ -348,7 +354,7 @@ fn enumerate() -> Vec<Adapter> {
     out
 }
 
-fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
+fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option<Adapter> {
     // Skip software renderers and display-only adapters (no engines to watch).
     let mut kind = D3DKMT_ADAPTERTYPE::default();
     if query_info(a.hAdapter, KMTQAITYPE_ADAPTERTYPE, &mut kind) {
@@ -425,6 +431,7 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
     let mut ids = D3DKMT_QUERY_DEVICE_IDS::default();
     let vendor = query_info(a.hAdapter, KMTQAITYPE_PHYSICALADAPTERDEVICEIDS, &mut ids)
         .then_some(ids.DeviceIds.VendorID);
+    let driver = metadata.driver(luid);
     Some(Adapter {
         handle: a.hAdapter,
         luid,
@@ -437,6 +444,9 @@ fn describe(a: &D3DKMT_ADAPTERINFO) -> Option<Adapter> {
             temperature_max: (has_caps && caps.TemperatureMax > 0)
                 .then(|| caps.TemperatureMax as f32 / 10.0),
             intel_integrated: processor_graphics(vendor, pci),
+            driver_version: driver.version,
+            driver_date: driver.date,
+            direct_x: metadata.direct_x(luid),
         }),
         node_engine,
         node_3d,
@@ -719,6 +729,9 @@ mod tests {
                 engines: vec!["3D".into()],
                 temperature_max: None,
                 intel_integrated: false,
+                driver_version: None,
+                driver_date: None,
+                direct_x: None,
             }),
             util: 1.0,
             util_source: GpuUtilSource::Windows,

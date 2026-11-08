@@ -25,7 +25,7 @@ pub use cpu::cpu_info;
 pub use cpu::{CpuInfo, CpuThread};
 pub use disk::{DiskInfo, DiskStats};
 pub(crate) use gpu::pretty_engine;
-pub use gpu::{GpuInfo, GpuStats, GpuUtilSource};
+pub use gpu::{DirectXInfo, GpuInfo, GpuStats, GpuUtilSource};
 pub use kernel_sensors::{
     BoardMetric, BoardMetricKind, CcdTemperature, CoreTemperature, CpuCoreSensors, CpuFanReading,
     CpuLimitReason, CpuLimitStatus, CpuMetric, CpuMetricKind, CpuSensorSource, CpuSensors,
