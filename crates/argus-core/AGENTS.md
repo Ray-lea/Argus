@@ -15,5 +15,5 @@
 - `handles::scan` 只能在可终止的辅助进程里运行，不能直接放进 UI、采样或服务线程。`NtQueryObject`、文件信息查询、甚至关闭复制的文件句柄都可能阻塞；由 `argus-service::handles` 的 Job 与超时监控负责回收。只复制句柄查询，绝不关闭来源进程的句柄。合并与结束文件占用结果必须保留 PID + 启动时间。
 - `process.rs` 给每个进程实例缓存一个 `PROCESS_QUERY_LIMITED_INFORMATION` 句柄（读效率模式用），进程消失时随条目关闭；不要改成每次采样重新打开。
 - 规则引擎（`rules.rs`）由 `argus-service::RuleRunner` 的独立宿主线程驱动；采样线程只提交最新的 PID、启动时间和名称，不要让服务 RPC 阻塞采样。规则保存或执行权限来源变化时重新检查并重新计数；同一轮里一个进程实例只套用一次，传输失败不自动重放。
-- 用示例核对采集结果（命令见 `docs/development/README.md` 的“验证采集数据”）；改动 `history.rs` 后用 `--example history --release -- <秒数>` 看录制开销和每帧大小。
+- 修改采集行为时用相关示例核对结果（命令见 `docs/development/README.md` 的“验证采集数据”）；修改 `history.rs` 的录制、编码或写入路径时，用 `--example history --release -- <秒数>` 看录制开销和每帧大小。
 - 改动历史文件的格式（`history.rs`）时要升 `MAGIC` 里的版本号：读取侧跳过版本不符的文件，写入侧会重建当天的文件。

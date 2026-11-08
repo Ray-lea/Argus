@@ -7,8 +7,8 @@
 - 测试只启动自身的 --hidden --test --identifier 实例，通过窗口探针不激活显示和捕获，禁止调用会抢占用户桌面的激活路径。窗口无需激活即可接收合成按键：`keys` 与单击、拖动类指针控制只在模拟快照（`--fixture`）下生效，那里不执行结束进程等真实命令；实时数据下只能悬停和检查。菜单的键盘路径用 `inspectMenu` 核对。
 - 测试模块不要写 `use super::*`：GPUI 的 `test` 属性会遮蔽标准的 `#[test]`，报错为 “recursion limit reached while expanding `#[test]`”，改为逐项导入。glob 导入链下 `Duration` 有歧义，写 `std::time::Duration`。
 - 表格单元格由组件包上 `overflow_hidden`，内容在本格之外的部分会被裁掉。需要越过相邻单元格绘制（如列换位动画）时用 `flip::escaping`，以表格可视区为裁剪范围延后绘制，不要为此改动或 vendor 组件。
-- 曲线时间来自采集时间戳，保留未知区间与暂停语义；避免在每帧复制快照或重建表格。渲染变化需检查真实呈现与隐藏开销。
-- 图表层（`ChartLayer`）画在整个页面之上，页面里的文字会被曲线盖住；要压在曲线上的内容用 `charts::Overlay` 交给图表层绘制。Windows 合成只在静止内容画在所有与其重叠的移动图元（曲线纹理、动画柱条）之后、且只用纯色底色或普通图像时保留曲线图层：渐变底色或夹在移动图元之间的静止内容会让曲线退回逐帧重绘，随曲线逐帧移动的小图像也会明显增加 CPU 与 GPU 开销。改动后用 `ARGUS_GPUI_DIAGNOSTICS=1` 核对 `gpu-chart-layers` 的 `images` 与 `gpu-chart-foreground-reject`。
+- 曲线时间来自采集时间戳，保留未知区间与暂停语义；避免在每帧复制快照或重建表格。修改曲线、帧调度或缓存逻辑时检查真实呈现与隐藏开销；静态排版与文案按根目录规定做局部验证。
+- 图表层（`ChartLayer`）画在整个页面之上，页面里的文字会被曲线盖住；要压在曲线上的内容用 `charts::Overlay` 交给图表层绘制。Windows 合成只在静止内容画在所有与其重叠的移动图元（曲线纹理、动画柱条）之后、且只用纯色底色或普通图像时保留曲线图层：渐变底色或夹在移动图元之间的静止内容会让曲线退回逐帧重绘，随曲线逐帧移动的小图像也会明显增加 CPU 与 GPU 开销。修改这些图层的绘制顺序、背景或合成方式后，用 `ARGUS_GPUI_DIAGNOSTICS=1` 核对 `gpu-chart-layers` 的 `images` 与 `gpu-chart-foreground-reject`。
 - `gpui_kit::base::ElementExt::on_prepaint` 的探针是没有定位的绝对子元素，落在文字流之后，量出的边界比元素本身低一个行高；记录测试锚点改用 `canvas(...).absolute().inset_0()`。
 - 更新公钥和版本签名约束不可改变，安装前二次验签。耗时命令不运行在 UI 线程。
 - 平台能力与前端分离；macOS 不可用的采集或操作不能返回模拟成功。
