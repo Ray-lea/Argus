@@ -147,9 +147,9 @@ impl Module {
     }
 }
 
-struct Affinity(GROUP_AFFINITY);
+pub(super) struct Affinity(GROUP_AFFINITY);
 impl Affinity {
-    fn set(group: u16, processor: u8) -> Option<Self> {
+    pub(super) fn set(group: u16, processor: u8) -> Option<Self> {
         let next = GROUP_AFFINITY {
             Mask: 1usize.checked_shl(processor as u32)?,
             Group: group,
@@ -242,6 +242,10 @@ pub(super) struct CpuReader {
 }
 
 impl CpuReader {
+    pub fn supports_package_reader() -> bool {
+        Identity::current().is_some_and(|id| id.intel && id.family == 6)
+    }
+
     pub fn open() -> Result<Self, SensorState> {
         let id = Identity::current().ok_or(SensorState::Unsupported)?;
         let blob = match (id.intel, id.family) {
@@ -302,7 +306,7 @@ impl CpuReader {
             return CpuSensors::unavailable(SensorState::NoData);
         };
         if self.id.intel {
-            self.intel(&mut frame);
+            self.intel(&mut frame, true);
         } else {
             self.amd(&mut frame);
         }
@@ -317,6 +321,21 @@ impl CpuReader {
         if started.elapsed().as_millis() < 500 {
             self.board.sample(&mut frame);
         }
+        self.package_power(&mut frame);
+        finish(frame)
+    }
+
+    /// Package readings stay responsive even when migration to a busy core stalls.
+    pub fn sample_package(&mut self) -> CpuSensors {
+        let mut frame = CpuSensors::default();
+        self.intel(&mut frame, false);
+        self.telemetry
+            .sample_package(&self.module, self.id, &mut frame);
+        self.package_power(&mut frame);
+        finish(frame)
+    }
+
+    fn package_power(&mut self, frame: &mut CpuSensors) {
         let (unit_register, energy_register) = if self.id.intel {
             (0x606, 0x611)
         } else {
@@ -331,33 +350,14 @@ impl CpuReader {
                 self.energy
                     .sample(self.module.msr(energy_register), scale, Instant::now());
         }
-        frame.state = if frame.package_celsius.is_some()
-            || frame.control_celsius.is_some()
-            || !frame.core_temperatures.is_empty()
-            || !frame.ccd_temperatures.is_empty()
-            || frame.core_voltage.is_some()
-            || frame.core_vid.is_some()
-            || frame.package_watts.is_some()
-            || frame
-                .integrated_gpu
-                .as_ref()
-                .is_some_and(|g| g.state == SensorState::Ready)
-            || !frame.metrics.is_empty()
-            || !frame.board_fans.is_empty()
-            || !frame.board_metrics.is_empty()
-            || frame.cores.iter().any(|core| {
-                core.clock_mhz.is_some() || core.effective_mhz.is_some() || core.watts.is_some()
-            }) {
-            SensorState::Ready
-        } else {
-            SensorState::NoData
-        };
-        frame
     }
 
-    fn intel(&self, frame: &mut CpuSensors) {
+    fn intel(&self, frame: &mut CpuSensors, all_cores: bool) {
         let started = Instant::now();
         for &(group, processor) in &self.processors {
+            if !all_cores && (group != 0 || processor != 0) {
+                continue;
+            }
             if started.elapsed().as_millis() > 500 {
                 break;
             }
@@ -496,6 +496,31 @@ impl CpuReader {
     }
 }
 
+fn finish(mut frame: CpuSensors) -> CpuSensors {
+    frame.state = if frame.package_celsius.is_some()
+        || frame.control_celsius.is_some()
+        || !frame.core_temperatures.is_empty()
+        || !frame.ccd_temperatures.is_empty()
+        || frame.core_voltage.is_some()
+        || frame.core_vid.is_some()
+        || frame.package_watts.is_some()
+        || frame
+            .integrated_gpu
+            .as_ref()
+            .is_some_and(|g| g.state == SensorState::Ready)
+        || !frame.metrics.is_empty()
+        || !frame.board_fans.is_empty()
+        || !frame.board_metrics.is_empty()
+        || frame.cores.iter().any(|core| {
+            core.clock_mhz.is_some() || core.effective_mhz.is_some() || core.watts.is_some()
+        }) {
+        SensorState::Ready
+    } else {
+        SensorState::NoData
+    };
+    frame
+}
+
 fn valid(value: f64, low: f64, high: f64) -> Option<f32> {
     (value.is_finite() && (low..=high).contains(&value)).then_some(value as f32)
 }
@@ -593,6 +618,31 @@ mod tests {
         let mut after = GROUP_AFFINITY::default();
         unsafe { GetThreadGroupAffinity(GetCurrentThread(), &mut after) }.unwrap();
         assert_eq!((before.Group, before.Mask), (after.Group, after.Mask));
+    }
+    #[test]
+    #[ignore = "Measures only the test thread's processor migration; no driver access"]
+    fn affinity_cadence_without_driver_access() {
+        let processors = unsafe { GetActiveProcessorCount(0) }.min(64);
+        for (pass, package_only) in [false, true, false, true].into_iter().enumerate() {
+            let started = Instant::now();
+            let _base = Affinity::set(0, 0).unwrap();
+            for processor in 0..processors {
+                let at = Instant::now();
+                let core =
+                    Affinity::set(0, if package_only { 0 } else { processor as u8 }).unwrap();
+                let switched = at.elapsed();
+                drop(core);
+                println!(
+                    "pass={pass} cpu={processor} switch_ms={:.3} migration_ms={:.3}",
+                    switched.as_secs_f64() * 1000.,
+                    at.elapsed().as_secs_f64() * 1000.
+                );
+            }
+            println!(
+                "pass={pass} package_only={package_only} total_ms={:.3}",
+                started.elapsed().as_secs_f64() * 1000.
+            );
+        }
     }
     #[test]
     fn validates_sensor_bits_and_zen5_mapping() {

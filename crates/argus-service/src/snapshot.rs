@@ -129,6 +129,15 @@ impl<T: Send + Sync + 'static> Reader<T> {
     /// Warm requests return immediately. One cold requester may await the first
     /// sample; additional requesters return Pending and keep IPC slots available.
     pub fn snapshot(&self) -> Option<Arc<T>> {
+        self.request(true)
+    }
+
+    /// A supplementary source must never delay an independently fresh reading.
+    pub fn snapshot_without_wait(&self) -> Option<Arc<T>> {
+        self.request(false)
+    }
+
+    fn request(&self, wait: bool) -> Option<Arc<T>> {
         let now = Instant::now();
         let mut state = self.shared.0.lock().unwrap();
         if state.stop
@@ -150,7 +159,7 @@ impl<T: Send + Sync + 'static> Reader<T> {
             state.requested = true;
             self.shared.1.notify_all();
         }
-        if frame.is_some() || state.waiting {
+        if frame.is_some() || state.waiting || !wait {
             return frame;
         }
         // Below the client's two-second deadline, including connect and framing.

@@ -121,13 +121,12 @@ impl Telemetry {
         }
     }
 
-    pub fn sample(
+    pub fn sample_package(
         &mut self,
         module: &Module,
         id: Identity,
         frame: &mut CpuSensors,
-        started: Instant,
-    ) {
+    ) -> Option<u64> {
         frame.metric(Kind::BusMhz, self.bus_mhz, Source::Msr);
         let power_unit = module.msr(if id.intel { 0x606 } else { 0xc0010299 });
         if id.intel {
@@ -156,6 +155,17 @@ impl Telemetry {
                 }
             }
         }
+        power_unit
+    }
+
+    pub fn sample(
+        &mut self,
+        module: &Module,
+        id: Identity,
+        frame: &mut CpuSensors,
+        started: Instant,
+    ) {
+        let power_unit = self.sample_package(module, id, frame);
         for core in &mut self.cores {
             if started.elapsed().as_millis() >= 500 {
                 break;

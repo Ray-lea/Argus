@@ -16,6 +16,7 @@ const POLICY: crate::snapshot::Policy = crate::snapshot::Policy {
 
 pub(crate) struct SensorMonitor {
     reader: crate::snapshot::Reader<CpuSensors>,
+    package: Option<crate::snapshot::Reader<CpuSensors>>,
 }
 
 impl SensorMonitor {
@@ -26,6 +27,12 @@ impl SensorMonitor {
                 POLICY,
                 NativeSource::default,
             ),
+            package: cpu::CpuReader::supports_package_reader().then(|| {
+                crate::snapshot::Reader::spawn("argus-service-package", POLICY, || NativeSource {
+                    package_only: true,
+                    ..Default::default()
+                })
+            }),
         }
     }
 
@@ -33,10 +40,15 @@ impl SensorMonitor {
     pub fn disabled() -> Self {
         Self {
             reader: crate::snapshot::Reader::disabled(POLICY),
+            package: None,
         }
     }
 
     pub fn snapshot(&self) -> CpuSensors {
+        if let Some(package) = &self.package {
+            let detail = self.reader.snapshot_without_wait();
+            return combine_package(package.snapshot(), detail);
+        }
         self.reader
             .snapshot()
             .map(|frame| (*frame).clone())
@@ -51,8 +63,60 @@ impl SensorMonitor {
                 crate::snapshot::tests::POLICY,
                 move || crate::snapshot::tests::Callback(read),
             ),
+            package: None,
         }
     }
+}
+
+/// The dedicated Intel reader owns these fields; delayed per-core data must not
+/// replace current package readings or resurrect an unavailable package metric.
+fn combine_package(
+    package: Option<Arc<CpuSensors>>,
+    detail: Option<Arc<CpuSensors>>,
+) -> CpuSensors {
+    use argus_core::hardware::CpuMetricKind as Kind;
+    let Some(package) = package else {
+        return detail.map(|frame| (*frame).clone()).unwrap_or_default();
+    };
+    if package.state != SensorState::Ready {
+        return detail
+            .filter(|frame| frame.state == SensorState::Ready)
+            .map(|frame| (*frame).clone())
+            .unwrap_or_else(|| (*package).clone());
+    }
+    let mut frame = detail
+        .filter(|frame| frame.state == SensorState::Ready)
+        .map(|frame| (*frame).clone())
+        .unwrap_or_default();
+    frame.state = SensorState::Ready;
+    frame.package_celsius = package.package_celsius;
+    frame.package_watts = package.package_watts;
+    frame.limits = package.limits.clone();
+    if frame.core_temperatures.is_empty() {
+        frame.core_temperatures = package.core_temperatures.clone();
+    }
+    frame.metrics.retain(|metric| {
+        !matches!(
+            metric.kind,
+            Kind::BusMhz
+                | Kind::ThermalLimitCelsius
+                | Kind::Pl1Watts
+                | Kind::Pl2Watts
+                | Kind::Pl1Seconds
+                | Kind::Pl2Seconds
+                | Kind::TdpWatts
+                | Kind::RingMhz
+                | Kind::RingMinMhz
+                | Kind::RingMaxMhz
+                | Kind::RingMultiplier
+                | Kind::CoresWatts
+                | Kind::GraphicsWatts
+                | Kind::MemoryWatts
+                | Kind::PlatformWatts
+        )
+    });
+    frame.metrics.extend(package.metrics.iter().cloned());
+    frame
 }
 
 #[derive(Default)]
@@ -61,11 +125,19 @@ struct NativeSource {
     attempt: Option<Instant>,
     driver_version: Option<u32>,
     state: SensorState,
+    package_only: bool,
+    affinity: Option<cpu::Affinity>,
 }
 
 impl crate::snapshot::Source for NativeSource {
     type Value = CpuSensors;
     fn read(&mut self) -> CpuSensors {
+        if self.package_only && self.affinity.is_none() {
+            self.affinity = cpu::Affinity::set(0, 0);
+            if self.affinity.is_none() {
+                return CpuSensors::unavailable(SensorState::NoData);
+            }
+        }
         let version = if self.reader.is_none() {
             crate::driver::device_version()
         } else {
@@ -86,20 +158,29 @@ impl crate::snapshot::Source for NativeSource {
         }
         self.reader
             .as_mut()
-            .map(|reader| reader.sample())
+            .map(|reader| {
+                if self.package_only {
+                    reader.sample_package()
+                } else {
+                    reader.sample()
+                }
+            })
             .unwrap_or_else(|| CpuSensors::unavailable(self.state))
     }
     fn idle(&mut self) {
         self.reader = None;
         self.attempt = None;
         self.state = SensorState::Pending;
+        self.affinity = None;
     }
 }
 
-type Cache = Arc<Mutex<Option<(Instant, CpuSensors)>>>;
+type CachedFrame = Option<(Instant, Arc<CpuSensors>)>;
+type Cache = Arc<Mutex<CachedFrame>>;
 pub struct SensorClient {
     tx: mpsc::SyncSender<()>,
     cache: Cache,
+    last_cache: CachedFrame,
     last: Option<Instant>,
 }
 
@@ -170,7 +251,7 @@ impl SensorClient {
             .name("argus-sensor-client".into())
             .spawn(move || {
                 while rx.recv().is_ok() {
-                    let frame = read();
+                    let frame = Arc::new(read());
                     if let Ok(mut cache) = output.lock() {
                         *cache = Some((Instant::now(), frame));
                     }
@@ -185,6 +266,7 @@ impl SensorClient {
         Self {
             tx,
             cache,
+            last_cache: None,
             last: None,
         }
     }
@@ -197,6 +279,7 @@ impl SensorClient {
     ) {
         if !enabled {
             snapshot.hardware.cpu_sensors = None;
+            self.last_cache = None;
             return;
         }
         if self
@@ -206,16 +289,14 @@ impl SensorClient {
         {
             self.last = Some(Instant::now());
         }
+        if let Ok(cache) = self.cache.try_lock() {
+            self.last_cache = cache.clone();
+        }
         snapshot.hardware.cpu_sensors = Some(
-            self.cache
-                .try_lock()
-                .ok()
-                .and_then(|cache| {
-                    cache.as_ref().and_then(|(at, frame)| {
-                        (at.elapsed() < interval.max(Duration::from_secs(1)) * 3)
-                            .then(|| frame.clone())
-                    })
-                })
+            self.last_cache
+                .as_ref()
+                .filter(|(at, _)| at.elapsed() < interval.max(Duration::from_secs(1)) * 3)
+                .map(|(_, frame)| (**frame).clone())
                 .unwrap_or_default(),
         );
         if snapshot.hardware.power.package.is_none() {
@@ -288,6 +369,160 @@ mod tests {
     use super::*;
 
     #[test]
+    fn slow_per_core_reads_do_not_delay_fresh_package_data() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let (entered, started) = mpsc::channel();
+        let (release, gate) = mpsc::channel();
+        let mut monitor = SensorMonitor::with_reader(move || {
+            let _ = entered.send(());
+            let _ = gate.recv_timeout(Duration::from_secs(5));
+            CpuSensors::unavailable(SensorState::NoData)
+        });
+        let reads = Arc::new(AtomicU32::new(0));
+        let count = reads.clone();
+        monitor.package = Some(crate::snapshot::Reader::spawn(
+            "package-test",
+            crate::snapshot::tests::POLICY,
+            move || {
+                crate::snapshot::tests::Callback(move || CpuSensors {
+                    state: SensorState::Ready,
+                    package_celsius: Some(64. + count.fetch_add(1, Ordering::Relaxed) as f32),
+                    package_watts: Some(30.),
+                    ..Default::default()
+                })
+            },
+        ));
+        let first = monitor.snapshot();
+        started.recv_timeout(Duration::from_secs(2)).unwrap();
+        let mut elapsed = Duration::ZERO;
+        let mut last = first.package_celsius;
+        for _ in 0..10 {
+            let at = Instant::now();
+            let frame = monitor.snapshot();
+            elapsed = elapsed.max(at.elapsed());
+            assert_eq!(frame.state, SensorState::Ready);
+            last = frame.package_celsius;
+            std::thread::sleep(crate::snapshot::tests::POLICY.period * 2);
+        }
+        release.send(()).unwrap();
+        monitor.reader.stop_and_join();
+        monitor.package.as_mut().unwrap().stop_and_join();
+        assert_eq!(first.package_watts, Some(30.));
+        assert!(last > first.package_celsius);
+        assert!(reads.load(Ordering::Relaxed) > 1);
+        assert!(elapsed < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn package_merge_preserves_core_data_and_replaces_package_metrics() {
+        use argus_core::hardware::{CpuCoreSensors, CpuMetricKind as Kind, CpuSensorSource};
+        let mut detail = CpuSensors {
+            state: SensorState::Ready,
+            package_celsius: Some(40.),
+            cores: vec![CpuCoreSensors {
+                celsius: Some(63.),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        detail.metric(Kind::Pl1Watts, Some(100.), CpuSensorSource::Msr);
+        detail.metric(Kind::AverageMhz, Some(3600.), CpuSensorSource::Msr);
+        let mut package = CpuSensors {
+            state: SensorState::Ready,
+            package_celsius: Some(64.),
+            ..Default::default()
+        };
+        package.metric(Kind::Pl1Watts, Some(80.), CpuSensorSource::Msr);
+        let frame = combine_package(Some(Arc::new(package)), Some(Arc::new(detail)));
+        assert_eq!(frame.package_celsius, Some(64.));
+        assert_eq!(frame.cores[0].celsius, Some(63.));
+        assert_eq!(frame.value(Kind::Pl1Watts), Some(80.));
+        assert_eq!(
+            frame
+                .metrics
+                .iter()
+                .filter(|m| m.kind == Kind::Pl1Watts)
+                .count(),
+            1
+        );
+        assert_eq!(frame.value(Kind::AverageMhz), Some(3600.));
+        let failure = combine_package(
+            Some(Arc::new(CpuSensors::unavailable(
+                SensorState::DriverUnavailable,
+            ))),
+            None,
+        );
+        assert_eq!(failure.state, SensorState::DriverUnavailable);
+        assert!(failure.package_celsius.is_none());
+    }
+
+    #[test]
+    fn a_concurrent_cache_write_keeps_the_recent_sensor_frame_without_blocking() {
+        let mut client = SensorClient::with_reader(|| CpuSensors::default());
+        client.last = Some(Instant::now());
+        *client.cache.lock().unwrap() = Some((
+            Instant::now(),
+            Arc::new(CpuSensors {
+                state: SensorState::Ready,
+                package_celsius: Some(68.),
+                ..Default::default()
+            }),
+        ));
+        let mut snapshot = argus_core::Snapshot {
+            seq: 0,
+            timestamp: 0,
+            system: Default::default(),
+            hardware: Default::default(),
+            processes: vec![],
+            process_network: false,
+        };
+        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        let shared = client.cache.clone();
+        let guard = shared.lock().unwrap();
+        let start = Instant::now();
+        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        assert!(start.elapsed() < Duration::from_millis(100));
+        assert_eq!(
+            snapshot
+                .hardware
+                .cpu_sensors
+                .as_ref()
+                .unwrap()
+                .package_celsius,
+            Some(68.)
+        );
+        client.last_cache.as_mut().unwrap().0 = Instant::now() - Duration::from_secs(4);
+        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        assert!(
+            snapshot
+                .hardware
+                .cpu_sensors
+                .as_ref()
+                .unwrap()
+                .package_celsius
+                .is_none()
+        );
+        drop(guard);
+        *shared.lock().unwrap() = Some((
+            Instant::now(),
+            Arc::new(CpuSensors::unavailable(SensorState::NoData)),
+        ));
+        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        assert_eq!(
+            snapshot.hardware.cpu_sensors.as_ref().unwrap().state,
+            SensorState::NoData
+        );
+        assert!(
+            snapshot
+                .hardware
+                .cpu_sensors
+                .unwrap()
+                .package_celsius
+                .is_none()
+        );
+    }
+
+    #[test]
     fn refreshing_sensors_keeps_the_recent_frame_without_waiting_for_hardware() {
         let (release, gate) = mpsc::channel();
         let (entered, started) = mpsc::channel();
@@ -343,7 +578,7 @@ mod tests {
         };
         frame.metric(CpuMetricKind::CoresWatts, Some(0.0), CpuSensorSource::Msr);
         frame.metric(CpuMetricKind::MemoryWatts, Some(2.5), CpuSensorSource::Msr);
-        *client.cache.lock().unwrap() = Some((Instant::now(), frame));
+        *client.cache.lock().unwrap() = Some((Instant::now(), Arc::new(frame)));
         client.last = Some(Instant::now());
         let mut snapshot = argus_core::Snapshot {
             seq: 0,
@@ -400,11 +635,11 @@ mod tests {
         entered.recv_timeout(Duration::from_secs(5)).unwrap();
         *client.cache.lock().unwrap() = Some((
             Instant::now() - Duration::from_secs(20),
-            CpuSensors {
+            Arc::new(CpuSensors {
                 state: SensorState::Ready,
                 package_celsius: Some(77.0),
                 ..Default::default()
-            },
+            }),
         ));
         let start = Instant::now();
         for _ in 0..100 {

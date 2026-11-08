@@ -686,6 +686,27 @@ fn append_groups(rows: Vec<Row>, compare: &impl Fn(&Row, &Row) -> Ordering, out:
     }
 }
 
+pub const CPU_TEMPERATURE_SERIES: &str = "derived.cpuTemperature";
+
+/// Match the live figure for each sample, before the available source changes.
+pub fn cpu_temperature(hw: &Value) -> Option<f64> {
+    let sensors = &hw["cpuSensors"];
+    sensors["packageCelsius"]
+        .as_f64()
+        .or_else(|| {
+            values(&sensors["coreTemperatures"])
+                .iter()
+                .filter_map(|core| core["celsius"].as_f64())
+                .reduce(f64::max)
+        })
+        .or_else(|| {
+            values(&hw["thermal"])
+                .iter()
+                .filter_map(|zone| zone["celsius"].as_f64())
+                .reduce(f64::max)
+        })
+}
+
 pub struct Timeline {
     pub samples: HashMap<String, VecDeque<(f64, Option<f64>)>>,
     /// Sample times of the process and app histories, oldest first.
@@ -843,6 +864,7 @@ impl Timeline {
         }
         let hardware = &snapshot["hardware"];
         metrics.extend([
+            (CPU_TEMPERATURE_SERIES.into(), cpu_temperature(hardware)),
             (
                 "totals.disk".into(),
                 Some(
@@ -1390,5 +1412,33 @@ mod tests {
         }
         assert!(timeline.samples["system.cpu"].front().unwrap().0 <= 6000.);
         assert!(timeline.samples["system.cpu"].len() > 600);
+    }
+
+    #[test]
+    fn cpu_temperature_history_survives_source_and_hottest_core_changes() {
+        let mut timeline = Timeline::new();
+        let readings = [
+            json!({"cpuSensors":{"packageCelsius":68},"thermal":[{"celsius":55}]}),
+            json!({"cpuSensors":{"state":"pending"},"thermal":[{"celsius":56}]}),
+            json!({"cpuSensors":{"coreTemperatures":[{"celsius":67},{"celsius":65}]}}),
+            json!({"cpuSensors":{"coreTemperatures":[{"celsius":66},{"celsius":71}]}}),
+            json!({"cpuSensors":{"packageCelsius":69}}),
+            json!({"cpuSensors":{"state":"noData"},"thermal":[]}),
+        ];
+        for (index, hardware) in readings.into_iter().enumerate() {
+            timeline.push(&json!({"timestamp":index*1000,"hardware":hardware}), 1000.);
+        }
+        let points = timeline.points(CPU_TEMPERATURE_SERIES).unwrap();
+        assert_eq!(
+            points,
+            vec![
+                (0., Some(68.)),
+                (1000., Some(56.)),
+                (2000., Some(67.)),
+                (3000., Some(71.)),
+                (4000., Some(69.)),
+                (5000., None),
+            ]
+        );
     }
 }

@@ -43,6 +43,7 @@ cargo run -p argus-core --example gpu_memory --release -- <PID> # 进程显存�
 cargo run -p argus-core --example hardware --release   # CPU、传感器、内存、磁盘、网络、GPU、电池
 cargo run -p argus-core --example disk_details --release -- 0 # 磁盘 0 的单次详情与查询耗时
 cargo run -p argus-service --example network_cadence --release -- 500 # 既有服务的半秒网络速率对照
+cargo run -p argus-service --example sensor_cadence -- 60 # 既有开发服务的传感器状态、读数与采样延迟
 cargo run -p argus-core --example m3 --release         # 服务、启动项、连接与一次文件占用查询
 cargo run -p argus-core --example lockers -- C:\Windows\System32\ntdll.dll   # 占用指定文件的进程
 cargo run -p argus-core --example gpu_processes --release   # 每进程 GPU 占用与采集耗时
@@ -53,6 +54,8 @@ cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史
 ```
 
 `disk_details` 使用普通权限，按指定物理磁盘编号读取一次后退出，输出 JSON、各查询状态及耗时。默认遮盖序列号；明确需要核对设备身份时可追加 `--include-serial`。`--extended` 在当前进程权限下执行服务使用的固定 ATA／SAT／SCSI 只读查询，权限不足时返回相应状态。此示例独立于应用与常驻采样，不修改设备配置。
+
+`sensor_cadence` 默认每秒经非阻塞客户端读取一次，参数为采样次数（1–300）；追加 `--direct` 可对照服务原始回复。仅请求已运行且已授权的服务，开发构建连接开发服务，发行构建连接正式服务。输出包括传感器状态、封装温度、核心／指标数量与请求耗时，不安装、启动或更新服务及驱动。
 
 `network_cadence` 无参数运行时启动原生诊断入口，在程序目录写入 `network-launcher.log` 和 `network-results-*` 结果目录；目录只读时使用系统临时目录。它依次对照既有服务、本地完整快照、半秒刷新和 ETW 原始字节数，流量限于本机回环，每项超时为 60 秒。本地 ETW 采集需要相应权限。自动化运行可使用 `--suite --no-wait`；单项参数为 `<间隔毫秒> <时长秒>`，`--collector` 每轮重新采集进程快照，`--local` 使用独立 ETW 会话，`--local --raw-local` 输出原始字节数。
 

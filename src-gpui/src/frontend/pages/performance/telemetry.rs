@@ -301,7 +301,11 @@ impl Desktop {
         ));
 
         // Temperature and power charts.
-        let temperature = temperature_key(hw);
+        let temperature = self
+            .timeline
+            .samples
+            .contains_key(model::CPU_TEMPERATURE_SERIES)
+            .then_some(model::CPU_TEMPERATURE_SERIES);
         let package = hw["power"]["package"].as_f64();
         if temperature.is_some() || package.is_some() {
             let span = charts::span_label(self.interval);
@@ -319,9 +323,7 @@ impl Desktop {
                     .unwrap_or_default()
             };
             let summary = join(vec![
-                temperature
-                    .as_deref()
-                    .and_then(|key| extent(series(key).into_iter(), 0, "°C")),
+                temperature.and_then(|key| extent(series(key).into_iter(), 0, "°C")),
                 package.and_then(|_| {
                     let list = series("hardware.power.package");
                     if list.is_empty() {
@@ -348,11 +350,11 @@ impl Desktop {
                 .unwrap_or_else(|| window.viewport_size().height);
             let chart_height = px((f32::from(card) * 0.22).clamp(110., 220.));
             let mut pair = div().grid().grid_cols(2).gap(px(16.));
-            if let Some(key) = &temperature {
+            if let Some(key) = temperature {
                 pair = pair.child(
                     self.chart_view(
                         "cpu-temperature",
-                        &[Line::new(key.clone(), p.cpu)],
+                        &[Line::new(key, p.cpu)],
                         Some(Scale::Fixed(100.)),
                         chart_height,
                         Look::boxed(label("common.resource.temperature"))

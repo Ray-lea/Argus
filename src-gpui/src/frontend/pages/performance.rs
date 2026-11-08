@@ -225,24 +225,7 @@ fn disk_kind(info: &Value) -> String {
     .collect::<Vec<_>>()
     .join(" ")
 }
-/// A die reading takes priority; ACPI remains an explicitly labelled fallback.
-pub(super) fn cpu_temperature(hw: &Value) -> Option<f64> {
-    let sensors = &hw["cpuSensors"];
-    sensors["packageCelsius"]
-        .as_f64()
-        .or_else(|| {
-            values(&sensors["coreTemperatures"])
-                .iter()
-                .filter_map(|core| core["celsius"].as_f64())
-                .reduce(f64::max)
-        })
-        .or_else(|| {
-            values(&hw["thermal"])
-                .iter()
-                .filter_map(|zone| zone["celsius"].as_f64())
-                .reduce(f64::max)
-        })
-}
+pub(super) use model::cpu_temperature;
 /// The CPU's one power figure and the label naming its source: the package,
 /// or the cores where the package has no reading.
 pub(super) fn cpu_power(power: &Value) -> Option<(f64, &'static str)> {
@@ -256,26 +239,6 @@ pub(super) fn cpu_power(power: &Value) -> Option<(f64, &'static str)> {
 pub(super) fn has_die_temperature(hw: &Value) -> bool {
     let sensors = &hw["cpuSensors"];
     sensors["packageCelsius"].is_number() || !values(&sensors["coreTemperatures"]).is_empty()
-}
-/// The timeline series behind the CPU temperature figure.
-fn temperature_key(hw: &Value) -> Option<String> {
-    let sensors = &hw["cpuSensors"];
-    if sensors["packageCelsius"].is_number() {
-        return Some("hardware.cpuSensors.packageCelsius".into());
-    }
-    let hottest = |list: &[Value]| {
-        list.iter()
-            .enumerate()
-            .filter_map(|(i, item)| item["celsius"].as_f64().map(|c| (i, c)))
-            .max_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(i, _)| i)
-    };
-    if let Some(index) = hottest(values(&sensors["coreTemperatures"])) {
-        return Some(format!(
-            "hardware.cpuSensors.coreTemperatures.{index}.celsius"
-        ));
-    }
-    hottest(values(&hw["thermal"])).map(|index| format!("hardware.thermal.{index}.celsius"))
 }
 /// Memory parts that do not overlap; standby and the rest are unknown without the page lists.
 fn memory_composition(sys: &Value) -> (f64, Option<f64>, Option<f64>, Option<f64>) {

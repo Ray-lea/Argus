@@ -409,9 +409,14 @@ impl Desktop {
                 "drawP99Ms":frames.draw_duration_histogram.value_at_quantile(0.99) as f64/1e6,
                 "drawMaxMs":frames.draw_duration_histogram.max() as f64/1e6})
             );
+            let temperature = self
+                .timeline
+                .points(model::CPU_TEMPERATURE_SERIES)
+                .unwrap_or_default();
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
+                "cpuTemperatureHistory":{"recentSamples":temperature.len().min(60),"recentMissing":temperature.iter().rev().take(60).filter(|(_,value)|value.is_none()).count(),"last":temperature.last().and_then(|(_,value)|*value)},
                 "systemBackdrop":crate::platform::supports_backdrop(),"backgroundAlpha":theme::Palette::current(cx).background.a,
                 "dialog":self.dialog_test_state(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
