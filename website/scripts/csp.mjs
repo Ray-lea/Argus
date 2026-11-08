@@ -4,22 +4,27 @@
 import { createHash } from "node:crypto";
 import { glob, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { parse } from "parse5";
 
-const executable = (attributes) => {
-  if (/\ssrc\s*=/i.test(attributes)) return false;
-  const type = /\stype\s*=\s*["']?([^"'\s>]+)/i.exec(attributes)?.[1]?.toLowerCase();
-  return !type || ["module", "text/javascript", "application/javascript"].includes(type);
-};
-// Speculation rules (the language switch's prerender) are data, not code, but
-// an inline set is allowed only by its hash where a policy lists hashes.
-const hashed = (attributes) =>
-  executable(attributes) || /\stype\s*=\s*["']?speculationrules/i.test(attributes);
+function* elements(node) {
+  if (node.tagName) yield node;
+  for (const child of node.childNodes ?? []) yield* elements(child);
+}
 
 export function policyFor(html) {
+  return policyForDocument(parse(html));
+}
+
+function policyForDocument(document) {
   const hashes = new Set();
-  for (const [, attributes, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi))
-    if (hashed(attributes))
-      hashes.add("'sha256-" + createHash("sha256").update(body).digest("base64") + "'");
+  for (const node of elements(document)) {
+    if (node.tagName !== "script" || node.attrs.some((attr) => attr.name === "src")) continue;
+    const type = node.attrs.find((attr) => attr.name === "type")?.value.trim().toLowerCase();
+    // Speculation rules are data, but their inline content also needs a CSP hash.
+    if (type && !["module", "text/javascript", "application/javascript", "speculationrules"].includes(type)) continue;
+    const body = node.childNodes.map((child) => child.value ?? "").join("");
+    hashes.add("'sha256-" + createHash("sha256").update(body).digest("base64") + "'");
+  }
   return [
     "default-src 'none'",
     ["script-src 'self'", ...hashes].join(" "),
@@ -38,10 +43,11 @@ export async function secureHtml(dir) {
   for await (const file of glob("**/*.html", { cwd: dir })) {
     const path = join(dir, file);
     const html = await readFile(path, "utf8");
-    const head = /<head[^>]*>/i.exec(html);
-    if (!head) throw Error(file + ": no <head>");
-    const at = head.index + head[0].length;
-    const meta = '<meta http-equiv="content-security-policy" content="' + policyFor(html) + '"/>';
+    const document = parse(html, { sourceCodeLocationInfo: true });
+    const head = [...elements(document)].find((node) => node.tagName === "head");
+    const at = head?.sourceCodeLocation?.startTag?.endOffset;
+    if (at === undefined) throw Error(file + ": no <head>");
+    const meta = '<meta http-equiv="content-security-policy" content="' + policyForDocument(document) + '"/>';
     await writeFile(path, html.slice(0, at) + meta + html.slice(at));
   }
 }
