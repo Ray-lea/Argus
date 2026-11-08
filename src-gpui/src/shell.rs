@@ -1,5 +1,6 @@
 //! Native window lifecycle, backdrop, tray and visibility-driven sampling.
 mod tray;
+mod tray_identity;
 use crate::{
     native_runtime::{Host, NativeWindow},
     sampler::{Control, WindowState},
@@ -18,7 +19,7 @@ use windows::{
         System::LibraryLoader::GetModuleHandleW,
         UI::{Shell::*, WindowsAndMessaging::*},
     },
-    core::{PCWSTR, w},
+    core::{GUID, PCWSTR, w},
 };
 static HOST: OnceLock<Host> = OnceLock::new();
 static VIEW: AtomicU8 = AtomicU8::new(WindowState::Hidden as u8);
@@ -365,6 +366,7 @@ pub fn build_tray(app: &Host) -> anyhow::Result<()> {
     }
     let mut native = NativeTray {
         hwnd,
+        guid: tray_identity::guid(&app.config().identifier, &std::env::current_exe()?),
         badge: None,
         generation: None,
     };
@@ -399,20 +401,35 @@ pub fn set_tray_update(_app: &Host, version: Option<&str>) {
 
 struct NativeTray {
     hwnd: isize,
+    guid: GUID,
     badge: Option<isize>,
     generation: Option<u64>,
 }
 
 impl NativeTray {
-    fn write(&mut self, update: tray::Update) {
-        let mut data = NOTIFYICONDATAW {
+    fn data(&self) -> NOTIFYICONDATAW {
+        NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,
             hWnd: HWND(self.hwnd as _),
             uID: 1,
+            uFlags: NIF_GUID,
+            guidItem: self.guid,
             ..Default::default()
-        };
+        }
+    }
+
+    fn write(&mut self, update: tray::Update) {
+        self.write_with(update, notify_icon);
+    }
+
+    fn write_with(
+        &mut self,
+        update: tray::Update,
+        mut notify: impl FnMut(NOTIFY_ICON_MESSAGE, &NOTIFYICONDATAW) -> bool,
+    ) {
+        let mut data = self.data();
         if update.closed {
-            let _ = notify_icon(NIM_DELETE, &data);
+            let _ = notify(NIM_DELETE, &data);
             return;
         }
         let Ok(base) = (unsafe { base_tray_icon() }) else {
@@ -426,7 +443,7 @@ impl NativeTray {
         } else {
             base
         };
-        data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+        data.uFlags |= NIF_MESSAGE | NIF_ICON | NIF_TIP;
         data.uCallbackMessage = TRAY_MESSAGE;
         let title = wide(&update.title);
         let length = title.len().saturating_sub(1).min(data.szTip.len() - 1);
@@ -436,7 +453,7 @@ impl NativeTray {
         } else {
             (NIM_ADD, NIM_MODIFY)
         };
-        if notify_icon(first, &data) || notify_icon(retry, &data) {
+        if notify(first, &data) || notify(retry, &data) {
             self.generation = Some(update.generation);
         } else {
             self.generation = None;
@@ -452,6 +469,67 @@ impl Drop for NativeTray {
                 let _ = DestroyIcon(HICON(icon as _));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tray_tests {
+    use super::{NativeTray, tray, tray_identity};
+    use std::path::Path;
+    use windows::Win32::UI::Shell::{
+        NIF_GUID, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+    };
+
+    #[test]
+    fn tray_requests_keep_identity_through_changes_recreation_retry_and_deletion() {
+        let guid = tray_identity::guid(
+            "dev.argus.taskmanager.test.tray",
+            Path::new(r"C:\Argus\argus.exe"),
+        );
+        let mut icon = NativeTray {
+            hwnd: 1,
+            guid,
+            badge: None,
+            generation: None,
+        };
+        let mut calls = Vec::new();
+        for (title, badge, generation, closed) in [
+            ("initial", false, 0, false),
+            ("changed tooltip", true, 0, false),
+            ("Explorer restarted", false, 1, false),
+            ("", false, 1, true),
+        ] {
+            icon.write_with(
+                tray::Update {
+                    title: title.into(),
+                    badge,
+                    generation,
+                    closed,
+                },
+                |message, data| {
+                    assert_eq!(data.guidItem, guid);
+                    assert!(data.uFlags.contains(NIF_GUID));
+                    if message != NIM_DELETE {
+                        assert!(data.uFlags.contains(NIF_ICON | NIF_MESSAGE | NIF_TIP));
+                    }
+                    calls.push(message);
+                    // Exercise the NIM_ADD -> NIM_MODIFY retry after recreation.
+                    calls.len() != 3
+                },
+            );
+        }
+        assert_eq!(
+            calls,
+            [NIM_ADD, NIM_MODIFY, NIM_ADD, NIM_MODIFY, NIM_DELETE]
+        );
+        let restarted = NativeTray {
+            hwnd: 2,
+            guid,
+            badge: None,
+            generation: None,
+        };
+        assert_eq!(restarted.data().guidItem, icon.data().guidItem);
+        assert_ne!(restarted.data().hWnd, icon.data().hWnd);
     }
 }
 
