@@ -40,6 +40,8 @@ README 预览在启用透明效果的 Windows 11 上生成。探针保持测试�
 cargo run -p argus-core --example dump --release       # 进程（按 CPU 排序）
 cargo run -p argus-core --example process_columns --release # 新增进程计数与采样耗时
 cargo run -p argus-core --example sampling_cadence -- 120 --trace # 快照间隔、分项耗时与过期进程计数
+cargo build -p argus-core --example process_sources --release # 构建普通权限进程来源对照工具
+node scripts/process-sources.mjs comparison --samples 60 --interval 1000 # 三路交替采集及数值校验
 cargo run -p argus-core --example gpu_memory --release -- <PID> # 进程显存与原生预算用量对照
 cargo run -p argus-core --example hardware --release   # CPU、传感器、内存、磁盘、网络、GPU、电池
 cargo run -p argus-core --example disk_details --release -- 0 # 磁盘 0 的单次详情与查询耗时
@@ -57,6 +59,10 @@ cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史
 `disk_details` 使用普通权限，按指定物理磁盘编号读取一次后退出，输出 JSON、各查询状态及耗时。默认遮盖序列号；明确需要核对设备身份时可追加 `--include-serial`。`--extended` 在当前进程权限下执行服务使用的固定 ATA／SAT／SCSI 只读查询，权限不足时返回相应状态。此示例独立于应用与常驻采样，不修改设备配置。
 
 `sampling_cadence` 每秒采样一次，参数为次数（1–300）。`--trace` 记录固定采集阶段的起止和耗时；输出仅包含时间、序号与计数。可据此区分原生查询延迟和界面刷新问题。原生查询与快照采集可能在不同线程完成，阶段记录按名称配对。
+
+`process_sources` 对照完整 `SystemProcessInformation` 快照、仅枚举身份的 `SystemBasicProcessInformation`、轻量名单加缓存句柄逐进程计数三条路径。脚本按正序、逆序各运行一轮，每段排除三次预热，并记录墙钟耗时、线程及进程 CPU 时间、权限覆盖率、内存和句柄开销；超时仅终止自身启动的采集程序。结果位于 `target/process-source-validation/<标签>/report.html` 与同目录 JSONL，追加 `--report-only` 可从已有记录重建报告。工具要求普通权限，只修改自身的功耗限制，不改变系统配置或访问特权服务。
+
+三路覆盖范围不同：轻量名单只有 PID、父 PID 与实例序号；逐进程路径采集累计 CPU 时间、EX2 私有工作集、工作集、提交、通用 I/O 和句柄数，磁盘专用字节、周期法 CPU 占用、线程数与暂停状态仍需其他来源。独立的 `compare` 阶段用前后两次完整快照夹取逐进程读数，按创建时间匹配实例，检查累计 CPU/I/O 计数的区间及内存差异；进程自身从数值校验中排除。能力由实际调用结果判定，接口不受支持时保留原始错误码。
 
 `sensor_cadence` 默认每秒经非阻塞客户端读取一次，参数为采样次数（1–300）；追加 `--direct` 可对照服务原始回复，`--collector` 将完整进程／设备采集纳入客户端路径以检查长耗时影响，`--pause` 在中途暂停消费 20 秒以验证独立轮询。仅请求已运行且已授权的服务，开发构建连接开发服务，发行构建连接正式服务。输出包括传感器状态、封装温度、各核心字段的有效数量、核心编号、指标种类与请求耗时，不安装、启动或更新服务及驱动。
 
