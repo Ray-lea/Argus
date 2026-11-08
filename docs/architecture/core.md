@@ -83,18 +83,26 @@ CPU 虚拟化状态优先使用 Windows 的可用标志；Hyper-V 或 VBS 占用
 | `pcieLink` | 当前与控制器最大链路的 PCIe 代数、通道数；缺失的部分为 `null`，最大值取控制器端点能力 |
 | `nvmeIdentity` | NVMe 版本、固件与身份、易失性写入缓存能力、Dataset Management 能力、告警／严重温度阈值 |
 | `nvmeHealth` | 严重警告原始位、可用备用空间及阈值、已用寿命百分比、剩余寿命估计、累计读写量与命令数、忙碌分钟、通电次数与小时、不安全关机、介质错误、错误日志条数、超温分钟、八个温度传感器，以及 NVMe 1.3 及以上的热管理转换次数和持续秒数 |
-| `ataIdentity`、`scsiIdentity` | ATA 厂商型号、序列号、固件、SMART 支持与启用状态、设备报告的转速及介质类型、ATA 标准、SATA 当前与最高速率、写入缓存和 NCQ 支持；SCSI VPD 80h 单元序列号。界面依次优先使用 NVMe、ATA、SCSI 身份，再回退至通用存储描述符；保留厂商 SN 中合法的前导零 |
+| `ataIdentity`、`scsiIdentity` | ATA 厂商型号、序列号、固件、SMART 支持与启用状态、设备报告的转速及介质类型、ATA 标准、SATA 当前与最高速率、PATA 当前与最高 UDMA 模式、写入缓存和 NCQ 支持；SCSI VPD 80h 单元序列号。界面依次优先使用 NVMe、ATA、SCSI 身份，再回退至通用存储描述符；保留厂商 SN 中合法的前导零 |
 | `smartHealth`、`viaService` | Windows／ATA／SAT／SCSI 来源、设备故障预测、ATA 当前值／最差值／阈值／六字节原始值、SCSI 温度与错误计数；是否经特权服务补充 |
-| `ataHealth` | 已适配 SATA SSD 的剩余寿命、温度、累计读写、通电与异常断电计数、不可校正错误、可用备用空间，以及各读数对应的原始属性编号；从现有属性派生，无额外设备查询 |
+| `ataHealth` | 已适配 ATA/SATA 设备的温度与运行计数；SSD 的剩余寿命、累计读写、异常断电、不可校正错误及可用备用空间；HDD 的启停、磁头加载、重映射／待映射／离线不可校正扇区与接口 CRC 计数；同时返回介质类别和读数对应的原始属性编号。从现有属性派生，无额外设备查询 |
 | `queriedAt`、`queries` | 请求开始时的 Unix 毫秒时间戳；各查询的 `ready`、`unsupported`、`accessDenied`、`unavailable`、`invalidData` 状态及原始 Win32 错误码 |
 
-NVMe 健康日志按控制器读取；同一控制器的多个命名空间可能共享计数。128 位累计计数序列化为十进制字符串，保留全部精度。读写数据单位按每单位 512,000 字节换算，原始计数同时返回；乘法溢出时换算值为 `null`。温度保留开尔文原值并提供摄氏度值，未报告的传感器保留槽位。寿命估计取 `max(0, 100 - percentageUsed)`，严重警告位独立返回，前端应分别展示。序列号只进入显式请求的详情结果，不写入诊断日志或周期快照。
+NVMe 使用标准 Identify Controller 和健康日志，覆盖开放该接口的各厂商设备。原生 NVMe 优先采用控制器级属性，失败或数据无效时回退至设备级属性；以 RAID／SCSI／USB 总线呈现且未确认为机械盘的设备，以及未知总线的已确认 SSD，仅尝试设备级属性，以保持查询对应当前物理磁盘。成功后跳过 ATA/SCSI 健康补充。返回的 `scope` 为 `controller` 或 `device`；同一控制器的多个命名空间可能共享计数。
+
+128 位累计计数序列化为十进制字符串，保留全部精度。NVMe 读写数据单位按每单位 512,000 字节换算，原始计数同时返回；乘法溢出时换算值为 `null`。温度保留开尔文原值并提供摄氏度值，未报告的传感器保留槽位。寿命估计取 `max(0, 100 - percentageUsed)`，严重警告位独立返回，前端应分别展示。序列号只进入显式请求的详情结果，不写入诊断日志或周期快照。
 
 普通权限下先查询 `IOCTL_STORAGE_PREDICT_FAILURE`；仅 ATA／SATA 总线的有效 SMART 扇区按 ATA 布局解析。服务使用固定的 ATA IDENTIFY、SMART READ DATA／READ THRESHOLDS／RETURN STATUS，经 ATA pass-through 或 SAT 16／12 字节命令读取；ATA 身份查询未成功时尝试 SCSI VPD 80h、LOG SENSE 2Fh／0Dh／03h／02h。每条透传命令超时为 2 秒，20 秒预算用尽后停止发起后续命令。服务内仅允许一个磁盘详情查询执行。查询不启用 SMART、不触发自检、不发送写入命令。
 
 ATA 扇区校验长度、校验和及重复属性编号，阈值按属性编号关联；仅预故障属性的有效阈值参与失败判定。原始属性按字节保留，`ata_health` 按型号与固件解析剩余寿命、温度、累计主机读写、通电时间、通电次数、异常断电和不可校正错误，Intel 的已适配型号还提供备用空间比例与阈值。Samsung 750／830／840／850／860／870 及部分 OEM、Crucial MX100／200／300／500、BX300／500、M500／M550、Micron 1100／1300／M600、Intel 已适配 SATA 系列、Kingston A400／UV400／UV500／KC600、WD Blue／Red／Green SATA 与 SanDisk Ultra 3D 使用各自的映射。未识别型号保留原始属性，寿命与累计读写保持未知。
 
+扩展映射包含 Samsung PM/SM863、PM/SM883、PM893 等企业系列，Micron 5100／5200／5210／5300／5400，Intel/Solidigm S45x0／S46x0、Intel X25/320/540/545 系列，Crucial BX100／BX200，ADATA SP550、SU630／635／650／655／800／900，HP S700，Plextor M3／M5／M6／M7VC／M8VC／S2G，东芝 TR150／TR200／TL100 及部分 OEM、铠侠 EXCERIA SATA，Kingston KC310／KC400／HyperX Savage／DC500，SanDisk Ultra II，以及 Seagate BarraCuda/120、IronWolf 125/Pro。SMI 系列同时检查属性布局，以区分同名产品的控制器变体。SK hynix Gold S31、SC311／SC401 的寿命单独解析，主机计数单位尚未统一的系列继续保留原始计数。
+
 Samsung 主机读写和 Micron 主机写入按 512 字节计数，Intel 与 Kingston KC600 按 32 MiB，Kingston A400／UV400／UV500 与 WD／SanDisk 已适配型号按 GiB。寿命分别采用指定属性的归一化值或原始字节；Kingston A400 的 `03070009` 固件使用归一化寿命，其余已适配固件使用原始寿命。零寿命保留为 0%，缺失及无效字段保持 `null`。客户端收到旧服务的原始属性后也执行相同解析。ATA IDENTIFY 另解析 ATA 标准、SATA 当前与最高速率、写入缓存和 NCQ 支持，旧服务未提供的新身份字段保持未知。
+
+SMI、Plextor、东芝/铠侠的已适配主机计数按 32 MiB，新增 Kingston 与 Seagate 系列按 GiB。Samsung 企业系列优先采用 E9 寿命指标，东芝/铠侠的 AD 归一化值减去 100 得到剩余寿命；Seagate BarraCuda/120 等采用 E7 原始寿命字段。
+
+HDD 映射覆盖 Seagate BarraCuda／IronWolf／Exos 等 ST 系列、WD、HGST/Hitachi 与 WD Ultrastar、Toshiba DT/HD/MG/MD/MQ/MK 系列，以及已识别的 Samsung SpinPoint、Maxtor、Fujitsu 和 Hitachi DK 老式 ATA 系列。HDD 显示运行及扇区计数，存在重映射、待映射或离线不可校正扇区时显示“注意”。部分 Maxtor 和 Hitachi DK 通电计数按分钟、旧 Samsung 按半分钟、旧 Fujitsu 按秒换算为小时；SV0412H／SV1204H 温度按十分之一摄氏度换算。Seagate 512 字节逻辑扇区设备的 F1/F2 按 512 字节换算读写量，其余扇区格式保留原始值。
 
 映射依据：[smartmontools 型号数据库](https://github.com/smartmontools/smartmontools/blob/main/drivedb/drivedb.h)、[CrystalDiskInfo 厂商解析](https://github.com/hiyohiyo/CrystalDiskInfo/blob/master/AtaSmart.cpp)、[Intel 730 规格](https://www.intel.com/content/dam/www/public/us/en/documents/product-specifications/ssd-730-series-spec.pdf)、[Kingston UV400 SMART](https://media.kingston.com/support/downloads/UV400-SMART-attribute.pdf)、[Kingston KC600 SMART](https://media.kingston.com/support/downloads/KC600-SMART-attribute.pdf)、[ATA IDENTIFY 字段](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ata/ns-ata-_identify_device_data)。
 

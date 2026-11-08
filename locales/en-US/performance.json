@@ -331,6 +331,9 @@
       "other": "Other critical warning",
       "mediaErrors": "Media and data integrity errors present",
       "uncorrectableErrors": "Uncorrectable errors present",
+      "reallocated": "Reallocated sectors present",
+      "pending": "Pending sectors present",
+      "offlineUncorrectable": "Offline uncorrectable sectors present",
       "worn": "10% or less life remaining"
     },
     "noWarnings": "None",

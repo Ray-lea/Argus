@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Storage::FileSystem::{
-    BusTypeNvme, BusTypeSata, BusTypeSd, BusTypeUsb, CreateFileW, FILE_FLAGS_AND_ATTRIBUTES,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, GetDriveTypeW, GetLogicalDrives, OPEN_EXISTING,
+    CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, GetDriveTypeW,
+    GetLogicalDrives, OPEN_EXISTING,
 };
 use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::Ioctl::{
@@ -24,6 +24,23 @@ use windows::core::PCWSTR;
 use crate::util::{AlignedBuf, OwnedHandle, wide};
 
 const IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS: u32 = 0x0056_0000;
+
+pub(super) fn bus_name(code: u32) -> &'static str {
+    match code {
+        1 => "scsi",
+        3 => "ata",
+        7 => "usb",
+        8 => "raid",
+        10 => "sas",
+        11 => "sata",
+        12 => "sd",
+        13 => "mmc",
+        14 | 15 => "virtual",
+        16 => "spaces",
+        17 => "nvme",
+        _ => "other",
+    }
+}
 const DRIVE_REMOVABLE: u32 = 2;
 const DRIVE_FIXED: u32 = 3;
 const RESCAN_EVERY: Duration = Duration::from_secs(15);
@@ -303,13 +320,7 @@ fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> DiskInfo {
             info.model = model;
         }
         info.removable = desc.RemovableMedia;
-        info.bus = match desc.BusType {
-            b if b == BusTypeNvme => "nvme",
-            b if b == BusTypeSata => "sata",
-            b if b == BusTypeUsb => "usb",
-            b if b == BusTypeSd => "sd",
-            _ => "other",
-        };
+        info.bus = bus_name(desc.BusType.0 as u32);
     }
 
     if let Some(buf) = query_property(handle, StorageDeviceSeekPenaltyProperty) {

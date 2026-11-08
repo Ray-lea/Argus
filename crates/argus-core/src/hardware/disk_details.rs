@@ -177,12 +177,14 @@ impl DiskDetails {
     }
 
     pub fn needs_smart_supplement(&self) -> bool {
-        self.identity.as_ref().is_some_and(|i| {
-            matches!(
-                i.bus.as_str(),
-                "ata" | "sata" | "usb" | "scsi" | "sas" | "raid"
-            )
-        })
+        self.nvme_identity.is_none()
+            && self.nvme_health.is_none()
+            && self.identity.as_ref().is_some_and(|i| {
+                matches!(
+                    i.bus.as_str(),
+                    "ata" | "sata" | "usb" | "scsi" | "sas" | "raid"
+                )
+            })
     }
 }
 

@@ -103,6 +103,10 @@ fn percent(value: &Value) -> String {
 fn sata_link(value: &Value) -> Option<String> {
     value.as_f64().map(|speed| format!("SATA {speed} Gb/s"))
 }
+fn udma_link(value: &Value) -> Option<String> {
+    let rate = [16, 25, 33, 44, 66, 100, 133].get(value.as_u64()? as usize)?;
+    Some(format!("UDMA/{rate}"))
+}
 fn ata_standard(value: &Value) -> Option<String> {
     match value.as_u64()? {
         version @ 1..=7 => Some(format!("ATA/ATAPI-{version}")),
@@ -890,8 +894,19 @@ impl Desktop {
             plain(interface(text(identity, "bus"))),
         )];
         let pcie = &details["pcieLink"];
-        let current = link(&pcie["current"]).or_else(|| sata_link(&ata["sataCurrentGbps"]));
-        let maximum = link(&pcie["maximum"]).or_else(|| sata_link(&ata["sataMaximumGbps"]));
+        let (current, maximum) = if pcie.is_object() {
+            (link(&pcie["current"]), link(&pcie["maximum"]))
+        } else if ata["sataCurrentGbps"].is_number() || ata["sataMaximumGbps"].is_number() {
+            (
+                sata_link(&ata["sataCurrentGbps"]),
+                sata_link(&ata["sataMaximumGbps"]),
+            )
+        } else {
+            (
+                udma_link(&ata["udmaCurrentMode"]),
+                udma_link(&ata["udmaMaximumMode"]),
+            )
+        };
         if let Some(transfer) = match (current, maximum) {
             (Some(current), Some(maximum)) if current != maximum => Some(tr!(
                 "performance.disk.linkMaximum",

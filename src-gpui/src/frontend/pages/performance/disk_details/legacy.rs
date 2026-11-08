@@ -37,6 +37,12 @@ fn ata_name(id: u64, details: &Value) -> String {
             "unsafeShutdowns" => "performance.disk.unsafeShutdowns",
             "uncorrectableErrors" => "performance.disk.uncorrectableErrors",
             "temperature" => "performance.disk.ata.temperature",
+            "startStopCount" => "performance.disk.ata.startStop",
+            "loadCycleCount" => "performance.disk.ata.loadCycles",
+            "reallocatedSectors" => "performance.disk.ata.reallocated",
+            "pendingSectors" => "performance.disk.ata.pending",
+            "offlineUncorrectable" => "performance.disk.ata.offlineUncorrectable",
+            "interfaceCrcErrors" => "performance.disk.ata.crc",
             _ => "performance.disk.ata.vendor",
         };
         return label(key);
@@ -84,6 +90,15 @@ fn assess_legacy(health: &Value, summary: &Value) -> (&'static str, Vec<&'static
     }
     if counter(&summary["uncorrectableErrors"]).is_some_and(|count| count > 0.) {
         reasons.push("uncorrectableErrors");
+    }
+    for (field, reason) in [
+        ("reallocatedSectors", "reallocated"),
+        ("pendingSectors", "pending"),
+        ("offlineUncorrectable", "offlineUncorrectable"),
+    ] {
+        if counter(&summary[field]).is_some_and(|count| count > 0.) {
+            reasons.push(reason);
+        }
     }
     let state = if health["predictFailure"].as_bool() == Some(true) || spare_low {
         "bad"
@@ -195,36 +210,54 @@ impl Desktop {
             body = body.child(div().text_color(color).child(reason_list(&reasons)));
         }
         if summary.is_object() {
-            let readings = [
-                ("hostReadBytes", "totalRead", None),
-                ("hostWrittenBytes", "totalWritten", None),
-                ("powerOnHours", "powerOnHours", Some("hours")),
-                ("powerCycles", "powerCycles", None),
-                ("unsafeShutdowns", "unsafeShutdowns", None),
-                ("uncorrectableErrors", "uncorrectableErrors", None),
-            ]
-            .into_iter()
-            .map(|(field, title, unit)| {
-                let (value, unit) = if field.ends_with("Bytes") {
-                    split(
-                        counter(&summary[field])
-                            .map(fmt_capacity)
-                            .unwrap_or_else(missing),
+            let rotational = boolean(summary, "rotational");
+            let fields = if rotational {
+                vec![
+                    ("powerOnHours", "powerOnHours", Some("hours")),
+                    ("powerCycles", "powerCycles", None),
+                    ("startStopCount", "ata.startStop", None),
+                    ("loadCycleCount", "ata.loadCycles", None),
+                    ("reallocatedSectors", "ata.reallocated", None),
+                    ("pendingSectors", "ata.pending", None),
+                    ("offlineUncorrectable", "ata.offlineUncorrectable", None),
+                    ("interfaceCrcErrors", "ata.crc", None),
+                    ("hostReadBytes", "totalRead", None),
+                    ("hostWrittenBytes", "totalWritten", None),
+                ]
+            } else {
+                vec![
+                    ("hostReadBytes", "totalRead", None),
+                    ("hostWrittenBytes", "totalWritten", None),
+                    ("powerOnHours", "powerOnHours", Some("hours")),
+                    ("powerCycles", "powerCycles", None),
+                    ("unsafeShutdowns", "unsafeShutdowns", None),
+                    ("uncorrectableErrors", "uncorrectableErrors", None),
+                ]
+            };
+            let readings = fields
+                .into_iter()
+                .filter(|(field, _, _)| !rotational || !summary[*field].is_null())
+                .map(|(field, title, unit)| {
+                    let (value, unit) = if field.ends_with("Bytes") {
+                        split(
+                            counter(&summary[field])
+                                .map(fmt_capacity)
+                                .unwrap_or_else(missing),
+                        )
+                    } else {
+                        (
+                            grouped(&summary[field]),
+                            unit.map(|unit| label(&format!("performance.disk.unit.{unit}"))),
+                        )
+                    };
+                    self.sensor_reading(
+                        label(&format!("performance.disk.{title}")),
+                        value,
+                        unit.as_deref().unwrap_or(""),
                     )
-                } else {
-                    (
-                        grouped(&summary[field]),
-                        unit.map(|unit| label(&format!("performance.disk.unit.{unit}"))),
-                    )
-                };
-                self.sensor_reading(
-                    label(&format!("performance.disk.{title}")),
-                    value,
-                    unit.as_deref().unwrap_or(""),
-                )
-                .into_any_element()
-            })
-            .collect();
+                    .into_any_element()
+                })
+                .collect();
             body = body.child(
                 div()
                     .pt(px(16.))
@@ -429,6 +462,31 @@ mod tests {
         assert_eq!(
             assess_legacy(&passed, &json!({"uncorrectableErrors": "2"})),
             ("caution", vec!["uncorrectableErrors"])
+        );
+    }
+
+    #[test]
+    fn hdd_sector_warnings_do_not_turn_cable_counters_into_media_failures() {
+        let passed = json!({"predictFailure":false});
+        assert_eq!(
+            assess_legacy(
+                &passed,
+                &json!({"interfaceCrcErrors":"100", "powerOnHours":"80000"})
+            ),
+            ("good", vec![])
+        );
+        let sectors =
+            json!({"reallocatedSectors":"3", "pendingSectors":"2", "offlineUncorrectable":"1"});
+        assert_eq!(
+            assess_legacy(&passed, &sectors),
+            (
+                "caution",
+                vec!["reallocated", "pending", "offlineUncorrectable"]
+            )
+        );
+        assert_eq!(
+            assess_legacy(&json!({"predictFailure":true}), &sectors).0,
+            "bad"
         );
     }
 }

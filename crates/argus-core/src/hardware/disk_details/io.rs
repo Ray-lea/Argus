@@ -11,7 +11,8 @@ use windows::Win32::System::Ioctl::{
     STORAGE_PROPERTY_ID, STORAGE_PROPERTY_QUERY, STORAGE_PROTOCOL_DATA_DESCRIPTOR,
     STORAGE_PROTOCOL_SPECIFIC_DATA, StorageAccessAlignmentProperty,
     StorageAdapterProtocolSpecificProperty, StorageDeviceProperty,
-    StorageDeviceSeekPenaltyProperty, StorageDeviceTrimProperty,
+    StorageDeviceProtocolSpecificProperty, StorageDeviceSeekPenaltyProperty,
+    StorageDeviceTrimProperty,
 };
 use windows::core::PCWSTR;
 
@@ -110,20 +111,47 @@ pub(super) fn query(index: u32) -> DiskDetails {
     let trim = property(handle.0, StorageDeviceTrimProperty)
         .and_then(|data| descriptor(&data, 9).and_then(|d| boolean(d[8])));
     result.trim_enabled = record(&mut result, DiskQuery::Trim, trim);
-    if result.identity.as_ref().is_some_and(|i| i.bus == "nvme") {
-        result.solid_state = Some(true);
-        let link = super::pcie::query(index).ok_or(Failure {
-            state: DiskQueryState::Unsupported,
-            code: None,
-        });
-        result.pcie_link = record(&mut result, DiskQuery::PcieLink, link);
-        let identity = protocol(handle.0, NVMeDataTypeIdentify.0 as u32, 1, 4096)
-            .and_then(|data| nvme::identify(&data).ok_or_else(Failure::invalid));
+    let bus = result.identity.as_ref().map_or("", |i| i.bus.as_str());
+    let native_nvme = bus == "nvme";
+    if probe_nvme(bus, result.solid_state) {
+        let identity = nvme_query(native_nvme, |scope| {
+            protocol(handle.0, scope, NVMeDataTypeIdentify.0 as u32, 1, 4096)
+                .and_then(|data| nvme::identify(&data).ok_or_else(Failure::invalid))
+        })
+        .map(|(identity, _)| identity);
         result.nvme_identity = record(&mut result, DiskQuery::NvmeIdentity, identity);
         let version = result.nvme_identity.as_ref().and_then(|i| i.version);
-        let health = protocol(handle.0, NVMeDataTypeLogPage.0 as u32, 2, 512)
-            .and_then(|data| nvme::health(&data, version).ok_or_else(Failure::invalid));
+        let health = nvme_query(native_nvme, |scope| {
+            protocol(handle.0, scope, NVMeDataTypeLogPage.0 as u32, 2, 512)
+                .and_then(|data| nvme::health(&data, version).ok_or_else(Failure::invalid))
+        })
+        .map(|(mut health, scope)| {
+            health.scope = if scope == StorageAdapterProtocolSpecificProperty {
+                "controller"
+            } else {
+                "device"
+            }
+            .into();
+            health
+        });
         result.nvme_health = record(&mut result, DiskQuery::NvmeHealth, health);
+        if native_nvme || result.nvme_identity.is_some() || result.nvme_health.is_some() {
+            result.solid_state = Some(true);
+            let link = super::pcie::query(index).ok_or(Failure {
+                state: DiskQueryState::Unsupported,
+                code: None,
+            });
+            result.pcie_link = record(&mut result, DiskQuery::PcieLink, link);
+        } else {
+            record::<()>(
+                &mut result,
+                DiskQuery::PcieLink,
+                Err(Failure {
+                    state: DiskQueryState::Unsupported,
+                    code: None,
+                }),
+            );
+        }
     } else {
         for query in [
             DiskQuery::PcieLink,
@@ -198,11 +226,44 @@ pub(super) fn control(handle: HANDLE, code: u32, input: &[u8], capacity: usize) 
     Ok(output)
 }
 
-fn protocol(handle: HANDLE, data_type: u32, request: u32, length: usize) -> Result<Vec<u8>> {
-    // Adapter scope requests the controller-wide log, including multi-namespace disks.
+fn probe_nvme(bus: &str, solid_state: Option<bool>) -> bool {
+    bus == "nvme"
+        || solid_state != Some(false) && matches!(bus, "raid" | "scsi" | "usb")
+        || bus == "other" && solid_state == Some(true)
+}
+
+/// Try the existing controller query first. Some drivers only implement device
+/// properties. On bridges/RAID, keep requests device-scoped to avoid another LUN.
+fn nvme_query<T>(
+    native: bool,
+    mut query: impl FnMut(STORAGE_PROPERTY_ID) -> Result<T>,
+) -> Result<(T, STORAGE_PROPERTY_ID)> {
+    if !native {
+        return query(StorageDeviceProtocolSpecificProperty)
+            .map(|value| (value, StorageDeviceProtocolSpecificProperty));
+    }
+    let first = match query(StorageAdapterProtocolSpecificProperty) {
+        Ok(value) => return Ok((value, StorageAdapterProtocolSpecificProperty)),
+        Err(error) => error,
+    };
+    match query(StorageDeviceProtocolSpecificProperty) {
+        Ok(value) => Ok((value, StorageDeviceProtocolSpecificProperty)),
+        // Preserve a meaningful driver/data failure if fallback is unsupported.
+        Err(second) if second.state == DiskQueryState::Unsupported => Err(first),
+        Err(second) => Err(second),
+    }
+}
+
+fn protocol(
+    handle: HANDLE,
+    scope: STORAGE_PROPERTY_ID,
+    data_type: u32,
+    request: u32,
+    length: usize,
+) -> Result<Vec<u8>> {
     let mut buffer = vec![0u8; PROTOCOL_OFFSET + PROTOCOL_SIZE + length];
     for (offset, value) in [
-        (0, StorageAdapterProtocolSpecificProperty.0 as u32),
+        (0, scope.0 as u32),
         (4, PropertyStandardQuery.0 as u32),
         (PROTOCOL_OFFSET, ProtocolTypeNvme.0 as u32),
         (PROTOCOL_OFFSET + 4, data_type),
@@ -295,21 +356,7 @@ fn identity(data: &[u8]) -> Result<DiskIdentity> {
         model,
         serial_number: string_at(24)?,
         firmware_revision: string_at(20)?,
-        bus: match bus_code {
-            1 => "scsi",
-            3 => "ata",
-            7 => "usb",
-            8 => "raid",
-            10 => "sas",
-            11 => "sata",
-            12 => "sd",
-            13 => "mmc",
-            14 | 15 => "virtual",
-            16 => "spaces",
-            17 => "nvme",
-            _ => "other",
-        }
-        .into(),
+        bus: super::super::disk::bus_name(bus_code).into(),
         bus_code,
         removable: boolean(data[10])?,
     })
@@ -336,6 +383,63 @@ fn u32_at(data: &[u8], offset: usize) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nvme_driver_fallback_keeps_bridge_queries_device_scoped() {
+        let mut calls = Vec::new();
+        let value = nvme_query(true, |scope| {
+            calls.push(scope);
+            if scope == StorageAdapterProtocolSpecificProperty {
+                Err(Failure::invalid())
+            } else {
+                Ok(42)
+            }
+        })
+        .unwrap();
+        assert_eq!(value, (42, StorageDeviceProtocolSpecificProperty));
+        assert_eq!(
+            calls,
+            [
+                StorageAdapterProtocolSpecificProperty,
+                StorageDeviceProtocolSpecificProperty
+            ]
+        );
+        calls.clear();
+        let value = nvme_query(false, |scope| {
+            calls.push(scope);
+            Ok(7)
+        })
+        .unwrap();
+        assert_eq!(value, (7, StorageDeviceProtocolSpecificProperty));
+        assert_eq!(calls, [StorageDeviceProtocolSpecificProperty]);
+        calls.clear();
+        assert_eq!(
+            nvme_query(true, |scope| {
+                calls.push(scope);
+                Ok(9)
+            })
+            .unwrap(),
+            (9, StorageAdapterProtocolSpecificProperty)
+        );
+        assert_eq!(calls, [StorageAdapterProtocolSpecificProperty]);
+        let error = nvme_query::<()>(true, |scope| {
+            Err(if scope == StorageAdapterProtocolSpecificProperty {
+                Failure::invalid()
+            } else {
+                Failure {
+                    state: DiskQueryState::Unsupported,
+                    code: Some(50),
+                }
+            })
+        })
+        .unwrap_err();
+        assert_eq!(error.state, DiskQueryState::InvalidData);
+        assert!(probe_nvme("raid", Some(true)));
+        assert!(probe_nvme("scsi", None));
+        assert!(!probe_nvme("scsi", Some(false)));
+        assert!(!probe_nvme("ata", None));
+        assert!(!probe_nvme("virtual", Some(true)));
+    }
 
     fn response() -> Vec<u8> {
         let mut data = vec![0; DESCRIPTOR_SIZE + 512];

@@ -319,6 +319,9 @@
       "other": "其他严重警告",
       "mediaErrors": "存在介质与数据完整性错误",
       "uncorrectableErrors": "存在不可校正错误",
+      "reallocated": "存在重映射扇区",
+      "pending": "存在待映射扇区",
+      "offlineUncorrectable": "存在离线不可校正扇区",
       "worn": "剩余寿命不高于 10%"
     },
     "noWarnings": "无",

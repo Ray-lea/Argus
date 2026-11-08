@@ -17,6 +17,8 @@ pub struct AtaIdentity {
     pub sata_maximum_gbps: Option<f32>,
     pub write_cache_supported: Option<bool>,
     pub ncq_supported: Option<bool>,
+    pub udma_current_mode: Option<u8>,
+    pub udma_maximum_mode: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +52,8 @@ pub(super) fn identify(data: &[u8]) -> Option<AtaIdentity> {
     let rotation = word(217);
     let sata = word(76);
     let sata_valid = sata != 0 && sata != u16::MAX && sata & 1 == 0;
+    let udma = word(88);
+    let udma_valid = word(53) != u16::MAX && word(53) & 4 != 0 && udma != u16::MAX;
     let speed = |generation| match generation {
         1 => Some(1.5),
         2 => Some(3.),
@@ -88,6 +92,17 @@ pub(super) fn identify(data: &[u8]) -> Option<AtaIdentity> {
             .flatten(),
         write_cache_supported: (word(83) & 0xc000 == 0x4000).then(|| word(82) & (1 << 5) != 0),
         ncq_supported: sata_valid.then_some(sata & (1 << 8) != 0),
+        udma_current_mode: udma_valid
+            .then(|| {
+                let active = (udma >> 8) & 0x7f;
+                // Exactly one active mode, also present in the supported mask.
+                (active.count_ones() == 1 && udma & active == active)
+                    .then(|| active.trailing_zeros() as u8)
+            })
+            .flatten(),
+        udma_maximum_mode: udma_valid
+            .then(|| (0..=6).rev().find(|bit| udma & (1 << bit) != 0))
+            .flatten(),
     })
 }
 
@@ -235,5 +250,23 @@ mod tests {
         assert!(disk.sata_maximum_gbps.is_none());
         assert!(disk.write_cache_supported.is_none());
         assert!(disk.ncq_supported.is_none());
+    }
+
+    #[test]
+    fn legacy_ata_reports_only_valid_udma_modes() {
+        let mut data = [0; 512];
+        data[54..62].copy_from_slice(b"iDks    ");
+        data[106] = 4;
+        data[176..178].copy_from_slice(&0x203fu16.to_le_bytes());
+        let disk = identify(&data).unwrap();
+        assert_eq!(disk.udma_current_mode, Some(5));
+        assert_eq!(disk.udma_maximum_mode, Some(5));
+        assert!(disk.sata_current_gbps.is_none());
+        data[177] = 0x30;
+        assert!(identify(&data).unwrap().udma_current_mode.is_none());
+        data[177] = 0x40;
+        assert!(identify(&data).unwrap().udma_current_mode.is_none());
+        data[106] = 0;
+        assert!(identify(&data).unwrap().udma_maximum_mode.is_none());
     }
 }

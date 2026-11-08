@@ -200,6 +200,10 @@ fn disk_kind(info: &Value) -> String {
         "nvme" => "NVMe",
         "usb" => "USB",
         "sata" => "SATA",
+        "ata" => "ATA",
+        "scsi" => "SCSI",
+        "sas" => "SAS",
+        "raid" => "RAID",
         _ => "",
     };
     let media = match info["ssd"].as_bool() {
