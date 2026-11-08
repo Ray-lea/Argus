@@ -175,11 +175,12 @@ impl HardwareTracker {
             self.sensors = sensors::Sensors::new(cpu.reference_mhz, &cpu.threads);
             self.cpu = Arc::new(cpu);
         }
-        let sensed = self
-            .sensors
-            .as_mut()
-            .map(|s| s.sample())
-            .unwrap_or_default();
+        let sensed = crate::diagnostics::sample_phase("cpu-counters", || {
+            self.sensors
+                .as_mut()
+                .map(|s| s.sample())
+                .unwrap_or_default()
+        });
         let mut hardware = Hardware {
             cpu: self.cpu.clone(),
             cpu_mhz: sensed.cpu_mhz,
@@ -189,10 +190,10 @@ impl HardwareTracker {
             power: sensed.power,
             cpu_sensors: None,
             memory: self.memory.clone(),
-            disks: self.disks.sample(),
-            nics: self.nics.sample(),
-            gpus: self.gpus.sample(),
-            batteries: self.batteries.sample(),
+            disks: crate::diagnostics::sample_phase("disks", || self.disks.sample()),
+            nics: crate::diagnostics::sample_phase("network", || self.nics.sample()),
+            gpus: crate::diagnostics::sample_phase("gpu", || self.gpus.sample()),
+            batteries: crate::diagnostics::sample_phase("battery", || self.batteries.sample()),
         };
         hardware.supplement_integrated_gpu();
         hardware

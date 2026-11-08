@@ -115,6 +115,18 @@ impl RateLimit {
 
 static WARNINGS: Mutex<Option<RateLimit>> = Mutex::new(None);
 
+/// Opt-in timings for native sampling calls. Only fixed stage names are logged.
+pub(crate) fn sample_phase<T>(phase: &'static str, sample: impl FnOnce() -> T) -> T {
+    if !log::log_enabled!(target: "argus_sampling", log::Level::Trace) {
+        return sample();
+    }
+    log::trace!(target: "argus_sampling", "phase={phase}; begin");
+    let started = Instant::now();
+    let result = sample();
+    log::trace!(target: "argus_sampling", "phase={phase}; elapsed_us={}", started.elapsed().as_micros());
+    result
+}
+
 /// A reviewed failure and its stable facts, not a display error or request
 /// payload. Deduplication is per failure, not a session-wide error ceiling.
 #[track_caller]

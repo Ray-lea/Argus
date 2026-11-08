@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn a_concurrent_cache_write_keeps_the_recent_sensor_frame_without_blocking() {
-        let mut client = SensorClient::with_reader(|| CpuSensors::default());
+        let mut client = SensorClient::with_reader(CpuSensors::default);
         client.last = Some(Instant::now());
         *client.cache.lock().unwrap() = Some((
             Instant::now(),

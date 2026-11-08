@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 
 use crate::app_windows;
+use crate::diagnostics::sample_phase;
 use crate::gpu_process::{GpuEngineUsage, GpuProcessTracker};
 use crate::hardware::{Hardware, HardwareTracker};
 use crate::meta::MetaStore;
@@ -68,13 +69,17 @@ impl Collector {
     }
 
     pub fn sample(&mut self) -> Snapshot {
-        let mut system = self.system.sample();
-        let mut processes = self.processes.sample(
-            self.system.logical_cpus(),
-            self.system.precise_idle_fraction(),
-        );
+        let mut system = sample_phase("system", || self.system.sample());
+        let mut processes = sample_phase("processes", || {
+            self.processes.sample(
+                self.system.logical_cpus(),
+                self.system.precise_idle_fraction(),
+            )
+        });
         let mut hardware = self.hardware.sample();
-        self.attach_gpu_usage(&mut processes, &mut hardware);
+        sample_phase("gpu-processes", || {
+            self.attach_gpu_usage(&mut processes, &mut hardware)
+        });
         if self
             .network
             .as_ref()
@@ -86,7 +91,7 @@ impl Collector {
             network.apply_rates(&mut processes);
         }
 
-        let apps = app_windows::owners();
+        let apps = sample_phase("app-windows", app_windows::owners);
         for p in &mut processes {
             p.app_window = apps.contains(&p.pid);
         }

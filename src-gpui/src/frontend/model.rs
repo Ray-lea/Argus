@@ -241,6 +241,29 @@ impl Row {
         Self::new(raw, depth, title, detail, sort_name)
     }
     pub fn metric(&self, key: &str) -> Option<f64> {
+        // GPU and network readings have independent collectors. Native process
+        // counters remain unknown until the bounded process query recovers.
+        if !matches!(
+            key,
+            "pid"
+                | "ppid"
+                | "sessionId"
+                | "createTime"
+                | "gpu"
+                | "gpuDedicated"
+                | "gpuShared"
+                | "net"
+                | "netSent"
+                | "netReceived"
+        ) && self.members.iter().any(|member| boolean(member, "stale"))
+        {
+            return None;
+        }
+        self.metric_value(key)
+    }
+
+    /// Sorting retains the last known order while missing counters render as unknown.
+    fn metric_value(&self, key: &str) -> Option<f64> {
         if matches!(key, "gpuDedicated" | "gpuShared") {
             return self.members.iter().try_fold(0., |sum, member| {
                 member[key].as_f64().map(|value| sum + value)
@@ -398,7 +421,7 @@ fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
                 _ => 1.,
             };
             // Missing readings (a disk interval not measured yet) sort last either way.
-            match (a.metric(key), b.metric(key)) {
+            match (a.metric_value(key), b.metric_value(key)) {
                 (Some(a), Some(b)) => direct((a * scale).round().total_cmp(&(b * scale).round())),
                 (None, None) => Ordering::Equal,
                 (None, _) => Ordering::Greater,
@@ -964,16 +987,18 @@ impl Timeline {
                     usage.origin = origin;
                 }
             }
-            usage.push(
-                p["cpu"].as_f64().unwrap_or(f64::NAN),
-                p["privateWs"].as_f64().unwrap_or(f64::NAN),
-                keep,
-            );
+            let reading = |key: &str| {
+                if boolean(p, "stale") {
+                    f64::NAN
+                } else {
+                    p[key].as_f64().unwrap_or(f64::NAN)
+                }
+            };
+            usage.push(reading("cpu"), reading("privateWs"), keep);
         }
         self.processes.retain(|_, usage| usage.tick == tick);
-        // An app's figures add up its processes' latest samples; unknown ones count as zero.
-        let latest =
-            |values: &VecDeque<f64>| values.back().copied().filter(|v| !v.is_nan()).unwrap_or(0.);
+        // Missing process readings also leave a gap in their app's aggregate.
+        let latest = |values: &VecDeque<f64>| values.back().copied().unwrap_or(f64::NAN);
         let mut totals: HashMap<&str, (f64, f64)> = HashMap::new();
         for usage in self.processes.values() {
             if let Some(app) = &usage.app {
@@ -1454,6 +1479,65 @@ mod tests {
         assert_eq!(rows[0].members.len(), 2);
         assert_eq!(rows[1].raw["pid"], 42);
     }
+    #[test]
+    fn a_process_query_outage_keeps_the_last_numeric_order() {
+        let mut processes = vec![
+            json!({"pid":1,"createTime":1,"name":"z.exe","cpu":80,"privateWs":2000}),
+            json!({"pid":2,"createTime":1,"name":"a.exe","cpu":10,"privateWs":1000}),
+        ];
+        let before = rows_of(&processes, "list", "", "cpu", true, &HashMap::new());
+        for process in &mut processes {
+            process["stale"] = json!(true);
+        }
+        let after = rows_of(&processes, "list", "", "cpu", true, &HashMap::new());
+        assert_eq!(pids(&before), [1, 2]);
+        assert_eq!(pids(&after), pids(&before));
+        assert!(after.iter().all(|row| row.metric("cpu").is_none()));
+    }
+
+    #[test]
+    fn stale_process_readings_keep_identity_and_independent_counters() {
+        let processes = vec![
+            json!({"pid":1,"ppid":9,"createTime":1,"name":"app.exe","path":"C:/app.exe","cpu":30,"privateWs":1000,"ioRead":100,"gpu":20,"netReceived":1000,"stale":true}),
+            json!({"pid":2,"ppid":9,"createTime":2,"name":"app.exe","path":"C:/app.exe","cpu":10,"privateWs":500,"ioRead":200,"gpu":5,"netReceived":500}),
+        ];
+        let row = Row::process(processes[0].clone(), 0);
+        assert_eq!(row.metric("pid"), Some(1.));
+        assert_eq!(row.metric("cpu"), None);
+        assert_eq!(row.metric("mem"), None);
+        assert_eq!(row.metric("io"), None);
+        assert_eq!(row.metric("gpu"), Some(20.));
+        assert_eq!(row.metric("net"), Some(1000.));
+        let rows = rows_of(&processes, "apps", "", "cpu", true, &HashMap::new());
+        assert_eq!(rows[0].metric("cpu"), None);
+        assert_eq!(rows[0].metric("mem"), None);
+        assert_eq!(rows[0].metric("net"), Some(1500.));
+
+        let mut timeline = Timeline::new();
+        for (index, stale) in [false, true, false].into_iter().enumerate() {
+            let mut process = processes[0].clone();
+            process["stale"] = json!(stale);
+            timeline.push(
+                &json!({"timestamp":index*1000,"system":{"cpu":12},"processes":[process]}),
+                1000.,
+            );
+        }
+        for key in ["process.1:1.cpu", "group.g:image:c:\\app.exe.cpu"] {
+            let points = timeline.points(key).unwrap();
+            assert_eq!(
+                points,
+                vec![(0., Some(30.)), (1000., None), (2000., Some(30.))]
+            );
+        }
+        assert!(
+            timeline
+                .points("system.cpu")
+                .unwrap()
+                .iter()
+                .all(|(_, value)| *value == Some(12.))
+        );
+    }
+
     #[test]
     fn every_process_and_app_keeps_history_from_its_first_sample() {
         let mut timeline = Timeline::new();

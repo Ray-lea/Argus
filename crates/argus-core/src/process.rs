@@ -30,9 +30,15 @@ use crate::paths::PathResolver;
 use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, ticks_to_unix_ms};
 use crate::webview::{self, Instance, WebViewInfo};
 
+mod query;
+use query::ProcessQuery;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessRow {
+    /// Identity is retained while the native process counters are unavailable.
+    /// Consumers must not present or record its old counters as a fresh sample.
+    pub stale: bool,
     pub pid: u32,
     pub ppid: u32,
     /// Unix ms. Together with `pid` this identifies a process instance.
@@ -164,7 +170,8 @@ struct Package {
 const PACKAGE_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
 
 pub(crate) struct ProcessTracker {
-    buf: AlignedBuf,
+    query: Option<ProcessQuery>,
+    last_rows: Vec<ProcessRow>,
     tracked: HashMap<(u32, i64), Tracked>,
     by_pid: HashMap<u32, i64>,
     webviews: Vec<(usize, Instance)>,
@@ -181,7 +188,8 @@ pub(crate) struct ProcessTracker {
 impl ProcessTracker {
     pub fn new(meta: Arc<MetaStore>) -> Self {
         Self {
-            buf: AlignedBuf::with_capacity(512 * 1024),
+            query: ProcessQuery::new(),
+            last_rows: Vec::new(),
             tracked: HashMap::new(),
             by_pid: HashMap::new(),
             webviews: Vec::new(),
@@ -201,17 +209,28 @@ impl ProcessTracker {
         logical_cpus: u32,
         precise_idle_fraction: Option<f64>,
     ) -> Vec<ProcessRow> {
-        let now = Instant::now();
-        let systime = filetime_ticks(unsafe { GetSystemTimePreciseAsFileTime() });
-        let cycles = SystemCycles::read(logical_cpus);
-        let clock = self.cycle_clock.sample(logical_cpus);
-        let Ok(returned) = query_system_information(SPI_CLASS, &mut self.buf) else {
+        let Some((buf, returned)) = self.query.as_mut().and_then(ProcessQuery::read) else {
             // The process baselines still span the failed interval. Re-prime the
             // cycle budget before using it again, so both sides cover one window.
             self.previous_cycles = None;
             self.cycle_clock.clear();
-            return Vec::new();
+            return self
+                .last_rows
+                .iter()
+                .cloned()
+                .map(|mut row| {
+                    row.stale = true;
+                    row
+                })
+                .collect();
         };
+        let now = Instant::now();
+        let systime = filetime_ticks(unsafe { GetSystemTimePreciseAsFileTime() });
+        let cycles = SystemCycles::read(logical_cpus);
+        let clock = self.cycle_clock.sample(logical_cpus);
+        // The system's idle fraction spans one tick, whereas the recovered
+        // process rates span the whole gap since their last successful query.
+        let precise_idle_fraction = self.previous_cycles.as_ref().and(precise_idle_fraction);
         let system_delta = cycles
             .as_ref()
             .zip(self.previous_cycles.as_ref())
@@ -231,7 +250,7 @@ impl ProcessTracker {
         let mut cycle_deltas = Vec::with_capacity(self.tracked.len() + 32);
         self.webviews.clear();
 
-        for ProcessEntry { info: p, threads } in ProcessIter::new(&self.buf) {
+        for ProcessEntry { info: p, threads } in ProcessIter::new(buf) {
             let pid = p.unique_process_id.0 as usize as u32;
             if pid == 0 {
                 continue; // System Idle Process: it is the absence of load, not a process.
@@ -245,7 +264,7 @@ impl ProcessTracker {
             ];
             let disk = self
                 .native_disk
-                .then(|| crate::disk_process::standard_counters(&self.buf, returned, p))
+                .then(|| crate::disk_process::standard_counters(buf, returned, p))
                 .flatten();
 
             let (entry, prev) = match self.tracked.entry(key) {
@@ -342,6 +361,7 @@ impl ProcessTracker {
                 });
             let meta = entry.meta.as_deref();
             rows.push(ProcessRow {
+                stale: false,
                 pid,
                 ppid: p.inherited_from_unique_process_id.0 as usize as u32,
                 create_time: ticks_to_unix_ms(p.create_time),
@@ -465,6 +485,7 @@ impl ProcessTracker {
                 }
             }
         }
+        self.last_rows.clone_from(&rows);
         rows
     }
 }

@@ -115,6 +115,7 @@ struct ProcAcc {
 struct Window {
     start: i64,
     samples: u32,
+    process_samples: u32,
     cpu: f64,
     cpu_peak: f32,
     gpu: f64,
@@ -211,7 +212,10 @@ impl HistoryRecorder {
             w.battery_rate += rate;
             w.battery_rate_n += 1;
         }
-        for p in &s.processes {
+        if s.processes.iter().all(|p| !p.stale) {
+            w.process_samples += 1;
+        }
+        for p in s.processes.iter().filter(|p| !p.stale) {
             let acc = w
                 .procs
                 .entry((p.pid, p.create_time))
@@ -238,6 +242,7 @@ impl HistoryRecorder {
         }
         let file = self.file.as_mut().expect("opened above");
         let n = w.samples as f64;
+        let process_n = w.process_samples.max(1) as f64;
         let mut procs: Vec<&ProcAcc> = w.procs.values().collect();
         let mut picked: Vec<&ProcAcc> = Vec::new();
         let mut take = |key: fn(&ProcAcc) -> f64, count: usize, floor: f64| {
@@ -248,10 +253,10 @@ impl HistoryRecorder {
                 }
             }
         };
-        take(|p| p.cpu, 6, 0.5 * n);
+        take(|p| p.cpu, 6, 0.5 * process_n);
         take(|p| p.mem as f64, 6, 0.0);
         take(|p| p.io, 3, 0.0);
-        take(|p| p.gpu, 3, 0.5 * n);
+        take(|p| p.gpu, 3, 0.5 * process_n);
         take(|p| p.net, 3, 0.0);
 
         let mut buf = Vec::with_capacity(FRAME_HEAD + 1 + picked.len() * ENTRY);
@@ -293,11 +298,11 @@ impl HistoryRecorder {
         for (index, p) in indices {
             buf.extend_from_slice(&index.to_le_bytes());
             buf.extend_from_slice(&p.pid.to_le_bytes());
-            buf.extend_from_slice(&((p.cpu / n) as f32).to_le_bytes());
+            buf.extend_from_slice(&((p.cpu / process_n) as f32).to_le_bytes());
             buf.extend_from_slice(&clamp((p.mem / 1024) as f64).to_le_bytes());
-            buf.extend_from_slice(&clamp(p.io / n).to_le_bytes());
-            buf.extend_from_slice(&((p.gpu / n) as f32).to_le_bytes());
-            buf.extend_from_slice(&clamp(p.net / n).to_le_bytes());
+            buf.extend_from_slice(&clamp(p.io / process_n).to_le_bytes());
+            buf.extend_from_slice(&((p.gpu / process_n) as f32).to_le_bytes());
+            buf.extend_from_slice(&clamp(p.net / process_n).to_le_bytes());
         }
         // One write and flush per frame, so readers and crashes see whole frames.
         file.out.write_all(&buf)?;
@@ -735,6 +740,7 @@ mod tests {
 
     fn proc(pid: u32, name: &str, cpu: f32, mem: u64) -> ProcessRow {
         ProcessRow {
+            stale: false,
             counters: Default::default(),
             pid,
             ppid: 0,
@@ -884,6 +890,24 @@ mod tests {
             assert_eq!(day_number(&day_name(day)), Some(day));
         }
         assert_eq!(day_name(20_737), "2026-10-11");
+    }
+
+    #[test]
+    fn unavailable_process_counters_do_not_repeat_or_dilute_history() {
+        let dir = temp_dir("stale-processes");
+        let base = 20_737 * DAY_MS;
+        let mut rec = HistoryRecorder::new(dir.clone());
+        for i in 0..6 {
+            let mut process = proc(42, "busy.exe", if i == 0 { 30. } else { 90. }, 1 << 30);
+            process.stale = i > 0;
+            rec.record(&snapshot(base + i * 1000, 10. + i as f32, vec![process]));
+        }
+        drop(rec);
+        let m = moment(&dir, base + 1000).unwrap();
+        assert_eq!(m.system.cpu, 12.);
+        assert_eq!(m.processes.len(), 1);
+        assert_eq!(m.processes[0].cpu, 30.);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
