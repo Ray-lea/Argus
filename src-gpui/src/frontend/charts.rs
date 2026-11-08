@@ -1720,12 +1720,14 @@ impl Desktop {
             .get::<Option<bool>>("motion.ui", None)
             .unwrap_or(system);
         cx.set_reduce_motion(!motion);
-        // The window fades in and out in place with interface motion on.
+        // Native window transitions have their own choice, independent of the UI.
         crate::window_motion::set_enabled(
             self.host
                 .get_window("main")
                 .and_then(|window| window.hwnd().ok()),
-            motion,
+            self.prefs
+                .get::<Option<bool>>("motion.window", None)
+                .unwrap_or(system),
         );
         let saved = self
             .prefs

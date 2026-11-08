@@ -184,9 +184,13 @@
     "recovery": "If the interface won't open, run the standalone recovery tool: {path}"
   },
   "motion": {
+    "window": {
+      "title": "Window transitions",
+      "desc": "Fade the window when showing, hiding, minimizing or restoring it. Turn off to let Windows or another window manager handle transitions. Follows the Windows Animation effects setting by default."
+    },
     "ui": {
       "title": "Interface animations",
-      "desc": "Window fades, page and dialog transitions, and the sliding selection marker. Follows the Windows Animation effects setting by default."
+      "desc": "Page and dialog transitions, and the sliding selection marker. Follows the Windows Animation effects setting by default."
     },
     "chart": {
       "title": "Chart animations",

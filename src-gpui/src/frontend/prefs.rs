@@ -41,6 +41,13 @@ impl Prefs {
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or(fallback)
     }
+    /// Copy the old shared choice once. A stored null keeps following Windows
+    /// and distinguishes a new profile from a pre-split preference file.
+    pub fn initialize_window_motion(&mut self) {
+        if !self.values.contains_key("motion.window") {
+            self.set("motion.window", self.get::<Option<bool>>("motion.ui", None));
+        }
+    }
     pub fn set(&mut self, key: &str, value: impl serde::Serialize) {
         let Ok(value) = serde_json::to_value(value) else {
             return;
@@ -151,6 +158,59 @@ pub fn flush(timeout: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_motion_migrates_once_and_remains_independent_after_restart() {
+        let file = path("window-motion");
+        std::fs::write(
+            &file,
+            br#"{"values":{"motion.ui":false,"motion.chartMode":"balanced"}}"#,
+        )
+        .unwrap();
+        let mut prefs = Prefs::load(file.clone());
+        prefs.initialize_window_motion();
+        assert_eq!(
+            prefs.get::<Option<bool>>("motion.window", None),
+            Some(false)
+        );
+        prefs.set("motion.ui", true);
+        prefs.initialize_window_motion();
+        assert_eq!(
+            prefs.get::<Option<bool>>("motion.window", None),
+            Some(false)
+        );
+        flush(Duration::from_secs(2));
+        let mut restored = Prefs::load(file.clone());
+        restored.initialize_window_motion();
+        assert_eq!(
+            restored.get::<Option<bool>>("motion.window", None),
+            Some(false)
+        );
+        assert_eq!(restored.get::<Option<bool>>("motion.ui", None), Some(true));
+        assert_eq!(
+            restored.get::<String>("motion.chartMode", String::new()),
+            "balanced"
+        );
+        std::fs::remove_file(file).unwrap();
+    }
+
+    #[test]
+    fn a_new_profile_keeps_system_window_motion_after_changing_interface_motion() {
+        let file = path("window-motion-system");
+        let _ = std::fs::remove_file(&file);
+        let mut prefs = Prefs::load(file.clone());
+        prefs.initialize_window_motion();
+        prefs.set("motion.ui", false);
+        flush(Duration::from_secs(2));
+        let mut restored = Prefs::load(file.clone());
+        restored.initialize_window_motion();
+        assert!(restored.values.contains_key("motion.window"));
+        assert_eq!(restored.get::<Option<bool>>("motion.window", None), None);
+        restored.set("motion.window", true);
+        assert_eq!(restored.get::<Option<bool>>("motion.ui", None), Some(false));
+        flush(Duration::from_secs(2));
+        std::fs::remove_file(file).unwrap();
+    }
 
     fn path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

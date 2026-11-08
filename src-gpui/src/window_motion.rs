@@ -7,6 +7,8 @@ use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+#[cfg(test)]
+mod native_tests;
 
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Dwm::{DWMWA_TRANSITIONS_FORCEDISABLED, DwmSetWindowAttribute};
@@ -29,9 +31,13 @@ const REQUEST: u32 = WM_APP + 0x47;
 static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 static LEAVING: AtomicBool = AtomicBool::new(false);
 static CHANGING: AtomicUsize = AtomicUsize::new(0);
-/// The interface's motion preference, kept for a window installed after it
+/// The window motion preference, kept for a window installed after it
 /// was sent (the interface resolves it while the window is being created).
 static ENABLED: AtomicBool = AtomicBool::new(false);
+
+pub fn enabled() -> bool {
+    ENABLED.load(Ordering::Relaxed)
+}
 
 /// Whether a visibility change is under way; position notifications in the
 /// middle of one are not the final state.
@@ -122,6 +128,22 @@ struct Motion {
 }
 
 impl Motion {
+    fn set_enabled(&self, hwnd: HWND, enabled: bool) {
+        if self.enabled.replace(enabled) == enabled {
+            return;
+        }
+        if !enabled {
+            if let Some(fade) = self.fade.get() {
+                // Finish while native transitions are still suppressed, then
+                // release the window to the system or another window manager.
+                self.finish(hwnd, fade.target);
+            } else {
+                self.stop_clock();
+                self.opaque(hwnd);
+            }
+        }
+        suppress_native_transitions(hwnd, enabled);
+    }
     fn change(&self, hwnd: HWND, target: Target) {
         CHANGING.fetch_add(1, Ordering::Relaxed);
         let guard = VisibilityChange;
@@ -272,17 +294,9 @@ fn apply(hwnd: HWND, target: Target) {
 /// Installed on the window's thread before it can be minimized or restored.
 pub fn install(hwnd: HWND) {
     unsafe {
-        // Per-window only: no system setting changes or taskbar zoom animations.
-        let disabled = 1i32;
-        let _ = DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_TRANSITIONS_FORCEDISABLED,
-            &disabled as *const _ as _,
-            size_of_val(&disabled) as u32,
-        );
         let motion = Box::into_raw(Box::new(Motion {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
-            // The interface sends the resolved motion preference on startup.
+            // The interface sends the resolved window preference on startup.
             enabled: Cell::new(ENABLED.load(Ordering::Relaxed)),
             fade: Cell::new(None),
             layered: Cell::new(false),
@@ -292,7 +306,21 @@ pub fn install(hwnd: HWND) {
         }));
         if !SetWindowSubclass(hwnd, Some(procedure), SUBCLASS, motion as usize).as_bool() {
             drop(Box::from_raw(motion));
+        } else if enabled() {
+            suppress_native_transitions(hwnd, true);
         }
+    }
+}
+
+fn suppress_native_transitions(hwnd: HWND, suppress: bool) {
+    let disabled = i32::from(suppress);
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_TRANSITIONS_FORCEDISABLED,
+            &disabled as *const _ as _,
+            size_of_val(&disabled) as u32,
+        );
     }
 }
 
@@ -343,10 +371,7 @@ fn perform(hwnd: HWND, op: Op) {
     let motion = found.then(|| unsafe { &*(data as *const Motion) });
     match (motion, op) {
         (Some(motion), Op::Enable(enabled)) => {
-            motion.enabled.set(enabled);
-            if !enabled && let Some(fade) = motion.fade.get() {
-                motion.finish(hwnd, fade.target);
-            }
+            motion.set_enabled(hwnd, enabled);
         }
         (Some(motion), Op::Go(target)) => motion.request(hwnd, target),
         (None, Op::Go(target)) => apply(hwnd, target),
@@ -354,7 +379,7 @@ fn perform(hwnd: HWND, op: Op) {
     }
 }
 
-/// Turns the fades on or off with the interface's motion preference; a window
+/// Turns the fades on or off with the window motion preference; a window
 /// installed later starts with the last preference.
 pub fn set_enabled(hwnd: Option<HWND>, enabled: bool) {
     ENABLED.store(enabled, Ordering::Relaxed);
@@ -412,7 +437,7 @@ unsafe extern "system" fn procedure(
         }
         return LRESULT(0);
     }
-    if msg == WM_SYSCOMMAND {
+    if msg == WM_SYSCOMMAND && motion.enabled.get() {
         match wparam.0 as u32 & 0xfff0 {
             SC_MINIMIZE => {
                 motion.request(hwnd, Target::Minimized);

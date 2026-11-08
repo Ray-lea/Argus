@@ -407,6 +407,19 @@ impl Desktop {
                 cx.notify();
                 return;
             }
+            "windowMotion" => {
+                self.prefs.set(
+                    "motion.window",
+                    match value.as_str() {
+                        Some("on") => Some(true),
+                        Some("off") => Some(false),
+                        _ => None,
+                    },
+                );
+                self.apply_motion(cx);
+                cx.notify();
+                return;
+            }
             "motion.chartMode" => {
                 self.prefs.set(key, value);
                 self.apply_motion(cx);

@@ -6,7 +6,7 @@
 
 文件拖放由前端的 OLE 接收与 Windows 原生文件消息共同接入。管理员窗口使用原生文件消息通道接收普通权限程序的文件投递；解码限制文件数量、单路径长度及总长度，随后交给现有文件占用查询。窗口销毁时移除消息子类并释放宿主引用。接口见 [DragAcceptFiles](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-dragacceptfiles) 与 [ChangeWindowMessageFilterEx](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-changewindowmessagefilterex)。
 
-`window_motion.rs` 让窗口在显示、隐藏到托盘、最小化和还原时原地淡入淡出（显示 180 ms，离开 140 ms），关闭 DWM 的缩放动画；仅在淡入淡出期间给窗口加分层样式，跟随界面动画设置。其他线程的请求转到窗口线程执行；标题栏的最小化按钮发送 `SC_MINIMIZE`，任务栏还原和其他程序直接显示窗口时同样淡入。
+`window_motion.rs` 让窗口在显示、隐藏到托盘、最小化和还原时原地淡入淡出（显示 180 ms，离开 140 ms），由独立的 `motion.window` 偏好控制。开启期间抑制 DWM 窗口过渡；关闭时结束当前淡入淡出、移除自身的临时透明样式并停止时钟，释放 DWM 过渡及原生最小化／还原消息的处理。其他线程的请求转到窗口线程执行；标题栏的最小化按钮发送 `SC_MINIMIZE`，开启时任务栏还原和其他程序直接显示窗口也会淡入。
 
 `crates/argus-app/src/preferences.rs` 将界面偏好与窗口位置原子保存到配置目录的 `preferences.json`，同一配置目录下的启动入口共享偏好。文件沿用 v0.3.3／v0.3.4 的布局：偏好保存在 `values`，窗口位置保存在 `window`，更新时保留其他配置。从 v0.3.2 及更早版本直接升级时，旧 WebView2 缓存中的界面偏好恢复默认值，详见[升级说明](../guide/settings.md#旧版升级与数据)。`src-gpui/src/window_state.rs` 保存 `WINDOWPLACEMENT` 的普通窗口矩形与最大化标记，移动或缩放结束后保存，关闭和退出前补写；隐藏启动延迟到首次显示时恢复最大化，不恢复最小化状态；测试实例不恢复窗口位置。
 

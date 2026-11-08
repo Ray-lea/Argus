@@ -1,0 +1,20 @@
+{
+  "window": [1240, 900],
+  "steps": [
+    {"control":{"page":"settings","settingsSection":"motion","uiMotion":"on","windowMotion":"on","motion":"fluid"},"wait":500,"inspect":"layout","label":"all-on","expect":{"animations.ui":true,"animations.window":true,"animations.charts":"Fluid"}},
+    {"control":{"clickAnchor":"window-motion"},"wait":300,"inspect":"layout","label":"window-off","expect":{"animations.ui":true,"animations.window":false,"animations.charts":"Fluid"},"capture":"window-off"},
+    {"control":{"clickAnchor":"ui-motion"},"wait":300,"inspect":"layout","label":"ui-off","expect":{"animations.ui":false,"animations.window":false,"animations.charts":"Fluid"}},
+    {"control":{"clickAnchor":"window-motion","motion":"balanced"},"wait":300,"inspect":"layout","label":"window-only","expect":{"animations.ui":false,"animations.window":true,"animations.charts":"Balanced"}},
+    {"probe":"hide","wait":300},
+    {"probe":"mark window-on-before"},
+    {"record":{"name":"window-on-show","ms":650},"wait":60},
+    {"probe":"show","wait":900,"inspect":"layout","label":"shown-with-window-motion","expect":{"animations.ui":false,"animations.window":true,"animations.charts":"Balanced"}},
+    {"probe":"mark window-on-after"},
+    {"control":{"clickAnchor":"window-motion","uiMotion":"on","motion":"fluid"},"wait":300},
+    {"probe":"hide","wait":300},
+    {"probe":"mark window-off-before"},
+    {"record":{"name":"window-off-show","ms":650},"wait":60},
+    {"probe":"show","wait":900,"inspect":"layout","label":"shown-without-window-motion","expect":{"animations.ui":true,"animations.window":false,"animations.charts":"Fluid"}},
+    {"probe":"mark window-off-after"}
+  ]
+}

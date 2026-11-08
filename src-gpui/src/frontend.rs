@@ -710,12 +710,13 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
             let owner = host.clone();
             gpui_kit::open_window(opts, cx, move |window, cx| {
                 window.set_window_title(&argus_app::config::app_title());
-                let prefs = prefs::Prefs::load(
+                let mut prefs = prefs::Prefs::load(
                     host.path()
                         .app_config_dir()
                         .expect("application config")
                         .join("preferences.json"),
                 );
+                prefs.initialize_window_motion();
                 // Before the theme and the first layout: text sizes and the
                 // viewport depend on them.
                 appearance::apply_font_size(appearance::FONT_SIZE.load(&prefs));

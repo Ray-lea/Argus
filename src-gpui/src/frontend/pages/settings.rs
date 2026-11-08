@@ -1166,6 +1166,29 @@ impl Desktop {
                 cards.push(self.task_manager_card(cx));
             }
             "motion" => {
+                let window_motion = self.toggle(
+                    "window-motion",
+                    label("settings.motion.window.title"),
+                    crate::window_motion::enabled(),
+                    false,
+                    |this, on, window, cx| {
+                        this.preference(
+                            "windowMotion",
+                            json!(if on { "on" } else { "off" }),
+                            window,
+                            cx,
+                        );
+                    },
+                    window,
+                    cx,
+                );
+                cards.push(self.setting_text(
+                    "windowMotion",
+                    "AppIcon",
+                    "settings.motion.window.title",
+                    "settings.motion.window.desc",
+                    vec![window_motion],
+                ));
                 let motion = self.motion_toggle("ui-motion", window, cx);
                 cards.push(self.setting_text(
                     "uiMotion",

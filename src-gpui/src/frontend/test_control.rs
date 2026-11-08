@@ -416,6 +416,7 @@ impl Desktop {
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
+                "animations":{"ui":!cx.reduce_motion(),"window":crate::window_motion::enabled(),"charts":format!("{:?}",self.chart_clock.borrow().mode)},
                 "cpuTemperatureHistory":{"recentSamples":temperature.len().min(60),"recentMissing":temperature.iter().rev().take(60).filter(|(_,value)|value.is_none()).count(),"last":temperature.last().and_then(|(_,value)|*value)},
                 "systemBackdrop":crate::platform::supports_backdrop(),"backgroundAlpha":theme::Palette::current(cx).background.a,
                 "dialog":self.dialog_test_state(),
@@ -686,6 +687,7 @@ impl Desktop {
             "coreFilter",
             "diskPage",
             "uiMotion",
+            "windowMotion",
             "historyRange",
             "netUnit",
             "fontSize",

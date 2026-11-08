@@ -941,6 +941,8 @@ impl Desktop {
         );
         let group: SharedString = format!("switch-{id}").into();
         let thumb = if value { p.on_accent } else { p.muted };
+        let anchors = self.ui.anchors.clone();
+        let anchor_id = id.clone();
         div()
             .flex()
             .items_center()
@@ -964,6 +966,18 @@ impl Desktop {
                     .role(Role::Switch)
                     .accessibility_label(name.into())
                     .relative()
+                    .when(self.options.test, |button| {
+                        button.child(
+                            canvas(
+                                move |bounds, _, _| {
+                                    anchors.borrow_mut().insert(anchor_id.clone(), bounds);
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .inset_0(),
+                        )
+                    })
                     .w(px(40.))
                     .h(px(20.))
                     .flex_shrink_0()

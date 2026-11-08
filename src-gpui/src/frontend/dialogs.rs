@@ -1827,9 +1827,7 @@ impl Desktop {
         self.ui.ticks = self.ui.ticks.wrapping_add(1);
         if self.ui.ticks.is_multiple_of(4) {
             let system = crate::platform::system_motion();
-            if self.ui.system_motion.is_some_and(|before| before != system)
-                && self.prefs.get::<Option<bool>>("motion.ui", None).is_none()
-            {
+            if self.ui.system_motion.is_some_and(|before| before != system) {
                 self.apply_motion(cx);
                 changed = true;
             }
