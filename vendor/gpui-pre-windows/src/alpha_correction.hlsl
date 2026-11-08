@@ -7,11 +7,11 @@ float color_brightness(float3 color) {
     return dot(color, float3(0.30f, 0.59f, 0.11f));
 }
 
-// Argus patch: light text keeps the full enhanced contrast, as in Chromium.
-// Upstream fades it out above 75% brightness, which draws white and light grey
-// text on dark backgrounds visibly thinner than the same font in a browser.
+// DirectWrite fades the extra edge contrast between 50% and 75% foreground
+// brightness. Keeping the full boost on light text thickens antialiased edges
+// on dark backgrounds, especially where bold strokes are close together.
 float light_on_dark_contrast(float enhancedContrast, float3 color) {
-    return enhancedContrast;
+    return enhancedContrast * saturate(3.0f - 4.0f * color_brightness(color));
 }
 
 // Argus patch: dark text follows Skia's mask gamma, as Chromium draws it on

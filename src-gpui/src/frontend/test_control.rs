@@ -412,6 +412,7 @@ impl Desktop {
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
+                "dialog":self.dialog_test_state(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),"scaleFactor":window.scale_factor(),"remSize":f32::from(window.rem_size()),
@@ -558,6 +559,10 @@ impl Desktop {
         }
         if let Some(text) = control["toast"].as_str() {
             self.notify_toast(widgets::ToastKind::Info, text.to_owned());
+        }
+        if self.options.fixture.is_some() && control["updateNotice"].as_bool() == Some(true) {
+            let status = self.data.get("updates").cloned().unwrap_or_default();
+            self.show_update_notice(text(&status, "state"), text(&status, "version"));
         }
         if control["recordHotkey"].as_bool() == Some(true) {
             self.begin_hotkey(window, cx);

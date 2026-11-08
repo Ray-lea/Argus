@@ -1,0 +1,19 @@
+{
+  "window": [1240, 900],
+  "steps": [
+    {"note":"The update notice uses the normal action handler, with fixture data."},
+    {"control":{"data":{"updates":{"state":"available","version":"9.9.9","notes":"# Update details\n\n**Process monitoring** keeps the current readings visible while the interface refreshes.\n\n**Rendering** preserves chart positions and text layout across repeated redraws.\n\n**Storage** reads device health information when the details page opens.\n\n**Window layout** keeps the reader centred while asynchronous Markdown content is measured.\n\n**Scrolling** uses the page wheel animation while the footer stays fixed.\n\n**Text emphasis** retains bold labels alongside regular paragraphs and inline `code`.\n\n**Compatibility** retains unknown readings when the device does not provide them.","releases":[]}},"updateNotice":true},"wait":450},
+    {"control":{"clickAnchor":"toast-action-1-0"},"wait":1200,"inspect":"layout","label":"offer-visible","expect":{"dialog.kind":"update","dialog.ready":true,"dialog.centered":true},"capture":"offer"},
+    {"control":{"keys":["escape"]},"wait":350,"inspect":"layout","label":"offer-closed","expect":{"dialog":null}},
+    {"control":{"dialog":"whatsnew"},"wait":1200,"inspect":"layout","label":"notes-visible","expect":{"dialog.kind":"whatsnew","dialog.ready":true,"dialog.centered":true}},
+    {"control":{"scrollTrace":700},"wait":30},
+    {"control":{"wheel":{"x":620,"y":550,"lines":-5}},"wait":450,"capture":"notes-scrolled"},
+    {"control":{"keys":["escape"]},"wait":350,"inspect":"layout","label":"notes-closed","expect":{"dialog":null}},
+    {"control":{"dialog":"whatsnew","keys":["escape"]},"wait":450,"inspect":"layout","label":"closed-during-measurement","expect":{"dialog":null}},
+    {"control":{"mouse":{"type":"move","x":348,"y":72}},"wait":20},
+    {"control":{"mouse":{"type":"down","x":348,"y":72}},"wait":20},
+    {"control":{"mouse":{"type":"up","x":348,"y":72}},"wait":300,"inspect":"layout","label":"page-responsive","expect":{"page":"settings","dialog":null}},
+    {"control":{"dialog":"task"},"wait":400,"inspect":"layout","label":"form-visible","expect":{"dialog.kind":"task","dialog.ready":true}},
+    {"control":{"keys":["escape"]},"wait":350,"inspect":"layout","label":"form-closed","expect":{"dialog":null}}
+  ]
+}

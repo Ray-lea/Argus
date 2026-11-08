@@ -14,6 +14,82 @@ pub(super) struct Ask {
     pub then: Handler,
 }
 
+#[cfg(test)]
+mod frame_tests {
+    use super::{DialogFrame, DialogLayout};
+    use gpui_kit::gpui::{ScrollHandle, px};
+    use std::time::{Duration, Instant};
+
+    fn frame(now: Instant) -> DialogFrame {
+        DialogFrame {
+            top: px(0.),
+            viewport: px(-1.),
+            from: px(0.),
+            to: px(0.),
+            since: now,
+            clip: None,
+            body_height: px(0.),
+            scroll: ScrollHandle::new(),
+        }
+    }
+
+    #[test]
+    fn asynchronous_release_content_stays_centered_while_growing_and_shrinking() {
+        let now = Instant::now();
+        let motion = Duration::from_millis(200);
+        let layout = DialogLayout {
+            viewport: px(900.),
+            edge: px(32.),
+            limit: px(868.),
+            centered: true,
+        };
+        let mut frame = frame(now);
+        frame.place(px(240.), layout, now, motion);
+        assert_eq!(frame.top, px(330.));
+        frame.place(px(1800.), layout, now, motion);
+        for ms in [0, 50, 100, 200] {
+            let (height, _) =
+                frame.place(px(1800.), layout, now + Duration::from_millis(ms), motion);
+            assert!((f32::from(frame.top + height / 2.) - 450.).abs() < 0.01);
+        }
+        assert_eq!(frame.top, px(32.));
+        assert_eq!(frame.to, px(836.));
+        let (height, _) = frame.place(
+            px(240.),
+            layout,
+            now + Duration::from_secs(1),
+            Duration::ZERO,
+        );
+        assert_eq!(frame.top + height / 2., px(450.));
+    }
+
+    #[test]
+    fn forms_keep_their_top_anchor_and_resize_recenters_them() {
+        let now = Instant::now();
+        let layout = DialogLayout {
+            viewport: px(900.),
+            edge: px(32.),
+            limit: px(868.),
+            centered: false,
+        };
+        let mut frame = frame(now);
+        frame.place(px(240.), layout, now, Duration::ZERO);
+        frame.place(px(1800.), layout, now, Duration::ZERO);
+        assert_eq!(frame.top, px(330.));
+        assert_eq!(frame.to, px(538.));
+        frame.place(
+            px(240.),
+            DialogLayout {
+                viewport: px(800.),
+                ..layout
+            },
+            now,
+            Duration::ZERO,
+        );
+        assert_eq!(frame.top, px(280.));
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct Modal {
     pub id: u64,
@@ -28,10 +104,9 @@ pub(super) struct Modal {
 }
 
 /// Where a shown dialog sits and how tall it is drawn (`Desktop::surface`).
-/// It is centred once, when it first shows; when its content grows or
-/// shrinks it keeps its top edge and eases to the new height, up to what
-/// fits above the window's bottom margin, past which its body scrolls.
-#[derive(Clone, Copy)]
+/// Reader dialogs stay centred as content arrives. Forms keep their initial
+/// top edge while easing to the new height. Their bodies scroll at the limit.
+#[derive(Clone)]
 pub(super) struct DialogFrame {
     /// The top edge in the window.
     top: Pixels,
@@ -45,6 +120,16 @@ pub(super) struct DialogFrame {
     /// height leaves it. `None` once its content is taller than the dialog
     /// can grow and the height has settled; then the body scrolls.
     clip: Option<Pixels>,
+    body_height: Pixels,
+    scroll: ScrollHandle,
+}
+
+#[derive(Clone, Copy)]
+struct DialogLayout {
+    viewport: Pixels,
+    edge: Pixels,
+    limit: Pixels,
+    centered: bool,
 }
 
 impl DialogFrame {
@@ -56,6 +141,46 @@ impl DialogFrame {
         } else {
             self.from + (self.to - self.from) * theme::ease_move(t)
         }
+    }
+
+    fn place(
+        &mut self,
+        natural: Pixels,
+        layout: DialogLayout,
+        now: Instant,
+        length: Duration,
+    ) -> (Pixels, Pixels) {
+        let DialogLayout {
+            viewport,
+            edge,
+            limit,
+            centered,
+        } = layout;
+        if self.viewport != viewport {
+            let fits = natural.min((viewport - edge * 2.).max(px(0.))).min(limit);
+            self.top = ((viewport - fits) / 2.).max(edge);
+            self.viewport = viewport;
+            self.from = fits;
+            self.to = fits;
+        }
+        let cap = if centered {
+            viewport - edge * 2.
+        } else {
+            viewport - self.top - edge
+        }
+        .min(limit)
+        .max(px(0.));
+        let target = natural.min(cap);
+        if target != self.to {
+            self.from = self.height(now, length);
+            self.to = target;
+            self.since = now;
+        }
+        let height = self.height(now, length);
+        if centered {
+            self.top = ((viewport - height) / 2.).max(edge);
+        }
+        (height, cap)
     }
 }
 
@@ -529,7 +654,9 @@ impl Desktop {
             return;
         }
         self.ui.dialog_leaving = Some((id, Instant::now(), cancelled));
-        if cx.reduce_motion() {
+        let shown = self.ui.dialog_shown.borrow().contains_key(&id);
+        // A measuring (still transparent) dialog has no fade clock to finish.
+        if cx.reduce_motion() || !shown {
             self.finish_leaving(id, window, cx);
             return;
         }
@@ -686,23 +813,48 @@ impl Desktop {
     /// held to the room the dialog's drawn height leaves it
     /// (`DialogFrame::clip`): content that fits, or that the dialog is still
     /// easing toward, never makes it scroll.
-    pub(in crate::frontend) fn dialog_body(&self, id: u64) -> Div {
+    pub(in crate::frontend) fn dialog_body(&self, id: u64) -> Stateful<Div> {
         let parts = self.ui.dialog_parts.clone();
-        let clip = self
+        let (height, clipping, scroll) = self
             .ui
             .dialog_frames
             .borrow()
             .get(&id)
-            .and_then(|frame| frame.clip);
+            .map(|frame| {
+                (
+                    Some(frame.clip.unwrap_or(frame.body_height)),
+                    frame.clip.is_some(),
+                    frame.scroll.clone(),
+                )
+            })
+            .unwrap_or((None, true, ScrollHandle::new()));
+        let measured_scroll = scroll.clone();
         div()
-            .when_some(clip, |d, clip| d.h(clip).overflow_hidden())
-            .on_children_prepainted(move |children, window, cx| {
+            .on_children_prepainted(move |_, window, cx| {
+                // Tracked scrollers store child bounds on the handle instead
+                // of passing them to this listener. Skip the scrollbar overlay.
+                let children = (1..measured_scroll.children_count())
+                    .filter_map(|index| measured_scroll.bounds_for_item(index))
+                    .collect::<Vec<_>>();
                 let top = children.iter().map(|c| c.top()).reduce(|a, b| a.min(b));
                 let bottom = children.iter().map(|c| c.bottom()).reduce(|a, b| a.max(b));
                 if let Some((top, bottom)) = top.zip(bottom) {
                     note_part(&parts, (id, 0), top, bottom - top, window, cx);
                 }
             })
+            .id(("dialog-body", id))
+            .relative()
+            .track_scroll(&scroll)
+            .when_some(height, |d, height| d.h(height))
+            .when(clipping, |d| d.overflow_hidden())
+            .when(!clipping, |d| d.overflow_y_scroll())
+            // Bound the inner native viewport so the component's outer scroller
+            // stays at rest and wheel notches use the shared GPUI glide.
+            .child(scrollbar::scrollbar(
+                format!("dialog-{id}-scrollbar"),
+                &scroll,
+                self.palette.dark,
+            ))
     }
 
     /// Drops what was kept for a dialog that closed.
@@ -714,11 +866,22 @@ impl Desktop {
         parts.remove(&(id, 1));
     }
 
+    pub(in crate::frontend) fn dialog_test_state(&self) -> Value {
+        let Some(modal) = &self.modal else {
+            return Value::Null;
+        };
+        let frames = self.ui.dialog_frames.borrow();
+        let frame = frames.get(&modal.id);
+        json!({"kind":modal.kind,"ready":frame.is_some() && self.ui.dialog_shown.borrow().contains_key(&modal.id),
+            "centered":frame.is_some_and(|frame| (f32::from(frame.top+frame.to/2.-frame.viewport/2.)).abs()<0.5),
+            "top":frame.map(|frame|f32::from(frame.top)),"height":frame.map(|frame|f32::from(frame.to)),
+            "scrollY":frame.map(|frame|f32::from(-frame.scroll.offset().y))})
+    }
+
     /// The common dialog surface: width, colours, no close button, Fluent
     /// fade. It opens centred in the window, as the interface's scrim centred
-    /// it, then keeps its top edge while its content changes size: it eases
-    /// to the new height and grows at most to `edge` above the window's
-    /// bottom, past which its body scrolls.
+    /// it. Release readers retain their centre during height transitions;
+    /// forms retain their top edge. Bodies scroll at the available-height limit.
     fn surface(
         &self,
         dialog: Dialog,
@@ -770,23 +933,24 @@ impl Desktop {
                     to: natural,
                     since: now,
                     clip: None,
+                    body_height: px(0.),
+                    scroll: ScrollHandle::new(),
                 });
-                if frame.viewport != viewport {
-                    // Centred when it first shows, and again in a resized window.
-                    let fits = natural.min(viewport - edge * 2.).min(limit);
-                    frame.top = ((viewport - fits) / 2.).max(edge);
-                    frame.viewport = viewport;
-                    frame.from = fits;
-                    frame.to = fits;
-                }
-                let cap = (viewport - frame.top - edge).min(limit).max(px(0.));
-                let target = natural.min(cap);
-                if target != frame.to {
-                    frame.from = frame.height(now, length);
-                    frame.to = target;
-                    frame.since = now;
-                }
-                let height = frame.height(now, length);
+                let centered = self
+                    .find_modal(id)
+                    .is_some_and(|modal| matches!(modal.kind.as_str(), "update" | "whatsnew"));
+                let (height, cap) = frame.place(
+                    natural,
+                    DialogLayout {
+                        viewport,
+                        edge,
+                        limit,
+                        centered,
+                    },
+                    now,
+                    length,
+                );
+                let target = frame.to;
                 let easing = height != frame.to;
                 if easing {
                     window.request_animation_frame();
@@ -795,6 +959,7 @@ impl Desktop {
                 // pixels never leaves a fraction of a pixel to scroll.
                 frame.clip =
                     (easing || natural <= cap).then(|| (height - footer - px(3.)).max(px(0.)));
+                frame.body_height = (height - footer - px(2.)).max(px(0.));
                 if let Some(ms) = scrollbar::trace_ms() {
                     println!(
                         "{}",
@@ -1775,6 +1940,25 @@ impl Desktop {
                                                     None,
                                                     Tone::Plain,
                                                 )
+                                                .when(self.options.test, |button| {
+                                                    let anchors = self.ui.anchors.clone();
+                                                    button.child(
+                                                        canvas(
+                                                            move |bounds, _, _| {
+                                                                anchors.borrow_mut().insert(
+                                                                    format!(
+                                                                        "toast-action-{id}-{index}"
+                                                                    )
+                                                                    .into(),
+                                                                    bounds,
+                                                                );
+                                                            },
+                                                            |_, _, _, _| {},
+                                                        )
+                                                        .absolute()
+                                                        .inset_0(),
+                                                    )
+                                                })
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {
                                                         if this.ui.toasts.iter().any(|t| {

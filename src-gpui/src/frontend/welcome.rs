@@ -214,9 +214,9 @@ impl Desktop {
         let Some(status) = self.data.get("updates") else {
             return;
         };
-        let state = text(status, "state");
+        let state = text(status, "state").to_owned();
         let version = text(status, "version").to_owned();
-        if version.is_empty() || !matches!(state, "ready" | "available") {
+        if version.is_empty() || !matches!(state.as_str(), "ready" | "available") {
             return;
         }
         let announced = self.prefs.get::<Option<String>>("update.announced", None);
@@ -227,6 +227,11 @@ impl Desktop {
         if self.modal.as_ref().is_some_and(|m| m.kind == "update") {
             return;
         }
+        self.show_update_notice(&state, &version);
+        cx.notify();
+    }
+
+    pub(in crate::frontend) fn show_update_notice(&mut self, state: &str, version: &str) {
         let open: Handler =
             Rc::new(|this, window, cx| this.open_dialog("update", json!({}), window, cx));
         self.toast_with(
@@ -242,7 +247,6 @@ impl Desktop {
             10000,
             vec![(label("updates.view"), open)],
         );
-        cx.notify();
     }
 
     /// Places `parts` where the catalog text names them (`{name}`): a
