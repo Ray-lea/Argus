@@ -473,6 +473,7 @@ fn tooltip_text(
         // screen-only halo reported on NVIDIA composition over Mica.
         .shadow_none()
         .font_family(family)
+        .font_features(theme::tabular())
         .text_size(theme::font(TOOLTIP_SIZE))
         .line_height(relative(TOOLTIP_LINE_HEIGHT));
     tooltip.text_style().font_fallbacks = Some(fallbacks);
@@ -492,6 +493,7 @@ pub(in crate::frontend) fn wrapping_tooltip(
     let (family, fallbacks) = theme::tooltip_font(cx);
     let mut tooltip_font = font(family);
     tooltip_font.fallbacks = Some(fallbacks);
+    tooltip_font.features = theme::tabular();
     let size = theme::font(TOOLTIP_SIZE);
     let natural = text
         .split('\n')

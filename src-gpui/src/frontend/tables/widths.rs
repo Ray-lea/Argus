@@ -38,7 +38,7 @@ pub(super) struct Contents<'a> {
 /// wider value still widens it.
 fn envelope(field: &Field, bits: bool) -> &'static [&'static str] {
     match field.kind {
-        CellKind::Percent => &["100", "8.8"],
+        CellKind::Percent => &["100%", "8.8%"],
         CellKind::Memory if field.key.starts_with("io") && field.key.ends_with("Total") => {
             &["888.8 GB", "8888 KB"]
         }

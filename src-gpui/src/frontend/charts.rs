@@ -410,6 +410,7 @@ impl FrameCaptions {
                     .justify_between()
                     .gap_3()
                     .font_family(family.clone())
+                    .font_features(theme::tabular())
                     .text_size(theme::font(11.))
                     .line_height(relative(1.4))
                     .text_color(self.color)

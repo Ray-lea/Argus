@@ -289,7 +289,7 @@ fn cell(row: &Row, field: &Field) -> String {
             .unwrap_or_else(missing),
         CellKind::Percent => row
             .metric(field.key)
-            .map(theme::cpu)
+            .map(|value| format!("{}%", theme::cpu(value)))
             .unwrap_or_else(missing),
         CellKind::Memory => row
             .metric(field.key)

@@ -287,6 +287,8 @@ impl gpui_kit::base::RootPlugin for ProductSurface {
         // to DirectWrite, an English system locale renders Chinese in the
         // Japanese Yu Gothic UI.
         surface.text_style().font_fallbacks = Some(font_fallbacks(cx));
+        // Keep changing readings stable across pages, dialogs and notices.
+        surface.text_style().font_features = Some(tabular());
         // The page, dialogs and notices inherit the shared body line height.
         surface.text_style().line_height = Some(line_height());
         if crate::platform::supports_backdrop() {
@@ -409,6 +411,7 @@ pub fn font_dimension(key: &str) -> Pixels {
 pub fn text_run(text: &str, weight: FontWeight, cx: &App) -> TextRun {
     let mut font = gpui_kit::font(cx.theme().font_family.clone());
     font.fallbacks = Some(font_fallbacks(cx));
+    font.features = tabular();
     font.weight = weight;
     TextRun {
         len: text.len(),
@@ -418,6 +421,13 @@ pub fn text_run(text: &str, weight: FontWeight, cx: &App) -> TextRun {
         underline: None,
         strikethrough: None,
     }
+}
+/// Equal-width digits shared by rendered text and its width measurements.
+pub fn tabular() -> FontFeatures {
+    static FEATURES: std::sync::OnceLock<FontFeatures> = std::sync::OnceLock::new();
+    FEATURES
+        .get_or_init(|| FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)])))
+        .clone()
 }
 /// The width of one line of interface text at `size`.
 pub fn text_width(text: &str, size: Pixels, window: &Window, cx: &App) -> Pixels {
