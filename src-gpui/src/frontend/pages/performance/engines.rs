@@ -1029,14 +1029,6 @@ impl Desktop {
                 }),
             ));
         }
-        rows.push((
-            label("performance.gpu.dedicatedMemory"),
-            plain(format!("{} GB", gb(number(info, "dedicatedTotal")))),
-        ));
-        rows.push((
-            label("performance.gpu.sharedMemory"),
-            plain(format!("{} GB", gb(number(info, "sharedTotal")))),
-        ));
         for (field, title) in [
             ("driverVersion", "performance.gpu.driverVersion"),
             ("driverDate", "performance.gpu.driverDate"),
