@@ -12,6 +12,11 @@ pub struct AtaIdentity {
     pub smart_enabled: Option<bool>,
     pub rotation_rpm: Option<u16>,
     pub solid_state: Option<bool>,
+    pub major_version: Option<u8>,
+    pub sata_current_gbps: Option<f32>,
+    pub sata_maximum_gbps: Option<f32>,
+    pub write_cache_supported: Option<bool>,
+    pub ncq_supported: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +48,14 @@ pub(super) fn identify(data: &[u8]) -> Option<AtaIdentity> {
         super::nvme::text(&bytes)
     };
     let rotation = word(217);
+    let sata = word(76);
+    let sata_valid = sata != 0 && sata != u16::MAX && sata & 1 == 0;
+    let speed = |generation| match generation {
+        1 => Some(1.5),
+        2 => Some(3.),
+        3 => Some(6.),
+        _ => None,
+    };
     let model = text(27, 47);
     let serial_number = text(10, 20);
     // A successful SAT transport can still contain a zero or unrelated sector.
@@ -61,6 +74,20 @@ pub(super) fn identify(data: &[u8]) -> Option<AtaIdentity> {
             0x0401..=0xfffe => Some(false),
             _ => None,
         },
+        major_version: (word(80) != u16::MAX)
+            .then(|| (1..=12).rev().find(|bit| word(80) & (1 << bit) != 0))
+            .flatten(),
+        sata_current_gbps: sata_valid.then(|| speed((word(77) >> 1) & 7)).flatten(),
+        sata_maximum_gbps: sata_valid
+            .then(|| {
+                (1..=3)
+                    .rev()
+                    .find(|bit| sata & (1 << bit) != 0)
+                    .and_then(speed)
+            })
+            .flatten(),
+        write_cache_supported: (word(83) & 0xc000 == 0x4000).then(|| word(82) & (1 << 5) != 0),
+        ncq_supported: sata_valid.then_some(sata & (1 << 8) != 0),
     })
 }
 
@@ -177,5 +204,36 @@ mod tests {
         assert!(identify(&data).is_some());
         data[20] ^= 1;
         assert!(identify(&data).is_none());
+    }
+
+    #[test]
+    fn identify_reports_ata_revision_sata_link_and_features() {
+        let mut data = [0; 512];
+        data[54..62].copy_from_slice(b"iDks    ");
+        for (index, value) in [
+            (76, 0x10eu16),
+            (77, 4),
+            (80, 0x07f0),
+            (82, 0x21),
+            (83, 0x4000),
+            (217, 1),
+        ] {
+            data[index * 2..index * 2 + 2].copy_from_slice(&value.to_le_bytes());
+        }
+        let disk = identify(&data).unwrap();
+        assert_eq!(disk.major_version, Some(10));
+        assert_eq!(disk.sata_current_gbps, Some(3.));
+        assert_eq!(disk.sata_maximum_gbps, Some(6.));
+        assert_eq!(disk.write_cache_supported, Some(true));
+        assert_eq!(disk.ncq_supported, Some(true));
+        for index in [76, 77, 80, 83] {
+            data[index * 2..index * 2 + 2].fill(255);
+        }
+        let disk = identify(&data).unwrap();
+        assert!(disk.major_version.is_none());
+        assert!(disk.sata_current_gbps.is_none());
+        assert!(disk.sata_maximum_gbps.is_none());
+        assert!(disk.write_cache_supported.is_none());
+        assert!(disk.ncq_supported.is_none());
     }
 }

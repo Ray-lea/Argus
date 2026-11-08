@@ -1,6 +1,7 @@
 //! On-demand, read-only disk information. Keep device queries off the sampler.
 
 mod ata;
+mod ata_health;
 mod io;
 mod legacy;
 mod nvme;
@@ -12,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize, Serializer};
 
 pub use ata::{AtaAttribute, AtaIdentity};
+pub use ata_health::{AtaHealth, AtaMetric, AtaMetricSource};
 pub use legacy::{SmartHealth, SmartSource};
 pub use scsi::{ScsiCounter, ScsiIdentity};
 
@@ -56,6 +58,8 @@ pub struct DiskDetails {
     pub ata_identity: Option<AtaIdentity>,
     pub scsi_identity: Option<ScsiIdentity>,
     pub smart_health: Option<SmartHealth>,
+    /// Derived locally from the model and raw attributes, including older service replies.
+    pub ata_health: Option<AtaHealth>,
     pub via_service: bool,
     pub queries: Vec<DiskQueryStatus>,
 }
@@ -139,6 +143,7 @@ impl DiskDetails {
             ata_identity: None,
             scsi_identity: None,
             smart_health: None,
+            ata_health: None,
             via_service: false,
             queries: Vec::new(),
         }
@@ -150,7 +155,9 @@ impl DiskDetails {
 /// Each call reads fresh data exactly once and closes every handle on return.
 /// Call on a worker. No cache, polling thread, timer, or sampler integration.
 pub fn query(index: u32) -> DiskDetails {
-    io::query(index)
+    let mut details = io::query(index);
+    details.refresh_ata_health();
+    details
 }
 
 /// Fixed read-only ATA/SAT/SCSI queries, called by the existing service.
@@ -159,10 +166,16 @@ pub fn query(index: u32) -> DiskDetails {
 pub fn query_privileged(index: u32) -> DiskDetails {
     let mut details = query(index);
     legacy::supplement(&mut details);
+    details.refresh_ata_health();
     details
 }
 
 impl DiskDetails {
+    /// Decode existing attributes without querying hardware or changing the service protocol.
+    pub fn refresh_ata_health(&mut self) {
+        self.ata_health = ata_health::decode(self);
+    }
+
     pub fn needs_smart_supplement(&self) -> bool {
         self.identity.as_ref().is_some_and(|i| {
             matches!(

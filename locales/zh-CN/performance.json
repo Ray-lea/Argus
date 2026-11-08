@@ -308,6 +308,7 @@
     "powerCycles": "通电次数",
     "unsafeShutdowns": "不安全关机",
     "mediaErrors": "介质错误",
+    "uncorrectableErrors": "不可校正错误",
     "reason": {
       "spare": "可用备用空间低于阈值",
       "temperature": "温度超出阈值",
@@ -317,7 +318,8 @@
       "persistentMemory": "持久性内存区域已转为只读",
       "other": "其他严重警告",
       "mediaErrors": "存在介质与数据完整性错误",
-      "worn": "剩余寿命不足 10%"
+      "uncorrectableErrors": "存在不可校正错误",
+      "worn": "剩余寿命不高于 10%"
     },
     "noWarnings": "无",
     "healthMissing": {
@@ -351,7 +353,8 @@
     "feature": {
       "smart": "SMART",
       "trim": "TRIM",
-      "writeCache": "易失性写入缓存"
+      "writeCache": "易失性写入缓存",
+      "ncq": "NCQ"
     },
     "smart": "SMART 属性",
     "smartSource": "NVMe 健康日志",
@@ -425,8 +428,7 @@
       "offlineUncorrectable": "离线不可校正扇区",
       "crc": "接口 CRC 错误",
       "vendor": "厂商属性",
-      "vendorHint": "属性名称采用常见含义，具体含义及原始值单位由厂商定义。原始值以十六进制显示。",
-      "thresholdsMissing": "部分属性未提供阈值，显示“—”。"
+      "lifeIndicator": "寿命指标"
     },
     "scsi": {
       "sense": "设备健康告警：ASC {asc}，ASCQ {ascq}",

@@ -100,6 +100,17 @@ fn percent(value: &Value) -> String {
         .map(|v| format!("{v}%"))
         .unwrap_or_else(missing)
 }
+fn sata_link(value: &Value) -> Option<String> {
+    value.as_f64().map(|speed| format!("SATA {speed} Gb/s"))
+}
+fn ata_standard(value: &Value) -> Option<String> {
+    match value.as_u64()? {
+        version @ 1..=7 => Some(format!("ATA/ATAPI-{version}")),
+        8 => Some("ATA8-ACS".into()),
+        version @ 9..=12 => Some(format!("ACS-{}", version - 7)),
+        _ => None,
+    }
+}
 fn celsius(value: &Value) -> String {
     value
         .as_f64()
@@ -827,6 +838,7 @@ impl Desktop {
         let p = self.palette;
         let identity = &details["identity"];
         let nvme = &details["nvmeIdentity"];
+        let ata = &details["ataIdentity"];
         let plain = |value: String| div().child(value).into_any_element();
         let either = |key: &str| {
             identity_text(details, key)
@@ -878,8 +890,8 @@ impl Desktop {
             plain(interface(text(identity, "bus"))),
         )];
         let pcie = &details["pcieLink"];
-        let current = link(&pcie["current"]);
-        let maximum = link(&pcie["maximum"]);
+        let current = link(&pcie["current"]).or_else(|| sata_link(&ata["sataCurrentGbps"]));
+        let maximum = link(&pcie["maximum"]).or_else(|| sata_link(&ata["sataMaximumGbps"]));
         if let Some(transfer) = match (current, maximum) {
             (Some(current), Some(maximum)) if current != maximum => Some(tr!(
                 "performance.disk.linkMaximum",
@@ -902,6 +914,8 @@ impl Desktop {
                     format!("NVMe {}.{}", part("major"), part("minor"))
                 }),
             ));
+        } else if let Some(standard) = ata_standard(&ata["majorVersion"]) {
+            link_rows.push((label("performance.disk.standard"), plain(standard)));
         }
         if let (Some(logical), Some(physical)) = (
             details["logicalSectorBytes"].as_u64(),
@@ -927,7 +941,11 @@ impl Desktop {
                 boolean(details, "trimEnabled") || boolean(nvme, "datasetManagement"),
                 "trim",
             ),
-            (boolean(nvme, "volatileWriteCache"), "writeCache"),
+            (
+                boolean(nvme, "volatileWriteCache") || boolean(ata, "writeCacheSupported"),
+                "writeCache",
+            ),
+            (boolean(ata, "ncqSupported"), "ncq"),
         ]
         .into_iter()
         .filter(|(present, _)| *present)

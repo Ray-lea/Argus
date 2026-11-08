@@ -320,6 +320,7 @@
     "powerCycles": "Power cycles",
     "unsafeShutdowns": "Unsafe shutdowns",
     "mediaErrors": "Media errors",
+    "uncorrectableErrors": "Uncorrectable errors",
     "reason": {
       "spare": "Available spare below threshold",
       "temperature": "Temperature beyond threshold",
@@ -329,7 +330,8 @@
       "persistentMemory": "Persistent memory region read-only",
       "other": "Other critical warning",
       "mediaErrors": "Media and data integrity errors present",
-      "worn": "Less than 10% life remaining"
+      "uncorrectableErrors": "Uncorrectable errors present",
+      "worn": "10% or less life remaining"
     },
     "noWarnings": "None",
     "healthMissing": {
@@ -363,7 +365,8 @@
     "feature": {
       "smart": "SMART",
       "trim": "TRIM",
-      "writeCache": "Volatile write cache"
+      "writeCache": "Volatile write cache",
+      "ncq": "NCQ"
     },
     "smart": "SMART attributes",
     "smartSource": "NVMe health log",
@@ -437,8 +440,7 @@
       "offlineUncorrectable": "Offline uncorrectable sectors",
       "crc": "Interface CRC errors",
       "vendor": "Vendor attribute",
-      "vendorHint": "Attribute names use common meanings. Exact meanings and raw units are vendor-defined. Raw values are hexadecimal.",
-      "thresholdsMissing": "Some attributes do not report a threshold and show “—”."
+      "lifeIndicator": "Life indicator"
     },
     "scsi": {
       "sense": "Device health alert: ASC {asc}, ASCQ {ascq}",

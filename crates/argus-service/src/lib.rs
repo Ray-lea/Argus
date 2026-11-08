@@ -159,6 +159,7 @@ pub fn disk_details(index: u32) -> argus_core::hardware::disk_details::DiskDetai
         Ok(Routed::Replied(reply)) => match *reply {
             Reply::DiskDetails(mut details) if details.index == index => {
                 details.via_service = true;
+                details.refresh_ata_health();
                 return *details;
             }
             _ => DiskQueryState::Unavailable,
