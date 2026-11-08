@@ -206,6 +206,7 @@ impl RuleRunner {
         self.submit(
             processes
                 .iter()
+                .filter(|p| p.create_time > 0)
                 .map(|p| Target {
                     pid: p.pid,
                     created: p.create_time,
@@ -569,6 +570,10 @@ mod tests {
 
     fn process(pid: u32, created: i64) -> ProcessRow {
         ProcessRow {
+            listed_by_roster: false,
+            counters_pending: false,
+            sequence_number: None,
+            instance_key: None,
             stale: false,
             sample_reused: false,
             counters: Default::default(),

@@ -906,6 +906,10 @@ impl Desktop {
     }
     fn process_menu(&self, row: &Row) -> Vec<MenuItem> {
         let group = row.members.len() > 1;
+        let identity_ready = row
+            .members
+            .iter()
+            .all(|member| number(member, "createTime") >= 0.);
         let args = json!({"members":row.members,"name":row.title});
         let mut items = Vec::new();
         if self.view == "tree" && row.expandable {
@@ -932,6 +936,7 @@ impl Desktop {
             )
             .icon("EndIcon")
             .hint("Del")
+            .disabled(!identity_ready)
             .danger(),
         );
         if !group {
@@ -940,7 +945,8 @@ impl Desktop {
                     label("common.endProcessTree"),
                     Action::Dialog("endTree".into(), args.clone()),
                 )
-                .icon("BranchEndIcon"),
+                .icon("BranchEndIcon")
+                .disabled(!identity_ready),
             );
         }
         if self.data.get("desktopShell").is_some_and(|shell| {
@@ -972,6 +978,7 @@ impl Desktop {
         items.push(MenuItem::separator());
         items.push(
             MenuItem::new(label("processes.menu.setPriority"), Action::CloseOverlay)
+                .disabled(!identity_ready)
                 .icon("GaugeIcon")
                 .submenu(
                     PRIORITIES
@@ -998,6 +1005,7 @@ impl Desktop {
                 ),
             )
             .icon("LeafIcon")
+            .disabled(!identity_ready)
             .checked(efficient),
         );
         items.push(MenuItem::new(

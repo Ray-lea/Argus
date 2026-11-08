@@ -97,9 +97,13 @@ impl Collector {
         }
 
         system.process_count = processes.len() as u32;
+        if system.thread_count == 0 {
+            system.thread_count = processes.iter().map(|p| p.threads).sum();
+        }
+        if system.handle_count == 0 {
+            system.handle_count = processes.iter().map(|p| p.handles).sum();
+        }
         for p in &processes {
-            system.thread_count += p.threads;
-            system.handle_count += p.handles;
             system.io_read += p.io_read;
             system.io_write += p.io_write;
             system.io_other += p.io_other;

@@ -71,7 +71,53 @@ pub fn values(value: &Value) -> &[Value] {
     value.as_array().map(Vec::as_slice).unwrap_or_default()
 }
 pub fn identity(p: &Value) -> String {
+    if let Some(key) = p["instanceKey"].as_str() {
+        return key.to_owned();
+    }
     format!("{}:{}", p["pid"], p["createTime"])
+}
+
+pub fn parent_predates(parent: &Value, child: &Value) -> bool {
+    if let Some((parent, child)) = parent["sequenceNumber"]
+        .as_u64()
+        .zip(child["sequenceNumber"].as_u64())
+    {
+        return parent <= child;
+    }
+    let a = number(parent, "createTime");
+    let b = number(child, "createTime");
+    a >= 0. && b >= 0. && a <= b
+}
+
+/// Identity and independent GPU/network sources can precede native counters.
+pub fn process_metric(process: &Value, key: &str) -> Option<f64> {
+    let key = columns::raw_key(key);
+    if key == "createTime" && number(process, key) <= 0. {
+        return None;
+    }
+    if boolean(process, "countersPending")
+        && !matches!(
+            key,
+            "pid"
+                | "ppid"
+                | "createTime"
+                | "gpu"
+                | "gpuDedicated"
+                | "gpuShared"
+                | "netSent"
+                | "netReceived"
+        )
+    {
+        return None;
+    }
+    if matches!(key, "netSent" | "netReceived") && number(process, "createTime") < 0. {
+        return None;
+    }
+    process[key].as_f64().or_else(|| {
+        process[key]
+            .as_bool()
+            .map(|value| f64::from(u8::from(value)))
+    })
 }
 pub fn shared_host(name: &str) -> bool {
     matches!(
@@ -261,47 +307,50 @@ impl Row {
                 | "netReceived"
         ) && columns::definition(key).is_some_and(|column| {
             !matches!(column.format, columns::Format::Name | columns::Format::Text)
-        }) && self
-            .members
-            .iter()
-            .any(|member| boolean(member, "stale") || boolean(member, "sampleReused"))
+        }) && self.members.iter().any(|member| {
+            boolean(member, "stale")
+                || boolean(member, "sampleReused")
+                || boolean(member, "countersPending")
+        })
     }
 
     /// Both display and sorting use the last successful counters; null stays unknown.
     fn metric_value(&self, key: &str) -> Option<f64> {
         if matches!(key, "gpuDedicated" | "gpuShared") {
             return self.members.iter().try_fold(0., |sum, member| {
-                member[key].as_f64().map(|value| sum + value)
+                process_metric(member, key).map(|value| sum + value)
             });
         }
         if columns::definition(key).is_some_and(|column| !column.aggregate) {
             if self.section.is_some() || self.members.len() != 1 {
                 return None;
             }
-            let value = &self.members[0][columns::raw_key(key)];
-            return value
-                .as_f64()
-                .or_else(|| value.as_bool().map(|value| f64::from(u8::from(value))));
+            return process_metric(&self.members[0], key);
         }
         let key = match key {
             "mem" => "privateWs",
             other => other,
         };
         if key == "io" {
-            return Some(
-                ["ioRead", "ioWrite", "ioOther"]
-                    .iter()
-                    .map(|k| self.members.iter().map(|p| number(p, k)).sum::<f64>())
-                    .sum(),
-            );
+            return self
+                .members
+                .iter()
+                .filter_map(|p| {
+                    if boolean(p, "countersPending") {
+                        None
+                    } else {
+                        Some(number(p, "ioRead") + number(p, "ioWrite") + number(p, "ioOther"))
+                    }
+                })
+                .reduce(|sum, value| sum + value);
         }
         if key == "net" {
-            return Some(
-                self.members
-                    .iter()
-                    .map(|p| number(p, "netReceived") + number(p, "netSent"))
-                    .sum(),
-            );
+            return self
+                .members
+                .iter()
+                .filter(|p| number(p, "createTime") >= 0.)
+                .map(|p| number(p, "netReceived") + number(p, "netSent"))
+                .reduce(|sum, value| sum + value);
         }
         if key == "gpu"
             && let Some(usage) = &self.gpu
@@ -310,7 +359,7 @@ impl Row {
         }
         self.members
             .iter()
-            .filter_map(|p| p[key].as_f64())
+            .filter_map(|p| process_metric(p, key))
             .reduce(|sum, value| sum + value)
     }
 
@@ -599,10 +648,7 @@ fn parent_of<'a>(process: &Value, by_pid: &HashMap<u64, &'a Value>) -> Option<&'
         .as_u64()
         .filter(|ppid| *ppid != 0)
         .and_then(|ppid| by_pid.get(&ppid).copied())
-        .filter(|parent| {
-            parent["pid"] != process["pid"]
-                && number(parent, "createTime") <= number(process, "createTime")
-        })
+        .filter(|parent| parent["pid"] != process["pid"] && parent_predates(parent, process))
 }
 
 /// Only actual parents are expanded; leaves that later gain children stay folded.
@@ -757,8 +803,8 @@ pub struct Timeline {
     pub samples: HashMap<String, VecDeque<(f64, Option<f64>)>>,
     /// Sample times of the process and app histories, oldest first.
     times: VecDeque<f64>,
-    /// CPU and private working set of every live process, by PID and creation time.
-    processes: HashMap<(u64, i64), Usage>,
+    /// CPU and private working set keyed by a stable process lifetime identity.
+    processes: HashMap<String, Usage>,
     /// The same per app (group key): totals of whichever members ran at the time.
     groups: HashMap<String, Usage>,
     /// Counts pushes; usage not updated in the latest one belongs to an exited process.
@@ -845,12 +891,9 @@ impl Timeline {
             )
         };
         if let Some(rest) = key.strip_prefix("process.") {
-            // The identity is `pid:createTime`, as the rows key processes.
+            // The same lifetime identity used by selection and process rows.
             let (id, metric) = rest.rsplit_once('.')?;
-            let (pid, created) = id.split_once(':')?;
-            let usage = self
-                .processes
-                .get(&(pid.parse().ok()?, created.parse().ok()?))?;
+            let usage = self.processes.get(id)?;
             return points(usage, metric);
         }
         if let Some(rest) = key.strip_prefix("group.") {
@@ -975,10 +1018,10 @@ impl Timeline {
         self.tick = self.tick.wrapping_add(1);
         let tick = self.tick;
         for p in values(&snapshot["processes"]) {
-            let (Some(pid), Some(created)) = (p["pid"].as_u64(), p["createTime"].as_i64()) else {
+            if p["pid"].as_u64().is_none() {
                 continue;
-            };
-            let usage = self.processes.entry((pid, created)).or_default();
+            }
+            let usage = self.processes.entry(identity(p)).or_default();
             if usage.tick == tick {
                 continue;
             }
@@ -993,7 +1036,10 @@ impl Timeline {
                 }
             }
             let reading = |key: &str| {
-                if boolean(p, "stale") || boolean(p, "sampleReused") {
+                if boolean(p, "stale")
+                    || boolean(p, "sampleReused")
+                    || boolean(p, "countersPending")
+                {
                     f64::NAN
                 } else {
                     p[key].as_f64().unwrap_or(f64::NAN)
@@ -1484,6 +1530,34 @@ mod tests {
         assert_eq!(rows[0].members.len(), 2);
         assert_eq!(rows[1].raw["pid"], 42);
     }
+    #[test]
+    fn identity_only_rows_keep_selection_and_history_when_counters_arrive() {
+        let pending = json!({"pid":42,"ppid":5,"createTime":-1,"sequenceNumber":100,"instanceKey":"42:seq:100","name":"new.exe","cpu":0,"privateWs":0,"ioRead":0,"countersPending":true});
+        let mut ready = pending.clone();
+        ready["createTime"] = json!(1234);
+        ready["cpu"] = json!(30);
+        ready["privateWs"] = json!(4096);
+        ready["countersPending"] = json!(false);
+        let row = Row::process(pending.clone(), 0);
+        assert_eq!(row.metric("pid"), Some(42.));
+        assert_eq!(row.metric("cpu"), None);
+        assert_eq!(row.metric("mem"), None);
+        assert_eq!(row.metric("io"), None);
+        assert_eq!(row.metric("createTime"), None);
+        assert_eq!(identity(&pending), identity(&ready));
+        let mut timeline = Timeline::new();
+        timeline.push(&json!({"timestamp":0,"processes":[pending]}), 1000.);
+        timeline.push(&json!({"timestamp":1000,"processes":[ready]}), 1000.);
+        assert_eq!(
+            timeline.points("process.42:seq:100.cpu").unwrap(),
+            vec![(0., None), (1000., Some(30.))]
+        );
+        let parent = json!({"pid":5,"sequenceNumber":90,"createTime":-1});
+        let child = json!({"pid":42,"sequenceNumber":100,"createTime":-1});
+        assert!(parent_predates(&parent, &child));
+        assert!(!parent_predates(&child, &parent));
+    }
+
     #[test]
     fn a_process_query_outage_keeps_the_last_numeric_order() {
         let mut processes = vec![

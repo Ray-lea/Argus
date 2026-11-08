@@ -1,4 +1,6 @@
 {
+  "identityPending": "Confirming the process identity. Try again shortly.",
+  "countersPending": "Collecting resource counters for this process.",
   "refreshPending": "Updating process data. Showing the last successfully collected reading.",
   "diskUnavailable": {
     "pending": "No disk reading yet. A process that has only just appeared gets one at the next refresh.",

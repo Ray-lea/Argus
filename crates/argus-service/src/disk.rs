@@ -269,6 +269,10 @@ mod tests {
 
     fn process(pid: u32, disk: Option<u64>) -> argus_core::ProcessRow {
         argus_core::ProcessRow {
+            listed_by_roster: false,
+            counters_pending: false,
+            sequence_number: None,
+            instance_key: None,
             stale: false,
             sample_reused: false,
             counters: Default::default(),

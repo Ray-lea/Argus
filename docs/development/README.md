@@ -60,6 +60,8 @@ cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史
 
 `sampling_cadence` 每秒采样一次，参数为次数（1–300）。`--trace` 记录固定采集阶段的起止和耗时；输出仅包含时间、序号与计数。可据此区分原生查询延迟和界面刷新问题。原生查询与快照采集可能在不同线程完成，阶段记录按名称配对。
 
+`node scripts/test-process-roster.mjs <标签> target/debug/argus.exe` 启动隔离、不激活的开发测试窗口，并延迟完整计数回复。它仅创建和结束自身的空闲 Node 子进程，检查名单及时增删、计数补齐后保留选择、迟到回复不恢复已退出进程，以及系统曲线继续更新。测试延迟入口只在开发构建的 `--test` 实例中暴露；窗口捕获和结果位于 `target/native-validation/<标签>`，结束时清理测试配置。
+
 `process_sources` 对照完整 `SystemProcessInformation` 快照、仅枚举身份的 `SystemBasicProcessInformation`、轻量名单加缓存句柄逐进程计数三条路径。脚本按正序、逆序各运行一轮，每段排除三次预热，并记录墙钟耗时、线程及进程 CPU 时间、权限覆盖率、内存和句柄开销；超时仅终止自身启动的采集程序。结果位于 `target/process-source-validation/<标签>/report.html` 与同目录 JSONL，追加 `--report-only` 可从已有记录重建报告。工具要求普通权限，只修改自身的功耗限制，不改变系统配置或访问特权服务。
 
 三路覆盖范围不同：轻量名单只有 PID、父 PID 与实例序号；逐进程路径采集累计 CPU 时间、EX2 私有工作集、工作集、提交、通用 I/O 和句柄数，磁盘专用字节、周期法 CPU 占用、线程数与暂停状态仍需其他来源。独立的 `compare` 阶段用前后两次完整快照夹取逐进程读数，按创建时间匹配实例，检查累计 CPU/I/O 计数的区间及内存差异；进程自身从数值校验中排除。能力由实际调用结果判定，接口不受支持时保留原始错误码。

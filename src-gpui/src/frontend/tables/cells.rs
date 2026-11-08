@@ -239,6 +239,13 @@ impl NativeTable {
         let raw = &row.raw;
         if self.page == "processes"
             && row.native_pending(field.key)
+            && row.metric(field.key).is_none()
+            && row.members.iter().any(|p| boolean(p, "countersPending"))
+        {
+            return Some(label("processes.countersPending"));
+        }
+        if self.page == "processes"
+            && row.native_pending(field.key)
             && row.metric(field.key).is_some()
         {
             return Some(label("processes.refreshPending"));
@@ -425,7 +432,10 @@ impl NativeTable {
         if self.page != "services" {
             let image =
                 icon_id(&row.raw).and_then(|id| self.owner.upgrade()?.read(cx).process_image(id));
-            let kernel = processes && row.raw["path"].is_null() && row.members.len() <= 1;
+            let kernel = processes
+                && !boolean(&row.raw, "countersPending")
+                && row.raw["path"].is_null()
+                && row.members.len() <= 1;
             element = element.child(div().relative().size_4().flex_shrink_0().child(
                 if let Some(image) = image {
                     img(image).size_4().into_any_element()

@@ -54,6 +54,8 @@ fn main() {
                 "processes": snapshot.processes.len(),
                 "stale_processes": snapshot.processes.iter().filter(|process| process.stale).count(),
                 "reused_processes": snapshot.processes.iter().filter(|process| process.sample_reused).count(),
+                "roster_processes": snapshot.processes.iter().filter(|process| process.listed_by_roster).count(),
+                "pending_counters": snapshot.processes.iter().filter(|process| process.counters_pending).count(),
                 "timestamp": snapshot.timestamp,
             })
         );

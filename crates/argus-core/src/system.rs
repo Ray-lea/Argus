@@ -202,6 +202,8 @@ impl SystemTracker {
                 ..Default::default()
             };
             if GetPerformanceInfo(&mut pi, pi.cb).is_ok() {
+                s.thread_count = pi.ThreadCount;
+                s.handle_count = pi.HandleCount;
                 let page = pi.PageSize as u64;
                 s.commit_used = pi.CommitTotal as u64 * page;
                 s.commit_limit = pi.CommitLimit as u64 * page;

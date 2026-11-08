@@ -23,6 +23,8 @@ pub const STATUS_BUFFER_TOO_SMALL: i32 = 0xC000_0023_u32 as i32;
 pub const STATUS_BUFFER_OVERFLOW: i32 = 0x8000_0005_u32 as i32;
 
 pub const SYSTEM_PROCESS_ID_INFORMATION: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(88);
+pub const SYSTEM_BASIC_PROCESS_INFORMATION: SYSTEM_INFORMATION_CLASS =
+    SYSTEM_INFORMATION_CLASS(252);
 pub const SYSTEM_EXTENDED_HANDLE_INFORMATION: SYSTEM_INFORMATION_CLASS =
     SYSTEM_INFORMATION_CLASS(64);
 pub const SYSTEM_MEMORY_LIST_INFORMATION: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(80);
@@ -93,6 +95,17 @@ impl UnicodeString {
         String::from_utf16_lossy(s)
     }
 }
+
+#[repr(C)]
+pub struct SystemBasicProcessInformation {
+    pub next: u32,
+    pub pid: HANDLE,
+    pub parent: HANDLE,
+    pub sequence: u64,
+    pub name: UnicodeString,
+}
+
+const _: () = assert!(size_of::<SystemBasicProcessInformation>() == 48);
 
 #[repr(C)]
 pub struct SystemProcessInformation {

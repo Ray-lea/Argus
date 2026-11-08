@@ -455,31 +455,44 @@ impl Desktop {
             close.into_any_element(),
             cx,
         );
-        let sum = |field: &str| picked.members.iter().map(|m| number(m, field)).sum::<f64>();
+        let sum = |field: &str| {
+            picked
+                .members
+                .iter()
+                .filter_map(|m| model::process_metric(m, field))
+                .reduce(|a, b| a + b)
+        };
         let (cpu, memory) = (sum("cpu"), sum("privateWs"));
         let prefix = if picked.group { "group" } else { "process" };
         let charts = div()
             .mt(px(16.))
             .flex()
             .gap(px(8.))
-            .child(self.details_mini_chart(
-                "details-cpu",
-                label("common.resource.cpu"),
-                format!("{}%", theme::cpu(cpu)),
-                &format!("{prefix}.{key}.cpu"),
-                p.cpu,
-                Some(100.),
-                cx,
-            ))
-            .child(self.details_mini_chart(
-                "details-memory",
-                label("common.resource.memory"),
-                theme::memory(memory),
-                &format!("{prefix}.{key}.mem"),
-                p.memory,
-                None,
-                cx,
-            ));
+            .child(
+                self.details_mini_chart(
+                    "details-cpu",
+                    label("common.resource.cpu"),
+                    cpu.map(|v| format!("{}%", theme::cpu(v)))
+                        .unwrap_or_else(|| label("format.missing")),
+                    &format!("{prefix}.{key}.cpu"),
+                    p.cpu,
+                    Some(100.),
+                    cx,
+                ),
+            )
+            .child(
+                self.details_mini_chart(
+                    "details-memory",
+                    label("common.resource.memory"),
+                    memory
+                        .map(theme::memory)
+                        .unwrap_or_else(|| label("format.missing")),
+                    &format!("{prefix}.{key}.mem"),
+                    p.memory,
+                    None,
+                    cx,
+                ),
+            );
         let mut body = div().flex().flex_col().child(head).child(charts);
 
         let pids: HashSet<u64> = picked
@@ -505,16 +518,22 @@ impl Desktop {
             let mut rows = self.details_resources(&picked.members, true);
             rows.push((
                 label("details.cpuTime"),
-                cpu_time(sum("cpuTime")).into_any_element(),
+                sum("cpuTime")
+                    .map(cpu_time)
+                    .unwrap_or_else(|| label("format.missing"))
+                    .into_any_element(),
             ));
             let earliest = picked
                 .members
                 .iter()
-                .map(|m| number(m, "createTime"))
-                .fold(f64::INFINITY, f64::min);
+                .filter_map(|m| model::process_metric(m, "createTime"))
+                .reduce(f64::min);
             rows.push((
                 label("details.group.earliest"),
-                date_time(earliest).into_any_element(),
+                earliest
+                    .map(date_time)
+                    .unwrap_or_else(|| label("format.missing"))
+                    .into_any_element(),
             ));
             body = body
                 .child(self.details_section_title(label("details.section.resources")))
@@ -627,7 +646,7 @@ impl Desktop {
             .find(|candidate| {
                 !process["ppid"].is_null()
                     && candidate["pid"] == process["ppid"]
-                    && number(candidate, "createTime") <= number(process, "createTime")
+                    && model::parent_predates(candidate, process)
             });
         let parent = match parent {
             Some(parent) => {
@@ -684,11 +703,21 @@ impl Desktop {
             (label("details.parent"), parent),
             (
                 label("details.started"),
-                selectable("details-started", date_time(number(process, "createTime"))),
+                selectable(
+                    "details-started",
+                    model::process_metric(process, "createTime")
+                        .map(date_time)
+                        .unwrap_or_else(missing),
+                ),
             ),
             (
                 label("details.cpuTime"),
-                selectable("details-cpu-time", cpu_time(number(process, "cpuTime"))),
+                selectable(
+                    "details-cpu-time",
+                    model::process_metric(process, "cpuTime")
+                        .map(cpu_time)
+                        .unwrap_or_else(missing),
+                ),
             ),
             (
                 label("details.user"),
@@ -721,16 +750,27 @@ impl Desktop {
                 label("common.efficiencyMode"),
                 selectable(
                     "details-efficiency",
-                    label(if boolean(process, "efficiency") {
-                        "common.on"
+                    if boolean(process, "countersPending") {
+                        missing()
                     } else {
-                        "common.off"
-                    }),
+                        label(if boolean(process, "efficiency") {
+                            "common.on"
+                        } else {
+                            "common.off"
+                        })
+                    },
                 ),
             ),
             (
                 label("details.session"),
-                selectable("details-session", plain(&process["sessionId"])),
+                selectable(
+                    "details-session",
+                    if boolean(process, "countersPending") {
+                        missing()
+                    } else {
+                        plain(&process["sessionId"])
+                    },
+                ),
             ),
         ]
     }
@@ -739,25 +779,40 @@ impl Desktop {
     fn details_resources(&self, members: &[&Value], group: bool) -> Vec<(String, AnyElement)> {
         let p = self.palette;
         let sum = |field: &str| members.iter().map(|m| number(m, field)).sum::<f64>();
+        let measured = |field: &str| {
+            members
+                .iter()
+                .filter_map(|m| model::process_metric(m, field))
+                .reduce(|a, b| a + b)
+        };
         let mut rows = vec![
             (
                 label("details.privateWs"),
-                theme::memory(sum("privateWs")).into_any_element(),
+                measured("privateWs")
+                    .map(theme::memory)
+                    .unwrap_or_else(|| label("format.missing"))
+                    .into_any_element(),
             ),
             (
                 label("details.workingSet"),
-                theme::memory(sum("workingSet")).into_any_element(),
+                measured("workingSet")
+                    .map(theme::memory)
+                    .unwrap_or_else(|| label("format.missing"))
+                    .into_any_element(),
             ),
             (
                 label("details.commit"),
-                theme::memory(sum("commit")).into_any_element(),
+                measured("commit")
+                    .map(theme::memory)
+                    .unwrap_or_else(|| label("format.missing"))
+                    .into_any_element(),
             ),
         ];
         for field in ["diskRead", "diskWrite"] {
             // Only measured members count; none measured is no reading at all.
             let measured = members
                 .iter()
-                .filter_map(|m| m[field].as_f64())
+                .filter_map(|m| model::process_metric(m, field))
                 .reduce(|a, b| a + b);
             let (value, tip) = match measured {
                 Some(rate) => (
@@ -824,7 +879,9 @@ impl Desktop {
         }
         rows.push((
             label("common.resource.network"),
-            if boolean(&self.snapshot, "processNetwork") {
+            if boolean(&self.snapshot, "processNetwork") && measured("netSent").is_none() {
+                label("format.missing").into_any_element()
+            } else if boolean(&self.snapshot, "processNetwork") {
                 tr!(
                     "processes.netRates",
                     sent = self.network_rate(sum("netSent")),
@@ -840,11 +897,17 @@ impl Desktop {
         ));
         rows.push((
             label("details.threads"),
-            theme::count(sum("threads")).into_any_element(),
+            measured("threads")
+                .map(theme::count)
+                .unwrap_or_else(|| label("format.missing"))
+                .into_any_element(),
         ));
         rows.push((
             label("details.handles"),
-            theme::count(sum("handles")).into_any_element(),
+            measured("handles")
+                .map(theme::count)
+                .unwrap_or_else(|| label("format.missing"))
+                .into_any_element(),
         ));
         rows
     }
@@ -983,7 +1046,11 @@ impl Desktop {
                         .flex()
                         .justify_end()
                         .text_color(p.muted)
-                        .child(format!("{}%", theme::cpu(number(member, "cpu")))),
+                        .child(
+                            model::process_metric(member, "cpu")
+                                .map(|v| format!("{}%", theme::cpu(v)))
+                                .unwrap_or_else(|| label("format.missing")),
+                        ),
                 )
                 .child(
                     div()
@@ -1018,6 +1085,12 @@ impl Desktop {
         let control_hover = design_color("control-hover", cx);
         let action_button = |id: &'static str, name: String, action: Action| {
             Button::new(id)
+                .disabled(
+                    picked
+                        .members
+                        .iter()
+                        .any(|member| number(member, "createTime") < 0.),
+                )
                 .line_height(theme::line_height())
                 .flex_1()
                 .min_w_0()

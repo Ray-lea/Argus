@@ -9,6 +9,31 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        #[cfg(debug_assertions)]
+        if let Some(delay) = control["delayProcessQuery"].as_u64() {
+            argus_core::process::testing::delay_next_counter_reply(delay);
+        }
+        if let Some(label) = control["inspectProcessSampling"].as_str() {
+            #[cfg(debug_assertions)]
+            let delayed = argus_core::process::testing::counter_reply_delayed();
+            #[cfg(not(debug_assertions))]
+            let delayed = false;
+            let requested = values(&control["pids"]);
+            let processes = values(&self.snapshot["processes"]);
+            let selected: Vec<_> = processes.iter().filter(|p| requested.contains(&p["pid"])).map(|p| {
+                let row = model::Row::process(p.clone(),0);
+                json!({"pid":p["pid"],"created":p["createTime"],"key":model::identity(p),"sequence":p["sequenceNumber"],
+                    "pending":p["countersPending"],"reused":p["sampleReused"],"cpu":row.metric("cpu"),"memory":row.metric("mem")})
+            }).collect();
+            println!(
+                "{}",
+                json!({"event":"process-sampling","label":label,"seq":self.sequence,"timestamp":self.snapshot["timestamp"],
+                "delayed":delayed,"delaySupported":cfg!(debug_assertions),"cpuPoints":self.timeline.points("system.cpu").map_or(0,|p|p.len()),
+                "selected":self.selected.get("processes"),
+                "count":processes.len(),"roster":processes.iter().filter(|p|boolean(p,"listedByRoster")).count(),
+                "reused":processes.iter().filter(|p|boolean(p,"sampleReused")).count(),"pending":processes.iter().filter(|p|boolean(p,"countersPending")).count(),"targets":selected})
+            );
+        }
         if let Some(label) = control["inspectVitals"].as_str() {
             let bounds = self
                 .ui

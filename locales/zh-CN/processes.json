@@ -1,4 +1,6 @@
 {
+  "identityPending": "正在确认进程身份，请稍后重试。",
+  "countersPending": "正在读取该进程的资源计数。",
   "refreshPending": "正在更新进程数据，当前显示最近一次成功读取的数值。",
   "diskUnavailable": {
     "pending": "暂无磁盘读数：刚出现的进程要到下一次刷新才有读数。",

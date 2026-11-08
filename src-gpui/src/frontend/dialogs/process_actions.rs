@@ -24,7 +24,7 @@ impl Desktop {
                 .flatten()
             {
                 let pid = c["pid"].as_u64().unwrap_or(0);
-                if number(c, "createTime") >= number(p, "createTime") && seen.insert(pid) {
+                if model::parent_predates(p, c) && seen.insert(pid) {
                     count += 1;
                     stack.push(c);
                 }
@@ -44,6 +44,13 @@ impl Desktop {
     ) {
         let members = values(&args["members"]).to_vec();
         let name = text(args, "name").to_owned();
+        if members
+            .iter()
+            .any(|member| number(member, "createTime") < 0.)
+        {
+            self.notify_toast(ToastKind::Info, label("processes.identityPending"));
+            return;
+        }
         if members.is_empty() {
             self.notify_toast(ToastKind::Error, label("actions.staleProcess"));
             return;

@@ -30,11 +30,21 @@ use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, ticks_to_unix_ms};
 use crate::webview::{self, Instance, WebViewInfo};
 
 mod query;
+mod roster;
 use query::ProcessQuery;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessRow {
+    /// This row's liveness was selected by the independent roster.
+    pub listed_by_roster: bool,
+    /// An identity-only row discovered before its first counter snapshot.
+    pub counters_pending: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
+    /// Stable UI identity, also while a new process's creation time is unknown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance_key: Option<Arc<str>>,
     /// The last observation is older than the short retention window.
     /// Display it as an older reading and exclude it from fresh time series.
     pub stale: bool,
@@ -141,6 +151,7 @@ fn kernel_process(pid: u32, parent: u32, name: &str, has_path: bool) -> bool {
 }
 
 struct Tracked {
+    sequence_number: Option<u64>,
     seen: bool,
     parent: u32,
     session: u32,
@@ -176,6 +187,8 @@ fn cache_expired(observed: Option<Instant>, now: Instant) -> bool {
 }
 
 pub(crate) struct ProcessTracker {
+    roster: roster::Roster,
+    counted: Option<(Instant, Instant)>,
     query: Option<ProcessQuery>,
     last_rows: Vec<ProcessRow>,
     tracked: HashMap<(u32, i64), Tracked>,
@@ -195,6 +208,8 @@ pub(crate) struct ProcessTracker {
 impl ProcessTracker {
     pub fn new(meta: Arc<MetaStore>) -> Self {
         Self {
+            roster: roster::Roster::new(),
+            counted: None,
             query: ProcessQuery::new(),
             last_rows: Vec::new(),
             tracked: HashMap::new(),
@@ -213,6 +228,33 @@ impl ProcessTracker {
     }
 
     pub fn sample(
+        &mut self,
+        logical_cpus: u32,
+        precise_idle_fraction: Option<f64>,
+    ) -> Vec<ProcessRow> {
+        let counters = self.sample_counters(logical_cpus, precise_idle_fraction);
+        self.roster.refresh();
+        self.roster.merge(counters, self.counted, |identity| {
+            let created = identity_time(identity.pid, identity.sequence).unwrap_or(-1);
+            ProcessRow {
+                pid: identity.pid,
+                ppid: identity.parent,
+                name: identity.name.clone(),
+                create_time: created,
+                counters_pending: true,
+                sample_reused: true,
+                windows_process: kernel_process(
+                    identity.pid,
+                    identity.parent,
+                    &identity.name,
+                    false,
+                ),
+                ..Default::default()
+            }
+        })
+    }
+
+    fn sample_counters(
         &mut self,
         logical_cpus: u32,
         precise_idle_fraction: Option<f64>,
@@ -238,6 +280,7 @@ impl ProcessTracker {
                 .collect();
         };
         let now = observed.clock.at;
+        self.counted = Some((observed.started, now));
         let systime = observed.systime;
         let mut cycles = observed.cycles;
         if observed.logical_cpus != logical_cpus {
@@ -319,6 +362,9 @@ impl ProcessTracker {
                         });
                     (
                         slot.insert(Tracked {
+                            sequence_number: handle
+                                .as_ref()
+                                .and_then(|handle| roster::sequence(handle.0)),
                             seen: self.generation,
                             parent: p.inherited_from_unique_process_id.0 as usize as u32,
                             session: p.session_id,
@@ -384,6 +430,12 @@ impl ProcessTracker {
                 });
             let meta = entry.meta.as_deref();
             rows.push(ProcessRow {
+                listed_by_roster: false,
+                counters_pending: false,
+                sequence_number: entry.sequence_number,
+                instance_key: entry
+                    .sequence_number
+                    .map(|sequence| format!("{pid}:seq:{sequence}").into()),
                 stale,
                 sample_reused: false,
                 pid,
@@ -519,6 +571,43 @@ fn process_cycles(process: HANDLE) -> Option<u64> {
     unsafe { QueryProcessCycleTime(process, &mut cycles) }
         .is_ok()
         .then_some(cycles)
+}
+
+fn identity_time(pid: u32, sequence: u64) -> Option<i64> {
+    let handle =
+        OwnedHandle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?);
+    if roster::sequence(handle.0) != Some(sequence) {
+        return None;
+    }
+    let (mut created, mut exited, mut kernel, mut user) = (
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+    );
+    unsafe { GetProcessTimes(handle.0, &mut created, &mut exited, &mut kernel, &mut user) }.ok()?;
+    Some(ticks_to_unix_ms(filetime_ticks(created)))
+}
+
+/// Fault injection is limited to development/test binaries. The host only
+/// exposes it to isolated --test instances; production has no delay hook.
+#[cfg(debug_assertions)]
+pub mod testing {
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    static DELAY: AtomicU64 = AtomicU64::new(0);
+    static DELAY_ACTIVE: AtomicBool = AtomicBool::new(false);
+    pub fn delay_next_counter_reply(milliseconds: u64) {
+        DELAY.store(milliseconds.min(30_000), Ordering::Relaxed);
+    }
+    pub(crate) fn take_delay() -> u64 {
+        DELAY.swap(0, Ordering::Relaxed)
+    }
+    pub fn counter_reply_delayed() -> bool {
+        DELAY_ACTIVE.load(Ordering::Relaxed)
+    }
+    pub(crate) fn active(value: bool) {
+        DELAY_ACTIVE.store(value, Ordering::Relaxed);
+    }
 }
 
 fn query_handle(pid: u32, create_time: i64) -> Option<OwnedHandle> {

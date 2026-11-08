@@ -102,6 +102,8 @@ pub struct HistoryMoment {
 
 #[derive(Default)]
 struct ProcAcc {
+    measured: bool,
+    missing: u32,
     name: Arc<str>,
     pid: u32,
     cpu: f64,
@@ -111,11 +113,16 @@ struct ProcAcc {
     net: f64,
 }
 
+impl ProcAcc {
+    fn divisor(&self, samples: u32) -> f64 {
+        samples.saturating_sub(self.missing).max(1) as f64
+    }
+}
+
 #[derive(Default)]
 struct Window {
     start: i64,
     samples: u32,
-    process_samples: u32,
     cpu: f64,
     cpu_peak: f32,
     gpu: f64,
@@ -127,7 +134,7 @@ struct Window {
     battery_n: u32,
     battery_rate: f64,
     battery_rate_n: u32,
-    procs: HashMap<(u32, i64), ProcAcc>,
+    procs: HashMap<Arc<str>, ProcAcc>,
 }
 
 struct DayFile {
@@ -212,18 +219,24 @@ impl HistoryRecorder {
             w.battery_rate += rate;
             w.battery_rate_n += 1;
         }
-        if s.processes.iter().all(|p| !p.stale && !p.sample_reused) {
-            w.process_samples += 1;
-        }
-        for p in s.processes.iter().filter(|p| !p.stale && !p.sample_reused) {
+        for p in &s.processes {
             let acc = w
                 .procs
-                .entry((p.pid, p.create_time))
+                .entry(
+                    p.instance_key
+                        .clone()
+                        .unwrap_or_else(|| format!("{}:{}", p.pid, p.create_time).into()),
+                )
                 .or_insert_with(|| ProcAcc {
                     name: p.name.clone(),
                     pid: p.pid,
                     ..Default::default()
                 });
+            if p.stale || p.sample_reused || p.counters_pending {
+                acc.missing += 1;
+                continue;
+            }
+            acc.measured = true;
             acc.cpu += p.cpu as f64;
             acc.mem = acc.mem.max(p.private_ws);
             acc.io += (p.io_read + p.io_write + p.io_other) as f64;
@@ -242,10 +255,9 @@ impl HistoryRecorder {
         }
         let file = self.file.as_mut().expect("opened above");
         let n = w.samples as f64;
-        let process_n = w.process_samples.max(1) as f64;
-        let mut procs: Vec<&ProcAcc> = w.procs.values().collect();
+        let mut procs: Vec<&ProcAcc> = w.procs.values().filter(|p| p.measured).collect();
         let mut picked: Vec<&ProcAcc> = Vec::new();
-        let mut take = |key: fn(&ProcAcc) -> f64, count: usize, floor: f64| {
+        let mut take = |key: &dyn Fn(&ProcAcc) -> f64, count: usize, floor: f64| {
             procs.sort_by(|a, b| key(b).total_cmp(&key(a)));
             for p in procs.iter().take(count).filter(|p| key(p) > floor) {
                 if !picked.iter().any(|q| std::ptr::eq(*q, *p)) {
@@ -253,11 +265,11 @@ impl HistoryRecorder {
                 }
             }
         };
-        take(|p| p.cpu, 6, 0.5 * process_n);
-        take(|p| p.mem as f64, 6, 0.0);
-        take(|p| p.io, 3, 0.0);
-        take(|p| p.gpu, 3, 0.5 * process_n);
-        take(|p| p.net, 3, 0.0);
+        take(&|p| p.cpu / p.divisor(w.samples), 6, 0.5);
+        take(&|p| p.mem as f64, 6, 0.0);
+        take(&|p| p.io / p.divisor(w.samples), 3, 0.0);
+        take(&|p| p.gpu / p.divisor(w.samples), 3, 0.5);
+        take(&|p| p.net / p.divisor(w.samples), 3, 0.0);
 
         let mut buf = Vec::with_capacity(FRAME_HEAD + 1 + picked.len() * ENTRY);
         let mut indices = Vec::with_capacity(picked.len());
@@ -296,6 +308,7 @@ impl HistoryRecorder {
         buf.push(indices.len() as u8);
         let clamp = |v: f64| v.clamp(0.0, u32::MAX as f64) as u32;
         for (index, p) in indices {
+            let process_n = p.divisor(w.samples);
             buf.extend_from_slice(&index.to_le_bytes());
             buf.extend_from_slice(&p.pid.to_le_bytes());
             buf.extend_from_slice(&((p.cpu / process_n) as f32).to_le_bytes());
@@ -740,6 +753,10 @@ mod tests {
 
     fn proc(pid: u32, name: &str, cpu: f32, mem: u64) -> ProcessRow {
         ProcessRow {
+            listed_by_roster: false,
+            counters_pending: false,
+            sequence_number: None,
+            instance_key: None,
             stale: false,
             sample_reused: false,
             counters: Default::default(),
@@ -891,6 +908,26 @@ mod tests {
             assert_eq!(day_number(&day_name(day)), Some(day));
         }
         assert_eq!(day_name(20_737), "2026-10-11");
+    }
+
+    #[test]
+    fn one_pending_process_does_not_inflate_other_process_history() {
+        let dir = temp_dir("mixed-pending");
+        let base = 20_737 * DAY_MS;
+        let mut rec = HistoryRecorder::new(dir.clone());
+        for i in 0..6 {
+            let ready = proc(1, "ready.exe", 20., 1024);
+            let mut new = proc(2, "new.exe", 40., 1024);
+            new.instance_key = Some("2:seq:50".into());
+            new.create_time = if i < 4 { -1 } else { 123 };
+            new.counters_pending = i < 4;
+            rec.record(&snapshot(base + i * 1000, 10., vec![ready, new]));
+        }
+        drop(rec);
+        let data = moment(&dir, base + 1000).unwrap();
+        assert_eq!(data.processes.iter().find(|p| p.pid == 1).unwrap().cpu, 20.);
+        assert_eq!(data.processes.iter().find(|p| p.pid == 2).unwrap().cpu, 40.);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

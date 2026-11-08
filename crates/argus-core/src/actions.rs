@@ -72,6 +72,10 @@ fn open_instance(
     create_time: i64,
     access: PROCESS_ACCESS_RIGHTS,
 ) -> Result<OwnedHandle, ActionError> {
+    // Negative creation times represent identities still being resolved.
+    if create_time < 0 {
+        return Err(ActionError::NotFound);
+    }
     let handle = unsafe { OpenProcess(access | PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
         .inspect_err(|error| {
             crate::diagnostics::warn(
@@ -315,6 +319,17 @@ pub fn terminate_tree_with(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn unresolved_identity_never_uses_the_legacy_pid_only_action_path() {
+        assert!(matches!(
+            super::open_instance(
+                std::process::id(),
+                -1,
+                super::PROCESS_QUERY_LIMITED_INFORMATION
+            ),
+            Err(super::ActionError::NotFound)
+        ));
+    }
     use super::*;
 
     #[test]

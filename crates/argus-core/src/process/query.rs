@@ -5,7 +5,7 @@ use crate::diagnostics;
 use crate::nt::query_system_information;
 use crate::util::{AlignedBuf, filetime_ticks};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use windows::Wdk::System::SystemInformation::SystemProcessInformation;
 use windows::Win32::Foundation::NTSTATUS;
 use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
@@ -13,6 +13,7 @@ use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
 const WAIT_BUDGET: Duration = Duration::from_millis(50);
 
 pub(super) struct Observation {
+    pub started: Instant,
     pub clock: CycleStamp,
     pub systime: i64,
     pub cycles: Option<SystemCycles>,
@@ -40,7 +41,7 @@ impl ProcessQuery {
         .inspect_err(|error| diagnostics::warn("process query worker", diagnostics::io(error)))
         .ok()
     }
-    fn spawn(
+    pub(super) fn spawn(
         mut query: impl FnMut(&mut AlignedBuf) -> Result<usize, NTSTATUS> + Send + 'static,
     ) -> std::io::Result<Self> {
         let (request, requests) = mpsc::sync_channel::<(AlignedBuf, u32)>(1);
@@ -49,13 +50,24 @@ impl ProcessQuery {
             .name("argus-process-query".into())
             .spawn(move || {
                 while let Ok((mut buffer, logical_cpus)) = requests.recv() {
+                    let started = Instant::now();
                     let result = query(&mut buffer);
                     let observation = Observation {
+                        started,
                         cycles: SystemCycles::read(logical_cpus),
                         clock: CycleStamp::capture(),
                         systime: filetime_ticks(unsafe { GetSystemTimePreciseAsFileTime() }),
                         logical_cpus,
                     };
+                    #[cfg(debug_assertions)]
+                    {
+                        let delay = super::testing::take_delay();
+                        if delay > 0 {
+                            super::testing::active(true);
+                            std::thread::sleep(Duration::from_millis(delay));
+                            super::testing::active(false);
+                        }
+                    }
                     if replies
                         .send(Reply {
                             buffer,
