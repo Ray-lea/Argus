@@ -45,6 +45,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`file-lock-layout.json`](../../tools/window-probe/steps/file-lock-layout.json) 检查文件选择、查询状态与结果变化后的弹窗稳定性。模拟快照实例可通过 `contentZoom`（0.5–3）复现分数缩放布局；`inspectLayout` 的 `dialog.settled` 表示高度过渡已结束。
 
+[`window-restore.json`](../../tools/window-probe/steps/window-restore.json) 用模拟快照实例的 `nativeResize` 控制，在界面更新期间同步调整原生客户区，检查恢复尺寸与分数缩放后的布局。`cargo test -p argus --test resize_reentry` 覆盖通知合并、嵌套消息循环、同步缩放及窗口关闭。
+
 测试控制除页面、主题、对话框等既有项外，还包括：
 
 | 控制 | 作用 |

@@ -1,5 +1,7 @@
 # Argus patches
 
+Resize notifications that re-enter while App is borrowed are coalesced and retried after the update, reading the latest platform size and scale. Uncontended resizes remain synchronous. This keeps saved-placement and maximized startup layouts aligned with the native client instead of retaining a clipped initial viewport.
+
 Complete paints register decorative image and load-bar animation before presentation. Scene sorting remaps bar records to their sorted quads. `Window::invalidate_render_cache` requests a one-shot full platform redraw, used by isolated pixel comparisons.
 
 In-scene area-filtered chart images can update their vertical extent through a retained bounds handle. Width, atlas identity, clipping and clean-scene checks still apply. GPU primitive value equality supports bounded static-prefix comparisons in the Windows renderer.

@@ -2057,11 +2057,33 @@ impl Window {
             }
         }));
         platform_window.on_resize(Box::new({
-            let mut cx = cx.to_async();
+            let cx = cx.to_async();
+            let pending = Rc::new(Cell::new(false));
             move |_, _| {
-                handle
-                    .update(&mut cx, |_, window, cx| window.bounds_changed(cx))
-                    .log_err();
+                if pending.get() || Window::try_bounds_changed(handle, &cx) {
+                    return;
+                }
+                // Native placement can resize synchronously inside an App or
+                // Window update. Keep the latest platform size instead of losing
+                // that callback and painting into the old viewport indefinitely.
+                pending.set(true);
+                let pending = pending.clone();
+                let cx = cx.clone();
+                cx.foreground_executor()
+                    .clone()
+                    .spawn(async move {
+                        loop {
+                            pending.set(false);
+                            if Window::try_bounds_changed(handle, &cx) {
+                                break;
+                            }
+                            pending.set(true);
+                            cx.background_executor()
+                                .timer(Duration::from_millis(1))
+                                .await;
+                        }
+                    })
+                    .detach();
             }
         }));
         platform_window.on_moved(Box::new({
@@ -2086,19 +2108,24 @@ impl Window {
                 pending.set(true);
                 let pending = pending.clone();
                 let cx = cx.clone();
-                cx.foreground_executor().clone().spawn(async move {
-                    loop {
-                        // Observers may cause another move while this update runs.
-                        pending.set(false);
-                        if Window::try_display_changed(handle, &cx) {
-                            break;
+                cx.foreground_executor()
+                    .clone()
+                    .spawn(async move {
+                        loop {
+                            // Observers may cause another move while this update runs.
+                            pending.set(false);
+                            if Window::try_display_changed(handle, &cx) {
+                                break;
+                            }
+                            pending.set(true);
+                            // A native modal loop may run this task before returning
+                            // to the outer update. Keep one pending retry in that case.
+                            cx.background_executor()
+                                .timer(Duration::from_millis(1))
+                                .await;
                         }
-                        pending.set(true);
-                        // A native modal loop may run this task before returning
-                        // to the outer update. Keep one pending retry in that case.
-                        cx.background_executor().timer(Duration::from_millis(1)).await;
-                    }
-                }).detach();
+                    })
+                    .detach();
             }
         }));
         platform_window.on_appearance_changed(Box::new({
@@ -2957,6 +2984,21 @@ impl Window {
             return false;
         };
         app.update(|cx| Self::display_changed(handle, cx));
+        true
+    }
+
+    fn try_bounds_changed(handle: AnyWindowHandle, cx: &crate::AsyncApp) -> bool {
+        let Some(app) = cx.app.upgrade() else {
+            return true;
+        };
+        let Ok(mut app) = app.try_borrow_mut() else {
+            return false;
+        };
+        app.update(|cx| {
+            handle
+                .update(cx, |_, window, cx| window.bounds_changed(cx))
+                .log_err();
+        });
         true
     }
 

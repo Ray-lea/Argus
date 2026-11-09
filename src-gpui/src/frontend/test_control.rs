@@ -10,6 +10,23 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         if self.options.fixture.is_some()
+            && let Some(dimensions) = control["nativeResize"].as_array().filter(|a| a.len() == 2)
+            && let Some(width) = dimensions[0]
+                .as_f64()
+                .filter(|n| n.is_finite() && (64. ..=8192.).contains(n))
+            && let Some(height) = dimensions[1]
+                .as_f64()
+                .filter(|n| n.is_finite() && (64. ..=8192.).contains(n))
+        {
+            // Exercise synchronous WM_SIZE while GPUI's window is borrowed,
+            // as happens when native placement is restored during startup.
+            self.host
+                .get_window("main")
+                .expect("test window")
+                .prepare_hidden_size(width as f32, height as f32)
+                .expect("isolated native resize");
+        }
+        if self.options.fixture.is_some()
             && let Some(scale) = control["contentZoom"]
                 .as_f64()
                 .filter(|scale| scale.is_finite() && (0.5..=3.).contains(scale))

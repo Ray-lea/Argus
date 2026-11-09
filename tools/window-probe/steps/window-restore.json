@@ -1,0 +1,11 @@
+{
+  "window": [1000,680],
+  "steps": [
+    {"control":{"page":"processes","theme":"light"},"wait":500,"inspect":"layout","label":"initial","expect":{"width":1000,"height":680}},
+    {"control":{"nativeResize":[1600,1000]},"wait":700,"inspect":"layout","label":"restored","expect":{"width":1600,"height":1000},"capture":"restored"},
+    {"control":{"nativeResize":[800,600]},"wait":500,"inspect":"layout","label":"restored-small","expect":{"width":800,"height":600},"capture":"restored-small"},
+    {"control":{"contentZoom":1.25,"theme":"dark"},"wait":500},
+    {"control":{"nativeResize":[1600,1000]},"wait":700,"inspect":"layout","label":"restored-scaled","expect":{"width":1280,"height":800},"capture":"restored-scaled"},
+    {"control":{"contentZoom":1},"probe":"size 1000 680","wait":500,"inspect":"layout","label":"ordinary-resize","expect":{"width":1000,"height":680},"capture":"ordinary-resize"}
+  ]
+}
