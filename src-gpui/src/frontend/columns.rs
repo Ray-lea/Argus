@@ -353,6 +353,7 @@ mod tests {
         let catalogs = [
             include_str!("../../../locales/zh-CN/processes.json"),
             include_str!("../../../locales/en-US/processes.json"),
+            include_str!("../../../locales/ru-RU/processes.json"),
         ];
         for text in catalogs {
             let catalog: serde_json::Value = serde_json::from_str(text).unwrap();

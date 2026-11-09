@@ -26,7 +26,7 @@ const interactions = process.argv.includes("--interactions");
 assert(!(interactions && (live || retained || chartScroll || chartGap || snapshots)), "interaction comparisons require a dedicated fixed replay");
 const previewFlag = process.argv.indexOf("--readme");
 const preview = previewFlag < 0 ? null : process.argv[previewFlag + 1];
-if (previewFlag >= 0) assert(["zh-CN", "en-US"].includes(preview) && !(live || retained || chartScroll || chartGap || snapshots || interactions));
+if (previewFlag >= 0) assert(["zh-CN", "en-US", "ru-RU"].includes(preview) && !(live || retained || chartScroll || chartGap || snapshots || interactions));
 assert(!(chartGap && (live || retained || chartScroll || snapshots)), "chart gap checks use a dedicated fixture replay");
 assert(!(chartScroll && (live || retained || snapshots)), "chart scroll checks use a fixed CPU spike");
 assert(!(live && retained), "retained comparisons require a fixed fixture");

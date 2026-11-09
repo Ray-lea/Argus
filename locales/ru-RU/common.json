@@ -1,0 +1,57 @@
+{
+  "cancel": "Отмена",
+  "close": "Закрыть",
+  "enable": "Включить",
+  "disable": "Отключить",
+  "enabled": "Включено",
+  "disabled": "Отключено",
+  "on": "Вкл.",
+  "off": "Выкл.",
+  "start": "Запустить",
+  "stop": "Остановить",
+  "restart": "Перезапустить",
+  "expand": "Развернуть",
+  "collapse": "Свернуть",
+  "none": "Нет",
+  "name": "Имя",
+  "status": "Состояние",
+  "command": "Команда",
+  "copyName": "Копировать имя",
+  "copyPath": "Копировать путь",
+  "openFileLocation": "Открыть расположение файла",
+  "goToProcess": "Перейти к процессу",
+  "endProcess": "Снять задачу",
+  "endProcessTree": "Снять дерево процессов",
+  "efficiencyMode": "Эффективный режим",
+  "privilegedService": "Привилегированная служба",
+  "listSeparator": ", ",
+  "resource": {
+    "cpu": "ЦП",
+    "memory": "Память",
+    "disk": "Диск",
+    "network": "Сеть",
+    "gpu": "ГП",
+    "battery": "Батарея",
+    "temperature": "Температура"
+  },
+  "languageSystem": "Как в Windows",
+  "keys": {
+    "space": "Пробел"
+  },
+  "marks": {
+    "pin": "Закрепить сверху",
+    "unpin": "Открепить",
+    "pinned": "Закреплено",
+    "addNote": "Добавить заметку",
+    "editNote": "Изменить заметку",
+    "deleteNote": "Удалить заметку",
+    "note": "Заметка",
+    "placeholder": "Кратко укажите, для чего это нужно",
+    "save": "Сохранить"
+  },
+  "languageName": {
+    "zhCN": "Китайский (упрощённый)",
+    "enUS": "Английский",
+    "ruRU": "Русский"
+  }
+}
