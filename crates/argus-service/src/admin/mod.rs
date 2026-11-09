@@ -259,6 +259,12 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
         return Err(5);
     }
     security::validate_sid(sid)?;
+    // Establish Task Scheduler's COM security before shell folder resolution.
+    let early_scheduler = if enable {
+        Some(task::Scheduler::new()?)
+    } else {
+        None
+    };
     let root = root(id)?;
     let base = root.parent().ok_or(87u32)?;
     let _parent = security::protect_directory(base.parent().ok_or(87u32)?)?;
@@ -281,7 +287,10 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
         .open(dir.join("install.lock"))
         .map_err(io)?;
     let previous = grant(id, sid)?;
-    let scheduler = task::Scheduler::new()?;
+    let scheduler = match early_scheduler {
+        Some(scheduler) => scheduler,
+        None => task::Scheduler::new()?,
+    };
     if !enable && !maintenance {
         scheduler.remove(id, sid)?;
         match fs::remove_file(dir.join("grant.json")) {
