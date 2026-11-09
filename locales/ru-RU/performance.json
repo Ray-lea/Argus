@@ -360,7 +360,12 @@
     "serial": "Серийный номер",
     "show": "Показать",
     "hide": "Скрыть",
-    "bytes": "{count} байт",
+    "bytes": {
+      "one": "{count} байт",
+      "few": "{count} байта",
+      "many": "{count} байт",
+      "other": "{count} байт"
+    },
     "interface": "Интерфейс",
     "bus": {
       "virtual": "Виртуальный диск",
@@ -545,7 +550,12 @@
       "many": "{count} механизмов",
       "other": "{count} механизмов"
     },
-    "engineCountAll": "Все {count} механизмов",
+    "engineCountAll": {
+      "one": "Все {count} механизм",
+      "few": "Все {count} механизма",
+      "many": "Все {count} механизмов",
+      "other": "Все {count} механизмов"
+    },
     "engineType": "Механизм в этом графике",
     "engineSmart": "Умный режим",
     "engineSmartTitle": "Только механизмы, занятые в интервале времени графиков",

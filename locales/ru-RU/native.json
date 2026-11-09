@@ -16,7 +16,12 @@
     "restartRequired": "Windows сейчас не может освободить файл программы. Сохраните работу и перезагрузите компьютер перед установкой.",
     "checkFailed": "Windows не смогла завершить проверку файла программы. Неудачный шаг записан в журнал.",
     "unknownProcess": "Неизвестный процесс",
-    "moreProcesses": "Ещё {count} процессов перечислены в журнале.",
+    "moreProcesses": {
+      "one": "Ещё {count} процесс перечислен в журнале.",
+      "few": "Ещё {count} процесса перечислены в журнале.",
+      "many": "Ещё {count} процессов перечислены в журнале.",
+      "other": "Ещё {count} процессов перечислены в журнале."
+    },
     "retryHint": "Освободите файл или устраните причину выше, затем щёлкните «Повторить», чтобы продолжить. «Отмена» закрывает установку.",
     "errorCode": "Код ошибки: {code}",
     "logPath": "Диагностический журнал: {path}",
@@ -140,7 +145,12 @@
       "otherDebugger": "В ключе IFEO файла taskmgr.exe значение Debugger не является текстом.",
       "useFilter": "В ключе IFEO файла taskmgr.exe есть значение UseFilter (фильтрация IFEO по пути программы).",
       "subkeys": "В ключе IFEO файла taskmgr.exe есть подразделы: {names}.",
-      "moreSubkeys": "В ключе IFEO файла taskmgr.exe {count} подразделов, включая {names}.",
+      "moreSubkeys": {
+        "one": "В ключе IFEO файла taskmgr.exe {count} подраздел, включая {names}.",
+        "few": "В ключе IFEO файла taskmgr.exe {count} подраздела, включая {names}.",
+        "many": "В ключе IFEO файла taskmgr.exe {count} подразделов, включая {names}.",
+        "other": "В ключе IFEO файла taskmgr.exe {count} подразделов, включая {names}."
+      },
       "separator": ", "
     },
     "invalidDirectory": "Недопустимая папка",

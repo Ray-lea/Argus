@@ -153,7 +153,15 @@ pub fn text_in(locale: Locale, key: &str) -> String {
 /// exactly 1 elsewhere, but Russian also distinguishes `few` (2–4, 22–24, …)
 /// from `many` (5–20, 11–14, …). A non-integer count has no integer grammar.
 fn plural_category(locale: Locale, count: Option<(&str, &dyn Display)>) -> &'static str {
-    let digits = count.map_or("other".into(), |(_, value)| value.to_string());
+    // Callers format the value for display first; comma grouping (theme::count)
+    // and thin spaces only separate digits, so strip them before parsing.
+    let digits = count.map_or("other".into(), |(_, value)| {
+        value
+            .to_string()
+            .chars()
+            .filter(|c| *c != ',' && !matches!(*c, ' ' | '\u{00A0}' | '\u{202F}'))
+            .collect::<String>()
+    });
     let Ok(n) = digits.parse::<u64>() else {
         return "other";
     };
@@ -255,26 +263,31 @@ mod tests {
     #[test]
     fn russian_plural_categories() {
         let counts = [
-            ("1", "one"),
-            ("21", "one"),
-            ("101", "one"),
-            ("2", "few"),
-            ("5", "many"),
-            ("11", "many"),
-            ("14", "many"),
-            ("22", "few"),
-            ("111", "many"),
-            ("3.5", "other"),
+            ("1", "one", "one"),
+            ("21", "one", "other"),
+            ("101", "one", "other"),
+            ("2", "few", "other"),
+            ("5", "many", "other"),
+            ("11", "many", "other"),
+            ("14", "many", "other"),
+            ("22", "few", "other"),
+            ("111", "many", "other"),
+            ("3.5", "other", "other"),
+            ("1,001", "one", "other"),
+            ("1,002", "few", "other"),
+            ("1,005", "many", "other"),
+            ("1 011", "many", "other"),
+            ("\u{202F}1", "one", "one"),
         ];
-        for (count, category) in counts {
+        for (count, ru, en) in counts {
             assert_eq!(
                 plural_category(Locale::RuRu, Some(("count", &count))),
-                category,
+                ru,
                 "{count}"
             );
             assert_eq!(
                 plural_category(Locale::EnUs, Some(("count", &count))),
-                if count == "1" { "one" } else { "other" },
+                en,
                 "{count}"
             );
         }
@@ -286,11 +299,27 @@ mod tests {
     fn catalogs_parse_and_share_keys() {
         let source = Locale::SOURCE.catalog();
         assert!(!source.is_empty());
+        let forms = ["one", "few", "many", "other"];
         for locale in Locale::ALL {
             let catalog = locale.catalog();
-            assert_eq!(catalog.len(), source.len(), "{}", locale.tag());
+            // A locale may spell a {count} string as plural forms; the extra
+            // keys are then "<source-key>.one/few/many/other".
+            let mut extras = catalog.keys().filter(|k| !source.contains_key(*k));
             assert!(
-                source.keys().all(|k| catalog.contains_key(k)),
+                extras.all(|k| match k.rsplit_once('.') {
+                    Some((key, form)) => forms.contains(&form) && source.contains_key(key),
+                    None => false,
+                }),
+                "{}",
+                locale.tag()
+            );
+            assert!(
+                source.keys().all(|k| {
+                    catalog.contains_key(k)
+                        || forms
+                            .iter()
+                            .all(|form| catalog.contains_key(&format!("{k}.{form}")))
+                }),
                 "{}",
                 locale.tag()
             );

@@ -225,7 +225,12 @@
     "windows": "Процессы Windows"
   },
   "sectionSearching": "Во время поиска показываются все совпадения; очистите поиск, чтобы свернуть группы",
-  "servicesSummary": "{names} и другие ({count} служб)",
+  "servicesSummary": {
+    "one": "{names} и другие ({count} служба)",
+    "few": "{names} и другие ({count} службы)",
+    "many": "{names} и другие ({count} служб)",
+    "other": "{names} и другие ({count} служб)"
+  },
   "pidExited": "PID {pid} уже завершился.",
   "priority": {
     "realtime": "Реального времени",
