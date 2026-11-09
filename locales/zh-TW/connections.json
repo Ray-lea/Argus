@@ -46,7 +46,6 @@
     "remotePort": "遠端連接埠"
   },
   "exited": "已結束",
-  "unowned": "無所屬處理程序",
   "loading": "正在讀取連線…",
   "noMatch": "沒有相符的連線",
   "noMatchPort": "沒有相符的連線：沒有程式在使用連接埠 {port}",
