@@ -6,7 +6,7 @@
 
 **A fast, modern and informative task manager for Windows**
 
-[简体中文](README.md) · **English**
+**README language:** [简体中文](README.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![Website & Live Demo](https://img.shields.io/badge/%F0%9F%8C%90_Website_%26_Live_Demo-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/en/)
 
@@ -17,7 +17,7 @@ Try the full interactive interface and guided tour right in your browser on the 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20x64-0078D4)](#-system-requirements)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
-[Website & Live Demo](https://argustask.com/en/) · [Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community)
+[Website & Live Demo](https://argustask.com/en/) · [Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community) · [Language guide](#language-guide)
 
 </div>
 
@@ -31,6 +31,14 @@ Try the full interactive interface and guided tour right in your browser on the 
 <br>
 
 Argus queries Windows native APIs directly in Rust, with an interface built on GPUI Kit native components and charts that flow smoothly at the display's refresh rate. The project is named after Argus Panoptes, the hundred-eyed giant of Greek mythology.
+
+<a id="language-guide"></a>
+
+## 🌍 Language guide
+
+Use the links at the top to choose this README's language. The application language is selected separately in **Settings → Language and appearance → Display language** and follows the Windows display language by default.
+
+The website is available in Chinese and English. The detailed documentation is in Chinese, and the changelog is available in Chinese and English.
 
 ## ⭐ Star history
 
@@ -90,11 +98,11 @@ Prerequisites:
 - Node.js 26.x from 26.12.1 (24.x LTS from 24.22.1 is also supported) and pnpm 12.14.0
 - Visual Studio Build Tools ("Desktop development with C++" workload)
 
-Run the following commands in the repository root:
+Run the following commands in PowerShell from the repository root:
 
-```bash
-start.bat           # development mode: Rust and resource changes rebuild and restart automatically; a failed build keeps the running instance
-start.bat build     # release build: outputs target\release\argus.exe
+```powershell
+.\start.bat           # development mode: Rust and resource changes rebuild and restart automatically; a failed build keeps the running instance
+.\start.bat build     # release build: outputs target\release\argus.exe
 ```
 
 For code checks, packaging the installer, and cleaning caches, see the [development guide](docs/development/README.md) (in Chinese).
@@ -133,7 +141,7 @@ Join the Chinese-speaking QQ group to report problems, suggest features, or talk
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome; please read the [contributing guide](.github/CONTRIBUTING.md) first. Report security vulnerabilities privately as described in the [security policy](.github/SECURITY.md).
+Issues and pull requests are welcome; please read the [contributing guide](.github/CONTRIBUTING.md) (in Chinese) first. Report security vulnerabilities privately as described in the [security policy](.github/SECURITY.md) (in Chinese).
 
 ## 🧭 Roadmap
 

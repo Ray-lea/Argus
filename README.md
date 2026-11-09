@@ -6,7 +6,7 @@
 
 **快速、现代、信息丰富的 Windows 任务管理器**
 
-**简体中文** · [English](README.en.md)
+**阅读语言：** **简体中文** · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![官网与在线体验](https://img.shields.io/badge/%F0%9F%8C%90_%E5%AE%98%E7%BD%91%E4%B8%8E%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/)
 
@@ -17,7 +17,7 @@
 [![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%2010%20%2F%2011%20x64-0078D4)](#-系统要求)
 [![许可证](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
-[官网与在线体验](https://argustask.com/) · [特性](#-特性) · [下载](#-下载) · [从源码构建](#-从源码构建) · [快捷键](#-快捷键) · [文档](#-文档) · [交流与反馈](#-交流与反馈)
+[官网与在线体验](https://argustask.com/) · [特性](#-特性) · [下载](#-下载) · [从源码构建](#-从源码构建) · [快捷键](#-快捷键) · [文档](#-文档) · [交流与反馈](#-交流与反馈) · [语言指引](#language-guide)
 
 </div>
 
@@ -31,6 +31,14 @@
 <br>
 
 Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组件构建界面，图表曲线随屏幕刷新率连续流动。项目名称取自希腊神话中的百眼巨人阿尔戈斯（Argus Panoptes）。
+
+<a id="language-guide"></a>
+
+## 🌍 语言指引
+
+页面顶部可切换 README 阅读语言。软件界面语言可在 **设置 → 语言与外观 → 界面语言** 中单独选择，默认跟随 Windows 显示语言。
+
+官网提供中文与英文，详细文档使用中文，更新日志提供中文与英文。
 
 ## ⭐ Star 趋势
 
@@ -90,11 +98,11 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 - Node.js 26.12.1 及以上的 26.x 版本（亦支持 24.22.1 及以上的 24.x LTS）与 pnpm 12.14.0
 - Visual Studio Build Tools（勾选“使用 C++ 的桌面开发”工作负载）
 
-在仓库根目录下运行：
+在仓库根目录下使用 PowerShell 运行：
 
-```bash
-start.bat           # 开发模式：Rust 与资源文件修改后自动编译并重启，编译失败时保留当前实例
-start.bat build     # 发布构建：生成 target\release\argus.exe
+```powershell
+.\start.bat           # 开发模式：Rust 与资源文件修改后自动编译并重启，编译失败时保留当前实例
+.\start.bat build     # 发布构建：生成 target\release\argus.exe
 ```
 
 代码检查、打包安装程序与清理缓存等更多命令，请参阅[开发指南](docs/development/README.md)。
