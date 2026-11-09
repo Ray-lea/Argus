@@ -146,7 +146,7 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
                     let title = match process {
                         Some(p) if p.description.is_empty() => p.name.clone(),
                         Some(p) => p.description.clone(),
-                        None if raw["pid"].as_u64() == Some(0) => "System Idle Process".into(),
+                        None if raw["pid"].as_u64() == Some(0) => label("connections.unowned"),
                         None => exited.clone().unwrap_or_default(),
                     };
                     let mark = process.map(|process| {

@@ -46,6 +46,7 @@
     "remotePort": "Remote port"
   },
   "exited": "Exited",
+  "unowned": "No owning process",
   "loading": "Reading connections…",
   "noMatch": "No matching connections",
   "noMatchPort": "No matching connections: no program is using port {port}",

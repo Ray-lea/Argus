@@ -46,6 +46,7 @@
     "remotePort": "远程端口"
   },
   "exited": "已退出",
+  "unowned": "无所属进程",
   "loading": "正在读取连接…",
   "noMatch": "没有匹配的连接",
   "noMatchPort": "没有匹配的连接：没有程序在使用端口 {port}",
