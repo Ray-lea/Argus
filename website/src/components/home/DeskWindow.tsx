@@ -5,7 +5,7 @@ import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointer
 // work area above the taskbar and resizes from its edges and corners, between
 // the app's minimum window (resources/app.json) and the work area.
 const AREA = { w: 1920, h: 1032 };
-const MIN = { w: 1240, h: 800 };
+const MIN = { w: 640, h: 480 };
 const edges = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const;
 type Edge = (typeof edges)[number];
 const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v));

@@ -687,8 +687,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                     .as_f64()
                     .expect("minimum height") as f32),
             );
-            // The minimum never exceeds the work area: a 1080p laptop at 150 %
-            // offers about 1280 × 670 logical pixels, less than its height.
+            // Keep the minimum within the work area on small or high-DPI displays.
             let minimum = cx.primary_display().map_or(minimum, |display| {
                 minimum.min(&display.visible_bounds().size)
             });
