@@ -1942,7 +1942,15 @@ pub(in crate::frontend) fn date_time(unix_ms: f64) -> String {
             };
             format!("{month}/{day}, {hour:02}:{minute:02}:{second:02} {period}")
         }
-        argus_core::i18n::Locale::ZhCn | argus_core::i18n::Locale::ZhTw => {
+        argus_core::i18n::Locale::ZhTw => {
+            let period = if hour < 12 { "上午" } else { "下午" }; // i18n-ignore
+            let hour = match hour % 12 {
+                0 => 12,
+                hour => hour,
+            };
+            format!("{month}/{day} {period}{hour:02}:{minute:02}:{second:02}")
+        }
+        argus_core::i18n::Locale::ZhCn => {
             format!("{month}/{day} {hour:02}:{minute:02}:{second:02}")
         }
     }

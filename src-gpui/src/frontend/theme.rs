@@ -322,24 +322,35 @@ pub fn tooltip_font(cx: &App) -> (SharedString, FontFallbacks) {
 fn font_fallbacks(cx: &App) -> FontFallbacks {
     fallbacks("sans", cx)
 }
-/// The families of a theme font list after the one in use.
+/// The families of a theme font list after the one in use, adjusted for the active locale.
 fn fallbacks(kind: &str, cx: &App) -> FontFallbacks {
-    static SANS: std::sync::OnceLock<FontFallbacks> = std::sync::OnceLock::new();
-    static TOOLTIP: std::sync::OnceLock<FontFallbacks> = std::sync::OnceLock::new();
-    let cell = if kind == "tooltip" { &TOOLTIP } else { &SANS };
+    static SANS: [std::sync::OnceLock<FontFallbacks>; 3] =
+        [std::sync::OnceLock::new(), std::sync::OnceLock::new(), std::sync::OnceLock::new()];
+    static TOOLTIP: [std::sync::OnceLock<FontFallbacks>; 3] =
+        [std::sync::OnceLock::new(), std::sync::OnceLock::new(), std::sync::OnceLock::new()];
+    let locale = argus_core::i18n::locale();
+    let idx = locale as usize;
+    let cell = if kind == "tooltip" { &TOOLTIP[idx] } else { &SANS[idx] };
     cell.get_or_init(|| {
         let family = installed_font(kind, cx);
-        FontFallbacks::from_fonts(
-            design()["fonts"][kind]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(serde_json::Value::as_str)
-                .skip_while(|name| *name != family.as_ref())
-                .skip(1)
-                .map(str::to_owned)
-                .collect(),
-        )
+        let mut list: Vec<String> = design()["fonts"][kind]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .skip_while(|name| *name != family.as_ref())
+            .skip(1)
+            .map(str::to_owned)
+            .collect();
+        if locale == argus_core::i18n::Locale::ZhTw {
+            const JHENGHEI: &str = "Microsoft JhengHei UI";
+            if let Some(pos) = list.iter().position(|name| name == "Microsoft YaHei UI") {
+                list.insert(pos, JHENGHEI.to_string());
+            } else {
+                list.push(JHENGHEI.to_string());
+            }
+        }
+        FontFallbacks::from_fonts(list)
     })
     .clone()
 }
@@ -801,7 +812,8 @@ mod tests {
         }
         let mut out = Vec::new();
         for loc in ["zh-CN", "zh-TW"] {
-            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../locales/{loc}"));
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join(format!("../locales/{loc}"));
             for entry in std::fs::read_dir(dir).expect("Chinese locale") {
                 let path = entry.expect("locale file").path();
                 if path.extension().is_some_and(|e| e == "json") {

@@ -44,21 +44,15 @@ impl Locale {
             .find(|l| l.tag().eq_ignore_ascii_case(tag))
     }
 
-    /// The Windows display language: Chinese reads Simplified or Traditional
-    /// Chinese based on sublanguage, everything else English.
+    /// The Windows display language: Chinese reads Traditional Chinese for Taiwan
+    /// (zh-TW), Simplified Chinese for other Chinese regions, everything else English.
     pub fn system() -> Locale {
         const LANG_CHINESE: u16 = 0x04;
         const SUBLANG_CHINESE_TRADITIONAL: u16 = 0x01;
-        const SUBLANG_CHINESE_HONGKONG: u16 = 0x03;
-        const SUBLANG_CHINESE_MACAU: u16 = 0x05;
 
         let lang = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
         if lang & 0x3ff == LANG_CHINESE {
-            let sublang = (lang >> 10) & 0x3f;
-            if sublang == SUBLANG_CHINESE_TRADITIONAL
-                || sublang == SUBLANG_CHINESE_HONGKONG
-                || sublang == SUBLANG_CHINESE_MACAU
-            {
+            if (lang >> 10) & 0x3f == SUBLANG_CHINESE_TRADITIONAL {
                 Locale::ZhTw
             } else {
                 Locale::ZhCn
