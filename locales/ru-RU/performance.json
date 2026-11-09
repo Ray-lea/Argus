@@ -4,13 +4,13 @@
       "one": "{count} секунда",
       "few": "{count} секунды",
       "many": "{count} секунд",
-      "other": "{count} секунды"
+      "other": "{count} секунд"
     },
     "minutes": {
       "one": "{count} минута",
       "few": "{count} минуты",
       "many": "{count} минут",
-      "other": "{count} минуты"
+      "other": "{count} минут"
     }
   },
   "withAlt": "{value} ({alt})",
@@ -116,7 +116,7 @@
       "one": "{count} ядро",
       "few": "{count} ядра",
       "many": "{count} ядер",
-      "other": "{count} ядра"
+      "other": "{count} ядер"
     },
     "coreName": "Ядро {index}",
     "fan": "Вентилятор материнской платы {index}",
@@ -125,7 +125,7 @@
       "one": "{count} вентилятор",
       "few": "{count} вентилятора",
       "many": "{count} вентиляторов",
-      "other": "{count} вентилятора"
+      "other": "{count} вентиляторов"
     },
     "thermalThrottle": "Троттлинг из-за температуры",
     "throttleActive": "Активно",
@@ -543,7 +543,7 @@
       "one": "{count} механизм",
       "few": "{count} механизма",
       "many": "{count} механизмов",
-      "other": "{count} механизма"
+      "other": "{count} механизмов"
     },
     "engineCountAll": "Все {count} механизмов",
     "engineType": "Механизм в этом графике",

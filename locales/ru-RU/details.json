@@ -11,9 +11,9 @@
     "selectTip": "Щёлкните приложение или процесс в списке, чтобы увидеть здесь его сведения; повторный щелчок отменяет выбор.",
     "closeTip": "Область сведений остаётся открытой; скрыть её можно кнопкой {icon} в правом верхнем углу окна.",
     "cpu": "Процессор",
-    "cores": { "one": "{count} ядро", "few": "{count} ядра", "many": "{count} ядер", "other": "{count} ядра" },
+    "cores": { "one": "{count} ядро", "few": "{count} ядра", "many": "{count} ядер", "other": "{count} ядер" },
     "hybrid": " ({performance} P-ядра + {efficiency} E-ядра)",
-    "threads": { "one": "{count} поток", "few": "{count} потока", "many": "{count} потоков", "other": "{count} потока" },
+    "threads": { "one": "{count} поток", "few": "{count} потока", "many": "{count} потоков", "other": "{count} потоков" },
     "base": "Базовая частота {speed}",
     "slots": "Занято {used} из {total} разъёмов",
     "disk": "Хранилище",
@@ -33,7 +33,7 @@
       "one": "{count} процесс",
       "few": "{count} процесса",
       "many": "{count} процессов",
-      "other": "{count} процесса"
+      "other": "{count} процессов"
     },
     "earliest": "Первый запуск",
     "members": "Процессы ({count})",

@@ -1942,9 +1942,17 @@ pub(in crate::frontend) fn date_time(unix_ms: f64) -> String {
             };
             format!("{month}/{day}, {hour:02}:{minute:02}:{second:02} {period}")
         }
-        argus_core::i18n::Locale::ZhCn | argus_core::i18n::Locale::RuRu => {
-            format!("{month}/{day} {hour:02}:{minute:02}:{second:02}")
+        argus_core::i18n::Locale::RuRu => {
+            // Day first with the abbreviated month name, as format.monthDay
+            // writes it in history.
+            let name = label("format.monthNames")
+                .split_whitespace()
+                .nth(usize::from(month) - 1)
+                .unwrap_or("")
+                .to_string();
+            format!("{day} {name} {hour:02}:{minute:02}:{second:02}")
         }
+        _ => format!("{month}/{day} {hour:02}:{minute:02}:{second:02}"),
     }
 }
 
