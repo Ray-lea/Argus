@@ -1,0 +1,61 @@
+{
+  "title": "Qu'est-ce qui utilise le fichier",
+  "intro": "Si la suppression ou le déplacement d'un fichier échoue parce qu'il est en cours d'utilisation, recherchez les processus qui le contiennent ici. Les fichiers peuvent également être déposés dans la fenêtre Argus.",
+  "dropZone": "Déposez des fichiers ou des dossiers sur la fenêtre, ou",
+  "pickFile": "Choisir un fichier",
+  "pickFolder": "Choisir un dossier",
+  "recheck": "Vérifiez à nouveau",
+  "checking": "Vérification…",
+  "error": {
+    "notFound": "Impossible de trouver le fichier ou le dossier.",
+    "failed": "Échec de la vérification : {error}"
+  },
+  "none": "Aucun processus accessible n'a été trouvé à l'aide de ces fichiers.",
+  "found": {
+    "one": "{count} processus utilise ces fichiers ou dossiers.",
+    "many": "{count} processus utilisent ces fichiers ou dossiers.",
+    "other": "{count} processus utilisent ces fichiers ou dossiers."
+  },
+  "kind": {
+    "service": "Service",
+    "explorer": "Explorateur de fichiers",
+    "console": "Console",
+    "critical": "Système critique"
+  },
+  "service": "Service {name}",
+  "handleCount": {
+    "one": "{count} handle",
+    "many": "{count} handles",
+    "other": "{count} handles"
+  },
+  "showProcess": "Afficher dans les processus",
+  "end": "Fin de tâche",
+  "checked": {
+    "one": "Restart Manager a vérifié {count} fichier. {handles}",
+    "many": "Restart Manager a vérifié {count} fichiers. {handles}",
+    "other": "Restart Manager a vérifié {count} fichiers. {handles}"
+  },
+  "handles": {
+    "service": {
+      "one": "Le service privilégié a vérifié {count} handle de fichier, y compris les handles de dossier.",
+      "many": "Le service privilégié a vérifié {count} handles de fichier, y compris les handles de dossier.",
+      "other": "Le service privilégié a vérifié {count} handles de fichier, y compris les handles de dossier."
+    },
+    "local": {
+      "one": "{count} handle de fichier a été vérifié localement, y compris les handles de dossier.",
+      "many": "{count} handles de fichier ont été vérifiés localement, y compris les handles de dossier.",
+      "other": "{count} handles de fichier ont été vérifiés localement, y compris les handles de dossier."
+    },
+    "unfinished": "La requête de handle n'a pas abouti."
+  },
+  "incomplete": "Les résultats sont incomplets. Processus inaccessibles : {denied} ; handles illisibles : {skipped} ; requêtes expirées : {timeouts}. {limit}",
+  "limitReached": "La limite de requêtes a été atteinte.",
+  "serviceHint": "Activez le service privilégié dans Paramètres pour vérifier davantage de processus système.",
+  "unchecked": {
+    "one": "Restart Manager n’a pas pu vérifier {count} fichier supplémentaire, en raison des autorisations ou de modifications du fichier.",
+    "many": "Restart Manager n’a pas pu vérifier {count} fichiers supplémentaires, en raison des autorisations ou de modifications des fichiers.",
+    "other": "Restart Manager n’a pas pu vérifier {count} fichiers supplémentaires, en raison des autorisations ou de modifications des fichiers."
+  },
+  "truncated": "Le dossier contient trop de fichiers ; seuls les premiers {count} ont été vérifiés.",
+  "footerHint": "La requête handle recherche également les dossiers utilisés comme répertoire de travail ; les processus protégés peuvent encore être hors de portée."
+}

@@ -4,7 +4,7 @@
 //
 //   node scripts/ui-shots.mjs <label> <steps.json> [--live | --fixture PATH]
 //     [--release | --executable PATH] [--probe PATH] [--width W --height H]
-//     [--theme dark|light] [--language zh-CN|en-US]
+//     [--theme dark|light] [--language <locale tag>]
 import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";

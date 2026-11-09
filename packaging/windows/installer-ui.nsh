@@ -3,7 +3,7 @@
 ; page and a finish page. Uninstaller: a confirmation page, the progress page
 ; and a done page. Light or dark as Windows apps are set, in Argus's palette.
 ; Included by installer-template.nsi after the languages, so the strings can
-; be per language; keep the languages in step with resources/app.json.
+; be per language. Text comes from locales/*/installer.json through bundle.mjs.
 ;
 ; Sizes are pixels at 96 DPI; ArgusScale converts them for the window's DPI
 ; (the installer is per-monitor DPI aware). Registers: the macros use $R0–$R9
@@ -12,9 +12,9 @@
 !include nsDialogs.nsh
 
 ; Window styles, combined here because System::Call cannot OR them.
-!define ARGUS_TEXT 0x50000101 ; WS_CHILD | WS_VISIBLE | SS_CENTER | SS_NOTIFY
-!define ARGUS_LABEL 0x50000100 ; WS_CHILD | WS_VISIBLE | SS_NOTIFY
-!define ARGUS_PATH 0x50008100 ; … | SS_PATHELLIPSIS
+!define ARGUS_TEXT 0x50000181 ; WS_CHILD | WS_VISIBLE | SS_CENTER | SS_NOTIFY | SS_NOPREFIX
+!define ARGUS_LABEL 0x50000180 ; WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_NOPREFIX
+!define ARGUS_PATH 0x50008180 ; … | SS_PATHELLIPSIS
 !define ARGUS_BUTTON 0x50018080 ; WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_BITMAP | BS_FLAT
 !define ARGUS_ICON 0x50000043 ; WS_CHILD | WS_VISIBLE | SS_ICON | SS_REALSIZECONTROL
 !define ARGUS_CHECK 0x50010003 ; WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX
@@ -30,62 +30,6 @@
 
 ; ---- Strings ------------------------------------------------------------------
 
-LangString ArgusFace ${LANG_ENGLISH} "Segoe UI"
-LangString ArgusFace ${LANG_SIMPCHINESE} "Microsoft YaHei UI"
-LangString ArgusTagline ${LANG_ENGLISH} "A fast, modern and informative task manager for Windows"
-LangString ArgusTagline ${LANG_SIMPCHINESE} "快速、现代、信息丰富的 Windows 任务管理器"
-LangString ArgusVersion ${LANG_ENGLISH} "Version ${VERSION}"
-LangString ArgusVersion ${LANG_SIMPCHINESE} "版本 ${VERSION}"
-LangString ArgusUpgradeFrom ${LANG_ENGLISH} "Upgrades version $ArgusOldVersion to ${VERSION}"
-LangString ArgusUpgradeFrom ${LANG_SIMPCHINESE} "将从版本 $ArgusOldVersion 升级到 ${VERSION}"
-LangString ArgusSameVersion ${LANG_ENGLISH} "Version ${VERSION} is already installed; reinstalling repairs it"
-LangString ArgusSameVersion ${LANG_SIMPCHINESE} "已安装版本 ${VERSION}，重新安装可修复程序文件"
-LangString ArgusNewerInstalled ${LANG_ENGLISH} "A newer version ($ArgusOldVersion) is installed. Uninstall it first to install ${VERSION}."
-LangString ArgusNewerInstalled ${LANG_SIMPCHINESE} "已安装更新的版本 $ArgusOldVersion。如需安装 ${VERSION}，请先卸载。"
-LangString ArgusInstall ${LANG_ENGLISH} "Install"
-LangString ArgusInstall ${LANG_SIMPCHINESE} "立即安装"
-LangString ArgusUpgrade ${LANG_ENGLISH} "Upgrade"
-LangString ArgusUpgrade ${LANG_SIMPCHINESE} "立即升级"
-LangString ArgusReinstall ${LANG_ENGLISH} "Reinstall"
-LangString ArgusReinstall ${LANG_SIMPCHINESE} "重新安装"
-LangString ArgusLocation ${LANG_ENGLISH} "Install location: $INSTDIR"
-LangString ArgusLocation ${LANG_SIMPCHINESE} "安装位置：$INSTDIR"
-LangString ArgusChange ${LANG_ENGLISH} "Change"
-LangString ArgusChange ${LANG_SIMPCHINESE} "更改"
-LangString ArgusChooseFolder ${LANG_ENGLISH} "Choose the folder to install Argus in"
-LangString ArgusChooseFolder ${LANG_SIMPCHINESE} "选择安装 Argus 的文件夹"
-LangString ArgusInstalling ${LANG_ENGLISH} "Installing Argus…"
-LangString ArgusInstalling ${LANG_SIMPCHINESE} "正在安装 Argus…"
-LangString ArgusUpdating ${LANG_ENGLISH} "Updating Argus…"
-LangString ArgusUpdating ${LANG_SIMPCHINESE} "正在更新 Argus…"
-LangString ArgusInstalled ${LANG_ENGLISH} "Argus is installed"
-LangString ArgusInstalled ${LANG_SIMPCHINESE} "安装完成"
-LangString ArgusInstalledText ${LANG_ENGLISH} "Open it any time from the Start menu."
-LangString ArgusInstalledText ${LANG_SIMPCHINESE} "Argus 已安装到本机，可随时从开始菜单打开。"
-LangString ArgusDesktopShortcut ${LANG_ENGLISH} "Create a desktop shortcut"
-LangString ArgusDesktopShortcut ${LANG_SIMPCHINESE} "创建桌面快捷方式"
-LangString ArgusLaunch ${LANG_ENGLISH} "Launch Argus"
-LangString ArgusLaunch ${LANG_SIMPCHINESE} "启动 Argus"
-LangString ArgusClose ${LANG_ENGLISH} "Close"
-LangString ArgusClose ${LANG_SIMPCHINESE} "关闭"
-LangString ArgusUninstallTitle ${LANG_ENGLISH} "Uninstall Argus"
-LangString ArgusUninstallTitle ${LANG_SIMPCHINESE} "卸载 Argus"
-LangString ArgusUninstallText ${LANG_ENGLISH} "Argus ${VERSION} will be removed from this PC."
-LangString ArgusUninstallText ${LANG_SIMPCHINESE} "将从本机移除 Argus ${VERSION}。"
-LangString ArgusDeleteData ${LANG_ENGLISH} "Also delete settings, history and logs"
-LangString ArgusDeleteData ${LANG_SIMPCHINESE} "同时删除设置、历史记录与日志"
-LangString ArgusDataLeft ${LANG_ENGLISH} "Some settings, history or logs couldn't be deleted. They can be deleted by hand:"
-LangString ArgusDataLeft ${LANG_SIMPCHINESE} "部分设置、历史记录或日志未能删除，可手动删除："
-LangString ArgusUninstall ${LANG_ENGLISH} "Uninstall"
-LangString ArgusUninstall ${LANG_SIMPCHINESE} "卸载"
-LangString ArgusCancel ${LANG_ENGLISH} "Cancel"
-LangString ArgusCancel ${LANG_SIMPCHINESE} "取消"
-LangString ArgusUninstalling ${LANG_ENGLISH} "Uninstalling Argus…"
-LangString ArgusUninstalling ${LANG_SIMPCHINESE} "正在卸载 Argus…"
-LangString ArgusUninstalled ${LANG_ENGLISH} "Argus is uninstalled"
-LangString ArgusUninstalled ${LANG_SIMPCHINESE} "卸载完成"
-LangString ArgusUninstalledText ${LANG_ENGLISH} "Argus has been removed from this PC."
-LangString ArgusUninstalledText ${LANG_SIMPCHINESE} "Argus 已从本机移除。"
 
 ; ---- Theme --------------------------------------------------------------------
 
@@ -702,7 +646,7 @@ Function ArgusPageMain
 
   !insertmacro ArgusLogo $1 dialog 34 64
   !insertmacro ArgusText $1 dialog 108 44 "${PRODUCTNAME}" $ArgusFontHero ink
-  !insertmacro ArgusText $1 dialog 154 22 "$(ArgusTagline)" $ArgusFontBody ink2
+  !insertmacro ArgusText $1 dialog 154 44 "$(ArgusTagline)" $ArgusFontBody ink2
 
   ${If} $ArgusCompare = 1
     StrCpy $6 "$(ArgusUpgradeFrom)"
@@ -717,14 +661,14 @@ Function ArgusPageMain
     StrCpy $6 "$(ArgusVersion)"
     StrCpy $7 "$(ArgusInstall)"
   ${EndIf}
-  !insertmacro ArgusText $1 dialog 180 36 "$6" $ArgusFontSmall ink3
+  !insertmacro ArgusText $1 dialog 204 36 "$6" $ArgusFontSmall ink3
 
   ${If} $ArgusCompare = -1
     StrCpy $2 0
   ${Else}
     StrCpy $2 1
   ${EndIf}
-  !insertmacro ArgusButton $1 226 176 "$7" $2
+  !insertmacro ArgusButton $1 250 176 "$7" $2
   ${If} $2 = 1
     ${NSD_OnClick} $1 ArgusNext
   ${EndIf}

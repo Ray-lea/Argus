@@ -1,0 +1,49 @@
+{
+  "state": {
+    "running": "Wird ausgeführt",
+    "stopped": "Beendet",
+    "startPending": "Wird gestartet",
+    "stopPending": "Wird beendet",
+    "paused": "Angehalten",
+    "pausePending": "Wird angehalten",
+    "continuePending": "Wird fortgesetzt"
+  },
+  "startType": {
+    "auto": "Automatisch",
+    "autoDelayed": "Automatisch (verzögerter Start)",
+    "manual": "Manuell",
+    "disabled": "Deaktiviert",
+    "boot": "Start",
+    "system": "System"
+  },
+  "filter": {
+    "all": "Alle",
+    "running": "Wird ausgeführt",
+    "stopped": "Beendet"
+  },
+  "search": "Suchname, Beschreibung oder PID",
+  "control": {
+    "start": "Dienst starten",
+    "stop": "Dienst beenden",
+    "restart": "Dienst neu starten",
+    "openConsole": "Dienste öffnen",
+    "openConsoleTitle": "Öffnen Sie die Windows Services-Konsole"
+  },
+  "menu": {
+    "startType": "Starttyp: {type}",
+    "copyName": "Dienstnamen kopieren"
+  },
+  "copied": {
+    "name": "Dienstname"
+  },
+  "column": {
+    "display": "Dienst",
+    "startType": "Starttyp",
+    "description": "Beschreibung"
+  },
+  "loading": "Lesedienste…",
+  "noMatch": "Keine passenden Dienste",
+  "clearFilter": "Filter zurücksetzen",
+  "summary": "{running} von {total} läuft",
+  "manageHint": "Die meisten Dienste können nur verwaltet werden, wenn der privilegierte Dienst aktiviert ist oder wenn Argus als Administrator ausgeführt wird."
+}

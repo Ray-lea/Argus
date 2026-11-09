@@ -1,0 +1,38 @@
+{
+  "location": {
+    "hkcuRun": "Registro (usuario actual)",
+    "hklmRun": "Registro (todos los usuarios)",
+    "hklmRun32": "Registro (todos los usuarios, 32 bits)",
+    "userFolder": "Carpeta de inicio (usuario actual)",
+    "commonFolder": "Carpeta de inicio (todos los usuarios)",
+    "package": "Paquete de aplicación (usuario actual)"
+  },
+  "menu": {
+    "copyCommand": "Comando copiar\nComando"
+  },
+  "copied": {
+    "command": "comando"
+  },
+  "search": "Buscar nombre, editor o comando",
+  "column": {
+    "publisher": "Editor",
+    "location": "Ubicación"
+  },
+  "missing": {
+    "label": "Falta el archivo",
+    "title": "El programa al que apunta este comando ya no existe; este elemento se puede desactivar"
+  },
+  "toggle": {
+    "enable": "Habilitar {name}",
+    "disable": "Desactivar {name}"
+  },
+  "blocked": {
+    "managed": "Esta aplicación no permite cambios manuales en esta tarea de inicio.",
+    "unavailable": "No se pudo leer el estado de esta tarea de inicio. No se realizaron cambios."
+  },
+  "unavailable": "No disponible",
+  "loading": "Leyendo aplicaciones de inicio...",
+  "noMatch": "No hay aplicaciones coincidentes",
+  "summary": "{enabled} de {total} habilitado",
+  "note": "La desactivación utiliza el mismo interruptor que las aplicaciones de inicio en Administrador de tareas y se puede deshacer. Los elementos para todos los usuarios necesitan derechos de administrador."
+}

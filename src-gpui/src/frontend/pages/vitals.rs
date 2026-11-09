@@ -432,7 +432,7 @@ impl Desktop {
                 "vital-cpu-frequency",
                 hw["cpuMhz"].as_f64().map(|v| {
                     (
-                        format!("{:.2} GHz", v / 1000.),
+                        crate::regional::number!("{:.2} GHz", v / 1000.),
                         label("performance.cpu.speed"),
                     )
                 }),
@@ -441,7 +441,7 @@ impl Desktop {
                 "vital-cpu-temperature",
                 performance::cpu_temperature(hw).map(|v| {
                     (
-                        format!("{v:.0} °C"),
+                        crate::regional::number!("{v:.0} °C"),
                         label(if performance::has_die_temperature(hw) {
                             "common.resource.temperature"
                         } else {
@@ -485,7 +485,7 @@ impl Desktop {
                 .map(|s| s.iter().filter_map(|(_, v)| *v).fold(0., f64::max))
                 .unwrap_or(0.)
         };
-        let gb = |bytes: f64| format!("{:.1}", bytes / 1073741824.);
+        let gb = |bytes: f64| crate::regional::number!("{:.1}", bytes / 1073741824.);
         let split = |value: String| -> (String, String) {
             value
                 .split_once(' ')
@@ -612,7 +612,7 @@ impl Desktop {
                     gpu["power"]
                         .as_f64()
                         .filter(|v| *v > 0.)
-                        .map(|v| format!("{v:.0}% TDP"))
+                        .map(|v| crate::regional::number!("{v:.0}% TDP"))
                 })
                 .map(|v| (v, label("performance.gpu.power")));
             // Where the GPU figure comes from: Windows engines, process engines or NVML.
@@ -629,9 +629,12 @@ impl Desktop {
                 readings: known(vec![
                     (
                         "vital-gpu-temperature",
-                        gpu["temperature"]
-                            .as_f64()
-                            .map(|v| (format!("{v:.0} °C"), label("performance.gpu.temperature"))),
+                        gpu["temperature"].as_f64().map(|v| {
+                            (
+                                crate::regional::number!("{v:.0} °C"),
+                                label("performance.gpu.temperature"),
+                            )
+                        }),
                     ),
                     ("vital-gpu-power", power),
                 ]),

@@ -1,0 +1,47 @@
+{
+  "range": {
+    "hours": {
+      "one": "{count} Stunde",
+      "other": "{count} Stunden"
+    },
+    "days": {
+      "one": "{count} Tag",
+      "other": "{count} Tage"
+    }
+  },
+  "latest": {
+    "label": "Zurück zum Neuesten",
+    "title": "Löschen Sie den ausgewählten Moment und zeigen Sie die neuesten Daten an"
+  },
+  "metric": {
+    "peak": "Spitzenwert {value}%",
+    "total": "von {value} GB",
+    "charging": "Laden {value}",
+    "discharging": "Entladen {value}"
+  },
+  "exited": "{name} (PID {pid}) wurde beendet.",
+  "copied": {
+    "name": "Name"
+  },
+  "column": {
+    "cpuTitle": "Durchschnitt über das Aufzeichnungsintervall (normalerweise 5 Sekunden)",
+    "memTitle": "Privates Arbeitsset"
+  },
+  "noData": "Keine Daten",
+  "empty": {
+    "off": "Die Verlaufsaufzeichnung ist deaktiviert",
+    "none": "Keine Datensätze in diesem Zeitraum",
+    "offHint": "Sobald Argus in den Einstellungen aktiviert ist, zeichnet es alle 5 Sekunden auf, oder mit der minimierten oder Tray-Refresh-Rate, wenn diese langsamer ist.",
+    "hint": "Argus zeichnet während des Betriebs alle 5 Sekunden auf, oder mit der minimierten oder Tray-Refresh-Rate, wenn diese langsamer ist, und hält 7 Tage lang."
+  },
+  "busiest": "Am stärksten ausgelastete Prozesse",
+  "busiestAt": "Am stärksten ausgelastete Prozesse bei {time}",
+  "hint": {
+    "pick": "Klicken Sie auf einen beliebigen Zeitpunkt in den Diagrammen, um die Prozesse zu diesem Zeitpunkt anzuzeigen",
+    "move": "Drücken Sie ← → in den Diagrammen, um durch die Zeit zu blättern, und Esc, um zur letzten Zeit zurückzukehren"
+  },
+  "noRecordAt": "Derzeit liegen keine Datensätze vor",
+  "earliest": "Frühester Datensatz",
+  "note": "Zeichnet die Top-Prozesse nach CPU, Speicher, I/O, GPU und Netzwerk alle 5 Sekunden auf (oder mit der minimierten odes Infobereichsnaktualisierungsrate, wenn diese langsamer ist) und speichert sie 7 Tage lang.",
+  "off": "Die Verlaufsaufzeichnung ist deaktiviert. Es werden keine neuen Daten erfasst. <link>Öffnen Sie die Einstellungen</link>"
+}

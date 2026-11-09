@@ -33,6 +33,7 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
         }
         crate::shell::follow_visibility(&native);
         if let Ok(hwnd) = native.hwnd() {
+            crate::hotkey::install_key_context(hwnd);
             file_drop::install(host, hwnd);
             argus_service::admin::window_relaunch(&host.config().identifier, hwnd);
             crate::window_motion::install(hwnd);

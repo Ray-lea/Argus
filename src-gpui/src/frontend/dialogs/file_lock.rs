@@ -314,7 +314,7 @@ impl Desktop {
             .child(div().text_color(p.muted).child(if lockers.is_empty() {
                 label("fileLock.none")
             } else {
-                tr!("fileLock.found", count = theme::count(lockers.len() as f64))
+                theme::counted("fileLock.found", lockers.len() as u64, &[])
             }));
         if !lockers.is_empty() {
             let shell = self.data.get("desktopShell");
@@ -351,21 +351,22 @@ impl Desktop {
         };
         if let Some(handles) = report["handles"].as_object().map(|_| &report["handles"]) {
             let detail = if boolean(handles, "available") {
-                argus_core::i18n::format(
+                theme::counted(
                     if boolean(handles, "viaService") {
                         "fileLock.handles.service"
                     } else {
                         "fileLock.handles.local"
                     },
-                    &[("count", &theme::count(number(handles, "checked")))],
+                    number(handles, "checked") as u64,
+                    &[],
                 )
             } else {
                 label("fileLock.handles.unfinished")
             };
-            column = column.child(note(tr!(
+            column = column.child(note(theme::counted(
                 "fileLock.checked",
-                count = theme::count(number(report, "filesChecked")),
-                handles = detail
+                number(report, "filesChecked") as u64,
+                &[("handles", &detail)],
             )));
             if number(handles, "deniedProcesses") > 0.
                 || number(handles, "skipped") > 0.
@@ -395,15 +396,17 @@ impl Desktop {
             column = column.child(note(error.to_owned()));
         }
         if number(report, "unchecked") > 0. {
-            column = column.child(note(tr!(
+            column = column.child(note(theme::counted(
                 "fileLock.unchecked",
-                count = theme::count(number(report, "unchecked"))
+                number(report, "unchecked") as u64,
+                &[],
             )));
         }
         if boolean(report, "truncated") {
-            column = column.child(note(tr!(
+            column = column.child(note(theme::counted(
                 "fileLock.truncated",
-                count = theme::count(number(report, "filesChecked") + number(report, "unchecked"))
+                (number(report, "filesChecked") + number(report, "unchecked")) as u64,
+                &[],
             )));
         }
         // Each result rises into place (`fade-up`, 250 ms).
@@ -530,9 +533,10 @@ impl Desktop {
                 |d| d.child(tag(label(&format!("fileLock.kind.{kind}")))),
             )
             .when(handles > 0., |d| {
-                d.child(tag(tr!(
+                d.child(tag(theme::counted(
                     "fileLock.handleCount",
-                    count = theme::count(handles)
+                    handles as u64,
+                    &[],
                 )))
             })
             .child(

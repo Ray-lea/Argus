@@ -18,6 +18,7 @@ mod memory_pressure;
 mod native_runtime;
 mod packaging;
 mod platform;
+mod regional;
 mod sampler;
 mod settings;
 mod shell;

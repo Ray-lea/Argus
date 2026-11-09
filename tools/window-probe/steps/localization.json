@@ -1,0 +1,17 @@
+{
+  "window": [1240, 860],
+  "steps": [
+    {"control":{"page":"processes","fontSize":13,"theme":"dark"},"wait":700,"capture":"processes"},
+    {"control":{"page":"performance"},"wait":700,"capture":"performance"},
+    {"control":{"page":"services"},"wait":700,"capture":"services"},
+    {"control":{"page":"startup"},"wait":700,"capture":"startup"},
+    {"control":{"page":"network"},"wait":700,"capture":"connections"},
+    {"control":{"page":"history"},"wait":700,"capture":"history"},
+    {"control":{"page":"settings","settingsSection":"language"},"wait":700,"capture":"settings"},
+    {"control":{"page":"about"},"wait":700,"capture":"about"},
+    {"control":{"dialog":"onboarding","args":{"step":0}},"wait":700,"inspect":"layout","label":"welcome","expect":{"dialog.kind":"onboarding","dialog.ready":true},"capture":"welcome"},
+    {"control":{"dismiss":true,"page":"settings","settingsSection":"language","fontSize":20,"theme":"light"},"probe":"size 640 480","wait":700,"capture":"minimum-large-text"},
+    {"control":{"dialog":"onboarding","args":{"step":0}},"wait":700,"inspect":"layout","label":"minimum-welcome","expect":{"dialog.ready":true,"dialog.settled":true},"capture":"minimum-welcome"},
+    {"control":{"dismiss":true,"fontSize":13,"contentZoom":1.5},"probe":"size 1240 860","wait":700,"capture":"fractional-scale"}
+  ]
+}

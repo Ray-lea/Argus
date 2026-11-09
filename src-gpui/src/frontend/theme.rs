@@ -324,11 +324,20 @@ fn font_fallbacks(cx: &App) -> FontFallbacks {
 }
 /// The families of a theme font list after the one in use.
 fn fallbacks(kind: &str, cx: &App) -> FontFallbacks {
-    static SANS: std::sync::OnceLock<FontFallbacks> = std::sync::OnceLock::new();
-    static TOOLTIP: std::sync::OnceLock<FontFallbacks> = std::sync::OnceLock::new();
-    let cell = if kind == "tooltip" { &TOOLTIP } else { &SANS };
+    const LOCALES: usize = argus_core::i18n::Locale::ALL.len();
+    static SANS: [std::sync::OnceLock<FontFallbacks>; LOCALES] =
+        [const { std::sync::OnceLock::new() }; LOCALES];
+    static TOOLTIP: [std::sync::OnceLock<FontFallbacks>; LOCALES] =
+        [const { std::sync::OnceLock::new() }; LOCALES];
+    let locale = argus_core::i18n::locale();
+    let cell = &(if kind == "tooltip" { &TOOLTIP } else { &SANS })[locale as usize];
     cell.get_or_init(|| {
         let family = installed_font(kind, cx);
+        let cjk = if locale == argus_core::i18n::Locale::JaJp {
+            "japanese"
+        } else {
+            "fallback"
+        };
         FontFallbacks::from_fonts(
             design()["fonts"][kind]
                 .as_array()
@@ -337,6 +346,14 @@ fn fallbacks(kind: &str, cx: &App) -> FontFallbacks {
                 .filter_map(serde_json::Value::as_str)
                 .skip_while(|name| *name != family.as_ref())
                 .skip(1)
+                .filter(|name| *name != "Microsoft YaHei UI")
+                .chain(
+                    design()["fonts"][cjk]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(serde_json::Value::as_str),
+                )
                 .map(str::to_owned)
                 .collect(),
         )
@@ -680,34 +697,37 @@ pub fn label(key: &str) -> String {
     argus_core::i18n::text(key)
 }
 pub fn count(value: f64) -> String {
-    let raw = format!("{:.0}", value);
-    let mut output = String::new();
-    let len = raw.len();
-    for (i, c) in raw.chars().enumerate() {
-        if i > 0 && (len - i).is_multiple_of(3) {
-            output.push(',');
-        }
-        output.push(c);
-    }
-    output
+    crate::regional::count(value)
+}
+/// A grouped integer with plural selection independent of its separators.
+pub fn counted(key: &str, value: u64, extra: &[(&str, &dyn std::fmt::Display)]) -> String {
+    let display = crate::regional::digits(&value.to_string());
+    let mut args: Vec<(&str, &dyn std::fmt::Display)> = vec![("count", &display)];
+    args.extend_from_slice(extra);
+    argus_core::i18n::format_count(key, value, &args)
+}
+/// A fractional quantity keeps its raw value for language-specific plural rules.
+pub fn quantity(key: &str, value: f64) -> String {
+    let display = crate::regional::numeric(value.to_string());
+    argus_core::i18n::format_count(key, value, &[("count", &display)])
 }
 pub fn cpu(value: f64) -> String {
     if value < 0.05 {
         "0".into()
     } else if value >= 10. {
-        format!("{value:.0}")
+        crate::regional::number!("{value:.0}")
     } else {
-        format!("{value:.1}")
+        crate::regional::number!("{value:.1}")
     }
 }
 pub fn memory(value: f64) -> String {
     let gb = value / 1073741824.;
     if gb >= 10. {
-        format!("{gb:.1} GB")
+        crate::regional::number!("{gb:.1} GB")
     } else if gb >= 1. {
-        format!("{gb:.2} GB")
+        crate::regional::number!("{gb:.2} GB")
     } else {
-        format!("{:.1} MB", value / 1048576.)
+        crate::regional::number!("{:.1} MB", value / 1048576.)
     }
 }
 pub fn bytes(value: f64, rate: bool) -> String {
@@ -721,9 +741,9 @@ pub fn bytes(value: f64, rate: bool) -> String {
         } else if value < MB {
             format!("{} KB/s", (value / KB).round().max(1.))
         } else if value < GB {
-            format!("{:.1} MB/s", value / MB)
+            crate::regional::number!("{:.1} MB/s", value / MB)
         } else {
-            format!("{:.2} GB/s", value / GB)
+            crate::regional::number!("{:.2} GB/s", value / GB)
         };
     }
     let suffix = "";
@@ -738,9 +758,9 @@ pub fn bytes(value: f64, rate: bool) -> String {
         return "0".into();
     }
     if unit <= 1 {
-        format!("{amount:.0} {}{suffix}", names[unit])
+        crate::regional::number!("{amount:.0} {}{suffix}", names[unit])
     } else {
-        format!("{amount:.1} {}{suffix}", names[unit])
+        crate::regional::number!("{amount:.1} {}{suffix}", names[unit])
     }
 }
 pub fn network(value: f64, bits: bool) -> String {
@@ -754,7 +774,7 @@ pub fn network(value: f64, bits: bool) -> String {
         amount /= 1000.;
         unit += 1;
     }
-    format!("{amount:.1} {}", units[unit])
+    crate::regional::number!("{amount:.1} {}", units[unit])
 }
 
 #[cfg(test)]
@@ -789,8 +809,8 @@ mod tests {
         assert_eq!(super::bytes(2_199_023_255_552., false), "2.0 TB");
     }
 
-    /// Every string in the Chinese interface text.
-    fn chinese_strings() -> Vec<String> {
+    /// Every string in the Chinese and Japanese interface text.
+    fn cjk_strings() -> Vec<String> {
         fn collect(value: &serde_json::Value, out: &mut Vec<String>) {
             match value {
                 serde_json::Value::String(text) => out.push(text.clone()),
@@ -799,13 +819,17 @@ mod tests {
                 _ => {}
             }
         }
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../locales/zh-CN");
         let mut out = Vec::new();
-        for entry in std::fs::read_dir(dir).expect("Chinese locale") {
-            let path = entry.expect("locale file").path();
-            if path.extension().is_some_and(|e| e == "json") {
-                let text = std::fs::read_to_string(&path).expect("locale text");
-                collect(&serde_json::from_str(&text).expect("locale JSON"), &mut out);
+        for locale in ["zh-CN", "ja-JP"] {
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../locales")
+                .join(locale);
+            for entry in std::fs::read_dir(dir).expect("CJK locale") {
+                let path = entry.expect("locale file").path();
+                if path.extension().is_some_and(|e| e == "json") {
+                    let text = std::fs::read_to_string(&path).expect("locale text");
+                    collect(&serde_json::from_str(&text).expect("locale JSON"), &mut out);
+                }
             }
         }
         out
@@ -815,8 +839,8 @@ mod tests {
     /// no line starts with closing punctuation or
     /// ends with opening punctuation, while ideographs still break.
     #[test]
-    fn chinese_text_respects_cjk_punctuation() {
-        let strings = chinese_strings();
+    fn cjk_text_respects_punctuation() {
+        let strings = cjk_strings();
         assert!(!strings.is_empty());
         let mut ideograph_breaks = 0;
         for text in &strings {

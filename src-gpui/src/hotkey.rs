@@ -28,6 +28,15 @@ use windows::Win32::UI::WindowsAndMessaging::WM_HOTKEY;
 
 use crate::settings::SettingsStore;
 
+mod input;
+pub(crate) use input::install_key_context;
+
+pub(crate) fn recording_key(down: bool) -> Option<(&'static str, [bool; 4])> {
+    let event = input::current(down)?;
+    let key = TABLE.keys.iter().find(|key| key.vk == event.vk)?;
+    Some((&key.code, [event.ctrl, event.alt, event.shift, event.win]))
+}
+
 // RegisterHotKey's modifier bits.
 const ALT: u32 = 1;
 const CTRL: u32 = 2;
@@ -52,7 +61,7 @@ struct Table {
 
 #[derive(Deserialize)]
 struct Key {
-    /// The W3C `code` name, as stored in the settings.
+    /// Stable settings identifier, paired with a Windows virtual key.
     code: String,
     vk: u16,
     group: String,
@@ -62,6 +71,63 @@ static TABLE: LazyLock<Table> = LazyLock::new(|| {
     serde_json::from_str(include_str!("../../resources/hotkey-table.json"))
         .expect("hotkey-table.json")
 });
+
+/// Maps the active keyboard layout's character back to RegisterHotKey's VK.
+/// The UI receives characters, so US punctuation tables would misrecord AZERTY
+/// digits, German OEM keys and Cyrillic letters.
+pub(crate) fn character_key(text: &str) -> Option<(String, bool)> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_SHIFT, VkKeyScanW};
+    let mut chars = text.chars();
+    let character = chars.next()?;
+    if chars.next().is_some() || character.len_utf16() != 1 {
+        return None;
+    }
+    // MapVirtualKey produces uppercase non-Latin letters even without Shift.
+    let non_latin_letter = !character.is_ascii() && character.is_alphabetic();
+    let character = if non_latin_letter {
+        character.to_lowercase().next()?
+    } else {
+        character
+    };
+    let mapped = unsafe { VkKeyScanW(character as u16) };
+    let (code, shifted) = layout_key(mapped)?;
+    let shifted = if non_latin_letter {
+        (unsafe { GetKeyState(VK_SHIFT.0 as i32) }) < 0
+    } else {
+        shifted
+    };
+    Some((code, shifted))
+}
+
+fn layout_key(mapped: i16) -> Option<(String, bool)> {
+    if mapped == -1 {
+        return None;
+    }
+    let mapped = mapped as u16;
+    // AltGr, Hankaku and layout-specific shift states are text input modifiers.
+    if mapped >> 8 & !1 != 0 {
+        return None;
+    }
+    let key = TABLE.keys.iter().find(|key| key.vk == mapped & 0xff)?;
+    Some((key.code.clone(), mapped >> 8 & 1 != 0))
+}
+
+/// A printable VK label from the current layout; stored accelerator codes stay stable.
+pub(crate) fn character_label(code: &str) -> Option<String> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{MAPVK_VK_TO_CHAR, MapVirtualKeyW};
+    let key = TABLE.keys.iter().find(|key| key.code == code)?;
+    if !matches!(key.group.as_str(), "letter" | "digit" | "symbol") {
+        return None;
+    }
+    mapped_label(unsafe { MapVirtualKeyW(key.vk as u32, MAPVK_VK_TO_CHAR) })
+}
+
+fn mapped_label(mapped: u32) -> Option<String> {
+    // The high bit marks a dead key; the low word still names its printed glyph.
+    char::from_u32(mapped & 0xffff)
+        .filter(|c| !c.is_control())
+        .map(|c| c.to_string())
+}
 
 /// A parsed combination: modifier bits and an index into the key table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -573,6 +639,26 @@ pub fn retry_failed(app: &Host) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recording_uses_layout_virtual_keys_and_rejects_text_modifiers() {
+        for (mapped, code, shift) in [
+            (0x31, "Digit1", false),
+            (0x137, "Digit7", true),
+            (0x41, "KeyA", false),
+            (0xba, "Semicolon", false),
+            (0xdc, "Backslash", false),
+        ] {
+            assert_eq!(layout_key(mapped), Some((code.into(), shift)));
+        }
+        assert_eq!(layout_key(-1), None);
+        assert_eq!(layout_key(0x651), None);
+        assert_eq!(layout_key(0x841), None);
+        assert_eq!(mapped_label(0x8000_005e).as_deref(), Some("^"));
+        assert_eq!(mapped_label(0x0416).as_deref(), Some("Ж"));
+        assert_eq!(mapped_label(0), None);
+        assert_eq!(mapped_label(0xd800), None);
+    }
 
     /// Registrations kept in a list; `taken` lists combinations "another
     /// program" holds.

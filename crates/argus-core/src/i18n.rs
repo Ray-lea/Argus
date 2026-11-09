@@ -20,46 +20,114 @@ pub enum Locale {
     ZhCn,
     #[serde(rename = "en-US")]
     EnUs,
+    #[serde(rename = "es-ES")]
+    EsEs,
+    #[serde(rename = "de-DE")]
+    DeDe,
+    #[serde(rename = "ja-JP")]
+    JaJp,
+    #[serde(rename = "fr-FR")]
+    FrFr,
+    #[serde(rename = "ru-RU")]
+    RuRu,
 }
 
 impl Locale {
     /// The catalog every other one is translated from, and the fallback for a
     /// missing key.
     pub const SOURCE: Locale = Locale::ZhCn;
-    pub const ALL: [Locale; 2] = [Locale::ZhCn, Locale::EnUs];
+    pub const ALL: [Locale; 7] = [
+        Self::ZhCn,
+        Self::EnUs,
+        Self::EsEs,
+        Self::DeDe,
+        Self::JaJp,
+        Self::FrFr,
+        Self::RuRu,
+    ];
 
     pub fn tag(self) -> &'static str {
         match self {
             Locale::ZhCn => "zh-CN",
             Locale::EnUs => "en-US",
+            Locale::EsEs => "es-ES",
+            Locale::DeDe => "de-DE",
+            Locale::JaJp => "ja-JP",
+            Locale::FrFr => "fr-FR",
+            Locale::RuRu => "ru-RU",
         }
     }
 
     pub fn from_tag(tag: &str) -> Option<Locale> {
-        Locale::ALL
+        let language = tag.trim().split(['-', '_']).next()?;
+        Self::ALL
             .into_iter()
-            .find(|l| l.tag().eq_ignore_ascii_case(tag))
+            .find(|locale| locale.tag()[..2].eq_ignore_ascii_case(language))
     }
 
-    /// The Windows display language: Chinese in any script reads the
-    /// Simplified Chinese text, everything else English.
-    pub fn system() -> Locale {
-        const LANG_CHINESE: u16 = 0x04;
-        let lang = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
-        if lang & 0x3ff == LANG_CHINESE {
-            Locale::ZhCn
-        } else {
-            Locale::EnUs
+    /// Regional variants share a catalog; Windows LANGIDs encode the primary
+    /// language in their low ten bits (including Spanish's multiple LCIDs).
+    pub fn from_langid(id: u16) -> Option<Self> {
+        match id & 0x3ff {
+            0x04 => Some(Self::ZhCn),
+            0x09 => Some(Self::EnUs),
+            0x0a => Some(Self::EsEs),
+            0x07 => Some(Self::DeDe),
+            0x11 => Some(Self::JaJp),
+            0x0c => Some(Self::FrFr),
+            0x19 => Some(Self::RuRu),
+            _ => None,
         }
     }
 
+    /// The display language, then the user's ordered fallback languages.
+    /// Regional formatting and the keyboard layout do not select UI text.
+    pub fn system() -> Locale {
+        use windows::Win32::Globalization::{
+            GetUserDefaultUILanguage, GetUserPreferredUILanguages, MUI_LANGUAGE_NAME,
+        };
+        use windows::core::PWSTR;
+        if let Some(locale) = Self::from_langid(unsafe { GetUserDefaultUILanguage() }) {
+            return locale;
+        }
+        let (mut count, mut size) = (0, 0);
+        unsafe {
+            if GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut count, None, &mut size).is_ok()
+                && size > 0
+                && size <= 65536
+            {
+                let mut buffer = vec![0u16; size as usize];
+                if GetUserPreferredUILanguages(
+                    MUI_LANGUAGE_NAME,
+                    &mut count,
+                    Some(PWSTR(buffer.as_mut_ptr())),
+                    &mut size,
+                )
+                .is_ok()
+                {
+                    for tag in buffer.split(|c| *c == 0).filter(|tag| !tag.is_empty()) {
+                        if let Some(locale) = Self::from_tag(&String::from_utf16_lossy(tag)) {
+                            return locale;
+                        }
+                    }
+                }
+            }
+        }
+        Self::EnUs
+    }
+
     fn catalog(self) -> &'static HashMap<String, String> {
-        static CATALOGS: [OnceLock<HashMap<String, String>>; 2] =
-            [OnceLock::new(), OnceLock::new()];
+        static CATALOGS: [OnceLock<HashMap<String, String>>; Locale::ALL.len()] =
+            [const { OnceLock::new() }; Locale::ALL.len()];
         CATALOGS[self as usize].get_or_init(|| {
             let json = match self {
                 Locale::ZhCn => include_str!("../../../locales/zh-CN/native.json"),
                 Locale::EnUs => include_str!("../../../locales/en-US/native.json"),
+                Locale::EsEs => include_str!("../../../locales/es-ES/native.json"),
+                Locale::DeDe => include_str!("../../../locales/de-DE/native.json"),
+                Locale::JaJp => include_str!("../../../locales/ja-JP/native.json"),
+                Locale::FrFr => include_str!("../../../locales/fr-FR/native.json"),
+                Locale::RuRu => include_str!("../../../locales/ru-RU/native.json"),
             };
             let mut map = HashMap::new();
             // The catalogs are checked by scripts/i18n.mjs; a broken one only
@@ -95,8 +163,8 @@ fn flatten(prefix: &str, value: serde_json::Value, out: &mut HashMap<String, Str
 const UNSET: u8 = u8::MAX;
 static CURRENT: AtomicU8 = AtomicU8::new(UNSET);
 
-static APPLICATION_CATALOGS: [OnceLock<HashMap<String, String>>; 2] =
-    [OnceLock::new(), OnceLock::new()];
+static APPLICATION_CATALOGS: [OnceLock<HashMap<String, String>>; Locale::ALL.len()] =
+    [const { OnceLock::new() }; Locale::ALL.len()];
 
 /// Registers additional application catalogs without coupling collectors or
 /// service executables to a particular user interface.
@@ -122,8 +190,15 @@ pub fn locale() -> Locale {
                 .ok()
                 .and_then(|tag| Locale::from_tag(&tag))
                 .unwrap_or_else(Locale::system);
-            CURRENT.store(initial as u8, Ordering::Relaxed);
-            initial
+            match CURRENT.compare_exchange(
+                UNSET,
+                initial as u8,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => initial,
+                Err(n) => Locale::ALL[n as usize],
+            }
         }
         n => Locale::ALL[n as usize],
     }
@@ -146,18 +221,80 @@ pub fn text_in(locale: Locale, key: &str) -> String {
 
 /// The text for `key` with each `{name}` replaced; use [`tr!`](crate::tr).
 pub fn format(key: &str, args: &[(&str, &dyn Display)]) -> String {
-    let current = locale();
-    if let Some(map) = APPLICATION_CATALOGS[current as usize].get() {
-        let singular = args
-            .iter()
-            .find(|(name, _)| *name == "count")
-            .is_some_and(|(_, value)| value.to_string() == "1");
-        let variant = format!("{key}.{}", if singular { "one" } else { "other" });
-        if let Some(template) = map.get(&variant) {
+    format_in(locale(), key, args)
+}
+
+/// Formats without changing the process-wide language (also used by tests).
+pub fn format_in(locale: Locale, key: &str, args: &[(&str, &dyn Display)]) -> String {
+    let count = args
+        .iter()
+        .find(|(name, _)| *name == "count")
+        .map(|(_, value)| value.to_string());
+    format_args(locale, key, args, count.as_deref())
+}
+
+/// Selects a plural from the raw number while `args` may display a regional count.
+pub fn format_count(key: &str, count: impl Display, args: &[(&str, &dyn Display)]) -> String {
+    format_args(locale(), key, args, Some(&count.to_string()))
+}
+
+fn format_args(
+    locale: Locale,
+    key: &str,
+    args: &[(&str, &dyn Display)],
+    count: Option<&str>,
+) -> String {
+    for candidate in [locale, Locale::EnUs, Locale::SOURCE] {
+        if let Some(count) = count {
+            for form in [plural(candidate, count), "other"] {
+                if let Some(template) = entry(candidate, &format!("{key}.{form}")) {
+                    return render(template, args);
+                }
+            }
+        }
+        if let Some(template) = entry(candidate, key) {
             return render(template, args);
         }
     }
-    render(lookup(current, key), args)
+    key.to_owned()
+}
+
+/// CLDR cardinal categories for the supported languages. Counts are passed
+/// as raw numbers, before display formatting. Visible fractions matter in Russian.
+fn plural(locale: Locale, count: &str) -> &'static str {
+    let Ok(n) = count.parse::<f64>() else {
+        return "other";
+    };
+    if !n.is_finite() {
+        return "other";
+    }
+    let n = n.abs();
+    let integer = count
+        .trim_start_matches(['-', '+'])
+        .split('.')
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(n.trunc() as u64);
+    let fraction = count
+        .split_once('.')
+        .is_some_and(|(_, digits)| !digits.is_empty());
+    match locale {
+        Locale::ZhCn | Locale::JaJp => "other",
+        Locale::RuRu if !fraction && n.fract() == 0. => match (integer % 10, integer % 100) {
+            (1, last) if last != 11 => "one",
+            (2..=4, last) if !(12..=14).contains(&last) => "few",
+            _ => "many",
+        },
+        Locale::FrFr if integer <= 1 => "one",
+        Locale::FrFr | Locale::EsEs
+            if n != 0. && !fraction && n.fract() == 0. && integer.is_multiple_of(1_000_000) =>
+        {
+            "many"
+        }
+        Locale::EsEs if n == 1. => "one",
+        Locale::EnUs | Locale::DeDe if n == 1. && !fraction => "one",
+        _ => "other",
+    }
 }
 
 fn render(template: &str, args: &[(&str, &dyn Display)]) -> String {
@@ -184,22 +321,25 @@ fn render(template: &str, args: &[(&str, &dyn Display)]) -> String {
     out
 }
 
-fn lookup(locale: Locale, key: &str) -> &str {
+fn entry(locale: Locale, key: &str) -> Option<&'static str> {
     locale
         .catalog()
         .get(key)
         .or_else(|| {
             APPLICATION_CATALOGS[locale as usize]
                 .get()
-                .and_then(|map| map.get(key).or_else(|| map.get(&format!("{key}.other"))))
-        })
-        .or_else(|| Locale::SOURCE.catalog().get(key))
-        .or_else(|| {
-            APPLICATION_CATALOGS[Locale::SOURCE as usize]
-                .get()
                 .and_then(|map| map.get(key))
         })
-        .map_or(key, String::as_str)
+        .map(String::as_str)
+}
+
+fn lookup(locale: Locale, key: &str) -> &str {
+    [locale, Locale::EnUs, Locale::SOURCE]
+        .into_iter()
+        .find_map(|candidate| {
+            entry(candidate, key).or_else(|| entry(candidate, &format!("{key}.other")))
+        })
+        .unwrap_or(key)
 }
 
 /// Looks up user-facing text: `tr!("tray.quit")`, or with placeholders,
@@ -224,16 +364,90 @@ mod tests {
 
     #[test]
     fn catalogs_parse_and_share_keys() {
+        fn keys(catalog: &HashMap<String, String>) -> std::collections::BTreeSet<&str> {
+            catalog
+                .keys()
+                .map(|key| {
+                    key.rsplit_once('.')
+                        .filter(|(_, form)| matches!(*form, "one" | "few" | "many" | "other"))
+                        .map_or(key.as_str(), |(root, _)| root)
+                })
+                .collect()
+        }
         let source = Locale::SOURCE.catalog();
         assert!(!source.is_empty());
         for locale in Locale::ALL {
             let catalog = locale.catalog();
-            assert_eq!(catalog.len(), source.len(), "{}", locale.tag());
-            assert!(
-                source.keys().all(|k| catalog.contains_key(k)),
-                "{}",
-                locale.tag()
-            );
+            assert_eq!(keys(catalog), keys(source), "{}", locale.tag());
+        }
+    }
+
+    #[test]
+    fn regions_and_scripts_resolve_without_changing_global_language() {
+        for (tag, locale) in [
+            ("ES-mx", Locale::EsEs),
+            ("de_AT", Locale::DeDe),
+            ("fr-CA", Locale::FrFr),
+            ("ja", Locale::JaJp),
+            ("ru-KZ", Locale::RuRu),
+            ("zh-Hant-TW", Locale::ZhCn),
+            ("en-GB", Locale::EnUs),
+        ] {
+            assert_eq!(Locale::from_tag(tag), Some(locale));
+        }
+        for tag in ["", "system", "des", "pt-BR"] {
+            assert_eq!(Locale::from_tag(tag), None);
+        }
+        for (id, locale) in [
+            (0x0c0a, Locale::EsEs),
+            (0x080a, Locale::EsEs),
+            (0x0807, Locale::DeDe),
+            (0x0c0c, Locale::FrFr),
+            (0x0411, Locale::JaJp),
+            (0x0419, Locale::RuRu),
+        ] {
+            assert_eq!(Locale::from_langid(id), Some(locale));
+        }
+        for locale in Locale::ALL {
+            assert_eq!(Locale::from_tag(locale.tag()), Some(locale));
+        }
+    }
+
+    #[test]
+    fn cardinal_rules_cover_zero_teens_decimals_and_millions() {
+        for (count, form) in [
+            ("0", "many"),
+            ("1", "one"),
+            ("2", "few"),
+            ("5", "many"),
+            ("11", "many"),
+            ("14", "many"),
+            ("21", "one"),
+            ("22", "few"),
+            ("25", "many"),
+            ("101", "one"),
+            ("1.0", "other"),
+            ("1.5", "other"),
+            ("-22", "few"),
+        ] {
+            assert_eq!(plural(Locale::RuRu, count), form, "{count}");
+        }
+        for locale in [Locale::ZhCn, Locale::JaJp] {
+            for count in ["0", "1", "2", "1.5"] {
+                assert_eq!(plural(locale, count), "other");
+            }
+        }
+        for count in ["0", "1", "1.5"] {
+            assert_eq!(plural(Locale::FrFr, count), "one");
+        }
+        for locale in [Locale::FrFr, Locale::EsEs] {
+            assert_eq!(plural(locale, "1000000"), "many");
+            assert_eq!(plural(locale, "1000000.0"), "other");
+        }
+        assert_eq!(plural(Locale::RuRu, "9007199254741021"), "one");
+        assert_eq!(plural(Locale::EsEs, "1.0"), "one");
+        for locale in [Locale::EnUs, Locale::DeDe] {
+            assert_eq!(plural(locale, "1.0"), "other");
         }
     }
 
@@ -243,5 +457,15 @@ mod tests {
         assert_eq!(render("{a} and {b}, {a}", &args), "1 and x, 1");
         assert_eq!(render("{c} {a", &args), "{c} {a");
         assert_eq!(lookup(Locale::EnUs, "no.such.key"), "no.such.key");
+    }
+
+    #[test]
+    fn grouped_counts_keep_the_raw_plural_category() {
+        let args: [(&str, &dyn Display); 1] = [("count", &"1.021")];
+        let template = entry(Locale::RuRu, "installer.moreProcesses.one").unwrap();
+        assert_eq!(
+            format_args(Locale::RuRu, "installer.moreProcesses", &args, Some("1021")),
+            render(template, &args)
+        );
     }
 }

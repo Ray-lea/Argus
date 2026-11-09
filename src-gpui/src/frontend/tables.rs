@@ -234,7 +234,7 @@ fn cell(row: &Row, field: &Field) -> String {
             .unwrap_or_else(missing),
         CellKind::Identifier => row
             .metric(field.key)
-            .map(|value| format!("{value:.0}"))
+            .map(|value| crate::regional::number!("{value:.0}"))
             .unwrap_or_else(missing),
         CellKind::Duration => row
             .metric(field.key)

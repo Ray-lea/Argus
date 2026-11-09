@@ -1,0 +1,93 @@
+{
+  "endAll": "Finalizar todos",
+  "end": {
+    "title": "¿Finalizar {name}?",
+    "body": "PID {pid}. Los datos no guardados se perderán.",
+    "done": "{name} ha finalizado."
+  },
+  "endGroup": {
+    "body": {
+      "one": "Se finalizará {count} proceso de {name}. Se perderán los datos sin guardar.",
+      "many": "Se finalizarán los {count} procesos de {name}. Se perderán los datos sin guardar.",
+      "other": "Se finalizarán los {count} procesos de {name}. Se perderán los datos sin guardar."
+    },
+    "done": {
+      "one": "Se ha finalizado {count} proceso de {name}.",
+      "many": "Se han finalizado {count} procesos de {name}.",
+      "other": "Se han finalizado {count} procesos de {name}."
+    },
+    "partial": "{error} (sin finalizar: {count})"
+  },
+  "endTree": {
+    "title": "¿Finalizar el árbol de procesos de {name}?",
+    "body": {
+      "one": "Se finalizarán el proceso con PID {pid} y su proceso secundario. Se perderán los datos sin guardar.",
+      "many": "Se finalizarán el proceso con PID {pid} y sus {count} procesos secundarios. Se perderán los datos sin guardar.",
+      "other": "Se finalizarán el proceso con PID {pid} y sus {count} procesos secundarios. Se perderán los datos sin guardar."
+    },
+    "bodyAlone": "El proceso con PID {pid} no tiene procesos secundarios. Se finalizará únicamente este proceso.",
+    "done": {
+      "one": "Se ha finalizado {count} proceso.",
+      "many": "Se han finalizado {count} procesos.",
+      "other": "Se han finalizado {count} procesos."
+    },
+    "partial": {
+      "one": "Procesos finalizados: {count}; sin finalizar: {failed} (acceso denegado o ya finalizados).",
+      "many": "Procesos finalizados: {count}; sin finalizar: {failed} (acceso denegado o ya finalizados).",
+      "other": "Procesos finalizados: {count}; sin finalizar: {failed} (acceso denegado o ya finalizados)."
+    }
+  },
+  "error": {
+    "accessDenied": "No se pudo finalizar {name}: acceso denegado. Active el servicio privilegiado en Configuración o ejecute Argus como administrador. Los procesos protegidos pueden seguir restringidos.",
+    "notFound": "{name} ya ha finalizado.",
+    "critical": "{name} es un proceso crítico del sistema. Finalizarlo provocaría un fallo de Windows, por lo que se ha bloqueado la operación.",
+    "refused": "{name} no se puede finalizar.",
+    "serviceOutdated": "No se pudo finalizar {name}: acceso denegado. La versión del servicio privilegiado es incompatible. Actualice el servicio y vuelva a intentarlo.",
+    "generic": "No se pudo finalizar {name}: {error}"
+  },
+  "priority": {
+    "confirmTitle": "¿Establecer la prioridad de {name} en Tiempo real?",
+    "confirmBody": "Los procesos en tiempo real se ejecutan antes que las tareas del sistema. Si consumen todo el tiempo del procesador, el ratón y el teclado pueden dejar de responder.",
+    "confirm": "Establecer Tiempo real",
+    "failed": "No se pudo cambiar la prioridad de {name}",
+    "downgraded": "La prioridad en tiempo real necesita derechos de administrador, por lo que se configuró Alta.",
+    "partial": {
+      "one": "Prioridad cambiada en {count} proceso; sin cambiar: {failed} (acceso denegado o ya finalizados).",
+      "many": "Prioridad cambiada en {count} procesos; sin cambiar: {failed} (acceso denegado o ya finalizados).",
+      "other": "Prioridad cambiada en {count} procesos; sin cambiar: {failed} (acceso denegado o ya finalizados)."
+    },
+    "done": "La prioridad de {name} se ha establecido en {priority}."
+  },
+  "efficiency": {
+    "on": {
+      "failed": "No se pudo activar el modo de eficiencia para {name}",
+      "partial": {
+        "one": "Modo de eficiencia activado en {count} proceso; sin cambiar: {failed} (acceso denegado o ya finalizados).",
+        "many": "Modo de eficiencia activado en {count} procesos; sin cambiar: {failed} (acceso denegado o ya finalizados).",
+        "other": "Modo de eficiencia activado en {count} procesos; sin cambiar: {failed} (acceso denegado o ya finalizados)."
+      },
+      "done": "Modo de eficiencia activado para {name}."
+    },
+    "off": {
+      "failed": "No se pudo desactivar el modo de eficiencia para {name}",
+      "partial": {
+        "one": "Modo de eficiencia desactivado en {count} proceso; sin cambiar: {failed} (acceso denegado o ya finalizados).",
+        "many": "Modo de eficiencia desactivado en {count} procesos; sin cambiar: {failed} (acceso denegado o ya finalizados).",
+        "other": "Modo de eficiencia desactivado en {count} procesos; sin cambiar: {failed} (acceso denegado o ya finalizados)."
+      },
+      "done": "Modo de eficiencia desactivado para {name}."
+    }
+  },
+  "ruleScope": {
+    "title": "¿Añadir una regla para todos los procesos con este nombre?",
+    "body": "Las reglas coinciden con el nombre del ejecutable {name}. Se aplicarán a todos los procesos con ese nombre, aunque pertenezcan a distintos hosts o rutas de instalación.",
+    "confirm": "Continuar con la configuración de reglas"
+  },
+  "copied": "Copiado: {what}.",
+  "staleProcess": "La información del proceso no está actualizada. Actualiza e inténtalo de nuevo.",
+  "copyWhat": {
+    "path": "ruta",
+    "name": "nombre",
+    "version": "número de versión"
+  }
+}

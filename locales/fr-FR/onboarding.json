@@ -1,0 +1,103 @@
+{
+  "skip": "Ignorer",
+  "back": "Retour",
+  "next": "Suivant",
+  "finish": "Commencer",
+  "saveFailed": "Impossible d'enregistrer le paramètre : {error}",
+  "welcome": {
+    "title": "Bienvenue dans Argus",
+    "body": "Argus est un gestionnaire de tâches moderne pour Windows. Il affiche les processus, les performances, les services, les applications au démarrage et les connexions réseau, et conserve l’historique d’utilisation des ressources. Les étapes suivantes configurent les options essentielles. Chaque étape peut être ignorée et chaque réglage modifié ensuite dans les paramètres.",
+    "language": "Langue"
+  },
+  "display": {
+    "title": "Affichage et actualisation",
+    "body": "Choisissez la position de la navigation, les animations et la fréquence d’actualisation.",
+    "nav": "Position de navigation",
+    "navHint": "Le volet latéral affiche des icônes par défaut ; déployez-le pour voir le nom des pages.",
+    "motion": "Animations de l’interface",
+    "motionHint": "Transitions lors du changement de page et de l’ouverture des menus et des boîtes de dialogue.",
+    "chart": "Animations des graphiques",
+    "chartHint": "Une fréquence d’images plus élevée rend l’affichage plus fluide et utilise davantage de ressources.",
+    "interval": "Fréquence d’actualisation",
+    "intervalHint": "Des intervalles plus courts affichent des données plus récentes et augmentent les ressources utilisées par Argus."
+  },
+  "background": {
+    "title": "Fonctionnement en arrière-plan",
+    "body": "Argus peut rester dans la zone de notification, enregistrer l’historique et appliquer les règles, tout en restant disponible.",
+    "autostart": "Lancer à l’ouverture de session Windows",
+    "autostartHint": "Démarre dans la zone de notification sans ouvrir de fenêtre.",
+    "closeToTray": "Conserver dans la zone de notification à la fermeture",
+    "closeToTrayHint": "Si cette option est désactivée, fermer la fenêtre quitte Argus.",
+    "minimizedInterval": "Actualisation lorsque la fenêtre est réduite",
+    "minimizedIntervalHint": "Valeur par défaut : 5 secondes. Des intervalles plus courts utilisent davantage de ressources en arrière-plan.",
+    "trayInterval": "Actualisation dans la zone de notification",
+    "trayIntervalHint": "Au-delà de 5 secondes, les enregistrements de l’historique sont plus espacés.",
+    "hotkey": "Appuyez sur {hotkey} pour afficher ou masquer Argus. Ce raccourci peut être modifié dans les paramètres.",
+    "hotkeyOff": "Le raccourci permettant d’afficher ou de masquer Argus est désactivé. Vous pouvez le réactiver dans les paramètres.",
+    "hotkeyTaken": "{shortcut} est utilisé par Windows ou une autre application, éventuellement une autre instance d’Argus. Choisissez une autre combinaison dans les paramètres.",
+    "hotkeyProblem": "{problem} Le raccourci peut être modifié dans Paramètres."
+  },
+  "update": {
+    "title": "Rester à jour",
+    "body": "Argus récupère les nouvelles versions depuis GitHub Releases. Les programmes d’installation doivent passer la vérification de signature et sont installés après confirmation.",
+    "check": "Rechercher automatiquement les mises à jour",
+    "checkHint": "Environ une minute après le démarrage, puis une fois par jour.",
+    "channel": "Canal de mise à jour",
+    "stable": "Stable",
+    "beta": "Bêta",
+    "betaHint": "Beta reçoit également des pré-versions : de nouvelles fonctionnalités plus tôt, mais peut-être moins stables.",
+    "route": "Source de téléchargement",
+    "routeAuto": "Automatique",
+    "routeDirect": "GitHub uniquement",
+    "routeProxy": "Via le proxy GitHub uniquement",
+    "proxyNotice": "Les proxys GitHub sont exploités par des tiers, qui peuvent voir l’adresse IP de ce PC et les fichiers téléchargés. La vérification de signature protège contre les mises à jour modifiées.",
+    "unavailable": "Cette version ne peut pas se mettre à jour."
+  },
+  "privilege": {
+    "title": "Service privilégié (facultatif)",
+    "body": "Argus fonctionne avec des droits standard, qui limitent la lecture, l’arrêt ou le réglage de certains processus système. Le service privilégié facultatif s’exécute en arrière-plan sous SYSTEM et permet de :",
+    "features": {
+      "end": "Terminer les processus d’autres utilisateurs, sauf les processus système critiques",
+      "tune": "Régler la priorité et le mode d’efficacité, y compris automatiquement par des règles",
+      "inspect": "Afficher les fichiers utilisés, le trafic réseau et les lectures et écritures disque de chaque processus",
+      "control": "Contrôler les services Windows et fermer les connexions réseau",
+      "sensors": "Accéder aux capteurs du noyau ; le pilote est activé séparément"
+    },
+    "risk": "L’autorisation est accordée au compte Windows actuel. Tout programme exécuté sous ce compte peut utiliser ces fonctions, qui donnent une partie des droits d’administrateur. Installez ce service uniquement sur un compte que vous utilisez personnellement.",
+    "later": "L’installation nécessite une autorisation d’administrateur. Le service peut être installé ou désinstallé plus tard dans Paramètres → Autorisations.",
+    "replace": "Les étapes suivantes proposent les capteurs du noyau et le remplacement du Gestionnaire des tâches.",
+    "manage": "Consultez les détails, mettez à jour ou réinstallez le service dans Paramètres → Autorisations.",
+    "elevated": "Argus s’exécute en tant qu’administrateur et peut gérer les processus sans le service privilégié. Les capteurs du noyau et le remplacement du Gestionnaire des tâches nécessitent ce service."
+  },
+  "sensors": {
+    "title": "Capteurs du noyau (facultatif)",
+    "body": "Lire les capteurs internes du processeur pour obtenir la température et la puissance.",
+    "install": "Une autorisation d’administrateur est demandée si PawnIO doit être installé ou démarré.",
+    "checking": "Vérification de l’état",
+    "enabled": "Activé",
+    "disabled": "Non activé",
+    "needsService": "Installez et démarrez d’abord le service privilégié. Si un service existant ne se connecte pas, mettez-le à jour dans les paramètres.",
+    "configureService": "Configurer le service",
+    "enable": "Activer les capteurs du noyau",
+    "later": "Désactivé par défaut. Sélectionnez Suivant pour passer cette étape et activez-le plus tard dans Paramètres → Autorisations.",
+    "manage": "Consultez les mesures sur la page Performances et désactivez les capteurs dans Paramètres → Autorisations. Le pilote partagé reste installé lorsque les capteurs sont désactivés."
+  },
+  "taskManager": {
+    "title": "Remplacer le Gestionnaire des tâches (facultatif)",
+    "body": "Une fois activé, Ctrl+Shift+Esc, l’entrée Gestionnaire des tâches du menu de la barre des tâches et les autres moyens d’ouvrir le Gestionnaire des tâches ouvrent Argus.",
+    "scope": "Ce réglage s’applique à tout le PC ; les autres comptes ouvrent toujours le Gestionnaire des tâches Windows. Si Argus ne peut pas démarrer, celui de Windows s’ouvre.",
+    "undo": "Le remplacement peut être désactivé dans Paramètres → Autorisations. Un outil de récupération autonome fonctionne même si l’interface ou le service ne démarre pas.",
+    "later": "L’activation nécessite une autorisation d’administrateur. Vous pouvez passer cette étape et l’activer plus tard dans Paramètres → Autorisations.",
+    "needsService": "Le remplacement nécessite le service privilégié. Installez et démarrez celui-ci à l’étape Service privilégié."
+  },
+  "tips": {
+    "title": "Configuration terminée",
+    "body": "Quelques raccourcis pour gagner du temps :",
+    "pages": "{keys} change de page ; {search} recherche des processus",
+    "menu": "Faites un clic droit sur un processus pour le terminer, changer sa priorité, activer le mode d’efficacité ou ajouter une règle",
+    "drop": "Déposez un fichier ou un dossier sur la fenêtre pour trouver les processus qui l’utilisent",
+    "history": "La page Historique conserve les 7 derniers jours d’utilisation des ressources et les processus les plus actifs à chaque instant",
+    "reopen": "Ce guide peut être rouvert à tout moment depuis la page À propos."
+  },
+  "administrator": "Autoriser l’exécution automatique d’Argus en tant qu’administrateur pour gérer les processus et éléments de démarrage d’autres utilisateurs. Désactivé par défaut ; Windows demande une autorisation lors de la première activation."
+}

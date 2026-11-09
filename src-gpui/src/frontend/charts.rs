@@ -225,7 +225,7 @@ impl MetricFormat {
             Self::Percent => format!("{}%", theme::cpu(value)),
             Self::RoundPercent => format!("{}%", value.round()),
             Self::Memory => theme::memory(value),
-            Self::Gigabytes => format!("{:.1} GB", value / GIB),
+            Self::Gigabytes => crate::regional::number!("{:.1} GB", value / GIB),
             Self::Rate => theme::bytes(value, true),
             Self::ByteRate => byte_rate(value),
             Self::Count => theme::count(value),
@@ -237,7 +237,7 @@ impl MetricFormat {
             ),
             Self::Watts => format!("{} W", watts(value)),
             Self::Celsius => format!("{} °C", value.round()),
-            Self::Unit(unit, digits) => format!("{value:.digits$} {unit}"),
+            Self::Unit(unit, digits) => crate::regional::number!("{value:.digits$} {unit}"),
         }
     }
 }
@@ -248,7 +248,7 @@ pub(in crate::frontend) const GIB: f64 = MIB * 1024.;
 /// idle integrated GPU kept: 0.012.
 pub(in crate::frontend) fn watts(value: f64) -> String {
     if value > 0. && value < 1. {
-        format!("{value:.3}")
+        crate::regional::number!("{value:.3}")
     } else {
         watts_tenths(value)
     }
@@ -256,7 +256,7 @@ pub(in crate::frontend) fn watts(value: f64) -> String {
 /// Watts to a tenth below 10 W, as the history page shows them: 7.4, 78.
 pub(in crate::frontend) fn watts_tenths(value: f64) -> String {
     if value < 10. {
-        format!("{value:.1}")
+        crate::regional::number!("{value:.1}")
     } else {
         format!("{}", value.round())
     }
@@ -268,9 +268,9 @@ pub(in crate::frontend) fn byte_rate(bytes: f64) -> String {
     } else if bytes < MIB {
         format!("{} KB/s", (bytes / KIB).round().max(1.))
     } else if bytes < GIB {
-        format!("{:.1} MB/s", bytes / MIB)
+        crate::regional::number!("{:.1} MB/s", bytes / MIB)
     } else {
-        format!("{:.2} GB/s", bytes / GIB)
+        crate::regional::number!("{:.2} GB/s", bytes / GIB)
     }
 }
 /// A rate in bits per second, the unit links and broadband plans are sold in.
@@ -279,11 +279,11 @@ pub(in crate::frontend) fn bit_rate(bytes: f64) -> String {
     if bits < 1. {
         "0 Kbps".into()
     } else if bits < 1e6 {
-        format!("{:.*} Kbps", if bits < 1e4 { 1 } else { 0 }, bits / 1e3)
+        crate::regional::number!("{:.*} Kbps", if bits < 1e4 { 1 } else { 0 }, bits / 1e3)
     } else if bits < 1e9 {
-        format!("{:.*} Mbps", if bits < 1e7 { 2 } else { 1 }, bits / 1e6)
+        crate::regional::number!("{:.*} Mbps", if bits < 1e7 { 2 } else { 1 }, bits / 1e6)
     } else {
-        format!("{:.2} Gbps", bits / 1e9)
+        crate::regional::number!("{:.2} Gbps", bits / 1e9)
     }
 }
 /// A network rate in the chosen unit.
@@ -316,9 +316,9 @@ pub(in crate::frontend) fn span_label(interval: u64) -> String {
         * interval as f64
         / 1000.;
     if seconds >= 120. {
-        tr!("performance.span.minutes", count = seconds / 60.)
+        theme::quantity("performance.span.minutes", seconds / 60.)
     } else {
-        tr!("performance.span.seconds", count = seconds)
+        theme::quantity("performance.span.seconds", seconds)
     }
 }
 /// Seconds as the hover readout shows them: tenths below ten.
@@ -326,9 +326,9 @@ fn ago(seconds: f64) -> String {
     if seconds < 10. {
         let tenths = (seconds * 10.).round() / 10.;
         if tenths.fract() == 0. {
-            format!("{tenths:.0}")
+            crate::regional::number!("{tenths:.0}")
         } else {
-            format!("{tenths:.1}")
+            crate::regional::number!("{tenths:.1}")
         }
     } else {
         format!("{}", seconds.round())

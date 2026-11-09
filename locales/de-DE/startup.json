@@ -1,0 +1,38 @@
+{
+  "location": {
+    "hkcuRun": "Registry (aktueller Benutzer)",
+    "hklmRun": "Registry (alle Benutzer)",
+    "hklmRun32": "Registry (alle Benutzer, 32-Bit)",
+    "userFolder": "Startordner (aktueller Benutzer)",
+    "commonFolder": "Startordner (alle Benutzer)",
+    "package": "App-Paket (aktueller Benutzer)"
+  },
+  "menu": {
+    "copyCommand": "Kopierbefehl"
+  },
+  "copied": {
+    "command": "Befehl"
+  },
+  "search": "Suchname, Herausgeber oder Befehl",
+  "column": {
+    "publisher": "Herausgeber",
+    "location": "Speicherort"
+  },
+  "missing": {
+    "label": "Datei fehlt",
+    "title": "The program this command points to no longer exists; Dieses Element kann deaktiviert werden"
+  },
+  "toggle": {
+    "enable": "Aktivieren Sie {name}",
+    "disable": "Deaktivieren Sie {name}"
+  },
+  "blocked": {
+    "managed": "Diese App erlaubt keine manuellen Änderungen an dieser Startaufgabe.",
+    "unavailable": "The state of this startup task could not be read. Es wurden keine Änderungen vorgenommen."
+  },
+  "unavailable": "Nicht verfügbar",
+  "loading": "Startup-Apps werden gelesen…",
+  "noMatch": "Keine passenden Autostart-Apps",
+  "summary": "{enabled} von {total} aktiviert",
+  "note": "Das Deaktivieren verwendet denselben Schalter wie Start-Apps in Task-Manager und kann rückgängig gemacht werden. Elemente für alle Benutzer benötigen Administratorrechte."
+}

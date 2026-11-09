@@ -1,0 +1,61 @@
+{
+  "cancel": "Cancelar",
+  "close": "Cerrar",
+  "enable": "Habilitar",
+  "disable": "Deshabilitar",
+  "enabled": "Habilitado",
+  "disabled": "Deshabilitado",
+  "on": "Activado",
+  "off": "Desactivado",
+  "start": "Iniciar",
+  "stop": "Detener",
+  "restart": "Reiniciar",
+  "expand": "Expandir",
+  "collapse": "Contraer",
+  "none": "Ninguno",
+  "name": "Nombre",
+  "status": "Estado",
+  "command": "Comando",
+  "copyName": "Copiar nombre",
+  "copyPath": "Copiar ruta",
+  "openFileLocation": "Abrir ubicación del archivo",
+  "goToProcess": "Ir al proceso",
+  "endProcess": "Finalizar tarea",
+  "endProcessTree": "Finalizar árbol de procesos",
+  "efficiencyMode": "Modo de eficiencia",
+  "privilegedService": "Servicio privilegiado",
+  "listSeparator": ", ",
+  "resource": {
+    "cpu": "CPU",
+    "memory": "Memoria",
+    "disk": "Disco",
+    "network": "Red",
+    "gpu": "GPU",
+    "battery": "Batería",
+    "temperature": "Temperatura"
+  },
+  "languageSystem": "Igual que Windows",
+  "keys": {
+    "space": "Espacio"
+  },
+  "marks": {
+    "pin": "Anclar arriba",
+    "unpin": "Desanclar",
+    "pinned": "Anclado",
+    "addNote": "Añadir nota",
+    "editNote": "Editar nota",
+    "deleteNote": "Eliminar nota",
+    "note": "Nota",
+    "placeholder": "Breve descripción de su función",
+    "save": "Guardar"
+  },
+  "languageName": {
+    "zhCN": "简体中文",
+    "enUS": "English",
+    "esES": "Español",
+    "deDE": "Deutsch",
+    "jaJP": "日本語",
+    "frFR": "Français",
+    "ruRU": "Русский"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "range": {
+    "hours": {
+      "one": "{count} heure",
+      "many": "{count} heures",
+      "other": "{count} heures"
+    },
+    "days": {
+      "one": "{count} jour",
+      "many": "{count} jours",
+      "other": "{count} jours"
+    }
+  },
+  "latest": {
+    "label": "Retour au dernier",
+    "title": "Effacez le moment sélectionné et affichez les dernières données"
+  },
+  "metric": {
+    "peak": "Pic {value}%",
+    "total": "de {value} GB",
+    "charging": "Chargement {value}",
+    "discharging": "Décharge {value}"
+  },
+  "exited": "{name} (PID {pid}) s'est arrêté.",
+  "copied": {
+    "name": "Numéro de version"
+  },
+  "column": {
+    "cpuTitle": "Moyenne sur l'intervalle d'enregistrement (généralement 5 secondes)",
+    "memTitle": "Ensemble de travail privé"
+  },
+  "noData": "Aucune donnée",
+  "empty": {
+    "off": "L'enregistrement de l'historique est désactivé",
+    "none": "Aucun enregistrement dans cette période",
+    "offHint": "Une fois activé dans Paramètres, Argus enregistre toutes les 5 secondes, ou à la fréquence de rafraîchissement réduite ou dans la barre d'état lorsque celle-ci est plus lente.",
+    "hint": "Argus enregistre toutes les 5 secondes pendant l'exécution, ou à la fréquence de rafraîchissement réduite ou dans la barre d'état lorsque celle-ci est plus lente, et se conserve 7 jours."
+  },
+  "busiest": "Processus les plus chargés",
+  "busiestAt": "Processus les plus chargés chez {time}",
+  "hint": {
+    "pick": "Cliquez à tout moment sur les graphiques pour voir les processus à ce moment-là",
+    "move": "Appuyez sur ← → sur les graphiques pour parcourir le temps, Esc pour revenir aux dernières"
+  },
+  "noRecordAt": "Aucun enregistrement pour le moment",
+  "earliest": "Premier enregistrement",
+  "note": "Enregistre les principaux processus par CPU, mémoire, I/O, GPU et réseau toutes les 5 secondes (ou à la fréquence de rafraîchissement réduite ou de la barre d'état lorsque celle-ci est plus lente) et les conserve pendant 7 jours.",
+  "off": "L'enregistrement de l'historique est désactivé ; aucune nouvelle donnée n'est enregistrée. <link>Ouvrir les paramètres</link>"
+}

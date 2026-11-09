@@ -195,9 +195,13 @@ UninstPage custom un.ArgusPageDone
 ;Languages
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
+!insertmacro MUI_LANGUAGE "Spanish"
+!insertmacro MUI_LANGUAGE "German"
+!insertmacro MUI_LANGUAGE "Japanese"
+!insertmacro MUI_LANGUAGE "French"
+!insertmacro MUI_LANGUAGE "Russian"
 !insertmacro MUI_RESERVEFILE_LANGDLL
-!include "English.nsh"
-!include "SimpChinese.nsh"
+!include "installer-locales.nsh"
 ; Argus: the pages; ARGUS_DIR is defined by installer-hooks.nsh.
 !include "${ARGUS_DIR}\installer-ui.nsh"
 
@@ -289,7 +293,7 @@ Section Install
   !endif
 
   ; Argus: diagnose file holders and retry before modifying installed files.
-  !insertmacro ARGUS_TEXT $2 "正在准备程序文件…" "Preparing the program file…"
+  !insertmacro ARGUS_TEXT $2 ArgusPreparing
   DetailPrint "$2"
   SetDetailsPrint none
   InitPluginsDir
@@ -312,7 +316,7 @@ Section Install
     SetDetailsPrint both
     ${If} $0 != 0
       ${If} $0 != 1223
-        !insertmacro ARGUS_TEXT $2 "程序文件更新未完成。错误代码：$0。可重试或退出安装。" "The program file update did not complete. Error code: $0. Retry or exit setup."
+        !insertmacro ARGUS_TEXT $2 ArgusCopyFailed
         DetailPrint "$2"
         IfSilent argus_prepare_quit 0
         MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$2" IDRETRY argus_prepare_retry

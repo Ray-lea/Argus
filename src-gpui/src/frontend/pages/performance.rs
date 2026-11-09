@@ -131,14 +131,14 @@ fn missing() -> String {
     label("format.missing")
 }
 fn ghz(mhz: f64) -> String {
-    format!("{:.2} GHz", mhz / 1000.)
+    crate::regional::number!("{:.2} GHz", mhz / 1000.)
 }
 fn gb(bytes: f64) -> String {
-    format!("{:.1}", bytes / GIB)
+    crate::regional::number!("{:.1}", bytes / GIB)
 }
 fn fmt_cache(bytes: f64) -> String {
     if bytes >= MIB {
-        format!("{:.1} MB", bytes / MIB)
+        crate::regional::number!("{:.1} MB", bytes / MIB)
     } else {
         format!("{} KB", (bytes / KIB).round())
     }
@@ -146,7 +146,7 @@ fn fmt_cache(bytes: f64) -> String {
 /// Capacity in binary units, the way Windows reports drive sizes.
 fn fmt_capacity(bytes: f64) -> String {
     if bytes >= 1024. * GIB {
-        format!("{:.1} TB", bytes / (1024. * GIB))
+        crate::regional::number!("{:.1} TB", bytes / (1024. * GIB))
     } else {
         format!("{} GB", (bytes / GIB).round())
     }
@@ -154,7 +154,10 @@ fn fmt_capacity(bytes: f64) -> String {
 fn link_speed(bits: f64) -> String {
     if bits >= 1e9 {
         let value = format!("{:.1}", bits / 1e9);
-        format!("{} Gbps", value.trim_end_matches(".0"))
+        format!(
+            "{} Gbps",
+            crate::regional::numeric(value.trim_end_matches(".0").to_owned())
+        )
     } else {
         format!("{} Mbps", (bits / 1e6).round())
     }
@@ -277,7 +280,7 @@ fn watt_hours(milliwatt_hours: &Value) -> String {
     milliwatt_hours
         .as_f64()
         .filter(|v| *v > 0.)
-        .map(|v| format!("{:.1} Wh", v / 1000.))
+        .map(|v| crate::regional::number!("{:.1} Wh", v / 1000.))
         .unwrap_or_else(missing)
 }
 fn or_missing(value: &str) -> String {
@@ -1226,7 +1229,7 @@ impl Desktop {
             ),
             self.stat(
                 label("performance.cpu.speed"),
-                format!("{:.2}", number(hw, "cpuMhz") / 1000.),
+                crate::regional::number!("{:.2}", number(hw, "cpuMhz") / 1000.),
                 Some("GHz".into()),
                 None,
                 cx,
@@ -1247,7 +1250,7 @@ impl Desktop {
                 if !clocks.is_empty() {
                     stats.push(self.stat(
                         label(title),
-                        format!(
+                        crate::regional::number!(
                             "{:.2}",
                             clocks.iter().sum::<f64>() / clocks.len() as f64 / 1000.
                         ),
@@ -1981,7 +1984,7 @@ impl Desktop {
         let memory = &self.snapshot["hardware"]["memory"];
         let total = number(sys, "memTotal");
         let installed = number(memory, "installed");
-        let model = format!(
+        let model = crate::regional::number!(
             "{:.0} GB{}",
             (if installed > 0. { installed } else { total }) / GIB,
             memory["kind"]
@@ -2144,7 +2147,7 @@ impl Desktop {
         if reserved > 0. {
             rows.push((
                 label("performance.memory.reserved"),
-                plain(format!("{:.0} MB", reserved / MIB)),
+                plain(crate::regional::number!("{:.0} MB", reserved / MIB)),
             ));
         }
         vec![
@@ -2238,7 +2241,7 @@ impl Desktop {
                 label("performance.disk.responseTime"),
                 disk["responseMs"]
                     .as_f64()
-                    .map(|v| format!("{v:.1}"))
+                    .map(|v| crate::regional::number!("{v:.1}"))
                     .unwrap_or_else(missing),
                 disk["responseMs"]
                     .is_number()
@@ -2562,7 +2565,7 @@ impl Desktop {
         if let Some(voltage) = battery["voltage"].as_f64().filter(|v| *v > 0.) {
             stats.push(self.stat(
                 label("performance.battery.voltage"),
-                format!("{:.2}", voltage / 1000.),
+                crate::regional::number!("{:.2}", voltage / 1000.),
                 Some("V".into()),
                 None,
                 cx,

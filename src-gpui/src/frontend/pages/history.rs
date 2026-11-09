@@ -42,13 +42,10 @@ fn now_ms() -> i64 {
         .unwrap_or_default()
         .as_millis() as i64
 }
-fn local_offset() -> time::UtcOffset {
-    time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC)
-}
 fn local(ts: i64) -> Option<time::OffsetDateTime> {
     time::OffsetDateTime::from_unix_timestamp(ts.div_euclid(1000))
         .ok()
-        .map(|t| t.to_offset(local_offset()))
+        .map(|t| t.to_offset(time::UtcOffset::local_offset_at(t).unwrap_or(time::UtcOffset::UTC)))
 }
 
 // ---- Gaps ------------------------------------------------------
@@ -171,12 +168,12 @@ fn stepped(ts: &[f64], cursor: Option<i64>, key: &str, shift: bool) -> Option<i6
 
 /// Axis ticks on local clock boundaries: so many minutes past midnight, or midnights.
 fn ticks(from: f64, to: f64, step: i64) -> Vec<f64> {
-    let offset = i64::from(local_offset().whole_seconds()) * 1000;
-    let midnight = (from as i64 + offset).div_euclid(DAY) * DAY - offset;
-    (0..)
-        .map(|k| (midnight + k * step) as f64)
-        .take_while(|at| *at <= to)
-        .filter(|at| *at >= from)
+    if !from.is_finite() || !to.is_finite() {
+        return vec![];
+    }
+    crate::regional::clock_ticks(from.ceil() as i64, to.floor() as i64, step)
+        .into_iter()
+        .map(|at| at as f64)
         .collect()
 }
 fn month_day(ts: i64) -> String {
@@ -205,20 +202,29 @@ fn clock(ts: i64, seconds: bool) -> String {
 /// A moment, with its date unless it is today.
 fn moment_label(ts: i64) -> String {
     let today = local(now_ms()).map(|t| t.date());
-    if local(ts).map(|t| t.date()) == today {
+    let text = if local(ts).map(|t| t.date()) == today {
         clock(ts, true)
     } else {
         format!("{} {}", month_day(ts), clock(ts, true))
-    }
+    };
+    with_offset(text, ts)
 }
 /// The cursor's time, as precise as the points under it.
 fn cursor_label(ts: i64, span: f64) -> String {
-    if span > DAY as f64 {
+    let text = if span > DAY as f64 {
         format!("{} {}", month_day(ts), clock(ts, false))
     } else if span > 6. * HOUR as f64 {
         clock(ts, false)
     } else {
         clock(ts, true)
+    };
+    with_offset(text, ts)
+}
+fn with_offset(text: String, ts: i64) -> String {
+    if let Some(time) = local(ts) {
+        format!("{text} ({})", crate::regional::offset_label(time.offset()))
+    } else {
+        text
     }
 }
 fn tick_label(ts: i64) -> String {
@@ -227,12 +233,12 @@ fn tick_label(ts: i64) -> String {
         _ => clock(ts, false),
     }
 }
-/// Rough width of a short label at 11 px with its padding, for keeping chips inside the plot.
-fn chip_width(text: &str) -> f32 {
-    12. + text
-        .chars()
-        .map(|c| if c.is_ascii() { 6.4 } else { 11. })
-        .sum::<f32>()
+/// Measured with the same font as the label, including CJK fallback and text scaling.
+fn chip_width(text: &str, window: &Window, cx: &App) -> f32 {
+    12. + f32::from(theme::text_width(text, theme::font(11.), window, cx))
+}
+fn axis_height() -> Pixels {
+    px(AXIS) + theme::text_growth(11., 1.4)
 }
 
 // ---- Formats --------------------------------------------------------------------------
@@ -474,7 +480,7 @@ impl Desktop {
             let reading = readout.and_then(|r| value_of(r).map(|v| (r, v)));
             let value_text = reading.map(|(_, v)| match metric.field {
                 "cpu" | "gpu" => format!("{}%", theme::cpu(v)),
-                "memUsed" => format!("{:.1} GB", v / GIB),
+                "memUsed" => crate::regional::number!("{:.1} GB", v / GIB),
                 "disk" => charts::byte_rate(v),
                 "net" => charts::net_rate(v, bits),
                 _ => format!("{}%", v.round()),
@@ -486,7 +492,7 @@ impl Desktop {
                 "memUsed" => r["memTotal"].as_f64().map(|total| {
                     tr!(
                         "history.metric.total",
-                        value = format!("{:.1}", total / GIB)
+                        value = crate::regional::number!("{:.1}", total / GIB)
                     )
                 }),
                 "battery" => r["batteryRate"]
@@ -674,12 +680,12 @@ impl Desktop {
                     .into_any_element(),
             );
         }
-        labels = labels.child(div().h(px(AXIS)).flex_shrink_0());
+        labels = labels.child(div().h(axis_height()).flex_shrink_0());
 
         // Time axis, the empty state and the pointer overlay over the plot column.
         let axis = div()
             .relative()
-            .h(px(AXIS))
+            .h(axis_height())
             .flex_shrink_0()
             .text_size(theme::font(11.))
             .text_color(p.faint)
@@ -687,7 +693,7 @@ impl Desktop {
                 let f = ((tick - from) / span) as f32;
                 (f > 0.03 && f < 0.97).then(|| {
                     let text = tick_label(*tick as i64);
-                    let width = chip_width(&text) - 12.;
+                    let width = chip_width(&text, window, cx) - 12.;
                     div()
                         .absolute()
                         .top(px(3.))
@@ -730,7 +736,7 @@ impl Desktop {
         let on_accent = cx.theme().primary_foreground;
         let chip = |at: i64, x: f32, pinned: bool| {
             let text = cursor_label(at, span);
-            let width = chip_width(&text);
+            let width = chip_width(&text, window, cx);
             div()
                 .absolute()
                 .bottom_0()
@@ -746,7 +752,7 @@ impl Desktop {
                 .bg(if pinned { p.accent } else { p.tip })
                 .text_color(if pinned { on_accent } else { p.ink })
                 .text_size(theme::font(11.))
-                .line_height(px(18.))
+                .line_height(px(18.) + theme::text_growth(11., 1.4))
                 .whitespace_nowrap()
                 .child(text)
                 .into_any_element()
@@ -755,7 +761,7 @@ impl Desktop {
             div()
                 .absolute()
                 .top_0()
-                .bottom(px(AXIS))
+                .bottom(axis_height())
                 .left(px(x.round()))
                 .w(px(1.))
                 .bg(color)
@@ -837,7 +843,7 @@ impl Desktop {
                             .top_0()
                             .left_0()
                             .right_0()
-                            .bottom(px(AXIS))
+                            .bottom(axis_height())
                             .flex()
                             .flex_col()
                             .items_center()

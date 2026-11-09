@@ -16,7 +16,10 @@
     "restartRequired": "Windows cannot release the program file at this time. Save your work and restart the PC before installing.",
     "checkFailed": "Windows could not complete the program file check. The failed step was recorded in the log.",
     "unknownProcess": "Unknown process",
-    "moreProcesses": "{count} more processes are listed in the log.",
+    "moreProcesses": {
+      "one": "{count} additional process is listed in the log.",
+      "other": "{count} additional processes are listed in the log."
+    },
     "retryHint": "Release the file or resolve the cause above, then click Retry to continue. Click Cancel to exit setup.",
     "errorCode": "Error code: {code}",
     "logPath": "Diagnostic log: {path}",

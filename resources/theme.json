@@ -37,7 +37,9 @@
     "sans": ["Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],
     "display": ["Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI"],
     "mono": ["Cascadia Mono", "Cascadia Code", "Consolas"],
-    "tooltip": ["Segoe UI", "Microsoft YaHei UI"]
+    "tooltip": ["Segoe UI", "Microsoft YaHei UI"],
+    "fallback": ["Microsoft YaHei UI", "Yu Gothic UI", "Meiryo", "Segoe UI Symbol"],
+    "japanese": ["Yu Gothic UI", "Meiryo UI", "Meiryo", "Microsoft YaHei UI", "Segoe UI Symbol"]
   },
   "light": {
     "accent": "#0067c0",

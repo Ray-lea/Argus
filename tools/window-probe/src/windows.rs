@@ -452,7 +452,7 @@ unsafe extern "system" fn find(hwnd: HWND, data: LPARAM) -> BOOL {
             .expect("application metadata")
     });
     if String::from_utf16_lossy(&title[..nt])
-        .starts_with(metadata["productName"].as_str().expect("product name"))
+        .contains(metadata["productName"].as_str().expect("product name"))
         && matches!(
             String::from_utf16_lossy(&class[..nc]).as_ref(),
             "Zed::Window"

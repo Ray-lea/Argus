@@ -1,0 +1,94 @@
+{
+  "deselect": "Deseleccionar",
+  "resize": "Cambiar el tamaño del panel de detalles",
+  "overview": {
+    "title": "Este PC",
+    "hide": "Ocultar especificaciones de PC",
+    "show": "Mostrar especificaciones de PC",
+    "copy": "Copiar las especificaciones del PC como texto",
+    "copyWhat": "PC especificaciones",
+    "copyPart": "{kind}: {name}",
+    "selectTip": "Haga clic en una aplicación o proceso en la lista para ver sus detalles aquí; haga clic en él nuevamente para anular su selección.",
+    "closeTip": "El panel de detalles permanece abierto; ocúltalo con {icon} en la parte superior derecha de la ventana.",
+    "cpu": "Procesador",
+    "cores": {
+      "one": "{count} núcleo",
+      "many": "{count} núcleos",
+      "other": "{count} núcleos"
+    },
+    "hybrid": "({performance} P-núcleos + {efficiency} E-núcleos)",
+    "threads": {
+      "one": "{count} subproceso",
+      "many": "{count} subprocesos",
+      "other": "{count} subprocesos"
+    },
+    "base": "Base {speed}",
+    "slots": "{used} de las ranuras {total} utilizadas",
+    "disk": "Almacenamiento",
+    "gpu": "Gráficos",
+    "vram": "Memoria dedicada {size}",
+    "sharedMemory": "Utiliza memoria compartida",
+    "battery": "Batería",
+    "designed": "Diseñado para {capacity}",
+    "health": "Salud {percent}%"
+  },
+  "exited": {
+    "title": "El proceso ha salido",
+    "hint": "Seleccione otro proceso en la lista para ver sus detalles."
+  },
+  "group": {
+    "count": {
+      "one": "{count} proceso",
+      "many": "{count} procesos",
+      "other": "{count} procesos"
+    },
+    "earliest": "Primero iniciado",
+    "members": "Procesos ({count})",
+    "open": "Mostrar los detalles de PID {pid}"
+  },
+  "services": "Servicios en ejecución ({count})",
+  "section": {
+    "process": "Proceso",
+    "resources": "Recursos",
+    "location": "Ubicación del archivo",
+    "commandLine": "Línea de comando",
+    "version": "Versión del archivo"
+  },
+  "parent": "Proceso padre",
+  "parentLink": "{name} ({pid})",
+  "noParent": "Ninguno (PID {pid})",
+  "started": "Iniciado",
+  "cpuTime": "CPU tiempo",
+  "user": "Nombre de usuario",
+  "integrity": "Integridad",
+  "integrityLevel": {
+    "untrusted": "No confiable",
+    "low": "Baja",
+    "medium": "Medio",
+    "mediumPlus": "Medio más",
+    "high": "Alto (elevado)",
+    "system": "Sistema",
+    "protected": "Protegido"
+  },
+  "architecture": "Arquitectura",
+  "arch": {
+    "x64": "64 bits (x64)",
+    "x86": "32 bits (x86)",
+    "arm64": "ARM64",
+    "arm": "ARM"
+  },
+  "priority": "Prioridad",
+  "session": "Sesión",
+  "privateWs": "Conjunto de trabajo privado",
+  "workingSet": "Conjunto de trabajo",
+  "commit": "Tamaño de confirmación",
+  "gpuEngine": "({engine})",
+  "gpuDedicated": "Memoria dedicada de GPU",
+  "gpuShared": "Memoria compartida de GPU",
+  "netNeedsAdmin": "Ejecute Argus como administrador para ver",
+  "threads": "Subprocesos",
+  "handles": "Identificadores",
+  "noAccess": "No se pudo abrir este proceso para leer su línea de comando y nombre de usuario. Ejecute Argus como administrador para verlos.",
+  "product": "Producto\nVersión",
+  "version": "Versión"
+}

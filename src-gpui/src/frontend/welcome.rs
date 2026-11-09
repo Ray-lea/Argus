@@ -29,7 +29,7 @@ pub(super) struct Release {
 pub(super) fn changelog() -> Vec<Release> {
     let source = match argus_core::i18n::locale() {
         argus_core::i18n::Locale::ZhCn => include_str!("../../../CHANGELOG.md"),
-        argus_core::i18n::Locale::EnUs => include_str!("../../../CHANGELOG.en.md"),
+        _ => include_str!("../../../CHANGELOG.en.md"),
     };
     let mut releases: Vec<Release> = vec![];
     for line in source.lines() {
@@ -82,21 +82,26 @@ fn between(releases: Vec<Release>, from: Option<&str>, to: &str) -> Vec<Release>
 
 /// The releases the update status carries, in the reader's language.
 fn offered_releases(status: &Value) -> Vec<Release> {
-    let locale = match argus_core::i18n::locale() {
-        argus_core::i18n::Locale::EnUs => "en-US",
-        _ => "zh-CN",
-    };
+    let locale = argus_core::i18n::locale().tag();
     values(&status["releases"])
         .iter()
         .map(|release| Release {
             version: text(release, "version").to_owned(),
             date: text(release, "date").to_owned(),
-            notes: release["translations"][locale]
-                .as_str()
-                .unwrap_or_else(|| text(release, "notes"))
-                .to_owned(),
+            notes: notes_in(locale, release).to_owned(),
         })
         .collect()
+}
+
+fn notes_in<'a>(locale: &str, release: &'a Value) -> &'a str {
+    let translated = |locale: &str| {
+        release["translations"][locale]
+            .as_str()
+            .filter(|notes| !notes.trim().is_empty())
+    };
+    translated(locale)
+        .or_else(|| (locale != "zh-CN").then(|| translated("en-US")).flatten())
+        .unwrap_or_else(|| text(release, "notes"))
 }
 
 impl Desktop {
@@ -670,7 +675,10 @@ impl Desktop {
                                 intervals
                                     .iter()
                                     .map(|ms| {
-                                        tr!("shell.interval.option", seconds = *ms as f64 / 1000.)
+                                        tr!(
+                                            "shell.interval.option",
+                                            seconds = crate::regional::seconds(*ms)
+                                        )
                                     })
                                     .collect(),
                                 intervals.iter().position(|ms| *ms == current),
@@ -1963,5 +1971,27 @@ impl Desktop {
             body = body.child(div().flex().flex_col().gap(px(8.)).child(tag).child(items));
         }
         body.into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::notes_in;
+    use serde_json::json;
+    #[test]
+    fn missing_and_blank_release_translations_follow_the_same_fallback() {
+        let release = json!({"notes":"source", "translations":{"en-US":"english","fr-FR":" \n","ja-JP":"japanese"}});
+        assert_eq!(notes_in("ja-JP", &release), "japanese");
+        for locale in ["fr-FR", "de-DE", "ru-RU", "es-ES"] {
+            assert_eq!(notes_in(locale, &release), "english");
+        }
+        assert_eq!(notes_in("zh-CN", &release), "source");
+        assert_eq!(
+            notes_in(
+                "fr-FR",
+                &json!({"notes":"source","translations":{"en-US":""}})
+            ),
+            "source"
+        );
     }
 }

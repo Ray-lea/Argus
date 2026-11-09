@@ -459,16 +459,27 @@ impl Desktop {
         id: &str,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let values = ["system", "zh-CN", "en-US"];
+        let values = std::iter::once("system")
+            .chain(
+                argus_core::i18n::Locale::ALL
+                    .into_iter()
+                    .map(|locale| locale.tag()),
+            )
+            .collect::<Vec<_>>();
         let current = text(&self.data["settings"], "language");
         self.select(
             id.to_owned(),
             label("settings.language.title"),
-            vec![
-                label("common.languageSystem"),
-                label("common.languageName.zhCN"),
-                label("common.languageName.enUS"),
-            ],
+            values
+                .iter()
+                .map(|tag| {
+                    if *tag == "system" {
+                        label("common.languageSystem")
+                    } else {
+                        label(&format!("common.languageName.{}", tag.replace('-', "")))
+                    }
+                })
+                .collect(),
             values.iter().position(|v| *v == current),
             false,
             move |this, index, window, cx| {
@@ -649,7 +660,7 @@ impl Desktop {
             label(&format!("settings.data.{away}.title")),
             choices
                 .iter()
-                .map(|ms| tr!("shell.interval.option", seconds = *ms as f64 / 1000.))
+                .map(|ms| tr!("shell.interval.option", seconds = crate::regional::seconds(*ms)))
                 .collect(),
             choices.iter().position(|ms| Some(*ms) == current),
             false,
@@ -664,7 +675,7 @@ impl Desktop {
                 if ms >= 5000 {
                     save(this, window, cx);
                 } else {
-                    let seconds = ms as f64 / 1000.;
+                    let seconds = crate::regional::seconds(ms);
                     this.ask(
                         label(&format!("shell.background.confirm.{away}.title")),
                         argus_core::i18n::format(
@@ -1814,7 +1825,12 @@ impl Desktop {
             label("shell.interval.label"),
             intervals
                 .iter()
-                .map(|ms| tr!("shell.interval.option", seconds = *ms as f64 / 1000.))
+                .map(|ms| {
+                    tr!(
+                        "shell.interval.option",
+                        seconds = crate::regional::seconds(*ms)
+                    )
+                })
                 .collect(),
             intervals.iter().position(|ms| *ms == current),
             false,
@@ -2084,17 +2100,7 @@ impl Desktop {
             &input,
             window,
             move |this, input, event, window, cx| match event {
-                InputEvent::Change => {
-                    // What a number box accepts: digits, a sign, a point, an exponent.
-                    let text = input.read(cx).value();
-                    let kept = text
-                        .chars()
-                        .filter(|c| c.is_ascii_digit() || matches!(c, '.' | '-' | '+' | 'e' | 'E'))
-                        .collect::<String>();
-                    if kept != text.as_ref() {
-                        input.update(cx, |state, cx| state.set_value(kept, window, cx));
-                    }
-                }
+                // Keep composition and pasted separators intact; validate on commit.
                 InputEvent::PressEnter { .. } | InputEvent::Blur => {
                     let next = setting.parse(&input.read(cx).value());
                     this.commit_appearance(setting, next, window, cx);
@@ -3627,13 +3633,22 @@ impl Desktop {
             return;
         }
         let m = event.keystroke.modifiers;
-        let mods = Mods {
+        let mut mods = Mods {
             ctrl: m.control,
             alt: m.alt,
             shift: m.shift,
             win: m.platform,
         };
-        let key = event.keystroke.key.clone();
+        let mut key = event.keystroke.key.clone();
+        if let Some((code, [ctrl, alt, shift, win])) = crate::hotkey::recording_key(down) {
+            key = code.to_owned();
+            mods = Mods {
+                ctrl,
+                alt,
+                shift,
+                win,
+            };
+        }
         let card = &mut self.ui.hotkey;
         let before_held = card.recording.mods != Mods::default() || !card.recording.keys.is_empty();
         let before_hint = card.recording.hint.clone();
@@ -3643,7 +3658,7 @@ impl Desktop {
             card.recording.key_up(&key)
         };
         // Tab still moves the focus as it ends the recording.
-        if !(effect == Effect::Cancel && key == "tab") {
+        if !(effect == Effect::Cancel && key.eq_ignore_ascii_case("tab")) {
             cx.stop_propagation();
         }
         if down && !before_held {

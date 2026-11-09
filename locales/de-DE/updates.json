@@ -1,0 +1,53 @@
+{
+  "updated": "Argus wurde auf {version} aktualisiert.",
+  "whatsNew": "Was ist neu?",
+  "readyToast": "Argus {version} ist bereit zur Installation",
+  "availableToast": "Argus {version} ist verfügbar",
+  "view": "Ansicht",
+  "openDialog": "Im Dialog öffnen",
+  "button": {
+    "title": "Argus {version} ist bereit. Klicken Sie hier, um zu sehen, was es Neues gibt, und um es zu installieren",
+    "availableTitle": "Argus {version} ist verfügbar. Klicken Sie hier, um zu sehen, was es Neues gibt"
+  },
+  "menu": {
+    "view": "Sehen Sie, was es Neues gibt",
+    "dismiss": "Erinnere mich nicht an diese Version"
+  },
+  "dialog": {
+    "ready": "Argus {version} ist bereit",
+    "available": "Argus {version} ist verfügbar",
+    "downloading": "Argus {version} wird heruntergeladen",
+    "installing": "Installationsprogramm starten",
+    "installed": "Was ist neu in Argus {version}",
+    "current": "Aktuelle Version",
+    "previous": "Vor dem Update",
+    "next": "Neue Version",
+    "stable": "Stabil",
+    "beta": "Beta",
+    "released": "Veröffentlicht {date}",
+    "verified": "Signatur überprüft",
+    "source": "Von {source}",
+    "progress": "{received} von {total} heruntergeladen",
+    "changes": {
+      "one": "{count} Änderung",
+      "other": "{count} Änderungen"
+    },
+    "earlier": "Hinweise für frühere Versionen finden Sie unter GitHub.",
+    "empty": "Hier können keine Versionshinweise angezeigt werden. siehe die Veröffentlichungen auf GitHub.",
+    "language": "Einige dieser Versionshinweise sind nur auf Chinesisch verfügbar.",
+    "hint": "Für die Installation ist eine Administratorberechtigung erforderlich. Argus wird kurz geschlossen und nach Abschluss der Installation auf derselben Seite erneut geöffnet.",
+    "portable": "Die tragbare Version wird nicht automatisch aktualisiert. Laden Sie die neue Version von der Release-Seite herunter.",
+    "github": "Ansicht auf GitHub",
+    "install": "Neu starten und aktualisieren",
+    "starting": "Beginnt…",
+    "download": "Herunterladen",
+    "later": "Später",
+    "close": "Schließen"
+  },
+  "service": {
+    "title": "Den privilegierten Dienst aktualisieren?",
+    "body": "Der privilegierte Dienst ist die Version {serviceVersion}, die nicht mit Argus {version} übereinstimmt. Einige Funktionen funktionieren möglicherweise nicht. Für die Aktualisierung ist eine Administratorberechtigung erforderlich.",
+    "bodyOlder": "Der privilegierte Dienst ist eine ältere Version, die nicht mit Argus {version} kompatibel ist. Bis zur Aktualisierung können Aktionen, für die Administratorrechte erforderlich sind (Beenden von Prozessen von Administratoren oder anderen Konten, Verwalten von Systemdiensten, Schließen von Netzwerkverbindungen usw.), nicht abgeschlossen werden, und vom Dienst bereitgestellte Daten, wie z. B. der Netzwerkverkehr pro Prozess, werden nicht angezeigt. Für die Aktualisierung ist eine Administratorberechtigung erforderlich.",
+    "confirm": "Dienst aktualisieren"
+  }
+}

@@ -1,0 +1,293 @@
+{
+  "visibility": {
+    "toggle": "Masquer les processus système",
+    "show": "Afficher les processus système",
+    "processHint": "Masquez les composants et les processus Windows sur la liste de masquage supplémentaire, en conservant la liste toujours affichée. Modifie uniquement la liste affichée.",
+    "networkHint": "Masquer les connexions appartenant aux processus système et les entrées sans processus propriétaire (PID 0). Modifie uniquement la liste affichée.",
+    "edit": "Modifier les règles de masquage",
+    "description": "Les processus système sont identifiés à partir des informations sur les composants Windows. Les deux pages partagent ces règles et enregistrent leurs commutateurs masqués séparément.",
+    "keep": "Toujours afficher",
+    "keepHint": "Gardez ces programmes visibles, y compris les processus système. Cette liste est prioritaire sur le masquage supplémentaire.",
+    "hide": "Masquer également",
+    "hideHint": "Masquez ces programmes lorsque le masquage est activé. Laissez vide pour masquer uniquement les processus système.",
+    "namesHint": "Saisissez les noms d'exécutables séparés par des virgules ou des points-virgules, jusqu'à 128 par liste. Les noms ne sont pas sensibles à la casse.",
+    "invalid": "Saisissez des noms d'exécutables valides sans chemins ni caractères génériques, jusqu'à 128 par liste.",
+    "reset": "Restaurer les règles par défaut",
+    "empty": "Aucun élément ne correspond aux filtres actuels.",
+    "clear": "Afficher tout et supprimer les filtres"
+  },
+  "identityPending": "Confirmation de l'identité du processus. Réessayez sous peu.",
+  "countersPending": "Collecte des compteurs de ressources pour ce processus.",
+  "refreshPending": "Mise à jour des données de processus. Affichage de la dernière lecture collectée avec succès.",
+  "diskUnavailable": {
+    "pending": "Aucune lecture de disque pour l'instant. Un processus qui vient tout juste d’apparaître en obtient un au prochain rafraîchissement.",
+    "enable": "Aucune lecture de disque. Windows ne fournit pas ces compteurs directement, ils proviennent donc du service privilégié, qui peut être activé dans Paramètres.",
+    "update": "Aucune lecture de disque. La version du service privilégié ne correspond pas à Argus ; mettez à jour le service dans Paramètres.",
+    "start": "Aucune lecture de disque. Le service privilégié est arrêté ; il peut être démarré dans Paramètres.",
+    "service": "Aucune lecture de disque. Impossible de le lire depuis le service privilégié ; vérifiez l’état du service dans Paramètres.",
+    "unavailable": "Aucune lecture de disque. Les compteurs de disque par processus ne peuvent pas être lus pour le moment."
+  },
+  "serviceHost": "Hôte de service : {names}",
+  "webView": {
+    "host": "WebView2 : {name}",
+    "role": {
+      "browser": "Processus du navigateur",
+      "renderer": "Processus de rendu",
+      "gpu": "Processus GPU",
+      "network": "Service réseau",
+      "storage": "Service de stockage",
+      "audio": "Service audio",
+      "utility": "Processus utilitaire",
+      "crashpad": "Gestionnaire de crash"
+    }
+  },
+  "total": {
+    "one": "{count} processus",
+    "many": "{count} processus",
+    "other": "{count} processus"
+  },
+  "filtered": "La liste est filtrée par la recherche",
+  "column": {
+    "name": {
+      "label": "Nom",
+      "title": "Nom de l'application ou description du fichier, accompagné du nom de l'exécutable."
+    },
+    "pid": {
+      "label": "PID",
+      "title": "Processus ID"
+    },
+    "cpu": {
+      "label": "CPU",
+      "title": "Part de la capacité totale du processeur"
+    },
+    "mem": {
+      "label": "Mémoire",
+      "title": "Ensemble de travail privé : mémoire physique utilisée par ce processus seul"
+    },
+    "diskRead": {
+      "label": "Lecture disque",
+      "title": "Octets de disque lus par seconde ; exclut le réseau et autres appareils I/O"
+    },
+    "diskWrite": {
+      "label": "Écriture disque",
+      "title": "Octets de disque écrits par seconde ; exclut le réseau et autres appareils I/O"
+    },
+    "io": {
+      "label": "I/O",
+      "title": "Tous les I/O en lecture, écriture et autres, y compris les fichiers, le réseau et les appareils"
+    },
+    "gpu": {
+      "label": "GPU",
+      "title": "Part du temps pendant lequel le processus utilise son moteur GPU le plus occupé"
+    },
+    "net": {
+      "label": "Réseau",
+      "title": "Octets envoyés et reçus par seconde"
+    },
+    "threads": {
+      "label": "Threads",
+      "title": "Nombre de fils"
+    },
+    "handles": {
+      "label": "Handles",
+      "title": "Nombre de poignées"
+    },
+    "imageName": {
+      "label": "Nom de l’image",
+      "title": "Nom du fichier exécutable."
+    },
+    "ppid": {
+      "label": "Parent PID",
+      "title": "Processus parent ID enregistré lors de la création."
+    },
+    "path": {
+      "label": "Chemin de l’image",
+      "title": "Chemin complet de l'exécutable du processus."
+    },
+    "description": {
+      "label": "Description",
+      "title": "Description du fichier exécutable ou nom de l'application packagée."
+    },
+    "company": {
+      "label": "Société",
+      "title": "Nom de la société d'après les informations sur la version de l'exécutable."
+    },
+    "sessionId": {
+      "label": "Séance ID",
+      "title": "Session Windows qui contient le processus."
+    },
+    "createTime": {
+      "label": "Heure de démarrage",
+      "title": "Heure de création du processus dans le fuseau horaire local."
+    },
+    "suspended": {
+      "label": "Suspendu",
+      "title": "Tous les threads du processus sont en attente à l'état suspendu."
+    },
+    "efficiency": {
+      "label": "Mode d’efficacité",
+      "title": "État d'efficacité énergétique EcoQoS du processus."
+    },
+    "cpuTime": {
+      "label": "Heure CPU",
+      "title": "Temps CPU accumulé par l'utilisateur et le noyau ; les groupes affichent le total des membres."
+    },
+    "cpuUserTime": {
+      "label": "Heure CPU utilisateur",
+      "title": "Temps CPU accumulé passé en mode utilisateur."
+    },
+    "cpuKernelTime": {
+      "label": "Heure CPU du noyau",
+      "title": "Temps CPU accumulé passé en mode noyau."
+    },
+    "basePriority": {
+      "label": "Priorité de base",
+      "title": "Priorité de base de processus numérique signalée par Windows."
+    },
+    "workingSet": {
+      "label": "Plage de travail",
+      "title": "Mémoire physique résidente, y compris les pages partagées. Les groupes additionnent les ensembles de travail des membres."
+    },
+    "peakWorkingSet": {
+      "label": "Plage de travail maximale",
+      "title": "Ensemble de travail maximal d'un processus depuis le démarrage. Développez un groupe d’applications pour afficher ses processus."
+    },
+    "commit": {
+      "label": "Taille de validation",
+      "title": "Mémoire privée engagée du processus."
+    },
+    "virtualSize": {
+      "label": "Espace d’adressage virtuel",
+      "title": "Plages d'adresses réservées et validées d'un processus. La taille de validation affiche la mémoire privée engagée."
+    },
+    "pageFaults": {
+      "label": "Défauts de page",
+      "title": "Défauts de page accumulés, y compris les défauts logiciels et matériels."
+    },
+    "ioRead": {
+      "label": "Lecture E/S",
+      "title": "I/O octets lus par seconde, y compris les fichiers, le réseau et les appareils."
+    },
+    "ioWrite": {
+      "label": "Écriture E/S",
+      "title": "I/O octets écrits par seconde, y compris les fichiers, le réseau et les appareils."
+    },
+    "ioOther": {
+      "label": "Autres E/S",
+      "title": "Octets transférés par seconde par d'autres opérations I/O."
+    },
+    "ioReadTotal": {
+      "label": "Total I/O lu",
+      "title": "Nombre total d'octets I/O lus au cours de la durée de vie du processus."
+    },
+    "ioWriteTotal": {
+      "label": "Total d'écriture I/O",
+      "title": "Nombre total d'octets I/O écrits au cours de la durée de vie du processus."
+    },
+    "ioOtherTotal": {
+      "label": "Total autres I/O",
+      "title": "Nombre total d'octets transférés par d'autres I/O au cours de la durée de vie du processus."
+    },
+    "netReceived": {
+      "label": "Réception réseau",
+      "title": "Trafic réseau reçu par le processus par seconde."
+    },
+    "netSent": {
+      "label": "Envoi réseau",
+      "title": "Trafic réseau envoyé par le processus par seconde."
+    },
+    "gpuEngine": {
+      "label": "Moteur GPU",
+      "title": "Le moteur GPU le plus chargé du processus."
+    },
+    "gpuDedicated": {
+      "label": "Mémoire GPU dédiée",
+      "title": "Mémoire GPU dédiée résidente actuelle attribuée au processus. Les groupes additionnent les compteurs des membres."
+    },
+    "gpuShared": {
+      "label": "Mémoire GPU partagée",
+      "title": "Mémoire GPU partagée résidente actuelle attribuée au processus. Les groupes additionnent les compteurs des membres."
+    }
+  },
+  "noMatch": "Aucun processus ne correspond à « {query} »",
+  "efficiencyCount": {
+    "one": "Processus {count} en mode Efficacité",
+    "many": "Processus {count} en mode Efficacité",
+    "other": "Processus {count} en mode Efficacité"
+  },
+  "suspended": "Suspendu",
+  "netRates": "Envoyer {sent}, recevoir {received}",
+  "section": {
+    "apps": "Applications",
+    "background": "Processus en arrière-plan",
+    "windows": "Processus Windows"
+  },
+  "sectionSearching": "Lors de la recherche, chaque correspondance s'affiche ; effacer la recherche pour réduire les groupes",
+  "servicesSummary": "{names} et autres (services {count})",
+  "pidExited": "PID {pid} est déjà fermé.",
+  "priority": {
+    "realtime": "Temps réel",
+    "high": "Haute",
+    "aboveNormal": "Supérieure à la normale",
+    "normal": "Normale",
+    "belowNormal": "Inférieure à la normale",
+    "idle": "Basse"
+  },
+  "menu": {
+    "endAll": {
+      "one": "Terminer le processus {count}",
+      "many": "Terminer tous les processus {count}",
+      "other": "Terminer tous les processus {count}"
+    },
+    "setPriority": "Définir la priorité",
+    "addRule": "Ajouter une règle",
+    "copyPid": "Copier PID",
+    "copyPidWhat": "PID",
+    "details": "Détails"
+  },
+  "tree": {
+    "expandAll": "Tout développer",
+    "collapseAll": "Tout réduire"
+  },
+  "vitals": {
+    "open": "Afficher {device} dans Performances",
+    "diskActive": "{value}% actif",
+    "netTitle": "R : reçu, S : envoyé",
+    "netRates": "R : {received} S : {sent}",
+    "acpiTemperature": "Température de la zone thermique ACPI"
+  },
+  "columns": {
+    "choose": "Choisir les colonnes",
+    "autoWidth": "Largeur automatique",
+    "yes": "Oui",
+    "no": "Non",
+    "reset": "Rétablir les colonnes par défaut",
+    "apply": "OK",
+    "chooseMore": "Choisir les colonnes…",
+    "sortAscending": "Trier par ordre croissant",
+    "sortDescending": "Trier par ordre décroissant",
+    "hide": "Masquer la colonne {name}",
+    "description": "Cochez les colonnes à afficher. Faites-les glisser dans la liste de droite ou faites glisser les en-têtes de colonnes pour modifier leur ordre.",
+    "networkUnavailable": "Les colonnes du réseau sélectionnées apparaissent lorsque les données de trafic sont disponibles.",
+    "category": {
+      "general": "Général",
+      "cpu": "CPU",
+      "memory": "Mémoire",
+      "io": "Disque et E/S",
+      "network": "Réseau",
+      "gpu": "GPU",
+      "all": "Tous"
+    },
+    "order": "Ordre des colonnes",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "remove": "Supprimer",
+    "search": "Rechercher des colonnes ou des descriptions",
+    "selectAll": "Tout sélectionner",
+    "clear": "Effacer",
+    "noMatch": "Aucune colonne correspondante",
+    "fixed": "Fixe",
+    "selectionSummary": "{count} sélectionné",
+    "virtualAliases": "réservation d'adresse d'octets virtuels de mémoire virtuelle"
+  }
+}

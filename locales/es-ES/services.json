@@ -1,0 +1,49 @@
+{
+  "state": {
+    "running": "En ejecución",
+    "stopped": "Detenido",
+    "startPending": "Iniciando",
+    "stopPending": "Deteniendo",
+    "paused": "En pausa",
+    "pausePending": "Pausando",
+    "continuePending": "Reanudando"
+  },
+  "startType": {
+    "auto": "Automático",
+    "autoDelayed": "Automático (inicio retrasado)",
+    "manual": "Manual",
+    "disabled": "Deshabilitado",
+    "boot": "Arranque",
+    "system": "Sistema"
+  },
+  "filter": {
+    "all": "Todos",
+    "running": "En ejecución",
+    "stopped": "Detenido"
+  },
+  "search": "Buscar nombre, descripción o PID",
+  "control": {
+    "start": "Iniciar servicio",
+    "stop": "Detener servicio",
+    "restart": "Reiniciar servicio",
+    "openConsole": "Abrir Servicios",
+    "openConsoleTitle": "Abra la consola de Servicios Windows"
+  },
+  "menu": {
+    "startType": "Tipo de inicio: {type}",
+    "copyName": "Copiar nombre del servicio"
+  },
+  "copied": {
+    "name": "nombre del servicio"
+  },
+  "column": {
+    "display": "Servicio",
+    "startType": "Tipo de inicio",
+    "description": "Descripción"
+  },
+  "loading": "Servicios de lectura…",
+  "noMatch": "No hay servicios coincidentes",
+  "clearFilter": "Borrar filtros",
+  "summary": "{running} de {total} ejecutándose",
+  "manageHint": "La mayoría de los servicios solo se pueden administrar con el servicio privilegiado habilitado o con Argus ejecutándose como administrador."
+}

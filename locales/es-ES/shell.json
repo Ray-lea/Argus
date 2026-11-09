@@ -1,0 +1,94 @@
+{
+  "loadingProcesses": "Procesos de lectura…",
+  "nav": {
+    "expand": "Ampliar navegación",
+    "collapse": "Contraer navegación",
+    "resize": "Cambiar el tamaño de la navegación"
+  },
+  "page": {
+    "processes": "Procesos",
+    "performance": "Rendimiento",
+    "services": "Servicios",
+    "startup": "Inicio",
+    "network": "Conexiones",
+    "history": "Historial",
+    "settings": "Configuración",
+    "about": "Acerca de"
+  },
+  "pageTitle": "{page} (Ctrl+{key})",
+  "elevation": {
+    "admin": "Administrador",
+    "adminHint": "Argus se ejecuta como administrador y puede ver y finalizar casi todos los procesos",
+    "service": "Servicio privilegiado",
+    "serviceHint": "Argus se ejecuta como usuario estándar; el servicio privilegiado realiza lo que necesita derechos de administrador",
+    "standard": "Usuario estándar",
+    "standardHint": "Algunos procesos del sistema necesitan derechos de administrador para leer o finalizar"
+  },
+  "interval": {
+    "label": "Frecuencia de actualización",
+    "option": "Cada {seconds} s"
+  },
+  "background": {
+    "confirm": {
+      "minimized": {
+        "title": "¿Actualizar más a menudo mientras está minimizado?",
+        "body": "Mientras su ventana esté minimizada, Argus muestreará cada proceso y sensor cada {seconds} s. Los intervalos inferiores a 5 segundos aumentan notablemente el uso y el consumo de energía del CPU, especialmente con la batería. El historial y las reglas funcionan bien en los 5 segundos predeterminados."
+      },
+      "tray": {
+        "title": "¿Actualizar más a menudo en la bandeja?",
+        "body": "Mientras está oculto en la bandeja, Argus tomará muestras de cada proceso y sensor cada {seconds}. Los intervalos inferiores a 5 segundos aumentan notablemente el uso y el consumo de energía del CPU, especialmente con la batería. El historial y las reglas funcionan bien en los 5 segundos predeterminados."
+      },
+      "accept": "Utilice {seconds} de todos modos"
+    },
+    "notice": {
+      "minimized": "Mientras la ventana estaba minimizada, Argus actualizó cada {to} en lugar de cada {from} para ahorrar recursos.",
+      "tray": "Mientras Argus estaba en la bandeja, actualizaba cada {to} en lugar de cada {from} para ahorrar recursos.",
+      "adjust": "Ajustar",
+      "quiet": "No me lo recuerdes"
+    }
+  },
+  "pause": "Pausar actualizaciones",
+  "resume": "Reanudar actualizaciones",
+  "fileLock": {
+    "title": "Encuentre qué está usando un archivo (o suelte archivos en la ventana)",
+    "label": "Buscar procesos usando un archivo"
+  },
+  "details": {
+    "label": "Panel de detalles",
+    "mode": {
+      "open": "Mostrar siempre",
+      "auto": "Mostrar cuando se selecciona un proceso",
+      "closed": "Ocultar"
+    },
+    "current": "Panel de detalles: {mode}",
+    "next": "Haga clic para “{mode}”; haga clic derecho para elegir"
+  },
+  "search": {
+    "processes": "Buscar nombre, PID, ruta o servicio",
+    "clear": "Borrar búsqueda"
+  },
+  "viewMode": {
+    "apps": {
+      "label": "Aplicaciones"
+    },
+    "tree": {
+      "label": "Árbol"
+    },
+    "list": {
+      "label": "Lista"
+    }
+  },
+  "status": {
+    "threads": "Subprocesos",
+    "handles": "Identificadores",
+    "cached": "En caché",
+    "pagedPool": "Bloque paginado",
+    "uptime": "Tiempo activo",
+    "orderHeld": "Clasificación en pausa mientras el puntero está sobre la lista",
+    "orderHeldHint": "Las filas se reordenan una vez que el puntero sale de la lista",
+    "paused": "Actualizaciones pausadas",
+    "interval": "Actualiza cada {seconds} s",
+    "version": "v{version}",
+    "versionHint": "Argus {version} · {channel}\nHaga clic para ver las novedades de esta versión; haga clic derecho para copiar el número de versión"
+  }
+}

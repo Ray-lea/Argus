@@ -1,0 +1,85 @@
+{
+  "endAll": "Alle beenden",
+  "end": {
+    "title": "{name} beenden?",
+    "body": "PID {pid}. Nicht gespeicherte Daten gehen verloren.",
+    "done": "{name} wurde beendet."
+  },
+  "endGroup": {
+    "body": {
+      "one": "{count} Prozess von {name} wird beendet. Nicht gespeicherte Daten gehen verloren.",
+      "other": "Alle {count} Prozesse von {name} werden beendet. Nicht gespeicherte Daten gehen verloren."
+    },
+    "done": {
+      "one": "{count} Prozess von {name} wurde beendet.",
+      "other": "{count} Prozesse von {name} wurden beendet."
+    },
+    "partial": "{error} (nicht beendet: {count})"
+  },
+  "endTree": {
+    "title": "Prozessstruktur von {name} beenden?",
+    "body": {
+      "one": "Der Prozess mit PID {pid} und sein untergeordneter Prozess werden beendet. Nicht gespeicherte Daten gehen verloren.",
+      "other": "Der Prozess mit PID {pid} und seine {count} untergeordneten Prozesse werden beendet. Nicht gespeicherte Daten gehen verloren."
+    },
+    "bodyAlone": "Der Prozess mit PID {pid} hat keine untergeordneten Prozesse. Es wird nur dieser Prozess beendet.",
+    "done": {
+      "one": "{count} Prozess wurde beendet.",
+      "other": "{count} Prozesse wurden beendet."
+    },
+    "partial": {
+      "one": "Beendete Prozesse: {count}; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet).",
+      "other": "Beendete Prozesse: {count}; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet)."
+    }
+  },
+  "error": {
+    "accessDenied": "{name} konnte nicht beendet werden: Zugriff verweigert. Den privilegierten Dienst in den Einstellungen aktivieren oder Argus als Administrator ausführen. Geschützte Prozesse können weiterhin eingeschränkt sein.",
+    "notFound": "{name} wurde bereits beendet.",
+    "critical": "{name} ist ein kritischer Systemprozess. Das Beenden würde Windows zum Absturz bringen; die Aktion wurde blockiert.",
+    "refused": "{name} kann nicht beendet werden.",
+    "serviceOutdated": "{name} konnte nicht beendet werden: Zugriff verweigert. Die Version des privilegierten Dienstes ist inkompatibel. Den Dienst aktualisieren und erneut versuchen.",
+    "generic": "{name} konnte nicht beendet werden: {error}"
+  },
+  "priority": {
+    "confirmTitle": "Priorität von {name} auf Echtzeit setzen?",
+    "confirmBody": "Echtzeitprozesse werden vor Systemaufgaben ausgeführt. Wenn sie die gesamte Prozessorzeit belegen, können Maus und Tastatur nicht mehr reagieren.",
+    "confirm": "Auf Echtzeit setzen",
+    "failed": "Die Priorität von {name} konnte nicht geändert werden",
+    "downgraded": "Für die Echtzeitpriorität sind Administratorrechte erforderlich, daher wurde stattdessen „Hoch“ eingestellt.",
+    "partial": {
+      "one": "Priorität bei {count} Prozess geändert; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet).",
+      "other": "Priorität bei {count} Prozessen geändert; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet)."
+    },
+    "done": "Die Priorität von {name} wurde auf {priority} gesetzt."
+  },
+  "efficiency": {
+    "on": {
+      "failed": "Der Effizienzmodus konnte für {name} nicht aktiviert werden",
+      "partial": {
+        "one": "Effizienzmodus für {count} Prozess aktiviert; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet).",
+        "other": "Effizienzmodus für {count} Prozesse aktiviert; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet)."
+      },
+      "done": "Effizienzmodus für {name} aktiviert."
+    },
+    "off": {
+      "failed": "Der Effizienzmodus für {name} konnte nicht deaktiviert werden",
+      "partial": {
+        "one": "Effizienzmodus für {count} Prozess deaktiviert; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet).",
+        "other": "Effizienzmodus für {count} Prozesse deaktiviert; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet)."
+      },
+      "done": "Effizienzmodus für {name} deaktiviert."
+    }
+  },
+  "ruleScope": {
+    "title": "Eine Regel für alle Prozesse mit diesem Namen hinzufügen?",
+    "body": "Regeln verwenden den Namen der ausführbaren Datei {name}. Die Regel gilt für alle Prozesse mit diesem Namen, unabhängig von Host und Installationspfad.",
+    "confirm": "Weiter zu den Regeleinstellungen"
+  },
+  "copied": "{what} wurde kopiert.",
+  "staleProcess": "Die Prozessinformationen sind veraltet. Aktualisieren Sie und versuchen Sie es erneut.",
+  "copyWhat": {
+    "path": "Pfad",
+    "name": "Name",
+    "version": "Versionsnummer"
+  }
+}

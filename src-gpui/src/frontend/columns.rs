@@ -349,13 +349,14 @@ mod tests {
     }
 
     #[test]
-    fn every_selectable_column_has_both_catalog_entries() {
-        let catalogs = [
-            include_str!("../../../locales/zh-CN/processes.json"),
-            include_str!("../../../locales/en-US/processes.json"),
-        ];
-        for text in catalogs {
-            let catalog: serde_json::Value = serde_json::from_str(text).unwrap();
+    fn every_selectable_column_has_entries_in_every_locale() {
+        for locale in argus_core::i18n::Locale::ALL {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../locales")
+                .join(locale.tag())
+                .join("processes.json");
+            let text = std::fs::read_to_string(path).unwrap();
+            let catalog: serde_json::Value = serde_json::from_str(&text).unwrap();
             for column in DEFINITIONS {
                 for key in ["label", "title"] {
                     assert!(

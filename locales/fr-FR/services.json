@@ -1,0 +1,49 @@
+{
+  "state": {
+    "running": "En cours d’exécution",
+    "stopped": "Arrêté",
+    "startPending": "Démarrage",
+    "stopPending": "Arrêt en cours",
+    "paused": "En pause",
+    "pausePending": "Mise en pause",
+    "continuePending": "Reprise"
+  },
+  "startType": {
+    "auto": "Automatique",
+    "autoDelayed": "Automatique (début différé)",
+    "manual": "Manuel",
+    "disabled": "Désactivé",
+    "boot": "Amorçage",
+    "system": "Système"
+  },
+  "filter": {
+    "all": "Tous",
+    "running": "En cours d’exécution",
+    "stopped": "Arrêté"
+  },
+  "search": "Rechercher un nom, une description ou PID",
+  "control": {
+    "start": "Démarrer le service",
+    "stop": "Arrêter le service",
+    "restart": "Redémarrer le service",
+    "openConsole": "Ouvrir les services",
+    "openConsoleTitle": "Ouvrez la console des services Windows"
+  },
+  "menu": {
+    "startType": "Type de démarrage : {type}",
+    "copyName": "Copier le nom du service\nNom du service"
+  },
+  "copied": {
+    "name": "nom du service"
+  },
+  "column": {
+    "display": "Service",
+    "startType": "Type de démarrage",
+    "description": "Description"
+  },
+  "loading": "Services de lecture…",
+  "noMatch": "Aucun service correspondant",
+  "clearFilter": "Effacer les filtres",
+  "summary": "{running} de {total} en cours d'exécution",
+  "manageHint": "La plupart des services ne peuvent être gérés qu'avec le service privilégié activé ou avec Argus exécuté en tant qu'administrateur."
+}

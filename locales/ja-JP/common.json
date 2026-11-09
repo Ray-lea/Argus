@@ -1,0 +1,61 @@
+{
+  "cancel": "キャンセル",
+  "close": "閉じる",
+  "enable": "有効にする",
+  "disable": "無効にする",
+  "enabled": "有効",
+  "disabled": "無効",
+  "on": "オン",
+  "off": "オフ",
+  "start": "開始",
+  "stop": "停止",
+  "restart": "再起動",
+  "expand": "展開",
+  "collapse": "折りたたむ",
+  "none": "なし",
+  "name": "名前",
+  "status": "状態",
+  "command": "コマンド",
+  "copyName": "名前をコピー",
+  "copyPath": "パスをコピー",
+  "openFileLocation": "ファイルの場所を開く",
+  "goToProcess": "プロセスに移動",
+  "endProcess": "タスクの終了",
+  "endProcessTree": "プロセス ツリーの終了",
+  "efficiencyMode": "効率モード",
+  "privilegedService": "特権サービス",
+  "listSeparator": ", ",
+  "resource": {
+    "cpu": "CPU",
+    "memory": "メモリ",
+    "disk": "ディスク",
+    "network": "ネットワーク",
+    "gpu": "GPU",
+    "battery": "バッテリー",
+    "temperature": "温度"
+  },
+  "languageSystem": "Windows に合わせる",
+  "keys": {
+    "space": "スペース"
+  },
+  "marks": {
+    "pin": "先頭に固定",
+    "unpin": "固定を解除",
+    "pinned": "固定済み",
+    "addNote": "メモを追加",
+    "editNote": "メモを編集",
+    "deleteNote": "メモを削除",
+    "note": "メモ",
+    "placeholder": "用途を簡潔に入力",
+    "save": "保存"
+  },
+  "languageName": {
+    "zhCN": "简体中文",
+    "enUS": "English",
+    "esES": "Español",
+    "deDE": "Deutsch",
+    "jaJP": "日本語",
+    "frFR": "Français",
+    "ruRU": "Русский"
+  }
+}

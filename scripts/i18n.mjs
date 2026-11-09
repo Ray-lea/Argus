@@ -7,7 +7,7 @@
 // - every locale has the source's namespaces and keys, and no others;
 // - a translation keeps the source's {placeholders} and <tags>; a locale may
 //   split a message with {count} into plural forms ({"one": …, "other": …});
-// - translations other than Chinese contain no Chinese text;
+// - non-CJK translations contain no Han text except native language names;
 // - every key the Rust code looks up (tr!("…")) exists, with the same placeholders;
 // - user-facing text is not written into the code: Chinese outside comments,
 //   tests and tools/window-probe/fixtures is an error. Mark a deliberate exception with
@@ -16,6 +16,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { macroCalls } from "./lib/rust-calls.mjs";
+import { maySpellOne, textErrors } from "./lib/locale-validation.mjs";
+import { installerLanguages } from "./lib/installer-locales.mjs";
 
 const root = join(import.meta.dirname, "..");
 const SOURCE = "zh-CN";
@@ -76,9 +78,26 @@ const catalogs = new Map(locales.map((l) => [l, load(l)]));
 const source = catalogs.get(SOURCE);
 if (!source) throw new Error(`locales/${SOURCE} is missing`);
 
+const registered = [...readFileSync(join(root, "src-gpui/src/catalog.rs"), "utf8").matchAll(/register!\(\w+,\s*"([^"]+)"\)/g)].map(m => m[1]);
+const nativeLocales = [...readFileSync(join(root, "crates/argus-core/src/i18n.rs"), "utf8").matchAll(/#\[serde\(rename = "([^"]+)"\)\]/g)].map(m => m[1]);
+for (const [where, tags] of [["desktop catalogs", registered], ["native locales", nativeLocales], ["installer languages", Object.keys(installerLanguages)]]) {
+  if (tags.length !== locales.length || !same(new Set(locales), new Set(tags))) error(where, "registered languages differ from locales/");
+}
+const nsisLanguages = [...readFileSync(join(root, "packaging/windows/installer-template.nsi"), "utf8").matchAll(/^!insertmacro MUI_LANGUAGE "([^"]+)"/gm)].map(m => m[1].toUpperCase());
+if (nsisLanguages.length !== locales.length || !same(new Set(nsisLanguages), new Set(Object.values(installerLanguages)))) error("installer template", "MUI languages differ from installer catalogs");
+for (const [locale, namespaces] of catalogs) {
+  const months = namespaces.get("format")?.get("monthNames");
+  if (typeof months !== "string" || months.trim().split(/\s+/u).length !== 12) error(`locales/${locale}/format.json`, "monthNames must contain twelve entries");
+  for (const tag of locales) {
+    const key = `languageName.${tag.replace("-", "")}`;
+    if (namespaces.get("common")?.get(key) !== source.get("common")?.get(key)) error(`locales/${locale}/common.json`, `${key} must keep its native name`);
+  }
+}
+
 for (const [ns, keys] of source) {
   for (const [key, text] of keys) {
     if (typeof text !== "string") error(`locales/${SOURCE}/${ns}.json`, `${key}: the source has no plural forms`);
+    else for (const message of textErrors(text, text)) error(`locales/${SOURCE}/${ns}.json`, `${key}: ${message}`);
   }
 }
 
@@ -105,15 +124,20 @@ for (const [locale, namespaces] of catalogs) {
       if (typeof value !== "string") {
         if (!want.has("count")) error(file, `${key}: plural forms need {count} in the source text`);
         if (!("other" in value)) error(file, `${key}: plural forms need "other"`);
+        const categories = new Intl.PluralRules(locale).resolvedOptions().pluralCategories;
+        for (const category of categories) if (!(category in value)) error(file, `${key}: plural forms need "${category}" for ${locale}`);
+        for (const category of Object.keys(value)) if (!categories.includes(category)) error(file, `${key}: unused plural form "${category}" for ${locale}`);
       }
       for (const [form, text] of Object.entries(forms)) {
         const label = form === "text" ? key : `${key}.${form}`;
         const got = placeholders(text);
         // A plural form may spell its count out ("one process").
-        if (form !== "text" && form !== "other" && want.has("count")) got.add("count");
+        if (form === "one" && maySpellOne(locale) && want.has("count")) got.add("count");
         if (!same(got, want)) error(file, `${label}: placeholders ${list(got)}, ${SOURCE} has ${list(want)}`);
         if (tags(text) !== tags(original)) error(file, `${label}: tags differ from ${SOURCE}`);
-        if (!locale.startsWith("zh") && HAN.test(text)) error(file, `${label}: untranslated Chinese text`);
+        if (!/^(zh|ja)(-|$)/.test(locale) && !(ns === "common" && key.startsWith("languageName.")) && HAN.test(text)) error(file, `${label}: untranslated Chinese text`);
+        if (/QZX\d|XZQ|\[ZX\d+XZ\]/.test(text)) error(file, `${label}: translation marker left in text`);
+        for (const message of textErrors(original, text)) error(file, `${label}: ${message}`);
       }
     }
   }
@@ -126,7 +150,7 @@ const rustFiles = rustDirs.flatMap((d) => walk(join(root, d))).filter((f) => f.e
 
 // Rust lookups: tr!("key") and tr!("key", name = value, …).
 const native = source.get("native") ?? new Map();
-const application = new Map([...source].filter(([ns]) => ns !== "native").flatMap(([ns, keys]) => [...keys].map(([key, value]) => [`${ns}.${key}`, value])));
+const application = new Map([...source].filter(([ns]) => ns !== "native" && ns !== "installer").flatMap(([ns, keys]) => [...keys].map(([key, value]) => [`${ns}.${key}`, value])));
 for (const file of rustFiles) {
   const text = readFileSync(file, "utf8");
   // Each call on its own, with only its own arguments: one nested in another's
@@ -148,6 +172,10 @@ for (const file of rustFiles) {
 // Native view adapters also look up labels without placeholders.
 for (const file of rustFiles.filter((file) => rel(file).startsWith("src-gpui/src/frontend"))) {
   const text = readFileSync(file, "utf8");
+  for (const match of text.matchAll(/\b(?:counted|quantity)\(\s*"([\w.]+)"/g)) {
+    const template = application.get(match[1]) ?? native.get(match[1]);
+    if (template === undefined || !placeholders(template).has("count")) error(rel(file), `counted needs a catalog key with {count}: ${match[1]}`);
+  }
   for (const match of text.matchAll(/\blabel\(\s*"([\w.]+)"\s*\)/g)) {
     const key = match[1];
     if (!native.has(key) && !application.has(key)) error(rel(file), `unknown native view label: ${key}`);
@@ -198,6 +226,7 @@ if (process.argv.includes("--unused")) {
   // is extended at run time ("{prefix}.title").
   const extended = (key) => key.split(".").some((_, i, parts) => i >= 2 && literals.has(parts.slice(0, i).join(".")));
   for (const [ns, keys] of source) {
+    if (ns === "installer") continue; // Referenced by generated NSIS LangStrings.
     for (const key of keys.keys()) {
       const full = ns === "native" ? key : `${ns}.${key}`;
       if (literals.has(full) || dynamic.some((re) => re.test(full)) || extended(full)) continue;

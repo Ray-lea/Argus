@@ -45,8 +45,8 @@ impl Setting {
     /// What typed text commits as: a number is rounded into the range,
     /// anything else gives the default (the interface's `onChange`).
     pub fn parse(&self, text: &str) -> u32 {
-        match text.trim().parse::<f64>() {
-            Ok(value) if value.is_finite() => value
+        match crate::regional::parse_decimal(text) {
+            Some(value) => value
                 .clamp(f64::from(*self.range.start()), f64::from(*self.range.end()))
                 .round() as u32,
             _ => self.default,
@@ -61,7 +61,7 @@ impl Setting {
     /// (`None`).
     pub fn spin(&self, text: &str, up: bool) -> Option<u32> {
         let (min, max) = (*self.range.start(), *self.range.end());
-        let Some(value) = text.trim().parse::<f64>().ok().filter(|v| v.is_finite()) else {
+        let Some(value) = crate::regional::parse_decimal(text) else {
             return Some(min);
         };
         let (low, high) = (f64::from(min), f64::from(max));

@@ -129,7 +129,7 @@ const OS_IDLE: [&str; 3] = ["c1", "c2", "c3"];
 fn reading(value: Option<f64>, digits: usize) -> String {
     value
         .filter(|v| v.is_finite())
-        .map(|v| format!("{v:.digits$}"))
+        .map(|v| crate::regional::number!("{v:.digits$}"))
         .unwrap_or_else(missing)
 }
 fn columns_of<'a>(list: &'a [Column], cores: &[Value]) -> Vec<&'a Column> {

@@ -1,0 +1,43 @@
+{
+  "title": "Ejecutar nueva tarea",
+  "description": "Abre una aplicación, carpeta o documento. Se admiten argumentos de inicio.",
+  "command": "Abrir",
+  "placeholder": "explorer.exe o la ruta de una aplicación",
+  "browse": "Examinar…",
+  "administrator": "Ejecutar como administrador",
+  "administratorHint": "Requiere autorización Windows. Cancelarlo deja la tarea sin comenzar.",
+  "standardHint": "Cuando no está marcada, la tarea se ejecuta con permisos estándar.",
+  "run": "Ejecutar",
+  "running": "Comenzando…",
+  "waiting": "Esperando que Windows termine de iniciar la tarea o solicite autorización.",
+  "started": "Nueva tarea enviada.",
+  "code": "Código de error: {code}",
+  "explorer": {
+    "title": "Reinicie el Explorador Windows",
+    "restart": "Reiniciar",
+    "confirm": "El escritorio y la barra de tareas desaparecerán brevemente. Las ventanas del Explorador y las operaciones de archivos en curso pueden verse afectadas.",
+    "restarting": "Reiniciando el Explorador Windows…",
+    "done": "Windows Explorador reiniciado. El escritorio y la barra de tareas están listos.",
+    "recover": "Ejecute el Explorador Windows",
+    "error": {
+      "stale": "Windows Explorer ha salido o ha cambiado. Actualiza la lista y vuelve a intentarlo.",
+      "unsupported": "Esta instancia de Explorer no admite un reinicio seguro. No estaba cerrado.",
+      "permission": "No se pudo acceder al Explorador del escritorio actual. No estaba cerrado.",
+      "prepare": "No se pudo preparar el entorno de reinicio de Explorer. No estaba cerrado.",
+      "shutdown": "Windows Explorer no terminó de reiniciarse. Vuelve a intentarlo en breve.",
+      "restore": "Windows Explorer no se ha recuperado. Elija Ejecutar Windows Explorer para abrirlo nuevamente.",
+      "busy": "Windows Explorer ya se está reiniciando. Vuelve a intentarlo en breve."
+    }
+  },
+  "error": {
+    "invalid": "Ingrese un nombre de aplicación, ruta o comando válido, hasta 8192 caracteres.",
+    "cancelled": "Se canceló la autorización Windows. La tarea no se inició.",
+    "notFound": "No se pudo encontrar la aplicación o la ruta. Verifique la entrada o elija Examinar.",
+    "accessDenied": "Windows negó el lanzamiento. Verifique los permisos de acceso.",
+    "standardUnavailable": "No se pudo preparar el entorno de lanzamiento con permiso estándar.",
+    "elevationRequired": "Esta aplicación requiere permisos de administrador. Seleccione Ejecutar como administrador y vuelva a intentarlo.",
+    "noAssociation": "No hay ninguna aplicación asociada con este elemento.",
+    "busy": "Todavía hay otra solicitud de lanzamiento en curso. Vuelve a intentarlo en breve.",
+    "os": "Windows no pudo iniciar esta tarea."
+  }
+}

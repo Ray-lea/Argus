@@ -1,0 +1,61 @@
+{
+  "title": "¿Qué utiliza el archivo?",
+  "intro": "Si falla la eliminación o el movimiento de un archivo porque está en uso, busque aquí los procesos que lo contienen. Los archivos también se pueden soltar en la ventana Argus.",
+  "dropZone": "Suelte archivos o carpetas en la ventana, o",
+  "pickFile": "Elige archivo",
+  "pickFolder": "Elige carpeta",
+  "recheck": "Verifique nuevamente",
+  "checking": "Comprobando…",
+  "error": {
+    "notFound": "No se pudo encontrar el archivo o la carpeta.",
+    "failed": "Verificación fallida: {error}"
+  },
+  "none": "No se encontró ningún proceso accesible utilizando estos archivos.",
+  "found": {
+    "one": "Se ha encontrado {count} proceso que utiliza estos archivos o carpetas.",
+    "many": "Se han encontrado {count} procesos que utilizan estos archivos o carpetas.",
+    "other": "Se han encontrado {count} procesos que utilizan estos archivos o carpetas."
+  },
+  "kind": {
+    "service": "Servicio",
+    "explorer": "Explorador de archivos",
+    "console": "Consola",
+    "critical": "Sistema crítico"
+  },
+  "service": "Servicio {name}",
+  "handleCount": {
+    "one": "{count} identificador",
+    "many": "{count} identificadores",
+    "other": "{count} identificadores"
+  },
+  "showProcess": "Mostrar en Procesos",
+  "end": "Finalizar tarea",
+  "checked": {
+    "one": "Restart Manager ha comprobado {count} archivo. {handles}",
+    "many": "Restart Manager ha comprobado {count} archivos. {handles}",
+    "other": "Restart Manager ha comprobado {count} archivos. {handles}"
+  },
+  "handles": {
+    "service": {
+      "one": "El servicio privilegiado ha comprobado {count} identificador de archivo, incluidos los de carpetas.",
+      "many": "El servicio privilegiado ha comprobado {count} identificadores de archivo, incluidos los de carpetas.",
+      "other": "El servicio privilegiado ha comprobado {count} identificadores de archivo, incluidos los de carpetas."
+    },
+    "local": {
+      "one": "Se ha comprobado localmente {count} identificador de archivo, incluidos los de carpetas.",
+      "many": "Se han comprobado localmente {count} identificadores de archivo, incluidos los de carpetas.",
+      "other": "Se han comprobado localmente {count} identificadores de archivo, incluidos los de carpetas."
+    },
+    "unfinished": "La consulta de identificador no finalizó."
+  },
+  "incomplete": "Los resultados están incompletos. Procesos inaccesibles: {denied}; identificadores ilegibles: {skipped}; consultas con tiempo de espera agotado: {timeouts}. {limit}",
+  "limitReached": "Se alcanzó el límite de consultas.",
+  "serviceHint": "Habilite el servicio privilegiado en Configuración para verificar más procesos del sistema.",
+  "unchecked": {
+    "one": "Restart Manager no pudo comprobar {count} archivo adicional por permisos o cambios en el archivo.",
+    "many": "Restart Manager no pudo comprobar {count} archivos adicionales por permisos o cambios en los archivos.",
+    "other": "Restart Manager no pudo comprobar {count} archivos adicionales por permisos o cambios en los archivos."
+  },
+  "truncated": "La carpeta tiene demasiados archivos; sólo se comprobaron los primeros {count}.",
+  "footerHint": "La consulta de identificador también encuentra carpetas en uso como directorio de trabajo; Es posible que los procesos protegidos aún estén fuera de su alcance."
+}

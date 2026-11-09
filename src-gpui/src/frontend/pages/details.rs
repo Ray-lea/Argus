@@ -1633,7 +1633,10 @@ impl Desktop {
                     if number(cpu, "baseMhz") > 0. {
                         tr!(
                             "details.overview.base",
-                            speed = format!("{:.2} GHz", number(cpu, "baseMhz") / 1000.)
+                            speed = crate::regional::number!(
+                                "{:.2} GHz",
+                                number(cpu, "baseMhz") / 1000.
+                            )
                         )
                     } else {
                         String::new()
@@ -1648,7 +1651,7 @@ impl Desktop {
                 name: joined_with(
                     " ",
                     [
-                        format!("{:.0} GB", installed / GB),
+                        crate::regional::number!("{:.0} GB", installed / GB),
                         text(memory, "kind").into(),
                     ],
                 ),
@@ -1744,7 +1747,7 @@ impl Desktop {
                 detail: if dedicated > 0. {
                     tr!(
                         "details.overview.vram",
-                        size = format!("{:.1} GB", dedicated / GB)
+                        size = crate::regional::number!("{:.1} GB", dedicated / GB)
                     )
                 } else {
                     label("details.overview.sharedMemory")
@@ -1773,7 +1776,8 @@ impl Desktop {
                     if designed > 0. {
                         tr!(
                             "details.overview.designed",
-                            capacity = format!("{:.0} Wh", (designed / 1000.).round())
+                            capacity =
+                                crate::regional::number!("{:.0} Wh", (designed / 1000.).round())
                         )
                     } else {
                         String::new()
@@ -1886,11 +1890,11 @@ fn byte_rate(bytes_per_second: f64) -> String {
     if bytes_per_second < 1. {
         "0 KB/s".into()
     } else if bytes_per_second < MB {
-        format!("{:.0} KB/s", (bytes_per_second / KB).round().max(1.))
+        crate::regional::number!("{:.0} KB/s", (bytes_per_second / KB).round().max(1.))
     } else if bytes_per_second < GB {
-        format!("{:.1} MB/s", bytes_per_second / MB)
+        crate::regional::number!("{:.1} MB/s", bytes_per_second / MB)
     } else {
-        format!("{:.2} GB/s", bytes_per_second / GB)
+        crate::regional::number!("{:.2} GB/s", bytes_per_second / GB)
     }
 }
 
@@ -1900,11 +1904,11 @@ fn bit_rate(bytes_per_second: f64) -> String {
     if bits < 1. {
         "0 Kbps".into()
     } else if bits < 1e6 {
-        format!("{:.*} Kbps", if bits < 1e4 { 1 } else { 0 }, bits / 1e3)
+        crate::regional::number!("{:.*} Kbps", if bits < 1e4 { 1 } else { 0 }, bits / 1e3)
     } else if bits < 1e9 {
-        format!("{:.*} Mbps", if bits < 1e7 { 2 } else { 1 }, bits / 1e6)
+        crate::regional::number!("{:.*} Mbps", if bits < 1e7 { 2 } else { 1 }, bits / 1e6)
     } else {
-        format!("{:.2} Gbps", bits / 1e9)
+        crate::regional::number!("{:.2} Gbps", bits / 1e9)
     }
 }
 
@@ -1919,8 +1923,7 @@ pub(in crate::frontend) fn cpu_time(milliseconds: f64) -> String {
     )
 }
 
-/// Month, day and time of day in the interface language's usual order, as
-/// `Intl.DateTimeFormat` writes them; a zero start is system startup.
+/// Date and time in Windows regional format; a zero start is system startup.
 pub(in crate::frontend) fn date_time(unix_ms: f64) -> String {
     if unix_ms <= 0. || !unix_ms.is_finite() {
         return label("format.sinceBoot");
@@ -1931,38 +1934,27 @@ pub(in crate::frontend) fn date_time(unix_ms: f64) -> String {
     };
     let offset = time::UtcOffset::local_offset_at(value).unwrap_or(time::UtcOffset::UTC);
     let value = value.to_offset(offset);
-    let (month, day) = (u8::from(value.month()), value.day());
-    let (hour, minute, second) = (value.hour(), value.minute(), value.second());
-    match argus_core::i18n::locale() {
-        argus_core::i18n::Locale::EnUs => {
-            let period = if hour < 12 { "AM" } else { "PM" };
-            let hour = match hour % 12 {
-                0 => 12,
-                hour => hour,
-            };
-            format!("{month}/{day}, {hour:02}:{minute:02}:{second:02} {period}")
-        }
-        argus_core::i18n::Locale::ZhCn => {
-            format!("{month}/{day} {hour:02}:{minute:02}:{second:02}")
-        }
-    }
+    crate::regional::date_time(value)
 }
 
 /// Capacity in binary units, the way Windows reports drive sizes.
 fn capacity(bytes: f64) -> String {
     if bytes >= 1024. * GB {
-        format!("{:.1} TB", bytes / (1024. * GB))
+        crate::regional::number!("{:.1} TB", bytes / (1024. * GB))
     } else {
-        format!("{:.0} GB", (bytes / GB).round())
+        crate::regional::number!("{:.0} GB", (bytes / GB).round())
     }
 }
 
 fn link_speed(bits_per_second: f64) -> String {
     if bits_per_second >= 1e9 {
         let gbps = format!("{:.1}", bits_per_second / 1e9);
-        format!("{} Gbps", gbps.trim_end_matches(".0"))
+        format!(
+            "{} Gbps",
+            crate::regional::numeric(gbps.trim_end_matches(".0").to_owned())
+        )
     } else {
-        format!("{:.0} Mbps", (bits_per_second / 1e6).round())
+        crate::regional::number!("{:.0} Mbps", (bits_per_second / 1e6).round())
     }
 }
 

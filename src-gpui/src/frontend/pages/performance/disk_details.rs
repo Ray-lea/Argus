@@ -87,7 +87,7 @@ fn key(index: u64) -> String {
 fn counter(value: &Value) -> Option<f64> {
     value.as_str().and_then(|digits| digits.parse().ok())
 }
-/// A counter in groups of three digits, exact at any length.
+/// A counter in the regional grouping pattern, exact at any length.
 fn grouped(value: &Value) -> String {
     let digits = match value {
         Value::String(digits)
@@ -98,14 +98,7 @@ fn grouped(value: &Value) -> String {
         Value::Number(number) if number.is_u64() => number.to_string(),
         _ => return missing(),
     };
-    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
-    for (i, digit) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(digit);
-    }
-    out
+    crate::regional::digits(&digits)
 }
 fn with_unit(value: String, unit: &str) -> String {
     if value == missing() {
@@ -872,10 +865,7 @@ impl Desktop {
             .as_u64()
             .filter(|bytes| *bytes > 0)
             .map(|bytes| {
-                let exact = tr!(
-                    "performance.disk.bytes",
-                    count = grouped(&details["capacityBytes"])
-                );
+                let exact = theme::counted("performance.disk.bytes", bytes, &[]);
                 tr!(
                     "performance.withAlt",
                     value = fmt_capacity(bytes as f64),

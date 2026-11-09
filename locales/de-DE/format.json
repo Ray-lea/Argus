@@ -1,0 +1,12 @@
+{
+  "missing": "—",
+  "uptime": {
+    "days": "{days} T {hours} h",
+    "hours": "{hours} h {minutes} min",
+    "minutes": "{minutes} min {seconds} s"
+  },
+  "uptimeExact": "{days}<u>T</u> {clock}",
+  "sinceBoot": "Beim Systemstart",
+  "monthDay": "{day}. {month}",
+  "monthNames": "Jan. Feb. März Apr. Mai Juni Juli Aug. Sept. Okt. Nov. Dez."
+}

@@ -1,0 +1,61 @@
+{
+  "cancel": "Annuler",
+  "close": "Fermer",
+  "enable": "Activer",
+  "disable": "Désactiver",
+  "enabled": "Activé",
+  "disabled": "Désactivé",
+  "on": "Activé",
+  "off": "Désactivé",
+  "start": "Démarrer",
+  "stop": "Arrêter",
+  "restart": "Redémarrer",
+  "expand": "Développer",
+  "collapse": "Réduire",
+  "none": "Aucun",
+  "name": "Nom",
+  "status": "État",
+  "command": "Commande",
+  "copyName": "Copier le nom",
+  "copyPath": "Copier le chemin",
+  "openFileLocation": "Ouvrir l’emplacement du fichier",
+  "goToProcess": "Accéder au processus",
+  "endProcess": "Fin de tâche",
+  "endProcessTree": "Terminer l’arborescence",
+  "efficiencyMode": "Mode d’efficacité",
+  "privilegedService": "Service privilégié",
+  "listSeparator": ", ",
+  "resource": {
+    "cpu": "CPU",
+    "memory": "Mémoire",
+    "disk": "Disque",
+    "network": "Réseau",
+    "gpu": "GPU",
+    "battery": "Batterie",
+    "temperature": "Température"
+  },
+  "languageSystem": "Comme Windows",
+  "keys": {
+    "space": "Espace"
+  },
+  "marks": {
+    "pin": "Épingler en haut",
+    "unpin": "Désépingler",
+    "pinned": "Épinglé",
+    "addNote": "Ajouter une note",
+    "editNote": "Modifier la note",
+    "deleteNote": "Supprimer la note",
+    "note": "Note",
+    "placeholder": "Brève description de son rôle",
+    "save": "Enregistrer"
+  },
+  "languageName": {
+    "zhCN": "简体中文",
+    "enUS": "English",
+    "esES": "Español",
+    "deDE": "Deutsch",
+    "jaJP": "日本語",
+    "frFR": "Français",
+    "ruRU": "Русский"
+  }
+}

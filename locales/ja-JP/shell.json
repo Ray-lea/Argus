@@ -1,0 +1,94 @@
+{
+  "loadingProcesses": "読み込み処理中…",
+  "nav": {
+    "expand": "ナビゲーションを拡張する",
+    "collapse": "ナビゲーションを折りたたむ",
+    "resize": "ナビゲーションのサイズを変更する"
+  },
+  "page": {
+    "processes": "プロセス",
+    "performance": "パフォーマンス",
+    "services": "サービス",
+    "startup": "スタートアップ",
+    "network": "接続",
+    "history": "履歴",
+    "settings": "設定",
+    "about": "バージョン情報"
+  },
+  "pageTitle": "{page} (Ctrl+{key})",
+  "elevation": {
+    "admin": "管理者",
+    "adminHint": "Argus は管理者として実行されており、ほぼすべてのプロセスを表示および終了できます",
+    "service": "特権サービス",
+    "serviceHint": "Argus は標準ユーザーとして実行します。特権サービスは管理者権限が必要なものを実行します",
+    "standard": "標準ユーザー",
+    "standardHint": "一部のシステム プロセスには、読み取りまたは終了するために管理者権限が必要です"
+  },
+  "interval": {
+    "label": "更新間隔",
+    "option": "{seconds} ごと"
+  },
+  "background": {
+    "confirm": {
+      "minimized": {
+        "title": "最小化するとより頻繁に更新されますか?",
+        "body": "ウィンドウが最小化されている間、Argus は {seconds} ごとにすべてのプロセスとセンサーをサンプリングします。間隔が 5 秒未満の場合、CPU の使用量と消費電力が著しく増加し、特にバッテリーの消費が顕著になります。履歴とルールはデフォルトの 5 秒で正常に動作します。"
+      },
+      "tray": {
+        "title": "トレイでより頻繁に更新しますか?",
+        "body": "Argus はトレイに隠れている間、{seconds} ごとにすべてのプロセスとセンサーをサンプリングします。間隔が 5 秒未満の場合、CPU の使用量と消費電力が著しく増加し、特にバッテリーの消費が顕著になります。履歴とルールはデフォルトの 5 秒で正常に動作します。"
+      },
+      "accept": "とにかく {seconds} を使用してください"
+    },
+    "notice": {
+      "minimized": "ウィンドウが最小化されている間、Argus はリソースを節約するために、すべての {from} ではなく、すべての {to} を更新しました。",
+      "tray": "Argus がトレイにある間、リソースを節約するために {from} ごとではなく {to} ごとにリフレッシュされました。",
+      "adjust": "調整",
+      "quiet": "思い出さないでください"
+    }
+  },
+  "pause": "更新を一時停止",
+  "resume": "更新を再開",
+  "fileLock": {
+    "title": "ファイルを使用しているものを見つける (またはファイルをウィンドウにドロップする)",
+    "label": "ファイルを使用したプロセスの検索"
+  },
+  "details": {
+    "label": "詳細ペイン",
+    "mode": {
+      "open": "常に表示",
+      "auto": "プロセス選択時に表示",
+      "closed": "非表示"
+    },
+    "current": "詳細ペイン: {mode}",
+    "next": "「{mode}」をクリックします。右クリックして選択します"
+  },
+  "search": {
+    "processes": "名前、PID、パスまたはサービスを検索します",
+    "clear": "検索をクリア"
+  },
+  "viewMode": {
+    "apps": {
+      "label": "アプリ"
+    },
+    "tree": {
+      "label": "ツリー"
+    },
+    "list": {
+      "label": "一覧"
+    }
+  },
+  "status": {
+    "threads": "スレッド",
+    "handles": "ハンドル",
+    "cached": "キャッシュ済み",
+    "pagedPool": "ページ プール",
+    "uptime": "稼働時間",
+    "orderHeld": "ポインタがリスト上にある間は並べ替えが一時停止します",
+    "orderHeldHint": "ポインタがリストから離れると行が再ソートされます",
+    "paused": "アップデートを一時停止しています",
+    "interval": "{seconds} ごとに更新します",
+    "version": "v{version}",
+    "versionHint": "Argus {version} · {channel}\nクリックすると、このバージョンの新機能が表示されます。右クリックしてバージョン番号をコピーします"
+  }
+}

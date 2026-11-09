@@ -1,0 +1,55 @@
+{
+  "title": "Wofür wird die Datei verwendet?",
+  "intro": "Wenn das Löschen oder Verschieben einer Datei fehlschlägt, weil sie gerade verwendet wird, finden Sie hier die Prozesse, in denen sie gespeichert ist. Dateien können auch im Argus-Fenster abgelegt werden.",
+  "dropZone": "Dateien oder Ordner auf das Fenster legen, oder",
+  "pickFile": "Datei auswählen",
+  "pickFolder": "Ordner auswählen",
+  "recheck": "Überprüfen Sie es erneut",
+  "checking": "Überprüfen…",
+  "error": {
+    "notFound": "Die Datei oder der Ordner konnte nicht gefunden werden.",
+    "failed": "Prüfung fehlgeschlagen: {error}"
+  },
+  "none": "Mit diesen Dateien wurde kein zugänglicher Prozess gefunden.",
+  "found": {
+    "one": "{count} Prozess verwendet diese Dateien oder Ordner.",
+    "other": "{count} Prozesse verwenden diese Dateien oder Ordner."
+  },
+  "kind": {
+    "service": "Dienst",
+    "explorer": "Datei-Explorer",
+    "console": "Konsole",
+    "critical": "Systemkritisch"
+  },
+  "service": "Dienst {name}",
+  "handleCount": {
+    "one": "{count} Handle",
+    "other": "{count} Handles"
+  },
+  "showProcess": "In Prozessen anzeigen",
+  "end": "Task beenden",
+  "checked": {
+    "one": "Restart Manager hat {count} Datei geprüft. {handles}",
+    "other": "Restart Manager hat {count} Dateien geprüft. {handles}"
+  },
+  "handles": {
+    "service": {
+      "one": "Der privilegierte Dienst hat {count} Dateihandle geprüft, einschließlich Verzeichnishandles.",
+      "other": "Der privilegierte Dienst hat {count} Dateihandles geprüft, einschließlich Verzeichnishandles."
+    },
+    "local": {
+      "one": "Lokal wurde {count} Dateihandle geprüft, einschließlich Verzeichnishandles.",
+      "other": "Lokal wurden {count} Dateihandles geprüft, einschließlich Verzeichnishandles."
+    },
+    "unfinished": "Die Handle-Abfrage wurde nicht abgeschlossen."
+  },
+  "incomplete": "Ergebnisse sind unvollständig. Unzugängliche Prozesse: {denied}; unlesbare Handles: {skipped}; Abfragen mit Zeitüberschreitung: {timeouts}. {limit}",
+  "limitReached": "Das Abfragelimit wurde erreicht.",
+  "serviceHint": "Aktivieren Sie den privilegierten Dienst in den Einstellungen, um weitere Systemprozesse zu überprüfen.",
+  "unchecked": {
+    "one": "Restart Manager konnte {count} weitere Datei wegen Berechtigungen oder Dateiänderungen nicht prüfen.",
+    "other": "Restart Manager konnte {count} weitere Dateien wegen Berechtigungen oder Dateiänderungen nicht prüfen."
+  },
+  "truncated": "Der Ordner enthält zu viele Dateien; Es wurden nur die ersten {count} überprüft.",
+  "footerHint": "Die Handle-Abfrage findet auch Ordner, die als Arbeitsverzeichnis verwendet werden; Geschützte Prozesse sind möglicherweise immer noch unerreichbar."
+}

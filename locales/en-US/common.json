@@ -50,7 +50,12 @@
     "save": "Save"
   },
   "languageName": {
-    "zhCN": "Chinese (Simplified)",
-    "enUS": "English"
+    "zhCN": "简体中文",
+    "enUS": "English",
+    "esES": "Español",
+    "deDE": "Deutsch",
+    "jaJP": "日本語",
+    "frFR": "Français",
+    "ruRU": "Русский"
   }
 }

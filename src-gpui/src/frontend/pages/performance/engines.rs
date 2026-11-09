@@ -953,7 +953,7 @@ impl Desktop {
             figures.push((
                 "gpu-stat-voltage",
                 "performance.gpu.coreVoltage",
-                format!("{:.3}", millivolts / 1000.),
+                crate::regional::number!("{:.3}", millivolts / 1000.),
                 "V",
                 None,
             ));
@@ -962,7 +962,7 @@ impl Desktop {
             figures.push((
                 "gpu-stat-vid",
                 "performance.gpu.coreVid",
-                format!("{:.3}", millivolts / 1000.),
+                crate::regional::number!("{:.3}", millivolts / 1000.),
                 "V",
                 Some("performance.gpu.vidHint"),
             ));
@@ -983,7 +983,7 @@ impl Desktop {
                 figures.push((
                     id,
                     title,
-                    format!("{percent:.1}"),
+                    crate::regional::number!("{percent:.1}"),
                     "%",
                     Some("performance.gpu.activityHint"),
                 ));
@@ -1151,24 +1151,7 @@ fn clock(mhz: f64) -> String {
 /// A number grouped by thousands with up to `digits` decimals, trailing zeros
 /// dropped, as `Intl.NumberFormat` shows it: 1,972.5, 24, 19.2.
 fn decimal(value: f64, digits: usize) -> String {
-    let fixed = format!("{:.*}", digits, value.abs());
-    let (whole, fraction) = fixed.split_once('.').unwrap_or((&fixed, ""));
-    let fraction = fraction.trim_end_matches('0');
-    let mut out = String::new();
-    if value < 0. && fixed.bytes().any(|b| b.is_ascii_digit() && b != b'0') {
-        out.push('-');
-    }
-    for (i, c) in whole.chars().enumerate() {
-        if i > 0 && (whole.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    if !fraction.is_empty() {
-        out.push('.');
-        out.push_str(fraction);
-    }
-    out
+    crate::regional::decimal(value, digits)
 }
 
 #[cfg(test)]

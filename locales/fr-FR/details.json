@@ -1,0 +1,94 @@
+{
+  "deselect": "Désélectionner",
+  "resize": "Redimensionner le volet de détails",
+  "overview": {
+    "title": "Ce PC",
+    "hide": "Masquer les spécifications PC",
+    "show": "Afficher les spécifications du PC",
+    "copy": "Copier les spécifications PC sous forme de texte",
+    "copyWhat": "Spécifications du PC",
+    "copyPart": "{kind} : {name}",
+    "selectTip": "Cliquez sur une application ou un processus dans la liste pour voir ses détails ici ; cliquez à nouveau dessus pour le désélectionner.",
+    "closeTip": "Le volet de détails reste ouvert ; cachez-le avec {icon} en haut à droite de la fenêtre.",
+    "cpu": "Processeur",
+    "cores": {
+      "one": "{count} cœur",
+      "many": "{count} cœurs",
+      "other": "{count} cœurs"
+    },
+    "hybrid": "({performance} P-cores + {efficiency} E-cores)",
+    "threads": {
+      "one": "{count} thread",
+      "many": "{count} threads",
+      "other": "{count} threads"
+    },
+    "base": "Socle {speed}",
+    "slots": "{used} des emplacements {total} utilisés",
+    "disk": "Stockage",
+    "gpu": "Graphiques",
+    "vram": "Mémoire dédiée {size}",
+    "sharedMemory": "Utilise la mémoire partagée",
+    "battery": "Batterie",
+    "designed": "Conçu pour {capacity}",
+    "health": "Santé {percent}%"
+  },
+  "exited": {
+    "title": "Le processus s'est terminé",
+    "hint": "Sélectionnez un autre processus dans la liste pour voir ses détails."
+  },
+  "group": {
+    "count": {
+      "one": "{count} processus",
+      "many": "{count} processus",
+      "other": "{count} processus"
+    },
+    "earliest": "Premier démarrage",
+    "members": "Processus ({count})",
+    "open": "Afficher les détails de PID {pid}"
+  },
+  "services": "Services en cours d'exécution ({count})",
+  "section": {
+    "process": "Processus",
+    "resources": "Ressources",
+    "location": "Emplacement du fichier",
+    "commandLine": "Ligne de commande",
+    "version": "Version du fichier"
+  },
+  "parent": "Processus parent",
+  "parentLink": "{name} ({pid})",
+  "noParent": "Aucun (PID {pid})",
+  "started": "Démarré",
+  "cpuTime": "Heure CPU",
+  "user": "Nom d'utilisateur",
+  "integrity": "Intégrité",
+  "integrityLevel": {
+    "untrusted": "Non fiable",
+    "low": "Basse",
+    "medium": "Moyen",
+    "mediumPlus": "Moyen plus",
+    "high": "Élevé (élevé)",
+    "system": "Système",
+    "protected": "Protégé"
+  },
+  "architecture": "Architecture",
+  "arch": {
+    "x64": "64 bits (x64)",
+    "x86": "32 bits (x86)",
+    "arm64": "ARM64",
+    "arm": "ARM"
+  },
+  "priority": "Priorité",
+  "session": "Séance",
+  "privateWs": "Ensemble de travail privé",
+  "workingSet": "Plage de travail",
+  "commit": "Taille de validation",
+  "gpuEngine": "({engine})",
+  "gpuDedicated": "Mémoire GPU dédiée",
+  "gpuShared": "Mémoire GPU partagée",
+  "netNeedsAdmin": "Exécutez Argus en tant qu'administrateur pour afficher",
+  "threads": "Threads",
+  "handles": "Handles",
+  "noAccess": "Impossible d'ouvrir ce processus pour lire sa ligne de commande et son nom d'utilisateur. Exécutez Argus en tant qu'administrateur pour les afficher.",
+  "product": "Produit",
+  "version": "Version"
+}

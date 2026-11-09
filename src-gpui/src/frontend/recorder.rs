@@ -1,7 +1,7 @@
 //! Global hotkey rules and recording.
 //!
-//! The host and recorder share one key table. GPUI reports layout characters
-//! and side-independent modifiers, which are mapped back to table codes.
+//! The host and recorder share one key table. Native messages supply virtual
+//! keys and modifiers; synthetic input uses the layout-aware character fallback.
 //! Modifiers precede the main key; release commits the chord so auto-repeat
 //! cannot trigger a newly registered hotkey while the key is still held.
 use serde::Deserialize;
@@ -179,8 +179,11 @@ pub fn judge(text: &str) -> Verdict {
     }
 }
 
-/// How a key is printed: `KeyK` → `K`, `Digit7` → `7`, `Escape` → `Esc`.
+/// Printable keys follow the keyboard layout; control keys keep their familiar names.
 fn key_name(key: &Key) -> String {
+    if let Some(label) = crate::hotkey::character_label(&key.code) {
+        return label;
+    }
     if let Some(label) = &key.label {
         return label.clone();
     }
@@ -272,16 +275,14 @@ pub enum Effect {
 /// The table code for a GPUI key name; `shift` says whether the layout's
 /// shifted character stood for the key with Shift held.
 fn table_code(key: &str) -> Option<(String, bool)> {
+    if let Some(key) = key_by_code(key) {
+        return Some((key.code.clone(), false));
+    }
+    if key.chars().count() == 1 {
+        return crate::hotkey::character_key(key);
+    }
     let plain = |code: &str| Some((code.to_owned(), false));
-    let shifted = |code: &str| Some((code.to_owned(), true));
     match key {
-        k if k.len() == 1 && k.as_bytes()[0].is_ascii_lowercase() => {
-            Some((format!("Key{}", k.to_ascii_uppercase()), false))
-        }
-        k if k.len() == 1 && k.as_bytes()[0].is_ascii_uppercase() => {
-            Some((format!("Key{k}"), true))
-        }
-        k if k.len() == 1 && k.as_bytes()[0].is_ascii_digit() => Some((format!("Digit{k}"), false)),
         k if k.len() >= 2
             && k.starts_with('f')
             && k[1..].parse::<u8>().is_ok_and(|n| (1..=24).contains(&n)) =>
@@ -304,38 +305,6 @@ fn table_code(key: &str) -> Option<(String, bool)> {
         "pagedown" => plain("PageDown"),
         "insert" => plain("Insert"),
         "delete" => plain("Delete"),
-        "`" => plain("Backquote"),
-        "-" => plain("Minus"),
-        "=" => plain("Equal"),
-        "[" => plain("BracketLeft"),
-        "]" => plain("BracketRight"),
-        "\\" => plain("Backslash"),
-        ";" => plain("Semicolon"),
-        "'" => plain("Quote"),
-        "," => plain("Comma"),
-        "." => plain("Period"),
-        "/" => plain("Slash"),
-        "~" => shifted("Backquote"),
-        "!" => shifted("Digit1"),
-        "@" => shifted("Digit2"),
-        "#" => shifted("Digit3"),
-        "$" => shifted("Digit4"),
-        "%" => shifted("Digit5"),
-        "^" => shifted("Digit6"),
-        "&" => shifted("Digit7"),
-        "*" => shifted("Digit8"),
-        "(" => shifted("Digit9"),
-        ")" => shifted("Digit0"),
-        "_" => shifted("Minus"),
-        "+" => shifted("Equal"),
-        "{" => shifted("BracketLeft"),
-        "}" => shifted("BracketRight"),
-        "|" => shifted("Backslash"),
-        ":" => shifted("Semicolon"),
-        "\"" => shifted("Quote"),
-        "<" => shifted("Comma"),
-        ">" => shifted("Period"),
-        "?" => shifted("Slash"),
         _ => None,
     }
 }
@@ -403,25 +372,26 @@ impl Recording {
             ..mods
         };
         // Tab and Shift+Tab move the focus on, out of the recording.
-        if key == "tab" && !mods.ctrl && !mods.alt && !mods.win {
+        if key.eq_ignore_ascii_case("tab") && !mods.ctrl && !mods.alt && !mods.win {
             *self = Recording::default();
             return Effect::Cancel;
         }
         if !mods.any() && self.keys.is_empty() {
-            if key == "escape" {
+            if key.eq_ignore_ascii_case("escape") {
                 *self = Recording::default();
                 return Effect::Cancel;
             }
-            if key == "backspace" {
+            if key.eq_ignore_ascii_case("backspace") {
                 *self = Recording::default();
                 return Effect::Disable;
             }
         }
-        let others = self.keys.iter().any(|k| k != key);
-        if !self.keys.iter().any(|k| k == key) {
-            self.keys.push(key.to_owned());
-        }
         let mapped = table_code(key);
+        let identity = mapped.as_ref().map_or(key, |(code, _)| code.as_str());
+        let others = self.keys.iter().any(|k| k != identity);
+        if !self.keys.iter().any(|k| k == identity) {
+            self.keys.push(identity.to_owned());
+        }
         let label = mapped
             .as_ref()
             .and_then(|(code, _)| key_by_code(code))
@@ -446,7 +416,7 @@ impl Recording {
             shift: mods.shift || shifted,
             ..mods
         };
-        self.pending = Some((key.to_owned(), canonical(held, &code), held));
+        self.pending = Some((code.clone(), canonical(held, &code), held));
         self.order = false;
         self.hint = None;
         Effect::None
@@ -454,6 +424,8 @@ impl Recording {
 
     /// A key other than a modifier came up.
     pub fn key_up(&mut self, key: &str) -> Effect {
+        let mapped = table_code(key);
+        let key = mapped.as_ref().map_or(key, |(code, _)| code.as_str());
         self.keys.retain(|k| k != key);
         if let Some((pending, hotkey, _)) = self.pending.clone()
             && pending == key
@@ -595,9 +567,9 @@ mod tests {
         };
         assert_eq!(r.modifiers(ctrl_alt, false), Effect::None);
         assert!(r.waiting_for_key());
-        assert_eq!(r.key_down("k", ctrl_alt, false), Effect::None);
-        assert_eq!(r.key_down("k", ctrl_alt, true), Effect::None);
-        assert_eq!(r.key_up("k"), Effect::Commit("Ctrl+Alt+KeyK".into()));
+        assert_eq!(r.key_down("KeyK", ctrl_alt, false), Effect::None);
+        assert_eq!(r.key_down("KeyK", ctrl_alt, true), Effect::None);
+        assert_eq!(r.key_up("KeyK"), Effect::Commit("Ctrl+Alt+KeyK".into()));
     }
 
     #[test]
@@ -607,9 +579,9 @@ mod tests {
             ctrl: true,
             ..Mods::default()
         };
-        r.key_down("k", ctrl, false);
+        r.key_down("KeyK", ctrl, false);
         r.modifiers(Mods { alt: true, ..ctrl }, false);
-        assert_eq!(r.key_up("k"), Effect::None);
+        assert_eq!(r.key_up("KeyK"), Effect::None);
         assert_eq!(r.hint, Some(Hint::Order));
     }
 
@@ -624,14 +596,25 @@ mod tests {
     }
 
     #[test]
-    fn shifted_symbols_record_their_key_with_shift() {
+    fn shifted_keys_keep_shift_in_the_recorded_chord() {
         let mut r = Recording::default();
         let ctrl = Mods {
             ctrl: true,
+            shift: true,
             ..Mods::default()
         };
-        r.key_down("!", ctrl, false);
-        assert_eq!(r.key_up("!"), Effect::Commit("Ctrl+Shift+Digit1".into()));
+        r.key_down("Digit1", ctrl, false);
+        r.modifiers(
+            Mods {
+                shift: false,
+                ..ctrl
+            },
+            false,
+        );
+        assert_eq!(
+            r.key_up("Digit1"),
+            Effect::Commit("Ctrl+Shift+Digit1".into())
+        );
     }
 
     #[test]
@@ -644,5 +627,18 @@ mod tests {
         r.modifiers(ctrl, false);
         r.modifiers(Mods::default(), false);
         assert_eq!(r.hint, Some(Hint::NoKey));
+    }
+
+    #[test]
+    fn key_release_matches_the_code_after_character_or_case_changes() {
+        let mut r = Recording::default();
+        let mods = Mods {
+            ctrl: true,
+            ..Mods::default()
+        };
+        r.key_down("enter", mods, false);
+        assert_eq!(r.key_up("Enter"), Effect::Commit("Ctrl+Enter".into()));
+        assert!(r.keys.is_empty());
+        assert_eq!(r.key_down("Escape", Mods::default(), false), Effect::Cancel);
     }
 }

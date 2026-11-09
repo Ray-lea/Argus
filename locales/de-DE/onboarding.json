@@ -1,0 +1,103 @@
+{
+  "skip": "Überspringen",
+  "back": "Zurück",
+  "next": "Weiter",
+  "finish": "Starten",
+  "saveFailed": "Die Einstellung konnte nicht gespeichert werden: {error}",
+  "welcome": {
+    "title": "Willkommen bei Argus",
+    "body": "Argus ist ein moderner Task-Manager für Windows. Er zeigt Prozesse, Leistung, Dienste, Autostart-Apps und Netzwerkverbindungen an und zeichnet die Ressourcennutzung auf. Die folgenden Schritte richten die wichtigsten Optionen ein. Jeder Schritt kann übersprungen und jede Einstellung später geändert werden.",
+    "language": "Sprache"
+  },
+  "display": {
+    "title": "Anzeige und Aktualisierung",
+    "body": "Position der Navigation, Animationen und Aktualisierungsintervall auswählen.",
+    "nav": "Navigationsposition",
+    "navHint": "Die Seitenleiste zeigt zunächst nur Symbole. Im erweiterten Zustand erscheinen auch die Seitennamen.",
+    "motion": "Oberflächenanimationen",
+    "motionHint": "Übergänge beim Seitenwechsel und beim Öffnen von Menüs und Dialogen.",
+    "chart": "Diagrammanimationen",
+    "chartHint": "Höhere Bildraten wirken flüssiger und benötigen mehr Ressourcen.",
+    "interval": "Aktualisierungsintervall",
+    "intervalHint": "Kürzere Intervalle liefern aktuellere Daten und erhöhen den Ressourcenbedarf von Argus."
+  },
+  "background": {
+    "title": "Im Hintergrund verfügbar",
+    "body": "Argus kann im Infobereich weiterlaufen, den Verlauf aufzeichnen und Regeln anwenden. Das Fenster lässt sich bei Bedarf öffnen.",
+    "autostart": "Bei Windows-Anmeldung starten",
+    "autostartHint": "Startet ohne Fenster im Infobereich.",
+    "closeToTray": "Beim Schließen im Infobereich behalten",
+    "closeToTrayHint": "Wenn deaktiviert, wird Argus beim Schließen des Fensters beendet.",
+    "minimizedInterval": "Intervall bei minimiertem Fenster",
+    "minimizedIntervalHint": "Standard: 5 Sekunden. Kürzere Intervalle erhöhen den Ressourcenbedarf im Hintergrund.",
+    "trayInterval": "Intervall im Infobereich",
+    "trayIntervalHint": "Bei mehr als 5 Sekunden wird der Verlauf in größeren Abständen aufgezeichnet.",
+    "hotkey": "Mit {hotkey} lässt sich Argus jederzeit ein- oder ausblenden. Die Tastenkombination kann in den Einstellungen geändert werden.",
+    "hotkeyOff": "Die Tastenkombination zum Ein- und Ausblenden von Argus ist deaktiviert. Sie kann in den Einstellungen wieder aktiviert werden.",
+    "hotkeyTaken": "{shortcut} wird von Windows oder einer anderen Anwendung verwendet, möglicherweise von einer weiteren Argus-Instanz. In den Einstellungen eine andere Kombination wählen.",
+    "hotkeyProblem": "{problem} Die Verknüpfung kann in den Einstellungen geändert werden."
+  },
+  "update": {
+    "title": "Aktuell bleiben",
+    "body": "Argus bezieht neue Versionen aus GitHub Releases. Installationspakete müssen die Signaturprüfung bestehen und werden erst nach Bestätigung installiert.",
+    "check": "Automatisch nach Updates suchen",
+    "checkHint": "Etwa eine Minute nach dem Start, danach einmal täglich.",
+    "channel": "Updatekanal",
+    "stable": "Stabil",
+    "beta": "Beta",
+    "betaHint": "Beta erhält auch Vorabversionen: neue Funktionen früher, aber möglicherweise weniger stabil.",
+    "route": "Downloadquelle",
+    "routeAuto": "Automatisch",
+    "routeDirect": "Nur GitHub",
+    "routeProxy": "Nur über GitHub-Proxy",
+    "proxyNotice": "GitHub-Proxys werden von Dritten betrieben. Sie können die IP-Adresse dieses PCs und die heruntergeladenen Dateien sehen. Die Signaturprüfung schützt vor manipulierten Updates.",
+    "unavailable": "Diese Version kann sich nicht selbst aktualisieren."
+  },
+  "privilege": {
+    "title": "Privilegierter Dienst (optional)",
+    "body": "Argus läuft mit Standardrechten. Einige Systemprozesse lassen sich damit nicht auslesen, beenden oder anpassen. Der optionale privilegierte Dienst läuft im Hintergrund als SYSTEM und ermöglicht:",
+    "features": {
+      "end": "Prozesse anderer Benutzer beenden, ausgenommen kritische Systemprozesse",
+      "tune": "Priorität und Effizienzmodus festlegen, auch automatisch über Regeln",
+      "inspect": "Dateisperren, Netzwerkverkehr sowie Datenträgerzugriffe aller Prozesse anzeigen",
+      "control": "Windows-Dienste steuern und Netzwerkverbindungen schließen",
+      "sensors": "Zugriff auf Kernelsensoren bereitstellen; der Treiber wird separat aktiviert"
+    },
+    "risk": "Die Berechtigung gilt für das aktuelle Windows-Konto. Jedes unter diesem Konto ausgeführte Programm kann diese Funktionen nutzen und erhält damit einen Teil der Administratorrechte. Den Dienst nur für ein selbst genutztes Konto installieren.",
+    "later": "Die Installation erfordert Administratorrechte. Der Dienst kann später unter Einstellungen → Berechtigungen installiert oder deinstalliert werden.",
+    "replace": "In den nächsten Schritten können Kernelsensoren und die Task-Manager-Ersetzung eingerichtet werden.",
+    "manage": "Details anzeigen oder den Dienst aktualisieren bzw. neu installieren unter Einstellungen → Berechtigungen.",
+    "elevated": "Argus läuft als Administrator und benötigt den privilegierten Dienst daher nicht zur Prozessverwaltung. Kernelsensoren und die Task-Manager-Ersetzung benötigen den Dienst weiterhin."
+  },
+  "sensors": {
+    "title": "Kernelsensoren (optional)",
+    "body": "Interne Prozessorsensoren für Temperatur- und Leistungsdaten auslesen.",
+    "install": "Wenn PawnIO installiert oder gestartet werden muss, wird eine Administratorfreigabe angefordert.",
+    "checking": "Status wird geprüft",
+    "enabled": "Aktiviert",
+    "disabled": "Nicht aktiviert",
+    "needsService": "Zuerst den privilegierten Dienst installieren und starten. Ein vorhandener Dienst ohne Verbindung kann in den Einstellungen aktualisiert werden.",
+    "configureService": "Dienst einrichten",
+    "enable": "Kernelsensoren aktivieren",
+    "later": "Standardmäßig deaktiviert. Mit Weiter überspringen und später unter Einstellungen → Berechtigungen aktivieren.",
+    "manage": "Messwerte werden unter Leistung angezeigt. Die Sensoren lassen sich unter Einstellungen → Berechtigungen deaktivieren; der gemeinsam genutzte Treiber bleibt installiert."
+  },
+  "taskManager": {
+    "title": "Task-Manager ersetzen (optional)",
+    "body": "Nach der Aktivierung öffnen Ctrl+Shift+Esc, der Task-Manager-Eintrag im Kontextmenü der Taskleiste und die anderen Task-Manager-Aufrufe Argus.",
+    "scope": "Die Einstellung gilt für den gesamten PC. Andere Konten öffnen weiterhin den Windows-Task-Manager. Kann Argus nicht starten, wird der Windows-Task-Manager geöffnet.",
+    "undo": "Die Ersetzung kann jederzeit unter Einstellungen → Berechtigungen deaktiviert werden. Ein eigenständiges Wiederherstellungsprogramm funktioniert auch, wenn Oberfläche oder Dienst nicht starten.",
+    "later": "Die Aktivierung erfordert Administratorrechte. Sie kann übersprungen und später unter Einstellungen → Berechtigungen vorgenommen werden.",
+    "needsService": "Die Ersetzung benötigt den privilegierten Dienst. Diesen zuerst im Schritt Privilegierter Dienst installieren und starten."
+  },
+  "tips": {
+    "title": "Einrichtung abgeschlossen",
+    "body": "Einige Möglichkeiten für die schnelle Bedienung:",
+    "pages": "{keys} wechselt die Seite, {search} öffnet die Prozesssuche",
+    "menu": "Ein Rechtsklick auf einen Prozess bietet Beenden, Priorität, Effizienzmodus und Regeln an",
+    "drop": "Eine Datei oder einen Ordner auf das Fenster ziehen, um die verwendenden Prozesse zu finden",
+    "history": "Der Verlauf enthält die Ressourcennutzung der letzten 7 Tage und die jeweils aktivsten Prozesse",
+    "reopen": "Diese Einführung lässt sich jederzeit auf der Seite Info erneut öffnen."
+  },
+  "administrator": "Argus automatisch als Administrator ausführen, um Prozesse und Autostart-Einträge anderer Benutzer zu verwalten. Standardmäßig deaktiviert; bei der ersten Aktivierung fordert Windows eine Freigabe an."
+}

@@ -776,10 +776,12 @@ pub fn run_mode() -> Option<i32> {
     }) else {
         return Some(87);
     };
-    let language = match args[3].to_str() {
-        Some("2052") => argus_core::i18n::Locale::ZhCn,
-        Some("1033") => argus_core::i18n::Locale::EnUs,
-        _ => return Some(87),
+    let Some(language) = args[3]
+        .to_str()
+        .and_then(|id| id.parse::<u16>().ok())
+        .and_then(argus_core::i18n::Locale::from_langid)
+    else {
+        return Some(87);
     };
     let silent = match args[4].to_str() {
         Some("silent") => true,

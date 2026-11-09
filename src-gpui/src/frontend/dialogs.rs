@@ -1750,7 +1750,16 @@ impl Desktop {
             ToastKind::Info,
             argus_core::i18n::format(
                 &format!("shell.background.notice.{away}"),
-                &[("from", &(shown / 1000.)), ("to", &(hidden / 1000.))],
+                &[
+                    (
+                        "from",
+                        &crate::regional::numeric((shown / 1000.).to_string()),
+                    ),
+                    (
+                        "to",
+                        &crate::regional::numeric((hidden / 1000.).to_string()),
+                    ),
+                ],
             ),
             10000,
             vec![

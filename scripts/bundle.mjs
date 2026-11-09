@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { installerStrings } from "./lib/installer-locales.mjs";
 const root = resolve(import.meta.dirname, "..");
 export function findNsis() {
   const candidates = [
@@ -65,8 +66,9 @@ export function bundle() {
   const directory = join(root, "target/release/nsis/x64");
   mkdirSync(directory, { recursive: true });
   mkdirSync(dirname(output), { recursive: true });
-  for (const name of ["utils.nsh", "English.nsh", "SimpChinese.nsh"])
+  for (const name of ["utils.nsh"])
     copyFileSync(join(root, "packaging/windows", name), join(directory, name));
+  writeFileSync(join(directory, "installer-locales.nsh"), "\uFEFF" + installerStrings(root));
   const script = join(directory, "installer.nsi");
   writeFileSync(
     script,

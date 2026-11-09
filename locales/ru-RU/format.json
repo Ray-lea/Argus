@@ -1,0 +1,12 @@
+{
+  "missing": "—",
+  "uptime": {
+    "days": "{days} д {hours} ч",
+    "hours": "{hours} ч {minutes} мин",
+    "minutes": "{minutes} мин {seconds} с"
+  },
+  "uptimeExact": "{days}<u>д</u> {clock}",
+  "sinceBoot": "При запуске системы",
+  "monthDay": "{day} {month}",
+  "monthNames": "янв. февр. мар. апр. мая июн. июл. авг. сент. окт. нояб. дек."
+}

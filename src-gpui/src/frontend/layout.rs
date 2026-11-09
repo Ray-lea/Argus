@@ -547,7 +547,12 @@ impl Desktop {
                     label("shell.interval.label"),
                     INTERVALS
                         .iter()
-                        .map(|ms| tr!("shell.interval.option", seconds = *ms as f64 / 1000.))
+                        .map(|ms| {
+                            tr!(
+                                "shell.interval.option",
+                                seconds = crate::regional::seconds(*ms)
+                            )
+                        })
                         .collect(),
                     INTERVALS.iter().position(|ms| *ms == self.interval),
                     false,
@@ -1132,7 +1137,7 @@ impl Desktop {
             .h(px(17.) + theme::text_growth(12., 1.4))
             .overflow_hidden()
             .gap_x(px(20.));
-        let cached = format!("{:.1} GB", number(sys, "cached") / 1073741824.);
+        let cached = crate::regional::number!("{:.1} GB", number(sys, "cached") / 1073741824.);
         for (key, value) in [
             (
                 "shell.status.threads",
@@ -1222,7 +1227,7 @@ impl Desktop {
                     } else {
                         tr!(
                             "shell.status.interval",
-                            seconds = self.interval as f64 / 1000.
+                            seconds = crate::regional::seconds(self.interval)
                         )
                     }),
             )

@@ -1,0 +1,103 @@
+{
+  "skip": "Omitir",
+  "back": "Atrás",
+  "next": "Siguiente",
+  "finish": "Comenzar",
+  "saveFailed": "No se pudo guardar la configuración: {error}",
+  "welcome": {
+    "title": "Bienvenido a Argus",
+    "body": "Argus es un administrador de tareas moderno para Windows. Muestra procesos, rendimiento, servicios, aplicaciones de inicio y conexiones de red, y conserva el historial de uso de recursos. Los siguientes pasos permiten configurar las opciones principales. Todos pueden omitirse y modificarse después en Configuración.",
+    "language": "Idioma"
+  },
+  "display": {
+    "title": "Visualización y actualización",
+    "body": "Elija la posición de navegación, las animaciones y la frecuencia de actualización.",
+    "nav": "Posición de navegación",
+    "navHint": "El panel lateral muestra iconos de forma predeterminada; al expandirlo aparecen los nombres de las páginas.",
+    "motion": "Animaciones de la interfaz",
+    "motionHint": "Transiciones al cambiar de página y abrir menús o diálogos.",
+    "chart": "Animaciones de los gráficos",
+    "chartHint": "Una mayor frecuencia de fotogramas mejora la fluidez y utiliza más recursos.",
+    "interval": "Frecuencia de actualización",
+    "intervalHint": "Los intervalos más cortos muestran datos más recientes y aumentan el consumo de recursos de Argus."
+  },
+  "background": {
+    "title": "Funcionamiento en segundo plano",
+    "body": "Argus puede permanecer en la bandeja del sistema, registrar el historial y aplicar las reglas mientras está disponible para abrirlo.",
+    "autostart": "Iniciar al acceder a Windows",
+    "autostartHint": "Se inicia en la bandeja del sistema sin abrir una ventana.",
+    "closeToTray": "Mantener en la bandeja al cerrar",
+    "closeToTrayHint": "Si está desactivado, cerrar la ventana también cierra Argus.",
+    "minimizedInterval": "Actualización al minimizar",
+    "minimizedIntervalHint": "El valor predeterminado es 5 segundos; reducirlo aumenta el uso de recursos en segundo plano.",
+    "trayInterval": "Actualización en la bandeja",
+    "trayIntervalHint": "Con más de 5 segundos, los registros del historial están más espaciados.",
+    "hotkey": "Pulse {hotkey} para mostrar u ocultar Argus. Puede cambiar el atajo en Configuración.",
+    "hotkeyOff": "El atajo para mostrar u ocultar Argus está desactivado. Puede volver a activarlo en Configuración.",
+    "hotkeyTaken": "{shortcut} está en uso por Windows u otra aplicación, posiblemente otra instancia de Argus. Elija otro atajo en Configuración.",
+    "hotkeyProblem": "{problem} El acceso directo se puede cambiar en Configuración."
+  },
+  "update": {
+    "title": "Mantener actualizado",
+    "body": "Argus obtiene las nuevas versiones de GitHub Releases. Los instaladores deben superar la verificación de firma y requieren confirmación antes de instalarse.",
+    "check": "Buscar actualizaciones automáticamente",
+    "checkHint": "Aproximadamente un minuto después de iniciar y, después, una vez al día.",
+    "channel": "Canal de actualizaciones",
+    "stable": "Estable",
+    "beta": "Beta",
+    "betaHint": "Beta también recibe prelanzamientos: nuevas funciones antes, pero posiblemente menos estables.",
+    "route": "Origen de descarga",
+    "routeAuto": "Automático",
+    "routeDirect": "GitHub solamente",
+    "routeProxy": "Solo mediante proxy de GitHub",
+    "proxyNotice": "Los proxies de GitHub son operados por terceros y pueden conocer la dirección IP de este equipo y los archivos que descarga. La verificación de firma impide instalar actualizaciones manipuladas.",
+    "unavailable": "Esta versión no se puede actualizar sola."
+  },
+  "privilege": {
+    "title": "Servicio privilegiado (opcional)",
+    "body": "Argus se ejecuta como usuario estándar y tiene restricciones para consultar, finalizar o modificar ciertos procesos del sistema. El servicio privilegiado opcional se ejecuta en segundo plano como SYSTEM y permite:",
+    "features": {
+      "end": "Finalizar procesos de otros usuarios, excepto procesos críticos del sistema",
+      "tune": "Ajustar la prioridad y el modo de eficiencia, también mediante reglas automáticas",
+      "inspect": "Consultar archivos en uso, tráfico de red y lecturas y escrituras de disco de cada proceso",
+      "control": "Controlar servicios de Windows y cerrar conexiones de red",
+      "sensors": "Acceder a los sensores del kernel; el controlador se activa por separado"
+    },
+    "risk": "La autorización se concede a la cuenta actual de Windows. Cualquier programa que se ejecute con esa cuenta podrá utilizar estas funciones, que equivalen a parte de los derechos de administrador. Instálelo únicamente en una cuenta de uso personal.",
+    "later": "La instalación requiere autorización de administrador. Puede instalarse o desinstalarse más adelante en Configuración → Permisos.",
+    "replace": "Los siguientes pasos permiten activar sensores del kernel y sustituir el Administrador de tareas.",
+    "manage": "Consulte los detalles, actualice o reinstale el servicio en Configuración → Permisos.",
+    "elevated": "Argus se ejecuta como administrador y puede gestionar procesos sin el servicio privilegiado. Los sensores del kernel y la sustitución del Administrador de tareas requieren este servicio."
+  },
+  "sensors": {
+    "title": "Sensores del kernel (opcional)",
+    "body": "Leer los sensores internos del procesador para obtener datos de temperatura y potencia.",
+    "install": "Se solicita autorización de administrador cuando es necesario instalar o iniciar PawnIO.",
+    "checking": "Comprobando estado",
+    "enabled": "Habilitado",
+    "disabled": "No habilitado",
+    "needsService": "Primero instale e inicie el servicio privilegiado. Si un servicio existente no se conecta, puede actualizarlo en Configuración.",
+    "configureService": "Configurar servicio",
+    "enable": "Activar sensores del kernel",
+    "later": "Está desactivado de forma predeterminada. Pulse Siguiente para omitirlo y activarlo después en Configuración → Permisos.",
+    "manage": "Consulte las lecturas en Rendimiento y desactive los sensores en Configuración → Permisos. El controlador compartido permanece instalado al desactivarlos."
+  },
+  "taskManager": {
+    "title": "Sustituir el Administrador de tareas (opcional)",
+    "body": "Al activarlo, Ctrl+Shift+Esc, la opción Administrador de tareas de la barra de tareas y las demás formas de abrir el Administrador de tareas abrirán Argus.",
+    "scope": "Se aplica a todo el equipo; las demás cuentas siguen abriendo el Administrador de tareas de Windows. Si Argus no puede iniciarse, se abre el de Windows.",
+    "undo": "Puede desactivarse en Configuración → Permisos. La herramienta de recuperación independiente funciona aunque la interfaz o el servicio no se inicien.",
+    "later": "La activación requiere autorización de administrador. Puede omitirla y activarla después en Configuración → Permisos.",
+    "needsService": "La sustitución requiere el servicio privilegiado. Instálelo e inícielo primero en el paso Servicio privilegiado."
+  },
+  "tips": {
+    "title": "Configuración completada",
+    "body": "Algunas formas de trabajar con mayor rapidez:",
+    "pages": "{keys} cambia de página; {search} busca procesos",
+    "menu": "Haga clic derecho en un proceso para finalizarlo, cambiar su prioridad, activar el modo de eficiencia o añadir una regla",
+    "drop": "Arrastre un archivo o una carpeta a la ventana para encontrar los procesos que lo utilizan",
+    "history": "Historial conserva los últimos 7 días de uso de recursos y los procesos más activos en cada momento",
+    "reopen": "Puede volver a abrir esta guía desde la página Acerca de."
+  },
+  "administrator": "Permitir que Argus se ejecute automáticamente como administrador para gestionar procesos y aplicaciones de inicio de otros usuarios. Está desactivado de forma predeterminada; Windows solicita autorización al activarlo por primera vez."
+}

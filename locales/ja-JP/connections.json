@@ -1,0 +1,55 @@
+{
+  "filter": {
+    "all": {
+      "label": "すべて"
+    },
+    "listen": {
+      "label": "待ち受け中"
+    },
+    "established": {
+      "label": "確立済み"
+    },
+    "udp": {
+      "label": "UDP"
+    }
+  },
+  "state": {
+    "listen": "待ち受け中",
+    "established": "確立済み",
+    "synSent": "SYN を送信しました",
+    "synReceived": "SYN入荷しました",
+    "finWait1": "切断中",
+    "finWait2": "切断中",
+    "closeWait": "クローズ待機",
+    "closing": "切断中",
+    "lastAck": "切断中",
+    "timeWait": "待ち時間",
+    "closed": "切断済み"
+  },
+  "menu": {
+    "end": "{name}終了",
+    "close": "この接続を閉じる",
+    "copyLocal": "ローカルアドレスをコピー",
+    "copyRemote": "リモートアドレスをコピー"
+  },
+  "copied": {
+    "local": "ローカルアドレス",
+    "remote": "リモートアドレス"
+  },
+  "search": "ポート、アドレス、プロセスなど。 8080",
+  "column": {
+    "process": "プロセス",
+    "protocol": "プロトコル",
+    "localAddress": "ローカル アドレス",
+    "localPort": "ローカル ポート",
+    "remoteAddress": "リモート アドレス",
+    "remotePort": "リモート ポート"
+  },
+  "exited": "終了済み",
+  "unowned": "所有プロセスなし",
+  "loading": "接続を読み取り中…",
+  "noMatch": "一致する接続がありません",
+  "noMatchPort": "一致する接続がありません: ポート {port} を使用しているプログラムはありません",
+  "clearFilter": "フィルターを解除",
+  "note": "2秒ごとに更新します。行をダブルクリックしてそのプロセスに移動します。"
+}

@@ -1,0 +1,49 @@
+{
+  "state": {
+    "running": "実行中",
+    "stopped": "停止",
+    "startPending": "開始中",
+    "stopPending": "停止中",
+    "paused": "一時停止",
+    "pausePending": "一時停止中",
+    "continuePending": "再開中"
+  },
+  "startType": {
+    "auto": "自動",
+    "autoDelayed": "自動（遅延開始）",
+    "manual": "手動",
+    "disabled": "無効",
+    "boot": "ブート",
+    "system": "システム"
+  },
+  "filter": {
+    "all": "すべて",
+    "running": "実行中",
+    "stopped": "停止"
+  },
+  "search": "名前、説明、または PID を検索します",
+  "control": {
+    "start": "サービスを開始",
+    "stop": "サービスを停止",
+    "restart": "サービスを再起動",
+    "openConsole": "サービスを開く",
+    "openConsoleTitle": "Windows サービス コンソールを開きます"
+  },
+  "menu": {
+    "startType": "スタートアップタイプ：{type}",
+    "copyName": "コピーサービス名"
+  },
+  "copied": {
+    "name": "サービス名"
+  },
+  "column": {
+    "display": "サービス",
+    "startType": "スタートアップの種類",
+    "description": "説明"
+  },
+  "loading": "読み取りサービス…",
+  "noMatch": "一致するサービスがありません",
+  "clearFilter": "フィルターを解除",
+  "summary": "{total} 件中 {running} 件が実行中",
+  "manageHint": "ほとんどのサービスは、特権サービスが有効になっている場合、または Argus が管理者として実行されている場合にのみ管理できます。"
+}
