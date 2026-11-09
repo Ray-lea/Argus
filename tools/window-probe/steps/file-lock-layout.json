@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {"control":{"contentZoom":1.75,"theme":"light"},"probe":"size 2170 1400","wait":500},
+    {"control":{"dialog":"filelock"},"wait":500,"inspect":"layout","label":"picker-ready","expect":{"dialog.kind":"filelock","dialog.ready":true,"dialog.settled":true}},
+    {"control":{"resolve":{"command":"pick_path","ok":true,"value":"C:\\Example\\示例快捷方式.lnk"}},"wait":100},
+    {"control":{"hold":{"command":"find_lockers","cache":"lockers"}},"wait":500,"inspect":"layout","label":"searching","expect":{"dialog.ready":true,"dialog.settled":true}},
+    {"control":{"resolve":{"command":"find_lockers","cache":"lockers","ok":true,"value":{"lockers":[],"filesChecked":1,"handles":{"available":false,"elevated":true,"viaService":false,"error":"特权服务未完成此次查询，以下为本地结果：句柄扫描不跟随符号链接或目录联接，请选择链接的实际目标；句柄扫描不跟随符号链接或目录联接，请选择链接的实际目标"}}},"scrollTrace":5000},"wait":1000,"inspect":"layout","label":"long-result","expect":{"dialog.settled":true},"capture":"long-result"},
+    {"wait":700,"inspect":"layout","label":"long-result-still","expect":{"dialog.settled":true},"capture":"long-result-still"},
+    {"control":{"resolve":{"command":"find_lockers","cache":"lockers","ok":true,"value":{"lockers":[{"pid":1234,"createTime":123456,"appName":"示例应用","kind":"app"}],"filesChecked":1,"handles":{"available":true,"viaService":true,"checked":1000}}}},"wait":700,"inspect":"layout","label":"changed-result","expect":{"dialog.settled":true},"capture":"changed-result"},
+    {"control":{"contentZoom":2.25,"theme":"dark"},"probe":"size 2170 1400","wait":800,"inspect":"layout","label":"dark-fractional","expect":{"dialog.ready":true,"dialog.settled":true},"capture":"dark-fractional"},
+    {"control":{"contentZoom":1},"probe":"size 640 480","wait":800,"inspect":"layout","label":"small-window","expect":{"width":640,"height":480,"dialog.ready":true,"dialog.settled":true},"capture":"small-window"},
+    {"control":{"keys":["escape"]},"wait":400,"inspect":"layout","label":"closed","expect":{"dialog":null}}
+  ]
+}

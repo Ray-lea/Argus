@@ -16,7 +16,7 @@ pub(super) struct Ask {
 
 #[cfg(test)]
 mod frame_tests {
-    use super::{DialogFrame, DialogLayout};
+    use super::{DialogFrame, DialogLayout, part_height_changed};
     use gpui_kit::gpui::{ScrollHandle, px};
     use std::time::{Duration, Instant};
 
@@ -30,6 +30,26 @@ mod frame_tests {
             clip: None,
             body_height: px(0.),
             scroll: ScrollHandle::new(),
+        }
+    }
+
+    #[test]
+    fn fractional_scale_roundoff_does_not_restart_dialog_layout() {
+        for scale in [1., 1.25, 1.5, 1.75, 2.25, 3.] {
+            let before = px(435.7143);
+            let after = px(f32::from(before) + 0.000_06);
+            assert!(!part_height_changed(before, after, scale));
+            assert!(!part_height_changed(after, before, scale));
+            assert!(part_height_changed(
+                before,
+                before + px(0.25 / scale),
+                scale
+            ));
+            assert!(part_height_changed(
+                before,
+                before - px(0.25 / scale),
+                scale
+            ));
         }
     }
 
@@ -873,6 +893,7 @@ impl Desktop {
         let frames = self.ui.dialog_frames.borrow();
         let frame = frames.get(&modal.id);
         json!({"kind":modal.kind,"ready":frame.is_some() && self.ui.dialog_shown.borrow().contains_key(&modal.id),
+            "settled":frame.is_some_and(|frame| frame.height(Instant::now(), theme::motion_duration()) == frame.to),
             "centered":frame.is_some_and(|frame| (f32::from(frame.top+frame.to/2.-frame.viewport/2.)).abs()<0.5),
             "top":frame.map(|frame|f32::from(frame.top)),"height":frame.map(|frame|f32::from(frame.to)),
             "scrollY":frame.map(|frame|f32::from(-frame.scroll.offset().y))})
@@ -2033,10 +2054,20 @@ fn note_part(
             "y":f32::from(top),"h":f32::from(height)})
         );
     }
-    if parts.borrow().get(&key) != Some(&height) {
+    if parts
+        .borrow()
+        .get(&key)
+        .is_none_or(|previous| part_height_changed(*previous, height, window.scale_factor()))
+    {
         parts.borrow_mut().insert(key, height);
         window.defer(cx, |window, _| window.refresh());
     }
+}
+
+fn part_height_changed(previous: Pixels, measured: Pixels, scale: f32) -> bool {
+    // Subtracting absolute bounds at fractional scale can alternate by an ULP.
+    // Keep the last stable measurement instead of restarting the height animation.
+    (f32::from(measured - previous) * scale).abs() >= 1. / 64.
 }
 
 /// The executable name as the processes report it, else as given.

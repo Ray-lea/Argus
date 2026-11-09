@@ -9,6 +9,15 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.options.fixture.is_some()
+            && let Some(scale) = control["contentZoom"]
+                .as_f64()
+                .filter(|scale| scale.is_finite() && (0.5..=3.).contains(scale))
+        {
+            window.defer(cx, move |window, cx| {
+                window.set_content_zoom(scale as f32, cx);
+            });
+        }
         #[cfg(debug_assertions)]
         if let Some(delay) = control["delayProcessQuery"].as_u64() {
             argus_core::process::testing::delay_next_counter_reply(delay);
