@@ -89,9 +89,9 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 ## 约定
 
 - 代码注释用英文。
-- 用户可见的文字（界面、托盘、返回给界面的错误、SCM 显示名称）不写进代码，写进 `locales/`：先写简体中文源文案，再在 `en-US` 同一位置写译文；界面用 `theme::label` 读取静态文案，带占位符的文案用 `argus_core::tr!`。用法、复数、术语表见 `docs/development/i18n.md`。日志、panic 和注释不翻译。
+- 用户可见的文字（界面、托盘、返回给界面的错误、SCM 显示名称）不写进代码，写进 `locales/`：先写简体中文源文案，再在其他语言的同一位置补齐译文；界面用 `theme::label` 读取静态文案，带占位符的文案用 `argus_core::tr!`。用法、复数、术语表见 `docs/development/i18n.md`。日志、panic 和注释不翻译。
 - Rust 测试不要断言具体文案，也不要调用 `set_locale`（测试并行、语言是进程级的）。CI 在英文 Windows 上运行，本地用 `ARGUS_LOCALE=en-US cargo test --workspace` 模拟。
-- 安装程序钩子（`installer-hooks.nsh`）读不到 JSON 目录，提示文字用 `ARGUS_TEXT` 宏按 `$LANGUAGE` 写两种语言。
+- 安装程序钩子（`installer-hooks.nsh`）读不到 JSON 目录，提示文字在各语言的 `installer.json` 中维护，打包时生成 NSIS `LangString`，钩子通过 `ARGUS_TEXT` 宏引用文案键。
 - 中文界面文案、README 和使用指南用书面语：不用“你”等第二人称，不用口语（“由你决定”“几乎瞬间”“连不上”“这个”），用“单击”“可”“仅”“暂无”这类说法；同一概念的措辞与设置页保持一致。
 - 改了行为（快捷键、设置项、默认值、模块职责）要同步对应文档，规则见 `docs/AGENTS.md`。
 
