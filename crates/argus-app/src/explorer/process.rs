@@ -24,7 +24,10 @@ use windows::Win32::System::Threading::{
 };
 use windows::core::{PCWSTR, PWSTR};
 
-use super::{ErrorKind, RestartError, Shell, Stage, token, token_data, verify_tokens};
+use super::{
+    ErrorKind, RestartError, Shell, Stage, token, token_data, verify_replacement_token,
+    verify_shell_token,
+};
 use crate::tasks::{Environment, Handle, quote, wide};
 
 struct ParentAttribute {
@@ -102,8 +105,7 @@ impl Prepared {
     pub(super) fn new(shell: &Shell) -> Result<Self, RestartError> {
         let shell_token = token(shell.process.0, true)?;
         let own = token(unsafe { GetCurrentProcess() }, false)?;
-        verify_tokens(shell_token.0, own.0, !argus_core::privilege::is_elevated())
-            .map_err(|e| e.at(Stage::Token))?;
+        verify_shell_token(shell_token.0, own.0).map_err(|e| e.at(Stage::Token))?;
         let parent = Handle(
             unsafe { OpenProcess(PROCESS_CREATE_PROCESS, false, shell.identity.pid) }
                 .map_err(|e| RestartError::win(ErrorKind::Permission, e).at(Stage::Spawn))?,
@@ -164,9 +166,9 @@ impl Prepared {
         startup.StartupInfo.lpDesktop = PWSTR(desktop.as_mut_ptr());
         startup.lpAttributeList = attribute.pointer();
         let mut info = PROCESS_INFORMATION::default();
-        // The parent's standard token is inherited even by an elevated caller.
-        // Launch the system Explorer directly: a RunAsAdmin compatibility flag
-        // on Argus must not prevent preparation of a standard-user replacement.
+        // Inherit the desktop's token, including an elevated desktop's original
+        // rights. Launch Explorer directly so Argus compatibility flags do not
+        // change the replacement's elevation requirements.
         unsafe {
             CreateProcessW(
                 PCWSTR(file.as_ptr()),
@@ -191,7 +193,7 @@ impl Prepared {
             pending: true,
         };
         let child_token = token(prepared.process.0, false)?;
-        verify_tokens(child_token.0, shell_token.0, true).map_err(|e| e.at(Stage::Token))?;
+        verify_replacement_token(child_token.0, shell_token.0).map_err(|e| e.at(Stage::Token))?;
         Ok(prepared)
     }
 
@@ -251,19 +253,10 @@ mod tests {
                 String::from_utf16_lossy(&directory[..length])
             ),
         };
-        let prepared = Prepared::new(&shell);
-        if argus_core::privilege::is_elevated() {
-            // Elevated parents must be rejected before a replacement is created.
-            assert!(matches!(
-                prepared,
-                Err(RestartError {
-                    kind: ErrorKind::Unsupported,
-                    ..
-                })
-            ));
-            return;
-        }
-        let prepared = prepared.unwrap_or_else(|error| panic!("{error:?}"));
+        let prepared = Prepared::new(&shell).unwrap_or_else(|error| panic!("{error:?}"));
+        let parent_token = token(shell.process.0, false).unwrap();
+        let child_token = token(prepared.process.0, false).unwrap();
+        verify_replacement_token(child_token.0, parent_token.0).unwrap();
         let previous = unsafe { SuspendThread(prepared.thread.0) };
         unsafe { ResumeThread(prepared.thread.0) };
         let mut observed = HANDLE::default();

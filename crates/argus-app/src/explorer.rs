@@ -10,8 +10,8 @@ use windows::Win32::Foundation::{
     HANDLE, HWND, LPARAM, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
 };
 use windows::Win32::Security::{
-    EqualSid, TOKEN_DUPLICATE, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER, TokenElevation,
-    TokenSessionId, TokenUser,
+    EqualSid, TOKEN_DUPLICATE, TOKEN_ELEVATION, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TOKEN_USER,
+    TokenElevation, TokenIntegrityLevel, TokenSessionId, TokenUser,
 };
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
 use windows::Win32::System::Threading::{
@@ -232,12 +232,9 @@ fn token_data(
 }
 
 fn verify_tokens(shell: HANDLE, own: HANDLE, same_user: bool) -> Result<(), RestartError> {
-    let elevation = token_data(shell, TokenElevation)?;
     let session = token_data(shell, TokenSessionId)?;
     let own_session = token_data(own, TokenSessionId)?;
-    if unsafe { (*elevation.as_ptr().cast::<TOKEN_ELEVATION>()).TokenIsElevated } != 0
-        || session[0] != own_session[0]
-    {
+    if session[0] != own_session[0] {
         return Err(RestartError::new(ErrorKind::Unsupported, 50));
     }
     if same_user {
@@ -253,6 +250,41 @@ fn verify_tokens(shell: HANDLE, own: HANDLE, same_user: bool) -> Result<(), Rest
         if !equal {
             return Err(RestartError::new(ErrorKind::Permission, 5));
         }
+    }
+    Ok(())
+}
+
+fn token_elevated(token: HANDLE) -> Result<bool, RestartError> {
+    let data = token_data(token, TokenElevation)?;
+    Ok(unsafe { (*data.as_ptr().cast::<TOKEN_ELEVATION>()).TokenIsElevated } != 0)
+}
+
+fn verify_shell_token(shell: HANDLE, own: HANDLE) -> Result<(), RestartError> {
+    let own_elevated = token_elevated(own)?;
+    verify_tokens(shell, own, !own_elevated)?;
+    if token_elevated(shell)? && !own_elevated {
+        return Err(RestartError::new(ErrorKind::Permission, 5));
+    }
+    Ok(())
+}
+
+fn verify_replacement_token(child: HANDLE, shell: HANDLE) -> Result<(), RestartError> {
+    verify_tokens(child, shell, true)?;
+    let child_level = token_data(child, TokenIntegrityLevel)?;
+    let shell_level = token_data(shell, TokenIntegrityLevel)?;
+    let same_level = unsafe {
+        EqualSid(
+            (*child_level.as_ptr().cast::<TOKEN_MANDATORY_LABEL>())
+                .Label
+                .Sid,
+            (*shell_level.as_ptr().cast::<TOKEN_MANDATORY_LABEL>())
+                .Label
+                .Sid,
+        )
+    }
+    .is_ok();
+    if !same_level || token_elevated(child)? != token_elevated(shell)? {
+        return Err(RestartError::new(ErrorKind::Permission, 5));
     }
     Ok(())
 }
@@ -439,7 +471,7 @@ pub fn run_mode() -> Option<i32> {
     if args.get(1).is_none_or(|s| s != HELPER) {
         return None;
     }
-    let result = if args.len() != 4 || argus_core::privilege::is_elevated() {
+    let result = if args.len() != 4 {
         Err(RestartError::new(ErrorKind::Permission, 5))
     } else {
         match (args[2].parse(), args[3].parse()) {
@@ -454,6 +486,109 @@ pub fn run_mode() -> Option<i32> {
 mod tests {
     use super::*;
     use std::os::windows::{io::AsRawHandle, process::CommandExt};
+
+    fn elevated_token() -> Option<Handle> {
+        use windows::Win32::Security::{TOKEN_LINKED_TOKEN, TokenLinkedToken};
+        use windows::Win32::System::Threading::GetCurrentProcess;
+
+        let own = token(unsafe { GetCurrentProcess() }, false).unwrap();
+        let elevated = if token_elevated(own.0).unwrap() {
+            own
+        } else {
+            let Ok(linked) = token_data(own.0, TokenLinkedToken) else {
+                eprintln!("No elevated token is available for this account");
+                return None;
+            };
+            Handle(unsafe { (*linked.as_ptr().cast::<TOKEN_LINKED_TOKEN>()).LinkedToken })
+        };
+        assert!(token_elevated(elevated.0).unwrap());
+        Some(elevated)
+    }
+
+    #[test]
+    fn matching_elevated_tokens_preserve_a_high_integrity_shell() {
+        let Some(elevated) = elevated_token() else {
+            return;
+        };
+        verify_shell_token(elevated.0, elevated.0).unwrap();
+        verify_replacement_token(elevated.0, elevated.0).unwrap();
+    }
+
+    #[test]
+    fn a_standard_caller_cannot_restart_an_elevated_shell() {
+        use windows::Win32::System::Threading::GetCurrentProcess;
+
+        let own = token(unsafe { GetCurrentProcess() }, false).unwrap();
+        if token_elevated(own.0).unwrap() {
+            return;
+        }
+        let Some(elevated) = elevated_token() else {
+            return;
+        };
+        let error = verify_shell_token(elevated.0, own.0).unwrap_err();
+        assert!(matches!(error.kind, ErrorKind::Permission));
+        assert_eq!(error.code, 5);
+        // An elevated Argus may restart an ordinary desktop, retaining its token.
+        verify_shell_token(own.0, elevated.0).unwrap();
+        assert!(verify_replacement_token(elevated.0, own.0).is_err());
+        assert!(verify_replacement_token(own.0, elevated.0).is_err());
+    }
+
+    #[test]
+    fn replacement_rejects_an_integrity_change_with_the_same_account_and_elevation() {
+        use windows::Win32::Foundation::{HLOCAL, LocalFree};
+        use windows::Win32::Security::Authorization::ConvertStringSidToSidW;
+        use windows::Win32::Security::{
+            DuplicateTokenEx, GetLengthSid, PSID, SID_AND_ATTRIBUTES, SecurityImpersonation,
+            SetTokenInformation, TOKEN_ADJUST_DEFAULT, TokenPrimary,
+        };
+        use windows::Win32::System::SystemServices::SE_GROUP_INTEGRITY;
+        use windows::Win32::System::Threading::GetCurrentProcess;
+
+        let own = token(unsafe { GetCurrentProcess() }, true).unwrap();
+        let mut low = HANDLE::default();
+        unsafe {
+            DuplicateTokenEx(
+                own.0,
+                TOKEN_QUERY | TOKEN_ADJUST_DEFAULT,
+                None,
+                SecurityImpersonation,
+                TokenPrimary,
+                &mut low,
+            )
+        }
+        .unwrap();
+        let low = Handle(low);
+        let mut sid = PSID::default();
+        unsafe { ConvertStringSidToSidW(w!("S-1-16-4096"), &mut sid) }.unwrap();
+        let label = TOKEN_MANDATORY_LABEL {
+            Label: SID_AND_ATTRIBUTES {
+                Sid: sid,
+                Attributes: SE_GROUP_INTEGRITY as u32,
+            },
+        };
+        let set = unsafe {
+            SetTokenInformation(
+                low.0,
+                TokenIntegrityLevel,
+                (&raw const label).cast(),
+                size_of::<TOKEN_MANDATORY_LABEL>() as u32 + GetLengthSid(sid),
+            )
+        };
+        let _ = unsafe { LocalFree(Some(HLOCAL(sid.0))) };
+        set.unwrap();
+        verify_tokens(low.0, own.0, true).unwrap();
+        assert_eq!(
+            token_elevated(low.0).unwrap(),
+            token_elevated(own.0).unwrap()
+        );
+        verify_replacement_token(low.0, low.0).unwrap();
+        for (child, shell) in [(low.0, own.0), (own.0, low.0)] {
+            let error = verify_replacement_token(child, shell).unwrap_err();
+            assert!(matches!(error.kind, ErrorKind::Permission));
+            assert_eq!(error.code, 5);
+        }
+    }
 
     struct Child(std::process::Child);
     impl Child {
