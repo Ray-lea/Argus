@@ -1,5 +1,7 @@
 # Argus patches
 
+Device-loss notifications and the forced recovery redraw use a snapshot of the window registry. The registry lock is released before synchronous window messages, so UI callbacks can create or close windows without waiting on the recovery thread that is waiting on them. Numeric device-loss HRESULTs and fixed recovery-stage messages use the reviewed `argus::graphics` log target to identify an interrupted recovery stage.
+
 Changed stationary ink outside all moving clips patches the existing composition backdrop after a bounded render, preserving chart surfaces and submitting both updates together. Paints overlapping chart ink and grouped foreground overlays keep the rebuild path. Frame-trace phase 15 records the patched area.
 
 New paint revisions can reuse an existing chart tree when all stationary draws, image resources, clips and bar styles match. Frame-trace phase 14 records these replays. A one-shot `Scene::force_full_redraw` bypasses reuse and rebuilds the pixel caches for independent validation. The system-clipboard integration test is ignored by default and requires an explicitly isolated desktop.

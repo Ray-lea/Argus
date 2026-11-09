@@ -39,9 +39,25 @@ use windows::{
 use crate::*;
 use gpui::*;
 
+#[derive(Clone)]
 struct TrackedWindow {
     handle: SafeHwnd,
     frame_signal: Arc<PlatformFrameSignal>,
+}
+
+#[cfg(test)]
+mod recovery_tests;
+
+fn for_each_recovery_window(
+    windows: &RwLock<SmallVec<[TrackedWindow; 4]>>,
+    mut notify: impl FnMut(&TrackedWindow),
+) {
+    // SendMessage waits for the UI thread, which may create or close a window
+    // while handling the notification. Never retain its registry lock here.
+    let snapshot = windows.read().clone();
+    for window in &snapshot {
+        notify(window);
+    }
 }
 
 impl TrackedWindow {
@@ -1691,7 +1707,8 @@ fn check_device_lost(device: &ID3D11Device) -> bool {
     match device_state {
         Ok(_) => false,
         Err(err) => {
-            log::error!("DirectX device lost detected: {:?}", err);
+            // Recovery replaces this device before the next status check.
+            log::warn!(target: "argus::graphics", "DirectX device lost; code=0x{:08X}", err.code().0 as u32);
             true
         }
     }
@@ -1747,6 +1764,8 @@ fn handle_gpu_device_lost(
     all_windows: &std::sync::Weak<RwLock<SmallVec<[TrackedWindow; 4]>>>,
     text_system: &std::sync::Weak<DirectWriteTextSystem>,
 ) -> Result<()> {
+    let started = std::time::Instant::now();
+    log::info!(target: "argus::graphics", "DirectX device recovery started");
     // Here we wait a bit to ensure the system has time to recover from the device lost state.
     // If we don't wait, the final drawing result will be blank.
     std::thread::sleep(std::time::Duration::from_millis(350));
@@ -1754,7 +1773,7 @@ fn handle_gpu_device_lost(
     *directx_devices = try_to_recover_from_device_lost(|| {
         DirectXDevices::new().context("Failed to recreate new DirectX devices after device lost")
     })?;
-    log::info!("DirectX devices successfully recreated.");
+    log::info!(target: "argus::graphics", "DirectX replacement device created");
 
     let lparam = LPARAM(directx_devices as *const _ as _);
     unsafe {
@@ -1770,28 +1789,29 @@ fn handle_gpu_device_lost(
         text_system.handle_gpu_lost(&directx_devices)?;
     }
     if let Some(all_windows) = all_windows.upgrade() {
-        for window in all_windows.read().iter() {
-            unsafe {
-                SendMessageW(
-                    window.as_raw(),
-                    WM_GPUI_GPU_DEVICE_LOST,
-                    Some(WPARAM(validation_number)),
-                    Some(lparam),
-                );
-            }
-        }
+        for_each_recovery_window(&all_windows, |window| unsafe {
+            SendMessageW(
+                window.as_raw(),
+                WM_GPUI_GPU_DEVICE_LOST,
+                Some(WPARAM(validation_number)),
+                Some(lparam),
+            );
+        });
         std::thread::sleep(std::time::Duration::from_millis(200));
-        for window in all_windows.read().iter() {
-            unsafe {
-                SendMessageW(
-                    window.as_raw(),
-                    WM_GPUI_FORCE_UPDATE_WINDOW,
-                    Some(WPARAM(validation_number)),
-                    None,
-                );
-            }
-        }
+        for_each_recovery_window(&all_windows, |window| unsafe {
+            SendMessageW(
+                window.as_raw(),
+                WM_GPUI_FORCE_UPDATE_WINDOW,
+                Some(WPARAM(validation_number)),
+                None,
+            );
+        });
     }
+    log::info!(
+        target: "argus::graphics",
+        "DirectX window recovery completed; elapsed_ms={}",
+        started.elapsed().as_millis()
+    );
     Ok(())
 }
 
