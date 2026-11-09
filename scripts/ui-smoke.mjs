@@ -124,7 +124,7 @@ const child = spawn(
     String(180 + 12 * retainedDevices.length),
     ...(opaqueWindow ? ["--opaque-window"] : []),
     ...(live ? [] : ["--fixture", resolve(output, "fixture.json")]),
-    ...(preview ? ["--width", "1440", "--height", "900"] : []),
+    ...(preview ? ["--width", "1600", "--height", "1000"] : []),
   ],
   { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained || chartScroll || chartGap ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}), ...(snapshots || chartGap ? { ARGUS_GPUI_FRAME_TRACE: "1" } : {}) } },
 );
@@ -197,7 +197,18 @@ try {
   if (!shown) throw Error(`Window unavailable: ${error}`);
   await sleep(2500);
   if (preview) {
-    send({ page: "processes", view: "apps", navPosition: "top", details: true, sort: "name" });
+    // Render larger native glyphs rather than enlarging a captured bitmap.
+    send({ page: "processes", view: "apps", navPosition: "top", details: true, sort: "name", preference: { uiScale: 125 } });
+    await capture("preview-sizing");
+    const header = readFileSync(resolve(output, "preview-sizing.png"));
+    // WGC includes the nonclient edge. Adjust the physical client dimensions
+    // so the complete PNG is exactly 1600 x 1000, with no resampling or crop.
+    const width = shown.width + 1600 - header.readUInt32BE(16);
+    const height = shown.height + 1000 - header.readUInt32BE(20);
+    const resizeStart = events.length;
+    child.stdin.write(`size ${width} ${height}\n`);
+    for (let i = 0; i < 100 && !events.slice(resizeStart).some(e => e.event === "resized" && e.width === width && e.height === height); i++) await sleep(50);
+    assert(events.slice(resizeStart).some(e => e.event === "resized" && e.width === width && e.height === height), "README capture dimensions unavailable");
     const appearance = async command => {
       const start = events.length;
       child.stdin.write(`${command}\n`);
@@ -219,6 +230,8 @@ try {
       // Require the backdrop change to extend well beyond the caption.
       assert(delta.changedPixels > delta.width * delta.height / 4, `${theme}: active Mica backdrop missing`);
       await capture(theme, false, true, [inactive, active]);
+      const png = readFileSync(resolve(output, `${theme}.png`));
+      assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1600, 1000], "README preview must retain its native pixel size");
       const gradation = compareCaptures(active, theme);
       events.push({ event: "preview-gradation", theme, ...gradation });
       assert(gradation.maxChannelDelta <= 1, `${theme}: export changed the native SDR tone`);
