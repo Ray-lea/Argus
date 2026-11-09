@@ -21,7 +21,7 @@
   "openFileLocation": "Открыть расположение файла",
   "goToProcess": "Перейти к процессу",
   "endProcess": "Снять задачу",
-  "endProcessTree": "Снять дерево задач",
+  "endProcessTree": "Завершить дерево процессов",
   "efficiencyMode": "Режим эффективности",
   "privilegedService": "Привилегированная служба",
   "listSeparator": ", ",
