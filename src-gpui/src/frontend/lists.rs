@@ -18,6 +18,7 @@ pub(super) struct Owner {
     pub name: String,
     pub description: String,
     pub icon: Value,
+    pub windows: bool,
 }
 
 /// Connection owners by PID.
@@ -39,6 +40,7 @@ pub(super) fn owners(processes: &[Value], connections: &[Value]) -> Owners {
                     name: text(p, "name").to_owned(),
                     description: text(p, "description").to_owned(),
                     icon: p["icon"].clone(),
+                    windows: boolean(p, "windowsProcess"),
                 },
             ))
         })
@@ -59,6 +61,7 @@ pub(super) struct ListSpec {
     pub marks: Value,
     /// Titles and the collation order follow the interface language.
     pub locale: Locale,
+    pub visibility: Option<visibility::Rules>,
 }
 
 /// How a row compares in the chosen order, computed once per row.
@@ -104,9 +107,21 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
     let number_query = query.parse::<u64>().ok();
     let contains = |value: &str| value.to_lowercase().contains(&query);
     let exited = network.then(|| label("connections.exited"));
-    let owner = |raw: &Value| raw["pid"].as_u64().and_then(|pid| owners.get(&pid));
+    let owner = |raw: &Value| {
+        raw["pid"]
+            .as_u64()
+            .filter(|pid| *pid != 0)
+            .and_then(|pid| owners.get(&pid))
+    };
     let mut rows: Vec<Row> = source
         .iter()
+        .filter(|raw| {
+            !network
+                || spec.visibility.as_ref().is_none_or(|rules| {
+                    raw["pid"].as_u64() != Some(0)
+                        && owner(raw).is_none_or(|p| !rules.hides(&p.name, p.windows))
+                })
+        })
         .filter(|raw| match page {
             "services" => filter == "all" || text(raw, "state") == filter,
             "network" => {
@@ -199,7 +214,8 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
                                 || raw["pid"].as_u64() == Some(n)
                         }
                         None => {
-                            text(raw, "localAddress").contains(&query)
+                            contains(&title)
+                                || text(raw, "localAddress").contains(&query)
                                 || text(raw, "remoteAddress").contains(&query)
                                 || owner(raw)
                                     .is_some_and(|p| contains(&p.name) || contains(&p.description))
@@ -347,6 +363,7 @@ impl Desktop {
             },
             marks: self.marks_of(page),
             locale: argus_core::i18n::locale(),
+            visibility: self.visibility_rules(page),
         }
     }
     /// The connections' owners in the current snapshot, read again only for
@@ -534,6 +551,7 @@ mod tests {
             descending,
             marks,
             locale: argus_core::i18n::locale(),
+            visibility: None,
         }
     }
     fn connections() -> Vec<Value> {
@@ -567,6 +585,31 @@ mod tests {
         let owners = owners(&processes(), &connections());
         assert_eq!(owners.len(), 2);
         assert!(!owners.contains_key(&30));
+    }
+
+    #[test]
+    fn visibility_filters_system_and_unowned_connections_without_hiding_unknown_owners() {
+        let source = [0,10,20,30,40].map(|pid|json!({"protocol":"tcp","pid":pid,"localPort":pid+1000,"state":if pid==0{"timeWait"}else{"established"}}));
+        let processes = vec![
+            json!({"pid":10,"name":"svchost.exe","windowsProcess":true}),
+            json!({"pid":20,"name":"cmd.exe","windowsProcess":true}),
+            json!({"pid":30,"name":"msedge.exe","windowsProcess":false}),
+        ];
+        let owners = owners(&processes, &source);
+        let mut spec = spec("pid", false, "", Value::Null);
+        assert_eq!(list_rows(&spec, &source, &owners).len(), 5);
+        spec.visibility = Some(crate::frontend::visibility::Rules::default());
+        let rows = list_rows(&spec, &source, &owners);
+        assert_eq!(
+            rows.iter()
+                .map(|r| r.raw["pid"].as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            [20, 30, 40]
+        );
+        spec.query = "0".into();
+        assert!(list_rows(&spec, &source, &owners).is_empty());
+        spec.visibility = None;
+        assert_eq!(list_rows(&spec, &source, &owners).len(), 1);
     }
 
     #[test]

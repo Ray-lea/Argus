@@ -510,6 +510,9 @@ impl Desktop {
         } else {
             controls = controls.child(self.page_controls(window, cx));
         }
+        if matches!(self.page.as_str(), "processes" | "network") {
+            controls = controls.child(self.visibility_controls(cx));
+        }
         let sampled = matches!(self.page.as_str(), "processes" | "performance");
         let mut trailing = div()
             .flex()

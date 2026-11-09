@@ -452,6 +452,7 @@ impl Desktop {
             "task" => (label("tasks.title"), label("tasks.description"), None),
             "filelock" => (label("fileLock.title"), label("fileLock.intro"), None),
             "columns" => (label("processes.columns.choose"), String::new(), None),
+            "visibility" => (label("processes.visibility.edit"), String::new(), None),
             "note" => (label("common.marks.note"), name.clone(), None),
             "update" => (String::new(), String::new(), None),
             "license" => (
@@ -497,6 +498,9 @@ impl Desktop {
             self.close_all_modals(window, cx);
             self.forms.clear();
             match kind {
+                "visibility" => {
+                    self.visibility_forms(&visibility::Rules::load(&self.prefs), window, cx);
+                }
                 "columns" => {
                     self.form("columnsSearch", "", window, cx);
                     let input = self.forms.get("columnsSearch").unwrap().clone();
@@ -893,6 +897,7 @@ impl Desktop {
         let frames = self.ui.dialog_frames.borrow();
         let frame = frames.get(&modal.id);
         json!({"kind":modal.kind,"ready":frame.is_some() && self.ui.dialog_shown.borrow().contains_key(&modal.id),
+            "hasError":modal.error.is_some(),
             "settled":frame.is_some_and(|frame| frame.height(Instant::now(), theme::motion_duration()) == frame.to),
             "centered":frame.is_some_and(|frame| (f32::from(frame.top+frame.to/2.-frame.viewport/2.)).abs()<0.5),
             "top":frame.map(|frame|f32::from(frame.top)),"height":frame.map(|frame|f32::from(frame.to)),
@@ -1108,7 +1113,7 @@ impl Desktop {
             .rounded_b(px(8.))
     }
 
-    fn primary_focus(&self, id: u64, cx: &App) -> FocusHandle {
+    pub(in crate::frontend) fn primary_focus(&self, id: u64, cx: &App) -> FocusHandle {
         self.focus_for(&format!("modal-{id}-primary"), cx)
     }
 
@@ -1177,6 +1182,10 @@ impl Desktop {
             "note" => {
                 let dialog = self.surface(dialog, id, 420., 16., window, cx);
                 self.note_dialog(dialog, &modal, window, cx)
+            }
+            "visibility" => {
+                let dialog = self.surface(dialog, id, 580., 16., window, cx);
+                self.visibility_dialog(dialog, &modal, window, cx)
             }
             _ => {
                 let dialog = self.surface(dialog, id, 420., 16., window, cx);
@@ -1327,6 +1336,10 @@ impl Desktop {
             .unwrap_or_default();
         let args = &modal.args;
         match modal.kind.as_str() {
+            "visibility" => {
+                self.save_visibility(window, cx);
+                return;
+            }
             "confirm" => {
                 if let Some(ask) = modal.ask {
                     self.close_overlay(window, cx);

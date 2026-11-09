@@ -27,6 +27,7 @@ mod test_control;
 mod theme;
 mod tips;
 mod type_search;
+mod visibility;
 mod welcome;
 mod widgets;
 use crate::{AppState, Options, native_runtime::Host};

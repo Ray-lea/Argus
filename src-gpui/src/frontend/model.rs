@@ -400,6 +400,7 @@ pub struct ProcessOptions<'a> {
     pub sections: &'a HashSet<String>,
     /// Display names of the services each service-hosting process runs, by PID.
     pub hosted: &'a HashMap<u64, Vec<String>>,
+    pub visibility: Option<&'a super::visibility::Rules>,
 }
 /// "DNS Client, DHCP Client and 3 more services": at most two names.
 pub fn summarize_services(names: &[String]) -> String {
@@ -487,6 +488,11 @@ fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
     order.then_with(|| a.key.cmp(&b.key))
 }
 fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
+    let visible = |p: &&Value| {
+        options
+            .visibility
+            .is_none_or(|rules| !rules.hides_process(p))
+    };
     let query = options.query.trim().to_lowercase();
     let numeric = !query.is_empty() && query.bytes().all(|b| b.is_ascii_digit());
     let matches = |p: &Value| {
@@ -523,7 +529,7 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
         "apps" => {
             let mut order = Vec::new();
             let mut groups: HashMap<String, Vec<&Value>> = HashMap::new();
-            for p in processes {
+            for p in processes.iter().filter(visible) {
                 let key = application_key(p);
                 groups
                     .entry(key)
@@ -595,6 +601,7 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
         _ => {
             top = processes
                 .iter()
+                .filter(visible)
                 .filter(|p| matches(p))
                 .map(|p| named_process(p, 0))
                 .collect();
@@ -673,14 +680,20 @@ fn tree_rows(
     matches: &impl Fn(&Value) -> bool,
     named: &impl Fn(&Value, usize) -> Row,
 ) -> Vec<Row> {
+    let visible_process = |p: &&Value| {
+        options
+            .visibility
+            .is_none_or(|rules| !rules.hides_process(p))
+    };
     let by_pid: HashMap<u64, &Value> = processes
         .iter()
+        .filter(visible_process)
         .filter_map(|p| p["pid"].as_u64().map(|pid| (pid, p)))
         .collect();
     // A parent must predate its child; otherwise the parent PID was reused.
     let mut children: HashMap<String, Vec<&Value>> = HashMap::new();
     let mut roots = Vec::new();
-    for p in processes {
+    for p in processes.iter().filter(visible_process) {
         match parent_of(p, &by_pid) {
             Some(parent) => children.entry(identity(parent)).or_default().push(p),
             None => roots.push(p),
@@ -689,7 +702,11 @@ fn tree_rows(
     let searching = !query.is_empty();
     let mut visible = HashSet::new();
     if searching {
-        for process in processes.iter().filter(|p| matches(p)) {
+        for process in processes
+            .iter()
+            .filter(visible_process)
+            .filter(|p| matches(p))
+        {
             let mut current = Some(process);
             while let Some(p) = current {
                 if !visible.insert(identity(p)) {
@@ -1209,6 +1226,7 @@ mod tests {
                 tree_expanded: &empty,
                 sections: &empty,
                 hosted,
+                visibility: None,
             },
         )
     }
@@ -1217,6 +1235,51 @@ mod tests {
             .filter(|row| row.section.is_none())
             .map(pid)
             .collect()
+    }
+
+    #[test]
+    fn visibility_filters_each_view_before_grouping_and_keeps_user_children() {
+        let processes = vec![
+            json!({"pid":10,"ppid":0,"createTime":1,"name":"svchost.exe","windowsProcess":true,"cpu":50}),
+            json!({"pid":20,"ppid":10,"createTime":2,"name":"worker.exe","cpu":3}),
+            json!({"pid":30,"ppid":10,"createTime":3,"name":"cmd.exe","windowsProcess":true,"cpu":2}),
+            json!({"pid":40,"ppid":0,"createTime":1,"name":"svchost.exe","windowsProcess":false,"cpu":1}),
+        ];
+        let rules = crate::frontend::visibility::Rules::default();
+        let empty = HashSet::new();
+        let hosted = HashMap::new();
+        for mode in ["apps", "tree", "list"] {
+            for query in ["", "svchost"] {
+                let rows = process_rows(
+                    &processes,
+                    ProcessOptions {
+                        mode,
+                        query,
+                        sort: "pid",
+                        descending: false,
+                        expanded: &empty,
+                        tree_expanded: &empty,
+                        sections: &empty,
+                        hosted: &hosted,
+                        visibility: Some(&rules),
+                    },
+                );
+                assert_eq!(
+                    pids(&rows),
+                    if query.is_empty() {
+                        vec![20, 30, 40]
+                    } else {
+                        vec![40]
+                    }
+                );
+                assert!(rows.iter().all(|row| row.depth == 0));
+            }
+        }
+        assert_eq!(processes.len(), 4);
+        assert_eq!(
+            pids(&rows_of(&processes, "list", "", "pid", false, &hosted)),
+            [10, 20, 30, 40]
+        );
     }
     #[test]
     fn service_hosts_sort_by_the_services_they_run() {
@@ -1326,6 +1389,7 @@ mod tests {
                     tree_expanded: opened,
                     sections: &empty,
                     hosted: &none,
+                    visibility: None,
                 },
             )
         };
@@ -1368,6 +1432,7 @@ mod tests {
                 tree_expanded: &old,
                 sections: &empty,
                 hosted: &HashMap::new(),
+                visibility: None,
             },
         );
         assert_eq!(pids(&rows), [1]);
@@ -1406,6 +1471,7 @@ mod tests {
                 tree_expanded: &empty,
                 sections: &empty,
                 hosted: &HashMap::new(),
+                visibility: None,
             },
         );
         let members = rows.iter().filter(|row| row.depth == 1).collect::<Vec<_>>();
@@ -1435,6 +1501,7 @@ mod tests {
                 tree_expanded: &empty,
                 sections: &empty,
                 hosted: &HashMap::new(),
+                visibility: None,
             },
         );
         assert_eq!(rows.len(), 3);
@@ -1524,6 +1591,7 @@ mod tests {
                 tree_expanded: &empty,
                 sections: &empty,
                 hosted: &HashMap::new(),
+                visibility: None,
             },
         );
         assert_eq!(rows.len(), 2);

@@ -37,3 +37,5 @@
 更新器负责下载、取消和安装前复验。客户端用 `resources/app.json` 中的公钥验证安装包与更新说明的签名，并核对签名绑定的版本。安装程序退出运行中的界面副本，更新已有管理员启动记录并刷新特权服务。通过管理员启动或任务管理器替换运行的安装版仍可应用内更新，免安装版提供下载入口。`--argus-updater-check` 在启动界面前返回安装类型，供打包流程检查。
 
 平台职责与 macOS 边界见[GPUI 开发](../development/gpui.md)。
+
+界面的系统进程隐藏借鉴 [System Informer 的筛选实现](https://github.com/winsiderss/systeminformer/blob/32ef60573927b26a153df29c258e63db15ab4f7c/SystemInformer/mwpgproc.c#L399)：依据进程元数据筛选展示结果，并保存筛选状态。System Informer 使用 Windows 签名，未启用签名查询时按 Microsoft 公司名称筛选；Argus 复用已有的 `windowsProcess`（系统目录、Windows 产品与公司信息，或内核伪进程身份），避免额外采集或验签。`frontend/visibility.rs` 处理可编辑的例外和额外隐藏名单，筛选在应用分组与进程树构建之前执行；连接列表的缓存输入包含筛选规则与归属进程的 Windows 标识，规则或身份变化后重新构建。

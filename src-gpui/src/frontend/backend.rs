@@ -262,6 +262,7 @@ impl Desktop {
                     self.tree_expanded.clone(),
                     self.sections.clone(),
                     self.hosted_services(),
+                    self.visibility_rules("processes"),
                 );
                 let task = cx.background_executor().spawn(async move {
                     let start = Instant::now();
@@ -280,6 +281,7 @@ impl Desktop {
                                 tree_expanded: &options.5,
                                 sections: &options.6,
                                 hosted: &options.7,
+                                visibility: options.8.as_ref(),
                             },
                         )
                     });

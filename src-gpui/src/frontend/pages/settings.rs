@@ -1130,6 +1130,13 @@ impl Desktop {
                     window,
                     cx,
                 ));
+                cards.push(self.setting_text(
+                    "processVisibility",
+                    "EyeOffIcon",
+                    "settings.visibility.title",
+                    "settings.visibility.desc",
+                    vec![self.visibility_editor_button(cx)],
+                ));
             }
             "startup" => {
                 let autostart = self.setting_toggle(

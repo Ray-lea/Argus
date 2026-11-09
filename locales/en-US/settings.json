@@ -14,6 +14,10 @@
     "off": "Off"
   },
   "refreshStatus": "Refresh status",
+  "visibility": {
+    "title": "System process hiding rules",
+    "desc": "Customize programs to always show or also hide. Both pages share these rules; use their toolbar icon to enable hiding."
+  },
   "language": {
     "title": "Display language",
     "desc": "Takes effect at once, including the tray menu and messages. “Same as Windows” follows the Windows display language.",

@@ -1,4 +1,21 @@
 {
+  "visibility": {
+    "toggle": "Hide system processes",
+    "show": "Show system processes",
+    "processHint": "Hide Windows components and processes on the additional hide list, keeping the always-show list. Only changes the displayed list.",
+    "networkHint": "Hide connections owned by system processes and entries with no owning process (PID 0). Only changes the displayed list.",
+    "edit": "Edit hiding rules",
+    "description": "System processes are identified from Windows component information. Both pages share these rules and save their hiding switches separately.",
+    "keep": "Always show",
+    "keepHint": "Keep these programs visible, including system processes. This list takes priority over additional hiding.",
+    "hide": "Also hide",
+    "hideHint": "Hide these programs when hiding is enabled. Leave empty to hide system processes only.",
+    "namesHint": "Enter executable names separated by commas or semicolons, up to 128 per list. Names are case-insensitive.",
+    "invalid": "Enter valid executable names without paths or wildcards, up to 128 per list.",
+    "reset": "Restore default rules",
+    "empty": "No items match the current filters.",
+    "clear": "Show all and clear filters"
+  },
   "identityPending": "Confirming the process identity. Try again shortly.",
   "countersPending": "Collecting resource counters for this process.",
   "refreshPending": "Updating process data. Showing the last successfully collected reading.",

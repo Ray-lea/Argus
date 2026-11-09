@@ -843,6 +843,9 @@ impl TableDelegate for NativeTable {
                             let owner = owner.clone();
                             window.defer(cx, move |window, cx| {
                                 let _ = owner.update(cx, |this, cx| {
+                                    if matches!(this.page.as_str(), "processes" | "network") {
+                                        this.prefs.set(visibility::preference(&this.page), false);
+                                    }
                                     this.preference("clearSearch", Value::Null, window, cx);
                                     let page = this.page.clone();
                                     this.set_filter(&page, "all", cx);
@@ -1134,6 +1137,7 @@ impl Desktop {
                     tree_expanded: &self.tree_expanded,
                     sections: &self.sections,
                     hosted: &self.hosted_services(),
+                    visibility: self.visibility_rules("processes").as_ref(),
                 },
             )
         } else {
@@ -1758,6 +1762,14 @@ impl Desktop {
     /// What an empty table says, and the label of the button that clears its filter.
     pub(in crate::frontend) fn empty_message(&self) -> (String, Option<String>) {
         let query = self.query.trim();
+        if matches!(self.page.as_str(), "processes" | "network")
+            && self.prefs.get(visibility::preference(&self.page), false)
+        {
+            return (
+                label("processes.visibility.empty"),
+                Some(label("processes.visibility.clear")),
+            );
+        }
         match self.page.as_str() {
             "processes" => (
                 tr!("processes.noMatch", query = query),

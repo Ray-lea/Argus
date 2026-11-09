@@ -349,6 +349,12 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         match key {
+            "hideSystem.processes" | "hideSystem.network" => {
+                self.prefs.set(key, value.as_bool().unwrap_or(false));
+                self.rebuild_rows(false, cx);
+                cx.notify();
+                return;
+            }
             "processColumnsAutoWidth" => {
                 let mut preferences = columns::Preferences::load(&self.prefs);
                 preferences.auto_width = value.as_bool().unwrap_or(true);
@@ -592,6 +598,12 @@ impl Desktop {
     /// Shows a process in the list: clears the search, unfolds its category, group
     /// and ancestors, selects it, opens the details and scrolls to it.
     fn reveal(&mut self, process: &Value, window: &mut Window, cx: &mut Context<Self>) {
+        if self
+            .visibility_rules("processes")
+            .is_some_and(|rules| rules.hides_process(process))
+        {
+            self.prefs.set(visibility::preference("processes"), false);
+        }
         self.query.clear();
         self.search.update(cx, |s, cx| s.set_value("", window, cx));
         let processes = values(&self.snapshot["processes"]);
