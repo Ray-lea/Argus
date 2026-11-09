@@ -1,0 +1,41 @@
+{
+  "range": {
+    "hours": "{count} 小時",
+    "days": "{count} 天"
+  },
+  "latest": {
+    "label": "回到最新",
+    "title": "取消選取的時刻，顯示最新資料"
+  },
+  "metric": {
+    "peak": "最高 {value}%",
+    "total": "共 {value} GB",
+    "charging": "充電 {value}",
+    "discharging": "放電 {value}"
+  },
+  "exited": "{name}（PID {pid}）已經結束。",
+  "copied": {
+    "name": "名稱"
+  },
+  "column": {
+    "cpuTitle": "記錄間隔內的平均值（通常為 5 秒）",
+    "memTitle": "專用工作集"
+  },
+  "noData": "無記錄",
+  "empty": {
+    "off": "歷程記錄已關閉",
+    "none": "此時間範圍內無記錄",
+    "offHint": "在設定中開啟後，Argus 每 5 秒記錄一次；最小化或背景常駐時的重新整理間隔更長時，依該間隔記錄。",
+    "hint": "Argus 執行時每 5 秒記錄一次，最小化或背景常駐時的重新整理間隔更長時依該間隔記錄，保留 7 天。"
+  },
+  "busiest": "最忙碌的處理程序",
+  "busiestAt": "{time} 最忙碌的處理程序",
+  "hint": {
+    "pick": "按一下圖表上的任意時刻，檢視當時的處理程序",
+    "move": "在圖表上按 ← → 前後移動，按 Esc 返回最新"
+  },
+  "noRecordAt": "該時刻無記錄",
+  "earliest": "最早的記錄",
+  "note": "每 5 秒記錄 CPU、記憶體、I/O、GPU 和網路佔用最高的處理程序（最小化或背景常駐時的重新整理間隔更長時依該間隔），保留 7 天。",
+  "off": "歷程記錄已關閉，不再記錄新的資料。<link>開啟設定</link>"
+}

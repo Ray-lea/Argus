@@ -1,0 +1,43 @@
+{
+  "title": "執行新工作",
+  "description": "開啟應用程式、資料夾或文件，亦可輸入啟動參數。",
+  "command": "開啟",
+  "placeholder": "explorer.exe 或程式路徑",
+  "browse": "瀏覽…",
+  "administrator": "以系統管理員身分執行",
+  "administratorHint": "需要 Windows 授權；取消授權後不會執行。",
+  "standardHint": "未勾選時，以一般權限執行。",
+  "run": "執行",
+  "running": "正在啟動…",
+  "waiting": "正在等待 Windows 完成啟動或授權。",
+  "started": "已提交新工作。",
+  "code": "錯誤碼：{code}",
+  "explorer": {
+    "title": "重新啟動 Windows 檔案總管",
+    "restart": "重新啟動",
+    "confirm": "桌面和工作列將短暫消失。檔案總管視窗及進行中的檔案操作可能會受到影響。",
+    "restarting": "正在重新啟動檔案總管…",
+    "done": "檔案總管已重新啟動，桌面和工作列已恢復。",
+    "recover": "執行檔案總管",
+    "error": {
+      "stale": "檔案總管已結束或發生變化，請重新整理清單後重試。",
+      "unsupported": "目前檔案總管不支援安全重新啟動，未執行關閉。",
+      "permission": "無法存取目前桌面的檔案總管，未執行關閉。",
+      "prepare": "無法準備檔案總管的重新啟動環境，未執行關閉。",
+      "shutdown": "檔案總管未完成重新啟動，請稍後重試。",
+      "restore": "檔案總管尚未恢復，可透過「執行檔案總管」重新開啟。",
+      "busy": "檔案總管正在重新啟動中，請稍後再試。"
+    }
+  },
+  "error": {
+    "invalid": "請輸入有效的程式名稱、路徑或命令，最多 8192 個字元。",
+    "cancelled": "已取消 Windows 授權，工作未啟動。",
+    "notFound": "找不到指定的程式或路徑，請檢查輸入或透過「瀏覽」選取。",
+    "accessDenied": "Windows 拒絕了本次啟動，請檢查存取權限。",
+    "standardUnavailable": "無法準備一般權限的啟動環境。",
+    "elevationRequired": "此程式需要系統管理員權限，可勾選「以系統管理員身分執行」後重試。",
+    "noAssociation": "沒有可開啟此項目的關聯應用程式。",
+    "busy": "另一項啟動請求仍在進行中，請稍後再試。",
+    "os": "Windows 未能啟動此工作。"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "title": "檔案使用狀況",
+  "intro": "刪除或移動檔案時提示「檔案正在使用中」，可在此查詢使用該檔案的處理程序，也可將檔案直接拖放到 Argus 視窗。",
+  "dropZone": "將檔案或資料夾拖放到視窗，或",
+  "pickFile": "選取檔案",
+  "pickFolder": "選取資料夾",
+  "recheck": "重新檢查",
+  "checking": "正在檢查…",
+  "error": {
+    "notFound": "找不到該檔案或資料夾。",
+    "failed": "檢查失敗：{error}"
+  },
+  "none": "本次查詢未發現可存取且正在使用目標的處理程序。",
+  "found": "找到 {count} 個處理程序正在使用這些檔案或資料夾。",
+  "kind": {
+    "service": "服務",
+    "explorer": "檔案總管",
+    "console": "主控台",
+    "critical": "系統關鍵"
+  },
+  "service": "服務 {name}",
+  "handleCount": "{count} 個控制代碼",
+  "showProcess": "在處理程序清單中檢視",
+  "end": "結束",
+  "checked": "Restart Manager 已檢查 {count} 個檔案。{handles}",
+  "handles": {
+    "service": "特殊權限服務已檢查 {count} 個檔案控制代碼，包括目錄控制代碼。",
+    "local": "本機已檢查 {count} 個檔案控制代碼，包括目錄控制代碼。",
+    "unfinished": "控制代碼查詢未完成。"
+  },
+  "incomplete": "結果不完整：{denied} 個處理程序無法存取，{skipped} 個控制代碼無法讀取，{timeouts} 次查詢逾時。{limit}",
+  "limitReached": "已達到查詢限制。",
+  "serviceHint": "可在設定中啟用特殊權限服務，以檢查更多系統處理程序。",
+  "unchecked": "另有 {count} 個檔案 Restart Manager 未能檢查，可能與權限或檔案狀態變化有關。",
+  "truncated": "資料夾中的檔案過多，僅檢查了前 {count} 個。",
+  "footerHint": "控制代碼查詢可找出使用目錄的處理程序；受保護的處理程序仍可能無法檢查。"
+}

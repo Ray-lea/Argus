@@ -333,10 +333,10 @@ fn fallbacks(kind: &str, cx: &App) -> FontFallbacks {
     let cell = &(if kind == "tooltip" { &TOOLTIP } else { &SANS })[locale as usize];
     cell.get_or_init(|| {
         let family = installed_font(kind, cx);
-        let cjk = if locale == argus_core::i18n::Locale::JaJp {
-            "japanese"
-        } else {
-            "fallback"
+        let cjk = match locale {
+            argus_core::i18n::Locale::JaJp => "japanese",
+            argus_core::i18n::Locale::ZhTw => "traditionalChinese",
+            _ => "fallback",
         };
         FontFallbacks::from_fonts(
             design()["fonts"][kind]
@@ -820,7 +820,7 @@ mod tests {
             }
         }
         let mut out = Vec::new();
-        for locale in ["zh-CN", "ja-JP"] {
+        for locale in ["zh-CN", "zh-TW", "ja-JP"] {
             let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../locales")
                 .join(locale);

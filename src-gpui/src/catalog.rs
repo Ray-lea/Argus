@@ -29,6 +29,7 @@ pub fn register() {
         };
     }
     register!(ZhCn, "zh-CN");
+    register!(ZhTw, "zh-TW");
     register!(EnUs, "en-US");
     register!(EsEs, "es-ES");
     register!(DeDe, "de-DE");

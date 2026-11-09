@@ -18,6 +18,8 @@ use serde::{Deserialize, Serialize};
 pub enum Locale {
     #[serde(rename = "zh-CN")]
     ZhCn,
+    #[serde(rename = "zh-TW")]
+    ZhTw,
     #[serde(rename = "en-US")]
     EnUs,
     #[serde(rename = "es-ES")]
@@ -36,8 +38,9 @@ impl Locale {
     /// The catalog every other one is translated from, and the fallback for a
     /// missing key.
     pub const SOURCE: Locale = Locale::ZhCn;
-    pub const ALL: [Locale; 7] = [
+    pub const ALL: [Locale; 8] = [
         Self::ZhCn,
+        Self::ZhTw,
         Self::EnUs,
         Self::EsEs,
         Self::DeDe,
@@ -49,6 +52,7 @@ impl Locale {
     pub fn tag(self) -> &'static str {
         match self {
             Locale::ZhCn => "zh-CN",
+            Locale::ZhTw => "zh-TW",
             Locale::EnUs => "en-US",
             Locale::EsEs => "es-ES",
             Locale::DeDe => "de-DE",
@@ -59,7 +63,31 @@ impl Locale {
     }
 
     pub fn from_tag(tag: &str) -> Option<Locale> {
-        let language = tag.trim().split(['-', '_']).next()?;
+        let mut parts = tag.trim().split(['-', '_']);
+        let language = parts.next()?;
+        if language.eq_ignore_ascii_case("zh") {
+            let subtags: Vec<_> = parts.take_while(|part| part.len() > 1).collect();
+            // An explicit script takes precedence over the region.
+            for part in &subtags {
+                if part.eq_ignore_ascii_case("Hant") || part.eq_ignore_ascii_case("CHT") {
+                    return Some(Self::ZhTw);
+                }
+                if part.eq_ignore_ascii_case("Hans") || part.eq_ignore_ascii_case("CHS") {
+                    return Some(Self::ZhCn);
+                }
+            }
+            return Some(
+                if subtags.iter().any(|part| {
+                    ["TW", "HK", "MO"]
+                        .iter()
+                        .any(|region| part.eq_ignore_ascii_case(region))
+                }) {
+                    Self::ZhTw
+                } else {
+                    Self::ZhCn
+                },
+            );
+        }
         Self::ALL
             .into_iter()
             .find(|locale| locale.tag()[..2].eq_ignore_ascii_case(language))
@@ -69,7 +97,10 @@ impl Locale {
     /// language in their low ten bits (including Spanish's multiple LCIDs).
     pub fn from_langid(id: u16) -> Option<Self> {
         match id & 0x3ff {
-            0x04 => Some(Self::ZhCn),
+            0x04 => Some(match id >> 10 {
+                0x01 | 0x03 | 0x05 | 0x1f => Self::ZhTw,
+                _ => Self::ZhCn,
+            }),
             0x09 => Some(Self::EnUs),
             0x0a => Some(Self::EsEs),
             0x07 => Some(Self::DeDe),
@@ -122,6 +153,7 @@ impl Locale {
         CATALOGS[self as usize].get_or_init(|| {
             let json = match self {
                 Locale::ZhCn => include_str!("../../../locales/zh-CN/native.json"),
+                Locale::ZhTw => include_str!("../../../locales/zh-TW/native.json"),
                 Locale::EnUs => include_str!("../../../locales/en-US/native.json"),
                 Locale::EsEs => include_str!("../../../locales/es-ES/native.json"),
                 Locale::DeDe => include_str!("../../../locales/de-DE/native.json"),
@@ -279,7 +311,7 @@ fn plural(locale: Locale, count: &str) -> &'static str {
         .split_once('.')
         .is_some_and(|(_, digits)| !digits.is_empty());
     match locale {
-        Locale::ZhCn | Locale::JaJp => "other",
+        Locale::ZhCn | Locale::ZhTw | Locale::JaJp => "other",
         Locale::RuRu if !fraction && n.fract() == 0. => match (integer % 10, integer % 100) {
             (1, last) if last != 11 => "one",
             (2..=4, last) if !(12..=14).contains(&last) => "few",
@@ -390,7 +422,17 @@ mod tests {
             ("fr-CA", Locale::FrFr),
             ("ja", Locale::JaJp),
             ("ru-KZ", Locale::RuRu),
-            ("zh-Hant-TW", Locale::ZhCn),
+            ("zh-Hant-TW", Locale::ZhTw),
+            ("zh_HK", Locale::ZhTw),
+            ("zh-MO", Locale::ZhTw),
+            ("zh-TW", Locale::ZhTw),
+            ("zh-Hant-CN", Locale::ZhTw),
+            ("zh-Hans-TW", Locale::ZhCn),
+            ("zh-CHT", Locale::ZhTw),
+            ("zh-CHS", Locale::ZhCn),
+            ("zh-SG", Locale::ZhCn),
+            ("zh", Locale::ZhCn),
+            ("zh-CN-x-hant", Locale::ZhCn),
             ("en-GB", Locale::EnUs),
         ] {
             assert_eq!(Locale::from_tag(tag), Some(locale));
@@ -405,6 +447,13 @@ mod tests {
             (0x0c0c, Locale::FrFr),
             (0x0411, Locale::JaJp),
             (0x0419, Locale::RuRu),
+            (0x0404, Locale::ZhTw),
+            (0x0c04, Locale::ZhTw),
+            (0x1404, Locale::ZhTw),
+            (0x7c04, Locale::ZhTw),
+            (0x0804, Locale::ZhCn),
+            (0x1004, Locale::ZhCn),
+            (0x0004, Locale::ZhCn),
         ] {
             assert_eq!(Locale::from_langid(id), Some(locale));
         }
@@ -432,7 +481,7 @@ mod tests {
         ] {
             assert_eq!(plural(Locale::RuRu, count), form, "{count}");
         }
-        for locale in [Locale::ZhCn, Locale::JaJp] {
+        for locale in [Locale::ZhCn, Locale::ZhTw, Locale::JaJp] {
             for count in ["0", "1", "2", "1.5"] {
                 assert_eq!(plural(locale, count), "other");
             }

@@ -1,0 +1,281 @@
+{
+  "identityPending": "正在確認處理程序身分，請稍後重試。",
+  "countersPending": "正在讀取該處理程序的資源計數。",
+  "refreshPending": "正在更新處理程序資料，目前顯示最近一次成功讀取的數值。",
+  "diskUnavailable": {
+    "pending": "暫無磁碟讀數：剛出現的處理程序要到下一次重新整理才有讀數。",
+    "enable": "暫無磁碟讀數：系統未直接提供該資料，需由特殊權限服務讀取，可在設定中啟用特殊權限服務。",
+    "update": "暫無磁碟讀數：特殊權限服務版本與 Argus 不一致，需在設定中更新服務。",
+    "start": "暫無磁碟讀數：特殊權限服務已停止，可在設定中啟動服務。",
+    "service": "暫無磁碟讀數：未能從特殊權限服務讀取，可在設定中檢視服務狀態。",
+    "unavailable": "暫無磁碟讀數：暫時無法讀取每個處理程序的磁碟計數。"
+  },
+  "serviceHost": "服務主機：{names}",
+  "webView": {
+    "host": "WebView2：{name}",
+    "role": {
+      "browser": "瀏覽器處理程序",
+      "renderer": "轉譯處理程序",
+      "gpu": "GPU 處理程序",
+      "network": "網路服務",
+      "storage": "儲存服務",
+      "audio": "音訊服務",
+      "utility": "公用程式處理程序",
+      "crashpad": "損毀處理程序"
+    }
+  },
+  "total": "{count} 個處理程序",
+  "filtered": "清單已依搜尋內容篩選",
+  "column": {
+    "name": {
+      "label": "名稱",
+      "title": "應用程式名稱或檔案描述；次要文字顯示執行檔名。"
+    },
+    "pid": {
+      "label": "PID",
+      "title": "處理程序識別碼 (PID)"
+    },
+    "cpu": {
+      "label": "CPU",
+      "title": "佔全部處理器能力的百分比"
+    },
+    "mem": {
+      "label": "記憶體",
+      "title": "專用工作集：處理程序獨占的實體記憶體"
+    },
+    "diskRead": {
+      "label": "磁碟讀取",
+      "title": "每秒磁碟讀取位元組數，不包含網路及其他裝置 I/O"
+    },
+    "diskWrite": {
+      "label": "磁碟寫入",
+      "title": "每秒磁碟寫入位元組數，不包含網路及其他裝置 I/O"
+    },
+    "io": {
+      "label": "I/O",
+      "title": "讀取、寫入及其他 I/O 合計，包含檔案、網路和裝置存取"
+    },
+    "gpu": {
+      "label": "GPU",
+      "title": "處理程序在最忙碌的 GPU 引擎上佔用的時間比例"
+    },
+    "net": {
+      "label": "網路",
+      "title": "每秒傳送和接收的位元組數"
+    },
+    "threads": {
+      "label": "執行緒",
+      "title": "執行緒數"
+    },
+    "handles": {
+      "label": "控制代碼",
+      "title": "控制代碼數"
+    },
+    "imageName": {
+      "label": "映像名稱",
+      "title": "可執行檔的名稱。"
+    },
+    "ppid": {
+      "label": "父處理程序 PID",
+      "title": "建立時記錄的父處理程序識別碼。"
+    },
+    "path": {
+      "label": "映像路徑",
+      "title": "處理程序執行檔的完整路徑。"
+    },
+    "description": {
+      "label": "描述",
+      "title": "執行檔描述或已封裝應用程式名稱。"
+    },
+    "company": {
+      "label": "公司名稱",
+      "title": "執行檔版本資訊中的公司名稱。"
+    },
+    "sessionId": {
+      "label": "工作階段識別碼",
+      "title": "處理程序所屬的 Windows 工作階段編號。"
+    },
+    "createTime": {
+      "label": "啟動時間",
+      "title": "處理程序建立時間，以本機時間顯示。"
+    },
+    "suspended": {
+      "label": "已暫停",
+      "title": "處理程序的所有執行緒處於暫停等候狀態。"
+    },
+    "efficiency": {
+      "label": "效率模式",
+      "title": "處理程序的 EcoQoS 節能狀態。"
+    },
+    "cpuTime": {
+      "label": "CPU 時間",
+      "title": "累計使用者模式與核心模式 CPU 時間；群組顯示成員合計。"
+    },
+    "cpuUserTime": {
+      "label": "使用者 CPU 時間",
+      "title": "處理程序累計使用的使用者模式 CPU 時間。"
+    },
+    "cpuKernelTime": {
+      "label": "核心 CPU 時間",
+      "title": "處理程序累計使用的核心模式 CPU 時間。"
+    },
+    "basePriority": {
+      "label": "基本優先順序",
+      "title": "Windows 回報的處理程序基本優先順序數值。"
+    },
+    "workingSet": {
+      "label": "工作集",
+      "title": "目前駐留的實體記憶體，含共用頁面；群組為成員工作集總和。"
+    },
+    "peakWorkingSet": {
+      "label": "工作集尖峰",
+      "title": "單一處理程序自啟動以來的工作集尖峰；展開應用程式群組可檢視各處理程序。"
+    },
+    "commit": {
+      "label": "認可大小",
+      "title": "處理程序專用的已認可記憶體。"
+    },
+    "virtualSize": {
+      "label": "虛擬位址空間",
+      "title": "單一處理程序保留與已認可的虛擬位址範圍；已認可記憶體見「認可大小」。"
+    },
+    "pageFaults": {
+      "label": "分頁錯誤次數",
+      "title": "累計分頁錯誤次數，包含軟性分頁錯誤與硬性分頁錯誤。"
+    },
+    "ioRead": {
+      "label": "I/O 讀取",
+      "title": "每秒 I/O 讀取位元組數，含檔案、網路和裝置存取。"
+    },
+    "ioWrite": {
+      "label": "I/O 寫入",
+      "title": "每秒 I/O 寫入位元組數，含檔案、網路和裝置存取。"
+    },
+    "ioOther": {
+      "label": "其他 I/O",
+      "title": "其他 I/O 操作每秒傳輸的位元組數。"
+    },
+    "ioReadTotal": {
+      "label": "累計 I/O 讀取",
+      "title": "處理程序生命週期內累計讀取的 I/O 位元組數。"
+    },
+    "ioWriteTotal": {
+      "label": "累計 I/O 寫入",
+      "title": "處理程序生命週期內累計寫入的 I/O 位元組數。"
+    },
+    "ioOtherTotal": {
+      "label": "累計其他 I/O",
+      "title": "處理程序生命週期內其他 I/O 累計傳輸的位元組數。"
+    },
+    "netReceived": {
+      "label": "網路接收",
+      "title": "處理程序每秒接收的網路流量。"
+    },
+    "netSent": {
+      "label": "網路傳送",
+      "title": "處理程序每秒傳送的網路流量。"
+    },
+    "gpuEngine": {
+      "label": "GPU 引擎",
+      "title": "處理程序目前最忙碌的 GPU 引擎。"
+    },
+    "gpuDedicated": {
+      "label": "專用 GPU 記憶體",
+      "title": "處理程序目前的專用顯示記憶體駐留讀數；群組顯示成員計數合計。"
+    },
+    "gpuShared": {
+      "label": "共用 GPU 記憶體",
+      "title": "處理程序目前的共用 GPU 記憶體駐留讀數；群組顯示成員計數合計。"
+    }
+  },
+  "noMatch": "沒有與「{query}」相符的處理程序",
+  "efficiencyCount": "{count} 個處理程序處於效率模式",
+  "suspended": "已暫停",
+  "netRates": "傳送 {sent}，接收 {received}",
+  "section": {
+    "apps": "應用程式",
+    "background": "背景處理程序",
+    "windows": "Windows 處理程序"
+  },
+  "sectionSearching": "搜尋時顯示全部相符項目，清除搜尋後可收合",
+  "servicesSummary": "{names} 等 {count} 個服務",
+  "pidExited": "PID {pid} 已經結束。",
+  "priority": {
+    "realtime": "即時",
+    "high": "高",
+    "aboveNormal": "高於標準",
+    "normal": "標準",
+    "belowNormal": "低於標準",
+    "idle": "低"
+  },
+  "menu": {
+    "endAll": "結束全部 {count} 個處理程序",
+    "setPriority": "設定優先順序",
+    "addRule": "新增規則",
+    "copyPid": "複製 PID",
+    "copyPidWhat": " PID",
+    "details": "詳細資料"
+  },
+  "tree": {
+    "expandAll": "全部展開",
+    "collapseAll": "全部收合"
+  },
+  "vitals": {
+    "open": "在「效能」中檢視{device}",
+    "diskActive": "活動 {value}%",
+    "netTitle": "接收 / 傳送",
+    "netRates": "收 {received} 發 {sent}",
+    "acpiTemperature": "ACPI 熱區溫度"
+  },
+  "columns": {
+    "choose": "選取資料欄",
+    "autoWidth": "自動調整寬度",
+    "yes": "是",
+    "no": "否",
+    "reset": "重設為預設資料欄",
+    "apply": "確定",
+    "chooseMore": "選取資料欄…",
+    "sortAscending": "遞增排序",
+    "sortDescending": "遞減排序",
+    "hide": "隱藏「{name}」欄",
+    "description": "勾選要顯示的資料欄；拖曳右側清單或欄位標頭可調整順序。",
+    "networkUnavailable": "已選取的網路欄將在採集可用時顯示。",
+    "category": {
+      "general": "基本資訊",
+      "cpu": "CPU",
+      "memory": "記憶體",
+      "io": "磁碟與 I/O",
+      "network": "網路",
+      "gpu": "GPU",
+      "all": "全部"
+    },
+    "order": "顯示順序",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "remove": "移除",
+    "search": "搜尋欄名或說明",
+    "selectAll": "全選",
+    "clear": "清除",
+    "noMatch": "沒有相符的資料欄",
+    "fixed": "固定",
+    "selectionSummary": "已選取 {count} 欄",
+    "virtualAliases": "虛擬記憶體 虛擬位元組 位址保留"
+  },
+  "visibility": {
+    "toggle": "隱藏系統處理程序",
+    "show": "顯示系統處理程序",
+    "processHint": "隱藏 Windows 系統元件與額外隱藏清單中的處理程序，保留永遠顯示清單。僅影響清單顯示。",
+    "networkHint": "隱藏系統處理程序的連線，以及 PID 為 0 的無所屬處理程序記錄。僅影響清單顯示。",
+    "edit": "編輯隱藏規則",
+    "description": "依 Windows 元件資訊識別系統處理程序。兩頁共用以下規則，隱藏開關分別儲存。",
+    "keep": "永遠顯示",
+    "keepHint": "即使屬於系統處理程序，也保留這些程式。此清單優先於額外隱藏。",
+    "hide": "額外隱藏",
+    "hideHint": "開啟隱藏時一併隱藏這些程式。留空時僅隱藏系統處理程序。",
+    "namesHint": "填入程式檔案名稱，以逗號或分號分隔，不區分大小寫，每份清單最多 128 個。",
+    "invalid": "請填入有效的程式檔案名稱，不含路徑或萬用字元，每份清單最多 128 個。",
+    "reset": "還原預設規則",
+    "empty": "目前篩選條件下沒有可顯示的項目。",
+    "clear": "顯示全部並清除篩選"
+  }
+}

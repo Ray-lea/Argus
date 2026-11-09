@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const installerLanguages = {
-  "en-US": "ENGLISH", "zh-CN": "SIMPCHINESE", "es-ES": "SPANISH",
+  "en-US": "ENGLISH", "zh-CN": "SIMPCHINESE", "zh-TW": "TRADCHINESE", "es-ES": "SPANISH",
   "de-DE": "GERMAN", "ja-JP": "JAPANESE", "fr-FR": "FRENCH", "ru-RU": "RUSSIAN",
 };
 const variables = { version: "${VERSION}", oldVersion: "$ArgusOldVersion", installDir: "$INSTDIR", product: "${PRODUCTNAME}", code: "$0" };

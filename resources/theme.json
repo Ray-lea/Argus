@@ -39,7 +39,14 @@
     "mono": ["Cascadia Mono", "Cascadia Code", "Consolas"],
     "tooltip": ["Segoe UI", "Microsoft YaHei UI"],
     "fallback": ["Microsoft YaHei UI", "Yu Gothic UI", "Meiryo", "Segoe UI Symbol"],
-    "japanese": ["Yu Gothic UI", "Meiryo UI", "Meiryo", "Microsoft YaHei UI", "Segoe UI Symbol"]
+    "japanese": ["Yu Gothic UI", "Meiryo UI", "Meiryo", "Microsoft YaHei UI", "Segoe UI Symbol"],
+    "traditionalChinese": [
+      "Microsoft JhengHei UI",
+      "Microsoft JhengHei",
+      "Microsoft YaHei UI",
+      "Yu Gothic UI",
+      "Segoe UI Symbol"
+    ]
   },
   "light": {
     "accent": "#0067c0",

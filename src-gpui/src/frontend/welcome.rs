@@ -28,7 +28,9 @@ pub(super) struct Release {
 /// The releases written into the app's changelog, newest first.
 pub(super) fn changelog() -> Vec<Release> {
     let source = match argus_core::i18n::locale() {
-        argus_core::i18n::Locale::ZhCn => include_str!("../../../CHANGELOG.md"),
+        argus_core::i18n::Locale::ZhCn | argus_core::i18n::Locale::ZhTw => {
+            include_str!("../../../CHANGELOG.md")
+        }
         _ => include_str!("../../../CHANGELOG.en.md"),
     };
     let mut releases: Vec<Release> = vec![];
@@ -100,7 +102,11 @@ fn notes_in<'a>(locale: &str, release: &'a Value) -> &'a str {
             .filter(|notes| !notes.trim().is_empty())
     };
     translated(locale)
-        .or_else(|| (locale != "zh-CN").then(|| translated("en-US")).flatten())
+        .or_else(|| {
+            (!matches!(locale, "zh-CN" | "zh-TW"))
+                .then(|| translated("en-US"))
+                .flatten()
+        })
         .unwrap_or_else(|| text(release, "notes"))
 }
 
@@ -1986,6 +1992,14 @@ mod tests {
             assert_eq!(notes_in(locale, &release), "english");
         }
         assert_eq!(notes_in("zh-CN", &release), "source");
+        assert_eq!(notes_in("zh-TW", &release), "source");
+        assert_eq!(
+            notes_in(
+                "zh-TW",
+                &json!({"notes":"source","translations":{"zh-TW":"traditional"}})
+            ),
+            "traditional"
+        );
         assert_eq!(
             notes_in(
                 "fr-FR",

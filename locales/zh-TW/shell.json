@@ -1,0 +1,94 @@
+{
+  "loadingProcesses": "正在讀取處理程序…",
+  "nav": {
+    "expand": "展開導覽",
+    "collapse": "收合導覽",
+    "resize": "調整導覽列寬度"
+  },
+  "page": {
+    "processes": "處理程序",
+    "performance": "效能",
+    "services": "服務",
+    "startup": "啟動",
+    "network": "連線",
+    "history": "歷程記錄",
+    "settings": "設定",
+    "about": "關於"
+  },
+  "pageTitle": "{page}（Ctrl+{key}）",
+  "elevation": {
+    "admin": "系統管理員",
+    "adminHint": "Argus 正以系統管理員身分執行，可檢視和結束絕大多數處理程序",
+    "service": "特殊權限服務",
+    "serviceHint": "Argus 以標準權限執行，需要系統管理員權限的操作由特殊權限服務代為執行",
+    "standard": "標準權限",
+    "standardHint": "部分系統處理程序的資訊需要系統管理員權限才能讀取或結束"
+  },
+  "interval": {
+    "label": "重新整理頻率",
+    "option": "每 {seconds} 秒"
+  },
+  "background": {
+    "confirm": {
+      "minimized": {
+        "title": "縮短最小化時的重新整理間隔？",
+        "body": "視窗最小化後，Argus 將每 {seconds} 秒取樣一次全部處理程序與硬體資料。短於 5 秒的間隔會明顯增加 CPU 佔用與耗電，使用電池時更為明顯。歷程記錄與規則在預設的 5 秒下即可正常執行。"
+      },
+      "tray": {
+        "title": "縮短背景常駐時的重新整理間隔？",
+        "body": "隱藏至系統匣後，Argus 將每 {seconds} 秒取樣一次全部處理程序與硬體資料。短於 5 秒的間隔會明顯增加 CPU 佔用與耗電，使用電池時更為明顯。歷程記錄與規則在預設的 5 秒下即可正常執行。"
+      },
+      "accept": "仍然改為 {seconds} 秒"
+    },
+    "notice": {
+      "minimized": "最小化期間，重新整理間隔由 {from} 秒放寬至 {to} 秒，以降低背景負擔。",
+      "tray": "背景常駐期間，重新整理間隔由 {from} 秒放寬至 {to} 秒，以降低背景負擔。",
+      "adjust": "調整間隔",
+      "quiet": "不再提醒"
+    }
+  },
+  "pause": "暫停重新整理",
+  "resume": "繼續重新整理",
+  "fileLock": {
+    "title": "查詢檔案使用狀況（亦可將檔案拖放到視窗）",
+    "label": "查詢使用檔案的處理程序"
+  },
+  "details": {
+    "label": "詳細資料窗格",
+    "mode": {
+      "open": "一律顯示",
+      "auto": "選取處理程序時顯示",
+      "closed": "隱藏"
+    },
+    "current": "詳細資料窗格：{mode}",
+    "next": "按一下改為「{mode}」，按一下滑鼠右鍵可直接選擇"
+  },
+  "search": {
+    "processes": "搜尋名稱、PID、路徑或服務",
+    "clear": "清除搜尋"
+  },
+  "viewMode": {
+    "apps": {
+      "label": "依應用程式"
+    },
+    "tree": {
+      "label": "處理程序樹"
+    },
+    "list": {
+      "label": "清單"
+    }
+  },
+  "status": {
+    "threads": "執行緒",
+    "handles": "控制代碼",
+    "cached": "快取",
+    "pagedPool": "分頁集區",
+    "uptime": "已執行",
+    "orderHeld": "游標位於清單上，暫停重新排序",
+    "orderHeldHint": "滑鼠移出清單後依目前排序重新排列",
+    "paused": "已暫停重新整理",
+    "interval": "每 {seconds} 秒重新整理",
+    "version": "v{version}",
+    "versionHint": "Argus {version} · {channel}\n按一下檢視本版本的更新內容，按一下滑鼠右鍵複製版本號"
+  }
+}

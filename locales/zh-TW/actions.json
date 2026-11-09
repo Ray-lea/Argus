@@ -1,0 +1,61 @@
+{
+  "endAll": "全部結束",
+  "end": {
+    "title": "結束 {name}？",
+    "body": "PID {pid}。未儲存的資料將會遺失。",
+    "done": "已結束 {name}。"
+  },
+  "endGroup": {
+    "body": "將結束 {name} 的全部 {count} 個處理程序，未儲存的資料將會遺失。",
+    "done": "已結束 {name} 的 {count} 個處理程序。",
+    "partial": "{error}（{count} 個未結束）"
+  },
+  "endTree": {
+    "title": "結束 {name} 的處理程序樹？",
+    "body": "將結束 PID {pid} 及其 {count} 個子處理程序，未儲存的資料將會遺失。",
+    "bodyAlone": "PID {pid} 沒有子處理程序，僅結束該處理程序。",
+    "done": "已結束 {count} 個處理程序。",
+    "partial": "已結束 {count} 個處理程序，{failed} 個沒有權限或已結束。"
+  },
+  "error": {
+    "accessDenied": "沒有權限結束 {name}。可在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus；受保護的處理程序仍可能無法結束。",
+    "notFound": "{name} 已經結束。",
+    "critical": "{name} 是系統關鍵處理程序，結束該處理程序會導致系統當機，操作已封鎖。",
+    "refused": "無法結束 {name}。",
+    "serviceOutdated": "沒有權限結束 {name}。特殊權限服務版本不相容，更新服務後可重試。",
+    "generic": "無法結束 {name}：{error}"
+  },
+  "priority": {
+    "confirmTitle": "將 {name} 設為即時優先順序？",
+    "confirmBody": "即時優先順序的處理程序會優先於系統工作執行，佔滿處理器時滑鼠和鍵盤可能會失去回應。",
+    "confirm": "設為即時",
+    "failed": "無法變更 {name} 的優先順序",
+    "downgraded": "即時優先順序需要系統管理員權限，已改為「高」。",
+    "partial": "已變更 {count} 個處理程序的優先順序，{failed} 個沒有權限或已結束。",
+    "done": "{name} 的優先順序已設為「{priority}」。"
+  },
+  "efficiency": {
+    "on": {
+      "failed": "無法為 {name} 開啟效率模式",
+      "partial": "已為 {count} 個處理程序開啟效率模式，{failed} 個沒有權限或已結束。",
+      "done": "已為 {name} 開啟效率模式。"
+    },
+    "off": {
+      "failed": "無法為 {name} 關閉效率模式",
+      "partial": "已為 {count} 個處理程序關閉效率模式，{failed} 個沒有權限或已結束。",
+      "done": "已為 {name} 關閉效率模式。"
+    }
+  },
+  "ruleScope": {
+    "title": "為所有同名處理程序新增規則？",
+    "body": "規則依執行檔名稱 {name} 比對，將作用於所有同名處理程序，不限於目前主機或安裝路徑。",
+    "confirm": "繼續設定規則"
+  },
+  "copied": "已複製{what}。",
+  "staleProcess": "處理程序執行個體資訊已失效，請重新整理後重試。",
+  "copyWhat": {
+    "path": "路徑",
+    "name": "名稱",
+    "version": "版本號"
+  }
+}

@@ -195,6 +195,7 @@ UninstPage custom un.ArgusPageDone
 ;Languages
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
+!insertmacro MUI_LANGUAGE "TradChinese"
 !insertmacro MUI_LANGUAGE "Spanish"
 !insertmacro MUI_LANGUAGE "German"
 !insertmacro MUI_LANGUAGE "Japanese"
