@@ -62,11 +62,13 @@ PawnIO 的安装、官方 2.0.1／2.1.0 升级与启动均由手动开启触发�
 |---|---|
 | Intel Core / Pentium / Celeron / Atom | 支持的 Family 6 处理器使用 DTS、封装温度与 RAPL MSR。校验温度有效位和温度目标；Atom 部分代际使用不同能量单位。请求电压仅对已明确编码的型号开放 |
 | AMD Phenom II / Athlon / FX / A 系列及早期 APU | Family 10h–16h 使用对应模块的 PCI / SMU 温度接口与 COFVID。旧式 Tctl 按其控制用途标为“控制温度” |
-| AMD Ryzen / Threadripper，含 Ryzen 9 9950X | Family 17h–1Ah 使用 SMN 温度、每核及封装能量、APERF／MPERF 与 SMU 表。Zen 4／Zen 5 的供电电压从 SVI3 遥测字段读取。`0x00620205` 按 16 核 Granite Ridge 布局读取每核温度／电压、C0／C1／CC6、PPT／TDC 当前值及 PPT／TDC／EDC 上限；`0x00620105` 使用独立的 8 核布局。`0x00380905` 为 6 核 Vermeer 提供每核温度和驻留比例。每核槽位按 CPUID CoreId 匹配，保留禁用核心造成的空洞 |
+| AMD Ryzen / Threadripper，含 Ryzen 9 9950X | Family 17h–1Ah 使用 SMN 温度、每核及封装能量、APERF／MPERF 与 SMU 表。Zen 4／Zen 5 的供电电压从 SVI3 遥测字段读取。`0x00620205` 按 16 核 Granite Ridge 布局读取每核温度／电压、C0／C1／CC6、PPT／TDC 当前值及 PPT／TDC／EDC 上限；`0x00620105` 使用独立的 8 核布局。`0x00380905` 为 6 核 Vermeer 提供每核温度、电压和驻留比例；该系列通过现有 PawnIO 模块读取固定的 CCD／核心禁用位图，校验核心数量与 CoreId 后映射 SMU 槽位，跳过禁用核心。位图缺失或不一致时保留未知并重试 |
 | AMD Radeon / 集成显卡 | ADL2 PMLog；接口缺失时使用 Overdrive 6 功耗、Overdrive 5 温度／频率／电压。更早驱动或不提供这些接口的型号保留 D3DKMT 数据 |
 | Intel HD / UHD / Iris / Arc | D3DKMT 为基础；支持 IGCL 的设备按各字段的支持标记补充温度、频率、电压与功耗。IGCL 不支持第 10 代 Core。单插槽 Comet Lake S/H（Family 6、Model A5h，例如 i7-10700K / UHD 630）开启内核传感器后，通过固定 IntelMCHBAR 模块读取 GT 温度、频率与请求电压 VID；RAPL PP1 功耗按硬件身份对应到核显。温度等 IGCL 遥测不要求存在电源域，多个未标明范围的电源域不求和。未开放的字段保持不可用，不以 CPU 温度或封装功耗代替核显数据 |
 
 SMU 布局表收录 72 个明确版本，定义来自固定提交的 ZenStates-Core、LibreHardwareMonitor 与 GNR-SMU；排除未有明确身份的候选字段。`0x00620205` 不套用 `0x00621202` 的头部与供电布局，不将 FIT 字段当作实时频率，也不显示未经确认的 EDC 实时值和 VRM／L3 候选。未知版本继续提供 MSR／SMN 基础读数，并显示表版本以便定位；不套用相邻版本。大型 Threadripper 表只读取签名模块允许的首个 4 KiB 页面。性能页的“内部传感器”按功耗、电压、频率、温度分组，“每核读数”单独列出，悬停可查看来源。
+
+6 核 Vermeer 的核心禁用位图采用 [ZenStates-Core 的固定寄存器布局](https://github.com/irusanov/ZenStates-Core/blob/869b7e82572337e5a673e92230edc92bddf0e44b/Cpu.cs#L280)，通过已有签名模块仅读取。核心编号可以连续，SMU 表仍保留禁用槽位；禁用槽位的零电压和 100% CC6 不计作真实核心读数。
 
 AMD／Intel SDK 在独立线程采集，界面与主采样线程读取有时效的缓存。内核传感器停用或连续 15 秒无人读取后，特权服务释放模块句柄，系统保留共享的 PawnIO 驱动。
 

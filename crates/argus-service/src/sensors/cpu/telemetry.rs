@@ -6,7 +6,7 @@ use argus_core::hardware::{
 };
 
 use super::counters::{ClockCounter, EnergyCounter, amd_clock, intel_vid, legacy_vid, tsc_mhz};
-use super::{Affinity, Identity, Module, energy_unit, valid};
+use super::{Affinity, Identity, Module, PciGuard, energy_unit, valid};
 
 struct ThreadSampler {
     group: u16,
@@ -17,6 +17,7 @@ struct ThreadSampler {
 pub(super) struct CoreSampler {
     pub core: u32,
     pub smu_slot: Option<usize>,
+    cpuid_core: Option<usize>,
     threads: Vec<ThreadSampler>,
     energy: EnergyCounter,
     efficient: bool,
@@ -32,6 +33,7 @@ impl CoreSampler {
         Self {
             core,
             smu_slot: Some(slot),
+            cpuid_core: Some(core as usize),
             threads: vec![ThreadSampler {
                 group: 0,
                 processor,
@@ -48,6 +50,8 @@ pub(super) struct Telemetry {
     tsc_mhz: Option<f32>,
     bus_mhz: Option<f32>,
     energy: [EnergyCounter; 4],
+    vermeer_mapping_pending: bool,
+    mapping_attempt: Option<Instant>,
 }
 
 impl Telemetry {
@@ -79,6 +83,7 @@ impl Telemetry {
             let core = cores.entry(thread.core).or_insert_with(|| CoreSampler {
                 core: thread.core,
                 smu_slot: None,
+                cpuid_core: None,
                 threads: Vec::new(),
                 energy: EnergyCounter::default(),
                 efficient: thread.efficient,
@@ -90,9 +95,9 @@ impl Telemetry {
             {
                 use std::arch::x86_64::__cpuid;
                 if __cpuid(0x80000000).eax >= 0x8000001e {
-                    // Architectural CoreId preserves disabled-core gaps;
-                    // Windows's sequential core number does not.
-                    core.smu_slot = Some((__cpuid(0x8000001e).ebx & 255) as usize);
+                    let core_id = (__cpuid(0x8000001e).ebx & 255) as usize;
+                    core.cpuid_core = Some(core_id);
+                    core.smu_slot = Some(core_id);
                 }
             }
             core.threads.push(ThreadSampler {
@@ -112,11 +117,64 @@ impl Telemetry {
                 core.smu_slot = None;
             }
         }
-        Self {
+        let vermeer_mapping_pending =
+            !id.intel && id.family == 0x19 && id.model == 0x21 && cores.len() == 6;
+        if vermeer_mapping_pending {
+            // Vermeer's PM table retains fused-off lanes; CoreId can be dense.
+            // Keep per-core SMU fields unknown until the fuse map is verified.
+            for core in &mut cores {
+                core.smu_slot = None;
+            }
+        }
+        let mut result = Self {
             cores,
             tsc_mhz: tsc,
             bus_mhz,
             energy: Default::default(),
+            vermeer_mapping_pending,
+            mapping_attempt: None,
+        };
+        result.resolve_smu_mapping(module);
+        result
+    }
+
+    pub fn resolve_smu_mapping(&mut self, module: &Module) {
+        if !self.vermeer_mapping_pending
+            || self
+                .mapping_attempt
+                .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(30))
+        {
+            return;
+        }
+        self.mapping_attempt = Some(Instant::now());
+        let Some(_guard) = PciGuard::acquire() else {
+            return;
+        };
+        let mut fuses = [None; 3];
+        let ids: Option<Vec<_>> = self.cores.iter().map(|core| core.cpuid_core).collect();
+        let result = (|| {
+            fuses[0] = module.smn(0x5d218);
+            fuses[1] = module.smn(0x5d21c);
+            let ccd = vermeer_ccd(fuses[0]?, fuses[1]?)?;
+            // Fixed Vermeer topology fuses, through the existing signed module.
+            fuses[2] = module.smn(if ccd == 0 { 0x3008_1d98 } else { 0x3208_1d98 });
+            vermeer_core_slots(ids.as_deref()?, fuses[2]?)
+        })();
+        if let Some(slots) = result {
+            for (core, slot) in self.cores.iter_mut().zip(slots) {
+                core.smu_slot = Some(slot);
+            }
+            self.vermeer_mapping_pending = false;
+        } else {
+            argus_core::diagnostics::warn(
+                "AMD SMU core mapping",
+                format!(
+                    "Vermeer fuse map unavailable or inconsistent; cores={}; core_ids={ids:?}; ccd_fuses={:?}; core_fuse={:?}; per-core SMU fields withheld",
+                    self.cores.len(),
+                    &fuses[..2],
+                    fuses[2]
+                ),
+            );
         }
     }
 
@@ -365,6 +423,34 @@ impl Telemetry {
     }
 }
 
+fn vermeer_ccd(present: u32, down: u32) -> Option<u32> {
+    if present == u32::MAX || down == u32::MAX {
+        return None;
+    }
+    let disabled = (present >> 30) | ((down & 0x3f) << 2);
+    let enabled = !disabled & 0xff;
+    (enabled.count_ones() == 1 && enabled & !3 == 0).then(|| enabled.trailing_zeros())
+}
+
+pub(super) fn vermeer_core_slots(ids: &[usize], disabled: u32) -> Option<Vec<usize>> {
+    if ids.len() != 6 || disabled == u32::MAX {
+        return None;
+    }
+    let slots: Vec<_> = (0..8).filter(|slot| disabled & (1 << slot) == 0).collect();
+    if slots.len() != ids.len() || ids.iter().any(|id| *id >= 16 || id / 8 != ids[0] / 8) {
+        return None;
+    }
+    let mut ordered: Vec<_> = ids.iter().map(|id| id % 8).collect();
+    ordered.sort_unstable();
+    if ordered == slots {
+        Some(ids.iter().map(|id| id % 8).collect())
+    } else if ordered == (0..ids.len()).collect::<Vec<_>>() {
+        Some(ids.iter().map(|id| slots[id % 8]).collect())
+    } else {
+        None
+    }
+}
+
 fn mean(values: &[f32]) -> Option<f32> {
     (!values.is_empty()).then(|| values.iter().sum::<f32>() / values.len() as f32)
 }
@@ -388,6 +474,39 @@ fn intel_limit(value: u64, power: f64, time: f64) -> (Option<f32>, Option<f32>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vermeer_fuses_map_dense_and_sparse_ids_without_guessing_disabled_lanes() {
+        assert_eq!(vermeer_ccd(0x80400000, 0x3f), Some(0));
+        assert_eq!(vermeer_ccd(0x40400000, 0x3f), Some(1));
+        assert_eq!(vermeer_ccd(0, 0), None);
+        assert_eq!(vermeer_ccd(u32::MAX, 0), None);
+        assert_eq!(
+            vermeer_core_slots(&[0, 1, 2, 3, 4, 5], 0x330),
+            Some(vec![0, 1, 2, 3, 6, 7])
+        );
+        assert_eq!(
+            vermeer_core_slots(&[0, 1, 2, 3, 4, 5], 0x30c),
+            Some(vec![0, 1, 4, 5, 6, 7])
+        );
+        assert_eq!(
+            vermeer_core_slots(&[7, 0, 1, 4, 5, 6], 0x30c),
+            Some(vec![7, 0, 1, 4, 5, 6])
+        );
+        assert_eq!(
+            vermeer_core_slots(&[8, 9, 10, 11, 12, 13], 0x330),
+            Some(vec![0, 1, 2, 3, 6, 7])
+        );
+        for ids in [
+            &[0, 1, 2, 3, 4, 4][..],
+            &[0, 1, 2, 3, 8, 9],
+            &[0, 1, 2, 3, 5, 7],
+        ] {
+            assert_eq!(vermeer_core_slots(ids, 0x330), None);
+        }
+        assert_eq!(vermeer_core_slots(&[0, 1, 2, 3, 4, 5], 0), None);
+        assert_eq!(vermeer_core_slots(&[0, 1, 2, 3, 4, 5], u32::MAX), None);
+    }
 
     #[test]
     fn power_limits_honor_enable_bits_and_fractional_time_windows() {

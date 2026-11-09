@@ -328,6 +328,7 @@ impl CpuReader {
                 readers.sample(&mut frame);
             }
         } else {
+            self.telemetry.resolve_smu_mapping(&self.module);
             self.amd(&mut frame);
             self.telemetry
                 .sample(&self.module, self.id, &mut frame, started);

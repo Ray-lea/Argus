@@ -141,6 +141,43 @@ mod tests {
     use super::*;
     use argus_core::hardware::CpuCoreSensors;
     #[test]
+    fn fused_middle_lanes_do_not_become_missing_voltage_or_false_full_cc6() {
+        let slots =
+            super::super::telemetry::vermeer_core_slots(&[0, 1, 2, 3, 4, 5], 0x330).unwrap();
+        let cores: Vec<_> = slots
+            .iter()
+            .enumerate()
+            .map(|(core, slot)| CoreSampler::fixture(core as u32, *slot, core as u8 * 2))
+            .collect();
+        let mut data = vec![0.; 372];
+        for slot in 0..8 {
+            data[244 + slot] = 100.;
+        }
+        for slot in slots {
+            data[180 + slot] = 1.0 + slot as f32 / 100.;
+            data[188 + slot] = 40. + slot as f32;
+            data[228 + slot] = 25.;
+            data[236 + slot] = 50.;
+            data[244 + slot] = 25.;
+        }
+        let mut frame = CpuSensors {
+            cores: (0..6)
+                .map(|core| CpuCoreSensors {
+                    core,
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        decode(0x380905, &data, &mut frame, &cores);
+        for core in &frame.cores {
+            assert!(core.voltage.is_some());
+            assert_eq!(core.c6_percent, Some(25.));
+        }
+        assert_eq!(frame.cores[4].voltage, Some(1.06));
+        assert_eq!(frame.cores[5].voltage, Some(1.07));
+    }
+    #[test]
     fn measured_vermeer_fixtures_preserve_disabled_core_slots_and_load_response() {
         let cores: Vec<_> = [0, 1, 4, 5, 6, 7]
             .into_iter()
