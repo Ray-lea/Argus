@@ -1,0 +1,57 @@
+{
+  "cancel": "取消",
+  "close": "關閉",
+  "enable": "啟用",
+  "disable": "停用",
+  "enabled": "已啟用",
+  "disabled": "已停用",
+  "on": "開啟",
+  "off": "關閉",
+  "start": "啟動",
+  "stop": "停止",
+  "restart": "重新啟動",
+  "expand": "展開",
+  "collapse": "摺疊",
+  "none": "無",
+  "name": "名稱",
+  "status": "狀態",
+  "command": "命令",
+  "copyName": "複製名稱",
+  "copyPath": "複製路徑",
+  "openFileLocation": "開啟檔案位置",
+  "goToProcess": "移至處理程序",
+  "endProcess": "結束處理程序",
+  "endProcessTree": "結束處理程序樹",
+  "efficiencyMode": "效率模式",
+  "privilegedService": "特殊權限服務",
+  "listSeparator": "、",
+  "resource": {
+    "cpu": "CPU",
+    "memory": "記憶體",
+    "disk": "磁碟",
+    "network": "網路",
+    "gpu": "GPU",
+    "battery": "電池",
+    "temperature": "溫度"
+  },
+  "languageSystem": "跟隨系統",
+  "keys": {
+    "space": "空格鍵"
+  },
+  "marks": {
+    "pin": "釘選",
+    "unpin": "取消釘選",
+    "pinned": "已釘選",
+    "addNote": "新增備註",
+    "editNote": "編輯備註",
+    "deleteNote": "刪除備註",
+    "note": "備註",
+    "placeholder": "簡要說明此項目的用途",
+    "save": "儲存"
+  },
+  "languageName": {
+    "zhCN": "簡體中文",
+    "zhTW": "繁體中文",
+    "enUS": "English"
+  }
+}

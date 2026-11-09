@@ -1,0 +1,54 @@
+{
+  "filter": {
+    "all": {
+      "label": "全部"
+    },
+    "listen": {
+      "label": "接聽"
+    },
+    "established": {
+      "label": "已建立連線"
+    },
+    "udp": {
+      "label": "UDP"
+    }
+  },
+  "state": {
+    "listen": "接聽",
+    "established": "已建立連線",
+    "synSent": "正在連線",
+    "synReceived": "正在接受",
+    "finWait1": "正在關閉",
+    "finWait2": "正在關閉",
+    "closeWait": "等候關閉",
+    "closing": "正在關閉",
+    "lastAck": "正在關閉",
+    "timeWait": "等候逾時",
+    "closed": "已關閉"
+  },
+  "menu": {
+    "end": "結束 {name}",
+    "close": "中斷此連線",
+    "copyLocal": "複製本機位址",
+    "copyRemote": "複製遠端位址"
+  },
+  "copied": {
+    "local": "本機位址",
+    "remote": "遠端位址"
+  },
+  "search": "連接埠、位址或處理程序，例如 8080",
+  "column": {
+    "process": "處理程序",
+    "protocol": "通訊協定",
+    "localAddress": "本機位址",
+    "localPort": "本機連接埠",
+    "remoteAddress": "遠端位址",
+    "remotePort": "遠端連接埠"
+  },
+  "exited": "已結束",
+  "loading": "正在讀取連線…",
+  "noMatch": "沒有相符的連線",
+  "noMatchPort": "沒有相符的連線：沒有程式在使用連接埠 {port}",
+  "clearFilter": "清除篩選",
+  "note": "每 2 秒重新整理一次。連按兩下某列可移至對應的處理程序。"
+}

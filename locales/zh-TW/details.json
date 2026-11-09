@@ -1,0 +1,82 @@
+{
+  "deselect": "取消選取",
+  "resize": "調整詳細資料窗格寬度",
+  "overview": {
+    "title": "本機規格",
+    "hide": "隱藏本機規格",
+    "show": "顯示本機規格",
+    "copy": "複製規格為文字",
+    "copyWhat": "本機規格",
+    "copyPart": "{kind}：{name}",
+    "selectTip": "在清單中點擊應用程式或處理程序，即可在此檢視其詳細資料；再次點擊取消選取。",
+    "closeTip": "詳細資料窗格預設常駐，點擊視窗右上角的 {icon} 可摺疊收合。",
+    "cpu": "處理器",
+    "cores": "{count} 核心",
+    "hybrid": "（{performance} 效能核心 + {efficiency} 效率核心）",
+    "threads": "{count} 執行緒",
+    "base": "基準 {speed}",
+    "slots": "已使用插槽 {used} / {total}",
+    "disk": "儲存空間",
+    "gpu": "顯示卡",
+    "vram": "{size} 專用顯示記憶體",
+    "sharedMemory": "使用共用記憶體",
+    "battery": "電池",
+    "designed": "設計容量 {capacity}",
+    "health": "健康度 {percent}%"
+  },
+  "exited": {
+    "title": "處理程序已結束",
+    "hint": "選取清單中的其他處理程序以檢視詳細資料。"
+  },
+  "group": {
+    "count": "{count} 個處理程序",
+    "earliest": "最早啟動",
+    "members": "處理程序（{count}）",
+    "open": "檢視 PID {pid} 的詳細資料"
+  },
+  "services": "執行的服務（{count}）",
+  "section": {
+    "process": "處理程序",
+    "resources": "資源",
+    "location": "檔案位置",
+    "commandLine": "命令列",
+    "version": "檔案版本"
+  },
+  "parent": "父處理程序",
+  "parentLink": "{name}（{pid}）",
+  "noParent": "無（PID {pid}）",
+  "started": "啟動時間",
+  "cpuTime": "CPU 時間",
+  "user": "使用者",
+  "integrity": "完整性",
+  "integrityLevel": {
+    "untrusted": "不受信任",
+    "low": "低",
+    "medium": "中",
+    "mediumPlus": "中高",
+    "high": "高（已提高）",
+    "system": "系統",
+    "protected": "受保護"
+  },
+  "architecture": "架構",
+  "arch": {
+    "x64": "64 位元 (x64)",
+    "x86": "32 位元 (x86)",
+    "arm64": "ARM64",
+    "arm": "ARM"
+  },
+  "priority": "優先順序",
+  "session": "工作階段",
+  "privateWs": "專用工作集",
+  "workingSet": "工作集",
+  "commit": "認可大小",
+  "gpuEngine": "（{engine}）",
+  "gpuDedicated": "專用 GPU 記憶體",
+  "gpuShared": "共用 GPU 記憶體",
+  "netNeedsAdmin": "以系統管理員身分執行後可檢視",
+  "threads": "執行緒",
+  "handles": "控制代碼",
+  "noAccess": "無法開啟此處理程序以讀取命令列和使用者資訊。以系統管理員身分執行 Argus 後可檢視。",
+  "product": "產品",
+  "version": "版本"
+}

@@ -778,6 +778,7 @@ pub fn run_mode() -> Option<i32> {
     };
     let language = match args[3].to_str() {
         Some("2052") => argus_core::i18n::Locale::ZhCn,
+        Some("1028" | "3076" | "5124") => argus_core::i18n::Locale::ZhTw,
         Some("1033") => argus_core::i18n::Locale::EnUs,
         _ => return Some(87),
     };

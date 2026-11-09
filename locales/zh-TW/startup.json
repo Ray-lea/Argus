@@ -1,0 +1,38 @@
+{
+  "location": {
+    "hkcuRun": "登錄檔（目前使用者）",
+    "hklmRun": "登錄檔（所有使用者）",
+    "hklmRun32": "登錄檔（所有使用者，32 位元）",
+    "userFolder": "啟動資料夾（目前使用者）",
+    "commonFolder": "啟動資料夾（所有使用者）",
+    "package": "應用程式套件（目前使用者）"
+  },
+  "menu": {
+    "copyCommand": "複製命令"
+  },
+  "copied": {
+    "command": "命令"
+  },
+  "search": "搜尋名稱、發行者或命令",
+  "column": {
+    "publisher": "發行者",
+    "location": "位置"
+  },
+  "missing": {
+    "label": "檔案不存在",
+    "title": "命令指向的程式已不存在，可停用此項目"
+  },
+  "toggle": {
+    "enable": "啟用 {name}",
+    "disable": "停用 {name}"
+  },
+  "blocked": {
+    "managed": "此應用程式不允許手動變更該啟動工作。",
+    "unavailable": "暫時無法讀取此啟動項目的狀態，未進行變更。"
+  },
+  "unavailable": "無法讀取",
+  "loading": "正在讀取啟動項目…",
+  "noMatch": "沒有相符的啟動項目",
+  "summary": "已啟用 {enabled} / 共 {total} 項",
+  "note": "停用操作與工作管理員的「啟動應用程式」使用同一開關，可重新啟用；「所有使用者」的項目需要系統管理員權限。"
+}

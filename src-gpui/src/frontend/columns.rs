@@ -352,6 +352,7 @@ mod tests {
     fn every_selectable_column_has_both_catalog_entries() {
         let catalogs = [
             include_str!("../../../locales/zh-CN/processes.json"),
+            include_str!("../../../locales/zh-TW/processes.json"),
             include_str!("../../../locales/en-US/processes.json"),
         ];
         for text in catalogs {

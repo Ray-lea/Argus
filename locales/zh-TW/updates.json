@@ -1,0 +1,50 @@
+{
+  "updated": "Argus 已更新至 {version}。",
+  "whatsNew": "檢視更新內容",
+  "readyToast": "Argus {version} 已準備就緒",
+  "availableToast": "發現新版本 {version}",
+  "view": "檢視",
+  "openDialog": "在彈出視窗中檢視",
+  "button": {
+    "title": "Argus {version} 已準備就緒。點擊檢視更新內容並安裝",
+    "availableTitle": "發現新版本 {version}。點擊檢視更新內容"
+  },
+  "menu": {
+    "view": "檢視更新內容",
+    "dismiss": "此版本不再提醒"
+  },
+  "dialog": {
+    "ready": "Argus {version} 已準備就緒",
+    "available": "發現新版本 {version}",
+    "downloading": "正在下載 Argus {version}",
+    "installing": "正在啟動安裝程式",
+    "installed": "Argus {version} 的更新內容",
+    "current": "目前版本",
+    "previous": "更新前",
+    "next": "新版本",
+    "stable": "穩定版",
+    "beta": "測試版",
+    "released": "{date}發布",
+    "verified": "簽章驗證通過",
+    "source": "來自 {source}",
+    "progress": "已下載 {received} / {total}",
+    "changes": "{count} 項變更",
+    "earlier": "更早版本的更新內容可在 GitHub 上檢視。",
+    "empty": "暫無可顯示的更新內容，可在 GitHub 上檢視。",
+    "language": "部分版本的更新內容僅有中文版。",
+    "hint": "安裝需要系統管理員授權。Argus 將短暫結束，安裝完成後自動重新開啟並回到目前頁面。",
+    "portable": "免安裝版不支援自動更新，請從發行頁下載新版本。",
+    "github": "在 GitHub 上檢視",
+    "install": "重新啟動並更新",
+    "starting": "正在啟動…",
+    "download": "前往下載",
+    "later": "稍後",
+    "close": "關閉"
+  },
+  "service": {
+    "title": "更新特殊權限服務？",
+    "body": "特殊權限服務的版本為 {serviceVersion}，與 Argus {version} 不一致，部分功能可能無法使用。更新需要系統管理員授權。",
+    "bodyOlder": "特殊權限服務的版本較舊，與 Argus {version} 不相容。更新前，需要系統管理員權限的操作（結束系統管理員或其他帳戶的處理程序、管理系統服務、中斷網路連線等）無法完成，各處理程序網路流量等由服務提供的資料也無法顯示。更新需要系統管理員授權。",
+    "confirm": "更新服務"
+  }
+}

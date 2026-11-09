@@ -28,7 +28,9 @@ pub(super) struct Release {
 /// The releases written into the app's changelog, newest first.
 pub(super) fn changelog() -> Vec<Release> {
     let source = match argus_core::i18n::locale() {
-        argus_core::i18n::Locale::ZhCn => include_str!("../../../CHANGELOG.md"),
+        argus_core::i18n::Locale::ZhCn | argus_core::i18n::Locale::ZhTw => {
+            include_str!("../../../CHANGELOG.md")
+        }
         argus_core::i18n::Locale::EnUs => include_str!("../../../CHANGELOG.en.md"),
     };
     let mut releases: Vec<Release> = vec![];
@@ -84,6 +86,7 @@ fn between(releases: Vec<Release>, from: Option<&str>, to: &str) -> Vec<Release>
 fn offered_releases(status: &Value) -> Vec<Release> {
     let locale = match argus_core::i18n::locale() {
         argus_core::i18n::Locale::EnUs => "en-US",
+        argus_core::i18n::Locale::ZhTw => "zh-TW",
         _ => "zh-CN",
     };
     values(&status["releases"])

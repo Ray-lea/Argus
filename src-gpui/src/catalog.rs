@@ -25,6 +25,28 @@ pub fn register() {
         ),
     );
     register_catalog(
+        Locale::ZhTw,
+        catalogs!(
+            "zh-TW",
+            "actions",
+            "common",
+            "connections",
+            "details",
+            "fileLock",
+            "format",
+            "history",
+            "onboarding",
+            "performance",
+            "processes",
+            "services",
+            "settings",
+            "shell",
+            "startup",
+            "tasks",
+            "updates"
+        ),
+    );
+    register_catalog(
         Locale::EnUs,
         catalogs!(
             "en-US",

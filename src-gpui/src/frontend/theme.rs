@@ -789,7 +789,7 @@ mod tests {
         assert_eq!(super::bytes(2_199_023_255_552., false), "2.0 TB");
     }
 
-    /// Every string in the Chinese interface text.
+    /// Every string in the Chinese interface text (both Simplified and Traditional).
     fn chinese_strings() -> Vec<String> {
         fn collect(value: &serde_json::Value, out: &mut Vec<String>) {
             match value {
@@ -799,13 +799,15 @@ mod tests {
                 _ => {}
             }
         }
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../locales/zh-CN");
         let mut out = Vec::new();
-        for entry in std::fs::read_dir(dir).expect("Chinese locale") {
-            let path = entry.expect("locale file").path();
-            if path.extension().is_some_and(|e| e == "json") {
-                let text = std::fs::read_to_string(&path).expect("locale text");
-                collect(&serde_json::from_str(&text).expect("locale JSON"), &mut out);
+        for loc in ["zh-CN", "zh-TW"] {
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../locales/{loc}"));
+            for entry in std::fs::read_dir(dir).expect("Chinese locale") {
+                let path = entry.expect("locale file").path();
+                if path.extension().is_some_and(|e| e == "json") {
+                    let text = std::fs::read_to_string(&path).expect("locale text");
+                    collect(&serde_json::from_str(&text).expect("locale JSON"), &mut out);
+                }
             }
         }
         out

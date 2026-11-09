@@ -18,6 +18,8 @@ use serde::{Deserialize, Serialize};
 pub enum Locale {
     #[serde(rename = "zh-CN")]
     ZhCn,
+    #[serde(rename = "zh-TW")]
+    ZhTw,
     #[serde(rename = "en-US")]
     EnUs,
 }
@@ -26,11 +28,12 @@ impl Locale {
     /// The catalog every other one is translated from, and the fallback for a
     /// missing key.
     pub const SOURCE: Locale = Locale::ZhCn;
-    pub const ALL: [Locale; 2] = [Locale::ZhCn, Locale::EnUs];
+    pub const ALL: [Locale; 3] = [Locale::ZhCn, Locale::ZhTw, Locale::EnUs];
 
     pub fn tag(self) -> &'static str {
         match self {
             Locale::ZhCn => "zh-CN",
+            Locale::ZhTw => "zh-TW",
             Locale::EnUs => "en-US",
         }
     }
@@ -41,24 +44,37 @@ impl Locale {
             .find(|l| l.tag().eq_ignore_ascii_case(tag))
     }
 
-    /// The Windows display language: Chinese in any script reads the
-    /// Simplified Chinese text, everything else English.
+    /// The Windows display language: Chinese reads Simplified or Traditional
+    /// Chinese based on sublanguage, everything else English.
     pub fn system() -> Locale {
         const LANG_CHINESE: u16 = 0x04;
+        const SUBLANG_CHINESE_TRADITIONAL: u16 = 0x01;
+        const SUBLANG_CHINESE_HONGKONG: u16 = 0x03;
+        const SUBLANG_CHINESE_MACAU: u16 = 0x05;
+
         let lang = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
         if lang & 0x3ff == LANG_CHINESE {
-            Locale::ZhCn
+            let sublang = (lang >> 10) & 0x3f;
+            if sublang == SUBLANG_CHINESE_TRADITIONAL
+                || sublang == SUBLANG_CHINESE_HONGKONG
+                || sublang == SUBLANG_CHINESE_MACAU
+            {
+                Locale::ZhTw
+            } else {
+                Locale::ZhCn
+            }
         } else {
             Locale::EnUs
         }
     }
 
     fn catalog(self) -> &'static HashMap<String, String> {
-        static CATALOGS: [OnceLock<HashMap<String, String>>; 2] =
-            [OnceLock::new(), OnceLock::new()];
+        static CATALOGS: [OnceLock<HashMap<String, String>>; 3] =
+            [OnceLock::new(), OnceLock::new(), OnceLock::new()];
         CATALOGS[self as usize].get_or_init(|| {
             let json = match self {
                 Locale::ZhCn => include_str!("../../../locales/zh-CN/native.json"),
+                Locale::ZhTw => include_str!("../../../locales/zh-TW/native.json"),
                 Locale::EnUs => include_str!("../../../locales/en-US/native.json"),
             };
             let mut map = HashMap::new();
@@ -95,8 +111,8 @@ fn flatten(prefix: &str, value: serde_json::Value, out: &mut HashMap<String, Str
 const UNSET: u8 = u8::MAX;
 static CURRENT: AtomicU8 = AtomicU8::new(UNSET);
 
-static APPLICATION_CATALOGS: [OnceLock<HashMap<String, String>>; 2] =
-    [OnceLock::new(), OnceLock::new()];
+static APPLICATION_CATALOGS: [OnceLock<HashMap<String, String>>; 3] =
+    [OnceLock::new(), OnceLock::new(), OnceLock::new()];
 
 /// Registers additional application catalogs without coupling collectors or
 /// service executables to a particular user interface.

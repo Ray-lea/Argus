@@ -1,0 +1,49 @@
+{
+  "state": {
+    "running": "執行中",
+    "stopped": "已停止",
+    "startPending": "正在啟動",
+    "stopPending": "正在停止",
+    "paused": "已暫停",
+    "pausePending": "正在暫停",
+    "continuePending": "正在繼續"
+  },
+  "startType": {
+    "auto": "自動",
+    "autoDelayed": "自動（延遲啟動）",
+    "manual": "手動",
+    "disabled": "已停用",
+    "boot": "開機",
+    "system": "系統"
+  },
+  "filter": {
+    "all": "全部",
+    "running": "執行中",
+    "stopped": "已停止"
+  },
+  "search": "搜尋服務名稱、描述或 PID",
+  "control": {
+    "start": "啟動服務",
+    "stop": "停止服務",
+    "restart": "重新啟動服務",
+    "openConsole": "服務管理員",
+    "openConsoleTitle": "開啟 Windows 服務管理員"
+  },
+  "menu": {
+    "startType": "啟動類型：{type}",
+    "copyName": "複製服務名稱"
+  },
+  "copied": {
+    "name": "服務名稱"
+  },
+  "column": {
+    "display": "服務",
+    "startType": "啟動類型",
+    "description": "描述"
+  },
+  "loading": "正在讀取服務…",
+  "noMatch": "沒有相符的服務",
+  "clearFilter": "清除篩選",
+  "summary": "執行中 {running} / 共 {total} 個服務",
+  "manageHint": "多數服務需要啟用特殊權限服務或以系統管理員身分執行 Argus 才能管理。"
+}
