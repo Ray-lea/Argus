@@ -29,7 +29,9 @@ pub(super) struct Release {
 pub(super) fn changelog() -> Vec<Release> {
     let source = match argus_core::i18n::locale() {
         argus_core::i18n::Locale::ZhCn => include_str!("../../../CHANGELOG.md"),
-        argus_core::i18n::Locale::EnUs => include_str!("../../../CHANGELOG.en.md"),
+        argus_core::i18n::Locale::EnUs | argus_core::i18n::Locale::RuRu => {
+            include_str!("../../../CHANGELOG.en.md")
+        }
     };
     let mut releases: Vec<Release> = vec![];
     for line in source.lines() {
@@ -83,7 +85,7 @@ fn between(releases: Vec<Release>, from: Option<&str>, to: &str) -> Vec<Release>
 /// The releases the update status carries, in the reader's language.
 fn offered_releases(status: &Value) -> Vec<Release> {
     let locale = match argus_core::i18n::locale() {
-        argus_core::i18n::Locale::EnUs => "en-US",
+        argus_core::i18n::Locale::EnUs | argus_core::i18n::Locale::RuRu => "en-US",
         _ => "zh-CN",
     };
     values(&status["releases"])

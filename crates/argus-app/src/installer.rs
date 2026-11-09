@@ -779,6 +779,7 @@ pub fn run_mode() -> Option<i32> {
     let language = match args[3].to_str() {
         Some("2052") => argus_core::i18n::Locale::ZhCn,
         Some("1033") => argus_core::i18n::Locale::EnUs,
+        Some("1049") => argus_core::i18n::Locale::RuRu,
         _ => return Some(87),
     };
     let silent = match args[4].to_str() {

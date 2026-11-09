@@ -195,9 +195,11 @@ UninstPage custom un.ArgusPageDone
 ;Languages
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
+!insertmacro MUI_LANGUAGE "Russian"
 !insertmacro MUI_RESERVEFILE_LANGDLL
 !include "English.nsh"
 !include "SimpChinese.nsh"
+!include "Russian.nsh"
 ; Argus: the pages; ARGUS_DIR is defined by installer-hooks.nsh.
 !include "${ARGUS_DIR}\installer-ui.nsh"
 

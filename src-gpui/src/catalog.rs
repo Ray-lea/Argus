@@ -46,4 +46,26 @@ pub fn register() {
             "updates"
         ),
     );
+    register_catalog(
+        Locale::RuRu,
+        catalogs!(
+            "ru-RU",
+            "actions",
+            "common",
+            "connections",
+            "details",
+            "fileLock",
+            "format",
+            "history",
+            "onboarding",
+            "performance",
+            "processes",
+            "services",
+            "settings",
+            "shell",
+            "startup",
+            "tasks",
+            "updates"
+        ),
+    );
 }

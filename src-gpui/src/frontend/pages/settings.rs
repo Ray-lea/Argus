@@ -459,7 +459,7 @@ impl Desktop {
         id: &str,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let values = ["system", "zh-CN", "en-US"];
+        let values = ["system", "zh-CN", "en-US", "ru-RU"];
         let current = text(&self.data["settings"], "language");
         self.select(
             id.to_owned(),
@@ -468,6 +468,7 @@ impl Desktop {
                 label("common.languageSystem"),
                 label("common.languageName.zhCN"),
                 label("common.languageName.enUS"),
+                label("common.languageName.ruRU"),
             ],
             values.iter().position(|v| *v == current),
             false,

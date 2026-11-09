@@ -20,18 +20,21 @@ pub enum Locale {
     ZhCn,
     #[serde(rename = "en-US")]
     EnUs,
+    #[serde(rename = "ru-RU")]
+    RuRu,
 }
 
 impl Locale {
     /// The catalog every other one is translated from, and the fallback for a
     /// missing key.
     pub const SOURCE: Locale = Locale::ZhCn;
-    pub const ALL: [Locale; 2] = [Locale::ZhCn, Locale::EnUs];
+    pub const ALL: [Locale; 3] = [Locale::ZhCn, Locale::EnUs, Locale::RuRu];
 
     pub fn tag(self) -> &'static str {
         match self {
             Locale::ZhCn => "zh-CN",
             Locale::EnUs => "en-US",
+            Locale::RuRu => "ru-RU",
         }
     }
 
@@ -42,24 +45,26 @@ impl Locale {
     }
 
     /// The Windows display language: Chinese in any script reads the
-    /// Simplified Chinese text, everything else English.
+    /// Simplified Chinese text, Russian reads Russian, everything else English.
     pub fn system() -> Locale {
         const LANG_CHINESE: u16 = 0x04;
+        const LANG_RUSSIAN: u16 = 0x19;
         let lang = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
-        if lang & 0x3ff == LANG_CHINESE {
-            Locale::ZhCn
-        } else {
-            Locale::EnUs
+        match lang & 0x3ff {
+            LANG_CHINESE => Locale::ZhCn,
+            LANG_RUSSIAN => Locale::RuRu,
+            _ => Locale::EnUs,
         }
     }
 
     fn catalog(self) -> &'static HashMap<String, String> {
-        static CATALOGS: [OnceLock<HashMap<String, String>>; 2] =
-            [OnceLock::new(), OnceLock::new()];
+        static CATALOGS: [OnceLock<HashMap<String, String>>; 3] =
+            [OnceLock::new(), OnceLock::new(), OnceLock::new()];
         CATALOGS[self as usize].get_or_init(|| {
             let json = match self {
                 Locale::ZhCn => include_str!("../../../locales/zh-CN/native.json"),
                 Locale::EnUs => include_str!("../../../locales/en-US/native.json"),
+                Locale::RuRu => include_str!("../../../locales/ru-RU/native.json"),
             };
             let mut map = HashMap::new();
             // The catalogs are checked by scripts/i18n.mjs; a broken one only
@@ -95,8 +100,8 @@ fn flatten(prefix: &str, value: serde_json::Value, out: &mut HashMap<String, Str
 const UNSET: u8 = u8::MAX;
 static CURRENT: AtomicU8 = AtomicU8::new(UNSET);
 
-static APPLICATION_CATALOGS: [OnceLock<HashMap<String, String>>; 2] =
-    [OnceLock::new(), OnceLock::new()];
+static APPLICATION_CATALOGS: [OnceLock<HashMap<String, String>>; 3] =
+    [OnceLock::new(), OnceLock::new(), OnceLock::new()];
 
 /// Registers additional application catalogs without coupling collectors or
 /// service executables to a particular user interface.
