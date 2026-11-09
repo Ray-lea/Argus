@@ -11,9 +11,19 @@
 		"selectTip": "Выберите приложение или процесс в списке, чтобы увидеть сведения; нажмите ещё раз, чтобы снять выбор.",
 		"closeTip": "Панель сведений остаётся открытой; скрыть её можно с помощью {icon} в правом верхнем углу.",
 		"cpu": "Процессор",
-		"cores": { "one": "{count} ядро", "other": "{count} ядер" },
+		"cores": {
+			"one": "{count} ядро",
+			"few": "{count} ядра",
+			"many": "{count} ядер",
+			"other": "{count} ядер"
+		},
 		"hybrid": " ({performance} P-ядер + {efficiency} E-ядер)",
-		"threads": { "one": "{count} поток", "other": "{count} потоков" },
+		"threads": {
+			"one": "{count} поток",
+			"few": "{count} потока",
+			"many": "{count} потоков",
+			"other": "{count} потоков"
+		},
 		"base": "Базовая {speed}",
 		"slots": "Использовано разъёмов: {used} из {total}",
 		"disk": "Накопитель",
@@ -31,6 +41,8 @@
 	"group": {
 		"count": {
 			"one": "{count} процесс",
+			"few": "{count} процесса",
+			"many": "{count} процессов",
 			"other": "{count} процессов"
 		},
 		"earliest": "Первый запуск",

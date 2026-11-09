@@ -2,11 +2,15 @@
 	"range": {
 		"hours": {
 			"one": "{count} час",
-			"other": "{count} ч"
+			"few": "{count} часа",
+			"many": "{count} часов",
+			"other": "{count} часов"
 		},
 		"days": {
 			"one": "{count} день",
-			"other": "{count} дн."
+			"few": "{count} дня",
+			"many": "{count} дней",
+			"other": "{count} дней"
 		}
 	},
 	"latest": {

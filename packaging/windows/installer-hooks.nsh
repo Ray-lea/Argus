@@ -6,11 +6,13 @@
 ; Where installer-template.nsi finds installer-ui.nsh (this folder).
 !define ARGUS_DIR "${__FILEDIR__}"
 
-; Sets OUT to the text in the installer's language: Simplified Chinese (2052)
-; or English. Keep in step with the MUI_LANGUAGE lines of installer-template.nsi.
-!macro ARGUS_TEXT OUT ZH EN
+; Sets OUT to the text in the installer's language: Simplified Chinese (2052),
+; Russian (1049) or English. Keep in step with the MUI_LANGUAGE lines of installer-template.nsi.
+!macro ARGUS_TEXT OUT ZH RU EN
   ${If} $LANGUAGE == 2052
     StrCpy ${OUT} "${ZH}"
+  ${ElseIf} $LANGUAGE == 1049
+    StrCpy ${OUT} "${RU}"
   ${Else}
     StrCpy ${OUT} "${EN}"
   ${EndIf}
@@ -34,7 +36,10 @@
   ClearErrors
   ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
   ${IfNot} ${Errors}
-    !insertmacro ARGUS_TEXT $2 "正在更新 Argus 特权服务…" "Updating the Argus privileged service…"
+    !insertmacro ARGUS_TEXT $2 \
+      "正在更新 Argus 特权服务…" \
+      "Обновление привилегированной службы Argus…" \
+      "Updating the Argus privileged service…"
     DetailPrint "$2"
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-service-refresh' $0
     ClearErrors
@@ -60,13 +65,17 @@
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-admin-remove' $0
     ${If} ${Errors}
     ${OrIf} $0 != 0
-      !insertmacro ARGUS_TEXT $2 "请先在 Argus 设置中关闭管理员运行，再卸载。" "Turn off administrator startup in Argus settings before uninstalling."
+      !insertmacro ARGUS_TEXT $2 \
+        "请先在 Argus 设置中关闭管理员运行，再卸载。" \
+        "Отключите запуск от имени администратора в настройках Argus перед удалением." \
+        "Turn off administrator startup in Argus settings before uninstalling."
       MessageBox MB_OK|MB_ICONSTOP "$2" /SD IDOK
       Abort
     ${EndIf}
 
     !insertmacro ARGUS_TEXT $2 \
       "检测到已安装的 Argus 特权服务。是否一并卸载？$\r$\n$\r$\n卸载服务需要管理员授权，并将先恢复 Windows 任务管理器。选择“否”将保留该服务，服务会继续随 Windows 启动。" \
+      "Обнаружена установленная привилегированная служба Argus. Удалить её?$\r$\n$\r$\nДля удаления службы требуются права администратора, и сначала будет восстановлен диспетчер задач Windows. Выберите «Нет», чтобы сохранить службу; она продолжит запускаться вместе с Windows." \
       "The Argus privileged service is installed. Uninstall it as well?$\r$\n$\r$\nUninstalling the service requires administrator permission and restores Windows Task Manager first. Choose No to keep the service; it will keep starting with Windows."
     ClearErrors
     ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
@@ -78,6 +87,7 @@
       ${OrIf} $0 != 0
         !insertmacro ARGUS_TEXT $2 \
           "特权服务未能卸载（可能已取消管理员授权）。是否继续卸载 Argus？" \
+          "Не удалось удалить привилегированную службу (возможно, было отклонено разрешение администратора). Продолжить удаление Argus?" \
           "The privileged service couldn't be uninstalled (administrator permission may have been declined). Continue uninstalling Argus?"
         MessageBox MB_YESNO|MB_ICONEXCLAMATION "$2" /SD IDYES IDYES +2
         Abort
@@ -93,12 +103,14 @@
     ${If} ${Errors}
       !insertmacro ARGUS_TEXT $2 \
         "无法运行任务管理器恢复检查。请先完成应急恢复，再卸载。" \
+        "Не удалось запустить проверку восстановления диспетчера задач. Сначала выполните аварийное восстановление, затем повторите удаление." \
         "Couldn't run the Task Manager recovery check. Complete the emergency recovery first, then uninstall."
       MessageBox MB_OK|MB_ICONSTOP "$2" /SD IDOK
       Abort
     ${ElseIf} $0 != 0
       !insertmacro ARGUS_TEXT $2 \
         "请先在 Argus 设置中恢复 Windows 任务管理器，再卸载。" \
+        "Сначала восстановите диспетчер задач Windows в настройках Argus, затем повторите удаление." \
         "Restore Windows Task Manager in Argus settings first, then uninstall."
       MessageBox MB_OK|MB_ICONSTOP "$2" /SD IDOK
       Abort

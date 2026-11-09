@@ -149,18 +149,53 @@ pub fn text_in(locale: Locale, key: &str) -> String {
     lookup(locale, key).to_string()
 }
 
+/// The Unicode plural category for a `count` argument: `one` only covers
+/// exactly 1 elsewhere, but Russian also distinguishes `few` (2–4, 22–24, …)
+/// from `many` (5–20, 11–14, …). A non-integer count has no integer grammar.
+fn plural_category(locale: Locale, count: Option<(&str, &dyn Display)>) -> &'static str {
+    let digits = count.map_or("other".into(), |(_, value)| value.to_string());
+    let Ok(n) = digits.parse::<u64>() else {
+        return "other";
+    };
+    match locale {
+        Locale::RuRu => match (n % 10, n % 100) {
+            (1, r) if r != 11 => "one",
+            (2..=4, r) if !(12..=14).contains(&r) => "few",
+            _ => "many",
+        },
+        _ if n == 1 => "one",
+        _ => "other",
+    }
+}
+
 /// The text for `key` with each `{name}` replaced; use [`tr!`](crate::tr).
+/// A `count` argument first selects a plural variant: `key.one`, `key.few`,
+/// `key.many` or `key.other`.
 pub fn format(key: &str, args: &[(&str, &dyn Display)]) -> String {
     let current = locale();
-    if let Some(map) = APPLICATION_CATALOGS[current as usize].get() {
-        let singular = args
-            .iter()
-            .find(|(name, _)| *name == "count")
-            .is_some_and(|(_, value)| value.to_string() == "1");
-        let variant = format!("{key}.{}", if singular { "one" } else { "other" });
-        if let Some(template) = map.get(&variant) {
-            return render(template, args);
-        }
+    let category = plural_category(
+        current,
+        args.iter().find(|(name, _)| *name == "count").copied(),
+    );
+    let variant = format!("{key}.{category}");
+    if let Some(template) = APPLICATION_CATALOGS[current as usize]
+        .get()
+        .and_then(|map| map.get(&variant))
+    {
+        return render(template, args);
+    }
+    if let Some(template) = current.catalog().get(&variant) {
+        return render(template, args);
+    }
+    let other = format!("{key}.other");
+    if let Some(template) = APPLICATION_CATALOGS[current as usize]
+        .get()
+        .and_then(|map| map.get(&other))
+    {
+        return render(template, args);
+    }
+    if let Some(template) = current.catalog().get(&other) {
+        return render(template, args);
     }
     render(lookup(current, key), args)
 }
@@ -226,6 +261,36 @@ macro_rules! tr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn russian_plural_categories() {
+        let counts = [
+            ("1", "one"),
+            ("21", "one"),
+            ("101", "one"),
+            ("2", "few"),
+            ("5", "many"),
+            ("11", "many"),
+            ("14", "many"),
+            ("22", "few"),
+            ("111", "many"),
+            ("3.5", "other"),
+        ];
+        for (count, category) in counts {
+            assert_eq!(
+                plural_category(Locale::RuRu, Some(("count", &count))),
+                category,
+                "{count}"
+            );
+            assert_eq!(
+                plural_category(Locale::EnUs, Some(("count", &count))),
+                if count == "1" { "one" } else { "other" },
+                "{count}"
+            );
+        }
+        // No count argument at all selects "other".
+        assert_eq!(plural_category(Locale::EnUs, None), "other");
+    }
 
     #[test]
     fn catalogs_parse_and_share_keys() {

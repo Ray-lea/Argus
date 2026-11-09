@@ -29,8 +29,10 @@
 		"source": "Источник: {source}",
 		"progress": "Загружено {received} из {total}",
 		"changes": {
-			"one": "{count} изменение",
-			"other": "{count} изменений"
+			"one": "Изменений: {count}",
+			"few": "Изменений: {count}",
+			"many": "Изменений: {count}",
+			"other": "Изменений: {count}"
 		},
 		"earlier": "Примечания к более ранним версиям доступны на GitHub.",
 		"empty": "Здесь нет примечаний к выпуску; смотрите релизы на GitHub.",

@@ -2,10 +2,14 @@
 	"span": {
 		"seconds": {
 			"one": "{count} секунда",
+			"few": "{count} секунды",
+			"many": "{count} секунд",
 			"other": "{count} секунд"
 		},
 		"minutes": {
 			"one": "{count} минута",
+			"few": "{count} минуты",
+			"many": "{count} минут",
 			"other": "{count} минут"
 		}
 	},
@@ -110,6 +114,8 @@
 		"perCore": "Показания по ядрам",
 		"coreCount": {
 			"one": "{count} ядро",
+			"few": "{count} ядра",
+			"many": "{count} ядер",
 			"other": "{count} ядер"
 		},
 		"coreName": "Ядро {index}",
@@ -117,6 +123,8 @@
 		"boardSensor": "Датчик мат. платы",
 		"fanCount": {
 			"one": "{count} вентилятор",
+			"few": "{count} вентилятора",
+			"many": "{count} вентиляторов",
 			"other": "{count} вентиляторов"
 		},
 		"thermalThrottle": "Тепловой троттлинг",
@@ -533,6 +541,8 @@
 		"engineCount": "Показано механизмов",
 		"engineCountOption": {
 			"one": "{count} механизм",
+			"few": "{count} механизма",
+			"many": "{count} механизмов",
 			"other": "{count} механизмов"
 		},
 		"engineCountAll": "Все {count} механизмов",
