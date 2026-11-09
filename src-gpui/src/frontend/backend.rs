@@ -466,6 +466,36 @@ impl Desktop {
             _ => 2000,
         })
     }
+    /// Once the window has been hidden or minimized for the chosen minutes
+    /// (`memory.releaseHidden`, 0 for never), drops the chart textures and
+    /// gives the process memory back. Showing the window rasters the charts
+    /// again before its first frame.
+    pub(in crate::frontend) fn release_hidden_memory(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (since, released) = *self.hidden_since.get_or_insert((Instant::now(), false));
+        let minutes = self.release_hidden_minutes();
+        if released || minutes == 0 || since.elapsed() < Duration::from_secs(minutes * 60) {
+            return;
+        }
+        self.hidden_since = Some((since, true));
+        charts::release_textures(window, cx);
+        crate::memory_pressure::release_process_memory();
+    }
+    /// The chosen `memory.releaseHidden`; a hand edit to a value on offer
+    /// nowhere reads as the default.
+    pub(in crate::frontend) fn release_hidden_minutes(&self) -> u64 {
+        let minutes = self
+            .prefs
+            .get::<u64>("memory.releaseHidden", DEFAULT_RELEASE_HIDDEN_MINUTES);
+        if RELEASE_HIDDEN_MINUTES.contains(&minutes) {
+            minutes
+        } else {
+            DEFAULT_RELEASE_HIDDEN_MINUTES
+        }
+    }
     /// Reads the lists of the other table pages once, a second after the first
     /// snapshot, so that the first visit shows them at once instead of waiting
     /// for the read (cold, the service list alone took over a second). Each page

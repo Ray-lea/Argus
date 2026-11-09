@@ -135,6 +135,21 @@ fn job_usage() -> Option<usize> {
     Some(total)
 }
 
+/// Gives freed heap memory back to Windows and moves the rest of the working
+/// set out of RAM; pages still in use come back as they are touched.
+pub(crate) fn release_process_memory() {
+    use windows::Win32::System::{
+        Memory::{GetProcessHeap, HEAP_NONE, HeapCompact},
+        Threading::{GetCurrentProcess, SetProcessWorkingSetSize},
+    };
+    unsafe {
+        if let Ok(heap) = GetProcessHeap() {
+            HeapCompact(heap, HEAP_NONE);
+        }
+        let _ = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+    }
+}
+
 pub(crate) fn reduced(headroom: usize, was_reduced: bool) -> bool {
     headroom < if was_reduced { 64 << 20 } else { 32 << 20 }
 }

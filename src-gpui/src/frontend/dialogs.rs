@@ -1712,6 +1712,8 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A restore and hide between two visibility polls starts a new hidden period.
+        self.hidden_since = None;
         // Leave unfinished dialog work in its original page context. Reopening
         // the current default also keeps its selection, scroll and filter.
         if self.modal.is_none()
