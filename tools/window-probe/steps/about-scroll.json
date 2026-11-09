@@ -1,0 +1,14 @@
+{
+  "window": [1240, 800],
+  "steps": [
+    {"note":"A 150% interface scale reduces the content viewport without changing desktop settings."},
+    {"control":{"page":"about","theme":"light","preference":{"uiScale":150}},"wait":700,"inspect":"layout","label":"light-top","expect":{"page":"about","aboutScroll.canScroll":true,"aboutScroll.offset":0,"aboutScroll.atEnd":false},"capture":"light-top"},
+    {"control":{"wheel":{"x":420,"y":250,"lines":-100}},"wait":600,"inspect":"layout","label":"light-bottom","expect":{"aboutScroll.atEnd":true},"capture":"light-bottom"},
+    {"control":{"wheel":{"x":420,"y":250,"lines":100}},"wait":600,"inspect":"layout","label":"light-restored","expect":{"aboutScroll.offset":0,"aboutScroll.atEnd":false}},
+    {"control":{"theme":"dark","preference":{"fontSize":20}},"wait":600,"inspect":"layout","label":"dark-large-font-top","expect":{"aboutScroll.canScroll":true,"aboutScroll.offset":0}},
+    {"control":{"wheel":{"x":420,"y":250,"lines":-100}},"wait":600,"inspect":"layout","label":"dark-large-font-bottom","expect":{"aboutScroll.atEnd":true},"capture":"dark-large-font-bottom"},
+    {"control":{"preference":{"uiScale":100,"fontSize":13}},"probe":"size 1240 1000","wait":600,"inspect":"layout","label":"tall-window","expect":{"height":1000,"aboutScroll.canScroll":false,"aboutScroll.offset":0},"capture":"tall-window"},
+    {"probe":"size 1240 800","control":{"preference":{"uiScale":150}},"wait":600,"inspect":"layout","label":"short-again","expect":{"aboutScroll.canScroll":true,"aboutScroll.offset":0}},
+    {"control":{"wheel":{"x":420,"y":250,"lines":-100}},"wait":600,"inspect":"layout","label":"short-again-bottom","expect":{"aboutScroll.atEnd":true},"capture":"short-again-bottom"}
+  ]
+}

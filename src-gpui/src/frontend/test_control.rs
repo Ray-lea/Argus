@@ -438,6 +438,8 @@ impl Desktop {
                 .timeline
                 .points(model::CPU_TEMPERATURE_SERIES)
                 .unwrap_or_default();
+            let about_max = f32::from(self.about_scroll.max_offset().y);
+            let about_offset = f32::from(self.about_scroll.offset().y).abs();
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
@@ -452,6 +454,8 @@ impl Desktop {
                 "cpuPlot":self.chart_bounds("cpu-overall-plot").map(|b|[f32::from(b.left()),f32::from(b.top()),f32::from(b.size.width),f32::from(b.size.height)]),
                 "performanceScrollY":f32::from(self.device_scroll.max_offset().y),
                 "performanceCardHeight":self.perf_card_chrome.get().map(|chrome| f32::from(window.viewport_size().height - chrome)),
+                "aboutScroll":{"max":about_max,"offset":about_offset,"canScroll":about_max > 0.5,
+                    "atEnd":about_max > 0.5 && (about_offset-about_max).abs() < 0.5},
                 "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()})
             );
         }
