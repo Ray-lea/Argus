@@ -9,7 +9,7 @@ use crate::{
 use argus_core::tr;
 use std::sync::{
     Arc, Mutex, OnceLock,
-    atomic::{AtomicU8, Ordering},
+    atomic::{AtomicBool, AtomicU8, Ordering},
 };
 use std::time::Instant;
 use windows::{
@@ -23,6 +23,7 @@ use windows::{
 };
 static HOST: OnceLock<Host> = OnceLock::new();
 static VIEW: AtomicU8 = AtomicU8::new(WindowState::Hidden as u8);
+static HAS_SHOWN: AtomicBool = AtomicBool::new(false);
 static AWAY: Mutex<Option<(bool, Option<Instant>)>> = Mutex::new(None);
 static UPDATE: Mutex<Option<String>> = Mutex::new(None);
 static TRAY: Mutex<Option<Arc<tray::Worker>>> = Mutex::new(None);
@@ -262,12 +263,20 @@ pub fn resync_visibility(hwnd: HWND) {
         return;
     }
     if next == WindowState::Shown {
+        let first_show = !HAS_SHOWN.swap(true, Ordering::Relaxed);
         if let Some(app) = HOST.get() {
             let away = AWAY.lock().unwrap().take();
             app.state::<crate::AppState>()
                 .sampler
                 .send(Control::Refresh);
-            let _=app.emit("argus-restored",serde_json::json!({"from":if away.is_some_and(|a|a.0){"tray"}else{"minimized"},"awayMs":away.and_then(|a|a.1).map_or(0,|i|i.elapsed().as_millis() as u64)}));
+            let _ = app.emit(
+                "argus-restored",
+                serde_json::json!({
+                    "from": if away.is_some_and(|a| a.0) { "tray" } else { "minimized" },
+                    "awayMs": away.and_then(|a| a.1).map_or(0, |i| i.elapsed().as_millis() as u64),
+                    "firstShow": first_show,
+                }),
+            );
         }
     } else {
         *AWAY.lock().unwrap() = Some((next == WindowState::Hidden, Some(Instant::now())));
@@ -281,7 +290,9 @@ pub fn follow_visibility(window: &NativeWindow) {
     unsafe {
         let _ = SetWindowSubclass(hwnd, Some(procedure), 0x415247, 0);
     }
-    VIEW.store(window_state(hwnd) as u8, Ordering::Relaxed);
+    let state = window_state(hwnd);
+    VIEW.store(state as u8, Ordering::Relaxed);
+    HAS_SHOWN.store(state == WindowState::Shown, Ordering::Relaxed);
 }
 
 pub fn supports_mica() -> bool {

@@ -73,6 +73,14 @@ fn start_page(saved: &Value) -> &'static str {
         .and_then(|saved| start_pages().find(|(page, _)| *page == saved))
         .map_or(PAGES[0].0, |(page, _)| page)
 }
+/// Only a subsequent return from the tray can override the current page.
+/// The first show keeps startup's choice, including an update's saved page.
+fn tray_page(mode: &str, saved: &Value, restored: &Value) -> Option<&'static str> {
+    (mode == "default"
+        && text(restored, "from") == "tray"
+        && restored["firstShow"].as_bool() == Some(false))
+    .then(|| start_page(saved))
+}
 #[derive(Clone)]
 enum Action {
     Sort(String),
@@ -414,7 +422,7 @@ impl Desktop {
             settings_target: None,
             // A start opens the chosen page, wherever the last run ended; an
             // update's relaunch returns to the page it left (`page`, kept
-            // as pages change). Reshowing the window keeps the page shown.
+            // as pages change). Later tray restores follow `trayPage`.
             page: if !options.page.is_empty() {
                 options.page.clone()
             } else if boolean(&info, "updated") {
@@ -818,7 +826,7 @@ impl Render for DesktopRoot {
 
 #[cfg(test)]
 mod tests {
-    use super::{DetailsMode, PAGES, start_page, start_pages};
+    use super::{DetailsMode, PAGES, start_page, start_pages, tray_page};
     use serde_json::{Value, json};
 
     #[test]
@@ -864,6 +872,34 @@ mod tests {
             json!({"page": "history"}),
         ] {
             assert_eq!(start_page(&saved), "processes", "{saved}");
+        }
+    }
+
+    #[test]
+    fn tray_page_is_opt_in_and_uses_the_current_default() {
+        let restored = json!({"from":"tray", "firstShow":false});
+        for mode in ["", "current", "unknown"] {
+            assert_eq!(tray_page(mode, &json!("processes"), &restored), None);
+        }
+        for (page, _) in start_pages() {
+            assert_eq!(tray_page("default", &json!(page), &restored), Some(*page));
+        }
+        assert_eq!(
+            tray_page("default", &json!("invalid-page"), &restored),
+            Some("processes")
+        );
+    }
+
+    #[test]
+    fn tray_page_preserves_initial_update_and_minimized_restores() {
+        for restored in [
+            json!({"from":"tray", "firstShow":true}),
+            json!({"from":"minimized", "firstShow":false}),
+            json!({"from":"minimized", "firstShow":true}),
+            json!({"from":"tray"}),
+            json!({"from":"unknown", "firstShow":false}),
+        ] {
+            assert_eq!(tray_page("default", &json!("processes"), &restored), None);
         }
     }
 }

@@ -1692,10 +1692,27 @@ impl Desktop {
 
     // ---- Toasts -------------------
 
-    /// Coming back from the tray or a minimized window: when it sampled less
-    /// often meanwhile, says so once, with the way to that setting
-    ///.
-    pub(in crate::frontend) fn restored(&mut self, value: &Value) {
+    /// Apply tray navigation before the independent background-cadence notice.
+    pub(in crate::frontend) fn restored(
+        &mut self,
+        value: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Leave unfinished dialog work in its original page context. Reopening
+        // the current default also keeps its selection, scroll and filter.
+        if self.modal.is_none()
+            && let Some(page) = tray_page(
+                &self.prefs.get::<String>("trayPage", "current".into()),
+                &self.prefs.get("startPage", Value::Null),
+                value,
+            )
+            && self.page != page
+        {
+            self.ui.select = None;
+            self.ui.select_leaving = None;
+            self.act(Action::Page(page.into()), window, cx);
+        }
         let tray = text(value, "from") == "tray";
         let quiet = if tray {
             "notice.trayRate"

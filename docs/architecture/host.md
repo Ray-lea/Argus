@@ -4,6 +4,8 @@
 
 平台宿主管理窗口、托盘和全局快捷键。窗口最小化或隐藏时，曲线暂停绘制，采样按相应的后台间隔继续。恢复窗口时请求新快照，按采样时间显示这段间隔。
 
+宿主的 `argus-restored` 事件区分托盘隐藏、最小化和本进程首次显示。界面按 `trayPage` 偏好处理后续托盘恢复：默认保留当前页，选择 `default` 时打开 `startPage` 指定的默认页；未关闭的对话框保留原上下文。首次显示沿用启动页选择，因此更新重启仍回到更新前的页面。
+
 文件拖放由前端的 OLE 接收与 Windows 原生文件消息共同接入。管理员窗口使用原生文件消息通道接收普通权限程序的文件投递；解码限制文件数量、单路径长度及总长度，随后交给现有文件占用查询。窗口销毁时移除消息子类并释放宿主引用。接口见 [DragAcceptFiles](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-dragacceptfiles) 与 [ChangeWindowMessageFilterEx](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-changewindowmessagefilterex)。
 
 `window_motion.rs` 让窗口在显示、隐藏到托盘、最小化和还原时原地淡入淡出（显示 180 ms，离开 140 ms），由独立的 `motion.window` 偏好控制。开启期间抑制 DWM 窗口过渡；关闭时结束当前淡入淡出、移除自身的临时透明样式并停止时钟，释放 DWM 过渡及原生最小化／还原消息的处理。其他线程的请求转到窗口线程执行；标题栏的最小化按钮发送 `SC_MINIMIZE`，开启时任务栏还原和其他程序直接显示窗口也会淡入。

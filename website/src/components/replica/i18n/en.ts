@@ -187,7 +187,7 @@ export const exact: Record<string, string> = {
   "登录 Windows 时启动": "Start when signing in to Windows",
   "以托盘方式静默启动，可通过快捷键或单击托盘图标打开窗口。": "Starts quietly in the system tray. Open the window with the keyboard shortcut or by clicking the tray icon.",
   "默认页面": "Default page",
-  "启动 Argus 后首次显示窗口时打开的页面。从托盘重新打开窗口时保持当前页面。": "The page shown when the window first opens after Argus starts. Reopening the window from the tray keeps the current page.",
+  "启动 Argus 后首次显示窗口时打开的页面。": "The page shown when the window first opens after Argus starts.",
   "关闭窗口时保留在托盘": "Keep in the system tray when closed",
   "保持常驻，可快速重新打开。隐藏期间按“后台常驻时的刷新间隔”采样，历史记录与规则照常运行。": "Keeps Argus running so it reopens quickly. While hidden, it samples at the tray refresh rate, and history and rules keep working.",
   "显示或隐藏 Argus": "Show or hide Argus",

@@ -988,7 +988,7 @@ export function Settings({
           <Setting icon="power" title="登录 Windows 时启动" desc="以托盘方式静默启动，可通过快捷键或单击托盘图标打开窗口。">
             <Switch state label="登录 Windows 时启动" checked={values.autostart} onChange={(v) => set("autostart", v)} />
           </Setting>
-          <Setting icon="processes" title="默认页面" desc="启动 Argus 后首次显示窗口时打开的页面。从托盘重新打开窗口时保持当前页面。">
+          <Setting icon="processes" title="默认页面" desc="启动 Argus 后首次显示窗口时打开的页面。">
             <Select
               label="默认页面"
               value={values.startPage}

@@ -222,7 +222,7 @@ impl Desktop {
                     self.set_control_paused(false, window, cx);
                     self.hotkey_blur(window, cx);
                 }
-                "argus-restored" => self.restored(&event.value),
+                "argus-restored" => self.restored(&event.value, window, cx),
                 "argus-hotkey-changed" => self.hotkey_changed(window, cx),
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
                 "argus-files-dropped" => {

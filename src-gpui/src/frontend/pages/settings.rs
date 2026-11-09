@@ -516,6 +516,32 @@ impl Desktop {
         )
     }
 
+    fn tray_page_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let modes = ["current", "default"];
+        let current = self.prefs.get::<String>("trayPage", "current".into());
+        let select = self.select(
+            "settings-tray-page",
+            label("settings.startup.trayPage.title"),
+            modes
+                .iter()
+                .map(|mode| label(&format!("settings.startup.trayPage.{mode}")))
+                .collect(),
+            Some(modes.iter().position(|mode| *mode == current).unwrap_or(0)),
+            false,
+            move |this, index, window, cx| {
+                this.preference("trayPage", json!(modes[index]), window, cx);
+            },
+            cx,
+        );
+        self.setting_text(
+            "trayPage",
+            "TrayIcon",
+            "settings.startup.trayPage.title",
+            "settings.startup.trayPage.desc",
+            vec![select],
+        )
+    }
+
     /// The interface motion toggle (also used by the onboarding).
     pub(in crate::frontend) fn motion_toggle(
         &self,
@@ -1122,6 +1148,7 @@ impl Desktop {
                     vec![autostart],
                 ));
                 cards.push(self.start_page_setting(cx));
+                cards.push(self.tray_page_setting(cx));
                 let tray = self.setting_toggle(
                     "closeToTray",
                     boolean(settings, "closeToTray"),

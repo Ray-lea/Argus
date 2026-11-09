@@ -10,6 +10,11 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         if self.options.fixture.is_some()
+            && let Some(restored) = control.get("restored")
+        {
+            let _ = self.host.emit("argus-restored", restored.clone());
+        }
+        if self.options.fixture.is_some()
             && let Some(dimensions) = control["nativeResize"].as_array().filter(|a| a.len() == 2)
             && let Some(width) = dimensions[0]
                 .as_f64()

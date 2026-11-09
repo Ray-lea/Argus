@@ -41,7 +41,13 @@
     },
     "startPage": {
       "title": "Default page",
-      "desc": "The page shown when the window first opens after Argus starts. Reopening the window from the tray keeps the current page."
+      "desc": "The page shown when the window first opens after Argus starts."
+    },
+    "trayPage": {
+      "title": "Reopen from tray",
+      "desc": "Applies when reopening through the tray or a shortcut. Restoring a minimized window keeps the current page.",
+      "current": "Keep current page",
+      "default": "Open default page"
     },
     "closeToTray": {
       "title": "Keep in the system tray when closed",
