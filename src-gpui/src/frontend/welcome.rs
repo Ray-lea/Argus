@@ -492,7 +492,7 @@ impl Desktop {
                 .text_size(theme::font(12.))
                 .text_color(p.ink)
                 .child(icon("WarningIcon", p.io).size(px(14.)).flex_shrink_0())
-                .child(div().flex_1().child(text))
+                .child(div().flex_1().min_w_0().child(text))
                 .into_any_element()
         } else {
             div()
@@ -548,7 +548,7 @@ impl Desktop {
                     .when(done && !busy, |d| {
                         d.child(icon("CheckIcon", p.accent).size(px(14.)))
                     })
-                    .child(text),
+                    .child(div().flex_1().min_w_0().child(text)),
             )
             .child(
                 div()
