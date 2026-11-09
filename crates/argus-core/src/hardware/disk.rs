@@ -1,15 +1,18 @@
 //! Physical disks: identity via storage IOCTLs, activity via IOCTL_DISK_PERFORMANCE.
-//! Every IOCTL used here is FILE_ANY_ACCESS, so no elevation is needed.
+//! Device presence is independent of performance counter support.
+mod discovery;
+#[cfg(test)]
+mod tests;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, GetDriveTypeW,
-    GetLogicalDrives, OPEN_EXISTING,
+    CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    GetDriveTypeW, GetLogicalDrives, OPEN_EXISTING,
 };
 use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::Ioctl::{
@@ -46,9 +49,9 @@ const DRIVE_FIXED: u32 = 3;
 const RESCAN_EVERY: Duration = Duration::from_secs(15);
 /// The drive reads its sensor for every query; temperature moves slowly anyway.
 const TEMPERATURE_EVERY: Duration = Duration::from_secs(5);
-const MAX_DISKS: u32 = 32;
+const LEGACY_PROBE_DISKS: u32 = 32;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiskInfo {
     pub index: u32,
@@ -68,13 +71,13 @@ pub struct DiskInfo {
 #[serde(rename_all = "camelCase")]
 pub struct DiskStats {
     pub info: Arc<DiskInfo>,
-    /// Percent of time the disk was busy, 0–100.
-    pub active: f32,
-    /// Bytes per second.
-    pub read: u64,
-    pub write: u64,
+    /// Percent of time the disk was busy, 0–100; unknown without a valid interval.
+    pub active: Option<f32>,
+    /// Bytes per second; unavailable counters remain unknown.
+    pub read: Option<u64>,
+    pub write: Option<u64>,
     /// Average time per transfer, ms.
-    pub response_ms: f32,
+    pub response_ms: Option<f32>,
     /// °C, for drives that report it (most NVMe and SATA SSDs).
     pub temperature: Option<f32>,
     /// The drive's own warning threshold, °C.
@@ -82,7 +85,7 @@ pub struct DiskStats {
 }
 
 struct Disk {
-    handle: OwnedHandle,
+    handle: Option<OwnedHandle>,
     info: Arc<DiskInfo>,
     prev: Option<DISK_PERFORMANCE>,
     /// Last reading as (°C, warning °C); None once the drive declines.
@@ -108,26 +111,68 @@ impl DiskTracker {
 
     fn rescan(&mut self) {
         let volumes = volume_map();
+        let mut discovered = discovery::disks();
         let mut old: HashMap<u32, Disk> = self.disks.drain(..).map(|d| (d.info.index, d)).collect();
-        for index in 0..MAX_DISKS {
-            let Some(handle) = open(&format!(r"\\.\PhysicalDrive{index}")) else {
-                continue;
+        let indices: BTreeSet<_> = (0..LEGACY_PROBE_DISKS)
+            .chain(discovered.keys().copied())
+            .chain(volumes.keys().copied())
+            .filter(|index| *index <= 4095)
+            .collect();
+        for index in indices {
+            let opened = open(&format!(r"\\.\PhysicalDrive{index}"))
+                .or_else(|code| discovered.remove(&index).ok_or(code));
+            let handle = match opened {
+                Ok(handle) => Some(handle),
+                Err(code) => {
+                    if !matches!(code, 2 | 3 | 21 | 1112) {
+                        failure("disk.open", index, code);
+                    }
+                    if let Some(disk) = old.remove(&index).filter(|_| !matches!(code, 2 | 3)) {
+                        self.disks.push(disk);
+                        continue;
+                    }
+                    if !volumes.contains_key(&index) {
+                        continue;
+                    }
+                    None
+                }
             };
             let vols = volumes.get(&index).cloned().unwrap_or_default();
-            // Keep counters (and identity) of disks we already know.
-            if let Some(mut d) = old.remove(&index) {
-                if d.info.volumes != vols {
-                    let mut info = DiskInfo {
+            let (info, geometry_error) = match &handle {
+                Some(handle) => describe(handle.0, index, vols),
+                None => (
+                    DiskInfo {
+                        index,
+                        model: String::new(),
+                        size: 0,
+                        bus: "other",
+                        ssd: None,
+                        removable: false,
                         volumes: vols,
-                        ..clone_info(&d.info)
-                    };
-                    info.volumes.sort();
+                    },
+                    None,
+                ),
+            };
+            if no_media(&info, geometry_error) {
+                continue;
+            }
+            // Refresh handles and metadata on hotplug without resetting a
+            // healthy counter stream for a disk whose identity is unchanged.
+            if let Some(mut d) = old.remove(&index) {
+                let identity_changed = d.info.model != info.model
+                    || d.info.size != info.size
+                    || d.info.bus != info.bus;
+                if identity_changed || d.prev.is_none() || d.handle.is_none() {
+                    d.handle = handle;
+                    d.prev = None;
+                }
+                if *d.info != info {
                     d.info = Arc::new(info);
                 }
+                d.temperature_supported = true;
                 self.disks.push(d);
                 continue;
             }
-            let info = describe(handle.0, index, vols);
             self.disks.push(Disk {
                 handle,
                 info: Arc::new(info),
@@ -144,84 +189,125 @@ impl DiskTracker {
         if self.scanned_at.elapsed() > RESCAN_EVERY {
             self.rescan();
         }
-        let mut out = Vec::with_capacity(self.disks.len());
-        for d in &mut self.disks {
-            let Some(now) = performance(d.handle.0) else {
-                continue;
-            };
+        self.collect(|d| {
+            let handle = d.handle.as_ref()?;
             if d.temperature_supported
                 && d.temperature_at
                     .is_none_or(|t| t.elapsed() > TEMPERATURE_EVERY)
             {
-                d.temperature = temperature(d.handle.0);
+                d.temperature = temperature(handle.0);
                 d.temperature_supported = d.temperature.is_some();
                 d.temperature_at = Some(Instant::now());
             }
-            let mut stats = DiskStats {
-                info: d.info.clone(),
-                active: 0.0,
-                read: 0,
-                write: 0,
-                response_ms: 0.0,
-                temperature: d.temperature.map(|t| t.0),
-                temperature_warning: d.temperature.and_then(|t| t.1),
-            };
-            if let Some(prev) = d.prev {
-                let elapsed = (now.QueryTime - prev.QueryTime) as f64; // 100 ns ticks
-                if elapsed > 0.0 {
-                    let idle = (now.IdleTime - prev.IdleTime) as f64;
-                    stats.active = ((1.0 - idle / elapsed) * 100.0).clamp(0.0, 100.0) as f32;
-                    let secs = elapsed / 1e7;
-                    stats.read = ((now.BytesRead - prev.BytesRead).max(0) as f64 / secs) as u64;
-                    stats.write =
-                        ((now.BytesWritten - prev.BytesWritten).max(0) as f64 / secs) as u64;
-                    let transfers = now.ReadCount.wrapping_sub(prev.ReadCount) as u64
-                        + now.WriteCount.wrapping_sub(prev.WriteCount) as u64;
-                    let busy =
-                        ((now.ReadTime - prev.ReadTime) + (now.WriteTime - prev.WriteTime)).max(0);
-                    if transfers > 0 {
-                        stats.response_ms = (busy as f64 / transfers as f64 / 10_000.0) as f32;
-                    }
+            match performance(handle.0) {
+                Ok(now) => Some(now),
+                Err(code) => {
+                    failure("disk.performance", d.info.index, code);
+                    None
                 }
             }
-            d.prev = Some(now);
-            out.push(stats);
-        }
-        out
+        })
+    }
+
+    fn collect(
+        &mut self,
+        mut read: impl FnMut(&mut Disk) -> Option<DISK_PERFORMANCE>,
+    ) -> Vec<DiskStats> {
+        self.disks
+            .iter_mut()
+            .map(|d| {
+                let now = read(d);
+                let mut stats = DiskStats {
+                    info: d.info.clone(),
+                    active: None,
+                    read: None,
+                    write: None,
+                    response_ms: None,
+                    temperature: d.temperature.map(|t| t.0),
+                    temperature_warning: d.temperature.and_then(|t| t.1),
+                };
+                if let (Some(prev), Some(now)) = (d.prev, now) {
+                    let elapsed = (now.QueryTime - prev.QueryTime) as f64; // 100 ns ticks
+                    if elapsed > 0.0
+                        && now.BytesRead >= prev.BytesRead
+                        && now.BytesWritten >= prev.BytesWritten
+                        && now.IdleTime >= prev.IdleTime
+                        && now.ReadTime >= prev.ReadTime
+                        && now.WriteTime >= prev.WriteTime
+                    {
+                        let idle = (now.IdleTime - prev.IdleTime) as f64;
+                        stats.active =
+                            Some(((1.0 - idle / elapsed) * 100.0).clamp(0.0, 100.0) as f32);
+                        let secs = elapsed / 1e7;
+                        stats.read = Some(((now.BytesRead - prev.BytesRead) as f64 / secs) as u64);
+                        stats.write =
+                            Some(((now.BytesWritten - prev.BytesWritten) as f64 / secs) as u64);
+                        let transfers = now.ReadCount.wrapping_sub(prev.ReadCount) as u64
+                            + now.WriteCount.wrapping_sub(prev.WriteCount) as u64;
+                        let busy = (now.ReadTime - prev.ReadTime) as f64
+                            + (now.WriteTime - prev.WriteTime) as f64;
+                        stats.response_ms = Some(if transfers > 0 {
+                            (busy / transfers as f64 / 10_000.0) as f32
+                        } else {
+                            0.
+                        });
+                    }
+                }
+                // Failure resets the baseline, so recovery never averages across
+                // a missing interval or reports an old sample as current activity.
+                d.prev = now;
+                stats
+            })
+            .collect()
     }
 }
 
-fn clone_info(i: &DiskInfo) -> DiskInfo {
-    DiskInfo {
-        index: i.index,
-        model: i.model.clone(),
-        size: i.size,
-        bus: i.bus,
-        ssd: i.ssd,
-        removable: i.removable,
-        volumes: i.volumes.clone(),
+fn no_media(info: &DiskInfo, geometry_error: Option<u32>) -> bool {
+    info.size == 0
+        && info.volumes.is_empty()
+        && (geometry_error == Some(1112) || (info.removable && geometry_error == Some(21)))
+}
+
+fn native_code(error: windows::core::Error) -> u32 {
+    let code = error.code().0 as u32;
+    if code >> 16 == 0x8007 {
+        code & 0xffff
+    } else {
+        code
     }
+}
+
+fn failure(stage: &'static str, index: u32, code: u32) {
+    crate::diagnostics::warn(
+        stage,
+        format!("disk={index}; {}", crate::diagnostics::code(code)),
+    );
 }
 
 /// Opens a device for IOCTLs only (no read/write access, so no admin needed).
-fn open(path: &str) -> Option<OwnedHandle> {
+fn open(path: &str) -> Result<OwnedHandle, u32> {
     let w = wide(path);
     unsafe {
         CreateFileW(
             PCWSTR(w.as_ptr()),
             0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             None,
             OPEN_EXISTING,
             FILE_FLAGS_AND_ATTRIBUTES(0),
             None,
         )
     }
-    .ok()
     .map(OwnedHandle)
+    .map_err(native_code)
 }
 
-fn ioctl(handle: HANDLE, code: u32, input: Option<&[u8]>, out: &mut AlignedBuf) -> Option<u32> {
+fn ioctl(
+    handle: HANDLE,
+    code: u32,
+    input: Option<&[u8]>,
+    out: &mut AlignedBuf,
+) -> Result<u32, u32> {
     let mut returned = 0u32;
     unsafe {
         DeviceIoControl(
@@ -235,20 +321,33 @@ fn ioctl(handle: HANDLE, code: u32, input: Option<&[u8]>, out: &mut AlignedBuf) 
             None,
         )
     }
-    .ok()
+    .map_err(native_code)
     .map(|_| returned)
 }
 
-fn performance(handle: HANDLE) -> Option<DISK_PERFORMANCE> {
+fn performance(handle: HANDLE) -> Result<DISK_PERFORMANCE, u32> {
     let mut buf = AlignedBuf::with_capacity(std::mem::size_of::<DISK_PERFORMANCE>());
-    ioctl(handle, IOCTL_DISK_PERFORMANCE, None, &mut buf)?;
-    Some(unsafe { std::ptr::read(buf.as_ptr() as *const DISK_PERFORMANCE) })
+    let returned = ioctl(handle, IOCTL_DISK_PERFORMANCE, None, &mut buf)?;
+    if returned as usize != std::mem::size_of::<DISK_PERFORMANCE>() {
+        return Err(13);
+    }
+    let value = unsafe { std::ptr::read(buf.as_ptr() as *const DISK_PERFORMANCE) };
+    if value.QueryTime <= 0
+        || value.BytesRead < 0
+        || value.BytesWritten < 0
+        || value.IdleTime < 0
+        || value.ReadTime < 0
+        || value.WriteTime < 0
+    {
+        return Err(13);
+    }
+    Ok(value)
 }
 
 fn query_property(
     handle: HANDLE,
     id: windows::Win32::System::Ioctl::STORAGE_PROPERTY_ID,
-) -> Option<AlignedBuf> {
+) -> Result<(AlignedBuf, usize), u32> {
     let query = STORAGE_PROPERTY_QUERY {
         PropertyId: id,
         QueryType: PropertyStandardQuery,
@@ -261,13 +360,19 @@ fn query_property(
         )
     };
     let mut buf = AlignedBuf::with_capacity(1024);
-    ioctl(handle, IOCTL_STORAGE_QUERY_PROPERTY, Some(input), &mut buf)?;
-    Some(buf)
+    let returned = ioctl(handle, IOCTL_STORAGE_QUERY_PROPERTY, Some(input), &mut buf)? as usize;
+    if returned > buf.len() {
+        return Err(13);
+    }
+    Ok((buf, returned))
 }
 
 /// The drive's composite temperature and warning threshold (°C).
 fn temperature(handle: HANDLE) -> Option<(f32, Option<f32>)> {
-    let buf = query_property(handle, StorageDeviceTemperatureProperty)?;
+    let (buf, returned) = query_property(handle, StorageDeviceTemperatureProperty).ok()?;
+    if returned < std::mem::size_of::<STORAGE_TEMPERATURE_DATA_DESCRIPTOR>() {
+        return None;
+    }
     // SAFETY: the buffer holds the descriptor the IOCTL wrote (1 KB, aligned).
     let d = unsafe { &*(buf.as_ptr() as *const STORAGE_TEMPERATURE_DATA_DESCRIPTOR) };
     if d.InfoCount == 0 {
@@ -283,7 +388,7 @@ fn temperature(handle: HANDLE) -> Option<(f32, Option<f32>)> {
     })
 }
 
-fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> DiskInfo {
+fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> (DiskInfo, Option<u32>) {
     volumes.sort();
     let mut info = DiskInfo {
         index,
@@ -295,9 +400,18 @@ fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> DiskInfo {
         volumes,
     };
 
-    if let Some(buf) = query_property(handle, StorageDeviceProperty) {
+    if let Ok((buf, returned)) = query_property(handle, StorageDeviceProperty)
+        .and_then(|(buf, returned)| {
+            if returned >= std::mem::offset_of!(STORAGE_DEVICE_DESCRIPTOR, RawDeviceProperties) {
+                Ok((buf, returned))
+            } else {
+                Err(13)
+            }
+        })
+        .inspect_err(|code| failure("disk.identity", index, *code))
+    {
         let desc = unsafe { &*(buf.as_ptr() as *const STORAGE_DEVICE_DESCRIPTOR) };
-        let raw = unsafe { std::slice::from_raw_parts(buf.as_ptr(), buf.len()) };
+        let raw = unsafe { std::slice::from_raw_parts(buf.as_ptr(), returned) };
         let string_at = |offset: u32| -> String {
             let o = offset as usize;
             if o == 0 || o >= raw.len() {
@@ -323,7 +437,9 @@ fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> DiskInfo {
         info.bus = bus_name(desc.BusType.0 as u32);
     }
 
-    if let Some(buf) = query_property(handle, StorageDeviceSeekPenaltyProperty) {
+    if let Ok((buf, returned)) = query_property(handle, StorageDeviceSeekPenaltyProperty)
+        && returned >= std::mem::size_of::<DEVICE_SEEK_PENALTY_DESCRIPTOR>()
+    {
         let desc = unsafe { &*(buf.as_ptr() as *const DEVICE_SEEK_PENALTY_DESCRIPTOR) };
         info.ssd = Some(!desc.IncursSeekPenalty);
     }
@@ -332,11 +448,22 @@ fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> DiskInfo {
     }
 
     let mut geo = AlignedBuf::with_capacity(256);
-    if ioctl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, None, &mut geo).is_some() {
+    let geometry =
+        ioctl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, None, &mut geo).and_then(|returned| {
+            if (returned as usize) < std::mem::offset_of!(DISK_GEOMETRY_EX, DiskSize) + 8 {
+                return Err(13);
+            }
+            Ok(())
+        });
+    if geometry.is_ok() {
         let g = unsafe { &*(geo.as_ptr() as *const DISK_GEOMETRY_EX) };
         info.size = g.DiskSize.max(0) as u64;
+    } else if let Err(code) = geometry
+        && !no_media(&info, Some(code))
+    {
+        failure("disk.geometry", index, code);
     }
-    info
+    (info, geometry.err())
 }
 
 /// Maps physical disk number to the drive letters that live on it.
@@ -354,12 +481,11 @@ pub(super) fn volume_map() -> HashMap<u32, Vec<String>> {
         if kind != DRIVE_FIXED && kind != DRIVE_REMOVABLE {
             continue;
         }
-        let Some(h) = open(&format!(r"\\.\{letter}")) else {
+        let Ok(h) = open(&format!(r"\\.\{letter}")) else {
             continue;
         };
         let mut buf = AlignedBuf::with_capacity(512);
-        let Some(returned) = ioctl(h.0, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, None, &mut buf)
-        else {
+        let Ok(returned) = ioctl(h.0, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, None, &mut buf) else {
             continue;
         };
         let offset = std::mem::offset_of!(VOLUME_DISK_EXTENTS, Extents);

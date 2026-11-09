@@ -378,7 +378,12 @@ impl Desktop {
             ),
             "disk" => {
                 let disk = &hw["disks"][device.index];
-                let mut parts = vec![format!("{}%", number(disk, "active").round())];
+                let mut parts = vec![
+                    disk["active"]
+                        .as_f64()
+                        .map(|v| format!("{}%", v.round()))
+                        .unwrap_or_else(missing),
+                ];
                 let kind = disk_kind(&disk["info"]);
                 if !kind.is_empty() {
                     parts.insert(0, kind);
@@ -2203,30 +2208,58 @@ impl Desktop {
         if details {
             return vec![head, self.disk_details(device, window, cx)];
         }
+        let head = div()
+            .flex()
+            .flex_col()
+            .child(head)
+            .when(!disk["active"].is_number(), |d| {
+                d.child(
+                    div()
+                        .mt(px(6.))
+                        .text_size(theme::font(12.))
+                        .text_color(p.muted)
+                        .child(label("performance.disk.performanceUnavailable")),
+                )
+            })
+            .into_any_element();
         let prefix = format!("hardware.disks.{}", device.index);
         let mut stats = vec![
             self.stat(
                 label("performance.disk.activeTime"),
-                format!("{}", number(disk, "active").round()),
-                Some("%".into()),
+                disk["active"]
+                    .as_f64()
+                    .map(|v| format!("{}", v.round()))
+                    .unwrap_or_else(missing),
+                disk["active"].is_number().then(|| "%".into()),
                 None,
                 cx,
             ),
             self.stat(
                 label("performance.disk.responseTime"),
-                format!("{:.1}", number(disk, "responseMs")),
-                Some(label("performance.disk.ms")),
+                disk["responseMs"]
+                    .as_f64()
+                    .map(|v| format!("{v:.1}"))
+                    .unwrap_or_else(missing),
+                disk["responseMs"]
+                    .is_number()
+                    .then(|| label("performance.disk.ms")),
                 None,
                 cx,
             ),
             self.stat_parts(
                 label("performance.disk.readSpeed"),
-                charts::byte_rate(number(disk, "read")),
+                disk["read"]
+                    .as_f64()
+                    .map(charts::byte_rate)
+                    .unwrap_or_else(missing),
                 cx,
             ),
             self.stat_parts(
                 label("performance.disk.writeSpeed"),
-                charts::byte_rate(number(disk, "write")),
+                disk["write"]
+                    .as_f64()
+                    .map(charts::byte_rate)
+                    .unwrap_or_else(missing),
                 cx,
             ),
         ];

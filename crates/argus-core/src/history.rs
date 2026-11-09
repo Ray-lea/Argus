@@ -55,7 +55,7 @@ pub struct HistoryPoint {
     pub gpu: f32,
     pub mem_used: u64,
     pub mem_total: u64,
-    /// Bytes per second, all disks.
+    /// Bytes per second from available disk counters.
     pub disk: u64,
     /// Bytes per second, all adapters.
     pub net: u64,
@@ -195,7 +195,11 @@ impl HistoryRecorder {
             .hardware
             .disks
             .iter()
-            .map(|d| d.read + d.write)
+            .filter_map(|d| {
+                d.read
+                    .zip(d.write)
+                    .map(|(read, write)| read.saturating_add(write))
+            })
             .sum::<u64>() as f64;
         w.net += s.hardware.nics.iter().map(|n| n.rx + n.tx).sum::<u64>() as f64;
         // Across batteries the level is averaged and the flows summed, so a

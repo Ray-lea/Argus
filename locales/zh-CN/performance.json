@@ -288,6 +288,7 @@
     "readAt": "读取于 {time}",
     "loading": "正在读取磁盘信息…",
     "unavailable": "暂无磁盘详情。",
+    "performanceUnavailable": "暂时无法读取磁盘性能计数。",
     "openFailed": "无法打开此磁盘。",
     "errorCode": "Windows 错误码 {code}",
     "health": "健康状况",

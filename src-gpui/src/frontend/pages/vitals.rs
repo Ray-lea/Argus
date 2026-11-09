@@ -456,12 +456,10 @@ impl Desktop {
                     .map(|(v, source)| (format!("{} W", charts::watts(v)), label(source))),
             ),
         ];
-        let disk = values(&hw["disks"])
-            .iter()
-            .map(|d| number(d, "read") + number(d, "write"))
-            .sum::<f64>();
+        let disk = model::disk_rate(values(&hw["disks"]));
         let busiest = values(&hw["disks"])
             .iter()
+            .filter(|disk| disk["active"].is_number())
             .max_by(|a, b| number(a, "active").total_cmp(&number(b, "active")));
         // The busiest GPU; the first one listed while they are equally busy.
         let gpu = values(&hw["gpus"])
@@ -494,11 +492,16 @@ impl Desktop {
                 .map(|(figure, unit)| (figure.to_owned(), unit.to_owned()))
                 .unwrap_or((value, String::new()))
         };
-        let disk_value = split(if disk < 1. {
-            "0 KB/s".into()
-        } else {
-            theme::bytes(disk, true)
-        });
+        let disk_value = split(
+            disk.map(|value| {
+                if value < 1. {
+                    "0 KB/s".into()
+                } else {
+                    theme::bytes(value, true)
+                }
+            })
+            .unwrap_or_else(|| label("format.missing")),
+        );
         let net_value = split(if rx + tx < 1. {
             if bits {
                 "0 Kbps".into()
@@ -552,6 +555,7 @@ impl Desktop {
                 device: format!(
                     "disk:{}",
                     busiest
+                        .or_else(|| values(&hw["disks"]).first())
                         .map(|d| d["info"]["index"].clone())
                         .unwrap_or(json!(0))
                 ),

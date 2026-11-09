@@ -53,6 +53,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`vitals-visibility.json`](../../tools/window-probe/steps/vitals-visibility.json) 检查概况带的固定十行高度预算、全部折叠、空搜索结果、手动模式、缩放窗口与动画中断，并录制展开和收起。`inspectLayout.vitals` 记录完整页面高度、所需高度、动画高度及活动曲线数；隐藏完成后活动曲线数为零。
 
+[`disk-counters-unavailable.json`](../../tools/window-probe/steps/disk-counters-unavailable.json) 检查两块磁盘中一块性能计数不可用时的设备列表、未知数值、详情页与恢复后的读数，并覆盖小窗口。
+
 测试控制除页面、主题、对话框等既有项外，还包括：
 
 | 控制 | 作用 |

@@ -300,6 +300,7 @@
     "readAt": "Read at {time}",
     "loading": "Reading disk information…",
     "unavailable": "No disk details.",
+    "performanceUnavailable": "Disk performance counters are temporarily unavailable.",
     "openFailed": "This disk could not be opened.",
     "errorCode": "Windows error code {code}",
     "health": "Health",

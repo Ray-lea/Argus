@@ -33,7 +33,7 @@ fn main() {
     println!("MEM {:?}", hw.memory);
     for d in &hw.disks {
         println!(
-            "DISK {} {:?} {} GB bus={} ssd={:?} vols={:?} | active {:.1}% r {} KB/s w {} KB/s resp {:.2} ms temp {:?} (warn {:?})",
+            "DISK {} {:?} {} GB bus={} ssd={:?} vols={:?} | active {:?}% r {:?} KB/s w {:?} KB/s resp {:?} ms temp {:?} (warn {:?})",
             d.info.index,
             d.info.model,
             d.info.size / 1_000_000_000,
@@ -41,8 +41,8 @@ fn main() {
             d.info.ssd,
             d.info.volumes,
             d.active,
-            d.read / 1024,
-            d.write / 1024,
+            d.read.map(|v| v / 1024),
+            d.write.map(|v| v / 1024),
             d.response_ms,
             d.temperature,
             d.temperature_warning

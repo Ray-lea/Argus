@@ -1,0 +1,10 @@
+{
+  "window": [1000,680],
+  "steps": [
+    {"control":{"sample":{"set":{"/hardware/disks":[{"info":{"index":0,"model":"Secondary NVMe","size":1024209543168,"bus":"nvme","ssd":true,"removable":false,"volumes":["E:"]},"active":null,"read":null,"write":null,"responseMs":null,"temperature":35,"temperatureWarning":80},{"info":{"index":1,"model":"System NVMe","size":1024209543168,"bus":"nvme","ssd":true,"removable":false,"volumes":["C:"]},"active":12,"read":1048576,"write":2097152,"responseMs":0.3,"temperature":38,"temperatureWarning":80}]}},"page":"performance","device":"disk:0","preference":{"diskPage":"overview"},"pointerOutside":true},"wait":700,"inspect":"layout","label":"unavailable-disk-visible","expect":{"page":"performance","device":"disk:0"},"capture":"disk-0-unavailable"},
+    {"control":{"device":"disk:1"},"wait":500,"inspect":"layout","label":"healthy-disk-visible","expect":{"device":"disk:1"},"capture":"disk-1-healthy"},
+    {"control":{"device":"disk:0","preference":{"diskPage":"details"},"data":{"diskDetails.0":{"index":0,"queriedAt":1794211200000,"volumes":["E:"],"identity":{"model":"Secondary NVMe","bus":"nvme","busCode":17,"removable":false},"capacityBytes":1024209543168,"solidState":true,"logicalSectorBytes":512,"physicalSectorBytes":4096,"queries":[{"query":"open","state":"ready"},{"query":"identity","state":"ready"}]}}},"wait":650,"capture":"disk-0-details"},
+    {"control":{"preference":{"diskPage":"overview"},"sample":{"set":{"/hardware/disks/0/active":25,"/hardware/disks/0/read":4194304,"/hardware/disks/0/write":1048576,"/hardware/disks/0/responseMs":0.4}}},"wait":650,"capture":"disk-0-recovered"},
+    {"control":{"sample":{"set":{"/hardware/disks/0/active":null,"/hardware/disks/0/read":null,"/hardware/disks/0/write":null,"/hardware/disks/0/responseMs":null}}},"probe":"size 640 480","wait":650,"inspect":"layout","label":"small-unknown-still-present","expect":{"device":"disk:0"},"capture":"disk-0-small"}
+  ]
+}

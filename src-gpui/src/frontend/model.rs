@@ -67,6 +67,16 @@ pub fn boolean(value: &Value, key: &str) -> bool {
     value.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// A whole-machine disk rate is unknown if any present disk lacks counters.
+pub fn disk_rate(disks: &[Value]) -> Option<f64> {
+    if disks.is_empty() {
+        return None;
+    }
+    disks.iter().try_fold(0., |sum, disk| {
+        Some(sum + disk["read"].as_f64()? + disk["write"].as_f64()?)
+    })
+}
+
 pub fn values(value: &Value) -> &[Value] {
     value.as_array().map(Vec::as_slice).unwrap_or_default()
 }
@@ -971,15 +981,7 @@ impl Timeline {
         let hardware = &snapshot["hardware"];
         metrics.extend([
             (CPU_TEMPERATURE_SERIES.into(), cpu_temperature(hardware)),
-            (
-                "totals.disk".into(),
-                Some(
-                    values(&hardware["disks"])
-                        .iter()
-                        .map(|d| number(d, "read") + number(d, "write"))
-                        .sum(),
-                ),
-            ),
+            ("totals.disk".into(), disk_rate(values(&hardware["disks"]))),
             (
                 "totals.network".into(),
                 Some(
@@ -1437,6 +1439,16 @@ mod tests {
         );
         assert_eq!(pids(&rows), [1]);
         assert!(!rows[0].expanded);
+    }
+
+    #[test]
+    fn unavailable_disk_counters_do_not_become_zero_or_a_complete_total() {
+        let known = json!({"read":1024,"write":2048});
+        let missing = json!({"read":null,"write":null});
+        assert_eq!(super::disk_rate(&[]), None);
+        assert_eq!(super::disk_rate(std::slice::from_ref(&known)), Some(3072.));
+        assert_eq!(super::disk_rate(&[known, missing]), None);
+        assert_eq!(super::disk_rate(&[json!({"read":0,"write":0})]), Some(0.));
     }
 
     #[test]
