@@ -21,7 +21,7 @@
     "service": "Служба",
     "explorer": "Проводник",
     "console": "Консоль",
-    "critical": "Критическая система"
+    "critical": "Критически важный для системы"
   },
   "service": "Служба {name}",
   "handleCount": {

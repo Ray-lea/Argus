@@ -19,7 +19,7 @@
   "ArgusLaunch": "Запустить Argus",
   "ArgusClose": "Закрыть",
   "ArgusUninstallTitle": "Удалить Argus",
-  "ArgusUninstallText": "Argus {version} будет удален из этого PC.",
+  "ArgusUninstallText": "Argus {version} будет удалён с этого компьютера.",
   "ArgusDeleteData": "Также удалить настройки, историю и журналы",
   "ArgusDataLeft": "Не удалось удалить часть настроек, истории или журналов. Их можно удалить вручную:",
   "ArgusUninstall": "Удалить",
