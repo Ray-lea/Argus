@@ -25,16 +25,7 @@ impl Desktop {
                         .child(tr!("shell.loadingProcesses"))
                         .into_any_element();
                 }
-                // A region of its own: scrolling the list or animating the details
-                // pane replays the cards.
-                let vitals = self.region(
-                    regions::RegionKind::Vitals,
-                    StyleRefinement::default()
-                        .w_full()
-                        .h(theme::dimension("vitalsHeight"))
-                        .flex_shrink_0(),
-                    cx,
-                );
+                let vitals = self.vitals_band(window, cx);
                 let table = self.table_view(window, cx);
                 // The pane follows its handle without easing while dragged.
                 let dragging = self.drag.as_ref().is_some_and(|drag| drag.0 == "details");
@@ -90,12 +81,14 @@ impl Desktop {
                 // A search narrows the list: an accent ring around it says so at a glance.
                 let filtered = !self.query.trim().is_empty();
                 let accent = self.palette.accent;
+                let viewport = self.process_viewport_observer(cx);
                 div()
+                    .relative()
                     .size_full()
                     .min_h_0()
                     .flex()
                     .flex_col()
-                    .gap(px(10.))
+                    .child(viewport)
                     .child(vitals)
                     .child(
                         div()

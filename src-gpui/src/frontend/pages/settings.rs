@@ -516,6 +516,25 @@ impl Desktop {
         )
     }
 
+    fn vitals_mode_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let modes = ["auto", "show", "hide"];
+        let current = self.prefs.get::<String>("vitalsMode", "auto".into());
+        self.select(
+            "settings-vitals-mode",
+            label("settings.vitals.title"),
+            modes
+                .iter()
+                .map(|mode| label(&format!("settings.vitals.{mode}")))
+                .collect(),
+            Some(modes.iter().position(|mode| *mode == current).unwrap_or(0)),
+            false,
+            move |this, index, window, cx| {
+                this.preference("vitalsMode", json!(modes[index]), window, cx)
+            },
+            cx,
+        )
+    }
+
     fn tray_page_setting(&self, cx: &mut Context<Self>) -> AnyElement {
         let modes = ["current", "default"];
         let current = self.prefs.get::<String>("trayPage", "current".into());
@@ -1129,6 +1148,13 @@ impl Desktop {
                     "px",
                     window,
                     cx,
+                ));
+                cards.push(self.setting_text(
+                    "vitalsMode",
+                    "GaugeIcon",
+                    "settings.vitals.title",
+                    "settings.vitals.desc",
+                    vec![self.vitals_mode_setting(cx)],
                 ));
                 cards.push(self.setting_text(
                     "processVisibility",

@@ -51,6 +51,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`process-visibility.json`](../../tools/window-probe/steps/process-visibility.json) 注入含 Windows 组件、普通进程及无所属进程连接的样本，核对三种进程视图、连接筛选、设置页规则编辑与小窗口布局。模拟快照实例的 `formValues` 设置已打开表单的输入，随后通过实际键盘路径保存或取消；`inspectLayout.visibility` 输出开关状态与列表中的 PID。
 
+[`vitals-visibility.json`](../../tools/window-probe/steps/vitals-visibility.json) 检查概况带的固定十行高度预算、全部折叠、空搜索结果、手动模式、缩放窗口与动画中断，并录制展开和收起。`inspectLayout.vitals` 记录完整页面高度、所需高度、动画高度及活动曲线数；隐藏完成后活动曲线数为零。
+
 测试控制除页面、主题、对话框等既有项外，还包括：
 
 | 控制 | 作用 |

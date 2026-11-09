@@ -10,6 +10,164 @@ use super::*;
 use charts::{Line, Look, Overlay, Scale};
 use gpui_kit::gpui::transparent_black;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BandMode {
+    Auto,
+    Show,
+    Hide,
+}
+impl BandMode {
+    fn parse(value: &str) -> Self {
+        match value {
+            "show" => Self::Show,
+            "hide" => Self::Hide,
+            _ => Self::Auto,
+        }
+    }
+    fn visible(self, room_for_ten: bool) -> bool {
+        match self {
+            Self::Auto => room_for_ten,
+            Self::Show => true,
+            Self::Hide => false,
+        }
+    }
+}
+
+impl Desktop {
+    fn vitals_page_minimum() -> Pixels {
+        theme::dimension("vitalsHeight") + px(10.) + tables::process_table_height(10)
+    }
+
+    pub(in crate::frontend) fn process_viewport_observer(&self, cx: &Context<Self>) -> AnyElement {
+        let height = self.process_page_height.clone();
+        let minimum = Self::vitals_page_minimum();
+        let owner = cx.entity().downgrade();
+        canvas(
+            move |bounds, window, cx| {
+                let previous = height.replace(bounds.size.height);
+                if (previous >= minimum) != (bounds.size.height >= minimum) {
+                    let owner = owner.clone();
+                    // Observe the full page, never the table enlarged by hiding the
+                    // band. Only crossing the fixed budget needs a new page render.
+                    window.defer(cx, move |_, cx| {
+                        let _ = owner.update(cx, |this, cx| {
+                            if this.page == "processes" {
+                                cx.notify();
+                            }
+                        });
+                    });
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .inset_0()
+        .into_any_element()
+    }
+
+    fn show_vitals_band(&self) -> bool {
+        BandMode::parse(&self.prefs.get::<String>("vitalsMode", "auto".into()))
+            .visible(self.process_page_height.get() >= Self::vitals_page_minimum())
+    }
+
+    pub(in crate::frontend) fn vitals_band(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        // Keep the charts at their full size while revealing their viewport;
+        // raster dimensions and history never shrink with the accordion.
+        let full = theme::dimension("vitalsHeight") + px(10.);
+        let target = if self.show_vitals_band() {
+            full
+        } else {
+            px(0.)
+        };
+        let height = gpui_kit::base::motion::transition(
+            "process-vitals-height",
+            target,
+            theme::transition_slow(cx),
+            window,
+            cx,
+        )
+        .clamp(px(0.), full);
+        let content = (height > px(0.)).then(|| {
+            self.region(
+                regions::RegionKind::Vitals,
+                StyleRefinement::default()
+                    .w_full()
+                    .h(theme::dimension("vitalsHeight"))
+                    .flex_shrink_0(),
+                cx,
+            )
+        });
+        let anchors = self.ui.anchors.clone();
+        div()
+            .relative()
+            .w_full()
+            .h(height)
+            .flex_shrink_0()
+            // At rest the band keeps its usual compositing path. Once closed,
+            // omitting the region unregisters its charts and their frame ticks.
+            .when(height < full, |d| d.overflow_hidden())
+            .children(content)
+            .when(self.options.test, |d| {
+                d.child(
+                    canvas(
+                        move |bounds, _, _| {
+                            anchors.borrow_mut().insert("vitals-band".into(), bounds);
+                        },
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+            })
+            .into_any_element()
+    }
+
+    pub(in crate::frontend) fn vitals_band_state(&self) -> Value {
+        let shown = self.page == "processes" && self.show_vitals_band();
+        let height = if self.page == "processes" {
+            self.ui
+                .anchors
+                .borrow()
+                .get("vitals-band")
+                .map_or(0., |b| f32::from(b.size.height))
+        } else {
+            0.
+        };
+        let target = if shown {
+            f32::from(theme::dimension("vitalsHeight")) + 10.
+        } else {
+            0.
+        };
+        json!({"targetVisible":shown,"items":self.rows.iter().filter(|row|row.section.is_none()).count(),"height":height,
+            "pageHeight":f32::from(self.process_page_height.get()),"requiredHeight":f32::from(Self::vitals_page_minimum()),
+            "settled":(height-target).abs()<0.1,
+            "activeCharts":self.active_charts.borrow().iter().filter(|key|key.starts_with("vital-")).count()})
+    }
+}
+
+#[cfg(test)]
+mod band_tests {
+    use super::BandMode;
+
+    #[test]
+    fn automatic_band_depends_only_on_room_and_overrides_are_explicit() {
+        for room in [false, true] {
+            assert_eq!(BandMode::Auto.visible(room), room);
+            assert!(BandMode::Show.visible(room));
+            assert!(!BandMode::Hide.visible(room));
+        }
+        assert_eq!(BandMode::parse("show"), BandMode::Show);
+        assert_eq!(BandMode::parse("hide"), BandMode::Hide);
+        for saved in ["", "auto", "invalid"] {
+            assert_eq!(BandMode::parse(saved), BandMode::Auto);
+        }
+    }
+}
+
 /// Across the card, where the scrim over the curve begins to fade and where
 /// it has faded out.
 const SCRIM: (f32, f32) = (0.22, 0.66);

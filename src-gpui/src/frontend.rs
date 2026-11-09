@@ -296,6 +296,8 @@ struct Desktop {
     tree_expanded: HashSet<String>,
     sections: HashSet<String>,
     rows: Arc<Vec<Row>>,
+    /// Full process page height, independent of whether the overview band exists.
+    process_page_height: Rc<Cell<Pixels>>,
     list: ListState,
     selected: HashMap<String, String>,
     data: HashMap<String, Value>,
@@ -464,6 +466,7 @@ impl Desktop {
                 .into_iter()
                 .collect(),
             rows: Arc::new(vec![]),
+            process_page_height: Rc::new(Cell::new(px(0.))),
             table: None,
             table_frame: None,
             tables: HashMap::new(),

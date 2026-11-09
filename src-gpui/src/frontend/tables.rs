@@ -77,6 +77,10 @@ fn process_header_band() -> Pixels {
 pub(super) fn process_header_height() -> Pixels {
     px(4.) + process_header_band()
 }
+/// The table's fixed budget for `rows` process lines, header, rail and border.
+pub(super) fn process_table_height(rows: usize) -> Pixels {
+    process_header_height() + px(ROW_HEIGHT * rows as f32 + scrollbar::SIZE + 2.)
+}
 fn fields(page: &str, network: bool, _available: f32) -> Vec<Field> {
     use CellKind::*;
     use Track::*;

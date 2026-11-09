@@ -14,6 +14,13 @@
     "off": "Off"
   },
   "refreshStatus": "Refresh status",
+  "vitals": {
+    "title": "Process overview band",
+    "desc": "In automatic mode, reserves space for the band and 10 process rows. Collapses when space is insufficient, regardless of grouping or filtering.",
+    "auto": "Automatic",
+    "show": "Always show",
+    "hide": "Hidden"
+  },
   "visibility": {
     "title": "System process hiding rules",
     "desc": "Customize programs to always show or also hide. Both pages share these rules; use their toolbar icon to enable hiding."
