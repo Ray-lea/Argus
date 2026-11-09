@@ -38,7 +38,6 @@ const AMD_ZEN: &[u8] = include_bytes!("../../vendor/pawnio/AMDFamily17.bin");
 
 struct Module {
     handle: Handle,
-    reported_read_failure: std::cell::Cell<bool>,
 }
 impl Module {
     fn open(blob: &[u8]) -> Result<Self, SensorState> {
@@ -85,10 +84,7 @@ impl Module {
             );
             SensorState::ModuleRejected
         })?;
-        Ok(Self {
-            handle,
-            reported_read_failure: std::cell::Cell::new(false),
-        })
+        Ok(Self { handle })
     }
 
     fn read(&self, function: &[u8], input: &[u64]) -> Option<u64> {
@@ -119,9 +115,9 @@ impl Module {
             )
         };
         let valid = result.is_ok() && returned as usize == std::mem::size_of_val(output);
-        // Optional registers can be absent. Keep the first failed probe per
-        // module, not a log entry for every register on every sample.
-        if !valid && !self.reported_read_failure.replace(true) {
+        // The diagnostic limiter backs off repeats while retaining distinct
+        // later failures (an optional MSR must not silence a later SMU error).
+        if !valid {
             let error = result
                 .err()
                 .map(crate::util::win)

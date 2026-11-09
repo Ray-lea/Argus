@@ -287,8 +287,8 @@ pub(crate) fn collect(action: &'static str, process: HANDLE, code: u32) {
         let (pid, created) = identity(process)?;
         let root = root()?;
         let path = root.join(filename(pid, created));
-        if code == 0 && !path.try_exists().map_err(io)? {
-            return Ok(None);
+        if !path.try_exists().map_err(io)? {
+            return if code == 0 { Ok(None) } else { Err(2) };
         }
         let _pins = pin_root(&root, false)?;
         read_report(&path, pid, created, code).map(Some)

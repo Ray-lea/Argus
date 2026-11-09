@@ -84,31 +84,57 @@ pub fn file_failure(event: &'static str, file: &Path, error: &std::io::Error) {
 /// cannot hide a different error or grow the limiter without a bound.
 #[derive(Default)]
 pub struct RateLimit {
-    entries: HashMap<String, (Instant, u64)>,
+    entries: HashMap<String, RepeatWindow>,
+}
+
+struct RepeatWindow {
+    reported: Instant,
+    seen: Instant,
+    interval: Duration,
+    repeated: u64,
 }
 
 impl RateLimit {
     pub fn admit(&mut self, key: &str, now: Instant) -> Option<u64> {
         const WINDOW: Duration = Duration::from_secs(60);
+        const MAX_WINDOW: Duration = Duration::from_secs(15 * 60);
         let key: String = key.chars().take(4096).collect();
-        if let Some((last, repeated)) = self.entries.get_mut(&key) {
-            if now.saturating_duration_since(*last) < WINDOW {
-                *repeated = repeated.saturating_add(1);
+        if let Some(entry) = self.entries.get_mut(&key) {
+            // A quiet period re-arms the first report. Continuous failures
+            // back off to fifteen minutes, retaining the suppressed count.
+            let fresh = now.saturating_duration_since(entry.seen) >= WINDOW;
+            entry.seen = now;
+            if fresh {
+                entry.interval = WINDOW;
+            }
+            if !fresh && now.saturating_duration_since(entry.reported) < entry.interval {
+                entry.repeated = entry.repeated.saturating_add(1);
                 return None;
             }
-            *last = now;
-            return Some(std::mem::take(repeated));
+            entry.reported = now;
+            if !fresh {
+                entry.interval = (entry.interval * 2).min(MAX_WINDOW);
+            }
+            return Some(std::mem::take(&mut entry.repeated));
         }
         if self.entries.len() >= 128 {
             let oldest = self
                 .entries
                 .iter()
-                .min_by_key(|(_, (time, _))| time)
+                .min_by_key(|(_, entry)| entry.seen)
                 .map(|(key, _)| key.clone())
                 .unwrap();
             self.entries.remove(&oldest);
         }
-        self.entries.insert(key, (now, 0));
+        self.entries.insert(
+            key,
+            RepeatWindow {
+                reported: now,
+                seen: now,
+                interval: WINDOW,
+                repeated: 0,
+            },
+        );
         Some(0)
     }
 }
@@ -420,6 +446,38 @@ mod tests {
             limiter.admit(&format!("new-{i}"), start);
         }
         assert!(limiter.entries.len() <= 128);
+    }
+
+    #[test]
+    fn continuous_failures_back_off_but_quiet_periods_and_new_errors_report_immediately() {
+        let mut limiter = RateLimit::default();
+        let start = Instant::now();
+        let mut reports = Vec::new();
+        let mut suppressed = 0;
+        for second in (0..=3600).step_by(5) {
+            if let Some(count) = limiter.admit("offline", start + Duration::from_secs(second)) {
+                reports.push(second);
+                suppressed += count;
+            }
+        }
+        assert_eq!(reports, [0, 60, 180, 420, 900, 1800, 2700, 3600]);
+        assert_eq!(suppressed + reports.len() as u64, 721);
+        assert_eq!(
+            limiter.admit("different error", start + Duration::from_secs(3605)),
+            Some(0)
+        );
+        assert_eq!(
+            limiter.admit("offline", start + Duration::from_secs(3605)),
+            None
+        );
+        assert_eq!(
+            limiter.admit("offline", start + Duration::from_secs(3670)),
+            Some(1)
+        );
+        assert_eq!(
+            limiter.admit("offline", start + Duration::from_secs(3675)),
+            None
+        );
     }
 
     #[test]

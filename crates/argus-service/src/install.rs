@@ -39,8 +39,11 @@ struct StoppedFailure(Option<(u32, u32)>);
 
 impl StoppedFailure {
     fn observe(&mut self, status: Option<&SERVICE_STATUS_PROCESS>) -> Option<(u32, u32)> {
+        // 1077 is the normal initial status of a service that has never run.
         let failure = status
-            .filter(|s| s.dwCurrentState == SERVICE_STOPPED && s.dwWin32ExitCode != 0)
+            .filter(|s| {
+                s.dwCurrentState == SERVICE_STOPPED && !matches!(s.dwWin32ExitCode, 0 | 1077)
+            })
             .map(|s| (s.dwWin32ExitCode, s.dwServiceSpecificExitCode));
         let changed = std::mem::replace(&mut self.0, failure) != failure;
         failure.filter(|_| changed)
@@ -245,7 +248,7 @@ fn inspect() -> Result<ServiceStatus> {
     } else if !authorized {
         status.error_code = Some(OTHER_OWNER);
         status.error = Some(message(OTHER_OWNER));
-    } else if s.dwCurrentState == SERVICE_STOPPED && s.dwWin32ExitCode != 0 {
+    } else if s.dwCurrentState == SERVICE_STOPPED && !matches!(s.dwWin32ExitCode, 0 | 1077) {
         status.error_code = Some(s.dwWin32ExitCode);
         status.error = Some(message(s.dwWin32ExitCode));
     }
@@ -273,6 +276,10 @@ pub(crate) fn running_pid() -> Result<Option<u32>> {
     let Some(service) = open(&manager, SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG)? else {
         return Ok(None);
     };
+    let s = query(&service)?;
+    if s.dwCurrentState != SERVICE_RUNNING {
+        return Ok(None);
+    }
     let dir = directory()?;
     let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
     let _guard = security::protect_directory(&dir)?;
@@ -280,8 +287,7 @@ pub(crate) fn running_pid() -> Result<Option<u32>> {
     if owner(&dir)? != security::current_sid()? {
         return Ok(None);
     }
-    let s = query(&service)?;
-    Ok((s.dwCurrentState == SERVICE_RUNNING).then_some(s.dwProcessId))
+    Ok(Some(s.dwProcessId))
 }
 
 fn wait(service: &Service, wanted: SERVICE_STATUS_CURRENT_STATE) -> Result<()> {
@@ -779,6 +785,12 @@ mod tests {
     #[test]
     fn stopped_state_logs_changes_and_rearms_after_recovery_or_removal() {
         let mut observed = StoppedFailure::default();
+        let newly_registered = SERVICE_STATUS_PROCESS {
+            dwCurrentState: SERVICE_STOPPED,
+            dwWin32ExitCode: 1077,
+            ..Default::default()
+        };
+        assert_eq!(observed.observe(Some(&newly_registered)), None);
         let mut failed = SERVICE_STATUS_PROCESS {
             dwCurrentState: SERVICE_STOPPED,
             dwWin32ExitCode: 232,

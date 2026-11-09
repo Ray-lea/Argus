@@ -196,10 +196,12 @@ impl SensorClient {
         Self::with_reader(move || {
             let pid = crate::util::stage("sensor service lookup", crate::install::running_pid());
             let Ok(Some(pid)) = pid else {
-                argus_core::diagnostics::warn(
-                    "kernel sensors unavailable",
-                    "no running, authorized service",
-                );
+                if pid.is_ok() {
+                    argus_core::diagnostics::warn(
+                        "kernel sensors unavailable",
+                        "no running, authorized service",
+                    );
+                }
                 return CpuSensors::unavailable(SensorState::ServiceUnavailable);
             };
             let reply = crate::util::stage(
