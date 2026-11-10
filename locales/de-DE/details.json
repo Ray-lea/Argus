@@ -2,33 +2,33 @@
   "deselect": "Abwählen",
   "resize": "Größe des Detailbereichs ändern",
   "overview": {
-    "title": "Dieses PC",
+    "title": "Dieser PC",
     "hide": "PC-Spezifikationen ausblenden",
     "show": "PC-Spezifikationen anzeigen",
     "copy": "PC-Spezifikationen als Text kopieren",
-    "copyWhat": "PC Spezifikationen",
+    "copyWhat": "PC-Spezifikationen",
     "copyPart": "{kind}: {name}",
-    "selectTip": "Klicken Sie auf eine App oder einen Prozess in der Liste, um deren Details hier anzuzeigen. Klicken Sie erneut darauf, um die Auswahl aufzuheben.",
-    "closeTip": "Der Detailbereich bleibt geöffnet; Verstecken Sie es mit {icon} oben rechts im Fenster.",
+    "selectTip": "Klicken Sie auf eine App oder einen Prozess in der Liste, um hier Details anzuzeigen. Ein erneuter Klick hebt die Auswahl auf.",
+    "closeTip": "Der Detailbereich bleibt standardmäßig geöffnet. Klicken Sie oben rechts im Fenster auf {icon}, um ihn einzuklappen.",
     "cpu": "Prozessor",
     "cores": {
       "one": "{count} Kern",
       "other": "{count} Kerne"
     },
-    "hybrid": "({performance} P-cores + {efficiency} E-cores)",
+    "hybrid": "({performance} P-Kerne + {efficiency} E-Kerne)",
     "threads": {
       "one": "{count} Thread",
       "other": "{count} Threads"
     },
     "base": "Basis {speed}",
-    "slots": "{used} der verwendeten {total}-Steckplätze",
-    "disk": "Datenträger",
+    "slots": "Verwendete Steckplätze: {used} von {total}",
+    "disk": "Speichergeräte",
     "gpu": "Grafik",
     "vram": "{size} dedizierter Speicher",
     "sharedMemory": "Verwendet gemeinsam genutzten Speicher",
     "battery": "Akku",
-    "designed": "Entwickelt für {capacity}",
-    "health": "Gesundheit {percent}%"
+    "designed": "Auslegungskapazität {capacity}",
+    "health": "Zustand {percent} %"
   },
   "exited": {
     "title": "Prozess wurde beendet",
@@ -41,9 +41,9 @@
     },
     "earliest": "Zuerst gestartet",
     "members": "Prozesse ({count})",
-    "open": "Zeigt die Details von PID {pid} an"
+    "open": "Details zu PID {pid} anzeigen"
   },
-  "services": "Ausführen von Diensten ({count})",
+  "services": "Laufende Dienste ({count})",
   "section": {
     "process": "Prozess",
     "resources": "Ressourcen",
@@ -55,7 +55,7 @@
   "parentLink": "{name} ({pid})",
   "noParent": "Keine (PID {pid})",
   "started": "Gestartet",
-  "cpuTime": "CPU Zeit",
+  "cpuTime": "CPU-Zeit",
   "user": "Benutzername",
   "integrity": "Integrität",
   "integrityLevel": {
@@ -76,7 +76,7 @@
   },
   "priority": "Priorität",
   "session": "Sitzung",
-  "privateWs": "Privates Arbeitsset",
+  "privateWs": "Privater Arbeitssatz",
   "workingSet": "Arbeitssatz",
   "commit": "Zugesicherte Größe",
   "gpuEngine": "({engine})",

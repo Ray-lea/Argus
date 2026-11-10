@@ -2,7 +2,7 @@
   "sections": {
     "language": "Sprache und Aussehen",
     "startup": "Autostart und Infobereich",
-    "hotkey": "Tastenkombination",
+    "hotkey": "Tastenkombinationen",
     "privilege": "Berechtigungen",
     "motion": "Animationen",
     "data": "Daten und Verlauf",
@@ -16,14 +16,14 @@
   "refreshStatus": "Status aktualisieren",
   "vitals": {
     "title": "Ressourcenübersicht",
-    "desc": "Im Automatikmodus bleibt Platz für die Übersicht und 10 Prozesszeilen. Bei Platzmangel wird die Übersicht unabhängig von Gruppen und Filtern eingeklappt.",
+    "desc": "Der Automatikmodus reserviert Platz für die Übersicht und 10 Prozesszeilen. Reicht der Platz nicht, wird die Übersicht eingeklappt. Eingeklappte Gruppen und Filter beeinflussen diese Entscheidung nicht.",
     "auto": "Automatisch",
     "show": "Immer anzeigen",
     "hide": "Ausgeblendet"
   },
   "visibility": {
     "title": "Systemprozesse ausblenden",
-    "desc": "Passen Sie Programme so an, dass sie immer angezeigt oder auch ausgeblendet werden. Beide Seiten teilen diese Regeln; Verwenden Sie das entsprechende Symbol in der Symbolleiste, um das Ausblenden zu aktivieren."
+    "desc": "Legen Sie fest, welche Programme immer sichtbar bleiben und welche zusätzlich ausgeblendet werden. Prozesse und Verbindungen teilen diese Regeln; das Ausblenden wird über das Symbol in der Symbolleiste aktiviert."
   },
   "language": {
     "title": "Anzeigesprache",
@@ -32,16 +32,16 @@
   },
   "theme": {
     "title": "Design",
-    "desc": "„Wie Windows“ übernimmt den Windows-App-Modus und folgt dessen Änderungen.",
+    "desc": "„Wie Windows“ übernimmt den Windows-App-Modus und wechselt mit dem System zwischen hell und dunkel.",
     "system": "Wie Windows",
     "light": "Hell",
     "dark": "Dunkel",
-    "error": "Das Thema konnte nicht geändert werden: {error}"
+    "error": "Das Design konnte nicht geändert werden: {error}"
   },
   "navigation": {
     "title": "Navigationsposition",
     "desc": "Im Seitenbereich werden standardmäßig nur Symbole angezeigt. Mit der Schaltfläche ☰ in der oberen linken Ecke wird es erweitert, um Seitennamen anzuzeigen. Die obere Navigation zeigt die Seiten als Registerkarten unterhalb der Symbolleiste an.",
-    "side": "Seite",
+    "side": "Seitlich",
     "top": "Oben"
   },
   "startup": {
@@ -56,7 +56,7 @@
     },
     "trayPage": {
       "title": "Aus dem Infobereich öffnen",
-      "desc": "Gilt beim erneuten Öffnen über das Fach oder eine Verknüpfung. Beim Wiederherstellen eines minimierten Fensters bleibt die aktuelle Seite erhalten.",
+      "desc": "Gilt beim erneuten Öffnen über den Infobereich oder eine Tastenkombination. Beim Wiederherstellen eines minimierten Fensters bleibt die aktuelle Seite erhalten.",
       "current": "Aktuelle Seite beibehalten",
       "default": "Standardseite öffnen"
     },
@@ -68,9 +68,9 @@
   },
   "shortcuts": {
     "title": "Tastenkombinationen",
-    "desc": "Zeigen Sie Tastenkombinationen für die Navigation, das Anhalten von Updates, Prozessaktionen und mehr an.",
+    "desc": "Tastenkombinationen für Seitenwechsel, das Anhalten der Datenaktualisierung und Prozessaktionen anzeigen.",
     "view": "Tastenkombinationen anzeigen",
-    "scope": "Alltägliche Aktionen, Navigation und Listenverknüpfungen.",
+    "scope": "Tastenkombinationen für häufige Aktionen, Seitennavigation und Listen.",
     "global": "Global",
     "globalHint": "Aktuelle Einstellung. Funktioniert auch bei Verwendung anderer Apps.",
     "inputHint": "In-App-Tastenkombinationen wirken sich nicht auf andere Apps aus. Tastenkombinationen zum Beenden des Prozesses sind in Textfeldern, Dialogen und Menüs inaktiv.",
@@ -91,10 +91,10 @@
     "details": "Prozesse: Details öffnen",
     "endTable": "Prozesse: Auswahl beenden, mit Bestätigung",
     "endDirect": "Prozesse: Auswahl ohne Bestätigung beenden",
-    "clear": "Auswahl löschen; Löschen Sie zuerst die Prozesssuche, falls eine aktiv ist.",
+    "clear": "Auswahl löschen; löschen Sie zuerst die Prozesssuche, falls eine aktiv ist.",
     "history": "Wenn das Verlaufsdiagramm den Fokus hat",
     "time": "Wählen Sie den vorherigen / nächsten Zeitpunkt aus",
-    "timeJump": "Bewegen Sie sich um einen größeren Betrag vorwärts/rückwärts",
+    "timeJump": "Um einen größeren Zeitraum zurück- oder vorwärtsgehen",
     "timeEnds": "Wählen Sie den frühesten / spätesten Zeitpunkt aus",
     "latest": "Löschen Sie die Zeitauswahl und kehren Sie zu den neuesten Daten zurück"
   },
@@ -110,7 +110,7 @@
     "rerecord": "Erneut aufnehmen",
     "done": {
       "saved": "Gespeichert. Die Tastenkombination ist jetzt {keys}",
-      "off": "Die Tastenkombination ist deaktiviert. Die Kombination bleibt erhalten; Schalten Sie es mit dem Schalter wieder ein."
+      "off": "Die Tastenkombination ist deaktiviert und bleibt gespeichert. Sie kann jederzeit mit dem Schalter wieder aktiviert werden."
     },
     "unknownKey": "Diese Taste",
     "hint": {
@@ -123,18 +123,18 @@
       "common": "{shortcut} hat in vielen Apps eine eigene Verwendung. Als globale Tastenkombination funktioniert es dort nicht mehr.",
       "inApp": "{shortcut} wechselt Seiten oder sucht in Argus. Als globale Tastenkombination wird dies nicht mehr der Fall sein.",
       "imeSwitch": "Strg+Leertaste wechselt normalerweise die Eingabemethode. Als globale Tastenkombination wird dies nicht mehr der Fall sein.",
-      "numpad": "Tastaturziffern und der Dezimalpunkt lösen die Tastenkombination nur aus, wenn die Num-Taste aktiviert ist.",
+      "numpad": "Ziffern und Dezimaltrennzeichen auf dem Ziffernblock lösen die Tastenkombination nur bei eingeschalteter Num-Taste aus.",
       "printScreen": "{shortcut} kann mit dem Windows-Screenshot oder einer Screenshot-App in Konflikt stehen."
     },
     "error": {
       "invalid": "{shortcut} kann nicht als Tastenkombination verwendet werden: {reason}",
-      "taken": "{shortcut} wird von Windows oder einer anderen App verwendet (möglicherweise einer anderen, auf der Argus ausgeführt wird). Wählen Sie eine andere Kombination.",
+      "taken": "{shortcut} wird von Windows oder einem anderen Programm verwendet, möglicherweise einer weiteren Argus-Instanz. Wählen Sie eine andere Kombination.",
       "failed": "{shortcut} konnte nicht registriert werden (Fehler {code}).",
       "saveFailed": "Die Einstellung konnte nicht gespeichert werden. Die Tastenkombination bleibt unverändert."
     },
     "issue": {
       "invalid": "Die Kombination wird nicht erkannt.",
-      "noKey": "Zusatztasten allein können keine Tastenkombination sein; Fügen Sie einen gewöhnlichen Schlüssel hinzu. Windows-Tastenkombinationen unterscheiden auch nicht die linke und rechte Strg-, Alt-, Umschalt- oder Win-Taste.",
+      "noKey": "Eine globale Tastenkombination benötigt neben Modifikatortasten auch eine normale Taste. Windows unterscheidet dabei nicht zwischen linker und rechter Strg-, Alt-, Umschalt- oder Win-Taste.",
       "unsupported": "{key} kann nicht für eine globale Tastenkombination verwendet werden.",
       "lockKey": "Feststelltaste, Num-Taste und Scroll-Taste können nicht Teil einer Kombination sein.",
       "needsModifier": "Eine Kombination erfordert Strg, Alt oder Win (außer F13–F24 und Umschalt+F1–F11). Andere Nur-Shift-Kombinationen würden das Tippen in jeder App beeinträchtigen.",
@@ -145,7 +145,7 @@
   },
   "privilege": {
     "desc": "Ermöglicht Argus, das als Standardbenutzer ausgeführt wird, Systemprozesse zu verwalten, Regeln automatisch anzuwenden, Netzwerkverkehr pro Prozess sowie Lese- und Schreibvorgänge auf der Festplatte zu sammeln, Dateisperren zu finden, SMART-Informationen auf der Festplatte zu lesen, Dienste zu steuern und IPv4 TCP-Verbindungen zu schließen. Für die Installation und Deinstallation sind jeweils Administratorrechte erforderlich.",
-    "statusDesc": "Argus stellt automatisch eine Verbindung zum Dienst her, während dieser ausgeführt wird. Die Netzwerkspalten werden ausgeblendet, wenn die Netzwerksammlung nicht verfügbar ist. Jede Regel zeigt ihre Ergebnisse darunter an.",
+    "statusDesc": "Argus verbindet sich während der Ausführung automatisch mit dem Dienst. Ist die Erfassung des Netzwerkverkehrs nicht verfügbar, werden die Netzwerkspalten ausgeblendet. Unter jeder Regel steht ihr Anwendungsergebnis.",
     "state": {
       "busy": "Warten auf Administratorberechtigung oder Arbeiten am Dienst…",
       "checking": "Dienststatus wird überprüft…",
@@ -160,15 +160,15 @@
       "unavailable": "Nicht verfügbar"
     },
     "outdated": "Die Dienstversion {service} stimmt nicht mit Argus {app} überein. Klicken Sie auf Dienst aktualisieren.",
-    "incompatible": "Klicken Sie auf Update-Dienst, um die Version zu installieren, die Argus entspricht. Argus verbindet sich dann damit.",
+    "incompatible": "Klicken Sie auf „Dienst aktualisieren“, um die zu Argus passende Version zu installieren und die Verbindung herzustellen.",
     "install": {
       "title": "Privilegierten Dienst aktivieren?",
-      "body": "Sobald es installiert ist, kann das aktuelle Windows-Konto den Hintergrunddienst verwenden, ohne erneut um Erlaubnis zu bitten, um:\n· Prozesse aller Benutzer (außer kritischen Systemprozessen) zu beenden und deren Priorität und Effizienzmodus festzulegen;\n· beliebige Windows-Dienste zu starten und zu stoppen und ihren Starttyp zu ändern, einschließlich der Dienste von Sicherheitssoftware und Windows-Updates;\n· alle zu schließen IPv4 TCP Verbindung herstellen und die Dateisperren, den Netzwerkverkehr sowie Lese- und Schreibvorgänge auf der Festplatte jedes Prozesses anzeigen; installiert.\n\nAndere Programme, die als Standardbenutzer unter diesem Konto ausgeführt werden, können diese Vorgänge ebenfalls verwenden, was dem Konto effektiv einige Administratorrechte verleiht. Installieren Sie es nur auf einem Konto, das Sie selbst verwenden. Der Dienst beginnt mit Windows. Für die Installation ist eine Administratorberechtigung erforderlich. Der Dienst kann später in den Einstellungen deinstalliert werden.",
+      "body": "Nach der Installation kann das aktuelle Windows-Konto über den Hintergrunddienst ohne erneute Freigabe:\n· Prozesse beliebiger Benutzer beenden, ausgenommen kritische Systemprozesse, sowie Priorität und Effizienzmodus festlegen;\n· beliebige Windows-Dienste starten und beenden und ihren Starttyp ändern, einschließlich Diensten von Sicherheitssoftware und Windows Update;\n· beliebige IPv4 TCP-Verbindungen schließen und Dateisperren, Netzwerkverkehr sowie Datenträger-Lese- und Schreibzugriffe aller Prozesse abfragen;\n· Datenträgeridentität, SMART-Attribute und Zustandsprotokolle über fest vorgegebene, ausschließlich lesende Befehle abfragen;\n· bei installiertem PawnIO CPU-Sensordaten und Mainboard-Lüfterdrehzahlen über fest vorgegebene Module auslesen.\n\nAndere Programme, die unter diesem Konto mit Standardrechten laufen, können diese Vorgänge ebenfalls aufrufen. Das Konto erhält damit einen Teil der Administratorrechte. Installieren Sie den Dienst nur für ein selbst genutztes Konto. Er startet mit Windows. Die Installation erfordert eine Administratorfreigabe; der Dienst kann später in den Einstellungen deinstalliert werden.",
       "action": "Installieren und aktivieren"
     },
     "uninstall": {
       "title": "Privilegierten Dienst deinstallieren?",
-      "body": "Windows Task-Manager wird zuerst wiederhergestellt, dann wird der Hintergrunddienst gestoppt und entfernt. Wenn die Wiederherstellung fehlschlägt, wird die Deinstallation abgebrochen. Argus läuft weiter und Aktionen auf Systemprozessen und -diensten werden wieder durch seine aktuellen Berechtigungen eingeschränkt. Für die Deinstallation ist eine Administratorberechtigung erforderlich.",
+      "body": "Zuerst wird der Windows-Task-Manager wiederhergestellt, dann wird der Hintergrunddienst beendet und entfernt. Schlägt die Wiederherstellung fehl, wird die Deinstallation angehalten. Argus läuft weiter; Aktionen für Systemprozesse und Dienste unterliegen wieder den aktuellen Berechtigungen. Die Deinstallation erfordert eine Administratorfreigabe.",
       "confirm": "Dienst deinstallieren",
       "action": "Deinstallieren"
     },
@@ -179,15 +179,15 @@
   },
   "taskManager": {
     "title": "Task-Manager ersetzen",
-    "desc": "Öffnet mit Strg+Umschalt+Esc und anderen Task-Manager-Tastenkombinationen Argus. Standardmäßig deaktiviert; Das eigenständige Wiederherstellungstool ist nicht von der Schnittstelle oder dem Dienst abhängig. Durch die Aktualisierung des privilegierten Dienstes wird auch der Ersatz aktualisiert und bleibt aktiviert. Durch die Deinstallation des Dienstes wird Windows Task-Manager wiederhergestellt.",
+    "desc": "Öffnet mit Strg+Umschalt+Esc und anderen Task-Manager-Tastenkombinationen Argus. Standardmäßig deaktiviert; das eigenständige Wiederherstellungstool ist nicht von der Schnittstelle oder dem Dienst abhängig. Durch die Aktualisierung des privilegierten Dienstes wird auch der Ersatz aktualisiert und bleibt aktiviert. Durch die Deinstallation des Dienstes wird Windows-Task-Manager wiederhergestellt.",
     "confirm": {
       "title": "Task-Manager ersetzen?",
-      "body": "Strg+Umschalt+Esc und andere Möglichkeiten zum Öffnen von Task-Manager öffnen Argus. Die Änderung gilt für das gesamte PC; andere Konten sind noch offen Windows Task-Manager. Zum Einschalten ist eine Administratorberechtigung erforderlich. Wenn Argus nicht startet, wird stattdessen das integrierte Task-Manager geöffnet. Behalten Sie das eigenständige Wiederherstellungstool bei, damit die Änderung rückgängig gemacht werden kann, wenn die Schnittstelle oder der Dienst nicht ausgeführt werden kann."
+      "body": "Strg+Umschalt+Esc und andere Task-Manager-Aufrufe öffnen Argus. Die Änderung gilt für den gesamten PC; andere Konten öffnen weiterhin den Windows-Task-Manager. Die Aktivierung erfordert eine Administratorfreigabe. Schlägt der Start fehl, wird versucht, den Windows-Task-Manager zu öffnen. Bewahren Sie das unabhängige Wiederherstellungsprogramm auf, damit die Wiederherstellung auch ohne Oberfläche oder Dienst möglich bleibt."
     },
     "enable": "Ersetzung aktivieren",
-    "restore": "Windows Task-Manager wiederherstellen",
+    "restore": "Windows-Task-Manager wiederherstellen",
     "enabled": "Task-Manager-Ersatz ist aktiviert.",
-    "restored": "Windows Task-Manager wurde wiederhergestellt.",
+    "restored": "Windows-Task-Manager wurde wiederhergestellt.",
     "busy": "Task-Manager-Einstellungen werden angewendet…",
     "checking": "Task-Manager-Einstellungen werden überprüft…",
     "unknown": "Der Ersetzungsstatus konnte nicht gelesen werden",
@@ -203,7 +203,7 @@
   "motion": {
     "window": {
       "title": "Fensterübergänge",
-      "desc": "Blendet das Fenster aus, wenn es angezeigt, ausgeblendet, minimiert oder wiederhergestellt wird. Deaktivieren Sie diese Option, damit Windows oder ein anderer Fenstermanager Übergänge verarbeiten kann. Folgt standardmäßig der Windows-Einstellung für Animationseffekte."
+      "desc": "Blendet das Fenster beim Anzeigen, Ausblenden, Minimieren und Wiederherstellen sanft ein oder aus. Bei deaktivierter Option übernimmt Windows oder ein anderes Fensterverwaltungsprogramm die Übergänge. Folgt standardmäßig der Windows-Einstellung „Animationseffekte“."
     },
     "ui": {
       "title": "Oberflächenanimationen",
@@ -211,7 +211,7 @@
     },
     "chart": {
       "title": "Diagrammanimationen",
-      "desc": "Höhere Bildraten machen Diagramme flüssiger, verbrauchen aber mehr Ressourcen: „Smooth“ benötigt etwa 10–15 % eines Kerns und „Balanced“ etwa die Hälfte. Beim Energiesparen wird jeweils ein ganzes Pixel verschoben, sodass kleinere Diagramme schrittweise verschoben werden.",
+      "desc": "Höhere Bildraten ergeben flüssigere Kurven und benötigen mehr Ressourcen: „Flüssig“ belegt etwa 10 %–15 % eines Kerns, „Ausgewogen“ etwa die Hälfte. „Energiesparend“ verschiebt die Kurve jeweils um ein ganzes Pixel; kleinere Diagramme bewegen sich dadurch in Schritten.",
       "fluid": "Flüssig ({fps} fps)",
       "balanced": "Ausgewogen ({fps} fps)",
       "pixel": "Energiesparend (Pixelschritte)",
@@ -222,14 +222,14 @@
     "intervalDesc": "Kürzere Intervalle ergeben feinere Diagramme, führen aber dazu, dass Argus selbst mehr Ressourcen verbraucht.",
     "minimized": {
       "title": "Intervall bei minimiertem Fenster",
-      "desc": "Wie oft Argus Proben abtastet, während sein Fenster minimiert ist. Längere Intervalle kosten im Hintergrund weniger, es kann jedoch bis zu einem Intervall dauern, bis die Regeln auf neu gestartete Programme angewendet werden, und der Verlauf über 5 Sekunden wird spärlicher aufgezeichnet."
+      "desc": "Erfassungsintervall bei minimiertem Fenster. Längere Intervalle verringern den Hintergrundaufwand, verzögern die Anwendung von Regeln auf neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
     },
     "tray": {
       "title": "Intervall im Infobereich",
-      "desc": "Wie oft Argus Proben abtastet, während es im Infobereich versteckt ist; Der Tooltip des Infobereichs wird im gleichen Tempo aktualisiert. Längere Intervalle kosten im Hintergrund weniger, es kann jedoch bis zu einem Intervall dauern, bis die Regeln auf neu gestartete Programme angewendet werden, und der Verlauf über 5 Sekunden wird spärlicher aufgezeichnet."
+      "desc": "Erfassungsintervall bei ausgeblendetem Fenster im Infobereich. Der Hinweis am Infobereichssymbol wird im gleichen Takt aktualisiert. Längere Intervalle verringern den Hintergrundaufwand, verzögern Regeln für neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
     },
     "background": {
-      "error": "Die Bildwiederholfrequenz konnte nicht gespeichert werden: {error}"
+      "error": "Das Aktualisierungsintervall konnte nicht gespeichert werden: {error}"
     },
     "netUnit": {
       "title": "Einheit der Netzwerkgeschwindigkeit",
@@ -237,7 +237,7 @@
     },
     "history": {
       "title": "Verlauf aufzeichnen",
-      "on": "Zeichnet alle 5 Sekunden die Ressourcennutzung und die Top-Prozesse auf, oder mit der minimierten oder Tray-Refresh-Rate, wenn diese langsamer ist. Die Daten bleiben 7 Tage lang auf diesem PC und können auf der Seite „Verlauf“ angezeigt werden.",
+      "on": "Zeichnet die Ressourcennutzung und die am stärksten ausgelasteten Prozesse alle 5 Sekunden auf. Bei längerem Intervall im minimierten Zustand oder im Infobereich gilt dieses Intervall. Die Daten bleiben 7 Tage ausschließlich auf diesem PC und sind unter „Verlauf“ verfügbar.",
       "off": "Aus. Vorhandene Datensätze verfallen nach 7 Tagen oder können jetzt gelöscht werden.",
       "error": "Die Verlaufseinstellung konnte nicht geändert werden: {error}",
       "saved": "Gespeicherter Verlauf",
@@ -255,9 +255,9 @@
     }
   },
   "rules": {
-    "title": "Legen Sie den Prioritäts- oder Effizienzmodus fest, wenn ein Programm startet",
+    "title": "Priorität oder Effizienzmodus beim Programmstart automatisch festlegen",
     "desc": "Gespeicherte Regeln gelten sofort für laufende Prozesse. Regeln können auch hinzugefügt werden, indem Sie mit der rechten Maustaste auf einen Prozess in der Liste klicken und Regel hinzufügen auswählen.",
-    "placeholder": "Programmname, z.B. chrome.exe",
+    "placeholder": "Programmname, z. B. chrome.exe",
     "add": "Hinzufügen",
     "exists": "Eine Regel für {name} existiert bereits.",
     "error": "Die Regeln konnten nicht gespeichert werden: {error}",
@@ -272,11 +272,11 @@
       "on": "Effizienzmodus eingeschaltet",
       "off": "Effizienzmodus aus"
     },
-    "toggle": "Aktivieren Sie die Regel für {name}",
+    "toggle": "Regel für {name} aktivieren",
     "delete": "Regel löschen",
-    "deleteLabel": "Löschen Sie die Regel für {name}",
+    "deleteLabel": "Regel für {name} löschen",
     "summary": {
-      "noAction": "Wählen Sie einen anzuwendenden Prioritäts- oder Effizienzmodus.",
+      "noAction": "Wählen Sie die anzuwendende Priorität oder den Effizienzmodus.",
       "disabled": "Deaktiviert.",
       "notSeen": "Das Programm wurde noch nicht erkannt.",
       "applied": {
@@ -305,15 +305,15 @@
       "upToDate": "Argus ist auf dem neuesten Stand",
       "available": "Neue Version verfügbar: {version}",
       "downloading": "{version} wird heruntergeladen",
-      "downloadingPercent": "Herunterladen von {version} · {percent}%",
+      "downloadingPercent": "Herunterladen von {version} · {percent} %",
       "ready": "Argus {version} ist bereit",
       "installing": "Installationsprogramm für {version} wird gestartet…",
       "error": "Aktualisierung fehlgeschlagen"
     },
     "current": "Aktuelle Version {version} · {build}",
     "detail": {
-      "ready": "Für die Installation ist eine Administratorberechtigung erforderlich. Argus wird während der Installation beendet; Das Installationsprogramm zeigt nur den Fortschritt an und startet Argus neu, wenn es fertig ist.",
-      "portable": "Die tragbare Version wird nicht automatisch aktualisiert. Laden Sie die neue Version von der Release-Seite herunter.",
+      "ready": "Für die Installation ist eine Administratorberechtigung erforderlich. Argus wird während der Installation beendet; das Installationsprogramm zeigt nur den Fortschritt an und startet Argus neu, wenn es fertig ist.",
+      "portable": "Die portable Version wird nicht automatisch aktualisiert. Laden Sie die neue Version von der Release-Seite herunter.",
       "downloaded": "{received} von {source} heruntergeladen.",
       "downloadedOf": "{received} von {total} von {source} heruntergeladen.",
       "checked": "Zuletzt überprüft: {time}.",
@@ -329,12 +329,12 @@
     },
     "whatsNew": {
       "title": "Neuerungen nach dem Update anzeigen",
-      "desc": "Zeigt einmal pro Version an, was die neue Version beim ersten Öffnen des Fensters nach einem Update geändert hat. Wenn diese Option deaktiviert ist, wird in der Ecke nur ein Hinweis darauf angezeigt, dass Argus aktualisiert wurde.",
+      "desc": "Zeigt die Neuerungen beim ersten Öffnen nach einem Update an, einmal pro Version. Bei deaktivierter Option erscheint nur unten rechts ein Hinweis auf das abgeschlossene Update.",
       "view": "Änderungen dieser Version anzeigen"
     },
     "channel": {
       "label": "Updatekanal",
-      "desc": "Beta erhält neue Funktionen früher, ist jedoch möglicherweise weniger stabil als Stable. Nach dem Wechsel von Beta zu Stable wird Argus nur dann aktualisiert, wenn eine stabile Version neuer als die aktuelle ist.",
+      "desc": "Beta bietet neue Funktionen früher, kann aber weniger stabil als der Kanal „Stabil“ sein. Nach dem Wechsel von „Beta“ zu „Stabil“ erfolgt ein Update erst, wenn eine stabile Version eine höhere Versionsnummer als die aktuelle Version hat.",
       "stable": "Stabil",
       "beta": "Beta"
     },
@@ -353,8 +353,8 @@
     },
     "custom": {
       "title": "Benutzerdefinierter Proxy",
-      "desc": "Ein Präfix, das vor GitHub-URLs hinzugefügt wurde. Es muss https verwenden, z.B. https://example.com/.",
-      "label": "Benutzerdefinierter Proxy URL",
+      "desc": "Ein Präfix, das vor GitHub-URLs hinzugefügt wurde. Es muss https verwenden, z. B. https://example.com/.",
+      "label": "Benutzerdefinierte Proxy-URL",
       "save": "Speichern"
     }
   },
@@ -363,7 +363,7 @@
     "admin": "Wird als Administrator ausgeführt.",
     "service": "Wird als Standardbenutzer ausgeführt. Der privilegierte Dienst ist verbunden und führt Aktionen aus, die Administratorrechte erfordern.",
     "standard": "Wird als Standardbenutzer ausgeführt. Informationen und Aktionen für einige Systemprozesse sind begrenzt.",
-    "whatsNew": "Was ist neu?",
+    "whatsNew": "Neuerungen",
     "quit": "Argus beenden",
     "support": "Projekt und Support",
     "links": {
@@ -383,14 +383,14 @@
     },
     "community": {
       "title": "Feedback und Community",
-      "desc": "Treten Sie der QQ-Gruppe {group} bei, um Probleme zu melden, Funktionen vorzuschlagen oder mit anderen Benutzern zu sprechen (auf Chinesisch).",
+      "desc": "Treten Sie der QQ-Gruppe {group} bei, um Probleme zu melden, Funktionen vorzuschlagen oder Erfahrungen auszutauschen (auf Chinesisch).",
       "join": "QQ-Gruppe beitreten",
       "copy": "Gruppennummer kopieren",
       "number": "Gruppennummer"
     },
     "license": {
       "title": "Lizenz",
-      "desc": "Argus ist freie Software, die unter der Affero General Public License GNU, Version 3 oder einer späteren Version (AGPL-3.0 oder höher) veröffentlicht wird. Es kann unter den Bedingungen dieser Lizenz weitergegeben und geändert werden. Argus wird ohne Garantie geliefert.",
+      "desc": "Argus ist freie Software unter der GNU Affero General Public License, Version 3 oder einer späteren Version (AGPL-3.0-or-later). Die Software darf gemäß dieser Lizenz weitergegeben und geändert werden. Argus wird ohne Garantie bereitgestellt.",
       "view": "Lizenz anzeigen"
     },
     "notices": {
@@ -406,11 +406,11 @@
     }
   },
   "sensors": {
-    "title": "Kernel-Sensoren",
-    "desc": "Wenn Sie dies aktivieren, wird PawnIO überprüft, der offizielle Treiber installiert, falls er fehlt oder veraltet ist, und bei Bedarf gestartet. Es ist eine Administratorberechtigung erforderlich. Installieren und starten Sie zuerst den privilegierten Dienst Argus. Wenn Sie dies deaktivieren, wird nur die Erfassung des Argus-Sensors gestoppt.",
+    "title": "Kernelsensoren",
+    "desc": "Beim Aktivieren wird PawnIO geprüft. Fehlt der Treiber oder ist er veraltet, wird der offizielle Treiber installiert; andernfalls wird er gestartet. Eine Administratorfreigabe ist erforderlich. Installieren und starten Sie zuerst den privilegierten Argus-Dienst. Das Deaktivieren beendet nur die Datenerfassung durch Argus.",
     "off": "Aus; Windows-Sensoren bleiben verfügbar.",
     "driver": "PawnIO-Website",
-    "preparing": "Vorbereiten des Treibers. Füllen Sie die Administratoraufforderung aus, falls sie angezeigt wird. Bei der ersten Installation wird ein Paket heruntergeladen."
+    "preparing": "Der Treiber wird vorbereitet. Bestätigen Sie eine gegebenenfalls angezeigte Administratorfreigabe. Bei der ersten Installation müssen Dateien heruntergeladen werden."
   },
   "administrator": {
     "development": "Die dauerhafte Administratorautorisierung ist beim Hot-Reload der Entwicklung nicht verfügbar. Verwenden Sie einen Release-Build.",
@@ -429,9 +429,9 @@
   },
   "appearance": {
     "scaleTitle": "Oberflächenskalierung",
-    "scaleDesc": "Ändern Sie die Größe von Text, Symbolen und Steuerelementen von 80 % auf 150 % (Standard: 100 %). Änderungen gelten sofort und werden automatisch gespeichert.",
+    "scaleDesc": "Ändern Sie die Größe von Text, Symbolen und Steuerelementen von 80 % auf 150 % (Standard: 100 %). Änderungen gelten sofort und werden automatisch gespeichert.",
     "fontTitle": "Schriftgröße",
-    "fontDesc": "Basisschriftgröße: 11–20 px (Standard: 13 px). Überschriften und Sekundärtext werden proportional skaliert. Kombiniert mit Schnittstellenskalierung.",
+    "fontDesc": "Basisschriftgröße: 11–20 px, standardmäßig 13 px. Überschriften und ergänzende Texte werden proportional angepasst. Die Einstellung kann mit der Oberflächenskalierung kombiniert werden.",
     "reset": "Zurücksetzen",
     "saveFailed": "Schnittstelleneinstellungen konnten nicht gespeichert werden. Überprüfen Sie, ob der Konfigurationsordner beschreibbar ist."
   }

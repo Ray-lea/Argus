@@ -1,5 +1,5 @@
 {
-  "loadingProcesses": "Lesevorgänge…",
+  "loadingProcesses": "Prozesse werden gelesen…",
   "nav": {
     "expand": "Navigation erweitern",
     "collapse": "Navigation einklappen",
@@ -20,7 +20,7 @@
     "admin": "Administrator",
     "adminHint": "Argus wird als Administrator ausgeführt und kann fast alle Prozesse anzeigen und beenden",
     "service": "Privilegierter Dienst",
-    "serviceHint": "Argus läuft als Standardbenutzer; the privileged service carries out what needs administrator rights",
+    "serviceHint": "Argus läuft mit Standardrechten; der privilegierte Dienst übernimmt Vorgänge, die Administratorrechte erfordern",
     "standard": "Standardbenutzer",
     "standardHint": "Zum Lesen oder Beenden einiger Systemprozesse sind Administratorrechte erforderlich"
   },
@@ -38,20 +38,20 @@
         "title": "Öfter im Infobereich aktualisieren?",
         "body": "Bei ausgeblendetem Fenster erfasst Argus alle Prozesse und Sensoren alle {seconds} s. Intervalle unter 5 Sekunden erhöhen CPU-Auslastung und Energieverbrauch spürbar, besonders im Akkubetrieb. Verlauf und Regeln funktionieren mit dem Standardintervall von 5 Sekunden."
       },
-      "accept": "Verwenden Sie trotzdem {seconds} s"
+      "accept": "Trotzdem {seconds} s verwenden"
     },
     "notice": {
       "minimized": "Bei minimiertem Fenster hat Argus alle {to} s statt alle {from} s aktualisiert, um Ressourcen zu sparen.",
       "tray": "Während Argus im Infobereich ausgeblendet war, wurde alle {to} s statt alle {from} s aktualisiert, um Ressourcen zu sparen.",
       "adjust": "Anpassen",
-      "quiet": "Erinnere mich nicht daran"
+      "quiet": "Nicht erneut erinnern"
     }
   },
   "pause": "Aktualisierung anhalten",
   "resume": "Aktualisierung fortsetzen",
   "fileLock": {
     "title": "Dateisperren suchen (Dateien können auch auf das Fenster gezogen werden)",
-    "label": "Prozesse mithilfe einer Datei finden"
+    "label": "Prozesse suchen, die eine Datei verwenden"
   },
   "details": {
     "label": "Detailbereich",
@@ -64,7 +64,7 @@
     "next": "Klicken Sie für „{mode}“; Klicken Sie mit der rechten Maustaste, um auszuwählen"
   },
   "search": {
-    "processes": "Suchname, PID, Pfad oder Dienst",
+    "processes": "Nach Name, PID, Pfad oder Dienst suchen",
     "clear": "Suche löschen"
   },
   "viewMode": {
@@ -86,9 +86,9 @@
     "uptime": "Betriebszeit",
     "orderHeld": "Die Sortierung wurde angehalten, während sich der Zeiger über der Liste befindet",
     "orderHeldHint": "Die Zeilen werden neu sortiert, sobald der Mauszeiger die Liste verlässt",
-    "paused": "Updates angehalten",
+    "paused": "Aktualisierung angehalten",
     "interval": "Aktualisiert alle {seconds} s",
     "version": "v{version}",
-    "versionHint": "Argus {version} · {build}\nClick to see what’s new in this version; Klicken Sie mit der rechten Maustaste, um die Versionsnummer zu kopieren"
+    "versionHint": "Argus {version} · {build}\nKlicken, um die Neuerungen dieser Version anzuzeigen; rechtsklicken, um die Versionsnummer zu kopieren"
   }
 }
