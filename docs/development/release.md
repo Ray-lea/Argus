@@ -202,7 +202,7 @@ curl -sL https://github.com/Ray-lea/Argus/releases/latest/download/beta.json   #
 安装与卸载由以下两个 NSIS 文件定义。
 
 - [`installer-template.nsi`](../../packaging/windows/installer-template.nsi) 定义安装与卸载流程、服务刷新和数据清理。`scripts/bundle.mjs` 注入 `resources/app.json` 中的元数据和构建路径。
-- `packaging/windows/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案按语言写在文件开头的 `LangString` 中。
+- `packaging/windows/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案在各语言的 `locales/<语言>/installer.json` 中维护，打包时由 `scripts/bundle.mjs` 生成 `installer-locales.nsh` 中的 `LangString`。
 
 已安装旧版本时，安装页显示“将从版本 X 升级到 Y”，覆盖安装而不先卸载（与应用内更新相同）；已安装更新的版本时按钮不可用，需先卸载。被动模式（应用内更新）只显示进度页，静默安装（`/S`）不显示界面，保留 /P、/UPDATE、/R、/ARGS 与 /S 参数。
 
