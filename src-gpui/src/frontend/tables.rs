@@ -561,6 +561,8 @@ impl NativeTable {
                 },
                 cx,
             );
+        } else if page != "processes" {
+            self.auto_widths.fit_localized_labels(&mut fields, cx);
         }
         let changed = !same_layout
             || !self
