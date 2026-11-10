@@ -24,7 +24,7 @@
   "endProcessTree": "プロセス ツリーの終了",
   "efficiencyMode": "効率モード",
   "privilegedService": "特権サービス",
-  "listSeparator": ", ",
+  "listSeparator": "、",
   "resource": {
     "cpu": "CPU",
     "memory": "メモリ",
