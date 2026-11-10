@@ -6,7 +6,7 @@
 
 **快速、现代、信息丰富的 Windows 任务管理器**
 
-**阅读语言：** **简体中文** · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+**阅读语言：** **简体中文** · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![官网与在线体验](https://img.shields.io/badge/%F0%9F%8C%90_%E5%AE%98%E7%BD%91%E4%B8%8E%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/)
 
@@ -38,7 +38,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 
 页面顶部可切换 README 阅读语言。软件界面语言可在 **设置 → 语言与外观 → 界面语言** 中单独选择，默认跟随 Windows 显示语言。
 
-官网提供中文与英文，详细文档使用中文，更新日志提供中文与英文。
+官网页面与交互演示提供上述八种语言，详细文档使用简体中文。更新日志保留简体中文与英文两份：繁体中文页面回退为简体中文，其余新增语言回退为英文。
 
 ## ⭐ Star 趋势
 

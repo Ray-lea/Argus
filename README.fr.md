@@ -6,18 +6,18 @@
 
 **Un gestionnaire de tâches rapide, moderne et riche en informations pour Windows**
 
-**Langue du README :** [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · **Français** · [Русский](README.ru.md)
+**Langue du README :** [简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · **Français** · [Русский](README.ru.md)
 
-[![Site web et démo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Site+web+et+d%C3%A9mo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/en/)
+[![Site web et démo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Site+web+et+d%C3%A9mo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/fr/)
 
-Essayer l’interface interactive et la présentation des fonctions dans le navigateur sur le [site officiel](https://argustask.com/en/), en anglais, sans installer l’application.
+Essayer l’interface interactive et la présentation des fonctions dans le navigateur sur le [site officiel](https://argustask.com/fr/), sans installer l’application.
 
 [![Dernière version](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=Derni%C3%A8re+version&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Téléchargements](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=T%C3%A9l%C3%A9chargements&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
 [![Plateforme](https://img.shields.io/static/v1?label=Plateforme&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
 [![Licence](https://img.shields.io/static/v1?label=Licence&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
-[Site web et démo](https://argustask.com/en/) · [Fonctionnalités](#features) · [Téléchargement](#download) · [Compilation depuis les sources](#build-from-source) · [Raccourcis clavier](#keyboard-shortcuts) · [Documentation](#documentation) · [Communauté](#community) · [Langues](#language-guide)
+[Site web et démo](https://argustask.com/fr/) · [Fonctionnalités](#features) · [Téléchargement](#download) · [Compilation depuis les sources](#build-from-source) · [Raccourcis clavier](#keyboard-shortcuts) · [Documentation](#documentation) · [Communauté](#community) · [Langues](#language-guide)
 
 </div>
 
@@ -40,7 +40,7 @@ Argus interroge directement les API natives de Windows en Rust. Son interface re
 
 Les liens en haut de la page permettent de changer la langue de ce README. La langue d’Argus se choisit séparément dans **Paramètres → Langue et apparence → Langue d’affichage**. Par défaut, elle suit la langue d’affichage de Windows.
 
-Le site web est disponible en chinois et en anglais. La documentation détaillée est en chinois, et le journal des modifications est publié en chinois et en anglais.
+Le site et la démo prennent en charge les huit langues de l’interface. La documentation détaillée reste en chinois simplifié. Les notes de version sont maintenues en chinois simplifié et en anglais : les pages en chinois traditionnel utilisent les premières, les autres langues ajoutées utilisent l’anglais.
 
 <a id="star-history"></a>
 
@@ -81,7 +81,7 @@ Si Argus facilite le travail au quotidien, une étoile sur GitHub est une façon
 
 ## 📦 Téléchargement
 
-La dernière version stable et ses sommes de contrôle SHA-256 sont disponibles sur la [page officielle de téléchargement](https://argustask.com/en/download/), en anglais. Toutes les versions se trouvent dans [GitHub Releases](https://github.com/Ray-lea/Argus/releases).
+La dernière version stable et ses sommes de contrôle SHA-256 sont disponibles sur la [page officielle de téléchargement](https://argustask.com/fr/download/). Toutes les versions se trouvent dans [GitHub Releases](https://github.com/Ray-lea/Argus/releases).
 
 | Fichier | Description |
 |---|---|

@@ -5,7 +5,7 @@
 - `README.md`（仓库根目录）：对外公开的介绍，参考典型开源项目：是什么、特性、系统要求、怎么构建、快捷键摘要、文档入口、路线图摘要。保持简短，不放实现细节和测量过程。内部开发细则（提交规范、发布流程、CI）也不写进去，包括文档链接后的说明文字。
 - README 的标题 emoji 不要带变体选择符 U+FE0F（如 🛠️、⌨️、🗺️）：GitHub 生成锚点时会保留这个不可见字符，`#-标题` 形式的链接就会失效。
 - 更新 README 预览图运行 `node scripts/readme-previews.mjs`。用当前源码构建的窗口，捕获 Windows 11 的激活态 Mica 背景，按名称升序展示模拟应用及其真实图标。四张图共用同一段连续实测的 CPU、内存、磁盘、网络和 GPU 负载，逐张核对中英文与深浅主题。
-- 七份 README 内容对应：`README.md` 为简体中文，`README.en.md`、`README.es.md`、`README.de.md`、`README.ja.md`、`README.fr.md`、`README.ru.md` 分别为英文、西班牙文、德文、日文、法文和俄文。修改公共内容时同步各版；顶部语言导航互相链接，当前语言加粗，语言指引说明软件语言的设置位置和所链接资料的语言。
+- 八份 README 内容对应：`README.md` 为简体中文，`README.zh-TW.md` 为繁体中文，`README.en.md`、`README.es.md`、`README.de.md`、`README.ja.md`、`README.fr.md`、`README.ru.md` 分别为英文、西班牙文、德文、日文、法文和俄文。修改公共内容时同步各版；顶部语言导航互相链接，当前语言加粗，语言指引说明软件语言的设置位置和所链接资料的语言。
 - 英文截图（`screenshot-en-*.png`）用测试标识下的英文设置与模拟快照截取，模拟数据里的进程与服务描述随之换成英文。其他语言复用英文截图时注明图片语言；链接到中文 `docs/` 页面时注明。各版保留 `code-signing-policy` 锚点、签名状态、责任人、隐私策略入口和 SignPath 英文致谢原文。
 - `docs/`：给用户和开发者看的详细信息。
 - `AGENTS.md`（根目录与各子目录）：只给 AI 代理看的规则与经验。不要把这些内容写进 README 或 docs，也不要把面向人的说明只写在 AGENTS.md 里。

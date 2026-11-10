@@ -6,18 +6,18 @@
 
 **Быстрый, современный и информативный диспетчер задач для Windows**
 
-**Язык README:** [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · **Русский**
+**Язык README:** [简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · **Русский**
 
-[![Сайт и демо](https://img.shields.io/static/v1?label=%F0%9F%8C%90+%D0%A1%D0%B0%D0%B9%D1%82+%D0%B8+%D0%B4%D0%B5%D0%BC%D0%BE&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/en/)
+[![Сайт и демо](https://img.shields.io/static/v1?label=%F0%9F%8C%90+%D0%A1%D0%B0%D0%B9%D1%82+%D0%B8+%D0%B4%D0%B5%D0%BC%D0%BE&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/ru/)
 
-На [официальном сайте](https://argustask.com/en/) на английском можно опробовать интерактивный интерфейс и обзор функций прямо в браузере, без установки приложения.
+На [официальном сайте](https://argustask.com/ru/) можно опробовать интерактивный интерфейс и обзор функций прямо в браузере, без установки приложения.
 
 [![Последняя версия](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=%D0%9F%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D1%8F%D1%8F+%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Загрузки](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=%D0%97%D0%B0%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B8&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
 [![Платформа](https://img.shields.io/static/v1?label=%D0%9F%D0%BB%D0%B0%D1%82%D1%84%D0%BE%D1%80%D0%BC%D0%B0&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
 [![Лицензия](https://img.shields.io/static/v1?label=%D0%9B%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
-[Сайт и демо](https://argustask.com/en/) · [Возможности](#features) · [Загрузка](#download) · [Сборка из исходников](#build-from-source) · [Сочетания клавиш](#keyboard-shortcuts) · [Документация](#documentation) · [Сообщество](#community) · [Выбор языка](#language-guide)
+[Сайт и демо](https://argustask.com/ru/) · [Возможности](#features) · [Загрузка](#download) · [Сборка из исходников](#build-from-source) · [Сочетания клавиш](#keyboard-shortcuts) · [Документация](#documentation) · [Сообщество](#community) · [Выбор языка](#language-guide)
 
 </div>
 
@@ -40,7 +40,7 @@ Argus обращается к нативным API Windows напрямую из
 
 Ссылки вверху страницы переключают язык этого README. Язык приложения выбирается отдельно в разделе **Параметры → Язык и внешний вид → Язык интерфейса**. По умолчанию Argus следует языку интерфейса Windows.
 
-Сайт доступен на китайском и английском языках. Подробная документация написана на китайском, а история изменений публикуется на китайском и английском.
+Сайт и демонстрация поддерживают все восемь языков интерфейса. Подробная документация остаётся на упрощённом китайском. Примечания к выпускам ведутся на упрощённом китайском и английском: для традиционного китайского используются первые, для остальных добавленных языков — английские.
 
 <a id="star-history"></a>
 
@@ -81,7 +81,7 @@ Argus обращается к нативным API Windows напрямую из
 
 ## 📦 Загрузка
 
-Последняя стабильная версия и контрольные суммы SHA-256 доступны на [официальной странице загрузки](https://argustask.com/en/download/) на английском. Все версии находятся в [GitHub Releases](https://github.com/Ray-lea/Argus/releases).
+Последняя стабильная версия и контрольные суммы SHA-256 доступны на [официальной странице загрузки](https://argustask.com/ru/download/). Все версии находятся в [GitHub Releases](https://github.com/Ray-lea/Argus/releases).
 
 | Файл | Описание |
 |---|---|

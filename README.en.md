@@ -6,7 +6,7 @@
 
 **A fast, modern and informative task manager for Windows**
 
-**README language:** [简体中文](README.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+**README language:** [简体中文](README.md) · [繁體中文](README.zh-TW.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![Website & Live Demo](https://img.shields.io/badge/%F0%9F%8C%90_Website_%26_Live_Demo-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/en/)
 
@@ -38,7 +38,7 @@ Argus queries Windows native APIs directly in Rust, with an interface built on G
 
 Use the links at the top to choose this README's language. The application language is selected separately in **Settings → Language and appearance → Display language** and follows the Windows display language by default.
 
-The website is available in Chinese and English. The detailed documentation is in Chinese, and the changelog is available in Chinese and English.
+The website and interactive demo support all eight interface languages. Detailed documentation remains in Simplified Chinese. Release notes are maintained in Simplified Chinese and English: Traditional Chinese pages use the Simplified Chinese notes, and the other added languages use English notes.
 
 ## ⭐ Star history
 

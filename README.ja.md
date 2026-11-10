@@ -6,18 +6,18 @@
 
 **高速でモダンな、情報豊富な Windows タスク マネージャー**
 
-**README の言語：** [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · **日本語** · [Français](README.fr.md) · [Русский](README.ru.md)
+**README の言語：** [简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · **日本語** · [Français](README.fr.md) · [Русский](README.ru.md)
 
-[![公式サイトとデモ](https://img.shields.io/static/v1?label=%F0%9F%8C%90+%E5%85%AC%E5%BC%8F%E3%82%B5%E3%82%A4%E3%83%88%E3%81%A8%E3%83%87%E3%83%A2&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/en/)
+[![公式サイトとデモ](https://img.shields.io/static/v1?label=%F0%9F%8C%90+%E5%85%AC%E5%BC%8F%E3%82%B5%E3%82%A4%E3%83%88%E3%81%A8%E3%83%87%E3%83%A2&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/ja/)
 
-[公式サイト](https://argustask.com/en/)（英語）では、インストールせずにブラウザー上で画面を操作し、機能ガイドを体験できます。
+[公式サイト](https://argustask.com/ja/)では、インストールせずにブラウザー上で画面を操作し、機能ガイドを体験できます。
 
 [![最新バージョン](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=%E6%9C%80%E6%96%B0%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![ダウンロード](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
 [![動作環境](https://img.shields.io/static/v1?label=%E5%8B%95%E4%BD%9C%E7%92%B0%E5%A2%83&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
 [![ライセンス](https://img.shields.io/static/v1?label=%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
-[公式サイトとデモ](https://argustask.com/en/) · [機能](#features) · [ダウンロード](#download) · [ソースからのビルド](#build-from-source) · [ショートカット](#keyboard-shortcuts) · [ドキュメント](#documentation) · [コミュニティ](#community) · [言語の選択](#language-guide)
+[公式サイトとデモ](https://argustask.com/ja/) · [機能](#features) · [ダウンロード](#download) · [ソースからのビルド](#build-from-source) · [ショートカット](#keyboard-shortcuts) · [ドキュメント](#documentation) · [コミュニティ](#community) · [言語の選択](#language-guide)
 
 </div>
 
@@ -40,7 +40,7 @@ Argus は Rust から Windows のネイティブ API を直接呼び出し、GPU
 
 ページ上部のリンクから README の言語を切り替えられます。アプリの表示言語は **設定 → 言語と外観 → 表示言語** で個別に選択できます。初期設定では Windows の表示言語に従います。
 
-公式サイトは中国語と英語に対応しています。詳細ドキュメントは中国語、変更履歴は中国語と英語で提供しています。
+公式サイトと操作デモは、アプリと同じ 8 言語に対応します。詳細ドキュメントは簡体字中国語で提供しています。更新履歴は簡体字中国語と英語で管理し、繁体字中国語のページでは簡体字中国語版、その他の追加言語では英語版を表示します。
 
 <a id="star-history"></a>
 
@@ -81,7 +81,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 ## 📦 ダウンロード
 
-最新の安定版と SHA-256 チェックサムは、[公式ダウンロード ページ](https://argustask.com/en/download/)（英語）から取得できます。すべてのバージョンは [GitHub Releases](https://github.com/Ray-lea/Argus/releases) にあります。
+最新の安定版と SHA-256 チェックサムは、[公式ダウンロード ページ](https://argustask.com/ja/download/)から取得できます。すべてのバージョンは [GitHub Releases](https://github.com/Ray-lea/Argus/releases) にあります。
 
 | ファイル | 内容 |
 |---|---|
