@@ -251,9 +251,9 @@ pub fn set_efficiency_mode(pid: u32, create_time: i64, on: bool) -> Result<(), A
     Ok(())
 }
 
-/// Resumes repeated at most this many times, against suspend counts stacked
-/// by other tools; far above any real nesting.
-const MAX_RESUMES: usize = 64;
+/// Resumes repeated at most this many times: one more than a thread's suspend
+/// count can reach (`MAXIMUM_SUSPEND_COUNT`, 127), so any stacking clears.
+const MAX_RESUMES: usize = 128;
 
 /// Suspends or resumes every thread of a process instance, the way Resource
 /// Monitor's "Suspend process" does. Suspending is refused for the System
@@ -261,9 +261,11 @@ const MAX_RESUMES: usize = 64;
 ///
 /// Each native call moves every thread's suspend count by one, so both
 /// directions are made idempotent against the live thread states rather than
-/// the caller's (possibly stale) list: a suspended process is not suspended
-/// again, and resuming repeats until no thread is left suspended.
+/// the caller's (possibly stale) list: a fully suspended process is not
+/// suspended again, and resuming repeats until no thread is left suspended,
+/// including threads another tool suspended more often than the rest.
 pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), ActionError> {
+    use crate::process::{Suspension, suspension};
     if pid == 0 || pid == 4 || pid == unsafe { GetCurrentProcessId() } {
         return Err(ActionError::Refused);
     }
@@ -274,23 +276,25 @@ pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), Ac
         }
         Ok(status.ok()?)
     };
-    let suspended = || crate::process::is_suspended(pid, create_time) == Some(true);
     if suspend {
         if is_critical(pid) {
             return Err(ActionError::Critical);
         }
-        if suspended() {
+        if suspension(pid, create_time) == Some(Suspension::All) {
             return Ok(());
         }
         return check(unsafe { crate::nt::NtSuspendProcess(handle.0) });
     }
     for _ in 0..MAX_RESUMES {
         check(unsafe { crate::nt::NtResumeProcess(handle.0) })?;
-        if !suspended() {
-            break;
+        // A process that is gone has nothing left to resume.
+        if matches!(suspension(pid, create_time), None | Some(Suspension::None)) {
+            return Ok(());
         }
     }
-    Ok(())
+    Err(ActionError::Os(format!(
+        "threads remain suspended after {MAX_RESUMES} resumes"
+    )))
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -365,8 +369,14 @@ pub fn terminate_tree_with(
 mod tests {
     /// Waits up to two seconds for the suspend APCs to reach every thread.
     fn settles(pid: u32, created: i64, want: bool) -> bool {
+        use crate::process::{Suspension, suspension};
+        let want = if want {
+            Suspension::All
+        } else {
+            Suspension::None
+        };
         (0..40).any(|_| {
-            let now = crate::process::is_suspended(pid, created) == Some(want);
+            let now = suspension(pid, created) == Some(want);
             if !now {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
@@ -391,9 +401,27 @@ mod tests {
         assert!(settles(pid, created, true));
         // Suspending an already suspended process leaves its count alone…
         super::set_suspended(pid, created, true).unwrap();
-        // …and a count stacked behind Argus's back still clears in one resume.
+        // …and counts stacked behind Argus's back, unequal across threads,
+        // still clear in one resume.
         let handle = super::open_instance(pid, created, super::PROCESS_SUSPEND_RESUME).unwrap();
         assert!(unsafe { crate::nt::NtSuspendProcess(handle.0) }.is_ok());
+        let mut buf = crate::util::AlignedBuf::with_capacity(512 * 1024);
+        crate::nt::query_system_information(
+            windows::Wdk::System::SystemInformation::SystemProcessInformation,
+            &mut buf,
+        )
+        .unwrap();
+        let thread = crate::nt::ProcessIter::new(&buf)
+            .find(|e| e.info.unique_process_id.0 as usize as u32 == pid)
+            .map(|e| e.threads[0].unique_thread.0 as usize as u32)
+            .unwrap();
+        use windows::Win32::System::Threading::{OpenThread, SuspendThread, THREAD_SUSPEND_RESUME};
+        let thread = super::OwnedHandle(
+            unsafe { OpenThread(THREAD_SUSPEND_RESUME, false, thread) }.unwrap(),
+        );
+        for _ in 0..3 {
+            assert_ne!(unsafe { SuspendThread(thread.0) }, u32::MAX);
+        }
         super::set_suspended(pid, created, false).unwrap();
         assert!(settles(pid, created, false));
         let _ = child.kill();
