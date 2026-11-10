@@ -9,11 +9,17 @@
     "copyWhat": "PC specifications",
     "copyPart": "{kind}: {name}",
     "selectTip": "Click an app or process in the list to see its details here; click it again to deselect it.",
-    "closeTip": "The details pane stays open; hide it with {icon} at the top right of the window.",
+    "closeTip": "The details pane stays open by default. Click {icon} at the top right of the window to collapse it.",
     "cpu": "Processor",
-    "cores": { "one": "{count} core", "other": "{count} cores" },
+    "cores": {
+      "one": "{count} core",
+      "other": "{count} cores"
+    },
     "hybrid": " ({performance} P-cores + {efficiency} E-cores)",
-    "threads": { "one": "{count} thread", "other": "{count} threads" },
+    "threads": {
+      "one": "{count} thread",
+      "other": "{count} threads"
+    },
     "base": "Base {speed}",
     "slots": "{used} of {total} slots used",
     "disk": "Storage",
@@ -21,7 +27,7 @@
     "vram": "{size} dedicated memory",
     "sharedMemory": "Uses shared memory",
     "battery": "Battery",
-    "designed": "Designed for {capacity}",
+    "designed": "Design capacity {capacity}",
     "health": "Health {percent}%"
   },
   "exited": {
