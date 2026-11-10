@@ -1229,7 +1229,11 @@ impl Desktop {
             ),
             self.stat(
                 label("performance.cpu.speed"),
-                crate::regional::number!("{:.2}", number(hw, "cpuMhz") / 1000.),
+                hw["cpuMhz"]
+                    .as_f64()
+                    .filter(|mhz| *mhz > 0.)
+                    .map(|mhz| crate::regional::number!("{:.2}", mhz / 1000.))
+                    .unwrap_or_else(missing),
                 Some("GHz".into()),
                 None,
                 cx,
