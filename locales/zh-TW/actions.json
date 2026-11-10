@@ -23,6 +23,7 @@
     "critical": "{name} 是系統關鍵處理程序，結束該處理程序會導致系統當機，操作已封鎖。",
     "refused": "無法結束 {name}。",
     "serviceOutdated": "沒有權限結束 {name}。特殊權限服務版本不相容，更新服務後可重試。",
+    "stillSuspended": "{name} 可能仍處於暫停狀態：部分執行緒未能繼續，或無法讀取其狀態。請重試。",
     "generic": "無法結束 {name}：{error}"
   },
   "priority": {

@@ -43,6 +43,7 @@
     "critical": "{name} es un proceso crítico del sistema. Finalizarlo provocaría un fallo de Windows, por lo que se ha bloqueado la operación.",
     "refused": "{name} no se puede finalizar.",
     "serviceOutdated": "No se pudo finalizar {name}: acceso denegado. La versión del servicio privilegiado es incompatible. Actualice el servicio y vuelva a intentarlo.",
+    "stillSuspended": "Es posible que {name} siga suspendido: no se pudieron reanudar algunos subprocesos o leer su estado. Inténtalo de nuevo.",
     "generic": "No se pudo finalizar {name}: {error}"
   },
   "priority": {

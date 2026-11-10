@@ -43,6 +43,7 @@
     "critical": "{name} est un processus système critique. Son arrêt ferait planter Windows ; l’opération a été bloquée.",
     "refused": "{name} ne peut pas être terminé.",
     "serviceOutdated": "Impossible de terminer {name} : accès refusé. La version du service privilégié est incompatible. Mettez le service à jour et réessayez.",
+    "stillSuspended": "{name} est peut-être encore suspendu : certains threads n’ont pas pu être repris ou leur état n’a pas pu être lu. Réessayez.",
     "generic": "Impossible de terminer {name} : {error}"
   },
   "priority": {

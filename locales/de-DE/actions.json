@@ -38,6 +38,7 @@
     "critical": "{name} ist ein kritischer Systemprozess. Das Beenden würde Windows zum Absturz bringen; die Aktion wurde blockiert.",
     "refused": "{name} kann nicht beendet werden.",
     "serviceOutdated": "{name} konnte nicht beendet werden: Zugriff verweigert. Die Version des privilegierten Dienstes ist inkompatibel. Den Dienst aktualisieren und erneut versuchen.",
+    "stillSuspended": "{name} ist möglicherweise noch angehalten: Einige Threads konnten nicht fortgesetzt oder ihr Zustand nicht gelesen werden. Versuchen Sie es erneut.",
     "generic": "{name} konnte nicht beendet werden: {error}"
   },
   "priority": {

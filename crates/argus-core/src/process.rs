@@ -717,11 +717,15 @@ pub(crate) enum Suspension {
 
 /// The suspension of the process instance `pid` + `create_time` (Unix ms; 0
 /// matches any instance), read from a fresh snapshot rather than the sampled
-/// list; None when it is gone or the snapshot fails.
-pub(crate) fn suspension(pid: u32, create_time: i64) -> Option<Suspension> {
+/// list. `Ok(None)` means the instance is not in the list (it exited); a
+/// failed snapshot is an error, so it is never mistaken for an exit.
+pub(crate) fn suspension(
+    pid: u32,
+    create_time: i64,
+) -> Result<Option<Suspension>, windows::Win32::Foundation::NTSTATUS> {
     let mut buf = AlignedBuf::with_capacity(512 * 1024);
-    query_system_information(SPI_CLASS, &mut buf).ok()?;
-    ProcessIter::new(&buf)
+    query_system_information(SPI_CLASS, &mut buf)?;
+    Ok(ProcessIter::new(&buf)
         .find(|e| {
             e.info.unique_process_id.0 as usize as u32 == pid
                 && (create_time == 0 || ticks_to_unix_ms(e.info.create_time) == create_time)
@@ -734,7 +738,7 @@ pub(crate) fn suspension(pid: u32, create_time: i64) -> Option<Suspension> {
             } else {
                 Suspension::None
             }
-        })
+        }))
 }
 
 /// Minimal (pid, ppid, create time) listing, used to walk process trees.

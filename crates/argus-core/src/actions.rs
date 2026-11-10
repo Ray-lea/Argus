@@ -39,6 +39,9 @@ pub enum ActionError {
     /// service speaks another protocol and refused it: updating the service
     /// lets it act again. Only the host reports it; the service never sends it.
     ServiceOutdated,
+    /// Resuming could not be confirmed: threads stayed suspended after every
+    /// retry, or their state could not be read.
+    StillSuspended,
     Os(String),
 }
 
@@ -62,6 +65,7 @@ impl ActionError {
             Self::Critical => "critical process requires confirmation".into(),
             Self::Refused => "operation refused by policy".into(),
             Self::ServiceOutdated => "privileged service protocol incompatible".into(),
+            Self::StillSuspended => "threads remain suspended or unreadable after resume".into(),
             Self::Os(message) => crate::diagnostics::failure(message),
         }
     }
@@ -280,21 +284,23 @@ pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), Ac
         if is_critical(pid) {
             return Err(ActionError::Critical);
         }
-        if suspension(pid, create_time) == Some(Suspension::All) {
+        // An unreadable state suspends anyway: a stacked count is what resume
+        // clears, while skipping would leave the process running unasked.
+        if suspension(pid, create_time) == Ok(Some(Suspension::All)) {
             return Ok(());
         }
         return check(unsafe { crate::nt::NtSuspendProcess(handle.0) });
     }
     for _ in 0..MAX_RESUMES {
         check(unsafe { crate::nt::NtResumeProcess(handle.0) })?;
-        // A process that is gone has nothing left to resume.
-        if matches!(suspension(pid, create_time), None | Some(Suspension::None)) {
+        // Done, or gone (the instance left the process list). Still suspended
+        // or not readable this time: resuming a thread whose count is already
+        // zero changes nothing, so try again.
+        if let Ok(None | Some(Suspension::None)) = suspension(pid, create_time) {
             return Ok(());
         }
     }
-    Err(ActionError::Os(format!(
-        "threads remain suspended after {MAX_RESUMES} resumes"
-    )))
+    Err(ActionError::StillSuspended)
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -376,7 +382,7 @@ mod tests {
             Suspension::None
         };
         (0..40).any(|_| {
-            let now = suspension(pid, created) == Some(want);
+            let now = suspension(pid, created) == Ok(Some(want));
             if !now {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
@@ -455,6 +461,10 @@ mod tests {
         assert_eq!(
             json(ActionError::ServiceOutdated),
             r#"{"kind":"serviceOutdated"}"#
+        );
+        assert_eq!(
+            json(ActionError::StillSuspended),
+            r#"{"kind":"stillSuspended"}"#
         );
         assert_eq!(
             json(ActionError::Os("x".into())),

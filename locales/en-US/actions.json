@@ -38,6 +38,7 @@
     "critical": "{name} is a critical system process. Ending it would crash Windows, so the action was blocked.",
     "refused": "{name} can't be ended.",
     "serviceOutdated": "Couldn't end {name}: access denied. The privileged service version is incompatible; update the service and try again.",
+    "stillSuspended": "{name} may still be suspended: some threads couldn't be resumed, or their state couldn't be read. Try again.",
     "generic": "Couldn't end {name}: {error}"
   },
   "priority": {
