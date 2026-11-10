@@ -33,7 +33,7 @@
     },
     "pid": {
       "label": "PID",
-      "title": "處理程序識別碼 (PID)"
+      "title": "處理程序識別碼"
     },
     "cpu": {
       "label": "CPU",
@@ -239,7 +239,7 @@
     "sortDescending": "遞減排序",
     "hide": "隱藏「{name}」欄",
     "description": "勾選要顯示的資料欄；拖曳右側清單或欄位標頭可調整順序。",
-    "networkUnavailable": "已選取的網路欄將在採集可用時顯示。",
+    "networkUnavailable": "已選取的網路欄將在擷取可用時顯示。",
     "category": {
       "general": "基本資訊",
       "cpu": "CPU",
@@ -264,11 +264,11 @@
   "visibility": {
     "toggle": "隱藏系統處理程序",
     "show": "顯示系統處理程序",
-    "processHint": "隱藏 Windows 系統元件與額外隱藏清單中的處理程序，保留永遠顯示清單。僅影響清單顯示。",
+    "processHint": "隱藏 Windows 系統元件與額外隱藏清單中的處理程序，保留一律顯示清單中的項目。僅影響清單顯示。",
     "networkHint": "隱藏系統處理程序的連線，以及 PID 為 0 的無所屬處理程序記錄。僅影響清單顯示。",
     "edit": "編輯隱藏規則",
     "description": "依 Windows 元件資訊識別系統處理程序。兩頁共用以下規則，隱藏開關分別儲存。",
-    "keep": "永遠顯示",
+    "keep": "一律顯示",
     "keepHint": "即使屬於系統處理程序，也保留這些程式。此清單優先於額外隱藏。",
     "hide": "額外隱藏",
     "hideHint": "開啟隱藏時一併隱藏這些程式。留空時僅隱藏系統處理程序。",

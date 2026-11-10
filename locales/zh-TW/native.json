@@ -11,15 +11,15 @@
     "accessDenied": "Windows 拒絕存取程式檔案。請檢查檔案屬性、目錄權限及安全性軟體提示。",
     "mappedFile": "Argus 程式檔案仍被記憶體對應鎖定。請結束相關程式，或儲存工作並重新啟動電腦後重試。",
     "diskFull": "磁碟剩餘空間不足，無法寫入程式檔案。釋放空間後可重試。",
-    "copyFailed": "程式檔案更新失敗。可根據錯誤碼和診斷記錄檢查檔案與安裝目錄。",
+    "copyFailed": "程式檔案更新失敗。可根據錯誤碼和診斷記錄檔檢查檔案與安裝目錄。",
     "unsafeTarget": "目標程式檔案為連結或資料夾，已停止更新。請檢查安裝位置後重試。",
     "restartRequired": "Windows 暫時無法釋放程式檔案。可儲存工作並重新啟動電腦後安裝。",
     "checkFailed": "Windows 未能完成程式檔案檢查。具體失敗步驟已記錄至記錄檔。",
     "unknownProcess": "未知的處理程序",
-    "moreProcesses": "另有 {count} 個處理程序，詳見記錄。",
+    "moreProcesses": "另有 {count} 個處理程序，詳見記錄檔。",
     "retryHint": "解除檔案鎖定或排除上述原因後，按一下「重試」繼續安裝；按一下「取消」結束安裝。",
     "errorCode": "錯誤碼：{code}",
-    "logPath": "診斷記錄：{path}",
+    "logPath": "診斷記錄檔：{path}",
     "logFailed": "記錄檔寫入失敗，錯誤碼：{code}"
   },
   "tray": {
@@ -42,7 +42,7 @@
     "pickFile": "選取要檢查的檔案",
     "pickTask": "選取要執行的程式或檔案",
     "invalidInterval": "不支援此重新整理間隔",
-    "autostartNotInstalled": "此視窗由工作管理員取代開啟，未找到已安裝的 Argus，無法在此開啟開機啟動。請結束 Argus，直接執行 Argus 後再開啟。"
+    "autostartNotInstalled": "此視窗透過工作管理員取代功能開啟，找不到已安裝的 Argus，無法在此開啟開機啟動。請結束 Argus，直接執行 Argus 後再開啟。"
   },
   "updater": {
     "devBuild": "開發版不檢查更新。",
@@ -108,7 +108,7 @@
       "noHelper": "無法定位控制代碼查詢協助程式",
       "startFailed": "無法啟動控制代碼查詢：{error}",
       "timeLimit": "控制代碼查詢已達到時間限制，以下僅為已完成的結果",
-      "helperExited": "控制代碼查詢協助程序提前結束，以下僅為已完成的結果",
+      "helperExited": "控制代碼查詢輔助處理程序提前結束，以下僅為已完成的結果",
       "serviceIncomplete": "特殊權限服務未完成此次查詢，以下為本機結果：{error}",
       "serviceIncompleteLocal": "特殊權限服務未完成此次查詢，以下為本機查詢結果",
       "unavailable": "查詢暫時不可用",
@@ -156,7 +156,7 @@
     "selfTestFailed": "啟動自我檢測失敗：{error}",
     "uiStartFailed": "無法以發起操作的帳戶啟動介面自我檢測：{error}",
     "uiNotReady": "標準權限介面的就緒檢查失敗，未啟用取代；原因記錄在記錄檔資料夾的 taskmgr.log 中",
-    "uiExited": "介面子程序在完成就緒交握前結束，結束碼為 {code}",
+    "uiExited": "介面子處理程序在完成就緒交握前結束，結束碼為 {code}",
     "probeNameTaken": "啟動自我檢測名稱衝突",
     "probeUnexpectedExit": "啟動器自我檢測未能正常結束",
     "probeFallbackFailed": "原生後備自我檢測失敗",
@@ -172,7 +172,7 @@
     "registryCallFailed": "{api} 呼叫失敗：{error}",
     "refused": {
       "withCause": "{error}。{cause}",
-      "blocked": "登錄檔存取權限檢查通過，操作仍被拒絕，可能受到防毒軟體的登錄檔防護或系統原則限制。可檢視對應的攔截記錄，確認為 Argus 的工作管理員取代操作後允許本次修改，再重試；若無對應記錄，請提供 Argus 診斷記錄",
+      "blocked": "登錄檔存取權限檢查通過，操作仍被拒絕，可能受到 360 等安全性軟體的登錄檔防護或系統原則限制。可檢視對應的攔截記錄，確認為 Argus 的工作管理員取代操作後允許本次修改，再重試；若無對應記錄，請提供 Argus 診斷記錄檔",
       "permissions": "登錄檔存取權限檢查未通過，目前權杖未取得本次呼叫所需的存取權限"
     },
     "notAllowed": "目前狀態不允許此操作，請重新整理後重試",
@@ -189,7 +189,7 @@
     "callerAccount": "發起操作的帳戶不符",
     "callerSession": "發起操作的工作階段不符",
     "noStandardToken": "無法取得目前帳戶的標準權限權杖",
-    "noShell": "未找到桌面主機（檔案總管），無法以標準權限啟動 Argus",
+    "noShell": "找不到桌面殼層（檔案總管），無法以標準權限啟動 Argus",
     "detachFailed": "原生啟動脫離偵錯失敗：{error}",
     "wrongAccount": "目前帳戶或權限不適合啟動標準權限介面",
     "uiTimeout": "Argus 介面未在 10 秒內就緒",
@@ -229,8 +229,8 @@
   "admin": {
     "development": "開發熱更新模式不支援持久系統管理員授權，請使用正式發行組建。",
     "outdated": "系統管理員啟動複本需要更新。請結束 Argus，從新版程式開啟後按一下「修復授權」。",
-    "standardAccount": "目前帳戶沒有系統管理員身分，無法開啟自動系統管理員身分執行。可使用特殊權限服務執行受支援的管理操作。",
-    "fallback": "自動系統管理員身分啟動未完成，目前仍以一般權限執行。可在設定中修復授權。",
+    "standardAccount": "目前帳戶沒有系統管理員身分，無法開啟自動以系統管理員身分執行的功能。可使用特殊權限服務執行受支援的管理操作。",
+    "fallback": "自動以系統管理員身分啟動未完成，目前仍以一般權限執行。可在設定中修復授權。",
     "notReady": "系統管理員啟動授權尚未就緒。",
     "revokedRestartFailed": "系統管理員啟動授權已撤銷。目前處理程序仍以系統管理員權限執行；結束後重新開啟 Argus 可使用一般權限啟動。"
   }
