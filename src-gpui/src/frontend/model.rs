@@ -65,9 +65,11 @@ pub fn text<'a>(value: &'a Value, key: &str) -> &'a str {
 }
 /// Match the rule engine's Unicode lowercase comparison for executable names.
 pub fn same_executable_name(left: &str, right: &str) -> bool {
-    left.chars()
-        .flat_map(char::to_lowercase)
-        .eq(right.chars().flat_map(char::to_lowercase))
+    if left.is_ascii() && right.is_ascii() {
+        left.eq_ignore_ascii_case(right)
+    } else {
+        left.to_lowercase() == right.to_lowercase()
+    }
 }
 pub fn boolean(value: &Value, key: &str) -> bool {
     value.get(key).and_then(Value::as_bool).unwrap_or(false)
@@ -1106,6 +1108,7 @@ mod tests {
             ("EDITOR.EXE", "editor.exe"),
             ("Редактор.exe", "РЕДАКТОР.EXE"),
             ("Éditeur.exe", "éditeur.EXE"),
+            ("ΟΣ-1.EXE", "ος-1.exe"),
         ] {
             assert!(same_executable_name(left, right), "{left} != {right}");
         }

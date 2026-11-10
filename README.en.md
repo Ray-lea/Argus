@@ -4,9 +4,9 @@
 
 # Argus
 
-**A fast, modern and informative task manager for Windows**
+**A fast, modern, information-rich Windows task manager**
 
-**README language:** [简体中文](README.md) · [繁體中文](README.zh-TW.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![Website & Live Demo](https://img.shields.io/badge/%F0%9F%8C%90_Website_%26_Live_Demo-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/en/)
 
@@ -17,7 +17,7 @@ Try the full interactive interface and guided tour right in your browser on the 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20x64-0078D4)](#-system-requirements)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
-[Website & Live Demo](https://argustask.com/en/) · [Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community) · [Language guide](#language-guide)
+[Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community)
 
 </div>
 
@@ -31,14 +31,6 @@ Try the full interactive interface and guided tour right in your browser on the 
 <br>
 
 Argus queries Windows native APIs directly in Rust, with an interface built on GPUI Kit native components and charts that flow smoothly at the display's refresh rate. The project is named after Argus Panoptes, the hundred-eyed giant of Greek mythology.
-
-<a id="language-guide"></a>
-
-## 🌍 Language guide
-
-Use the links at the top to choose this README's language. The application language is selected separately in **Settings → Language and appearance → Display language** and follows the Windows display language by default.
-
-The website and interactive demo support all eight interface languages. Detailed documentation remains in Simplified Chinese. Release notes are maintained in Simplified Chinese and English: Traditional Chinese pages use the Simplified Chinese notes, and the other added languages use English notes.
 
 ## ⭐ Star history
 
@@ -118,7 +110,7 @@ For code checks, packaging the installer, and cleaning caches, see the [developm
 | End task | <kbd>Alt</kbd>+<kbd>E</kbd> or <kbd>Delete</kbd> (<kbd>Shift</kbd>+<kbd>Delete</kbd> skips the confirmation) |
 | Show or hide the window (global) | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
-The full shortcut list is available in Settings → Keyboard shortcut → View shortcuts, and further usage details are covered in the [user guide](docs/guide/README.md) (in Chinese).
+The full shortcut list is available in Settings → Keyboard shortcuts → View shortcuts, and further usage details are covered in the [user guide](docs/guide/README.md) (in Chinese).
 
 ## 📚 Documentation
 
@@ -137,7 +129,7 @@ The documentation is in Chinese; [online documentation](https://argustask.com/do
 
 [![QQ group 453803497](https://img.shields.io/badge/QQ%20group-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
 
-Join the Chinese-speaking QQ group to report problems, suggest features, or talk with other users (also accessible via About → Join QQ group in Argus).
+Join the Chinese-speaking QQ group to report problems, suggest features, or share experiences with other users (also accessible via About → Join QQ group in Argus).
 
 ## 🤝 Contributing
 
@@ -148,7 +140,7 @@ Issues and pull requests are welcome; please read the [contributing guide](.gith
 See the [roadmap](docs/roadmap.md) (in Chinese) for completed milestones and the full plan. Ongoing and planned work includes:
 
 - [ ] **Expanded hardware sensors**: continuing to broaden consumer hardware sensor coverage through the official PawnIO driver (see [hardware coverage](docs/guide/hardware-data.md), in Chinese)
-- [ ] **Extended keyboard shortcuts**: distinguishing left and right modifiers, and supporting modifier-only or two-key combinations
+- [ ] **Extended keyboard shortcuts**: distinguishing left and right modifiers, and supporting combinations of only modifier keys or of two non-modifier keys
 
 <a id="code-signing-policy"></a>
 

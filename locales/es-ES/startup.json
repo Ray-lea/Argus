@@ -8,7 +8,7 @@
     "package": "Paquete de aplicación (usuario actual)"
   },
   "menu": {
-    "copyCommand": "Comando copiar\nComando"
+    "copyCommand": "Copiar comando"
   },
   "copied": {
     "command": "comando"
@@ -31,8 +31,8 @@
     "unavailable": "No se pudo leer el estado de esta tarea de inicio. No se realizaron cambios."
   },
   "unavailable": "No disponible",
-  "loading": "Leyendo aplicaciones de inicio...",
+  "loading": "Leyendo aplicaciones de inicio…",
   "noMatch": "No hay aplicaciones coincidentes",
-  "summary": "{enabled} de {total} habilitado",
+  "summary": "Habilitados: {enabled} de {total}",
   "note": "La desactivación utiliza el mismo interruptor que las aplicaciones de inicio en Administrador de tareas y se puede deshacer. Los elementos para todos los usuarios necesitan derechos de administrador."
 }

@@ -50,7 +50,7 @@
       "one": "Changed the priority of {count} process; {failed} couldn't be changed (access denied or already exited).",
       "other": "Changed the priority of {count} processes; {failed} couldn't be changed (access denied or already exited)."
     },
-    "done": "Set the priority of {name} to {priority}."
+    "done": "The priority of {name} has been set to “{priority}”."
   },
   "efficiency": {
     "on": {
@@ -76,7 +76,7 @@
     "confirm": "Continue to rule settings"
   },
   "copied": "Copied {what}.",
-  "staleProcess": "The process information is out of date. Refresh and try again.",
+  "staleProcess": "The process instance information is out of date. Refresh and try again.",
   "copyWhat": {
     "path": "path",
     "name": "name",

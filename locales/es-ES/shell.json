@@ -1,5 +1,5 @@
 {
-  "loadingProcesses": "Procesos de lectura…",
+  "loadingProcesses": "Leyendo procesos…",
   "nav": {
     "expand": "Ampliar navegación",
     "collapse": "Contraer navegación",
@@ -22,7 +22,7 @@
     "service": "Servicio privilegiado",
     "serviceHint": "Argus se ejecuta como usuario estándar; el servicio privilegiado realiza lo que necesita derechos de administrador",
     "standard": "Usuario estándar",
-    "standardHint": "Algunos procesos del sistema necesitan derechos de administrador para leer o finalizar"
+    "standardHint": "Se necesitan permisos de administrador para leer la información de algunos procesos del sistema o finalizarlos"
   },
   "interval": {
     "label": "Frecuencia de actualización",
@@ -36,15 +36,15 @@
       },
       "tray": {
         "title": "¿Actualizar más a menudo en la bandeja?",
-        "body": "Mientras está oculto en la bandeja, Argus tomará muestras de cada proceso y sensor cada {seconds}. Los intervalos inferiores a 5 segundos aumentan notablemente el uso y el consumo de energía del CPU, especialmente con la batería. El historial y las reglas funcionan bien en los 5 segundos predeterminados."
+        "body": "Mientras está oculto en la bandeja, Argus toma muestras de todos los procesos y datos de hardware cada {seconds} s. Los intervalos inferiores a 5 segundos aumentan notablemente el uso de CPU y el consumo de energía, especialmente al usar la batería. El historial y las reglas funcionan con el intervalo predeterminado de 5 segundos."
       },
-      "accept": "Utilice {seconds} de todos modos"
+      "accept": "Usar {seconds} s de todos modos"
     },
     "notice": {
-      "minimized": "Mientras la ventana estaba minimizada, Argus actualizó cada {to} en lugar de cada {from} para ahorrar recursos.",
-      "tray": "Mientras Argus estaba en la bandeja, actualizaba cada {to} en lugar de cada {from} para ahorrar recursos.",
+      "minimized": "Mientras la ventana está minimizada, el intervalo de actualización pasa de {from} s a {to} s para reducir el consumo en segundo plano.",
+      "tray": "Mientras Argus permanece en la bandeja, el intervalo de actualización pasa de {from} s a {to} s para reducir el consumo en segundo plano.",
       "adjust": "Ajustar",
-      "quiet": "No me lo recuerdes"
+      "quiet": "No volver a avisar"
     }
   },
   "pause": "Pausar actualizaciones",
@@ -61,7 +61,7 @@
       "closed": "Ocultar"
     },
     "current": "Panel de detalles: {mode}",
-    "next": "Haga clic para “{mode}”; haga clic derecho para elegir"
+    "next": "Haga clic para cambiar a «{mode}» o haga clic derecho para elegir directamente"
   },
   "search": {
     "processes": "Buscar nombre, PID, ruta o servicio",
@@ -89,6 +89,6 @@
     "paused": "Actualizaciones pausadas",
     "interval": "Actualiza cada {seconds} s",
     "version": "v{version}",
-    "versionHint": "Argus {version} · {channel}\nHaga clic para ver las novedades de esta versión; haga clic derecho para copiar el número de versión"
+    "versionHint": "Argus {version} · {build}\nHaga clic para ver las novedades de esta versión; haga clic derecho para copiar el número de versión"
   }
 }

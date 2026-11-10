@@ -9,6 +9,7 @@ fn main() {
     windows_runtime::configure();
     let version = build_version::detect();
     println!("cargo:rustc-env=ARGUS_VERSION={}", version.full);
+    println!("cargo:rustc-env=ARGUS_BUILD_NUMBER={}", version.build);
     app_resource::configure(&version.full, version.build);
     let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     println!("cargo:rerun-if-env-changed=ARGUS_BUILD_ASSETS");

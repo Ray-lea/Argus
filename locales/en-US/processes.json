@@ -49,7 +49,7 @@
   "column": {
     "name": {
       "label": "Name",
-      "title": "Application name or file description, with the executable name beside it."
+      "title": "App name or file description; secondary text shows the executable name."
     },
     "pid": {
       "label": "PID",

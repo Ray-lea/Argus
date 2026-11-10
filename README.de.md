@@ -6,7 +6,7 @@
 
 **Ein schneller, moderner und informativer Task-Manager für Windows**
 
-**README-Sprache:** [简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · **Deutsch** · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · **Deutsch** · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![Website und Live-Demo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Website+und+Live-Demo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/de/)
 
@@ -17,7 +17,7 @@ Die interaktive Oberfläche und die Funktionsübersicht können auf der [offizie
 [![Plattform](https://img.shields.io/static/v1?label=Plattform&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
 [![Lizenz](https://img.shields.io/static/v1?label=Lizenz&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
-[Website und Live-Demo](https://argustask.com/de/) · [Funktionen](#features) · [Download](#download) · [Aus dem Quellcode bauen](#build-from-source) · [Tastenkombinationen](#keyboard-shortcuts) · [Dokumentation](#documentation) · [Community](#community) · [Sprachen](#language-guide)
+[Funktionen](#features) · [Download](#download) · [Aus dem Quellcode bauen](#build-from-source) · [Tastenkombinationen](#keyboard-shortcuts) · [Dokumentation](#documentation) · [Community](#community)
 
 </div>
 
@@ -33,14 +33,6 @@ Die interaktive Oberfläche und die Funktionsübersicht können auf der [offizie
 <br>
 
 Argus fragt die nativen Windows-APIs direkt über Rust ab. Die Oberfläche verwendet native Komponenten von GPUI Kit; die Diagramme bewegen sich flüssig mit der Bildwiederholrate des Displays. Namensgeber ist Argus Panoptes, der hundertäugige Riese aus der griechischen Mythologie.
-
-<a id="language-guide"></a>
-
-## 🌍 Sprachen
-
-Über die Links oben lässt sich die Sprache dieser README wechseln. Die Sprache der Anwendung wird separat unter **Einstellungen → Sprache und Aussehen → Anzeigesprache** gewählt. Standardmäßig folgt Argus der Windows-Anzeigesprache.
-
-Website und interaktive Demo unterstützen alle acht Oberflächensprachen. Die ausführliche Dokumentation bleibt auf vereinfachtem Chinesisch. Versionshinweise werden auf vereinfachtem Chinesisch und Englisch gepflegt: Traditionell-chinesische Seiten verwenden die vereinfachte Fassung, die übrigen zusätzlichen Sprachen die englische.
 
 <a id="star-history"></a>
 
@@ -69,7 +61,7 @@ Wenn Argus im Alltag hilfreich ist, unterstützt ein Stern auf GitHub das Projek
 | 🔍 | **Dateisperren** | Dateien oder Ordner auf das Fenster ziehen, um verwendende Prozesse zu finden. Kombiniert Restart Manager mit der Handle-Auflistung und berücksichtigt auch die Arbeitsverzeichnisse von Prozessen. |
 | 🕘 | **Verlauf** | Zeichnet die Ressourcennutzung der letzten 7 Tage automatisch auf. Ein Klick auf einen Zeitpunkt zeigt die damals aktivsten Prozesse. |
 | 📌 | **Infobereich** | Das Fenster lässt sich jederzeit über eine globale Tastenkombination ein- oder ausblenden. Im ausgeblendeten Zustand ist der Ressourcenbedarf gering; die Intervalle bei minimiertem Fenster und im Infobereich sind getrennt einstellbar. |
-| 🔄 | **Updates in der Anwendung** | Stabile Versionen und Betaversionen werden unterstützt. Neue Versionen werden im Hintergrund heruntergeladen und in der Titelleiste angekündigt; Änderungen sind vor und nach dem Update einsehbar. Standardmäßig werden GitHub, der offizielle Spiegelserver und danach GitHub-Proxys verwendet. Die Reihenfolge kann in den Einstellungen angepasst werden. |
+| 🔄 | **Updates in der Anwendung** | Stabile Versionen und Betaversionen werden unterstützt. Neue Versionen werden im Hintergrund heruntergeladen und in der Titelleiste angekündigt; Änderungen sind vor und nach dem Update einsehbar. Standardmäßig werden GitHub, der offizielle Spiegelserver und danach GitHub-Proxys verwendet. Die Downloadquelle kann in den Einstellungen angepasst werden. |
 | 🎨 | **Native Oberfläche** | Mica-Hintergrund unter Windows 11 und einfarbiger Hintergrund unter Windows 10. Akzentfarbe sowie helles oder dunkles Design folgen standardmäßig Windows; das Design kann in den Einstellungen separat gewählt werden. |
 | 🌍 | **Sprachen** | Verfügbar auf vereinfachtem und traditionellem Chinesisch, Englisch, Spanisch, Deutsch, Japanisch, Französisch und Russisch. Die Erstauswahl folgt Windows; eine Einführung hilft beim ersten Start mit den wichtigsten Einstellungen. |
 | 👤 | **Ohne Administratorrechte nutzbar** | Programmpfade und Ressourcenverbrauch aller Prozesse lassen sich mit Standardrechten anzeigen. |
@@ -86,7 +78,7 @@ Die aktuelle stabile Version und SHA-256-Prüfsummen stehen auf der [offiziellen
 | Datei | Beschreibung |
 |---|---|
 | `Argus_<version>_x64-setup.exe` | **Installationsprogramm, empfohlen.** Installiert für alle Benutzer unter `Program Files`. Installation und Updates erfordern Administratorrechte. Unterstützt Updates innerhalb der Anwendung. |
-| `Argus_<version>_x64.exe` | **Portable Version.** Direkt ausführbare Einzeldatei, die Einstellungen und Verlauf mit der installierten Version teilt. Updates erfolgen manuell. |
+| `Argus_<version>_x64.exe` | **Portable Version.** Direkt ausführbare Einzeldatei, die Einstellungen und Verlauf mit der installierten Version teilt. Automatische Updates werden nicht unterstützt. |
 | `SHA256SUMS.txt` | SHA-256-Prüfsummen der veröffentlichten Dateien. |
 
 [Richtlinie zur Codesignierung](#code-signing-policy) · [Datenschutzrichtlinie auf Englisch](PRIVACY.md#english)
@@ -132,7 +124,7 @@ Codeprüfungen, das Erstellen des Installationsprogramms und die Cache-Bereinigu
 | Task beenden | <kbd>Alt</kbd>+<kbd>E</kbd> oder <kbd>Delete</kbd>; <kbd>Shift</kbd>+<kbd>Delete</kbd> überspringt die Bestätigung |
 | Fenster global ein- oder ausblenden | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
-Die vollständige Liste steht unter **Einstellungen → Tastenkombination → Tastenkombinationen anzeigen**. Weitere Bedienhinweise enthält die [Benutzeranleitung](docs/guide/README.md) auf Chinesisch.
+Die vollständige Liste steht unter **Einstellungen → Tastenkombinationen → Tastenkombinationen anzeigen**. Weitere Bedienhinweise enthält die [Benutzeranleitung](docs/guide/README.md) auf Chinesisch.
 
 <a id="documentation"></a>
 

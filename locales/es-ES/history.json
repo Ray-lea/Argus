@@ -13,37 +13,37 @@
   },
   "latest": {
     "label": "Volver a lo último",
-    "title": "Borra el momento seleccionado y muestra los datos más recientes"
+    "title": "Borrar la selección temporal y mostrar los datos más recientes"
   },
   "metric": {
-    "peak": "Pico {value}%",
+    "peak": "Pico {value} %",
     "total": "de {value} GB",
     "charging": "Cargando {value}",
     "discharging": "Descargando {value}"
   },
-  "exited": "{name} (PID {pid}) ha salido.",
+  "exited": "{name} (PID {pid}) ha finalizado.",
   "copied": {
     "name": "nombre"
   },
   "column": {
-    "cpuTitle": "Promedio durante el intervalo de grabación (normalmente 5 segundos)",
+    "cpuTitle": "Promedio del intervalo de registro (normalmente 5 segundos)",
     "memTitle": "Conjunto de trabajo privado"
   },
   "noData": "Sin datos",
   "empty": {
-    "off": "La grabación del historial está desactivada",
+    "off": "El registro del historial está desactivado",
     "none": "No hay registros en este período",
-    "offHint": "Una vez activado en Configuración, Argus graba cada 5 segundos, o a la frecuencia de actualización minimizada o de bandeja cuando es más lenta.",
-    "hint": "Argus graba cada 5 segundos mientras se ejecuta, o a la frecuencia de actualización minimizada o de bandeja cuando es más lenta, y se mantiene durante 7 días."
+    "offHint": "Al activarlo en Configuración, Argus registra datos cada 5 segundos. Si el intervalo de actualización al minimizar o permanecer en la bandeja es mayor, utiliza ese intervalo.",
+    "hint": "Argus registra datos cada 5 segundos mientras se ejecuta, o según el intervalo de actualización al minimizar o permanecer en la bandeja si es mayor. Los datos se conservan durante 7 días."
   },
   "busiest": "Procesos más ocupados",
   "busiestAt": "Procesos más ocupados en {time}",
   "hint": {
     "pick": "Haga clic en cualquier momento en los gráficos para ver los procesos en ese momento",
-    "move": "Presione ← → en los gráficos para recorrer el tiempo, Esc para regresar a la última"
+    "move": "Pulse ← → sobre los gráficos para desplazarse en el tiempo y Esc para volver a los datos más recientes"
   },
   "noRecordAt": "No hay registros en este momento",
   "earliest": "Registro más antiguo",
-  "note": "Registra los procesos principales por CPU, memoria, I/O, GPU y red cada 5 segundos (o a la frecuencia de actualización minimizada o de bandeja cuando es más lenta) y los conserva durante 7 días.",
-  "off": "La grabación del historial está desactivada; no se están registrando nuevos datos. <link>Abrir configuración</link>"
+  "note": "Registra cada 5 segundos los procesos con mayor uso de CPU, memoria, I/O, GPU y red; si el intervalo al minimizar o permanecer en la bandeja es mayor, utiliza ese intervalo. Conserva los registros durante 7 días.",
+  "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>"
 }

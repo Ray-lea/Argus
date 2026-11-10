@@ -2,10 +2,10 @@
   "visibility": {
     "toggle": "Ocultar procesos del sistema",
     "show": "Mostrar procesos del sistema",
-    "processHint": "Oculte los componentes y procesos de Windows en la lista de ocultar adicional, manteniendo la lista de mostrar siempre. Sólo cambia la lista mostrada.",
-    "networkHint": "Ocultar conexiones propiedad de procesos del sistema y entradas sin proceso propietario (PID 0). Sólo cambia la lista mostrada.",
+    "processHint": "Oculta los componentes de Windows y los procesos de la lista adicional, excepto los de «Mostrar siempre». Solo afecta a la visualización.",
+    "networkHint": "Ocultar conexiones propiedad de procesos del sistema y entradas sin proceso propietario (PID 0). Solo cambia la lista mostrada.",
     "edit": "Editar reglas de ocultación",
-    "description": "Los procesos del sistema se identifican a partir de la información del componente Windows. Ambas páginas comparten estas reglas y guardan sus interruptores ocultos por separado.",
+    "description": "Los procesos del sistema se identifican mediante la información de componentes de Windows. Ambas páginas comparten estas reglas y guardan por separado la opción de ocultación.",
     "keep": "Mostrar siempre",
     "keepHint": "Mantenga estos programas visibles, incluidos los procesos del sistema. Esta lista tiene prioridad sobre ocultaciones adicionales.",
     "hide": "También ocultar",
@@ -16,15 +16,15 @@
     "empty": "Ningún elemento coincide con los filtros actuales.",
     "clear": "Mostrar todo y borrar filtros"
   },
-  "identityPending": "Confirmando la identidad del proceso. Vuelve a intentarlo en breve.",
+  "identityPending": "Confirmando la identidad del proceso. Vuelva a intentarlo más tarde.",
   "countersPending": "Recopilando contadores de recursos para este proceso.",
   "refreshPending": "Actualización de datos del proceso. Mostrando la última lectura recopilada correctamente.",
   "diskUnavailable": {
-    "pending": "Aún no se ha leído el disco. Un proceso que acaba de aparecer obtiene uno en la próxima actualización.",
+    "pending": "Aún no hay datos de disco: los procesos que acaban de aparecer tendrán lecturas en la próxima actualización.",
     "enable": "No hay lectura de disco. Windows no proporciona estos contadores directamente, por lo que provienen del servicio privilegiado, que se puede habilitar en Configuración.",
     "update": "No hay lectura de disco. La versión del servicio privilegiado no coincide con Argus; actualice el servicio en Configuración.",
-    "start": "No hay lectura de disco. El servicio privilegiado se detiene; se puede iniciar en Configuración.",
-    "service": "No hay lectura de disco. No pude leerlo desde el servicio privilegiado; verifique el estado del servicio en Configuración.",
+    "start": "No hay datos de disco: el servicio privilegiado está detenido. Puede iniciarlo en Configuración.",
+    "service": "No se pudieron obtener datos de disco del servicio privilegiado. Compruebe su estado en Configuración.",
     "unavailable": "No hay lectura de disco. Los contadores de disco por proceso no se pueden leer en este momento."
   },
   "serviceHost": "Host de servicio: {names}",
@@ -50,15 +50,15 @@
   "column": {
     "name": {
       "label": "Nombre",
-      "title": "Nombre de la aplicación o descripción del archivo, con el nombre del ejecutable al lado."
+      "title": "Nombre de la aplicación o descripción del archivo; el texto secundario muestra el nombre del ejecutable."
     },
     "pid": {
       "label": "PID",
-      "title": "Proceso ID"
+      "title": "ID de proceso"
     },
     "cpu": {
       "label": "CPU",
-      "title": "Participación de la capacidad total del procesador"
+      "title": "Porcentaje de la capacidad total del procesador"
     },
     "mem": {
       "label": "Memoria",
@@ -66,11 +66,11 @@
     },
     "diskRead": {
       "label": "Lectura de disco",
-      "title": "Bytes de disco leídos por segundo; excluye la red y otros dispositivos I/O"
+      "title": "Bytes leídos del disco por segundo; no incluye la red ni las operaciones I/O de otros dispositivos"
     },
     "diskWrite": {
       "label": "Escritura en disco",
-      "title": "Bytes de disco escritos por segundo; excluye la red y otros dispositivos I/O"
+      "title": "Bytes escritos en el disco por segundo; no incluye la red ni las operaciones I/O de otros dispositivos"
     },
     "io": {
       "label": "I/O",
@@ -86,19 +86,19 @@
     },
     "threads": {
       "label": "Subprocesos",
-      "title": "Número de hilos"
+      "title": "Número de subprocesos"
     },
     "handles": {
       "label": "Identificadores",
-      "title": "Número de manijas"
+      "title": "Número de identificadores"
     },
     "imageName": {
       "label": "Nombre de imagen",
       "title": "Nombre del archivo ejecutable."
     },
     "ppid": {
-      "label": "Padre PID",
-      "title": "El proceso principal ID se registró en el momento de la creación."
+      "label": "PID principal",
+      "title": "ID del proceso principal registrado al crear el proceso."
     },
     "path": {
       "label": "Ruta de imagen",
@@ -113,8 +113,8 @@
       "title": "Nombre de la empresa de la información de la versión ejecutable."
     },
     "sessionId": {
-      "label": "Sesión ID",
-      "title": "Windows sesión que contiene el proceso."
+      "label": "ID de sesión",
+      "title": "Número de la sesión de Windows a la que pertenece el proceso."
     },
     "createTime": {
       "label": "Hora de inicio",
@@ -129,20 +129,20 @@
       "title": "Estado de eficiencia energética EcoQoS del proceso."
     },
     "cpuTime": {
-      "label": "CPU tiempo",
-      "title": "Tiempo acumulado de usuario y kernel CPU; Los grupos muestran el total de miembros."
+      "label": "Tiempo de CPU",
+      "title": "Tiempo acumulado de CPU en modo de usuario y de kernel; los grupos muestran la suma de sus miembros."
     },
     "cpuUserTime": {
-      "label": "Hora del usuario CPU",
-      "title": "Tiempo acumulado CPU permanecido en modo usuario."
+      "label": "Tiempo de CPU de usuario",
+      "title": "Tiempo acumulado de CPU del proceso en modo de usuario."
     },
     "cpuKernelTime": {
-      "label": "Hora del kernel CPU",
-      "title": "Tiempo CPU acumulado transcurrido en modo kernel."
+      "label": "Tiempo de CPU del kernel",
+      "title": "Tiempo acumulado de CPU del proceso en modo de kernel."
     },
     "basePriority": {
       "label": "Prioridad básica",
-      "title": "Prioridad base del proceso numérico reportada por Windows."
+      "title": "Valor numérico de la prioridad base del proceso indicado por Windows."
     },
     "workingSet": {
       "label": "Conjunto de trabajo",
@@ -154,11 +154,11 @@
     },
     "commit": {
       "label": "Tamaño de confirmación",
-      "title": "Memoria privada comprometida del proceso."
+      "title": "Memoria privada confirmada del proceso."
     },
     "virtualSize": {
       "label": "Espacio de direcciones virtuales",
-      "title": "Rangos de direcciones reservados y comprometidos de un proceso. El tamaño de confirmación muestra la memoria privada comprometida."
+      "title": "Rangos de direcciones virtuales reservados y confirmados de un proceso. La memoria confirmada figura en «Tamaño de confirmación»."
     },
     "pageFaults": {
       "label": "Errores de página",
@@ -177,15 +177,15 @@
       "title": "Bytes transferidos por segundo por otras operaciones I/O."
     },
     "ioReadTotal": {
-      "label": "Lectura total de I/O",
+      "label": "Lectura acumulada de I/O",
       "title": "Total de bytes I/O leídos durante la vida útil del proceso."
     },
     "ioWriteTotal": {
-      "label": "Escritura total I/O",
+      "label": "Escritura acumulada de I/O",
       "title": "Total de bytes I/O escritos durante la vida útil del proceso."
     },
     "ioOtherTotal": {
-      "label": "Total otros I/O",
+      "label": "Otras I/O acumuladas",
       "title": "Total de bytes transferidos por otros I/O durante la vida útil del proceso."
     },
     "netReceived": {
@@ -206,25 +206,25 @@
     },
     "gpuShared": {
       "label": "Memoria compartida de GPU",
-      "title": "Memoria GPU compartida del residente actual atribuida al proceso. Los grupos suman contadores de miembros."
+      "title": "Lectura actual de memoria compartida de GPU residente atribuida al proceso; los grupos muestran la suma de sus miembros."
     }
   },
   "noMatch": "Ningún proceso coincide con “{query}”",
   "efficiencyCount": {
-    "one": "Proceso {count} en modo Eficiencia",
-    "many": "Procesos {count} en modo Eficiencia",
-    "other": "Procesos {count} en modo Eficiencia"
+    "one": "{count} proceso en modo de eficiencia",
+    "many": "{count} procesos en modo de eficiencia",
+    "other": "{count} procesos en modo de eficiencia"
   },
   "suspended": "Suspendido",
-  "netRates": "Enviar {sent}, recibir {received}",
+  "netRates": "Envío {sent}, recepción {received}",
   "section": {
     "apps": "Aplicaciones",
     "background": "Procesos en segundo plano",
     "windows": "Procesos de Windows"
   },
-  "sectionSearching": "Durante la búsqueda, se muestran todas las coincidencias; borrar la búsqueda para colapsar grupos",
-  "servicesSummary": "{names} y otros (servicios {count})",
-  "pidExited": "PID {pid} ya salió.",
+  "sectionSearching": "Se muestran todas las coincidencias durante la búsqueda; borre la búsqueda para contraer los grupos",
+  "servicesSummary": "{names}, entre otros ({count} servicios)",
+  "pidExited": "El proceso con PID {pid} ya ha finalizado.",
   "priority": {
     "realtime": "Tiempo real",
     "high": "Alta",
@@ -235,9 +235,9 @@
   },
   "menu": {
     "endAll": {
-      "one": "Finalizar proceso {count}",
-      "many": "Finalizar todos los procesos {count}",
-      "other": "Finalizar todos los procesos {count}"
+      "one": "Finalizar {count} proceso",
+      "many": "Finalizar los {count} procesos",
+      "other": "Finalizar los {count} procesos"
     },
     "setPriority": "Establecer prioridad",
     "addRule": "Añadir regla",
@@ -251,7 +251,7 @@
   },
   "vitals": {
     "open": "Ver {device} en Rendimiento",
-    "diskActive": "Activo {value}%",
+    "diskActive": "Activo {value} %",
     "netTitle": "R: recibido, S: enviado",
     "netRates": "R: {received} S: {sent}",
     "acpiTemperature": "Temperatura de la zona térmica ACPI"
@@ -267,7 +267,7 @@
     "sortAscending": "Orden ascendente",
     "sortDescending": "Orden descendente",
     "hide": "Ocultar columna {name}",
-    "description": "Marque las columnas para mostrar. Arrástrelos a la lista de la derecha o arrastre los encabezados de las columnas para cambiar su orden.",
+    "description": "Marque las columnas que desea mostrar. Arrástrelas en la lista de la derecha o arrastre sus encabezados para cambiar el orden.",
     "networkUnavailable": "Las columnas de red seleccionadas aparecen cuando los datos de tráfico están disponibles.",
     "category": {
       "general": "General",
@@ -287,7 +287,7 @@
     "clear": "Borrar",
     "noMatch": "No hay columnas coincidentes",
     "fixed": "Fija",
-    "selectionSummary": "{count} seleccionado",
-    "virtualAliases": "reserva de dirección de bytes virtuales de memoria virtual"
+    "selectionSummary": "Seleccionadas: {count}",
+    "virtualAliases": "memoria virtual bytes virtuales reserva de direcciones"
   }
 }

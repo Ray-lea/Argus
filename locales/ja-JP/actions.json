@@ -12,7 +12,7 @@
     "done": {
       "other": "{name} の {count} 件のプロセスを終了しました。"
     },
-    "partial": "{error}（未終了: {count} 件）"
+    "partial": "{error}（未終了：{count} 件）"
   },
   "endTree": {
     "title": "{name} のプロセス ツリーを終了しますか？",
@@ -33,7 +33,7 @@
     "critical": "{name} は重要なシステム プロセスです。終了すると Windows がクラッシュするため、操作をブロックしました。",
     "refused": "{name}を終了できません。",
     "serviceOutdated": "{name} を終了できませんでした。アクセスが拒否されました。特権サービスのバージョンに互換性がありません。サービスを更新して再試行してください。",
-    "generic": "{name} を終了できませんでした: {error}"
+    "generic": "{name} を終了できませんでした：{error}"
   },
   "priority": {
     "confirmTitle": "{name} の優先度を「リアルタイム」に設定しますか？",
@@ -68,7 +68,7 @@
     "confirm": "ルール設定へ進む"
   },
   "copied": "{what} をコピーしました。",
-  "staleProcess": "プロセス情報が古くなっています。更新して再試行してください。",
+  "staleProcess": "プロセス インスタンスの情報が無効になっています。更新してから再試行してください。",
   "copyWhat": {
     "path": "パス",
     "name": "名前",

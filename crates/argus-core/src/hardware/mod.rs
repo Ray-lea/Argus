@@ -40,7 +40,7 @@ pub use vendor_gpu::GpuPowerSource;
 #[serde(rename_all = "camelCase")]
 pub struct Hardware {
     pub cpu: Arc<CpuInfo>,
-    /// Effective clock in MHz (base clock scaled by current performance).
+    /// Overall clock in MHz; direct Windows readings take priority.
     pub cpu_mhz: Option<u32>,
     /// Per logical processor, MHz; empty when Windows does not publish it.
     pub core_mhz: Vec<u32>,
@@ -156,7 +156,7 @@ impl HardwareTracker {
     pub fn new() -> Self {
         let cpu = cpu::cpu_info();
         let mut t = Self {
-            sensors: sensors::Sensors::new(cpu.reference_mhz, &cpu.threads),
+            sensors: sensors::Sensors::new(&cpu),
             cpu: Arc::new(cpu),
             memory: Arc::new(memory::memory_info()),
             disks: disk::DiskTracker::new(),
@@ -172,7 +172,7 @@ impl HardwareTracker {
         use windows::Win32::System::Threading::{ALL_PROCESSOR_GROUPS, GetActiveProcessorCount};
         if unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) } != self.cpu.logical {
             let cpu = cpu::cpu_info();
-            self.sensors = sensors::Sensors::new(cpu.reference_mhz, &cpu.threads);
+            self.sensors = sensors::Sensors::new(&cpu);
             self.cpu = Arc::new(cpu);
         }
         let sensed = crate::diagnostics::sample_phase("cpu-counters", || {

@@ -370,6 +370,9 @@ pub(super) struct NativeTable {
     scope: (String, String),
     totals: HashMap<String, String>,
     auto_widths: widths::AutoWidths,
+    /// Fixed column widths of the other tables for the current language and
+    /// text size, by page and column (`fit_fixed`).
+    fitted: HashMap<(String, &'static str), f32>,
     cell_values: widths::CellValues,
     horizontal: Option<ScrollHandle>,
     /// A row the desktop selected itself; the table's select event for it is ignored.
@@ -439,7 +442,89 @@ impl Render for TableFrame {
             })
     }
 }
+/// The labels a fixed column's cells can show, as locale keys under `prefix`,
+/// and the width of what sits beside the label (the status dot and its gap).
+fn cell_labels(kind: CellKind) -> (&'static str, &'static [&'static str], f32) {
+    match kind {
+        CellKind::ServiceState => (
+            "services.state",
+            &[
+                "running",
+                "stopped",
+                "startPending",
+                "stopPending",
+                "paused",
+                "pausePending",
+                "continuePending",
+            ],
+            14.,
+        ),
+        CellKind::StartType => (
+            "services.startType",
+            &[
+                "auto",
+                "autoDelayed",
+                "manual",
+                "disabled",
+                "boot",
+                "system",
+            ],
+            0.,
+        ),
+        CellKind::ConnectionState => (
+            "connections.state",
+            &[
+                "listen",
+                "established",
+                "synSent",
+                "synReceived",
+                "finWait1",
+                "finWait2",
+                "closeWait",
+                "closing",
+                "lastAck",
+                "timeWait",
+                "closed",
+            ],
+            14.,
+        ),
+        _ => ("", &[], 0.),
+    }
+}
 impl NativeTable {
+    /// The service, startup and connection tables size their fixed columns for
+    /// Chinese and English; a longer header or state label in the current
+    /// language widens its column instead of being cut off. Measured once per
+    /// language and text size.
+    fn fit_fixed(&mut self, page: &str, fields: &mut [Field], cx: &App) {
+        let system = gpui_kit::gpui::WindowTextSystem::new(cx.text_system().clone());
+        let width = |text: &str, size: f32| {
+            let run = theme::text_run(text, theme::LABEL_WEIGHT, cx);
+            f32::from(
+                system
+                    .layout_line(text, theme::font(size), &[run], None)
+                    .width,
+            )
+            .ceil()
+        };
+        for field in fields {
+            let Track::Fixed(designed) = field.track else {
+                continue;
+            };
+            let fitted = *self
+                .fitted
+                .entry((page.to_owned(), field.key))
+                .or_insert_with(|| {
+                    // The header leaves room for the sort arrow, as `AutoWidths` does.
+                    let (prefix, keys, beside) = cell_labels(field.kind);
+                    keys.iter()
+                        .map(|key| width(&label(&format!("{prefix}.{key}")), 13.) + beside)
+                        .fold(width(&field.label, 12.) + 20., f32::max)
+                        + CELL_PADDING * 2.
+                });
+            field.track = Track::Fixed(designed.max(fitted));
+        }
+    }
     fn new(owner: WeakEntity<Desktop>, tips: tips::Tips) -> Self {
         Self {
             owner,
@@ -464,6 +549,7 @@ impl NativeTable {
             scope: (String::new(), String::new()),
             totals: HashMap::new(),
             auto_widths: Default::default(),
+            fitted: HashMap::new(),
             cell_values: HashMap::new(),
             horizontal: None,
             echo: None,
@@ -527,6 +613,7 @@ impl NativeTable {
         // only another text size or language measures them anew.
         if self.font_size != font_size || self.locale != locale {
             self.auto_widths.reset();
+            self.fitted.clear();
         }
         self.locale = locale;
         self.scope = (scope.0.into(), scope.1.into());
@@ -562,7 +649,7 @@ impl NativeTable {
                 cx,
             );
         } else if page != "processes" {
-            self.auto_widths.fit_localized_labels(&mut fields, cx);
+            self.fit_fixed(page, &mut fields, cx);
         }
         let changed = !same_layout
             || !self

@@ -6,6 +6,35 @@ pub const PROXY_PRESETS: [&str; 3] = [
 ];
 static MANIFEST: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BuildKind {
+    Development,
+    Test,
+    Stable,
+}
+
+impl BuildKind {
+    pub fn label_key(self) -> &'static str {
+        match self {
+            Self::Development => "common.build.development",
+            Self::Test => "common.build.test",
+            Self::Stable => "common.build.stable",
+        }
+    }
+}
+
+/// The installed artifact's identity is independent of its update feed.
+pub fn build_kind(display_version: &str, development: bool) -> BuildKind {
+    if development {
+        BuildKind::Development
+    } else if display_version.contains(['-', '+']) {
+        BuildKind::Test
+    } else {
+        BuildKind::Stable
+    }
+}
+
 pub fn product_name() -> &'static str {
     manifest()["productName"].as_str().expect("product name")
 }
@@ -56,6 +85,21 @@ pub fn app_title() -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn build_identity_distinguishes_profiles_and_non_release_versions() {
+        use super::{BuildKind, build_kind};
+        assert_eq!(build_kind("0.4.0", false), BuildKind::Stable);
+        for version in [
+            "0.4.0+672.g1234567",
+            "0.4.1-beta.2",
+            "0.4.1-rc.1+673.g7654321",
+        ] {
+            assert_eq!(build_kind(version, false), BuildKind::Test);
+            assert_eq!(build_kind(version, true), BuildKind::Development);
+        }
+        assert_eq!(build_kind("0.4.0", true), BuildKind::Development);
+    }
+
     #[test]
     fn development_profiles_are_stable_and_isolated_by_workspace() {
         let one = super::development_identifier("D:/Projects/Argus/src-gpui");

@@ -14,7 +14,7 @@
     "title": "Löschen Sie den ausgewählten Moment und zeigen Sie die neuesten Daten an"
   },
   "metric": {
-    "peak": "Spitzenwert {value}%",
+    "peak": "Spitzenwert {value} %",
     "total": "von {value} GB",
     "charging": "Laden {value}",
     "discharging": "Entladen {value}"
@@ -25,23 +25,23 @@
   },
   "column": {
     "cpuTitle": "Durchschnitt über das Aufzeichnungsintervall (normalerweise 5 Sekunden)",
-    "memTitle": "Privates Arbeitsset"
+    "memTitle": "Privater Arbeitssatz"
   },
   "noData": "Keine Daten",
   "empty": {
     "off": "Die Verlaufsaufzeichnung ist deaktiviert",
     "none": "Keine Datensätze in diesem Zeitraum",
-    "offHint": "Sobald Argus in den Einstellungen aktiviert ist, zeichnet es alle 5 Sekunden auf, oder mit der minimierten oder Tray-Refresh-Rate, wenn diese langsamer ist.",
-    "hint": "Argus zeichnet während des Betriebs alle 5 Sekunden auf, oder mit der minimierten oder Tray-Refresh-Rate, wenn diese langsamer ist, und hält 7 Tage lang."
+    "offHint": "Nach dem Aktivieren in den Einstellungen zeichnet Argus alle 5 Sekunden auf. Ist das Intervall bei minimiertem Fenster oder im Infobereich länger, wird dieses verwendet.",
+    "hint": "Argus zeichnet während der Ausführung alle 5 Sekunden auf, bei längerem Intervall im minimierten Zustand oder im Infobereich entsprechend seltener. Die Daten bleiben 7 Tage erhalten."
   },
   "busiest": "Am stärksten ausgelastete Prozesse",
   "busiestAt": "Am stärksten ausgelastete Prozesse bei {time}",
   "hint": {
     "pick": "Klicken Sie auf einen beliebigen Zeitpunkt in den Diagrammen, um die Prozesse zu diesem Zeitpunkt anzuzeigen",
-    "move": "Drücken Sie ← → in den Diagrammen, um durch die Zeit zu blättern, und Esc, um zur letzten Zeit zurückzukehren"
+    "move": "Mit ← → im Diagramm durch die Zeit wechseln; mit Esc zu den neuesten Daten zurückkehren"
   },
-  "noRecordAt": "Derzeit liegen keine Datensätze vor",
+  "noRecordAt": "Keine Aufzeichnung für diesen Zeitpunkt",
   "earliest": "Frühester Datensatz",
-  "note": "Zeichnet die Top-Prozesse nach CPU, Speicher, I/O, GPU und Netzwerk alle 5 Sekunden auf (oder mit der minimierten odes Infobereichsnaktualisierungsrate, wenn diese langsamer ist) und speichert sie 7 Tage lang.",
-  "off": "Die Verlaufsaufzeichnung ist deaktiviert. Es werden keine neuen Daten erfasst. <link>Öffnen Sie die Einstellungen</link>"
+  "note": "Zeichnet alle 5 Sekunden die Prozesse mit der höchsten CPU-, Arbeitsspeicher-, I/O-, GPU- und Netzwerkauslastung auf. Bei längerem Intervall im minimierten Zustand oder im Infobereich gilt dieses Intervall. Die Daten bleiben 7 Tage erhalten.",
+  "off": "Die Verlaufsaufzeichnung ist deaktiviert; neue Daten werden nicht aufgezeichnet. <link>Einstellungen öffnen</link>"
 }

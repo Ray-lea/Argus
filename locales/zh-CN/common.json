@@ -58,5 +58,10 @@
     "jaJP": "日本語",
     "frFR": "Français",
     "ruRU": "Русский"
+  },
+  "build": {
+    "development": "开发版",
+    "test": "测试版",
+    "stable": "稳定版"
   }
 }

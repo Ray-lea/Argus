@@ -30,7 +30,7 @@ const releasedOn = (lang: Language) => {
 };
 const copy = {
   en: {
-    h1: ["A fast, modern,", "information-rich task manager"],
+    h1: ["A fast, modern,", "information-rich Windows task manager"],
     pill: ["Released ", "What's new"],
     replace: ["Replaces Task Manager", "opens Argus"],
     download: "Download for Windows",
@@ -42,7 +42,7 @@ const copy = {
     raw: "Raw data",
     modern: ["Modern", "A native window drawn by the GPU, in step with every frame of the display.", " Look, accent and theme follow Windows."],
     curves: ["Curves that flow", "The same recorded load drawn two ways: Argus moves the curve at the display's refresh rate, Task Manager jumps once per update."],
-    keys: ["Always one key away", "The global shortcut can be changed or turned off. Hidden in the tray, the window stops drawing while sampling, history and rules continue."],
+    keys: ["Show or hide it any time", "The global shortcut can be changed or turned off. Hidden in the tray, the window stops drawing while sampling, history and rules continue."],
     native: ["Native from end to end", "Rust and GPUI Kit power the interface. Process and hardware data come from NT and Win32 interfaces; Direct3D 11 draws the window and DirectComposition composes it."],
     pipe: [["Collect", "NT · Win32"], ["Draw", "Direct3D 11"], ["Compose", "DirectComposition"], ["Display", "Refresh rate"]],
     rich: ["Information-rich", "What Task Manager leaves to other tools, or does not show.", " Only the rows where the two differ."],

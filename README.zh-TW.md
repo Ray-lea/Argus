@@ -6,7 +6,7 @@
 
 **快速、現代、資訊豐富的 Windows 工作管理員**
 
-**閱讀語言：** [简体中文](README.md) · **繁體中文** · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · **繁體中文** · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![官網與線上體驗](https://img.shields.io/badge/Argus-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/zh-TW/)
 
@@ -17,7 +17,7 @@
 [![平台](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-0078D4)](#system-requirements)
 [![授權條款](https://img.shields.io/badge/License-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
-[官網與線上體驗](https://argustask.com/zh-TW/) · [功能](#features) · [下載](#download) · [從原始碼建置](#build-from-source) · [快速鍵](#keyboard-shortcuts) · [文件](#documentation) · [交流與意見反應](#community) · [語言指引](#language-guide)
+[功能](#features) · [下載](#download) · [從原始碼建置](#build-from-source) · [快速鍵](#keyboard-shortcuts) · [文件](#documentation) · [交流與意見反應](#community)
 
 </div>
 
@@ -31,14 +31,6 @@
 預覽圖為簡體中文介面。
 
 Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件建構介面，圖表折線隨螢幕更新率連續移動。專案名稱取自希臘神話中的百眼巨人阿爾戈斯（Argus Panoptes）。
-
-<a id="language-guide"></a>
-
-## 🌍 語言指引
-
-頁面頂部可切換 README 閱讀語言。軟體介面語言可在 **設定 → 語言與外觀 → 介面語言** 中選取，預設跟隨 Windows 顯示語言。
-
-官網提供簡體中文、繁體中文、英文、西班牙文、德文、日文、法文及俄文。詳細文件使用簡體中文；繁體中文頁面的更新記錄使用簡體中文，其餘新增語言使用英文更新記錄。
 
 ## ⭐ Star 趨勢
 
@@ -82,7 +74,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 | 檔案 | 說明 |
 |---|---|
 | `Argus_<版本>_x64-setup.exe` | **安裝版（建議）**。為所有使用者安裝至 `Program Files`，安裝與更新需要系統管理員授權，支援應用程式內更新。 |
-| `Argus_<版本>_x64.exe` | **免安裝版**。單一檔案直接執行，與安裝版共用設定及歷程資料，需手動更新。 |
+| `Argus_<版本>_x64.exe` | **免安裝版**。單一檔案直接執行，與安裝版共用設定及歷程資料，不支援自動更新。 |
 | `SHA256SUMS.txt` | 上述發行檔案的 SHA-256 總和檢查碼。 |
 
 [程式碼簽署政策（Code signing policy）](#code-signing-policy) · [隱私權政策（簡體中文）](PRIVACY.md#简体中文)
@@ -123,7 +115,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 |---|---|
 | 切換頁面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
 | 搜尋處理程序 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
-| 暫停重新整理 | 按住 <kbd>Ctrl</kbd>，放開後恢復（處理程序頁、效能頁） |
+| 暫時停止重新整理 | 按住 <kbd>Ctrl</kbd>，放開後恢復（處理程序頁、效能頁） |
 | 開啟詳細資料 | <kbd>Enter</kbd> |
 | 結束處理程序 | <kbd>Alt</kbd>+<kbd>E</kbd> 或 <kbd>Delete</kbd>（<kbd>Shift</kbd>+<kbd>Delete</kbd> 略過確認） |
 | 顯示或隱藏視窗（全域） | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
@@ -190,7 +182,7 @@ Argus 建構於以下開放原始碼專案之上，謹致謝忱：
 | [windows-rs](https://github.com/microsoft/windows-rs) | Windows 原生介面的 Rust 繫結 |
 | [Biome](https://biomejs.dev/)、[NSIS](https://nsis.sourceforge.io/) | 開發檢查與 Windows 封裝 |
 | [serde](https://serde.rs/)、[reqwest](https://github.com/seanmonstar/reqwest) 等 Rust crate | 序列化、網路請求等基礎功能 |
-| [PawnIO](https://pawnio.eu/)、[PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) | 選用核心感測器所使用的簽署驅動程式與採集模組 |
+| [PawnIO](https://pawnio.eu/)、[PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) | 選用核心感測器所使用的簽署驅動程式與擷取模組 |
 | [ZenStates-Core](https://github.com/irusanov/ZenStates-Core)、[LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)、[GNR-SMU](https://github.com/Kyworn/gnr-smu) | AMD SMU 表等 CPU 暫存器配置參考 |
 | [Intel IGCL](https://github.com/intel/drivers.gpu.control-library)、[AMD ADL](https://github.com/GPUOpen-LibrariesAndSDKs/display-library) | 顯示卡遙測介面 |
 

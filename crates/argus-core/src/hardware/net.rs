@@ -167,25 +167,34 @@ fn describe(row: &MIB_IF_ROW2, addrs: Option<&(Vec<String>, Vec<String>)>) -> Ni
 
 /// Unicast addresses per interface LUID.
 fn adapter_addresses() -> HashMap<u64, (Vec<String>, Vec<String>)> {
-    let mut map = HashMap::new();
     let flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+    adapter_addresses_with_query(|buffer, size| unsafe {
+        GetAdaptersAddresses(AF_UNSPEC.0 as u32, flags, None, Some(buffer), size)
+    })
+}
+
+fn adapter_addresses_with_query(
+    mut query: impl FnMut(*mut IP_ADAPTER_ADDRESSES_LH, &mut u32) -> u32,
+) -> HashMap<u64, (Vec<String>, Vec<String>)> {
+    let mut map = HashMap::new();
     let mut size = 16 * 1024u32;
     let mut buf = AlignedBuf::with_capacity(size as usize);
+    let mut completed = false;
     for _ in 0..3 {
-        let err = unsafe {
-            GetAdaptersAddresses(
-                AF_UNSPEC.0 as u32,
-                flags,
-                None,
-                Some(buf.as_mut_ptr().cast()),
-                &mut size,
-            )
-        };
+        let err = query(buf.as_mut_ptr().cast(), &mut size);
         match err {
-            0 => break,
+            0 => {
+                completed = true;
+                break;
+            }
             111 => buf.grow_to(size as usize), // ERROR_BUFFER_OVERFLOW
             _ => return map,
         }
+    }
+    // Failed calls do not provide a valid linked list, even after resizing.
+    if !completed {
+        crate::diagnostics::warn("network.addresses", crate::diagnostics::code(111));
+        return map;
     }
 
     let mut cur = buf.as_ptr() as *const IP_ADAPTER_ADDRESSES_LH;
@@ -218,4 +227,63 @@ fn adapter_addresses() -> HashMap<u64, (Vec<String>, Vec<String>)> {
         cur = a.Next;
     }
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::adapter_addresses_with_query;
+    use windows::Win32::NetworkManagement::IpHelper::IP_ADAPTER_ADDRESSES_LH;
+
+    #[test]
+    fn exhausted_retries_never_consume_failed_output() {
+        let mut calls = 0;
+        let addresses = adapter_addresses_with_query(|buffer, size| {
+            calls += 1;
+            // The error-path contents are deliberately plausible, but invalid.
+            unsafe {
+                *buffer = IP_ADAPTER_ADDRESSES_LH::default();
+                (*buffer).Luid.Value = 123;
+            }
+            *size *= 2;
+            111
+        });
+        assert_eq!(calls, 3);
+        assert!(addresses.is_empty());
+    }
+
+    #[test]
+    fn successful_retry_uses_only_the_completed_response() {
+        let mut calls = 0;
+        let addresses = adapter_addresses_with_query(|buffer, size| {
+            calls += 1;
+            unsafe {
+                *buffer = IP_ADAPTER_ADDRESSES_LH::default();
+                (*buffer).Luid.Value = if calls == 1 { 123 } else { 456 };
+            }
+            if calls == 1 {
+                *size *= 2;
+                111
+            } else {
+                0
+            }
+        });
+        assert_eq!(calls, 2);
+        assert_eq!(addresses.len(), 1);
+        assert!(addresses.contains_key(&456));
+    }
+
+    #[test]
+    fn other_errors_discard_the_output_immediately() {
+        let mut calls = 0;
+        let addresses = adapter_addresses_with_query(|buffer, _| {
+            calls += 1;
+            unsafe {
+                *buffer = IP_ADAPTER_ADDRESSES_LH::default();
+                (*buffer).Luid.Value = 123;
+            }
+            5
+        });
+        assert_eq!(calls, 1);
+        assert!(addresses.is_empty());
+    }
 }

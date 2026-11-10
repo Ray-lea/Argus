@@ -211,10 +211,15 @@ pub fn status(id: &str) -> Status {
     };
     let result = (|| {
         let sid = security::current_sid()?;
-        let Some((dir, record)) = grant(id, &sid)? else {
+        // Task Scheduler is authoritative even when runtime records are no
+        // longer trusted. Keep revocation available for a damaged grant.
+        value.enabled = task::Scheduler::new()?.exists(id, &sid)?;
+        if !value.enabled {
             return Ok(());
+        }
+        let Some((dir, record)) = grant(id, &sid)? else {
+            return Err(util::ADMIN_OUTDATED);
         };
-        value.enabled = true;
         if !value.supported {
             return Ok(());
         }
@@ -259,6 +264,13 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
         return Err(5);
     }
     security::validate_sid(sid)?;
+    if !enable && !maintenance {
+        task::Scheduler::new()?.remove(id, sid)?;
+        if let Some(directory) = crate::cleanup::Directory::open(&directory(id, sid)?)? {
+            directory.remove_file("grant.json")?;
+        }
+        return Ok(());
+    }
     // Establish Task Scheduler's COM security before shell folder resolution.
     let early_scheduler = if enable {
         Some(task::Scheduler::new()?)
@@ -291,17 +303,6 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
         Some(scheduler) => scheduler,
         None => task::Scheduler::new()?,
     };
-    if !enable && !maintenance {
-        scheduler.remove(id, sid)?;
-        match fs::remove_file(dir.join("grant.json")) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(io(e)),
-            _ => {}
-        }
-        // Running images are swept on a later management operation.
-        let keep = read_launch(&dir).ok().map(|r| r.image);
-        sweep(&dir, keep.as_deref());
-        return Ok(());
-    }
     let current = std::env::current_exe().map_err(io)?;
     let source = if is_copy(&current, id) {
         previous
@@ -624,6 +625,10 @@ fn refresh(id: &str, remove: bool) -> Result<()> {
     if !argus_core::privilege::is_elevated() {
         return Err(5);
     }
+    if remove {
+        task::Scheduler::new()?.remove_all(id)?;
+        return remove_runtime(id);
+    }
     let root = root(id)?;
     if !root.exists() {
         return Ok(());
@@ -635,30 +640,38 @@ fn refresh(id: &str, remove: bool) -> Result<()> {
         security::validate_sid(&sid)?;
         let dir = directory(id, &sid)?;
         let pin = security::protect_directory(&dir)?;
-        if remove {
-            // Revocation must also work after a failed first installation or a
-            // partially completed uninstall. Neither record is needed to
-            // identify this account's task and our fixed runtime filenames.
-            task::Scheduler::new()?.remove(id, &sid)?;
-            remove_runtime_files(&dir)?;
-            drop(pin);
-            fs::remove_dir(&dir).map_err(io)?;
-        } else {
-            let authorized = grant(id, &sid)?.is_some();
-            // Existing protected records are the only authority for maintenance;
-            // an installer cannot create a new grant for a different account.
-            if !authorized && !dir.join("launch.json").exists() {
-                continue;
-            }
-            read_launch(&dir)?;
-            install_inner(id, &sid, authorized, true)?;
+        let authorized = grant(id, &sid)?.is_some();
+        // Existing protected records are the only authority for maintenance;
+        // an installer cannot create a new grant for a different account.
+        if !authorized && !dir.join("launch.json").exists() {
+            continue;
         }
+        read_launch(&dir)?;
+        install_inner(id, &sid, authorized, true)?;
+        drop(pin);
     }
     drop(guard);
-    if remove {
-        fs::remove_dir(&root).map_err(io)?;
-    }
     Ok(())
+}
+
+fn remove_runtime(id: &str) -> Result<()> {
+    let root = root(id)?;
+    let Some(guard) = crate::cleanup::Directory::open(&root)? else {
+        return Ok(());
+    };
+    for entry in fs::read_dir(&root).map_err(io)? {
+        let entry = entry.map_err(io)?;
+        let sid = entry.file_name().to_string_lossy().into_owned();
+        if security::validate_sid(&sid).is_err() {
+            continue;
+        }
+        let dir = directory(id, &sid)?;
+        if let Some(pin) = crate::cleanup::Directory::open(&dir)? {
+            remove_runtime_files(&dir)?;
+            pin.remove_empty()?;
+        }
+    }
+    guard.remove_empty()
 }
 
 fn runtime_file(name: &str) -> bool {
@@ -681,11 +694,14 @@ fn runtime_file(name: &str) -> bool {
         })
 }
 fn remove_runtime_files(dir: &Path) -> Result<()> {
+    let Some(directory) = crate::cleanup::Directory::open(dir)? else {
+        return Ok(());
+    };
     for file in fs::read_dir(dir).map_err(io)? {
         let file = file.map_err(io)?;
         if file.file_name().to_str().is_some_and(runtime_file) {
             // Never recurse into an unexpected directory or follow a link.
-            fs::remove_file(file.path()).map_err(io)?;
+            directory.remove_file(&file.file_name().to_string_lossy())?;
         }
     }
     Ok(())

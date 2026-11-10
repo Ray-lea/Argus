@@ -63,10 +63,12 @@
 | 模块 | 职责 |
 |---|---|
 | `cpu.rs` | 型号、拓扑（每个逻辑处理器属于哪个核心、是性能核还是能效核）、缓存、虚拟化 |
-| `sensors.rs` | 在标准权限下通过 PDH 批量读取 CPU 频率、ACPI 温度和可用功耗计数。功耗按域合计多个封装的有效读数，保留有效零值，过滤缺失、负数和非有限值 |
+| `sensors.rs` | 在标准权限下通过 PDH 批量读取 CPU 频率、ACPI 温度和可用功耗计数。频率优先使用 `Actual Frequency` 的 MHz 读数，缺少总项时对完整逻辑处理器读数求均值；单路同类核心才使用基准频率与性能百分比回退。功耗按域合计多个封装的有效读数，保留有效零值，过滤缺失、负数和非有限值 |
 | `battery.rs` | 电池类驱动 IOCTL：电量、充放电功率、电压、设计 / 完全充电容量、循环次数。标准用户可以只读打开电池设备 |
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
 | `disk.rs` | 以 `FILE_ANY_ACCESS` 存储 IOCTL 查询型号、容量、介质、卷及温度，通过 `IOCTL_DISK_PERFORMANCE` 计算活动时间、传输速率和响应时间 |
+| `disk/access.rs` | 缓存句柄注册 PnP 移除通知；在弹出请求中关闭句柄、暂停访问，取消弹出后重新打开并变更采样代次；通知不可用时使用查询期间的临时句柄 |
+| `disk/volumes.rs` | 物理计数接口不支持时读取卷层计数；在同一卷句柄上验证磁盘归属，按提供者与设备编号去重并独立维护基线，单卷提供活动时间，多卷合计速率与加权响应时间 |
 | `disk_details.rs`、`disk_details/` | 磁盘详情的单次只读查询：基本身份、扇区、TRIM、NVMe 控制器身份与健康日志、PCIe 链路、Windows 故障预测；现有特权服务补充 ATA／SAT 身份与 SMART 属性、SCSI 健康日志。只由前端明确请求触发，结果与周期采样分离 |
 | `net.rs` | 网络适配器：接口表（`GetIfTable2`）取吞吐量，`GetAdaptersAddresses` 取地址 |
 | `gpu.rs` | 通过 D3DKMT 查询节点计时、显存和性能数据。逐节点维护计时基线，查询失败或计数重置后重建，可选的性能查询间隔 5 秒重试。占用率结合有效的进程引擎读数与 NVIDIA 核心利用率，并注明来源。PCI 地址用于匹配厂商设备 |
@@ -76,6 +78,12 @@
 | `nvml.rs` | NVIDIA 板卡功耗、功耗上限及可选的 GPU 核心利用率：只从 System32 加载驱动附带的 `nvml.dll`，按 PCI 位置匹配，不支持或无效的读数不参与补充。核心利用率用于覆盖部分驱动原生节点计时遗漏的 CUDA 等负载，不替代单独的 Windows 引擎曲线 |
 
 CPU 虚拟化状态优先使用 Windows 的可用标志；Hyper-V 或 VBS 占用虚拟化扩展时，结合 `Hv#1` 接口的 `CreatePartitions` 权限识别宿主。普通虚拟机客体继续按其可用的虚拟化扩展判断。权限位定义见 [Hyper-V 分区权限](https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)。
+
+CPU 动态频率的回退基准来自 CPUID 或 Windows 电源接口；注册表 `~MHz` 可表示 TSC／参考时钟，已退出动态频率换算。混合架构由拓扑类别及 [CPUID Hybrid 标志](https://www.intel.com/content/www/us/en/developer/articles/guide/12th-gen-intel-core-processor-gamedev-guide.html)共同识别，避免在类别未由 Windows 拓扑 API 暴露时套用统一基准。频率计数使用 `PDH_FMT_NOCAP100` 保留睿频比例，仍校验 PDH 状态、数值范围及处理器组对应关系；其他计数器保持原有格式。
+
+周期采样的设备句柄通过 [CM_Register_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_register_notification) 注册移除事件。弹出回调等待当前查询或重开操作完成，关闭句柄后返回成功；取消弹出只更新状态，由采样线程重新打开设备并重置计数基线。通知注销在拥有句柄的线程执行，等待回调退出后释放上下文，遵循 [CM_Unregister_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_unregister_notification) 的生命周期要求。
+
+卷层回退沿用零访问权限句柄。每次读取先以 `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` 核对唯一物理磁盘，再查询计数；`PARTMGR`／`PhysDisk` 的物理结果还须匹配磁盘编号，卷结果接受 Windows 的 `VOLMGR`／`FTDISK`／`DMIO`／`LogiDisk` 提供者。范围依据 [DISK_PERFORMANCE](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntdddisk/ns-ntdddisk-_disk_performance) 的提供者和设备身份判断。临时卷句柄在父磁盘的查询保护期间打开并关闭，移除应答会等待其结束；不持有额外的长期卷句柄，不调用 diskperf 或改写计数器的注册表配置。
 
 ## 磁盘详情接口
 

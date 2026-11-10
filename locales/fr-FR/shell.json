@@ -1,5 +1,5 @@
 {
-  "loadingProcesses": "Processus de lecture…",
+  "loadingProcesses": "Lecture des processus…",
   "nav": {
     "expand": "Développer la navigation",
     "collapse": "Réduire la navigation",
@@ -18,50 +18,50 @@
   "pageTitle": "{page} (Ctrl+{key})",
   "elevation": {
     "admin": "Administrateur",
-    "adminHint": "Argus s'exécute en tant qu'administrateur et peut afficher et terminer presque tous les processus",
+    "adminHint": "Argus s’exécute en tant qu’administrateur et peut afficher et terminer presque tous les processus",
     "service": "Service privilégié",
-    "serviceHint": "Argus s'exécute en tant qu'utilisateur standard ; le service privilégié effectue ce qui nécessite des droits d'administrateur",
+    "serviceHint": "Argus s’exécute en tant qu’utilisateur standard ; le service privilégié effectue ce qui nécessite des droits d’administrateur",
     "standard": "Utilisateur standard",
-    "standardHint": "Certains processus système nécessitent des droits d'administrateur pour lire ou terminer"
+    "standardHint": "Certains processus système nécessitent des droits d’administrateur pour lire ou terminer"
   },
   "interval": {
     "label": "Fréquence d’actualisation",
-    "option": "Tous les {seconds}"
+    "option": "Toutes les {seconds} s"
   },
   "background": {
     "confirm": {
       "minimized": {
-        "title": "Actualiser plus souvent en mode réduit ?",
-        "body": "Tandis que sa fenêtre est réduite, Argus échantillonnera chaque processus et capteur toutes les {seconds} s. Les intervalles inférieurs à 5 secondes augmentent sensiblement l'utilisation et la consommation d'énergie du CPU, en particulier sur batterie. L'historique et les règles fonctionnent correctement avec la durée par défaut de 5 secondes."
+        "title": "Actualiser plus souvent en mode réduit ?",
+        "body": "Tandis que sa fenêtre est réduite, Argus échantillonnera chaque processus et capteur toutes les {seconds} s. Les intervalles inférieurs à 5 secondes augmentent sensiblement l’utilisation et la consommation d’énergie du CPU, en particulier sur batterie. L’historique et les règles fonctionnent correctement avec la durée par défaut de 5 secondes."
       },
       "tray": {
-        "title": "Actualiser plus souvent dans la barre d'état ?",
-        "body": "Lorsqu'il est caché dans le bac, Argus échantillonnera chaque processus et capteur toutes les {seconds}. Les intervalles inférieurs à 5 secondes augmentent sensiblement l'utilisation et la consommation d'énergie du CPU, en particulier sur batterie. L'historique et les règles fonctionnent correctement avec la durée par défaut de 5 secondes."
+        "title": "Actualiser plus souvent dans la zone de notification ?",
+        "body": "Lorsqu’il est masqué dans la zone de notification, Argus collecte les données de tous les processus et du matériel toutes les {seconds} s. Un intervalle inférieur à 5 secondes augmente nettement l’utilisation du CPU et la consommation d’énergie, surtout sur batterie. L’historique et les règles fonctionnent avec l’intervalle par défaut de 5 secondes."
       },
-      "accept": "Utilisez quand même les {seconds}"
+      "accept": "Utiliser {seconds} s quand même"
     },
     "notice": {
-      "minimized": "Alors que la fenêtre était réduite, Argus actualisait tous les {to} au lieu de tous les {from} pour économiser des ressources.",
-      "tray": "Alors que Argus était dans le bac, il a actualisé tous les {to} au lieu de tous les {from} pour économiser des ressources.",
+      "minimized": "Lorsque la fenêtre est réduite, l’intervalle passe de {from} s à {to} s pour limiter la consommation en arrière-plan.",
+      "tray": "Dans la zone de notification, l’intervalle passe de {from} s à {to} s pour limiter la consommation en arrière-plan.",
       "adjust": "Ajuster",
-      "quiet": "Ne me rappelle pas"
+      "quiet": "Ne plus rappeler"
     }
   },
   "pause": "Suspendre l’actualisation",
   "resume": "Reprendre l’actualisation",
   "fileLock": {
     "title": "Rechercher ce qui utilise un fichier (ou déposer des fichiers dans la fenêtre)",
-    "label": "Rechercher des processus à l'aide d'un fichier"
+    "label": "Rechercher les processus utilisant un fichier"
   },
   "details": {
     "label": "Volet Détails",
     "mode": {
       "open": "Toujours afficher",
-      "auto": "Afficher lorsqu'un processus est sélectionné",
+      "auto": "Afficher lorsqu’un processus est sélectionné",
       "closed": "Masquer"
     },
-    "current": "Volet Détails : {mode}",
-    "next": "Cliquez pour « {mode} » ; clic droit pour choisir"
+    "current": "Volet Détails : {mode}",
+    "next": "Cliquez pour « {mode} » ; clic droit pour choisir"
   },
   "search": {
     "processes": "Rechercher un nom, PID, un chemin ou un service",
@@ -86,9 +86,9 @@
     "uptime": "Durée de fonctionnement",
     "orderHeld": "Tri interrompu alors que le pointeur est sur la liste",
     "orderHeldHint": "Les lignes sont triées une fois que le pointeur quitte la liste",
-    "paused": "Mises à jour suspendues",
-    "interval": "Met à jour tous les {seconds}",
+    "paused": "Actualisation suspendue",
+    "interval": "Actualisation toutes les {seconds} s",
     "version": "v{version}",
-    "versionHint": "Argus {version} · {channel}\nCliquez pour voir les nouveautés de cette version ; faites un clic droit pour copier le numéro de version"
+    "versionHint": "Argus {version} · {build}\nCliquez pour voir les nouveautés de cette version ; faites un clic droit pour copier le numéro de version"
   }
 }

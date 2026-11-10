@@ -107,7 +107,14 @@ impl RuleEngine {
                 continue;
             }
             name.clear();
-            name.extend(process_name.chars().flat_map(char::to_lowercase));
+            if process_name.is_ascii() {
+                name.push_str(process_name);
+                name.make_ascii_lowercase();
+            } else {
+                // Match the full-string mapping used for stored rules, including
+                // context-sensitive letters such as Greek final sigma.
+                name = process_name.to_lowercase();
+            }
             let Some(&i) = self.by_name.get(&name) else {
                 continue;
             };
@@ -147,4 +154,40 @@ pub fn apply_rule(rule: &ProcessRule, pid: u32, create_time: i64) -> Result<(), 
         actions::set_priority(pid, create_time, priority)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ProcessRule, RuleEngine};
+
+    #[test]
+    fn unicode_case_variants_match_stored_rules_once_per_process() {
+        for (saved, running) in [
+            ("EDITOR.EXE", "editor.exe"),
+            ("РЕДАКТОР.EXE", "Редактор.exe"),
+            ("ÉDITEUR.EXE", "éditeur.exe"),
+            ("ΟΣ-1.EXE", "ος-1.exe"),
+        ] {
+            let mut engine = RuleEngine::default();
+            engine.set_rules(vec![ProcessRule {
+                id: "rule".into(),
+                name: saved.into(),
+                enabled: true,
+                priority: None,
+                efficiency: Some(true),
+            }]);
+            let mut applied = Vec::new();
+            for _ in 0..2 {
+                engine.apply_with(
+                    [(1, 1, saved), (2, 2, running), (3, 3, "unrelated.exe")],
+                    |_, pid, _| {
+                        applied.push(pid);
+                        Ok(())
+                    },
+                );
+            }
+            assert_eq!(applied, [1, 2], "{saved} / {running}");
+            assert_eq!(engine.stats()["rule"].applied, 2);
+        }
+    }
 }

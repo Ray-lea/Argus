@@ -255,5 +255,6 @@ export async function buildRelease(root, cache, downloads, feeds) {
     tag,
     published: release.published_at,
     beta: manifests.beta.version,
+    downloads: [...versions.values()],
   };
 }

@@ -14,7 +14,7 @@ import { notesLanguage } from "@/lib/languages";
 const title = (lang: Language) => (localize(lang, lang !== "zh" ? "Download Argus for Windows" : "下载 Argus Windows 版"));
 const description = (lang: Language) =>
   localize(lang, lang !== "zh"
-    ? "Download the Argus Windows x64 installer or portable executable, read the system requirements and verify the release checksums."
+    ? "Download the Argus Windows x64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums."
     : "下载 Argus 的 Windows x64 安装版或免安装版，查看系统要求、发布说明和 SHA-256 校验值。");
 
 export const downloadMetadata = (lang: Language) =>
@@ -52,7 +52,7 @@ const copy = {
     recommended: "Recommended",
     copy: "Copy SHA-256",
     copied: "Copied",
-    after: ["After downloading", "A few steps from the download to a window that is always one key away."],
+    after: ["After installation", "A few steps from the download to a window that is always one key away."],
     steps: [
       ["Run the installer", "It installs to Program Files and adds a Start menu shortcut. The portable edition simply runs."],
       ["Finish the first-run guide", "Language, appearance, tray and shortcut, updates and the optional privileged service; every step can be skipped."],

@@ -141,69 +141,6 @@ impl AutoWidths {
         width
     }
 
-    /// Finite state labels must fit even before their rows first appear.
-    /// These columns also include a status dot or a sort indicator.
-    pub fn fit_localized_labels(&mut self, fields: &mut [Field], cx: &App) {
-        let system = gpui_kit::gpui::WindowTextSystem::new(cx.text_system().clone());
-        for field in fields {
-            let (prefix, keys, adornment): (&str, &[&str], f32) = match field.kind {
-                CellKind::ConnectionState => (
-                    "connections.state",
-                    &[
-                        "listen",
-                        "established",
-                        "synSent",
-                        "synReceived",
-                        "finWait1",
-                        "finWait2",
-                        "closeWait",
-                        "closing",
-                        "lastAck",
-                        "timeWait",
-                        "closed",
-                    ],
-                    14.,
-                ),
-                CellKind::ServiceState => (
-                    "services.state",
-                    &[
-                        "running",
-                        "stopped",
-                        "startPending",
-                        "stopPending",
-                        "paused",
-                        "pausePending",
-                        "continuePending",
-                    ],
-                    14.,
-                ),
-                CellKind::StartType => (
-                    "services.startType",
-                    &[
-                        "auto",
-                        "autoDelayed",
-                        "manual",
-                        "disabled",
-                        "boot",
-                        "system",
-                    ],
-                    0.,
-                ),
-                _ => continue,
-            };
-            let Track::Fixed(minimum) = field.track else {
-                continue;
-            };
-            let mut width = self.measure(&field.label, 0, &system, cx) + CELL_PADDING * 2. + 20.;
-            for key in keys {
-                let text = label(&format!("{prefix}.{key}"));
-                width =
-                    width.max(self.measure(&text, 2, &system, cx) + CELL_PADDING * 2. + adornment);
-            }
-            field.track = Track::Fixed(stepped(width.max(minimum)));
-        }
-    }
-
     pub fn apply(&mut self, fields: &mut [Field], contents: Contents<'_>, cx: &App) {
         self.epoch = self.epoch.wrapping_add(1);
         let system = gpui_kit::gpui::WindowTextSystem::new(cx.text_system().clone());
