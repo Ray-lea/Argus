@@ -135,7 +135,9 @@ mod tests {
             UnregisterClassW(class.lpszClassName, Some(instance.into())).unwrap();
         }
         for (events, vk) in events
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .zip([0x31, 0x41, 0x59, 0xba, 0xdc, 0x61])
         {
             assert_eq!(
