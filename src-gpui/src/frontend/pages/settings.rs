@@ -2456,7 +2456,7 @@ impl Desktop {
         let mut rules = values(&self.data["settings"]["rules"]).to_vec();
         if rules
             .iter()
-            .any(|r| text(r, "name").eq_ignore_ascii_case(&name))
+            .any(|r| model::same_executable_name(text(r, "name"), &name))
         {
             self.ui.errors.insert(
                 "ruleDraft".into(),
@@ -2554,7 +2554,7 @@ impl Desktop {
             let enabled = boolean(&rule, "enabled");
             let process = values(&self.snapshot["processes"])
                 .iter()
-                .find(|q| text(q, "name").eq_ignore_ascii_case(&name))
+                .find(|q| model::same_executable_name(text(q, "name"), &name))
                 .cloned();
             let stat = stats.get(&id).cloned().or_else(|| {
                 values(&stats)

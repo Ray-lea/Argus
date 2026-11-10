@@ -286,7 +286,7 @@ impl Desktop {
         let rules = values(&self.data["settings"]["rules"]).to_vec();
         if let Some(rule) = rules
             .iter()
-            .find(|r| text(r, "name").eq_ignore_ascii_case(name))
+            .find(|r| model::same_executable_name(text(r, "name"), name))
         {
             self.ui.focus_rule = Some((text(rule, "id").to_owned(), Instant::now()));
             self.preference("settingsSection", json!("rules"), window, cx);
@@ -295,13 +295,13 @@ impl Desktop {
         let processes = values(&self.snapshot["processes"]);
         let same = processes
             .iter()
-            .filter(|p| text(p, "name").eq_ignore_ascii_case(name))
+            .filter(|p| model::same_executable_name(text(p, "name"), name))
             .collect::<Vec<_>>();
         let process = same.first().cloned().cloned().unwrap_or(Value::Null);
         let broad = SHARED_HOSTS.contains(&name.to_ascii_lowercase().as_str())
             || same
                 .iter()
-                .map(|p| text(p, "path").to_ascii_lowercase())
+                .map(|p| text(p, "path").to_lowercase())
                 .collect::<HashSet<_>>()
                 .len()
                 > 1;

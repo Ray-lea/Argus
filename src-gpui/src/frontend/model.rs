@@ -63,6 +63,14 @@ pub fn core_grid_columns(size: &CoreGrid, previous: usize) -> usize {
 pub fn text<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or("")
 }
+/// Match the rule engine's Unicode lowercase comparison for executable names.
+pub fn same_executable_name(left: &str, right: &str) -> bool {
+    if left.is_ascii() && right.is_ascii() {
+        left.eq_ignore_ascii_case(right)
+    } else {
+        left.to_lowercase() == right.to_lowercase()
+    }
+}
 pub fn boolean(value: &Value, key: &str) -> bool {
     value.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
@@ -1093,6 +1101,20 @@ impl Timeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn executable_names_match_case_variants_in_non_ascii_names() {
+        for (left, right) in [
+            ("EDITOR.EXE", "editor.exe"),
+            ("Редактор.exe", "РЕДАКТОР.EXE"),
+            ("Éditeur.exe", "éditeur.EXE"),
+            ("ΟΣ-1.EXE", "ος-1.exe"),
+        ] {
+            assert!(same_executable_name(left, right), "{left} != {right}");
+        }
+        assert!(!same_executable_name("Редактор.exe", "Другой.exe"));
+        assert!(!same_executable_name("editor.exe", "editor.exe.bak"));
+    }
 
     #[test]
     fn name_and_image_columns_keep_their_roles_in_every_view() {

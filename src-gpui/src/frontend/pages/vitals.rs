@@ -149,25 +149,6 @@ impl Desktop {
     }
 }
 
-#[cfg(test)]
-mod band_tests {
-    use super::BandMode;
-
-    #[test]
-    fn automatic_band_depends_only_on_room_and_overrides_are_explicit() {
-        for room in [false, true] {
-            assert_eq!(BandMode::Auto.visible(room), room);
-            assert!(BandMode::Show.visible(room));
-            assert!(!BandMode::Hide.visible(room));
-        }
-        assert_eq!(BandMode::parse("show"), BandMode::Show);
-        assert_eq!(BandMode::parse("hide"), BandMode::Hide);
-        for saved in ["", "auto", "invalid"] {
-            assert_eq!(BandMode::parse(saved), BandMode::Auto);
-        }
-    }
-}
-
 /// Across the card, where the scrim over the curve begins to fade and where
 /// it has faded out.
 const SCRIM: (f32, f32) = (0.22, 0.66);
@@ -832,5 +813,24 @@ impl Desktop {
                     .inset_0(),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod band_tests {
+    use super::BandMode;
+
+    #[test]
+    fn automatic_band_depends_only_on_room_and_overrides_are_explicit() {
+        for room in [false, true] {
+            assert_eq!(BandMode::Auto.visible(room), room);
+            assert!(BandMode::Show.visible(room));
+            assert!(!BandMode::Hide.visible(room));
+        }
+        assert_eq!(BandMode::parse("show"), BandMode::Show);
+        assert_eq!(BandMode::parse("hide"), BandMode::Hide);
+        for saved in ["", "auto", "invalid"] {
+            assert_eq!(BandMode::parse(saved), BandMode::Auto);
+        }
     }
 }

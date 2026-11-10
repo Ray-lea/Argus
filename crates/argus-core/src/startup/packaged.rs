@@ -13,9 +13,11 @@ use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_DWORD, REG_OPTION_NON_VOLATILE,
     REG_VALUE_TYPE, RegCreateKeyExW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
-use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize, RoUninitialize};
+use windows::Win32::System::WinRT::{
+    RO_INIT_MULTITHREADED, RoActivateInstance, RoInitialize, RoUninitialize,
+};
 use windows::Win32::UI::Shell::SHLoadIndirectString;
-use windows::core::{HSTRING, PCWSTR};
+use windows::core::{HSTRING, Interface, PCWSTR, RuntimeName};
 
 use super::{Key, StartupItem};
 use crate::actions::ActionError;
@@ -59,6 +61,12 @@ impl Drop for Apartment {
     }
 }
 
+fn activate<T: Interface + RuntimeName>() -> windows::core::Result<T> {
+    // Projection constructors cache factories for the process, but this module's
+    // temporary apartments can unload their DLLs. Keep activation apartment-local.
+    unsafe { RoActivateInstance(&HSTRING::from(T::NAME)) }?.cast()
+}
+
 #[derive(Debug)]
 struct Task {
     id: String,
@@ -77,8 +85,8 @@ fn attribute(node: &IXmlNode, name: &str) -> String {
 }
 
 fn tasks(xml: &str) -> windows::core::Result<Vec<Task>> {
-    let doc = XmlDocument::new()?;
-    let settings = XmlLoadSettings::new()?;
+    let doc = activate::<XmlDocument>()?;
+    let settings = activate::<XmlLoadSettings>()?;
     settings.SetProhibitDtd(true)?;
     settings.SetResolveExternals(false)?;
     doc.LoadXmlWithSettings(
@@ -295,7 +303,7 @@ fn package_tasks(package: &Package) -> windows::core::Result<Vec<PackagedItem>> 
 
 pub(super) fn list(meta: &MetaStore) -> Vec<StartupItem> {
     let _apartment = Apartment::new();
-    let Ok(packages) = PackageManager::new()
+    let Ok(packages) = activate::<PackageManager>()
         .and_then(|m| m.FindPackagesByUserSecurityId(&HSTRING::new()))
         .inspect_err(|error| {
             crate::diagnostics::windows_failure("startup package enumeration", error)
@@ -431,7 +439,7 @@ pub(super) fn set_enabled(identity: &str, enabled: bool) -> Result<(), ActionErr
     }
     // Revalidate against the current user's installed manifest before any write.
     let _apartment = Apartment::new();
-    let manager = PackageManager::new()?;
+    let manager = activate::<PackageManager>()?;
     let packages = manager
         .FindPackagesByUserSecurityIdPackageFamilyName(&HSTRING::new(), &HSTRING::from(family))?;
     let registered = packages.into_iter().find_map(|p| {
@@ -545,6 +553,43 @@ mod tests {
         user_configurable: true,
         immediate_registration: false,
     };
+
+    #[test]
+    fn manifest_activation_survives_apartment_shutdown_between_threads() {
+        const CHILD: &str = "ARGUS_TEST_STARTUP_APARTMENT_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            for _ in 0..3 {
+                std::thread::spawn(|| {
+                    let _apartment = Apartment::new();
+                    assert!(tasks("<Package/>").unwrap().is_empty());
+                })
+                .join()
+                .unwrap();
+            }
+            return;
+        }
+
+        // A child process prevents unrelated test apartments from keeping MTA alive.
+        use std::os::windows::process::CommandExt;
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "startup::packaged::tests::manifest_activation_survives_apartment_shutdown_between_threads",
+                "--test-threads=1",
+                "--no-capture",
+            ])
+            .env(CHILD, "1")
+            .creation_flags(0x0800_0000)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "apartment restart child failed: {}\n{}\n{}",
+            result.status,
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr),
+        );
+    }
 
     #[test]
     fn packaged_tasks_keep_distinct_ids_and_inherit_the_application_executable() {
