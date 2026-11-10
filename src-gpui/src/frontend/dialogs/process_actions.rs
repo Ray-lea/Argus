@@ -246,9 +246,11 @@ impl Desktop {
                         ToastKind::Error,
                         argus_core::i18n::format(
                             &format!("actions.{action}.{state}.partial"),
+                            // Suspension texts name the first cause; efficiency's ignore it.
                             &[
                                 ("count", &(total - failed.len())),
                                 ("failed", &failed.len()),
+                                ("error", &first_error),
                             ],
                         ),
                         5000,

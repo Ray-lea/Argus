@@ -38,7 +38,6 @@
     "critical": "{name} is a critical system process. Ending it would crash Windows, so the action was blocked.",
     "refused": "{name} can't be ended.",
     "serviceOutdated": "Couldn't end {name}: access denied. The privileged service version is incompatible; update the service and try again.",
-    "stillSuspended": "{name} may still be suspended: some threads couldn't be resumed, or their state couldn't be read. Try again.",
     "generic": "Couldn't end {name}: {error}"
   },
   "priority": {
@@ -79,20 +78,26 @@
       "other": "All {count} processes of {name} will stop until they are resumed. Their windows stop responding and network connections may time out; some programs (games, apps with anti-cheat or self-protection) may fail."
     },
     "confirm": "Suspend",
-    "critical": "{name} is a critical system process. Suspending it would make Windows stop responding, so the action was blocked.",
+    "error": {
+      "accessDenied": "Access denied. Turn on the privileged service in Settings, or run Argus as administrator; protected processes may still be out of reach.",
+      "refused": "{name} can't be suspended or resumed.",
+      "serviceOutdated": "Access denied. The privileged service version is incompatible; update the service and try again.",
+      "critical": "{name} is a critical system process. Suspending it would make Windows stop responding, so the action was blocked.",
+      "stillSuspended": "{name} may still be suspended: some threads couldn't be resumed, or their state couldn't be read. Try again."
+    },
     "on": {
       "failed": "Couldn't suspend {name}",
       "partial": {
-        "one": "Suspended {count} process; {failed} couldn't be suspended (access denied or already exited).",
-        "other": "Suspended {count} processes; {failed} couldn't be suspended (access denied or already exited)."
+        "one": "Suspended {count} process; {failed} couldn't be suspended: {error}",
+        "other": "Suspended {count} processes; {failed} couldn't be suspended: {error}"
       },
       "done": "Suspended {name}."
     },
     "off": {
       "failed": "Couldn't resume {name}",
       "partial": {
-        "one": "Resumed {count} process; {failed} couldn't be resumed (access denied or already exited).",
-        "other": "Resumed {count} processes; {failed} couldn't be resumed (access denied or already exited)."
+        "one": "Resumed {count} process; {failed} couldn't be resumed: {error}",
+        "other": "Resumed {count} processes; {failed} couldn't be resumed: {error}"
       },
       "done": "Resumed {name}."
     }

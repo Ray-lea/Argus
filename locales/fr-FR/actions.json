@@ -43,7 +43,6 @@
     "critical": "{name} est un processus système critique. Son arrêt ferait planter Windows ; l’opération a été bloquée.",
     "refused": "{name} ne peut pas être terminé.",
     "serviceOutdated": "Impossible de terminer {name} : accès refusé. La version du service privilégié est incompatible. Mettez le service à jour et réessayez.",
-    "stillSuspended": "{name} est peut-être encore suspendu : certains threads n’ont pas pu être repris ou leur état n’a pas pu être lu. Réessayez.",
     "generic": "Impossible de terminer {name} : {error}"
   },
   "priority": {
@@ -88,22 +87,28 @@
       "other": "Les {count} processus de {name} seront suspendus jusqu’à leur reprise. Leurs fenêtres ne répondront plus et les connexions réseau peuvent expirer ; certains programmes (jeux, applications avec anti-triche ou autoprotection) peuvent échouer."
     },
     "confirm": "Suspendre",
-    "critical": "{name} est un processus système critique. Le suspendre bloquerait Windows ; l’opération a été bloquée.",
+    "error": {
+      "accessDenied": "Accès refusé. Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur ; les processus protégés peuvent rester inaccessibles.",
+      "refused": "{name} ne peut pas être suspendu ni repris.",
+      "serviceOutdated": "Accès refusé. La version du service privilégié est incompatible ; mettez le service à jour et réessayez.",
+      "critical": "{name} est un processus système critique. Le suspendre bloquerait Windows ; l’opération a été bloquée.",
+      "stillSuspended": "{name} est peut-être encore suspendu : certains threads n’ont pas pu être repris ou leur état n’a pas pu être lu. Réessayez."
+    },
     "on": {
       "failed": "Impossible de suspendre {name}",
       "partial": {
-        "one": "{count} processus suspendu ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-        "many": "{count} processus suspendus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-        "other": "{count} processus suspendus ; échecs : {failed} (accès refusé ou processus déjà terminés)."
+        "one": "{count} processus suspendu ; non suspendus : {failed}. {error}",
+        "many": "{count} processus suspendus ; non suspendus : {failed}. {error}",
+        "other": "{count} processus suspendus ; non suspendus : {failed}. {error}"
       },
       "done": "{name} suspendu."
     },
     "off": {
       "failed": "Impossible de reprendre {name}",
       "partial": {
-        "one": "{count} processus repris ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-        "many": "{count} processus repris ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-        "other": "{count} processus repris ; échecs : {failed} (accès refusé ou processus déjà terminés)."
+        "one": "{count} processus repris ; non repris : {failed}. {error}",
+        "many": "{count} processus repris ; non repris : {failed}. {error}",
+        "other": "{count} processus repris ; non repris : {failed}. {error}"
       },
       "done": "{name} repris."
     }
