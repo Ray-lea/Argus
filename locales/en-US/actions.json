@@ -70,6 +70,32 @@
       "done": "Turned off Efficiency mode for {name}."
     }
   },
+  "suspend": {
+    "title": "Suspend {name}?",
+    "body": "All threads of PID {pid} will stop until it is resumed. Its windows stop responding and network connections may time out; some programs (games, apps with anti-cheat or self-protection) may fail.",
+    "bodyGroup": {
+      "one": "{count} process of {name} will stop until it is resumed. Its windows stop responding and network connections may time out; some programs (games, apps with anti-cheat or self-protection) may fail.",
+      "other": "All {count} processes of {name} will stop until they are resumed. Their windows stop responding and network connections may time out; some programs (games, apps with anti-cheat or self-protection) may fail."
+    },
+    "confirm": "Suspend",
+    "critical": "{name} is a critical system process. Suspending it would make Windows stop responding, so the action was blocked.",
+    "on": {
+      "failed": "Couldn't suspend {name}",
+      "partial": {
+        "one": "Suspended {count} process; {failed} couldn't be suspended (access denied or already exited).",
+        "other": "Suspended {count} processes; {failed} couldn't be suspended (access denied or already exited)."
+      },
+      "done": "Suspended {name}."
+    },
+    "off": {
+      "failed": "Couldn't resume {name}",
+      "partial": {
+        "one": "Resumed {count} process; {failed} couldn't be resumed (access denied or already exited).",
+        "other": "Resumed {count} processes; {failed} couldn't be resumed (access denied or already exited)."
+      },
+      "done": "Resumed {name}."
+    }
+  },
   "ruleScope": {
     "title": "Add a rule for all processes with this name?",
     "body": "Rules match the executable name {name}. The rule will apply to all processes with this name, across hosts and installation paths.",

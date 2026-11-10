@@ -254,6 +254,8 @@
       "other": "Alle {count} Prozesse beenden"
     },
     "setPriority": "Priorität festlegen",
+    "suspend": "Prozess anhalten",
+    "resume": "Prozess fortsetzen",
     "addRule": "Regel hinzufügen",
     "copyPid": "PID kopieren",
     "copyPidWhat": "PID",

@@ -257,6 +257,8 @@
       "other": "Terminer les {count} processus"
     },
     "setPriority": "Définir la priorité",
+    "suspend": "Suspendre le processus",
+    "resume": "Reprendre le processus",
     "addRule": "Ajouter une règle",
     "copyPid": "Copier PID",
     "copyPidWhat": "PID",

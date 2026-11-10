@@ -59,6 +59,7 @@ impl Desktop {
             "end" => ("kill_process", json!({"force":false})),
             "endTree" => ("kill_process_tree", json!({})),
             "priority" => ("set_priority", json!({"priority":args["priority"]})),
+            "suspend" => ("set_suspended", json!({"suspend":args["on"]})),
             _ => ("set_efficiency_mode", json!({"on":args["on"]})),
         };
         let payloads = if kind == "endTree" {
@@ -221,6 +222,12 @@ impl Desktop {
                 }
             }
             _ => {
+                // Efficiency mode and suspension: on or off, with the same three outcomes.
+                let action = if kind == "suspend" {
+                    "suspend"
+                } else {
+                    "efficiency"
+                };
                 let state = if boolean(value, "on") { "on" } else { "off" };
                 if failed.len() == total {
                     (
@@ -228,7 +235,7 @@ impl Desktop {
                         format!(
                             "{}：{first_error}",
                             argus_core::i18n::format(
-                                &format!("actions.efficiency.{state}.failed"),
+                                &format!("actions.{action}.{state}.failed"),
                                 &[("name", &name)]
                             )
                         ),
@@ -238,7 +245,7 @@ impl Desktop {
                     (
                         ToastKind::Error,
                         argus_core::i18n::format(
-                            &format!("actions.efficiency.{state}.partial"),
+                            &format!("actions.{action}.{state}.partial"),
                             &[
                                 ("count", &(total - failed.len())),
                                 ("failed", &failed.len()),
@@ -250,7 +257,7 @@ impl Desktop {
                     (
                         ToastKind::Success,
                         argus_core::i18n::format(
-                            &format!("actions.efficiency.{state}.done"),
+                            &format!("actions.{action}.{state}.done"),
                             &[("name", &name)],
                         ),
                         2500,

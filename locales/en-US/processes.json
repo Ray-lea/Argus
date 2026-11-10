@@ -254,6 +254,8 @@
       "other": "End all {count} processes"
     },
     "setPriority": "Set priority",
+    "suspend": "Suspend process",
+    "resume": "Resume process",
     "addRule": "Add rule",
     "copyPid": "Copy PID",
     "copyPidWhat": "PID",

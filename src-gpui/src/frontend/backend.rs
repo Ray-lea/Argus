@@ -595,14 +595,19 @@ impl Desktop {
                 return message;
             }
         }
-        let key = format!(
-            "{}.{kind}",
-            if command == "run_task" {
-                "tasks.error"
-            } else {
-                "actions.error"
-            }
-        );
+        let key = if command == "set_suspended" && kind == "critical" {
+            // The general text is about ending the process.
+            "actions.suspend.critical".to_owned()
+        } else {
+            format!(
+                "{}.{kind}",
+                if command == "run_task" {
+                    "tasks.error"
+                } else {
+                    "actions.error"
+                }
+            )
+        };
         let name = args["pid"]
             .as_u64()
             .and_then(|pid| {

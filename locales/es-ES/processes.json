@@ -257,6 +257,8 @@
       "other": "Finalizar los {count} procesos"
     },
     "setPriority": "Establecer prioridad",
+    "suspend": "Suspender proceso",
+    "resume": "Reanudar proceso",
     "addRule": "Añadir regla",
     "copyPid": "Copiar PID",
     "copyPidWhat": "PID",

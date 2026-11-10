@@ -70,6 +70,32 @@
       "done": "Effizienzmodus für {name} deaktiviert."
     }
   },
+  "suspend": {
+    "title": "{name} anhalten?",
+    "body": "Alle Threads von PID {pid} werden angehalten, bis der Prozess fortgesetzt wird. Seine Fenster reagieren nicht mehr und Netzwerkverbindungen können ablaufen; manche Programme (Spiele, Apps mit Anti-Cheat oder Selbstschutz) können dadurch fehlschlagen.",
+    "bodyGroup": {
+      "one": "{count} Prozess von {name} wird angehalten, bis er fortgesetzt wird. Seine Fenster reagieren nicht mehr und Netzwerkverbindungen können ablaufen; manche Programme (Spiele, Apps mit Anti-Cheat oder Selbstschutz) können dadurch fehlschlagen.",
+      "other": "Alle {count} Prozesse von {name} werden angehalten, bis sie fortgesetzt werden. Ihre Fenster reagieren nicht mehr und Netzwerkverbindungen können ablaufen; manche Programme (Spiele, Apps mit Anti-Cheat oder Selbstschutz) können dadurch fehlschlagen."
+    },
+    "confirm": "Anhalten",
+    "critical": "{name} ist ein kritischer Systemprozess. Das Anhalten würde Windows einfrieren; die Aktion wurde blockiert.",
+    "on": {
+      "failed": "{name} konnte nicht angehalten werden",
+      "partial": {
+        "one": "{count} Prozess angehalten; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet).",
+        "other": "{count} Prozesse angehalten; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet)."
+      },
+      "done": "{name} angehalten."
+    },
+    "off": {
+      "failed": "{name} konnte nicht fortgesetzt werden",
+      "partial": {
+        "one": "{count} Prozess fortgesetzt; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet).",
+        "other": "{count} Prozesse fortgesetzt; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet)."
+      },
+      "done": "{name} fortgesetzt."
+    }
+  },
   "ruleScope": {
     "title": "Eine Regel für alle Prozesse mit diesem Namen hinzufügen?",
     "body": "Regeln verwenden den Namen der ausführbaren Datei {name}. Die Regel gilt für alle Prozesse mit diesem Namen, unabhängig von Host und Installationspfad.",

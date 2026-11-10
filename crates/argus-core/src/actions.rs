@@ -5,16 +5,18 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use windows::Wdk::System::Threading::{NtQueryInformationProcess, PROCESSINFOCLASS};
-use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, FILETIME};
+use windows::Win32::Foundation::{
+    ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, FILETIME, STATUS_ACCESS_DENIED,
+};
 use windows::Win32::System::Threading::{
     ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcessId,
     GetPriorityClass, GetProcessTimes, HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS,
     NORMAL_PRIORITY_CLASS, OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_CREATION_FLAGS,
     PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
     PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_SET_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, ProcessPowerThrottling,
-    REALTIME_PRIORITY_CLASS, SetPriorityClass, SetProcessInformation, TerminateProcess,
-    WaitForSingleObject,
+    PROCESS_SET_INFORMATION, PROCESS_SUSPEND_RESUME, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    ProcessPowerThrottling, REALTIME_PRIORITY_CLASS, SetPriorityClass, SetProcessInformation,
+    TerminateProcess, WaitForSingleObject,
 };
 
 use crate::process::list_lineage;
@@ -247,6 +249,32 @@ pub fn set_efficiency_mode(pid: u32, create_time: i64, on: bool) -> Result<(), A
         unsafe { SetPriorityClass(handle.0, NORMAL_PRIORITY_CLASS) }?;
     }
     Ok(())
+}
+
+/// Suspends or resumes every thread of a process instance, the way Resource
+/// Monitor's "Suspend process" does. Suspending is refused for the System
+/// process, Argus itself and critical processes, whose stall hangs Windows.
+/// Each call changes the threads' suspend counts by one, so a process that
+/// was also suspended by someone else stays suspended after one resume.
+pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), ActionError> {
+    if pid == 0 || pid == 4 || pid == unsafe { GetCurrentProcessId() } {
+        return Err(ActionError::Refused);
+    }
+    let handle = open_instance(pid, create_time, PROCESS_SUSPEND_RESUME)?;
+    if suspend && is_critical(pid) {
+        return Err(ActionError::Critical);
+    }
+    let status = unsafe {
+        if suspend {
+            crate::nt::NtSuspendProcess(handle.0)
+        } else {
+            crate::nt::NtResumeProcess(handle.0)
+        }
+    };
+    if status == STATUS_ACCESS_DENIED {
+        return Err(ActionError::AccessDenied);
+    }
+    Ok(status.ok()?)
 }
 
 #[derive(Debug, Default, Serialize)]
