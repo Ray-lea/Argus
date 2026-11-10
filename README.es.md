@@ -4,13 +4,13 @@
 
 # Argus
 
-**Un administrador de tareas rápido, moderno e informativo para Windows**
+**Un administrador de tareas para Windows rápido, moderno y con información detallada**
 
 [简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · **Español** · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![Sitio web y demo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Sitio+web+y+demo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/es/)
 
-Explorar la interfaz interactiva y el recorrido de funciones en el [sitio oficial](https://argustask.com/es/) desde el navegador, sin instalar la aplicación.
+Explore la interfaz interactiva y el recorrido de funciones en el [sitio oficial](https://argustask.com/es/) desde el navegador, sin instalar la aplicación.
 
 [![Última versión](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=%C3%9Altima+versi%C3%B3n&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Descargas](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=Descargas&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
@@ -78,7 +78,7 @@ La [página oficial de descargas](https://argustask.com/es/download/) ofrece la 
 | Archivo | Descripción |
 |---|---|
 | `Argus_<version>_x64-setup.exe` | **Instalador, recomendado.** Instala para todos los usuarios en `Program Files`. La instalación y las actualizaciones requieren autorización de administrador. Admite actualizaciones integradas. |
-| `Argus_<version>_x64.exe` | **Versión portátil.** Ejecutable independiente que comparte la configuración y el historial con la versión instalada. Las actualizaciones se realizan manualmente. |
+| `Argus_<version>_x64.exe` | **Versión portátil.** Ejecutable independiente que comparte la configuración y el historial con la versión instalada. No admite actualizaciones automáticas. |
 | `SHA256SUMS.txt` | Sumas SHA-256 de los archivos de la versión. |
 
 [Política de firma de código](#code-signing-policy) · [Política de privacidad (inglés)](PRIVACY.md#english)
@@ -124,7 +124,7 @@ La [guía de desarrollo](docs/development/README.md), en chino, explica las comp
 | Finalizar tarea | <kbd>Alt</kbd>+<kbd>E</kbd> o <kbd>Delete</kbd>; <kbd>Shift</kbd>+<kbd>Delete</kbd> omite la confirmación |
 | Mostrar u ocultar la ventana, global | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
-La lista completa está en **Configuración → Atajo de teclado → Ver atajos**. La [guía de uso](docs/guide/README.md), en chino, incluye más detalles.
+La lista completa está en **Configuración → Atajos de teclado → Ver atajos**. La [guía de uso](docs/guide/README.md), en chino, incluye más detalles.
 
 <a id="documentation"></a>
 

@@ -4,7 +4,7 @@
 
 # Argus
 
-**A fast, modern and informative task manager for Windows**
+**A fast, modern, information-rich Windows task manager**
 
 [简体中文](README.md) · [繁體中文](README.zh-TW.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
@@ -110,7 +110,7 @@ For code checks, packaging the installer, and cleaning caches, see the [developm
 | End task | <kbd>Alt</kbd>+<kbd>E</kbd> or <kbd>Delete</kbd> (<kbd>Shift</kbd>+<kbd>Delete</kbd> skips the confirmation) |
 | Show or hide the window (global) | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
-The full shortcut list is available in Settings → Keyboard shortcut → View shortcuts, and further usage details are covered in the [user guide](docs/guide/README.md) (in Chinese).
+The full shortcut list is available in Settings → Keyboard shortcuts → View shortcuts, and further usage details are covered in the [user guide](docs/guide/README.md) (in Chinese).
 
 ## 📚 Documentation
 
@@ -129,7 +129,7 @@ The documentation is in Chinese; [online documentation](https://argustask.com/do
 
 [![QQ group 453803497](https://img.shields.io/badge/QQ%20group-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
 
-Join the Chinese-speaking QQ group to report problems, suggest features, or talk with other users (also accessible via About → Join QQ group in Argus).
+Join the Chinese-speaking QQ group to report problems, suggest features, or share experiences with other users (also accessible via About → Join QQ group in Argus).
 
 ## 🤝 Contributing
 
@@ -140,7 +140,7 @@ Issues and pull requests are welcome; please read the [contributing guide](.gith
 See the [roadmap](docs/roadmap.md) (in Chinese) for completed milestones and the full plan. Ongoing and planned work includes:
 
 - [ ] **Expanded hardware sensors**: continuing to broaden consumer hardware sensor coverage through the official PawnIO driver (see [hardware coverage](docs/guide/hardware-data.md), in Chinese)
-- [ ] **Extended keyboard shortcuts**: distinguishing left and right modifiers, and supporting modifier-only or two-key combinations
+- [ ] **Extended keyboard shortcuts**: distinguishing left and right modifiers, and supporting combinations of only modifier keys or of two non-modifier keys
 
 <a id="code-signing-policy"></a>
 

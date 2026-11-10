@@ -10,7 +10,7 @@
 
 [![Site web et démo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Site+web+et+d%C3%A9mo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/fr/)
 
-Essayer l’interface interactive et la présentation des fonctions dans le navigateur sur le [site officiel](https://argustask.com/fr/), sans installer l’application.
+Essayez l’interface interactive et la présentation des fonctions dans le navigateur sur le [site officiel](https://argustask.com/fr/), sans installer l’application.
 
 [![Dernière version](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=Derni%C3%A8re+version&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Téléchargements](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=T%C3%A9l%C3%A9chargements&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
@@ -60,9 +60,9 @@ Si Argus facilite le travail au quotidien, une étoile sur GitHub est une façon
 | 🌐 | **Connexions et ports** | Afficher les points de terminaison TCP et UDP actifs et les processus associés, filtrer par numéro de port exact et fermer des connexions. |
 | 🔍 | **Fichiers utilisés** | Déposer un fichier ou un dossier sur la fenêtre pour trouver les processus qui l’utilisent. Combine Restart Manager et l’énumération des handles, y compris les répertoires de travail des processus. |
 | 🕘 | **Historique** | Enregistre automatiquement les 7 derniers jours d’utilisation des ressources. Un clic sur un instant affiche les processus les plus actifs à ce moment-là. |
-| 📌 | **Zone de notification** | Afficher ou masquer la fenêtre avec un raccourci global. La consommation de ressources reste faible lorsque la fenêtre est masquée ; les intervalles d’actualisation à l’état réduit et dans la zone de notification sont réglables séparément. |
-| 🔄 | **Mises à jour intégrées** | Canaux Stable et Bêta. Les nouvelles versions sont téléchargées en arrière-plan et signalées dans la barre de titre ; leurs modifications peuvent être consultées avant et après la mise à jour. Le téléchargement essaie par défaut GitHub, le miroir officiel, puis les proxys GitHub. Ce choix peut être modifié dans les paramètres. |
-| 🎨 | **Aspect natif** | Arrière-plan Mica sous Windows 11 et couleur unie sous Windows 10. La couleur d’accentuation et le thème clair ou sombre suivent Windows par défaut ; le thème peut aussi être choisi dans les paramètres. |
+| 📌 | **Zone de notification** | Afficher ou masquer la fenêtre avec un raccourci global. La consommation de ressources reste faible lorsque la fenêtre est masquée ; les intervalles d’actualisation à l’état réduit et dans la zone de notification sont réglables séparément. |
+| 🔄 | **Mises à jour intégrées** | Canaux Stable et Bêta. Les nouvelles versions sont téléchargées en arrière-plan et signalées dans la barre de titre ; leurs modifications peuvent être consultées avant et après la mise à jour. Le téléchargement essaie par défaut GitHub, le miroir officiel, puis les proxys GitHub. Ce choix peut être modifié dans les paramètres. |
+| 🎨 | **Aspect natif** | Arrière-plan Mica sous Windows 11 et couleur unie sous Windows 10. La couleur d’accentuation et le thème clair ou sombre suivent Windows par défaut ; le thème peut aussi être choisi dans les paramètres. |
 | 🌍 | **Langues** | Interface en chinois simplifié et traditionnel, anglais, espagnol, allemand, japonais, français et russe, choisie initialement selon Windows. Un guide de démarrage aide à configurer les options essentielles lors du premier lancement. |
 | 👤 | **Utilisable sans droits d’administrateur** | Consulter les chemins des exécutables et l’utilisation des ressources de tous les processus avec des droits standard. |
 | 🔐 | **Lancement administrateur facultatif** | Une autorisation dans les paramètres ou le guide de démarrage permet de lancer Argus en tant qu’administrateur à l’ouverture de session, depuis les raccourcis et par les points d’entrée du Gestionnaire des tâches. Cette option peut être désactivée à tout moment. |
@@ -78,7 +78,7 @@ La dernière version stable et ses sommes de contrôle SHA-256 sont disponibles 
 | Fichier | Description |
 |---|---|
 | `Argus_<version>_x64-setup.exe` | **Installateur, recommandé.** Installe pour tous les utilisateurs dans `Program Files`. L’installation et les mises à jour nécessitent une autorisation d’administrateur. Prend en charge les mises à jour intégrées. |
-| `Argus_<version>_x64.exe` | **Version portable.** Exécutable autonome qui partage les paramètres et l’historique avec la version installée. Les mises à jour sont manuelles. |
+| `Argus_<version>_x64.exe` | **Version portable.** Exécutable autonome qui partage les paramètres et l’historique avec la version installée. Les mises à jour automatiques ne sont pas prises en charge. |
 | `SHA256SUMS.txt` | Sommes de contrôle SHA-256 des fichiers de la version. |
 
 [Politique de signature du code](#code-signing-policy) · [Politique de confidentialité en anglais](PRIVACY.md#english)
@@ -87,8 +87,8 @@ La dernière version stable et ses sommes de contrôle SHA-256 sont disponibles 
 
 ## 💻 Configuration requise
 
-- **Système** : Windows 10 22H2, build 19045, ou version ultérieure, y compris Windows 11 ; architecture x64 uniquement.
-- **Graphiques** : périphérique graphique et pilote compatibles avec DirectX 11.
+- **Système** : Windows 10 22H2, build 19045, ou version ultérieure, y compris Windows 11 ; architecture x64 uniquement.
+- **Graphiques** : périphérique graphique et pilote compatibles avec DirectX 11.
 
 Les versions de Windows vérifiées, les différences fonctionnelles et les autorisations nécessaires sont décrites dans la [documentation de compatibilité](docs/guide/hardware-data.md#系统兼容范围), en chinois.
 
@@ -100,7 +100,7 @@ Prérequis :
 
 - Chaîne d’outils Rust `stable-x86_64-pc-windows-msvc`, version 1.99.1 ou ultérieure.
 - Node.js 26.x à partir de 26.12.1, ou 24.x LTS à partir de 24.22.1, et pnpm 12.14.0.
-- Visual Studio Build Tools avec la charge de travail « Développement Desktop en C++ ».
+- Visual Studio Build Tools avec la charge de travail « Développement Desktop en C++ ».
 
 Exécuter dans PowerShell à la racine du dépôt :
 
@@ -124,7 +124,7 @@ Le [guide de développement](docs/development/README.md), en chinois, détaille 
 | Terminer une tâche | <kbd>Alt</kbd>+<kbd>E</kbd> ou <kbd>Delete</kbd> ; <kbd>Shift</kbd>+<kbd>Delete</kbd> ignore la confirmation |
 | Afficher ou masquer la fenêtre, globalement | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
-La liste complète se trouve dans **Paramètres → Raccourci clavier → Voir les raccourcis**. Le [guide d’utilisation](docs/guide/README.md), en chinois, fournit d’autres explications.
+La liste complète se trouve dans **Paramètres → Raccourcis clavier → Voir les raccourcis**. Le [guide d’utilisation](docs/guide/README.md), en chinois, fournit d’autres explications.
 
 <a id="documentation"></a>
 
@@ -161,8 +161,8 @@ Les signalements de problèmes et les pull requests sont les bienvenus. Consulte
 
 La [feuille de route](docs/roadmap.md), en chinois, présente les étapes terminées et le programme complet. Les travaux en cours ou prévus comprennent :
 
-- [ ] **Davantage de capteurs matériels** : élargir la prise en charge du matériel grand public à l’aide du pilote officiel PawnIO ; voir le [matériel pris en charge](docs/guide/hardware-data.md), en chinois.
-- [ ] **Raccourcis étendus** : distinguer les modificateurs gauches et droits et accepter les combinaisons composées uniquement de modificateurs ou de deux touches ordinaires.
+- [ ] **Davantage de capteurs matériels** : élargir la prise en charge du matériel grand public à l’aide du pilote officiel PawnIO ; voir le [matériel pris en charge](docs/guide/hardware-data.md), en chinois.
+- [ ] **Raccourcis étendus** : distinguer les modificateurs gauches et droits et accepter les combinaisons composées uniquement de modificateurs ou de deux touches ordinaires.
 
 <a id="code-signing-policy"></a>
 
@@ -174,9 +174,9 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
 
 La signature de test est intégrée. Les versions officielles sont actuellement distribuées sans signature Windows Authenticode. Lorsque la signature de production sera activée, elle couvrira l’application Argus, les auxiliaires du Gestionnaire des tâches, le désinstallateur et l’installateur compilés depuis ce dépôt par GitHub Actions. Les programmes tiers inclus conserveront leurs signatures d’origine.
 
-- **Maintenance du code et revue** : [@Ray-lea](https://github.com/Ray-lea), responsable de la maintenance du code et de la revue des contributions externes.
-- **Approbation** : [@Ray-lea](https://github.com/Ray-lea), responsable de l’approbation manuelle de chaque demande de signature de production.
-- **Politique de confidentialité** : [English](PRIVACY.md#english) · [简体中文](PRIVACY.md#简体中文). Elle décrit les vérifications de mises à jour activées par défaut, le recours aux proxys, les téléchargements de PawnIO à la demande, les retours volontaires et le traitement des données par des tiers.
+- **Maintenance du code et revue** : [@Ray-lea](https://github.com/Ray-lea), responsable de la maintenance du code et de la revue des contributions externes.
+- **Approbation** : [@Ray-lea](https://github.com/Ray-lea), responsable de l’approbation manuelle de chaque demande de signature de production.
+- **Politique de confidentialité** : [English](PRIVACY.md#english) · [简体中文](PRIVACY.md#简体中文). Elle décrit les vérifications de mises à jour activées par défaut, le recours aux proxys, les téléchargements de PawnIO à la demande, les retours volontaires et le traitement des données par des tiers.
 
 Les mises à jour intégrées utilisent une clé de publication Minisign distincte pour vérifier les installateurs et les numéros de version. Windows Authenticode identifie le signataire d’un exécutable.
 

@@ -61,7 +61,7 @@ Wenn Argus im Alltag hilfreich ist, unterstützt ein Stern auf GitHub das Projek
 | 🔍 | **Dateisperren** | Dateien oder Ordner auf das Fenster ziehen, um verwendende Prozesse zu finden. Kombiniert Restart Manager mit der Handle-Auflistung und berücksichtigt auch die Arbeitsverzeichnisse von Prozessen. |
 | 🕘 | **Verlauf** | Zeichnet die Ressourcennutzung der letzten 7 Tage automatisch auf. Ein Klick auf einen Zeitpunkt zeigt die damals aktivsten Prozesse. |
 | 📌 | **Infobereich** | Das Fenster lässt sich jederzeit über eine globale Tastenkombination ein- oder ausblenden. Im ausgeblendeten Zustand ist der Ressourcenbedarf gering; die Intervalle bei minimiertem Fenster und im Infobereich sind getrennt einstellbar. |
-| 🔄 | **Updates in der Anwendung** | Stabile Versionen und Betaversionen werden unterstützt. Neue Versionen werden im Hintergrund heruntergeladen und in der Titelleiste angekündigt; Änderungen sind vor und nach dem Update einsehbar. Standardmäßig werden GitHub, der offizielle Spiegelserver und danach GitHub-Proxys verwendet. Die Reihenfolge kann in den Einstellungen angepasst werden. |
+| 🔄 | **Updates in der Anwendung** | Stabile Versionen und Betaversionen werden unterstützt. Neue Versionen werden im Hintergrund heruntergeladen und in der Titelleiste angekündigt; Änderungen sind vor und nach dem Update einsehbar. Standardmäßig werden GitHub, der offizielle Spiegelserver und danach GitHub-Proxys verwendet. Die Downloadquelle kann in den Einstellungen angepasst werden. |
 | 🎨 | **Native Oberfläche** | Mica-Hintergrund unter Windows 11 und einfarbiger Hintergrund unter Windows 10. Akzentfarbe sowie helles oder dunkles Design folgen standardmäßig Windows; das Design kann in den Einstellungen separat gewählt werden. |
 | 🌍 | **Sprachen** | Verfügbar auf vereinfachtem und traditionellem Chinesisch, Englisch, Spanisch, Deutsch, Japanisch, Französisch und Russisch. Die Erstauswahl folgt Windows; eine Einführung hilft beim ersten Start mit den wichtigsten Einstellungen. |
 | 👤 | **Ohne Administratorrechte nutzbar** | Programmpfade und Ressourcenverbrauch aller Prozesse lassen sich mit Standardrechten anzeigen. |
@@ -78,7 +78,7 @@ Die aktuelle stabile Version und SHA-256-Prüfsummen stehen auf der [offiziellen
 | Datei | Beschreibung |
 |---|---|
 | `Argus_<version>_x64-setup.exe` | **Installationsprogramm, empfohlen.** Installiert für alle Benutzer unter `Program Files`. Installation und Updates erfordern Administratorrechte. Unterstützt Updates innerhalb der Anwendung. |
-| `Argus_<version>_x64.exe` | **Portable Version.** Direkt ausführbare Einzeldatei, die Einstellungen und Verlauf mit der installierten Version teilt. Updates erfolgen manuell. |
+| `Argus_<version>_x64.exe` | **Portable Version.** Direkt ausführbare Einzeldatei, die Einstellungen und Verlauf mit der installierten Version teilt. Automatische Updates werden nicht unterstützt. |
 | `SHA256SUMS.txt` | SHA-256-Prüfsummen der veröffentlichten Dateien. |
 
 [Richtlinie zur Codesignierung](#code-signing-policy) · [Datenschutzrichtlinie auf Englisch](PRIVACY.md#english)
@@ -124,7 +124,7 @@ Codeprüfungen, das Erstellen des Installationsprogramms und die Cache-Bereinigu
 | Task beenden | <kbd>Alt</kbd>+<kbd>E</kbd> oder <kbd>Delete</kbd>; <kbd>Shift</kbd>+<kbd>Delete</kbd> überspringt die Bestätigung |
 | Fenster global ein- oder ausblenden | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
-Die vollständige Liste steht unter **Einstellungen → Tastenkombination → Tastenkombinationen anzeigen**. Weitere Bedienhinweise enthält die [Benutzeranleitung](docs/guide/README.md) auf Chinesisch.
+Die vollständige Liste steht unter **Einstellungen → Tastenkombinationen → Tastenkombinationen anzeigen**. Weitere Bedienhinweise enthält die [Benutzeranleitung](docs/guide/README.md) auf Chinesisch.
 
 <a id="documentation"></a>
 

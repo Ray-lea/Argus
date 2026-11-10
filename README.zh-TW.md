@@ -74,7 +74,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 | 檔案 | 說明 |
 |---|---|
 | `Argus_<版本>_x64-setup.exe` | **安裝版（建議）**。為所有使用者安裝至 `Program Files`，安裝與更新需要系統管理員授權，支援應用程式內更新。 |
-| `Argus_<版本>_x64.exe` | **免安裝版**。單一檔案直接執行，與安裝版共用設定及歷程資料，需手動更新。 |
+| `Argus_<版本>_x64.exe` | **免安裝版**。單一檔案直接執行，與安裝版共用設定及歷程資料，不支援自動更新。 |
 | `SHA256SUMS.txt` | 上述發行檔案的 SHA-256 總和檢查碼。 |
 
 [程式碼簽署政策（Code signing policy）](#code-signing-policy) · [隱私權政策（簡體中文）](PRIVACY.md#简体中文)
@@ -115,7 +115,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 |---|---|
 | 切換頁面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
 | 搜尋處理程序 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
-| 暫停重新整理 | 按住 <kbd>Ctrl</kbd>，放開後恢復（處理程序頁、效能頁） |
+| 暫時停止重新整理 | 按住 <kbd>Ctrl</kbd>，放開後恢復（處理程序頁、效能頁） |
 | 開啟詳細資料 | <kbd>Enter</kbd> |
 | 結束處理程序 | <kbd>Alt</kbd>+<kbd>E</kbd> 或 <kbd>Delete</kbd>（<kbd>Shift</kbd>+<kbd>Delete</kbd> 略過確認） |
 | 顯示或隱藏視窗（全域） | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
@@ -182,7 +182,7 @@ Argus 建構於以下開放原始碼專案之上，謹致謝忱：
 | [windows-rs](https://github.com/microsoft/windows-rs) | Windows 原生介面的 Rust 繫結 |
 | [Biome](https://biomejs.dev/)、[NSIS](https://nsis.sourceforge.io/) | 開發檢查與 Windows 封裝 |
 | [serde](https://serde.rs/)、[reqwest](https://github.com/seanmonstar/reqwest) 等 Rust crate | 序列化、網路請求等基礎功能 |
-| [PawnIO](https://pawnio.eu/)、[PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) | 選用核心感測器所使用的簽署驅動程式與採集模組 |
+| [PawnIO](https://pawnio.eu/)、[PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) | 選用核心感測器所使用的簽署驅動程式與擷取模組 |
 | [ZenStates-Core](https://github.com/irusanov/ZenStates-Core)、[LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)、[GNR-SMU](https://github.com/Kyworn/gnr-smu) | AMD SMU 表等 CPU 暫存器配置參考 |
 | [Intel IGCL](https://github.com/intel/drivers.gpu.control-library)、[AMD ADL](https://github.com/GPUOpen-LibrariesAndSDKs/display-library) | 顯示卡遙測介面 |
 
