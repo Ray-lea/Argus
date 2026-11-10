@@ -45,7 +45,7 @@ type Difference = [string, string, string, string | null];
 export const differences = (lang: Language): Difference[] =>
   localize(lang, lang !== "zh"
     ? [
-        ["Which process holds a port", "The Connections page lists TCP and UDP endpoints; search by port and close a connection", "Not available; use Resource Monitor or the command line", "connections"],
+        ["Which process holds a port", "The Connections page lists TCP and UDP endpoints; search for an exact port and close a connection", "Not available; use Resource Monitor or the command line", "connections"],
         ["Which process locks a file", "Drop the file or folder on the window, then end the holder", "Not available; use Resource Monitor", null],
         ["Parent and child processes", "A process tree view", "Grouped by app only", "tree"],
         ["Disk reads and writes", "Separate read, write and I/O rates per process", "One combined Disk column", "list"],
@@ -75,7 +75,7 @@ export const questions = (lang: Language): Question[] =>
         ["background", "How much does it cost to keep running?", "Hidden in the tray, the window stops drawing; sampling, history and rules continue. The tray and minimized states each have their own sampling interval, five seconds by default.", docs("docs/guide/resident-mode.md")],
         ["temperature", "Why is the CPU temperature missing?", "Windows does not report processor temperature directly. With kernel sensors turned on in Settings → Permissions, Argus reads temperatures, power and per-core values through the privileged service and the signed PawnIO driver.", docs("docs/guide/hardware-data.md")],
         ["privacy", "Does Argus upload anything?", "Process lists, history and settings stay on the computer. Argus has no usage telemetry, ad tracking or automatic crash reporting. Network access covers update checks and downloads, optional PawnIO downloads, and external links opened on request. Update checks can be switched to manual in Settings.", localized(lang, "/privacy/")],
-        ["portable", "Installer or portable?", "The installer goes to Program Files and updates itself. The portable edition is one EXE that runs anywhere, shares settings and history with the installer, and is updated by hand.", localized(lang, "/download/")],
+        ["portable", "Installer or portable?", "The installed version goes in Program Files and supports in-app updates. The portable version is a single EXE that runs directly, shares settings and history with the installed version, and requires manual updates.", localized(lang, "/download/")],
       ]
     : [
         ["replace", "Argus 能替代系统任务管理器吗？", "可以。在“设置 → 权限”中开启替换后，Ctrl+Shift+Esc、任务栏菜单和运行 taskmgr 都会打开 Argus。该功能依赖可选的特权服务，需一次管理员授权；关闭后恢复系统任务管理器。", docs("docs/architecture/task-manager.md")],

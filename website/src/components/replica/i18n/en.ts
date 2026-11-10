@@ -168,7 +168,7 @@ export const exact: Record<string, string> = {
   "每 5 秒记录 CPU、内存、I/O、GPU 和网络占用最高的进程（最小化或后台常驻时的刷新间隔更长时按该间隔），保留 7 天。": "Records the top processes by CPU, memory, I/O, GPU and network every 5 seconds (or at the minimized or tray refresh rate when that is slower) and keeps them for 7 days.",
   "语言与外观": "Language and appearance",
   "启动与后台": "Startup and tray",
-  "快捷键": "Keyboard shortcut",
+  "快捷键": "Keyboard shortcuts",
   "权限": "Permissions",
   "动画": "Animations",
   "数据与历史": "Data and history",
@@ -176,12 +176,12 @@ export const exact: Record<string, string> = {
   "更新": "Updates",
   "关于": "About",
   "设置分组": "Settings sections",
-  "界面语言": "Language",
+  "界面语言": "Display language",
   "立即生效，托盘菜单与提示信息也随之切换。“跟随系统”使用 Windows 的显示语言。": "Takes effect at once, including the tray menu and messages. “Same as Windows” follows the Windows display language.",
   "跟随系统": "Same as Windows",
   "简体中文": "Chinese (Simplified)",
   "主题": "Theme",
-  "“跟随系统”使用 Windows 的应用模式，系统切换浅色或深色时随之切换。": "“Same as Windows” follows the Windows app mode and changes with it.",
+  "“跟随系统”使用 Windows 的应用模式，系统切换浅色或深色时随之切换。": "“Same as Windows” follows the Windows app mode and switches between light and dark when Windows does.",
   "浅色": "Light",
   "深色": "Dark",
   "导航栏位置": "Navigation position",
@@ -243,7 +243,7 @@ export const exact: Record<string, string> = {
   "检查更新": "Check for updates",
   "自动检查更新": "Check for updates automatically",
   "启动约 1 分钟后检查一次，此后每天检查一次。新版本在后台下载，安装需手动确认。": "Checks about 1 minute after startup, then once a day. New versions download in the background and are installed only after confirmation.",
-  "快速、现代、信息丰富的 Windows 任务管理器。": "A fast, modern and informative task manager for Windows.",
+  "快速、现代、信息丰富的 Windows 任务管理器。": "A fast, modern, information-rich Windows task manager.",
   "正在以管理员身份运行。": "Running as administrator.",
   "更新内容": "What's new",
   "退出 Argus": "Exit Argus",
@@ -253,7 +253,7 @@ export const exact: Record<string, string> = {
   "GitHub 仓库": "GitHub repository",
   "查看源代码，报告问题或提出建议，获取各版本的安装包。": "Browse the source code, report problems or suggest changes, and get the installer of any release.",
   "交流与反馈": "Feedback and community",
-  "加入 QQ 群 453803497，反馈问题、提出建议或交流使用心得。": "Join the QQ group 453803497 to report problems, suggest features or talk with other users (in Chinese).",
+  "加入 QQ 群 453803497，反馈问题、提出建议或交流使用心得。": "Join the QQ group 453803497 to report problems, suggest features or share experiences with other users (in Chinese).",
   "复制群号": "Copy group number",
   "加入 QQ 群": "Join QQ group",
   "首次启动引导": "Welcome guide",
@@ -451,7 +451,7 @@ export const exact: Record<string, string> = {
   "每秒发送和接收的字节数": "Bytes sent and received per second",
   "系统概况": "System overview",
   "每个逻辑处理器的使用率": "Usage of each logical processor",
-  "应用名称或文件描述；次级文字显示可执行文件名。": "Application name or file description, with the executable name beside it.",
+  "应用名称或文件描述；次级文字显示可执行文件名。": "App name or file description; secondary text shows the executable name.",
   "已暂停": "Suspended",
   "专用工作集": "Private working set",
   "工作集": "Working set",
@@ -526,7 +526,7 @@ export const exact: Record<string, string> = {
   "放电 7.8 W": "Discharging 7.8 W",
   "演示窗口仅提供简体中文界面。": "The demo window doesn't switch its language.",
   "Ctrl+1–8 切换页面；Ctrl+F 搜索进程；Delete 结束选中的进程；按住 Ctrl 暂停刷新。": "Ctrl+1–8 switch pages; Ctrl+F searches processes; Delete ends the selected process; hold Ctrl to pause updates.",
-  "演示窗口不会停止内核传感器的采集。": "The demo window doesn't stop the kernel sensors.",
+  "演示窗口不会停止内核传感器的采集。": "The demo window doesn't stop kernel sensor collection.",
   "使 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。": "Ctrl+Shift+Esc and other entry points open Argus. Off by default; the standalone restore program needs neither the window nor the service.",
   "流畅（跟随刷新率）": "Smooth (display refresh rate)",
   "刷新间隔": "Update interval",
@@ -791,7 +791,7 @@ export const patterns: [string, string][] = [
   ],
   [
     "{a} 的优先级已设为“{b}”。",
-    "Set the priority of {a} to {b}."
+    "The priority of {a} has been set to “{b}”."
   ],
   [
     "已启动“{a}”。",
@@ -895,15 +895,15 @@ export const patterns: [string, string][] = [
   ],
   [
     "已结束 {a} 个进程。",
-    "Ended {a} processes."
+    "Processes ended: {a}."
   ],
   [
     "已结束 {a} 的 {b} 个进程。",
-    "Ended {b} processes of {a}."
+    "Processes of {a} ended: {b}."
   ],
   [
     "结束全部 {a} 个进程",
-    "End all {a} processes"
+    "End all processes ({a})"
   ],
   [
     "演示窗口不会打开 {a}。",
@@ -919,11 +919,11 @@ export const patterns: [string, string][] = [
   ],
   [
     "将结束 PID {a} 及其 {b} 个子进程，未保存的数据会丢失。",
-    "PID {a} and its {b} child processes will end. Unsaved data will be lost."
+    "The process with PID {a} and all its child processes ({b}) will be ended. Unsaved data will be lost."
   ],
   [
     "将结束 {a} 的全部 {b} 个进程，未保存的数据会丢失。",
-    "All {b} processes of {a} will end. Unsaved data will be lost."
+    "All processes of {a} ({b}) will be ended. Unsaved data will be lost."
   ],
   [
     "Argus · CPU {a}% · 内存 {b}%",
@@ -980,11 +980,11 @@ export const patterns: [string, string][] = [
   ],
   [
     "{a} · {b} 个进程",
-    "{a} · {b} processes"
+    "{a} · Processes: {b}"
   ],
   [
     "找到 {a} 个进程正在使用这些文件或文件夹。",
-    "Found {a} processes using these files or folders."
+    "Processes found using these files or folders: {a}."
   ],
   [
     "禁用 {a}",
