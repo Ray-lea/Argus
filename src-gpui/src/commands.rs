@@ -50,6 +50,10 @@ pub fn task_manager_status() -> Result<argus_service::taskmgr::Status, String> {
     argus_service::taskmgr::status()
 }
 
+pub fn open_native_task_manager() -> Result<(), String> {
+    argus_service::taskmgr::open_native()
+}
+
 pub fn manage_task_manager(action: String) -> Result<argus_service::taskmgr::Status, String> {
     argus_service::taskmgr::manage(&action).map_err(|failure| {
         log::warn!(

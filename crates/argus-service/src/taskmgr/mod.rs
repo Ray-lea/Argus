@@ -926,6 +926,12 @@ fn finish_enable(
     Ok(())
 }
 
+/// Opens the fixed Windows executable once, preserving replacement settings.
+/// Runs locally, independently of service installation or authorization.
+pub fn open_native() -> Result<()> {
+    launch::native()
+}
+
 pub fn manage(action: &str) -> std::result::Result<Status, Failure> {
     let check = |message| Failure::new(Step::Check, message);
     match action {
