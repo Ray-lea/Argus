@@ -67,6 +67,7 @@
 | `battery.rs` | 电池类驱动 IOCTL：电量、充放电功率、电压、设计 / 完全充电容量、循环次数。标准用户可以只读打开电池设备 |
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
 | `disk.rs` | 以 `FILE_ANY_ACCESS` 存储 IOCTL 查询型号、容量、介质、卷及温度，通过 `IOCTL_DISK_PERFORMANCE` 计算活动时间、传输速率和响应时间 |
+| `disk/access.rs` | 缓存句柄注册 PnP 移除通知；在弹出请求中关闭句柄、暂停访问，取消弹出后重新打开并变更采样代次；通知不可用时使用查询期间的临时句柄 |
 | `disk_details.rs`、`disk_details/` | 磁盘详情的单次只读查询：基本身份、扇区、TRIM、NVMe 控制器身份与健康日志、PCIe 链路、Windows 故障预测；现有特权服务补充 ATA／SAT 身份与 SMART 属性、SCSI 健康日志。只由前端明确请求触发，结果与周期采样分离 |
 | `net.rs` | 网络适配器：接口表（`GetIfTable2`）取吞吐量，`GetAdaptersAddresses` 取地址 |
 | `gpu.rs` | 通过 D3DKMT 查询节点计时、显存和性能数据。逐节点维护计时基线，查询失败或计数重置后重建，可选的性能查询间隔 5 秒重试。占用率结合有效的进程引擎读数与 NVIDIA 核心利用率，并注明来源。PCI 地址用于匹配厂商设备 |
@@ -76,6 +77,8 @@
 | `nvml.rs` | NVIDIA 板卡功耗、功耗上限及可选的 GPU 核心利用率：只从 System32 加载驱动附带的 `nvml.dll`，按 PCI 位置匹配，不支持或无效的读数不参与补充。核心利用率用于覆盖部分驱动原生节点计时遗漏的 CUDA 等负载，不替代单独的 Windows 引擎曲线 |
 
 CPU 虚拟化状态优先使用 Windows 的可用标志；Hyper-V 或 VBS 占用虚拟化扩展时，结合 `Hv#1` 接口的 `CreatePartitions` 权限识别宿主。普通虚拟机客体继续按其可用的虚拟化扩展判断。权限位定义见 [Hyper-V 分区权限](https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)。
+
+周期采样的设备句柄通过 [CM_Register_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_register_notification) 注册移除事件。弹出回调等待当前查询或重开操作完成，关闭句柄后返回成功；取消弹出只更新状态，由采样线程重新打开设备并重置计数基线。通知注销在拥有句柄的线程执行，等待回调退出后释放上下文，遵循 [CM_Unregister_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_unregister_notification) 的生命周期要求。
 
 ## 磁盘详情接口
 

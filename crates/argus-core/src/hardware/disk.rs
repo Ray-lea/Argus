@@ -1,5 +1,6 @@
 //! Physical disks: identity via storage IOCTLs, activity via IOCTL_DISK_PERFORMANCE.
 //! Device presence is independent of performance counter support.
+mod access;
 mod discovery;
 #[cfg(test)]
 mod tests;
@@ -10,10 +11,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use windows::Win32::Foundation::HANDLE;
-use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    GetDriveTypeW, GetLogicalDrives, OPEN_EXISTING,
-};
+use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
 use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::Ioctl::{
     DEVICE_SEEK_PENALTY_DESCRIPTOR, DISK_GEOMETRY_EX, DISK_PERFORMANCE,
@@ -24,7 +22,8 @@ use windows::Win32::System::Ioctl::{
 };
 use windows::core::PCWSTR;
 
-use crate::util::{AlignedBuf, OwnedHandle, wide};
+use crate::util::{AlignedBuf, wide};
+use access::DeviceHandle;
 
 const IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS: u32 = 0x0056_0000;
 
@@ -85,13 +84,53 @@ pub struct DiskStats {
 }
 
 struct Disk {
-    handle: Option<OwnedHandle>,
+    handle: Option<DeviceHandle>,
+    generation: u64,
     info: Arc<DiskInfo>,
     prev: Option<DISK_PERFORMANCE>,
     /// Last reading as (°C, warning °C); None once the drive declines.
     temperature: Option<(f32, Option<f32>)>,
     temperature_at: Option<Instant>,
     temperature_supported: bool,
+}
+
+impl Disk {
+    fn sample_with(
+        &mut self,
+        read: impl FnOnce(HANDLE) -> Result<DISK_PERFORMANCE, u32>,
+    ) -> Option<DISK_PERFORMANCE> {
+        let handle = self.handle.as_ref()?;
+        let result = handle.read(|raw, generation| {
+            if self.generation != generation {
+                self.generation = generation;
+                self.prev = None;
+                self.temperature_at = None;
+                self.temperature_supported = true;
+            }
+            if self.temperature_supported
+                && self
+                    .temperature_at
+                    .is_none_or(|t| t.elapsed() > TEMPERATURE_EVERY)
+            {
+                self.temperature = temperature(raw);
+                self.temperature_supported = self.temperature.is_some();
+                self.temperature_at = Some(Instant::now());
+            }
+            read(raw)
+        });
+        match result {
+            Ok(now) => Some(now),
+            Err(code) => {
+                if handle.suspended() || handle.removed() {
+                    self.temperature = None;
+                    self.temperature_at = None;
+                } else {
+                    failure("disk.performance", self.info.index, code);
+                }
+                None
+            }
+        }
+    }
 }
 
 pub(crate) struct DiskTracker {
@@ -110,6 +149,15 @@ impl DiskTracker {
     }
 
     fn rescan(&mut self) {
+        // A query-remove is a pause, not permission to reopen the same device
+        // through a fresh interface or volume handle during enumeration.
+        if self
+            .disks
+            .iter()
+            .any(|d| d.handle.as_ref().is_some_and(DeviceHandle::suspended))
+        {
+            return;
+        }
         let volumes = volume_map();
         let mut discovered = discovery::disks();
         let mut old: HashMap<u32, Disk> = self.disks.drain(..).map(|d| (d.info.index, d)).collect();
@@ -119,7 +167,7 @@ impl DiskTracker {
             .filter(|index| *index <= 4095)
             .collect();
         for index in indices {
-            let opened = open(&format!(r"\\.\PhysicalDrive{index}"))
+            let opened = DeviceHandle::open(&format!(r"\\.\PhysicalDrive{index}"))
                 .or_else(|code| discovered.remove(&index).ok_or(code));
             let handle = match opened {
                 Ok(handle) => Some(handle),
@@ -139,7 +187,9 @@ impl DiskTracker {
             };
             let vols = volumes.get(&index).cloned().unwrap_or_default();
             let (info, geometry_error) = match &handle {
-                Some(handle) => describe(handle.0, index, vols),
+                Some(handle) => handle
+                    .read(|raw, _| Ok(describe(raw, index, vols.clone())))
+                    .unwrap_or_else(|_| (unknown_disk(index, vols), None)),
                 None => (
                     DiskInfo {
                         index,
@@ -164,6 +214,7 @@ impl DiskTracker {
                     || d.info.bus != info.bus;
                 if identity_changed || d.prev.is_none() || d.handle.is_none() {
                     d.handle = handle;
+                    d.generation = 0;
                     d.prev = None;
                 }
                 if *d.info != info {
@@ -175,6 +226,7 @@ impl DiskTracker {
             }
             self.disks.push(Disk {
                 handle,
+                generation: 0,
                 info: Arc::new(info),
                 prev: None,
                 temperature: None,
@@ -186,27 +238,18 @@ impl DiskTracker {
     }
 
     pub fn sample(&mut self) -> Vec<DiskStats> {
+        let count = self.disks.len();
+        self.disks
+            .retain(|d| !d.handle.as_ref().is_some_and(DeviceHandle::removed));
+        if self.disks.len() != count {
+            // Finish removal before the next regular inventory scan. Dropping
+            // the notifications here is outside the PnP callback.
+            self.scanned_at = Instant::now();
+        }
         if self.scanned_at.elapsed() > RESCAN_EVERY {
             self.rescan();
         }
-        self.collect(|d| {
-            let handle = d.handle.as_ref()?;
-            if d.temperature_supported
-                && d.temperature_at
-                    .is_none_or(|t| t.elapsed() > TEMPERATURE_EVERY)
-            {
-                d.temperature = temperature(handle.0);
-                d.temperature_supported = d.temperature.is_some();
-                d.temperature_at = Some(Instant::now());
-            }
-            match performance(handle.0) {
-                Ok(now) => Some(now),
-                Err(code) => {
-                    failure("disk.performance", d.info.index, code);
-                    None
-                }
-            }
-        })
+        self.collect(|d| d.sample_with(performance))
     }
 
     fn collect(
@@ -262,6 +305,18 @@ impl DiskTracker {
     }
 }
 
+fn unknown_disk(index: u32, volumes: Vec<String>) -> DiskInfo {
+    DiskInfo {
+        index,
+        model: String::new(),
+        size: 0,
+        bus: "other",
+        ssd: None,
+        removable: false,
+        volumes,
+    }
+}
+
 fn no_media(info: &DiskInfo, geometry_error: Option<u32>) -> bool {
     info.size == 0
         && info.volumes.is_empty()
@@ -282,24 +337,6 @@ fn failure(stage: &'static str, index: u32, code: u32) {
         stage,
         format!("disk={index}; {}", crate::diagnostics::code(code)),
     );
-}
-
-/// Opens a device for IOCTLs only (no read/write access, so no admin needed).
-fn open(path: &str) -> Result<OwnedHandle, u32> {
-    let w = wide(path);
-    unsafe {
-        CreateFileW(
-            PCWSTR(w.as_ptr()),
-            0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            None,
-            OPEN_EXISTING,
-            FILE_FLAGS_AND_ATTRIBUTES(0),
-            None,
-        )
-    }
-    .map(OwnedHandle)
-    .map_err(native_code)
 }
 
 fn ioctl(
@@ -481,11 +518,13 @@ pub(super) fn volume_map() -> HashMap<u32, Vec<String>> {
         if kind != DRIVE_FIXED && kind != DRIVE_REMOVABLE {
             continue;
         }
-        let Ok(h) = open(&format!(r"\\.\{letter}")) else {
+        let Ok(h) = DeviceHandle::open(&format!(r"\\.\{letter}")) else {
             continue;
         };
         let mut buf = AlignedBuf::with_capacity(512);
-        let Ok(returned) = ioctl(h.0, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, None, &mut buf) else {
+        let Ok(returned) =
+            h.read(|raw, _| ioctl(raw, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, None, &mut buf))
+        else {
             continue;
         };
         let offset = std::mem::offset_of!(VOLUME_DISK_EXTENTS, Extents);
