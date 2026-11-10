@@ -30,6 +30,7 @@ pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
 pub(crate) const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
 pub(crate) const WM_GPUI_DISPLAYS_CHANGED: u32 = WM_USER + 10;
 pub(crate) const WM_GPUI_TRIM_IDLE_DEVICE: u32 = WM_USER + 11;
+pub(crate) const WM_GPUI_VISIBILITY_CHANGED: u32 = WM_USER + 12;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
@@ -1376,6 +1377,15 @@ impl WindowsWindowInner {
     // update completes, as activation does. The state is read at delivery so
     // a burst of messages collapses to the final value.
     fn report_visibility(self: &Rc<Self>) {
+        unsafe {
+            PostMessageW(
+                Some(self.platform_window_handle),
+                WM_GPUI_VISIBILITY_CHANGED,
+                WPARAM(self.validation_number),
+                LPARAM(0),
+            )
+            .log_err();
+        }
         if self.state.last_visibility.get().is_none() {
             return;
         }

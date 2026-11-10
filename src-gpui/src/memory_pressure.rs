@@ -135,18 +135,32 @@ fn job_usage() -> Option<usize> {
     Some(total)
 }
 
-/// Gives freed heap memory back to Windows and moves the rest of the working
-/// set out of RAM; pages still in use come back as they are touched.
+/// Decommits unused LFH caches, then trims the resident working set once.
+/// Allocations still in use remain committed and return as they are touched.
 pub(crate) fn release_process_memory() {
     use windows::Win32::System::{
-        Memory::{GetProcessHeap, HEAP_NONE, HeapCompact},
+        Memory::{HeapOptimizeResources, HeapSetInformation},
+        SystemServices::{
+            HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION, HEAP_OPTIMIZE_RESOURCES_INFORMATION,
+        },
         Threading::{GetCurrentProcess, SetProcessWorkingSetSize},
     };
+    let info = HEAP_OPTIMIZE_RESOURCES_INFORMATION {
+        Version: HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION,
+        Flags: 0,
+    };
     unsafe {
-        if let Ok(heap) = GetProcessHeap() {
-            HeapCompact(heap, HEAP_NONE);
+        if let Err(error) = HeapSetInformation(
+            None,
+            HeapOptimizeResources,
+            Some((&raw const info).cast()),
+            size_of_val(&info),
+        ) {
+            argus_core::diagnostics::windows_failure("hidden heap optimization", &error);
         }
-        let _ = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+        if let Err(error) = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX) {
+            argus_core::diagnostics::windows_failure("hidden working set trim", &error);
+        }
     }
 }
 

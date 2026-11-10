@@ -14,7 +14,7 @@ use anyhow::{Context as _, Result, anyhow};
 use futures::channel::oneshot::Receiver;
 use gpui_util::{ResultExt, get_powershell, new_std_command};
 use itertools::Itertools;
-use parking_lot::RwLock;
+use parking_lot::{Condvar, Mutex, RwLock};
 use smallvec::SmallVec;
 use windows::{
     UI::ViewManagement::UISettings,
@@ -45,8 +45,43 @@ struct TrackedWindow {
     frame_signal: Arc<PlatformFrameSignal>,
 }
 
+/// Visibility changes wake an idle frame clock. An epoch preserves a wake
+/// delivered between checking the window list and entering the wait.
+#[derive(Default)]
+struct FrameWake {
+    epoch: Mutex<u64>,
+    changed: Condvar,
+}
+
+impl FrameWake {
+    fn epoch(&self) -> u64 {
+        *self.epoch.lock()
+    }
+
+    fn wake(&self) {
+        let mut epoch = self.epoch.lock();
+        *epoch = epoch.wrapping_add(1);
+        self.changed.notify_all();
+    }
+
+    fn wait_since(&self, epoch: u64, stop: &AtomicBool, timeout: std::time::Duration) -> bool {
+        let mut current = self.epoch.lock();
+        !self
+            .changed
+            .wait_while_for(
+                &mut current,
+                |current| *current == epoch && !stop.load(Ordering::Acquire),
+                timeout,
+            )
+            .timed_out()
+    }
+}
+
 #[cfg(test)]
 mod recovery_tests;
+
+#[cfg(test)]
+mod idle_tests;
 
 fn for_each_recovery_window(
     windows: &RwLock<SmallVec<[TrackedWindow; 4]>>,
@@ -113,6 +148,7 @@ pub(crate) struct WindowsPlatformState {
     /// Shared with each window to coordinate draws across windows on the UI
     /// thread; see [`DrawCoordinator`].
     pub(crate) draw_coordinator: Rc<DrawCoordinator>,
+    frame_wake: Arc<FrameWake>,
     directx_devices: RefCell<Option<DirectXDevices>>,
 }
 
@@ -142,6 +178,7 @@ impl WindowsPlatformState {
             current_cursor: Cell::new(current_cursor),
             cursor_visible: Arc::new(AtomicBool::new(true)),
             draw_coordinator: Rc::new(DrawCoordinator::new()),
+            frame_wake: Arc::new(FrameWake::default()),
             directx_devices: RefCell::new(directx_devices),
             menus: RefCell::new(Vec::new()),
         }
@@ -443,6 +480,7 @@ impl WindowsPlatform {
             // Not joined: the thread can be sending this thread a message. It exits after its
             // next vsync, and drops its reference to the devices then.
             stop.store(true, Ordering::Release);
+            self.inner.state.frame_wake.wake();
         }
         if let Some(text_system) = &self.direct_write_text_system {
             text_system.release_gpu();
@@ -465,14 +503,13 @@ impl WindowsPlatform {
         let all_windows = Arc::downgrade(&self.raw_window_handles);
         let text_system = Arc::downgrade(direct_write_text_system);
         let invalidate_devices = self.invalidate_devices.clone();
+        let frame_wake = self.inner.state.frame_wake.clone();
 
         std::thread::Builder::new()
             .name("VSyncProvider".to_owned())
             .spawn(move || {
                 let vsync_provider = VSyncProvider::new();
                 loop {
-                    let signal_source = vsync_provider.wait_for_vsync();
-                    let signal_at = PlatformFrameSignal::capture(scheduler::Instant::now);
                     if stop.load(Ordering::Acquire) {
                         break;
                     }
@@ -489,20 +526,39 @@ impl WindowsPlatform {
                             panic!("Device lost: {err}");
                         }
                     }
-                    let Some(all_windows) = all_windows.upgrade() else {
+                    let epoch = frame_wake.epoch();
+                    let Some(windows) = all_windows.upgrade() else {
                         break;
                     };
-                    for hwnd in all_windows.read().iter() {
+                    let visible = windows.read().iter().any(|window| unsafe {
+                        IsWindowVisible(window.as_raw()).as_bool()
+                            && !IsIconic(window.as_raw()).as_bool()
+                    });
+                    if !visible {
+                        for window in windows.read().iter() {
+                            window.frame_signal.take();
+                        }
+                        drop(windows);
+                        // Keep device-loss checks bounded while idle. Restoring,
+                        // opening a window or shutting down wakes this at once.
+                        frame_wake.wait_since(epoch, &stop, std::time::Duration::from_secs(1));
+                        continue;
+                    }
+                    let signal_source = vsync_provider.wait_for_vsync();
+                    let signal_at = PlatformFrameSignal::capture(scheduler::Instant::now);
+                    if stop.load(Ordering::Acquire) {
+                        break;
+                    }
+                    for hwnd in windows.read().iter() {
                         unsafe {
+                            if !IsWindowVisible(hwnd.as_raw()).as_bool()
+                                || IsIconic(hwnd.as_raw()).as_bool()
+                            {
+                                hwnd.frame_signal.take();
+                                continue;
+                            }
                             if let Some(signal_at) = signal_at {
-                                if IsWindowVisible(hwnd.as_raw()).as_bool()
-                                    && !IsIconic(hwnd.as_raw()).as_bool()
-                                {
-                                    hwnd.frame_signal.record(signal_at, signal_source);
-                                } else {
-                                    // Hidden windows may not consume WM_PAINT until shown again.
-                                    hwnd.frame_signal.take();
-                                }
+                                hwnd.frame_signal.record(signal_at, signal_source);
                             }
                             RedrawWindow(Some(hwnd.as_raw()), None, None, RDW_INVALIDATE)
                                 .ok()
@@ -791,6 +847,7 @@ impl Platform for WindowsPlatform {
             handle: handle.into(),
             frame_signal: window.state.frame_signal.clone(),
         });
+        self.inner.state.frame_wake.wake();
 
         Ok(Box::new(window))
     }
@@ -1209,7 +1266,8 @@ impl WindowsPlatformInner {
             | WM_GPUI_KEYBOARD_LAYOUT_CHANGED
             | WM_GPUI_DISPLAYS_CHANGED
             | WM_GPUI_GPU_DEVICE_LOST
-            | WM_GPUI_TRIM_IDLE_DEVICE => self.handle_gpui_events(msg, wparam, lparam),
+            | WM_GPUI_TRIM_IDLE_DEVICE
+            | WM_GPUI_VISIBILITY_CHANGED => self.handle_gpui_events(msg, wparam, lparam),
             WM_POWERBROADCAST => self.handle_power_broadcast(wparam),
             WM_DISPLAYCHANGE => self.handle_display_change(handle),
             WM_QUERYENDSESSION => Some(1),
@@ -1240,6 +1298,10 @@ impl WindowsPlatformInner {
             WM_GPUI_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
             WM_GPUI_TRIM_IDLE_DEVICE => {
                 self.trim_idle_device();
+                Some(0)
+            }
+            WM_GPUI_VISIBILITY_CHANGED => {
+                self.state.frame_wake.wake();
                 Some(0)
             }
             _ => unreachable!(),
@@ -1455,6 +1517,7 @@ impl Drop for WindowsPlatform {
     fn drop(&mut self) {
         if let Some(stop) = self.vsync_stop.borrow_mut().take() {
             stop.store(true, Ordering::Release);
+            self.inner.state.frame_wake.wake();
         }
         unsafe {
             if let Some(notification) = self.suspend_resume_notification.borrow_mut().take() {

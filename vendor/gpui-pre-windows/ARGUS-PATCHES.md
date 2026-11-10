@@ -1,5 +1,7 @@
 # Argus patches
 
+The frame-clock worker waits on a visibility-change signal while every tracked window is hidden or minimized, and skips redraw requests for individual hidden windows. Opening, restoring or closing the platform wakes that wait immediately; a generation counter preserves notifications delivered before the wait starts. Idle device-health checks run at most once per second. The visible compositor cadence is unchanged. Regression tests cover wake-before-wait, restore, shutdown and the idle health-check timeout.
+
 DirectX adapter initialization records numeric vendor/device IDs, the software-adapter flag, selected feature level and failure HRESULTs through the reviewed `argus::graphics` log target. These startup stages remain visible with Argus's production log filter without including raw driver descriptions or exception text.
 
 DWM timing conversion multiplies before dividing, so refresh-rate ratios such as 60/1 and 60000/1001 remain valid fallback intervals. Zero, overflowing and implausibly long timing values use the bounded default cadence. Regression cases cover unreliable QPC periods and malformed refresh data.

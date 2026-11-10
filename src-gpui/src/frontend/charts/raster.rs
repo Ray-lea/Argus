@@ -362,9 +362,11 @@ fn reduced_density(size: Size<Pixels>, scale: f32) -> f32 {
     base * ((512. * 1024.) / area.max(1.)).sqrt().min(1.)
 }
 
+type RegisteredCache = (WeakEntity<Cache>, std::rc::Weak<RefCell<Surface>>);
+
 thread_local! {
     /// Every chart's texture cache and the surface it paints, for `release_all`.
-    static CACHES: RefCell<Vec<(WeakEntity<Cache>, std::rc::Weak<RefCell<Surface>>)>> =
+    static CACHES: RefCell<Vec<RegisteredCache>> =
         const { RefCell::new(Vec::new()) };
 }
 

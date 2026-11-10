@@ -25,6 +25,9 @@ copyFileSync(sourceExecutable, executable);
 if (process.env.ARGUS_PROBE_STACK_FILE && existsSync(resolve(dirname(sourceExecutable), "argus.pdb")))
   copyFileSync(resolve(dirname(sourceExecutable), "argus.pdb"), resolve(output, "argus.pdb"));
 const identifier = flag("--identifier", `dev.argus.taskmanager.test.${label}`);
+const backgroundInterval = Number(flag("--background-interval", 5000));
+assert([500, 1000, 2000, 5000, 10000, 30000].includes(backgroundInterval), "invalid background interval");
+const recordHistory = process.argv.includes("--history");
 const [config] = testDirectories(identifier);
 mkdirSync(config, { recursive: true });
 writeFileSync(
@@ -34,7 +37,9 @@ writeFileSync(
     theme: "dark",
     onboarding: 1,
     closeToTray: false,
-    history: false,
+    history: recordHistory,
+    minimizedInterval: backgroundInterval,
+    trayInterval: backgroundInterval,
     hotkeyEnabled: false,
     updateCheck: false,
   }),
@@ -93,6 +98,8 @@ const result = {
   captureCycles,
   captureEnabled,
   requestedClient: { width, height, uiScale },
+  backgroundInterval,
+  recordHistory,
   phases,
   fixture: fixture ? createHash("sha256").update(readFileSync(fixture)).digest("hex") : null,
   streamFixture,
