@@ -584,7 +584,7 @@
       "alkaline": "Alcaline rechargeable"
     },
     "hoursMinutes": "{hours} h {minutes} min",
-    "minutes": "{minutes} min.",
+    "minutes": "{minutes} min",
     "timeLeft": "Reste {time}",
     "onBattery": "Sur batterie",
     "chargeRate": "Puissance de charge",

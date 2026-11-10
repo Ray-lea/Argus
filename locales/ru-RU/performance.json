@@ -590,8 +590,8 @@
       "alkaline": "Перезаряжаемая щелочная батарея"
     },
     "hoursMinutes": "{hours} ч {minutes} мин",
-    "minutes": "{minutes} мин.",
-    "timeLeft": "Осталось: {time}",
+    "minutes": "{minutes} мин",
+    "timeLeft": "Ещё {time}",
     "onBattery": "Работает от аккумулятора",
     "chargeRate": "Мощность зарядки",
     "dischargeRate": "Мощность разряда",
