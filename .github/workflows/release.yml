@@ -41,6 +41,12 @@ jobs:
   publish:
     name: Build and publish
     needs: check
+    # Stable releases and prereleases share beta.json. Keep every pending tag;
+    # the publisher also checks SemVer because jobs can reach this queue out of order.
+    concurrency:
+      group: release-publication
+      queue: max
+      cancel-in-progress: false
     runs-on: windows-latest
     timeout-minutes: 90
     permissions:
