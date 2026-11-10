@@ -1,6 +1,6 @@
 {
   "updated": "Argus a été mis à jour vers {version}.",
-  "whatsNew": "Quoi de neuf",
+  "whatsNew": "Nouveautés",
   "readyToast": "Argus {version} est prêt à être installé",
   "availableToast": "Argus {version} est disponible",
   "view": "Voir",
@@ -10,15 +10,15 @@
     "availableTitle": "Argus {version} est disponible. Cliquez pour voir les nouveautés"
   },
   "menu": {
-    "view": "Découvrez les nouveautés",
-    "dismiss": "Ne me rappelle pas cette version"
+    "view": "Voir les nouveautés",
+    "dismiss": "Ne plus rappeler cette version"
   },
   "dialog": {
     "ready": "Argus {version} est prêt",
     "available": "Argus {version} est disponible",
-    "downloading": "Téléchargement de Argus {version}",
-    "installing": "Démarrage du programme d'installation",
-    "installed": "Quoi de neuf dans Argus {version}",
+    "downloading": "Téléchargement d’Argus {version}",
+    "installing": "Démarrage du programme d’installation",
+    "installed": "Nouveautés d’Argus {version}",
     "current": "Version actuelle",
     "previous": "Avant la mise à jour",
     "next": "Nouvelle version",
@@ -34,11 +34,11 @@
       "other": "{count} modifications"
     },
     "earlier": "Les notes des versions antérieures se trouvent sur GitHub.",
-    "empty": "Aucune note de version à afficher ici ; voir les versions sur GitHub.",
-    "language": "Certaines de ces notes de version ne sont disponibles qu'en chinois.",
-    "hint": "L'installation nécessite l'autorisation de l'administrateur. Argus se ferme brièvement et rouvre sur la même page une fois l'installation terminée.",
+    "empty": "Aucune note de version à afficher ici ; voir les versions sur GitHub.",
+    "language": "Certaines de ces notes de version ne sont disponibles qu’en chinois.",
+    "hint": "L’installation nécessite l’autorisation de l’administrateur. Argus se ferme brièvement et rouvre sur la même page une fois l’installation terminée.",
     "portable": "La version portable ne se met pas à jour automatiquement. Téléchargez la nouvelle version depuis la page de publication.",
-    "github": "Vue sur GitHub",
+    "github": "Voir sur GitHub",
     "install": "Redémarrer et mettre à jour",
     "starting": "Démarrage…",
     "download": "Télécharger",
@@ -46,9 +46,9 @@
     "close": "Fermer"
   },
   "service": {
-    "title": "Mettre à jour le service privilégié ?",
-    "body": "Le service privilégié est la version {serviceVersion}, qui ne correspond pas à Argus {version}. Certaines fonctionnalités peuvent ne pas fonctionner. La mise à jour nécessite l'autorisation de l'administrateur.",
-    "bodyOlder": "Le service privilégié est une ancienne version qui n'est pas compatible avec Argus {version}. Jusqu'à ce qu'il soit mis à jour, les actions nécessitant des droits d'administrateur (fin des processus d'administrateurs ou d'autres comptes, gestion des services système, fermeture des connexions réseau, etc.) ne peuvent pas être effectuées et les données fournies par le service, telles que le trafic réseau par processus, ne sont pas affichées. La mise à jour nécessite l'autorisation de l'administrateur.",
+    "title": "Mettre à jour le service privilégié ?",
+    "body": "Le service privilégié est la version {serviceVersion}, qui ne correspond pas à Argus {version}. Certaines fonctionnalités peuvent ne pas fonctionner. La mise à jour nécessite l’autorisation de l’administrateur.",
+    "bodyOlder": "Le service privilégié est une ancienne version qui n’est pas compatible avec Argus {version}. Jusqu’à ce qu’il soit mis à jour, les actions nécessitant des droits d’administrateur (fin des processus d’administrateurs ou d’autres comptes, gestion des services système, fermeture des connexions réseau, etc.) ne peuvent pas être effectuées et les données fournies par le service, telles que le trafic réseau par processus, ne sont pas affichées. La mise à jour nécessite l’autorisation de l’administrateur.",
     "confirm": "Mettre le service à jour"
   }
 }

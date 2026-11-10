@@ -6,34 +6,34 @@
     "hide": "Ocultar especificaciones de PC",
     "show": "Mostrar especificaciones de PC",
     "copy": "Copiar las especificaciones del PC como texto",
-    "copyWhat": "PC especificaciones",
+    "copyWhat": "especificaciones del equipo",
     "copyPart": "{kind}: {name}",
     "selectTip": "Haga clic en una aplicación o proceso en la lista para ver sus detalles aquí; haga clic en él nuevamente para anular su selección.",
-    "closeTip": "El panel de detalles permanece abierto; ocúltalo con {icon} en la parte superior derecha de la ventana.",
+    "closeTip": "El panel de detalles permanece abierto de forma predeterminada. Haga clic en {icon}, en la esquina superior derecha de la ventana, para contraerlo.",
     "cpu": "Procesador",
     "cores": {
       "one": "{count} núcleo",
       "many": "{count} núcleos",
       "other": "{count} núcleos"
     },
-    "hybrid": "({performance} P-núcleos + {efficiency} E-núcleos)",
+    "hybrid": " ({performance} núcleos P + {efficiency} núcleos E)",
     "threads": {
       "one": "{count} subproceso",
       "many": "{count} subprocesos",
       "other": "{count} subprocesos"
     },
     "base": "Base {speed}",
-    "slots": "{used} de las ranuras {total} utilizadas",
+    "slots": "Ranuras usadas: {used} de {total}",
     "disk": "Almacenamiento",
     "gpu": "Gráficos",
-    "vram": "Memoria dedicada {size}",
+    "vram": "{size} de memoria gráfica dedicada",
     "sharedMemory": "Utiliza memoria compartida",
     "battery": "Batería",
-    "designed": "Diseñado para {capacity}",
-    "health": "Salud {percent}%"
+    "designed": "Capacidad de diseño: {capacity}",
+    "health": "Estado: {percent} %"
   },
   "exited": {
-    "title": "El proceso ha salido",
+    "title": "El proceso ha finalizado",
     "hint": "Seleccione otro proceso en la lista para ver sus detalles."
   },
   "group": {
@@ -42,7 +42,7 @@
       "many": "{count} procesos",
       "other": "{count} procesos"
     },
-    "earliest": "Primero iniciado",
+    "earliest": "Primer inicio",
     "members": "Procesos ({count})",
     "open": "Mostrar los detalles de PID {pid}"
   },
@@ -51,19 +51,19 @@
     "process": "Proceso",
     "resources": "Recursos",
     "location": "Ubicación del archivo",
-    "commandLine": "Línea de comando",
+    "commandLine": "Línea de comandos",
     "version": "Versión del archivo"
   },
   "parent": "Proceso padre",
   "parentLink": "{name} ({pid})",
   "noParent": "Ninguno (PID {pid})",
   "started": "Iniciado",
-  "cpuTime": "CPU tiempo",
+  "cpuTime": "Tiempo de CPU",
   "user": "Nombre de usuario",
   "integrity": "Integridad",
   "integrityLevel": {
     "untrusted": "No confiable",
-    "low": "Baja",
+    "low": "Bajo",
     "medium": "Medio",
     "mediumPlus": "Medio más",
     "high": "Alto (elevado)",
@@ -88,7 +88,7 @@
   "netNeedsAdmin": "Ejecute Argus como administrador para ver",
   "threads": "Subprocesos",
   "handles": "Identificadores",
-  "noAccess": "No se pudo abrir este proceso para leer su línea de comando y nombre de usuario. Ejecute Argus como administrador para verlos.",
-  "product": "Producto\nVersión",
+  "noAccess": "No se pudo abrir este proceso para leer su línea de comandos y la información del usuario. Ejecute Argus como administrador para consultarlas.",
+  "product": "Producto",
   "version": "Versión"
 }

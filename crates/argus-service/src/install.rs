@@ -27,7 +27,8 @@ use windows::core::{PCWSTR, PWSTR};
 
 use crate::security;
 use crate::util::{
-    FOREIGN_SERVICE, Handle, OTHER_OWNER, Result, TASK_MANAGER_FOLLOW, io, message, wide, win,
+    FOREIGN_SERVICE, Handle, OTHER_OWNER, Result, TASK_MANAGER_FOLLOW, UNSAFE_PATH, io, message,
+    wide, win,
 };
 
 static MANAGING: AtomicBool = AtomicBool::new(false);
@@ -221,9 +222,25 @@ fn inspect() -> Result<ServiceStatus> {
         });
     };
     let dir = directory()?;
-    let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
-    let _guard = security::protect_directory(&dir)?;
     binary(&service, &dir)?;
+    let protected = (|| {
+        let parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
+        let guard = security::protect_directory(&dir)?;
+        Ok((parent, guard))
+    })();
+    let _pins = match protected {
+        Ok(pins) => pins,
+        Err(code) => {
+            return Ok(ServiceStatus {
+                state: "unavailable",
+                authorized: false,
+                version: None,
+                error: Some(message(code)),
+                incompatible: false,
+                error_code: Some(code),
+            });
+        }
+    };
     let authorized = owner(&dir)? == security::current_sid()?;
     let s = query(&service)?;
     let mut status = ServiceStatus {
@@ -580,6 +597,9 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
     if !argus_core::privilege::is_elevated() {
         return Err(5);
     }
+    if action == "uninstall" {
+        return uninstall();
+    }
     let manager = scm(SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE)?;
     let existing = open(&manager, SERVICE_ALL_ACCESS)?;
     let dir = directory()?;
@@ -602,23 +622,7 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
         }
     }
     let guard = security::protect_directory(&dir)?;
-    let lock = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .share_mode(0)
-        .open(dir.join(LOCK_FILE))
-        .map_err(io)
-        .inspect_err(|code| {
-            argus_core::diagnostics::warn(
-                "service management lock",
-                format!(
-                    "{}; path={}",
-                    argus_core::diagnostics::code(*code),
-                    argus_core::diagnostics::path(&dir.join(LOCK_FILE))
-                ),
-            )
-        })?;
+    let lock = management_lock(&dir)?;
     let result = match action {
         "install" | "update" => {
             if action == "update" && existing.is_none() {
@@ -643,30 +647,84 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
             }
             start(s)
         }
-        "uninstall" => {
-            restore_task_manager(&dir)?;
-            let s = existing.as_ref().ok_or(1060u32)?;
-            let exe = binary(s, &dir)?;
-            stop(s)?;
-            unsafe { DeleteService(s.0) }.map_err(win)?;
-            drop(existing);
-            fs::remove_file(exe).map_err(io)?;
-            fs::remove_file(dir.join(OWNER_FILE)).map_err(io)
-        }
         _ => unreachable!(),
     };
     drop(lock);
     drop(guard);
-    if action == "uninstall" && result.is_ok() {
-        fs::remove_file(dir.join(LOCK_FILE)).map_err(io)?;
-        // Never recursively delete: preserve any unrelated or leftover files.
-        match fs::remove_dir(&dir) {
-            Ok(()) => {}
-            Err(e) if e.raw_os_error() == Some(145) => {}
-            Err(e) => return Err(io(e)),
-        }
-    }
     result
+}
+
+fn management_lock(dir: &Path) -> Result<fs::File> {
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .share_mode(0)
+        .open(dir.join(LOCK_FILE))
+        .map_err(io)
+        .inspect_err(|code| {
+            argus_core::diagnostics::warn(
+                "service management lock",
+                format!(
+                    "{}; path={}",
+                    argus_core::diagnostics::code(*code),
+                    argus_core::diagnostics::path(&dir.join(LOCK_FILE))
+                ),
+            )
+        })
+}
+
+fn uninstall() -> Result<()> {
+    let manager = scm(SC_MANAGER_CONNECT)?;
+    let existing = open(&manager, SERVICE_ALL_ACCESS)?;
+    let dir = directory()?;
+    let protected = (|| {
+        let parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
+        let directory = security::protect_directory(&dir)?;
+        Ok((parent, directory))
+    })();
+    let pins = match protected {
+        Ok(pins) => Some(pins),
+        Err(UNSAFE_PATH | 2 | 3 | 5) => None,
+        Err(code) => return Err(code),
+    };
+    // Healthy installations retain the same lock as install/update. A
+    // damaged path cannot authorize those operations, but can still revoke.
+    let lock = pins.as_ref().map(|_| management_lock(&dir)).transpose()?;
+    // SCM owns this configuration. Do not read authorization records from a
+    // damaged directory or execute any program stored there while removing it.
+    let image = existing
+        .as_ref()
+        .map(|service| binary(service, &dir))
+        .transpose()?;
+    if lock.is_some() {
+        if restore_task_manager(&dir).is_err() {
+            crate::taskmgr::restore_registration(&dir)
+                .map_err(|_| crate::taskmgr::maintenance_error(&dir))?;
+        }
+    } else {
+        crate::taskmgr::restore().map_err(|_| crate::taskmgr::maintenance_error(&dir))?;
+    }
+    if let Some(service) = existing {
+        stop(&service)?;
+        unsafe { DeleteService(service.0) }.map_err(win)?;
+    }
+    if let Some(directory) = crate::cleanup::Directory::open(&dir)? {
+        if let Some(image) = image {
+            directory.remove_file(
+                image
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .ok_or(87u32)?,
+            )?;
+        }
+        directory.remove_file(OWNER_FILE)?;
+        drop(lock);
+        drop(pins);
+        directory.remove_file(LOCK_FILE)?;
+        directory.remove_empty()?;
+    }
+    Ok(())
 }
 
 /// Restores the system task manager before the service changes, then deletes

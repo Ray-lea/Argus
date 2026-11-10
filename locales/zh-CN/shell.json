@@ -55,7 +55,11 @@
   },
   "details": {
     "label": "详细信息面板",
-    "mode": { "open": "始终显示", "auto": "选中进程时显示", "closed": "隐藏" },
+    "mode": {
+      "open": "始终显示",
+      "auto": "选中进程时显示",
+      "closed": "隐藏"
+    },
     "current": "详细信息面板：{mode}",
     "next": "单击改为“{mode}”，右键可直接选择"
   },
@@ -85,6 +89,6 @@
     "paused": "已暂停刷新",
     "interval": "每 {seconds} 秒刷新",
     "version": "v{version}",
-    "versionHint": "Argus {version} · {channel}\n单击查看本版本的更新内容，右键复制版本号"
+    "versionHint": "Argus {version} · {build}\n单击查看本版本的更新内容，右键复制版本号"
   }
 }

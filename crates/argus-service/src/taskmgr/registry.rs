@@ -310,6 +310,33 @@ pub fn write(path: &str, value: Option<&Value>) -> RegResult<()> {
     write_in(HKEY_LOCAL_MACHINE, path, value)
 }
 
+/// Revocation derives its sole expected value from the compiled launcher path.
+/// No filesystem journal can authorize restoring a different command here.
+pub fn remove_owned(path: &str, expected: &Value) -> RegResult<()> {
+    remove_owned_in(HKEY_LOCAL_MACHINE, path, expected)
+}
+
+fn remove_owned_in(root: HKEY, path: &str, expected: &Value) -> RegResult<()> {
+    // An unrelated value needs no write access, even if its owner has locked
+    // down the key. Recheck on the write handle before changing our own value.
+    let Some(read) = open_in(root, path, KEY_QUERY_VALUE)? else {
+        return Ok(());
+    };
+    if read_value(&read, "Debugger")?.as_ref() != Some(expected) {
+        return Ok(());
+    }
+    let Some(key) = open_in(root, path, WRITE_ACCESS)? else {
+        return Ok(());
+    };
+    if read_value(&key, "Debugger")?.as_ref() == Some(expected) {
+        set_debugger(&key, None)?;
+    }
+    if read_value(&key, "Debugger")?.as_ref() == Some(expected) {
+        return Err(Error::Text(tr!("taskManager.modified")));
+    }
+    Ok(())
+}
+
 fn write_in(root: HKEY, path: &str, value: Option<&Value>) -> RegResult<()> {
     let key = match open_in(root, path, WRITE_ACCESS)? {
         Some(key) => key,
@@ -645,6 +672,73 @@ mod tests {
                 subkey_count: 1,
             }
         );
+    }
+
+    #[test]
+    fn recovery_revokes_only_the_exact_argus_value_without_runtime_records() {
+        let scratch = Scratch::new();
+        let path = format!(r"{}\taskmgr.exe", scratch.0);
+        let expected = super::super::replacement(Path::new(r"C:\Program Files\Argus Privileged"));
+        // An absent key stays absent, including repeated recovery attempts.
+        remove_owned_in(HKEY_CURRENT_USER, &path, &expected).unwrap();
+        assert!(
+            open_in(HKEY_CURRENT_USER, &path, KEY_QUERY_VALUE)
+                .unwrap()
+                .is_none()
+        );
+        let key = create_in(HKEY_CURRENT_USER, &path).unwrap();
+        for foreign in [
+            Value::string("other.exe"),
+            Value::string(r#""C:\other\argus-taskmgr-launcher.exe" --task-manager"#),
+            Value {
+                kind: REG_EXPAND_SZ.0,
+                bytes: expected.bytes.clone(),
+            },
+        ] {
+            set_debugger(&key, Some(&foreign)).unwrap();
+            remove_owned_in(HKEY_CURRENT_USER, &path, &expected).unwrap();
+            assert_eq!(read_value(&key, "Debugger").unwrap(), Some(foreign));
+        }
+        create_in(HKEY_CURRENT_USER, &format!(r"{path}\PerfOptions")).unwrap();
+        err(
+            unsafe {
+                RegSetValueExW(
+                    key.0,
+                    PCWSTR(util::wide("UseFilter").as_ptr()),
+                    None,
+                    REG_DWORD,
+                    Some(&0u32.to_le_bytes()),
+                )
+            },
+            Call::SetValue,
+        )
+        .unwrap();
+        set_debugger(&key, Some(&expected)).unwrap();
+        for _ in 0..2 {
+            remove_owned_in(HKEY_CURRENT_USER, &path, &expected).unwrap();
+            let found = describe_in(HKEY_CURRENT_USER, &path).unwrap();
+            assert!(found.debugger.is_none());
+            assert!(found.use_filter);
+            assert_eq!(found.subkeys, ["PerfOptions"]);
+        }
+    }
+
+    #[test]
+    fn recovery_preserves_read_only_foreign_values_and_reports_own_write_failures() {
+        let scratch = Scratch::new();
+        let expected = Value::string("argus-launcher --task-manager");
+        let foreign = Value::string("another-debugger");
+        let key = create_in(HKEY_CURRENT_USER, &scratch.0).unwrap();
+        let sid = security::current_sid().unwrap();
+        set_debugger(&key, Some(&foreign)).unwrap();
+        scratch.permit(&format!("D:P(A;;KR;;;{sid})"));
+        remove_owned_in(HKEY_CURRENT_USER, &scratch.0, &expected).unwrap();
+        assert_eq!(read_value(&key, "Debugger").unwrap(), Some(foreign));
+        // This already-open handle retains its original write permission.
+        set_debugger(&key, Some(&expected)).unwrap();
+        let error = remove_owned_in(HKEY_CURRENT_USER, &scratch.0, &expected).unwrap_err();
+        assert_eq!(error.os().unwrap().code, 5);
+        assert_eq!(read_value(&key, "Debugger").unwrap(), Some(expected));
     }
 
     #[test]

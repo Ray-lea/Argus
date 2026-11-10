@@ -86,15 +86,14 @@ const chapters: Chapter[] = [
       {
         label: "禁用登录时启动的项目，下次登录时生效",
         find: (a) => {
-          const prefix = translate("禁用 ");
-          const toggle = a.querySelector<HTMLElement>(`.a-startup button[aria-label^="${prefix}"]`);
-          startupItem = toggle?.getAttribute("aria-label")?.slice(prefix.length) ?? "";
+          const toggle = a.querySelector<HTMLElement>('.a-startup button[role="switch"][aria-checked="true"]');
+          startupItem = toggle?.dataset.startup ?? "";
           return toggle;
         },
       },
       {
         label: "重新启用该项目",
-        find: (a) => a.querySelector(`.a-startup button[aria-label="${translate("启用 ")}${CSS.escape(startupItem)}"]`),
+        find: (a) => a.querySelector(`.a-startup button[data-startup="${CSS.escape(startupItem)}"][aria-checked="false"]`),
       },
     ],
   },
@@ -144,9 +143,11 @@ const chapters: Chapter[] = [
   },
 ];
 
+// Headless checks can advance the complete tour without changing app timings.
+const tourScale = () => Math.min(1, Math.max(0.1, (globalThis as { __argusTourTestScale?: number }).__argusTourTestScale ?? 1));
 const wait = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
-    const id = setTimeout(resolve, ms);
+    const id = setTimeout(resolve, Math.max(80, ms * tourScale()));
     signal.addEventListener("abort", () => {
       clearTimeout(id);
       reject(new DOMException("stopped", "AbortError"));
@@ -161,7 +162,7 @@ const glide = (ms: number, signal: AbortSignal, step: (progress: number) => void
   new Promise<void>((resolve, reject) => {
     const begin = performance.now();
     let frame = requestAnimationFrame(function next(now) {
-      const t = Math.min(1, (now - begin) / ms);
+      const t = Math.min(1, (now - begin) / (ms * tourScale()));
       step((1 - Math.cos(Math.PI * t)) / 2);
       if (t < 1) frame = requestAnimationFrame(next);
       else resolve();
@@ -334,6 +335,7 @@ export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
           // A step that leads off the page waits for what the step before it opened.
           let target = step.find?.(app, stage);
           if (!target && step.run) target = app;
+          (globalThis as { __argusTourTrace?: { chapter: number; step: number; found: boolean; label: string }[] }).__argusTourTrace?.push({ chapter: c, step: i, found: target instanceof HTMLElement, label: translate(step.label) });
           if (!(target instanceof HTMLElement)) continue;
           setLabel(step.label);
           setProgress((i + 1) / steps.length);

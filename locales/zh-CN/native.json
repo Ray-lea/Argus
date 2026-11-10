@@ -118,7 +118,7 @@
   },
   "taskManager": {
     "alertTitle": "Argus 任务管理器替换",
-    "recoveryFile": "Argus 任务管理器应急恢复\r\n\r\n先运行本目录的 argus-taskmgr-recover.exe，并允许管理员授权。它不依赖 Argus 界面或后台服务。\r\n如果程序也已损坏：Win+R 输入 regedit，以管理员身份打开，定位 HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe。核对 Debugger 确实指向本目录的 argus-taskmgr-launcher.exe --task-manager，且 taskmgr-recovery.json 中 before.debugger 为 null，再只删除 Debugger 值。不要删除整个 taskmgr.exe 键，不要删除其他工具的设置。\r\n恢复程序会保留第三方更改和恢复记录；缺少可信备份时停止自动恢复。\r\n",
+    "recoveryFile": "Argus 任务管理器应急恢复\r\n\r\n先运行本目录的 argus-taskmgr-recover.exe，并允许管理员授权。它不依赖 Argus 界面或后台服务。\r\n如果程序也已损坏：Win+R 输入 regedit，以管理员身份打开，定位 HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe。核对 Debugger 确实指向本目录的 argus-taskmgr-launcher.exe --task-manager，且 taskmgr-recovery.json 中 before.debugger 为 null，再只删除 Debugger 值。不要删除整个 taskmgr.exe 键，不要删除其他工具的设置。\r\n恢复程序仅删除与 Argus 启动命令完全一致的 Debugger 值，并保留其他配置。目录权限改变或恢复记录缺失时仍可恢复。\r\n",
     "status": {
       "native": "当前使用 Windows 任务管理器。",
       "needsService": "先安装特权服务，再启用任务管理器替换。",
@@ -127,7 +127,8 @@
       "enabledOlder": "任务管理器入口已交给 Argus，但打开的仍是旧版 Argus {version}。在特权服务中单击“更新服务”，即可改为打开当前版本。",
       "interrupted": "上次操作未完成，请先恢复 Windows 任务管理器。",
       "modified": "配置已被其他程序修改，Argus 不会覆盖；恢复记录仍保留。",
-      "recordMissing": "发现 Argus 替换但恢复记录缺失，请按应急恢复说明处理。",
+      "recordMissing": "发现 Argus 替换但恢复记录缺失，可通过管理员授权恢复 Windows 任务管理器。",
+      "unsafeRecovery": "目录权限或恢复记录异常。可通过管理员授权恢复 Windows 任务管理器。",
       "serviceRemoved": "特权服务已卸载，恢复程序和备份仍保留。",
       "devBuild": "开发版不提供系统任务管理器替换，请使用发布版。",
       "otherAccount": "特权服务授权给另一个 Windows 账户。"
@@ -230,6 +231,7 @@
     "outdated": "管理员启动副本需要更新。请退出 Argus，从新版程序打开后单击“修复授权”。",
     "standardAccount": "当前账户没有管理员身份，无法开启自动管理员运行。可使用特权服务执行受支持的管理操作。",
     "fallback": "自动管理员启动未完成，当前仍以普通权限运行。可在设置中修复授权。",
-    "notReady": "管理员启动授权尚未就绪。"
+    "notReady": "管理员启动授权尚未就绪。",
+    "revokedRestartFailed": "管理员启动授权已撤销。当前进程仍以管理员权限运行；退出后重新打开 Argus 可按普通权限启动。"
   }
 }

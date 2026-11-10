@@ -4,7 +4,7 @@
   "ArgusTagline": "快速、現代、資訊豐富的 Windows 工作管理員",
   "ArgusVersion": "版本 {version}",
   "ArgusUpgradeFrom": "將從版本 {oldVersion} 升級至 {version}",
-  "ArgusSameVersion": "已安裝版本 {version}，重新安裝可修復程式檔案",
+  "ArgusSameVersion": "已安裝版本 {oldVersion}，重新安裝可更新或修復程式檔案",
   "ArgusNewerInstalled": "已安裝較新的版本 {oldVersion}。如需安裝 {version}，請先解除安裝。",
   "ArgusInstall": "立即安裝",
   "ArgusUpgrade": "立即升級",

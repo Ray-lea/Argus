@@ -7,7 +7,7 @@
   "welcome": {
     "title": "Welcome to Argus",
     "body": "Argus is a modern task manager for Windows. It shows processes, performance, services, startup apps and network connections, and keeps a history of resource usage. The next few steps set up the essentials. Every step can be skipped, and everything can be changed later in Settings.",
-    "language": "Language"
+    "language": "Display language"
   },
   "display": {
     "title": "Display and refresh",
@@ -31,7 +31,7 @@
     "minimizedInterval": "Refresh rate while minimized",
     "minimizedIntervalHint": "Default 5 seconds; shorter intervals cost more in the background.",
     "trayInterval": "Refresh rate in the tray",
-    "trayIntervalHint": "Above 5 seconds, history is recorded more sparsely.",
+    "trayIntervalHint": "Samples at this interval while hidden in the system tray. Intervals over 5 seconds make history records less frequent.",
     "hotkey": "Press {hotkey} anytime to show or hide Argus; it can be changed in Settings.",
     "hotkeyOff": "The shortcut for showing or hiding Argus is turned off. It can be turned back on in Settings.",
     "hotkeyTaken": "{shortcut} is in use by Windows or another app (possibly another running Argus). Choose a different combination in Settings.",
@@ -55,7 +55,7 @@
   },
   "privilege": {
     "title": "Privileged service (optional)",
-    "body": "Argus runs as a standard user and can't read, end or adjust some system processes. The optional privileged service runs in the background as SYSTEM. With it, Argus can:",
+    "body": "By default, Argus runs as a standard user, so it can't read information about some system processes or end or adjust them. The optional privileged service runs in the background as SYSTEM. With it, Argus can:",
     "features": {
       "end": "End other users' processes (except critical system processes)",
       "tune": "Set priority and efficiency mode, also automatically through rules",
@@ -64,7 +64,7 @@
       "sensors": "Provide access to kernel sensors (the driver is enabled separately)"
     },
     "risk": "The permission belongs to the current Windows account: any program running under it can use these functions, which amounts to partial administrator rights. Only install it on an account you use yourself.",
-    "later": "Installing requires administrator permission. It can also be installed or uninstalled later in Settings → Permissions.",
+    "later": "Installing requires administrator permission. Skip this step to install or uninstall it later in Settings → Permissions.",
     "replace": "The following steps offer kernel sensors and Task Manager replacement.",
     "manage": "See the details, update or reinstall it in Settings → Permissions.",
     "elevated": "Argus is running as administrator, so process management does not need the privileged service. Kernel sensors and Task Manager replacement still require it."

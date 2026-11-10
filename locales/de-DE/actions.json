@@ -76,7 +76,7 @@
     "confirm": "Weiter zu den Regeleinstellungen"
   },
   "copied": "{what} wurde kopiert.",
-  "staleProcess": "Die Prozessinformationen sind veraltet. Aktualisieren Sie und versuchen Sie es erneut.",
+  "staleProcess": "Die Informationen zur Prozessinstanz sind veraltet. Aktualisieren Sie die Daten und versuchen Sie es erneut.",
   "copyWhat": {
     "path": "Pfad",
     "name": "Name",

@@ -1,14 +1,14 @@
 {
   "title": "¿Qué utiliza el archivo?",
-  "intro": "Si falla la eliminación o el movimiento de un archivo porque está en uso, busque aquí los procesos que lo contienen. Los archivos también se pueden soltar en la ventana Argus.",
+  "intro": "Si al eliminar o mover un archivo aparece «Archivo en uso», busque aquí los procesos que lo utilizan. También puede arrastrar el archivo a la ventana de Argus.",
   "dropZone": "Suelte archivos o carpetas en la ventana, o",
-  "pickFile": "Elige archivo",
-  "pickFolder": "Elige carpeta",
-  "recheck": "Verifique nuevamente",
+  "pickFile": "Seleccionar archivo",
+  "pickFolder": "Seleccionar carpeta",
+  "recheck": "Volver a comprobar",
   "checking": "Comprobando…",
   "error": {
     "notFound": "No se pudo encontrar el archivo o la carpeta.",
-    "failed": "Verificación fallida: {error}"
+    "failed": "Error al comprobar: {error}"
   },
   "none": "No se encontró ningún proceso accesible utilizando estos archivos.",
   "found": {
@@ -20,7 +20,7 @@
     "service": "Servicio",
     "explorer": "Explorador de archivos",
     "console": "Consola",
-    "critical": "Sistema crítico"
+    "critical": "Crítico del sistema"
   },
   "service": "Servicio {name}",
   "handleCount": {
@@ -46,16 +46,16 @@
       "many": "Se han comprobado localmente {count} identificadores de archivo, incluidos los de carpetas.",
       "other": "Se han comprobado localmente {count} identificadores de archivo, incluidos los de carpetas."
     },
-    "unfinished": "La consulta de identificador no finalizó."
+    "unfinished": "La consulta de identificadores no ha finalizado."
   },
   "incomplete": "Los resultados están incompletos. Procesos inaccesibles: {denied}; identificadores ilegibles: {skipped}; consultas con tiempo de espera agotado: {timeouts}. {limit}",
   "limitReached": "Se alcanzó el límite de consultas.",
   "serviceHint": "Habilite el servicio privilegiado en Configuración para verificar más procesos del sistema.",
   "unchecked": {
-    "one": "Restart Manager no pudo comprobar {count} archivo adicional por permisos o cambios en el archivo.",
-    "many": "Restart Manager no pudo comprobar {count} archivos adicionales por permisos o cambios en los archivos.",
-    "other": "Restart Manager no pudo comprobar {count} archivos adicionales por permisos o cambios en los archivos."
+    "one": "Restart Manager no pudo comprobar {count} archivo adicional, posiblemente por los permisos o por cambios en el archivo.",
+    "many": "Restart Manager no pudo comprobar {count} archivos adicionales, posiblemente por los permisos o por cambios en los archivos.",
+    "other": "Restart Manager no pudo comprobar {count} archivos adicionales, posiblemente por los permisos o por cambios en los archivos."
   },
-  "truncated": "La carpeta tiene demasiados archivos; sólo se comprobaron los primeros {count}.",
-  "footerHint": "La consulta de identificador también encuentra carpetas en uso como directorio de trabajo; Es posible que los procesos protegidos aún estén fuera de su alcance."
+  "truncated": "La carpeta tiene demasiados archivos; solo se comprobaron los primeros {count}.",
+  "footerHint": "La consulta de identificadores también detecta carpetas utilizadas como directorio de trabajo actual; los procesos protegidos pueden seguir siendo inaccesibles."
 }

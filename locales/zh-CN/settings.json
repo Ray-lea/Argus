@@ -186,6 +186,10 @@
     },
     "enable": "启用替换",
     "restore": "恢复 Windows 任务管理器",
+    "openNative": "临时打开系统任务管理器",
+    "openingNative": "正在打开…",
+    "openNativeHint": "仅本次打开 Windows 任务管理器，保留当前替换设置。",
+    "openNativeFailed": "无法打开 Windows 任务管理器：{error}",
     "enabled": "任务管理器替换已启用。",
     "restored": "已恢复 Windows 任务管理器。",
     "busy": "正在处理任务管理器设置…",
@@ -301,7 +305,7 @@
       "installing": "正在启动 {version} 的安装程序…",
       "error": "更新失败"
     },
-    "current": "当前版本 {version} · {channel}",
+    "current": "当前版本 {version} · {build}",
     "detail": {
       "ready": "安装需要管理员授权。安装期间 Argus 将退出，安装程序仅显示进度，完成后自动重新启动 Argus。",
       "portable": "免安装版不支持自动更新，请从发布页下载新版本。",

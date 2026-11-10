@@ -8,30 +8,30 @@
     "package": "App-Paket (aktueller Benutzer)"
   },
   "menu": {
-    "copyCommand": "Kopierbefehl"
+    "copyCommand": "Befehl kopieren"
   },
   "copied": {
     "command": "Befehl"
   },
-  "search": "Suchname, Herausgeber oder Befehl",
+  "search": "Nach Name, Herausgeber oder Befehl suchen",
   "column": {
     "publisher": "Herausgeber",
     "location": "Speicherort"
   },
   "missing": {
     "label": "Datei fehlt",
-    "title": "The program this command points to no longer exists; Dieses Element kann deaktiviert werden"
+    "title": "Das Programm, auf das dieser Befehl verweist, ist nicht mehr vorhanden; der Eintrag kann deaktiviert werden"
   },
   "toggle": {
-    "enable": "Aktivieren Sie {name}",
-    "disable": "Deaktivieren Sie {name}"
+    "enable": "{name} aktivieren",
+    "disable": "{name} deaktivieren"
   },
   "blocked": {
     "managed": "Diese App erlaubt keine manuellen Änderungen an dieser Startaufgabe.",
-    "unavailable": "The state of this startup task could not be read. Es wurden keine Änderungen vorgenommen."
+    "unavailable": "Der Status dieses Autostarteintrags konnte vorübergehend nicht gelesen werden. Es wurden keine Änderungen vorgenommen."
   },
   "unavailable": "Nicht verfügbar",
-  "loading": "Startup-Apps werden gelesen…",
+  "loading": "Autostart-Apps werden gelesen…",
   "noMatch": "Keine passenden Autostart-Apps",
   "summary": "{enabled} von {total} aktiviert",
   "note": "Das Deaktivieren verwendet denselben Schalter wie Start-Apps in Task-Manager und kann rückgängig gemacht werden. Elemente für alle Benutzer benötigen Administratorrechte."

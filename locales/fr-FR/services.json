@@ -30,8 +30,8 @@
     "openConsoleTitle": "Ouvrez la console des services Windows"
   },
   "menu": {
-    "startType": "Type de démarrage : {type}",
-    "copyName": "Copier le nom du service\nNom du service"
+    "startType": "Type de démarrage : {type}",
+    "copyName": "Copier le nom du service"
   },
   "copied": {
     "name": "nom du service"
@@ -41,9 +41,9 @@
     "startType": "Type de démarrage",
     "description": "Description"
   },
-  "loading": "Services de lecture…",
+  "loading": "Lecture des services…",
   "noMatch": "Aucun service correspondant",
   "clearFilter": "Effacer les filtres",
-  "summary": "{running} de {total} en cours d'exécution",
-  "manageHint": "La plupart des services ne peuvent être gérés qu'avec le service privilégié activé ou avec Argus exécuté en tant qu'administrateur."
+  "summary": "{running} de {total} en cours d’exécution",
+  "manageHint": "La plupart des services ne peuvent être gérés qu’avec le service privilégié activé ou avec Argus exécuté en tant qu’administrateur."
 }

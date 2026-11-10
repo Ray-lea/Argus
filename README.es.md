@@ -4,20 +4,20 @@
 
 # Argus
 
-**Un administrador de tareas rápido, moderno e informativo para Windows**
+**Un administrador de tareas para Windows rápido, moderno y con información detallada**
 
-**Idioma del README:** [简体中文](README.md) · [English](README.en.md) · **Español** · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · **Español** · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
-[![Sitio web y demo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Sitio+web+y+demo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/en/)
+[![Sitio web y demo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Sitio+web+y+demo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/es/)
 
-Explorar la interfaz interactiva y el recorrido de funciones en el [sitio oficial](https://argustask.com/en/) —en inglés— desde el navegador, sin instalar la aplicación.
+Explore la interfaz interactiva y el recorrido de funciones en el [sitio oficial](https://argustask.com/es/) desde el navegador, sin instalar la aplicación.
 
 [![Última versión](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=%C3%9Altima+versi%C3%B3n&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Descargas](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=Descargas&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
 [![Plataforma](https://img.shields.io/static/v1?label=Plataforma&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
 [![Licencia](https://img.shields.io/static/v1?label=Licencia&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
-[Sitio web y demo](https://argustask.com/en/) · [Funciones](#features) · [Descarga](#download) · [Compilar desde el código fuente](#build-from-source) · [Atajos de teclado](#keyboard-shortcuts) · [Documentación](#documentation) · [Comunidad](#community) · [Idiomas](#language-guide)
+[Funciones](#features) · [Descarga](#download) · [Compilar desde el código fuente](#build-from-source) · [Atajos de teclado](#keyboard-shortcuts) · [Documentación](#documentation) · [Comunidad](#community)
 
 </div>
 
@@ -33,14 +33,6 @@ Explorar la interfaz interactiva y el recorrido de funciones en el [sitio oficia
 <br>
 
 Argus consulta directamente las API nativas de Windows mediante Rust. Su interfaz utiliza componentes nativos de GPUI Kit y gráficos que se desplazan con fluidez a la frecuencia de actualización de la pantalla. El nombre procede de Argos Panoptes, el gigante de cien ojos de la mitología griega.
-
-<a id="language-guide"></a>
-
-## 🌍 Guía de idiomas
-
-Los enlaces de la parte superior permiten cambiar el idioma de este README. El idioma de Argus se elige por separado en **Configuración → Idioma y apariencia → Idioma de la interfaz**; de forma predeterminada sigue el idioma de visualización de Windows.
-
-El sitio web está disponible en chino e inglés. La documentación detallada está en chino y el registro de cambios se publica en chino e inglés.
 
 <a id="star-history"></a>
 
@@ -81,12 +73,12 @@ Si Argus resulta útil en el trabajo diario, una estrella en GitHub es una forma
 
 ## 📦 Descarga
 
-La [página oficial de descargas](https://argustask.com/en/download/) —en inglés— ofrece la última versión estable y sus sumas SHA-256. Todas las versiones están disponibles en [GitHub Releases](https://github.com/Ray-lea/Argus/releases).
+La [página oficial de descargas](https://argustask.com/es/download/) ofrece la última versión estable y sus sumas SHA-256. Todas las versiones están disponibles en [GitHub Releases](https://github.com/Ray-lea/Argus/releases).
 
 | Archivo | Descripción |
 |---|---|
 | `Argus_<version>_x64-setup.exe` | **Instalador, recomendado.** Instala para todos los usuarios en `Program Files`. La instalación y las actualizaciones requieren autorización de administrador. Admite actualizaciones integradas. |
-| `Argus_<version>_x64.exe` | **Versión portátil.** Ejecutable independiente que comparte la configuración y el historial con la versión instalada. Las actualizaciones se realizan manualmente. |
+| `Argus_<version>_x64.exe` | **Versión portátil.** Ejecutable independiente que comparte la configuración y el historial con la versión instalada. No admite actualizaciones automáticas. |
 | `SHA256SUMS.txt` | Sumas SHA-256 de los archivos de la versión. |
 
 [Política de firma de código](#code-signing-policy) · [Política de privacidad (inglés)](PRIVACY.md#english)
@@ -132,7 +124,7 @@ La [guía de desarrollo](docs/development/README.md), en chino, explica las comp
 | Finalizar tarea | <kbd>Alt</kbd>+<kbd>E</kbd> o <kbd>Delete</kbd>; <kbd>Shift</kbd>+<kbd>Delete</kbd> omite la confirmación |
 | Mostrar u ocultar la ventana, global | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> |
 
-La lista completa está en **Configuración → Atajo de teclado → Ver atajos**. La [guía de uso](docs/guide/README.md), en chino, incluye más detalles.
+La lista completa está en **Configuración → Atajos de teclado → Ver atajos**. La [guía de uso](docs/guide/README.md), en chino, incluye más detalles.
 
 <a id="documentation"></a>
 

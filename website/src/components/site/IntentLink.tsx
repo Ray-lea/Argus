@@ -69,6 +69,26 @@ export function landOn(target: Element, behavior: ScrollBehavior) {
 // Arriving from another page at a section (/#faq), the landing is checked the same way.
 export function HashLanding() {
   useEffect(() => {
+    const languageLanding = document.documentElement.getAttribute("data-argus-language-landing");
+    if (languageLanding) {
+      document.documentElement.removeAttribute("data-argus-language-landing");
+      if (languageLanding === location.pathname) {
+        try {
+          const place = JSON.parse(sessionStorage.getItem("argus-place") || "null");
+          sessionStorage.removeItem("argus-place");
+          if (place?.to === location.pathname && Date.now() - place.at < 15000) {
+            if (typeof place.hash === "string") history.replaceState(history.state, "", location.pathname + location.search + place.hash);
+            const root = document.documentElement;
+            const padding = parseFloat(getComputedStyle(root).scrollPaddingTop) || 0;
+            const target = place.id && document.getElementById(place.id);
+            scrollTo({ top: target ? target.getBoundingClientRect().top + scrollY - padding + place.within * target.offsetHeight : place.ratio * (root.scrollHeight - innerHeight), behavior: "instant" });
+            return;
+          }
+        } catch {
+          // Normal hash landing remains available if storage was cleared.
+        }
+      }
+    }
     const target = location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
     if (target) landOn(target, "auto");
   }, []);

@@ -1,6 +1,6 @@
 {
   "updated": "Argus se ha actualizado a {version}.",
-  "whatsNew": "¿Qué hay de nuevo?",
+  "whatsNew": "Novedades",
   "readyToast": "Argus {version} está listo para instalar",
   "availableToast": "Argus {version} está disponible",
   "view": "Ver",
@@ -10,8 +10,8 @@
     "availableTitle": "Argus {version} está disponible. Haga clic para ver las novedades"
   },
   "menu": {
-    "view": "Mira las novedades",
-    "dismiss": "No me recuerdes esta versión"
+    "view": "Ver novedades",
+    "dismiss": "No volver a avisar de esta versión"
   },
   "dialog": {
     "ready": "Argus {version} está listo",
@@ -40,7 +40,7 @@
     "portable": "La versión portátil no se actualiza automáticamente. Descargue la nueva versión desde la página de lanzamiento.",
     "github": "Ver en GitHub",
     "install": "Reiniciar y actualizar",
-    "starting": "Comenzando…",
+    "starting": "Iniciando…",
     "download": "Descargar",
     "later": "Más tarde",
     "close": "Cerrar"

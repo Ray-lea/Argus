@@ -1,3 +1,4 @@
+import { copyFor, localize } from "@/lib/site-i18n";
 import { longDate } from "@/components/home/Releases";
 import { DownloadButton } from "@/components/site/DownloadButton";
 import { CopyButton } from "@/components/site/CopyButton";
@@ -7,11 +8,12 @@ import { SiteFrame } from "@/components/site/SiteFrame";
 import { VersionNav } from "@/components/site/VersionNav";
 import { pageMetadata } from "@/lib/page";
 import { localized, origin, repo, site, text, type Language, type ReleaseNote } from "@/lib/site";
+import { languageInfo, notesLanguage } from "@/lib/languages";
 
 // A release's notice, intro and groups of entries; new features as cards.
-export function ReleaseBody({ note }: { note: ReleaseNote }) {
+export function ReleaseBody({ note, lang }: { note: ReleaseNote; lang: Language }) {
   return (
-    <>
+    <div lang={languageInfo(notesLanguage(lang)).tag} className="release-content">
       {note.notice && (
         <p className="cl-notice">
           <Icon name="alert" size={16} />
@@ -35,7 +37,7 @@ export function ReleaseBody({ note }: { note: ReleaseNote }) {
           </ul>
         </section>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -81,10 +83,10 @@ const copy = {
 };
 
 export const changelogMetadata = (lang: Language) =>
-  pageMetadata({ lang, path: "/changelog/", title: copy[lang].title, description: copy[lang].description });
+  pageMetadata({ lang, path: "/changelog/", title: copyFor(lang, copy).title, description: copyFor(lang, copy).description });
 
 export function Changelog({ lang }: { lang: Language }) {
-  const t = copy[lang],
+  const t = copyFor(lang, copy),
     notes = site.changelog[lang],
     r = site.release;
   const first = notes.at(-1);
@@ -106,6 +108,7 @@ export function Changelog({ lang }: { lang: Language }) {
       <div className="site-wrap changelog">
         <header className="cl-head">
           <h1>{t.h1}</h1>
+          {lang !== notesLanguage(lang) && <p className="release-language">{localize(lang, notesLanguage(lang) === "zh" ? "Release notes are shown in Simplified Chinese." : "Release notes are shown in English.")}</p>}
           <ul className="cl-facts figures">
             {t.facts(notes.length, first ? longDate(first.date, lang) : "").map((fact) => (
               <li key={fact}>{fact}</li>
@@ -174,7 +177,7 @@ export function Changelog({ lang }: { lang: Language }) {
                     )}
                   </span>
                 </header>
-                <ReleaseBody note={note} />
+                <ReleaseBody note={note} lang={lang} />
               </article>
             ))}
           </div>

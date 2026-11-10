@@ -87,7 +87,7 @@
       "serviceUnavailable": "特殊權限服務未連線或版本不相容",
       "driverUnavailable": "PawnIO 驅動程式無法使用或無法存取",
       "moduleRejected": "PawnIO 拒絕感測器模組，請檢查官方驅動程式版本",
-      "unsupported": "暫無適用的處理器採集介面",
+      "unsupported": "暫無適用的處理器擷取介面",
       "noData": "暫未取得有效數值",
       "ready": "已連線"
     },
@@ -264,7 +264,7 @@
   },
   "disk": {
     "title": "磁碟 {index}",
-    "titleVolumes": "磁碟 {index} ({volumes})",
+    "titleVolumes": "磁碟 {index}（{volumes}）",
     "removableMedia": "抽取式",
     "activeTime": "使用時間",
     "transferRate": "磁碟傳輸速率",
@@ -446,7 +446,9 @@
       "uncorrected": "未校正錯誤總數",
       "counters": "讀寫錯誤統計"
     },
-    "performanceUnavailable": "暫時無法讀取磁碟效能計數。"
+    "performanceUnavailable": "暫時無法讀取磁碟效能計數。",
+    "volumeCounters": "目前使用磁碟區 {volumes} 的效能統計，統計範圍為該磁碟區。",
+    "volumeCountersMultiple": "目前彙總磁碟區 {volumes} 的讀寫速率與回應時間；活動時間暫無可用讀數。"
   },
   "network": {
     "sub": "收 {rx}  發 {tx}",

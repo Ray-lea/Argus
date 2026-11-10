@@ -1,3 +1,4 @@
+import { copyFor, localize } from "@/lib/site-i18n";
 import type { CSSProperties } from "react";
 import { longDate } from "@/components/home/Releases";
 import { CopyButton } from "@/components/site/CopyButton";
@@ -8,12 +9,13 @@ import { SiteFrame } from "@/components/site/SiteFrame";
 import { SiteLink } from "@/components/site/SiteLink";
 import { pageMetadata } from "@/lib/page";
 import { downloadOrigin, localized, mebibytes, repo, site, softwareSchema, text, type Language } from "@/lib/site";
+import { notesLanguage } from "@/lib/languages";
 
-const title = (lang: Language) => (lang === "en" ? "Download Argus for Windows" : "下载 Argus Windows 版");
+const title = (lang: Language) => (localize(lang, lang !== "zh" ? "Download Argus for Windows" : "下载 Argus Windows 版"));
 const description = (lang: Language) =>
-  lang === "en"
-    ? "Download the Argus Windows x64 installer or portable executable, read the system requirements and verify the release checksums."
-    : "下载 Argus 的 Windows x64 安装版或免安装版，查看系统要求、发布说明和 SHA-256 校验值。";
+  localize(lang, lang !== "zh"
+    ? "Download the Argus Windows x64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums."
+    : "下载 Argus 的 Windows x64 安装版或免安装版，查看系统要求、发布说明和 SHA-256 校验值。");
 
 export const downloadMetadata = (lang: Language) =>
   pageMetadata({ lang, path: "/download/", title: title(lang), description: description(lang) });
@@ -50,7 +52,7 @@ const copy = {
     recommended: "Recommended",
     copy: "Copy SHA-256",
     copied: "Copied",
-    after: ["After downloading", "A few steps from the download to a window that is always one key away."],
+    after: ["After installation", "A few steps from the download to a window that is always one key away."],
     steps: [
       ["Run the installer", "It installs to Program Files and adds a Start menu shortcut. The portable edition simply runs."],
       ["Finish the first-run guide", "Language, appearance, tray and shortcut, updates and the optional privileged service; every step can be skipped."],
@@ -68,31 +70,31 @@ const copy = {
 };
 
 export function Download({ lang }: { lang: Language }) {
-  const en = lang === "en",
-    t = copy[lang],
+  const en = lang !== "zh",
+    t = copyFor(lang, copy),
     r = site.release;
   const notes = site.changelog[lang];
   const current = notes[0]?.version === r.version ? notes[0] : null;
-  const packages: { file: typeof r.files.installer; title: string; icon: IconName; points: string[]; action: string }[] = [
+  const packages: { file: typeof r.files.installer; title: string; icon: IconName; points: string[]; action: string }[] = localize(lang, [
     {
       file: r.files.installer,
-      title: en ? "Installer" : "安装版",
+      title: localize(lang, en ? "Installer" : "安装版"),
       icon: "box",
-      points: en
+      points: localize(lang, en
         ? ["Installs for all users in Program Files", "Start menu shortcut, uninstall from Windows Settings", "Updates in the app, downloaded in the background"]
-        : ["为所有用户安装到 Program Files", "创建开始菜单快捷方式，可在 Windows 设置中卸载", "支持应用内更新，新版本在后台下载"],
-      action: en ? "Download installer" : "下载安装版",
+        : ["为所有用户安装到 Program Files", "创建开始菜单快捷方式，可在 Windows 设置中卸载", "支持应用内更新，新版本在后台下载"]),
+      action: localize(lang, en ? "Download installer" : "下载安装版"),
     },
     {
       file: r.files.portable,
-      title: en ? "Portable" : "免安装版",
+      title: localize(lang, en ? "Portable" : "免安装版"),
       icon: "file",
-      points: en
+      points: localize(lang, en
         ? ["One executable, runs without installing", "Shares settings and history with the installer", "Tells you about new versions; update it by hand"]
-        : ["单个可执行文件，无需安装即可运行", "与安装版共用设置和历史数据", "检查新版本，从发布页手动更新"],
-      action: en ? "Download portable" : "下载免安装版",
+        : ["单个可执行文件，无需安装即可运行", "与安装版共用设置和历史数据", "检查新版本，从发布页手动更新"]),
+      action: localize(lang, en ? "Download portable" : "下载免安装版"),
     },
-  ];
+  ]);
   return (
     <SiteFrame lang={lang} path="/download/" title={title(lang)} schema={softwareSchema(lang)}>
       <div className="site-wrap download">
@@ -114,9 +116,9 @@ export function Download({ lang }: { lang: Language }) {
             <li>
               <Icon name="clock" size={15} />
               <time dateTime={current?.date ?? r.published}>
-                {en ? t.released + " " : ""}
+                {localize(lang, en ? t.released + " " : "")}
                 {longDate(current?.date ?? r.published.slice(0, 10), lang)}
-                {en ? "" : t.released}
+                {localize(lang, en ? "" : t.released)}
               </time>
             </li>
             <li>
@@ -201,7 +203,8 @@ export function Download({ lang }: { lang: Language }) {
                 </SiteLink>
               </header>
               <div className="dl-release">
-                <ReleaseBody note={current} />
+                {lang !== notesLanguage(lang) && <p className="release-language">{localize(lang, notesLanguage(lang) === "zh" ? "Release notes are shown in Simplified Chinese." : "Release notes are shown in English.")}</p>}
+                <ReleaseBody note={current} lang={lang} />
               </div>
               <h3 className="dl-history-title">{t.history[0]}</h3>
               <ul className="dl-history">

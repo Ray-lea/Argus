@@ -94,7 +94,9 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 
 提交上没有 `v<版本号>` 标签的构建在版本号后附加 SemVer 构建元数据：提交数与提交的短哈希，例如 `0.3.4+583.g4c638d7`。它显示在关于页、状态栏、更新设置和诊断日志中，也写入 EXE 的文件属性（数字文件版本的第四段为提交数）。逻辑在 `build-support/build-version.rs`。
 
-构建元数据不参与版本比较，测试构建仍按 `0.3.4` 处理：更新检查、特权服务的版本核对和首次启动显示的更新内容不受影响，安装程序的卸载项与安装包文件名也只用版本号。不用 `0.3.4-583` 这样的预发布后缀，是因为预发布版本排在 `0.3.4` 之前，基于 0.3.4 之后提交的测试构建会被当作旧版本，收到 0.3.4 的更新。发布工作流把 `ARGUS_BUILD_METADATA` 置空后构建，并在静默安装后核对 EXE 的版本；本地构建也可用这个变量指定元数据，置空则不附加。
+构建元数据不参与版本比较，测试构建仍按 `0.3.4` 处理：更新检查、特权服务的版本核对和首次启动显示的更新内容不受影响，安装程序的卸载项也使用发布版本号。设置、状态栏提示和关于页按实际构建显示开发版、测试版或稳定版；更新通道独立决定后续检查的版本来源。安装程序界面、文件属性和安装包文件名保留完整构建标识，同版本覆盖安装忽略构建元数据。
+
+使用 `0.3.4+583.g4c638d7` 可保持与 `0.3.4` 相同的版本优先级；`0.3.4-583` 属于预发布版本，优先级低于 `0.3.4`。发布工作流把 `ARGUS_BUILD_METADATA` 置空后构建，并在静默安装后核对 EXE 的版本；本地构建也可用这个变量指定元数据，置空则不附加。打包脚本通过无窗口的 `--argus-build-info` 模式读取实际 EXE 的版本与构建类型，拒绝开发配置程序或包版本不一致的程序。
 
 ## 发布步骤
 
@@ -160,7 +162,8 @@ Windows Authenticode 的测试接入见 [Windows 代码签名](signing.md)。测
 GitHub 上最新稳定版 Release 提供 `releases/latest/download/latest.json`（稳定版）与同目录的 `beta.json`（测试版）。官网在 `update.argustask.com` 提供对应清单，发布流程校验版本与签名。
 
 - 发布稳定版时，两份清单都指向这个版本，随 Release 一起上传。
-- 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。仓库还没有稳定版时测试版通道收不到更新，工作流会给出警告。
+- 各标签的检查可并行，构建与发布任务共用 `release-publication` 队列（`queue: max`），避免稳定版发布与测试版清单写入交错；最多保留 100 个等待任务。测试版发布前从 GitHub asset API 读取当前清单，按 SemVer 比较，仅当版本高于最新稳定版和当前测试版时才覆盖。旧标签晚完成或重跑时仍保留已发布的新版本；当前清单缺失、无效或读取失败时中止发布。
+- 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。查询最新稳定版明确返回 404 时，测试版通道收不到更新，工作流会给出警告；网络、权限或 GitHub API 错误会使发布步骤失败，不会当作缺少稳定版而跳过。
 - 清单由 `node scripts/release.mjs manifest` 生成。`notes` 取自 `CHANGELOG.md` 的对应条目，转成纯文本并去掉提交范围（`core`、`ui` 等），供 0.2 之前的版本显示；`argus.releaseNotes` 与 `argus.signature` 是上一节签名的更新内容原文及其签名，新版本的更新对话框只读这两项。
 
 自动线路依次尝试 GitHub、Argus 官方镜像和加速代理。代理使用加前缀的 GitHub 地址，官方镜像使用版本化下载地址。见[设置 → 更新](../guide/settings.md#更新)。
@@ -199,7 +202,7 @@ curl -sL https://github.com/Ray-lea/Argus/releases/latest/download/beta.json   #
 安装与卸载由以下两个 NSIS 文件定义。
 
 - [`installer-template.nsi`](../../packaging/windows/installer-template.nsi) 定义安装与卸载流程、服务刷新和数据清理。`scripts/bundle.mjs` 注入 `resources/app.json` 中的元数据和构建路径。
-- `packaging/windows/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案按语言写在文件开头的 `LangString` 中。
+- `packaging/windows/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案在各语言的 `locales/<语言>/installer.json` 中维护，打包时由 `scripts/bundle.mjs` 生成 `installer-locales.nsh` 中的 `LangString`。
 
 已安装旧版本时，安装页显示“将从版本 X 升级到 Y”，覆盖安装而不先卸载（与应用内更新相同）；已安装更新的版本时按钮不可用，需先卸载。被动模式（应用内更新）只显示进度页，静默安装（`/S`）不显示界面，保留 /P、/UPDATE、/R、/ARGS 与 /S 参数。
 

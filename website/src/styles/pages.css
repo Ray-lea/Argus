@@ -91,6 +91,7 @@
   gap: 16px;
 }
 .package {
+  container: download-package / inline-size;
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -123,6 +124,9 @@
   gap: 14px;
 }
 .package-head h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  hyphens: auto;
   font-size: clamp(1.5rem, 1.25rem + 0.8vw, 1.875rem);
 }
 .package-icon {
@@ -164,6 +168,10 @@
   list-style: none;
   color: var(--ink-2);
 }
+@container download-package (max-width: 400px) {
+  .package-head { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 14px; }
+  .package-badge { grid-column: 2; justify-self: start; margin-left: 0; }
+}
 .package-points li {
   display: flex;
   gap: 10px;
@@ -190,11 +198,18 @@
   color: var(--series-net);
 }
 .package-get {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   justify-content: center;
-  height: 46px;
+  min-height: 46px;
+  height: auto;
+  padding-block: 12px;
+  white-space: normal;
   margin-top: auto;
   font-size: 1rem;
 }
+.package-get .dl-label { min-width: 0; overflow-wrap: anywhere; }
+.package-get .package-size { grid-column: 2; justify-self: center; border-left: 0; padding-left: 0; white-space: nowrap; }
 .package-size {
   padding-left: 10px;
   border-left: 1px solid color-mix(in srgb, currentColor 30%, transparent);

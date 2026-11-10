@@ -3,6 +3,7 @@
 
 pub mod admin;
 mod background;
+mod cleanup;
 mod diagnostics;
 mod disk;
 pub mod driver;

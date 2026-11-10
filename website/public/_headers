@@ -10,6 +10,18 @@
   Cache-Control: public, max-age=300, no-transform
 /en/*
   Cache-Control: public, max-age=300, no-transform
+/zh-TW/*
+  Cache-Control: public, max-age=300, no-transform
+/es/*
+  Cache-Control: public, max-age=300, no-transform
+/de/*
+  Cache-Control: public, max-age=300, no-transform
+/ja/*
+  Cache-Control: public, max-age=300, no-transform
+/fr/*
+  Cache-Control: public, max-age=300, no-transform
+/ru/*
+  Cache-Control: public, max-age=300, no-transform
 /docs/*
   Cache-Control: public, max-age=300, no-transform
 /download/*

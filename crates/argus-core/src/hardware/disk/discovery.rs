@@ -1,6 +1,6 @@
 //! Present disk interfaces complement drive letters and legacy device names.
-use super::{ioctl, native_code, open};
-use crate::util::{AlignedBuf, OwnedHandle, from_wide};
+use super::{DeviceHandle, ioctl, native_code};
+use crate::util::{AlignedBuf, from_wide};
 use std::collections::HashMap;
 use std::mem::{offset_of, size_of};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
@@ -26,7 +26,7 @@ fn warn(stage: &'static str, ordinal: u32, code: u32) {
     );
 }
 
-pub(super) fn disks() -> HashMap<u32, OwnedHandle> {
+pub(super) fn disks() -> HashMap<u32, DeviceHandle> {
     let mut out = HashMap::new();
     let set = unsafe {
         SetupDiGetClassDevsW(
@@ -102,7 +102,7 @@ pub(super) fn disks() -> HashMap<u32, OwnedHandle> {
             warn("disk.interface.path", ordinal, 13);
             continue;
         }
-        let handle = match open(&from_wide(path)) {
+        let handle = match DeviceHandle::open(&from_wide(path)) {
             Ok(handle) => handle,
             Err(code) => {
                 warn("disk.interface.open", ordinal, code);
@@ -110,7 +110,7 @@ pub(super) fn disks() -> HashMap<u32, OwnedHandle> {
             }
         };
         let mut number = AlignedBuf::with_capacity(12);
-        match ioctl(handle.0, IOCTL_STORAGE_GET_DEVICE_NUMBER, None, &mut number) {
+        match handle.read(|raw, _| ioctl(raw, IOCTL_STORAGE_GET_DEVICE_NUMBER, None, &mut number)) {
             Ok(12) => {
                 let raw = unsafe { std::slice::from_raw_parts(number.as_ptr(), 12) };
                 let device = u32::from_le_bytes(raw[0..4].try_into().unwrap());

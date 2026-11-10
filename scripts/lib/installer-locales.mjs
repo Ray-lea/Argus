@@ -6,7 +6,7 @@ export const installerLanguages = {
   "en-US": "ENGLISH", "zh-CN": "SIMPCHINESE", "zh-TW": "TRADCHINESE", "es-ES": "SPANISH",
   "de-DE": "GERMAN", "ja-JP": "JAPANESE", "fr-FR": "FRENCH", "ru-RU": "RUSSIAN",
 };
-const variables = { version: "${VERSION}", oldVersion: "$ArgusOldVersion", installDir: "$INSTDIR", product: "${PRODUCTNAME}", code: "$0" };
+const variables = { version: "${DISPLAYVERSION}", oldVersion: "$ArgusOldVersion", installDir: "$INSTDIR", product: "${PRODUCTNAME}", code: "$0" };
 export function nsisText(text) {
   return text.replaceAll("$", () => "$$").replaceAll('"', '$\\"').replaceAll("\r", "").replaceAll("\n", "$\\r$\\n")
     .replace(/\{(\w+)\}/g, (_, key) => {

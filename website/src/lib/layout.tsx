@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Provider } from "@/components/provider";
 import { origin } from "./site";
+import { languageInfo, type Language } from "./languages";
+import { clientMessagesFor } from "./site-i18n";
 
 export const metadata: Metadata = {
   metadataBase: new URL(origin),
@@ -24,17 +26,17 @@ export const viewport: Viewport = {
  * in it, and tags the view transition between the two pages as "lang"; the
  * leaving page tags it too.
  */
-const place = `(()=>{const k="argus-place",read=()=>{try{return JSON.parse(sessionStorage.getItem(k)||"null")}catch{return null}};const p=read(),fresh=p&&p.to===location.pathname&&Date.now()-p.at<15000;if(fresh&&p.id){const l=document.createElement("link");l.rel="expect";l.href="#"+p.id;l.setAttribute("blocking","render");document.head.append(l)}addEventListener("pagereveal",e=>{if(!fresh)return;try{sessionStorage.removeItem(k)}catch{}e.viewTransition?.types.add("lang");const h=document.documentElement,pad=parseFloat(getComputedStyle(h).scrollPaddingTop)||0,el=p.id&&document.getElementById(p.id);scrollTo({top:el?el.getBoundingClientRect().top+scrollY-pad+p.within*el.offsetHeight:p.ratio*(h.scrollHeight-innerHeight),behavior:"instant"})},{once:true});addEventListener("pageswap",e=>{const q=read();if(e.viewTransition&&q&&e.activation&&new URL(e.activation.entry.url).pathname===q.to)e.viewTransition.types.add("lang")})})()`;
+const place = "(()=>{const k=\"argus-place\",read=()=>{try{return JSON.parse(sessionStorage.getItem(k)||\"null\")}catch{return null}},pending=()=>{const p=read();return p&&p.to===location.pathname&&Date.now()-p.at<15000?p:null};let restored=false;const first=pending();if(first){document.documentElement.dataset.argusLanguageLanding=first.to;if(first.id){const l=document.createElement(\"link\");l.rel=\"expect\";l.href=\"#\"+first.id;l.setAttribute(\"blocking\",\"render\");document.head.append(l)}}const restore=transition=>{const p=pending();if(!p||restored)return;restored=true;const h=document.documentElement;h.dataset.argusLanguageLanding=p.to;transition?.types?.add(\"lang\");const pad=parseFloat(getComputedStyle(h).scrollPaddingTop)||0,el=p.id&&document.getElementById(p.id);scrollTo({top:el?el.getBoundingClientRect().top+scrollY-pad+p.within*el.offsetHeight:p.ratio*(h.scrollHeight-innerHeight),behavior:\"instant\"});};addEventListener(\"pagereveal\",e=>restore(e.viewTransition),{once:true});addEventListener(\"pageshow\",()=>restore(),{once:true});addEventListener(\"pageswap\",e=>{const p=read();if(e.viewTransition&&p&&e.activation&&new URL(e.activation.entry.url).pathname===p.to)e.viewTransition.types?.add(\"lang\")})})()";
 
-// Chinese pages and the documentation share one root layout, English pages another.
-export function RootLayout({ lang, children }: { lang: "zh" | "en"; children: ReactNode }) {
+// Each language has its own root layout; Chinese documentation shares the default one.
+export function RootLayout({ lang, children }: { lang: Language; children: ReactNode }) {
   return (
-    <html lang={lang === "en" ? "en" : "zh-CN"} suppressHydrationWarning>
+    <html lang={languageInfo(lang).tag} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: place }} />
       </head>
       <body>
-        <Provider lang={lang}>{children}</Provider>
+        <Provider lang={lang} messages={clientMessagesFor(lang)}>{children}</Provider>
       </body>
     </html>
   );

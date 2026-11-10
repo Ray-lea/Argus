@@ -20,14 +20,14 @@
     "synReceived": "SYN recibido",
     "finWait1": "Cerrando",
     "finWait2": "Cerrando",
-    "closeWait": "Cerrar espera",
+    "closeWait": "Esperando el cierre",
     "closing": "Cerrando",
     "lastAck": "Cerrando",
     "timeWait": "Tiempo de espera",
     "closed": "Cerrada"
   },
   "menu": {
-    "end": "Fin {name}",
+    "end": "Finalizar {name}",
     "close": "Cerrar esta conexión",
     "copyLocal": "Copiar dirección local",
     "copyRemote": "Copiar dirección remota"
@@ -36,7 +36,7 @@
     "local": "dirección local",
     "remote": "dirección remota"
   },
-  "search": "Puerto, dirección o proceso, p.e. 8080",
+  "search": "Puerto, dirección o proceso, p. ej., 8080",
   "column": {
     "process": "Proceso",
     "protocol": "Protocolo",
@@ -46,10 +46,10 @@
     "remotePort": "Puerto remoto"
   },
   "exited": "Finalizado",
-  "unowned": "Sin proceso de propiedad",
+  "unowned": "Sin proceso asociado",
   "loading": "Leyendo conexiones…",
   "noMatch": "No hay conexiones coincidentes",
   "noMatchPort": "No hay conexiones coincidentes: ningún programa está utilizando el puerto {port}",
   "clearFilter": "Borrar filtros",
-  "note": "Actualiza cada 2 segundos. Haga doble clic en una fila para ir a su proceso."
+  "note": "Se actualiza cada 2 segundos. Haga doble clic en una fila para ir al proceso correspondiente."
 }

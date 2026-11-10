@@ -1,5 +1,6 @@
 /** @jsxImportSource @/components/replica/i18n */
 "use client";
+import { dateLocale } from "@/lib/languages";
 import {
   useMemo,
   useRef,
@@ -125,7 +126,7 @@ interface BuildOptions {
 export function buildRows(o: BuildOptions): Row[] {
   const byPid = new Map(o.list.map((p) => [p.pid, p]));
   // Names sort as they read in the page's language.
-  const collator = new Intl.Collator(language() === "en" ? "en" : "zh-CN", { numeric: true });
+  const collator = new Intl.Collator(dateLocale(language()), { numeric: true });
   const name = (row: Row) => translate(row.label);
   const scale: Record<Metric, number> = {
     cpu: 10,

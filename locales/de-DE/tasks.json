@@ -8,25 +8,25 @@
   "administratorHint": "Erfordert Windows-Autorisierung. Wenn Sie den Vorgang abbrechen, wird die Aufgabe nicht gestartet.",
   "standardHint": "Wenn diese Option deaktiviert ist, wird die Aufgabe mit Standardberechtigungen ausgeführt.",
   "run": "Ausführen",
-  "running": "Beginnt…",
-  "waiting": "Warten darauf, dass Windows den Start der Aufgabe beendet oder die Autorisierung anfordert.",
+  "running": "Wird gestartet…",
+  "waiting": "Warten auf den Abschluss des Starts oder der Freigabe durch Windows.",
   "started": "Neue Aufgabe übermittelt.",
   "code": "Fehlercode: {code}",
   "explorer": {
-    "title": "Starten Sie den Windows Explorer neu",
+    "title": "Windows-Explorer neu starten",
     "restart": "Neu starten",
     "confirm": "Der Desktop und die Taskleiste werden kurzzeitig ausgeblendet. Möglicherweise sind Explorer-Fenster und laufende Dateivorgänge betroffen.",
-    "restarting": "Windows Explorer wird neu gestartet…",
-    "done": "Windows Explorer neu gestartet. Der Desktop und die Taskleiste sind fertig.",
-    "recover": "Führen Sie den Windows Explorer aus",
+    "restarting": "Windows-Explorer wird neu gestartet…",
+    "done": "Windows-Explorer wurde neu gestartet. Desktop und Taskleiste wurden wiederhergestellt.",
+    "recover": "Windows-Explorer ausführen",
     "error": {
-      "stale": "Windows Explorer wurde beendet oder geändert. Aktualisieren Sie die Liste und versuchen Sie es erneut.",
-      "unsupported": "Diese Explorer-Instanz unterstützt keinen sicheren Neustart. Es war nicht geschlossen.",
-      "permission": "Auf den Explorer des aktuellen Desktops konnte nicht zugegriffen werden. Es war nicht geschlossen.",
-      "prepare": "Die Explorer-Neustartumgebung konnte nicht vorbereitet werden. Es war nicht geschlossen.",
-      "shutdown": "Windows Der Neustart des Explorers konnte nicht abgeschlossen werden. Versuchen Sie es in Kürze noch einmal.",
-      "restore": "Windows Explorer wurde nicht wiederhergestellt. Wählen Sie „Windows Explorer ausführen“, um ihn erneut zu öffnen.",
-      "busy": "Windows Explorer wird bereits neu gestartet. Versuchen Sie es in Kürze noch einmal."
+      "stale": "Windows-Explorer wurde beendet oder geändert. Aktualisieren Sie die Liste und versuchen Sie es erneut.",
+      "unsupported": "Diese Explorer-Instanz unterstützt keinen sicheren Neustart. Sie wurde nicht beendet.",
+      "permission": "Auf den Explorer des aktuellen Desktops konnte nicht zugegriffen werden. Er wurde nicht beendet.",
+      "prepare": "Die Umgebung für den Explorer-Neustart konnte nicht vorbereitet werden. Explorer wurde nicht beendet.",
+      "shutdown": "Der Neustart von Windows-Explorer wurde nicht abgeschlossen. Versuchen Sie es später erneut.",
+      "restore": "Windows-Explorer wurde noch nicht wiederhergestellt. Wählen Sie „Windows-Explorer ausführen“, um ihn erneut zu öffnen.",
+      "busy": "Windows-Explorer wird bereits neu gestartet. Versuchen Sie es in Kürze noch einmal."
     }
   },
   "error": {
@@ -36,7 +36,7 @@
     "accessDenied": "Windows hat den Start verweigert. Überprüfen Sie die Zugriffsberechtigungen.",
     "standardUnavailable": "Die Startumgebung mit Standardberechtigungen konnte nicht vorbereitet werden.",
     "elevationRequired": "Diese App erfordert Administratorrechte. Wählen Sie „Als Administrator ausführen“ und versuchen Sie es erneut.",
-    "noAssociation": "Mit diesem Artikel ist keine Anwendung verknüpft.",
+    "noAssociation": "Diesem Element ist keine Anwendung zum Öffnen zugeordnet.",
     "busy": "Eine weitere Startanfrage ist noch in Bearbeitung. Versuchen Sie es in Kürze noch einmal.",
     "os": "Windows konnte diese Aufgabe nicht starten."
   }

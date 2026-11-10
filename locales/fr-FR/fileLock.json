@@ -1,16 +1,16 @@
 {
-  "title": "Qu'est-ce qui utilise le fichier",
-  "intro": "Si la suppression ou le déplacement d'un fichier échoue parce qu'il est en cours d'utilisation, recherchez les processus qui le contiennent ici. Les fichiers peuvent également être déposés dans la fenêtre Argus.",
+  "title": "Processus utilisant le fichier",
+  "intro": "Si un fichier ne peut pas être supprimé ou déplacé parce qu’il est utilisé, recherchez ici les processus qui l’utilisent. Vous pouvez aussi déposer le fichier sur la fenêtre d’Argus.",
   "dropZone": "Déposez des fichiers ou des dossiers sur la fenêtre, ou",
   "pickFile": "Choisir un fichier",
   "pickFolder": "Choisir un dossier",
-  "recheck": "Vérifiez à nouveau",
+  "recheck": "Vérifier à nouveau",
   "checking": "Vérification…",
   "error": {
     "notFound": "Impossible de trouver le fichier ou le dossier.",
-    "failed": "Échec de la vérification : {error}"
+    "failed": "Échec de la vérification : {error}"
   },
-  "none": "Aucun processus accessible n'a été trouvé à l'aide de ces fichiers.",
+  "none": "Aucun processus accessible utilisant ces fichiers ou dossiers n’a été trouvé lors de cette recherche.",
   "found": {
     "one": "{count} processus utilise ces fichiers ou dossiers.",
     "many": "{count} processus utilisent ces fichiers ou dossiers.",
@@ -46,16 +46,16 @@
       "many": "{count} handles de fichier ont été vérifiés localement, y compris les handles de dossier.",
       "other": "{count} handles de fichier ont été vérifiés localement, y compris les handles de dossier."
     },
-    "unfinished": "La requête de handle n'a pas abouti."
+    "unfinished": "La requête de handle n’a pas abouti."
   },
-  "incomplete": "Les résultats sont incomplets. Processus inaccessibles : {denied} ; handles illisibles : {skipped} ; requêtes expirées : {timeouts}. {limit}",
+  "incomplete": "Les résultats sont incomplets. Processus inaccessibles : {denied} ; handles illisibles : {skipped} ; requêtes expirées : {timeouts}. {limit}",
   "limitReached": "La limite de requêtes a été atteinte.",
   "serviceHint": "Activez le service privilégié dans Paramètres pour vérifier davantage de processus système.",
   "unchecked": {
-    "one": "Restart Manager n’a pas pu vérifier {count} fichier supplémentaire, en raison des autorisations ou de modifications du fichier.",
-    "many": "Restart Manager n’a pas pu vérifier {count} fichiers supplémentaires, en raison des autorisations ou de modifications des fichiers.",
-    "other": "Restart Manager n’a pas pu vérifier {count} fichiers supplémentaires, en raison des autorisations ou de modifications des fichiers."
+    "one": "Restart Manager n’a pas pu vérifier {count} fichier supplémentaire, peut-être en raison des autorisations ou d’un changement de son état.",
+    "many": "Restart Manager n’a pas pu vérifier {count} fichiers supplémentaires, peut-être en raison des autorisations ou d’un changement de leur état.",
+    "other": "Restart Manager n’a pas pu vérifier {count} fichiers supplémentaires, peut-être en raison des autorisations ou d’un changement de leur état."
   },
-  "truncated": "Le dossier contient trop de fichiers ; seuls les premiers {count} ont été vérifiés.",
-  "footerHint": "La requête handle recherche également les dossiers utilisés comme répertoire de travail ; les processus protégés peuvent encore être hors de portée."
+  "truncated": "Le dossier contient trop de fichiers ; seuls les premiers {count} ont été vérifiés.",
+  "footerHint": "La recherche de handles détecte aussi les dossiers utilisés comme répertoire de travail actuel. Certains processus protégés peuvent rester inaccessibles."
 }

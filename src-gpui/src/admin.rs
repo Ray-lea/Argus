@@ -63,16 +63,12 @@ pub fn set_mode(
     let old_source = argus_service::admin::source(id);
     let restart = enabled || argus_service::admin::can_drop_elevation()?;
     let pending = if !enabled && restart && !defer {
-        Some(argus_service::admin::prepare(
-            id,
-            &restart_args(app),
-            false,
-        )?)
+        Some(argus_service::admin::prepare(id, &restart_args(app), false))
     } else {
         None
     };
     let current = argus_service::admin::status(id);
-    let status = if enabled && current.ready && !repair.unwrap_or(false) {
+    let mut status = if enabled && current.ready && !repair.unwrap_or(false) {
         current
     } else {
         argus_service::admin::manage(id, enabled)?
@@ -89,9 +85,21 @@ pub fn set_mode(
     } else if restart {
         let prepared = match pending {
             Some(prepared) => prepared,
-            None => argus_service::admin::prepare(id, &restart_args(app), enabled)?,
+            None => argus_service::admin::prepare(id, &restart_args(app), enabled),
         };
-        prepared.commit()?;
+        if let Err(error) = prepared.and_then(|prepared| prepared.commit()) {
+            if enabled {
+                return Err(error);
+            }
+            // Revocation remains effective when a damaged runtime prevents
+            // preparing a standard-user window. Keep this window available.
+            status.error = Some(argus_core::tr!("admin.revokedRestartFailed"));
+            argus_core::diagnostics::warn(
+                "administrator grant revoked; standard restart failed",
+                argus_core::diagnostics::failure(&error),
+            );
+            return Ok(status);
+        }
         app.exit(0);
     }
     Ok(status)

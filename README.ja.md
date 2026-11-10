@@ -6,18 +6,18 @@
 
 **高速でモダンな、情報豊富な Windows タスク マネージャー**
 
-**README の言語：** [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · **日本語** · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · **日本語** · [Français](README.fr.md) · [Русский](README.ru.md)
 
-[![公式サイトとデモ](https://img.shields.io/static/v1?label=%F0%9F%8C%90+%E5%85%AC%E5%BC%8F%E3%82%B5%E3%82%A4%E3%83%88%E3%81%A8%E3%83%87%E3%83%A2&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/en/)
+[![公式サイトとデモ](https://img.shields.io/static/v1?label=%F0%9F%8C%90+%E5%85%AC%E5%BC%8F%E3%82%B5%E3%82%A4%E3%83%88%E3%81%A8%E3%83%87%E3%83%A2&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/ja/)
 
-[公式サイト](https://argustask.com/en/)（英語）では、インストールせずにブラウザー上で画面を操作し、機能ガイドを体験できます。
+[公式サイト](https://argustask.com/ja/)では、インストールせずにブラウザー上で画面を操作し、機能ガイドを体験できます。
 
 [![最新バージョン](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=%E6%9C%80%E6%96%B0%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![ダウンロード](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
 [![動作環境](https://img.shields.io/static/v1?label=%E5%8B%95%E4%BD%9C%E7%92%B0%E5%A2%83&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
 [![ライセンス](https://img.shields.io/static/v1?label=%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
-[公式サイトとデモ](https://argustask.com/en/) · [機能](#features) · [ダウンロード](#download) · [ソースからのビルド](#build-from-source) · [ショートカット](#keyboard-shortcuts) · [ドキュメント](#documentation) · [コミュニティ](#community) · [言語の選択](#language-guide)
+[機能](#features) · [ダウンロード](#download) · [ソースからのビルド](#build-from-source) · [ショートカット](#keyboard-shortcuts) · [ドキュメント](#documentation) · [コミュニティ](#community)
 
 </div>
 
@@ -33,14 +33,6 @@
 <br>
 
 Argus は Rust から Windows のネイティブ API を直接呼び出し、GPUI Kit のネイティブ コンポーネントで画面を構築しています。グラフはディスプレイのリフレッシュ レートに合わせて滑らかに動きます。名前は、ギリシャ神話に登場する百の目を持つ巨人アルゴス（Argus Panoptes）に由来します。
-
-<a id="language-guide"></a>
-
-## 🌍 言語の選択
-
-ページ上部のリンクから README の言語を切り替えられます。アプリの表示言語は **設定 → 言語と外観 → 表示言語** で個別に選択できます。初期設定では Windows の表示言語に従います。
-
-公式サイトは中国語と英語に対応しています。詳細ドキュメントは中国語、変更履歴は中国語と英語で提供しています。
 
 <a id="star-history"></a>
 
@@ -61,7 +53,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 | | 機能 | 内容 |
 |:---:|---|---|
-| 🧮 | **プロセス** | アプリ別、プロセス ツリー、一覧の 3 種類の表示に対応。各プロセスの CPU、メモリ、ディスクの読み書き、ネットワーク通信量、GPU 使用率をリアルタイムで表示します。並べ替え、検索、プロセスやツリー全体の終了が可能で、詳細パネルではコマンド ライン、ユーザー、整合性レベルなどを確認できます。 |
+| 🧮 | **プロセス** | アプリ別、プロセス ツリー、一覧の 3 種類の表示に対応。各プロセスの CPU、メモリ、ディスクの読み書き、ネットワーク通信量、GPU 使用率をリアルタイムで表示します。並べ替え、検索、プロセスやツリー全体の終了が可能で、詳細ペインではコマンド ライン、ユーザー、整合性レベルなどを確認できます。 |
 | ⚡ | **優先度と効率モード** | 右クリック メニューから変更でき、プログラムの起動時に自動適用するルールも作成できます。 |
 | 📈 | **パフォーマンス** | CPU のコア別負荷、P コアと E コア、周波数、温度、消費電力に加え、メモリ、ディスクの正常性と SMART 属性、ネットワーク、GPU、バッテリーを詳しく表示します。 |
 | 🧩 | **サービスとスタートアップ** | Windows サービスの開始・停止とスタートアップの種類の変更、スタートアップ アプリの有効化・無効化に対応。状態は Windows タスク マネージャーと共通です。 |
@@ -81,12 +73,12 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 ## 📦 ダウンロード
 
-最新の安定版と SHA-256 チェックサムは、[公式ダウンロード ページ](https://argustask.com/en/download/)（英語）から取得できます。すべてのバージョンは [GitHub Releases](https://github.com/Ray-lea/Argus/releases) にあります。
+最新の安定版と SHA-256 チェックサムは、[公式ダウンロード ページ](https://argustask.com/ja/download/)から取得できます。すべてのバージョンは [GitHub Releases](https://github.com/Ray-lea/Argus/releases) にあります。
 
 | ファイル | 内容 |
 |---|---|
 | `Argus_<version>_x64-setup.exe` | **インストーラー版（推奨）。** 全ユーザー向けに `Program Files` へインストールします。インストールと更新には管理者の承認が必要です。アプリ内更新に対応します。 |
-| `Argus_<version>_x64.exe` | **ポータブル版。** 単一の実行ファイルから起動し、設定と履歴をインストーラー版と共有します。更新は手動で行います。 |
+| `Argus_<version>_x64.exe` | **ポータブル版。** 単一の実行ファイルから起動し、設定と履歴をインストーラー版と共有します。自動更新には対応していません。 |
 | `SHA256SUMS.txt` | 配布ファイルの SHA-256 チェックサム。 |
 
 [コード署名ポリシー](#code-signing-policy) · [プライバシー ポリシー（英語）](PRIVACY.md#english)
@@ -147,7 +139,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 | [アーキテクチャ](docs/architecture/README.md) | システム構成、データ フロー、技術構成、各モジュールの役割 |
 | [設計](docs/design/README.md) | 設計方針、グラフのアニメーション、ウィンドウの外観とマテリアル |
 | [既知の問題](docs/known-issues.md) | 現行バージョンの制限事項 |
-| [変更履歴（英語）](CHANGELOG.en.md) | 各バージョンの詳細な変更内容 |
+| [更新履歴（英語）](CHANGELOG.en.md) | 各バージョンの詳細な変更内容 |
 
 <a id="community"></a>
 

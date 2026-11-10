@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { canonicalPath } from "@/lib/docs";
 import { origin, policies, site } from "@/lib/site";
 import { pathOf, source } from "@/lib/source";
+import { languages, localized as languagePath } from "@/lib/languages";
 
 export const dynamic = "force-static";
 
@@ -13,10 +14,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...policies.map((policy): [string] => ["/" + policy + "/"]),
   ];
   const localized = pages.flatMap(([path, lastModified]) =>
-    ["", "/en"].map((prefix) => ({
-      url: origin + prefix + path,
+    languages.map(({ id }) => ({
+      url: origin + languagePath(id, path),
       lastModified,
-      alternates: { languages: { "zh-CN": origin + path, en: origin + "/en" + path } },
+      alternates: { languages: Object.fromEntries(languages.map(item => [item.tag, origin + languagePath(item.id, path)])) },
     })),
   );
   const docs = source

@@ -4,7 +4,7 @@
     "show": "Systemprozesse anzeigen",
     "processHint": "Windows-Komponenten und -Prozesse in der zusätzlichen Ausblendliste ausblenden und die immer angezeigte Liste beibehalten. Ändert nur die angezeigte Liste.",
     "networkHint": "Versteckt Verbindungen, die Systemprozessen gehören, und Einträge ohne besitzenden Prozess (PID 0). Ändert nur die angezeigte Liste.",
-    "edit": "Versteckregeln bearbeiten",
+    "edit": "Ausblendregeln bearbeiten",
     "description": "Systemprozesse werden anhand der Windows-Komponenteninformationen identifiziert. Beide Seiten teilen sich diese Regeln und speichern ihre Ausblendungsschalter separat.",
     "keep": "Immer anzeigen",
     "keepHint": "Halten Sie diese Programme sichtbar, einschließlich Systemprozesse. Diese Liste hat Vorrang vor zusätzlichem Verstecken.",
@@ -20,12 +20,12 @@
   "countersPending": "Ressourcenzähler für diesen Prozess werden erfasst.",
   "refreshPending": "Prozessdaten aktualisieren. Zeigt den letzten erfolgreich erfassten Messwert an.",
   "diskUnavailable": {
-    "pending": "Noch keine Datenträgerlesung. Ein Prozess, der gerade erst aufgetaucht ist, bekommt bei der nächsten Aktualisierung einen.",
-    "enable": "Kein Lesen der Festplatte. Windows stellt diese Zähler nicht direkt bereit, daher stammen sie vom privilegierten Dienst, der in den Einstellungen aktiviert werden kann.",
-    "update": "Kein Lesen der Festplatte. Die privilegierte Dienstversion stimmt nicht mit Argus überein; Aktualisieren Sie den Dienst in den Einstellungen.",
-    "start": "Kein Lesen der Festplatte. Der privilegierte Dienst wird gestoppt; Es kann in den Einstellungen gestartet werden.",
-    "service": "Kein Lesen der Festplatte. Es konnte vom privilegierten Dienst nicht gelesen werden; Überprüfen Sie den Dienststatus in den Einstellungen.",
-    "unavailable": "Kein Lesen der Festplatte. Die Datenträgerzähler pro Prozess können derzeit nicht gelesen werden."
+    "pending": "Noch keine Datenträgermesswerte: Neu hinzugekommene Prozesse erhalten Werte bei der nächsten Aktualisierung.",
+    "enable": "Keine Datenträgermesswerte: Windows stellt diese Daten nicht direkt bereit. Aktivieren Sie in den Einstellungen den privilegierten Dienst, um sie zu erfassen.",
+    "update": "Keine Datenträgermesswerte: Die Dienstversion stimmt nicht mit Argus überein. Aktualisieren Sie den Dienst in den Einstellungen.",
+    "start": "Keine Datenträgermesswerte: Der privilegierte Dienst ist beendet. Starten Sie ihn in den Einstellungen.",
+    "service": "Datenträgermesswerte konnten nicht vom privilegierten Dienst gelesen werden. Prüfen Sie seinen Status in den Einstellungen.",
+    "unavailable": "Keine Datenträgermesswerte: Die Zähler je Prozess können vorübergehend nicht gelesen werden."
   },
   "serviceHost": "Diensthost: {names}",
   "webView": {
@@ -49,11 +49,11 @@
   "column": {
     "name": {
       "label": "Name",
-      "title": "Anwendungsname oder Dateibeschreibung mit dem Namen der ausführbaren Datei daneben."
+      "title": "App-Name oder Dateibeschreibung; der ergänzende Text zeigt den Namen der ausführbaren Datei."
     },
     "pid": {
       "label": "PID",
-      "title": "Prozess ID"
+      "title": "Prozess-ID"
     },
     "cpu": {
       "label": "CPU",
@@ -65,11 +65,11 @@
     },
     "diskRead": {
       "label": "Datenträger lesen",
-      "title": "Pro Sekunde gelesene Festplattenbytes; Ausgenommen sind Netzwerk- und andere Geräte I/O"
+      "title": "Pro Sekunde vom Datenträger gelesene Bytes, ohne Netzwerk- und sonstige Geräte-I/O"
     },
     "diskWrite": {
       "label": "Datenträger schreiben",
-      "title": "Festplattenbytes, die pro Sekunde geschrieben werden; Ausgenommen sind Netzwerk- und andere Geräte I/O"
+      "title": "Pro Sekunde auf den Datenträger geschriebene Bytes, ohne Netzwerk- und sonstige Geräte-I/O"
     },
     "io": {
       "label": "I/O",
@@ -89,15 +89,15 @@
     },
     "handles": {
       "label": "Handles",
-      "title": "Anzahl der Griffe"
+      "title": "Anzahl der Handles"
     },
     "imageName": {
       "label": "Abbildname",
       "title": "Name der ausführbaren Datei."
     },
     "ppid": {
-      "label": "Übergeordnetes PID",
-      "title": "Übergeordneter Prozess ID bei der Erstellung aufgezeichnet."
+      "label": "Übergeordnete PID",
+      "title": "Bei der Erstellung gespeicherte ID des übergeordneten Prozesses."
     },
     "path": {
       "label": "Abbildpfad",
@@ -109,11 +109,11 @@
     },
     "company": {
       "label": "Unternehmen",
-      "title": "Firmenname aus den Informationen zur ausführbaren Version."
+      "title": "Firmenname aus den Versionsinformationen der ausführbaren Datei."
     },
     "sessionId": {
-      "label": "Sitzung ID",
-      "title": "Windows Sitzung, die den Prozess enthält."
+      "label": "Sitzungs-ID",
+      "title": "Nummer der Windows-Sitzung, zu der der Prozess gehört."
     },
     "createTime": {
       "label": "Startzeit",
@@ -128,16 +128,16 @@
       "title": "EcoQoS-Leistungseffizienzstatus des Prozesses."
     },
     "cpuTime": {
-      "label": "CPU Zeit",
-      "title": "Kumulierte Benutzer- und Kernel-CPU-Zeit; Gruppen zeigen die Gesamtzahl der Mitglieder an."
+      "label": "CPU-Zeit",
+      "title": "Kumulierte CPU-Zeit im Benutzer- und Kernelmodus; Gruppen zeigen die Summe der Zeiten ihrer Mitglieder."
     },
     "cpuUserTime": {
-      "label": "Zeit des Benutzers CPU",
-      "title": "Kumulierte CPU im Benutzermodus verbrachte Zeit."
+      "label": "Benutzer-CPU-Zeit",
+      "title": "Kumulierte CPU-Zeit des Prozesses im Benutzermodus."
     },
     "cpuKernelTime": {
       "label": "Kernel-CPU-Zeit",
-      "title": "Kumulierte CPU im Kernelmodus verbrachte Zeit."
+      "title": "Kumulierte CPU-Zeit des Prozesses im Kernelmodus."
     },
     "basePriority": {
       "label": "Basispriorität",
@@ -153,11 +153,11 @@
     },
     "commit": {
       "label": "Zugesicherte Größe",
-      "title": "Privater festgeschriebener Speicher des Prozesses."
+      "title": "Privater zugesicherter Speicher des Prozesses."
     },
     "virtualSize": {
       "label": "Virtueller Adressraum",
-      "title": "Reservierte und festgeschriebene Adressbereiche eines Prozesses. Die Commit-Größe zeigt den zugesicherten privaten Speicher an."
+      "title": "Reservierte und zugesicherte virtuelle Adressbereiche eines Prozesses. Zugesicherter Speicher steht unter „Zugesicherte Größe“."
     },
     "pageFaults": {
       "label": "Seitenfehler",
@@ -165,11 +165,11 @@
     },
     "ioRead": {
       "label": "E/A lesen",
-      "title": "I/O gelesene Bytes pro Sekunde, einschließlich Dateien, Netzwerk und Geräte."
+      "title": "Pro Sekunde gelesene I/O-Bytes, einschließlich Dateien, Netzwerk und Geräte."
     },
     "ioWrite": {
       "label": "E/A schreiben",
-      "title": "I/O geschriebene Bytes pro Sekunde, einschließlich Dateien, Netzwerk und Geräte."
+      "title": "Pro Sekunde geschriebene I/O-Bytes, einschließlich Dateien, Netzwerk und Geräte."
     },
     "ioOther": {
       "label": "Sonstige E/A",
@@ -177,11 +177,11 @@
     },
     "ioReadTotal": {
       "label": "Insgesamt gelesene I/O",
-      "title": "Insgesamt I/O Bytes, die während der Prozesslebensdauer gelesen wurden."
+      "title": "Während der Prozesslaufzeit insgesamt gelesene I/O-Bytes."
     },
     "ioWriteTotal": {
-      "label": "Gesamtzahl der I/O-Schreibvorgänge",
-      "title": "Insgesamt I/O Bytes, die während der Prozesslebensdauer geschrieben wurden."
+      "label": "Geschriebene I/O-Bytes gesamt",
+      "title": "Während der Prozesslaufzeit insgesamt geschriebene I/O-Bytes."
     },
     "ioOtherTotal": {
       "label": "Gesamt andere I/O",
@@ -192,7 +192,7 @@
       "title": "Vom Prozess pro Sekunde empfangener Netzwerkverkehr."
     },
     "netSent": {
-      "label": "Netzwerk senden",
+      "label": "Netzwerkversand",
       "title": "Vom Prozess pro Sekunde gesendeter Netzwerkverkehr."
     },
     "gpuEngine": {
@@ -220,8 +220,8 @@
     "background": "Hintergrundprozesse",
     "windows": "Windows-Prozesse"
   },
-  "sectionSearching": "Während der Suche wird jede Übereinstimmung angezeigt; Löschen Sie die Suche, um Gruppen auszublenden",
-  "servicesSummary": "{names} und andere ({count}-Dienste)",
+  "sectionSearching": "Während der Suche wird jede Übereinstimmung angezeigt; löschen Sie die Suche, um Gruppen auszublenden",
+  "servicesSummary": "{names} und weitere ({count} Dienste)",
   "pidExited": "PID {pid} wurde bereits beendet.",
   "priority": {
     "realtime": "Echtzeit",
@@ -233,12 +233,12 @@
   },
   "menu": {
     "endAll": {
-      "one": "{count}-Prozess beenden",
-      "other": "Beende alle {count}-Prozesse"
+      "one": "{count} Prozess beenden",
+      "other": "Alle {count} Prozesse beenden"
     },
     "setPriority": "Priorität festlegen",
     "addRule": "Regel hinzufügen",
-    "copyPid": "Kopiere PID",
+    "copyPid": "PID kopieren",
     "copyPidWhat": "PID",
     "details": "Details"
   },
@@ -248,7 +248,7 @@
   },
   "vitals": {
     "open": "{device} unter Leistung anzeigen",
-    "diskActive": "Aktiv {value}%",
+    "diskActive": "Aktiv {value} %",
     "netTitle": "R: empfangen, S: gesendet",
     "netRates": "R: {received} S: {sent}",
     "acpiTemperature": "ACPI Temperatur der thermischen Zone"
@@ -264,7 +264,7 @@
     "sortAscending": "Aufsteigend sortieren",
     "sortDescending": "Absteigend sortieren",
     "hide": "{name}-Spalte ausblenden",
-    "description": "Überprüfen Sie die anzuzeigenden Spalten. Ziehen Sie sie in die Liste rechts oder ziehen Sie die Spaltenüberschriften, um ihre Reihenfolge zu ändern.",
+    "description": "Markieren Sie die anzuzeigenden Spalten. Verschieben Sie Einträge in der rechten Liste oder ziehen Sie die Spaltenüberschriften, um die Reihenfolge zu ändern.",
     "networkUnavailable": "Ausgewählte Netzwerkspalten werden angezeigt, wenn Verkehrsdaten verfügbar sind.",
     "category": {
       "general": "Allgemein",
@@ -279,12 +279,12 @@
     "moveUp": "Nach oben",
     "moveDown": "Nach unten",
     "remove": "Entfernen",
-    "search": "Suchspalten oder Beschreibungen",
+    "search": "Spaltennamen oder Beschreibungen suchen",
     "selectAll": "Alle auswählen",
     "clear": "Leeren",
     "noMatch": "Keine passenden Spalten",
     "fixed": "Fest",
     "selectionSummary": "{count} ausgewählt",
-    "virtualAliases": "Virtuelle Byte-Adressreservierung des virtuellen Speichers"
+    "virtualAliases": "Virtueller Speicher virtuelle Bytes Adressreservierung"
   }
 }

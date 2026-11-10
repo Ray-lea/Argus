@@ -1,41 +1,41 @@
 {
   "updated": "Argusが{version}にアップデートされました。",
-  "whatsNew": "新機能",
-  "readyToast": "Argus {version} は取り付け可能です",
-  "availableToast": "Argus {version}あります",
-  "view": "を見る",
+  "whatsNew": "更新内容を表示",
+  "readyToast": "Argus {version} の準備が整いました",
+  "availableToast": "新しいバージョン {version} が見つかりました",
+  "view": "表示",
   "openDialog": "ダイアログで開く",
   "button": {
-    "title": "Argus {version}が出来ました。クリックして新機能を確認し、インストールしてください",
-    "availableTitle": "Argus {version} がございます。クリックして新機能を確認してください"
+    "title": "Argus {version} の準備が整いました。クリックして更新内容を確認し、インストールできます",
+    "availableTitle": "新しいバージョン {version} が見つかりました。クリックして更新内容を確認できます"
   },
   "menu": {
-    "view": "新機能を見る",
-    "dismiss": "このバージョンについて思い出させないでください"
+    "view": "更新内容を表示",
+    "dismiss": "このバージョンでは今後通知しない"
   },
   "dialog": {
-    "ready": "Argus {version} が完成しました",
-    "available": "Argus {version}あります",
+    "ready": "Argus {version} の準備が整いました",
+    "available": "新しいバージョン {version} が見つかりました",
     "downloading": "Argus {version} をダウンロード中",
-    "installing": "インストーラーの起動",
-    "installed": "Argus {version} の新機能",
+    "installing": "インストーラーを起動中",
+    "installed": "Argus {version} の更新内容",
     "current": "現在のバージョン",
     "previous": "アップデート前",
     "next": "新バージョン",
     "stable": "安定版",
     "beta": "ベータ版",
-    "released": "{date}を発売",
+    "released": "{date} 公開",
     "verified": "署名が確認されました",
     "source": "{source}より",
-    "progress": "{total}の{received}をダウンロードしました",
+    "progress": "{total} 中 {received} をダウンロード済み",
     "changes": {
       "other": "{count} 件の変更"
     },
-    "earlier": "以前のバージョンのメモは GitHub にあります。",
-    "empty": "ここに表示するリリース ノートはありません。 GitHub のリリースを参照してください。",
+    "earlier": "以前のバージョンの更新内容は GitHub で確認できます。",
+    "empty": "ここに表示するリリース ノートはありません。GitHub のリリースを参照してください。",
     "language": "これらのリリース ノートの一部は中国語でのみ利用可能です。",
-    "hint": "インストールには管理者権限が必要です。 Argus は一時的に閉じられ、インストールが完了すると同じページで再度開きます。",
-    "portable": "ポータブル版は自動アップデートされません。リリースページから新しいバージョンをダウンロードします。",
+    "hint": "インストールには管理者権限が必要です。Argus は一時的に閉じられ、インストールが完了すると同じページで再度開きます。",
+    "portable": "ポータブル版は自動更新に対応していません。リリース ページから新しいバージョンをダウンロードしてください。",
     "github": "GitHubで見る",
     "install": "再起動とアップデート",
     "starting": "起動中…",
@@ -44,9 +44,9 @@
     "close": "閉じる"
   },
   "service": {
-    "title": "特権サービスを更新しますか?",
+    "title": "特権サービスを更新しますか？",
     "body": "特権サービスはバージョン {serviceVersion} ですが、Argus {version} と一致しません。一部の機能が動作しない場合があります。更新には管理者の許可が必要です。",
-    "bodyOlder": "特権サービスは古いバージョンであり、Argus {version} と互換性がありません。更新されるまでは、管理者権限が必要なアクション (管理者または他のアカウントのプロセスの終了、システム サービスの管理、ネットワーク接続の終了など) を完了できず、サービスが提供するデータ (プロセスごとのネットワーク トラフィックなど) は表示されません。更新には管理者の許可が必要です。",
+    "bodyOlder": "特権サービスは古いバージョンであり、Argus {version} と互換性がありません。更新されるまでは、管理者権限が必要なアクション（管理者または他のアカウントのプロセスの終了、システム サービスの管理、ネットワーク接続の終了など） を完了できず、サービスが提供するデータ（プロセスごとのネットワーク トラフィックなど） は表示されません。更新には管理者の許可が必要です。",
     "confirm": "サービスを更新"
   }
 }

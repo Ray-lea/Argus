@@ -1,7 +1,7 @@
 // Exercise the public pages in a fresh headless browser profile and keep screenshots for review.
 // Run it against a built preview (start-website.bat preview).
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Browser } from "./browser.mjs";
 import { workDir } from "./paths.mjs";
@@ -9,6 +9,7 @@ import { workDir } from "./paths.mjs";
 const base = new URL(process.argv[2] ?? "http://127.0.0.1:4321").origin;
 const output = resolve(process.argv[3] ?? join(workDir, "review"));
 await mkdir(output, { recursive: true });
+const builtSite = JSON.parse(await readFile(join(workDir, "dist/input/site.json"), "utf8"));
 const browser = await Browser.launch();
 const results = [];
 const violations =
@@ -66,6 +67,23 @@ try {
     await choose(page, "dark");
     const home = await state(page);
     assert(home.theme === "dark" && home.stored === "dark" && home.overflow <= 0, "Home theme and width");
+    const preserved = await page.eval(() => {
+      const visible = selector => {
+        const node = document.querySelector(selector);
+        return !!node?.getClientRects().length && getComputedStyle(node).display !== "none";
+      };
+      return {
+        github: visible(".mast .gh-stars"),
+        star: visible(".mast .gh-star") && visible(".mast .gh-count"),
+        search: visible(".mast-tools > [data-search-open]"),
+        download: visible(".mast .mast-get"),
+        language: visible(".mast .lang-trigger"),
+        theme: visible(".mast .theme-trigger"),
+      };
+    });
+    for (const control of ["github", "search", "download", "language", "theme"])
+      assert(preserved[control], `${width}px: missing header ${control}`);
+    if (builtSite.repository?.stars !== undefined) assert(preserved.star, `${width}px: missing GitHub star badge`);
     await page.screenshot(shot("home"));
 
     // The window hydrates, sorts by a column and switches pages.
@@ -122,7 +140,7 @@ try {
       ),
     );
     await page.waitFor(
-      (path) => location.pathname === path && !!document.querySelector("#nd-page h1"),
+      (path) => location.pathname === path && !!document.querySelector("#nd-page h1") && !document.title.startsWith("Argus 文档"),
       target,
     );
     const current = await page.eval(() => ({

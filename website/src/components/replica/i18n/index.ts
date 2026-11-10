@@ -1,13 +1,12 @@
-// The demo is written in Chinese, as the app's source text is. On the English
-// home page the same components render in English: every text child and text
-// attribute of an HTML element passes through translate() as the element is
-// created (./jsx-runtime.ts), and Chinese text is looked up in ./en.ts — exact
-// strings first, then patterns for messages that carry names and numbers.
-// Only the English page loads ./en.ts (EnglishReplica.tsx hands it over).
-export type Language = "zh" | "en";
+// Source text is Chinese. The page supplies only its selected dictionary,
+// assembled from the application catalogs and the site's own translations.
+// JSX text and readable attributes use exact entries, then message patterns.
+import { languages, type Language } from "@/lib/languages";
+export type { Language } from "@/lib/languages";
 export interface Dictionary {
   exact: Record<string, string>;
   patterns: [string, string][];
+  plurals?: Record<string, Record<string, string>>;
 }
 
 // One language per document: the server sets it as it renders a page's demo,
@@ -17,11 +16,13 @@ export function setLanguage(lang: Language) {
   rendering = lang;
 }
 export const language = (): Language =>
-  typeof document === "undefined" ? rendering : document.documentElement.lang.startsWith("en") ? "en" : "zh";
+  typeof document === "undefined" ? rendering : languages.find(item => item.tag === document.documentElement.lang || item.id === document.documentElement.lang)?.id ?? "zh";
 
 const chinese = /[　-〿一-鿿＀-￯“”‘’]/;
+const nativeNames = new Set(languages.map(item => item.name as string));
 let exact: Record<string, string> = {};
-let compiled: { re: RegExp; names: string[]; to: string }[] = [];
+let compiled: { re: RegExp; names: string[]; to: string; plural?: Record<string, string> }[] = [];
+const translated = new Set<string>();
 const memo = new Map<string, string>();
 let current: Dictionary | null = null;
 export function registerDictionary(dictionary: Dictionary) {
@@ -39,9 +40,10 @@ export function registerDictionary(dictionary: Dictionary) {
         return "(.+?)";
       })
       .join("");
-    return { re: new RegExp("^" + source + "$"), names, to };
+    return { re: new RegExp("^" + source + "$"), names, to, plural: dictionary.plurals?.[from] };
   });
   memo.clear();
+  translated.clear();
 }
 const missing = new Set<string>();
 
@@ -49,7 +51,7 @@ const missing = new Set<string>();
 // the navigation, a "Process" column elsewhere) is looked up as context:text
 // first; an element names its context with data-i18n.
 export function translate(text: string, context = ""): string {
-  if (language() !== "en" || !chinese.test(text)) return text;
+  if (language() === "zh" || !chinese.test(text) || nativeNames.has(text) || translated.has(text)) return text;
   const key = context + "\u0000" + text;
   const known = memo.get(key);
   if (known !== undefined) return known;
@@ -69,7 +71,10 @@ export function translate(text: string, context = ""): string {
         const m = p.re.exec(core);
         if (!m) continue;
         const values = Object.fromEntries(p.names.map((name, i) => [name, translate(m[i + 1], context)]));
-        out = lead + p.to.replace(/\{(\w+)\}/g, (_, name: string) => values[name] ?? "") + tail;
+        const rawCount = values.count;
+        const category = rawCount && /^-?\d+(?:\.\d+)?$/.test(rawCount) ? new Intl.PluralRules(languages.find(item => item.id === language())!.tag).select(Number(rawCount)) : "other";
+        const template = p.plural?.[category] ?? p.plural?.other ?? p.to;
+        out = lead + template.replace(/\{(\w+)\}/g, (_, name: string) => values[name] ?? "") + tail;
         break;
       }
   }
@@ -80,7 +85,7 @@ export function translate(text: string, context = ""): string {
       (globalThis as { __argusMissing?: Set<string> }).__argusMissing = missing;
     }
   }
-  if (memo.size < 5000) memo.set(key, out);
+  if (memo.size < 5000) { memo.set(key, out); if (out !== text) translated.add(out); }
   return out;
 }
 
@@ -88,7 +93,7 @@ export function translate(text: string, context = ""): string {
 // label for CSS to reserve its bold width.
 const attributes = ["title", "aria-label", "placeholder", "alt", "aria-valuetext", "aria-description", "aria-roledescription", "data-text"];
 export function translateProps<P>(type: unknown, props: P): P {
-  if (typeof type !== "string" || language() !== "en" || !props || typeof props !== "object") return props;
+  if (typeof type !== "string" || language() === "zh" || !props || typeof props !== "object") return props;
   const source = props as Record<string, unknown>;
   const context = typeof source["data-i18n"] === "string" ? source["data-i18n"] : "";
   let copy: Record<string, unknown> | null = null;

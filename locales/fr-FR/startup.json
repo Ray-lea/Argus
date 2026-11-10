@@ -5,10 +5,10 @@
     "hklmRun32": "Registre (tous les utilisateurs, 32 bits)",
     "userFolder": "Dossier de démarrage (utilisateur actuel)",
     "commonFolder": "Dossier de démarrage (tous les utilisateurs)",
-    "package": "Package d'application (utilisateur actuel)"
+    "package": "Package d’application (utilisateur actuel)"
   },
   "menu": {
-    "copyCommand": "Commande de copie\nCommande"
+    "copyCommand": "Copier la commande"
   },
   "copied": {
     "command": "commande"
@@ -20,19 +20,19 @@
   },
   "missing": {
     "label": "Fichier manquant",
-    "title": "Le programme vers lequel pointe cette commande n'existe plus ; cet élément peut être désactivé"
+    "title": "Le programme vers lequel pointe cette commande n’existe plus ; cet élément peut être désactivé"
   },
   "toggle": {
     "enable": "Activer {name}",
     "disable": "Désactiver {name}"
   },
   "blocked": {
-    "managed": "Cette application n'autorise pas les modifications manuelles de cette tâche de démarrage.",
-    "unavailable": "L'état de cette tâche de démarrage n'a pas pu être lu. Aucune modification n'a été apportée."
+    "managed": "Cette application n’autorise pas les modifications manuelles de cette tâche de démarrage.",
+    "unavailable": "L’état de cette tâche de démarrage n’a pas pu être lu. Aucune modification n’a été apportée."
   },
   "unavailable": "Indisponible",
   "loading": "Lecture des applications de démarrage…",
   "noMatch": "Aucune application correspondante",
-  "summary": "{enabled} de {total} activé",
-  "note": "La désactivation utilise le même commutateur que les applications de démarrage dans Gestionnaire des tâches et peut être annulée. Les éléments destinés à tous les utilisateurs nécessitent des droits d'administrateur."
+  "summary": "Activés : {enabled} sur {total}",
+  "note": "La désactivation utilise le même commutateur que les applications de démarrage dans Gestionnaire des tâches et peut être annulée. Les éléments destinés à tous les utilisateurs nécessitent des droits d’administrateur."
 }
