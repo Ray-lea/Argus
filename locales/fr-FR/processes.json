@@ -10,26 +10,26 @@
     "keepHint": "Gardez ces programmes visibles, y compris les processus système. Cette liste est prioritaire sur le masquage supplémentaire.",
     "hide": "Masquer également",
     "hideHint": "Masquez ces programmes lorsque le masquage est activé. Laissez vide pour masquer uniquement les processus système.",
-    "namesHint": "Saisissez les noms d'exécutables séparés par des virgules ou des points-virgules, jusqu'à 128 par liste. Les noms ne sont pas sensibles à la casse.",
-    "invalid": "Saisissez des noms d'exécutables valides sans chemins ni caractères génériques, jusqu'à 128 par liste.",
+    "namesHint": "Saisissez les noms d’exécutables séparés par des virgules ou des points-virgules, jusqu’à 128 par liste. Les noms ne sont pas sensibles à la casse.",
+    "invalid": "Saisissez des noms d’exécutables valides sans chemins ni caractères génériques, jusqu’à 128 par liste.",
     "reset": "Restaurer les règles par défaut",
     "empty": "Aucun élément ne correspond aux filtres actuels.",
     "clear": "Afficher tout et supprimer les filtres"
   },
-  "identityPending": "Confirmation de l'identité du processus. Réessayez sous peu.",
+  "identityPending": "Confirmation de l’identité du processus. Réessayez sous peu.",
   "countersPending": "Collecte des compteurs de ressources pour ce processus.",
   "refreshPending": "Mise à jour des données de processus. Affichage de la dernière lecture collectée avec succès.",
   "diskUnavailable": {
-    "pending": "Aucune lecture de disque pour l'instant. Un processus qui vient tout juste d’apparaître en obtient un au prochain rafraîchissement.",
+    "pending": "Aucune lecture de disque pour l’instant. Un processus qui vient tout juste d’apparaître en obtient un au prochain rafraîchissement.",
     "enable": "Aucune lecture de disque. Windows ne fournit pas ces compteurs directement, ils proviennent donc du service privilégié, qui peut être activé dans Paramètres.",
-    "update": "Aucune lecture de disque. La version du service privilégié ne correspond pas à Argus ; mettez à jour le service dans Paramètres.",
-    "start": "Aucune lecture de disque. Le service privilégié est arrêté ; il peut être démarré dans Paramètres.",
-    "service": "Aucune lecture de disque. Impossible de le lire depuis le service privilégié ; vérifiez l’état du service dans Paramètres.",
+    "update": "Aucune lecture de disque. La version du service privilégié ne correspond pas à Argus ; mettez à jour le service dans Paramètres.",
+    "start": "Aucune lecture de disque. Le service privilégié est arrêté ; il peut être démarré dans Paramètres.",
+    "service": "Aucune lecture de disque. Impossible de le lire depuis le service privilégié ; vérifiez l’état du service dans Paramètres.",
     "unavailable": "Aucune lecture de disque. Les compteurs de disque par processus ne peuvent pas être lus pour le moment."
   },
-  "serviceHost": "Hôte de service : {names}",
+  "serviceHost": "Hôte de service : {names}",
   "webView": {
-    "host": "WebView2 : {name}",
+    "host": "WebView2 : {name}",
     "role": {
       "browser": "Processus du navigateur",
       "renderer": "Processus de rendu",
@@ -50,11 +50,11 @@
   "column": {
     "name": {
       "label": "Nom",
-      "title": "Nom de l'application ou description du fichier, accompagné du nom de l'exécutable."
+      "title": "Nom de l’application ou description du fichier ; le texte secondaire indique le nom de l’exécutable."
     },
     "pid": {
       "label": "PID",
-      "title": "Processus ID"
+      "title": "ID de processus"
     },
     "cpu": {
       "label": "CPU",
@@ -62,15 +62,15 @@
     },
     "mem": {
       "label": "Mémoire",
-      "title": "Ensemble de travail privé : mémoire physique utilisée par ce processus seul"
+      "title": "Plage de travail privée : mémoire physique utilisée par ce processus seul"
     },
     "diskRead": {
       "label": "Lecture disque",
-      "title": "Octets de disque lus par seconde ; exclut le réseau et autres appareils I/O"
+      "title": "Octets de disque lus par seconde ; exclut le réseau et autres appareils I/O"
     },
     "diskWrite": {
       "label": "Écriture disque",
-      "title": "Octets de disque écrits par seconde ; exclut le réseau et autres appareils I/O"
+      "title": "Octets de disque écrits par seconde ; exclut le réseau et autres appareils I/O"
     },
     "io": {
       "label": "I/O",
@@ -86,34 +86,34 @@
     },
     "threads": {
       "label": "Threads",
-      "title": "Nombre de fils"
+      "title": "Nombre de threads"
     },
     "handles": {
       "label": "Handles",
-      "title": "Nombre de poignées"
+      "title": "Nombre de handles"
     },
     "imageName": {
       "label": "Nom de l’image",
       "title": "Nom du fichier exécutable."
     },
     "ppid": {
-      "label": "Parent PID",
-      "title": "Processus parent ID enregistré lors de la création."
+      "label": "PID parent",
+      "title": "ID du processus parent enregistré à la création."
     },
     "path": {
       "label": "Chemin de l’image",
-      "title": "Chemin complet de l'exécutable du processus."
+      "title": "Chemin complet de l’exécutable du processus."
     },
     "description": {
       "label": "Description",
-      "title": "Description du fichier exécutable ou nom de l'application packagée."
+      "title": "Description du fichier exécutable ou nom de l’application packagée."
     },
     "company": {
       "label": "Société",
-      "title": "Nom de la société d'après les informations sur la version de l'exécutable."
+      "title": "Nom de la société d’après les informations sur la version de l’exécutable."
     },
     "sessionId": {
-      "label": "Séance ID",
+      "label": "ID de session",
       "title": "Session Windows qui contient le processus."
     },
     "createTime": {
@@ -122,35 +122,35 @@
     },
     "suspended": {
       "label": "Suspendu",
-      "title": "Tous les threads du processus sont en attente à l'état suspendu."
+      "title": "Tous les threads du processus sont en attente à l’état suspendu."
     },
     "efficiency": {
       "label": "Mode d’efficacité",
-      "title": "État d'efficacité énergétique EcoQoS du processus."
+      "title": "État d’efficacité énergétique EcoQoS du processus."
     },
     "cpuTime": {
-      "label": "Heure CPU",
-      "title": "Temps CPU accumulé par l'utilisateur et le noyau ; les groupes affichent le total des membres."
+      "label": "Temps processeur",
+      "title": "Temps CPU accumulé par l’utilisateur et le noyau ; les groupes affichent le total des membres."
     },
     "cpuUserTime": {
-      "label": "Heure CPU utilisateur",
+      "label": "Temps CPU utilisateur",
       "title": "Temps CPU accumulé passé en mode utilisateur."
     },
     "cpuKernelTime": {
-      "label": "Heure CPU du noyau",
+      "label": "Temps CPU noyau",
       "title": "Temps CPU accumulé passé en mode noyau."
     },
     "basePriority": {
       "label": "Priorité de base",
-      "title": "Priorité de base de processus numérique signalée par Windows."
+      "title": "Valeur numérique de la priorité de base du processus indiquée par Windows."
     },
     "workingSet": {
       "label": "Plage de travail",
-      "title": "Mémoire physique résidente, y compris les pages partagées. Les groupes additionnent les ensembles de travail des membres."
+      "title": "Mémoire physique résidente, y compris les pages partagées. Les groupes additionnent les plages de travail des membres."
     },
     "peakWorkingSet": {
       "label": "Plage de travail maximale",
-      "title": "Ensemble de travail maximal d'un processus depuis le démarrage. Développez un groupe d’applications pour afficher ses processus."
+      "title": "Plage de travail maximal d’un processus depuis le démarrage. Développez un groupe d’applications pour afficher ses processus."
     },
     "commit": {
       "label": "Taille de validation",
@@ -158,7 +158,7 @@
     },
     "virtualSize": {
       "label": "Espace d’adressage virtuel",
-      "title": "Plages d'adresses réservées et validées d'un processus. La taille de validation affiche la mémoire privée engagée."
+      "title": "Plages d’adresses réservées et validées d’un processus. La taille de validation affiche la mémoire privée engagée."
     },
     "pageFaults": {
       "label": "Défauts de page",
@@ -166,27 +166,27 @@
     },
     "ioRead": {
       "label": "Lecture E/S",
-      "title": "I/O octets lus par seconde, y compris les fichiers, le réseau et les appareils."
+      "title": "Octets I/O lus par seconde, y compris les fichiers, le réseau et les périphériques."
     },
     "ioWrite": {
       "label": "Écriture E/S",
-      "title": "I/O octets écrits par seconde, y compris les fichiers, le réseau et les appareils."
+      "title": "Octets I/O écrits par seconde, y compris les fichiers, le réseau et les périphériques."
     },
     "ioOther": {
       "label": "Autres E/S",
-      "title": "Octets transférés par seconde par d'autres opérations I/O."
+      "title": "Octets transférés par seconde par d’autres opérations I/O."
     },
     "ioReadTotal": {
       "label": "Total I/O lu",
-      "title": "Nombre total d'octets I/O lus au cours de la durée de vie du processus."
+      "title": "Nombre total d’octets I/O lus au cours de la durée de vie du processus."
     },
     "ioWriteTotal": {
-      "label": "Total d'écriture I/O",
-      "title": "Nombre total d'octets I/O écrits au cours de la durée de vie du processus."
+      "label": "Total d’écriture I/O",
+      "title": "Nombre total d’octets I/O écrits au cours de la durée de vie du processus."
     },
     "ioOtherTotal": {
       "label": "Total autres I/O",
-      "title": "Nombre total d'octets transférés par d'autres I/O au cours de la durée de vie du processus."
+      "title": "Nombre total d’octets transférés par d’autres I/O au cours de la durée de vie du processus."
     },
     "netReceived": {
       "label": "Réception réseau",
@@ -209,11 +209,11 @@
       "title": "Mémoire GPU partagée résidente actuelle attribuée au processus. Les groupes additionnent les compteurs des membres."
     }
   },
-  "noMatch": "Aucun processus ne correspond à « {query} »",
+  "noMatch": "Aucun processus ne correspond à « {query} »",
   "efficiencyCount": {
-    "one": "Processus {count} en mode Efficacité",
-    "many": "Processus {count} en mode Efficacité",
-    "other": "Processus {count} en mode Efficacité"
+    "one": "{count} processus en mode d’efficacité",
+    "many": "{count} processus en mode d’efficacité",
+    "other": "{count} processus en mode d’efficacité"
   },
   "suspended": "Suspendu",
   "netRates": "Envoyer {sent}, recevoir {received}",
@@ -222,8 +222,8 @@
     "background": "Processus en arrière-plan",
     "windows": "Processus Windows"
   },
-  "sectionSearching": "Lors de la recherche, chaque correspondance s'affiche ; effacer la recherche pour réduire les groupes",
-  "servicesSummary": "{names} et autres (services {count})",
+  "sectionSearching": "Lors de la recherche, chaque correspondance s’affiche ; effacer la recherche pour réduire les groupes",
+  "servicesSummary": "{names} et autres ({count} services)",
   "pidExited": "PID {pid} est déjà fermé.",
   "priority": {
     "realtime": "Temps réel",
@@ -235,9 +235,9 @@
   },
   "menu": {
     "endAll": {
-      "one": "Terminer le processus {count}",
-      "many": "Terminer tous les processus {count}",
-      "other": "Terminer tous les processus {count}"
+      "one": "Terminer {count} processus",
+      "many": "Terminer les {count} processus",
+      "other": "Terminer les {count} processus"
     },
     "setPriority": "Définir la priorité",
     "addRule": "Ajouter une règle",
@@ -251,9 +251,9 @@
   },
   "vitals": {
     "open": "Afficher {device} dans Performances",
-    "diskActive": "{value}% actif",
-    "netTitle": "R : reçu, S : envoyé",
-    "netRates": "R : {received} S : {sent}",
+    "diskActive": "{value} % actif",
+    "netTitle": "R : reçu, S : envoyé",
+    "netRates": "R : {received} S : {sent}",
     "acpiTemperature": "Température de la zone thermique ACPI"
   },
   "columns": {
@@ -287,7 +287,7 @@
     "clear": "Effacer",
     "noMatch": "Aucune colonne correspondante",
     "fixed": "Fixe",
-    "selectionSummary": "{count} sélectionné",
-    "virtualAliases": "réservation d'adresse d'octets virtuels de mémoire virtuelle"
+    "selectionSummary": "Colonnes sélectionnées : {count}",
+    "virtualAliases": "mémoire virtuelle octets virtuels réservation d’adresses"
   }
 }

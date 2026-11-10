@@ -16,34 +16,34 @@
     "title": "Effacez le moment sélectionné et affichez les dernières données"
   },
   "metric": {
-    "peak": "Pic {value}%",
+    "peak": "Pic {value} %",
     "total": "de {value} GB",
     "charging": "Chargement {value}",
     "discharging": "Décharge {value}"
   },
-  "exited": "{name} (PID {pid}) s'est arrêté.",
+  "exited": "{name} (PID {pid}) s’est arrêté.",
   "copied": {
-    "name": "Numéro de version"
+    "name": "nom"
   },
   "column": {
-    "cpuTitle": "Moyenne sur l'intervalle d'enregistrement (généralement 5 secondes)",
-    "memTitle": "Ensemble de travail privé"
+    "cpuTitle": "Moyenne sur l’intervalle d’enregistrement (généralement 5 secondes)",
+    "memTitle": "Plage de travail privée"
   },
   "noData": "Aucune donnée",
   "empty": {
-    "off": "L'enregistrement de l'historique est désactivé",
+    "off": "L’enregistrement de l’historique est désactivé",
     "none": "Aucun enregistrement dans cette période",
-    "offHint": "Une fois activé dans Paramètres, Argus enregistre toutes les 5 secondes, ou à la fréquence de rafraîchissement réduite ou dans la barre d'état lorsque celle-ci est plus lente.",
-    "hint": "Argus enregistre toutes les 5 secondes pendant l'exécution, ou à la fréquence de rafraîchissement réduite ou dans la barre d'état lorsque celle-ci est plus lente, et se conserve 7 jours."
+    "offHint": "Une fois l’enregistrement activé dans Paramètres, Argus enregistre toutes les 5 secondes, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification si celui-ci est plus long.",
+    "hint": "Argus enregistre toutes les 5 secondes pendant son exécution, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification s’il est plus long. Les données sont conservées 7 jours."
   },
   "busiest": "Processus les plus chargés",
-  "busiestAt": "Processus les plus chargés chez {time}",
+  "busiestAt": "Processus les plus chargés à {time}",
   "hint": {
     "pick": "Cliquez à tout moment sur les graphiques pour voir les processus à ce moment-là",
     "move": "Appuyez sur ← → sur les graphiques pour parcourir le temps, Esc pour revenir aux dernières"
   },
-  "noRecordAt": "Aucun enregistrement pour le moment",
+  "noRecordAt": "Aucun enregistrement à cet instant",
   "earliest": "Premier enregistrement",
-  "note": "Enregistre les principaux processus par CPU, mémoire, I/O, GPU et réseau toutes les 5 secondes (ou à la fréquence de rafraîchissement réduite ou de la barre d'état lorsque celle-ci est plus lente) et les conserve pendant 7 jours.",
-  "off": "L'enregistrement de l'historique est désactivé ; aucune nouvelle donnée n'est enregistrée. <link>Ouvrir les paramètres</link>"
+  "note": "Enregistre les processus utilisant le plus de CPU, mémoire, I/O, GPU et réseau toutes les 5 secondes, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification s’il est plus long. Les données sont conservées 7 jours.",
+  "off": "L’enregistrement de l’historique est désactivé ; aucune nouvelle donnée n’est enregistrée. <link>Ouvrir les paramètres</link>"
 }

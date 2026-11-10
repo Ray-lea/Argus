@@ -1,7 +1,7 @@
 {
   "endAll": "Tout terminer",
   "end": {
-    "title": "Terminer {name} ?",
+    "title": "Terminer {name} ?",
     "body": "PID {pid}. Les données non enregistrées seront perdues.",
     "done": "{name} a été terminé."
   },
@@ -16,10 +16,10 @@
       "many": "{count} processus de {name} ont été terminés.",
       "other": "{count} processus de {name} ont été terminés."
     },
-    "partial": "{error} (non terminés : {count})"
+    "partial": "{error} (non terminés : {count})"
   },
   "endTree": {
-    "title": "Terminer l’arborescence des processus de {name} ?",
+    "title": "Terminer l’arborescence des processus de {name} ?",
     "body": {
       "one": "Le processus PID {pid} et ses processus enfants ({count}) seront terminés. Les données non enregistrées seront perdues.",
       "many": "Le processus PID {pid} et ses {count} processus enfants seront terminés. Les données non enregistrées seront perdues.",
@@ -32,62 +32,62 @@
       "other": "{count} processus ont été terminés."
     },
     "partial": {
-      "one": "Processus terminés : {count} ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-      "many": "Processus terminés : {count} ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-      "other": "Processus terminés : {count} ; échecs : {failed} (accès refusé ou processus déjà terminés)."
+      "one": "Processus terminés : {count} ; échecs : {failed} (accès refusé ou processus déjà terminés).",
+      "many": "Processus terminés : {count} ; échecs : {failed} (accès refusé ou processus déjà terminés).",
+      "other": "Processus terminés : {count} ; échecs : {failed} (accès refusé ou processus déjà terminés)."
     }
   },
   "error": {
-    "accessDenied": "Impossible de terminer {name} : accès refusé. Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur. Les processus protégés peuvent rester inaccessibles.",
+    "accessDenied": "Impossible de terminer {name} : accès refusé. Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur. Les processus protégés peuvent rester inaccessibles.",
     "notFound": "{name} est déjà terminé.",
-    "critical": "{name} est un processus système critique. Son arrêt ferait planter Windows ; l’opération a été bloquée.",
+    "critical": "{name} est un processus système critique. Son arrêt ferait planter Windows ; l’opération a été bloquée.",
     "refused": "{name} ne peut pas être terminé.",
-    "serviceOutdated": "Impossible de terminer {name} : accès refusé. La version du service privilégié est incompatible. Mettez le service à jour et réessayez.",
-    "generic": "Impossible de terminer {name} : {error}"
+    "serviceOutdated": "Impossible de terminer {name} : accès refusé. La version du service privilégié est incompatible. Mettez le service à jour et réessayez.",
+    "generic": "Impossible de terminer {name} : {error}"
   },
   "priority": {
-    "confirmTitle": "Définir la priorité de {name} sur Temps réel ?",
+    "confirmTitle": "Définir la priorité de {name} sur Temps réel ?",
     "confirmBody": "Les processus en temps réel passent avant les tâches système. S’ils occupent tout le temps processeur, la souris et le clavier peuvent cesser de répondre.",
     "confirm": "Définir sur Temps réel",
     "failed": "Impossible de modifier la priorité de {name}",
-    "downgraded": "La priorité en temps réel nécessite des droits d'administrateur, c'est pourquoi High a été définie à la place.",
+    "downgraded": "La priorité « Temps réel » nécessite des droits d’administrateur. La priorité a été définie sur « Haute ».",
     "partial": {
-      "one": "Priorité modifiée pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-      "many": "Priorité modifiée pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-      "other": "Priorité modifiée pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés)."
+      "one": "Priorité modifiée pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
+      "many": "Priorité modifiée pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
+      "other": "Priorité modifiée pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés)."
     },
     "done": "La priorité de {name} a été définie sur {priority}."
   },
   "efficiency": {
     "on": {
-      "failed": "Impossible d'activer le mode Efficacité pour {name}",
+      "failed": "Impossible d’activer le mode d’efficacité pour {name}",
       "partial": {
-        "one": "Mode d’efficacité activé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-        "many": "Mode d’efficacité activé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-        "other": "Mode d’efficacité activé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés)."
+        "one": "Mode d’efficacité activé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
+        "many": "Mode d’efficacité activé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
+        "other": "Mode d’efficacité activé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés)."
       },
       "done": "Mode d’efficacité activé pour {name}."
     },
     "off": {
-      "failed": "Impossible de désactiver le mode Efficacité pour {name}",
+      "failed": "Impossible de désactiver le mode d’efficacité pour {name}",
       "partial": {
-        "one": "Mode d’efficacité désactivé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-        "many": "Mode d’efficacité désactivé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
-        "other": "Mode d’efficacité désactivé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés)."
+        "one": "Mode d’efficacité désactivé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
+        "many": "Mode d’efficacité désactivé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés).",
+        "other": "Mode d’efficacité désactivé pour {count} processus ; échecs : {failed} (accès refusé ou processus déjà terminés)."
       },
       "done": "Mode d’efficacité désactivé pour {name}."
     }
   },
   "ruleScope": {
-    "title": "Ajouter une règle pour tous les processus portant ce nom ?",
+    "title": "Ajouter une règle pour tous les processus portant ce nom ?",
     "body": "Les règles utilisent le nom de l’exécutable {name}. Elles s’appliquent à tous les processus portant ce nom, quels que soient l’hôte et le chemin d’installation.",
     "confirm": "Continuer vers les paramètres des règles"
   },
-  "copied": "Élément copié : {what}.",
-  "staleProcess": "Les informations sur le processus sont obsolètes. Actualisez et réessayez.\nChemin",
+  "copied": "Élément copié : {what}.",
+  "staleProcess": "Les informations sur cette instance de processus sont obsolètes. Actualisez et réessayez.",
   "copyWhat": {
-    "path": "Nom de",
-    "name": "Numéro de version",
+    "path": "chemin",
+    "name": "nom",
     "version": "numéro de version"
   }
 }
