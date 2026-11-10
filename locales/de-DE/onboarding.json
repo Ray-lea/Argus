@@ -7,7 +7,7 @@
   "welcome": {
     "title": "Willkommen bei Argus",
     "body": "Argus ist ein moderner Task-Manager für Windows. Er zeigt Prozesse, Leistung, Dienste, Autostart-Apps und Netzwerkverbindungen an und zeichnet die Ressourcennutzung auf. Die folgenden Schritte richten die wichtigsten Optionen ein. Jeder Schritt kann übersprungen und jede Einstellung später geändert werden.",
-    "language": "Sprache"
+    "language": "Anzeigesprache"
   },
   "display": {
     "title": "Anzeige und Aktualisierung",
@@ -31,11 +31,11 @@
     "minimizedInterval": "Intervall bei minimiertem Fenster",
     "minimizedIntervalHint": "Standard: 5 Sekunden. Kürzere Intervalle erhöhen den Ressourcenbedarf im Hintergrund.",
     "trayInterval": "Intervall im Infobereich",
-    "trayIntervalHint": "Bei mehr als 5 Sekunden wird der Verlauf in größeren Abständen aufgezeichnet.",
+    "trayIntervalHint": "Bei ausgeblendetem Fenster werden Daten in diesem Intervall erfasst. Über 5 Sekunden wird der Verlauf in größeren Abständen aufgezeichnet.",
     "hotkey": "Mit {hotkey} lässt sich Argus jederzeit ein- oder ausblenden. Die Tastenkombination kann in den Einstellungen geändert werden.",
     "hotkeyOff": "Die Tastenkombination zum Ein- und Ausblenden von Argus ist deaktiviert. Sie kann in den Einstellungen wieder aktiviert werden.",
     "hotkeyTaken": "{shortcut} wird von Windows oder einer anderen Anwendung verwendet, möglicherweise von einer weiteren Argus-Instanz. In den Einstellungen eine andere Kombination wählen.",
-    "hotkeyProblem": "{problem} Die Verknüpfung kann in den Einstellungen geändert werden."
+    "hotkeyProblem": "{problem} Die Tastenkombination kann in den Einstellungen geändert werden."
   },
   "update": {
     "title": "Aktuell bleiben",

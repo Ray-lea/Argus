@@ -18,6 +18,9 @@ import {
   workDir,
 } from "./paths.mjs";
 import { repo, repositoryStats } from "./release.mjs";
+import { prepareReplicaCatalogs } from "./locales.mjs";
+import { languages } from "../src/lib/languages.ts";
+import { labelTables, translateHtml } from "./translate-html.mjs";
 
 const git = (args) =>
   execFileSync("git", args, { cwd: root, maxBuffer: 32 * 1024 * 1024 });
@@ -268,9 +271,9 @@ function section(text, heading) {
       "^## [^\\n]*" + heading + "[^\\n]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))",
       "im",
     ),
-  );
+  ) ?? text.match(new RegExp('<a id="' + heading.replaceAll(" ", "-") + '"></a>\\s*## [^\\n]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))', "im"));
   if (!match) throw Error("Missing Markdown section: " + heading);
-  return match[1].trim();
+  return match[1].replace(/^<a id="[^"]+"><\/a>\s*$/gm, "").trim();
 }
 function render(text, rewrite) {
   const tokens = markdown.parse(text, {});
@@ -396,6 +399,7 @@ async function previews(at) {
 }
 
 export async function prepareContent(release, { worktree = !process.env.ARGUS_DOCS_DEV_REF } = {}) {
+  await prepareReplicaCatalogs();
   const written = new Set();
   const editions = [
     await prepareStableEdition(written, release),
@@ -406,15 +410,18 @@ export async function prepareContent(release, { worktree = !process.env.ARGUS_DO
   const at = { ref: docs.ref, worktree };
   const privacy = await readFile(join(root, "PRIVACY.md"), "utf8");
   const translations = {};
-  for (const lang of ["zh", "en"]) {
+  const privacyEnglish = render(section(privacy, "English"), href => href.startsWith("docs/") ? repo + "/blob/main/" + href : href);
+  for (const { id: lang, readme: readmeFile, requirements: heading } of languages) {
     const en = lang === "en";
-    const prefix = en ? "/en" : "";
-    const readme = (await source(at, en ? "README.en.md" : "README.md")).toString();
-    const requirements = section(readme, en ? "System requirements" : "系统要求");
+    const prefix = lang === "zh" ? "" : "/" + lang;
+    const readme = (await source(at, readmeFile)).toString();
+    const requirements = section(readme, heading);
+    if (!requirements.trim()) throw Error("Missing system requirements: " + readmeFile);
+    const messages = ["zh", "en"].includes(lang) ? {} : JSON.parse(await readFile(join(websiteRoot, "src/locales", lang + ".json"), "utf8"));
     translations[lang] = {
       operatingSystem:
         requirements
-          .match(/^[-*]\s+\*\*(?:Operating system|操作系统)\*\*\s*[:：]\s*(.+)$/im)?.[1]
+          .match(/^[-*]\s+\*\*[^*]+\*\*\s*[:：]\s*(.+)$/m)?.[1]
           ?.trim() ?? "Windows x64",
       requirements: render(requirements, (href) => {
         const [target, fragment] = href.split("#");
@@ -422,9 +429,7 @@ export async function prepareContent(release, { worktree = !process.env.ARGUS_DO
           ? docs.routes[target] + (fragment ? "#" + fragment : "")
           : href;
       }),
-      privacy: render(section(privacy, en ? "English" : "简体中文"), (href) =>
-        href.startsWith("docs/") ? repo + "/blob/main/" + href : href,
-      ),
+      privacy: labelTables(lang === "zh" ? render(section(privacy, "简体中文"), href => href.startsWith("docs/") ? repo + "/blob/main/" + href : href) : en ? privacyEnglish : translateHtml(privacyEnglish, messages)),
       signing: render(section(readme, "code signing policy"), (href) =>
         href.startsWith("PRIVACY.md") ? prefix + "/privacy/" : href,
       ),
@@ -459,6 +464,7 @@ export async function prepareContent(release, { worktree = !process.env.ARGUS_DO
       {
         format: siteFormat,
         release,
+        softwareLanguages: git(["ls-tree", "--name-only", release.tag + ":locales"]).toString().trim().split("\n").filter(tag => /^[a-z]{2}-[A-Z]{2}$/.test(tag)),
         translations,
         editions,
         contact,

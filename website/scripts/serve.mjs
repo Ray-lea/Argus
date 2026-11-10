@@ -6,7 +6,7 @@
 import { execFileSync, fork, spawn } from "node:child_process";
 import { watch } from "node:fs";
 import { join } from "node:path";
-import { websiteRoot } from "./paths.mjs";
+import { repoRoot, websiteRoot } from "./paths.mjs";
 
 // start-website.bat keeps its earlier options: --open opens the browser, --host listens on the network.
 const open = process.argv.includes("--open");
@@ -30,7 +30,7 @@ async function openWhenReady() {
     }
   }
 }
-const watched = new Set(["content.mjs", "dev.mjs", "paths.mjs", "release.mjs"]);
+const watched = new Set(["content.mjs", "dev.mjs", "paths.mjs", "release.mjs", "locales.mjs", "translate-html.mjs"]);
 let content = null,
   next = null,
   stopping = false,
@@ -86,15 +86,25 @@ function stop() {
   process.exit(0);
 }
 
-watch(join(websiteRoot, "scripts"), (event, name) => {
-  if (!name || !watched.has(name)) return;
+function contentChanged(name) {
   clearTimeout(timer);
   timer = setTimeout(() => {
-    console.log(`[website] scripts/${name} changed; preparing the content again…`);
+    console.log(`[website] ${name} changed; preparing the content again…`);
     if (content) content.replaced = true;
     end(content);
     prepare();
   }, 250);
+}
+watch(join(websiteRoot, "scripts"), (event, name) => {
+  if (name && watched.has(name)) contentChanged("scripts/" + name);
 });
+for (const folder of [join(websiteRoot, "src/locales"), join(repoRoot, "locales")]) {
+  watch(folder, { recursive: true }, (event, name) => {
+    if (name?.endsWith(".json")) contentChanged("locales/" + name);
+  });
+}
+for (const file of ["src/lib/languages.ts", "src/components/replica/i18n/en.ts", "src/components/replica/i18n/catalog-map.json"]) {
+  watch(join(websiteRoot, file), () => contentChanged(file));
+}
 for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(signal, stop);
 prepare();

@@ -1,4 +1,6 @@
 "use client";
+import { useSiteCopy } from "@/components/site/LocaleProvider";
+import { dateLocale, type Language } from "@/lib/languages";
 import { useEffect, useRef, useState } from "react";
 
 export interface Latency {
@@ -9,7 +11,7 @@ export interface Latency {
 }
 interface Props {
   rows: Latency[];
-  lang: "zh" | "en";
+  lang: Language;
 }
 const text = {
   zh: {
@@ -38,7 +40,7 @@ const ticks = [0, 500, 1000, 1500];
  * than read; it replays on its own until the visitor asks for a replay.
  */
 export default function LatencyBoard({ rows, lang }: Props) {
-  const t = text[lang];
+  const t = useSiteCopy(text);
   const board = useRef<HTMLDivElement>(null);
   const scale = Math.max(1500, ...rows.map((r) => r.native));
   const [elapsed, setElapsed] = useState(scale);

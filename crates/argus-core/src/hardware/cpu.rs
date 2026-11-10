@@ -11,7 +11,7 @@ use windows::Win32::System::Threading::{
 };
 use windows::core::{PCWSTR, w};
 
-use super::registry::{reg_dword, reg_string};
+use super::registry::reg_string;
 use crate::util::AlignedBuf;
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -28,7 +28,7 @@ pub struct CpuInfo {
     pub base_mhz: u32,
     pub base_source: Option<&'static str>,
     #[serde(skip)]
-    pub(crate) reference_mhz: u32,
+    pub(crate) hybrid: bool,
     pub sockets: u32,
     pub cores: u32,
     /// Hybrid CPUs only: cores in the highest efficiency class.
@@ -86,7 +86,6 @@ pub fn cpu_info() -> CpuInfo {
         name: reg_string(CPU_KEY, w!("ProcessorNameString"))
             .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
             .unwrap_or_default(),
-        reference_mhz: reg_dword(CPU_KEY, w!("~MHz")).unwrap_or(0),
         logical: unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) },
         virtualization: virtualization_enabled(
             unsafe { IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED) }.as_bool(),
@@ -185,8 +184,7 @@ fn base_frequency(logical: u32) -> (u32, Option<&'static str>) {
         return (mhz, Some("cpuid"));
     }
     // ~MHz is often the invariant TSC/reference frequency (2688 MHz on
-    // i5-13500HX), not the nominal processor frequency. Keep it only as
-    // the existing PDH performance-counter reference, never as a base clock.
+    // i5-13500HX). Neither the base clock nor performance scaling uses it.
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
     struct PowerInfo {
@@ -276,6 +274,8 @@ fn identify(info: &mut CpuInfo) {
     );
     if vendor.eax >= 7 {
         let bits = __cpuid_count(7, 0);
+        // CPUID.7.0:EDX[15] also covers systems whose topology API omits classes.
+        info.hybrid = bits.edx & (1 << 15) != 0;
         add(
             bits.ebx,
             &[

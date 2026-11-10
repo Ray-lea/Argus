@@ -1,3 +1,4 @@
+import { copyFor, localize } from "@/lib/site-i18n";
 import runs from "../data/windows-interaction.json";
 import type { Latency } from "../components/home/LatencyBoard";
 import { development, localized, nativeStable, stable, type Language } from "./site";
@@ -26,7 +27,7 @@ const operations: [string, string, string, string[]][] = [
 export const latency = (lang: Language): Latency[] =>
   operations.map(([id, zh, en, ops]) => ({
     id,
-    label: lang === "en" ? en : zh,
+    label: localize(lang, lang !== "zh" ? en : zh),
     argus: measured("argus", ops),
     native: measured("native", ops),
   }));
@@ -42,9 +43,9 @@ export const docs = (file: string, hash = "") =>
 // Only rows where the two tools differ; each names the window page that shows it.
 type Difference = [string, string, string, string | null];
 export const differences = (lang: Language): Difference[] =>
-  lang === "en"
+  localize(lang, lang !== "zh"
     ? [
-        ["Which process holds a port", "The Connections page lists TCP and UDP endpoints; search by port and close a connection", "Not available; use Resource Monitor or the command line", "connections"],
+        ["Which process holds a port", "The Connections page lists TCP and UDP endpoints; search for an exact port and close a connection", "Not available; use Resource Monitor or the command line", "connections"],
         ["Which process locks a file", "Drop the file or folder on the window, then end the holder", "Not available; use Resource Monitor", null],
         ["Parent and child processes", "A process tree view", "Grouped by app only", "tree"],
         ["Disk reads and writes", "Separate read, write and I/O rates per process", "One combined Disk column", "list"],
@@ -62,11 +63,11 @@ export const differences = (lang: Language): Difference[] =>
         ["优先级与效率模式", "可保存为规则，程序每次启动时自动应用", "仅对正在运行的进程生效", null],
         ["CPU 温度与功耗", "封装温度、功耗与每核读数（可选内核传感器）", "不显示", "performance"],
         ["性能核与能效核", "多核视图按 P 核、E 核筛选，分别显示频率", "逻辑处理器不区分核心类型", "performance"],
-      ];
+      ]);
 
 type Question = [string, string, string, string];
 export const questions = (lang: Language): Question[] =>
-  lang === "en"
+  localize(lang, lang !== "zh"
     ? [
         ["replace", "Can Argus replace the Windows Task Manager?", "Yes. Turn on the replacement in Settings → Permissions and Ctrl+Shift+Esc, the taskbar menu and taskmgr open Argus. It needs the optional privileged service and one administrator approval; turning it off restores Task Manager.", docs("docs/architecture/task-manager.md")],
         ["admin", "Does it need to run as administrator?", "Standard rights are enough to view processes and resource use. The optional privileged service handles operations and collection that require additional permissions, including controlling services and collecting per-process network traffic. Installing it requires administrator approval; the interface can keep standard rights.", docs("docs/guide/settings.md", "权限")],
@@ -74,7 +75,7 @@ export const questions = (lang: Language): Question[] =>
         ["background", "How much does it cost to keep running?", "Hidden in the tray, the window stops drawing; sampling, history and rules continue. The tray and minimized states each have their own sampling interval, five seconds by default.", docs("docs/guide/resident-mode.md")],
         ["temperature", "Why is the CPU temperature missing?", "Windows does not report processor temperature directly. With kernel sensors turned on in Settings → Permissions, Argus reads temperatures, power and per-core values through the privileged service and the signed PawnIO driver.", docs("docs/guide/hardware-data.md")],
         ["privacy", "Does Argus upload anything?", "Process lists, history and settings stay on the computer. Argus has no usage telemetry, ad tracking or automatic crash reporting. Network access covers update checks and downloads, optional PawnIO downloads, and external links opened on request. Update checks can be switched to manual in Settings.", localized(lang, "/privacy/")],
-        ["portable", "Installer or portable?", "The installer goes to Program Files and updates itself. The portable edition is one EXE that runs anywhere, shares settings and history with the installer, and is updated by hand.", localized(lang, "/download/")],
+        ["portable", "Installer or portable?", "The installed version goes in Program Files and supports in-app updates. The portable version is a single EXE that runs directly, shares settings and history with the installed version, and requires manual updates.", localized(lang, "/download/")],
       ]
     : [
         ["replace", "Argus 能替代系统任务管理器吗？", "可以。在“设置 → 权限”中开启替换后，Ctrl+Shift+Esc、任务栏菜单和运行 taskmgr 都会打开 Argus。该功能依赖可选的特权服务，需一次管理员授权；关闭后恢复系统任务管理器。", docs("docs/architecture/task-manager.md")],
@@ -84,4 +85,4 @@ export const questions = (lang: Language): Question[] =>
         ["temperature", "为什么看不到 CPU 温度？", "Windows 不直接提供处理器温度。在“设置 → 权限”开启内核传感器后，Argus 通过特权服务和签名的 PawnIO 驱动读取温度、功耗与每核读数。", docs("docs/guide/hardware-data.md")],
         ["privacy", "Argus 会上传数据吗？", "进程列表、历史记录和设置保存在本机。Argus 未内置使用遥测、广告追踪或自动崩溃上报。联网包括更新检查与下载、按需下载 PawnIO，以及主动打开的外部链接；更新检查可在设置中改为手动。", localized(lang, "/privacy/")],
         ["portable", "安装版和免安装版怎么选？", "安装版安装到 Program Files，支持应用内更新。免安装版是单个 EXE，直接运行，与安装版共用设置和历史数据，需要手动更新。", localized(lang, "/download/")],
-      ];
+      ]);

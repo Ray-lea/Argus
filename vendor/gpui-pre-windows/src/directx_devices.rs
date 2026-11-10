@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+#[cfg(debug_assertions)]
 use gpui_util::ResultExt;
 use itertools::Itertools;
 use windows::Win32::{
@@ -14,8 +15,8 @@ use windows::Win32::{
             D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext,
         },
         Dxgi::{
-            CreateDXGIFactory2, DXGI_CREATE_FACTORY_DEBUG, DXGI_CREATE_FACTORY_FLAGS,
-            IDXGIAdapter1, IDXGIFactory6,
+            CreateDXGIFactory2, DXGI_ADAPTER_FLAG_SOFTWARE, DXGI_CREATE_FACTORY_DEBUG,
+            DXGI_CREATE_FACTORY_FLAGS, IDXGIAdapter1, IDXGIFactory6,
         },
     },
 };
@@ -115,24 +116,47 @@ fn get_adapter(
     for adapter_index in 0.. {
         let adapter: IDXGIAdapter1 = unsafe { dxgi_factory.EnumAdapters(adapter_index)?.cast()? };
         if let Ok(desc) = unsafe { adapter.GetDesc1() } {
-            let gpu_name = String::from_utf16_lossy(&desc.Description)
-                .trim_matches(char::from(0))
-                .to_string();
-            log::info!("Using GPU: {}", gpu_name);
+            log::info!(
+                target: "argus::graphics",
+                "DirectX adapter initialization; index={adapter_index}; vendor_id=0x{:04X}; device_id=0x{:04X}; software={}",
+                desc.VendorId,
+                desc.DeviceId,
+                desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0,
+            );
         }
         // Check to see whether the adapter supports Direct3D 11 and create
         // the device if it does.
         let mut context: Option<ID3D11DeviceContext> = None;
         let mut feature_level = D3D_FEATURE_LEVEL::default();
-        if let Some(device) = get_device(
+        let result = get_device(
             &adapter,
             Some(&mut context),
             Some(&mut feature_level),
             debug_layer_available,
-        )
-        .log_err()
-        {
-            return Ok((adapter, device, context.unwrap(), feature_level));
+        );
+        match result {
+            Ok(device) => {
+                log::info!(
+                    target: "argus::graphics",
+                    "DirectX adapter selected; index={adapter_index}; feature_level=0x{:04X}",
+                    feature_level.0 as u32,
+                );
+                return Ok((adapter, device, context.unwrap(), feature_level));
+            }
+            Err(error) => {
+                if let Some(error) = error.downcast_ref::<windows::core::Error>() {
+                    log::warn!(
+                        target: "argus::graphics",
+                        "DirectX adapter initialization failed; index={adapter_index}; code=0x{:08X}",
+                        error.code().0 as u32,
+                    );
+                } else {
+                    log::warn!(
+                        target: "argus::graphics",
+                        "DirectX adapter initialization failed; index={adapter_index}; required feature unavailable",
+                    );
+                }
+            }
         }
     }
 

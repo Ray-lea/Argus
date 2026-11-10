@@ -1,16 +1,16 @@
 {
-  "title": "Wofür wird die Datei verwendet?",
-  "intro": "Wenn das Löschen oder Verschieben einer Datei fehlschlägt, weil sie gerade verwendet wird, finden Sie hier die Prozesse, in denen sie gespeichert ist. Dateien können auch im Argus-Fenster abgelegt werden.",
+  "title": "Welche Prozesse verwenden die Datei?",
+  "intro": "Wenn beim Löschen oder Verschieben „Datei wird verwendet“ erscheint, können Sie hier die verwendenden Prozesse suchen. Die Datei kann auch direkt auf das Argus-Fenster gezogen werden.",
   "dropZone": "Dateien oder Ordner auf das Fenster legen, oder",
   "pickFile": "Datei auswählen",
   "pickFolder": "Ordner auswählen",
-  "recheck": "Überprüfen Sie es erneut",
-  "checking": "Überprüfen…",
+  "recheck": "Erneut prüfen",
+  "checking": "Wird geprüft…",
   "error": {
     "notFound": "Die Datei oder der Ordner konnte nicht gefunden werden.",
     "failed": "Prüfung fehlgeschlagen: {error}"
   },
-  "none": "Mit diesen Dateien wurde kein zugänglicher Prozess gefunden.",
+  "none": "Die Abfrage hat keine zugänglichen Prozesse gefunden, die diese Dateien oder Ordner verwenden.",
   "found": {
     "one": "{count} Prozess verwendet diese Dateien oder Ordner.",
     "other": "{count} Prozesse verwenden diese Dateien oder Ordner."
@@ -47,9 +47,9 @@
   "limitReached": "Das Abfragelimit wurde erreicht.",
   "serviceHint": "Aktivieren Sie den privilegierten Dienst in den Einstellungen, um weitere Systemprozesse zu überprüfen.",
   "unchecked": {
-    "one": "Restart Manager konnte {count} weitere Datei wegen Berechtigungen oder Dateiänderungen nicht prüfen.",
-    "other": "Restart Manager konnte {count} weitere Dateien wegen Berechtigungen oder Dateiänderungen nicht prüfen."
+    "one": "Restart Manager konnte {count} weitere Datei nicht prüfen, möglicherweise wegen Berechtigungen oder eines geänderten Dateizustands.",
+    "other": "Restart Manager konnte {count} weitere Dateien nicht prüfen, möglicherweise wegen Berechtigungen oder geänderter Dateizustände."
   },
-  "truncated": "Der Ordner enthält zu viele Dateien; Es wurden nur die ersten {count} überprüft.",
-  "footerHint": "Die Handle-Abfrage findet auch Ordner, die als Arbeitsverzeichnis verwendet werden; Geschützte Prozesse sind möglicherweise immer noch unerreichbar."
+  "truncated": "Der Ordner enthält zu viele Dateien; es wurden nur die ersten {count} überprüft.",
+  "footerHint": "Die Handle-Abfrage erkennt auch die Nutzung als aktuelles Arbeitsverzeichnis; geschützte Prozesse können weiterhin unzugänglich sein."
 }

@@ -30,8 +30,8 @@
     "openConsoleTitle": "Windows サービス コンソールを開きます"
   },
   "menu": {
-    "startType": "スタートアップタイプ：{type}",
-    "copyName": "コピーサービス名"
+    "startType": "スタートアップの種類：{type}",
+    "copyName": "サービス名をコピー"
   },
   "copied": {
     "name": "サービス名"
@@ -41,7 +41,7 @@
     "startType": "スタートアップの種類",
     "description": "説明"
   },
-  "loading": "読み取りサービス…",
+  "loading": "サービスを読み込み中…",
   "noMatch": "一致するサービスがありません",
   "clearFilter": "フィルターを解除",
   "summary": "{total} 件中 {running} 件が実行中",

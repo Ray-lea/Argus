@@ -1,4 +1,6 @@
 "use client";
+import { useSiteCopy } from "@/components/site/LocaleProvider";
+import { dateLocale, type Language } from "@/lib/languages";
 import { useEffect, useRef, useState } from "react";
 import { sampleAt } from "../replica/model";
 import { store } from "../replica/store";
@@ -38,8 +40,8 @@ const glyph = (d: string) => (
   </svg>
 );
 
-export default function Taskbar({ lang = "zh" }: { lang?: "zh" | "en" }) {
-  const w = words[lang];
+export default function Taskbar({ lang = "zh" }: { lang?: Language }) {
+  const w = useSiteCopy(words);
   const [now, setNow] = useState<Date | null>(null);
   const [tick, setTick] = useState(0);
   const [hidden, setHidden] = useState(false);
@@ -151,8 +153,8 @@ export default function Taskbar({ lang = "zh" }: { lang?: "zh" | "en" }) {
           {glyph("M4 9.5h3.5L12 5.5v13l-4.5-4H4zM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11")}
         </span>
         <span className="tb-clock figures" aria-hidden="true">
-          <span>{now ? now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : " "}</span>
-          <span>{now ? now.toLocaleDateString("zh-CN") : " "}</span>
+          <span>{now ? now.toLocaleTimeString(dateLocale(lang), { hour: "2-digit", minute: "2-digit" }) : " "}</span>
+          <span>{now ? now.toLocaleDateString(dateLocale(lang)) : " "}</span>
         </span>
         <span className="tb-small tb-bell" aria-hidden="true">
           {glyph("M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0")}

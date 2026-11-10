@@ -9,7 +9,7 @@
     "copyWhat": "本機規格",
     "copyPart": "{kind}：{name}",
     "selectTip": "在清單中按一下應用程式或處理程序，即可在此檢視其詳細資料；再次按一下取消選取。",
-    "closeTip": "詳細資料窗格預設常駐，按一下視窗右上角的 {icon} 可摺疊收合。",
+    "closeTip": "詳細資料窗格預設常駐，按一下視窗右上角的 {icon} 可收合。",
     "cpu": "處理器",
     "cores": "{count} 核心",
     "hybrid": "（{performance} 效能核心 + {efficiency} 效率核心）",
@@ -60,8 +60,8 @@
   },
   "architecture": "架構",
   "arch": {
-    "x64": "64 位元 (x64)",
-    "x86": "32 位元 (x86)",
+    "x64": "64 位元（x64）",
+    "x86": "32 位元（x86）",
     "arm64": "ARM64",
     "arm": "ARM"
   },

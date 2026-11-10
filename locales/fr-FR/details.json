@@ -7,33 +7,33 @@
     "show": "Afficher les spécifications du PC",
     "copy": "Copier les spécifications PC sous forme de texte",
     "copyWhat": "Spécifications du PC",
-    "copyPart": "{kind} : {name}",
-    "selectTip": "Cliquez sur une application ou un processus dans la liste pour voir ses détails ici ; cliquez à nouveau dessus pour le désélectionner.",
-    "closeTip": "Le volet de détails reste ouvert ; cachez-le avec {icon} en haut à droite de la fenêtre.",
+    "copyPart": "{kind} : {name}",
+    "selectTip": "Cliquez sur une application ou un processus dans la liste pour voir ses détails ici ; cliquez à nouveau dessus pour le désélectionner.",
+    "closeTip": "Le volet Détails reste ouvert par défaut. Cliquez sur {icon} en haut à droite de la fenêtre pour le réduire.",
     "cpu": "Processeur",
     "cores": {
       "one": "{count} cœur",
       "many": "{count} cœurs",
       "other": "{count} cœurs"
     },
-    "hybrid": "({performance} P-cores + {efficiency} E-cores)",
+    "hybrid": " ({performance} cœurs P + {efficiency} cœurs E)",
     "threads": {
       "one": "{count} thread",
       "many": "{count} threads",
       "other": "{count} threads"
     },
-    "base": "Socle {speed}",
-    "slots": "{used} des emplacements {total} utilisés",
+    "base": "Fréquence de base {speed}",
+    "slots": "Emplacements utilisés : {used} sur {total}",
     "disk": "Stockage",
     "gpu": "Graphiques",
     "vram": "Mémoire dédiée {size}",
     "sharedMemory": "Utilise la mémoire partagée",
     "battery": "Batterie",
-    "designed": "Conçu pour {capacity}",
-    "health": "Santé {percent}%"
+    "designed": "Capacité nominale {capacity}",
+    "health": "Santé {percent} %"
   },
   "exited": {
-    "title": "Le processus s'est terminé",
+    "title": "Le processus s’est terminé",
     "hint": "Sélectionnez un autre processus dans la liste pour voir ses détails."
   },
   "group": {
@@ -46,7 +46,7 @@
     "members": "Processus ({count})",
     "open": "Afficher les détails de PID {pid}"
   },
-  "services": "Services en cours d'exécution ({count})",
+  "services": "Services en cours d’exécution ({count})",
   "section": {
     "process": "Processus",
     "resources": "Ressources",
@@ -58,15 +58,15 @@
   "parentLink": "{name} ({pid})",
   "noParent": "Aucun (PID {pid})",
   "started": "Démarré",
-  "cpuTime": "Heure CPU",
-  "user": "Nom d'utilisateur",
+  "cpuTime": "Temps processeur",
+  "user": "Nom d’utilisateur",
   "integrity": "Intégrité",
   "integrityLevel": {
     "untrusted": "Non fiable",
-    "low": "Basse",
+    "low": "Faible",
     "medium": "Moyen",
     "mediumPlus": "Moyen plus",
-    "high": "Élevé (élevé)",
+    "high": "Élevé (avec élévation)",
     "system": "Système",
     "protected": "Protégé"
   },
@@ -78,17 +78,17 @@
     "arm": "ARM"
   },
   "priority": "Priorité",
-  "session": "Séance",
-  "privateWs": "Ensemble de travail privé",
+  "session": "Session",
+  "privateWs": "Plage de travail privée",
   "workingSet": "Plage de travail",
   "commit": "Taille de validation",
   "gpuEngine": "({engine})",
   "gpuDedicated": "Mémoire GPU dédiée",
   "gpuShared": "Mémoire GPU partagée",
-  "netNeedsAdmin": "Exécutez Argus en tant qu'administrateur pour afficher",
+  "netNeedsAdmin": "Exécutez Argus en tant qu’administrateur pour afficher",
   "threads": "Threads",
   "handles": "Handles",
-  "noAccess": "Impossible d'ouvrir ce processus pour lire sa ligne de commande et son nom d'utilisateur. Exécutez Argus en tant qu'administrateur pour les afficher.",
+  "noAccess": "Impossible d’ouvrir ce processus pour lire sa ligne de commande et son nom d’utilisateur. Exécutez Argus en tant qu’administrateur pour les afficher.",
   "product": "Produit",
   "version": "Version"
 }

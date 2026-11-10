@@ -5,6 +5,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { languages, localized } from "../src/lib/languages.ts";
 import {
   assetLimit,
   downloadOrigin,
@@ -13,6 +14,7 @@ import {
   origin,
   repo,
 } from "./release.mjs";
+import { verifyLocalDownloads, verifyOnlineDownloads } from "./verify-downloads.mjs";
 
 const dist = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -156,12 +158,13 @@ async function local() {
     "privacy/",
     "signing/",
   ]) {
-    for (const prefix of ["", "en/"]) {
+    for (const { id } of languages) {
+      const prefix = id === "zh" ? "" : id + "/";
       const page = pages.get(prefix + path + "index.html");
       assert(page, "Missing localized page " + prefix + path);
       assert.equal(page.canonical, origin + "/" + prefix + path);
-      assert.equal(page.alternates.get("en"), origin + "/en/" + path);
-      assert.equal(page.alternates.get("zh-CN"), origin + "/" + path);
+      for (const alternate of languages)
+        assert.equal(page.alternates.get(alternate.tag), origin + localized(alternate.id, "/" + path));
       if (path === "" || path === "download/") {
         const app = page.schemas.find(
           (s) => s["@type"] === "SoftwareApplication",
@@ -254,26 +257,7 @@ async function local() {
         `${service}/${item} exceeds Free asset size`,
       );
   }
-  const sums = await readFile(
-    join(dist, "downloads", release.tag, "SHA256SUMS.txt"),
-    "utf8",
-  );
-  const redirects = await readFile(
-    join(dist, "downloads", "_redirects"),
-    "utf8",
-  );
-  for (const f of Object.values(release.files)) {
-    assert(sums.includes(f.sha256));
-    if (f.size <= assetLimit)
-      assert.equal(
-        createHash("sha256")
-          .update(await readFile(join(dist, "downloads", release.tag, f.name)))
-          .digest("hex"),
-        f.sha256,
-      );
-    else
-      assert(redirects.includes(`/${release.tag}/${f.name} ${f.upstream} 302`));
-  }
+  await verifyLocalDownloads(dist, release);
   for (const channel of ["latest", "beta"]) {
     const m = JSON.parse(
       await readFile(join(dist, "updates", channel + ".json"), "utf8"),
@@ -288,27 +272,20 @@ async function local() {
 }
 
 async function online(service) {
+  if (service === "downloads") return verifyOnlineDownloads(release);
   const targets =
-    service === "downloads"
-      ? Object.values(release.files).map((f) => [
-          f.url,
-          f.sha256,
-          f.size <= assetLimit,
-        ])
-      : service === "updates"
-        ? ["latest", "beta"].map((c) => [`${feedOrigin}/${c}.json`, null])
-        : service === "www"
-          ? [["https://www.argustask.com/download/", null]]
-          : [
-              [origin + "/", null],
-              [origin + "/en/", null],
-              [origin + "/en/download/", null],
-              [origin + "/docs/guide/", null],
-              [origin + "/docs/dev/", null],
-              [origin + "/docs-search.json", null],
-              [origin + "/.well-known/security.txt", null],
-            ];
-  for (const [url, hash, mirrored] of targets) {
+    service === "updates"
+      ? ["latest", "beta"].map((c) => [`${feedOrigin}/${c}.json`, null])
+      : service === "www"
+        ? [["https://www.argustask.com/download/", null]]
+        : [
+            ...languages.flatMap(({ id }) => ["/", "/download/", "/changelog/"].map(path => [origin + localized(id, path), null])),
+            [origin + "/docs/guide/", null],
+            [origin + "/docs/dev/", null],
+            [origin + "/docs-search.json", null],
+            [origin + "/.well-known/security.txt", null],
+          ];
+  for (const [url] of targets) {
     let last;
     for (let attempt = 0; attempt < 6; attempt++) {
       try {
@@ -321,12 +298,7 @@ async function online(service) {
           assert.equal(res.headers.get("location"), origin + "/download/");
         } else {
           assert.equal(res.status, 200, url);
-          if (hash) {
-            if (mirrored) assert.equal(new URL(res.url).origin, downloadOrigin);
-            const digest = createHash("sha256");
-            for await (const block of res.body) digest.update(block);
-            assert.equal(digest.digest("hex"), hash);
-          } else if (service === "updates") {
+          if (service === "updates") {
             const name = new URL(url).pathname.slice(1);
             assert.deepEqual(
               await res.json(),

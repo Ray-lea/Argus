@@ -20,20 +20,20 @@
     "synReceived": "SYN reçu",
     "finWait1": "Fermeture",
     "finWait2": "Fermeture",
-    "closeWait": "Fermer l'attente",
+    "closeWait": "En attente de fermeture",
     "closing": "Fermeture",
     "lastAck": "Fermeture",
-    "timeWait": "Temps d'attente",
+    "timeWait": "Temps d’attente",
     "closed": "Fermée"
   },
   "menu": {
-    "end": "Fin {name}",
+    "end": "Terminer {name}",
     "close": "Fermer cette connexion",
-    "copyLocal": "Copier l'adresse locale",
-    "copyRemote": "Copier l'adresse distante"
+    "copyLocal": "Copier l’adresse locale",
+    "copyRemote": "Copier l’adresse distante"
   },
   "copied": {
-    "local": "adresse locale\nAdresse distante",
+    "local": "adresse locale",
     "remote": "adresse distante"
   },
   "search": "Port, adresse ou processus, par ex. 8080",
@@ -46,10 +46,10 @@
     "remotePort": "Port distant"
   },
   "exited": "Terminé",
-  "unowned": "Aucun processus de possession",
+  "unowned": "Aucun processus associé",
   "loading": "Lecture des connexions…",
   "noMatch": "Aucune connexion correspondante",
-  "noMatchPort": "Aucune connexion correspondante : aucun programme n'utilise le port {port}",
+  "noMatchPort": "Aucune connexion correspondante : aucun programme n’utilise le port {port}",
   "clearFilter": "Effacer les filtres",
   "note": "Mises à jour toutes les 2 secondes. Double-cliquez sur une ligne pour accéder à son processus."
 }

@@ -154,6 +154,17 @@ impl Desktop {
             .unwrap_or_else(|| text(info, "version"))
     }
 
+    pub(in crate::frontend) fn build_label(&self) -> String {
+        use argus_app::config::{BuildKind, build_kind};
+        let kind = match text(&self.data["info"], "buildKind") {
+            "development" => BuildKind::Development,
+            "test" => BuildKind::Test,
+            "stable" => BuildKind::Stable,
+            _ => build_kind(self.shown_version(), cfg!(debug_assertions)),
+        };
+        label(kind.label_key())
+    }
+
     /// A card glyph at the cards' 20 px.
     pub(in crate::frontend) fn glyph(&self, name: &str) -> AnyElement {
         icon(name, self.palette.ink)
@@ -358,10 +369,12 @@ impl Desktop {
                     .py(px(8.))
                     .border_t_1()
                     .border_color(p.stroke)
+                    .when(id == "taskManager", |d| d.flex_col().items_start())
                     .child(
                         div()
                             .flex_1()
                             .min_w_0()
+                            .when(id == "taskManager", |d| d.w_full())
                             .text_size(theme::font(12.))
                             .text_color(p.muted)
                             .child(note)
@@ -375,6 +388,7 @@ impl Desktop {
                             .flex()
                             .items_center()
                             .gap(px(8.))
+                            .when(id == "taskManager", |d| d.w_full().flex_wrap())
                             .children(controls),
                     ),
             )
@@ -1568,6 +1582,7 @@ impl Desktop {
     fn task_manager_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let status = self.data.get("taskmgr").cloned().unwrap_or(Value::Null);
         let busy = self.ui.busy.contains("taskmgr");
+        let opening = self.ui.busy.contains("nativeTaskmgr");
         let checking = !self.data.contains_key("taskmgr");
         let state_name = text(&status, "state");
         let state = if busy {
@@ -1595,7 +1610,7 @@ impl Desktop {
                 None,
                 Tone::Plain,
             )
-            .inert(busy || checking)
+            .inert(busy || checking || opening)
             .on_click(cx.listener(|this, _, window, cx| {
                 this.ui.errors.remove("taskmgr");
                 this.data.remove("taskmgr");
@@ -1617,7 +1632,7 @@ impl Desktop {
                     None,
                     Tone::Plain,
                 )
-                .inert(busy || checking)
+                .inert(busy || checking || opening)
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.manage_task_manager("enable".into(), window, cx)
                 }))
@@ -1632,13 +1647,44 @@ impl Desktop {
                     None,
                     Tone::Plain,
                 )
-                .inert(busy || checking)
+                .inert(busy || checking || opening)
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.manage_task_manager("restore".into(), window, cx)
                 }))
                 .into_any_element(),
             );
         }
+        let open_label = label(if opening {
+            "settings.taskManager.openingNative"
+        } else {
+            "settings.taskManager.openNative"
+        });
+        controls.push(
+            self.btn("taskmgr-open-native", "", None, Tone::Plain)
+                .accessibility_label(open_label.clone())
+                .child(div().flex_shrink_0().child(self.glyph("ExternalLinkIcon")))
+                .child(div().min_w_0().whitespace_normal().child(open_label))
+                .max_w_full()
+                .h_auto()
+                .min_h(px(32.))
+                .py(px(6.))
+                .whitespace_normal()
+                .inert(busy || opening)
+                .tooltip(|window, cx| {
+                    widgets::tooltip(label("settings.taskManager.openNativeHint"), window, cx)
+                })
+                .on_click(cx.listener(|this, _, window, cx| {
+                    if this.options.fixture.is_some()
+                        || this.ui.busy.contains("taskmgr")
+                        || !this.ui.busy.insert("nativeTaskmgr".into())
+                    {
+                        return;
+                    }
+                    this.ui.errors.remove("taskmgr");
+                    this.request("open_native_task_manager", json!({}), None, window, cx);
+                }))
+                .into_any_element(),
+        );
         let note = status["detail"]
             .as_str()
             .map(str::to_owned)
@@ -1698,7 +1744,10 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.ui.busy.contains("taskmgr") || self.options.fixture.is_some() {
+        if self.ui.busy.contains("taskmgr")
+            || self.ui.busy.contains("nativeTaskmgr")
+            || self.options.fixture.is_some()
+        {
             return;
         }
         self.ui.busy.insert("taskmgr".into());
@@ -2437,7 +2486,7 @@ impl Desktop {
         let mut rules = values(&self.data["settings"]["rules"]).to_vec();
         if rules
             .iter()
-            .any(|r| text(r, "name").eq_ignore_ascii_case(&name))
+            .any(|r| model::same_executable_name(text(r, "name"), &name))
         {
             self.ui.errors.insert(
                 "ruleDraft".into(),
@@ -2535,7 +2584,7 @@ impl Desktop {
             let enabled = boolean(&rule, "enabled");
             let process = values(&self.snapshot["processes"])
                 .iter()
-                .find(|q| text(q, "name").eq_ignore_ascii_case(&name))
+                .find(|q| model::same_executable_name(text(q, "name"), &name))
                 .cloned();
             let stat = stats.get(&id).cloned().or_else(|| {
                 values(&stats)
@@ -2791,10 +2840,7 @@ impl Desktop {
         let current = tr!(
             "settings.update.current",
             version = self.shown_version(),
-            channel = label(&format!(
-                "updates.dialog.{}",
-                text(settings, "updateChannel")
-            ))
+            build = self.build_label()
         );
         let offered = matches!(
             state.as_str(),
@@ -3851,6 +3897,9 @@ impl Desktop {
                     cx,
                 );
             }
+            "open_native_task_manager" => {
+                self.ui.busy.remove("nativeTaskmgr");
+            }
             "manage_task_manager" => {
                 self.ui.busy.remove("taskmgr");
                 self.data.insert("taskmgr".into(), value.clone());
@@ -3936,6 +3985,13 @@ impl Desktop {
                     Some("privilege"),
                     window,
                     cx,
+                );
+            }
+            "open_native_task_manager" => {
+                self.ui.busy.remove("nativeTaskmgr");
+                self.ui.errors.insert(
+                    "taskmgr".into(),
+                    tr!("settings.taskManager.openNativeFailed", error = message),
                 );
             }
             "manage_task_manager" => {

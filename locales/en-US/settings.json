@@ -2,7 +2,7 @@
   "sections": {
     "language": "Language and appearance",
     "startup": "Startup and tray",
-    "hotkey": "Keyboard shortcut",
+    "hotkey": "Keyboard shortcuts",
     "privilege": "Permissions",
     "motion": "Animations",
     "data": "Data and history",
@@ -16,14 +16,14 @@
   "refreshStatus": "Refresh status",
   "vitals": {
     "title": "Process overview band",
-    "desc": "In automatic mode, reserves space for the band and 10 process rows. Collapses when space is insufficient, regardless of grouping or filtering.",
+    "desc": "Automatic mode reserves space for the overview band and 10 process rows, and collapses the band when space is insufficient. Collapsing groups or filtering does not affect this decision.",
     "auto": "Automatic",
     "show": "Always show",
     "hide": "Hidden"
   },
   "visibility": {
     "title": "System process hiding rules",
-    "desc": "Customize programs to always show or also hide. Both pages share these rules; use their toolbar icon to enable hiding."
+    "desc": "Customize programs to always show or also hide. Processes and Connections share these rules; use the toolbar icon to enable hiding."
   },
   "language": {
     "title": "Display language",
@@ -32,7 +32,7 @@
   },
   "theme": {
     "title": "Theme",
-    "desc": "“Same as Windows” follows the Windows app mode and changes with it.",
+    "desc": "“Same as Windows” follows the Windows app mode and switches between light and dark when Windows does.",
     "system": "Same as Windows",
     "light": "Light",
     "dark": "Dark",
@@ -182,10 +182,14 @@
     "desc": "Makes Ctrl+Shift+Esc and other Task Manager shortcuts open Argus. Off by default; the standalone recovery tool doesn't depend on the interface or the service. Updating the privileged service also updates the replacement and keeps it enabled; uninstalling the service restores Windows Task Manager.",
     "confirm": {
       "title": "Replace Task Manager?",
-      "body": "Ctrl+Shift+Esc and other ways of opening Task Manager will open Argus. The change applies to the whole PC; other accounts still open Windows Task Manager. Turning it on requires administrator permission; if Argus fails to start, the built-in Task Manager is opened instead. Keep the standalone recovery tool so the change can be undone if the interface or the service can't run."
+      "body": "Ctrl+Shift+Esc and other ways of opening Task Manager will open Argus. The change applies to the whole PC; other accounts still open Windows Task Manager. Turning it on requires administrator permission. If Argus fails to start, it attempts to open the built-in Task Manager. Keep the standalone recovery tool so the change can be undone if the interface or the service can't run."
     },
     "enable": "Enable replacement",
     "restore": "Restore Windows Task Manager",
+    "openNative": "Open Windows Task Manager once",
+    "openingNative": "Opening…",
+    "openNativeHint": "Opens Windows Task Manager once and keeps the current replacement setting.",
+    "openNativeFailed": "Could not open Windows Task Manager: {error}",
     "enabled": "Task Manager replacement is enabled.",
     "restored": "Windows Task Manager has been restored.",
     "busy": "Applying Task Manager settings…",
@@ -316,7 +320,7 @@
       "installing": "Starting the installer for {version}…",
       "error": "Update failed"
     },
-    "current": "Current version {version} · {channel}",
+    "current": "Current version {version} · {build}",
     "detail": {
       "ready": "Installing requires administrator permission. Argus exits during the installation; the installer only shows its progress and restarts Argus when it's done.",
       "portable": "The portable version doesn't update automatically. Download the new version from the release page.",
@@ -335,7 +339,7 @@
     },
     "whatsNew": {
       "title": "Show what's new after updating",
-      "desc": "Shows what the new version changed the first time the window opens after an update, once per version. When this is off, only a notice in the corner says that Argus was updated.",
+      "desc": "Shows what the new version changed the first time the window opens after an update, once per version. When this is off, only a notice in the bottom-right corner says that Argus was updated.",
       "view": "See this version's changes"
     },
     "channel": {
@@ -365,7 +369,7 @@
     }
   },
   "about": {
-    "tagline": "A fast, modern and informative task manager for Windows.",
+    "tagline": "A fast, modern, information-rich Windows task manager.",
     "admin": "Running as administrator.",
     "service": "Running as a standard user. The privileged service is connected and carries out actions that need administrator rights.",
     "standard": "Running as a standard user. Information and actions for some system processes are limited.",
@@ -389,7 +393,7 @@
     },
     "community": {
       "title": "Feedback and community",
-      "desc": "Join the QQ group {group} to report problems, suggest features or talk with other users (in Chinese).",
+      "desc": "Join the QQ group {group} to report problems, suggest features or share experiences with other users (in Chinese).",
       "join": "Join QQ group",
       "copy": "Copy group number",
       "number": "group number"

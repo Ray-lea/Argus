@@ -2,6 +2,8 @@ import { Icon } from "@/components/site/Icon";
 import { SiteLink } from "@/components/site/SiteLink";
 import { localized, repo, type Language, type ReleaseNote } from "@/lib/site";
 import ReleasePoints from "./ReleasePoints";
+import { copyFor, localize } from "@/lib/site-i18n";
+import { dateLocale, languageInfo, notesLanguage } from "@/lib/languages";
 
 // The latest releases from the changelog as a timeline: a summary of each and
 // the names of what it added and fixed.
@@ -11,24 +13,24 @@ const words = {
 };
 export const longDate = (date: string, lang: Language) => {
   const [y, m, d] = date.split("-").map(Number);
-  return lang === "en"
-    ? new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
-    : `${y} 年 ${m} 月 ${d} 日`;
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(dateLocale(lang), { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
 };
 // The intro, or else the first entry up to the end of its first sentence.
 function summary(note: ReleaseNote, lang: Language) {
   if (note.intro) return note.intro;
   const first = note.groups.find((g) => g.items.length)?.items[0];
   if (!first) return "";
-  const sentence = lang === "en" ? first.text.split(/(?<=\.)\s/)[0] : first.text.split(/(?<=。)/)[0];
-  return first.label ? first.label + (lang === "en" ? ": " : "：") + sentence : sentence;
+  const english = notesLanguage(lang) === "en";
+  const sentence = english ? first.text.split(/(?<=\.)\s/)[0] : first.text.split(/(?<=。)/)[0];
+  return first.label ? first.label + (english ? ": " : "：") + sentence : sentence;
 }
 
 export default function Releases({ notes, lang, count = 5 }: { notes: ReleaseNote[]; lang: Language; count?: number }) {
-  const w = words[lang],
+  const w = copyFor(lang, words),
     page = localized(lang, "/changelog/");
   return (
     <>
+      {lang !== notesLanguage(lang) && <p className="release-language">{localize(lang, notesLanguage(lang) === "zh" ? "Release notes are shown in Simplified Chinese." : "Release notes are shown in English.")}</p>}
       <ol className="releases">
         {notes.slice(0, count).map((note, i) => {
           const named = note.groups
@@ -47,7 +49,7 @@ export default function Releases({ notes, lang, count = 5 }: { notes: ReleaseNot
                 {(i === 0 || note.withdrawn) && (
                   <span className={"release-badge" + (note.withdrawn ? " is-muted" : "")}>{note.withdrawn ? w.withdrawn : w.latest}</span>
                 )}
-                <p>{summary(note, lang)}</p>
+                <p lang={languageInfo(notesLanguage(lang)).tag}>{summary(note, lang)}</p>
                 {named.length > 0 && <ReleasePoints items={named} limit={6} show={w.show(named.length - 6)} hide={w.hide} />}
                 {counted.length > 0 && (
                   <p className="release-counts figures">

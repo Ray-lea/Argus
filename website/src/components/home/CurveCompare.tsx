@@ -1,4 +1,6 @@
 "use client";
+import { useSiteCopy } from "@/components/site/LocaleProvider";
+import { dateLocale, type Language } from "@/lib/languages";
 import { useEffect, useRef, useState } from "react";
 import Curve, { advanceClock, type SampleClock } from "../replica/Curve";
 import { sampleAt, span } from "../replica/model";
@@ -26,8 +28,8 @@ const text = {
 const common = [48, 50, 60, 75, 90, 100, 120, 144, 165, 180, 200, 240, 280, 360];
 
 // The same recorded CPU load drawn both ways, side by side.
-export default function CurveCompare({ lang }: { lang: "zh" | "en" }) {
-  const t = text[lang];
+export default function CurveCompare({ lang }: { lang: Language }) {
+  const t = useSiteCopy(text);
   const root = useRef<HTMLDivElement>(null);
   const [tick, setTick] = useState(0);
   // Each visit shows another stretch of the made-up load. The server draws the

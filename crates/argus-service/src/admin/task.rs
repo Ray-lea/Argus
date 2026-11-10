@@ -97,6 +97,32 @@ impl Scheduler {
             result => result,
         }
     }
+    pub fn exists(&self, id: &str, sid: &str) -> Result<bool> {
+        match self.get(id, sid) {
+            Ok(_) => Ok(true),
+            Err(2) => Ok(false),
+            Err(code) => Err(code),
+        }
+    }
+    pub fn remove_all(&self, id: &str) -> Result<()> {
+        if !valid_id(id) {
+            return Err(87);
+        }
+        let tasks = unsafe { self.folder.GetTasks(TASK_ENUM_HIDDEN.0) }.map_err(win)?;
+        let mut owners = Vec::new();
+        for index in 1..=unsafe { tasks.Count() }.map_err(win)? {
+            let task = unsafe { tasks.get_Item(&VARIANT::from(index)) }.map_err(win)?;
+            let name = unsafe { task.Name() }.map_err(win)?.to_string();
+            if let Some(sid) = task_owner(&name, id) {
+                owners.push(sid.to_owned());
+            }
+        }
+        // Collect first: deleting tasks changes the collection indices.
+        for sid in owners {
+            self.remove(id, &sid)?;
+        }
+        Ok(())
+    }
     pub fn register(&self, id: &str, sid: &str, image: &Path) -> Result<()> {
         let xml = xml(sid, image);
         let acl = format!("O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;{sid})");
@@ -153,6 +179,11 @@ impl Scheduler {
 }
 fn name(id: &str, sid: &str) -> String {
     format!("Argus.{id}.{sid}")
+}
+fn task_owner<'a>(name: &'a str, id: &str) -> Option<&'a str> {
+    let sid = name.strip_prefix(&format!("Argus.{id}."))?;
+    security::validate_sid(sid).ok()?;
+    Some(sid)
 }
 fn escape(value: &str) -> String {
     value
@@ -237,6 +268,61 @@ pub(super) fn run(id: &str, sid: &str, image: &Path, ticket: &str) -> Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn removal_names_are_scoped_to_the_exact_application_and_a_user_sid() {
+        let id = "dev.argus.taskmanager";
+        let sid = "S-1-5-21-1-2-3-1001";
+        assert_eq!(task_owner(&name(id, sid), id), Some(sid));
+        for other in [
+            name("dev.argus.taskmanager.test", sid),
+            name(id, "S-1-5-18"),
+            name(id, "S-1-5-32-544"),
+            format!("{}-extra", name(id, sid)),
+            format!("Other.{}", name(id, sid)),
+        ] {
+            assert_eq!(task_owner(&other, id), None);
+        }
+    }
+
+    #[test]
+    #[ignore = "creates and removes two isolated, non-elevated tasks without running them"]
+    fn ordinary_user_revokes_tasks_without_runtime_directories() {
+        assert!(!argus_core::privilege::is_elevated());
+        let scheduler = Scheduler::new().unwrap();
+        let sid = security::current_sid().unwrap();
+        let id = format!("dev.argus.taskmanager.test.revoke-{}", guid().unwrap());
+        let other = format!("{id}-other");
+        struct Tasks<'a>(&'a Scheduler, String, String, String);
+        impl Drop for Tasks<'_> {
+            fn drop(&mut self) {
+                let _ = self.0.remove(&self.1, &self.3);
+                let _ = self.0.remove(&self.2, &self.3);
+            }
+        }
+        let _cleanup = Tasks(&scheduler, id.clone(), other.clone(), sid.clone());
+        let image = std::env::current_exe().unwrap();
+        let xml = xml(&sid, &image).replace("HighestAvailable", "LeastPrivilege");
+        for id in [&id, &other] {
+            unsafe {
+                scheduler.folder.RegisterTask(
+                    &BSTR::from(name(id, &sid)),
+                    &BSTR::from(xml.as_str()),
+                    TASK_CREATE.0,
+                    &VARIANT::from(sid.as_str()),
+                    &VARIANT::default(),
+                    TASK_LOGON_INTERACTIVE_TOKEN,
+                    &VARIANT::default(),
+                )
+            }
+            .unwrap();
+        }
+        assert!(scheduler.exists(&id, &sid).unwrap());
+        scheduler.remove_all(&id).unwrap();
+        scheduler.remove_all(&id).unwrap();
+        assert!(!scheduler.exists(&id, &sid).unwrap());
+        assert!(scheduler.exists(&other, &sid).unwrap());
+    }
 
     #[test]
     #[ignore = "registers only a temporary task in an explicitly configured disposable VM"]

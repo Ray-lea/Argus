@@ -3,13 +3,16 @@
 //! sample, with wildcard counters read back as (instance, value) pairs.
 
 use windows::Win32::System::Performance::{
-    PDH_FMT_COUNTERVALUE, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY,
-    PDH_MORE_DATA, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData,
-    PdhGetFormattedCounterArrayW, PdhGetFormattedCounterValue, PdhOpenQueryW,
+    PDH_FMT, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY, PDH_MORE_DATA,
+    PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterArrayW,
+    PdhOpenQueryW,
 };
 use windows::core::PCWSTR;
 
 use crate::util::AlignedBuf;
+
+// pdh.h; this scaling flag is omitted from the generated Windows bindings.
+const PDH_FMT_NOCAP100: PDH_FMT = PDH_FMT(0x0000_8000);
 
 pub(crate) struct Query(PDH_HQUERY);
 
@@ -40,16 +43,26 @@ impl Drop for Query {
     }
 }
 
-pub(crate) fn value(counter: PDH_HCOUNTER) -> Option<f64> {
-    let mut v = PDH_FMT_COUNTERVALUE::default();
-    (unsafe { PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, None, &mut v) } == 0)
-        .then_some(unsafe { v.Anonymous.doubleValue })
-}
-
 /// Every instance of a wildcard counter, as (instance name, value).
 pub(crate) fn array(counter: PDH_HCOUNTER, buf: &mut AlignedBuf) -> Vec<(String, f64)> {
     let mut out = Vec::new();
     each(counter, buf, |name, v| out.push((name.to_string(), v)));
+    out
+}
+
+/// CPU boost performance may legitimately exceed 100 percent.
+pub(crate) fn array_uncapped(counter: PDH_HCOUNTER, buf: &mut AlignedBuf) -> Vec<(String, f64)> {
+    let mut out = Vec::new();
+    formatted_array(
+        counter,
+        buf,
+        PDH_FMT(PDH_FMT_DOUBLE.0 | PDH_FMT_NOCAP100.0),
+        |name, value| {
+            if let Some(value) = value {
+                out.push((name.to_owned(), value));
+            }
+        },
+    );
     out
 }
 
@@ -67,12 +80,20 @@ pub(crate) fn each(counter: PDH_HCOUNTER, buf: &mut AlignedBuf, mut f: impl FnMu
 pub(crate) fn each_value(
     counter: PDH_HCOUNTER,
     buf: &mut AlignedBuf,
+    f: impl FnMut(&str, Option<f64>),
+) -> bool {
+    formatted_array(counter, buf, PDH_FMT_DOUBLE, f)
+}
+
+fn formatted_array(
+    counter: PDH_HCOUNTER,
+    buf: &mut AlignedBuf,
+    format: PDH_FMT,
     mut f: impl FnMut(&str, Option<f64>),
 ) -> bool {
     let (mut size, mut count) = (0u32, 0u32);
-    let status = unsafe {
-        PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, None)
-    };
+    let status =
+        unsafe { PdhGetFormattedCounterArrayW(counter, format, &mut size, &mut count, None) };
     if status != PDH_MORE_DATA || size == 0 {
         return false;
     }
@@ -81,9 +102,8 @@ pub(crate) fn each_value(
         buf.grow_to(size as usize);
     }
     let items = buf.as_mut_ptr().cast::<PDH_FMT_COUNTERVALUE_ITEM_W>();
-    if unsafe {
-        PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, Some(items))
-    } != 0
+    if unsafe { PdhGetFormattedCounterArrayW(counter, format, &mut size, &mut count, Some(items)) }
+        != 0
     {
         return false;
     }

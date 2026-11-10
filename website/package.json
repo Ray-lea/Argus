@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "next typegen && tsc --noEmit -p . && node scripts/verify.mjs",
+    "check": "next typegen && tsc --noEmit -p . && node --test ../scripts/tests/website-locales.test.mjs && node scripts/verify.mjs",
     "check:browser": "node scripts/check-navigation.mjs",
     "dev": "node scripts/serve.mjs",
     "preview": "node scripts/preview.mjs"

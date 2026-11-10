@@ -89,6 +89,6 @@
     "paused": "已暫停重新整理",
     "interval": "每 {seconds} 秒重新整理",
     "version": "v{version}",
-    "versionHint": "Argus {version} · {channel}\n按一下檢視本版本的更新內容，按一下滑鼠右鍵複製版本號"
+    "versionHint": "Argus {version} · {build}\n按一下檢視本版本的更新內容，按一下滑鼠右鍵複製版本號"
   }
 }

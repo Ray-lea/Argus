@@ -11,7 +11,7 @@ export const contentDir = join(websiteRoot, "content");
 export const assetsDir = join(websiteRoot, "public", "assets");
 
 // Raise when the shape of site.json changes, so content prepared by older scripts is rebuilt.
-export const siteFormat = 6;
+export const siteFormat = 7;
 
 export async function put(base, relative, contents) {
   const file = join(base, relative);

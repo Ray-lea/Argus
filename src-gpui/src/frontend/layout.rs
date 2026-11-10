@@ -1080,10 +1080,7 @@ impl Desktop {
         let version_hint = tr!(
             "shell.status.versionHint",
             version = build,
-            channel = label(&format!(
-                "updates.dialog.{}",
-                text(&self.data["settings"], "updateChannel")
-            ))
+            build = self.build_label()
         );
         let version = Button::new("version-badge")
             .flex()

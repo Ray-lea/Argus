@@ -43,8 +43,8 @@ const STAT_GAP_Y: f32 = 14.;
 const STATS_GAP: f32 = 28.;
 /// Widest a figure's explanation runs before it wraps.
 const HINT_WIDTH: f32 = 420.;
-/// The CPU's figures and specs go side by side from this width each.
-const CPU_STATS_MIN: f32 = 320.;
+/// Figures and specs go side by side from this width each at the base font size.
+const STATS_MIN: f32 = 320.;
 /// Smallest chart heights before the page scrolls (main, half, small).
 const MAIN_MIN: f32 = 120.;
 const HALF_MIN: f32 = 80.;
@@ -52,6 +52,21 @@ const SMALL_MIN: f32 = 64.;
 /// A detail card at most this tall (its content box) draws the chart
 /// captions inside the frames: `@container perf (max-height: 640px)`.
 const SHORT_CARD: f32 = 640.;
+
+fn stats_layout(width: f32, cpu: bool, text_scale: f32) -> (bool, u16) {
+    let stacked = width < 2. * STATS_MIN * text_scale + STATS_GAP;
+    let stats_width = if stacked {
+        width
+    } else if cpu {
+        (width - STATS_GAP) / 2.
+    } else {
+        (width - STATS_GAP) * 1.1 / 2.1
+    };
+    let columns = ((stats_width + STAT_GAP_X) / (STAT_MIN * text_scale + STAT_GAP_X))
+        .floor()
+        .max(1.) as u16;
+    (stacked, columns)
+}
 
 #[derive(Clone)]
 pub(super) struct Device {
@@ -869,6 +884,9 @@ impl Desktop {
         note: Option<String>,
         cx: &App,
     ) -> AnyElement {
+        // A long label (often a translation) wraps to a second line instead of
+        // being cut off. Tiles stay top-aligned: some carry a note under the
+        // value, so pushing values to the row's bottom would misalign them.
         div()
             .min_w_0()
             .flex()
@@ -877,7 +895,8 @@ impl Desktop {
                 div()
                     .text_size(theme::font(12.))
                     .text_color(self.palette.muted)
-                    .truncate()
+                    .line_clamp(2)
+                    .text_ellipsis()
                     .child(title.into()),
             )
             .child(
@@ -969,7 +988,7 @@ impl Desktop {
             }))
             .into_any_element()
     }
-    /// Live figures beside the specs, the CPU's stacking when the card is narrow.
+    /// Stack figures and specs when the card cannot fit both at the chosen font size.
     fn perf_stats(
         &self,
         stats: Vec<AnyElement>,
@@ -978,18 +997,7 @@ impl Desktop {
         window: &Window,
     ) -> AnyElement {
         let width = self.detail_width(window);
-        let (stacked, stats_width) = if cpu {
-            if width >= 2. * CPU_STATS_MIN + STATS_GAP {
-                (false, (width - STATS_GAP) / 2.)
-            } else {
-                (true, width)
-            }
-        } else {
-            (false, (width - STATS_GAP) * 1.1 / 2.1)
-        };
-        let columns = ((stats_width + STAT_GAP_X) / (STAT_MIN + STAT_GAP_X))
-            .floor()
-            .max(1.) as u16;
+        let (stacked, columns) = stats_layout(width, cpu, f32::from(theme::font(13.)) / 13.);
         let grid = div()
             .min_w_0()
             .grid()
@@ -1229,7 +1237,11 @@ impl Desktop {
             ),
             self.stat(
                 label("performance.cpu.speed"),
-                crate::regional::number!("{:.2}", number(hw, "cpuMhz") / 1000.),
+                hw["cpuMhz"]
+                    .as_f64()
+                    .filter(|mhz| *mhz > 0.)
+                    .map(|mhz| crate::regional::number!("{:.2}", mhz / 1000.))
+                    .unwrap_or_else(missing),
                 Some("GHz".into()),
                 None,
                 cx,
@@ -2211,17 +2223,44 @@ impl Desktop {
         if details {
             return vec![head, self.disk_details(device, window, cx)];
         }
+        let counter_volumes = values(&disk["performanceVolumes"]);
+        let volume_note = (!counter_volumes.is_empty()).then(|| {
+            let volumes = counter_volumes
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ");
+            if counter_volumes.len() == 1 {
+                tr!("performance.disk.volumeCounters", volumes = volumes)
+            } else {
+                tr!("performance.disk.volumeCountersMultiple", volumes = volumes)
+            }
+        });
         let head = div()
             .flex()
             .flex_col()
             .child(head)
-            .when(!disk["active"].is_number(), |d| {
+            .when(
+                ["active", "read", "write", "responseMs"]
+                    .iter()
+                    .all(|field| !disk[*field].is_number()),
+                |d| {
+                    d.child(
+                        div()
+                            .mt(px(6.))
+                            .text_size(theme::font(12.))
+                            .text_color(p.muted)
+                            .child(label("performance.disk.performanceUnavailable")),
+                    )
+                },
+            )
+            .when_some(volume_note, |d, note| {
                 d.child(
                     div()
                         .mt(px(6.))
                         .text_size(theme::font(12.))
                         .text_color(p.muted)
-                        .child(label("performance.disk.performanceUnavailable")),
+                        .child(note),
                 )
             })
             .into_any_element();
@@ -2551,7 +2590,16 @@ impl Desktop {
                 None,
                 cx,
             ),
-            self.stat(label("common.status"), battery_state(state), None, None, cx),
+            self.stat_element(
+                label("common.status"),
+                div()
+                    .min_w_0()
+                    .whitespace_normal()
+                    .child(battery_state(state))
+                    .into_any_element(),
+                None,
+                cx,
+            ),
         ];
         if let Some(rate) = battery["rate"].as_f64() {
             stats.push(self.stat(
@@ -2704,7 +2752,7 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::cpu_power;
+    use super::{cpu_power, stats_layout};
     use serde_json::json;
 
     #[test]
@@ -2723,5 +2771,16 @@ mod tests {
         );
         assert_eq!(cpu_power(&json!({"package": null, "graphics": 3.0})), None);
         assert_eq!(cpu_power(&serde_json::Value::Null), None);
+    }
+
+    #[test]
+    fn performance_figures_and_specs_stack_before_large_text_collides() {
+        for cpu in [false, true] {
+            assert!(stats_layout(480., cpu, 1.).0);
+            assert!(!stats_layout(900., cpu, 1.).0);
+            assert!(stats_layout(900., cpu, 20. / 13.).0);
+            assert_eq!(stats_layout(80., cpu, 20. / 13.).1, 1);
+            assert!(stats_layout(1200., cpu, 20. / 13.).1 <= stats_layout(1200., cpu, 1.).1);
+        }
     }
 }

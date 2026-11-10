@@ -20,14 +20,14 @@
     "synReceived": "SYN empfangen",
     "finWait1": "Wird geschlossen",
     "finWait2": "Wird geschlossen",
-    "closeWait": "Schließen, warten",
+    "closeWait": "Wartet auf Schließen",
     "closing": "Wird geschlossen",
     "lastAck": "Wird geschlossen",
-    "timeWait": "Zeit warten",
+    "timeWait": "Wartet auf Zeitablauf",
     "closed": "Geschlossen"
   },
   "menu": {
-    "end": "Ende {name}",
+    "end": "{name} beenden",
     "close": "Diese Verbindung schließen",
     "copyLocal": "Lokale Adresse kopieren",
     "copyRemote": "Remote-Adresse kopieren"
@@ -36,7 +36,7 @@
     "local": "lokale Adresse",
     "remote": "Remote-Adresse"
   },
-  "search": "Port, Adresse oder Prozess, z.B. 8080",
+  "search": "Port, Adresse oder Prozess, z. B. 8080",
   "column": {
     "process": "Prozess",
     "protocol": "Protokoll",
@@ -46,7 +46,7 @@
     "remotePort": "Remoteport"
   },
   "exited": "Beendet",
-  "unowned": "Kein Besitzprozess",
+  "unowned": "Kein zugehöriger Prozess",
   "loading": "Verbindungen werden gelesen…",
   "noMatch": "Keine passenden Verbindungen",
   "noMatchPort": "Keine passenden Verbindungen: Kein Programm verwendet Port {port}",

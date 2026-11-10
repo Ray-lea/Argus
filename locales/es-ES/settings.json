@@ -2,7 +2,7 @@
   "sections": {
     "language": "Idioma y apariencia",
     "startup": "Inicio y bandeja",
-    "hotkey": "Atajo de teclado",
+    "hotkey": "Atajos de teclado",
     "privilege": "Permisos",
     "motion": "Animaciones",
     "data": "Datos e historial",
@@ -16,14 +16,14 @@
   "refreshStatus": "Actualizar estado",
   "vitals": {
     "title": "Resumen de recursos",
-    "desc": "En modo automático, reserva espacio para el resumen y 10 filas de procesos. Se oculta si falta espacio, independientemente de los grupos y filtros.",
+    "desc": "El modo automático reserva espacio para el resumen y 10 filas de procesos, y oculta el resumen si falta espacio. Contraer grupos o aplicar filtros no afecta a este cálculo.",
     "auto": "Automático",
     "show": "Mostrar siempre",
     "hide": "Oculto"
   },
   "visibility": {
     "title": "Reglas para ocultar procesos del sistema",
-    "desc": "Personaliza programas para mostrarlos siempre o también ocultarlos. Ambas páginas comparten estas reglas; use el ícono de su barra de herramientas para habilitar la ocultación."
+    "desc": "Personalice qué programas se muestran siempre y cuáles se ocultan además de los del sistema. Procesos y Conexiones comparten estas reglas; active la ocultación con el icono de la barra de herramientas."
   },
   "language": {
     "title": "Idioma de la interfaz",
@@ -32,7 +32,7 @@
   },
   "theme": {
     "title": "Tema",
-    "desc": "«Igual que Windows» sigue el modo de aplicaciones de Windows y sus cambios.",
+    "desc": "«Igual que Windows» utiliza el modo de aplicaciones de Windows y cambia entre claro y oscuro junto con el sistema.",
     "system": "Igual que Windows",
     "light": "Claro",
     "dark": "Oscuro",
@@ -46,7 +46,7 @@
   },
   "startup": {
     "autostart": {
-      "title": "Iniciar al acceder a Windows",
+      "title": "Iniciar al iniciar sesión en Windows",
       "desc": "Se inicia en la bandeja del sistema. Abra la ventana con el atajo de teclado o el icono de la bandeja.",
       "error": "No se pudo cambiar la configuración de inicio: {error}"
     },
@@ -56,7 +56,7 @@
     },
     "trayPage": {
       "title": "Reabrir desde la bandeja",
-      "desc": "Aplica al volver a abrir a través de la bandeja o un acceso directo. Restaurar una ventana minimizada mantiene la página actual.",
+      "desc": "Se aplica al volver a abrir la ventana desde la bandeja o con un atajo de teclado. Al restaurarla tras minimizarla, se conserva la página actual.",
       "current": "Mantener página actual",
       "default": "Abrir página predeterminada"
     },
@@ -68,12 +68,12 @@
   },
   "shortcuts": {
     "title": "Atajos de teclado",
-    "desc": "Vea accesos directos para navegación, pausar actualizaciones, procesar acciones y más.",
+    "desc": "Consultar los atajos para cambiar de página, pausar la actualización y realizar operaciones sobre procesos.",
     "view": "Ver atajos",
-    "scope": "Acciones cotidianas, navegación y accesos directos a listas.",
-    "global": "Mundial",
+    "scope": "Atajos para operaciones habituales, navegación y listas.",
+    "global": "Global",
     "globalHint": "Configuración actual. También funciona mientras se usan otras aplicaciones.",
-    "inputHint": "Los atajos dentro de la aplicación no afectan a otras aplicaciones. Los accesos directos al final del proceso están inactivos en campos de texto, cuadros de diálogo y menús.",
+    "inputHint": "Los atajos de la ventana no afectan a otras aplicaciones. Los atajos para finalizar procesos no se activan en campos de texto, diálogos ni menús.",
     "disabled": "No habilitado",
     "navigation": "Cambiar de página",
     "pauseTitle": "Pausar mientras se mantiene pulsado",
@@ -81,7 +81,7 @@
     "search": "Ir a búsqueda de procesos. La tecla / también funciona cuando no se escribe y, en la página Procesos, al escribir una letra o un dígito se inicia una búsqueda.",
     "pause": "Mantenga presionado para pausar las actualizaciones de Procesos o Rendimiento; suelte para reanudar. Una pausa manual permanece vigente.",
     "end": "Finaliza el proceso o grupo de aplicaciones seleccionado, con confirmación.",
-    "taskManager": "Abra Argus cuando el reemplazo de Administrador de tareas esté habilitado.",
+    "taskManager": "Abrir Argus cuando está activado «Sustituir el Administrador de tareas».",
     "close": "Cerrar referencia",
     "table": "Cuando una lista tiene el foco",
     "select": "Seleccione el elemento anterior/siguiente",
@@ -96,13 +96,13 @@
     "time": "Seleccione el punto anterior/siguiente en el tiempo",
     "timeJump": "Retroceder / avanzar en una cantidad mayor",
     "timeEnds": "Seleccione el punto en el tiempo más antiguo o más reciente",
-    "latest": "Borra la selección de tiempo y vuelve a los datos más recientes"
+    "latest": "Borrar la selección temporal y volver a los datos más recientes"
   },
   "hotkey": {
     "title": "Mostrar u ocultar Argus",
-    "desc": "Funciona en la mayoría de los programas. Una combinación suele tener Ctrl, Alt o Win más una tecla normal; Cualquier lado de un modificador funciona.",
-    "help": "Presione y suelte una combinación de teclas para guardarlo. Esc cancela; La tecla de retroceso desactiva el acceso directo.",
-    "recording": "Presione una nueva combinación de teclas...",
+    "desc": "Funciona en la mayoría de los programas. La combinación suele incluir Ctrl, Alt o Win y una tecla normal; no se distingue entre modificadores izquierdos y derechos.",
+    "help": "Pulse y suelte una combinación de teclas para guardarla. Esc cancela; Backspace desactiva el atajo.",
+    "recording": "Presione una nueva combinación de teclas…",
     "change": "Cambiar",
     "reset": "Restaurar valor predeterminado",
     "retry": "Reintentar",
@@ -110,12 +110,12 @@
     "rerecord": "Grabar de nuevo",
     "done": {
       "saved": "Guardado. El atajo ahora es {keys}",
-      "off": "El acceso directo está desactivado. La combinación se mantiene; vuelva a encenderlo con el interruptor."
+      "off": "El atajo está desactivado y se ha conservado la combinación. Puede volver a activarlo con el interruptor."
     },
     "unknownKey": "Esta tecla",
     "hint": {
       "order": "Mantenga presionados los modificadores (Ctrl, Alt, Shift o Win) primero y luego presione la otra tecla.",
-      "multipleKeys": "Sólo una tecla normal: un atajo global es Ctrl, Alt, Shift o Win más una sola tecla más, por lo que no se pueden combinar dos teclas normales.",
+      "multipleKeys": "Solo una tecla normal: un atajo global es Ctrl, Alt, Shift o Win más una sola tecla más, por lo que no se pueden combinar dos teclas normales.",
       "lockKey": "Bloq Mayús, Bloq Num y Bloq Despl no forman parte de una combinación y se ignoran.",
       "maybeTaken": "Si no sucede nada después de presionar una combinación, es posible que Windows u otra aplicación la esté usando."
     },
@@ -123,52 +123,52 @@
       "common": "{shortcut} tiene su propio uso en muchas aplicaciones. Como atajo global, dejará de funcionar allí.",
       "inApp": "{shortcut} cambia de página o busca en Argus. Como atajo global, ya no hará eso.",
       "imeSwitch": "Ctrl+Espacio normalmente cambia el método de entrada. Como atajo global, ya no hará eso.",
-      "numpad": "Los dígitos del teclado y el punto decimal activan el acceso directo solo mientras Bloq Num está activado.",
+      "numpad": "Los dígitos y el separador decimal del teclado numérico solo activan el atajo cuando Bloq Num está activado.",
       "printScreen": "{shortcut} puede entrar en conflicto con la captura de pantalla Windows o con una aplicación de captura de pantalla."
     },
     "error": {
       "invalid": "No se puede utilizar {shortcut} como atajo: {reason}",
-      "taken": "{shortcut} está siendo utilizado por Windows u otra aplicación (posiblemente otra que ejecute Argus). Elige una combinación diferente.",
+      "taken": "{shortcut} está en uso por Windows u otro programa, incluida otra instancia de Argus. Elija una combinación diferente.",
       "failed": "No se pudo registrar {shortcut} (error {code}).",
       "saveFailed": "No se pudo guardar la configuración. El atajo se mantiene."
     },
     "issue": {
       "invalid": "No se reconoce la combinación.",
-      "noKey": "Las teclas modificadoras por sí solas no pueden ser un atajo; agregue una clave ordinaria. Los atajos de Windows tampoco distinguen Ctrl, Alt, Shift o Win izquierdo y derecho.",
+      "noKey": "Las teclas modificadoras por sí solas no pueden formar un atajo; añada una tecla normal. Los atajos globales de Windows tampoco distinguen entre Ctrl, Alt, Shift y Win izquierdos y derechos.",
       "unsupported": "No se puede utilizar {key} en un atajo global.",
       "lockKey": "Bloq Mayús, Bloq Num y Bloq Despl no pueden ser parte de una combinación.",
       "needsModifier": "Una combinación necesita Ctrl, Alt o Win (excepto F13–F24 y Shift+F1–F11). Otras combinaciones de solo Shift interferirían con la escritura en cada aplicación.",
       "reserved": "{shortcut} es utilizado por Windows o por la mayoría de las aplicaciones.",
-      "taskManager": "Ctrl+Shift+Esc abre Administrador de tareas. Para que abra Argus, active \"Reemplazar Administrador de tareas\" en Configuración → Permisos.",
+      "taskManager": "Ctrl+Shift+Esc abre el Administrador de tareas. Para abrir Argus, active «Sustituir el Administrador de tareas» en Configuración → Permisos.",
       "editing": "{shortcut} se utiliza para copiar, pegar y otras ediciones."
     }
   },
   "privilege": {
-    "desc": "Permite que Argus, ejecutándose como usuario estándar, administre procesos del sistema, aplique reglas automáticamente, recopile tráfico de red por proceso y lecturas y escrituras de disco, encuentre bloqueos de archivos, lea información de disco SMART, controle servicios y cierre conexiones IPv4 TCP. La instalación y desinstalación de ambos requieren permiso de administrador.",
+    "desc": "Permite que Argus, con permisos estándar, gestione procesos del sistema, aplique reglas, recopile tráfico de red y lecturas y escrituras de disco por proceso, consulte archivos en uso e información SMART, controle servicios y cierre conexiones IPv4 TCP. Tanto la instalación como la desinstalación requieren autorización de administrador.",
     "statusDesc": "Argus se conecta al servicio automáticamente mientras se ejecuta. Las columnas de red están ocultas cuando la recopilación de redes no está disponible; cada regla muestra sus resultados debajo.",
     "state": {
       "busy": "Esperando permiso de administrador o trabajando en el servicio…",
       "checking": "Comprobando el estado del servicio…",
-      "unknown": "No puedo leer el estado en este momento",
+      "unknown": "No se puede leer el estado temporalmente",
       "notInstalled": "No instalado",
       "connected": "Conectado · {version}",
-      "incompatible": "Ejecutando, versión incompatible",
-      "unreachable": "En ejecución, pero no puedo conectarme en este momento",
+      "incompatible": "En ejecución, versión incompatible",
+      "unreachable": "En ejecución, conexión no disponible",
       "stopped": "Detenido",
       "startPending": "Iniciando",
       "stopPending": "Deteniendo",
       "unavailable": "No disponible"
     },
-    "outdated": "La versión del servicio {service} no coincide con Argus {app}. Haga clic en Servicio de actualización.",
-    "incompatible": "Haga clic en Servicio de actualización para instalar la versión que coincida con Argus; Argus luego se conecta a él.",
+    "outdated": "La versión del servicio {service} no coincide con Argus {app}. Haga clic en «Actualizar servicio».",
+    "incompatible": "Haga clic en «Actualizar servicio» para instalar la versión correspondiente a Argus y establecer la conexión.",
     "install": {
       "title": "¿Habilitar el servicio privilegiado?",
-      "body": "Una vez instalada, la cuenta Windows actual puede usar el servicio en segundo plano, sin volver a pedir permiso, para:\n· finalizar procesos de cualquier usuario (excepto procesos críticos del sistema) y establecer su prioridad y modo de eficiencia;\n· iniciar y detener cualquier servicio Windows y cambiar su tipo de inicio, incluidos los servicios de software de seguridad y actualización Windows;\n· cerrar cualquier conexión IPv4 TCP y ver los bloqueos de archivos de cada proceso, el tráfico de red y las lecturas y escrituras de disco; \n· consultar la identidad del disco, los atributos SMART y los registros de estado mediante comandos fijos de solo lectura; \n· leer los datos del sensor CPU y las velocidades del ventilador de la placa base a través de módulos fijos cuando PawnIO está install.\n\nOtros programas que se ejecutan como usuario estándar en esta cuenta también pueden utilizar estas operaciones, lo que efectivamente otorga a la cuenta algunos derechos de administrador. Instálelo sólo en una cuenta que utilice usted mismo. El servicio comienza con Windows. La instalación requiere permiso de administrador; el servicio se puede desinstalar en Configuración más tarde.",
+      "body": "Tras instalar el servicio, la cuenta actual de Windows podrá realizar estas operaciones sin solicitar autorización de nuevo:\n· finalizar procesos de cualquier usuario, excepto los críticos del sistema, y establecer su prioridad y modo de eficiencia;\n· iniciar y detener cualquier servicio de Windows y cambiar su tipo de inicio, incluidos los servicios de software de seguridad y Windows Update;\n· cerrar cualquier conexión IPv4 TCP y consultar archivos en uso, tráfico de red y lecturas y escrituras de disco de todos los procesos;\n· consultar la identidad del disco, los atributos SMART y los registros de estado mediante comandos fijos de solo lectura;\n· leer datos de sensores de CPU y velocidades de ventiladores de la placa base mediante módulos fijos cuando PawnIO esté instalado.\n\nOtros programas con permisos estándar de esta cuenta también podrán realizar estas operaciones, lo que concede a la cuenta parte de los permisos de administrador. Instálelo únicamente en una cuenta de uso personal. El servicio se inicia con Windows. La instalación requiere autorización de administrador y el servicio puede desinstalarse después en Configuración.",
       "action": "Instalar y habilitar"
     },
     "uninstall": {
       "title": "¿Desinstalar el servicio privilegiado?",
-      "body": "Windows Administrador de tareas se restaura primero, luego se detiene y elimina el servicio en segundo plano. Si la restauración falla, la desinstalación se detiene. Argus sigue ejecutándose y las acciones sobre los procesos y servicios del sistema vuelven a estar limitadas por sus permisos actuales. La desinstalación requiere permiso de administrador.",
+      "body": "Primero se restaura el Administrador de tareas de Windows y después se detiene y elimina el servicio en segundo plano. Si la restauración falla, se detiene la desinstalación. Argus continúa ejecutándose y las operaciones sobre procesos y servicios del sistema vuelven a estar sujetas a los permisos actuales. La desinstalación requiere autorización de administrador.",
       "confirm": "Desinstalar servicio",
       "action": "Desinstalar"
     },
@@ -179,15 +179,19 @@
   },
   "taskManager": {
     "title": "Sustituir el Administrador de tareas",
-    "desc": "Hace que Ctrl+Shift+Esc y otros atajos de Administrador de tareas abran Argus. Desactivado de forma predeterminada; La herramienta de recuperación independiente no depende de la interfaz ni del servicio. La actualización del servicio privilegiado también actualiza el reemplazo y lo mantiene habilitado; la desinstalación del servicio restaura Windows Administrador de tareas.",
+    "desc": "Hace que Ctrl+Shift+Esc y otros accesos al Administrador de tareas abran Argus. Está desactivado de forma predeterminada. La herramienta de recuperación independiente funciona sin la interfaz ni el servicio. Al actualizar el servicio privilegiado, también se actualiza la sustitución y se mantiene activa; al desinstalarlo, se restaura el Administrador de tareas de Windows.",
     "confirm": {
-      "title": "¿Reemplazar Administrador de tareas?",
-      "body": "Ctrl+Shift+Esc y otras formas de abrir Administrador de tareas abrirán Argus. El cambio se aplica a todo el PC; otras cuentas aún abiertas Windows Administrador de tareas. Activarlo requiere permiso de administrador; si Argus no se inicia, se abre el Administrador de tareas integrado. Mantenga la herramienta de recuperación independiente para que el cambio se pueda deshacer si la interfaz o el servicio no se pueden ejecutar."
+      "title": "¿Sustituir el Administrador de tareas?",
+      "body": "Ctrl+Shift+Esc y otros accesos al Administrador de tareas abrirán Argus. El cambio afecta a todo el equipo; las demás cuentas seguirán abriendo el Administrador de tareas de Windows. La activación requiere autorización de administrador. Si Argus no se inicia, se intenta abrir el Administrador de tareas de Windows. Conserve la herramienta de recuperación independiente para restaurarlo si la interfaz o el servicio no pueden ejecutarse."
     },
     "enable": "Activar sustitución",
-    "restore": "Restaurar Windows Administrador de tareas",
-    "enabled": "El reemplazo de Administrador de tareas está habilitado.",
-    "restored": "Windows Administrador de tareas ha sido restaurado.",
+    "restore": "Restaurar el Administrador de tareas de Windows",
+    "openNative": "Abrir temporalmente el Administrador de tareas de Windows",
+    "openingNative": "Abriendo…",
+    "openNativeHint": "Abre una vez el Administrador de tareas de Windows y conserva la configuración de reemplazo actual.",
+    "openNativeFailed": "No se pudo abrir el Administrador de tareas de Windows: {error}",
+    "enabled": "Se ha activado la sustitución del Administrador de tareas.",
+    "restored": "Se ha restaurado el Administrador de tareas de Windows.",
     "busy": "Aplicando la configuración de Administrador de tareas…",
     "checking": "Comprobando la configuración de Administrador de tareas…",
     "unknown": "No se pudo leer el estado de reemplazo",
@@ -203,15 +207,15 @@
   "motion": {
     "window": {
       "title": "Transiciones de ventana",
-      "desc": "Atenúa la ventana al mostrarla, ocultarla, minimizarla o restaurarla. Desactívelo para permitir que Windows u otro administrador de ventanas maneje las transiciones. Sigue la configuración de efectos de animación Windows de forma predeterminada."
+      "desc": "Fundido de entrada y salida al mostrar, ocultar, minimizar o restaurar la ventana. Al desactivarlo, Windows u otro gestor de ventanas controla las transiciones. Sigue «Efectos de animación» de Windows de forma predeterminada."
     },
     "ui": {
       "title": "Animaciones de la interfaz",
-      "desc": "Transiciones de página y diálogo, y marcador de selección deslizante. Sigue la configuración de efectos de animación Windows de forma predeterminada."
+      "desc": "Transiciones de páginas y diálogos e indicador de selección deslizante. Sigue «Efectos de animación» de Windows de forma predeterminada."
     },
     "chart": {
       "title": "Animaciones de los gráficos",
-      "desc": "Las velocidades de fotogramas más altas hacen que los gráficos sean más fluidos, pero utilizan más recursos: Suave requiere aproximadamente entre el 10 y el 15 % de un núcleo y Equilibrado aproximadamente la mitad. El ahorro de energía mueve un píxel completo a la vez, por lo que los gráficos más pequeños se mueven en pasos.",
+      "desc": "Una frecuencia de fotogramas mayor mejora la fluidez y consume más recursos. El modo Fluida utiliza aproximadamente el 10 %–15 % de un núcleo; Equilibrada utiliza aproximadamente la mitad. Ahorro de energía desplaza un píxel entero cada vez, por lo que los gráficos pequeños avanzan a saltos.",
       "fluid": "Fluida ({fps} fps)",
       "balanced": "Equilibrada ({fps} fps)",
       "pixel": "Ahorro de energía (pasos de píxel)",
@@ -222,11 +226,11 @@
     "intervalDesc": "Los intervalos más cortos proporcionan gráficos más finos pero hacen que el propio Argus utilice más recursos.",
     "minimized": {
       "title": "Actualización al minimizar",
-      "desc": "Con qué frecuencia Argus realiza muestreos mientras su ventana está minimizada. Los intervalos más largos cuestan menos en segundo plano, pero las reglas pueden tardar hasta un intervalo en aplicarse a los programas recién iniciados y, por encima de los 5 segundos, el historial se registra de forma más escasa."
+      "desc": "Intervalo de muestreo al minimizar la ventana. Un intervalo mayor reduce el consumo en segundo plano, pero puede retrasar hasta un intervalo la aplicación de reglas a programas nuevos. Si supera los 5 segundos, los registros del historial quedan más espaciados."
     },
     "tray": {
       "title": "Actualización en la bandeja",
-      "desc": "Con qué frecuencia Argus toma muestras mientras está oculto en la bandeja; la información sobre herramientas de la bandeja se actualiza al mismo ritmo. Los intervalos más largos cuestan menos en segundo plano, pero las reglas pueden tardar hasta un intervalo en aplicarse a los programas recién iniciados y, por encima de los 5 segundos, el historial se registra de forma más escasa."
+      "desc": "Intervalo de muestreo al ocultar la ventana en la bandeja; el texto emergente se actualiza al mismo ritmo. Un intervalo mayor reduce el consumo en segundo plano, pero puede retrasar hasta un intervalo la aplicación de reglas a programas nuevos. Si supera los 5 segundos, los registros del historial quedan más espaciados."
     },
     "background": {
       "error": "No se pudo guardar la frecuencia de actualización: {error}"
@@ -239,12 +243,12 @@
     },
     "netUnit": {
       "title": "Unidad de velocidad de red",
-      "desc": "Los bytes coinciden con la unidad de velocidad del disco; Los bits coinciden con las velocidades de enlace del adaptador de red y los planes de banda ancha. La vista de red en la página Rendimiento muestra ambos."
+      "desc": "Los bytes utilizan la misma unidad que la velocidad del disco; los bits, la misma que la velocidad del enlace de red y el ancho de banda. La vista de red de Rendimiento muestra ambas unidades."
     },
     "history": {
       "title": "Registrar historial",
-      "on": "Registra el uso de recursos y los procesos principales cada 5 segundos, o a la frecuencia de actualización minimizada o de bandeja cuando es más lenta. Los datos permanecen en este PC durante 7 días y se pueden ver en la página Historial.",
-      "off": "Apagado. Los registros existentes caducan después de 7 días o se pueden borrar ahora.",
+      "on": "Registra el uso de recursos y los procesos de mayor consumo cada 5 segundos, o según el intervalo al minimizar o permanecer en la bandeja si es mayor. Los datos se guardan solo en este equipo durante 7 días y pueden consultarse en Historial.",
+      "off": "Desactivado. Los registros existentes caducan después de 7 días y también pueden borrarse ahora.",
       "error": "No se pudo cambiar la configuración del historial: {error}",
       "saved": "Historial guardado",
       "counting": "Calculando…",
@@ -254,16 +258,16 @@
       "clear": "Borrar",
       "confirm": {
         "title": "¿Borrar historial?",
-        "body": "Se eliminará todo el historial grabado ({size}). Esto no se puede deshacer."
+        "body": "Se eliminará todo el historial registrado ({size}). Esta operación no se puede deshacer."
       },
       "cleared": "Historial borrado.",
       "clearError": "No se pudo borrar el historial: {error}"
     }
   },
   "rules": {
-    "title": "Establece el modo de prioridad o eficiencia cuando se inicia un programa",
-    "desc": "Las reglas guardadas se aplican a los procesos en ejecución de inmediato. También se pueden agregar reglas haciendo clic derecho en un proceso en la lista y seleccionando Agregar regla.",
-    "placeholder": "Nombre del programa, p.e. chrome.exe",
+    "title": "Establecer automáticamente la prioridad o el modo de eficiencia al iniciar un programa",
+    "desc": "Las reglas guardadas se aplican de inmediato a los procesos en ejecución. También puede hacer clic derecho en un proceso y seleccionar «Añadir regla».",
+    "placeholder": "Nombre del programa, p. ej., chrome.exe",
     "add": "Añadir",
     "exists": "Ya existe una regla para {name}.",
     "error": "No se pudieron guardar las reglas: {error}",
@@ -278,11 +282,11 @@
       "on": "Modo de eficiencia activado",
       "off": "Modo de eficiencia desactivado"
     },
-    "toggle": "Habilite la regla para {name}",
+    "toggle": "Habilitar la regla de {name}",
     "delete": "Eliminar regla",
     "deleteLabel": "Eliminar la regla para {name}",
     "summary": {
-      "noAction": "Elija un modo de prioridad o eficiencia para aplicar.",
+      "noAction": "Elija la prioridad o el modo de eficiencia que se aplicará.",
       "disabled": "Deshabilitado.",
       "notSeen": "El programa aún no ha sido detectado.",
       "applied": {
@@ -310,24 +314,24 @@
       "loading": "Leyendo el estado de actualización…",
       "disabled": "No se buscan actualizaciones",
       "idle": "Aún no se han buscado actualizaciones",
-      "checking": "Buscando actualizaciones...",
+      "checking": "Buscando actualizaciones…",
       "upToDate": "Argus está actualizado",
       "available": "Nueva versión disponible: {version}",
       "downloading": "Descargando {version}",
-      "downloadingPercent": "Descargando {version} · {percent}%",
+      "downloadingPercent": "Descargando {version} · {percent} %",
       "ready": "Argus {version} está listo",
       "installing": "Iniciando el instalador de {version}…",
       "error": "Error en la actualización"
     },
-    "current": "Versión actual {version} · {channel}",
+    "current": "Versión actual {version} · {build}",
     "detail": {
       "ready": "La instalación requiere permiso de administrador. Argus sale durante la instalación; el instalador solo muestra su progreso y reinicia Argus cuando termina.",
       "portable": "La versión portátil no se actualiza automáticamente. Descargue la nueva versión desde la página de lanzamiento.",
       "downloaded": "Descargado {received} de {source}.",
-      "downloadedOf": "Descargó {received} de {total} de {source}.",
+      "downloadedOf": "Se han descargado {received} de {total} desde {source}.",
       "checked": "Última comprobación: {time}.",
       "checkedFrom": "Última comprobación: {time}, de {source}.",
-      "source": "Las actualizaciones provienen de las versiones GitHub o del espejo oficial Argus. Argus verifica la firma del instalador antes de la instalación."
+      "source": "Las actualizaciones proceden de GitHub Releases o del servidor espejo oficial de Argus. Se verifica la firma del instalador antes de instalar."
     },
     "restart": "Reiniciar y actualizar",
     "download": "Descargar",
@@ -338,7 +342,7 @@
     },
     "whatsNew": {
       "title": "Mostrar novedades después de actualizar",
-      "desc": "Muestra lo que cambió la nueva versión la primera vez que se abre la ventana después de una actualización, una vez por versión. Cuando está desactivado, solo un aviso en la esquina dice que Argus se actualizó.",
+      "desc": "Muestra las novedades al abrir la ventana por primera vez después de actualizar, una vez por versión. Al desactivarlo, solo aparece un aviso de actualización en la esquina inferior derecha.",
       "view": "Ver cambios de esta versión"
     },
     "channel": {
@@ -355,24 +359,24 @@
       "proxy": "Solo mediante proxy de GitHub"
     },
     "proxy": {
-      "label": "Proxy GitHub",
-      "fallback": "Si GitHub y el mirror oficial no están disponibles, Argus prueba este proxy y luego los otros proxy integrados.",
+      "label": "Proxy de GitHub",
+      "fallback": "Si fallan GitHub y el servidor espejo oficial, Argus prueba este proxy y después los demás proxies integrados.",
       "only": "Todas las solicitudes de actualización pasan por este proxy.",
       "custom": "Personalizado…"
     },
     "custom": {
       "title": "Proxy personalizado",
-      "desc": "Un prefijo agregado antes de las URL GitHub. Debe utilizar https, p. https://ejemplo.com/.",
-      "label": "Proxy personalizado URL",
+      "desc": "Prefijo que se añade a las direcciones de GitHub. Debe usar https, por ejemplo, https://example.com/.",
+      "label": "Dirección del proxy personalizado",
       "save": "Guardar"
     }
   },
   "about": {
-    "tagline": "Un administrador de tareas rápido, moderno e informativo para Windows.",
+    "tagline": "Un administrador de tareas para Windows rápido, moderno y con información detallada.",
     "admin": "Ejecutándose como administrador.",
     "service": "Ejecutándose como usuario estándar. El servicio privilegiado está conectado y realiza acciones que necesitan derechos de administrador.",
     "standard": "Ejecutándose como usuario estándar. La información y las acciones para algunos procesos del sistema son limitadas.",
-    "whatsNew": "¿Qué hay de nuevo?",
+    "whatsNew": "Novedades",
     "quit": "Salir de Argus",
     "support": "Proyecto y soporte",
     "links": {
@@ -381,7 +385,7 @@
         "desc": "Descargue versiones estables y lea la documentación, FAQ y el registro de cambios."
       },
       "repository": {
-        "title": "repositorio GitHub",
+        "title": "Repositorio de GitHub",
         "desc": "Explore el código fuente, informe problemas o sugiera cambios y obtenga el instalador de cualquier versión."
       }
     },
@@ -392,14 +396,14 @@
     },
     "community": {
       "title": "Comentarios y comunidad",
-      "desc": "Únase al grupo QQ {group} para informar problemas, sugerir funciones o hablar con otros usuarios (en chino).",
+      "desc": "Únase al grupo de QQ {group} para comunicar problemas, proponer funciones o compartir experiencias con otros usuarios (en chino).",
       "join": "Unirse al grupo de QQ",
       "copy": "Copiar número de grupo",
       "number": "número de grupo"
     },
     "license": {
       "title": "Licencia",
-      "desc": "Argus es software gratuito, publicado bajo la Licencia Pública General Affero GNU, versión 3 o cualquier versión posterior (AGPL-3.0-o posterior). Puede redistribuirse y modificarse según los términos de esa licencia. Argus no tiene garantía.",
+      "desc": "Argus es software libre distribuido bajo la GNU Affero General Public License, versión 3 o cualquier versión posterior (AGPL-3.0-or-later). Puede redistribuirse y modificarse según los términos de esta licencia. Argus se ofrece sin garantía.",
       "view": "Ver licencia"
     },
     "notices": {
@@ -415,11 +419,11 @@
     }
   },
   "sensors": {
-    "title": "Sensores de núcleo",
-    "desc": "Al activar esto se verifica PawnIO, se instala el controlador oficial si falta o está desactualizado y se inicia cuando es necesario. Se requiere permiso de administrador. Instale e inicie primero el servicio privilegiado Argus. Desactivar esto solo detiene la recopilación del sensor Argus.",
-    "off": "Apagado; Los sensores Windows siguen disponibles.",
+    "title": "Sensores del kernel",
+    "desc": "Al activarlo, se comprueba PawnIO: si falta o está desactualizado, se instala el controlador oficial; si ya está instalado, se inicia. Requiere autorización de administrador. Primero instale e inicie el servicio privilegiado de Argus. Desactivarlo solo detiene la recopilación de datos de Argus.",
+    "off": "Desactivados; se siguen utilizando los sensores de Windows.",
     "driver": "Sitio web de PawnIO",
-    "preparing": "Preparando el controlador. Complete el mensaje del administrador si se muestra; la primera instalación descarga un paquete."
+    "preparing": "Preparando el controlador. Complete la solicitud de autorización de administrador si aparece; la primera instalación requiere descargar archivos."
   },
   "administrator": {
     "development": "La autorización de administrador persistente no está disponible con la recarga en caliente de desarrollo. Utilice una versión de lanzamiento.",
@@ -433,12 +437,12 @@
     "currentAdmin": "Proceso actual: administrador",
     "currentStandard": "Proceso actual: permisos estándar",
     "restart": "Argus se reinicia después de cambiar, manteniendo la configuración y el historial.",
-    "afterOnboarding": "Continuar con la configuración después de autorizar. Argus se reinicia con los permisos seleccionados cuando finaliza la instalación.",
-    "standardAccount": "Esta cuenta no tiene identidad de administrador, por lo que el inicio automático del administrador no está disponible. El servicio privilegiado puede realizar acciones administrativas admitidas."
+    "afterOnboarding": "Tras autorizar, puede continuar con la guía. Al finalizarla, Argus se reinicia para aplicar los permisos seleccionados.",
+    "standardAccount": "Esta cuenta no es de administrador, por lo que no puede activar el inicio automático como administrador. El servicio privilegiado puede realizar las operaciones administrativas compatibles."
   },
   "appearance": {
     "scaleTitle": "Escala de la interfaz",
-    "scaleDesc": "Cambiar el tamaño del texto, los iconos y los controles del 80% al 150% (predeterminado: 100%). Los cambios se aplican inmediatamente y se guardan automáticamente.",
+    "scaleDesc": "Cambiar el tamaño del texto, los iconos y los controles del 80 % al 150 % (predeterminado: 100 %). Los cambios se aplican inmediatamente y se guardan automáticamente.",
     "fontTitle": "Tamaño de fuente",
     "fontDesc": "Tamaño de fuente base: 11–20 px (predeterminado: 13 px). Los títulos y el texto secundario escalan proporcionalmente. Se combina con el escalado de la interfaz.",
     "reset": "Restablecer",

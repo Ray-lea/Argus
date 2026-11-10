@@ -12,7 +12,9 @@ import {
 import { Icon, ProcessIcon, type UiIcon } from "./icons";
 import type { Motion } from "./Curve";
 import { language, translate } from "./i18n";
+import { dateLocale, isLanguage, languages, localized, preferredLanguage, type Language } from "@/lib/languages";
 import {
+  appVersion,
   bytes,
   connections,
   noise,
@@ -99,7 +101,7 @@ function Header<K extends string>({
 }
 function sorted<T>(rows: T[], value: (row: T) => string | number, desc: boolean) {
   // Text sorts as it reads in the page's language.
-  const collator = new Intl.Collator(language() === "en" ? "en" : "zh-CN", { numeric: true });
+  const collator = new Intl.Collator(dateLocale(language()), { numeric: true });
   return [...rows].sort((a, b) => {
     const x = value(a);
     const y = value(b);
@@ -309,6 +311,7 @@ export function Startup({
                     type="button"
                     role="switch"
                     aria-checked={item.enabled}
+                    data-startup={item.name}
                     aria-label={(item.enabled ? "禁用 " : "启用 ") + item.name}
                     className="a-switch is-small"
                     onClick={() => onToggle(item.name)}
@@ -870,6 +873,7 @@ export function Settings({
     minimized: 5000,
     background: 5000,
   });
+  const [languageChoice, setLanguageChoice] = useState<Language | "system">(language);
   const set = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
   const body = useRef<HTMLDivElement>(null);
@@ -936,13 +940,14 @@ export function Settings({
           <Setting icon="globe" title="界面语言" desc="立即生效，托盘菜单与提示信息也随之切换。“跟随系统”使用 Windows 的显示语言。">
             <Select
               label="界面语言"
-              value="zh"
-              onChange={(v) => v !== "zh" && onSay("演示窗口仅提供简体中文界面。")}
-              options={[
-                { value: "system", label: "跟随系统" },
-                { value: "zh", label: "简体中文" },
-                { value: "en", label: "English" },
-              ]}
+              value={languageChoice}
+              onChange={(value) => {
+                if (value !== "system" && !isLanguage(value)) return;
+                setLanguageChoice(value);
+                const next = value === "system" ? preferredLanguage(navigator.languages) : value;
+                if (next !== language()) location.assign(localized(next) + "#demo");
+              }}
+              options={[{ value: "system", label: "跟随系统" }, ...languages.map(item => ({ value: item.id, label: item.name }))]}
             />
           </Setting>
           <Setting icon="theme" title="主题" desc="“跟随系统”使用 Windows 的应用模式，系统切换浅色或深色时随之切换。">
@@ -1042,7 +1047,7 @@ export function Settings({
             title="特权服务"
             desc="使以标准权限运行的 Argus 能够管理系统进程、自动应用规则、采集每进程网络流量与磁盘读写、查询文件占用，以及控制服务和断开 IPv4 TCP 连接。安装和卸载均需要管理员授权。"
           >
-            <span className="a-pill is-ok">已连接 · 0.3.4</span>
+            <span className="a-pill is-ok">{`已连接 · ${appVersion}`}</span>
           </Setting>
           <Setting
             icon="bolt"
@@ -1145,7 +1150,7 @@ export function Settings({
         </section>
         <section>
           <h2>更新</h2>
-          <Setting icon="update" title="已是最新版本" desc="当前版本 0.3.4 · 稳定版">
+          <Setting icon="update" title="已是最新版本" desc={`当前版本 ${appVersion} · 稳定版`}>
             <Button onClick={() => onSay("已是最新版本。")}>检查更新</Button>
           </Setting>
           <Setting icon="update" title="自动检查更新" desc="启动约 1 分钟后检查一次，此后每天检查一次。新版本在后台下载，安装需手动确认。">
@@ -1192,7 +1197,7 @@ export function About({
           <div className="a-about-text">
             <div className="a-about-name">
               <strong>Argus</strong>
-              <small>0.3.4</small>
+              <small>{appVersion}</small>
             </div>
             <p>快速、现代、信息丰富的 Windows 任务管理器。</p>
             <span>正在以管理员身份运行。</span>

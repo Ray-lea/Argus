@@ -64,6 +64,7 @@
   -webkit-font-smoothing: antialiased;
   font-synthesis-weight: none;
 }
+html:is(:lang(zh-TW), :lang(ja)) .argus-app { font-family: var(--font); --a-display: var(--display); }
 :root[data-theme="dark"] .argus-app:not([data-mode="light"]),
 .argus-app[data-mode="dark"] {
   --a-accent: var(--a-accent-d, #4cc2ff);

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { localized, origin, type Language } from "./site";
+import { languages, languageInfo, notesLanguage } from "./languages";
+import { localize } from "./site-i18n";
 
 export interface PageInfo {
   lang: Language;
@@ -14,8 +16,8 @@ export interface PageInfo {
 
 // The link preview: the process page of the documented build.
 export const previewImage = (lang: Language) => ({
-  url: origin + "/assets/preview-" + lang + "-dark.png",
-  alt: lang === "en" ? "The Argus window showing the process list" : "Argus 窗口中的进程列表",
+  url: origin + "/assets/preview-" + notesLanguage(lang) + "-dark.png",
+  alt: localize(lang, lang === "zh" ? "Argus 窗口中的进程列表" : "The Argus window showing the process list"),
 });
 
 // Head tags of the site's own pages: canonical and language alternates,
@@ -36,11 +38,7 @@ export function pageMetadata({
     alternates: {
       canonical: noindex ? undefined : url,
       languages: alternate
-        ? {
-            "zh-CN": origin + localized("zh", path),
-            en: origin + localized("en", path),
-            "x-default": origin + path,
-          }
+        ? { ...Object.fromEntries(languages.map(item => [item.tag, origin + localized(item.id, path)])), "x-default": origin + path }
         : undefined,
     },
     robots: noindex ? { index: false, follow: true } : undefined,
@@ -52,7 +50,7 @@ export function pageMetadata({
       description,
       url,
       images: previewImage(lang),
-      locale: lang === "zh" ? "zh_CN" : "en_US",
+      locale: languageInfo(lang).tag.replace("-", "_"),
     },
   };
 }

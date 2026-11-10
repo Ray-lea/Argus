@@ -76,11 +76,9 @@
     ${EndIf}
 
     ClearErrors
-    ${If} ${FileExists} "$PROGRAMFILES64\Argus Privileged\argus-taskmgr-recover.exe"
-      ExecWait '"$PROGRAMFILES64\Argus Privileged\argus-taskmgr-recover.exe" --uninstall-check' $0
-    ${Else}
-      ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-taskmgr-uninstall' $0
-    ${EndIf}
+    ; Use this installation's maintenance code even if the protected runtime
+    ; contains an older recovery helper or its permissions have been changed.
+    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-taskmgr-uninstall' $0
     ${If} ${Errors}
       !insertmacro ARGUS_TEXT $2 ArgusRecoveryFailed
       MessageBox MB_OK|MB_ICONSTOP "$2" /SD IDOK

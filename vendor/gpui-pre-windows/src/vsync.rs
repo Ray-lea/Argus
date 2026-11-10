@@ -116,23 +116,98 @@ fn get_dwm_interval() -> Result<Duration> {
         ..Default::default()
     };
     unsafe { DwmGetCompositionTimingInfo(HWND::default(), &mut timing_info) }?;
-    let interval = retrieve_duration(timing_info.qpcRefreshPeriod, *QPC_TICKS_PER_SECOND);
-    // Check for interval values that are impossibly low. A 29 microsecond
-    // interval was seen (from a qpcRefreshPeriod of 60).
-    if interval < VSYNC_INTERVAL_THRESHOLD {
-        Ok(retrieve_duration(
-            timing_info.rateRefresh.uiDenominator as u64,
-            timing_info.rateRefresh.uiNumerator as u64,
-        ))
-    } else {
-        Ok(interval)
+    let qpc_period = timing_info.qpcRefreshPeriod;
+    let refresh_numerator = timing_info.rateRefresh.uiNumerator;
+    let refresh_denominator = timing_info.rateRefresh.uiDenominator;
+    let interval = timing_interval(
+        qpc_period,
+        *QPC_TICKS_PER_SECOND,
+        refresh_numerator,
+        refresh_denominator,
+    );
+    if interval.is_none() {
+        log::warn!(
+            target: "argus::graphics",
+            "Invalid DWM timing; qpc_period={}; qpc_frequency={}; refresh_numerator={}; refresh_denominator={}; fallback_us={}",
+            qpc_period,
+            *QPC_TICKS_PER_SECOND,
+            refresh_numerator,
+            refresh_denominator,
+            DEFAULT_VSYNC_INTERVAL.as_micros(),
+        );
     }
+    Ok(interval.unwrap_or(DEFAULT_VSYNC_INTERVAL))
 }
 
-#[inline]
-fn retrieve_duration(counts: u64, ticks_per_second: u64) -> Duration {
-    let ticks_per_microsecond = ticks_per_second / 1_000_000;
-    Duration::from_micros(counts / ticks_per_microsecond)
+fn timing_interval(
+    qpc_period: u64,
+    qpc_frequency: u64,
+    refresh_numerator: u32,
+    refresh_denominator: u32,
+) -> Option<Duration> {
+    // Some drivers return a refresh-rate count instead of a QPC interval.
+    // Reject implausibly short QPC periods, then use the reciprocal frequency.
+    retrieve_duration(qpc_period, qpc_frequency)
+        .filter(|interval| *interval >= VSYNC_INTERVAL_THRESHOLD)
+        .or_else(|| retrieve_duration(refresh_denominator as u64, refresh_numerator as u64))
+}
+
+fn retrieve_duration(counts: u64, ticks_per_second: u64) -> Option<Duration> {
+    // Multiply before dividing: ordinary refresh frequencies are below 1 MHz.
+    let micros = (u128::from(counts) * 1_000_000).checked_div(u128::from(ticks_per_second))?;
+    // Invalid timing must not suspend fallback scheduling for seconds or longer.
+    (1..=1_000_000)
+        .contains(&micros)
+        .then(|| Duration::from_micros(micros as u64))
+}
+
+#[cfg(test)]
+mod timing_tests {
+    use super::{retrieve_duration, timing_interval};
+    use std::time::Duration;
+
+    #[test]
+    fn normal_qpc_timing_keeps_microsecond_precision() {
+        assert_eq!(
+            timing_interval(166_666, 10_000_000, 60, 1),
+            Some(Duration::from_micros(16_666)),
+        );
+        assert_eq!(
+            retrieve_duration(59_659, 3_579_545),
+            Some(Duration::from_micros(16_666)),
+        );
+    }
+
+    #[test]
+    fn unreliable_qpc_uses_integer_and_fractional_refresh_rates() {
+        for (numerator, denominator, micros) in
+            [(60, 1, 16_666), (60_000, 1_001, 16_683), (144, 1, 6_944)]
+        {
+            assert_eq!(
+                timing_interval(60, 10_000_000, numerator, denominator),
+                Some(Duration::from_micros(micros)),
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_qpc_can_recover_from_valid_refresh_data() {
+        for (period, frequency) in [(0, 10_000_000), (1, 0), (u64::MAX, 1)] {
+            assert_eq!(
+                timing_interval(period, frequency, 60, 1),
+                Some(Duration::from_micros(16_666)),
+            );
+        }
+    }
+
+    #[test]
+    fn unusable_timing_selects_the_callers_default() {
+        for (numerator, denominator) in [(0, 1), (60, 0), (1, u32::MAX)] {
+            assert_eq!(timing_interval(0, 10_000_000, numerator, denominator), None);
+        }
+        assert_eq!(retrieve_duration(u64::MAX, 1), None);
+        assert_eq!(retrieve_duration(1, u64::MAX), None);
+    }
 }
 
 #[cfg(test)]

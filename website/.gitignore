@@ -4,6 +4,7 @@
 /public/favicon.ico
 # Next.js output.
 /.next/
+/.next-*/
 /out/
 /next-env.d.ts
 *.tsbuildinfo

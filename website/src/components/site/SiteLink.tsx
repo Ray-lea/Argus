@@ -1,15 +1,15 @@
 import { IntentLink } from "./IntentLink";
 import type { ComponentPropsWithoutRef } from "react";
 import type { Language } from "@/lib/site";
+import { languageOfPath } from "@/lib/languages";
 
-// Chinese pages and the documentation share one root layout, English pages
-// another. Pages under the same root navigate in place; anything else (the
-// other language, raw files, other sites) loads a new document.
+// Pages in the same language navigate in place. A different language, a raw
+// file or another site loads a new document. Documentation uses the default root.
 const sameRoot = (lang: Language, href: string) => {
   if (!href.startsWith("/") || href.startsWith("//")) return false;
   const path = href.split(/[?#]/)[0];
   if (!path.endsWith("/")) return false;
-  return (lang === "en") === path.startsWith("/en/");
+  return languageOfPath(path) === lang;
 };
 
 type Props = ComponentPropsWithoutRef<"a"> & { lang: Language; href: string };

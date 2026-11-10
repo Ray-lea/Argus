@@ -4,7 +4,35 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileS
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { installerStrings } from "./lib/installer-locales.mjs";
+import { cleanupTestProfile } from "./lib/owned-test.mjs";
 const root = resolve(import.meta.dirname, "..");
+export function validateBuildInfo(info, version) {
+  if (info?.version !== version || !["stable", "test"].includes(info.buildKind))
+    throw Error("Installer requires a release-profile executable with the expected package version");
+  const suffix = typeof info.build === "string" && info.build.startsWith(version + "+") ? info.build.slice(version.length + 1) : null;
+  if (info.build !== version && (suffix === null || !suffix.split(".").every(part => /^[0-9A-Za-z-]+$/.test(part))))
+    throw Error("Invalid executable display version");
+  if (info.buildKind !== (info.build.includes("+") || version.includes("-") ? "test" : "stable"))
+    throw Error("Executable build type does not match its version");
+  const parts = typeof info.fileVersion === "string" ? info.fileVersion.split(".") : [];
+  if (parts.length !== 4 || parts.some(part => !/^\d+$/.test(part) || Number(part) > 65535)
+      || parts.slice(0, 3).join(".") !== version.split(/[-+]/)[0])
+    throw Error("Invalid executable file version");
+  return info;
+}
+function readBuildInfo(binary, version) {
+  const identifier = `dev.argus.taskmanager.test.bundle-info-${process.pid}`;
+  try {
+    // An older executable that does not recognize the query stays hidden in
+    // an isolated profile until the timeout; it cannot activate the installed app.
+    const result = spawnSync(binary, ["--argus-build-info", "--hidden", "--test", "--identifier", identifier], { encoding: "utf8", windowsHide: true, timeout: 10000 });
+    if (result.error) throw result.error;
+    if (result.status !== 0) throw Error(`Executable build information failed (${result.status})`);
+    return validateBuildInfo(JSON.parse(result.stdout), version);
+  } finally {
+    cleanupTestProfile(identifier);
+  }
+}
 export function findNsis() {
   const candidates = [
     process.env.ARGUS_NSIS,
@@ -26,7 +54,8 @@ export function renderInstaller(metadata, paths) {
     manufacturer: metadata.publisher,
     product_name: metadata.productName,
     version: metadata.version,
-    version_with_build: metadata.version.split("-")[0] + ".0",
+    display_version: paths.build?.build ?? metadata.version,
+    version_with_build: paths.build?.fileVersion ?? metadata.version.split(/[-+]/)[0] + ".0",
     homepage: metadata.homepage,
     install_mode: "perMachine",
     installer_icon: paths.icon,
@@ -62,7 +91,8 @@ export function bundle() {
   const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
   if (version !== metadata.version) throw Error("Application version metadata differs");
   const binary = join(root, "target/release/argus.exe");
-  const output = join(root, `target/release/bundle/nsis/${metadata.productName}_${version}_x64-setup.exe`);
+  const build = readBuildInfo(binary, version);
+  const output = join(root, `target/release/bundle/nsis/${metadata.productName}_${build.build}_x64-setup.exe`);
   const directory = join(root, "target/release/nsis/x64");
   mkdirSync(directory, { recursive: true });
   mkdirSync(dirname(output), { recursive: true });
@@ -74,6 +104,7 @@ export function bundle() {
     script,
     "\uFEFF" +
       renderInstaller(metadata, {
+        build,
         binary,
         output,
         icon: join(root, "resources/icons/icon.ico"),
