@@ -16,7 +16,7 @@
       "many": "{count} núcleos",
       "other": "{count} núcleos"
     },
-    "hybrid": "({performance} núcleos P + {efficiency} núcleos E)",
+    "hybrid": " ({performance} núcleos P + {efficiency} núcleos E)",
     "threads": {
       "one": "{count} subproceso",
       "many": "{count} subprocesos",

@@ -16,7 +16,7 @@
       "many": "{count} cœurs",
       "other": "{count} cœurs"
     },
-    "hybrid": "({performance} cœurs P + {efficiency} cœurs E)",
+    "hybrid": " ({performance} cœurs P + {efficiency} cœurs E)",
     "threads": {
       "one": "{count} thread",
       "many": "{count} threads",

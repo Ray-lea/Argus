@@ -505,7 +505,7 @@
     "temperature": "Temperatura de GPU",
     "fan": "Ventilador",
     "coreClock": "Frecuencia del núcleo",
-    "memoryClock": "Frecuencia de memoria gráfica",
+    "memoryClock": "Frecuencia de memoria",
     "coreVoltage": "Voltaje del núcleo",
     "coreVid": "VID del núcleo",
     "vidHint": "Tensión de alimentación solicitada por la GPU integrada (VID).",
