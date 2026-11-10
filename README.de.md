@@ -206,6 +206,15 @@ Vielen Dank an die Community [LINUX DO](https://linux.do/) für ihre Unterstütz
 
 Argus ist freie Software unter der [GNU Affero General Public License](LICENSE), Version 3 oder (nach eigener Wahl) einer späteren Version (`AGPL-3.0-or-later`).
 
+<a href="https://next.ossinsight.io/widgets/official/compose-recent-active-contributors?repo_id=1415551131&limit=30" target="_blank" style="display: block" align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://next.ossinsight.io/widgets/official/compose-recent-active-contributors/thumbnail.png?repo_id=1415551131&limit=30&image_size=auto&color_scheme=dark" width="655" height="auto">
+    <img alt="Active Contributors of Ray-lea/Argus - Last 28 days" src="https://next.ossinsight.io/widgets/official/compose-recent-active-contributors/thumbnail.png?repo_id=1415551131&limit=30&image_size=auto&color_scheme=light" width="655" height="auto">
+  </picture>
+</a>
+
+<!-- Made with [OSS Insight](https://ossinsight.io/) -->
+
 <div align="center">
 <br>
 <sub>Argus · Task-Manager für Windows · © 2026 Argus contributors</sub>
