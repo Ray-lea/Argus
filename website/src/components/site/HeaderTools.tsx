@@ -3,9 +3,31 @@ import { useSearchContext } from "fumadocs-ui/contexts/search";
 // next-themes is not a direct dependency; Fumadocs re-exports the hook of the
 // provider instance it mounts.
 import { useTheme } from "fumadocs-ui/provider/base";
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { preloadSearch } from "../search";
 import { Icon, type IconName } from "./Icon";
+
+// Wrapped headers keep the same reading and menu offsets as a single row.
+export function MastFrame({ wide, children }: { wide: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const header = ref.current;
+    if (!header) return;
+    let previous = 0;
+    const update = () => {
+      const height = Math.ceil(header.getBoundingClientRect().height);
+      if (height > 0 && height !== previous) {
+        previous = height;
+        document.documentElement.style.setProperty("--header", `${height}px`);
+      }
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+  return <header ref={ref} className={wide ? "mast is-wide" : "mast"}>{children}</header>;
+}
 
 // Opens the documentation search dialog; Fumadocs binds Ctrl/⌘+K itself.
 export function SearchButton({ label, children }: { label: string; children: ReactNode }) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { languages, localized, languageOfPath, notesLanguage } from "../../website/src/lib/languages.ts";
+import { languages, localized, languageOfPath, notesLanguage, preferredLanguage } from "../../website/src/lib/languages.ts";
 import { translateValue } from "../../website/src/lib/translate.ts";
 import { labelTables, translateHtml } from "../../website/scripts/translate-html.mjs";
 import { prepareReplicaCatalogs } from "../../website/scripts/locales.mjs";
@@ -14,6 +14,15 @@ test("website routes round-trip and changelogs keep their published source langu
     assert.equal(notesLanguage(id), ["zh", "zh-TW"].includes(id) ? "zh" : "en");
   }
   assert.equal(languageOfPath("/docs/dev/"), "zh");
+});
+test("the demo's system choice follows the first supported browser language", () => {
+  assert.equal(preferredLanguage(["it-IT", "de-AT", "en-US"]), "de");
+  assert.equal(preferredLanguage(["zh-Hant-CN"]), "zh-TW");
+  assert.equal(preferredLanguage(["zh-Hans-TW"]), "zh");
+  assert.equal(preferredLanguage(["zh-HK"]), "zh-TW");
+  assert.equal(preferredLanguage(["zh-CN-x-hant"]), "zh");
+  assert.equal(preferredLanguage(["ja-JP"]), "ja");
+  assert.equal(preferredLanguage(["pt-BR"]), "en");
 });
 test("every localized HTML route keeps its CSP-hashed bytes at the edge", async () => {
   const headers = (await readFile(new URL("../../website/public/_headers", import.meta.url), "utf8")).replaceAll("\r", "");

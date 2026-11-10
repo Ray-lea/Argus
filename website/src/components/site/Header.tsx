@@ -4,7 +4,7 @@ import { compact } from "@/components/home/OpenSource";
 import { DownloadButton } from "./DownloadButton";
 import { LanguageSwitch } from "./LanguageSwitch";
 import { localize } from "@/lib/site-i18n";
-import { MastMenu, SearchButton, ThemePicker } from "./HeaderTools";
+import { MastFrame, MastMenu, SearchButton, ThemePicker } from "./HeaderTools";
 import { Icon } from "./Icon";
 import { SiteLink } from "./SiteLink";
 
@@ -27,7 +27,7 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
   const stars = site.repository?.stars;
   const menu = localize(lang, en ? "Menu" : "菜单");
   return (
-    <header className={wide ? "mast is-wide" : "mast"}>
+    <MastFrame wide={wide}>
       <div className="mast-inner">
         <SiteLink lang={lang} className="brand" href={localized(lang)}>
           <img src="/assets/argus.svg" width="22" height="22" alt="" />
@@ -101,6 +101,6 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
           </MastMenu>
         </div>
       </div>
-    </header>
+    </MastFrame>
   );
 }

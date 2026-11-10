@@ -12,7 +12,7 @@ import {
 import { Icon, ProcessIcon, type UiIcon } from "./icons";
 import type { Motion } from "./Curve";
 import { language, translate } from "./i18n";
-import { dateLocale, isLanguage, languages, localized } from "@/lib/languages";
+import { dateLocale, isLanguage, languages, localized, preferredLanguage, type Language } from "@/lib/languages";
 import {
   appVersion,
   bytes,
@@ -873,6 +873,7 @@ export function Settings({
     minimized: 5000,
     background: 5000,
   });
+  const [languageChoice, setLanguageChoice] = useState<Language | "system">(language);
   const set = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
   const body = useRef<HTMLDivElement>(null);
@@ -939,9 +940,14 @@ export function Settings({
           <Setting icon="globe" title="界面语言" desc="立即生效，托盘菜单与提示信息也随之切换。“跟随系统”使用 Windows 的显示语言。">
             <Select
               label="界面语言"
-              value={language()}
-              onChange={(value) => { if (isLanguage(value) && value !== language()) location.assign(localized(value) + "#demo"); }}
-              options={languages.map(item => ({ value: item.id, label: item.name }))}
+              value={languageChoice}
+              onChange={(value) => {
+                if (value !== "system" && !isLanguage(value)) return;
+                setLanguageChoice(value);
+                const next = value === "system" ? preferredLanguage(navigator.languages) : value;
+                if (next !== language()) location.assign(localized(next) + "#demo");
+              }}
+              options={[{ value: "system", label: "跟随系统" }, ...languages.map(item => ({ value: item.id, label: item.name }))]}
             />
           </Setting>
           <Setting icon="theme" title="主题" desc="“跟随系统”使用 Windows 的应用模式，系统切换浅色或深色时随之切换。">

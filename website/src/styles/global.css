@@ -358,19 +358,21 @@ button {
   position: sticky;
   top: 12px;
   z-index: 40;
-  height: var(--header);
+  min-height: 56px;
   margin-top: 12px;
   view-transition-name: mast;
 }
 .mast-inner {
-  container: mast / inline-size;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: clamp(8px, 2vw, 28px);
-  width: min(100% - 2 * var(--pad), 1080px);
-  height: 100%;
+  gap: 8px;
+  width: max-content;
+  min-width: min(1080px, calc(100% - 2 * var(--pad)));
+  max-width: calc(100% - 2 * var(--pad));
+  min-height: 56px;
   margin-inline: auto;
-  padding: 0 10px 0 18px;
+  padding: 10px 12px;
   border: 1px solid var(--stroke);
   border-radius: 14px;
   background: color-mix(in srgb, var(--surface-solid) 74%, transparent);
@@ -397,7 +399,7 @@ button {
 }
 .mast-nav a {
   position: relative;
-  padding: 6px 12px;
+  padding: 6px;
   border-radius: var(--radius-sm);
   color: var(--ink-2);
   font-size: 0.9375rem;
@@ -669,11 +671,10 @@ button {
 .mast-menu {
   display: none;
 }
-@media (max-width: 1100px) {
+@media (max-width: 900px) {
   .mast-nav,
   .mast-tools .label,
-  .mast-tools kbd,
-  .mast-tools .gh-stars {
+  .mast-tools kbd {
     display: none;
   }
   .mast-menu {
@@ -695,6 +696,8 @@ button {
   .mast-sheet {
     position: fixed;
     inset: calc(var(--header) + 24px) var(--pad) auto;
+    max-height: calc(100dvh - var(--header) - 48px);
+    overflow-y: auto;
     display: grid;
     gap: 2px;
     padding: 8px;
@@ -969,18 +972,32 @@ button {
   color: var(--ink-3);
 }
 
-/* Long labels keep their own width; narrow headers retain the language control. */
+/* Preserve every control and statistic; long translations can use another row. */
 .mast-nav a, .mast-get { white-space: nowrap; }
 .mast-nav, .mast-tools { flex-shrink: 0; }
-@media (max-width: 1100px) { .mast-tools .label, .mast-tools kbd { display: none; } }
-@media (max-width: 520px) { .mast-get { display: none; } .mast-inner { gap: 8px; padding-inline: 12px; } }
-@media (max-width: 420px) { .mast-tools > [data-search-open] { display: none; } }
 .mast-sheet > [data-search-open] { justify-content: flex-start; min-height: 44px; height: auto; border: 0; padding: 10px 14px; }
-@container mast (max-width: 1100px) {
-  .mast-tools .label, .mast-tools kbd, .mast-tools .gh-count { display: none; }
-  .mast-nav a { padding-inline: 8px; }
+@media (max-width: 640px) {
+  :root { --header: 98px; }
+  .mast-inner {
+    width: calc(100% - 2 * var(--pad));
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "brand theme language menu" "github search download download";
+    gap: 8px 6px;
+  }
+  .mast-inner > .brand { grid-area: brand; }
+  .mast-tools { display: contents; }
+  .mast-tools > .theme-picker { grid-area: theme; }
+  .mast-tools > .language-picker { grid-area: language; justify-self: end; }
+  .mast-tools > .mast-menu { grid-area: menu; }
+  .mast-tools > .gh-stars { grid-area: github; justify-self: start; }
+  .mast-tools > [data-search-open] { grid-area: search; }
+  .mast-tools > .mast-get { grid-area: download; }
 }
-@container mast (max-width: 900px) {
-  .mast-nav { display: none; }
-  .mast-menu { display: block; }
+@media (max-width: 359px) {
+  :root { --header: 140px; }
+  .mast-inner {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "brand brand menu" "github language theme" "search download download";
+  }
 }

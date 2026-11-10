@@ -20,3 +20,19 @@ export const languageOfPath = (path: string): Language => {
 };
 export const notesLanguage = (lang: Language): SourceLanguage => lang === "zh" || lang === "zh-TW" ? "zh" : "en";
 export const dateLocale = (lang: Language) => languageInfo(lang).tag;
+
+// The browser provides the display-language preference for the web demo.
+export function preferredLanguage(tags: readonly string[]): Language {
+  for (const tag of tags) {
+    const [primary, ...subtags] = tag.trim().toLowerCase().split(/[-_]/);
+    const extension = subtags.findIndex(part => part.length === 1);
+    const parts = extension < 0 ? subtags : subtags.slice(0, extension);
+    if (primary === "zh") {
+      if (parts.includes("hant") || parts.includes("cht")) return "zh-TW";
+      if (parts.includes("hans") || parts.includes("chs")) return "zh";
+      return parts.some(part => ["tw", "hk", "mo"].includes(part)) ? "zh-TW" : "zh";
+    }
+    if (isLanguage(primary)) return primary;
+  }
+  return "en";
+}
