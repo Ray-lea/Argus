@@ -2,7 +2,7 @@
 
 从[使用指南](guide/README.md)了解界面操作，从[开发指南](development/README.md)配置构建环境。[架构](architecture/README.md)介绍各模块的职责，[设计](design/README.md)说明界面与交互的取舍。
 
-项目介绍与下载指引：[简体中文](../README.md) · [English](../README.en.md) · [Español](../README.es.md) · [Deutsch](../README.de.md) · [日本語](../README.ja.md) · [Français](../README.fr.md) · [Русский](../README.ru.md)。详细文档使用中文。
+项目介绍与下载指引：[简体中文](../README.md) · [繁體中文](../README.zh-TW.md) · [English](../README.en.md) · [Español](../README.es.md) · [Deutsch](../README.de.md) · [日本語](../README.ja.md) · [Français](../README.fr.md) · [Русский](../README.ru.md)。详细文档使用中文。
 
 ## 使用指南
 

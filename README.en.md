@@ -6,7 +6,7 @@
 
 **A fast, modern and informative task manager for Windows**
 
-**README language:** [简体中文](README.md) · [繁體中文](README.zh-TW.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![Website & Live Demo](https://img.shields.io/badge/%F0%9F%8C%90_Website_%26_Live_Demo-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/en/)
 
@@ -17,7 +17,7 @@ Try the full interactive interface and guided tour right in your browser on the 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20x64-0078D4)](#-system-requirements)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
-[Website & Live Demo](https://argustask.com/en/) · [Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community) · [Language guide](#language-guide)
+[Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community)
 
 </div>
 
@@ -31,14 +31,6 @@ Try the full interactive interface and guided tour right in your browser on the 
 <br>
 
 Argus queries Windows native APIs directly in Rust, with an interface built on GPUI Kit native components and charts that flow smoothly at the display's refresh rate. The project is named after Argus Panoptes, the hundred-eyed giant of Greek mythology.
-
-<a id="language-guide"></a>
-
-## 🌍 Language guide
-
-Use the links at the top to choose this README's language. The application language is selected separately in **Settings → Language and appearance → Display language** and follows the Windows display language by default.
-
-The website and interactive demo support all eight interface languages. Detailed documentation remains in Simplified Chinese. Release notes are maintained in Simplified Chinese and English: Traditional Chinese pages use the Simplified Chinese notes, and the other added languages use English notes.
 
 ## ⭐ Star history
 

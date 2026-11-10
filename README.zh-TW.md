@@ -6,7 +6,7 @@
 
 **快速、現代、資訊豐富的 Windows 工作管理員**
 
-**閱讀語言：** [简体中文](README.md) · **繁體中文** · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · **繁體中文** · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![官網與線上體驗](https://img.shields.io/badge/Argus-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/zh-TW/)
 
@@ -17,7 +17,7 @@
 [![平台](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-0078D4)](#system-requirements)
 [![授權條款](https://img.shields.io/badge/License-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
-[官網與線上體驗](https://argustask.com/zh-TW/) · [功能](#features) · [下載](#download) · [從原始碼建置](#build-from-source) · [快速鍵](#keyboard-shortcuts) · [文件](#documentation) · [交流與意見反應](#community) · [語言指引](#language-guide)
+[功能](#features) · [下載](#download) · [從原始碼建置](#build-from-source) · [快速鍵](#keyboard-shortcuts) · [文件](#documentation) · [交流與意見反應](#community)
 
 </div>
 
@@ -31,14 +31,6 @@
 預覽圖為簡體中文介面。
 
 Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件建構介面，圖表折線隨螢幕更新率連續移動。專案名稱取自希臘神話中的百眼巨人阿爾戈斯（Argus Panoptes）。
-
-<a id="language-guide"></a>
-
-## 🌍 語言指引
-
-頁面頂部可切換 README 閱讀語言。軟體介面語言可在 **設定 → 語言與外觀 → 介面語言** 中選取，預設跟隨 Windows 顯示語言。
-
-官網提供簡體中文、繁體中文、英文、西班牙文、德文、日文、法文及俄文。詳細文件使用簡體中文；繁體中文頁面的更新記錄使用簡體中文，其餘新增語言使用英文更新記錄。
 
 ## ⭐ Star 趨勢
 

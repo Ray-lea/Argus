@@ -6,7 +6,7 @@
 
 **Un gestionnaire de tâches rapide, moderne et riche en informations pour Windows**
 
-**Langue du README :** [简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · **Français** · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · **Français** · [Русский](README.ru.md)
 
 [![Site web et démo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Site+web+et+d%C3%A9mo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/fr/)
 
@@ -17,7 +17,7 @@ Essayer l’interface interactive et la présentation des fonctions dans le navi
 [![Plateforme](https://img.shields.io/static/v1?label=Plateforme&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
 [![Licence](https://img.shields.io/static/v1?label=Licence&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
-[Site web et démo](https://argustask.com/fr/) · [Fonctionnalités](#features) · [Téléchargement](#download) · [Compilation depuis les sources](#build-from-source) · [Raccourcis clavier](#keyboard-shortcuts) · [Documentation](#documentation) · [Communauté](#community) · [Langues](#language-guide)
+[Fonctionnalités](#features) · [Téléchargement](#download) · [Compilation depuis les sources](#build-from-source) · [Raccourcis clavier](#keyboard-shortcuts) · [Documentation](#documentation) · [Communauté](#community)
 
 </div>
 
@@ -33,14 +33,6 @@ Essayer l’interface interactive et la présentation des fonctions dans le navi
 <br>
 
 Argus interroge directement les API natives de Windows en Rust. Son interface repose sur les composants natifs de GPUI Kit, avec des graphiques qui défilent à la fréquence de rafraîchissement de l’écran. Le projet tient son nom d’Argos Panoptès, le géant aux cent yeux de la mythologie grecque.
-
-<a id="language-guide"></a>
-
-## 🌍 Choisir une langue
-
-Les liens en haut de la page permettent de changer la langue de ce README. La langue d’Argus se choisit séparément dans **Paramètres → Langue et apparence → Langue d’affichage**. Par défaut, elle suit la langue d’affichage de Windows.
-
-Le site et la démo prennent en charge les huit langues de l’interface. La documentation détaillée reste en chinois simplifié. Les notes de version sont maintenues en chinois simplifié et en anglais : les pages en chinois traditionnel utilisent les premières, les autres langues ajoutées utilisent l’anglais.
 
 <a id="star-history"></a>
 

@@ -6,7 +6,7 @@
 
 **Быстрый, современный и информативный диспетчер задач для Windows**
 
-**Язык README:** [简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · **Русский**
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · **Русский**
 
 [![Сайт и демо](https://img.shields.io/static/v1?label=%F0%9F%8C%90+%D0%A1%D0%B0%D0%B9%D1%82+%D0%B8+%D0%B4%D0%B5%D0%BC%D0%BE&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/ru/)
 
@@ -17,7 +17,7 @@
 [![Платформа](https://img.shields.io/static/v1?label=%D0%9F%D0%BB%D0%B0%D1%82%D1%84%D0%BE%D1%80%D0%BC%D0%B0&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
 [![Лицензия](https://img.shields.io/static/v1?label=%D0%9B%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
-[Сайт и демо](https://argustask.com/ru/) · [Возможности](#features) · [Загрузка](#download) · [Сборка из исходников](#build-from-source) · [Сочетания клавиш](#keyboard-shortcuts) · [Документация](#documentation) · [Сообщество](#community) · [Выбор языка](#language-guide)
+[Возможности](#features) · [Загрузка](#download) · [Сборка из исходников](#build-from-source) · [Сочетания клавиш](#keyboard-shortcuts) · [Документация](#documentation) · [Сообщество](#community)
 
 </div>
 
@@ -33,14 +33,6 @@
 <br>
 
 Argus обращается к нативным API Windows напрямую из Rust. Интерфейс построен на нативных компонентах GPUI Kit, а графики плавно движутся с частотой обновления экрана. Название проекта происходит от Аргуса Панопта — стоглазого великана древнегреческой мифологии.
-
-<a id="language-guide"></a>
-
-## 🌍 Выбор языка
-
-Ссылки вверху страницы переключают язык этого README. Язык приложения выбирается отдельно в разделе **Параметры → Язык и внешний вид → Язык интерфейса**. По умолчанию Argus следует языку интерфейса Windows.
-
-Сайт и демонстрация поддерживают все восемь языков интерфейса. Подробная документация остаётся на упрощённом китайском. Примечания к выпускам ведутся на упрощённом китайском и английском: для традиционного китайского используются первые, для остальных добавленных языков — английские.
 
 <a id="star-history"></a>
 
