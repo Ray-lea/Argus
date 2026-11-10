@@ -869,6 +869,9 @@ impl Desktop {
         note: Option<String>,
         cx: &App,
     ) -> AnyElement {
+        // A long label (often a translation) wraps to a second line instead of
+        // being cut off. Tiles stay top-aligned: some carry a note under the
+        // value, so pushing values to the row's bottom would misalign them.
         div()
             .min_w_0()
             .flex()
@@ -877,7 +880,8 @@ impl Desktop {
                 div()
                     .text_size(theme::font(12.))
                     .text_color(self.palette.muted)
-                    .truncate()
+                    .line_clamp(2)
+                    .text_ellipsis()
                     .child(title.into()),
             )
             .child(
