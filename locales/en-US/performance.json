@@ -301,6 +301,8 @@
     "loading": "Reading disk information…",
     "unavailable": "No disk details.",
     "performanceUnavailable": "Disk performance counters are temporarily unavailable.",
+    "volumeCounters": "Performance statistics come from volume {volumes} and cover that volume.",
+    "volumeCountersMultiple": "Read/write rates and response time are aggregated from volumes {volumes}; active time is unavailable.",
     "openFailed": "This disk could not be opened.",
     "errorCode": "Windows error code {code}",
     "health": "Health",

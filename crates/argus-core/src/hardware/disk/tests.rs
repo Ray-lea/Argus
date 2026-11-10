@@ -42,12 +42,14 @@ fn disk(index: u32) -> Disk {
             volumes: vec![],
         }),
         prev: None,
+        fallback: volumes::Counters::default(),
+        fallback_reported: false,
         temperature: Some((37., None)),
         temperature_at: None,
         temperature_supported: true,
     }
 }
-fn counters(second: i64, bytes: i64) -> DISK_PERFORMANCE {
+pub(super) fn counters(second: i64, bytes: i64) -> DISK_PERFORMANCE {
     DISK_PERFORMANCE {
         QueryTime: second * 10_000_000,
         IdleTime: second * 5_000_000,
@@ -57,6 +59,86 @@ fn counters(second: i64, bytes: i64) -> DISK_PERFORMANCE {
         WriteCount: second as u32,
         ..Default::default()
     }
+}
+
+#[test]
+fn invalid_function_uses_volume_counters_and_preserves_primary_recovery() {
+    let file = FileFixture::new();
+    let mut d = disk(0);
+    Arc::make_mut(&mut d.info).volumes = vec!["E:".into()];
+    d.handle = Some(DeviceHandle::fixture(&file.path));
+    d.temperature_supported = false;
+    let mut tracker = DiskTracker {
+        disks: vec![d],
+        scanned_at: Instant::now(),
+    };
+    let volume = |second, bytes| {
+        let mut value = counters(second, bytes);
+        value
+            .StorageManagerName
+            .copy_from_slice(&wide("VOLMGR  ")[..8]);
+        value.StorageDeviceNumber = 6;
+        volumes::Reading::Volume(value)
+    };
+    assert!(
+        tracker.collect_with_fallback(|_| Err(1), |_, _| Ok(volume(1, 100)))[0]
+            .read
+            .is_none()
+    );
+    let next = tracker.collect_with_fallback(
+        |_| Err(1),
+        |index, path| {
+            assert_eq!((index, path), (0, "E:"));
+            Ok(volume(2, 300))
+        },
+    );
+    assert_eq!(next[0].read, Some(200));
+    assert_eq!(next[0].write, Some(400));
+    assert_eq!(next[0].active, Some(50.));
+    assert_eq!(next[0].temperature, Some(37.));
+    assert_eq!(
+        next[0].performance_volumes.as_deref(),
+        Some(["E:".into()].as_slice())
+    );
+    let recovered = tracker.collect_with_fallback(
+        |_| Ok(counters(3, 500)),
+        |_, _| panic!("healthy device needs no fallback"),
+    );
+    assert!(recovered[0].read.is_none());
+    assert!(recovered[0].performance_volumes.is_none());
+    assert_eq!(
+        tracker.collect_with_fallback(|_| Ok(counters(4, 900)), |_, _| unreachable!())[0].read,
+        Some(400)
+    );
+}
+
+#[test]
+fn removal_and_volume_failures_do_not_read_other_sources_or_reuse_old_rates() {
+    use windows::Win32::Devices::DeviceAndDriverInstallation::CM_NOTIFY_ACTION_DEVICEQUERYREMOVE;
+    let file = FileFixture::new();
+    let mut d = disk(0);
+    Arc::make_mut(&mut d.info).volumes = vec!["E:".into()];
+    d.handle = Some(DeviceHandle::fixture(&file.path));
+    let mut tracker = DiskTracker {
+        disks: vec![d],
+        scanned_at: Instant::now(),
+    };
+    let missing = tracker.collect_with_fallback(|_| Err(1), |_, _| Err(1));
+    assert!(missing[0].read.is_none());
+    assert!(missing[0].active.is_none());
+    tracker.disks[0]
+        .handle
+        .as_ref()
+        .unwrap()
+        .notify(CM_NOTIFY_ACTION_DEVICEQUERYREMOVE);
+    assert!(
+        tracker.collect_with_fallback(
+            |_| panic!("read during removal"),
+            |_, _| panic!("fallback during removal")
+        )[0]
+        .read
+        .is_none()
+    );
 }
 #[test]
 fn unsupported_performance_keeps_both_disks_and_independent_temperature() {
@@ -190,6 +272,81 @@ fn live_inventory() {
     }
     for entry in crate::diagnostics::take_helper_failures() {
         println!("{entry}");
+    }
+}
+
+#[test]
+#[ignore = "read-only comparison of physical and volume performance interfaces"]
+fn live_performance_paths() {
+    for (index, volumes) in volume_map() {
+        for path in std::iter::once(format!(r"\\.\PhysicalDrive{index}"))
+            .chain(volumes.into_iter().map(|letter| format!(r"\\.\{letter}")))
+        {
+            let result =
+                DeviceHandle::open(&path).and_then(|handle| handle.read(|raw, _| performance(raw)));
+            match result {
+                Ok(value) => println!(
+                    "{path}: manager={:?}; number={}; read={}; write={}; idle={}; time={}",
+                    String::from_utf16_lossy(&value.StorageManagerName),
+                    value.StorageDeviceNumber,
+                    value.BytesRead,
+                    value.BytesWritten,
+                    value.IdleTime,
+                    value.QueryTime
+                ),
+                Err(code) => println!("{path}: error={code}"),
+            }
+        }
+    }
+    let query = crate::pdh::Query::open().unwrap();
+    let counters = [
+        r"\PhysicalDisk(*)\Disk Read Bytes/sec",
+        r"\PhysicalDisk(*)\% Idle Time",
+        r"\LogicalDisk(*)\Disk Read Bytes/sec",
+    ]
+    .map(|path| (path, query.add(PCWSTR(wide(path).as_ptr()))));
+    query.collect();
+    std::thread::sleep(Duration::from_millis(600));
+    query.collect();
+    let mut buffer = AlignedBuf::with_capacity(16384);
+    for (path, counter) in counters {
+        println!(
+            "{path}: {:?}",
+            counter.map(|c| crate::pdh::array(c, &mut buffer))
+        );
+    }
+}
+
+#[test]
+#[ignore = "read-only volume compatibility probe with simulated physical counter rejection"]
+fn live_volume_fallback() {
+    let mut tracker = DiskTracker::new();
+    let before = tracker.collect_with_fallback(|_| Err(1), volumes::read);
+    std::thread::sleep(Duration::from_millis(600));
+    let start = Instant::now();
+    let after = tracker.collect_with_fallback(|_| Err(1), volumes::read);
+    println!(
+        "compatibility sample: {:?}; {}",
+        start.elapsed(),
+        serde_json::to_string(&after).unwrap()
+    );
+    assert_eq!(before.len(), after.len());
+    assert!(
+        after
+            .iter()
+            .any(|disk| disk.read.is_some() && disk.performance_volumes.is_some())
+    );
+    for disk in &tracker.disks {
+        for volume in &disk.info.volumes {
+            disk.handle
+                .as_ref()
+                .unwrap()
+                .read(|_, _| {
+                    assert!(volumes::read(disk.info.index + 100, volume).is_err());
+                    Ok(())
+                })
+                .unwrap();
+        }
     }
 }
 

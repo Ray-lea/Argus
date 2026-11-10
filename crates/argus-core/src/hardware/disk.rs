@@ -4,6 +4,7 @@ mod access;
 mod discovery;
 #[cfg(test)]
 mod tests;
+mod volumes;
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -81,6 +82,9 @@ pub struct DiskStats {
     pub temperature: Option<f32>,
     /// The drive's own warning threshold, °C.
     pub temperature_warning: Option<f32>,
+    /// Mounted-volume coverage when physical-device counters are unavailable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub performance_volumes: Option<Vec<String>>,
 }
 
 struct Disk {
@@ -88,6 +92,8 @@ struct Disk {
     generation: u64,
     info: Arc<DiskInfo>,
     prev: Option<DISK_PERFORMANCE>,
+    fallback: volumes::Counters,
+    fallback_reported: bool,
     /// Last reading as (°C, warning °C); None once the drive declines.
     temperature: Option<(f32, Option<f32>)>,
     temperature_at: Option<Instant>,
@@ -104,6 +110,7 @@ impl Disk {
             if self.generation != generation {
                 self.generation = generation;
                 self.prev = None;
+                self.fallback.clear();
                 self.temperature_at = None;
                 self.temperature_supported = true;
             }
@@ -216,6 +223,10 @@ impl DiskTracker {
                     d.handle = handle;
                     d.generation = 0;
                     d.prev = None;
+                    if identity_changed {
+                        d.fallback.clear();
+                        d.fallback_reported = false;
+                    }
                 }
                 if *d.info != info {
                     d.info = Arc::new(info);
@@ -229,6 +240,8 @@ impl DiskTracker {
                 generation: 0,
                 info: Arc::new(info),
                 prev: None,
+                fallback: volumes::Counters::default(),
+                fallback_reported: false,
                 temperature: None,
                 temperature_at: None,
                 temperature_supported: true,
@@ -249,7 +262,51 @@ impl DiskTracker {
         if self.scanned_at.elapsed() > RESCAN_EVERY {
             self.rescan();
         }
-        self.collect(|d| d.sample_with(performance))
+        self.collect_with_fallback(performance, volumes::read)
+    }
+
+    fn collect_with_fallback(
+        &mut self,
+        mut primary: impl FnMut(HANDLE) -> Result<DISK_PERFORMANCE, u32>,
+        mut volume: impl FnMut(u32, &str) -> Result<volumes::Reading, u32>,
+    ) -> Vec<DiskStats> {
+        let paths = volumes::exclusive_paths(self.disks.iter().map(|disk| &*disk.info));
+        let mut fallback = HashMap::new();
+        let mut out = self.collect(|disk| {
+            let index = disk.info.index;
+            disk.sample_with(|handle| {
+                let result = primary(handle);
+                if matches!(result, Err(1 | 5 | 13 | 50 | 87))
+                    && let Some(paths) = paths.get(&index)
+                {
+                    // The physical read guard covers every child volume query.
+                    // Removal waits until these scoped handles have all closed.
+                    fallback.insert(index, volumes::read_set(index, paths, &mut volume));
+                }
+                result
+            })
+        });
+        for (disk, stats) in self.disks.iter_mut().zip(&mut out) {
+            match fallback.remove(&disk.info.index) {
+                Some(Ok(readings)) => {
+                    let reading = disk.fallback.update(readings);
+                    if !disk.fallback_reported {
+                        log::info!(target: "argus::disk", "disk performance compatibility path active; disk={}; volume_counters={}", disk.info.index, reading.volumes.is_some());
+                        disk.fallback_reported = true;
+                    }
+                    stats.performance_volumes = reading.volumes;
+                    if let Some(rates) = reading.rates {
+                        stats.apply(rates);
+                    }
+                }
+                Some(Err(code)) => {
+                    disk.fallback.clear();
+                    failure("disk.performance.volume", disk.info.index, code);
+                }
+                None => disk.fallback.clear(),
+            }
+        }
+        out
     }
 
     fn collect(
@@ -268,33 +325,12 @@ impl DiskTracker {
                     response_ms: None,
                     temperature: d.temperature.map(|t| t.0),
                     temperature_warning: d.temperature.and_then(|t| t.1),
+                    performance_volumes: None,
                 };
-                if let (Some(prev), Some(now)) = (d.prev, now) {
-                    let elapsed = (now.QueryTime - prev.QueryTime) as f64; // 100 ns ticks
-                    if elapsed > 0.0
-                        && now.BytesRead >= prev.BytesRead
-                        && now.BytesWritten >= prev.BytesWritten
-                        && now.IdleTime >= prev.IdleTime
-                        && now.ReadTime >= prev.ReadTime
-                        && now.WriteTime >= prev.WriteTime
-                    {
-                        let idle = (now.IdleTime - prev.IdleTime) as f64;
-                        stats.active =
-                            Some(((1.0 - idle / elapsed) * 100.0).clamp(0.0, 100.0) as f32);
-                        let secs = elapsed / 1e7;
-                        stats.read = Some(((now.BytesRead - prev.BytesRead) as f64 / secs) as u64);
-                        stats.write =
-                            Some(((now.BytesWritten - prev.BytesWritten) as f64 / secs) as u64);
-                        let transfers = now.ReadCount.wrapping_sub(prev.ReadCount) as u64
-                            + now.WriteCount.wrapping_sub(prev.WriteCount) as u64;
-                        let busy = (now.ReadTime - prev.ReadTime) as f64
-                            + (now.WriteTime - prev.WriteTime) as f64;
-                        stats.response_ms = Some(if transfers > 0 {
-                            (busy / transfers as f64 / 10_000.0) as f32
-                        } else {
-                            0.
-                        });
-                    }
+                if let (Some(prev), Some(now)) = (d.prev, now)
+                    && let Some(rates) = rates(&prev, &now)
+                {
+                    stats.apply(rates);
                 }
                 // Failure resets the baseline, so recovery never averages across
                 // a missing interval or reports an old sample as current activity.
@@ -303,6 +339,61 @@ impl DiskTracker {
             })
             .collect()
     }
+}
+
+#[derive(Clone, Copy)]
+struct Rates {
+    active: Option<f32>,
+    read: u64,
+    write: u64,
+    io_time: f64,
+    transfers: u64,
+}
+
+impl DiskStats {
+    fn apply(&mut self, rates: Rates) {
+        self.active = rates.active;
+        self.read = Some(rates.read);
+        self.write = Some(rates.write);
+        self.response_ms = Some(if rates.transfers == 0 {
+            0.
+        } else {
+            (rates.io_time / rates.transfers as f64 / 10_000.) as f32
+        });
+    }
+}
+
+fn rates(previous: &DISK_PERFORMANCE, now: &DISK_PERFORMANCE) -> Option<Rates> {
+    if !valid_performance(previous)
+        || !valid_performance(now)
+        || previous.StorageDeviceNumber != now.StorageDeviceNumber
+        || previous.StorageManagerName != now.StorageManagerName
+        || now.QueryTime <= previous.QueryTime
+        || now.BytesRead < previous.BytesRead
+        || now.BytesWritten < previous.BytesWritten
+        || now.IdleTime < previous.IdleTime
+        || now.ReadTime < previous.ReadTime
+        || now.WriteTime < previous.WriteTime
+    {
+        return None;
+    }
+    let elapsed = (now.QueryTime - previous.QueryTime) as f64;
+    let rate = |bytes: i64| {
+        let value = bytes as f64 * 1e7 / elapsed;
+        (value.is_finite() && value >= 0. && value < u64::MAX as f64).then_some(value as u64)
+    };
+    Some(Rates {
+        active: Some(
+            ((1. - (now.IdleTime - previous.IdleTime) as f64 / elapsed) * 100.).clamp(0., 100.)
+                as f32,
+        ),
+        read: rate(now.BytesRead - previous.BytesRead)?,
+        write: rate(now.BytesWritten - previous.BytesWritten)?,
+        io_time: (now.ReadTime - previous.ReadTime) as f64
+            + (now.WriteTime - previous.WriteTime) as f64,
+        transfers: u64::from(now.ReadCount.wrapping_sub(previous.ReadCount))
+            + u64::from(now.WriteCount.wrapping_sub(previous.WriteCount)),
+    })
 }
 
 fn unknown_disk(index: u32, volumes: Vec<String>) -> DiskInfo {
@@ -369,16 +460,19 @@ fn performance(handle: HANDLE) -> Result<DISK_PERFORMANCE, u32> {
         return Err(13);
     }
     let value = unsafe { std::ptr::read(buf.as_ptr() as *const DISK_PERFORMANCE) };
-    if value.QueryTime <= 0
-        || value.BytesRead < 0
-        || value.BytesWritten < 0
-        || value.IdleTime < 0
-        || value.ReadTime < 0
-        || value.WriteTime < 0
-    {
+    if !valid_performance(&value) {
         return Err(13);
     }
     Ok(value)
+}
+
+fn valid_performance(value: &DISK_PERFORMANCE) -> bool {
+    value.QueryTime > 0
+        && value.BytesRead >= 0
+        && value.BytesWritten >= 0
+        && value.IdleTime >= 0
+        && value.ReadTime >= 0
+        && value.WriteTime >= 0
 }
 
 fn query_property(
@@ -521,30 +615,35 @@ pub(super) fn volume_map() -> HashMap<u32, Vec<String>> {
         let Ok(h) = DeviceHandle::open(&format!(r"\\.\{letter}")) else {
             continue;
         };
-        let mut buf = AlignedBuf::with_capacity(512);
-        let Ok(returned) =
-            h.read(|raw, _| ioctl(raw, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, None, &mut buf))
-        else {
+        let Ok(indices) = h.read(|raw, _| volume_disks(raw)) else {
             continue;
         };
-        let offset = std::mem::offset_of!(VOLUME_DISK_EXTENTS, Extents);
-        let returned = (returned as usize).min(buf.len());
-        if returned < offset {
-            continue;
-        }
-        let ext = unsafe { &*(buf.as_ptr() as *const VOLUME_DISK_EXTENTS) };
-        let n = ext.NumberOfDiskExtents as usize;
-        let available = (returned - offset) / std::mem::size_of_val(&ext.Extents[0]);
-        if n > available {
-            continue;
-        }
-        let extents = unsafe { std::slice::from_raw_parts(ext.Extents.as_ptr(), n) };
-        for e in extents {
-            let list = map.entry(e.DiskNumber).or_default();
+        for index in indices {
+            let list = map.entry(index).or_default();
             if !list.contains(&letter) {
                 list.push(letter.clone());
             }
         }
     }
     map
+}
+
+fn volume_disks(handle: HANDLE) -> Result<Vec<u32>, u32> {
+    let mut buf = AlignedBuf::with_capacity(512);
+    let returned = ioctl(handle, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, None, &mut buf)? as usize;
+    let offset = std::mem::offset_of!(VOLUME_DISK_EXTENTS, Extents);
+    if returned < offset || returned > buf.len() {
+        return Err(13);
+    }
+    let ext = unsafe { &*(buf.as_ptr() as *const VOLUME_DISK_EXTENTS) };
+    let count = ext.NumberOfDiskExtents as usize;
+    let available = (returned - offset) / std::mem::size_of_val(&ext.Extents[0]);
+    if count == 0 || count > available {
+        return Err(13);
+    }
+    let extents = unsafe { std::slice::from_raw_parts(ext.Extents.as_ptr(), count) };
+    let mut disks: Vec<_> = extents.iter().map(|extent| extent.DiskNumber).collect();
+    disks.sort_unstable();
+    disks.dedup();
+    Ok(disks)
 }

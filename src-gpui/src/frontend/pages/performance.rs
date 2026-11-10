@@ -2219,17 +2219,44 @@ impl Desktop {
         if details {
             return vec![head, self.disk_details(device, window, cx)];
         }
+        let counter_volumes = values(&disk["performanceVolumes"]);
+        let volume_note = (!counter_volumes.is_empty()).then(|| {
+            let volumes = counter_volumes
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ");
+            if counter_volumes.len() == 1 {
+                tr!("performance.disk.volumeCounters", volumes = volumes)
+            } else {
+                tr!("performance.disk.volumeCountersMultiple", volumes = volumes)
+            }
+        });
         let head = div()
             .flex()
             .flex_col()
             .child(head)
-            .when(!disk["active"].is_number(), |d| {
+            .when(
+                ["active", "read", "write", "responseMs"]
+                    .iter()
+                    .all(|field| !disk[*field].is_number()),
+                |d| {
+                    d.child(
+                        div()
+                            .mt(px(6.))
+                            .text_size(theme::font(12.))
+                            .text_color(p.muted)
+                            .child(label("performance.disk.performanceUnavailable")),
+                    )
+                },
+            )
+            .when_some(volume_note, |d, note| {
                 d.child(
                     div()
                         .mt(px(6.))
                         .text_size(theme::font(12.))
                         .text_color(p.muted)
-                        .child(label("performance.disk.performanceUnavailable")),
+                        .child(note),
                 )
             })
             .into_any_element();

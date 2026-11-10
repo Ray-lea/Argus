@@ -280,6 +280,8 @@
   },
   "disk": {
     "performanceUnavailable": "Los contadores de rendimiento del disco no están disponibles temporalmente.",
+    "volumeCounters": "Las estadísticas de rendimiento proceden del volumen {volumes} y abarcan ese volumen.",
+    "volumeCountersMultiple": "Las velocidades de lectura y escritura y el tiempo de respuesta se agregan para los volúmenes {volumes}; el tiempo de actividad no está disponible.",
     "title": "Disco {index}",
     "titleVolumes": "Disco {index} ({volumes})",
     "removableMedia": "Extraíble",

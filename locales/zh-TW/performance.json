@@ -446,7 +446,9 @@
       "uncorrected": "未校正錯誤總數",
       "counters": "讀寫錯誤統計"
     },
-    "performanceUnavailable": "暫時無法讀取磁碟效能計數。"
+    "performanceUnavailable": "暫時無法讀取磁碟效能計數。",
+    "volumeCounters": "目前使用磁碟區 {volumes} 的效能統計，統計範圍為該磁碟區。",
+    "volumeCountersMultiple": "目前彙總磁碟區 {volumes} 的讀寫速率與回應時間；活動時間暫無可用讀數。"
   },
   "network": {
     "sub": "收 {rx}  發 {tx}",

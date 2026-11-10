@@ -280,6 +280,8 @@
   },
   "disk": {
     "performanceUnavailable": "Les compteurs de performances du disque sont temporairement indisponibles.",
+    "volumeCounters": "Les statistiques de performances proviennent du volume {volumes} et couvrent ce volume.",
+    "volumeCountersMultiple": "Les débits de lecture et d’écriture et le temps de réponse sont agrégés pour les volumes {volumes} ; le temps d’activité est indisponible.",
     "title": "Disque {index}",
     "titleVolumes": "Disque {index} ({volumes})",
     "removableMedia": "Amovible",
