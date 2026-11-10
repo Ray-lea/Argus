@@ -28,6 +28,7 @@ mod regions;
 mod release_notes;
 mod reorder;
 mod scrollbar;
+mod search;
 mod shift;
 mod star;
 mod tables;
