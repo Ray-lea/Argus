@@ -251,30 +251,46 @@ pub fn set_efficiency_mode(pid: u32, create_time: i64, on: bool) -> Result<(), A
     Ok(())
 }
 
+/// Resumes repeated at most this many times, against suspend counts stacked
+/// by other tools; far above any real nesting.
+const MAX_RESUMES: usize = 64;
+
 /// Suspends or resumes every thread of a process instance, the way Resource
 /// Monitor's "Suspend process" does. Suspending is refused for the System
 /// process, Argus itself and critical processes, whose stall hangs Windows.
-/// Each call changes the threads' suspend counts by one, so a process that
-/// was also suspended by someone else stays suspended after one resume.
+///
+/// Each native call moves every thread's suspend count by one, so both
+/// directions are made idempotent against the live thread states rather than
+/// the caller's (possibly stale) list: a suspended process is not suspended
+/// again, and resuming repeats until no thread is left suspended.
 pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), ActionError> {
     if pid == 0 || pid == 4 || pid == unsafe { GetCurrentProcessId() } {
         return Err(ActionError::Refused);
     }
     let handle = open_instance(pid, create_time, PROCESS_SUSPEND_RESUME)?;
-    if suspend && is_critical(pid) {
-        return Err(ActionError::Critical);
-    }
-    let status = unsafe {
-        if suspend {
-            crate::nt::NtSuspendProcess(handle.0)
-        } else {
-            crate::nt::NtResumeProcess(handle.0)
+    let check = |status: windows::Win32::Foundation::NTSTATUS| {
+        if status == STATUS_ACCESS_DENIED {
+            return Err(ActionError::AccessDenied);
         }
+        Ok(status.ok()?)
     };
-    if status == STATUS_ACCESS_DENIED {
-        return Err(ActionError::AccessDenied);
+    let suspended = || crate::process::is_suspended(pid, create_time) == Some(true);
+    if suspend {
+        if is_critical(pid) {
+            return Err(ActionError::Critical);
+        }
+        if suspended() {
+            return Ok(());
+        }
+        return check(unsafe { crate::nt::NtSuspendProcess(handle.0) });
     }
-    Ok(status.ok()?)
+    for _ in 0..MAX_RESUMES {
+        check(unsafe { crate::nt::NtResumeProcess(handle.0) })?;
+        if !suspended() {
+            break;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -347,6 +363,43 @@ pub fn terminate_tree_with(
 
 #[cfg(test)]
 mod tests {
+    /// Waits up to two seconds for the suspend APCs to reach every thread.
+    fn settles(pid: u32, created: i64, want: bool) -> bool {
+        (0..40).any(|_| {
+            let now = crate::process::is_suspended(pid, created) == Some(want);
+            if !now {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            now
+        })
+    }
+
+    #[test]
+    fn one_resume_clears_suspensions_stacked_on_a_live_process() {
+        let mut child = std::process::Command::new("ping")
+            .args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let created = crate::process::list_lineage()
+            .into_iter()
+            .find(|&(p, ..)| p == pid)
+            .unwrap()
+            .2;
+        super::set_suspended(pid, created, true).unwrap();
+        assert!(settles(pid, created, true));
+        // Suspending an already suspended process leaves its count alone…
+        super::set_suspended(pid, created, true).unwrap();
+        // …and a count stacked behind Argus's back still clears in one resume.
+        let handle = super::open_instance(pid, created, super::PROCESS_SUSPEND_RESUME).unwrap();
+        assert!(unsafe { crate::nt::NtSuspendProcess(handle.0) }.is_ok());
+        super::set_suspended(pid, created, false).unwrap();
+        assert!(settles(pid, created, false));
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
     #[test]
     fn unresolved_identity_never_uses_the_legacy_pid_only_action_path() {
         assert!(matches!(
