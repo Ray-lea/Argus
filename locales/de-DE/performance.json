@@ -276,6 +276,8 @@
   },
   "disk": {
     "performanceUnavailable": "Festplattenleistungsindikatoren sind vorübergehend nicht verfügbar.",
+    "volumeCounters": "Die Leistungsdaten stammen vom Volume {volumes} und beziehen sich auf dieses Volume.",
+    "volumeCountersMultiple": "Lese- und Schreibraten sowie Antwortzeit werden für die Volumes {volumes} zusammengefasst; die aktive Zeit ist nicht verfügbar.",
     "title": "Datenträger {index}",
     "titleVolumes": "Datenträger {index} ({volumes})",
     "removableMedia": "Wechselmedium",

@@ -289,6 +289,8 @@
     "loading": "正在读取磁盘信息…",
     "unavailable": "暂无磁盘详情。",
     "performanceUnavailable": "暂时无法读取磁盘性能计数。",
+    "volumeCounters": "当前使用卷 {volumes} 的性能统计，统计范围为该卷。",
+    "volumeCountersMultiple": "当前汇总卷 {volumes} 的读写速率和响应时间；活动时间暂无可用读数。",
     "openFailed": "无法打开此磁盘。",
     "errorCode": "Windows 错误码 {code}",
     "health": "健康状况",

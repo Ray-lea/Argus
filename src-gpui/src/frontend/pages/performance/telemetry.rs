@@ -572,11 +572,16 @@ impl Desktop {
             .min_w_0()
             .flex()
             .flex_col()
+            // Long names wrap to two lines instead of being cut off. The name
+            // takes up the spare row height, so values in a grid row share a
+            // baseline (readings carry no note below the value).
             .child(
                 div()
+                    .flex_grow(1.)
                     .text_size(theme::font(11.))
                     .text_color(self.palette.muted)
-                    .truncate()
+                    .line_clamp(2)
+                    .text_ellipsis()
                     .child(name),
             )
             .child(

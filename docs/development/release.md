@@ -162,7 +162,8 @@ Windows Authenticode 的测试接入见 [Windows 代码签名](signing.md)。测
 GitHub 上最新稳定版 Release 提供 `releases/latest/download/latest.json`（稳定版）与同目录的 `beta.json`（测试版）。官网在 `update.argustask.com` 提供对应清单，发布流程校验版本与签名。
 
 - 发布稳定版时，两份清单都指向这个版本，随 Release 一起上传。
-- 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。仓库还没有稳定版时测试版通道收不到更新，工作流会给出警告。
+- 各标签的检查可并行，构建与发布任务共用 `release-publication` 队列（`queue: max`），避免稳定版发布与测试版清单写入交错；最多保留 100 个等待任务。测试版发布前从 GitHub asset API 读取当前清单，按 SemVer 比较，仅当版本高于最新稳定版和当前测试版时才覆盖。旧标签晚完成或重跑时仍保留已发布的新版本；当前清单缺失、无效或读取失败时中止发布。
+- 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。查询最新稳定版明确返回 404 时，测试版通道收不到更新，工作流会给出警告；网络、权限或 GitHub API 错误会使发布步骤失败，不会当作缺少稳定版而跳过。
 - 清单由 `node scripts/release.mjs manifest` 生成。`notes` 取自 `CHANGELOG.md` 的对应条目，转成纯文本并去掉提交范围（`core`、`ui` 等），供 0.2 之前的版本显示；`argus.releaseNotes` 与 `argus.signature` 是上一节签名的更新内容原文及其签名，新版本的更新对话框只读这两项。
 
 自动线路依次尝试 GitHub、Argus 官方镜像和加速代理。代理使用加前缀的 GitHub 地址，官方镜像使用版本化下载地址。见[设置 → 更新](../guide/settings.md#更新)。
@@ -201,7 +202,7 @@ curl -sL https://github.com/Ray-lea/Argus/releases/latest/download/beta.json   #
 安装与卸载由以下两个 NSIS 文件定义。
 
 - [`installer-template.nsi`](../../packaging/windows/installer-template.nsi) 定义安装与卸载流程、服务刷新和数据清理。`scripts/bundle.mjs` 注入 `resources/app.json` 中的元数据和构建路径。
-- `packaging/windows/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案按语言写在文件开头的 `LangString` 中。
+- `packaging/windows/installer-ui.nsh`：页面本身。安装程序为“安装或升级”“进度”“完成”三页，卸载程序为“确认（可选删除应用数据）”“进度”“完成”三页；按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色，中文用微软雅黑、英文用 Segoe UI，窗口大小在各语言下一致，并按显示缩放比例调整。文案在各语言的 `locales/<语言>/installer.json` 中维护，打包时由 `scripts/bundle.mjs` 生成 `installer-locales.nsh` 中的 `LangString`。
 
 已安装旧版本时，安装页显示“将从版本 X 升级到 Y”，覆盖安装而不先卸载（与应用内更新相同）；已安装更新的版本时按钮不可用，需先卸载。被动模式（应用内更新）只显示进度页，静默安装（`/S`）不显示界面，保留 /P、/UPDATE、/R、/ARGS 与 /S 参数。
 

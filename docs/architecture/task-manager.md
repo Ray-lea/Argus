@@ -38,6 +38,8 @@ IFEO 将调试器前缀加到以 `taskmgr.exe` 为目标的启动命令上，影
 
 ## 原生回退与应急恢复
 
+设置页“临时打开系统任务管理器”通过本地命令 `open_native_task_manager` 复用原生启动路径，在当前用户会话中启动 Windows 自带的任务管理器。操作在后台线程执行，保持替换配置和恢复记录不变，并独立于特权服务的安装或授权状态；失败信息返回设置卡片。
+
 原生路径使用系统目录的固定 taskmgr.exe，不执行 IFEO 附带的任意路径或把附带参数转发给 Argus。先以 `DEBUG_ONLY_THIS_PROCESS | CREATE_SUSPENDED` 创建，再设置退出时不结束被调试进程、脱离调试并恢复线程，避免再次进入 IFEO。脱离失败会清理本次新建的进程并报错，不结束其他进程。API 行为见 [DebugActiveProcessStop](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-debugactiveprocessstop) 和 [DebugSetProcessKillOnExit](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-debugsetprocesskillonexit)。
 
 此路径独立于服务和 Argus 界面。原生启动受系统策略、令牌限制或文件损坏影响而失败时，启动器会提示错误；启动器自身损坏或被删除时，需按应急说明恢复。

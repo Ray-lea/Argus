@@ -17,7 +17,7 @@
       "many": "{count} ядер",
       "other": "{count} ядра"
     },
-    "hybrid": "(P-ядра: {performance}; E-ядра: {efficiency})",
+    "hybrid": " (P-ядра: {performance}; E-ядра: {efficiency})",
     "threads": {
       "one": "{count} поток",
       "few": "{count} потока",

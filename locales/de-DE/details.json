@@ -15,7 +15,7 @@
       "one": "{count} Kern",
       "other": "{count} Kerne"
     },
-    "hybrid": "({performance} P-Kerne + {efficiency} E-Kerne)",
+    "hybrid": " ({performance} P-Kerne + {efficiency} E-Kerne)",
     "threads": {
       "one": "{count} Thread",
       "other": "{count} Threads"
