@@ -280,6 +280,8 @@
   },
   "disk": {
     "performanceUnavailable": "Los contadores de rendimiento del disco no están disponibles temporalmente.",
+    "volumeCounters": "Las estadísticas de rendimiento proceden del volumen {volumes} y abarcan ese volumen.",
+    "volumeCountersMultiple": "Las velocidades de lectura y escritura y el tiempo de respuesta se agregan para los volúmenes {volumes}; el tiempo de actividad no está disponible.",
     "title": "Disco {index}",
     "titleVolumes": "Disco {index} ({volumes})",
     "removableMedia": "Extraíble",
@@ -505,7 +507,7 @@
     "temperature": "Temperatura de GPU",
     "fan": "Ventilador",
     "coreClock": "Frecuencia del núcleo",
-    "memoryClock": "Frecuencia de memoria gráfica",
+    "memoryClock": "Frecuencia de memoria",
     "coreVoltage": "Voltaje del núcleo",
     "coreVid": "VID del núcleo",
     "vidHint": "Tensión de alimentación solicitada por la GPU integrada (VID).",

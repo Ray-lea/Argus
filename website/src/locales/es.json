@@ -245,7 +245,7 @@
   "About this demo": "Acerca de esta demo",
   "This demo recreates Argus's interface and interactions in the browser, for reference only. Browser limits mean its animation, smoothness and details may fall short of the app itself, and features from new releases may not be in it yet. The app itself is what counts.": "Esta demo recrea la interfaz y las interacciones de Argus en el navegador. Las animaciones, la fluidez y los detalles están sujetos a sus limitaciones; las funciones nuevas se incorporan progresivamente. La experiencia real es la de la aplicación.",
   "Pause": "Pausar",
-  "Play demo": "Reproducir demo",
+  "Play demo": "Reproducir",
   "Demo chapters": "Capítulos de la demo",
   "Exit full screen": "Salir de pantalla completa",
   "Full screen": "Pantalla completa",

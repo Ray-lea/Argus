@@ -284,6 +284,8 @@
   },
   "disk": {
     "performanceUnavailable": "Счетчики производительности диска временно недоступны.",
+    "volumeCounters": "Показана статистика производительности тома {volumes}; она охватывает этот том.",
+    "volumeCountersMultiple": "Показаны суммарные скорости чтения и записи и среднее время отклика для томов {volumes}; время активности недоступно.",
     "title": "Диск {index}",
     "titleVolumes": "Диск {index} ({volumes})",
     "removableMedia": "Съёмный носитель",
@@ -590,8 +592,8 @@
       "alkaline": "Перезаряжаемая щелочная батарея"
     },
     "hoursMinutes": "{hours} ч {minutes} мин",
-    "minutes": "{minutes} мин.",
-    "timeLeft": "Осталось: {time}",
+    "minutes": "{minutes} мин",
+    "timeLeft": "Ещё {time}",
     "onBattery": "Работает от аккумулятора",
     "chargeRate": "Мощность зарядки",
     "dischargeRate": "Мощность разряда",

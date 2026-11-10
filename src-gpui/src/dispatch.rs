@@ -31,6 +31,9 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         "task_manager_status" => crate::commands::task_manager_status()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "open_native_task_manager" => crate::commands::open_native_task_manager()
+            .map(|value| serde_json::to_value(value).expect("serializable command response"))
+            .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "manage_task_manager" => {
             crate::commands::manage_task_manager(argument::<String>(&args, "action")?)
                 .map(|value| serde_json::to_value(value).expect("serializable command response"))

@@ -254,6 +254,16 @@ fn open_raw(path: &str) -> Result<OwnedHandle, u32> {
     .map_err(super::native_code)
 }
 
+/// A volume query made inside its physical device's registered read guard.
+/// Close this child handle before that guard can acknowledge device removal.
+pub(super) fn read_scoped<T>(
+    path: &str,
+    read: impl FnOnce(HANDLE) -> Result<T, u32>,
+) -> Result<T, u32> {
+    let handle = open_raw(path)?;
+    read(handle.0)
+}
+
 #[cfg(test)]
 impl DeviceHandle {
     pub(super) fn registered(&self) -> bool {

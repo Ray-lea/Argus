@@ -203,8 +203,8 @@
       "tdcPercent": "Utilisation de TDC",
       "edcPercent": "Utilisation de EDC",
       "coreSmuVoltage": "Tension moyenne des cœurs (SMU)",
-      "vddioWatts": "puissance VDDIO",
-      "vdd18Watts": "puissance VDD18",
+      "vddioWatts": "Puissance VDDIO",
+      "vdd18Watts": "Puissance VDD18",
       "memoryIoVolts": "Tension de la mémoire I/O",
       "graphicsMhz": "Horloge graphique intégrée",
       "socVoltageSetpoint": "Point de consigne de tension SoC"
@@ -280,6 +280,8 @@
   },
   "disk": {
     "performanceUnavailable": "Les compteurs de performances du disque sont temporairement indisponibles.",
+    "volumeCounters": "Les statistiques de performances proviennent du volume {volumes} et couvrent ce volume.",
+    "volumeCountersMultiple": "Les débits de lecture et d’écriture et le temps de réponse sont agrégés pour les volumes {volumes} ; le temps d’activité est indisponible.",
     "title": "Disque {index}",
     "titleVolumes": "Disque {index} ({volumes})",
     "removableMedia": "Amovible",
@@ -584,8 +586,8 @@
       "alkaline": "Alcaline rechargeable"
     },
     "hoursMinutes": "{hours} h {minutes} min",
-    "minutes": "{minutes} min.",
-    "timeLeft": "Temps restant : {time}",
+    "minutes": "{minutes} min",
+    "timeLeft": "Reste {time}",
     "onBattery": "Sur batterie",
     "chargeRate": "Puissance de charge",
     "dischargeRate": "Puissance de décharge",

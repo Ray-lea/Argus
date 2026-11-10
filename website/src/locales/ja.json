@@ -240,7 +240,7 @@
   "Closed, it stays in the tray; sampling, history and rules carry on": "閉じると通知領域に残り、サンプリング・履歴・ルールを継続",
   "Open the taskbar's hidden icons": "タスクバーの隠れたアイコンを開く",
   "Click the tray icon to show the window, or press Ctrl+Alt+Esc": "通知領域のアイコンまたは Ctrl+Alt+Esc で表示",
-  "Demo paused; the window is yours to use": "デモを一時停止しました。ウィンドウを操作できます",
+  "Demo paused; the window is yours to use": "デモを一時停止中。ウィンドウを操作できます",
   "Interface demo · simulated data": "UI デモ · 模擬データ",
   "About this demo": "このデモについて",
   "This demo recreates Argus's interface and interactions in the browser, for reference only. Browser limits mean its animation, smoothness and details may fall short of the app itself, and features from new releases may not be in it yet. The app itself is what counts.": "ブラウザー上で Argus の UI と操作を再現するプレビューです。アニメーションや滑らかさ、細部はブラウザーの制約を受けます。新機能は順次反映されるため、実際の動作はアプリで確認してください。",

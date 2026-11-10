@@ -272,6 +272,8 @@
   },
   "disk": {
     "performanceUnavailable": "ディスク パフォーマンス カウンターは一時的に利用できません。",
+    "volumeCounters": "ボリューム {volumes} のパフォーマンス統計を表示しています。統計の対象範囲はこのボリュームです。",
+    "volumeCountersMultiple": "ボリューム {volumes} の読み取り・書き込み速度と応答時間を集計しています。アクティブ時間は取得できません。",
     "title": "ディスク {index}",
     "titleVolumes": "ディスク {index}（{volumes}）",
     "removableMedia": "取り外し可能",

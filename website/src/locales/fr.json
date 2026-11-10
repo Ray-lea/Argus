@@ -240,7 +240,7 @@
   "Closed, it stays in the tray; sampling, history and rules carry on": "Après fermeture, reste dans la zone de notification ; collecte, historique et règles continuent",
   "Open the taskbar's hidden icons": "Ouvrir les icônes masquées de la barre des tâches",
   "Click the tray icon to show the window, or press Ctrl+Alt+Esc": "Cliquer sur l’icône de notification ou appuyer sur Ctrl+Alt+Esc",
-  "Demo paused; the window is yours to use": "Démo en pause ; la fenêtre peut être utilisée",
+  "Demo paused; the window is yours to use": "Démo en pause ; utilisez la fenêtre",
   "Interface demo · simulated data": "Démo de l’interface · données simulées",
   "About this demo": "À propos de cette démo",
   "This demo recreates Argus's interface and interactions in the browser, for reference only. Browser limits mean its animation, smoothness and details may fall short of the app itself, and features from new releases may not be in it yet. The app itself is what counts.": "Cette démo reproduit l’interface et les interactions d’Argus dans le navigateur. Animations, fluidité et détails dépendent de ses limites ; les nouvelles fonctions sont intégrées progressivement. L’application reste la référence.",
