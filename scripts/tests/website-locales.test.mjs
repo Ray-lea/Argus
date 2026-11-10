@@ -15,6 +15,15 @@ test("website routes round-trip and changelogs keep their published source langu
   }
   assert.equal(languageOfPath("/docs/dev/"), "zh");
 });
+test("every localized HTML route keeps its CSP-hashed bytes at the edge", async () => {
+  const headers = (await readFile(new URL("../../website/public/_headers", import.meta.url), "utf8")).replaceAll("\r", "");
+  const rules = headers.split(/\n(?=\S)/);
+  for (const { id } of languages) {
+    const path = id === "zh" ? "/" : `/${id}/*`;
+    const rule = rules.find(block => block.startsWith(path + "\n"));
+    assert.ok(rule?.includes("no-transform"), `${path}: missing HTML cache policy`);
+  }
+});
 test("page copy translates nested values and formatter results without changing links", () => {
   const source = { label: "Ready", rows: ["Ready", "/en/download/"], show: value => `Count: ${value}` };
   const translated = translateValue({ Ready: "完成", "Count: {number}": "數量：{number}" }, source);
