@@ -3,14 +3,25 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { assetLimit, downloadOrigin, readChecksums } from "./release.mjs";
+import { assetLimit, downloadOrigin, filenames, readChecksums, repo } from "./release.mjs";
 
 function channelDownloads(release) {
   assert(Array.isArray(release.downloads), "Missing channel download metadata; rebuild the website");
   const versions = new Map(release.downloads.map(item => [item.version, item]));
   return [...new Set([release.version, release.beta])].map(version => {
     assert(versions.has(version), `Missing downloads for channel version ${version}`);
-    return versions.get(version);
+    const item = versions.get(version);
+    const expected = filenames(version);
+    assert.equal(Object.keys(item.files ?? {}).length, Object.keys(expected).length, `Incomplete download metadata for ${version}`);
+    for (const [kind, name] of Object.entries(expected)) {
+      const file = item.files?.[kind];
+      assert(file && file.name === name, `Missing ${kind} download metadata for ${version}`);
+      assert(Number.isSafeInteger(file.size) && file.size > 0, `Invalid size metadata for ${version}/${kind}`);
+      assert(/^[0-9a-f]{64}$/.test(file.sha256 ?? ""), `Invalid checksum metadata for ${version}/${kind}`);
+      assert.equal(file.url, `${downloadOrigin}/v${version}/${name}`, `Invalid mirror metadata for ${version}/${kind}`);
+      assert.equal(file.upstream, `${repo}/releases/download/v${version}/${name}`, `Invalid upstream metadata for ${version}/${kind}`);
+    }
+    return item;
   });
 }
 

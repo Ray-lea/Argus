@@ -154,3 +154,23 @@ test("old or incomplete build metadata cannot silently skip the beta channel", a
   for (const downloads of [undefined, f.release.downloads.slice(0, 1)])
     await assert.rejects(verifyOnlineDownloads({ ...f.release, downloads }, { ...quiet, request: async () => assert.fail("must not fetch incomplete metadata") }), /Missing/);
 });
+
+test("partial beta file metadata fails before checking any download", async t => {
+  const dist = await temporary(t);
+  await mkdir(join(dist, "downloads"));
+  await writeFile(join(dist, "downloads/_redirects"), "");
+  for (const corrupt of [
+    files => { delete files.installer; },
+    files => { delete files.portable; },
+    files => { delete files.installer; delete files.portable; },
+    files => { files.portable.size = -1; },
+    files => { files.portable.sha256 = "invalid"; },
+    files => { files.portable.url = files.installer.url; },
+    files => { files.portable.upstream = files.installer.upstream; },
+  ]) {
+    const f = fixture();
+    corrupt(f.release.downloads[1].files);
+    await assert.rejects(verifyOnlineDownloads(f.release, { ...quiet, request: async () => assert.fail("must validate all metadata before fetching") }), /metadata/);
+    await assert.rejects(verifyLocalDownloads(dist, f.release), /metadata/);
+  }
+});
