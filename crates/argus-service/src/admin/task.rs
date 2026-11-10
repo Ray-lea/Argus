@@ -211,44 +211,104 @@ pub(super) struct Checked {
 }
 pub(super) fn checked(id: &str, sid: &str, image: &Path) -> Result<Checked> {
     let scheduler = Scheduler::new()?;
-    let task = scheduler.get(id, sid)?;
-    unsafe {
-        let definition = task.Definition().map_err(win)?;
-        let principal = definition.Principal().map_err(win)?;
-        let actions = definition.Actions().map_err(win)?;
-        let mut user = BSTR::new();
-        let mut logon = TASK_LOGON_TYPE::default();
-        let mut level = TASK_RUNLEVEL_TYPE::default();
-        let mut count = 0;
-        principal.UserId(&mut user).map_err(win)?;
-        principal.LogonType(&mut logon).map_err(win)?;
-        principal.RunLevel(&mut level).map_err(win)?;
-        actions.Count(&mut count).map_err(win)?;
-        if !task.Enabled().map_err(win)?.as_bool()
-            || security::account_sid(&user.to_string())? != sid
-            || logon != TASK_LOGON_INTERACTIVE_TOKEN
-            || level != TASK_RUNLEVEL_HIGHEST
-            || count != 1
-        {
-            return Err(13);
-        }
-        let action: IExecAction = actions.get_Item(1).map_err(win)?.cast().map_err(win)?;
-        let mut path = BSTR::new();
-        let mut arguments = BSTR::new();
-        action.Path(&mut path).map_err(win)?;
-        action.Arguments(&mut arguments).map_err(win)?;
-        if !path
-            .to_string()
-            .eq_ignore_ascii_case(&image.to_string_lossy())
-            || arguments != format!("{RUN} $(Arg0)")
-        {
-            return Err(13);
-        }
-    }
+    let task = util::stage("administrator task lookup", scheduler.get(id, sid))?;
+    let definition = util::stage("administrator task definition", unsafe {
+        task.Definition().map_err(win)
+    })?;
+    let enabled = util::stage("administrator task enabled query", unsafe {
+        task.Enabled().map_err(win)
+    })?;
+    validate_definition(&definition, enabled.as_bool(), sid, image)?;
     Ok(Checked {
         task,
         _scheduler: scheduler,
     })
+}
+
+fn require(stage: &'static str, valid: bool) -> Result<()> {
+    util::stage(stage, if valid { Ok(()) } else { Err(13) })
+}
+
+/// A failed check keeps ERROR_INVALID_DATA while naming only the rejected
+/// invariant. Principal names, task XML and action arguments stay out of logs.
+fn validate_definition(
+    definition: &ITaskDefinition,
+    enabled: bool,
+    sid: &str,
+    image: &Path,
+) -> Result<()> {
+    unsafe {
+        let principal = util::stage(
+            "administrator task principal query",
+            definition.Principal().map_err(win),
+        )?;
+        let actions = util::stage(
+            "administrator task actions query",
+            definition.Actions().map_err(win),
+        )?;
+        let mut user = BSTR::new();
+        let mut logon = TASK_LOGON_TYPE::default();
+        let mut level = TASK_RUNLEVEL_TYPE::default();
+        let mut count = 0;
+        util::stage(
+            "administrator task principal user query",
+            principal.UserId(&mut user).map_err(win),
+        )?;
+        util::stage(
+            "administrator task logon query",
+            principal.LogonType(&mut logon).map_err(win),
+        )?;
+        util::stage(
+            "administrator task run level query",
+            principal.RunLevel(&mut level).map_err(win),
+        )?;
+        util::stage(
+            "administrator task action count query",
+            actions.Count(&mut count).map_err(win),
+        )?;
+        require("administrator task enabled validation", enabled)?;
+        let owner = util::stage(
+            "administrator task principal SID resolution",
+            security::account_sid(&user.to_string()),
+        )?;
+        require("administrator task principal validation", owner == sid)?;
+        require(
+            "administrator task logon validation",
+            logon == TASK_LOGON_INTERACTIVE_TOKEN,
+        )?;
+        require(
+            "administrator task run level validation",
+            level == TASK_RUNLEVEL_HIGHEST,
+        )?;
+        require("administrator task action count validation", count == 1)?;
+        let action: IExecAction = util::stage(
+            "administrator task executable action query",
+            actions
+                .get_Item(1)
+                .and_then(|action| action.cast())
+                .map_err(win),
+        )?;
+        let mut path = BSTR::new();
+        let mut arguments = BSTR::new();
+        util::stage(
+            "administrator task action path query",
+            action.Path(&mut path).map_err(win),
+        )?;
+        util::stage(
+            "administrator task action arguments query",
+            action.Arguments(&mut arguments).map_err(win),
+        )?;
+        require(
+            "administrator task action path validation",
+            path.to_string()
+                .eq_ignore_ascii_case(&image.to_string_lossy()),
+        )?;
+        require(
+            "administrator task action arguments validation",
+            arguments == format!("{RUN} $(Arg0)"),
+        )?;
+    }
+    Ok(())
 }
 
 pub(super) fn run(id: &str, sid: &str, image: &Path, ticket: &str) -> Result<()> {
@@ -268,6 +328,141 @@ pub(super) fn run(id: &str, sid: &str, image: &Path, ticket: &str) -> Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_validation_identifies_each_mismatch_without_logging_task_contents() {
+        use std::os::windows::process::CommandExt;
+
+        // The logger and its bounded failure ring are process-wide. Keep this
+        // assertion independent of failures emitted by concurrently run tests.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "admin::task::tests::task_validation_fixture",
+                "--ignored",
+                "--nocapture",
+            ])
+            .creation_flags(CREATE_NO_WINDOW.0)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    #[ignore = "isolated diagnostic logger fixture, run by the parent test"]
+    fn task_validation_fixture() {
+        use argus_core::diagnostics;
+
+        // Parse and edit definitions in memory: never connect to the scheduler,
+        // register a task, launch a process or require administrator rights.
+        unsafe { CoInitializeEx(None, COINIT_MULTITHREADED).ok() }.unwrap();
+        let _apartment = Apartment(true);
+        let service: ITaskService =
+            unsafe { CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER) }.unwrap();
+        let sid = "S-1-5-21-1-2-3-1001";
+        let image = Path::new(r"C:\Private & Unicode 目录\argus.exe");
+        let xml = xml(sid, image);
+        diagnostics::capture_helper_failures();
+
+        for field in [
+            "enabled",
+            "principal",
+            "logon",
+            "run level",
+            "action count",
+            "action path",
+            "action arguments",
+            "action type",
+        ] {
+            let definition = unsafe { service.NewTask(0) }.unwrap();
+            unsafe { definition.SetXmlText(&BSTR::from(xml.as_str())) }.unwrap();
+            assert_eq!(validate_definition(&definition, true, sid, image), Ok(()));
+            // Windows paths are case insensitive; escaping and Unicode do not
+            // make an otherwise matching action invalid.
+            assert_eq!(
+                validate_definition(
+                    &definition,
+                    true,
+                    sid,
+                    Path::new(&image.to_string_lossy().to_uppercase())
+                ),
+                Ok(())
+            );
+            unsafe {
+                let principal = definition.Principal().unwrap();
+                let actions = definition.Actions().unwrap();
+                match field {
+                    "enabled" => {}
+                    "principal" => principal
+                        .SetUserId(&BSTR::from("S-1-5-21-1-2-3-1002"))
+                        .unwrap(),
+                    "logon" => principal.SetLogonType(TASK_LOGON_PASSWORD).unwrap(),
+                    "run level" => principal.SetRunLevel(TASK_RUNLEVEL_LUA).unwrap(),
+                    "action count" => actions.Clear().unwrap(),
+                    "action path" => actions
+                        .get_Item(1)
+                        .unwrap()
+                        .cast::<IExecAction>()
+                        .unwrap()
+                        .SetPath(&BSTR::from(r"C:\Private\different.exe"))
+                        .unwrap(),
+                    "action arguments" => actions
+                        .get_Item(1)
+                        .unwrap()
+                        .cast::<IExecAction>()
+                        .unwrap()
+                        .SetArguments(&BSTR::from("--private-argument=do-not-log"))
+                        .unwrap(),
+                    "action type" => {
+                        actions.Clear().unwrap();
+                        actions.Create(TASK_ACTION_COM_HANDLER).unwrap();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            let (stage, code) = if field == "action type" {
+                // Preserve the native E_NOINTERFACE instead of relabeling a
+                // non-executable action as a generic validation mismatch.
+                (
+                    "administrator task executable action query:".into(),
+                    0x80004002,
+                )
+            } else {
+                (format!("administrator task {field} validation:"), 13)
+            };
+            assert_eq!(
+                validate_definition(&definition, field != "enabled", sid, image),
+                Err(code)
+            );
+            let failures = diagnostics::captured_failures();
+            let failure = failures
+                .iter()
+                .find(|entry| entry.message.contains(&stage))
+                .unwrap_or_else(|| panic!("missing validation stage for {field}"));
+            assert!(failure.message.contains(&format!("code={code} ")));
+            for entry in failures
+                .iter()
+                .filter(|entry| entry.message.contains("administrator task "))
+            {
+                for private in [
+                    sid,
+                    "1002",
+                    "Private",
+                    "目录",
+                    "different.exe",
+                    "do-not-log",
+                    "<Task",
+                ] {
+                    assert!(!entry.message.contains(private));
+                }
+            }
+        }
+    }
 
     #[test]
     fn removal_names_are_scoped_to_the_exact_application_and_a_user_sid() {
