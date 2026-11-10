@@ -162,7 +162,7 @@ Windows Authenticode 的测试接入见 [Windows 代码签名](signing.md)。测
 GitHub 上最新稳定版 Release 提供 `releases/latest/download/latest.json`（稳定版）与同目录的 `beta.json`（测试版）。官网在 `update.argustask.com` 提供对应清单，发布流程校验版本与签名。
 
 - 发布稳定版时，两份清单都指向这个版本，随 Release 一起上传。
-- 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。仓库还没有稳定版时测试版通道收不到更新，工作流会给出警告。
+- 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。查询最新稳定版明确返回 404 时，测试版通道收不到更新，工作流会给出警告；网络、权限或 GitHub API 错误会使发布步骤失败，不会当作缺少稳定版而跳过。
 - 清单由 `node scripts/release.mjs manifest` 生成。`notes` 取自 `CHANGELOG.md` 的对应条目，转成纯文本并去掉提交范围（`core`、`ui` 等），供 0.2 之前的版本显示；`argus.releaseNotes` 与 `argus.signature` 是上一节签名的更新内容原文及其签名，新版本的更新对话框只读这两项。
 
 自动线路依次尝试 GitHub、Argus 官方镜像和加速代理。代理使用加前缀的 GitHub 地址，官方镜像使用版本化下载地址。见[设置 → 更新](../guide/settings.md#更新)。
