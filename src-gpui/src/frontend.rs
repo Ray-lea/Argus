@@ -49,6 +49,9 @@ use std::{
     time::{Duration, Instant},
 };
 use theme::{Palette, icon, label};
+/// Minutes hidden before the window gives its memory back; 0 for never.
+const RELEASE_HIDDEN_MINUTES: [u64; 4] = [0, 1, 10, 30];
+const DEFAULT_RELEASE_HIDDEN_MINUTES: u64 = 10;
 const PAGES: [(&str, &str); 8] = [
     ("processes", "ProcessesIcon"),
     ("performance", "PulseIcon"),
@@ -350,6 +353,9 @@ struct Desktop {
     ui: widgets::UiState,
     last_poll: Instant,
     last_privilege: Instant,
+    /// Since when the window has been hidden or minimized, and whether its
+    /// memory was given back since (`memory.releaseHidden`).
+    hidden_since: Option<(Instant, bool)>,
     last_select: Option<(String, Instant)>,
     filters: HashMap<String, String>,
     forms: HashMap<String, Entity<InputState>>,
@@ -515,6 +521,7 @@ impl Desktop {
             ui: widgets::UiState::default(),
             last_poll: Instant::now() - Duration::from_secs(10),
             last_privilege: Instant::now() - Duration::from_secs(60),
+            hidden_since: None,
             last_select: None,
             filters: tables::saved_filters(&prefs),
             forms: HashMap::new(),
@@ -636,6 +643,7 @@ impl Desktop {
                         if this.host.get_window("main").is_some_and(|w| {
                             w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
                         }) {
+                            this.hidden_since = None;
                             if this.last_poll.elapsed() >= this.poll_interval() {
                                 this.last_poll = Instant::now();
                                 this.poll_page(window, cx);
@@ -654,6 +662,8 @@ impl Desktop {
                                     cx,
                                 );
                             }
+                        } else {
+                            this.release_hidden_memory(window, cx);
                         }
                     })
                     .is_err()

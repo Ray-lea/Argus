@@ -1907,6 +1907,36 @@ impl Desktop {
                 vec![select],
             ));
         }
+        let minutes = self.release_hidden_minutes();
+        let release = self.select(
+            "settings-release-hidden",
+            label("settings.data.releaseHidden.title"),
+            RELEASE_HIDDEN_MINUTES
+                .iter()
+                .map(|m| match m {
+                    0 => label("settings.data.releaseHidden.never"),
+                    _ => tr!("settings.data.releaseHidden.option", minutes = *m),
+                })
+                .collect(),
+            RELEASE_HIDDEN_MINUTES.iter().position(|m| *m == minutes),
+            false,
+            move |this, index, window, cx| {
+                this.preference(
+                    "memory.releaseHidden",
+                    json!(RELEASE_HIDDEN_MINUTES[index]),
+                    window,
+                    cx,
+                );
+            },
+            cx,
+        );
+        cards.push(self.setting_text(
+            "releaseHidden",
+            "MemoryIcon",
+            "settings.data.releaseHidden.title",
+            "settings.data.releaseHidden.desc",
+            vec![release],
+        ));
         let unit = self.prefs.get::<String>("netUnit", "bytes".into());
         let units = self.segments(
             "setting-netUnit",

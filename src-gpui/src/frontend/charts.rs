@@ -2,7 +2,7 @@
 use super::*;
 mod raster;
 mod rate;
-pub(in crate::frontend) use raster::paint_fade;
+pub(in crate::frontend) use raster::{paint_fade, release_all as release_textures};
 pub(in crate::frontend) use rate::{
     RateScale, ceiling as rate_ceiling, label as rate_ceiling_label,
 };

@@ -235,6 +235,12 @@
     "background": {
       "error": "No se pudo guardar la frecuencia de actualización: {error}"
     },
+    "releaseHidden": {
+      "title": "Liberar memoria al ocultar la ventana",
+      "desc": "Cuando la ventana permanece minimizada u oculta en la bandeja del sistema durante este tiempo, Argus libera las imágenes de los gráficos y devuelve la memoria sin usar a Windows. El muestreo y el historial continúan. Al volver a abrir la ventana, los gráficos se dibujan de nuevo, lo que puede tardar un momento.",
+      "option": "Tras {minutes} min",
+      "never": "Nunca"
+    },
     "netUnit": {
       "title": "Unidad de velocidad de red",
       "desc": "Los bytes utilizan la misma unidad que la velocidad del disco; los bits, la misma que la velocidad del enlace de red y el ancho de banda. La vista de red de Rendimiento muestra ambas unidades."

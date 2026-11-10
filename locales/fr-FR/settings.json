@@ -235,6 +235,12 @@
     "background": {
       "error": "Impossible d’enregistrer le taux de rafraîchissement : {error}"
     },
+    "releaseHidden": {
+      "title": "Libérer la mémoire lorsque la fenêtre est masquée",
+      "desc": "Lorsque la fenêtre reste réduite ou masquée dans la zone de notification pendant cette durée, Argus libère les images des graphiques et rend la mémoire inutilisée à Windows. L’échantillonnage et l’historique continuent. À la réouverture, les graphiques sont d’abord redessinés, ce qui peut prendre un instant.",
+      "option": "Après {minutes} min",
+      "never": "Jamais"
+    },
     "netUnit": {
       "title": "Unité de vitesse réseau",
       "desc": "Les octets correspondent à l’unité de vitesse du disque ; les bits correspondent aux vitesses de liaison de l’adaptateur réseau et aux forfaits haut débit. La vue réseau sur la page Performances affiche les deux."

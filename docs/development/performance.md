@@ -30,6 +30,8 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 `--stream-fixture` 配合 `--fixture` 将整组时间戳平移到回放开始时刻，并在预热期间每秒推进一次样本。正式测量可用场景的 `repeat` 指定采样频率。探针在启动隔离进程前为整个作业设置 2 GiB 提交上限，结果分别记录专用工作集、进程私有提交和作业提交峰值。
 
+托盘对照可用 `--background-interval 5000` 指定最小化和托盘的采样间隔（毫秒），用 `--history` 保留历史记录写入。结果记录这两项条件；默认间隔为 5 秒，默认关闭测试实例的历史记录。比较内存时分别报告私有提交量和私有工作集，并留出隐藏后的回收等待时间与恢复显示阶段。
+
 ## 虚拟机交互对照
 
 启动、后台唤起、最小化恢复、排序和切页在独立 Windows 虚拟机内测量。`node scripts/build-interaction-bench.mjs` 构建交互探针与空闲进程负载；`node scripts/prepare-benchmark-guest.mjs` 将发行版 Argus、Node 和测量脚本打包为工具光盘。把光盘内容复制到虚拟机内的可写目录，例如 `C:\ArgusBench`。探针在开始交互前校验 QEMU 环境，客户区使用相同的 1240×800 物理像素。

@@ -362,11 +362,52 @@ fn reduced_density(size: Size<Pixels>, scale: f32) -> f32 {
     base * ((512. * 1024.) / area.max(1.)).sqrt().min(1.)
 }
 
+type RegisteredCache = (WeakEntity<Cache>, std::rc::Weak<RefCell<Surface>>);
+
+thread_local! {
+    /// Every chart's texture cache and the surface it paints, for `release_all`.
+    static CACHES: RefCell<Vec<RegisteredCache>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+/// Drops every chart texture and its atlas tile, for a window hidden long
+/// enough to give its memory back. The next frame shown rasters them again.
+pub(in crate::frontend) fn release_all(window: &mut Window, cx: &mut App) {
+    let caches = CACHES.with_borrow_mut(|caches| {
+        caches.retain(|(cache, _)| cache.upgrade().is_some());
+        caches.clone()
+    });
+    for (cache, surface) in caches {
+        let Some(cache) = cache.upgrade() else {
+            continue;
+        };
+        let owner = cache.entity_id();
+        cache.update(cx, |cache, _| {
+            cache.pending = None;
+            cache.key = None;
+            cache.empty = false;
+            if let Some(texture) = cache.texture.take() {
+                let _ = window.drop_image(texture.image);
+            }
+        });
+        if let Some(surface) = surface.upgrade()
+            && surface.borrow().owner == Some(owner)
+        {
+            *surface.borrow_mut() = Surface::default();
+        }
+    }
+    window.invalidate_render_cache();
+}
+
 fn cache(plot: &TimePlot, window: &mut Window, cx: &mut App) -> Entity<Cache> {
     window.use_keyed_state("argus-curve-texture", cx, |window, cx| {
         let handle = window.window_handle();
         let surface = Rc::downgrade(&plot.image_surface);
         let owner = cx.entity().entity_id();
+        CACHES.with_borrow_mut(|caches| {
+            caches.retain(|(cache, _)| cache.upgrade().is_some());
+            caches.push((cx.entity().downgrade(), surface.clone()));
+        });
         cx.on_release(move |cache: &mut Cache, cx| {
             if let Some(surface) = surface.upgrade()
                 && surface.borrow().owner == Some(owner)

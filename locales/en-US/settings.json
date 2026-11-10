@@ -235,6 +235,12 @@
     "background": {
       "error": "Couldn't save the refresh rate: {error}"
     },
+    "releaseHidden": {
+      "title": "Free memory when hidden",
+      "desc": "After the window has been minimized or in the tray for this long, Argus frees its chart images and returns unused memory to Windows. Sampling and history continue. When you open the window again, charts are drawn again first, which can take a moment.",
+      "option": "After {minutes} min",
+      "never": "Never"
+    },
     "netUnit": {
       "title": "Network speed unit",
       "desc": "Bytes match the unit of disk speeds; bits match network adapter link speeds and broadband plans. The network view on the Performance page shows both."

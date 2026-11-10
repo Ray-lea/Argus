@@ -30,6 +30,7 @@ pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
 pub(crate) const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
 pub(crate) const WM_GPUI_DISPLAYS_CHANGED: u32 = WM_USER + 10;
 pub(crate) const WM_GPUI_TRIM_IDLE_DEVICE: u32 = WM_USER + 11;
+pub(crate) const WM_GPUI_VISIBILITY_CHANGED: u32 = WM_USER + 12;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
@@ -159,6 +160,15 @@ impl WindowsWindowInner {
             WM_SETTINGCHANGE => self.handle_system_settings_changed(handle, wparam, lparam),
             WM_INPUTLANGCHANGE => self.handle_input_language_changed(),
             WM_SHOWWINDOW => self.handle_window_visibility_changed(handle, wparam),
+            WM_WINDOWPOSCHANGED => {
+                let position = unsafe { &*(lparam.0 as *const WINDOWPOS) };
+                if position.flags.0 & (SWP_SHOWWINDOW.0 | SWP_HIDEWINDOW.0) != 0 {
+                    // Wake after the final visibility flags are installed too,
+                    // including SetWindowPos calls without a size change.
+                    self.report_visibility();
+                }
+                None
+            }
             WM_GPUI_CURSOR_STYLE_CHANGED => self.handle_cursor_changed(lparam),
             WM_GPUI_FORCE_UPDATE_WINDOW => self.draw_window(handle, true),
             WM_GPUI_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
@@ -1376,6 +1386,15 @@ impl WindowsWindowInner {
     // update completes, as activation does. The state is read at delivery so
     // a burst of messages collapses to the final value.
     fn report_visibility(self: &Rc<Self>) {
+        unsafe {
+            PostMessageW(
+                Some(self.platform_window_handle),
+                WM_GPUI_VISIBILITY_CHANGED,
+                WPARAM(self.validation_number),
+                LPARAM(0),
+            )
+            .log_err();
+        }
         if self.state.last_visibility.get().is_none() {
             return;
         }

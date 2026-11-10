@@ -135,6 +135,35 @@ fn job_usage() -> Option<usize> {
     Some(total)
 }
 
+/// Decommits unused LFH caches, then trims the resident working set once.
+/// Allocations still in use remain committed and return as they are touched.
+pub(crate) fn release_process_memory() {
+    use windows::Win32::System::{
+        Memory::{HeapOptimizeResources, HeapSetInformation},
+        SystemServices::{
+            HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION, HEAP_OPTIMIZE_RESOURCES_INFORMATION,
+        },
+        Threading::{GetCurrentProcess, SetProcessWorkingSetSize},
+    };
+    let info = HEAP_OPTIMIZE_RESOURCES_INFORMATION {
+        Version: HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION,
+        Flags: 0,
+    };
+    unsafe {
+        if let Err(error) = HeapSetInformation(
+            None,
+            HeapOptimizeResources,
+            Some((&raw const info).cast()),
+            size_of_val(&info),
+        ) {
+            argus_core::diagnostics::windows_failure("hidden heap optimization", &error);
+        }
+        if let Err(error) = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX) {
+            argus_core::diagnostics::windows_failure("hidden working set trim", &error);
+        }
+    }
+}
+
 pub(crate) fn reduced(headroom: usize, was_reduced: bool) -> bool {
     headroom < if was_reduced { 64 << 20 } else { 32 << 20 }
 }

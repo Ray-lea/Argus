@@ -235,6 +235,12 @@
     "background": {
       "error": "Das Aktualisierungsintervall konnte nicht gespeichert werden: {error}"
     },
+    "releaseHidden": {
+      "title": "Speicher bei ausgeblendetem Fenster freigeben",
+      "desc": "Wenn das Fenster für diese Dauer minimiert oder im Infobereich verborgen ist, gibt Argus seine Diagrammbilder frei und gibt ungenutzten Speicher an Windows zurück. Datenerfassung und Verlauf laufen weiter. Beim erneuten Öffnen werden die Diagramme zunächst neu gezeichnet, was einen Moment dauern kann.",
+      "option": "Nach {minutes} Min.",
+      "never": "Nie"
+    },
     "netUnit": {
       "title": "Einheit der Netzwerkgeschwindigkeit",
       "desc": "Bytes entsprechen der Einheit der Festplattengeschwindigkeit; Bits passen zu den Verbindungsgeschwindigkeiten der Netzwerkadapter und den Breitbandplänen. Die Netzwerkansicht auf der Seite „Leistung“ zeigt beides."
