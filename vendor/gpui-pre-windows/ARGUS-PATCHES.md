@@ -1,5 +1,7 @@
 # Argus patches
 
+DirectX adapter initialization records numeric vendor/device IDs, the software-adapter flag, selected feature level and failure HRESULTs through the reviewed `argus::graphics` log target. These startup stages remain visible with Argus's production log filter without including raw driver descriptions or exception text.
+
 DWM timing conversion multiplies before dividing, so refresh-rate ratios such as 60/1 and 60000/1001 remain valid fallback intervals. Zero, overflowing and implausibly long timing values use the bounded default cadence. Regression cases cover unreliable QPC periods and malformed refresh data.
 
 Device-loss notifications and the forced recovery redraw use a snapshot of the window registry. The registry lock is released before synchronous window messages, so UI callbacks can create or close windows without waiting on the recovery thread that is waiting on them. Numeric device-loss HRESULTs and fixed recovery-stage messages use the reviewed `argus::graphics` log target to identify an interrupted recovery stage.
