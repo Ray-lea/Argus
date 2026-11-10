@@ -79,6 +79,7 @@ pub struct AppInfo {
     /// The version shown: a build that is not of a release adds its commit
     /// (`build-support/build-version.rs`).
     build: &'static str,
+    build_kind: argus_app::config::BuildKind,
     elevated: bool,
     /// Relaunched by the installer of an update.
     updated: bool,
@@ -91,6 +92,7 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
     AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         build: env!("ARGUS_VERSION"),
+        build_kind: argus_app::config::build_kind(env!("ARGUS_VERSION"), cfg!(debug_assertions)),
         elevated: state.elevated,
         updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
         task_manager: state.task_manager_start,

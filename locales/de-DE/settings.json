@@ -310,7 +310,7 @@
       "installing": "Installationsprogramm für {version} wird gestartet…",
       "error": "Aktualisierung fehlgeschlagen"
     },
-    "current": "Aktuelle Version {version} · {channel}",
+    "current": "Aktuelle Version {version} · {build}",
     "detail": {
       "ready": "Für die Installation ist eine Administratorberechtigung erforderlich. Argus wird während der Installation beendet; Das Installationsprogramm zeigt nur den Fortschritt an und startet Argus neu, wenn es fertig ist.",
       "portable": "Die tragbare Version wird nicht automatisch aktualisiert. Laden Sie die neue Version von der Release-Seite herunter.",

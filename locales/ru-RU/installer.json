@@ -3,7 +3,7 @@
   "ArgusTagline": "Быстрый, современный и информативный диспетчер задач Windows",
   "ArgusVersion": "Версия {version}",
   "ArgusUpgradeFrom": "Обновление с {oldVersion} до {version}",
-  "ArgusSameVersion": "Версия {version} уже установлена. Переустановка восстановит файлы программы.",
+  "ArgusSameVersion": "Установлена версия {oldVersion}. Повторная установка обновит или восстановит файлы программы.",
   "ArgusNewerInstalled": "Установлена более новая версия ({oldVersion}). Сначала удалите её, чтобы установить {version}.",
   "ArgusInstall": "Установить",
   "ArgusUpgrade": "Обновить",

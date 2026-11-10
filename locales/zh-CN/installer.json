@@ -4,7 +4,7 @@
   "ArgusTagline": "快速、现代、信息丰富的 Windows 任务管理器",
   "ArgusVersion": "版本 {version}",
   "ArgusUpgradeFrom": "将从版本 {oldVersion} 升级到 {version}",
-  "ArgusSameVersion": "已安装版本 {version}，重新安装可修复程序文件",
+  "ArgusSameVersion": "已安装版本 {oldVersion}，重新安装可更新或修复程序文件",
   "ArgusNewerInstalled": "已安装更新的版本 {oldVersion}。如需安装 {version}，请先卸载。",
   "ArgusInstall": "立即安装",
   "ArgusUpgrade": "立即升级",

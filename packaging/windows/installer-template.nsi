@@ -30,6 +30,7 @@ ManifestDPIAwareness PerMonitorV2
 !define MANUFACTURER "{{manufacturer}}"
 !define PRODUCTNAME "{{product_name}}"
 !define VERSION "{{version}}"
+!define DISPLAYVERSION "{{display_version}}"
 !define VERSIONWITHBUILD "{{version_with_build}}"
 !define HOMEPAGE "{{homepage}}"
 !define INSTALLMODE "{{install_mode}}"
@@ -72,8 +73,8 @@ VIProductVersion "${VERSIONWITHBUILD}"
 VIAddVersionKey "ProductName" "${PRODUCTNAME}"
 VIAddVersionKey "FileDescription" "${PRODUCTNAME}"
 VIAddVersionKey "LegalCopyright" "${COPYRIGHT}"
-VIAddVersionKey "FileVersion" "${VERSION}"
-VIAddVersionKey "ProductVersion" "${VERSION}"
+VIAddVersionKey "FileVersion" "${DISPLAYVERSION}"
+VIAddVersionKey "ProductVersion" "${DISPLAYVERSION}"
 
 
 ; Uninstaller signing command

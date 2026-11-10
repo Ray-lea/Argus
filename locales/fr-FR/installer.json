@@ -3,7 +3,7 @@
   "ArgusTagline": "Un gestionnaire de tâches rapide, moderne et complet pour Windows",
   "ArgusVersion": "Version {version}",
   "ArgusUpgradeFrom": "Mise à jour de {oldVersion} vers {version}",
-  "ArgusSameVersion": "La version {version} est déjà installée. La réinstallation répare les fichiers.",
+  "ArgusSameVersion": "La version {oldVersion} est installée. Réinstallez pour mettre à jour ou réparer les fichiers du programme.",
   "ArgusNewerInstalled": "Une version plus récente ({oldVersion}) est installée. Désinstallez-la avant d’installer {version}.",
   "ArgusInstall": "Installer",
   "ArgusUpgrade": "Mettre à niveau",

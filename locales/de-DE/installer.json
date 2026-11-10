@@ -3,7 +3,7 @@
   "ArgusTagline": "Ein schneller, moderner und informativer Task-Manager für Windows",
   "ArgusVersion": "Version {version}",
   "ArgusUpgradeFrom": "Aktualisiert von {oldVersion} auf {version}",
-  "ArgusSameVersion": "Version {version} ist bereits installiert. Eine Neuinstallation repariert die Programmdateien.",
+  "ArgusSameVersion": "Version {oldVersion} ist installiert. Eine erneute Installation aktualisiert oder repariert die Programmdateien.",
   "ArgusNewerInstalled": "Eine neuere Version ({oldVersion}) ist installiert. Vor der Installation von {version} muss sie deinstalliert werden.",
   "ArgusInstall": "Installieren",
   "ArgusUpgrade": "Aktualisieren",

@@ -154,6 +154,17 @@ impl Desktop {
             .unwrap_or_else(|| text(info, "version"))
     }
 
+    pub(in crate::frontend) fn build_label(&self) -> String {
+        use argus_app::config::{BuildKind, build_kind};
+        let kind = match text(&self.data["info"], "buildKind") {
+            "development" => BuildKind::Development,
+            "test" => BuildKind::Test,
+            "stable" => BuildKind::Stable,
+            _ => build_kind(self.shown_version(), cfg!(debug_assertions)),
+        };
+        label(kind.label_key())
+    }
+
     /// A card glyph at the cards' 20 px.
     pub(in crate::frontend) fn glyph(&self, name: &str) -> AnyElement {
         icon(name, self.palette.ink)
@@ -2761,10 +2772,7 @@ impl Desktop {
         let current = tr!(
             "settings.update.current",
             version = self.shown_version(),
-            channel = label(&format!(
-                "updates.dialog.{}",
-                text(settings, "updateChannel")
-            ))
+            build = self.build_label()
         );
         let offered = matches!(
             state.as_str(),

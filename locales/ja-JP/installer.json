@@ -3,7 +3,7 @@
   "ArgusTagline": "高速でモダンな、詳しい情報を表示する Windows タスク マネージャー",
   "ArgusVersion": "バージョン {version}",
   "ArgusUpgradeFrom": "{oldVersion} から {version} に更新します",
-  "ArgusSameVersion": "バージョン {version} はインストール済みです。再インストールでファイルを修復できます。",
+  "ArgusSameVersion": "バージョン {oldVersion} がインストールされています。再インストールすると、プログラムファイルを更新または修復できます。",
   "ArgusNewerInstalled": "新しいバージョン（{oldVersion}）がインストールされています。{version} をインストールするには先にアンインストールしてください。",
   "ArgusInstall": "インストール",
   "ArgusUpgrade": "アップグレード",

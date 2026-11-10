@@ -310,7 +310,7 @@
       "installing": "Starting the installer for {version}…",
       "error": "Update failed"
     },
-    "current": "Current version {version} · {channel}",
+    "current": "Current version {version} · {build}",
     "detail": {
       "ready": "Installing requires administrator permission. Argus exits during the installation; the installer only shows its progress and restarts Argus when it's done.",
       "portable": "The portable version doesn't update automatically. Download the new version from the release page.",

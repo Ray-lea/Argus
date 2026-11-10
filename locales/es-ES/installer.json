@@ -3,7 +3,7 @@
   "ArgusTagline": "Un administrador de tareas rápido, moderno y completo para Windows",
   "ArgusVersion": "Versión {version}",
   "ArgusUpgradeFrom": "Actualiza de {oldVersion} a {version}",
-  "ArgusSameVersion": "La versión {version} ya está instalada; reinstalar repara los archivos.",
+  "ArgusSameVersion": "La versión {oldVersion} está instalada. Reinstale para actualizar o reparar los archivos del programa.",
   "ArgusNewerInstalled": "Hay una versión más reciente ({oldVersion}) instalada. Desinstálela antes de instalar {version}.",
   "ArgusInstall": "Instalar",
   "ArgusUpgrade": "Actualizar",

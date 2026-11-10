@@ -89,6 +89,6 @@
     "paused": "アップデートを一時停止しています",
     "interval": "{seconds} ごとに更新します",
     "version": "v{version}",
-    "versionHint": "Argus {version} · {channel}\nクリックすると、このバージョンの新機能が表示されます。右クリックしてバージョン番号をコピーします"
+    "versionHint": "Argus {version} · {build}\nクリックすると、このバージョンの新機能が表示されます。右クリックしてバージョン番号をコピーします"
   }
 }

@@ -301,7 +301,7 @@
       "installing": "正在启动 {version} 的安装程序…",
       "error": "更新失败"
     },
-    "current": "当前版本 {version} · {channel}",
+    "current": "当前版本 {version} · {build}",
     "detail": {
       "ready": "安装需要管理员授权。安装期间 Argus 将退出，安装程序仅显示进度，完成后自动重新启动 Argus。",
       "portable": "免安装版不支持自动更新，请从发布页下载新版本。",

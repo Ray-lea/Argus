@@ -313,7 +313,7 @@
       "installing": "Iniciando el instalador de {version}…",
       "error": "Error en la actualización"
     },
-    "current": "Versión actual {version} · {channel}",
+    "current": "Versión actual {version} · {build}",
     "detail": {
       "ready": "La instalación requiere permiso de administrador. Argus sale durante la instalación; el instalador solo muestra su progreso y reinicia Argus cuando termina.",
       "portable": "La versión portátil no se actualiza automáticamente. Descargue la nueva versión desde la página de lanzamiento.",

@@ -290,7 +290,7 @@
       "installing": "正在啟動 {version} 的安裝程式…",
       "error": "更新失敗"
     },
-    "current": "目前版本 {version} · {channel}",
+    "current": "目前版本 {version} · {build}",
     "detail": {
       "ready": "安裝需要系統管理員授權。安裝期間 Argus 將結束，安裝程式僅顯示進度，完成後自動重新啟動 Argus。",
       "portable": "免安裝版不支援自動更新，請從發行頁下載新版本。",

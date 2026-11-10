@@ -55,7 +55,11 @@
   },
   "details": {
     "label": "Details pane",
-    "mode": { "open": "Always show", "auto": "Show when a process is selected", "closed": "Hide" },
+    "mode": {
+      "open": "Always show",
+      "auto": "Show when a process is selected",
+      "closed": "Hide"
+    },
     "current": "Details pane: {mode}",
     "next": "Click for “{mode}”; right-click to choose"
   },
@@ -85,6 +89,6 @@
     "paused": "Updates paused",
     "interval": "Updates every {seconds} s",
     "version": "v{version}",
-    "versionHint": "Argus {version} · {channel}\nClick to see what’s new in this version; right-click to copy the version number"
+    "versionHint": "Argus {version} · {build}\nClick to see what’s new in this version; right-click to copy the version number"
   }
 }

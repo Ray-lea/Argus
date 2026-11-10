@@ -89,6 +89,6 @@
     "paused": "Actualizaciones pausadas",
     "interval": "Actualiza cada {seconds} s",
     "version": "v{version}",
-    "versionHint": "Argus {version} · {channel}\nHaga clic para ver las novedades de esta versión; haga clic derecho para copiar el número de versión"
+    "versionHint": "Argus {version} · {build}\nHaga clic para ver las novedades de esta versión; haga clic derecho para copiar el número de versión"
   }
 }

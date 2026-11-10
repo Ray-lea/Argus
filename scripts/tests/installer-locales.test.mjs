@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { installerLanguages, installerStrings, nsisText } from "../lib/installer-locales.mjs";
 
 test("installer text escapes literals and expands only known NSIS variables", () => {
-  assert.equal(nsisText('"$TEMP"\n{version} {installDir} {code}'), '$\\"$$TEMP$\\"$\\r$\\n${VERSION} $INSTDIR $0');
+  assert.equal(nsisText('"$TEMP"\n{version} {installDir} {code}'), '$\\"$$TEMP$\\"$\\r$\\n${DISPLAYVERSION} $INSTDIR $0');
   assert.throws(() => nsisText("{unknown}"), /Unknown installer placeholder/);
 });
 test("every installer language includes pages, hooks and file replacement errors", () => {

@@ -161,7 +161,11 @@ impl Desktop {
                                     .text_size(theme::font(13.))
                                     .text_color(p.muted)
                                     .font_features(tabular())
-                                    .child(self.shown_version().to_owned()),
+                                    .child(format!(
+                                        "{} · {}",
+                                        self.shown_version(),
+                                        self.build_label()
+                                    )),
                             ),
                     )
                     .child(
