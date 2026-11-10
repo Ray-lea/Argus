@@ -27,7 +27,7 @@
     "stop": "Detener servicio",
     "restart": "Reiniciar servicio",
     "openConsole": "Abrir Servicios",
-    "openConsoleTitle": "Abra la consola de Servicios Windows"
+    "openConsoleTitle": "Abrir la consola de Servicios de Windows"
   },
   "menu": {
     "startType": "Tipo de inicio: {type}",
@@ -41,7 +41,7 @@
     "startType": "Tipo de inicio",
     "description": "Descripción"
   },
-  "loading": "Servicios de lectura…",
+  "loading": "Leyendo servicios…",
   "noMatch": "No hay servicios coincidentes",
   "clearFilter": "Borrar filtros",
   "summary": "{running} de {total} ejecutándose",

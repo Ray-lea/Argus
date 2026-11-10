@@ -7,7 +7,7 @@
   "welcome": {
     "title": "Bienvenido a Argus",
     "body": "Argus es un administrador de tareas moderno para Windows. Muestra procesos, rendimiento, servicios, aplicaciones de inicio y conexiones de red, y conserva el historial de uso de recursos. Los siguientes pasos permiten configurar las opciones principales. Todos pueden omitirse y modificarse después en Configuración.",
-    "language": "Idioma"
+    "language": "Idioma de la interfaz"
   },
   "display": {
     "title": "Visualización y actualización",
@@ -24,18 +24,18 @@
   "background": {
     "title": "Funcionamiento en segundo plano",
     "body": "Argus puede permanecer en la bandeja del sistema, registrar el historial y aplicar las reglas mientras está disponible para abrirlo.",
-    "autostart": "Iniciar al acceder a Windows",
+    "autostart": "Iniciar al iniciar sesión en Windows",
     "autostartHint": "Se inicia en la bandeja del sistema sin abrir una ventana.",
     "closeToTray": "Mantener en la bandeja al cerrar",
     "closeToTrayHint": "Si está desactivado, cerrar la ventana también cierra Argus.",
     "minimizedInterval": "Actualización al minimizar",
     "minimizedIntervalHint": "El valor predeterminado es 5 segundos; reducirlo aumenta el uso de recursos en segundo plano.",
     "trayInterval": "Actualización en la bandeja",
-    "trayIntervalHint": "Con más de 5 segundos, los registros del historial están más espaciados.",
+    "trayIntervalHint": "Se toman muestras con este intervalo al permanecer en la bandeja. Si supera los 5 segundos, los registros del historial quedan más espaciados.",
     "hotkey": "Pulse {hotkey} para mostrar u ocultar Argus. Puede cambiar el atajo en Configuración.",
     "hotkeyOff": "El atajo para mostrar u ocultar Argus está desactivado. Puede volver a activarlo en Configuración.",
     "hotkeyTaken": "{shortcut} está en uso por Windows u otra aplicación, posiblemente otra instancia de Argus. Elija otro atajo en Configuración.",
-    "hotkeyProblem": "{problem} El acceso directo se puede cambiar en Configuración."
+    "hotkeyProblem": "{problem} Puede cambiar el atajo de teclado en Configuración."
   },
   "update": {
     "title": "Mantener actualizado",
@@ -55,7 +55,7 @@
   },
   "privilege": {
     "title": "Servicio privilegiado (opcional)",
-    "body": "Argus se ejecuta como usuario estándar y tiene restricciones para consultar, finalizar o modificar ciertos procesos del sistema. El servicio privilegiado opcional se ejecuta en segundo plano como SYSTEM y permite:",
+    "body": "Argus se ejecuta de forma predeterminada con permisos estándar y tiene restricciones para consultar, finalizar o modificar ciertos procesos del sistema. El servicio privilegiado opcional se ejecuta en segundo plano como SYSTEM y permite:",
     "features": {
       "end": "Finalizar procesos de otros usuarios, excepto procesos críticos del sistema",
       "tune": "Ajustar la prioridad y el modo de eficiencia, también mediante reglas automáticas",

@@ -84,7 +84,7 @@
     "confirm": "Continuar con la configuración de reglas"
   },
   "copied": "Copiado: {what}.",
-  "staleProcess": "La información del proceso no está actualizada. Actualiza e inténtalo de nuevo.",
+  "staleProcess": "La información de la instancia del proceso ha quedado obsoleta. Actualice y vuelva a intentarlo.",
   "copyWhat": {
     "path": "ruta",
     "name": "nombre",
