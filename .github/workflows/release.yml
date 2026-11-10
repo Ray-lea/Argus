@@ -41,6 +41,12 @@ jobs:
   publish:
     name: Build and publish
     needs: check
+    # Stable releases and prereleases share beta.json. Keep every pending tag;
+    # the publisher also checks SemVer because jobs can reach this queue out of order.
+    concurrency:
+      group: release-publication
+      queue: max
+      cancel-in-progress: false
     runs-on: windows-latest
     timeout-minutes: 90
     permissions:
@@ -177,13 +183,7 @@ jobs:
             gh release create "$GITHUB_REF_NAME" assets/* --verify-tag --prerelease \
               --title "Argus $GITHUB_REF_NAME" --notes-file notes.md
             # Both channels read their manifest from the latest stable release.
-            stable=$(gh release view --json tagName --jq .tagName 2>/dev/null || true)
-            if [[ -z "$stable" ]]; then
-              echo "::warning::还没有稳定版，测试版通道暂时收不到 $GITHUB_REF_NAME"
-            else
-              cp manifest.json beta.json
-              gh release upload "$stable" beta.json --clobber
-            fi
+            node scripts/publish-beta.mjs manifest.json
           else
             cp manifest.json latest.json
             cp manifest.json beta.json
