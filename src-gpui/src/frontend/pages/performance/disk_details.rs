@@ -1269,12 +1269,15 @@ mod tests {
     #[test]
     fn counters_group_exactly_beyond_double_precision() {
         assert_eq!(grouped(&json!("0")), "0");
-        assert_eq!(grouped(&json!("1195008152")), "1,195,008,152");
+        assert_eq!(
+            grouped(&json!("1195008152")),
+            crate::regional::digits("1195008152")
+        );
         assert_eq!(
             grouped(&json!(u128::MAX.to_string())),
-            "340,282,366,920,938,463,463,374,607,431,768,211,455"
+            crate::regional::digits("340282366920938463463374607431768211455")
         );
-        assert_eq!(grouped(&json!(3799)), "3,799");
+        assert_eq!(grouped(&json!(3799)), crate::regional::digits("3799"));
     }
 
     #[test]

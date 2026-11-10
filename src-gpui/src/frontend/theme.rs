@@ -806,7 +806,10 @@ mod tests {
         ] {
             assert!(super::heat_alpha(field, 1_000_000_000.) > 0.);
         }
-        assert_eq!(super::bytes(2_199_023_255_552., false), "2.0 TB");
+        assert_eq!(
+            super::bytes(2_199_023_255_552., false),
+            crate::regional::numeric("2.0 TB".into())
+        );
     }
 
     /// Every string in the Chinese and Japanese interface text.

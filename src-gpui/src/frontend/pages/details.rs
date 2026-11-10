@@ -1993,16 +1993,17 @@ fn disk_kind(info: &Value) -> String {
 mod tests {
     // Named imports keep the glob-imported GPUI `test` macro out of scope.
     use super::{GB, MB, bit_rate, byte_rate, capacity, cpu_time, disk_kind, joined, link_speed};
+    use crate::regional;
     use serde_json::json;
 
     #[test]
     fn rates_match_the_table_formats() {
         assert_eq!(byte_rate(0.), "0 KB/s");
         assert_eq!(byte_rate(10.), "1 KB/s");
-        assert_eq!(byte_rate(3. * MB), "3.0 MB/s");
+        assert_eq!(byte_rate(3. * MB), regional::numeric("3.0 MB/s".into()));
         assert_eq!(bit_rate(0.), "0 Kbps");
-        assert_eq!(bit_rate(1000.), "8.0 Kbps");
-        assert_eq!(bit_rate(1e6), "8.00 Mbps");
+        assert_eq!(bit_rate(1000.), regional::numeric("8.0 Kbps".into()));
+        assert_eq!(bit_rate(1e6), regional::numeric("8.00 Mbps".into()));
     }
 
     #[test]
@@ -2014,9 +2015,9 @@ mod tests {
 
     #[test]
     fn hardware_strings_follow_windows_units() {
-        assert_eq!(capacity(2e12), "1.8 TB");
+        assert_eq!(capacity(2e12), regional::numeric("1.8 TB".into()));
         assert_eq!(capacity(512. * GB), "512 GB");
-        assert_eq!(link_speed(1.201e9), "1.2 Gbps");
+        assert_eq!(link_speed(1.201e9), regional::numeric("1.2 Gbps".into()));
         assert_eq!(link_speed(1e9), "1 Gbps");
         assert_eq!(link_speed(1e8), "100 Mbps");
         assert_eq!(
