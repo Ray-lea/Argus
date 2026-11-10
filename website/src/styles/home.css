@@ -993,6 +993,7 @@
 }
 .cell-native {
   grid-column: span 7;
+  container: pipeline-card / inline-size;
 }
 .feature-grid.is-short .cell-curves {
   grid-column: span 7;
@@ -1166,6 +1167,7 @@
 
 /* Data flowing from the system to the screen. */
 .pipeline {
+  isolation: isolate;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
@@ -1177,14 +1179,16 @@
   position: relative;
   display: grid;
   justify-items: center;
+  min-width: 0;
+  padding-inline: 6px;
 }
 /* The beam slides inside the line it travels: a moved layer, not a repaint. */
 .pipe-line {
   position: absolute;
   top: 22px;
   right: 50%;
-  width: calc(100% - 52px);
-  margin-right: 26px;
+  width: 100%;
+  margin-right: 0;
   height: 2px;
   overflow: hidden;
   border-radius: 1px;
@@ -1198,17 +1202,25 @@
   transform: translateX(-100%);
 }
 .pipe-node {
+  position: relative;
+  z-index: 1;
   display: grid;
   justify-items: center;
   gap: 2px;
   text-align: center;
+  width: 100%;
+  min-width: 0;
 }
 .pipe-node b {
   position: relative;
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
+  min-width: 46px;
+  max-width: 100%;
+  min-height: 46px;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+  hyphens: auto;
   border: 1px solid var(--stroke-2);
   border-radius: 12px;
   background: var(--surface-solid);
@@ -1237,9 +1249,19 @@
   opacity: 0;
 }
 .pipe-node small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   margin-top: 8px;
   color: var(--ink-3);
   font-size: 0.75rem;
+}
+@container pipeline-card (max-width: 380px) {
+  .cell-native .pipeline { grid-template-columns: 1fr; gap: 16px; }
+  .pipeline li { padding-inline: 0; }
+  .pipe-node { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 16px; }
+  .pipe-node b { width: 100%; }
+  .pipe-node small { margin: 0; text-align: start; }
+  .pipe-line { left: calc(25% - 12px); right: auto; top: -9px; width: 16px; transform: rotate(90deg); }
 }
 @media (prefers-reduced-motion: no-preference) {
   .pipe-line i {
@@ -2257,13 +2279,6 @@
     min-width: 54px;
     height: 50px;
     font-size: 1.125rem;
-  }
-  .pipeline {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    row-gap: 20px;
-  }
-  .pipeline li:nth-child(3) .pipe-line {
-    display: none;
   }
   .diff-table thead {
     display: none;

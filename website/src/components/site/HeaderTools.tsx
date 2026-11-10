@@ -131,8 +131,8 @@ export function ThemePicker({ label, options }: { label: string; options: Record
       <button
         type="button"
         className="tool theme-trigger"
-        aria-label={label + "：" + options[value]}
-        title={label + "：" + options[value]}
+        aria-label={label + " · " + options[value]}
+        title={label + " · " + options[value]}
         aria-haspopup="menu"
         aria-expanded={open}
         data-site-theme={value}

@@ -1,3 +1,4 @@
+/** @jsxImportSource @/components/replica/i18n */
 "use client";
 import { useState, type DragEvent } from "react";
 import FileLock, { inspect, type LockResult } from "../replica/FileLock";

@@ -1,17 +1,18 @@
+import { copyFor, localize } from "@/lib/site-i18n";
 import { SiteFrame } from "@/components/site/SiteFrame";
 import { pageMetadata } from "@/lib/page";
 import { repo, site, text, type Language, type Policy as PolicyName } from "@/lib/site";
 
 const summary = (lang: Language, policy: PolicyName) => {
-  const en = lang === "en";
+  const en = lang !== "zh";
   return {
-    privacy: en
+    privacy: localize(lang, en
       ? "How Argus stores data and connects to update services."
-      : "Argus 的本地数据存储、更新请求与网络连接。",
-    signing: en ? "The project's public code signing policy." : "Argus 项目的公开代码签名策略。",
-    security: en
+      : "Argus 的本地数据存储、更新请求与网络连接。"),
+    signing: localize(lang, en ? "The project's public code signing policy." : "Argus 项目的公开代码签名策略。"),
+    security: localize(lang, en
       ? "Report a vulnerability privately to the Argus maintainers."
-      : "向 Argus 维护者私下报告安全漏洞。",
+      : "向 Argus 维护者私下报告安全漏洞。"),
   }[policy];
 };
 
@@ -24,7 +25,7 @@ export const policyMetadata = (lang: Language, policy: PolicyName) =>
   });
 
 export function Policy({ lang, policy }: { lang: Language; policy: PolicyName }) {
-  const en = lang === "en",
+  const en = lang !== "zh",
     title = text[lang][policy];
   return (
     <SiteFrame lang={lang} path={"/" + policy + "/"} title={title}>
@@ -37,14 +38,14 @@ export function Policy({ lang, policy }: { lang: Language; policy: PolicyName })
           {policy === "security" ? (
             <div className="site-prose">
               <p>
-                {en
+                {localize(lang, en
                   ? "Send the affected Argus and Windows versions, reproduction steps and expected impact to the maintainers."
-                  : "请提供受影响的 Argus 与 Windows 版本、复现步骤和可能的影响。"}
+                  : "请提供受影响的 Argus 与 Windows 版本、复现步骤和可能的影响。")}
               </p>
               <ul>
                 <li>
                   <a href={repo + "/security/advisories/new"}>
-                    {en ? "GitHub private vulnerability report" : "GitHub 私密漏洞报告"}
+                    {localize(lang, en ? "GitHub private vulnerability report" : "GitHub 私密漏洞报告")}
                   </a>
                 </li>
                 {site.contact && (
@@ -56,7 +57,7 @@ export function Policy({ lang, policy }: { lang: Language; policy: PolicyName })
             </div>
           ) : (
             <div
-              className="site-prose"
+              className={"site-prose" + (policy === "privacy" ? " privacy-content" : "")}
               dangerouslySetInnerHTML={{ __html: site.translations[lang][policy] }}
             />
           )}

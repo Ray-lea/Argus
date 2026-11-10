@@ -1,3 +1,4 @@
+import { copyFor, localize } from "@/lib/site-i18n";
 import runs from "../data/windows-interaction.json";
 import type { Latency } from "../components/home/LatencyBoard";
 import { development, localized, nativeStable, stable, type Language } from "./site";
@@ -26,7 +27,7 @@ const operations: [string, string, string, string[]][] = [
 export const latency = (lang: Language): Latency[] =>
   operations.map(([id, zh, en, ops]) => ({
     id,
-    label: lang === "en" ? en : zh,
+    label: localize(lang, lang !== "zh" ? en : zh),
     argus: measured("argus", ops),
     native: measured("native", ops),
   }));
@@ -42,7 +43,7 @@ export const docs = (file: string, hash = "") =>
 // Only rows where the two tools differ; each names the window page that shows it.
 type Difference = [string, string, string, string | null];
 export const differences = (lang: Language): Difference[] =>
-  lang === "en"
+  localize(lang, lang !== "zh"
     ? [
         ["Which process holds a port", "The Connections page lists TCP and UDP endpoints; search by port and close a connection", "Not available; use Resource Monitor or the command line", "connections"],
         ["Which process locks a file", "Drop the file or folder on the window, then end the holder", "Not available; use Resource Monitor", null],
@@ -62,11 +63,11 @@ export const differences = (lang: Language): Difference[] =>
         ["优先级与效率模式", "可保存为规则，程序每次启动时自动应用", "仅对正在运行的进程生效", null],
         ["CPU 温度与功耗", "封装温度、功耗与每核读数（可选内核传感器）", "不显示", "performance"],
         ["性能核与能效核", "多核视图按 P 核、E 核筛选，分别显示频率", "逻辑处理器不区分核心类型", "performance"],
-      ];
+      ]);
 
 type Question = [string, string, string, string];
 export const questions = (lang: Language): Question[] =>
-  lang === "en"
+  localize(lang, lang !== "zh"
     ? [
         ["replace", "Can Argus replace the Windows Task Manager?", "Yes. Turn on the replacement in Settings → Permissions and Ctrl+Shift+Esc, the taskbar menu and taskmgr open Argus. It needs the optional privileged service and one administrator approval; turning it off restores Task Manager.", docs("docs/architecture/task-manager.md")],
         ["admin", "Does it need to run as administrator?", "Standard rights are enough to view processes and resource use. The optional privileged service handles operations and collection that require additional permissions, including controlling services and collecting per-process network traffic. Installing it requires administrator approval; the interface can keep standard rights.", docs("docs/guide/settings.md", "权限")],
@@ -84,4 +85,4 @@ export const questions = (lang: Language): Question[] =>
         ["temperature", "为什么看不到 CPU 温度？", "Windows 不直接提供处理器温度。在“设置 → 权限”开启内核传感器后，Argus 通过特权服务和签名的 PawnIO 驱动读取温度、功耗与每核读数。", docs("docs/guide/hardware-data.md")],
         ["privacy", "Argus 会上传数据吗？", "进程列表、历史记录和设置保存在本机。Argus 未内置使用遥测、广告追踪或自动崩溃上报。联网包括更新检查与下载、按需下载 PawnIO，以及主动打开的外部链接；更新检查可在设置中改为手动。", localized(lang, "/privacy/")],
         ["portable", "安装版和免安装版怎么选？", "安装版安装到 Program Files，支持应用内更新。免安装版是单个 EXE，直接运行，与安装版共用设置和历史数据，需要手动更新。", localized(lang, "/download/")],
-      ];
+      ]);

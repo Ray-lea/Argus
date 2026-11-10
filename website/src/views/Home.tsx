@@ -1,4 +1,8 @@
+import { copyFor, localize } from "@/lib/site-i18n";
 import type { CSSProperties, ReactNode } from "react";
+import { DemoLanguage } from "@/components/replica/DemoLanguage";
+import { demoDictionary } from "@/lib/demo";
+import { languageInfo, languages } from "@/lib/languages";
 import AccentPicker from "@/components/home/AccentPicker";
 import CurveCompare from "@/components/home/CurveCompare";
 import DeskWindow from "@/components/home/DeskWindow";
@@ -100,18 +104,18 @@ const homeSchema = (lang: Language) => [
     name: "Argus",
     url: origin + "/",
     description: about[lang].description,
-    inLanguage: ["zh-CN", "en"],
+    inLanguage: languages.map(item => item.tag),
     about: { "@id": origin + "/#software" },
   },
   softwareSchema(
     lang,
-    differences(lang).map(([need, argus]) => need + (lang === "en" ? ": " : "：") + argus),
+    differences(lang).map(([need, argus]) => need + (localize(lang, lang !== "zh" ? ": " : "：")) + argus),
   ),
   {
     "@context": "https://schema.org",
     "@type": "FAQPage",
     "@id": origin + localized(lang) + "#faq",
-    inLanguage: lang === "en" ? "en" : "zh-CN",
+    inLanguage: languageInfo(lang).tag,
     mainEntity: questions(lang).map(([id, question, answer]) => ({
       "@type": "Question",
       "@id": origin + localized(lang) + "#" + id,
@@ -121,12 +125,13 @@ const homeSchema = (lang: Language) => [
   },
 ];
 
-// The window comes from the route, so each language loads only its own: the
-// English one carries its dictionary (EnglishReplica.tsx).
+// The route loads the shared window and only the selected language's dictionary.
 export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
-  const en = lang === "en",
-    t = copy[lang];
+  const en = lang !== "zh",
+    t = copyFor(lang, copy);
+  const releaseSummary = lang === "zh" ? t.changelog[1] : localize(lang, `${releases(lang).length} releases since the first on ${longDate(releases(lang).at(-1)?.date ?? "", lang)}.`);
   return (
+    <DemoLanguage lang={lang} dictionary={demoDictionary(lang)}>
     <SiteFrame
       lang={lang}
       path="/"
@@ -179,7 +184,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
         </div>
         {/* A 1920 × 1080 desktop drawn at the width of the page; the window can be
             resized and maximized, and the desktop shown full screen. */}
-        <div className="stage" data-motion="">
+        <div className="stage" id="demo" data-motion="">
           <div className="desk">
             <div className="wallpaper" aria-hidden="true">
               <i className="petal p1"></i>
@@ -200,7 +205,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
         </div>
       </section>
 
-      <section className="site-wrap stats" aria-label={en ? "Project figures" : "项目数据"}>
+      <section className="site-wrap stats" aria-label={localize(lang, en ? "Project figures" : "项目数据")}>
         <ProjectStats lang={lang} />
       </section>
 
@@ -242,16 +247,16 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
             <span>{t.modern[2]}</span>
           </p>
         </header>
-        <div className={en ? "feature-grid is-short" : "feature-grid"}>
+        <div className="feature-grid">
           <article className="cell cell-curves" data-spotlight="" data-rise="">
             <h3>{t.curves[0]}</h3>
             <p>{t.curves[1]}</p>
             <CurveCompare lang={lang} />
           </article>
-          {!en && (
+          {(
             <article className="cell cell-accent" data-spotlight="" data-rise="2">
-              <h3>跟随系统强调色</h3>
-              <p>Windows 11 上使用云母材质。选择一种强调色，上方窗口随之改变。</p>
+              <h3>{localize(lang, en ? "Follow the system accent" : "跟随系统强调色")}</h3>
+              <p>{localize(lang, en ? "Mica on Windows 11. Choose an accent to change the window above." : "Windows 11 上使用云母材质。选择一种强调色，上方窗口随之改变。")}</p>
               <AccentPicker />
             </article>
           )}
@@ -305,7 +310,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
             <span>{t.rich[2]}</span>
           </p>
         </header>
-        <div className={en ? "rich is-full" : "rich"}>
+        <div className="rich">
           <table className="diff-table" data-rise="">
             <caption className="sr-only">{t.rich[0]}</caption>
             <thead>
@@ -323,17 +328,17 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
                   <th scope="row">{need}</th>
                   <td className="yes">
                     {argus}
-                    {page && <ShowPage page={page}>{en ? "See it in the demo" : "在演示中查看"}</ShowPage>}
+                    {page && <ShowPage page={page}>{localize(lang, en ? "See it in the demo" : "在演示中查看")}</ShowPage>}
                   </td>
                   <td className="no">{native}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {!en && (
+          {(
             <aside className="cell drop" data-spotlight="" data-motion="">
-              <h3>把文件拖到这里</h3>
-              <p>只读取文件名，在浏览器内演示查询结果，不会上传。</p>
+              <h3>{localize(lang, en ? "Drop a file here" : "把文件拖到这里")}</h3>
+              <p>{localize(lang, en ? "Only file names are read. Results are simulated in the browser; files stay on the device." : "只读取文件名，在浏览器内演示查询结果，不会上传。")}</p>
               <FileDrop />
             </aside>
           )}
@@ -346,7 +351,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
             {t.changelog[0]}
           </h2>
           <p data-rise="2">
-            {t.changelog[1]}
+            {releaseSummary}
             <span>{t.changelog[2]}</span>
           </p>
         </header>
@@ -408,11 +413,12 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
           <p className="fine">
             {r.tag} · {site.translations[lang].operatingSystem} ·
             <SiteLink lang={lang} href={stable.base}>
-              {en ? "Documentation (Chinese)" : "使用文档"}
+              {localize(lang, en ? "Documentation (Chinese)" : "使用文档")}
             </SiteLink>
           </p>
         </div>
       </section>
     </SiteFrame>
+    </DemoLanguage>
   );
 }

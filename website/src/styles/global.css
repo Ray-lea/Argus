@@ -11,6 +11,15 @@ html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
+html:lang(zh-TW) {
+  --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", "Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+}
+html:lang(ja) {
+  --font: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", "Yu Gothic UI", "Meiryo", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+}
+.release-language { color: var(--ink-3); font-size: 0.875rem; line-height: 1.6; }
 body {
   margin: 0;
   min-height: 100svh;
@@ -354,9 +363,10 @@ button {
   view-transition-name: mast;
 }
 .mast-inner {
+  container: mast / inline-size;
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: clamp(8px, 2vw, 28px);
   width: min(100% - 2 * var(--pad), 1080px);
   height: 100%;
   margin-inline: auto;
@@ -477,55 +487,33 @@ button {
 .gh-stars:hover .gh-star {
   transform: rotate(72deg) scale(1.25);
 }
-/* The language switch (LanguageSwitch.tsx): both languages, a thumb under the
-   one shown. Under the pointer the other lights up; pressed, the thumb leans
-   toward it; changing pages, the thumb glides over (its own view transition). */
-.lang-switch {
-  gap: 0;
-  padding: 2px;
-  isolation: isolate;
+.language-picker { position: relative; flex: none; }
+.lang-trigger { gap: 6px; white-space: nowrap; view-transition-name: lang-trigger; }
+.lang-current { font-size: 0.8125rem; font-weight: 600; }
+.lang-chevron { display: inline-flex; align-items: center; flex: none; transition: transform 180ms var(--ease); }
+.lang-trigger[aria-expanded="true"] .lang-chevron { transform: rotate(180deg); }
+.lang-trigger[aria-expanded="true"] { color: var(--accent-text); background: var(--surface-2); border-color: var(--stroke-2); }
+.language-menu {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 60;
+  width: min(240px, calc(100vw - 32px)); max-height: min(420px, calc(100dvh - 100px));
+  overflow-y: auto; overscroll-behavior: contain; padding: 6px;
+  border: 1px solid var(--stroke-2); border-radius: 12px;
+  background: var(--surface-solid); box-shadow: var(--shadow); transform-origin: top right;
+  animation: language-in 180ms var(--ease) both;
 }
-.lang-switch span[lang] {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 28px;
-  color: var(--ink-3);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  transition: color 160ms ease;
+.language-menu.is-closing { animation: language-out 130ms ease both; pointer-events: none; }
+.language-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  min-height: 38px; padding: 8px 12px; border-radius: 7px;
+  color: var(--ink-2); text-decoration: none; font-size: 0.9375rem;
+  transition: background-color 120ms, color 120ms;
 }
-.lang-switch[data-lang="zh"] span[lang="zh-CN"],
-.lang-switch[data-lang="en"] span[lang="en"] {
-  color: var(--ink);
-}
-.lang-switch[data-lang="zh"]:hover span[lang="en"],
-.lang-switch[data-lang="en"]:hover span[lang="zh-CN"] {
-  color: var(--accent-text);
-}
-.lang-thumb {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 2px;
-  width: 30px;
-  border-radius: 5px;
-  background: var(--surface-2);
-  box-shadow: inset 0 0 0 1px var(--stroke-2);
-  transition: transform 320ms var(--ease);
-  view-transition-name: lang-thumb;
-}
-.lang-switch[data-lang="en"] .lang-thumb {
-  transform: translateX(30px);
-}
-.lang-switch[data-lang="zh"]:active .lang-thumb {
-  transform: translateX(6px);
-}
-.lang-switch[data-lang="en"]:active .lang-thumb {
-  transform: translateX(24px);
-}
+.language-option:hover, .language-option:focus-visible { color: var(--ink); background: var(--surface-2); outline: 2px solid var(--accent); outline-offset: -2px; }
+.language-option[aria-checked="true"] { color: var(--accent-text); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.language-check { display: flex; width: 16px; flex: none; }
+@keyframes language-in { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes language-out { to { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { .language-menu, .language-menu.is-closing { animation: none; } .lang-chevron { transition: none; } }
 /* Between the two languages' pages the old one dissolves and the new one
    sharpens into place; the header stays, and the thumb glides across. */
 @media (prefers-reduced-motion: no-preference) {
@@ -535,7 +523,7 @@ button {
   html:active-view-transition-type(lang)::view-transition-new(root) {
     animation: lang-in 420ms var(--ease) 60ms both;
   }
-  html:active-view-transition-type(lang)::view-transition-group(lang-thumb) {
+  html:active-view-transition-type(lang)::view-transition-group(lang-trigger) {
     animation-duration: 420ms;
     animation-timing-function: var(--ease);
   }
@@ -594,7 +582,7 @@ button {
 }
 /* While the theme changes, the new page spreads from the button (HeaderTools.tsx):
    the header joins the page in it, and no cross-fade plays under the circle. */
-:root.is-theme-change :is(.mast, .lang-thumb) {
+:root.is-theme-change :is(.mast, .lang-trigger) {
   view-transition-name: none;
 }
 :root.is-theme-change::view-transition-old(root),
@@ -681,11 +669,10 @@ button {
 .mast-menu {
   display: none;
 }
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .mast-nav,
   .mast-tools .label,
   .mast-tools kbd,
-  .mast-tools .lang-switch,
   .mast-tools .gh-stars {
     display: none;
   }
@@ -813,6 +800,8 @@ button {
   backdrop-filter: blur(24px);
 }
 .site-prose {
+  min-width: 0;
+  overflow-wrap: anywhere;
   max-width: 72ch;
   font-size: 1.0625rem;
   line-height: 1.75;
@@ -860,6 +849,19 @@ button {
 }
 .site-prose th {
   font-weight: 600;
+}
+.privacy-content table { table-layout: fixed; }
+.privacy-content th:first-child { width: 20%; }
+.privacy-content th:nth-child(2) { width: 45%; }
+.privacy-content th:nth-child(3) { width: 35%; }
+@media (max-width: 640px) {
+  .privacy-content table, .privacy-content tbody, .privacy-content tr, .privacy-content td { display: block; width: 100%; }
+  .privacy-content thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .privacy-content tr { margin-top: 20px; border: 1px solid var(--stroke); border-radius: var(--radius); }
+  .privacy-content td { padding: 14px 16px; }
+  .privacy-content td:first-child { font-weight: 600; background: var(--surface-2); border-radius: var(--radius) var(--radius) 0 0; }
+  .privacy-content td:last-child { border-bottom: 0; }
+  .privacy-content td:not(:first-child)::before { content: attr(data-label); display: block; margin-bottom: 6px; color: var(--ink-3); font-weight: 600; font-size: 0.8125rem; }
 }
 
 /* A soft light follows the pointer across cards marked data-spotlight. */
@@ -965,4 +967,20 @@ button {
 .release-badge.is-muted {
   background: var(--surface-2);
   color: var(--ink-3);
+}
+
+/* Long labels keep their own width; narrow headers retain the language control. */
+.mast-nav a, .mast-get { white-space: nowrap; }
+.mast-nav, .mast-tools { flex-shrink: 0; }
+@media (max-width: 1100px) { .mast-tools .label, .mast-tools kbd { display: none; } }
+@media (max-width: 520px) { .mast-get { display: none; } .mast-inner { gap: 8px; padding-inline: 12px; } }
+@media (max-width: 420px) { .mast-tools > [data-search-open] { display: none; } }
+.mast-sheet > [data-search-open] { justify-content: flex-start; min-height: 44px; height: auto; border: 0; padding: 10px 14px; }
+@container mast (max-width: 1100px) {
+  .mast-tools .label, .mast-tools kbd, .mast-tools .gh-count { display: none; }
+  .mast-nav a { padding-inline: 8px; }
+}
+@container mast (max-width: 900px) {
+  .mast-nav { display: none; }
+  .mast-menu { display: block; }
 }

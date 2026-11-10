@@ -2,7 +2,8 @@ import { ViewTransition } from "react";
 import { localized, repo, site, text, type Language } from "@/lib/site";
 import { compact } from "@/components/home/OpenSource";
 import { DownloadButton } from "./DownloadButton";
-import { LanguageLink, LanguageSwitch } from "./LanguageSwitch";
+import { LanguageSwitch } from "./LanguageSwitch";
+import { localize } from "@/lib/site-i18n";
 import { MastMenu, SearchButton, ThemePicker } from "./HeaderTools";
 import { Icon } from "./Icon";
 import { SiteLink } from "./SiteLink";
@@ -16,7 +17,7 @@ interface Props {
 
 export function Header({ lang, path, alternate = true, wide = false }: Props) {
   const t = text[lang],
-    en = lang === "en";
+    en = lang !== "zh";
   const links = [
     { href: "/docs/", label: t.docs, current: path.startsWith("/docs/") },
     { href: localized(lang, "/download/"), label: t.download, current: path === "/download/" },
@@ -24,8 +25,7 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
     { href: localized(lang, "/#faq"), label: t.questions, current: false },
   ];
   const stars = site.repository?.stars;
-  const other = localized(en ? "zh" : "en", path);
-  const menu = en ? "Menu" : "菜单";
+  const menu = localize(lang, en ? "Menu" : "菜单");
   return (
     <header className={wide ? "mast is-wide" : "mast"}>
       <div className="mast-inner">
@@ -33,7 +33,7 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
           <img src="/assets/argus.svg" width="22" height="22" alt="" />
           Argus
         </SiteLink>
-        <nav className="mast-nav" aria-label={en ? "Main" : "主导航"}>
+        <nav className="mast-nav" aria-label={localize(lang, en ? "Main" : "主导航")}>
           {links.map((link) => (
             <SiteLink
               lang={lang}
@@ -60,7 +60,7 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
           <a
             className="tool gh-stars"
             href={repo}
-            aria-label={stars === undefined ? "GitHub" : "GitHub · " + stars + (en ? " stars" : " 个星标")}
+            aria-label={stars === undefined ? "GitHub" : "GitHub · " + stars + " " + localize(lang, en ? "stars" : "个星标")}
           >
             <span className="gh-mark">
               <Icon name="github" size={16} />
@@ -77,12 +77,12 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
           <ThemePicker label={t.theme} options={t.themeOptions} />
           {alternate && (
             <>
-              <LanguageSwitch lang={lang} href={other} label={t.language} />
-              {/* The other language's page is prepared while the pointer rests on the switch, so it opens at once. */}
+              <LanguageSwitch lang={lang} path={path} label={t.language} />
+              {/* Fetch the destination on intent; its scripts start only on navigation. */}
               <script
                 type="speculationrules"
                 dangerouslySetInnerHTML={{
-                  __html: JSON.stringify({ prerender: [{ source: "document", where: { selector_matches: ".lang-switch" }, eagerness: "moderate" }] }),
+                  __html: JSON.stringify({ prefetch: [{ source: "document", where: { selector_matches: ".language-option:not([aria-checked=true])" }, eagerness: "moderate" }] }),
                 }}
               />
             </>
@@ -91,18 +91,13 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
             {t.download}
           </DownloadButton>
           <MastMenu label={menu}>
+            <SearchButton label={t.search}><Icon name="search" size={16} />{t.search}</SearchButton>
             {links.map((link) => (
               <SiteLink lang={lang} key={link.href} href={link.href}>
                 {link.label}
               </SiteLink>
             ))}
             <a href={repo}>GitHub</a>
-            {alternate && (
-              <LanguageLink href={other} lang={en ? "zh-CN" : "en"}>
-                <Icon name="language" />
-                {t.language}
-              </LanguageLink>
-            )}
           </MastMenu>
         </div>
       </div>

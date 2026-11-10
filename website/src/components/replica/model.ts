@@ -2,6 +2,8 @@
 // every sample (sampleAt); process rows share those totals out, so the
 // columns add up the way they do in the app.
 
+import metadata from "../../../../resources/app.json";
+export const appVersion = metadata.version;
 export type Group = "app" | "background" | "windows";
 export type Glyph =
   | "app"

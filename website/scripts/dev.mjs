@@ -7,6 +7,7 @@ import { join, relative, resolve } from "node:path";
 import { folders, prepareContent, prepareDevelopmentEdition } from "./content.mjs";
 import { contentDir, prune, putIfChanged, readSite, repoRoot, workDir } from "./paths.mjs";
 import { buildRelease } from "./release.mjs";
+import { languages } from "../src/lib/languages.ts";
 
 const devDir = join(workDir, "dev");
 
@@ -39,8 +40,7 @@ async function releaseData() {
 const localPath = (path) => relative(repoRoot, resolve(path)).replaceAll("\\", "/");
 // Inputs of site.json other than the documents themselves.
 const siteSources = new Set([
-  "README.md",
-  "README.en.md",
+  ...languages.map(language => language.readme),
   "PRIVACY.md",
   "resources/logo.svg",
   "website/public-settings.json",

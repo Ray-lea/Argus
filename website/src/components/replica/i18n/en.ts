@@ -2,6 +2,15 @@
 // wherever the demo shows the same text, and translations of the rest.
 // Generated once from the demo's Chinese strings; edit by hand from here on.
 export const exact: Record<string, string> = {
+  "删除或移动文件时提示“文件正在使用”，可在此查找占用该文件的进程。": "If deleting or moving a file fails because it's in use, find the processes holding it here. Files can also be dropped onto the Argus window.",
+  "繁體中文": "繁體中文",
+  "日本語": "日本語",
+  "跟随系统（默认蓝）": "System accent (default blue)",
+  "橙色": "Orange",
+  "红色": "Red",
+  "海沫绿": "Seafoam green",
+  "石板灰": "Slate gray",
+  "强调色": "Accent color",
   "进程": "Process",
   "性能": "Performance",
   "服务": "Service",
@@ -517,7 +526,6 @@ export const exact: Record<string, string> = {
   "放电 7.8 W": "Discharging 7.8 W",
   "演示窗口仅提供简体中文界面。": "The demo window doesn't switch its language.",
   "Ctrl+1–8 切换页面；Ctrl+F 搜索进程；Delete 结束选中的进程；按住 Ctrl 暂停刷新。": "Ctrl+1–8 switch pages; Ctrl+F searches processes; Delete ends the selected process; hold Ctrl to pause updates.",
-  "已连接 · 0.3.4": "Connected · 0.3.4",
   "演示窗口不会停止内核传感器的采集。": "The demo window doesn't stop the kernel sensors.",
   "使 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。": "Ctrl+Shift+Esc and other entry points open Argus. Off by default; the standalone restore program needs neither the window nor the service.",
   "流畅（跟随刷新率）": "Smooth (display refresh rate)",
@@ -525,7 +533,6 @@ export const exact: Record<string, string> = {
   "占用 38.6 MB，最早记录于 10/27 09:12。": "Uses 38.6 MB; the earliest record is from 10/27 09:12.",
   "演示窗口不会清除历史记录。": "The demo window doesn't clear the history.",
   "演示窗口不会保存规则。": "The demo window doesn't save rules.",
-  "当前版本 0.3.4 · 稳定版": "Current version 0.3.4 · Stable",
   "已是最新版本。": "Argus is up to date.",
   "演示窗口不显示更新内容，可在官网的“更新日志”页查看。": "The demo window doesn't show what's new; see the Changelog page on this site.",
   "演示窗口不会打开日志文件夹。": "The demo window doesn't open the log folder.",
@@ -756,6 +763,8 @@ export const exact: Record<string, string> = {
 // Messages with names and numbers in them; {a}, {b} stand for those values,
 // which are translated in turn. More general patterns come last.
 export const patterns: [string, string][] = [
+  ["已连接 · {version}", "Connected · {version}"],
+  ["当前版本 {version} · 稳定版", "Current version {version} · Stable"],
   // The details pane button's tooltip, translated a line at a time; the mode
   // names are exact entries.
   ["详细信息面板：{a}", "Details pane: {a}"],

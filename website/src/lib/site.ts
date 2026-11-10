@@ -1,13 +1,14 @@
 import data from "../../content/site.json";
 import { downloadOrigin, origin, repo } from "../../scripts/release.mjs";
+import { languages, localized, notesLanguage, languageInfo, type Language } from "./languages";
+import { withLanguages } from "./site-i18n";
 
 export { downloadOrigin, origin, repo };
 
-export type Language = "zh" | "en";
+export type { Language } from "./languages";
+export { localized } from "./languages";
 export type Policy = "privacy" | "signing" | "security";
 export const policies: Policy[] = ["privacy", "signing", "security"];
-export const localized = (lang: Language, path = "/") =>
-  (lang === "en" ? "/en" : "") + path;
 interface Download {
   name: string;
   size: number;
@@ -22,6 +23,7 @@ export interface DocLink {
   note: string;
 }
 interface Snapshot {
+  softwareLanguages: string[];
   release: {
     version: string;
     tag: string;
@@ -73,9 +75,14 @@ export interface Edition {
   nav: { label: string; items: DocLink[] }[];
 }
 // Written by scripts/content.mjs; raise siteFormat there when this shape changes.
-if (data.format !== 6)
+if (data.format !== 7)
   throw Error("content/site.json is from an older version of the website scripts. Restart start-website.bat.");
-export const site = data as unknown as Snapshot;
+const snapshot = data as unknown as Snapshot;
+export const site = {
+  ...snapshot,
+  changelog: Object.fromEntries(languages.map(({ id }) => [id, snapshot.changelog[notesLanguage(id)]])) as Snapshot["changelog"],
+  translations: Object.fromEntries(languages.map(({ id }) => [id, snapshot.translations[id] ?? snapshot.translations[notesLanguage(id)]])) as Snapshot["translations"],
+};
 export const [stable, development] = site.editions;
 // The first native release documents the interface demonstrated on the home page.
 const [releaseMajor, releaseMinor] = site.release.version.split(".").map(Number);
@@ -83,7 +90,7 @@ export const nativeStable = releaseMajor > 0 || (releaseMajor === 0 && releaseMi
 // The development base is nested inside the stable one; the last match is the closest.
 export const editionOf = (path: string) =>
   site.editions.findLast((edition) => path.startsWith(edition.base)) ?? stable;
-export const text = {
+export const text = withLanguages({
   zh: {
     home: "首页",
     docs: "文档",
@@ -98,7 +105,7 @@ export const text = {
     contact: "联系维护者",
     questions: "常见问题",
     source: "源代码",
-    language: "English",
+    language: "语言",
     search: "搜索文档",
     theme: "主题",
     themeOptions: { auto: "跟随系统", light: "浅色", dark: "深色" },
@@ -117,14 +124,14 @@ export const text = {
     contact: "Contact",
     questions: "Questions",
     source: "Source code",
-    language: "简体中文",
+    language: "Language",
     search: "Search docs",
     theme: "Theme",
     themeOptions: { auto: "System", light: "Light", dark: "Dark" },
   },
-} as const;
+});
 // What Argus is: the home page's head tags and lead, the structured data and llms.txt.
-export const about = {
+export const about = withLanguages({
   zh: {
     title: "Argus · 快速、现代、信息丰富的 Windows 任务管理器",
     description:
@@ -137,10 +144,10 @@ export const about = {
       "Argus is an open-source task manager for Windows: a native GPU-drawn interface, curves at the display's refresh rate, ports, file locks, per-process disk I/O and seven days of history.",
     lead: "Argus reads Windows directly in Rust and draws its window on the GPU. Processes, performance, services, startup apps, network connections and file locks share one fluid window.",
   },
-};
+});
 export const jsonLd = (data: unknown) =>
   JSON.stringify(data).replaceAll("<", "\\u003c");
-export const sourceFor = (lang: Language) => (lang === "en" ? "en" : "zh-CN");
+export const sourceFor = (lang: Language) => languageInfo(lang).tag;
 export const mebibytes = (bytes: number) => (bytes / 1048576).toFixed(1);
 // The withdrawn releases are left out; the last entry is the first release.
 export const releases = (lang: Language) => site.changelog[lang].filter((note) => !note.withdrawn);
@@ -155,10 +162,10 @@ export function softwareSchema(lang: Language, features?: string[]) {
     url: origin + localized(lang),
     description: about[lang].description,
     image: origin + "/assets/argus.svg",
-    screenshot: origin + "/assets/preview-" + lang + "-dark.png",
+    screenshot: origin + "/assets/preview-" + notesLanguage(lang) + "-dark.png",
     applicationCategory: "UtilitiesApplication",
     operatingSystem: site.translations[lang].operatingSystem,
-    inLanguage: ["zh-CN", "en"],
+    inLanguage: site.softwareLanguages,
     softwareVersion: release.version,
     datePublished: releases(lang).at(-1)?.date,
     dateModified: release.published.slice(0, 10),

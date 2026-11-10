@@ -1,3 +1,4 @@
+/** @jsxImportSource @/components/replica/i18n */
 "use client";
 import { store, useShared, type Accent } from "../replica/store";
 

@@ -5,6 +5,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { languages, localized } from "../src/lib/languages.ts";
 import {
   assetLimit,
   downloadOrigin,
@@ -156,12 +157,13 @@ async function local() {
     "privacy/",
     "signing/",
   ]) {
-    for (const prefix of ["", "en/"]) {
+    for (const { id } of languages) {
+      const prefix = id === "zh" ? "" : id + "/";
       const page = pages.get(prefix + path + "index.html");
       assert(page, "Missing localized page " + prefix + path);
       assert.equal(page.canonical, origin + "/" + prefix + path);
-      assert.equal(page.alternates.get("en"), origin + "/en/" + path);
-      assert.equal(page.alternates.get("zh-CN"), origin + "/" + path);
+      for (const alternate of languages)
+        assert.equal(page.alternates.get(alternate.tag), origin + localized(alternate.id, "/" + path));
       if (path === "" || path === "download/") {
         const app = page.schemas.find(
           (s) => s["@type"] === "SoftwareApplication",
@@ -300,9 +302,7 @@ async function online(service) {
         : service === "www"
           ? [["https://www.argustask.com/download/", null]]
           : [
-              [origin + "/", null],
-              [origin + "/en/", null],
-              [origin + "/en/download/", null],
+              ...languages.flatMap(({ id }) => ["/", "/download/", "/changelog/"].map(path => [origin + localized(id, path), null])),
               [origin + "/docs/guide/", null],
               [origin + "/docs/dev/", null],
               [origin + "/docs-search.json", null],
