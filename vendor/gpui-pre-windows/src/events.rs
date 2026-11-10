@@ -160,6 +160,15 @@ impl WindowsWindowInner {
             WM_SETTINGCHANGE => self.handle_system_settings_changed(handle, wparam, lparam),
             WM_INPUTLANGCHANGE => self.handle_input_language_changed(),
             WM_SHOWWINDOW => self.handle_window_visibility_changed(handle, wparam),
+            WM_WINDOWPOSCHANGED => {
+                let position = unsafe { &*(lparam.0 as *const WINDOWPOS) };
+                if position.flags.0 & (SWP_SHOWWINDOW.0 | SWP_HIDEWINDOW.0) != 0 {
+                    // Wake after the final visibility flags are installed too,
+                    // including SetWindowPos calls without a size change.
+                    self.report_visibility();
+                }
+                None
+            }
             WM_GPUI_CURSOR_STYLE_CHANGED => self.handle_cursor_changed(lparam),
             WM_GPUI_FORCE_UPDATE_WINDOW => self.draw_window(handle, true),
             WM_GPUI_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
