@@ -121,7 +121,7 @@
   },
   "taskManager": {
     "alertTitle": "Argus Task Manager Replacement",
-    "recoveryFile": "Argus Task Manager emergency recovery\r\n\r\nFirst run argus-taskmgr-recover.exe in this folder and allow administrator permission. It doesn't depend on the Argus window or the background service.\r\nIf that program is damaged too: press Win+R, enter regedit, open it as administrator and go to HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Check that Debugger really points to argus-taskmgr-launcher.exe --task-manager in this folder and that before.debugger in taskmgr-recovery.json is null, then delete only the Debugger value. Don't delete the whole taskmgr.exe key, and don't delete settings of other tools.\r\nThe recovery program keeps third-party changes and the recovery record; it stops automatic recovery when no trusted backup exists.\r\n",
+    "recoveryFile": "Argus Task Manager emergency recovery\r\n\r\nFirst run argus-taskmgr-recover.exe in this folder and allow administrator permission. It doesn't depend on the Argus window or the background service.\r\nIf that program is damaged too: press Win+R, enter regedit, open it as administrator and go to HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Check that Debugger really points to argus-taskmgr-launcher.exe --task-manager in this folder and that before.debugger in taskmgr-recovery.json is null, then delete only the Debugger value. Don't delete the whole taskmgr.exe key, and don't delete settings of other tools.\r\nRecovery deletes only a Debugger value that exactly matches the Argus launch command and preserves other settings. Recovery remains available if folder permissions change or the recovery record is missing.\r\n",
     "status": {
       "native": "Windows Task Manager is in use.",
       "needsService": "Install the privileged service before enabling the Task Manager replacement.",
@@ -130,7 +130,8 @@
       "enabledOlder": "Task Manager entry points open Argus, but still the older Argus {version}. Click “Update service” under the privileged service to open this version instead.",
       "interrupted": "The last operation didn't finish. Restore Windows Task Manager first.",
       "modified": "Another program changed the configuration. Argus won't overwrite it; the recovery record is kept.",
-      "recordMissing": "An Argus replacement was found but its recovery record is missing. Follow the emergency recovery instructions.",
+      "recordMissing": "The Argus replacement has no recovery record. Windows Task Manager can be restored with administrator approval.",
+      "unsafeRecovery": "The folder permissions or recovery record are invalid. Windows Task Manager can be restored with administrator approval.",
       "serviceRemoved": "The privileged service was uninstalled; the recovery program and backup are kept.",
       "devBuild": "Dev builds don't offer Task Manager replacement. Use a release build.",
       "otherAccount": "The privileged service is authorized for another Windows account."
@@ -233,6 +234,7 @@
     "outdated": "The administrator startup copy needs an update. Quit Argus, open the new executable, then select Repair authorization.",
     "standardAccount": "This account has no administrator identity, so automatic administrator startup is unavailable. The privileged service can perform supported administrative actions.",
     "fallback": "Automatic administrator startup did not finish. Argus is running with standard permissions. Repair authorization in Settings.",
-    "notReady": "Administrator startup authorization is not ready."
+    "notReady": "Administrator startup authorization is not ready.",
+    "revokedRestartFailed": "Administrator startup authorization was revoked. This process still has administrator permissions; exit and reopen Argus to run with standard permissions."
   }
 }

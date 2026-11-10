@@ -122,7 +122,7 @@
   },
   "taskManager": {
     "alertTitle": "Sustitución del Administrador de tareas por Argus",
-    "recoveryFile": "Recuperación de emergencia del Administrador de tareas de Argus\r\n\r\nPrimero ejecute argus-taskmgr-recover.exe en esta carpeta y acepte la solicitud de administrador. La herramienta funciona sin la ventana de Argus ni el servicio en segundo plano.\r\nSi la herramienta también está dañada: pulse Win+R, escriba regedit, ábralo como administrador y vaya a HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Compruebe que el valor Debugger apunta exactamente a argus-taskmgr-launcher.exe --task-manager en esta carpeta y que before.debugger en taskmgr-recovery.json es el valor JSON null. Solo si se cumplen ambas condiciones, elimine únicamente el valor Debugger. No elimine la clave taskmgr.exe completa ni la configuración de otras herramientas.\r\nLa herramienta de recuperación conserva los cambios de terceros y el registro de recuperación. Detiene la recuperación automática si no hay una copia de seguridad fiable.\r\n",
+    "recoveryFile": "Recuperación de emergencia del Administrador de tareas de Argus\r\n\r\nPrimero ejecute argus-taskmgr-recover.exe en esta carpeta y acepte la solicitud de administrador. La herramienta funciona sin la ventana de Argus ni el servicio en segundo plano.\r\nSi la herramienta también está dañada: pulse Win+R, escriba regedit, ábralo como administrador y vaya a HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Compruebe que el valor Debugger apunta exactamente a argus-taskmgr-launcher.exe --task-manager en esta carpeta y que before.debugger en taskmgr-recovery.json es el valor JSON null. Solo si se cumplen ambas condiciones, elimine únicamente el valor Debugger. No elimine la clave taskmgr.exe completa ni la configuración de otras herramientas.\r\nLa recuperación elimina únicamente el valor Debugger que coincida exactamente con el comando de inicio de Argus y conserva los demás ajustes. Sigue disponible si cambian los permisos de la carpeta o falta el registro de recuperación.\r\n",
     "status": {
       "native": "Windows Administrador de tareas está en uso.",
       "needsService": "Instale el servicio privilegiado antes de habilitar el reemplazo Administrador de tareas.",
@@ -131,7 +131,8 @@
       "enabledOlder": "Los puntos de entrada Administrador de tareas abren Argus, pero sigue siendo el Argus {version} más antiguo. Haga clic en \"Actualizar servicio\" en el servicio privilegiado para abrir esta versión.",
       "interrupted": "La última operación no finalizó. Restaure Windows Administrador de tareas primero.",
       "modified": "Otro programa cambió la configuración. Argus no lo sobrescribirá; se mantiene el registro de recuperación.",
-      "recordMissing": "Se encontró un reemplazo de Argus pero falta su registro de recuperación. Siga las instrucciones de recuperación de emergencia.",
+      "recordMissing": "La sustitución de Argus no tiene registro de recuperación. Se puede restaurar el Administrador de tareas de Windows con autorización de administrador.",
+      "unsafeRecovery": "Los permisos de la carpeta o el registro de recuperación no son válidos. Se puede restaurar el Administrador de tareas de Windows con autorización de administrador.",
       "serviceRemoved": "Se desinstaló el servicio privilegiado; Se conservan el programa de recuperación y la copia de seguridad.",
       "devBuild": "Las compilaciones de desarrollo no ofrecen reemplazo de Administrador de tareas. Utilice una versión de lanzamiento.",
       "otherAccount": "El servicio privilegiado está autorizado para otra cuenta Windows."
@@ -234,6 +235,7 @@
     "outdated": "La copia de inicio del administrador necesita una actualización. Salga de Argus, abra el nuevo ejecutable y luego seleccione Autorización de reparación.",
     "standardAccount": "Esta cuenta no tiene identidad de administrador, por lo que el inicio automático del administrador no está disponible. El servicio privilegiado puede realizar acciones administrativas admitidas.",
     "fallback": "El inicio automático del administrador no finalizó. Argus se ejecuta con permisos estándar. Autorización de reparación en Configuración.",
-    "notReady": "La autorización de inicio del administrador no está lista."
+    "notReady": "La autorización de inicio del administrador no está lista.",
+    "revokedRestartFailed": "Se ha revocado la autorización de inicio como administrador. Este proceso conserva los permisos de administrador; cierre y vuelva a abrir Argus para ejecutarlo con permisos estándar."
   }
 }

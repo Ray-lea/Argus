@@ -122,7 +122,7 @@
   },
   "taskManager": {
     "alertTitle": "Remplacement du Gestionnaire des tâches par Argus",
-    "recoveryFile": "Argus : récupération d’urgence du Gestionnaire des tâches\r\n\r\nExécutez d’abord argus-taskmgr-recover.exe dans ce dossier et acceptez la demande d’autorisation d’administrateur. Cet outil fonctionne sans la fenêtre Argus ni le service en arrière-plan.\r\nSi cet outil est également endommagé : appuyez sur Win+R, saisissez regedit, ouvrez-le en tant qu’administrateur et accédez à HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Vérifiez que la valeur Debugger pointe bien vers argus-taskmgr-launcher.exe --task-manager dans ce dossier et que before.debugger dans taskmgr-recovery.json contient la valeur JSON null. Si ces deux conditions sont remplies, supprimez uniquement la valeur Debugger. Conservez la clé taskmgr.exe elle-même et les paramètres des autres outils.\r\nL’outil de récupération conserve les modifications des autres programmes et l’enregistrement de récupération. Il arrête la récupération automatique si aucune sauvegarde fiable n’existe.\r\n",
+    "recoveryFile": "Argus : récupération d’urgence du Gestionnaire des tâches\r\n\r\nExécutez d’abord argus-taskmgr-recover.exe dans ce dossier et acceptez la demande d’autorisation d’administrateur. Cet outil fonctionne sans la fenêtre Argus ni le service en arrière-plan.\r\nSi cet outil est également endommagé : appuyez sur Win+R, saisissez regedit, ouvrez-le en tant qu’administrateur et accédez à HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Vérifiez que la valeur Debugger pointe bien vers argus-taskmgr-launcher.exe --task-manager dans ce dossier et que before.debugger dans taskmgr-recovery.json contient la valeur JSON null. Si ces deux conditions sont remplies, supprimez uniquement la valeur Debugger. Conservez la clé taskmgr.exe elle-même et les paramètres des autres outils.\r\nLa récupération supprime uniquement une valeur Debugger correspondant exactement à la commande de lancement d’Argus et conserve les autres paramètres. Elle reste disponible si les autorisations du dossier changent ou si l’enregistrement de récupération manque.\r\n",
     "status": {
       "native": "Windows Gestionnaire des tâches est en cours d'utilisation.",
       "needsService": "Installez le service privilégié avant d'activer le remplacement de Gestionnaire des tâches.",
@@ -131,7 +131,8 @@
       "enabledOlder": "Les points d'entrée Gestionnaire des tâches ouvrent Argus, mais toujours l'ancien Argus {version}. Cliquez sur « Service de mise à jour » sous le service privilégié pour ouvrir cette version à la place.",
       "interrupted": "La dernière opération n'est pas terminée. Restaurez d'abord Windows Gestionnaire des tâches.",
       "modified": "Un autre programme a modifié la configuration. Argus ne l'écrasera pas ; le dossier de récupération est conservé.",
-      "recordMissing": "Un remplacement de Argus a été trouvé mais son enregistrement de récupération est manquant. Suivez les instructions de récupération d’urgence.",
+      "recordMissing": "L’enregistrement de récupération du remplacement par Argus est manquant. Le Gestionnaire des tâches Windows peut être restauré avec une autorisation d’administrateur.",
+      "unsafeRecovery": "Les autorisations du dossier ou l’enregistrement de récupération sont invalides. Le Gestionnaire des tâches Windows peut être restauré avec une autorisation d’administrateur.",
       "serviceRemoved": "Le service privilégié a été désinstallé ; le programme de récupération et la sauvegarde sont conservés.",
       "devBuild": "Les versions de développement n'offrent pas de remplacement Gestionnaire des tâches. Utilisez une version release.",
       "otherAccount": "Le service privilégié est autorisé pour un autre compte Windows."
@@ -234,6 +235,7 @@
     "outdated": "La copie de démarrage de l'administrateur nécessite une mise à jour. Quittez Argus, ouvrez le nouvel exécutable, puis sélectionnez Réparer l'autorisation.",
     "standardAccount": "Ce compte n'a pas d'identité d'administrateur, le démarrage automatique de l'administrateur n'est donc pas disponible. Le service privilégié peut effectuer des actions administratives prises en charge.",
     "fallback": "Le démarrage automatique de l'administrateur n'a pas abouti. Argus s'exécute avec les autorisations standard. Autorisation de réparation dans Paramètres.",
-    "notReady": "L'autorisation de démarrage de l'administrateur n'est pas prête."
+    "notReady": "L'autorisation de démarrage de l'administrateur n'est pas prête.",
+    "revokedRestartFailed": "L’autorisation de démarrage en tant qu’administrateur a été révoquée. Ce processus conserve ses droits d’administrateur ; quittez puis rouvrez Argus pour l’exécuter avec des droits standard."
   }
 }

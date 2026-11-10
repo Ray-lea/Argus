@@ -121,7 +121,7 @@
   },
   "taskManager": {
     "alertTitle": "Task-Manager-Ersetzung durch Argus",
-    "recoveryFile": "Argus: Notfallwiederherstellung des Task-Managers\r\n\r\nZuerst argus-taskmgr-recover.exe in diesem Ordner ausführen und die Administratorfreigabe bestätigen. Das Programm funktioniert ohne das Argus-Fenster oder den Hintergrunddienst.\r\nIst auch dieses Programm beschädigt: Win+R drücken, regedit eingeben, als Administrator öffnen und zu HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe wechseln. Prüfen, dass der Wert Debugger auf argus-taskmgr-launcher.exe --task-manager in diesem Ordner verweist und before.debugger in taskmgr-recovery.json den JSON-Wert null hat. Nur wenn beide Bedingungen erfüllt sind, ausschließlich den Wert Debugger löschen. Den gesamten Schlüssel taskmgr.exe sowie Einstellungen anderer Programme beibehalten.\r\nDas Wiederherstellungsprogramm bewahrt Änderungen anderer Programme und den Wiederherstellungsdatensatz. Ohne vertrauenswürdige Sicherung wird die automatische Wiederherstellung gestoppt.\r\n",
+    "recoveryFile": "Argus: Notfallwiederherstellung des Task-Managers\r\n\r\nZuerst argus-taskmgr-recover.exe in diesem Ordner ausführen und die Administratorfreigabe bestätigen. Das Programm funktioniert ohne das Argus-Fenster oder den Hintergrunddienst.\r\nIst auch dieses Programm beschädigt: Win+R drücken, regedit eingeben, als Administrator öffnen und zu HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe wechseln. Prüfen, dass der Wert Debugger auf argus-taskmgr-launcher.exe --task-manager in diesem Ordner verweist und before.debugger in taskmgr-recovery.json den JSON-Wert null hat. Nur wenn beide Bedingungen erfüllt sind, ausschließlich den Wert Debugger löschen. Den gesamten Schlüssel taskmgr.exe sowie Einstellungen anderer Programme beibehalten.\r\nDie Wiederherstellung löscht nur einen Debugger-Wert, der genau dem Argus-Startbefehl entspricht, und behält andere Einstellungen bei. Sie ist auch bei geänderten Ordnerberechtigungen oder fehlendem Wiederherstellungsdatensatz verfügbar.\r\n",
     "status": {
       "native": "Windows Task-Manager wird verwendet.",
       "needsService": "Installieren Sie den privilegierten Dienst, bevor Sie den Task-Manager-Ersatz aktivieren.",
@@ -130,7 +130,8 @@
       "enabledOlder": "Task-Manager-Einstiegspunkte öffnen Argus, aber immer noch die älteren Argus {version}. Klicken Sie unter dem privilegierten Dienst auf „Dienst aktualisieren“, um stattdessen diese Version zu öffnen.",
       "interrupted": "Der letzte Vorgang wurde nicht abgeschlossen. Stellen Sie zuerst Windows Task-Manager wieder her.",
       "modified": "Ein anderes Programm hat die Konfiguration geändert. Argus überschreibt es nicht; Das Wiederherstellungsprotokoll wird aufbewahrt.",
-      "recordMissing": "Ein Argus-Ersatz wurde gefunden, aber sein Wiederherstellungsdatensatz fehlt. Befolgen Sie die Anweisungen zur Notfallwiederherstellung.",
+      "recordMissing": "Für den Argus-Ersatz fehlt der Wiederherstellungsdatensatz. Der Windows-Task-Manager kann mit Administratorfreigabe wiederhergestellt werden.",
+      "unsafeRecovery": "Die Ordnerberechtigungen oder der Wiederherstellungsdatensatz sind ungültig. Der Windows-Task-Manager kann mit Administratorfreigabe wiederhergestellt werden.",
       "serviceRemoved": "Der privilegierte Dienst wurde deinstalliert; Das Wiederherstellungsprogramm und die Sicherung bleiben erhalten.",
       "devBuild": "Entwickler-Builds bieten keinen Task-Manager-Ersatz. Verwenden Sie einen Release-Build.",
       "otherAccount": "Der privilegierte Dienst ist für ein anderes Windows-Konto autorisiert."
@@ -233,6 +234,7 @@
     "outdated": "Die Administrator-Startkopie benötigt ein Update. Beenden Sie Argus, öffnen Sie die neue ausführbare Datei und wählen Sie dann Autorisierung reparieren aus.",
     "standardAccount": "Dieses Konto hat keine Administratoridentität, daher ist der automatische Administratorstart nicht verfügbar. Der privilegierte Dienst kann unterstützte Verwaltungsaktionen ausführen.",
     "fallback": "Der automatische Administratorstart wurde nicht abgeschlossen. Argus wird mit Standardberechtigungen ausgeführt. Reparaturberechtigung in den Einstellungen.",
-    "notReady": "Die Administrator-Startautorisierung ist nicht bereit."
+    "notReady": "Die Administrator-Startautorisierung ist nicht bereit.",
+    "revokedRestartFailed": "Die Freigabe für den Administratorstart wurde widerrufen. Dieser Prozess hat weiterhin Administratorrechte. Argus beenden und erneut öffnen, um es mit Standardrechten auszuführen."
   }
 }

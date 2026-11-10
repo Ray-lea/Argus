@@ -428,31 +428,71 @@ pub fn status() -> Result<Status> {
         recovery_path: machine.dir.join(RECOVER).to_string_lossy().into_owned(),
         detail: tr!("taskManager.status.native"),
         found: None,
-        leftovers: machine.dir.join(probe::RECORD).exists(),
+        leftovers: false,
         older: None,
     };
     let ours = replacement(&machine.dir);
-    if !machine.dir.exists() {
-        status.detail = tr!("taskManager.status.needsService");
-        if live.debugger.is_some() || live.filtered {
-            status.conflict(tr!("taskManager.status.conflict"), &ours);
+    status.can_restore = live.debugger.as_ref() == Some(&ours);
+    let protected = (|| {
+        let parent = security::protect_directory(machine.dir.parent().ok_or(87u32)?)?;
+        let dir = security::protect_directory(&machine.dir)?;
+        Ok::<_, u32>((parent, dir))
+    })();
+    let _pins = match protected {
+        Ok(pins) => pins,
+        Err(error) => {
+            if live.debugger.as_ref() == Some(&ours) {
+                status.state = "recoveryNeeded";
+                status.can_restore = true;
+                status.detail = if matches!(error, 2 | 3) {
+                    tr!("taskManager.status.recordMissing")
+                } else {
+                    tr!("taskManager.status.unsafeRecovery")
+                };
+            } else if live.debugger.is_some() || live.filtered {
+                status.conflict(tr!("taskManager.status.conflict"), &ours);
+            } else {
+                status.detail = if matches!(error, 2 | 3) {
+                    tr!("taskManager.status.needsService")
+                } else {
+                    util::message(error)
+                };
+            }
+            return Ok(status);
         }
-        return Ok(status);
-    }
-    let _parent = security::protect_directory(parent(&machine.dir)?).map_err(util::message)?;
-    let _dir = security::protect_directory(&machine.dir).map_err(util::message)?;
+    };
+    status.leftovers = machine.dir.join(probe::RECORD).exists();
     let installed = machine.dir.join("owner.sid").exists();
-    let authorized = installed
-        && crate::install::owner(&machine.dir).map_err(util::message)?
-            == security::current_sid().map_err(util::message)?;
-    if let Some(journal) = machine.load()? {
+    let authorized = if installed {
+        match crate::install::owner(&machine.dir) {
+            Ok(owner) => owner == security::current_sid().map_err(util::message)?,
+            Err(_) if status.can_restore => {
+                status.state = "recoveryNeeded";
+                status.detail = tr!("taskManager.status.unsafeRecovery");
+                return Ok(status);
+            }
+            Err(error) => return Err(util::message(error)),
+        }
+    } else {
+        false
+    };
+    let journal = match machine.load() {
+        Ok(journal) => journal,
+        Err(_) if live.debugger.as_ref() == Some(&ours) => {
+            status.state = "recoveryNeeded";
+            status.can_restore = true;
+            status.detail = tr!("taskManager.status.unsafeRecovery");
+            return Ok(status);
+        }
+        Err(error) => return Err(error),
+    };
+    if let Some(journal) = journal {
         if live.debugger.as_ref() == Some(&journal.replacement) && !live.filtered {
             status.state = if journal.phase == Phase::Active {
                 "enabled"
             } else {
                 "recoveryNeeded"
             };
-            status.can_restore = authorized;
             status.detail = if status.state == "enabled" {
                 status.older = older_interface(&machine.dir, &journal.image);
                 match &status.older {
@@ -470,6 +510,7 @@ pub fn status() -> Result<Status> {
         }
     } else if live.debugger.as_ref() == Some(&ours) {
         status.state = "recoveryNeeded";
+        status.can_restore = true;
         status.detail = tr!("taskManager.status.recordMissing");
         return Ok(status);
     }
@@ -713,19 +754,31 @@ pub fn restore() -> Result<()> {
         return Err(tr!("taskManager.restoreNeedsAdmin"));
     }
     let machine = machine()?;
-    if !machine.dir.exists() {
-        if registry::observe(registry::KEY)?.debugger.as_ref() == Some(&replacement(&machine.dir)) {
-            return Err(tr!("taskManager.everythingMissing"));
-        }
-        return Ok(());
+    if let Err(error) = restore_trusted(&machine) {
+        // Enabling accepts only an empty Debugger value. If the directory or
+        // journal was damaged later, deleting that exact Argus command is the
+        // entire rollback; other values and subkeys remain untouched.
+        restore_registration(&machine.dir)?;
+        argus_core::diagnostics::warn(
+            "task manager restored without runtime files",
+            argus_core::diagnostics::failure(&error),
+        );
     }
+    Ok(())
+}
+
+pub(crate) fn restore_registration(dir: &Path) -> Result<()> {
+    Ok(registry::remove_owned(registry::KEY, &replacement(dir))?)
+}
+
+fn restore_trusted(machine: &registry::Machine) -> Result<()> {
     let _parent = security::protect_directory(parent(&machine.dir)?).map_err(util::message)?;
     let _dir = security::protect_directory(&machine.dir).map_err(util::message)?;
     let _lock = lock(&machine.dir)?;
     probe::cleanup(&mut probe::System::new(&machine.dir), Step::ProbeLeftover)
         .map_err(|failure| failure.message)?;
     restore_for_maintenance(&machine.dir)?;
-    sweep_images(&machine);
+    sweep_images(machine);
     Ok(())
 }
 
@@ -1108,8 +1161,11 @@ pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
 /// A helper starts without an earlier run's error.
 fn clear_error() {
     if let Ok(machine) = machine() {
-        let _ = fs::remove_file(machine.dir.join(ERROR_FILE));
-        let _ = fs::remove_file(machine.dir.join(OLD_ERROR_FILE));
+        let Ok(Some(directory)) = crate::cleanup::Directory::open(&machine.dir) else {
+            return;
+        };
+        let _ = directory.remove_file(ERROR_FILE);
+        let _ = directory.remove_file(OLD_ERROR_FILE);
     }
 }
 
@@ -1117,6 +1173,9 @@ fn uninstall_guard() -> Result<()> {
     let machine = machine()?;
     if registry::observe(registry::KEY)?.debugger.as_ref() != Some(&replacement(&machine.dir)) {
         return Ok(());
+    }
+    if argus_core::privilege::is_elevated() {
+        return restore();
     }
     manage("restore")
         .map(|_| ())

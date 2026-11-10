@@ -118,7 +118,7 @@
   },
   "taskManager": {
     "alertTitle": "Argus 工作管理員取代",
-    "recoveryFile": "Argus 工作管理員緊急還原\r\n\r\n先執行本目錄的 argus-taskmgr-recover.exe，並允許系統管理員授權。它不依賴 Argus 介面或背景服務。\r\n如果程式也已損毀：Win+R 輸入 regedit，以系統管理員身分開啟，定位 HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe。核對 Debugger 確實指向本目錄的 argus-taskmgr-launcher.exe --task-manager，且 taskmgr-recovery.json 中 before.debugger 為 null，再只刪除 Debugger 值。不要刪除整個 taskmgr.exe 機碼，不要刪除其他工具的設定。\r\n還原程式會保留第三方變更與還原記錄；缺少可信備份時停止自動還原。\r\n",
+    "recoveryFile": "Argus 工作管理員緊急還原\r\n\r\n先執行本目錄的 argus-taskmgr-recover.exe，並允許系統管理員授權。它不依賴 Argus 介面或背景服務。\r\n如果程式也已損毀：Win+R 輸入 regedit，以系統管理員身分開啟，定位 HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe。核對 Debugger 確實指向本目錄的 argus-taskmgr-launcher.exe --task-manager，且 taskmgr-recovery.json 中 before.debugger 為 null，再只刪除 Debugger 值。不要刪除整個 taskmgr.exe 機碼，不要刪除其他工具的設定。\r\n還原程式僅刪除與 Argus 啟動命令完全一致的 Debugger 值，並保留其他設定。目錄權限變更或還原記錄遺失時仍可還原。\r\n",
     "status": {
       "native": "目前使用 Windows 工作管理員。",
       "needsService": "先安裝特殊權限服務，再啟用工作管理員取代。",
@@ -127,7 +127,8 @@
       "enabledOlder": "工作管理員入口已交由 Argus，但開啟的仍是舊版 Argus {version}。在特殊權限服務中按一下「更新服務」，即可改為開啟目前版本。",
       "interrupted": "上次操作未完成，請先還原 Windows 工作管理員。",
       "modified": "設定已被其他程式修改，Argus 不會覆寫；還原記錄仍保留。",
-      "recordMissing": "發現 Argus 取代但還原記錄遺失，請依緊急還原說明處理。",
+      "recordMissing": "發現 Argus 取代設定但還原記錄遺失，可透過系統管理員授權還原 Windows 工作管理員。",
+      "unsafeRecovery": "目錄權限或還原記錄異常。可透過系統管理員授權還原 Windows 工作管理員。",
       "serviceRemoved": "特殊權限服務已解除安裝，還原程式和備份仍保留。",
       "devBuild": "開發版不提供系統工作管理員取代，請使用正式發行版。",
       "otherAccount": "特殊權限服務授權給另一個 Windows 帳戶。"
@@ -230,6 +231,7 @@
     "outdated": "系統管理員啟動複本需要更新。請結束 Argus，從新版程式開啟後按一下「修復授權」。",
     "standardAccount": "目前帳戶沒有系統管理員身分，無法開啟自動系統管理員身分執行。可使用特殊權限服務執行受支援的管理操作。",
     "fallback": "自動系統管理員身分啟動未完成，目前仍以一般權限執行。可在設定中修復授權。",
-    "notReady": "系統管理員啟動授權尚未就緒。"
+    "notReady": "系統管理員啟動授權尚未就緒。",
+    "revokedRestartFailed": "系統管理員啟動授權已撤銷。目前處理程序仍以系統管理員權限執行；結束後重新開啟 Argus 可使用一般權限啟動。"
   }
 }

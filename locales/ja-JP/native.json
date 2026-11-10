@@ -120,7 +120,7 @@
   },
   "taskManager": {
     "alertTitle": "Argus によるタスク マネージャーの置き換え",
-    "recoveryFile": "Argus タスク マネージャーの緊急復旧\r\n\r\nまず、このフォルダーにある argus-taskmgr-recover.exe を実行し、管理者の承認を許可してください。Argus の画面やバックグラウンド サービスが起動しなくても使用できます。\r\n復旧プログラムも破損している場合は、Win+R で regedit と入力し、管理者として起動して HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe を開いてください。Debugger 値がこのフォルダー内の argus-taskmgr-launcher.exe --task-manager を指しており、taskmgr-recovery.json の before.debugger が JSON の null であることを確認してください。両方を確認できた場合に限り、Debugger 値のみを削除してください。taskmgr.exe キー全体や他のツールの設定は削除しないでください。\r\n復旧プログラムは、第三者による変更と復旧記録を保持します。信頼できるバックアップがない場合は自動復旧を停止します。\r\n",
+    "recoveryFile": "Argus タスク マネージャーの緊急復旧\r\n\r\nまず、このフォルダーにある argus-taskmgr-recover.exe を実行し、管理者の承認を許可してください。Argus の画面やバックグラウンド サービスが起動しなくても使用できます。\r\n復旧プログラムも破損している場合は、Win+R で regedit と入力し、管理者として起動して HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe を開いてください。Debugger 値がこのフォルダー内の argus-taskmgr-launcher.exe --task-manager を指しており、taskmgr-recovery.json の before.debugger が JSON の null であることを確認してください。両方を確認できた場合に限り、Debugger 値のみを削除してください。taskmgr.exe キー全体や他のツールの設定は削除しないでください。\r\n復旧では、Argus の起動コマンドと完全に一致する Debugger 値だけを削除し、その他の設定は保持します。フォルダーのアクセス許可が変更された場合や復旧記録がない場合も復旧できます。\r\n",
     "status": {
       "native": "Windows タスク マネージャーを使用しています。",
       "needsService": "タスク マネージャー の置き換えを有効にする前に、特権サービスをインストールしてください。",
@@ -129,7 +129,8 @@
       "enabledOlder": "タスク マネージャー エントリー ポイントは Argus を開きますが、依然として古い Argus {version} です。代わりにこのバージョンを開くには、特権サービスの下の「サービスの更新」をクリックします。",
       "interrupted": "最後の操作が完了しませんでした。最初に Windows タスク マネージャー を復元します。",
       "modified": "別のプログラムにより設定が変更されました。 Argus は上書きしません。回復記録は保存されます。",
-      "recordMissing": "Argus の代替品が見つかりましたが、そのリカバリ レコードがありません。緊急時の回復手順に従ってください。",
+      "recordMissing": "Argus の置き換え設定に対応する復旧記録がありません。管理者の承認により Windows タスク マネージャーを復元できます。",
+      "unsafeRecovery": "フォルダーのアクセス許可または復旧記録が無効です。管理者の承認により Windows タスク マネージャーを復元できます。",
       "serviceRemoved": "特権サービスがアンインストールされました。回復プログラムとバックアップは保持されます。",
       "devBuild": "開発ビルドでは タスク マネージャー の代替品は提供されません。リリース ビルドを使用します。",
       "otherAccount": "特権サービスは別の Windows アカウントに許可されています。"
@@ -232,6 +233,7 @@
     "outdated": "管理者スタートアップ コピーを更新する必要があります。 Argus を終了し、新しい実行可能ファイルを開いて、[認証の修復] を選択します。",
     "standardAccount": "このアカウントには管理者 ID がないため、管理者の自動起動は利用できません。特権サービスは、サポートされている管理アクションを実行できます。",
     "fallback": "管理者自動起動が完了しませんでした。 Argus は標準の権限で実行されています。設定で認証を修復します。",
-    "notReady": "管理者起動権限が準備されていません。"
+    "notReady": "管理者起動権限が準備されていません。",
+    "revokedRestartFailed": "管理者としての起動許可を取り消しました。このプロセスは引き続き管理者権限で動作しています。Argus を終了して再度開くと、標準権限で起動します。"
   }
 }
