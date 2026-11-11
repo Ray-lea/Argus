@@ -19,6 +19,13 @@
   "devices": {
     "hide": "Ocultar {name}",
     "shown": "Dispositivos mostrados",
+    "diskOrder": {
+      "title": "Orden de los discos",
+      "number": "Por número de disco",
+      "letter": "Por letra de unidad",
+      "custom": "Personalizado (arrastrar para ordenar)"
+    },
+    "resetOrder": "Restaurar orden predeterminado",
     "restore": "Restaurar vista predeterminada"
   },
   "cpu": {

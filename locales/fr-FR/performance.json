@@ -19,6 +19,13 @@
   "devices": {
     "hide": "Masquer {name}",
     "shown": "Périphériques affichés",
+    "diskOrder": {
+      "title": "Ordre des disques",
+      "number": "Par numéro de disque",
+      "letter": "Par lettre de lecteur",
+      "custom": "Personnalisé (glisser pour réorganiser)"
+    },
+    "resetOrder": "Rétablir l’ordre par défaut",
     "restore": "Rétablir l’affichage par défaut"
   },
   "cpu": {

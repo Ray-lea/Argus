@@ -15,6 +15,13 @@
   "devices": {
     "hide": "{name}を非表示にする",
     "shown": "表示するデバイス",
+    "diskOrder": {
+      "title": "ディスクの並び順",
+      "number": "ディスク番号順",
+      "letter": "ドライブ文字順",
+      "custom": "カスタム（ドラッグで並べ替え）"
+    },
+    "resetOrder": "既定の順序に戻す",
     "restore": "既定の表示に戻す"
   },
   "cpu": {

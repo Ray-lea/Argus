@@ -466,6 +466,18 @@ impl Desktop {
                 cx.notify();
                 return;
             }
+            performance::rail::DISK_ORDER => {
+                self.set_disk_order(performance::rail::DiskOrder::parse(
+                    value.as_str().unwrap_or_default(),
+                ));
+                cx.notify();
+                return;
+            }
+            performance::rail::RESET_ORDER => {
+                self.reset_device_order();
+                cx.notify();
+                return;
+            }
             "diskPage" => self.disk_page = value.as_str().unwrap_or("overview").into(),
             "refreshDiskDetails" => {
                 if let Some(index) = value.as_u64() {
