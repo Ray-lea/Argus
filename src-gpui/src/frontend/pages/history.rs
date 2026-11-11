@@ -24,6 +24,27 @@ const AXIS: f32 = 22.;
 const BORDER: f32 = 1.;
 const TABLE_ROW: f32 = 28.;
 
+/// Old frames have no creation time: a matching PID and name cannot establish
+/// identity, even if the live process is older than the frame. A process may
+/// start inside the five-second frame, but never after it.
+pub(super) fn recorded_target(row: &Value, frame: Option<i64>, live: &[Value]) -> Option<Value> {
+    let created = row["createTime"].as_i64().filter(|time| *time > 0)?;
+    let end = frame?.checked_add(argus_core::history::FRAME_MS)?;
+    if created >= end {
+        return None;
+    }
+    live.iter()
+        .find(|process| {
+            process["pid"] == row["pid"]
+                && process["createTime"].as_i64() == Some(created)
+                && text(process, "name") == text(row, "name")
+        })
+        .map(|process| {
+            json!({"pid": process["pid"], "createTime": created,
+            "name": process["name"], "historyFrame": frame})
+        })
+}
+
 pub(super) fn range_label(id: &str) -> String {
     let hours = RANGES
         .iter()
@@ -893,7 +914,13 @@ impl Desktop {
             .data
             .get("historyRange")
             .and_then(|range| range[0].as_i64());
-        let table = self.history_table(values(&moment["processes"]), bits, window, cx);
+        let table = self.history_table(
+            values(&moment["processes"]),
+            moment["system"]["ts"].as_i64(),
+            bits,
+            window,
+            cx,
+        );
         let foot = div()
             .flex()
             .flex_wrap()
@@ -1008,6 +1035,7 @@ impl Desktop {
     fn history_table(
         &self,
         processes: &[Value],
+        frame: Option<i64>,
         bits: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1161,15 +1189,12 @@ impl Desktop {
         for (index, row) in rows.iter().enumerate() {
             let name = text(row, "name").to_owned();
             let pid = row["pid"].clone();
-            let key = format!("{name}:{pid}");
+            let key = format!("{name}:{pid}:{}", row["createTime"]);
             let current = selected_key.as_deref() == Some(key.as_str());
-            // A reused PID is not the recorded process: the name must match too.
-            let running = live
-                .iter()
-                .find(|process| process["pid"] == pid)
-                .is_some_and(|process| text(process, "name") == name);
-            let reveal = Action::Preference("revealProcess".into(), json!({"pid": pid}));
-            let exited = tr!("history.exited", name = name, pid = pid);
+            let target = recorded_target(row, frame, live);
+            let running = target.is_some();
+            let reveal = Action::Preference("revealProcess".into(), target.unwrap_or(Value::Null));
+            let exited = tr!("history.instanceUnavailable", name = name, pid = pid);
             let menu = vec![
                 MenuItem::new(label("common.goToProcess"), reveal.clone()).disabled(!running),
                 MenuItem::new(
@@ -1269,11 +1294,45 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{
-        DAY, HOUR, MINUTE, joins, kept, plan_load, point_at, refresh_every, span_of, stepped,
+        DAY, HOUR, MINUTE, joins, kept, plan_load, point_at, recorded_target, refresh_every,
+        span_of, stepped,
     };
     use serde_json::{Value, json};
 
     const NOW: i64 = 1_800_000_000_000;
+
+    #[test]
+    fn history_navigation_requires_the_recorded_instance() {
+        let recorded = json!({"pid":42,"name":"worker.exe","createTime":NOW - 1000});
+        let live = vec![recorded.clone()];
+        let target = recorded_target(&recorded, Some(NOW), &live).unwrap();
+        assert_eq!(target["createTime"], NOW - 1000);
+        assert!(recorded_target(&target, Some(NOW), &live).is_some());
+        let mut replacement = recorded.clone();
+        replacement["createTime"] = json!(NOW + 60_000);
+        assert!(recorded_target(&recorded, Some(NOW), &[replacement.clone()]).is_none());
+        assert!(
+            recorded_target(&replacement, Some(NOW), std::slice::from_ref(&replacement)).is_none()
+        );
+        let legacy = json!({"pid":42,"name":"worker.exe"});
+        assert!(recorded_target(&legacy, Some(NOW), &live).is_none());
+        assert!(recorded_target(&recorded, Some(NOW), &[]).is_none());
+        let mut renamed = recorded.clone();
+        renamed["name"] = json!("other.exe");
+        assert!(recorded_target(&recorded, Some(NOW), &[renamed]).is_none());
+        for unknown in [Value::Null, json!(0), json!(-1)] {
+            let mut pending = recorded.clone();
+            pending["createTime"] = unknown;
+            assert!(recorded_target(&pending, Some(NOW), &live).is_none());
+        }
+        // The timestamp is the frame's start, not the last sample's time.
+        let mut inside = recorded;
+        inside["createTime"] = json!(NOW + 4999);
+        assert!(recorded_target(&inside, Some(NOW), &[inside.clone()]).is_some());
+        inside["createTime"] = json!(NOW + 5000);
+        assert!(recorded_target(&inside, Some(NOW), &[inside.clone()]).is_none());
+        assert!(recorded_target(&inside, None, &live).is_none());
+    }
 
     /// The last query sent, as `load_history` stores it.
     fn sent(range: &str, at: i64) -> Value {

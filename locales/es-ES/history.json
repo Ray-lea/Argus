@@ -45,5 +45,6 @@
   "noRecordAt": "No hay registros en este momento",
   "earliest": "Registro más antiguo",
   "note": "Registra cada 5 segundos los procesos con mayor uso de CPU, memoria, I/O, GPU y red; si el intervalo al minimizar o permanecer en la bandeja es mayor, utiliza ese intervalo. Conserva los registros durante 7 días.",
-  "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>"
+  "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>",
+  "instanceUnavailable": "La instancia registrada de {name} (PID {pid}) ha finalizado o no se puede confirmar su identidad."
 }
