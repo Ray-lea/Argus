@@ -145,6 +145,16 @@ impl Desktop {
                 .icon("EyeOffIcon")
                 .disabled(key == "name"),
             );
+            // As a double-click on the column's edge: back to its automatic
+            // width once dragged, or fitted to its contents.
+            items.push(
+                MenuItem::new(
+                    label("processes.columns.fitWidth"),
+                    Action::Preference("fitProcessColumn".into(), json!(key)),
+                )
+                .icon("FitWidthIcon")
+                .disabled(preferences.auto_width && !preferences.overrides.contains_key(key)),
+            );
             items.push(MenuItem::separator());
         }
         for category in CATEGORIES {
@@ -189,6 +199,18 @@ impl Desktop {
                 ),
             )
             .checked(preferences.auto_width),
+        );
+        items.push(
+            MenuItem::new(
+                label("processes.columns.fullWidth"),
+                Action::Preference(
+                    "processColumnsFullWidth".into(),
+                    json!(!preferences.full_width),
+                ),
+            )
+            .checked(preferences.full_width)
+            // Widths set by hand are kept as they are.
+            .disabled(!preferences.auto_width),
         );
         items.push(
             MenuItem::new(
@@ -263,6 +285,45 @@ impl Desktop {
         }
         self.prefs.set(PREFERENCE, preferences);
         cx.notify();
+    }
+
+    /// Column `key` sized automatically again: with automatic widths on, it
+    /// follows its contents instead of the width it was dragged to; with
+    /// them off, it takes `width`, what its contents need.
+    pub(in crate::frontend) fn fit_process_column(
+        &mut self,
+        key: &str,
+        width: Option<f32>,
+        cx: &mut Context<Self>,
+    ) {
+        let mut preferences = Preferences::load(&self.prefs);
+        let changed = if preferences.auto_width {
+            preferences.overrides.remove(key).is_some()
+        } else if let Some(width) = width {
+            let width = width.clamp(48., 1200.);
+            preferences.widths.insert(key.into(), width) != Some(width)
+        } else {
+            false
+        };
+        if changed {
+            self.set_process_columns(preferences, cx);
+        }
+    }
+
+    /// Fits column `key` as a double-click on its edge does (`fit_process_column`).
+    pub(in crate::frontend) fn fit_process_column_now(
+        &mut self,
+        key: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let auto = Preferences::load(&self.prefs).auto_width;
+        let width = self.tables.get("processes").and_then(|(table, _)| {
+            table.update(cx, |state, cx| {
+                cx.notify();
+                state.delegate_mut().restore_column(key, auto, cx)
+            })
+        });
+        self.fit_process_column(key, width, cx);
     }
 
     pub(in crate::frontend) fn apply_process_columns(

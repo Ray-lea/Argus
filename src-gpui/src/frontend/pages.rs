@@ -361,7 +361,23 @@ impl Desktop {
                 if !preferences.auto_width && preferences.widths.is_empty() {
                     self.capture_process_widths(&mut preferences, cx);
                 }
+                // Turned on again: every column follows its contents.
+                if preferences.auto_width {
+                    preferences.overrides.clear();
+                }
                 self.set_process_columns(preferences, cx);
+                return;
+            }
+            "processColumnsFullWidth" => {
+                let mut preferences = columns::Preferences::load(&self.prefs);
+                preferences.full_width = value.as_bool().unwrap_or(false);
+                self.set_process_columns(preferences, cx);
+                return;
+            }
+            "fitProcessColumn" => {
+                if let Some(key) = value.as_str() {
+                    self.fit_process_column_now(key, cx);
+                }
                 return;
             }
             "processColumnsReset" => {

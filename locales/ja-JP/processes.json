@@ -270,6 +270,9 @@
   "columns": {
     "choose": "列の選択",
     "autoWidth": "列幅を自動調整",
+    "fullWidth": "全幅",
+    "fitWidth": "この列の幅を自動調整",
+    "edgeHint": "ドラッグで幅を変更、ダブルクリックで自動調整",
     "yes": "はい",
     "no": "いいえ",
     "reset": "既定の列に戻す",

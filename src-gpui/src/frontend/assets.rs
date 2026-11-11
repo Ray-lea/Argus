@@ -106,6 +106,7 @@ product_icons! {
     "FontSizeIcon" => ALargeSmall,
     "InterfaceScaleIcon" => ZoomIn,
     "GripIcon" => GripVertical,
+    "FitWidthIcon" => MoveHorizontal,
     "OrderIcon" => ListOrdered,
     "SortAscendingIcon" => ArrowUpNarrowWide,
     "SortDescendingIcon" => ArrowDownWideNarrow,

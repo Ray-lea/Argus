@@ -264,6 +264,9 @@
   "columns": {
     "choose": "选择列",
     "autoWidth": "自动宽度",
+    "fullWidth": "全宽",
+    "fitWidth": "自动调整此列宽度",
+    "edgeHint": "拖动调整宽度，双击自动调整",
     "yes": "是",
     "no": "否",
     "reset": "恢复默认列",
