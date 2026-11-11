@@ -1,5 +1,7 @@
 # Argus patches
 
+A `WM_PAINT` for a hidden window is acknowledged with `BeginPaint`/`EndPaint` and draws nothing. `ValidateRect` succeeds on a hidden window but leaves its update region in place, so the system generated the paint again whenever the queue ran empty and the UI thread never idled. Setting the layered attributes of a hidden window without a redirection bitmap leaves such a region, as Argus does when it restores the opacity after fading the window out. Showing the window draws it as before. An ignored regression test on an inactive desktop covers the repeated paint and its single acknowledgement.
+
 The frame-clock worker waits on a visibility-change signal while every tracked window is hidden or minimized, and skips redraw requests for individual hidden windows. Opening, restoring or closing the platform wakes that wait immediately; a generation counter preserves notifications delivered before the wait starts. Idle device-health checks run at most once per second. The visible compositor cadence is unchanged. Regression tests cover wake-before-wait, restore, shutdown and the idle health-check timeout.
 
 DirectX adapter initialization records numeric vendor/device IDs, the software-adapter flag, selected feature level and failure HRESULTs through the reviewed `argus::graphics` log target. These startup stages remain visible with Argus's production log filter without including raw driver descriptions or exception text.

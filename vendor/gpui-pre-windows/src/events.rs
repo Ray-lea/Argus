@@ -34,6 +34,28 @@ pub(crate) const WM_GPUI_VISIBILITY_CHANGED: u32 = WM_USER + 12;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
+#[cfg(test)]
+mod paint_tests;
+
+/// Takes the update region of a hidden window; false for a visible one, which
+/// is drawn as usual. `ValidateRect` succeeds on a hidden window and leaves
+/// its update region in place, so the system generates `WM_PAINT` again each
+/// time the queue runs empty and the UI thread never idles. Setting the
+/// layered attributes of a hidden window without a redirection bitmap leaves
+/// such a region behind (a fade-out restoring the opacity once the window is
+/// gone). `BeginPaint` takes it whatever the visibility.
+pub(crate) fn acknowledge_hidden_paint(handle: HWND) -> bool {
+    unsafe {
+        if IsWindowVisible(handle).as_bool() {
+            return false;
+        }
+        let mut paint = PAINTSTRUCT::default();
+        BeginPaint(handle, &mut paint);
+        let _ = EndPaint(handle, &paint);
+    }
+    true
+}
+
 /// Coordinates window draws on the UI thread. Owned by the platform and
 /// shared with every window (like `WindowsPlatformState::cursor_visible`),
 /// because the coordination is inherently cross-window: while window A is
@@ -333,6 +355,10 @@ impl WindowsWindowInner {
     }
 
     fn handle_paint_msg(&self, handle: HWND) -> Option<isize> {
+        if acknowledge_hidden_paint(handle) {
+            // Nothing to present; showing the window draws it again.
+            return Some(0);
+        }
         self.draw_window(handle, false)
     }
 
