@@ -73,6 +73,10 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`performance-menus.json`](../../tools/window-probe/steps/performance-menus.json) 检查性能页的两个右键菜单：CPU 图表的“显示内核时间”在整体与多核视图间共用，设备列表可隐藏某一项、在“显示的设备”子菜单中逐项勾选并恢复默认显示；另核对隐藏选中项后的选中项、仅剩一项时不可隐藏、从别处打开已隐藏设备时该项回到列表，以及浅色主题。`pointer` 的 `context` 事件在已记录元素上按下并松开右键，CPU 图表区记录为 `cpu-graphs`，设备项记录为 `device-<设备标识>`；`inspectLayout.performance` 输出列表显示的设备、已隐藏设备的标识、选中项、内核时间开关，以及 CPU 总图与第一张逻辑处理器图的序列数。录制过渡时让 `record` 先于触发它的控制一步开始（间隔约 700 ms）：捕获会话建立需要数百毫秒，同一步内发出的控制会在第一帧到达前完成过渡。
 
+[`device-order.json`](../../tools/window-probe/steps/device-order.json) 检查设备列表的排序：用 `sample` 改写磁盘的盘符后在“按盘符”与“按磁盘编号”间切换，拖动网络适配器到顶部时磁盘顺序不变，拖动磁盘打乱顺序后改为“自定义”，并核对菜单的勾选与“恢复默认顺序”，录制行的让位与滑动。`inspectLayout.performance` 的 `diskOrder` 为磁盘排序方式，`arranged` 为拖动保存的顺序。
+
+[`column-widths.json`](../../tools/window-probe/steps/column-widths.json) 检查进程列的自动宽度：宽窗口不出现横向滚动，悬停列边界时显示竖线与提示，拖动列边界后该列保持手动宽度且其他列不变，双击列边界恢复自动宽度，以及“全宽”。`inspectMenu` 核对表头菜单的“自动调整此列宽度”在列未拖动时不可用；`inspect columns` 的 `autoWidth`、`fullWidth` 为文本列多数行与全部行所需的宽度。
+
 [`cpu-cores.json`](../../tools/window-probe/steps/cpu-cores.json) 用 `sample` 把 `/hardware/cpu` 换成其他处理器，检查多核视图的排布与核心类型：32 个同类逻辑处理器排成 8 列 4 行，窗口变窄到放不下 8 列时改为留空位的排布；6 性能核 + 8 能效核 + 2 低功耗能效核的处理器显示三种颜色、徽标、筛选项与图例；只有性能核与低功耗能效核的处理器不显示能效核筛选项。`inspectLayout.performance` 的 `coreColumns` 为网格当前的列数，`coreKinds` 为处理器具有的核心类型。列数的预期值按 125% 显示缩放下 2000 × 1318 的客户区写定。
 
 测试控制除页面、主题、对话框等既有项外，还包括：
@@ -83,7 +87,7 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 | `keys` | 按键序列，经正常派发路径；仅模拟快照 |
 | `hoverAnchor` | 指针移到已记录元素的中心 |
 | `clickAnchor`、`dragAnchor` | 单击元素；从一个元素拖到另一个元素高度的某一比例处；仅模拟快照 |
-| `pointer` | `{ "at"?, "event", "dx"?, "dy"? }`：悬停、按下、按住移动或松开，`context` 为右键单击。`at` 为已记录元素或 `header:<列>`；省略时相对于手势起点，元素在拖动中移动也不影响 |
+| `pointer` | `{ "at"?, "event", "dx"?, "dy"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击。`at` 为已记录元素或 `header:<列>`；省略时相对于手势起点，元素在拖动中移动也不影响 |
 | `headerMenu` | 打开某一列的表头菜单 |
 | `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项与展开的子菜单 |
 | `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |

@@ -372,6 +372,24 @@ impl Desktop {
                 ]),
                 Some("down") => pointer.push(press(at, true)),
                 Some("up") => pointer.push(press(at, false)),
+                // A second click in place, as the platform reports one.
+                Some("double") => pointer.extend([
+                    moved(at, None),
+                    press(at, true),
+                    press(at, false),
+                    PlatformInput::MouseDown(MouseDownEvent {
+                        position: at,
+                        button: MouseButton::Left,
+                        click_count: 2,
+                        ..Default::default()
+                    }),
+                    PlatformInput::MouseUp(MouseUpEvent {
+                        position: at,
+                        button: MouseButton::Left,
+                        click_count: 2,
+                        ..Default::default()
+                    }),
+                ]),
                 _ => pointer.push(moved(at, Some(MouseButton::Left))),
             }
         }
