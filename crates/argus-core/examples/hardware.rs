@@ -25,7 +25,11 @@ fn main() {
         .cpu
         .threads
         .iter()
-        .map(|t| if t.efficient { "E" } else { "P" })
+        .map(|t| match (t.low_power, t.efficient) {
+            (true, _) => "L",
+            (_, true) => "E",
+            _ => "P",
+        })
         .collect();
     println!("  threads {}", kinds.join(""));
     println!("  thermal {:?}", hw.thermal);

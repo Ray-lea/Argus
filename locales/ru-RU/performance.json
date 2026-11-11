@@ -27,13 +27,15 @@
     "coreType": "Тип ядра",
     "coreKind": {
       "p": "P-ядра",
-      "e": "E-ядра"
+      "e": "E-ядра",
+      "lp": "LP E-ядра"
     },
     "filterAll": "Все",
     "filterTitle": {
       "all": "Показать все логические процессоры",
       "p": "Показать только производительные ядра (P-ядра)",
-      "e": "Показать только энергоэффективные ядра (E-ядра)"
+      "e": "Показать только энергоэффективные ядра (E-ядра)",
+      "lp": "Показать только энергоэффективные ядра с низким энергопотреблением (LP E-ядра)"
     },
     "graph": "График CPU",
     "overall": "Общая",
@@ -49,7 +51,8 @@
     },
     "filterShort": {
       "p": "P-ядра",
-      "e": "E-ядра"
+      "e": "E-ядра",
+      "lp": "LP E-ядра"
     },
     "utilizationChart": "Загрузка, %",
     "total": "Итого",
@@ -59,6 +62,7 @@
     "coreTip": "Логический процессор {index}, физическое ядро {core}",
     "coreTipP": "Логический процессор {index}, физическое ядро {core} (P-ядро)",
     "coreTipE": "Логический процессор {index}, физическое ядро {core} (E-ядро)",
+    "coreTipLp": "Логический процессор {index}, физическое ядро {core} (LP E-ядро)",
     "power": "Мощность",
     "charts": {
       "both": "Графики температуры и мощности",
@@ -74,6 +78,7 @@
     "speed": "Частота",
     "pCoreSpeed": "Частота P-ядер",
     "eCoreSpeed": "Частота E-ядер",
+    "lpCoreSpeed": "Частота LP E-ядер",
     "packagePower": "Мощность процессора",
     "corePower": "Мощность ядер",
     "processes": "Процессы",
@@ -84,6 +89,8 @@
     "sockets": "Сокеты",
     "cores": "Ядра",
     "coresHybrid": "{cores} ({performance}P + {efficiency}E)",
+    "coresHybridLp": "{cores} ({performance}P + {efficiency}E + {lowPower}LPE)",
+    "coresHybridLpOnly": "{cores} ({performance}P + {lowPower}LPE)",
     "logicalProcessors": "Логические процессоры",
     "virtualization": "Виртуализация",
     "notEnabled": "Отключено",
@@ -242,6 +249,7 @@
     "columnCoreType": "Тип",
     "pCore": "P-ядро",
     "eCore": "E-ядро",
+    "lpCore": "LP E-ядро",
     "baseSourceCpuid": "Источник: номинальная частота CPUID.",
     "baseSourceWindows": "Источник: номинальная частота из данных Windows об электропитании",
     "limits": {

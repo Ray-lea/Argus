@@ -17,13 +17,15 @@
     "coreType": "核心類型",
     "coreKind": {
       "p": "效能核心",
-      "e": "效率核心"
+      "e": "效率核心",
+      "lp": "低功耗效率核心"
     },
     "filterAll": "全部",
     "filterTitle": {
       "all": "顯示所有邏輯處理器",
       "p": "只顯示效能核心（P 核心）",
-      "e": "只顯示效率核心（E 核心）"
+      "e": "只顯示效率核心（E 核心）",
+      "lp": "只顯示低功耗效率核心（LP E 核心）"
     },
     "graph": "CPU 圖表",
     "overall": "整體",
@@ -39,7 +41,8 @@
     },
     "filterShort": {
       "p": "P 核心",
-      "e": "E 核心"
+      "e": "E 核心",
+      "lp": "LP E 核心"
     },
     "utilizationChart": "使用率 %",
     "total": "總計",
@@ -49,6 +52,7 @@
     "coreTip": "邏輯處理器 {index}，實體核心 {core}",
     "coreTipP": "邏輯處理器 {index}，實體核心 {core}（效能核心）",
     "coreTipE": "邏輯處理器 {index}，實體核心 {core}（效率核心）",
+    "coreTipLp": "邏輯處理器 {index}，實體核心 {core}（低功耗效率核心）",
     "power": "功耗",
     "charts": {
       "both": "溫度與功耗折線",
@@ -64,6 +68,7 @@
     "speed": "速度",
     "pCoreSpeed": "效能核心時脈",
     "eCoreSpeed": "效率核心時脈",
+    "lpCoreSpeed": "低功耗效率核心時脈",
     "packagePower": "封裝功耗",
     "corePower": "核心功耗",
     "processes": "處理程序",
@@ -74,6 +79,8 @@
     "sockets": "插槽",
     "cores": "核心",
     "coresHybrid": "{cores}（{performance} 效能核心 + {efficiency} 效率核心）",
+    "coresHybridLp": "{cores}（{performance} 效能核心 + {efficiency} 效率核心 + {lowPower} 低功耗效率核心）",
+    "coresHybridLpOnly": "{cores}（{performance} 效能核心 + {lowPower} 低功耗效率核心）",
     "logicalProcessors": "邏輯處理器",
     "virtualization": "虛擬化",
     "notEnabled": "未啟用",
@@ -222,6 +229,7 @@
     "columnCoreType": "類型",
     "pCore": "P 核心",
     "eCore": "E 核心",
+    "lpCore": "LP E 核心",
     "baseSourceCpuid": "來源：CPUID 額定時脈",
     "baseSourceWindows": "來源：Windows 電源介面回報的額定時脈",
     "limits": {

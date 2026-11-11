@@ -17,6 +17,8 @@
       "other": "{count} núcleos"
     },
     "hybrid": " ({performance} núcleos P + {efficiency} núcleos E)",
+    "hybridLp": " ({performance} núcleos P + {efficiency} núcleos E + {lowPower} núcleos LP E)",
+    "hybridLpOnly": " ({performance} núcleos P + {lowPower} núcleos LP E)",
     "threads": {
       "one": "{count} subproceso",
       "many": "{count} subprocesos",

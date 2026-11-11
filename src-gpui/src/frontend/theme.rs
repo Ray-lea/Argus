@@ -23,6 +23,9 @@ pub struct Palette {
     pub accent: Hsla,
     pub cpu: Hsla,
     pub cpu_e: Hsla,
+    /// LP E-cores: apart from both other core colours under red-green
+    /// colour vision deficiencies too, where a violet would match `cpu_e`.
+    pub cpu_lp: Hsla,
     pub memory: Hsla,
     pub io: Hsla,
     pub network: Hsla,
@@ -156,6 +159,7 @@ impl Palette {
             accent: colors.primary,
             cpu: colors.chart_1,
             cpu_e: token("cpu-e", dark),
+            cpu_lp: token("cpu-lp", dark),
             memory: colors.chart_2,
             io: colors.chart_3,
             network: colors.chart_4,

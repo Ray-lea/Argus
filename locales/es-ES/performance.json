@@ -25,13 +25,15 @@
     "coreType": "Tipo de núcleo",
     "coreKind": {
       "p": "Núcleos P",
-      "e": "Núcleos E"
+      "e": "Núcleos E",
+      "lp": "Núcleos LP E"
     },
     "filterAll": "Todos",
     "filterTitle": {
       "all": "Mostrar todos los procesadores lógicos",
       "p": "Mostrar solo núcleos de rendimiento (P)",
-      "e": "Mostrar solo núcleos de eficiencia (E)"
+      "e": "Mostrar solo núcleos de eficiencia (E)",
+      "lp": "Mostrar solo núcleos de eficiencia de bajo consumo (LP E)"
     },
     "graph": "Gráfico de CPU",
     "overall": "Total",
@@ -47,7 +49,8 @@
     },
     "filterShort": {
       "p": "Núcleos P",
-      "e": "Núcleos E"
+      "e": "Núcleos E",
+      "lp": "Núcleos LP E"
     },
     "utilizationChart": "% de utilización",
     "total": "Total",
@@ -57,6 +60,7 @@
     "coreTip": "Procesador lógico {index}, núcleo físico {core}",
     "coreTipP": "Procesador lógico {index}, núcleo físico {core} (rendimiento)",
     "coreTipE": "Procesador lógico {index}, núcleo físico {core} (eficiencia)",
+    "coreTipLp": "Procesador lógico {index}, núcleo físico {core} (eficiencia de bajo consumo)",
     "power": "Potencia",
     "charts": {
       "both": "Gráficos de temperatura y potencia",
@@ -72,6 +76,7 @@
     "speed": "Velocidad",
     "pCoreSpeed": "Frecuencia de núcleos P",
     "eCoreSpeed": "Frecuencia de núcleos E",
+    "lpCoreSpeed": "Frecuencia de núcleos LP E",
     "packagePower": "Potencia del paquete",
     "corePower": "Potencia de los núcleos",
     "processes": "Procesos",
@@ -82,6 +87,8 @@
     "sockets": "Sockets",
     "cores": "Núcleos",
     "coresHybrid": "{cores} ({performance}P + {efficiency}E)",
+    "coresHybridLp": "{cores} ({performance}P + {efficiency}E + {lowPower}LPE)",
+    "coresHybridLpOnly": "{cores} ({performance}P + {lowPower}LPE)",
     "logicalProcessors": "Procesadores lógicos",
     "virtualization": "Virtualización",
     "notEnabled": "Deshabilitado",
@@ -238,6 +245,7 @@
     "columnCoreType": "Tipo",
     "pCore": "Núcleo P",
     "eCore": "Núcleo E",
+    "lpCore": "Núcleo LP E",
     "baseSourceCpuid": "Fuente: frecuencia nominal CPUID",
     "baseSourceWindows": "Fuente: frecuencia nominal indicada por la interfaz de energía de Windows",
     "limits": {

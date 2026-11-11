@@ -18,6 +18,8 @@
       "other": "{count} ядра"
     },
     "hybrid": " (P-ядра: {performance}; E-ядра: {efficiency})",
+    "hybridLp": " (P-ядра: {performance}; E-ядра: {efficiency}; LP E-ядра: {lowPower})",
+    "hybridLpOnly": " (P-ядра: {performance}; LP E-ядра: {lowPower})",
     "threads": {
       "one": "{count} поток",
       "few": "{count} потока",

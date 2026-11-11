@@ -15,6 +15,8 @@
       "other": "{count} コア"
     },
     "hybrid": "（{performance} P-コア + {efficiency} E-コア）",
+    "hybridLp": "（{performance} P-コア + {efficiency} E-コア + {lowPower} LP E-コア）",
+    "hybridLpOnly": "（{performance} P-コア + {lowPower} LP E-コア）",
     "threads": {
       "other": "{count} スレッド"
     },

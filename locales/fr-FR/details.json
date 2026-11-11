@@ -17,6 +17,8 @@
       "other": "{count} cœurs"
     },
     "hybrid": " ({performance} cœurs P + {efficiency} cœurs E)",
+    "hybridLp": " ({performance} cœurs P + {efficiency} cœurs E + {lowPower} cœurs LP E)",
+    "hybridLpOnly": " ({performance} cœurs P + {lowPower} cœurs LP E)",
     "threads": {
       "one": "{count} thread",
       "many": "{count} threads",

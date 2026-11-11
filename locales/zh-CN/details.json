@@ -13,6 +13,8 @@
     "cpu": "处理器",
     "cores": "{count} 核",
     "hybrid": "（{performance} 性能核 + {efficiency} 能效核）",
+    "hybridLp": "（{performance} 性能核 + {efficiency} 能效核 + {lowPower} 低功耗能效核）",
+    "hybridLpOnly": "（{performance} 性能核 + {lowPower} 低功耗能效核）",
     "threads": "{count} 线程",
     "base": "基准 {speed}",
     "slots": "已用插槽 {used} / {total}",

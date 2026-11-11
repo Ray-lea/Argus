@@ -17,13 +17,15 @@
     "coreType": "核心类型",
     "coreKind": {
       "p": "性能核",
-      "e": "能效核"
+      "e": "能效核",
+      "lp": "低功耗能效核"
     },
     "filterAll": "全部",
     "filterTitle": {
       "all": "显示所有逻辑处理器",
       "p": "只显示性能核（P 核）",
-      "e": "只显示能效核（E 核）"
+      "e": "只显示能效核（E 核）",
+      "lp": "只显示低功耗能效核（LP E 核）"
     },
     "graph": "CPU 图表",
     "overall": "整体",
@@ -39,7 +41,8 @@
     },
     "filterShort": {
       "p": "P 核",
-      "e": "E 核"
+      "e": "E 核",
+      "lp": "LP E 核"
     },
     "utilizationChart": "利用率 %",
     "total": "总计",
@@ -49,6 +52,7 @@
     "coreTip": "逻辑处理器 {index}，物理核心 {core}",
     "coreTipP": "逻辑处理器 {index}，物理核心 {core}（性能核）",
     "coreTipE": "逻辑处理器 {index}，物理核心 {core}（能效核）",
+    "coreTipLp": "逻辑处理器 {index}，物理核心 {core}（低功耗能效核）",
     "power": "功耗",
     "charts": {
       "both": "温度与功耗曲线",
@@ -64,6 +68,7 @@
     "speed": "速度",
     "pCoreSpeed": "性能核频率",
     "eCoreSpeed": "能效核频率",
+    "lpCoreSpeed": "低功耗能效核频率",
     "packagePower": "封装功耗",
     "corePower": "核心功耗",
     "processes": "进程",
@@ -74,6 +79,8 @@
     "sockets": "插槽",
     "cores": "内核",
     "coresHybrid": "{cores}（{performance} 性能核 + {efficiency} 能效核）",
+    "coresHybridLp": "{cores}（{performance} 性能核 + {efficiency} 能效核 + {lowPower} 低功耗能效核）",
+    "coresHybridLpOnly": "{cores}（{performance} 性能核 + {lowPower} 低功耗能效核）",
     "logicalProcessors": "逻辑处理器",
     "virtualization": "虚拟化",
     "notEnabled": "未启用",
@@ -222,6 +229,7 @@
     "columnCoreType": "类型",
     "pCore": "P 核",
     "eCore": "E 核",
+    "lpCore": "LP E 核",
     "baseSourceCpuid": "来源：CPUID 额定频率",
     "baseSourceWindows": "来源：Windows 电源接口报告的额定频率",
     "limits": {

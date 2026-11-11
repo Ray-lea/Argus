@@ -23,13 +23,15 @@
     "coreType": "Core type",
     "coreKind": {
       "p": "P-cores",
-      "e": "E-cores"
+      "e": "E-cores",
+      "lp": "LP E-cores"
     },
     "filterAll": "All",
     "filterTitle": {
       "all": "Show all logical processors",
       "p": "Show performance cores (P-cores) only",
-      "e": "Show efficient cores (E-cores) only"
+      "e": "Show efficient cores (E-cores) only",
+      "lp": "Show low-power efficient cores (LP E-cores) only"
     },
     "graph": "CPU graph",
     "overall": "Overall",
@@ -45,7 +47,8 @@
     },
     "filterShort": {
       "p": "P-cores",
-      "e": "E-cores"
+      "e": "E-cores",
+      "lp": "LP E-cores"
     },
     "utilizationChart": "% Utilization",
     "total": "Total",
@@ -55,6 +58,7 @@
     "coreTip": "Logical processor {index}, physical core {core}",
     "coreTipP": "Logical processor {index}, physical core {core} (P-core)",
     "coreTipE": "Logical processor {index}, physical core {core} (E-core)",
+    "coreTipLp": "Logical processor {index}, physical core {core} (LP E-core)",
     "power": "Power",
     "charts": {
       "both": "Temperature and power charts",
@@ -70,6 +74,7 @@
     "speed": "Speed",
     "pCoreSpeed": "P-core speed",
     "eCoreSpeed": "E-core speed",
+    "lpCoreSpeed": "LP E-core speed",
     "packagePower": "Package power",
     "corePower": "Core power",
     "processes": "Processes",
@@ -80,6 +85,8 @@
     "sockets": "Sockets",
     "cores": "Cores",
     "coresHybrid": "{cores} ({performance}P + {efficiency}E)",
+    "coresHybridLp": "{cores} ({performance}P + {efficiency}E + {lowPower}LPE)",
+    "coresHybridLpOnly": "{cores} ({performance}P + {lowPower}LPE)",
     "logicalProcessors": "Logical processors",
     "virtualization": "Virtualization",
     "notEnabled": "Disabled",
@@ -234,6 +241,7 @@
     "columnCoreType": "Type",
     "pCore": "P-core",
     "eCore": "E-core",
+    "lpCore": "LP E-core",
     "baseSourceCpuid": "Source: CPUID nominal frequency",
     "baseSourceWindows": "Source: nominal frequency reported by Windows power information",
     "limits": {

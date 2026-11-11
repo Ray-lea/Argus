@@ -850,6 +850,7 @@ impl Desktop {
             header.push(self.head_cell(label("performance.cpu.thermalThrottle"), None));
         }
         let plain = |value: String| div().child(value).into_any_element();
+        let threads = values(&self.snapshot["hardware"]["cpu"]["threads"]);
         let rows = cores
             .iter()
             .map(|core| {
@@ -858,10 +859,19 @@ impl Desktop {
                     index = core["core"].as_u64().unwrap_or(0) + 1
                 ))];
                 if hybrid {
-                    row.push(plain(label(if boolean(core, "efficient") {
-                        "performance.cpu.eCore"
-                    } else {
+                    // The sensors name efficiency cores only; the topology
+                    // tells which of them are low-power ones.
+                    let low_power = threads.iter().any(|thread| {
+                        boolean(thread, "lowPower")
+                            && thread["group"] == core["group"]
+                            && thread["processor"] == core["processor"]
+                    });
+                    row.push(plain(label(if !boolean(core, "efficient") {
                         "performance.cpu.pCore"
+                    } else if low_power {
+                        "performance.cpu.lpCore"
+                    } else {
+                        "performance.cpu.eCore"
                     })));
                 }
                 for column in &columns {

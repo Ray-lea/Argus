@@ -21,13 +21,15 @@
     "coreType": "コアタイプ",
     "coreKind": {
       "p": "P-コア",
-      "e": "E-コア"
+      "e": "E-コア",
+      "lp": "LP E-コア"
     },
     "filterAll": "すべて",
     "filterTitle": {
       "all": "すべての論理プロセッサを表示",
       "p": "高性能コア（P コア）のみを表示",
-      "e": "高効率コア（E コア）のみを表示"
+      "e": "高効率コア（E コア）のみを表示",
+      "lp": "低消費電力の高効率コア（LP E コア）のみを表示"
     },
     "graph": "CPUグラフ",
     "overall": "全体",
@@ -43,7 +45,8 @@
     },
     "filterShort": {
       "p": "P-コア",
-      "e": "E-コア"
+      "e": "E-コア",
+      "lp": "LP E-コア"
     },
     "utilizationChart": "使用率（%）",
     "total": "合計",
@@ -53,6 +56,7 @@
     "coreTip": "論理プロセッサ {index}、物理コア {core}",
     "coreTipP": "論理プロセッサ {index}、物理コア {core}（P-core）",
     "coreTipE": "論理プロセッサ {index}、物理コア {core}（E-core）",
+    "coreTipLp": "論理プロセッサ {index}、物理コア {core}（LP E-core）",
     "power": "消費電力",
     "charts": {
       "both": "温度と消費電力のグラフ",
@@ -68,6 +72,7 @@
     "speed": "速度",
     "pCoreSpeed": "P コアの速度",
     "eCoreSpeed": "E コアの速度",
+    "lpCoreSpeed": "LP E コアの速度",
     "packagePower": "パッケージ消費電力",
     "corePower": "コア消費電力",
     "processes": "プロセス",
@@ -78,6 +83,8 @@
     "sockets": "ソケット",
     "cores": "コア",
     "coresHybrid": "{cores}（{performance}P + {efficiency}E）",
+    "coresHybridLp": "{cores}（{performance}P + {efficiency}E + {lowPower}LPE）",
+    "coresHybridLpOnly": "{cores}（{performance}P + {lowPower}LPE）",
     "logicalProcessors": "論理プロセッサ",
     "virtualization": "仮想化",
     "notEnabled": "無効",
@@ -230,6 +237,7 @@
     "columnCoreType": "種類",
     "pCore": "P-コア",
     "eCore": "E-コア",
+    "lpCore": "LP E-コア",
     "baseSourceCpuid": "出典：CPUID 公称周波数",
     "baseSourceWindows": "出典：Windows 電力情報によって報告される公称周波数",
     "limits": {

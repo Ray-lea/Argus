@@ -2,8 +2,8 @@
 
 use serde::Serialize;
 use windows::Win32::System::SystemInformation::{
-    GetLogicalProcessorInformationEx, RelationAll, RelationCache, RelationProcessorCore,
-    RelationProcessorPackage, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+    GROUP_AFFINITY, GetLogicalProcessorInformationEx, RelationAll, RelationCache,
+    RelationProcessorCore, RelationProcessorPackage, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
 };
 use windows::Win32::System::Threading::{
     ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, IsProcessorFeaturePresent,
@@ -33,7 +33,10 @@ pub struct CpuInfo {
     pub cores: u32,
     /// Hybrid CPUs only: cores in the highest efficiency class.
     pub performance_cores: u32,
+    /// Hybrid CPUs only: the other cores, less the low-power ones.
     pub efficiency_cores: u32,
+    /// Intel LP E-cores (`core_kinds`).
+    pub low_power_cores: u32,
     pub logical: u32,
     pub l1: u64,
     pub l2: u64,
@@ -51,8 +54,46 @@ pub struct CpuThread {
     pub processor: u8,
     /// Physical core it belongs to (hyper-threads share one).
     pub core: u32,
-    /// An efficiency core of a hybrid CPU (Intel E-core).
+    /// An efficiency core of a hybrid CPU (Intel E-core or LP E-core).
     pub efficient: bool,
+    /// A low-power efficiency core (Intel LP E-core); also `efficient`.
+    pub low_power: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CoreKind {
+    Performance,
+    Efficient,
+    LowPower,
+}
+
+/// Each core's kind from its efficiency class and whether an L3 cache serves
+/// it. Windows ranks Intel's E-cores and LP E-cores in one efficiency class.
+/// Intel tells them apart by the L3 (CPUID.1A core type Atom, no CPUID.4
+/// level 3 cache, given for Meteor Lake): LP E-cores stand outside the cache
+/// the other cores share. The cache topology Windows reports carries the same
+/// answer without running CPUID on every processor. Other vendors' compact
+/// cores keep an L3 of their own and remain efficiency cores.
+fn core_kinds(intel: bool, classes: &[u8], l3: &[bool]) -> Vec<CoreKind> {
+    let top = classes.iter().copied().max().unwrap_or(0);
+    // The L3 tells cores apart only where it serves the performance cores.
+    let shared = classes
+        .iter()
+        .zip(l3)
+        .any(|(class, served)| *class == top && *served);
+    classes
+        .iter()
+        .zip(l3)
+        .map(|(class, served)| {
+            if *class == top {
+                CoreKind::Performance
+            } else if intel && shared && !served {
+                CoreKind::LowPower
+            } else {
+                CoreKind::Efficient
+            }
+        })
+        .collect()
 }
 
 impl CpuInfo {
@@ -113,8 +154,10 @@ pub fn cpu_info() -> CpuInfo {
     }
 
     let mut core_classes = Vec::new();
-    // (group, processor, core, efficiency class)
-    let mut members: Vec<(u16, u8, u32, u8)> = Vec::new();
+    // (group, processor, core)
+    let mut members: Vec<(u16, u8, u32)> = Vec::new();
+    // (group, mask) of the processors each L3 cache serves
+    let mut l3_masks: Vec<(u16, usize)> = Vec::new();
     let mut offset = 0usize;
     while offset < len as usize {
         // SAFETY: records are laid out back to back, each `Size` bytes long.
@@ -137,7 +180,7 @@ pub fn cpu_info() -> CpuInfo {
                 for m in masks {
                     for bit in 0..usize::BITS as usize {
                         if m.Mask & (1usize << bit) != 0 {
-                            members.push((m.Group, bit as u8, core, p.EfficiencyClass));
+                            members.push((m.Group, bit as u8, core));
                         }
                     }
                 }
@@ -152,26 +195,54 @@ pub fn cpu_info() -> CpuInfo {
                     3 => info.l3 += size,
                     _ => {}
                 }
+                if cache.Level == 3 {
+                    // GroupCount was reserved (zero) before caches could span
+                    // groups: one mask then. Never read past the record.
+                    let masks = unsafe { cache.Anonymous.GroupMasks.as_ptr() };
+                    let end = std::ptr::from_ref(rec) as usize + rec.Size as usize;
+                    let room =
+                        end.saturating_sub(masks as usize) / std::mem::size_of::<GROUP_AFFINITY>();
+                    let count = usize::from(cache.GroupCount.max(1)).min(room);
+                    // SAFETY: `count` entries lie inside this record.
+                    for m in unsafe { std::slice::from_raw_parts(masks, count) } {
+                        l3_masks.push((m.Group, m.Mask));
+                    }
+                }
             }
             _ => {}
         }
         offset += rec.Size as usize;
     }
 
-    let top = core_classes.iter().copied().max().unwrap_or(0);
-    let hybrid = core_classes.iter().any(|&c| c != top);
-    if hybrid {
-        info.performance_cores = core_classes.iter().filter(|&&c| c == top).count() as u32;
-        info.efficiency_cores = info.cores - info.performance_cores;
+    let mut served = vec![false; core_classes.len()];
+    for (group, processor, core) in &members {
+        if l3_masks
+            .iter()
+            .any(|(g, mask)| g == group && mask & (1usize << processor) != 0)
+        {
+            served[*core as usize] = true;
+        }
+    }
+    let kinds = core_kinds(info.vendor == "GenuineIntel", &core_classes, &served);
+    let count = |kind| kinds.iter().filter(|k| **k == kind).count() as u32;
+    // Not hybrid: every core is in the top class, and no kind is counted.
+    if kinds.iter().any(|kind| *kind != CoreKind::Performance) {
+        info.performance_cores = count(CoreKind::Performance);
+        info.efficiency_cores = count(CoreKind::Efficient);
+        info.low_power_cores = count(CoreKind::LowPower);
     }
     members.sort_unstable_by_key(|m| (m.0, m.1));
     info.threads = members
         .into_iter()
-        .map(|(group, processor, core, class)| CpuThread {
-            group,
-            processor,
-            core,
-            efficient: hybrid && class < top,
+        .map(|(group, processor, core)| {
+            let kind = kinds[core as usize];
+            CpuThread {
+                group,
+                processor,
+                core,
+                efficient: kind != CoreKind::Performance,
+                low_power: kind == CoreKind::LowPower,
+            }
         })
         .collect();
     info
@@ -347,6 +418,51 @@ fn identify(info: &mut CpuInfo) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `(cores, efficiency class, served by an L3)` runs, counted by kind.
+    fn kinds(intel: bool, runs: &[(usize, u8, bool)]) -> (usize, usize, usize) {
+        let (classes, l3): (Vec<_>, Vec<_>) = runs
+            .iter()
+            .flat_map(|(cores, class, l3)| std::iter::repeat_n((*class, *l3), *cores))
+            .unzip();
+        let kinds = core_kinds(intel, &classes, &l3);
+        let count = |kind| kinds.iter().filter(|k| **k == kind).count();
+        (
+            count(CoreKind::Performance),
+            count(CoreKind::Efficient),
+            count(CoreKind::LowPower),
+        )
+    }
+
+    #[test]
+    fn low_power_cores_are_the_efficiency_cores_outside_the_shared_l3() {
+        // Core Ultra 7 155H: Windows gives E and LP E-cores one class.
+        assert_eq!(
+            kinds(true, &[(6, 1, true), (8, 0, true), (2, 0, false)]),
+            (6, 8, 2)
+        );
+        // Three classes would change nothing: the L3 decides.
+        assert_eq!(
+            kinds(true, &[(6, 2, true), (8, 1, true), (2, 0, false)]),
+            (6, 8, 2)
+        );
+        // Core Ultra 200V: all four efficiency cores are low-power ones.
+        assert_eq!(kinds(true, &[(4, 1, true), (4, 0, false)]), (4, 0, 4));
+        // Core i5-13500HX: the E-cores share the L3.
+        assert_eq!(kinds(true, &[(6, 1, true), (8, 0, true)]), (6, 8, 0));
+    }
+
+    #[test]
+    fn cores_are_not_low_power_without_a_shared_l3_to_tell_them_apart() {
+        // One class: not hybrid, with or without an L3.
+        assert_eq!(kinds(true, &[(16, 0, true)]), (16, 0, 0));
+        assert_eq!(kinds(true, &[(4, 0, false)]), (4, 0, 0));
+        // No L3 reported for any core: nothing to compare against.
+        assert_eq!(kinds(true, &[(2, 1, false), (4, 0, false)]), (2, 4, 0));
+        // Another vendor's compact cores are not Intel's LP E-cores.
+        assert_eq!(kinds(false, &[(4, 1, true), (8, 0, false)]), (4, 8, 0));
+        assert_eq!(kinds(false, &[(4, 1, true), (8, 0, true)]), (4, 8, 0));
+    }
 
     #[test]
     fn virtualization_distinguishes_hyper_v_hosts_from_guests() {

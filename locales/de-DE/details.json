@@ -16,6 +16,8 @@
       "other": "{count} Kerne"
     },
     "hybrid": " ({performance} P-Kerne + {efficiency} E-Kerne)",
+    "hybridLp": " ({performance} P-Kerne + {efficiency} E-Kerne + {lowPower} LP-E-Kerne)",
+    "hybridLpOnly": " ({performance} P-Kerne + {lowPower} LP-E-Kerne)",
     "threads": {
       "one": "{count} Thread",
       "other": "{count} Threads"

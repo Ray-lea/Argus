@@ -1618,12 +1618,28 @@ impl Desktop {
             "details.overview.cores",
             count = number(cpu, "cores") as u64
         );
-        if number(cpu, "performanceCores") > 0. {
-            cores.push_str(&tr!(
-                "details.overview.hybrid",
-                performance = number(cpu, "performanceCores") as u64,
-                efficiency = number(cpu, "efficiencyCores") as u64
-            ));
+        let performance = number(cpu, "performanceCores") as u64;
+        let efficiency = number(cpu, "efficiencyCores") as u64;
+        let low_power = number(cpu, "lowPowerCores") as u64;
+        if performance > 0 {
+            cores.push_str(&match (efficiency > 0, low_power > 0) {
+                (true, true) => tr!(
+                    "details.overview.hybridLp",
+                    performance = performance,
+                    efficiency = efficiency,
+                    lowPower = low_power
+                ),
+                (false, true) => tr!(
+                    "details.overview.hybridLpOnly",
+                    performance = performance,
+                    lowPower = low_power
+                ),
+                _ => tr!(
+                    "details.overview.hybrid",
+                    performance = performance,
+                    efficiency = efficiency
+                ),
+            });
         }
         let installed = if number(memory, "installed") > 0. {
             number(memory, "installed")

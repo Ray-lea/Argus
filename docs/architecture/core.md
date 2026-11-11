@@ -65,7 +65,7 @@
 
 | 模块 | 职责 |
 |---|---|
-| `cpu.rs` | 型号、拓扑（每个逻辑处理器属于哪个核心、是性能核还是能效核）、缓存、虚拟化 |
+| `cpu.rs` | 型号、拓扑（每个逻辑处理器属于哪个核心，是性能核、能效核还是低功耗能效核）、缓存、虚拟化 |
 | `sensors.rs` | 在标准权限下通过 PDH 批量读取 CPU 频率、ACPI 温度和可用功耗计数。频率优先使用 `Actual Frequency` 的 MHz 读数，缺少总项时对完整逻辑处理器读数求均值；单路同类核心才使用基准频率与性能百分比回退。功耗按域合计多个封装的有效读数，保留有效零值，过滤缺失、负数和非有限值 |
 | `battery.rs` | 电池类驱动 IOCTL：电量、充放电功率、电压、设计 / 完全充电容量、循环次数。标准用户可以只读打开电池设备 |
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
@@ -82,7 +82,7 @@
 
 CPU 虚拟化状态优先使用 Windows 的可用标志；Hyper-V 或 VBS 占用虚拟化扩展时，结合 `Hv#1` 接口的 `CreatePartitions` 权限识别宿主。普通虚拟机客体继续按其可用的虚拟化扩展判断。权限位定义见 [Hyper-V 分区权限](https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)。
 
-CPU 动态频率的回退基准来自 CPUID 或 Windows 电源接口；注册表 `~MHz` 可表示 TSC／参考时钟，已退出动态频率换算。混合架构由拓扑类别及 [CPUID Hybrid 标志](https://www.intel.com/content/www/us/en/developer/articles/guide/12th-gen-intel-core-processor-gamedev-guide.html)共同识别，避免在类别未由 Windows 拓扑 API 暴露时套用统一基准。频率计数使用 `PDH_FMT_NOCAP100` 保留睿频比例，仍校验 PDH 状态、数值范围及处理器组对应关系；其他计数器保持原有格式。
+CPU 动态频率的回退基准来自 CPUID 或 Windows 电源接口；注册表 `~MHz` 可表示 TSC／参考时钟，已退出动态频率换算。混合架构由拓扑类别及 [CPUID Hybrid 标志](https://www.intel.com/content/www/us/en/developer/articles/guide/12th-gen-intel-core-processor-gamedev-guide.html)共同识别，避免在类别未由 Windows 拓扑 API 暴露时套用统一基准。Windows 把 Intel 的能效核与低功耗能效核（LP E-core）归入同一效率类别，两者按三级缓存区分：低功耗能效核不在其余核心共享的三级缓存之内。这与 Intel 针对 Meteor Lake 给出的[判断方法](https://community.intel.com/t/detecting-lp-e-cores-on-meteor-lake-in-software/121766)（CPUID.1A 的核心类型为 Atom 且 CPUID.4 没有三级缓存）使用同一依据，改为读取 `GetLogicalProcessorInformationEx` 的缓存拓扑，无需把线程逐一绑到各处理器执行 CPUID；仅用于 Intel 处理器，其他厂商的紧凑核心保持为能效核。频率计数使用 `PDH_FMT_NOCAP100` 保留睿频比例，仍校验 PDH 状态、数值范围及处理器组对应关系；其他计数器保持原有格式。
 
 周期采样的设备句柄通过 [CM_Register_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_register_notification) 注册移除事件。弹出回调等待当前查询或重开操作完成，关闭句柄后返回成功；取消弹出只更新状态，由采样线程重新打开设备并重置计数基线。通知注销在拥有句柄的线程执行，等待回调退出后释放上下文，遵循 [CM_Unregister_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_unregister_notification) 的生命周期要求。
 

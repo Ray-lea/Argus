@@ -62,6 +62,72 @@ pub(in crate::frontend) const KERNEL_TIME: &str = "cpuKernelTime";
 const CORE_KERNEL_LINE: f32 = 0.6;
 const CORE_KERNEL_FILL: f32 = 0.4;
 
+/// A logical processor's core type on a hybrid CPU, as `hardware.cpu.threads`
+/// tell it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CoreKind {
+    Performance,
+    Efficient,
+    /// Intel's LP E-cores: efficiency cores outside the shared L3 cache.
+    LowPower,
+}
+impl CoreKind {
+    pub(super) fn of(thread: Option<&Value>) -> Self {
+        match thread {
+            Some(thread) if boolean(thread, "lowPower") => Self::LowPower,
+            Some(thread) if boolean(thread, "efficient") => Self::Efficient,
+            _ => Self::Performance,
+        }
+    }
+    /// The core types of `cpu` in the order they are named; none unless it is
+    /// hybrid.
+    fn present(cpu: &Value) -> Vec<Self> {
+        let kinds = [Self::Performance, Self::Efficient, Self::LowPower]
+            .into_iter()
+            .filter(|kind| kind.cores(cpu) > 0)
+            .collect::<Vec<_>>();
+        if kinds.first() == Some(&Self::Performance) && kinds.len() > 1 {
+            kinds
+        } else {
+            Vec::new()
+        }
+    }
+    /// How many of `cpu`'s cores are of this type.
+    fn cores(self, cpu: &Value) -> u64 {
+        number(
+            cpu,
+            match self {
+                Self::Performance => "performanceCores",
+                Self::Efficient => "efficiencyCores",
+                Self::LowPower => "lowPowerCores",
+            },
+        ) as u64
+    }
+    /// Its part of the catalog keys, and its value of the `coreFilter` preference.
+    fn key(self) -> &'static str {
+        match self {
+            Self::Performance => "p",
+            Self::Efficient => "e",
+            Self::LowPower => "lp",
+        }
+    }
+    /// The letters on its processors' cards.
+    fn badge(self) -> &'static str {
+        match self {
+            Self::Performance => "P",
+            Self::Efficient => "E",
+            Self::LowPower => "LP",
+        }
+    }
+    fn color(self, p: Palette) -> Hsla {
+        match self {
+            Self::Performance => p.cpu,
+            Self::Efficient => p.cpu_e,
+            Self::LowPower => p.cpu_lp,
+        }
+    }
+}
+
 fn stats_layout(width: f32, cpu: bool, text_scale: f32) -> (bool, u16) {
     let stacked = width < 2. * STATS_MIN * text_scale + STATS_GAP;
     let stats_width = if stacked {
@@ -571,8 +637,8 @@ impl Desktop {
         );
         kernel_fade::stepped(level, graphs)
     }
-    /// The device list and the CPU graphs' kernel time layer as tests see
-    /// them (test control `inspectLayout`).
+    /// The device list, the CPU graphs' kernel time layer and the logical
+    /// processors' grid as tests see them (test control `inspectLayout`).
     pub(in crate::frontend) fn performance_test_state(&self) -> Value {
         let devices = available_devices(&self.snapshot, self.palette);
         let shown = self.shown_devices(&devices);
@@ -591,6 +657,11 @@ impl Desktop {
             "kernelTime": self.prefs.get(KERNEL_TIME, true),
             "overallSeries": self.chart_series("cpu-overall-plot"),
             "coreSeries": self.chart_series("cpu-0"),
+            "coreColumns": self.core_columns.get(),
+            "coreKinds": CoreKind::present(&self.snapshot["hardware"]["cpu"])
+                .into_iter()
+                .map(CoreKind::key)
+                .collect::<Vec<_>>(),
         })
     }
     /// The CPU graphs' menu.
@@ -1447,6 +1518,9 @@ impl Desktop {
     fn perf_toolbar(&self, controls: Vec<AnyElement>) -> AnyElement {
         div()
             .flex()
+            // Controls too wide for a narrow view take a row each rather
+            // than run out of it on the left.
+            .flex_wrap()
             .flex_shrink_0()
             .justify_end()
             .gap_2()
@@ -1520,9 +1594,12 @@ impl Desktop {
             out.push(self.cpu_details(hw, window, cx));
             return out;
         }
-        let hybrid = number(cpu, "performanceCores") > 0. && number(cpu, "efficiencyCores") > 0.;
-        let filter: String = if hybrid {
-            self.prefs.get("coreFilter", "all".into())
+        let kinds = CoreKind::present(cpu);
+        let hybrid = !kinds.is_empty();
+        // A type this CPU lacks (a preference from other hardware) shows all.
+        let filter: String = self.prefs.get("coreFilter", "all".into());
+        let filter = if kinds.iter().any(|kind| kind.key() == filter) {
+            filter
         } else {
             "all".into()
         };
@@ -1532,8 +1609,8 @@ impl Desktop {
             controls.push(
                 self.segments(
                     "core-filter",
-                    ["all", "p", "e"]
-                        .into_iter()
+                    std::iter::once("all")
+                        .chain(kinds.iter().map(|kind| kind.key()))
                         .map(|choice| {
                             (
                                 label(&if choice == "all" {
@@ -1592,14 +1669,16 @@ impl Desktop {
             ),
         ];
         if hybrid {
-            for (efficient, title) in [
-                (false, "performance.cpu.pCoreSpeed"),
-                (true, "performance.cpu.eCoreSpeed"),
-            ] {
+            for kind in &kinds {
+                let title = match kind {
+                    CoreKind::Performance => "performance.cpu.pCoreSpeed",
+                    CoreKind::Efficient => "performance.cpu.eCoreSpeed",
+                    CoreKind::LowPower => "performance.cpu.lpCoreSpeed",
+                };
                 let clocks = values(&cpu["threads"])
                     .iter()
                     .enumerate()
-                    .filter(|(_, thread)| boolean(thread, "efficient") == efficient)
+                    .filter(|(_, thread)| CoreKind::of(Some(thread)) == *kind)
                     .filter_map(|(i, _)| hw["coreMhz"][i].as_f64())
                     .filter(|mhz| *mhz > 0.)
                     .collect::<Vec<_>>();
@@ -1672,15 +1751,32 @@ impl Desktop {
             })
             .into_any_element();
         let plain = |value: String| div().child(value).into_any_element();
-        let cores = if hybrid {
-            tr!(
+        let count = |kind: CoreKind| kind.cores(cpu);
+        let cores = match (
+            hybrid,
+            count(CoreKind::Efficient) > 0,
+            count(CoreKind::LowPower) > 0,
+        ) {
+            (false, ..) => cpu["cores"].to_string(),
+            (true, true, true) => tr!(
+                "performance.cpu.coresHybridLp",
+                cores = cpu["cores"],
+                performance = count(CoreKind::Performance),
+                efficiency = count(CoreKind::Efficient),
+                lowPower = count(CoreKind::LowPower)
+            ),
+            (true, false, true) => tr!(
+                "performance.cpu.coresHybridLpOnly",
+                cores = cpu["cores"],
+                performance = count(CoreKind::Performance),
+                lowPower = count(CoreKind::LowPower)
+            ),
+            (true, ..) => tr!(
                 "performance.cpu.coresHybrid",
                 cores = cpu["cores"],
-                performance = cpu["performanceCores"],
-                efficiency = cpu["efficiencyCores"]
-            )
-        } else {
-            cpu["cores"].to_string()
+                performance = count(CoreKind::Performance),
+                efficiency = count(CoreKind::Efficient)
+            ),
         };
         let info = self.info_list(vec![
             (label("performance.cpu.baseSpeed"), base_value),
@@ -1912,14 +2008,8 @@ impl Desktop {
         let cpu = &hw["cpu"];
         let core_values = values(&sys["cores"]);
         let threads = values(&cpu["threads"]);
-        let efficient = |index: usize| {
-            hybrid
-                && threads
-                    .get(index)
-                    .is_some_and(|thread| boolean(thread, "efficient"))
-        };
         let visible = (0..core_values.len())
-            .filter(|index| filter == "all" || efficient(*index) == (filter == "e"))
+            .filter(|index| filter == "all" || CoreKind::of(threads.get(*index)).key() == filter)
             .collect::<Vec<_>>();
         let gap = theme::dimension("coreGap");
         let cell_width = theme::dimension("coreMinWidth");
@@ -1955,6 +2045,7 @@ impl Desktop {
             },
         );
         previous.update(cx, |state, _| *state = (visible.len(), columns));
+        self.core_columns.set(columns);
         let rows = visible.len().div_ceil(columns).max(1);
         let arrangement = cpu_motion::Grid {
             columns,
@@ -2132,10 +2223,20 @@ impl Desktop {
             .flex_col()
             .child(grid)
             .when(hybrid, |d| {
-                d.child(self.legend(vec![
-                    (label("performance.cpu.coreKind.p"), p.cpu, false),
-                    (label("performance.cpu.coreKind.e"), p.cpu_e, false),
-                ]))
+                d.child(
+                    self.legend(
+                        CoreKind::present(&self.snapshot["hardware"]["cpu"])
+                            .into_iter()
+                            .map(|kind| {
+                                (
+                                    label(&format!("performance.cpu.coreKind.{}", kind.key())),
+                                    kind.color(p),
+                                    false,
+                                )
+                            })
+                            .collect(),
+                    ),
+                )
             })
             .into_any_element()
     }
@@ -2168,11 +2269,12 @@ impl Desktop {
             .expect("core enter scale") as f32;
         let bounds = card.bounds;
         let key = format!("system.cores.{index}");
-        let eff = hybrid
-            && threads
-                .get(index)
-                .is_some_and(|thread| boolean(thread, "efficient"));
-        let color = if eff { p.cpu_e } else { p.cpu };
+        let kind = if hybrid {
+            CoreKind::of(threads.get(index))
+        } else {
+            CoreKind::Performance
+        };
+        let color = kind.color(p);
         let anchored = |transform: &LiveTransform| charts::Live {
             transform: transform.clone(),
             anchor: Rc::new(Cell::new(Point::default())),
@@ -2234,10 +2336,17 @@ impl Desktop {
             .and_then(|t| t["core"].as_u64())
             .map(|c| c.to_string())
             .unwrap_or_else(|| "?".into());
-        let mut tip = match (hybrid, eff) {
-            (true, true) => tr!("performance.cpu.coreTipE", index = index, core = core),
-            (true, false) => tr!("performance.cpu.coreTipP", index = index, core = core),
-            _ => tr!("performance.cpu.coreTip", index = index, core = core),
+        let mut tip = match (hybrid, kind) {
+            (false, _) => tr!("performance.cpu.coreTip", index = index, core = core),
+            (_, CoreKind::Performance) => {
+                tr!("performance.cpu.coreTipP", index = index, core = core)
+            }
+            (_, CoreKind::Efficient) => {
+                tr!("performance.cpu.coreTipE", index = index, core = core)
+            }
+            (_, CoreKind::LowPower) => {
+                tr!("performance.cpu.coreTipLp", index = index, core = core)
+            }
         };
         if let Some(celsius) = thread.and_then(|t| {
             core_temperatures
@@ -2279,7 +2388,7 @@ impl Desktop {
                         .font_weight(FontWeight::BOLD)
                         .line_height(px(15.))
                         .text_center()
-                        .child(if eff { "E" } else { "P" }),
+                        .child(kind.badge()),
                 )
             })
             .child(

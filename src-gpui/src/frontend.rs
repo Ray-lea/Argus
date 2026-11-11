@@ -255,6 +255,8 @@ struct Desktop {
     chart_frame: u64,
     grid_bounds: RefCell<HashMap<String, Bounds<Pixels>>>,
     core_grid_size: Rc<Cell<Size<Pixels>>>,
+    /// The columns the logical processors' grid was last arranged in.
+    core_columns: Cell<usize>,
     settings_scroll: ScrollHandle,
     about_scroll: ScrollHandle,
     device_scroll: ScrollHandle,
@@ -431,6 +433,7 @@ impl Desktop {
             chart_frame: 0,
             grid_bounds: RefCell::new(HashMap::new()),
             core_grid_size: Rc::new(Cell::new(size(px(0.), px(0.)))),
+            core_columns: Cell::new(0),
             settings_scroll: ScrollHandle::new(),
             about_scroll: ScrollHandle::new(),
             device_scroll: ScrollHandle::new(),

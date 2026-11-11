@@ -23,13 +23,15 @@
     "coreType": "Kerntyp",
     "coreKind": {
       "p": "P-Kerne",
-      "e": "E-Kerne"
+      "e": "E-Kerne",
+      "lp": "LP-E-Kerne"
     },
     "filterAll": "Alle",
     "filterTitle": {
       "all": "Alle logischen Prozessoren anzeigen",
       "p": "Nur Leistungskerne (P-Kerne) anzeigen",
-      "e": "Nur effiziente Kerne (E-Kerne) anzeigen"
+      "e": "Nur effiziente Kerne (E-Kerne) anzeigen",
+      "lp": "Nur stromsparende effiziente Kerne (LP-E-Kerne) anzeigen"
     },
     "graph": "CPU-Diagramm",
     "overall": "Gesamt",
@@ -45,7 +47,8 @@
     },
     "filterShort": {
       "p": "P-Kerne",
-      "e": "E-Kerne"
+      "e": "E-Kerne",
+      "lp": "LP-E-Kerne"
     },
     "utilizationChart": "% Auslastung",
     "total": "Gesamt",
@@ -55,6 +58,7 @@
     "coreTip": "Logischer Prozessor {index}, physischer Kern {core}",
     "coreTipP": "Logischer Prozessor {index}, physischer Kern {core} (P-Kern)",
     "coreTipE": "Logischer Prozessor {index}, physischer Kern {core} (E-Kern)",
+    "coreTipLp": "Logischer Prozessor {index}, physischer Kern {core} (LP-E-Kern)",
     "power": "Leistung",
     "charts": {
       "both": "Temperatur- und Leistungsdiagramme",
@@ -70,6 +74,7 @@
     "speed": "Geschwindigkeit",
     "pCoreSpeed": "P-Kern-Takt",
     "eCoreSpeed": "E-Kern-Takt",
+    "lpCoreSpeed": "LP-E-Kern-Takt",
     "packagePower": "Paketleistung",
     "corePower": "Kernleistung",
     "processes": "Prozesse",
@@ -80,6 +85,8 @@
     "sockets": "Sockel",
     "cores": "Kerne",
     "coresHybrid": "{cores} ({performance}P + {efficiency}E)",
+    "coresHybridLp": "{cores} ({performance}P + {efficiency}E + {lowPower}LPE)",
+    "coresHybridLpOnly": "{cores} ({performance}P + {lowPower}LPE)",
     "logicalProcessors": "Logische Prozessoren",
     "virtualization": "Virtualisierung",
     "notEnabled": "Deaktiviert",
@@ -234,6 +241,7 @@
     "columnCoreType": "Typ",
     "pCore": "P-Kern",
     "eCore": "E-Kern",
+    "lpCore": "LP-E-Kern",
     "baseSourceCpuid": "Quelle: CPUID Nennfrequenz",
     "baseSourceWindows": "Quelle: Nennfrequenz der Windows-Energieschnittstelle",
     "limits": {
