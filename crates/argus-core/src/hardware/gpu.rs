@@ -28,6 +28,7 @@ use windows::Win32::Foundation::LUID;
 use super::nvml::Nvml;
 use super::query::Retry;
 use super::vendor_gpu::{GpuPowerSource, Pci, VendorGpu};
+use crate::diagnostics::{startup_native, startup_phase};
 use crate::util::from_wide;
 mod metadata;
 pub use metadata::DirectXInfo;
@@ -161,18 +162,26 @@ impl GpuTracker {
             .copied()
     }
     pub fn new() -> Self {
-        let adapters = enumerate();
+        Self::new_with_vendor(true)
+    }
+
+    pub(super) fn new_with_vendor(vendor_telemetry: bool) -> Self {
+        let adapters = startup_phase("gpu.enumerate", enumerate);
         // Only hardware adapters have a PCI address for NVML to match.
         let nvml = adapters
             .iter()
-            .any(|a| a.pci.is_some())
+            .any(|a| vendor_telemetry && a.pci.is_some())
             .then(Nvml::load)
             .flatten();
         Self {
             adapters,
             last: None,
             nvml,
-            vendor: VendorGpu::spawn(),
+            vendor: if vendor_telemetry {
+                VendorGpu::spawn()
+            } else {
+                VendorGpu::inactive()
+            },
         }
     }
 
@@ -213,7 +222,13 @@ impl GpuTracker {
                 for (node, prev) in a.prev_running.iter_mut().enumerate() {
                     let mut q = statistics_query(D3DKMT_QUERYSTATISTICS_NODE, a.luid);
                     q.Anonymous.QueryNode.NodeId = node as u32;
-                    let running = if unsafe { D3DKMTQueryStatistics(&raw mut q) }.0 >= 0 {
+                    let running = if startup_native(
+                        "gpu.node-statistics",
+                        luid_key(a.luid),
+                        node as u32,
+                        || unsafe { D3DKMTQueryStatistics(&raw mut q) }.0,
+                    ) >= 0
+                    {
                         Some(unsafe { q.QueryResult.NodeInformation.GlobalInformation.RunningTime })
                     } else {
                         None
@@ -228,7 +243,13 @@ impl GpuTracker {
                 for seg in 0..a.segments {
                     let mut q = statistics_query(D3DKMT_QUERYSTATISTICS_SEGMENT, a.luid);
                     q.Anonymous.QuerySegment.SegmentId = seg;
-                    if unsafe { D3DKMTQueryStatistics(&raw mut q) }.0 < 0 {
+                    if startup_native(
+                        "gpu.segment-statistics",
+                        luid_key(a.luid),
+                        seg,
+                        || unsafe { D3DKMTQueryStatistics(&raw mut q) }.0,
+                    ) < 0
+                    {
                         continue;
                     }
                     let info = unsafe { &q.QueryResult.SegmentInformation };
@@ -293,11 +314,18 @@ impl Drop for GpuTracker {
     fn drop(&mut self) {
         for a in &self.adapters {
             let close = D3DKMT_CLOSEADAPTER { hAdapter: a.handle };
-            unsafe {
-                let _ = D3DKMTCloseAdapter(&close);
-            }
+            startup_native(
+                "gpu.close-adapter",
+                luid_key(a.luid),
+                0,
+                || unsafe { D3DKMTCloseAdapter(&close) }.0,
+            );
         }
     }
+}
+
+fn luid_key(luid: LUID) -> u64 {
+    (u64::from(luid.HighPart as u32) << 32) | u64::from(luid.LowPart)
 }
 
 fn statistics_query(
@@ -318,7 +346,12 @@ fn query_info<T>(handle: u32, kind: KMTQUERYADAPTERINFOTYPE, data: &mut T) -> bo
         pPrivateDriverData: (data as *mut T).cast(),
         PrivateDriverDataSize: std::mem::size_of::<T>() as u32,
     };
-    unsafe { D3DKMTQueryAdapterInfo(&mut q) }.0 >= 0
+    startup_native(
+        "gpu.adapter-info",
+        u64::from(handle),
+        kind.0 as u32,
+        || unsafe { D3DKMTQueryAdapterInfo(&mut q) }.0,
+    ) >= 0
 }
 
 fn enumerate() -> Vec<Adapter> {
@@ -326,18 +359,31 @@ fn enumerate() -> Vec<Adapter> {
         NumAdapters: 0,
         pAdapters: std::ptr::null_mut(),
     };
-    if unsafe { D3DKMTEnumAdapters2(&mut e) }.0 < 0 || e.NumAdapters == 0 {
+    if startup_native(
+        "gpu.enumerate-count",
+        0,
+        0,
+        || unsafe { D3DKMTEnumAdapters2(&mut e) }.0,
+    ) < 0
+        || e.NumAdapters == 0
+    {
         return Vec::new();
     }
     let mut list = vec![D3DKMT_ADAPTERINFO::default(); e.NumAdapters as usize];
     e.pAdapters = list.as_mut_ptr();
-    if unsafe { D3DKMTEnumAdapters2(&mut e) }.0 < 0 {
+    if startup_native(
+        "gpu.enumerate-adapters",
+        0,
+        0,
+        || unsafe { D3DKMTEnumAdapters2(&mut e) }.0,
+    ) < 0
+    {
         return Vec::new();
     }
     list.truncate(e.NumAdapters as usize);
 
     let mut out = Vec::new();
-    let mut metadata = metadata::Metadata::new();
+    let mut metadata = startup_phase("gpu.metadata", metadata::Metadata::new);
     for a in list {
         match describe(&a, &mut metadata) {
             Some(adapter) => out.push(adapter),
@@ -359,6 +405,7 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
     let mut kind = D3DKMT_ADAPTERTYPE::default();
     if query_info(a.hAdapter, KMTQAITYPE_ADAPTERTYPE, &mut kind) {
         let bits = unsafe { kind.Anonymous.Value };
+        log::info!(target: "argus_startup", "phase=gpu.adapter-type; instance={}; handle={}; bits=0x{bits:08X}", luid_key(a.AdapterLuid), a.hAdapter);
         let render = bits & 0x1 != 0;
         let software = bits & 0x4 != 0;
         if !render || software {
@@ -367,7 +414,13 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
     }
 
     let mut stats = statistics_query(D3DKMT_QUERYSTATISTICS_ADAPTER, a.AdapterLuid);
-    if unsafe { D3DKMTQueryStatistics(&raw mut stats) }.0 < 0 {
+    if startup_native(
+        "gpu.adapter-statistics",
+        luid_key(a.AdapterLuid),
+        0,
+        || unsafe { D3DKMTQueryStatistics(&raw mut stats) }.0,
+    ) < 0
+    {
         return None;
     }
     let (nodes, segments) = unsafe {

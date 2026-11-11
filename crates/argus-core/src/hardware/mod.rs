@@ -14,10 +14,12 @@ mod nvml;
 mod query;
 mod registry;
 mod sensors;
+pub mod startup_probe;
 mod vendor_gpu;
 
 use std::sync::Arc;
 
+use crate::diagnostics::startup_phase;
 use serde::Serialize;
 
 pub use battery::{BatteryInfo, BatteryStats};
@@ -154,17 +156,17 @@ impl HardwareTracker {
         self.gpus.node_engine(luid, node)
     }
     pub fn new() -> Self {
-        let cpu = cpu::cpu_info();
+        let cpu = startup_phase("hardware.cpu-info", cpu::cpu_info);
         let mut t = Self {
-            sensors: sensors::Sensors::new(&cpu),
+            sensors: startup_phase("hardware.cpu-sensors", || sensors::Sensors::new(&cpu)),
             cpu: Arc::new(cpu),
-            memory: Arc::new(memory::memory_info()),
-            disks: disk::DiskTracker::new(),
+            memory: Arc::new(startup_phase("hardware.memory-info", memory::memory_info)),
+            disks: startup_phase("hardware.disks", disk::DiskTracker::new),
             nics: net::NicTracker::new(),
-            gpus: gpu::GpuTracker::new(),
-            batteries: battery::BatteryTracker::new(),
+            gpus: startup_phase("hardware.gpus", gpu::GpuTracker::new),
+            batteries: startup_phase("hardware.batteries", battery::BatteryTracker::new),
         };
-        t.sample(); // establish baselines for rates
+        startup_phase("hardware.prime", || t.sample()); // establish baselines for rates
         t
     }
 
@@ -190,10 +192,18 @@ impl HardwareTracker {
             power: sensed.power,
             cpu_sensors: None,
             memory: self.memory.clone(),
-            disks: crate::diagnostics::sample_phase("disks", || self.disks.sample()),
-            nics: crate::diagnostics::sample_phase("network", || self.nics.sample()),
-            gpus: crate::diagnostics::sample_phase("gpu", || self.gpus.sample()),
-            batteries: crate::diagnostics::sample_phase("battery", || self.batteries.sample()),
+            disks: crate::diagnostics::sample_phase("disks", || {
+                startup_phase("hardware.disk-sample", || self.disks.sample())
+            }),
+            nics: crate::diagnostics::sample_phase("network", || {
+                startup_phase("hardware.network-sample", || self.nics.sample())
+            }),
+            gpus: crate::diagnostics::sample_phase("gpu", || {
+                startup_phase("hardware.gpu-sample", || self.gpus.sample())
+            }),
+            batteries: crate::diagnostics::sample_phase("battery", || {
+                startup_phase("hardware.battery-sample", || self.batteries.sample())
+            }),
         };
         hardware.supplement_integrated_gpu();
         hardware

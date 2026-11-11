@@ -128,12 +128,14 @@ fn get_adapter(
         // the device if it does.
         let mut context: Option<ID3D11DeviceContext> = None;
         let mut feature_level = D3D_FEATURE_LEVEL::default();
+        log::info!(target: "argus_startup", "phase=graphics.device; instance={adapter_index}; begin");
         let result = get_device(
             &adapter,
             Some(&mut context),
             Some(&mut feature_level),
             debug_layer_available,
         );
+        log::info!(target: "argus_startup", "phase=graphics.device; instance={adapter_index}; end; success={}", result.is_ok());
         match result {
             Ok(device) => {
                 log::info!(

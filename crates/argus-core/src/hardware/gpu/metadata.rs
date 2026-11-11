@@ -71,8 +71,11 @@ pub(super) struct Metadata {
 impl Metadata {
     pub fn new() -> Self {
         Self {
-            drivers: drivers(),
-            factory: unsafe { CreateDXGIFactory1() }.ok(),
+            drivers: crate::diagnostics::startup_phase("gpu.metadata.pnp", drivers),
+            factory: crate::diagnostics::startup_phase("gpu.metadata.dxgi-factory", || unsafe {
+                CreateDXGIFactory1()
+            })
+            .ok(),
         }
     }
 
@@ -91,9 +94,14 @@ impl Metadata {
             D3D_FEATURE_LEVEL_11_1,
             D3D_FEATURE_LEVEL_11_0,
         ] {
-            if unsafe {
-                D3D12CreateDevice::<_, ID3D12Device>(&adapter, level, std::ptr::null_mut())
-            }
+            if crate::diagnostics::startup_query(
+                "gpu.metadata.d3d12",
+                luid_bits(luid),
+                level.0 as u32,
+                || unsafe {
+                    D3D12CreateDevice::<_, ID3D12Device>(&adapter, level, std::ptr::null_mut())
+                },
+            )
             .is_ok()
             {
                 return capability(12, level);
@@ -109,7 +117,7 @@ impl Metadata {
             D3D_FEATURE_LEVEL_9_1,
         ];
         let mut level = D3D_FEATURE_LEVEL::default();
-        unsafe {
+        crate::diagnostics::startup_query("gpu.metadata.d3d11", luid_bits(luid), 0, || unsafe {
             D3D11CreateDevice(
                 &adapter,
                 D3D_DRIVER_TYPE_UNKNOWN,
@@ -121,7 +129,7 @@ impl Metadata {
                 Some(&mut level),
                 None,
             )
-        }
+        })
         .ok()?;
         capability(11, level)
     }

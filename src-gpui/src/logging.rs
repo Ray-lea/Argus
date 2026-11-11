@@ -65,10 +65,13 @@ fn timestamp(now: OffsetDateTime) -> String {
 struct Logger {
     file: Mutex<File>,
     path: PathBuf,
+    startup_trace: bool,
 }
 impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.target().starts_with("argus") && metadata.level() <= log::Level::Info
+        metadata.target().starts_with("argus")
+            && metadata.level() <= log::Level::Info
+            && (metadata.target() != "argus_startup" || self.startup_trace)
     }
     fn log(&self, record: &log::Record) {
         if !self.enabled(record.metadata()) {
@@ -83,20 +86,31 @@ impl log::Log for Logger {
         // daylight-saving and time-zone changes without ambiguous local times.
         let offset = UtcOffset::local_offset_at(now).unwrap_or(UtcOffset::UTC);
         let now = timestamp(now.to_offset(offset));
-        let _ = writeln!(file, "{now} {} {}", record.level(), record.args());
-        let _ = file.flush();
+        let written = writeln!(file, "{now} {} {}", record.level(), record.args());
+        if self.startup_trace {
+            // A process flush alone leaves records in the Windows file cache.
+            // Stop before the next driver call if a diagnostic record fails.
+            if written.and_then(|_| file.sync_data()).is_err() {
+                drop(file);
+                eprintln!("Startup diagnostic log could not be persisted");
+                std::process::exit(74);
+            }
+        } else {
+            let _ = file.flush();
+        }
     }
     fn flush(&self) {
         let _ = self.file.lock().unwrap().flush();
     }
 }
-pub fn init(directory: PathBuf) -> anyhow::Result<()> {
+pub fn init(directory: PathBuf, startup_trace: bool) -> anyhow::Result<()> {
     std::fs::create_dir_all(&directory)?;
     let path = directory.join("argus.log");
     let (file, archive_error) = open_current_log(&path)?;
     log::set_boxed_logger(Box::new(Logger {
         file: Mutex::new(file),
         path: path.clone(),
+        startup_trace,
     }))?;
     log::set_max_level(log::LevelFilter::Info);
     if let Some(error) = archive_error {

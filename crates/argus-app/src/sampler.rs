@@ -143,6 +143,13 @@ fn cadence(
 }
 
 impl Sampler {
+    /// Fixtures supply snapshots in the frontend and need no native collectors
+    /// or privileged-service clients. Controls on this handle are discarded.
+    pub fn inactive() -> Self {
+        let (tx, _rx) = mpsc::channel();
+        Self { tx }
+    }
+
     /// Starts the sampling thread. The collector is built there, so its setup
     /// (PDH queries, adapter enumeration, a priming sample) overlaps the
     /// native window startup instead of delaying it.

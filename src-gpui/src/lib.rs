@@ -181,7 +181,10 @@ pub fn run() -> anyhow::Result<()> {
     catalog::register();
     let settings = SettingsStore::load(host.path().app_config_dir()?.join("settings.json"));
     catalog::set_locale(settings.get().language.resolve());
-    logging::init(host.path().app_log_dir()?.join("diagnostics"))?;
+    logging::init(
+        host.path().app_log_dir()?.join("diagnostics"),
+        std::env::args().any(|arg| arg == "--startup-trace"),
+    )?;
     log::info!(
         "Argus {} started; renderer=GPUI; hidden={}; isolated_test={}",
         env!("ARGUS_VERSION"),
@@ -199,25 +202,33 @@ pub fn run() -> anyhow::Result<()> {
             argus_core::privilege::enable_debug_privilege();
         }
     }
-    let meta = MetaStore::new();
+    let meta = argus_core::diagnostics::startup_phase("host.metadata", MetaStore::new);
     let rules = Arc::new(RuleRunner::spawn(elevated));
-    let sampler = Sampler::spawn(
-        {
-            let meta = meta.clone();
-            let test = options.test;
-            move || {
-                let mut collector = Collector::new(meta);
-                if !test {
-                    let owned = collector.enable_process_network(
-                        NETWORK_SESSION.get().expect("network identity initialized"),
-                    );
-                    NETWORK_OWNED.store(owned, Ordering::Release);
+    let sampler = if options.fixture.is_some() {
+        log::info!(target: "argus_startup", "phase=host.sampler; fixture=true; native_collection=false");
+        Sampler::inactive()
+    } else {
+        Sampler::spawn(
+            {
+                let meta = meta.clone();
+                let test = options.test;
+                move || {
+                    let mut collector =
+                        argus_core::diagnostics::startup_phase("collector.construct", || {
+                            Collector::new(meta)
+                        });
+                    if !test {
+                        let owned = collector.enable_process_network(
+                            NETWORK_SESSION.get().expect("network identity initialized"),
+                        );
+                        NETWORK_OWNED.store(owned, Ordering::Release);
+                    }
+                    collector
                 }
-                collector
-            }
-        },
-        rules.clone(),
-    );
+            },
+            rules.clone(),
+        )
+    };
     let task_manager_start =
         argus_service::taskmgr::ready::queue(&std::env::args().collect::<Vec<_>>());
     options.hidden |= task_manager_start;
@@ -293,7 +304,9 @@ pub fn run() -> anyhow::Result<()> {
             host.exit(0);
         });
     }
-    let output = frontend::run(host.clone(), options);
+    let output = argus_core::diagnostics::startup_phase("graphics.event-loop", || {
+        frontend::run(host.clone(), options)
+    });
     shell::shutdown(&host);
     instance::shutdown(&host);
     stop_network_session();

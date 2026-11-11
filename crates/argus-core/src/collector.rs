@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 
 use crate::app_windows;
-use crate::diagnostics::sample_phase;
+use crate::diagnostics::{sample_phase, startup_phase};
 use crate::gpu_process::{GpuEngineUsage, GpuProcessTracker};
 use crate::hardware::{Hardware, HardwareTracker};
 use crate::meta::MetaStore;
@@ -44,14 +44,16 @@ impl Collector {
     /// Creates a collector and takes a priming sample, so the first real
     /// snapshot already has meaningful rates.
     pub fn new(meta: Arc<MetaStore>) -> Self {
-        let system = SystemTracker::new();
-        let mut processes = ProcessTracker::new(meta);
-        processes.sample(system.logical_cpus(), system.precise_idle_fraction());
+        let system = startup_phase("collector.system", SystemTracker::new);
+        let mut processes = startup_phase("collector.processes", || ProcessTracker::new(meta));
+        startup_phase("collector.prime-processes", || {
+            processes.sample(system.logical_cpus(), system.precise_idle_fraction())
+        });
         Self {
             system,
             processes,
-            hardware: HardwareTracker::new(),
-            gpu_processes: GpuProcessTracker::new(),
+            hardware: startup_phase("collector.hardware", HardwareTracker::new),
+            gpu_processes: startup_phase("collector.gpu-pdh", GpuProcessTracker::new),
             network: None,
             engine_labels: HashMap::new(),
             engine_ids: HashMap::new(),

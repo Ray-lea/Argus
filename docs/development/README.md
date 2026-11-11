@@ -60,6 +60,8 @@ cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史
 
 `sampling_cadence` 每秒采样一次，参数为次数（1–300）。`--trace` 记录固定采集阶段的起止和耗时；输出仅包含时间、序号与计数。可据此区分原生查询延迟和界面刷新问题。原生查询与快照采集可能在不同线程完成，阶段记录按名称配对。
 
+独立启动诊断工具复用宿主的静态 VC 运行库配置。先执行 `cargo build -p argus-service --bins --release` 准备宿主发行构建所需的辅助程序，再执行 `cargo build -p argus --example startup_diagnostics --release`。运行时必须指定 `--stage collector|gpu-windows|nvml --output <新的日志文件>`，每次只执行一个分支：`collector` 创建完整采集器并取一次快照；`gpu-windows` 使用 Windows GPU 查询，不加载 NVML／ADL／IGCL；`nvml` 仅初始化 NVIDIA SDK 并执行其既有读取。工具不创建界面、不请求特权服务或启用网络 ETW。阶段记录同步落盘，输出文件已存在时拒绝覆盖；缺少参数时不执行采集。界面侧的独立图形对照见 [GPUI 开发](gpui.md) 的 `--fixture` 与 `--startup-trace`。
+
 `node scripts/test-process-roster.mjs <标签> target/debug/argus.exe` 启动隔离、不激活的开发测试窗口，并延迟完整计数回复。它仅创建和结束自身的空闲 Node 子进程，检查名单及时增删、计数补齐后保留选择、迟到回复不恢复已退出进程，以及系统曲线继续更新。测试延迟入口只在开发构建的 `--test` 实例中暴露；窗口捕获和结果位于 `target/native-validation/<标签>`，结束时清理测试配置。
 
 `process_sources` 对照完整 `SystemProcessInformation` 快照、仅枚举身份的 `SystemBasicProcessInformation`、轻量名单加缓存句柄逐进程计数三条路径。脚本按正序、逆序各运行一轮，每段排除三次预热，并记录墙钟耗时、线程及进程 CPU 时间、权限覆盖率、内存和句柄开销；超时仅终止自身启动的采集程序。结果位于 `target/process-source-validation/<标签>/report.html` 与同目录 JSONL，追加 `--report-only` 可从已有记录重建报告。工具要求普通权限，只修改自身的功耗限制，不改变系统配置或访问特权服务。

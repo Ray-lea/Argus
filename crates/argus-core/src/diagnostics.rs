@@ -7,6 +7,9 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+mod startup;
+pub use startup::{startup_native, startup_phase, startup_query};
+
 /// Numeric failures must be recorded before they become localized UI text.
 pub fn code(value: u32) -> String {
     let name = match value {

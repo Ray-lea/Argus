@@ -4,6 +4,7 @@
 //! System32 only, never from the application or working directory; without an
 //! NVIDIA driver it is simply absent. NVML needs no administrator rights.
 
+use crate::diagnostics::{startup_native, startup_phase};
 use std::ffi::c_void;
 
 use windows::Win32::System::LibraryLoader::{
@@ -57,8 +58,11 @@ unsafe fn export<F: Copy>(module: windows::Win32::Foundation::HMODULE, name: PCS
 
 impl Nvml {
     pub fn load() -> Option<Self> {
-        let module =
-            unsafe { LoadLibraryExW(w!("nvml.dll"), None, LOAD_LIBRARY_SEARCH_SYSTEM32) }.ok()?;
+        let library = startup_phase("nvml.load-library", || unsafe {
+            LoadLibraryExW(w!("nvml.dll"), None, LOAD_LIBRARY_SEARCH_SYSTEM32)
+        });
+        log::info!(target: "argus_startup", "phase=nvml.library-result; status=0x{:08X}", library.as_ref().err().map_or(0, |error| error.code().0 as u32));
+        let module = library.ok()?;
         unsafe {
             let init: unsafe extern "C" fn() -> Return = export(module, s!("nvmlInit_v2"))?;
             let count: unsafe extern "C" fn(*mut u32) -> Return =
@@ -71,19 +75,23 @@ impl Nvml {
             let power_limit: Query = export(module, s!("nvmlDeviceGetEnforcedPowerLimit"))?;
             let utilization = export(module, s!("nvmlDeviceGetUtilizationRates"));
             // Initialized for the rest of the process; NVML is never shut down.
-            if init() != SUCCESS {
+            if startup_native("nvml.init", 0, 0, || init()) != SUCCESS {
                 return None;
             }
             let mut n = 0;
-            if count(&mut n) != SUCCESS || n > 64 {
+            if startup_native("nvml.device-count", 0, 0, || count(&mut n)) != SUCCESS || n > 64 {
                 return None;
             }
             let devices = (0..n)
                 .filter_map(|i| {
                     let mut device = std::ptr::null_mut();
                     let mut pci = PciInfo::default();
-                    if by_index(i, &mut device) != SUCCESS
-                        || pci_info(device, &mut pci) != SUCCESS
+                    if startup_native("nvml.device-handle", u64::from(i), 0, || {
+                        by_index(i, &mut device)
+                    }) != SUCCESS
+                        || startup_native("nvml.pci-info", u64::from(i), 0, || {
+                            pci_info(device, &mut pci)
+                        }) != SUCCESS
                         || pci.domain != 0
                     {
                         return None;
@@ -109,6 +117,15 @@ impl Nvml {
         }
     }
 
+    pub(super) fn probe_once() -> Option<usize> {
+        let nvml = Self::load()?;
+        for &(bus, device, function, _) in &nvml.devices {
+            nvml.power(bus, device, function);
+            nvml.utilization(bus, device, function);
+        }
+        Some(nvml.devices.len())
+    }
+
     /// Driver GPU-core activity, including CUDA workloads missing from WDDM nodes.
     /// Zero is valid; unsupported or invalid readings remain absent.
     pub fn utilization(&self, bus: u32, device: u32, function: u32) -> Option<f32> {
@@ -118,7 +135,13 @@ impl Nvml {
             .iter()
             .find(|&&(b, d, f, _)| (b, d, f) == (bus, device, function))?;
         let mut value = Utilization::default();
-        (unsafe { query(handle, &mut value) } == SUCCESS && value.gpu <= 100)
+        (startup_native(
+            "nvml.utilization",
+            pci_key(bus, device, function),
+            0,
+            || unsafe { query(handle, &mut value) },
+        ) == SUCCESS
+            && value.gpu <= 100)
             .then_some(value.gpu as f32)
     }
 
@@ -131,15 +154,24 @@ impl Nvml {
         else {
             return (None, None);
         };
-        let read = |query: Query, allow_zero: bool| {
+        let read = |phase: &'static str, query: Query, allow_zero: bool| {
             let mut milliwatts = 0;
-            (unsafe { query(handle, &mut milliwatts) } == SUCCESS
+            (startup_native(phase, pci_key(bus, device, function), 0, || unsafe {
+                query(handle, &mut milliwatts)
+            }) == SUCCESS
                 && (allow_zero || milliwatts > 0)
                 && milliwatts <= 2_000_000)
                 .then(|| milliwatts as f32 / 1000.0)
         };
-        (read(self.power_usage, true), read(self.power_limit, false))
+        (
+            read("nvml.power", self.power_usage, true),
+            read("nvml.power-limit", self.power_limit, false),
+        )
     }
+}
+
+fn pci_key(bus: u32, device: u32, function: u32) -> u64 {
+    (u64::from(bus) << 32) | (u64::from(device) << 8) | u64::from(function)
 }
 
 #[cfg(test)]

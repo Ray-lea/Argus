@@ -49,6 +49,14 @@ pub(super) struct VendorGpu {
 }
 
 impl VendorGpu {
+    pub fn inactive() -> Self {
+        let (tx, _rx) = mpsc::sync_channel(1);
+        Self {
+            tx,
+            cache: Arc::default(),
+        }
+    }
+
     pub fn spawn() -> Self {
         let (tx, rx) = mpsc::sync_channel(1);
         let cache: Cache = Arc::default();
@@ -56,8 +64,8 @@ impl VendorGpu {
         let _ = std::thread::Builder::new()
             .name("argus-gpu-sensors".into())
             .spawn(move || {
-                let mut amd = adl::Adl::load();
-                let mut intel = igcl::Igcl::load();
+                let mut amd = crate::diagnostics::startup_phase("vendor.adl", adl::Adl::load);
+                let mut intel = crate::diagnostics::startup_phase("vendor.igcl", igcl::Igcl::load);
                 let mut last: Option<Instant> = None;
                 while rx.recv().is_ok() {
                     if last.is_some_and(|at| at.elapsed() < Duration::from_millis(500)) {
