@@ -36,7 +36,8 @@ writeFileSync(
     language: "zh-CN",
     theme: "dark",
     onboarding: 1,
-    closeToTray: false,
+    // A hidden phase presses the close button, as leaving for the tray does.
+    closeToTray: true,
     history: recordHistory,
     minimizedInterval: backgroundInterval,
     trayInterval: backgroundInterval,
@@ -76,7 +77,7 @@ const phases = scenario ? JSON.parse(readFileSync(resolve(scenario), "utf8")) : 
   "processes:fluid,processes:off,performance:fluid,logical:fluid,settings:off,hidden:off",
 ).split(",").map((phase) => {
   const [page, motion] = phase.split(":");
-  return { name: `${page}-${motion}`, hidden: page === "hidden", state: {
+  return { name: `${page}-${motion}`, hidden: page === "hidden", minimized: page === "minimized", state: {
     page: page === "logical" ? "performance" : page,
     cpuMode: page === "logical" ? "logical" : "overall", motion,
   }};
@@ -260,11 +261,15 @@ try {
     await sleep(150);
   }
   for (const [index, phase] of phases.entries()) {
-    if (phase.hidden) send("hide");
-    else {
-      if (index > 0 && phases[index - 1].hidden) send("show");
-      app(phase.state);
+    // Consecutive phases in the tray or on the taskbar stay there, to
+    // measure before and after the hidden window gives its memory back.
+    const placement = (phase) => (phase?.hidden ? "close" : phase?.minimized ? "minimize" : "show");
+    const [previous, next] = [placement(phases[index - 1]), placement(phase)];
+    if (previous !== next) {
+      if (previous !== "show") send("show");
+      if (next !== "show") send(next);
     }
+    if (next === "show") app(phase.state);
     const tag = `${index}-${phase.name}`;
     app({ pointerOutside: true, inspectLayout: `${tag}-begin` });
     // Inspection invalidates the test UI. Let it settle before the timing mark.
@@ -308,7 +313,7 @@ try {
     result.summaries.push(summary);
     writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(summary));
-    if (!phase.hidden && process.argv.includes("--capture")) {
+    if (next === "show" && process.argv.includes("--capture")) {
       const shot = spawnSync(probe, ["capture", String(shown.pid), resolve(output, `${tag}.png`)], {
         windowsHide: true,
         encoding: "utf8",

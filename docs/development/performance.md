@@ -18,13 +18,13 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 ## 构建与运行
 
-`node scripts/perf-native.mjs <标签> <EXE路径>` 预热 25 秒后依次测量进程页、CPU 总览、多核、静态设置页和隐藏状态；`--seconds` 设置每段时长，`--phases` 可指定页面与曲线模式。CPU 汇总所属 Job 中的进程，GPU 按物理适配器与引擎合并所属进程的运行时间，DWM 单独记录。内存同时记录私有提交量与工作集。实际呈现间隔由窗口捕获提供。
+`node scripts/perf-native.mjs <标签> <EXE路径>` 预热 25 秒后依次测量进程页、CPU 总览、多核、静态设置页和隐藏状态；`--seconds` 设置每段时长，`--phases` 可指定页面与曲线模式。隐藏状态由探针的 `close` 命令经关闭按钮进入托盘，包含窗口淡出，与实际使用的路径一致；`--phases` 中的 `minimized` 测量最小化状态。CPU 汇总所属 Job 中的进程，GPU 按物理适配器与引擎合并所属进程的运行时间，DWM 单独记录。内存同时记录私有提交量与工作集。实际呈现间隔由窗口捕获提供。
 
 `--probe` 可指定探针路径。在相同窗口尺寸与曲线模式下交替测量前后构建；单独安排截图和构建，核对各轮的实际帧率。
 
 `--width`、`--height` 设置客户区物理尺寸，`--ui-scale` 设置应用缩放百分比（80–150，默认 100）；有效比例还包含 Windows DPI。物理尺寸换算允许小于 0.01 像素的浮点舍入误差。`--no-capture` 关闭持续窗口捕获，用于对照捕获引起的合成路径与 GPU 频率变化；该模式的帧率和帧间隔字段为 `null`，资源计数仍正常记录。捕获与无捕获结果分别报告。
 
-探针默认路径为 `target/release/argus-window-probe.exe`，先用 `cargo build --release -p argus-window-probe --features capture` 构建。`--scenario <JSON路径>` 读取阶段数组：每项包含 `name`、测试控制对象 `state`，可用 `seconds` 覆盖该阶段时长，可用 `hidden: true` 测量后台，或用 `repeat` 数组在计时期间重复操作。重复操作可包含 `app` 测试控制、`probe` 探针命令与 `waitMs` 等待时间，用于滚动、切页和缩放；不得发送激活窗口的操作。结果保留完整场景。`--fixture <JSON路径>` 可指定固定快照，结果记录数据文件摘要；测量连续曲线时，固定快照也需显式推进采样或动画时间；静态画面单独作为静态场景测量。测量与界面检查脚本确认探针退出后清理该标识的数据目录。
+探针默认路径为 `target/release/argus-window-probe.exe`，先用 `cargo build --release -p argus-window-probe --features capture` 构建。`--scenario <JSON路径>` 读取阶段数组：每项包含 `name`、测试控制对象 `state`，可用 `seconds` 覆盖该阶段时长，可用 `hidden: true` 测量托盘、`minimized: true` 测量最小化（相邻的同类阶段保持该状态，便于对照归还内存前后），或用 `repeat` 数组在计时期间重复操作。重复操作可包含 `app` 测试控制、`probe` 探针命令与 `waitMs` 等待时间，用于滚动、切页和缩放；不得发送激活窗口的操作。结果保留完整场景。`--fixture <JSON路径>` 可指定固定快照，结果记录数据文件摘要；测量连续曲线时，固定快照也需显式推进采样或动画时间；静态画面单独作为静态场景测量。测量与界面检查脚本确认探针退出后清理该标识的数据目录。
 
 窗口探针可为独立测试窗口设置大于当前桌面的客户区，用于复查高分辨率布局和缓存开销。记录实际客户区尺寸、缩放和显示器刷新率，实体屏观察使用对应分辨率的测试机。
 

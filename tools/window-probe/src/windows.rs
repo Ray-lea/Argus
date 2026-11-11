@@ -1333,7 +1333,31 @@ pub fn run(args: &[String]) -> Result<()> {
                 if command == "hide" {
                     let _ = ShowWindow(search.hwnd, SW_HIDE);
                 }
+                // The close button: the application hides to the tray when
+                // its settings say so, and exits otherwise.
+                if command == "close" {
+                    let _ = PostMessageW(
+                        Some(search.hwnd),
+                        WM_CLOSE,
+                        Default::default(),
+                        Default::default(),
+                    );
+                }
+                // To the taskbar, without activating the next window as
+                // SW_MINIMIZE would.
+                if command == "minimize" {
+                    let _ = ShowWindow(search.hwnd, SW_SHOWMINNOACTIVE);
+                }
                 if command == "show" {
+                    // The request, on the capture clock, to time the first frame back.
+                    println!(
+                        "{}",
+                        serde_json::json!({"event":"restoring","qpc100ns":qpc_time_100ns()?})
+                    );
+                    io::stdout().flush()?;
+                    if IsIconic(search.hwnd).as_bool() {
+                        let _ = ShowWindow(search.hwnd, SW_SHOWNOACTIVATE);
+                    }
                     SetWindowPos(
                         search.hwnd,
                         Some(HWND_BOTTOM),
