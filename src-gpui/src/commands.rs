@@ -341,7 +341,7 @@ pub fn set_language(
     app.state::<SettingsStore>()
         .update(|s| s.language = language)
         .map_err(|e| e.to_string())?;
-    argus_core::i18n::set_locale(language.resolve());
+    crate::catalog::set_locale(language.resolve());
     shell::apply_language(&app);
     Ok(settings_view(&app))
 }

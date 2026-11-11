@@ -594,7 +594,7 @@ impl Desktop {
                                                 d.child(
                                                     self.text_field(
                                                         input,
-                                                        Input::new(input)
+                                                        widgets::input(input)
                                                             .font_family(theme::MONO_FONT)
                                                             .readonly(pending),
                                                         Field::Bare,

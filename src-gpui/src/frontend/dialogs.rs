@@ -1423,7 +1423,7 @@ impl Desktop {
                         .when_some(self.forms.get("value"), |d, input| {
                             d.child(self.text_field(
                                 input,
-                                Input::new(input),
+                                widgets::input(input),
                                 Field::Boxed,
                                 label("common.marks.placeholder").into(),
                                 true,

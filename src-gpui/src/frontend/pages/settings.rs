@@ -2122,7 +2122,7 @@ impl Desktop {
                             .flex()
                             .items_center()
                             .child(
-                                Input::new(&input)
+                                widgets::input(&input)
                                     .appearance(false)
                                     .px_0()
                                     .py_0()
@@ -2556,7 +2556,7 @@ impl Desktop {
             .gap(px(8.))
             .child(div().w(px(220.)).child(self.text_field(
                 &input,
-                Input::new(&input),
+                widgets::input(&input),
                 Field::Boxed,
                 label("settings.rules.placeholder").into(),
                 true,
@@ -3086,7 +3086,7 @@ impl Desktop {
                     .gap(px(8.))
                     .child(div().w(px(220.)).child(self.text_field(
                         &input,
-                        Input::new(&input),
+                        widgets::input(&input),
                         Field::Boxed,
                         label("settings.update.custom.label").into(),
                         true,

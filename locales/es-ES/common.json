@@ -38,6 +38,12 @@
   "keys": {
     "space": "Espacio"
   },
+  "edit": {
+    "cut": "Cortar",
+    "copy": "Copiar",
+    "paste": "Pegar",
+    "selectAll": "Seleccionar todo"
+  },
   "marks": {
     "pin": "Anclar arriba",
     "unpin": "Desanclar",

@@ -180,7 +180,7 @@ pub fn run() -> anyhow::Result<()> {
     };
     catalog::register();
     let settings = SettingsStore::load(host.path().app_config_dir()?.join("settings.json"));
-    argus_core::i18n::set_locale(settings.get().language.resolve());
+    catalog::set_locale(settings.get().language.resolve());
     logging::init(host.path().app_log_dir()?.join("diagnostics"))?;
     log::info!(
         "Argus {} started; renderer=GPUI; hidden={}; isolated_test={}",

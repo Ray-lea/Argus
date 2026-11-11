@@ -444,6 +444,32 @@ pub(in crate::frontend) fn placeholder(
         .child(text)
 }
 
+/// The input element of every text box, with its context menu in the
+/// interface's language. The library's own menu reads a catalog that lacks
+/// most of these languages, so the items are built here, under the same rules:
+/// Cut and Copy need a selection, Cut and Paste a box that can change.
+pub(in crate::frontend) fn input(state: &Entity<InputState>) -> Input {
+    use gpui_kit::component::input::{Copy, Cut, Paste, SelectAll};
+    let source = state.downgrade();
+    Input::new(state).context_menu(move |menu, _, cx| {
+        let Some(source) = source.upgrade() else {
+            return menu;
+        };
+        let capabilities = source.read(cx).context_menu_capabilities();
+        let editable = !capabilities.is_disabled() && !capabilities.is_readonly();
+        let copyable = capabilities.is_copyable();
+        menu.menu_with_disabled(
+            label("common.edit.cut"),
+            !(editable && copyable),
+            Box::new(Cut),
+        )
+        .menu_with_disabled(label("common.edit.copy"), !copyable, Box::new(Copy))
+        .menu_with_disabled(label("common.edit.paste"), !editable, Box::new(Paste))
+        .separator()
+        .menu(label("common.edit.selectAll"), Box::new(SelectAll))
+    })
+}
+
 /// Tooltip text size: the system's tooltip font, 9 pt at 96 dpi.
 /// It follows the font size setting
 /// like the rest of the interface's text.
@@ -758,9 +784,10 @@ impl Desktop {
     }
 
     /// A single-line text box drawn as the interface's (`field`), around
-    /// `input` (built by the caller from `state`, with its own font or
-    /// read-only state). `enabled` is false while the box is disabled: the
-    /// appearance stays unchanged except for the focus ring.
+    /// `input` (built by the caller from `state` with the [`input`] function,
+    /// with its own font or read-only state). `enabled` is false while the
+    /// box is disabled: the appearance stays unchanged except for the focus
+    /// ring.
     #[allow(clippy::too_many_arguments)]
     pub(in crate::frontend) fn text_field(
         &self,

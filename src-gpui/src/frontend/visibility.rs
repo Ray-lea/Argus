@@ -264,7 +264,7 @@ impl Desktop {
                         .child(label(label_key))
                         .child(self.text_field(
                             input,
-                            Input::new(input),
+                            widgets::input(input),
                             Field::Boxed,
                             label(label_key).into(),
                             true,

@@ -38,6 +38,12 @@
   "keys": {
     "space": "空格鍵"
   },
+  "edit": {
+    "cut": "剪下",
+    "copy": "複製",
+    "paste": "貼上",
+    "selectAll": "全選"
+  },
   "marks": {
     "pin": "釘選",
     "unpin": "取消釘選",

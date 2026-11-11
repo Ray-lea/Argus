@@ -38,6 +38,12 @@
   "keys": {
     "space": "スペース"
   },
+  "edit": {
+    "cut": "切り取り",
+    "copy": "コピー",
+    "paste": "貼り付け",
+    "selectAll": "すべて選択"
+  },
   "marks": {
     "pin": "先頭に固定",
     "unpin": "固定を解除",

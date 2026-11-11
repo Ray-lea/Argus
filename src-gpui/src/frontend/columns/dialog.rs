@@ -978,7 +978,7 @@ impl Desktop {
         let search = self.forms.get("columnsSearch").map(|input| {
             self.text_field(
                 input,
-                Input::new(input).cleanable(true),
+                widgets::input(input).cleanable(true),
                 Field::Boxed,
                 label("processes.columns.search").into(),
                 true,

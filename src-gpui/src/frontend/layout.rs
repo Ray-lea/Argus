@@ -806,7 +806,7 @@ impl Desktop {
                         ))
                     })
                     .child(
-                        Input::new(&self.search)
+                        widgets::input(&self.search)
                             .appearance(false)
                             .cleanable(true)
                             .h_full()

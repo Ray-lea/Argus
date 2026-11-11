@@ -3,6 +3,7 @@
 沿用仓库根目录的权限、测试隔离、日志和提交规则。前端仅使用 GPUI 与应用数据，窗口和操作系统集成放在 platform 及宿主模块。
 
 - UI 文案用 locales，主题与应用元数据用 resources；硬件信息必须来自实际快照，缺失数据保持未知。
+- 文本框的输入元素用 `widgets::input` 构造，不直接写 `Input::new`：组件库自带的右键菜单取自它自己的文案目录（`gpui-component` 的 `locales/ui.yml`，仅英文、简繁中文和意大利文），`widgets::input` 换成 `common.edit` 的文案。用到其他带内置文字的组件（对话框默认按钮、选择框占位符等）时显式传入 locales 的文案。该菜单是系统原生弹出菜单，显示前会调用 `SetForegroundWindow`，只在独立桌面上触发，用 `MN_GETHMENU` 读取菜单项核对。
 - 菜单、下拉列表、悬浮提示与通知使用背景和边框区分，显式关闭组件库默认投影；对话框保留遮罩与投影。RTX 4080 SUPER、4K、150% 缩放、HDR 关闭时曾出现随截图工具启动而消失的亮色光晕；重构与组件升级时需保留此处理。
 - 测试只启动自身的 --hidden --test --identifier 实例，通过窗口探针不激活显示和捕获，禁止调用会抢占用户桌面的激活路径。窗口无需激活即可接收合成按键：`keys` 与单击、拖动类指针控制只在模拟快照（`--fixture`）下生效，那里不执行结束进程等真实命令；实时数据下只能悬停和检查。菜单的键盘路径用 `inspectMenu` 核对。
 - 测试模块不要写 `use super::*`：GPUI 的 `test` 属性会遮蔽标准的 `#[test]`，报错为 “recursion limit reached while expanding `#[test]`”，改为逐项导入。glob 导入链下 `Duration` 有歧义，写 `std::time::Duration`。

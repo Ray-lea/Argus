@@ -38,6 +38,12 @@
   "keys": {
     "space": "空格"
   },
+  "edit": {
+    "cut": "剪切",
+    "copy": "复制",
+    "paste": "粘贴",
+    "selectAll": "全选"
+  },
   "marks": {
     "pin": "置顶",
     "unpin": "取消置顶",
