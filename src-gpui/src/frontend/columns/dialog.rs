@@ -92,7 +92,10 @@ impl Desktop {
             ] {
                 let disabled = searching
                     || if expand {
-                        !self.rows.iter().any(|row| row.expandable && !row.expanded)
+                        !self
+                            .rows
+                            .iter()
+                            .any(|row| row.section.is_none() && row.expandable && !row.expanded)
                     } else {
                         self.tree_expanded.is_empty()
                     };

@@ -30,6 +30,7 @@ pub mod privilege;
 pub mod process;
 pub mod rules;
 pub mod services;
+pub mod sessions;
 pub mod startup;
 pub mod system;
 pub mod theme;

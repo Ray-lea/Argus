@@ -25,6 +25,13 @@
     "title": "Systemprozesse ausblenden",
     "desc": "Legen Sie fest, welche Programme immer sichtbar bleiben und welche zusätzlich ausgeblendet werden. Prozesse und Verbindungen teilen diese Regeln; das Ausblenden wird über das Symbol in der Symbolleiste aktiviert."
   },
+  "userGroups": {
+    "title": "Prozesse nach Benutzer gruppieren",
+    "desc": "Gruppiert die Prozessliste nach angemeldeten Benutzern; Ansichten, Kategorien, Sortierung und Suche funktionieren innerhalb jeder Gruppe unverändert. Der automatische Modus gruppiert nur, solange mehrere Benutzer angemeldet sind, getrennte Sitzungen eingeschlossen. Sitzungen ohne Benutzer, etwa die der Systemdienste, erscheinen unter „System“.",
+    "auto": "Automatisch",
+    "on": "Immer gruppieren",
+    "off": "Nie gruppieren"
+  },
   "language": {
     "title": "Anzeigesprache",
     "desc": "Gilt sofort, auch für das Menü im Infobereich und Meldungen. „Wie Windows“ übernimmt die Windows-Anzeigesprache.",

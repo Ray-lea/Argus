@@ -368,6 +368,51 @@ impl NativeTable {
                     });
                 })
         };
+        // Rows of a user's group stand in from its heading.
+        let inset = if row.nested { USER_INSET } else { 0. };
+        if let Some(user) = row.user {
+            let locked = self
+                .owner
+                .upgrade()
+                .is_some_and(|owner| !owner.read(cx).query.trim().is_empty());
+            return element
+                .pl(px(6.))
+                .gap_2()
+                .child(div().when(locked, |d| d.opacity(0.4)).child(fold(
+                    row.expanded,
+                    row.key.clone(),
+                    owner,
+                )))
+                .child(
+                    icon(
+                        if user.system {
+                            "ComputerIcon"
+                        } else {
+                            "UserIcon"
+                        },
+                        p.muted,
+                    )
+                    .flex_shrink_0(),
+                )
+                .child(
+                    div()
+                        .flex_shrink(1.)
+                        .min_w_0()
+                        .truncate()
+                        .text_size(theme::font(14.))
+                        .font_weight(theme::LABEL_WEIGHT)
+                        .text_color(p.ink)
+                        .child(row.title.clone()),
+                )
+                // How many processes, and whether the user is disconnected.
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_size(theme::font(12.))
+                        .text_color(p.faint)
+                        .child(row.detail.clone()),
+                );
+        }
         if let Some(section) = &row.section {
             let locked = self
                 .owner
@@ -375,7 +420,7 @@ impl NativeTable {
                 .is_some_and(|owner| !owner.read(cx).query.trim().is_empty());
             let _ = section;
             return element
-                .pl(px(6.))
+                .pl(px(6. + inset))
                 .gap_2()
                 .child(div().when(locked, |d| d.opacity(0.4)).child(fold(
                     row.expanded,
@@ -418,7 +463,7 @@ impl NativeTable {
         let processes = self.page == "processes";
         let mut element = element.gap_2();
         if processes {
-            element = element.pl(px(6. + row.depth as f32 * 20.));
+            element = element.pl(px(6. + inset + row.depth as f32 * 20.));
             element = if row.expandable {
                 element.child(
                     div()

@@ -197,6 +197,10 @@
     "background": "背景處理程序",
     "windows": "Windows 處理程序"
   },
+  "user": {
+    "system": "系統",
+    "disconnected": "已中斷連線"
+  },
   "sectionSearching": "搜尋時顯示全部相符項目，清除搜尋後可收合",
   "servicesSummary": "{names} 等 {count} 個服務",
   "pidExited": "PID {pid} 已經結束。",

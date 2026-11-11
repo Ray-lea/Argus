@@ -222,6 +222,10 @@
     "background": "Processus en arrière-plan",
     "windows": "Processus Windows"
   },
+  "user": {
+    "system": "Système",
+    "disconnected": "Déconnecté"
+  },
   "sectionSearching": "Lors de la recherche, chaque correspondance s’affiche ; effacer la recherche pour réduire les groupes",
   "servicesSummary": "{names} et autres ({count} services)",
   "pidExited": "PID {pid} est déjà fermé.",

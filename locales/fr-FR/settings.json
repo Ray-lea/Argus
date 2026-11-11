@@ -25,6 +25,13 @@
     "title": "Masquage des processus système",
     "desc": "Choisissez les programmes à toujours afficher et ceux à masquer en plus des processus système. Processus et Connexions partagent ces règles ; activez le masquage avec l’icône de la barre d’outils."
   },
+  "userGroups": {
+    "title": "Grouper les processus par utilisateur",
+    "desc": "Regroupe la liste des processus par utilisateur connecté ; les vues, les catégories, le tri et la recherche fonctionnent de la même façon dans chaque groupe. Le mode automatique ne regroupe que lorsque plusieurs utilisateurs sont connectés, sessions déconnectées comprises. Les sessions sans utilisateur, comme celle des services système, figurent sous « Système ».",
+    "auto": "Automatique",
+    "on": "Toujours grouper",
+    "off": "Ne jamais grouper"
+  },
   "language": {
     "title": "Langue d’affichage",
     "desc": "S’applique immédiatement, y compris aux menus de la zone de notification et aux messages. « Comme Windows » suit la langue d’affichage de Windows.",

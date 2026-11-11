@@ -493,6 +493,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             processes: vec![],
+            sessions: Vec::new(),
             process_network: false,
         };
         client.enrich(&mut snapshot, true, Duration::from_secs(1));
@@ -605,6 +606,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             processes: vec![],
+            sessions: Vec::new(),
             process_network: false,
         };
         snapshot.hardware.power.package = Some(99.0);
@@ -645,6 +647,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             processes: vec![],
+            sessions: Vec::new(),
             process_network: false,
         };
         client.enrich(&mut snapshot, false, Duration::from_secs(1));

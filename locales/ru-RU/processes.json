@@ -224,6 +224,10 @@
     "background": "Фоновые процессы",
     "windows": "Процессы Windows"
   },
+  "user": {
+    "system": "Система",
+    "disconnected": "Отключён"
+  },
   "sectionSearching": "При поиске отображается каждое совпадение; очистите поиск, чтобы свернуть группы",
   "servicesSummary": "{names} и другие (служб: {count})",
   "pidExited": "Процесс с PID {pid} уже завершился.",

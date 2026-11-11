@@ -53,10 +53,13 @@ cargo run -p argus-core --example gpu_processes --release   # 每进程 GPU 占�
 cargo run -p argus-core --example gpu_diagnostics --release -- <PID> 10  # 连续对照该进程的 GPU 引擎、整体计时与 NVML
 cargo run -p argus-core --example gpu_compute --release     # NVIDIA Turing 及以上：有界 CUDA 测试负载
 cargo run -p argus-core --example app_windows --release     # 归入“应用”的进程（拥有任务栏窗口）与查找耗时
+cargo run -p argus-core --example sessions --release        # 有用户登录的会话、各会话的进程数与枚举耗时
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 ```
 
 `disk_details` 使用普通权限，按指定物理磁盘编号读取一次后退出，输出 JSON、各查询状态及耗时。默认遮盖序列号；明确需要核对设备身份时可追加 `--include-serial`。`--extended` 在当前进程权限下执行服务使用的固定 ATA／SAT／SCSI 只读查询，权限不足时返回相应状态。此示例独立于应用与常驻采样，不修改设备配置。
+
+`sessions` 默认以字母代替账户名，输出可直接附在报告中；追加 `--names` 显示“域\账户名”。
 
 `sampling_cadence` 每秒采样一次，参数为次数（1–300）。`--trace` 记录固定采集阶段的起止和耗时；输出仅包含时间、序号与计数。可据此区分原生查询延迟和界面刷新问题。原生查询与快照采集可能在不同线程完成，阶段记录按名称配对。
 

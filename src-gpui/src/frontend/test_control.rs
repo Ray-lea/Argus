@@ -486,10 +486,13 @@ impl Desktop {
                 "vitals":self.vitals_band_state(),
                 "visibility":{"enabled":self.prefs.get::<bool>(visibility::preference(&self.page),false),
                     "pids":self.rows.iter().filter(|row|row.section.is_none()).flat_map(|row| if row.members.is_empty(){std::slice::from_ref(&row.raw)}else{row.members.as_slice()}).filter_map(|p|p["pid"].as_u64()).collect::<std::collections::BTreeSet<_>>()},
-                "processTree":{"view":self.view,"visibleRows":self.rows.len(),"visibleChildren":self.rows.iter().filter(|row|row.depth > 0).count(),"expandedParents":self.rows.iter().filter(|row|row.expandable && row.expanded).count(),"searching":!self.query.trim().is_empty()},
+                "processTree":{"view":self.view,"visibleRows":self.rows.len(),"visibleChildren":self.rows.iter().filter(|row|row.depth > 0).count(),"expandedParents":self.rows.iter().filter(|row|row.section.is_none() && row.expandable && row.expanded).count(),"searching":!self.query.trim().is_empty()},
                 "animations":{"ui":!cx.reduce_motion(),"window":crate::window_motion::enabled(),"charts":format!("{:?}",self.chart_clock.borrow().mode)},
                 "cpuTemperatureHistory":{"recentSamples":temperature.len().min(60),"recentMissing":temperature.iter().rev().take(60).filter(|(_,value)|value.is_none()).count(),"last":temperature.last().and_then(|(_,value)|*value)},
                 "systemBackdrop":crate::platform::supports_backdrop(),"backgroundAlpha":theme::Palette::current(cx).background.a,
+                "userGroups":{"mode":self.user_grouping().key(),"grouped":self.user_groups().is_some(),
+                    "users":model::UserGroups::new(values(&self.snapshot["sessions"])).users(),
+                    "headings":self.rows.iter().filter(|row|row.user.is_some()).map(|row|json!({"key":row.key,"title":row.title,"count":row.raw["entryCount"],"expanded":row.expanded})).collect::<Vec<_>>()},
                 "dialog":self.dialog_test_state(),
                 "star":self.star_test_state(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
@@ -739,7 +742,7 @@ impl Desktop {
                     } else {
                         json!(row.members.len())
                     };
-                    json!({"key":row.key,"title":row.title,"detail":row.detail,"depth":row.depth,"count":count,"section":row.section,"gpu":row.metric("gpu")})
+                    json!({"key":row.key,"title":row.title,"detail":row.detail,"depth":row.depth,"count":count,"section":row.section,"nested":row.nested,"cpu":row.metric("cpu"),"gpu":row.metric("gpu")})
                 })
                 .collect();
             println!(

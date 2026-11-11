@@ -25,6 +25,13 @@
     "title": "System process hiding rules",
     "desc": "Customize programs to always show or also hide. Processes and Connections share these rules; use the toolbar icon to enable hiding."
   },
+  "userGroups": {
+    "title": "Group processes by user",
+    "desc": "Groups the process list by signed-in user; views, categories, sorting, and search work the same within each group. Automatic mode groups only while more than one user is signed in, including disconnected sessions. Sessions without a user, such as the one running system services, are listed under System.",
+    "auto": "Automatic",
+    "on": "Always group",
+    "off": "Never group"
+  },
   "language": {
     "title": "Display language",
     "desc": "Takes effect at once, including the tray menu and messages. “Same as Windows” follows the Windows display language.",

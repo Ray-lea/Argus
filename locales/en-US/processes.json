@@ -220,6 +220,10 @@
     "background": "Background processes",
     "windows": "Windows processes"
   },
+  "user": {
+    "system": "System",
+    "disconnected": "Disconnected"
+  },
   "sectionSearching": "While searching, every match shows; clear the search to collapse groups",
   "servicesSummary": "{names} and others ({count} services)",
   "pidExited": "PID {pid} has already exited.",

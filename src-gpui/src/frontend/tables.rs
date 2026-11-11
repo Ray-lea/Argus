@@ -65,6 +65,8 @@ struct TableLayout<'a> {
 const ROW_HEIGHT: f32 = 30.;
 const ROW_INSET: f32 = 4.;
 const CELL_PADDING: f32 = 10.;
+/// How far the rows of a user's group stand in from its heading.
+const USER_INSET: f32 = 20.;
 /// The process table's header band: a total above each label, the interface's
 /// cell padding and the band's own separator row.
 const PROCESS_HEADER_BAND: f32 = 49.;
@@ -1152,6 +1154,7 @@ impl TableDelegate for NativeTable {
             None => tr,
         };
         tr.when_some(refold, |d, refold| d.on_click(refold))
+            .when(row.user.is_some(), |d| d.bg(p.hover))
             .when(fresh, |d| d.bg(p.network.opacity(0.15)))
             .when(selected, |d| {
                 d.child(
@@ -1219,6 +1222,7 @@ impl Desktop {
         let mut rows = if let Some(rows) = prepared {
             rows
         } else if self.page == "processes" {
+            let users = self.user_groups();
             model::process_rows(
                 values(&self.snapshot["processes"]),
                 model::ProcessOptions {
@@ -1231,6 +1235,8 @@ impl Desktop {
                     sections: &self.sections,
                     hosted: &self.hosted_services(),
                     visibility: self.visibility_rules("processes").as_ref(),
+                    users: users.as_ref(),
+                    user_folds: &self.user_folds,
                 },
             )
         } else {

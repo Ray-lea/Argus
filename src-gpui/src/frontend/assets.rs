@@ -79,6 +79,8 @@ product_icons! {
     "LeafIcon" => Leaf,
     "NoteIcon" => StickyNote,
     "NotesIcon" => ScrollText,
+    "UserIcon" => User,
+    "UsersIcon" => Users,
     "PinIcon" => Pin,
     "UnpinIcon" => PinOff,
     "TrashIcon" => Trash,

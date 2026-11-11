@@ -258,6 +258,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             processes: Vec::new(),
+            sessions: Vec::new(),
             process_network: false,
         };
         client.enrich(&mut snapshot, Duration::from_secs(1));
@@ -320,6 +321,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             processes,
+            sessions: Vec::new(),
             process_network: false,
         }
     }

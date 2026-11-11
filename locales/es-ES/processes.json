@@ -222,6 +222,10 @@
     "background": "Procesos en segundo plano",
     "windows": "Procesos de Windows"
   },
+  "user": {
+    "system": "Sistema",
+    "disconnected": "Desconectado"
+  },
   "sectionSearching": "Se muestran todas las coincidencias durante la búsqueda; borre la búsqueda para contraer los grupos",
   "servicesSummary": "{names}, entre otros ({count} servicios)",
   "pidExited": "El proceso con PID {pid} ya ha finalizado.",

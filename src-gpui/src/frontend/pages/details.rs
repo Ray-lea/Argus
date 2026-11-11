@@ -179,8 +179,12 @@ impl Desktop {
     }
 
     fn details_pick(&self, key: &str) -> Option<Picked<'_>> {
-        // A category heading selected with the keyboard is no process.
-        if key.is_empty() || key.starts_with("s:") || self.snapshot.is_null() {
+        // A category or user heading selected with the keyboard is no process.
+        if key.is_empty()
+            || key.starts_with("s:")
+            || key.starts_with("u:")
+            || self.snapshot.is_null()
+        {
             return None;
         }
         // The visible rows already hold their members; anything filtered out
@@ -203,9 +207,18 @@ impl Desktop {
         }
         let processes = values(&self.snapshot["processes"]);
         if key.starts_with("g:") {
+            // An app row inside a user's group stands for that user's processes.
+            let (app, group) = model::split_scope(key);
+            let users = group.map(|_| model::UserGroups::new(values(&self.snapshot["sessions"])));
             let mut members: Vec<&Value> = processes
                 .iter()
-                .filter(|p| model::application_key(p) == key)
+                .filter(|p| {
+                    model::application_key(p) == app
+                        && users
+                            .as_ref()
+                            .zip(group)
+                            .is_none_or(|(users, group)| users.id_of(p) == group)
+                })
                 .collect();
             members.sort_by(|a, b| number(a, "createTime").total_cmp(&number(b, "createTime")));
             return Some(Picked {

@@ -744,6 +744,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             processes: vec![process(42, 10)],
+            sessions: Vec::new(),
             process_network: false,
         }
     }

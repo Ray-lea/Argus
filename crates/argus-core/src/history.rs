@@ -813,6 +813,7 @@ mod tests {
             },
             hardware: Hardware::default(),
             processes: procs,
+            sessions: Vec::new(),
             process_network: false,
         }
     }

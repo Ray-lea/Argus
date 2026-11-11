@@ -13,6 +13,7 @@ use crate::hardware::{Hardware, HardwareTracker};
 use crate::meta::MetaStore;
 use crate::net_process::NetworkTracker;
 use crate::process::{ProcessRow, ProcessTracker};
+use crate::sessions::{LogonSession, SessionTracker};
 use crate::system::{SystemStats, SystemTracker};
 
 #[derive(Debug, Clone, Serialize)]
@@ -24,6 +25,9 @@ pub struct Snapshot {
     pub system: SystemStats,
     pub hardware: Hardware,
     pub processes: Vec<ProcessRow>,
+    /// The sessions a user is signed in to: a process belongs to the user of
+    /// its session, and to the system where its session is not listed.
+    pub sessions: Vec<LogonSession>,
     /// Per-process network traffic is measured, locally or by the service.
     pub process_network: bool,
 }
@@ -31,6 +35,7 @@ pub struct Snapshot {
 pub struct Collector {
     system: SystemTracker,
     processes: ProcessTracker,
+    sessions: SessionTracker,
     hardware: HardwareTracker,
     gpu_processes: Option<GpuProcessTracker>,
     network: Option<NetworkTracker>,
@@ -52,6 +57,7 @@ impl Collector {
         Self {
             system,
             processes,
+            sessions: startup_phase("collector.sessions", SessionTracker::new),
             hardware: startup_phase("collector.hardware", HardwareTracker::new),
             gpu_processes: startup_phase("collector.gpu-pdh", GpuProcessTracker::new),
             network: None,
@@ -93,6 +99,8 @@ impl Collector {
             network.apply_rates(&mut processes);
         }
 
+        let sessions = sample_phase("sessions", || self.sessions.sample());
+
         let apps = sample_phase("app-windows", app_windows::owners);
         for p in &mut processes {
             p.app_window = apps.contains(&p.pid);
@@ -121,6 +129,7 @@ impl Collector {
             system,
             hardware,
             processes,
+            sessions,
             process_network: self.network.is_some(),
         }
     }

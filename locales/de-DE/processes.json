@@ -220,6 +220,10 @@
     "background": "Hintergrundprozesse",
     "windows": "Windows-Prozesse"
   },
+  "user": {
+    "system": "System",
+    "disconnected": "Getrennt"
+  },
   "sectionSearching": "Während der Suche wird jede Übereinstimmung angezeigt; löschen Sie die Suche, um Gruppen auszublenden",
   "servicesSummary": "{names} und weitere ({count} Dienste)",
   "pidExited": "PID {pid} wurde bereits beendet.",

@@ -348,6 +348,13 @@ impl Desktop {
                 cx.notify();
                 return;
             }
+            model::USER_GROUPING => {
+                self.prefs
+                    .set(key, model::UserGrouping::parse(&value).key());
+                self.rebuild_rows(false, cx);
+                cx.notify();
+                return;
+            }
             "processColumnsAutoWidth" => {
                 let mut preferences = columns::Preferences::load(&self.prefs);
                 preferences.auto_width = value.as_bool().unwrap_or(true);
@@ -605,9 +612,14 @@ impl Desktop {
         }
         self.query.clear();
         self.search.update(cx, |s, cx| s.set_value("", window, cx));
+        if let Some(users) = self.user_groups() {
+            let group = users.id_of(process).to_owned();
+            self.fold_user(&group, false);
+        }
+        let app = self.app_row_key(process);
         let processes = values(&self.snapshot["processes"]);
         if self.view == "apps" {
-            self.expanded.insert(model::application_key(process));
+            self.expanded.insert(app);
         } else if self.view == "tree" {
             let mut child = process;
             let mut visited = HashSet::from([model::identity(process)]);

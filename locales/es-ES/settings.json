@@ -25,6 +25,13 @@
     "title": "Reglas para ocultar procesos del sistema",
     "desc": "Personalice qué programas se muestran siempre y cuáles se ocultan además de los del sistema. Procesos y Conexiones comparten estas reglas; active la ocultación con el icono de la barra de herramientas."
   },
+  "userGroups": {
+    "title": "Agrupar procesos por usuario",
+    "desc": "Agrupa la lista de procesos por usuario con sesión iniciada; las vistas, las categorías, la ordenación y la búsqueda funcionan igual dentro de cada grupo. El modo automático solo agrupa mientras haya más de un usuario con sesión iniciada, incluidas las sesiones desconectadas. Las sesiones sin usuario, como la de los servicios del sistema, aparecen en «Sistema».",
+    "auto": "Automático",
+    "on": "Agrupar siempre",
+    "off": "No agrupar nunca"
+  },
   "language": {
     "title": "Idioma de la interfaz",
     "desc": "Se aplica al instante, también a los menús y mensajes de la bandeja. «Igual que Windows» utiliza el idioma de visualización de Windows.",

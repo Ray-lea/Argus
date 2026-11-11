@@ -29,6 +29,7 @@ mod test_control;
 mod theme;
 mod tips;
 mod type_search;
+mod users;
 mod visibility;
 mod welcome;
 mod widgets;
@@ -300,6 +301,8 @@ struct Desktop {
     expanded: HashSet<String>,
     tree_expanded: HashSet<String>,
     sections: HashSet<String>,
+    /// The folded user groups of the process list (`collapsedUsers`).
+    user_folds: HashSet<String>,
     rows: Arc<Vec<Row>>,
     /// Full process page height, independent of whether the overview band exists.
     process_page_height: Rc<Cell<Pixels>>,
@@ -471,6 +474,10 @@ impl Desktop {
             tree_expanded: HashSet::new(),
             sections: prefs
                 .get::<Vec<String>>("collapsedSections", vec![])
+                .into_iter()
+                .collect(),
+            user_folds: prefs
+                .get::<Vec<String>>(model::USER_FOLDS, vec![])
                 .into_iter()
                 .collect(),
             rows: Arc::new(vec![]),

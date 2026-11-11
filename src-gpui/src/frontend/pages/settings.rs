@@ -1190,6 +1190,13 @@ impl Desktop {
                     "settings.visibility.desc",
                     vec![self.visibility_editor_button(cx)],
                 ));
+                cards.push(self.setting_text(
+                    "groupByUser",
+                    "UsersIcon",
+                    "settings.userGroups.title",
+                    "settings.userGroups.desc",
+                    vec![self.user_grouping_setting(cx)],
+                ));
             }
             "startup" => {
                 let autostart = self.setting_toggle(

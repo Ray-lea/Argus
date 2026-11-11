@@ -249,6 +249,10 @@ pub struct Row {
     /// An app group's or section's GPU usage, aggregated per physical engine;
     /// a process row reads its own.
     gpu: Option<GpuUsage>,
+    /// The heading of a user's group (its `section` is `USER_SECTION`).
+    pub user: Option<UserHeading>,
+    /// Inside a user's group: drawn one step in from its heading.
+    pub nested: bool,
 }
 impl Row {
     fn new(raw: Value, depth: usize, title: String, detail: String, sort_name: SortKey) -> Self {
@@ -268,6 +272,8 @@ impl Row {
             pinned: false,
             visible_members: None,
             gpu: None,
+            user: None,
+            nested: false,
         }
     }
     /// A row of a service, startup or connection list: no process members.
@@ -288,6 +294,8 @@ impl Row {
             pinned: false,
             visible_members: None,
             gpu: None,
+            user: None,
+            nested: false,
         }
     }
     pub fn process(raw: Value, depth: usize) -> Self {
@@ -419,6 +427,190 @@ pub struct ProcessOptions<'a> {
     /// Display names of the services each service-hosting process runs, by PID.
     pub hosted: &'a HashMap<u64, Vec<String>>,
     pub visibility: Option<&'a super::visibility::Rules>,
+    /// The users to group the list by, outside every other grouping and
+    /// order; none leaves the list as it is without them.
+    pub users: Option<&'a UserGroups>,
+    /// The folded user groups, by `UserGroup::id`.
+    pub user_folds: &'a HashSet<String>,
+}
+/// The `section` of a user group's heading.
+pub const USER_SECTION: &str = "user";
+/// The preference that groups the process list by user (`UserGrouping`).
+pub const USER_GROUPING: &str = "groupByUser";
+/// The preference listing the folded user groups.
+pub const USER_FOLDS: &str = "collapsedUsers";
+
+/// When the process list is grouped by user.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UserGrouping {
+    /// While more than one user is signed in; the choice until one is saved.
+    Auto,
+    On,
+    Off,
+}
+impl UserGrouping {
+    pub const ALL: [Self; 3] = [Self::Auto, Self::On, Self::Off];
+    pub fn parse(value: &Value) -> Self {
+        match value.as_str() {
+            Some("on") => Self::On,
+            Some("off") => Self::Off,
+            _ => Self::Auto,
+        }
+    }
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::On => "on",
+            Self::Off => "off",
+        }
+    }
+    /// Whether the list is grouped while `users` users are signed in. With no
+    /// session known there is nobody to group by.
+    pub fn groups(self, users: usize) -> bool {
+        match self {
+            Self::Auto => users > 1,
+            Self::On => users > 0,
+            Self::Off => false,
+        }
+    }
+}
+
+/// What a user group's heading shows besides its name.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct UserHeading {
+    /// The sessions nobody is signed in to: session 0 with the services, and
+    /// a session at the sign-in screen.
+    pub system: bool,
+    /// The user of the session the interface runs in.
+    pub current: bool,
+    /// Signed in, with no display or remote client attached to any session.
+    pub disconnected: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UserGroup {
+    /// Stable across samples and restarts: `user:<domain>\<name>` in
+    /// lowercase, or `system`.
+    pub id: String,
+    /// The account name, after its domain where another user has the same
+    /// name; empty for the system's group.
+    pub name: String,
+    pub heading: UserHeading,
+}
+
+/// The users signed in to the snapshot's sessions, as the groups of the
+/// process list: a process belongs to the user of its session, and to the
+/// system where nobody is signed in to that session. The user of the
+/// interface's own session comes first, the others follow by name, the
+/// system's group is last.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UserGroups {
+    groups: Vec<UserGroup>,
+    /// The group of each signed-in session: a few entries, searched in order.
+    sessions: Vec<(u64, usize)>,
+}
+impl UserGroups {
+    pub fn new(sessions: &[Value]) -> Self {
+        struct User<'a> {
+            id: String,
+            name: &'a str,
+            domain: &'a str,
+            heading: UserHeading,
+            sessions: Vec<u64>,
+        }
+        let mut users: Vec<User> = Vec::new();
+        for session in sessions {
+            let (Some(id), name) = (session["id"].as_u64(), text(session, "user")) else {
+                continue;
+            };
+            if name.is_empty() {
+                continue;
+            }
+            let domain = text(session, "domain");
+            // Account names compare without case.
+            let key = format!("user:{}\\{}", domain.to_lowercase(), name.to_lowercase());
+            let index = users
+                .iter()
+                .position(|user| user.id == key)
+                .unwrap_or_else(|| {
+                    users.push(User {
+                        id: key,
+                        name,
+                        domain,
+                        heading: UserHeading {
+                            disconnected: true,
+                            ..Default::default()
+                        },
+                        sessions: Vec::new(),
+                    });
+                    users.len() - 1
+                });
+            let user = &mut users[index];
+            user.heading.current |= boolean(session, "current");
+            user.heading.disconnected &= boolean(session, "disconnected");
+            user.sessions.push(id);
+        }
+        users.sort_by(|a, b| {
+            b.heading
+                .current
+                .cmp(&a.heading.current)
+                .then_with(|| collation::compare(a.name, b.name))
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        let mut groups = Vec::with_capacity(users.len() + 1);
+        let mut by_session = Vec::new();
+        for (index, user) in users.iter().enumerate() {
+            let shared = users
+                .iter()
+                .any(|other| other.id != user.id && other.name.eq_ignore_ascii_case(user.name));
+            groups.push(UserGroup {
+                id: user.id.clone(),
+                name: if shared && !user.domain.is_empty() {
+                    format!("{}\\{}", user.domain, user.name)
+                } else {
+                    user.name.to_owned()
+                },
+                heading: user.heading,
+            });
+            by_session.extend(user.sessions.iter().map(|session| (*session, index)));
+        }
+        groups.push(UserGroup {
+            id: "system".into(),
+            name: String::new(),
+            heading: UserHeading {
+                system: true,
+                ..Default::default()
+            },
+        });
+        Self {
+            groups,
+            sessions: by_session,
+        }
+    }
+    /// The users to group the list by under `mode`, if it groups the list now.
+    pub fn grouping(sessions: &[Value], mode: UserGrouping) -> Option<Self> {
+        if mode == UserGrouping::Off {
+            return None;
+        }
+        let users = Self::new(sessions);
+        mode.groups(users.users()).then_some(users)
+    }
+    /// How many users are signed in.
+    pub fn users(&self) -> usize {
+        self.groups.len() - 1
+    }
+    fn group_of_session(&self, session: Option<u64>) -> usize {
+        session
+            .and_then(|session| self.sessions.iter().find(|(id, _)| *id == session))
+            .map_or(self.groups.len() - 1, |(_, group)| *group)
+    }
+    fn group_of(&self, process: &Value) -> usize {
+        self.group_of_session(process["sessionId"].as_u64())
+    }
+    /// The id of the group a process belongs to.
+    pub fn id_of(&self, process: &Value) -> &str {
+        &self.groups[self.group_of(process)].id
+    }
 }
 /// "DNS Client, DHCP Client and 3 more services": at most two names.
 pub fn summarize_services(names: &[String]) -> String {
@@ -436,7 +628,10 @@ pub fn summarize_services(names: &[String]) -> String {
 /// The Name column prefers the application/file description in every view.
 /// Expanded app members retain their executable identities below the app row.
 pub fn process_rows(processes: &[Value], options: ProcessOptions<'_>) -> Vec<Row> {
-    let mut rows = group_rows(processes, &options);
+    let mut rows = match options.users {
+        Some(users) => user_rows(processes, users, &options),
+        None => group_rows(&processes.iter().collect::<Vec<_>>(), &options, None).rows,
+    };
     // A service host's description says nothing; the services it runs do. App
     // rows keep their exe name; other hosts list their services as detail.
     if !options.hosted.is_empty() {
@@ -505,11 +700,92 @@ fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
     };
     order.then_with(|| a.key.cmp(&b.key))
 }
-fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
-    let visible = |p: &&Value| {
+/// The rows of one list, and, for a user's group, what its heading adds up.
+struct Listed {
+    rows: Vec<Row>,
+    /// Every process the rows stand for, also those folded away.
+    members: Vec<Value>,
+    gpu: GpuUsage,
+}
+/// `<key>|<user group>`: the row key of an app group or a category heading
+/// inside a user's group. Neither paths nor account names contain the bar.
+pub fn scoped_key(key: &str, group: &str) -> String {
+    format!("{key}|{group}")
+}
+/// A row key without its user group, and the group if it has one.
+pub fn split_scope(key: &str) -> (&str, Option<&str>) {
+    match key.rsplit_once('|') {
+        Some((key, group)) => (key, Some(group)),
+        None => (key, None),
+    }
+}
+/// The list grouped by user: each group under its heading, built as the whole
+/// list is without them. Groups keep their order whatever the sort.
+fn user_rows(processes: &[Value], users: &UserGroups, options: &ProcessOptions<'_>) -> Vec<Row> {
+    let mut parts: Vec<Vec<&Value>> = vec![Vec::new(); users.groups.len()];
+    for process in processes {
+        parts[users.group_of(process)].push(process);
+    }
+    let searching = !options.query.trim().is_empty();
+    let mut out = Vec::with_capacity(processes.len() + users.groups.len());
+    for (group, part) in users.groups.iter().zip(parts) {
+        if part.is_empty() {
+            continue;
+        }
+        let listed = group_rows(&part, options, Some(group));
+        // Nothing of this user passes the search or the visibility rules.
+        if listed.rows.is_empty() {
+            continue;
+        }
+        let mut heading = Row::process(json!({}), 0);
+        heading.key = format!("u:{}", group.id);
+        heading.section = Some(USER_SECTION.into());
+        heading.user = Some(group.heading);
+        heading.title = if group.heading.system {
+            argus_core::i18n::text("processes.user.system")
+        } else {
+            group.name.clone()
+        };
+        heading.raw["entryCount"] = json!(listed.members.len());
+        // Beside the name: how many processes, and a user without a display.
+        let count = argus_core::tr!("processes.total", count = listed.members.len());
+        heading.detail = if group.heading.disconnected {
+            format!(
+                "{count} · {}",
+                argus_core::i18n::text("processes.user.disconnected")
+            )
+        } else {
+            count
+        };
+        heading.members = listed.members;
+        heading.gpu = Some(listed.gpu);
+        heading.expandable = true;
+        heading.expanded = searching || !options.user_folds.contains(&group.id);
+        let expanded = heading.expanded;
+        out.push(heading);
+        if expanded {
+            out.extend(listed.rows.into_iter().map(|mut row| {
+                row.nested = true;
+                row
+            }));
+        }
+    }
+    out
+}
+fn group_rows(
+    processes: &[&Value],
+    options: &ProcessOptions<'_>,
+    user: Option<&UserGroup>,
+) -> Listed {
+    let visible = |p: &&&Value| {
         options
             .visibility
             .is_none_or(|rules| !rules.hides_process(p))
+    };
+    // Inside a user's group, keys shared between groups name the group too.
+    let scoped = |key: String| match user {
+        Some(group) => scoped_key(&key, &group.id),
+        None => key,
     };
     let query = options.query.trim().to_lowercase();
     let numeric = !query.is_empty() && query.bytes().all(|b| b.is_ascii_digit());
@@ -547,7 +823,7 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
         "apps" => {
             let mut order = Vec::new();
             let mut groups: HashMap<String, Vec<&Value>> = HashMap::new();
-            for p in processes.iter().filter(visible) {
+            for p in processes.iter().filter(visible).copied() {
                 let key = application_key(p);
                 groups
                     .entry(key)
@@ -600,7 +876,7 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
                     continue;
                 }
                 let mut row = Row::labeled(first.clone(), 0, label, detail);
-                row.key = key;
+                row.key = scoped(key);
                 // Every member counts, also those a search leaves out.
                 row.gpu = Some(gpu_usage::aggregate(
                     members.iter().map(|p| GpuUsage::of_process(p)),
@@ -615,7 +891,16 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
                 top.push(row);
             }
         }
-        "tree" => return tree_rows(processes, options, &query, &matches, &named_process),
+        "tree" => {
+            return tree_rows(
+                processes,
+                options,
+                &query,
+                &matches,
+                &named_process,
+                user.is_some(),
+            );
+        }
         _ => {
             top = processes
                 .iter()
@@ -626,6 +911,15 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
         }
     }
     top.sort_by(compare);
+    // A user's heading adds up its top-level rows, as a category heading does.
+    let (members, gpu) = if user.is_some() {
+        (
+            top.iter().flat_map(|row| row.members.clone()).collect(),
+            gpu_usage::aggregate(top.iter().map(Row::gpu_usage)),
+        )
+    } else {
+        Default::default()
+    };
     let mut out = Vec::new();
     // Like Windows Task Manager: sorted by name, apps come first under their
     // own heading. Other sorts keep one list.
@@ -648,7 +942,7 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
                 continue;
             }
             let mut heading = Row::process(json!({}), 0);
-            heading.key = format!("s:{section}");
+            heading.key = scoped(format!("s:{section}"));
             heading.section = Some(section.into());
             heading.title = argus_core::i18n::text(&format!("processes.section.{section}"));
             heading.members = grouped.iter().flat_map(|r| r.members.clone()).collect();
@@ -666,7 +960,11 @@ fn group_rows(processes: &[Value], options: &ProcessOptions<'_>) -> Vec<Row> {
     } else {
         append_groups(top, &compare, &mut out);
     }
-    out
+    Listed {
+        rows: out,
+        members,
+        gpu,
+    }
 }
 fn parent_of<'a>(process: &Value, by_pid: &HashMap<u64, &'a Value>) -> Option<&'a Value> {
     process["ppid"]
@@ -692,13 +990,14 @@ pub fn tree_parents(processes: &[Value]) -> HashSet<String> {
 /// The process tree: children under the process that started them, each level
 /// sorted on its own. While searching, the ancestors of matches stay in place.
 fn tree_rows(
-    processes: &[Value],
+    processes: &[&Value],
     options: &ProcessOptions<'_>,
     query: &str,
     matches: &impl Fn(&Value) -> bool,
     named: &impl Fn(&Value, usize) -> Row,
-) -> Vec<Row> {
-    let visible_process = |p: &&Value| {
+    totals: bool,
+) -> Listed {
+    let visible_process = |p: &&&Value| {
         options
             .visibility
             .is_none_or(|rules| !rules.hides_process(p))
@@ -706,12 +1005,12 @@ fn tree_rows(
     let by_pid: HashMap<u64, &Value> = processes
         .iter()
         .filter(visible_process)
-        .filter_map(|p| p["pid"].as_u64().map(|pid| (pid, p)))
+        .filter_map(|p| p["pid"].as_u64().map(|pid| (pid, *p)))
         .collect();
     // A parent must predate its child; otherwise the parent PID was reused.
     let mut children: HashMap<String, Vec<&Value>> = HashMap::new();
     let mut roots = Vec::new();
-    for p in processes.iter().filter(visible_process) {
+    for p in processes.iter().filter(visible_process).copied() {
         match parent_of(p, &by_pid) {
             Some(parent) => children.entry(identity(parent)).or_default().push(p),
             None => roots.push(p),
@@ -724,6 +1023,7 @@ fn tree_rows(
             .iter()
             .filter(visible_process)
             .filter(|p| matches(p))
+            .copied()
         {
             let mut current = Some(process);
             while let Some(p) = current {
@@ -783,7 +1083,27 @@ fn tree_rows(
         out: Vec::new(),
     };
     walk.level(&roots, 0);
-    walk.out
+    // A user's heading adds up the whole tree, folded branches included;
+    // while searching, the matches and the ancestors shown with them.
+    let (members, gpu) = if totals {
+        let shown: Vec<&Value> = processes
+            .iter()
+            .filter(visible_process)
+            .filter(|p| !searching || visible.contains(&identity(p)))
+            .copied()
+            .collect();
+        (
+            shown.iter().map(|p| (*p).clone()).collect(),
+            gpu_usage::aggregate(shown.iter().map(|p| GpuUsage::of_process(p))),
+        )
+    } else {
+        Default::default()
+    };
+    Listed {
+        rows: walk.out,
+        members,
+        gpu,
+    }
 }
 fn append_groups(rows: Vec<Row>, compare: &impl Fn(&Row, &Row) -> Ordering, out: &mut Vec<Row>) {
     for row in rows {
@@ -842,6 +1162,10 @@ pub struct Timeline {
     processes: HashMap<String, Usage>,
     /// The same per app (group key): totals of whichever members ran at the time.
     groups: HashMap<String, Usage>,
+    /// An app that runs for several users at once keeps a history for each of
+    /// them too, by `UserGroup::id`, as long as it runs; an app of one user
+    /// has its history in `groups`.
+    shared: HashMap<String, Vec<(String, Usage)>>,
     /// Counts pushes; usage not updated in the latest one belongs to an exited process.
     tick: u64,
 }
@@ -858,6 +1182,10 @@ struct Usage {
     app: Option<String>,
     origin: (usize, bool),
     tick: u64,
+    /// A process's session, which it keeps for life.
+    session: Option<u64>,
+    /// An app's usage: the user group its members last all belonged to.
+    owner: String,
 }
 impl Usage {
     fn push(&mut self, cpu: f64, mem: f64, keep: usize) {
@@ -902,12 +1230,14 @@ impl Timeline {
             times: VecDeque::new(),
             processes: HashMap::new(),
             groups: HashMap::new(),
+            shared: HashMap::new(),
             tick: 0,
         }
     }
     /// A series by key: device metrics, or `process.<identity>.cpu|mem` and
     /// `group.<app key>.cpu|mem`, which every live process and app keeps from
     /// its first sample, so a newly selected row's charts are already full.
+    /// `group.<app key>|<user group>` is the app's processes of one user.
     pub fn points(&self, key: &str) -> Option<Vec<(f64, Option<f64>)>> {
         let points = |usage: &Usage, metric: &str| {
             let values = match metric {
@@ -933,7 +1263,14 @@ impl Timeline {
         }
         if let Some(rest) = key.strip_prefix("group.") {
             let (id, metric) = rest.rsplit_once('.')?;
-            return points(self.groups.get(id)?, metric);
+            let (app, user) = split_scope(id);
+            if let Some(user) = user
+                && let Some(users) = self.shared.get(app)
+            {
+                return points(&users.iter().find(|(id, _)| id == user)?.1, metric);
+            }
+            // An app of one user: all of it is that user's.
+            return points(self.groups.get(app)?, metric);
         }
         self.samples
             .get(key)
@@ -957,6 +1294,7 @@ impl Timeline {
             self.times.clear();
             self.processes.clear();
             self.groups.clear();
+            self.shared.clear();
         }
         fn flatten(prefix: &str, value: &Value, out: &mut Vec<(String, Option<f64>)>) {
             match value {
@@ -1054,6 +1392,9 @@ impl Timeline {
             }
             usage.tick = tick;
             let fresh = usage.cpu.is_empty();
+            if fresh {
+                usage.session = p["sessionId"].as_u64();
+            }
             if fresh || usage.app.is_none() {
                 let origin = (text(p, "path").len(), p["webView"].is_null());
                 if fresh || usage.origin != origin {
@@ -1077,24 +1418,84 @@ impl Timeline {
         self.processes.retain(|_, usage| usage.tick == tick);
         // Missing process readings also leave a gap in their app's aggregate.
         let latest = |values: &VecDeque<f64>| values.back().copied().unwrap_or(f64::NAN);
-        let mut totals: HashMap<&str, (f64, f64)> = HashMap::new();
+        // Each app's totals, the user group of its first member and whether
+        // another member belongs to another group.
+        let users = UserGroups::new(values(&snapshot["sessions"]));
+        let mut totals: HashMap<&str, (f64, f64, usize, bool)> = HashMap::new();
         for usage in self.processes.values() {
             if let Some(app) = &usage.app {
-                let sum = totals.entry(app).or_default();
+                let group = users.group_of_session(usage.session);
+                let sum = totals.entry(app).or_insert((0., 0., group, false));
                 sum.0 += latest(&usage.cpu);
                 sum.1 += latest(&usage.mem);
+                sum.3 |= sum.2 != group;
             }
         }
-        for (app, (cpu, mem)) in totals {
+        for (app, (cpu, mem, group, several)) in totals {
             if !self.groups.contains_key(app) {
                 self.groups.insert(app.to_owned(), Usage::default());
             }
             if let Some(usage) = self.groups.get_mut(app) {
+                if several {
+                    // Another user started the app: its history so far is
+                    // that of the user who ran it alone.
+                    if !self.shared.contains_key(app) {
+                        let alone = (!usage.owner.is_empty()).then(|| {
+                            (
+                                usage.owner.clone(),
+                                Usage {
+                                    cpu: usage.cpu.clone(),
+                                    mem: usage.mem.clone(),
+                                    ..Default::default()
+                                },
+                            )
+                        });
+                        self.shared
+                            .insert(app.to_owned(), alone.into_iter().collect());
+                    }
+                } else if usage.owner != users.groups[group].id {
+                    usage.owner.clone_from(&users.groups[group].id);
+                }
                 usage.tick = tick;
                 usage.push(cpu, mem, keep);
             }
         }
         self.groups.retain(|_, usage| usage.tick == tick);
+        if self.shared.is_empty() {
+            return;
+        }
+        let mut sums: HashMap<(&str, usize), (f64, f64)> = HashMap::new();
+        for usage in self.processes.values() {
+            if let Some(app) = usage.app.as_deref()
+                && self.shared.contains_key(app)
+            {
+                let sum = sums
+                    .entry((app, users.group_of_session(usage.session)))
+                    .or_default();
+                sum.0 += latest(&usage.cpu);
+                sum.1 += latest(&usage.mem);
+            }
+        }
+        for ((app, group), (cpu, mem)) in sums {
+            let Some(list) = self.shared.get_mut(app) else {
+                continue;
+            };
+            let id = &users.groups[group].id;
+            let index = list
+                .iter()
+                .position(|(user, _)| user == id)
+                .unwrap_or_else(|| {
+                    list.push((id.clone(), Usage::default()));
+                    list.len() - 1
+                });
+            let usage = &mut list[index].1;
+            usage.tick = tick;
+            usage.push(cpu, mem, keep);
+        }
+        self.shared.retain(|_, list| {
+            list.retain(|(_, usage)| usage.tick == tick);
+            !list.is_empty()
+        });
     }
 }
 
@@ -1251,6 +1652,8 @@ mod tests {
                 sections: &empty,
                 hosted,
                 visibility: None,
+                users: None,
+                user_folds: &empty,
             },
         )
     }
@@ -1286,6 +1689,8 @@ mod tests {
                         sections: &empty,
                         hosted: &hosted,
                         visibility: Some(&rules),
+                        users: None,
+                        user_folds: &empty,
                     },
                 );
                 assert_eq!(
@@ -1414,6 +1819,8 @@ mod tests {
                     sections: &empty,
                     hosted: &none,
                     visibility: None,
+                    users: None,
+                    user_folds: &empty,
                 },
             )
         };
@@ -1457,6 +1864,8 @@ mod tests {
                 sections: &empty,
                 hosted: &HashMap::new(),
                 visibility: None,
+                users: None,
+                user_folds: &empty,
             },
         );
         assert_eq!(pids(&rows), [1]);
@@ -1506,6 +1915,8 @@ mod tests {
                 sections: &empty,
                 hosted: &HashMap::new(),
                 visibility: None,
+                users: None,
+                user_folds: &empty,
             },
         );
         let members = rows.iter().filter(|row| row.depth == 1).collect::<Vec<_>>();
@@ -1536,6 +1947,8 @@ mod tests {
                 sections: &empty,
                 hosted: &HashMap::new(),
                 visibility: None,
+                users: None,
+                user_folds: &empty,
             },
         );
         assert_eq!(rows.len(), 3);
@@ -1626,6 +2039,8 @@ mod tests {
                 sections: &empty,
                 hosted: &HashMap::new(),
                 visibility: None,
+                users: None,
+                user_folds: &empty,
             },
         );
         assert_eq!(rows.len(), 2);
@@ -1826,5 +2241,524 @@ mod tests {
                 (5000., None),
             ]
         );
+    }
+    /// A two-user machine: alice (the interface's user) in session 1, bob
+    /// disconnected in session 2, the services in session 0.
+    fn two_users() -> Vec<Value> {
+        vec![
+            json!({"id":2,"user":"bob","domain":"PC","current":false,"disconnected":true}),
+            json!({"id":1,"user":"Alice","domain":"PC","current":true,"disconnected":false}),
+        ]
+    }
+    /// Megabytes, which the memory column tells apart.
+    const MB: u64 = 1 << 20;
+    fn user_processes() -> Vec<Value> {
+        vec![
+            json!({"pid":4,"ppid":0,"sessionId":0,"createTime":1,"name":"System","windowsProcess":true,"cpu":1,"privateWs":100 * MB}),
+            json!({"pid":10,"ppid":4,"sessionId":0,"createTime":2,"name":"service.exe","path":"C:/svc/service.exe","cpu":2,"privateWs":200 * MB}),
+            json!({"pid":20,"ppid":10,"sessionId":1,"createTime":3,"name":"editor.exe","path":"C:/app/editor.exe","appWindow":true,"cpu":30,"privateWs":3000 * MB}),
+            json!({"pid":21,"ppid":20,"sessionId":1,"createTime":4,"name":"editor.exe","path":"C:/app/editor.exe","cpu":5,"privateWs":500 * MB}),
+            json!({"pid":22,"ppid":10,"sessionId":1,"createTime":5,"name":"zeta.exe","path":"C:/app/zeta.exe","cpu":0,"privateWs":50 * MB}),
+            json!({"pid":30,"ppid":10,"sessionId":2,"createTime":6,"name":"editor.exe","path":"C:/app/editor.exe","appWindow":true,"cpu":7,"privateWs":700 * MB}),
+            json!({"pid":31,"ppid":30,"sessionId":2,"createTime":7,"name":"editor.exe","path":"C:/app/editor.exe","cpu":8,"privateWs":800 * MB}),
+            // No session is known for it, and nobody is signed in to session 3.
+            json!({"pid":40,"ppid":0,"createTime":8,"name":"unknown.exe","cpu":0.5,"privateWs":30 * MB}),
+            json!({"pid":41,"ppid":0,"sessionId":3,"createTime":9,"name":"logon.exe","cpu":0.25,"privateWs":10 * MB}),
+        ]
+    }
+    struct Grouped<'a> {
+        mode: &'a str,
+        query: &'a str,
+        sort: &'a str,
+        descending: bool,
+        folds: &'a [&'a str],
+        sections: &'a [&'a str],
+        visibility: bool,
+    }
+    impl Default for Grouped<'_> {
+        fn default() -> Self {
+            Self {
+                mode: "list",
+                query: "",
+                sort: "cpu",
+                descending: true,
+                folds: &[],
+                sections: &[],
+                visibility: false,
+            }
+        }
+    }
+    fn grouped_rows(processes: &[Value], sessions: &[Value], view: Grouped<'_>) -> Vec<Row> {
+        let empty = HashSet::new();
+        let users = UserGroups::new(sessions);
+        let folds = view.folds.iter().map(|id| (*id).to_owned()).collect();
+        let sections = view.sections.iter().map(|id| (*id).to_owned()).collect();
+        let rules = crate::frontend::visibility::Rules::default();
+        process_rows(
+            processes,
+            ProcessOptions {
+                mode: view.mode,
+                query: view.query,
+                sort: view.sort,
+                descending: view.descending,
+                expanded: &empty,
+                tree_expanded: &empty,
+                sections: &sections,
+                hosted: &HashMap::new(),
+                visibility: view.visibility.then_some(&rules),
+                users: Some(&users),
+                user_folds: &folds,
+            },
+        )
+    }
+    /// Each user heading's key with the PIDs listed under it, in order.
+    fn by_user(rows: &[Row]) -> Vec<(String, Vec<u64>)> {
+        let mut groups: Vec<(String, Vec<u64>)> = Vec::new();
+        for row in rows {
+            if row.user.is_some() {
+                groups.push((row.key.clone(), Vec::new()));
+            } else if row.section.is_none() {
+                assert!(row.nested, "{} is outside every user group", row.key);
+                groups.last_mut().expect("a heading first").1.push(pid(row));
+            }
+        }
+        groups
+    }
+
+    #[test]
+    fn the_grouping_follows_the_signed_in_users_until_a_choice_is_saved() {
+        assert_eq!(UserGrouping::parse(&Value::Null), UserGrouping::Auto);
+        assert_eq!(UserGrouping::parse(&json!(true)), UserGrouping::Auto);
+        assert_eq!(UserGrouping::parse(&json!("sometimes")), UserGrouping::Auto);
+        for mode in UserGrouping::ALL {
+            assert_eq!(UserGrouping::parse(&json!(mode.key())), mode);
+        }
+        // Unsaved: only while several users are signed in.
+        assert!(!UserGrouping::Auto.groups(0));
+        assert!(!UserGrouping::Auto.groups(1));
+        assert!(UserGrouping::Auto.groups(2));
+        // A saved choice wins either way; without a known session there is
+        // nobody to group by.
+        assert!(!UserGrouping::On.groups(0));
+        assert!(UserGrouping::On.groups(1));
+        assert!(UserGrouping::On.groups(3));
+        for users in 0..4 {
+            assert!(!UserGrouping::Off.groups(users));
+        }
+        let one = [json!({"id":1,"user":"alice","domain":"PC","current":true})];
+        assert!(UserGroups::grouping(&one, UserGrouping::Auto).is_none());
+        assert!(UserGroups::grouping(&one, UserGrouping::On).is_some());
+        assert!(UserGroups::grouping(&two_users(), UserGrouping::Auto).is_some());
+        assert!(UserGroups::grouping(&two_users(), UserGrouping::Off).is_none());
+        assert!(UserGroups::grouping(&[], UserGrouping::On).is_none());
+    }
+
+    #[test]
+    fn sessions_of_one_user_are_one_group_and_one_signed_in_user() {
+        // The same account at the console and over a remote connection, the
+        // name in another case; a session at the sign-in screen has no user.
+        let sessions = [
+            json!({"id":1,"user":"Alice","domain":"PC","current":true,"disconnected":false}),
+            json!({"id":4,"user":"alice","domain":"pc","current":false,"disconnected":true}),
+            json!({"id":5,"user":"","domain":"","current":false,"disconnected":false}),
+            json!({"user":"ghost","domain":"PC"}),
+        ];
+        let users = UserGroups::new(&sessions);
+        assert_eq!(users.users(), 1);
+        assert_eq!(users.groups.len(), 2);
+        assert_eq!(users.groups[0].id, "user:pc\\alice");
+        assert_eq!(users.groups[0].name, "Alice");
+        // Connected in one of the sessions: not disconnected.
+        assert_eq!(
+            users.groups[0].heading,
+            UserHeading {
+                system: false,
+                current: true,
+                disconnected: false
+            }
+        );
+        assert!(users.groups[1].heading.system);
+        assert!(!UserGrouping::Auto.groups(users.users()));
+        let session = |id: u64| json!({"pid":1,"sessionId":id});
+        assert_eq!(users.id_of(&session(1)), "user:pc\\alice");
+        assert_eq!(users.id_of(&session(4)), "user:pc\\alice");
+        for other in [0, 3, 5] {
+            assert_eq!(users.id_of(&session(other)), "system");
+        }
+        assert_eq!(users.id_of(&json!({"pid":1})), "system");
+    }
+
+    #[test]
+    fn user_groups_keep_their_order_and_tell_equal_names_apart() {
+        let sessions = [
+            json!({"id":7,"user":"zoe","domain":"PC","current":false,"disconnected":true}),
+            json!({"id":3,"user":"sam","domain":"CORP","current":false,"disconnected":false}),
+            json!({"id":2,"user":"Sam","domain":"PC","current":true,"disconnected":false}),
+            json!({"id":5,"user":"adam","domain":"PC","current":false,"disconnected":false}),
+        ];
+        let users = UserGroups::new(&sessions);
+        assert_eq!(users.users(), 4);
+        // The interface's user, the others by name, then the system.
+        assert_eq!(
+            users
+                .groups
+                .iter()
+                .map(|group| group.name.as_str())
+                .collect::<Vec<_>>(),
+            ["PC\\Sam", "adam", "CORP\\sam", "zoe", ""]
+        );
+        assert!(users.groups[0].heading.current);
+        assert!(users.groups[3].heading.disconnected);
+        assert!(!users.groups[2].heading.disconnected);
+        assert_eq!(users.groups[4].id, "system");
+    }
+
+    #[test]
+    fn every_view_lists_each_users_processes_under_one_heading() {
+        let processes = user_processes();
+        for mode in ["apps", "tree", "list"] {
+            let rows = grouped_rows(
+                &processes,
+                &two_users(),
+                Grouped {
+                    mode,
+                    sort: "pid",
+                    descending: false,
+                    ..Default::default()
+                },
+            );
+            let groups = by_user(&rows);
+            assert_eq!(
+                groups
+                    .iter()
+                    .map(|group| group.0.as_str())
+                    .collect::<Vec<_>>(),
+                ["u:user:pc\\alice", "u:user:pc\\bob", "u:system"],
+                "{mode}"
+            );
+            // A process whose parent belongs to another user is a root of its
+            // own user's tree; folded branches and app members stay folded.
+            let expected: [&[u64]; 3] = match mode {
+                "list" => [&[20, 21, 22], &[30, 31], &[4, 10, 40, 41]],
+                "apps" => [&[20, 22], &[30], &[4, 10, 40, 41]],
+                _ => [&[20, 22], &[30], &[4, 40, 41]],
+            };
+            for (group, expected) in groups.iter().zip(expected) {
+                assert_eq!(group.1, expected, "{mode} {}", group.0);
+            }
+            // A heading counts and adds up all of its user's processes.
+            let headings: Vec<&Row> = rows.iter().filter(|row| row.user.is_some()).collect();
+            assert_eq!(
+                headings
+                    .iter()
+                    .map(|row| (row.members.len(), row.metric("cpu"), row.metric("mem")))
+                    .collect::<Vec<_>>(),
+                [
+                    (3, Some(35.), Some((3550 * MB) as f64)),
+                    (2, Some(15.), Some((1500 * MB) as f64)),
+                    (4, Some(3.75), Some((340 * MB) as f64)),
+                ],
+                "{mode}"
+            );
+            for heading in headings {
+                assert_eq!(heading.section.as_deref(), Some(USER_SECTION));
+                assert!(heading.expandable && heading.expanded && !heading.nested);
+                assert_eq!(heading.raw["entryCount"], heading.members.len());
+                assert_eq!(heading.metric("pid"), None);
+            }
+        }
+    }
+
+    #[test]
+    fn the_same_app_of_two_users_is_two_rows_with_their_own_keys() {
+        let processes = user_processes();
+        let rows = grouped_rows(
+            &processes,
+            &two_users(),
+            Grouped {
+                mode: "apps",
+                ..Default::default()
+            },
+        );
+        let apps: Vec<&Row> = rows
+            .iter()
+            .filter(|row| row.section.is_none() && row.members.len() == 2)
+            .collect();
+        let app = application_key(&processes[2]);
+        assert_eq!(
+            apps.iter().map(|row| row.key.clone()).collect::<Vec<_>>(),
+            [
+                scoped_key(&app, "user:pc\\alice"),
+                scoped_key(&app, "user:pc\\bob")
+            ]
+        );
+        assert_eq!(apps[0].metric("cpu"), Some(35.));
+        assert_eq!(apps[1].metric("cpu"), Some(15.));
+        assert_eq!(
+            split_scope(&apps[1].key),
+            (app.as_str(), Some("user:pc\\bob"))
+        );
+        assert_eq!(split_scope(&app), (app.as_str(), None));
+        let mut keys: Vec<&str> = rows.iter().map(|row| row.key.as_str()).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), rows.len());
+        // Unfolding one user's app leaves the other user's folded.
+        let empty = HashSet::new();
+        let users = UserGroups::new(&two_users());
+        let expanded = HashSet::from([apps[1].key.clone()]);
+        let rows = process_rows(
+            &processes,
+            ProcessOptions {
+                mode: "apps",
+                query: "",
+                sort: "cpu",
+                descending: true,
+                expanded: &expanded,
+                tree_expanded: &empty,
+                sections: &empty,
+                hosted: &HashMap::new(),
+                visibility: None,
+                users: Some(&users),
+                user_folds: &empty,
+            },
+        );
+        assert_eq!(
+            by_user(&rows),
+            [
+                ("u:user:pc\\alice".to_owned(), vec![20, 22]),
+                ("u:user:pc\\bob".to_owned(), vec![30, 31, 30]),
+                ("u:system".to_owned(), vec![10, 4, 40, 41]),
+            ]
+        );
+    }
+
+    #[test]
+    fn sorting_categories_search_and_visibility_work_inside_each_user() {
+        let processes = user_processes();
+        let ordered = |sort: &str, descending: bool| {
+            by_user(&grouped_rows(
+                &processes,
+                &two_users(),
+                Grouped {
+                    sort,
+                    descending,
+                    ..Default::default()
+                },
+            ))
+            .into_iter()
+            .map(|group| group.1)
+            .collect::<Vec<_>>()
+        };
+        // The order inside a group follows the column; the groups stay put.
+        assert_eq!(
+            ordered("cpu", true),
+            [vec![20, 21, 22], vec![31, 30], vec![10, 4, 40, 41]]
+        );
+        assert_eq!(
+            ordered("cpu", false),
+            [vec![22, 21, 20], vec![30, 31], vec![41, 40, 4, 10]]
+        );
+        assert_eq!(
+            ordered("mem", true),
+            [vec![20, 21, 22], vec![31, 30], vec![10, 4, 40, 41]]
+        );
+        // Sorted by name, every user has their own categories; folding a
+        // category folds it for every user, and the rows stay unique.
+        let named = |sections: &[&str]| {
+            grouped_rows(
+                &processes,
+                &two_users(),
+                Grouped {
+                    mode: "apps",
+                    sort: "name",
+                    descending: false,
+                    sections,
+                    ..Default::default()
+                },
+            )
+        };
+        let headings = |rows: &[Row]| {
+            rows.iter()
+                .filter(|row| row.section.is_some())
+                .map(|row| (row.key.clone(), row.nested, row.expanded))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            headings(&named(&[])),
+            [
+                ("u:user:pc\\alice".to_owned(), false, true),
+                ("s:apps|user:pc\\alice".to_owned(), true, true),
+                ("s:background|user:pc\\alice".to_owned(), true, true),
+                ("u:user:pc\\bob".to_owned(), false, true),
+                ("s:apps|user:pc\\bob".to_owned(), true, true),
+                ("u:system".to_owned(), false, true),
+                ("s:background|system".to_owned(), true, true),
+                ("s:windows|system".to_owned(), true, true),
+            ]
+        );
+        let folded = named(&["apps"]);
+        assert!(
+            headings(&folded)
+                .iter()
+                .all(|(key, _, expanded)| *expanded != key.starts_with("s:apps|"))
+        );
+        assert_eq!(
+            by_user(&folded),
+            [
+                ("u:user:pc\\alice".to_owned(), vec![22]),
+                ("u:user:pc\\bob".to_owned(), vec![]),
+                ("u:system".to_owned(), vec![41, 10, 40, 4]),
+            ]
+        );
+        // A search keeps the groups with a match, unfolded; a heading adds up
+        // what it lists.
+        let found = grouped_rows(
+            &processes,
+            &two_users(),
+            Grouped {
+                query: "editor",
+                folds: &["user:pc\\bob", "system"],
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            by_user(&found),
+            [
+                ("u:user:pc\\alice".to_owned(), vec![20, 21]),
+                ("u:user:pc\\bob".to_owned(), vec![31, 30]),
+            ]
+        );
+        assert_eq!(found[0].members.len(), 2);
+        assert_eq!(found[0].metric("cpu"), Some(35.));
+        // The visibility rules hide Windows components before the grouping.
+        let hidden = grouped_rows(
+            &processes,
+            &two_users(),
+            Grouped {
+                visibility: true,
+                ..Default::default()
+            },
+        );
+        let system = hidden.iter().find(|row| row.key == "u:system").unwrap();
+        assert_eq!(system.members.len(), 3);
+        assert_eq!(by_user(&hidden)[2].1, [10, 40, 41]);
+    }
+
+    #[test]
+    fn a_folded_user_shows_only_a_heading_with_its_totals() {
+        let processes = user_processes();
+        for mode in ["apps", "tree", "list"] {
+            let rows = grouped_rows(
+                &processes,
+                &two_users(),
+                Grouped {
+                    mode,
+                    folds: &["user:pc\\alice", "nobody"],
+                    ..Default::default()
+                },
+            );
+            assert_eq!(rows[0].key, "u:user:pc\\alice", "{mode}");
+            assert!(rows[0].expandable && !rows[0].expanded);
+            assert_eq!(rows[0].members.len(), 3);
+            assert_eq!(rows[0].metric("cpu"), Some(35.));
+            assert_eq!(rows[1].key, "u:user:pc\\bob", "{mode}");
+            assert!(rows[1].expanded);
+        }
+    }
+
+    #[test]
+    fn one_signed_in_user_and_the_system_are_two_groups_when_always_grouped() {
+        let processes = user_processes();
+        let sessions = [json!({"id":1,"user":"alice","domain":"PC","current":true})];
+        let users = UserGroups::grouping(&sessions, UserGrouping::On).unwrap();
+        let empty = HashSet::new();
+        let hosted = HashMap::new();
+        let options = |users| ProcessOptions {
+            mode: "list",
+            query: "",
+            sort: "pid",
+            descending: false,
+            expanded: &empty,
+            tree_expanded: &empty,
+            sections: &empty,
+            hosted: &hosted,
+            visibility: None,
+            users,
+            user_folds: &empty,
+        };
+        let rows = process_rows(&processes, options(Some(&users)));
+        // Session 2 has no signed-in user here: its processes are the system's.
+        assert_eq!(
+            by_user(&rows),
+            [
+                ("u:user:pc\\alice".to_owned(), vec![20, 21, 22]),
+                ("u:system".to_owned(), vec![4, 10, 30, 31, 40, 41]),
+            ]
+        );
+        // Not grouped, the list is what it was: no heading, nothing nested,
+        // the keys without a user.
+        let plain = process_rows(&processes, options(None));
+        assert_eq!(pids(&plain), [4, 10, 20, 21, 22, 30, 31, 40, 41]);
+        assert!(plain.iter().all(|row| row.user.is_none() && !row.nested));
+        assert!(plain.iter().all(|row| split_scope(&row.key).1.is_none()));
+    }
+
+    #[test]
+    fn an_app_two_users_run_keeps_a_history_for_each_of_them() {
+        let process = |pid: u64, session: u64, cpu: f64| json!({"pid":pid,"sessionId":session,"createTime":1,"name":"app.exe","path":"C:/app.exe","cpu":cpu,"privateWs":cpu * 100.});
+        let app = "g:image:c:\\app.exe";
+        let (alice, bob) = ("user:pc\\alice", "user:pc\\bob");
+        let cpu = |timeline: &Timeline, scope: Option<&str>| {
+            let id = scope.map_or(app.to_owned(), |user| scoped_key(app, user));
+            timeline
+                .points(&format!("group.{id}.cpu"))
+                .map(|points| points.into_iter().map(|point| point.1).collect::<Vec<_>>())
+        };
+        let mut timeline = Timeline::new();
+        let mut at = 0;
+        let mut push = |timeline: &mut Timeline, processes: Vec<Value>| {
+            timeline.push(
+                &json!({"timestamp":at,"sessions":two_users(),"processes":processes}),
+                1000.,
+            );
+            at += 1000;
+        };
+        // Alice alone: her history is the app's.
+        push(&mut timeline, vec![process(1, 1, 10.), process(2, 1, 5.)]);
+        push(&mut timeline, vec![process(1, 1, 20.), process(2, 1, 5.)]);
+        assert_eq!(cpu(&timeline, None), Some(vec![Some(15.), Some(25.)]));
+        assert_eq!(cpu(&timeline, Some(alice)), cpu(&timeline, None));
+        // Bob starts it too: each keeps their own from here on, Alice with
+        // what she ran before.
+        push(
+            &mut timeline,
+            vec![process(1, 1, 30.), process(2, 1, 5.), process(3, 2, 40.)],
+        );
+        assert_eq!(
+            cpu(&timeline, None),
+            Some(vec![Some(15.), Some(25.), Some(75.)])
+        );
+        assert_eq!(
+            cpu(&timeline, Some(alice)),
+            Some(vec![Some(15.), Some(25.), Some(35.)])
+        );
+        assert_eq!(cpu(&timeline, Some(bob)), Some(vec![Some(40.)]));
+        assert_eq!(
+            timeline
+                .points(&format!("group.{}.mem", scoped_key(app, bob)))
+                .unwrap()
+                .last(),
+            Some(&(2000., Some(4000.)))
+        );
+        // Alice quits: Bob's history goes on, hers ends.
+        push(&mut timeline, vec![process(3, 2, 50.)]);
+        assert_eq!(cpu(&timeline, Some(bob)), Some(vec![Some(40.), Some(50.)]));
+        assert_eq!(cpu(&timeline, Some(alice)), None);
+        // The app gone, nothing is kept.
+        push(&mut timeline, vec![]);
+        assert_eq!(cpu(&timeline, None), None);
+        assert_eq!(cpu(&timeline, Some(bob)), None);
+        assert!(timeline.shared.is_empty());
     }
 }

@@ -218,6 +218,10 @@
     "background": "バックグラウンド プロセス",
     "windows": "Windows プロセス"
   },
+  "user": {
+    "system": "システム",
+    "disconnected": "切断済み"
+  },
   "sectionSearching": "検索中、すべての一致が表示されます。検索をクリアしてグループを折りたたむ",
   "servicesSummary": "{names} 他（{count}サービス）",
   "pidExited": "PID {pid} はすでに終了しています。",

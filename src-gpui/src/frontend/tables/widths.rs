@@ -203,6 +203,9 @@ impl AutoWidths {
                 let mut width = self.measure(&text, 2, &system, cx) + CELL_PADDING * 2.;
                 if field.key == "name" {
                     width += 48. + row.depth as f32 * 16.;
+                    if row.nested {
+                        width += USER_INSET;
+                    }
                     if !row.detail.is_empty() {
                         width += self.measure(&row.detail, 0, &system, cx) + 10.;
                     }

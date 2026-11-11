@@ -263,6 +263,8 @@ impl Desktop {
                     self.sections.clone(),
                     self.hosted_services(),
                     self.visibility_rules("processes"),
+                    self.user_grouping(),
+                    self.user_folds.clone(),
                 );
                 let task = cx.background_executor().spawn(async move {
                     let start = Instant::now();
@@ -270,6 +272,8 @@ impl Desktop {
                     let serialize_us = start.elapsed().as_micros() as u64;
                     let start = Instant::now();
                     let rows = processes.then(|| {
+                        let users =
+                            model::UserGroups::grouping(values(&model["sessions"]), options.9);
                         model::process_rows(
                             values(&model["processes"]),
                             model::ProcessOptions {
@@ -282,6 +286,8 @@ impl Desktop {
                                 sections: &options.6,
                                 hosted: &options.7,
                                 visibility: options.8.as_ref(),
+                                users: users.as_ref(),
+                                user_folds: &options.10,
                             },
                         )
                     });
@@ -712,11 +718,18 @@ impl Desktop {
                 }
             }
             Action::Fold(key) => {
-                if let Some(section) = key.strip_prefix("s:") {
+                if let Some(group) = key.strip_prefix("u:") {
                     // While searching every match shows: headings cannot fold.
                     if !self.query.trim().is_empty() {
                         return;
                     }
+                    self.fold_user(group, !self.user_folds.contains(group));
+                } else if let Some(section) = key.strip_prefix("s:") {
+                    if !self.query.trim().is_empty() {
+                        return;
+                    }
+                    // A category folds in every user's group at once.
+                    let section = model::split_scope(section).0;
                     if !self.sections.remove(section) {
                         self.sections.insert(section.into());
                     }
@@ -970,6 +983,12 @@ impl Desktop {
                         self.rows[..index].iter().rev().find(|parent| {
                             parent.depth < row.depth || (row.depth == 0 && parent.section.is_some())
                         })
+                    } else if key == "left" && row.nested {
+                        // From a category heading, to its user's.
+                        self.rows[..index]
+                            .iter()
+                            .rev()
+                            .find(|parent| parent.user.is_some())
                     } else {
                         None
                     };
