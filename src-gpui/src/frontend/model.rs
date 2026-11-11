@@ -22,7 +22,13 @@ pub struct CoreGrid {
     pub header_height: f32,
     pub gap: f32,
 }
-/// Prefer readable plots and full rows; keep a near-equal layout while resizing.
+/// What a grid with empty slots keeps of its plot size when compared with a
+/// full one: a full grid is chosen unless its plots are much smaller.
+const CORE_GRID_GAPPED: f32 = 0.6;
+/// Prefer full rows, then readable plots; keep a near-equal layout while
+/// resizing. Empty slots remain only where no full grid fits the area with
+/// cards of the minimum size (a prime count, or one whose divisors are all
+/// too wide or too tall), or where its plots would be much smaller.
 pub fn core_grid_columns(size: &CoreGrid, previous: usize) -> usize {
     if size.count <= 1 || size.width <= 0. {
         return 1;
@@ -38,8 +44,13 @@ pub fn core_grid_columns(size: &CoreGrid, previous: usize) -> usize {
             return 0.;
         }
         let plot = (width / 1.8).min(height - size.header_height);
-        let empty = 1. - size.count as f32 / (rows * columns) as f32;
-        plot * (1. - empty * 0.15)
+        let slots = rows * columns;
+        if slots == size.count {
+            return plot;
+        }
+        // Among grids with empty slots, fewer of them.
+        let empty = 1. - size.count as f32 / slots as f32;
+        plot * CORE_GRID_GAPPED * (1. - empty * 0.5)
     };
     let mut best = limit;
     let mut best_score = 0.;
@@ -1502,6 +1513,57 @@ impl Timeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn core_columns(count: usize, width: f32, height: f32, previous: usize) -> usize {
+        core_grid_columns(
+            &CoreGrid {
+                count,
+                width,
+                height,
+                cell_width: 150.,
+                cell_height: 80.,
+                header_height: 22.,
+                gap: 6.,
+            },
+            previous,
+        )
+    }
+
+    #[test]
+    fn processor_grid_fills_its_rows_where_a_full_grid_fits() {
+        // 32 processors: seven columns give larger plots and three empty
+        // slots, eight fill four rows.
+        assert_eq!(core_columns(32, 1265., 600., 0), 8);
+        assert_eq!(core_columns(32, 1265., 600., 7), 8);
+        for (count, columns) in [(20, 5), (24, 6), (16, 4), (12, 4), (8, 4), (4, 2)] {
+            assert_eq!(core_columns(count, 1265., 600., 0), columns, "{count}");
+        }
+        // The full grid of two rows is kept over a larger plot with a gap.
+        assert_eq!(core_columns(14, 1265., 600., 0), 7);
+    }
+
+    #[test]
+    fn processor_grid_leaves_slots_empty_where_no_full_grid_fits() {
+        // 22 processors fill 2 × 11 or 11 × 2: too tall and too wide here.
+        assert_eq!(core_columns(22, 1265., 600., 0), 6);
+        // Eight columns no longer fit, and eight rows would be too flat.
+        assert_eq!(core_columns(32, 1200., 600., 0), 7);
+        // A prime count fills one row only, which is too wide here.
+        assert_eq!(core_columns(13, 1265., 600., 0), 5);
+        // Where that row fits, its narrow cards give way to much larger
+        // plots in three rows.
+        assert_eq!(core_columns(13, 2100., 600., 0), 5);
+    }
+
+    #[test]
+    fn processor_grid_keeps_its_columns_within_the_dead_band() {
+        // Both fill their rows and their plots differ by a few percent.
+        let fresh = core_columns(24, 1265., 470., 0);
+        let other = if fresh == 6 { 8 } else { 6 };
+        assert_eq!(core_columns(24, 1265., 470., other), other);
+        // Nothing fits the height: as many columns as the width takes.
+        assert_eq!(core_columns(32, 1265., 200., 0), 8);
+    }
 
     #[test]
     fn executable_names_match_case_variants_in_non_ascii_names() {
