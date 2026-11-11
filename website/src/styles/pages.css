@@ -798,6 +798,13 @@
   flex: none;
   color: var(--series-io);
 }
+/* A release's notice, intro and groups stand as far apart as the release's
+   own parts; a group's badge then keeps clear of what is above it. */
+.release-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
 .cl-intro {
   color: var(--ink);
   font-size: 1.0625rem;
