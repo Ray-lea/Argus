@@ -1,111 +1,107 @@
 import type { Glyph } from "./model";
 
-// The app's own 16 px line icons (resources/ui-icons), stroked in the text colour.
-// A leading "@w@" overrides the 1.25 px stroke.
+// The app's line icons: the Lucide icon each of its product icon names draws
+// (`product_icons!` in src-gpui/src/frontend/assets.rs), copied from the
+// catalog its component library bundles (gpui-kit-assets, Lucide 1.43.0) so
+// the shapes are the app's own; lucide-react is a later release and differs.
+// 24-unit grid, stroked in the text colour. GitHub is that catalog's solid mark.
 const ui = {
-  apps: "<rect x=\"2.5\" y=\"2.5\" width=\"4.5\" height=\"4.5\" rx=\"1\"/><rect x=\"9\" y=\"2.5\" width=\"4.5\" height=\"4.5\" rx=\"1\"/><rect x=\"2.5\" y=\"9\" width=\"4.5\" height=\"4.5\" rx=\"1\"/><rect x=\"9\" y=\"9\" width=\"4.5\" height=\"4.5\" rx=\"1\"/>",
-  arrowRight: "<path d=\"M3 8h10M9 4l4 4-4 4\"/>",
-  battery: "<rect x=\"1.5\" y=\"4.5\" width=\"11.5\" height=\"7\" rx=\"1.5\"/><path d=\"M14.5 7v2M4 7v2M6.5 7v2\"/>",
-  bolt: "<path d=\"M9.2 1.8 3.8 9.2h4l-1 5 5.4-7.4h-4Z\"/>",
-  branchEnd: "<path d=\"M3.5 2.5v8.5h3M3.5 6.5h3\"/><circle cx=\"11\" cy=\"9.5\" r=\"3.5\"/><path d=\"m9.6 8.1 2.8 2.8M12.4 8.1l-2.8 2.8\"/>",
-  chat: "<path d=\"M4 3h8a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 12 11H7.5l-3 2.5V11H4a1.5 1.5 0 0 1-1.5-1.5v-5A1.5 1.5 0 0 1 4 3Z\"/>",
-  check: "<path d=\"m3.5 8.5 3 3 6-7\"/>",
-  chevronDown: "<path d=\"M3.5 6 8 10.5 12.5 6\"/>",
-  chevronRight: "<path d=\"m6 3.5 4.5 4.5L6 12.5\"/>",
-  chevronUp: "<path d=\"M3.5 10 8 5.5l4.5 4.5\"/>",
-  chip: "<rect x=\"4.5\" y=\"4.5\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"6.5\" y=\"6.5\" width=\"3\" height=\"3\" rx=\".4\"/><path d=\"M6.5 2v2.5M9.5 2v2.5M6.5 11.5V14M9.5 11.5V14M2 6.5h2.5M2 9.5h2.5M11.5 6.5H14M11.5 9.5H14\"/>",
-  columns: "<rect x=\"2.5\" y=\"3\" width=\"11\" height=\"10\" rx=\"1.5\"/><path d=\"M6.2 3v10M9.8 3v10\"/>",
-  computer: "<rect x=\"2\" y=\"2.5\" width=\"12\" height=\"8.5\" rx=\"1.2\"/><path d=\"M6 14h4M8 11v3\"/>",
-  copy: "<rect x=\"5\" y=\"5\" width=\"8.5\" height=\"8.5\" rx=\"1.5\"/><path d=\"M11 5V3.5c0-.8-.7-1.5-1.5-1.5h-6C2.7 2 2 2.7 2 3.5v6c0 .8.7 1.5 1.5 1.5H5\"/>",
-  disk: "<rect x=\"2\" y=\"4\" width=\"12\" height=\"8\" rx=\"1.5\"/><path d=\"M2 9.2h12\"/><circle cx=\"11.6\" cy=\"10.6\" r=\".45\" fill=\"currentColor\"/>",
-  dismiss: "<path d=\"m4 4 8 8M12 4l-8 8\"/>",
-  document: "<path d=\"M4 2h5l3.5 3.5V13c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V3c0-.6.4-1 1-1Z\"/><path d=\"M9 2v3.5h3.5M5.5 8.5h5M5.5 11h3.5\"/>",
-  end: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"m6 6 4 4M10 6l-4 4\"/>",
-  external: "<path d=\"M9 2.5h4.5V7M13.5 2.5 7.5 8.5\"/><path d=\"M12 9.5v3c0 .8-.7 1.5-1.5 1.5h-7c-.8 0-1.5-.7-1.5-1.5v-7C2 4.7 2.7 4 3.5 4h3\"/>",
-  eyeOff: "<path d=\"m2 2 12 12M6.5 3.7A6 6 0 0 1 8 3.5c4 0 6.5 4.5 6.5 4.5a13 13 0 0 1-2 2.5M10 12.2a6 6 0 0 1-2 .3C4 12.5 1.5 8 1.5 8a13 13 0 0 1 2.6-3M6.6 6.6a2 2 0 0 0 2.8 2.8\"/>",
-  eye: "<path d=\"M1.5 8s2.5-4.5 6.5-4.5 6.5 4.5 6.5 4.5-2.5 4.5-6.5 4.5S1.5 8 1.5 8Z\"/><circle cx=\"8\" cy=\"8\" r=\"2\"/>",
-  filter: "<path d=\"M2.5 3.5h11l-4.25 5v4.25l-2.5 1.25V8.5Z\"/>",
-  folder: "<path d=\"M2 4.5c0-.8.7-1.5 1.5-1.5h2.8l1.5 1.5h4.7c.8 0 1.5.7 1.5 1.5v5.5c0 .8-.7 1.5-1.5 1.5h-9c-.8 0-1.5-.7-1.5-1.5Z\"/>",
-  fontSize: "<path d=\"m1.5 12.5 3.25-9 3.25 9M2.7 9h4.1m2.7 3.5 2.25-6 2.25 6M10.4 10h2.7\"/>",
-  gauge: "<path d=\"M2.8 11.5a5.5 5.5 0 1 1 10.4 0\"/><path d=\"m8 9.5 2.6-3.4\"/>",
-  genericApp: "@1@<rect x=\"1.5\" y=\"2.5\" width=\"13\" height=\"11\" rx=\"2\"/><path d=\"M1.5 5.5h13\"/><circle cx=\"3.6\" cy=\"4\" r=\".55\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"5.3\" cy=\"4\" r=\".55\" fill=\"currentColor\" stroke=\"none\"/>",
-  github: "<path transform=\"scale(0.6667)\" stroke-width=\"1.875\" d=\"M9 19c-4 1.3-4-2-6-2.5m12 4.5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1-.3-3.4 1.3a11.8 11.8 0 0 0-6.2 0C6.6 2.8 5.6 3.1 5.6 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4.2 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21\"/>",
-  globe: "<circle cx=\"8\" cy=\"8\" r=\"5.5\"/><path d=\"M2.5 8h11\"/><path d=\"M8 2.5c1.5 1.6 2.25 3.4 2.25 5.5S9.5 11.9 8 13.5C6.5 11.9 5.75 10.1 5.75 8S6.5 4.1 8 2.5Z\"/>",
-  goTo: "<path d=\"M3 8h9M8.5 4.5 12 8l-3.5 3.5\"/>",
-  gpu: "<rect x=\"1.5\" y=\"4\" width=\"11\" height=\"7.5\" rx=\"1\"/><circle cx=\"7\" cy=\"7.75\" r=\"2\"/><path d=\"M12.5 6h2M12.5 9.5h2M3.5 11.5v2\"/>",
-  grip: "<g fill=\"currentColor\" stroke=\"none\"><circle cx=\"6\" cy=\"4\" r=\"1\"/><circle cx=\"10\" cy=\"4\" r=\"1\"/><circle cx=\"6\" cy=\"8\" r=\"1\"/><circle cx=\"10\" cy=\"8\" r=\"1\"/><circle cx=\"6\" cy=\"12\" r=\"1\"/><circle cx=\"10\" cy=\"12\" r=\"1\"/></g>",
-  history: "<path d=\"M2.7 8.2A5.3 5.3 0 1 0 4.3 4.3\"/><path d=\"M4.4 1.9v2.5H1.9\"/><path d=\"M8 5.3V8l1.9 1.4\"/>",
-  info: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M8 7.2v3.8\"/><circle cx=\"8\" cy=\"5\" r=\".4\" fill=\"currentColor\"/>",
-  interfaceScale: "<circle cx=\"6.75\" cy=\"6.75\" r=\"4.75\"/><path d=\"M10.25 10.25 14 14M4.5 6.75H9M6.75 4.5V9\"/>",
-  kernel: "@1@<rect x=\"3\" y=\"3\" width=\"10\" height=\"10\" rx=\"2\"/><rect x=\"5.5\" y=\"5.5\" width=\"5\" height=\"5\" rx=\"1\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M6 1.5V3M10 1.5V3M6 13v1.5M10 13v1.5M1.5 6H3M1.5 10H3M13 6h1.5M13 10h1.5\" stroke-linecap=\"round\"/>",
-  keyboard: "<rect x=\"1.5\" y=\"3.5\" width=\"13\" height=\"9\" rx=\"1.5\"/><path d=\"M4.2 6.5h.6M6.7 6.5h.6M9.2 6.5h.6M11.7 6.5h.6M5 9.5h6\"/>",
-  leaf: "<path d=\"M13.5 2.5c-6.1 0-9.5 2.8-9.5 6.9 0 2.4 1.7 4.1 4.1 4.1 4.1 0 5.4-4.5 5.4-11Z\"/><path d=\"M2.5 13.5c1.8-3 4.2-5.2 7.3-6.6\"/>",
-  list: "<path d=\"M2.5 4h11M2.5 8h11M2.5 12h11\"/>",
-  lock: "<rect x=\"3.5\" y=\"7\" width=\"9\" height=\"6.5\" rx=\"1.5\"/><path d=\"M5.5 7V5a2.5 2.5 0 0 1 5 0v2\"/>",
-  memory: "<path d=\"M1.5 5h13v5.5h-13Z\"/><path d=\"M4 7.2v1.3M6.7 7.2v1.3M9.3 7.2v1.3M12 7.2v1.3M3.5 10.5V12M6 10.5V12M10 10.5V12M12.5 10.5V12\"/>",
-  menu: "<path d=\"M2.5 4.5h11M2.5 8h11M2.5 11.5h11\"/>",
-  minimize: "<rect x=\"2.5\" y=\"2.5\" width=\"11\" height=\"9\" rx=\"1.5\"/><path d=\"M5.5 14h5\"/>",
-  navSide: "<rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"/><path d=\"M6 3v10\"/>",
-  navTop: "<rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"/><path d=\"M2 6.5h12\"/>",
-  network: "<rect x=\"6\" y=\"2\" width=\"4\" height=\"3.5\" rx=\".6\"/><rect x=\"1.8\" y=\"10.5\" width=\"4\" height=\"3.5\" rx=\".6\"/><rect x=\"10.2\" y=\"10.5\" width=\"4\" height=\"3.5\" rx=\".6\"/><path d=\"M8 5.5V8M3.8 10.5V8h8.4v2.5\"/>",
-  note: "<path d=\"M3.5 2.5h9c.6 0 1 .4 1 1V10L10 13.5H3.5c-.6 0-1-.4-1-1v-9c0-.6.4-1 1-1Z\"/><path d=\"M13.5 10H11c-.6 0-1 .4-1 1v2.5\"/>",
-  notes: "<path d=\"M9.5 2H4c-.6 0-1 .4-1 1v10c0 .6.4 1 1 1h7.5c.6 0 1-.4 1-1V7\"/><path d=\"M5.5 8.5h4.5M5.5 11h3M12.5 1.5v3M11 3h3\"/>",
-  panel: "<rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"/><path d=\"M9.5 3v10\"/>",
-  panelAuto:
-    "<rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"/><path d=\"M9.5 3v10\"/><path d=\"M12.4 6.4 11 8l1.4 1.6\"/>",
-  pause: "<rect x=\"4\" y=\"3\" width=\"2.5\" height=\"10\" rx=\"0.8\"/><rect x=\"9.5\" y=\"3\" width=\"2.5\" height=\"10\" rx=\"0.8\"/>",
-  pin: "<path d=\"M5.5 2.5h5\"/><path d=\"M6.5 2.5v3.8L4.5 9.5h7l-2-3.2V2.5\"/><path d=\"M8 9.5v4\"/>",
-  play: "<path d=\"M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5Z\"/>",
-  pointer: "<path d=\"M4 2.5 12 8l-3.7.8 2.1 3.9-1.5.8-2.1-3.9L4 12Z\"/>",
-  power: "<path d=\"M5.1 4.3a5 5 0 1 0 5.8 0\"/><path d=\"M8 2.2v5.3\"/>",
-  processes: "<rect x=\"2\" y=\"2.5\" width=\"3\" height=\"3\" rx=\".75\"/><rect x=\"2\" y=\"6.5\" width=\"3\" height=\"3\" rx=\".75\"/><rect x=\"2\" y=\"10.5\" width=\"3\" height=\"3\" rx=\".75\"/><path d=\"M7.5 4h6M7.5 8h6M7.5 12h6\"/>",
-  pulse: "<path d=\"M1.5 8.5h2.6l1.6-4 2.6 7 1.9-5 1 2h3.3\"/>",
-  reset: "<path d=\"M3.4 6.2A5 5 0 1 1 3 9.5\"/><path d=\"M2.8 2.8v3.6h3.6\"/>",
-  restart: "<path d=\"M12.6 6.2A5 5 0 1 0 13 9.5\"/><path d=\"M13.2 2.8v3.6H9.6\"/>",
-  runTask: "<path d=\"M8.5 13H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v3M2 6h11M12 9v5M9.5 11.5h5\"/>",
-  search: "<circle cx=\"7\" cy=\"7\" r=\"4.5\"/><path d=\"M10.4 10.4 14 14\"/>",
-  services: "<path d=\"M2.5 4.5h3a1.5 1.5 0 0 1 3 0h3v3a1.5 1.5 0 0 1 0 3v3h-9Z\"/>",
-  settings: "<path d=\"M6.82 3.24 6.97 1.79h2.06l.15 1.45 1.35.56 1.13-.93 1.47 1.47-.93 1.13.56 1.35 1.45.15v2.06l-1.45.15-.56 1.35.93 1.13-1.47 1.47-1.13-.93-1.35.56-.15 1.45H6.97l-.15-1.45-1.35-.56-1.13.93-1.47-1.47.93-1.13-.56-1.35-1.45-.15V6.97l1.45-.15.56-1.35-.93-1.13 1.47-1.47 1.13.93Z\"/><circle cx=\"8\" cy=\"8\" r=\"2\"/>",
-  shield: "<path d=\"M8 1.8 13 3.6v3.9c0 3.1-2.1 5.5-5 6.7-2.9-1.2-5-3.6-5-6.7V3.6Z\"/>",
-  sortAscending: "<path d=\"M4.5 13V3M2 5.5 4.5 3 7 5.5\"/><path d=\"M9.5 4h2M9.5 8h3.5M9.5 12h5\"/>",
-  sortDescending: "<path d=\"M4.5 3v10M2 10.5 4.5 13 7 10.5\"/><path d=\"M9.5 4h5M9.5 8h3.5M9.5 12h2\"/>",
-  sparkle: "<path d=\"M7 2.5c.5 2.6 1.4 3.5 4 4-2.6.5-3.5 1.4-4 4-.5-2.6-1.4-3.5-4-4 2.6-.5 3.5-1.4 4-4Z\"/><path d=\"M12.5 10.5v3M11 12h3\"/>",
-  star: "<path d=\"m8 1.9 1.85 3.75 4.15.6-3 2.92.71 4.13L8 11.35l-3.71 1.95.71-4.13-3-2.92 4.15-.6Z\"/>",
-  stop: "<rect x=\"4\" y=\"4\" width=\"8\" height=\"8\" rx=\"1.2\"/>",
-  storage: "<ellipse cx=\"8\" cy=\"4\" rx=\"5\" ry=\"2\"/><path d=\"M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4\"/><path d=\"M3 8c0 1.1 2.2 2 5 2s5-.9 5-2\"/>",
-  theme: "<circle cx=\"8\" cy=\"8\" r=\"5.5\"/><path d=\"M8 2.5a5.5 5.5 0 0 1 0 11Z\" fill=\"currentColor\"/>",
-  timer: "<circle cx=\"8\" cy=\"9\" r=\"5\"/><path d=\"M8 9V6.5M6.3 2h3.4M12.2 4.8l.9-.9\"/>",
-  transfer: "<path d=\"M5 13.5v-11M2.5 5 5 2.5 7.5 5\"/><path d=\"M11 2.5v11M8.5 11l2.5 2.5 2.5-2.5\"/>",
-  trash: "<path d=\"M2.5 4.5h11\"/><path d=\"M6 4.5V3c0-.6.4-1 1-1h2c.6 0 1 .4 1 1v1.5\"/><path d=\"m3.8 4.5.6 8.1c.1.8.7 1.4 1.5 1.4h4.2c.8 0 1.4-.6 1.5-1.4l.6-8.1\"/><path d=\"M6.6 7.2v4M9.4 7.2v4\"/>",
-  tray: "<path d=\"M8 2v6.5M5.6 6.1 8 8.5l2.4-2.4\"/><path d=\"M2 10h3.2l.8 1.5h4l.8-1.5H14v2.5c0 .8-.7 1.5-1.5 1.5h-9c-.8 0-1.5-.7-1.5-1.5Z\"/>",
-  tree: "<path d=\"M3 3h5M5 3v9.5h4M5 7.5h4\"/><circle cx=\"11\" cy=\"7.5\" r=\"1.5\"/><circle cx=\"11\" cy=\"12.5\" r=\"1.5\"/>",
-  unpin: "<path d=\"M5.5 2.5h5\"/><path d=\"M6.5 2.5v3.8L4.5 9.5h7l-2-3.2V2.5\"/><path d=\"M8 9.5v4M2.5 2.5l11 11\"/>",
-  update: "<path d=\"M8 2.5v7.5M4.75 6.75 8 10l3.25-3.25\"/><path d=\"M2.5 10.5v1.5c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-1.5\"/>",
-  warning: "<path d=\"M7.1 2.6a1 1 0 0 1 1.8 0l5.2 9.4a1 1 0 0 1-.9 1.5H2.8a1 1 0 0 1-.9-1.5Z\"/><path d=\"M8 6.2v3\"/><circle cx=\"8\" cy=\"11.2\" r=\".4\" fill=\"currentColor\"/>",
+  apps: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+  arrowRight: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+  battery: '<path d="M10 14v-4"/><path d="M22 14v-4"/><path d="M6 14v-4"/><rect x="2" y="6" width="16" height="12" rx="2"/>',
+  bolt: '<path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"/>',
+  branchEnd: '<path d="M16 5H3"/><path d="M11 12H3"/><path d="M16 19H3"/><path d="m15.5 9.5 5 5"/><path d="m20.5 9.5-5 5"/>',
+  chat: '<path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  chevronRight: '<path d="m9 18 6-6-6-6"/>',
+  chevronUp: '<path d="m18 15-6-6-6 6"/>',
+  chip: '<path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/>',
+  columns: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+  computer: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  disk: '<path d="M10 16h.01"/><path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><path d="M21.946 12.013H2.054"/><path d="M6 16h.01"/>',
+  dismiss: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  document: '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  end: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+  external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  eyeOff: '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>',
+  eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+  filter: '<path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  fontSize: '<path d="m15 16 2.536-7.328a1.02 1.02 1 0 1 1.928 0L22 16"/><path d="M15.697 14h5.606"/><path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16"/><path d="M3.304 13h6.392"/>',
+  gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  genericApp: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 4v4"/><path d="M2 8h20"/><path d="M6 4v4"/>',
+  github: '<path fill="currentColor" stroke="none" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  goTo: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+  gpu: '<path d="M2 17h18a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H2"/><path d="M2 21V3"/><path d="M7 17v3a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-3"/><circle cx="16" cy="11" r="2"/><circle cx="8" cy="11" r="2"/>',
+  grip: '<circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>',
+  history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  interfaceScale: '<circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/>',
+  kernel: '<path d="M10 12h4"/><path d="M10 17h4"/><path d="M10 7h4"/><path d="M18 12h2"/><path d="M18 18h2"/><path d="M18 6h2"/><path d="M4 12h2"/><path d="M4 18h2"/><path d="M4 6h2"/><rect x="6" y="2" width="12" height="20" rx="2"/>',
+  keyboard: '<path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/>',
+  leaf: '<path d="M11 20a10 10 0 0010-10 25.9 25.9 0 00-1.04-7.281 1 1 0 00-1.755-.325C15.833 5.5 13 5.5 9.8 6.1A7 7 0 0011 20"/><path d="M2 21a5 5 0 012.911-4.544C7.613 15.212 8.351 15.24 11 13"/>',
+  list: '<path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  memory: '<path d="M12 12v-2"/><path d="M12 18v-2"/><path d="M16 12v-2"/><path d="M16 18v-2"/><path d="M2 11h1.5"/><path d="M20 18v-2"/><path d="M20.5 11H22"/><path d="M4 18v-2"/><path d="M8 12v-2"/><path d="M8 18v-2"/><rect x="2" y="6" width="20" height="10" rx="2"/>',
+  menu: '<path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/>',
+  minimize: '<path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/>',
+  navSide: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',
+  navTop: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/>',
+  network: '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
+  note: '<path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/>',
+  notes: '<path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>',
+  panel: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+  panelAuto: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 14v1"/><path d="M15 19v2"/><path d="M15 3v2"/><path d="M15 9v1"/>',
+  pause: '<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>',
+  pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
+  play: '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
+  pointer: '<path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"/>',
+  power: '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
+  processes: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><path d="M14 4h7"/><path d="M14 9h7"/><path d="M14 15h7"/><path d="M14 20h7"/>',
+  pulse: '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+  reset: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  restart: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+  runTask: '<path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>',
+  search: '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/>',
+  services: '<path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z"/>',
+  settings: '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+  sortAscending: '<path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="M11 12h4"/><path d="M11 16h7"/><path d="M11 20h10"/>',
+  sortDescending: '<path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="M11 4h10"/><path d="M11 8h7"/><path d="M11 12h4"/>',
+  sparkle: '<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/>',
+  star: '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
+  stop: '<rect width="18" height="18" x="3" y="3" rx="2"/>',
+  storage: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
+  theme: '<circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/>',
+  timer: '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
+  transfer: '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>',
+  trash: '<path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  tray: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/>',
+  tree: '<path d="M8 5h13"/><path d="M13 12h8"/><path d="M13 19h8"/><path d="M3 10a2 2 0 0 0 2 2h3"/><path d="M3 5v12a2 2 0 0 0 2 2h3"/>',
+  unpin: '<path d="M12 17v5"/><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89"/><path d="m2 2 20 20"/><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11"/>',
+  update: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+  warning: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
 };
 export type UiIcon = keyof typeof ui;
 
+// Lucide's own stroke is 2 units; the app draws 1.875, 1.25 px at 16 px.
 export function Icon({ name, size = 16, className }: { name: UiIcon; size?: number; className?: string }) {
-  let body: string = ui[name];
-  let width = "1.25";
-  const custom = /^@([\d.]+)@/.exec(body);
-  if (custom) {
-    width = custom[1];
-    body = body.slice(custom[0].length);
-  }
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 16 16"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={width}
+      strokeWidth="1.875"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       className={"ico" + (className ? " " + className : "")}
-      dangerouslySetInnerHTML={{ __html: body }}
+      dangerouslySetInnerHTML={{ __html: ui[name] }}
     />
   );
 }
