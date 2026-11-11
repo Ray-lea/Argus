@@ -1,0 +1,30 @@
+{
+  "window": [1240, 860],
+  "steps": [
+    { "note": "A portable copy: the onboarding's first step tells what it lacks and where the installer is." },
+    { "control": { "page": "processes", "theme": "dark", "pointerOutside": true,
+        "data": { "info": { "version": "0.1.0", "elevated": false, "updated": false, "taskManager": false, "portable": true } },
+        "dialog": "onboarding", "args": { "step": 0 } },
+      "wait": 900, "inspect": "layout", "label": "welcome",
+      "expect": { "dialog.kind": "onboarding", "dialog.ready": true }, "capture": "welcome" },
+    { "note": "The notice that follows the first onboarding, over the process list and over the charts." },
+    { "control": { "dismiss": true }, "wait": 900, "inspect": "layout", "label": "closed", "expect": { "dialog": null } },
+    { "control": { "portableNotice": true }, "wait": 700, "capture": "notice" },
+    { "control": { "page": "performance" }, "wait": 900, "capture": "notice-over-charts" },
+    { "note": "A download closes the notice; the fixture opens no browser." },
+    { "control": { "clickAnchor": "toast-action-1-0" }, "wait": 600, "capture": "notice-closed" },
+    { "note": "Light theme, then the smallest window with large text." },
+    { "control": { "theme": "light", "page": "processes", "portableNotice": true, "dialog": "onboarding", "args": { "step": 0 } },
+      "wait": 900, "inspect": "layout", "label": "light", "expect": { "dialog.ready": true }, "capture": "welcome-light" },
+    { "control": { "dismiss": true }, "wait": 900, "capture": "notice-light" },
+    { "control": { "fontSize": 20, "dialog": "onboarding", "args": { "step": 0 } }, "probe": "size 640 480",
+      "wait": 900, "inspect": "layout", "label": "minimum", "expect": { "dialog.ready": true, "dialog.settled": true },
+      "capture": "welcome-minimum" },
+    { "control": { "dismiss": true }, "wait": 900, "capture": "notice-minimum" },
+    { "note": "An installed copy's first step stays as it was." },
+    { "control": { "fontSize": 13, "theme": "dark",
+        "data": { "info": { "version": "0.1.0", "elevated": false, "updated": false, "taskManager": false, "portable": false } },
+        "dialog": "onboarding", "args": { "step": 0 } },
+      "probe": "size 1240 860", "wait": 900, "capture": "welcome-installed" }
+  ]
+}
