@@ -16,6 +16,11 @@
     "latest": "Último",
     "ago": "Hace {seconds} s"
   },
+  "devices": {
+    "hide": "Ocultar {name}",
+    "shown": "Dispositivos mostrados",
+    "restore": "Restaurar vista predeterminada"
+  },
   "cpu": {
     "coreType": "Tipo de núcleo",
     "coreKind": {

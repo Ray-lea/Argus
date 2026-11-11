@@ -680,6 +680,8 @@ impl Desktop {
                 readings,
                 figure_tip,
             } = card;
+            // A card opens a device the performance page's list shows.
+            let device = self.device_target(id, device);
             let (figure_size, unit_size, content) = fit(id, index);
             let readings = match readings {
                 Readings::Metrics(metrics, small) => {

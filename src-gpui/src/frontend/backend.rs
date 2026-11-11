@@ -803,6 +803,8 @@ impl Desktop {
                 self.request("set_interval", json!({"ms":ms}), None, window, cx);
             }
             Action::Device(device) => {
+                // A device opened while hidden from the list returns to it.
+                self.reveal_device(&device);
                 self.device = device;
                 self.prefs.set("perfDevice", &self.device);
                 if self.page != "performance" {

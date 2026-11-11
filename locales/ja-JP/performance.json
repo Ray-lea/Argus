@@ -12,6 +12,11 @@
     "latest": "最新",
     "ago": "{seconds} 秒前"
   },
+  "devices": {
+    "hide": "{name}を非表示にする",
+    "shown": "表示するデバイス",
+    "restore": "既定の表示に戻す"
+  },
   "cpu": {
     "coreType": "コアタイプ",
     "coreKind": {

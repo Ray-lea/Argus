@@ -456,6 +456,16 @@ impl Desktop {
                 window.refresh();
                 return;
             }
+            performance::rail::HIDE => {
+                self.set_device_hidden(&value, window);
+                cx.notify();
+                return;
+            }
+            performance::rail::RESTORE => {
+                self.restore_devices();
+                cx.notify();
+                return;
+            }
             "diskPage" => self.disk_page = value.as_str().unwrap_or("overview").into(),
             "refreshDiskDetails" => {
                 if let Some(index) = value.as_u64() {

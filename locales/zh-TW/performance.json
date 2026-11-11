@@ -8,6 +8,11 @@
     "latest": "最新",
     "ago": "{seconds} 秒前"
   },
+  "devices": {
+    "hide": "隱藏「{name}」",
+    "shown": "顯示的裝置",
+    "restore": "還原預設顯示"
+  },
   "cpu": {
     "coreType": "核心類型",
     "coreKind": {

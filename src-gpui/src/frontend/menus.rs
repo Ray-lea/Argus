@@ -137,6 +137,13 @@ fn toggle_in_place(popup: &mut Popup, entry: Entry) {
     }
 }
 
+/// Whether a menu of `rows` items fits a window `height` tall. A menu does
+/// not scroll: a list that may outgrow the window is checked before it is
+/// offered.
+pub(super) fn fits(rows: usize, height: Pixels) -> bool {
+    px(ROW * rows as f32 + 2. * (INSET + 1. + MARGIN)) <= height
+}
+
 /// A menu's border box and where each entry starts in it.
 struct MenuLayout {
     size: Size<Pixels>,
@@ -278,6 +285,18 @@ impl Desktop {
         });
         window.refresh();
         cx.notify();
+    }
+
+    /// Replaces the open menu's entries with others of the same arrangement,
+    /// after a staying item changed what the rest say or allow. The keyboard
+    /// and an open submenu stay where they are.
+    pub(in crate::frontend) fn update_popup(&mut self, items: Vec<MenuItem>) {
+        let items = tidy(items);
+        if let Some(popup) = &mut self.popup
+            && popup.items.len() == items.len()
+        {
+            popup.items = items;
+        }
     }
 
     /// The open menu as tests see it: whether it has the keyboard, the item

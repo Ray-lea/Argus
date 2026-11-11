@@ -16,6 +16,11 @@
     "latest": "Dernier",
     "ago": "Il y a {seconds} s"
   },
+  "devices": {
+    "hide": "Masquer {name}",
+    "shown": "Périphériques affichés",
+    "restore": "Rétablir l’affichage par défaut"
+  },
   "cpu": {
     "coreType": "Type de cœur",
     "coreKind": {

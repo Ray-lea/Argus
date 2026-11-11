@@ -5,6 +5,7 @@ mod cpu_motion;
 mod disk_details;
 mod engines;
 mod kernel_fade;
+pub(in crate::frontend) mod rail;
 mod telemetry;
 
 /// Device list geometry (the interface's `.dev` rows).
@@ -84,6 +85,8 @@ pub(super) struct Device {
     pub(super) color: Hsla,
     pub(super) kind: &'static str,
     pub(super) index: usize,
+    /// What the device is remembered by once hidden from the list (`rail::stable_key`).
+    pub(super) stable: String,
 }
 pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
     let hw = &snapshot["hardware"];
@@ -95,6 +98,7 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
             color: p.cpu,
             kind: "cpu",
             index: 0,
+            stable: rail::stable_key("cpu", &Value::Null),
         },
         Device {
             id: "memory".into(),
@@ -103,6 +107,7 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
             color: p.memory,
             kind: "memory",
             index: 0,
+            stable: rail::stable_key("memory", &Value::Null),
         },
     ];
     let batteries = values(&hw["batteries"]).len();
@@ -142,10 +147,48 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
                 color,
                 kind,
                 index,
+                stable: rail::stable_key(kind, info),
             });
         }
     }
+    let stable = rail::distinct(
+        out.iter_mut()
+            .map(|device| std::mem::take(&mut device.stable))
+            .collect(),
+    );
+    for (device, stable) in out.iter_mut().zip(stable) {
+        device.stable = stable;
+    }
     out
+}
+/// The row the list marks: the chosen device while the list shows it, else
+/// the first row it shows.
+fn selected_device(devices: &[Device], shown: &[bool], chosen: &str) -> usize {
+    devices
+        .iter()
+        .zip(shown)
+        .position(|(device, shown)| *shown && device.id == chosen)
+        .or_else(|| shown.iter().position(|shown| *shown))
+        .unwrap_or(0)
+}
+/// The common look of a device row, whatever element draws it.
+fn device_row<E: Styled>(row: E, p: Palette, height: Pixels) -> E {
+    row.line_height(theme::line_height())
+        .flex()
+        .items_center()
+        .flex_shrink_0()
+        .text_color(p.ink)
+        .relative()
+        .h(height)
+        .w_full()
+        .justify_start()
+        .pl(px(ROW_PADDING_LEFT))
+        .pr(px(ROW_PADDING))
+        .py(px(ROW_PADDING))
+        .gap(px(PREVIEW_GAP))
+        .border_1()
+        .border_color(gpui_kit::gpui::transparent_black())
+        .rounded(px(6.))
 }
 
 // ---- Formatting ------------------------------------------------
@@ -354,6 +397,165 @@ impl Desktop {
     fn net_bits(&self) -> bool {
         self.prefs.get::<String>("netUnit", "bytes".into()) == "bits"
     }
+    /// The stable keys of the devices hidden from the list.
+    fn hidden_devices(&self) -> HashSet<String> {
+        self.prefs
+            .get::<Vec<String>>(rail::HIDDEN, Vec::new())
+            .into_iter()
+            .collect()
+    }
+    fn save_hidden_devices(&mut self, hidden: &HashSet<String>) {
+        let mut keys = hidden.iter().cloned().collect::<Vec<_>>();
+        keys.sort();
+        self.prefs.set(rail::HIDDEN, keys);
+    }
+    /// Which of `devices` the list shows.
+    fn shown_devices(&self, devices: &[Device]) -> Vec<bool> {
+        let keys = devices
+            .iter()
+            .map(|device| device.stable.as_str())
+            .collect::<Vec<_>>();
+        rail::shown(&keys, &self.hidden_devices())
+    }
+    /// Hides a device from the list or shows it again (`rail::HIDE`). A
+    /// hidden row's selection goes to the row after it.
+    pub(in crate::frontend) fn set_device_hidden(&mut self, change: &Value, window: &Window) {
+        let Some(key) = change["key"].as_str() else {
+            return;
+        };
+        let hide = boolean(change, "hidden");
+        let devices = available_devices(&self.snapshot, self.palette);
+        let keys = devices
+            .iter()
+            .map(|device| device.stable.as_str())
+            .collect::<Vec<_>>();
+        let hidden = self.hidden_devices();
+        if let Some(next) = rail::with_hidden(&keys, &hidden, key, hide) {
+            let selected = selected_device(&devices, &rail::shown(&keys, &hidden), &self.device);
+            if hide
+                && devices[selected].stable == key
+                && let Some(successor) = rail::successor(&rail::shown(&keys, &next), selected)
+            {
+                self.device = devices[successor].id.clone();
+                self.prefs.set("perfDevice", &self.device);
+            }
+            self.save_hidden_devices(&next);
+        }
+        // A check in the open menu: its entries follow what came of it.
+        if let Some(target) = change.get("menu") {
+            let items = self.device_menu_items(target.as_str(), window);
+            self.update_popup(items);
+        }
+    }
+    /// Shows every device again (`rail::RESTORE`).
+    pub(in crate::frontend) fn restore_devices(&mut self) {
+        if !self.hidden_devices().is_empty() {
+            self.save_hidden_devices(&HashSet::new());
+        }
+    }
+    /// Returns device `id` to the list if it was hidden: opened from
+    /// elsewhere (the overview's parts, a vitals card), it is one the user
+    /// asked to see.
+    pub(in crate::frontend) fn reveal_device(&mut self, id: &str) {
+        let mut hidden = self.hidden_devices();
+        if hidden.is_empty() {
+            return;
+        }
+        let devices = available_devices(&self.snapshot, self.palette);
+        if let Some(device) = devices.iter().find(|device| device.id == id)
+            && hidden.remove(&device.stable)
+        {
+            self.save_hidden_devices(&hidden);
+        }
+    }
+    /// The device a shortcut to one of `kind` opens: `preferred` while the
+    /// list shows it, else the first of its kind the list shows. With none
+    /// of them shown it is `preferred`, which opening returns to the list.
+    pub(in crate::frontend) fn device_target(&self, kind: &str, preferred: String) -> String {
+        if self.hidden_devices().is_empty() {
+            return preferred;
+        }
+        let devices = available_devices(&self.snapshot, self.palette);
+        let shown = self.shown_devices(&devices);
+        let mut candidates = devices
+            .iter()
+            .zip(&shown)
+            .filter(|(device, shown)| **shown && device.kind == kind)
+            .map(|(device, _)| &device.id);
+        let first = candidates.next();
+        if first == Some(&preferred) || candidates.any(|id| *id == preferred) {
+            return preferred;
+        }
+        first.cloned().unwrap_or(preferred)
+    }
+    /// The device list's menu, opened on `target`'s row or on the list itself.
+    fn device_menu_items(&self, target: Option<&str>, window: &Window) -> Vec<MenuItem> {
+        let devices = available_devices(&self.snapshot, self.palette);
+        let shown = self.shown_devices(&devices);
+        let visible = shown.iter().filter(|shown| **shown).count();
+        let change = |device: &Device, hide: bool, staying: bool| {
+            let mut change = json!({"key": device.stable, "hidden": hide});
+            if staying {
+                change["menu"] = json!(target);
+            }
+            Action::Preference(rail::HIDE.into(), change)
+        };
+        let mut items = Vec::new();
+        if let Some((device, shown)) = devices
+            .iter()
+            .zip(&shown)
+            .find(|(device, _)| Some(device.id.as_str()) == target)
+        {
+            items.push(
+                MenuItem::new(
+                    tr!("performance.devices.hide", name = device.title),
+                    change(device, true, false),
+                )
+                .icon("EyeOffIcon")
+                // The list keeps its last row.
+                .disabled(!*shown || visible <= 1),
+            );
+            items.push(MenuItem::separator());
+        }
+        let children = devices
+            .iter()
+            .zip(&shown)
+            .map(|(device, shown)| {
+                MenuItem::new(device.title.clone(), change(device, *shown, true))
+                    .checked(*shown)
+                    .disabled(*shown && visible <= 1)
+                    .stay()
+            })
+            .collect::<Vec<_>>();
+        // Every device, to check in and out. Left out in a window too short
+        // for a list this long (a machine with dozens of adapters).
+        if menus::fits(children.len(), window.viewport_size().height) {
+            items.push(
+                MenuItem::new(label("performance.devices.shown"), Action::CloseOverlay)
+                    .icon("EyeIcon")
+                    .detail(format!("{visible}/{}", devices.len()))
+                    .submenu(children),
+            );
+        }
+        items.push(
+            MenuItem::new(
+                label("performance.devices.restore"),
+                Action::Preference(rail::RESTORE.into(), Value::Null),
+            )
+            .icon("ResetIcon")
+            .disabled(self.hidden_devices().is_empty()),
+        );
+        items
+    }
+    pub(in crate::frontend) fn device_menu(
+        &mut self,
+        target: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let items = self.device_menu_items(target.as_deref(), window);
+        self.open_popup(items, window, cx);
+    }
     /// How much of the kernel time layer the CPU graphs draw: 1 while it is
     /// shown, 0 while hidden, and a few steps between as it fades in the
     /// `graphs` graphs on screen (`kernel_fade`).
@@ -531,10 +733,8 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let devices = available_devices(&self.snapshot, self.palette);
-        let selected_index = devices
-            .iter()
-            .position(|d| d.id == self.device)
-            .unwrap_or(0);
+        let shown = self.shown_devices(&devices);
+        let selected_index = selected_device(&devices, &shown, &self.device);
         let selected = devices.get(selected_index).cloned();
         self.open_disk_details(selected.as_ref(), window, cx);
         let p = self.palette;
@@ -547,25 +747,50 @@ impl Desktop {
             - ROW_PADDING
             - PREVIEW_GAP
             - PREVIEW_WIDTH);
+        // A device hidden from the list collapses, and one shown again
+        // returns, while the rows below glide to their places (`rail`).
+        let rail =
+            window.use_keyed_state("perf-device-rail", cx, |_, _| rail::RailMotion::default());
+        let now = Instant::now();
+        let animate = !cx.reduce_motion();
+        let presence = rail.update(cx, |rail, _| {
+            rail.presence(
+                &devices
+                    .iter()
+                    .zip(&shown)
+                    .map(|(device, shown)| (device.id.as_str(), *shown))
+                    .collect::<Vec<_>>(),
+                animate,
+                now,
+            )
+        });
         let heights: Vec<_> = devices
             .iter()
-            .map(|device| row_height(&device.title, title_width, window, cx))
+            .zip(&presence)
+            .map(|(device, presence)| {
+                if *presence > 0. {
+                    row_height(&device.title, title_width, window, cx)
+                } else {
+                    px(0.)
+                }
+            })
             .collect();
-        let selected_height = heights
-            .get(selected_index)
-            .copied()
-            .unwrap_or(px(ROW_HEIGHT));
-        // The selected device: a raised surface with an accent pill, sliding between rows.
-        let mark_top = gpui_kit::base::motion::transition(
-            "perf-device-mark",
-            heights[..selected_index].iter().copied().sum::<Pixels>()
-                + px(ROW_GAP) * selected_index as f32,
-            gpui_kit::base::motion::Transition::new(std::time::Duration::from_millis(250)).easing(
-                gpui_kit::base::motion::Easing::cubic_bezier(0.33, 0., 0.1, 1.).unwrap_or_default(),
-            ),
-            window,
-            cx,
-        );
+        let places = rail::layout(&heights, &presence, px(ROW_GAP));
+        let selected_place = places[selected_index];
+        let selected_height = selected_place.height;
+        // The selected device: a raised surface with an accent pill, sliding
+        // between rows and keeping to its row while the list rearranges.
+        let mark_top = rail.update(cx, |rail, _| {
+            rail.mark_top(
+                selected.as_ref().map_or("", |device| device.id.as_str()),
+                selected_place.top,
+                animate,
+                now,
+            )
+        });
+        if rail.read(cx).moving(now) {
+            window.request_animation_frame();
+        }
         let device_list = window
             .use_keyed_state("devices-scroll", cx, |_, _| ScrollHandle::new())
             .read(cx)
@@ -581,8 +806,12 @@ impl Desktop {
             .overflow_y_scroll()
             .flex()
             .flex_col()
-            .gap(px(ROW_GAP))
             .pr(px(scrollbar::SIZE))
+            // The list's own menu, where no row takes the press.
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, _, window, cx| this.device_menu(None, window, cx)),
+            )
             .child(
                 div()
                     .absolute()
@@ -605,7 +834,21 @@ impl Desktop {
                             .bg(p.accent),
                     ),
             );
-        for (device, height) in devices.iter().zip(heights) {
+        for (index, device) in devices.iter().enumerate() {
+            let present = presence[index];
+            if present <= 0. {
+                continue;
+            }
+            let (place, height) = (places[index], heights[index]);
+            // A row on its way in or out fades, and its curve, which the
+            // chart layer draws, with it.
+            let fading = (present < 1.).then(|| charts::Live {
+                transform: LiveTransform::new(LiveTransformValue::zoom(1., rail::opacity(present))),
+                anchor: Rc::new(Cell::new(Point::default())),
+            });
+            if let Some(live) = &fading {
+                self.chart_lives.borrow_mut().push(live.clone());
+            }
             let (lines, scale) = self.device_lines(device);
             let graph = self.chart_view(
                 &format!("device-preview-{}", device.id),
@@ -615,68 +858,108 @@ impl Desktop {
                 Look::default(),
                 cx,
             );
-            let current = selected.as_ref().is_some_and(|s| s.id == device.id);
-            list = list.child(
-                Button::new(SharedString::from(format!("device-{}", device.id)))
-                    .accessibility_label(device.title.clone())
-                    .line_height(theme::line_height())
-                    .flex()
-                    .items_center()
-                    .flex_shrink_0()
-                    .text_color(p.ink)
-                    .when(!current, |row| row.hover(move |style| style.bg(p.hover)))
-                    .on_click(cx.listener({
+            if fading.is_some() {
+                self.chart_lives.borrow_mut().pop();
+            }
+            let current = selected_index == index;
+            let text = div()
+                .w(title_width)
+                .flex_shrink_0()
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .font_weight(theme::LABEL_WEIGHT)
+                        .child(device.title.clone()),
+                )
+                .child(
+                    div()
+                        .text_size(theme::font(12.))
+                        .text_color(p.muted)
+                        .truncate()
+                        // `.dev-sub` collapsed runs of spaces, as HTML does.
+                        .child(
+                            self.device_sub(device)
+                                .split_whitespace()
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        ),
+                );
+            let preview = div()
+                .w(px(PREVIEW_WIDTH))
+                .h(px(40.))
+                .flex_shrink_0()
+                .border_1()
+                .border_color(device.color.opacity(0.45))
+                .rounded(px(3.))
+                .overflow_hidden()
+                .child(div().size_full().bg(p.chart_surface).child(graph));
+            let row = if shown[index] {
+                device_row(
+                    Button::new(SharedString::from(format!("device-{}", device.id)))
+                        .accessibility_label(device.title.clone()),
+                    p,
+                    height,
+                )
+                .when(!current, |row| row.hover(move |style| style.bg(p.hover)))
+                .on_click(cx.listener({
+                    let id = device.id.clone();
+                    move |this, _, window, cx| this.act(Action::Device(id.clone()), window, cx)
+                }))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener({
                         let id = device.id.clone();
-                        move |this, _, window, cx| this.act(Action::Device(id.clone()), window, cx)
-                    }))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.device_menu(Some(id.clone()), window, cx);
+                        }
+                    }),
+                )
+                .child(text)
+                .child(preview)
+                .into_any_element()
+            } else {
+                // On its way out: drawn as it was, taking no input or focus.
+                device_row(div(), p, height)
+                    .child(text)
+                    .child(preview)
+                    .into_any_element()
+            };
+            let row = match fading {
+                Some(live) => super::super::shift::live(
+                    row,
+                    live.transform,
+                    super::super::shift::Anchor::TopLeft,
+                    live.anchor,
+                )
+                .into_any_element(),
+                None => row,
+            };
+            // Where tests reach the row.
+            let anchor = self.options.test.then(|| {
+                let anchors = self.ui.anchors.clone();
+                let name = SharedString::from(format!("device-{}", device.id));
+                canvas(
+                    move |bounds, _, _| {
+                        anchors.borrow_mut().insert(name.clone(), bounds);
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0()
+            });
+            list = list.child(
+                div()
                     .relative()
-                    .h(height)
                     .w_full()
-                    .justify_start()
-                    .pl(px(ROW_PADDING_LEFT))
-                    .pr(px(ROW_PADDING))
-                    .py(px(ROW_PADDING))
-                    .gap(px(PREVIEW_GAP))
-                    .border_1()
-                    .border_color(gpui_kit::gpui::transparent_black())
-                    .rounded(px(6.))
-                    .child(
-                        div()
-                            .w(title_width)
-                            .flex_shrink_0()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .font_weight(theme::LABEL_WEIGHT)
-                                    .child(device.title.clone()),
-                            )
-                            .child(
-                                div()
-                                    .text_size(theme::font(12.))
-                                    .text_color(p.muted)
-                                    .truncate()
-                                    // `.dev-sub` collapsed runs of spaces, as HTML does.
-                                    .child(
-                                        self.device_sub(device)
-                                            .split_whitespace()
-                                            .collect::<Vec<_>>()
-                                            .join(" "),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .w(px(PREVIEW_WIDTH))
-                            .h(px(40.))
-                            .flex_shrink_0()
-                            .border_1()
-                            .border_color(device.color.opacity(0.45))
-                            .rounded(px(3.))
-                            .overflow_hidden()
-                            .child(div().size_full().bg(p.chart_surface).child(graph)),
-                    ),
+                    .flex_shrink_0()
+                    .mt(place.gap)
+                    .h(place.height)
+                    .when(present < 1., |slot| slot.overflow_hidden())
+                    .child(row)
+                    .children(anchor),
             );
         }
         // Replace the device at full contrast and slide it from its direction

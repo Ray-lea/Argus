@@ -14,6 +14,11 @@
     "latest": "Latest",
     "ago": "{seconds} s ago"
   },
+  "devices": {
+    "hide": "Hide {name}",
+    "shown": "Shown devices",
+    "restore": "Restore default view"
+  },
   "cpu": {
     "coreType": "Core type",
     "coreKind": {
