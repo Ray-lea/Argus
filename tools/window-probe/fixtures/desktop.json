@@ -4670,6 +4670,15 @@
         "windowsProcess": false
       }
     ],
+    "sessions": [
+      {
+        "id": 1,
+        "user": "Alex",
+        "domain": "MOCK-PC",
+        "current": true,
+        "disconnected": false
+      }
+    ],
     "processNetwork": true
   },
   "settings": {
