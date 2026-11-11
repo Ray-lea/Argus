@@ -697,7 +697,10 @@ fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
             .is_some_and(|column| column.format == columns::Format::Text) =>
         {
             match (a.column_text(key), b.column_text(key)) {
-                (Some(a), Some(b)) => direct(collation::compare(a, b)),
+                (Some(a), Some(b)) => direct(collation::compare(
+                    &columns::shown(key, a),
+                    &columns::shown(key, b),
+                )),
                 (None, None) => Ordering::Equal,
                 (None, _) => Ordering::Greater,
                 (_, None) => Ordering::Less,
@@ -1615,6 +1618,37 @@ mod tests {
         );
         assert_eq!(unknown[0].title, "unknown.exe");
         assert!(unknown[0].detail.is_empty());
+    }
+
+    #[test]
+    fn architecture_sorts_by_the_label_it_shows() {
+        let processes = ["x86", "arm64", "x64", "arm"]
+            .iter()
+            .enumerate()
+            .map(|(i, arch)| json!({"pid":i + 1,"createTime":i + 1,"name":format!("p{i}.exe"),"architecture":arch}))
+            .collect::<Vec<_>>();
+        for descending in [false, true] {
+            let shown = rows_of(
+                &processes,
+                "list",
+                "",
+                "architecture",
+                descending,
+                &HashMap::new(),
+            )
+            .iter()
+            .map(|row| {
+                columns::shown("architecture", row.column_text("architecture").unwrap())
+                    .into_owned()
+            })
+            .collect::<Vec<_>>();
+            let mut expected = shown.clone();
+            expected.sort_by(|a, b| collation::compare(a, b));
+            if descending {
+                expected.reverse();
+            }
+            assert_eq!(shown, expected);
+        }
     }
 
     #[test]

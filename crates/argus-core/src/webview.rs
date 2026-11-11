@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use windows::Win32::Foundation::{HANDLE, HLOCAL, LocalFree};
+use windows::Win32::Foundation::{HLOCAL, LocalFree};
 use windows::Win32::UI::Shell::CommandLineToArgvW;
 use windows::core::PCWSTR;
 
@@ -197,7 +197,8 @@ pub(crate) fn resolve<'a>(start: Node<'a>, get: impl Fn(u32) -> Option<Node<'a>>
 #[derive(Default)]
 pub(crate) struct State {
     hint: Hint,
-    attempts: u8,
+    /// The command line has been parsed, or won't become available.
+    settled: bool,
     context: Option<Context>,
     meta: Option<Arc<FileMeta>>,
     view: Option<Arc<WebViewInfo>>,
@@ -216,25 +217,18 @@ impl State {
         }
     }
 
-    pub fn query(&mut self, handle: Option<HANDLE>) {
-        if self.attempts >= 3 {
+    /// Takes the process's command line from its facts, which the tracker
+    /// reads (and retries) once for every column and this parser; `settled`
+    /// says no line is coming any more.
+    pub fn learn_command_line(&mut self, line: Option<&str>, settled: bool) {
+        if self.settled {
             return;
         }
-        let Some(handle) = handle else {
-            self.attempts = 3;
-            return;
-        };
-        self.query_with(|| crate::details::command_line(handle));
-    }
-
-    fn query_with(&mut self, read: impl FnOnce() -> Option<String>) {
-        if self.attempts >= 3 {
-            return;
-        }
-        self.attempts += 1;
-        if let Some(line) = read() {
-            self.hint = Hint::parse(&line);
-            self.attempts = 3;
+        if let Some(line) = line {
+            self.hint = Hint::parse(line);
+            self.settled = true;
+        } else {
+            self.settled = settled;
         }
     }
 
@@ -278,7 +272,7 @@ mod tests {
     fn hint(line: &str) -> State {
         State {
             hint: Hint::parse(line),
-            attempts: 3,
+            settled: true,
             ..State::default()
         }
     }
@@ -453,25 +447,22 @@ mod tests {
     }
 
     #[test]
-    fn command_line_is_cached_and_unavailable_data_has_bounded_retries() {
+    fn command_line_is_parsed_once_and_waits_until_its_read_settles() {
         let mut state = State::default();
-        let mut reads = 0;
-        for _ in 0..20 {
-            state.query_with(|| {
-                reads += 1;
-                Some("msedgewebview2.exe --type=renderer".into())
-            });
-        }
-        assert_eq!(reads, 1);
+        state.learn_command_line(Some("msedgewebview2.exe --type=renderer"), false);
+        assert_eq!(state.hint.role, WebViewRole::Renderer);
+        state.learn_command_line(Some("msedgewebview2.exe --type=gpu-process"), true);
+        assert_eq!(state.hint.role, WebViewRole::Renderer);
+        // A line that is still pending can arrive on a later sample.
         let mut state = State::default();
-        reads = 0;
-        for _ in 0..20 {
-            state.query_with(|| {
-                reads += 1;
-                None
-            });
-        }
-        assert_eq!(reads, 3);
+        state.learn_command_line(None, false);
+        state.learn_command_line(Some("msedgewebview2.exe --type=renderer"), false);
+        assert_eq!(state.hint.role, WebViewRole::Renderer);
+        // Once the reads are over, nothing is parsed.
+        let mut state = State::default();
+        state.learn_command_line(None, true);
+        state.learn_command_line(Some("msedgewebview2.exe --type=renderer"), true);
+        assert_eq!(state.hint.role, WebViewRole::Unknown);
     }
 
     #[test]

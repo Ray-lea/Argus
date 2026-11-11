@@ -117,6 +117,14 @@ pub(super) fn definition(key: &str) -> Option<&'static Definition> {
     DEFINITIONS.iter().find(|column| column.key == key)
 }
 
+/// A text column's value as the table shows it, which is also what it sorts by.
+pub(super) fn shown<'a>(key: &str, value: &'a str) -> std::borrow::Cow<'a, str> {
+    match key {
+        "architecture" => label(&format!("details.arch.{value}")).into(),
+        _ => value.into(),
+    }
+}
+
 pub(super) fn raw_key(key: &str) -> &str {
     match key {
         "imageName" => "name",

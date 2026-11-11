@@ -113,7 +113,7 @@ pub struct ProcessRow {
     pub windows_process: bool,
 }
 
-/// What stays fixed for a process instance, read once through its query handle.
+/// What stays fixed for a process instance, read through its query handle.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Facts {
@@ -123,12 +123,39 @@ pub struct Facts {
     pub elevated: Option<bool>,
 }
 
+/// Reads of a process's facts, taken in as many samples. A process that has
+/// only just started may not have its command line in place yet; what is
+/// still missing after these stays unknown.
+const FACT_READS: u8 = 3;
+
 impl Facts {
-    fn read(process: HANDLE) -> Self {
-        Self {
-            command_line: crate::details::command_line(process).map(Into::into),
-            architecture: crate::details::architecture(process),
-            elevated: crate::details::elevated(process),
+    fn complete(&self) -> bool {
+        self.command_line.is_some() && self.architecture.is_some() && self.elevated.is_some()
+    }
+
+    /// Reads what is still missing.
+    fn fill(&mut self, process: HANDLE) {
+        self.fill_with(
+            || crate::details::command_line(process),
+            || crate::details::architecture(process),
+            || crate::details::elevated(process),
+        );
+    }
+
+    fn fill_with(
+        &mut self,
+        command_line: impl FnOnce() -> Option<String>,
+        architecture: impl FnOnce() -> Option<&'static str>,
+        elevated: impl FnOnce() -> Option<bool>,
+    ) {
+        if self.command_line.is_none() {
+            self.command_line = command_line().map(Into::into);
+        }
+        if self.architecture.is_none() {
+            self.architecture = architecture();
+        }
+        if self.elevated.is_none() {
+            self.elevated = elevated();
         }
     }
 }
@@ -191,8 +218,10 @@ struct Tracked {
     /// Query handle, opened once per running instance and released when its
     /// snapshot has no threads. Access denial is final for that instance.
     handle: Option<OwnedHandle>,
-    /// Read with the first handle; an instance without one has none.
-    facts: Option<Facts>,
+    /// Read through `handle`, up to `FACT_READS` times while incomplete; an
+    /// instance without a handle has none. WebView parsing uses its command line.
+    facts: Facts,
+    fact_reads: u8,
     web_view: Option<Box<webview::State>>,
     package: Option<Box<Package>>,
 }
@@ -408,7 +437,8 @@ impl ProcessTracker {
                             io,
                             disk,
                             handle,
-                            facts: None,
+                            facts: Facts::default(),
+                            fact_reads: 0,
                             web_view: runtime,
                             package,
                         }),
@@ -423,14 +453,19 @@ impl ProcessTracker {
                 // final CPU and I/O counters still come from this snapshot.
                 entry.handle = None;
             }
-            if let Some(runtime) = entry.web_view.as_mut() {
-                runtime.query(entry.handle.as_ref().map(|h| h.0));
-                self.webviews.push((rows.len(), key));
-            }
-            if entry.facts.is_none()
-                && let Some(handle) = &entry.handle
+            if let Some(handle) = &entry.handle
+                && entry.fact_reads < FACT_READS
+                && !entry.facts.complete()
             {
-                entry.facts = Some(Facts::read(handle.0));
+                entry.fact_reads += 1;
+                entry.facts.fill(handle.0);
+            }
+            if let Some(runtime) = entry.web_view.as_mut() {
+                let settled = entry.handle.is_none()
+                    || entry.facts.complete()
+                    || entry.fact_reads >= FACT_READS;
+                runtime.learn_command_line(entry.facts.command_line.as_deref(), settled);
+                self.webviews.push((rows.len(), key));
             }
             if entry.meta.is_none()
                 && let Some(path) = &entry.path
@@ -499,7 +534,7 @@ impl ProcessTracker {
                 },
                 company: meta.and_then(|m| m.company.clone()),
                 version: meta.and_then(|m| m.version.clone()),
-                facts: entry.facts.clone().unwrap_or_default(),
+                facts: entry.facts.clone(),
                 icon: meta.and_then(|m| m.icon),
                 web_view: None,
                 cpu,
@@ -776,7 +811,8 @@ mod tests {
             unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, std::process::id()) }
                 .unwrap(),
         );
-        let facts = Facts::read(handle.0);
+        let mut facts = Facts::default();
+        facts.fill(handle.0);
         let exe = std::env::current_exe().unwrap();
         let stem = exe.file_stem().unwrap().to_string_lossy().to_lowercase();
         assert!(
@@ -802,6 +838,20 @@ mod tests {
         assert!(row["commandLine"].is_string());
         assert_eq!(row["architecture"], expected);
         assert!(row["elevated"].is_boolean());
+    }
+
+    #[test]
+    fn later_reads_fill_only_the_facts_still_missing() {
+        let mut facts = Facts::default();
+        facts.fill_with(|| None, || Some("x64"), || Some(false));
+        assert!(!facts.complete());
+        facts.fill_with(
+            || Some("app.exe --flag".into()),
+            || panic!("architecture is known"),
+            || panic!("elevation is known"),
+        );
+        assert!(facts.complete());
+        assert_eq!(facts.command_line.as_deref(), Some("app.exe --flag"));
     }
 
     #[test]

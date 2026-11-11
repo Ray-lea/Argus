@@ -232,10 +232,7 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::Name => row.title.clone(),
         CellKind::ProcessText => row
             .column_text(field.key)
-            .map(|value| match field.key {
-                "architecture" => label(&format!("details.arch.{value}")),
-                _ => value.to_owned(),
-            })
+            .map(|value| columns::shown(field.key, value).into_owned())
             .unwrap_or_else(missing),
         CellKind::Identifier => row
             .metric(field.key)
