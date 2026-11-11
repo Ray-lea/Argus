@@ -44,6 +44,19 @@ pub(super) fn bus_name(code: u32) -> &'static str {
         _ => "other",
     }
 }
+/// Buses on which a disk is asked for its temperature.
+///
+/// Storport hands `StorageDeviceTemperatureProperty` to the adapter's miniport
+/// driver, and nothing in user mode can cancel a request the miniport never
+/// completes. Microsoft's NVMe and AHCI miniports answer or decline at once.
+/// RAID-class miniports (Intel RST and VMD, vendor RAID) serve every disk
+/// behind them, the system disk included: an Intel RST release has been seen
+/// to leave the request for an NVMe drive pending forever, which stalls the
+/// controller and with it Windows until the PC is powered off. Disks on every
+/// other bus therefore report no temperature rather than risk that.
+pub(super) fn temperature_query_allowed(bus: &str) -> bool {
+    matches!(bus, "nvme" | "sata" | "ata")
+}
 const DRIVE_REMOVABLE: u32 = 2;
 const DRIVE_FIXED: u32 = 3;
 const RESCAN_EVERY: Duration = Duration::from_secs(15);
@@ -101,9 +114,40 @@ struct Disk {
 }
 
 impl Disk {
+    fn new(handle: Option<DeviceHandle>, info: DiskInfo) -> Self {
+        Self {
+            handle,
+            generation: 0,
+            temperature_supported: temperature_query_allowed(info.bus),
+            info: Arc::new(info),
+            prev: None,
+            fallback: volumes::Counters::default(),
+            fallback_reported: false,
+            temperature: None,
+            temperature_at: None,
+        }
+    }
+
+    /// Lets a drive that declined the temperature query be asked again, only
+    /// on the buses where the query is sent at all.
+    fn arm_temperature(&mut self) {
+        self.temperature_supported = temperature_query_allowed(self.info.bus);
+        if !self.temperature_supported {
+            self.temperature = None;
+        }
+    }
+
     fn sample_with(
         &mut self,
         read: impl FnOnce(HANDLE) -> Result<DISK_PERFORMANCE, u32>,
+    ) -> Option<DISK_PERFORMANCE> {
+        self.sample_with_queries(read, temperature)
+    }
+
+    fn sample_with_queries(
+        &mut self,
+        read: impl FnOnce(HANDLE) -> Result<DISK_PERFORMANCE, u32>,
+        temperature: impl FnOnce(HANDLE) -> Option<(f32, Option<f32>)>,
     ) -> Option<DISK_PERFORMANCE> {
         let handle = self.handle.as_ref()?;
         let result = handle.read(|raw, generation| {
@@ -112,14 +156,21 @@ impl Disk {
                 self.prev = None;
                 self.fallback.clear();
                 self.temperature_at = None;
-                self.temperature_supported = true;
+                self.temperature_supported = temperature_query_allowed(self.info.bus);
             }
             if self.temperature_supported
                 && self
                     .temperature_at
                     .is_none_or(|t| t.elapsed() > TEMPERATURE_EVERY)
             {
-                self.temperature = temperature(raw);
+                // The only request here that reaches the miniport driver:
+                // leave a durable record before it when startup is traced.
+                self.temperature = crate::diagnostics::startup_query(
+                    "hardware.disk-temperature",
+                    u64::from(self.info.index),
+                    0,
+                    || temperature(raw),
+                );
                 self.temperature_supported = self.temperature.is_some();
                 self.temperature_at = Some(Instant::now());
             }
@@ -231,21 +282,16 @@ impl DiskTracker {
                 if *d.info != info {
                     d.info = Arc::new(info);
                 }
-                d.temperature_supported = true;
+                d.arm_temperature();
                 self.disks.push(d);
                 continue;
             }
-            self.disks.push(Disk {
-                handle,
-                generation: 0,
-                info: Arc::new(info),
-                prev: None,
-                fallback: volumes::Counters::default(),
-                fallback_reported: false,
-                temperature: None,
-                temperature_at: None,
-                temperature_supported: true,
-            });
+            let disk = Disk::new(handle, info);
+            if disk.handle.is_some() && matches!(disk.info.bus, "raid" | "scsi" | "sas") {
+                // Answers "why is there no temperature" for an internal drive.
+                log::info!(target: "argus::disk", "disk temperature is not queried on this bus; disk={}; bus={}", disk.info.index, disk.info.bus);
+            }
+            self.disks.push(disk);
         }
         self.scanned_at = Instant::now();
     }

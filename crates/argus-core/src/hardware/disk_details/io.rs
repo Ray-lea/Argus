@@ -226,9 +226,14 @@ pub(super) fn control(handle: HANDLE, code: u32, input: &[u8], capacity: usize) 
     Ok(output)
 }
 
+/// NVMe protocol queries are answered by the adapter's miniport driver, like
+/// the periodic temperature query (see `disk::temperature_query_allowed`).
+/// A RAID-class controller serves the system disk too, and an Intel RST
+/// release that leaves such a request pending stalls it for all of Windows,
+/// so disks behind one keep to the queries the class driver answers.
 fn probe_nvme(bus: &str, solid_state: Option<bool>) -> bool {
     bus == "nvme"
-        || solid_state != Some(false) && matches!(bus, "raid" | "scsi" | "usb")
+        || solid_state != Some(false) && matches!(bus, "scsi" | "usb")
         || bus == "other" && solid_state == Some(true)
 }
 
@@ -434,8 +439,12 @@ mod tests {
         })
         .unwrap_err();
         assert_eq!(error.state, DiskQueryState::InvalidData);
-        assert!(probe_nvme("raid", Some(true)));
+        assert!(probe_nvme("nvme", None));
+        assert!(probe_nvme("usb", Some(true)));
         assert!(probe_nvme("scsi", None));
+        // A RAID-class miniport must never receive an NVMe request from here.
+        assert!(!probe_nvme("raid", Some(true)));
+        assert!(!probe_nvme("raid", None));
         assert!(!probe_nvme("scsi", Some(false)));
         assert!(!probe_nvme("ata", None));
         assert!(!probe_nvme("virtual", Some(true)));

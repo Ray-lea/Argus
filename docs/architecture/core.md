@@ -66,7 +66,7 @@
 | `sensors.rs` | 在标准权限下通过 PDH 批量读取 CPU 频率、ACPI 温度和可用功耗计数。频率优先使用 `Actual Frequency` 的 MHz 读数，缺少总项时对完整逻辑处理器读数求均值；单路同类核心才使用基准频率与性能百分比回退。功耗按域合计多个封装的有效读数，保留有效零值，过滤缺失、负数和非有限值 |
 | `battery.rs` | 电池类驱动 IOCTL：电量、充放电功率、电压、设计 / 完全充电容量、循环次数。标准用户可以只读打开电池设备 |
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
-| `disk.rs` | 以 `FILE_ANY_ACCESS` 存储 IOCTL 查询型号、容量、介质、卷及温度，通过 `IOCTL_DISK_PERFORMANCE` 计算活动时间、传输速率和响应时间 |
+| `disk.rs` | 以 `FILE_ANY_ACCESS` 存储 IOCTL 查询型号、容量、介质、卷及温度，通过 `IOCTL_DISK_PERFORMANCE` 计算活动时间、传输速率和响应时间。温度只向 NVMe、SATA 与 ATA 总线上的磁盘查询 |
 | `disk/access.rs` | 缓存句柄注册 PnP 移除通知；在弹出请求中关闭句柄、暂停访问，取消弹出后重新打开并变更采样代次；通知不可用时使用查询期间的临时句柄 |
 | `disk/volumes.rs` | 物理计数接口不支持时读取卷层计数；在同一卷句柄上验证磁盘归属，按提供者与设备编号去重并独立维护基线，单卷提供活动时间，多卷合计速率与加权响应时间 |
 | `disk_details.rs`、`disk_details/` | 磁盘详情的单次只读查询：基本身份、扇区、TRIM、NVMe 控制器身份与健康日志、PCIe 链路、Windows 故障预测；现有特权服务补充 ATA／SAT 身份与 SMART 属性、SCSI 健康日志。只由前端明确请求触发，结果与周期采样分离 |
@@ -84,6 +84,8 @@ CPU 动态频率的回退基准来自 CPUID 或 Windows 电源接口；注册表
 周期采样的设备句柄通过 [CM_Register_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_register_notification) 注册移除事件。弹出回调等待当前查询或重开操作完成，关闭句柄后返回成功；取消弹出只更新状态，由采样线程重新打开设备并重置计数基线。通知注销在拥有句柄的线程执行，等待回调退出后释放上下文，遵循 [CM_Unregister_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_unregister_notification) 的生命周期要求。
 
 卷层回退沿用零访问权限句柄。每次读取先以 `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` 核对唯一物理磁盘，再查询计数；`PARTMGR`／`PhysDisk` 的物理结果还须匹配磁盘编号，卷结果接受 Windows 的 `VOLMGR`／`FTDISK`／`DMIO`／`LogiDisk` 提供者。范围依据 [DISK_PERFORMANCE](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntdddisk/ns-ntdddisk-_disk_performance) 的提供者和设备身份判断。临时卷句柄在父磁盘的查询保护期间打开并关闭，移除应答会等待其结束；不持有额外的长期卷句柄，不调用 diskperf 或改写计数器的注册表配置。
+
+磁盘的型号、介质、容量、卷映射与性能计数由 Windows 的类驱动、分区管理器和 Storport 应答。温度查询（`StorageDeviceTemperatureProperty`）与 NVMe 协议查询交给存储控制器的微型端口驱动处理，请求没有超时，发出后用户态无法取消。RAID 类控制器（Intel RST、VMD 及厂商 RAID）将其后的磁盘都呈现为 RAID 总线，系统盘通常也在其中：[Intel RST 17.5 上已有该温度查询不返回、Windows 随之停止响应直至断电重启的报告](https://github.com/boykopovar/AnyPS5/pull/16061)，Intel 在 [RST 18.6.1.1016 的已解决问题](https://downloadmirror.intel.com/773229/Release_Notes_18_7_6_1010_3_enduser_PV.pdf)中列有“NVMe IOCTL 在 D3 状态下发送后不完成”。因此温度只向 NVMe、SATA 与 ATA 总线上的磁盘查询，磁盘详情不向 RAID 总线发送 NVMe 协议查询；其余总线上的磁盘温度保持未知。
 
 ## 磁盘详情接口
 
@@ -103,7 +105,7 @@ CPU 动态频率的回退基准来自 CPUID 或 Windows 电源接口；注册表
 | `ataHealth` | 已适配 ATA/SATA 设备的温度与运行计数；SSD 的剩余寿命、累计读写、异常断电、不可校正错误及可用备用空间；HDD 的启停、磁头加载、重映射／待映射／离线不可校正扇区与接口 CRC 计数；同时返回介质类别和读数对应的原始属性编号。从现有属性派生，无额外设备查询 |
 | `queriedAt`、`queries` | 请求开始时的 Unix 毫秒时间戳；各查询的 `ready`、`unsupported`、`accessDenied`、`unavailable`、`invalidData` 状态及原始 Win32 错误码 |
 
-NVMe 使用标准 Identify Controller 和健康日志，覆盖开放该接口的各厂商设备。原生 NVMe 优先采用控制器级属性，失败或数据无效时回退至设备级属性；以 RAID／SCSI／USB 总线呈现且未确认为机械盘的设备，以及未知总线的已确认 SSD，仅尝试设备级属性，以保持查询对应当前物理磁盘。成功后跳过 ATA/SCSI 健康补充。返回的 `scope` 为 `controller` 或 `device`；同一控制器的多个命名空间可能共享计数。
+NVMe 使用标准 Identify Controller 和健康日志，覆盖开放该接口的各厂商设备。原生 NVMe 优先采用控制器级属性，失败或数据无效时回退至设备级属性；以 SCSI／USB 总线呈现且未确认为机械盘的设备，以及未知总线的已确认 SSD，仅尝试设备级属性，以保持查询对应当前物理磁盘。RAID 总线上的设备不发送 NVMe 协议查询，依据见 [hardware/](#hardware) 一节。成功后跳过 ATA/SCSI 健康补充。返回的 `scope` 为 `controller` 或 `device`；同一控制器的多个命名空间可能共享计数。
 
 128 位累计计数序列化为十进制字符串，保留全部精度。NVMe 读写数据单位按每单位 512,000 字节换算，原始计数同时返回；乘法溢出时换算值为 `null`。温度保留开尔文原值并提供摄氏度值，未报告的传感器保留槽位。寿命估计取 `max(0, 100 - percentageUsed)`，严重警告位独立返回，前端应分别展示。序列号只进入显式请求的详情结果，不写入诊断日志或周期快照。
 

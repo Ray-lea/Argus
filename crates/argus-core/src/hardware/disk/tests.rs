@@ -237,6 +237,120 @@ fn enumeration_pauses_during_query_remove_and_retirement_drops_the_disk() {
     assert!(tracker.scanned_at.elapsed() < RESCAN_EVERY);
 }
 #[test]
+fn temperature_is_queried_only_on_buses_the_inbox_miniports_serve() {
+    for (code, allowed) in [
+        (0, false),
+        (1, false), // SCSI
+        (3, true),  // ATA
+        (7, false), // USB
+        (8, false), // RAID: Intel RST and VMD, vendor RAID
+        (10, false),
+        (11, true), // SATA
+        (12, false),
+        (13, false),
+        (14, false),
+        (15, false),
+        (16, false),
+        (17, true), // NVMe
+        (99, false),
+    ] {
+        assert_eq!(
+            temperature_query_allowed(bus_name(code)),
+            allowed,
+            "bus type {code}"
+        );
+    }
+}
+
+#[test]
+fn a_disk_behind_a_raid_controller_is_never_asked_for_its_temperature() {
+    use windows::Win32::Devices::DeviceAndDriverInstallation::{
+        CM_NOTIFY_ACTION_DEVICEQUERYREMOVE, CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED,
+    };
+    let file = FileFixture::new();
+    let mut info = (*disk(0).info).clone();
+    info.bus = "raid";
+    let mut d = Disk::new(Some(DeviceHandle::fixture(&file.path)), info);
+    let never =
+        |_: HANDLE| -> Option<(f32, Option<f32>)> { panic!("temperature query on a RAID bus") };
+    assert!(
+        d.sample_with_queries(|_| Ok(counters(1, 100)), never)
+            .is_some()
+    );
+    // Neither the periodic re-arm nor a reopened device handle starts asking.
+    d.arm_temperature();
+    d.temperature_at = None;
+    assert!(
+        d.sample_with_queries(|_| Ok(counters(2, 300)), never)
+            .is_some()
+    );
+    {
+        let handle = d.handle.as_ref().unwrap();
+        handle.notify(CM_NOTIFY_ACTION_DEVICEQUERYREMOVE);
+        handle.notify(CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED);
+    }
+    assert!(
+        d.sample_with_queries(|_| Ok(counters(3, 500)), never)
+            .is_some()
+    );
+    assert!(d.temperature.is_none() && !d.temperature_supported);
+}
+
+#[test]
+fn a_declining_nvme_disk_is_asked_again_only_after_a_rescan_or_reopen() {
+    use windows::Win32::Devices::DeviceAndDriverInstallation::{
+        CM_NOTIFY_ACTION_DEVICEQUERYREMOVE, CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED,
+    };
+    let file = FileFixture::new();
+    let mut d = Disk::new(
+        Some(DeviceHandle::fixture(&file.path)),
+        (*disk(0).info).clone(),
+    );
+    let mut asked = 0;
+    d.sample_with_queries(
+        |_| Ok(counters(1, 100)),
+        |_| {
+            asked += 1;
+            None
+        },
+    );
+    d.temperature_at = None;
+    d.sample_with_queries(
+        |_| Ok(counters(2, 300)),
+        |_| {
+            asked += 1;
+            None
+        },
+    );
+    assert_eq!(asked, 1);
+    d.arm_temperature();
+    d.temperature_at = None;
+    d.sample_with_queries(
+        |_| Ok(counters(3, 500)),
+        |_| {
+            asked += 1;
+            Some((41., Some(70.)))
+        },
+    );
+    assert_eq!(asked, 2);
+    assert_eq!(d.temperature, Some((41., Some(70.))));
+    {
+        let handle = d.handle.as_ref().unwrap();
+        handle.notify(CM_NOTIFY_ACTION_DEVICEQUERYREMOVE);
+        handle.notify(CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED);
+    }
+    d.sample_with_queries(
+        |_| Ok(counters(4, 700)),
+        |_| {
+            asked += 1;
+            Some((42., None))
+        },
+    );
+    assert_eq!(asked, 3);
+    assert_eq!(d.temperature, Some((42., None)));
+}
+
+#[test]
 fn empty_media_is_distinct_from_an_unavailable_internal_drive() {
     let mut info = (*disk(0).info).clone();
     info.size = 0;
