@@ -2,7 +2,7 @@
 "use client";
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { machine, thousands } from "./model";
-import { useIsoLayoutEffect } from "./widgets";
+import { scaleOf, useIsoLayoutEffect } from "./widgets";
 
 // The disk's details page as the app draws it (performance/disk_details.rs):
 // health, device information and the NVMe SMART/health log as cards, read
@@ -13,12 +13,22 @@ const START = 21 * 3600 + 36 * 60;
 // An NVMe data unit is a thousand 512-byte sectors.
 const UNIT = 512_000;
 const TB = 1024 ** 4;
-// Health tiles three a row where each gets 170 px, else one a row; SMART
-// groups at least 380 px (at the 13 px base), up to three a row.
+// Health tiles three a row where each gets 170 px, else one a row.
 const TILE_MIN = 170;
 const TILE_GAP = 24;
-const GROUP_MIN = 380;
+// Space between a table's columns, and between tables side by side.
+const CELL_GAP = 12;
 const GROUP_GAP = 28;
+// Once no further table may stand beside it, a table is drawn at most this
+// many times as wide as its text needs: width beyond that goes between the
+// tables instead of between a name and its figures.
+const TABLE_STRETCH = 2;
+// How far names may be squeezed into wrapping before a row puts its figures
+// under the name: down to this share of the widest name.
+const NAME_SQUEEZE = 0.6;
+// Groups side by side need the shortest column to reach this share of the
+// tallest, as two parts of three.
+const EVEN_COLUMNS = [2, 3];
 // Remaining life at or below which the drive counts as worn.
 const WORN = 10;
 
@@ -115,6 +125,40 @@ function balance(weights: number[], columns: number): [number, number[]] {
     if (tallest < best[0]) best = [tallest, [first, ...runs]];
   }
   return best;
+}
+
+// How groups of rows share the tables that fit side by side: whole groups
+// in each column where that leaves the columns about even (how many each
+// takes), otherwise null, for each group's rows across the width, so that a
+// short group does not leave the space under it empty.
+function arrange(rows: number[], tables: number): number[] | null {
+  if (tables <= 1 || rows.length <= 1) return [rows.length];
+  // Each group's rows plus its header and the gap under it.
+  const weights = rows.map((count) => count + 2);
+  const [tallest, runs] = balance(weights, tables);
+  let taken = 0;
+  const heights = runs.map((run) => {
+    const height = weights.slice(taken, taken + run).reduce((a, b) => a + b, 0);
+    taken += run;
+    return height;
+  });
+  const [part, whole] = EVEN_COLUMNS;
+  return runs.length === tables && Math.min(...heights) * whole >= tallest * part ? runs : null;
+}
+// How tables are drawn in the width there is: how many stand side by side,
+// the widest one is drawn, how wide each column of figures is, and whether
+// the figures go under the name. Columns are as wide as their text, so a name
+// and its figures sit as close as the width allows; width left over goes
+// evenly to the columns of figures, which are right-aligned.
+function fitTables(width: number, name: number, cells: number[], most: number) {
+  const figures = cells.reduce((a, b) => a + b, 0) + CELL_GAP * cells.length;
+  const natural = name + figures;
+  const tables = Math.max(1, Math.min(most, Math.floor((width + GROUP_GAP) / (natural + GROUP_GAP))));
+  const share = (width - GROUP_GAP * (tables - 1)) / tables;
+  const limit = tables === most && share > natural * TABLE_STRETCH ? natural * TABLE_STRETCH : undefined;
+  const each = limit ?? share;
+  const spare = Math.max(0, (each - natural) / Math.max(1, cells.length));
+  return { tables, limit, cells: cells.map((cell) => Math.floor(cell + spare)), stacked: each < figures + name * NAME_SQUEEZE };
 }
 
 interface Attribute {
@@ -280,17 +324,57 @@ export default function DiskDetails({ read, interval }: { read: number; interval
   const top = Math.max(1, identity.critical);
   const tiles = width >= 3 * TILE_MIN + 2 * TILE_GAP ? 3 : 1;
   const wide = width >= 2 * 300 + GROUP_GAP;
-  const columns = Math.min(3, Math.max(1, Math.floor((width + GROUP_GAP) / (GROUP_MIN * text + GROUP_GAP))));
   const groups = attributes(log);
-  // Each group's rows plus its header and the gap under it.
-  const [, runs] = balance(
-    groups.map(([, rows]) => rows.length + 2),
-    columns,
-  );
-  const stacks = runs.map((run, i) => {
-    const from = runs.slice(0, i).reduce((a, b) => a + b, 0);
-    return groups.slice(from, from + run);
+  // The widest name (or group title) and the widest of each column of
+  // figures, as the page's language and text size draw them: read off a
+  // hidden copy of the texts, a pixel to spare.
+  const ruler = useRef<HTMLDivElement>(null);
+  const [needs, setNeeds] = useState({ name: 150 * text, cells: [72 * text, 88 * text] });
+  useIsoLayoutEffect(() => {
+    const el = ruler.current;
+    if (!el || el.children.length < 3) return;
+    const k = scaleOf(el);
+    const [name, ...cells] = [0, 1, 2].map((i) => Math.ceil(el.children[i].getBoundingClientRect().width / k) + 1);
+    setNeeds((n) => (n.name === name && n.cells.every((cell, i) => cell === cells[i]) ? n : { name, cells }));
   });
+  const sheet = fitTables(width, needs.name, needs.cells, groups.length);
+  const runs = arrange(
+    groups.map(([, rows]) => rows.length),
+    sheet.tables,
+  );
+  const figure = (content: ReactNode, column: number, className?: string) => (
+    <span className={"a-smart-cell" + (className ? " " + className : "")} style={{ width: sheet.cells[column] }}>
+      {content}
+    </span>
+  );
+  // A table continuing a group keeps the header's height without its title.
+  const table = (title: string | null, rows: Attribute[]) => (
+    <div className="a-smart-table" key={rows[0].name}>
+      <div className={"a-smart-row is-head" + (sheet.stacked ? " is-stacked" : "")}>
+        <span className="a-smart-name">{title ?? "\u00a0"}</span>
+        <span className="a-smart-figures">
+          {figure("数值", 0)}
+          {figure("原始值", 1)}
+        </span>
+      </div>
+      {rows.map((row) => (
+        <div className={"a-smart-row" + (sheet.stacked ? " is-stacked" : "")} key={row.name}>
+          <span className="a-smart-name" data-i18n="smart">
+            {row.name}
+          </span>
+          <span className="a-smart-figures">
+            {figure(row.value, 0, row.alert ? "is-alert" : undefined)}
+            {figure(row.raw, 1, "is-raw")}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+  const lane = (key: number, children?: ReactNode) => (
+    <div className="a-smart-lane" key={key} style={{ maxWidth: sheet.limit }}>
+      {children}
+    </div>
+  );
   const serial = pick("serial");
   const identityRows: [string, ReactNode][] = [
     ["型号", pick("model")],
@@ -391,26 +475,50 @@ export default function DiskDetails({ read, interval }: { read: number; interval
       </Card>
       <Card title="SMART 属性" note="NVMe 健康日志">
         <div className="a-smart">
-          {stacks.map((stack, column) => (
-            <div className="a-smart-col" key={column}>
-              {stack.map(([group, rows]) => (
-                <div className="a-smart-group" key={group}>
-                  <div className="a-smart-row is-head">
-                    <span>{group}</span>
-                    <span>数值</span>
-                    <span>原始值</span>
-                  </div>
-                  {rows.map((row) => (
-                    <div className="a-smart-row" key={row.name}>
-                      <span data-i18n="smart">{row.name}</span>
-                      <span className={row.alert ? "is-alert" : undefined}>{row.value}</span>
-                      <span>{row.raw}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
+          <div className="a-smart-ruler" ref={ruler} aria-hidden="true">
+            {groups.map(([group, rows]) => [
+              <b key={group}>{group}</b>,
+              <span key={group + ":v"}>数值</span>,
+              <span key={group + ":r"}>原始值</span>,
+              ...rows.flatMap((row) => [
+                <span key={row.name} data-i18n="smart">
+                  {row.name}
+                </span>,
+                <span key={row.name + ":v"}>{row.value}</span>,
+                <span key={row.name + ":r"}>{row.raw}</span>,
+              ]),
+            ])}
+          </div>
+          {runs ? (
+            // Whole groups in each column, in order.
+            <div className="a-smart-lanes">
+              {runs.map((run, column) => {
+                const from = runs.slice(0, column).reduce((a, b) => a + b, 0);
+                return lane(
+                  column,
+                  groups.slice(from, from + run).map(([group, rows]) => table(group, rows)),
+                );
+              })}
             </div>
-          ))}
+          ) : (
+            // The groups one under another, each one's rows across the tables.
+            <div className="a-smart-bands">
+              {groups.map(([group, rows]) => {
+                // No table of a single row while another has several.
+                const tables = Math.max(1, Math.min(sheet.tables, Math.ceil(rows.length / 2)));
+                const size = Math.max(1, Math.ceil(rows.length / tables));
+                // Every band keeps the same columns.
+                return (
+                  <div className="a-smart-lanes" key={group}>
+                    {Array.from({ length: sheet.tables }, (_, i) => {
+                      const chunk = rows.slice(i * size, (i + 1) * size);
+                      return lane(i, chunk.length ? table(i ? null : group, chunk) : undefined);
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </Card>
     </div>

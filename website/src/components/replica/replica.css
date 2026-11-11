@@ -2514,58 +2514,110 @@ button.a-th:active {
   font-size: calc(11px * var(--a-text));
   line-height: 16px;
 }
+/* The SMART tables: one per group, side by side where the columns come out
+   even, else one under another with each group's rows across the width. The
+   columns of figures are as wide as their text (set by DiskDetails.tsx). */
 .a-smart {
+  position: relative;
+  font-size: calc(12px * var(--a-text));
+  font-variant-numeric: tabular-nums;
+}
+/* A hidden copy of the texts, in three columns as wide as their widest. */
+.a-smart-ruler {
+  position: absolute;
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.a-smart-ruler b,
+.a-smart-row.is-head .a-smart-name {
+  font-size: calc(13px * var(--a-text));
+  font-weight: 500;
+}
+.a-smart-bands {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+/* Tables side by side; width past their limit goes between them. */
+.a-smart-lanes {
   display: flex;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 28px;
 }
-.a-smart-col {
+.a-smart-lane {
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
   gap: 20px;
   min-width: 0;
 }
-.a-smart-group {
+.a-smart-table {
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  font-size: calc(12px * var(--a-text));
 }
 .a-smart-row {
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 12px;
   padding: 6px 0;
   border-bottom: 1px solid var(--a-stroke);
-  font-variant-numeric: tabular-nums;
 }
-.a-smart-row > :first-child {
+/* The row under the pointer, a little wider than the row, as the lists' own. */
+.a-smart-row:not(.is-head)::before {
+  content: "";
+  position: absolute;
+  inset: 0 -8px;
+  border-radius: 4px;
+}
+.a-smart-row:not(.is-head):hover::before {
+  background: var(--a-hover);
+}
+.a-smart-name {
+  position: relative;
   flex: 1;
   min-width: 0;
 }
-.a-smart-row > :nth-child(2) {
-  flex: none;
-  width: calc(96px * var(--a-text));
-  text-align: end;
+.a-smart-figures {
+  display: contents;
 }
-.a-smart-row > :nth-child(3) {
+.a-smart-cell {
+  position: relative;
   flex: none;
-  width: calc(92px * var(--a-text));
-  color: var(--a-ink-2);
   text-align: end;
+  white-space: nowrap;
+}
+.a-smart-cell.is-raw {
+  color: var(--a-ink-2);
+}
+.a-smart-cell.is-alert {
+  color: var(--a-danger);
+}
+/* Too narrow for a name beside its figures: the figures go under it. */
+.a-smart-row.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.a-smart-row.is-stacked .a-smart-figures {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 12px;
 }
 .a-smart-row.is-head {
   padding-top: 0;
   color: var(--a-ink-2);
 }
-.a-smart-row.is-head > :first-child {
+.a-smart-row.is-head .a-smart-name {
   color: var(--a-ink);
-  font-size: calc(13px * var(--a-text));
-  font-weight: 500;
-}
-.a-smart-row .is-alert {
-  color: var(--a-danger);
 }
 .a-engine-head {
   display: inline-flex;
