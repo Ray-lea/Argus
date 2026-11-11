@@ -51,6 +51,11 @@ const DAY_MS: i64 = 86_400_000;
 pub struct HistoryPoint {
     /// Unix ms: the frame's start, or a bucket's average.
     pub ts: i64,
+    /// An actual frame, chosen as the first frame of a bucket. Unlike `ts`,
+    /// this timestamp can always address its process table.
+    pub frame_ts: i64,
+    /// Actual frame containing the highest CPU sample; earliest frame on ties.
+    pub cpu_peak_ts: i64,
     /// Average CPU, percent.
     pub cpu: f32,
     /// Highest CPU sample in the frame (or bucket).
@@ -525,6 +530,8 @@ fn parse(
                 let u64_at = |i: usize| u64::from_le_bytes(b[i..i + 8].try_into().unwrap());
                 let point = HistoryPoint {
                     ts: i64::from_le_bytes(b[0..8].try_into().unwrap()),
+                    frame_ts: i64::from_le_bytes(b[0..8].try_into().unwrap()),
+                    cpu_peak_ts: i64::from_le_bytes(b[0..8].try_into().unwrap()),
                     cpu: f32_at(8),
                     cpu_peak: f32_at(12),
                     gpu: f32_at(16),
@@ -676,6 +683,8 @@ pub fn series(dir: &Path, from: i64, to: i64, buckets: usize) -> Vec<HistoryPoin
     struct Acc {
         n: u32,
         ts: f64,
+        frame_ts: i64,
+        cpu_peak_ts: i64,
         cpu: f64,
         cpu_peak: f32,
         gpu: f64,
@@ -701,6 +710,15 @@ pub fn series(dir: &Path, from: i64, to: i64, buckets: usize) -> Vec<HistoryPoin
             if p.ts >= from && p.ts <= to {
                 let i = (((p.ts - from) as f64 / span) * buckets as f64) as usize;
                 let a = &mut acc[i.min(buckets - 1)];
+                if a.n == 0 {
+                    a.frame_ts = p.ts;
+                }
+                if a.n == 0
+                    || p.cpu_peak > a.cpu_peak
+                    || (p.cpu_peak == a.cpu_peak && p.ts < a.cpu_peak_ts)
+                {
+                    a.cpu_peak_ts = p.ts;
+                }
                 a.n += 1;
                 a.ts += p.ts as f64;
                 a.cpu += p.cpu as f64;
@@ -728,6 +746,8 @@ pub fn series(dir: &Path, from: i64, to: i64, buckets: usize) -> Vec<HistoryPoin
             let n = a.n as f64;
             HistoryPoint {
                 ts: (a.ts / n) as i64,
+                frame_ts: a.frame_ts,
+                cpu_peak_ts: a.cpu_peak_ts,
                 cpu: (a.cpu / n) as f32,
                 cpu_peak: a.cpu_peak,
                 gpu: (a.gpu / n) as f32,
@@ -879,6 +899,55 @@ mod tests {
             remaining: None,
             temperature: None,
         }
+    }
+
+    #[test]
+    fn bucket_addresses_a_real_frame_and_the_earliest_cpu_peak() {
+        let dir = temp_dir("peak-frame");
+        let base = 20_738 * DAY_MS - FRAME_MS;
+        let mut rec = HistoryRecorder::new(dir.clone());
+        for (offset, cpu, name) in [
+            (0, 98., "burst.exe"),
+            (5000, 2., "quiet.exe"),
+            (10000, 2., "quiet.exe"),
+            (15000, 0., "end.exe"),
+        ] {
+            rec.record(&snapshot(
+                base + offset,
+                cpu,
+                vec![proc(42, name, cpu, 1024)],
+            ));
+        }
+        let bucket = series(&dir, base, base + 10000, 1).remove(0);
+        assert_eq!((bucket.cpu, bucket.cpu_peak), (34., 98.));
+        assert_eq!(bucket.ts, base + 5000);
+        assert_eq!(bucket.cpu_peak_ts, base);
+        assert_eq!(bucket.frame_ts, base);
+        assert_eq!(
+            moment(&dir, bucket.cpu_peak_ts).unwrap().processes[0].name,
+            "burst.exe"
+        );
+        // Equal peaks keep the earliest actual frame, including across UTC midnight.
+        rec.clear().unwrap();
+        for offset in [0, 5000, 10000] {
+            rec.record(&snapshot(base + offset, 98., Vec::new()));
+        }
+        assert_eq!(series(&dir, base, base + 10000, 1)[0].cpu_peak_ts, base);
+        // An average timestamp can lie in a long gap. Its representative cannot.
+        rec.clear().unwrap();
+        for offset in [0, 600000, 605000] {
+            rec.record(&snapshot(
+                base + offset,
+                1.,
+                vec![proc(42, "sample.exe", 1., 1024)],
+            ));
+        }
+        let bucket = series(&dir, base, base + 7 * DAY_MS, 500).remove(0);
+        assert!(moment(&dir, bucket.ts).is_none());
+        assert!(moment(&dir, bucket.frame_ts).is_some());
+        assert!(moment(&dir, bucket.cpu_peak_ts).is_some());
+        drop(rec);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

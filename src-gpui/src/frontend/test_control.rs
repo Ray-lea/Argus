@@ -571,6 +571,7 @@ impl Desktop {
                 "diagnosticCopyReady":self.options.fixture.is_some() && self.data.contains_key("diagnosticCopy"),
                 "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
+                "history":{"cursor":self.history_cursor,"requestedFrame":self.data.get("historyMomentAt"),"frame":self.data.get("historyMoment").map(|m| &m["system"]["ts"])},
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "nativeWindow":native_window,
