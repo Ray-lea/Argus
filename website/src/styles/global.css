@@ -494,28 +494,109 @@ button {
 .lang-current { font-size: 0.8125rem; font-weight: 600; }
 .lang-chevron { display: inline-flex; align-items: center; flex: none; transition: transform 180ms var(--ease); }
 .lang-trigger[aria-expanded="true"] .lang-chevron { transform: rotate(180deg); }
-.lang-trigger[aria-expanded="true"] { color: var(--accent-text); background: var(--surface-2); border-color: var(--stroke-2); }
+.lang-trigger[aria-expanded="true"] { color: var(--ink); background: var(--surface-2); border-color: var(--stroke-2); }
+/* The language chosen shows in the button while its page loads. */
+.lang-trigger[aria-busy="true"] .lang-current { opacity: 0.7; }
+/* The menu drops below its button, as wide as the button at least: the theme
+   menu's flyout, one row per language in its own name. It is opaque: eight
+   rows reach over the page's headings, which would show through. */
 .language-menu {
-  position: absolute; top: calc(100% + 10px); right: 0; z-index: 60;
-  width: min(240px, calc(100vw - 32px)); max-height: min(420px, calc(100dvh - 100px));
-  overflow-y: auto; overscroll-behavior: contain; padding: 6px;
-  border: 1px solid var(--stroke-2); border-radius: 12px;
-  background: var(--surface-solid); box-shadow: var(--shadow); transform-origin: top right;
-  animation: language-in 180ms var(--ease) both;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  display: grid;
+  gap: 2px;
+  min-width: max(100%, 168px);
+  max-width: calc(100vw - 32px);
+  max-height: min(420px, calc(100dvh - 100px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--stroke-2);
+  border-radius: 10px;
+  background: var(--surface-solid);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.22);
+  transform-origin: top right;
+  animation: theme-menu 160ms var(--ease-fluent);
 }
-.language-menu.is-closing { animation: language-out 130ms ease both; pointer-events: none; }
+.language-menu.is-closing {
+  animation: language-out 130ms ease both;
+  pointer-events: none;
+}
 .language-option {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  min-height: 38px; padding: 8px 12px; border-radius: 7px;
-  color: var(--ink-2); text-decoration: none; font-size: 0.9375rem;
-  transition: background-color 120ms, color 120ms;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  padding: 0 8px 0 12px;
+  border-radius: 6px;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  text-decoration: none;
+  white-space: nowrap;
+  outline: none;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
-.language-option:hover, .language-option:focus-visible { color: var(--ink); background: var(--surface-2); outline: 2px solid var(--accent); outline-offset: -2px; }
-.language-option[aria-checked="true"] { color: var(--accent-text); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.language-check { display: flex; width: 16px; flex: none; }
-@keyframes language-in { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
-@keyframes language-out { to { opacity: 0; transform: translateY(-4px) scale(0.98); } }
-@media (prefers-reduced-motion: reduce) { .language-menu, .language-menu.is-closing { animation: none; } .lang-chevron { transition: none; } }
+.language-option > :first-child {
+  flex: 1;
+}
+/* The lit row is the focused one; the pointer moves the focus, and only the
+   keyboard's row wears the ring (LanguageSwitch.tsx marks which came last). */
+.language-option:focus {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.language-picker[data-keys] .language-option:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.language-option[aria-checked="true"] {
+  color: var(--ink);
+}
+.language-check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  color: var(--accent-text);
+}
+/* A finger needs more of a row than a pointer does. */
+@media (pointer: coarse) {
+  .language-option {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .language-menu.is-open .language-option {
+    animation: theme-item 240ms var(--ease) both;
+    animation-delay: calc(30ms + var(--i, 0) * 16ms);
+  }
+  .language-menu.is-open .language-check svg {
+    animation: theme-check 360ms cubic-bezier(0.34, 1.56, 0.64, 1) 140ms both;
+  }
+}
+@keyframes language-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .language-menu {
+    animation: none;
+  }
+  /* Kept for a moment after a choice, out of sight. */
+  .language-menu.is-closing {
+    animation: none;
+    visibility: hidden;
+  }
+  .lang-chevron {
+    transition: none;
+  }
+}
 /* Between the two languages' pages the old one dissolves and the new one
    sharpens into place; the header stays, and the thumb glides across. */
 @media (prefers-reduced-motion: no-preference) {

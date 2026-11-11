@@ -37,17 +37,28 @@ function remember(event: MouseEvent<HTMLAnchorElement>) {
   }
 }
 
+// What a typed letter is matched against: a language's own name, and its
+// code for the names a Latin keyboard cannot start (zh, ja, ru).
+const typeable = languages.map((item) => [item.name, item.id, item.tag].map((text) => text.toLocaleLowerCase()));
+
 // One disclosure at every viewport, with native names and keyboard navigation.
+// One row is lit at a time: the keyboard's, or the one under the pointer,
+// which takes the keyboard's place. A chosen language shows in the button at
+// once, while its page loads.
 export function LanguageSwitch({ lang, path, label }: { lang: Language; path: string; label: string }) {
   const [open, setOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [going, setGoing] = useState<Language | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const typed = useRef({ text: "", at: 0 });
   const id = useId();
-  const info = languageInfo(lang);
-  const close = (restore = false) => {
+  const info = languageInfo(going ?? lang);
+  // The menu stays in the page while it fades (a chosen link must outlive its
+  // click); without motion it is simply hidden for that moment.
+  const close = (restore = false, keep = false) => {
     setOpen(false);
-    setLeaving(!matchMedia("(prefers-reduced-motion: reduce)").matches);
+    setLeaving(keep || !matchMedia("(prefers-reduced-motion: reduce)").matches);
     if (restore) trigger.current?.focus({ preventScroll: true });
   };
   useEffect(() => {
@@ -55,6 +66,30 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
     const timer = setTimeout(() => setLeaving(false), 150);
     return () => clearTimeout(timer);
   }, [leaving]);
+  // The other page did not come (offline), or this one came back from the
+  // history cache: the button names the page's own language again.
+  useEffect(() => {
+    if (!going) return;
+    const reset = () => setGoing(null);
+    const timer = setTimeout(reset, 8000);
+    addEventListener("pageshow", reset);
+    return () => {
+      clearTimeout(timer);
+      removeEventListener("pageshow", reset);
+    };
+  }, [going]);
+  // The keyboard's row wears a ring; the pointer's does not, whichever came last.
+  const keyed = (on: boolean) => root.current?.toggleAttribute("data-keys", on);
+  const light = (item: HTMLElement | undefined) => {
+    if (!item) return;
+    keyed(true);
+    item.focus({ preventScroll: true });
+    const panel = item.parentElement;
+    if (!panel) return;
+    if (item.offsetTop < panel.scrollTop) panel.scrollTop = item.offsetTop;
+    else if (item.offsetTop + item.offsetHeight > panel.scrollTop + panel.clientHeight)
+      panel.scrollTop = item.offsetTop + item.offsetHeight - panel.clientHeight;
+  };
   useEffect(() => {
     if (!open) return;
     root.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus({ preventScroll: true });
@@ -69,7 +104,7 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
       onBlurCapture={event => { if (open && !event.currentTarget.contains(event.relatedTarget)) close(); }}
       onKeyDown={event => {
         if (!open) {
-          if (["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); setLeaving(false); setOpen(true); }
+          if (["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); keyed(true); setLeaving(false); setOpen(true); }
           return;
         }
         const items = [...(root.current?.querySelectorAll<HTMLAnchorElement>('[role="menuitemradio"]') ?? [])];
@@ -77,21 +112,27 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
         const next = event.key === "ArrowDown" ? (at + 1) % items.length : event.key === "ArrowUp" ? (at + items.length - 1) % items.length : event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : -1;
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); }
         else if (event.key === " " && event.target instanceof HTMLAnchorElement) { event.preventDefault(); event.target.click(); }
-        else if (next >= 0) {
-          event.preventDefault();
-          const item = items[next];
-          item?.focus({ preventScroll: true });
-          const panel = item?.parentElement;
-          if (panel && item) {
-            if (item.offsetTop < panel.scrollTop) panel.scrollTop = item.offsetTop;
-            else if (item.offsetTop + item.offsetHeight > panel.scrollTop + panel.clientHeight)
-              panel.scrollTop = item.offsetTop + item.offsetHeight - panel.clientHeight;
+        else if (next >= 0) { event.preventDefault(); light(items[next]); }
+        else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          // A letter goes to the language it starts; typed again, to the next one.
+          const now = Date.now();
+          const text = (now - typed.current.at > 700 ? "" : typed.current.text) + event.key.toLocaleLowerCase();
+          typed.current = { text, at: now };
+          const again = [...text].every((letter) => letter === text[0]);
+          const needle = again ? text[0] : text;
+          for (let step = 0; step < items.length; step++) {
+            const index = ((again ? at + 1 : Math.max(0, at)) + step) % items.length;
+            if (!typeable[index].some((name) => name.startsWith(needle))) continue;
+            event.preventDefault();
+            light(items[index]);
+            break;
           }
         }
       }}>
       <button ref={trigger} type="button" className="tool lang-trigger" aria-label={label + " · " + info.name}
         title={label + " · " + info.name} aria-haspopup="menu" aria-controls={id} aria-expanded={open}
-        onClick={() => { if (open) close(); else { setLeaving(false); setOpen(true); } }}>
+        aria-busy={going ? true : undefined}
+        onClick={event => { if (open) close(); else { keyed(event.detail === 0); setLeaving(false); setOpen(true); } }}>
         <Icon name="language" size={16} />
         <span className="lang-current" lang={info.tag}>{info.name}</span>
         <span className="lang-chevron" aria-hidden="true"><Icon name="chevron" size={14} /></span>
@@ -101,15 +142,21 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
         {languages.map((item, index) => <a key={item.id} className="language-option" role="menuitemradio"
           aria-checked={item.id === lang} lang={item.tag} hrefLang={item.tag} href={localized(item.id, path)}
           data-language={item.id} tabIndex={open && item.id === lang ? 0 : -1} style={{ "--i": index } as CSSProperties}
+          onPointerMove={event => { keyed(false); if (document.activeElement !== event.currentTarget) event.currentTarget.focus({ preventScroll: true }); }}
           onClick={event => {
             if (item.id === lang) { event.preventDefault(); close(true); return; }
             event.currentTarget.href = localized(item.id, path) + location.search + location.hash;
             // Add the hash after restoring the reading position, so the browser's
             // fragment navigation cannot replace it with the section's start.
-            if (remember(event)) event.currentTarget.hash = "";
+            if (remember(event)) {
+              event.currentTarget.hash = "";
+              // This page turns into the other one: the button says so at once.
+              setGoing(item.id);
+              close(false, true);
+            }
           }}>
           <span>{item.name}</span>
-          <span className="language-check">{item.id === lang && <Icon name="check" size={15} />}</span>
+          <span className="language-check">{item.id === lang && <Icon name="check" size={14} />}</span>
         </a>)}
       </div>}
     </div>
