@@ -197,19 +197,25 @@
   margin-top: 0.2em;
   color: var(--series-net);
 }
+/* One row as wide as its label and the file's size, at the start of the card
+   as its text is. A label too long for the card wraps inside the button
+   rather than widening it, and a narrow card gives the button its whole
+   width to press. */
 .package-get {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  justify-content: center;
-  min-height: 46px;
+  align-self: flex-start;
+  max-width: 100%;
+  min-width: min(100%, 220px);
   height: auto;
-  padding-block: 12px;
-  white-space: normal;
+  min-height: 44px;
   margin-top: auto;
-  font-size: 1rem;
+  padding: 8px 22px;
+  white-space: normal;
 }
 .package-get .dl-label { min-width: 0; overflow-wrap: anywhere; }
-.package-get .package-size { grid-column: 2; justify-self: center; border-left: 0; padding-left: 0; white-space: nowrap; }
+.package-get .package-size { white-space: nowrap; }
+@container download-package (max-width: 400px) {
+  .package-get { align-self: stretch; }
+}
 .package-size {
   padding-left: 10px;
   border-left: 1px solid color-mix(in srgb, currentColor 30%, transparent);
