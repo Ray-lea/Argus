@@ -88,6 +88,12 @@
       MessageBox MB_OK|MB_ICONSTOP "$2" /SD IDOK
       Abort
     ${EndIf}
+
+    ; Last, after the helpers above may have written failure reports: remove
+    ; them, the PawnIO setup lock and staging leftovers from Program Files\Argus
+    ; Sensor Setup, then the empty folder. Never blocks the uninstall.
+    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-sensor-setup-remove'
+    ClearErrors
   ${EndIf}
 !endif
 !macroend

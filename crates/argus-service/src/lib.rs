@@ -68,6 +68,10 @@ pub fn run_mode() -> Option<i32> {
             }))
         }
         Some(REMOVE_ARG) if args.len() == 1 => Some(remove_for_uninstall()),
+        // Not a diagnostics::helper: a report it saved would recreate the folder.
+        Some(driver::CLEANUP_ARG) if args.len() == 1 => {
+            Some(driver::remove_setup_folder().map_or_else(|e| e as i32, |_| 0))
+        }
         Some(REFRESH_ARG) if args.len() == 1 => Some(diagnostics::helper(
             "installer service refresh",
             install::refresh,
@@ -78,7 +82,8 @@ pub fn run_mode() -> Option<i32> {
             | REMOVE_ARG
             | REFRESH_ARG
             | handles::WORKER_ARG
-            | driver::MANAGE_ARG,
+            | driver::MANAGE_ARG
+            | driver::CLEANUP_ARG,
         ) => Some(87),
         _ => None,
     }

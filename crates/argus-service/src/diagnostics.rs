@@ -150,14 +150,14 @@ fn root() -> Result<PathBuf> {
     Ok(crate::install::directory()?
         .parent()
         .ok_or(87u32)?
-        .join("Argus Sensor Setup"))
+        .join(crate::driver::SETUP_DIR))
 }
 
 fn filename(pid: u32, created: u64) -> String {
     format!("helper-{pid}-{created}.json")
 }
 
-fn report_name(name: &str) -> bool {
+pub(crate) fn report_name(name: &str) -> bool {
     let Some(body) = name
         .strip_prefix("helper-")
         .and_then(|s| s.strip_suffix(".json"))

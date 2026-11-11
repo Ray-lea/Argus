@@ -106,7 +106,7 @@ fn grant(id: &str, sid: &str) -> Result<Option<(PathBuf, Grant)>> {
 fn image_name(name: &str) -> bool {
     name.strip_prefix("argus-admin-")
         .and_then(|s| s.strip_suffix(".exe"))
-        .is_some_and(ticket::valid_guid)
+        .is_some_and(util::valid_guid)
 }
 pub fn is_copy(path: &Path, id: &str) -> bool {
     let Ok(sid) = security::current_sid() else {
@@ -656,22 +656,29 @@ fn refresh(id: &str, remove: bool) -> Result<()> {
 
 fn remove_runtime(id: &str) -> Result<()> {
     let root = root(id)?;
-    let Some(guard) = crate::cleanup::Directory::open(&root)? else {
-        return Ok(());
-    };
-    for entry in fs::read_dir(&root).map_err(io)? {
-        let entry = entry.map_err(io)?;
-        let sid = entry.file_name().to_string_lossy().into_owned();
-        if security::validate_sid(&sid).is_err() {
-            continue;
+    if let Some(guard) = crate::cleanup::Directory::open(&root)? {
+        for entry in fs::read_dir(&root).map_err(io)? {
+            let entry = entry.map_err(io)?;
+            let sid = entry.file_name().to_string_lossy().into_owned();
+            if security::validate_sid(&sid).is_err() {
+                continue;
+            }
+            let dir = directory(id, &sid)?;
+            if let Some(pin) = crate::cleanup::Directory::open(&dir)? {
+                remove_runtime_files(&dir)?;
+                pin.remove_empty()?;
+            }
         }
-        let dir = directory(id, &sid)?;
-        if let Some(pin) = crate::cleanup::Directory::open(&dir)? {
-            remove_runtime_files(&dir)?;
-            pin.remove_empty()?;
-        }
+        guard.remove_empty()?;
     }
-    guard.remove_empty()
+    // The shared `Argus Runtime` goes with its last identifier, including one an
+    // earlier version left empty. An empty folder never fails the uninstall.
+    if let Some(base) = root.parent()
+        && let Ok(Some(base)) = crate::cleanup::Directory::open(base)
+    {
+        let _ = base.remove_empty();
+    }
+    Ok(())
 }
 
 fn runtime_file(name: &str) -> bool {
@@ -690,7 +697,7 @@ fn runtime_file(name: &str) -> bool {
         .any(|(prefix, suffix)| {
             name.strip_prefix(prefix)
                 .and_then(|s| s.strip_suffix(suffix))
-                .is_some_and(ticket::valid_guid)
+                .is_some_and(util::valid_guid)
         })
 }
 fn remove_runtime_files(dir: &Path) -> Result<()> {

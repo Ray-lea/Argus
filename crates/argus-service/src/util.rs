@@ -77,6 +77,18 @@ pub fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
 }
 
+/// A GUID as `CoCreateGuid` names files and folders here, without braces.
+pub fn valid_guid(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(i, c)| {
+            if [8, 13, 18, 23].contains(&i) {
+                c == b'-'
+            } else {
+                c.is_ascii_hexdigit()
+            }
+        })
+}
+
 pub struct Handle(pub HANDLE);
 unsafe impl Send for Handle {}
 unsafe impl Sync for Handle {}

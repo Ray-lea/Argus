@@ -37,6 +37,14 @@ use crate::util::{Handle, Result, io, wide, win};
 use crate::{security, util};
 
 pub(crate) const MANAGE_ARG: &str = "--argus-sensor-driver-manage";
+/// Run by the NSIS uninstaller after the other helpers; see `remove_setup_folder`.
+pub(crate) const CLEANUP_ARG: &str = "--argus-sensor-setup-remove";
+/// Under Program Files: this setup's lock and staging folders, and the
+/// failure reports of every elevated helper (`diagnostics`).
+pub(crate) const SETUP_DIR: &str = "Argus Sensor Setup";
+const SETUP_LOCK: &str = "install.lock";
+const INSTALLER: &str = "PawnIO_setup.exe";
+const LEGACY_INSTALLER: &str = "PawnIO_legacy_setup.exe";
 const DOWNLOAD_FAILED: u32 = 0x2000_0101;
 const PACKAGE_INVALID: u32 = 0x2000_0102;
 const SIGNATURE_INVALID: u32 = 0x2000_0103;
@@ -912,8 +920,8 @@ fn install_package(root: &Path, migrate: bool) -> Result<()> {
     let id = unsafe { CoCreateGuid() }.map_err(win)?;
     let directory = root.join(format!("{id:?}"));
     let guard = protected_dir(&directory)?;
-    let installer = directory.join("PawnIO_setup.exe");
-    let legacy_installer = directory.join("PawnIO_legacy_setup.exe");
+    let installer = directory.join(INSTALLER);
+    let legacy_installer = directory.join(LEGACY_INSTALLER);
     let result = (|| {
         let _verified = stage_package(&installer, &bytes, package::manifest())?;
         let install = || run_installer(&installer, &INSTALL_ARGS, false);
@@ -961,22 +969,86 @@ pub(crate) fn run_helper() -> Result<()> {
         &programs,
         protect_setup_path(&programs),
     )?;
-    let root = programs.join("Argus Sensor Setup");
-    let _root = util::file_stage("PawnIO setup directory", &root, protected_dir(&root))?;
-    let _lock = util::file_stage(
+    let root = programs.join(SETUP_DIR);
+    let pin = util::file_stage("PawnIO setup directory", &root, protected_dir(&root))?;
+    let lock = util::file_stage(
         "PawnIO setup lock",
-        &root.join("install.lock"),
+        &root.join(SETUP_LOCK),
         OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(false)
             .share_mode(0)
-            .open(root.join("install.lock"))
+            .open(root.join(SETUP_LOCK))
             .map_err(io),
     )?;
-    let plan = current_plan()?;
-    let migrate = plan == Plan::MigrateLegacy;
-    finish_preparation(plan, || install_package(&root, migrate), start)
+    let result = current_plan().and_then(|plan| {
+        let migrate = plan == Plan::MigrateLegacy;
+        finish_preparation(plan, || install_package(&root, migrate), start)
+    });
+    drop(lock);
+    drop(pin);
+    release_setup_folder(&root);
+    result
+}
+
+/// Leaves no folder behind once a setup is over. Another Argus that took the
+/// lock meanwhile, a staging folder an interrupted setup left or a report the
+/// host has yet to read keeps it; the uninstaller removes those.
+fn release_setup_folder(root: &Path) {
+    if let Ok(Some(directory)) = crate::cleanup::Directory::open(root)
+        && directory.remove_file(SETUP_LOCK).is_ok()
+    {
+        let _ = directory.remove_empty();
+    }
+}
+
+/// For the uninstaller, after every other helper: once Argus is gone nothing
+/// reads the failure reports or an interrupted setup's staging folder. Removes
+/// those and the lock by name, then the folder if empty; unknown files stay,
+/// and a setup still running in another session keeps everything.
+pub(crate) fn remove_setup_folder() -> Result<()> {
+    if !argus_core::privilege::is_elevated() {
+        return Err(5);
+    }
+    remove_setup_folder_in(&program_files()?.join(SETUP_DIR))
+}
+
+fn remove_setup_folder_in(root: &Path) -> Result<()> {
+    let Some(directory) = crate::cleanup::Directory::open(root)? else {
+        return Ok(());
+    };
+    let lock = match OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .share_mode(0)
+        .open(root.join(SETUP_LOCK))
+    {
+        Ok(lock) => lock,
+        Err(error) if error.raw_os_error() == Some(32) => return Ok(()),
+        Err(error) => return Err(io(error)),
+    };
+    for entry in fs::read_dir(root).map_err(io)? {
+        let entry = entry.map_err(io)?;
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        // is_dir() is false for links and junctions: never entered, only removed by name.
+        let kind = entry.file_type().map_err(io)?;
+        if kind.is_dir() && util::valid_guid(&name) {
+            if let Some(staging) = crate::cleanup::Directory::open(&entry.path())? {
+                staging.remove_file(INSTALLER)?;
+                staging.remove_file(LEGACY_INSTALLER)?;
+                staging.remove_empty()?;
+            }
+        } else if !kind.is_dir() && crate::diagnostics::report_name(&name) {
+            directory.remove_file(&name)?;
+        }
+    }
+    drop(lock);
+    directory.remove_file(SETUP_LOCK)?;
+    directory.remove_empty()
 }
 
 /// Called only when the settings switch is explicitly turned on. Only this
@@ -1413,5 +1485,85 @@ mod tests {
         ] {
             assert!(image_path(path, windows, programs, &mut Inspection::default()).is_err());
         }
+    }
+
+    fn scratch_setup_folder() -> PathBuf {
+        let id = unsafe { CoCreateGuid() }.unwrap();
+        let root = std::env::temp_dir().join(format!("argus-setup-{id:?}"));
+        fs::create_dir(&root).unwrap();
+        root
+    }
+    fn names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<_> = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_finished_setup_leaves_no_folder_unless_a_report_waits() {
+        let root = scratch_setup_folder();
+        fs::write(root.join(SETUP_LOCK), b"").unwrap();
+        release_setup_folder(&root);
+        assert!(!root.exists());
+
+        let root = scratch_setup_folder();
+        fs::write(root.join(SETUP_LOCK), b"").unwrap();
+        fs::write(root.join("helper-12-34.json"), b"{}").unwrap();
+        release_setup_folder(&root);
+        assert_eq!(names(&root), ["helper-12-34.json"]);
+        fs::remove_file(root.join("helper-12-34.json")).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn uninstall_removes_reports_lock_and_staging_by_name_only() {
+        let root = scratch_setup_folder();
+        let staging = root.join(format!("{:?}", unsafe { CoCreateGuid() }.unwrap()));
+        let other = root.join("other");
+        for dir in [&staging, &other] {
+            fs::create_dir(dir).unwrap();
+            fs::write(dir.join(INSTALLER), b"setup").unwrap();
+        }
+        fs::write(staging.join(LEGACY_INSTALLER), b"legacy").unwrap();
+        for name in [
+            SETUP_LOCK,
+            "helper-12-34.json",
+            "helper-x.json",
+            "notes.txt",
+        ] {
+            fs::write(root.join(name), b"").unwrap();
+        }
+        remove_setup_folder_in(&root).unwrap();
+        assert_eq!(names(&root), ["helper-x.json", "notes.txt", "other"]);
+
+        fs::remove_file(root.join("helper-x.json")).unwrap();
+        fs::remove_file(root.join("notes.txt")).unwrap();
+        fs::remove_file(other.join(INSTALLER)).unwrap();
+        fs::remove_dir(other).unwrap();
+        remove_setup_folder_in(&root).unwrap();
+        assert!(!root.exists());
+        // Nothing left to remove is not a failure.
+        remove_setup_folder_in(&root).unwrap();
+    }
+
+    #[test]
+    fn uninstall_leaves_a_running_setup_alone() {
+        let root = scratch_setup_folder();
+        fs::write(root.join("helper-12-34.json"), b"{}").unwrap();
+        let held = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .share_mode(0)
+            .open(root.join(SETUP_LOCK))
+            .unwrap();
+        remove_setup_folder_in(&root).unwrap();
+        assert_eq!(names(&root), ["helper-12-34.json", SETUP_LOCK]);
+        drop(held);
+        remove_setup_folder_in(&root).unwrap();
+        assert!(!root.exists());
     }
 }

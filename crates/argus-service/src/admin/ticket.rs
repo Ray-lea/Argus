@@ -1,4 +1,5 @@
 use super::*;
+use crate::util::valid_guid;
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
 pub(super) const STANDARD: &str = "--argus-admin-standard";
@@ -20,16 +21,6 @@ struct Handshake {
     pid: u32,
     created: u64,
     probe: bool,
-}
-pub(super) fn valid_guid(value: &str) -> bool {
-    value.len() == 36
-        && value.bytes().enumerate().all(|(i, c)| {
-            if [8, 13, 18, 23].contains(&i) {
-                c == b'-'
-            } else {
-                c.is_ascii_hexdigit()
-            }
-        })
 }
 impl Request {
     fn new(args: &[String]) -> Result<Self> {
