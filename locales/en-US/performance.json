@@ -46,6 +46,7 @@
     "total": "Total",
     "kernel": "Kernel",
     "kernelTime": "Kernel time",
+    "showKernelTime": "Show kernel time",
     "coreTip": "Logical processor {index}, physical core {core}",
     "coreTipP": "Logical processor {index}, physical core {core} (P-core)",
     "coreTipE": "Logical processor {index}, physical core {core} (E-core)",

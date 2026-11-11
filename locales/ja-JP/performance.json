@@ -44,6 +44,7 @@
     "total": "合計",
     "kernel": "カーネル",
     "kernelTime": "カーネル時間",
+    "showKernelTime": "カーネル時間を表示",
     "coreTip": "論理プロセッサ {index}、物理コア {core}",
     "coreTipP": "論理プロセッサ {index}、物理コア {core}（P-core）",
     "coreTipE": "論理プロセッサ {index}、物理コア {core}（E-core）",

@@ -40,6 +40,7 @@
     "total": "总计",
     "kernel": "内核",
     "kernelTime": "内核时间",
+    "showKernelTime": "显示内核时间",
     "coreTip": "逻辑处理器 {index}，物理核心 {core}",
     "coreTipP": "逻辑处理器 {index}，物理核心 {core}（性能核）",
     "coreTipE": "逻辑处理器 {index}，物理核心 {core}（能效核）",

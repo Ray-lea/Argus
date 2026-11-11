@@ -13,6 +13,8 @@ test("both README previews replay all five measured series through the final rea
       const point = trace[i];
       assert.equal(timestamp - frames[0].timestamp, point.ms);
       assert.equal(system.cpu, point.cpu);
+      assert.equal(system.coreKernel.length, system.cores.length);
+      assert(system.coreKernel.every((kernel, core) => kernel >= 0 && kernel <= system.cores[core]));
       assert.equal(system.memUsed, Math.round(system.memTotal * point.memoryPercent / 100));
       assert.equal(hardware.disks.reduce((n, d) => n + d.read + d.write, 0),
         Math.round(1024 * point.readKiB) + Math.round(1024 * point.writeKiB));

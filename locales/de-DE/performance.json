@@ -46,6 +46,7 @@
     "total": "Gesamt",
     "kernel": "Kernel",
     "kernelTime": "Kernelzeit",
+    "showKernelTime": "Kernelzeit anzeigen",
     "coreTip": "Logischer Prozessor {index}, physischer Kern {core}",
     "coreTipP": "Logischer Prozessor {index}, physischer Kern {core} (P-Kern)",
     "coreTipE": "Logischer Prozessor {index}, physischer Kern {core} (E-Kern)",

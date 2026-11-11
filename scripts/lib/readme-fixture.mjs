@@ -73,6 +73,8 @@ export function previewFixture(language) {
     system.cores = cores.map(n => point.cpu <= meanCore
       ? n * point.cpu / meanCore
       : n + (100 - n) * (point.cpu - meanCore) / (100 - meanCore));
+    // Each processor's kernel time is the measured share of its usage.
+    system.coreKernel = system.cores.map(n => point.cpu > 0 ? n * point.kernel / point.cpu : 0);
     system.memUsed = Math.round(system.memTotal * point.memoryPercent / 100);
     system.memAvailable = system.memTotal - system.memUsed;
     const memoryRatio = system.memUsed / base.system.memUsed;

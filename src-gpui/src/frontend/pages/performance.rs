@@ -4,6 +4,7 @@ use gpui_kit::base::ElementExt;
 mod cpu_motion;
 mod disk_details;
 mod engines;
+mod kernel_fade;
 mod telemetry;
 
 /// Device list geometry (the interface's `.dev` rows).
@@ -52,6 +53,13 @@ const SMALL_MIN: f32 = 64.;
 /// A detail card at most this tall (its content box) draws the chart
 /// captions inside the frames: `@container perf (max-height: 640px)`.
 const SHORT_CARD: f32 = 640.;
+/// Whether the CPU graphs draw kernel time under the usage curves.
+pub(in crate::frontend) const KERNEL_TIME: &str = "cpuKernelTime";
+/// The kernel time of one logical processor: a fainter line in the
+/// processor's colour (the cards are too small for dashes), over an area
+/// that deepens the usage curve's own.
+const CORE_KERNEL_LINE: f32 = 0.6;
+const CORE_KERNEL_FILL: f32 = 0.4;
 
 fn stats_layout(width: f32, cpu: bool, text_scale: f32) -> (bool, u16) {
     let stacked = width < 2. * STATS_MIN * text_scale + STATS_GAP;
@@ -345,6 +353,37 @@ fn rich_runs(template: &str) -> Vec<(String, bool)> {
 impl Desktop {
     fn net_bits(&self) -> bool {
         self.prefs.get::<String>("netUnit", "bytes".into()) == "bits"
+    }
+    /// How much of the kernel time layer the CPU graphs draw: 1 while it is
+    /// shown, 0 while hidden, and a few steps between as it fades in the
+    /// `graphs` graphs on screen (`kernel_fade`).
+    fn kernel_layer(&self, graphs: usize, window: &mut Window, cx: &mut Context<Self>) -> f32 {
+        let shown = self.prefs.get(KERNEL_TIME, true);
+        // At an even pace, so that the steps are evenly apart.
+        let level = gpui_kit::base::motion::transition(
+            "cpu-kernel-layer",
+            if shown { 1f32 } else { 0. },
+            theme::transition().ease(|progress| progress),
+            window,
+            cx,
+        );
+        kernel_fade::stepped(level, graphs)
+    }
+    /// The CPU graphs' menu.
+    pub(in crate::frontend) fn cpu_graph_menu(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let shown = self.prefs.get(KERNEL_TIME, true);
+        let items = vec![
+            MenuItem::new(
+                label("performance.cpu.showKernelTime"),
+                Action::Preference(KERNEL_TIME.into(), json!(!shown)),
+            )
+            .checked(shown),
+        ];
+        self.open_popup(items, window, cx);
     }
     /// The device list's width: at most half the page, so the detail never gets squeezed.
     fn side_width(&self, page: f32) -> f32 {
@@ -1391,6 +1430,12 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let animate = !cx.reduce_motion();
+        let graphs = if logical {
+            values(&self.snapshot["system"]["cores"]).len()
+        } else {
+            1
+        };
+        let kernel = self.kernel_layer(graphs, window, cx);
         let motions = self.live_motions.clone();
         let switch = window.use_keyed_state("cpu-view-switch", cx, |_, _| {
             cpu_motion::ViewSwitch::default()
@@ -1420,7 +1465,7 @@ impl Desktop {
             self.chart_lives.borrow_mut().push(live.clone());
         }
         let graphs = if logical {
-            let (graphs, placed) = self.core_grid(hybrid, filter, &cores, window, cx);
+            let (graphs, placed) = self.core_grid(hybrid, filter, kernel, &cores, window, cx);
             // A grid shown for the first time places its cards once it knows
             // its size, a frame later: the switch begins when they are drawn.
             if placed {
@@ -1432,7 +1477,7 @@ impl Desktop {
             graphs
         } else {
             cores.update(cx, |cores, _| cores.reset(&motions));
-            self.cpu_overall_chart(cx)
+            self.cpu_overall_chart(kernel, cx)
         };
         if incoming.is_some() {
             self.chart_lives.borrow_mut().pop();
@@ -1462,9 +1507,9 @@ impl Desktop {
                     .iter()
                     .map(|(index, card)| (*index, *card, None))
                     .collect::<Vec<_>>();
-                self.core_layout(hybrid, &cards, None, None, px(0.), false, cx)
+                self.core_layout(hybrid, kernel, &cards, None, None, px(0.), false, cx)
             } else {
-                self.cpu_overall_chart(cx)
+                self.cpu_overall_chart(kernel, cx)
             };
             self.chart_lives.borrow_mut().pop();
             div()
@@ -1486,31 +1531,46 @@ impl Desktop {
             .flex_1()
             .flex()
             .flex_col()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.cpu_graph_menu(window, cx);
+                }),
+            )
             .child(graphs)
             .children(leaving)
             .into_any_element()
     }
-    fn cpu_overall_chart(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// The overall graph, with `kernel` of the kernel time layer (`kernel_layer`).
+    fn cpu_overall_chart(&self, kernel: f32, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
-        self.chart_view(
-            "cpu-overall-plot",
-            &[
-                Line::new("system.cpu", p.cpu).label(label("performance.cpu.total")),
-                Line::new("system.cpuKernel", p.cpu)
+        let mut lines = vec![Line::new("system.cpu", p.cpu).label(label("performance.cpu.total"))];
+        if kernel > 0. {
+            lines.push(
+                Line::new("system.cpuKernel", p.cpu.opacity(kernel))
                     .dashed()
                     .fill(0.18)
-                    .label(label("performance.cpu.kernel")),
-            ],
+                    .label(label("performance.cpu.kernel"))
+                    .layer(),
+            );
+        }
+        self.chart_view(
+            "cpu-overall-plot",
+            &lines,
             Some(Scale::Fixed(100.)),
             ChartHeight::Fill,
             Look::boxed(label("performance.cpu.utilizationChart"))
                 .top("100%")
                 .format(MetricFormat::RoundPercent)
                 .min_height(px(MAIN_MIN))
+                // The legend keeps its place whether the layer shows, so
+                // the graph keeps its height.
                 .legend(vec![
                     (label("performance.cpu.total"), false),
                     (label("performance.cpu.kernelTime"), true),
-                ]),
+                ])
+                .legend_fade(1, kernel),
             cx,
         )
     }
@@ -1523,6 +1583,7 @@ impl Desktop {
         &self,
         hybrid: bool,
         filter: &str,
+        kernel: f32,
         cores: &Entity<cpu_motion::CoreMotion>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1684,6 +1745,7 @@ impl Desktop {
         };
         let grid = self.core_layout(
             hybrid,
+            kernel,
             &cards,
             moving.as_deref(),
             Some(measure),
@@ -1700,6 +1762,7 @@ impl Desktop {
     fn core_layout(
         &self,
         hybrid: bool,
+        kernel: f32,
         cards: &[(usize, cpu_motion::Card, Option<cpu_motion::Slot>)],
         moving: Option<&cpu_motion::Rearrangement>,
         measure: Option<AnyElement>,
@@ -1738,6 +1801,7 @@ impl Desktop {
                 *slot,
                 lives,
                 hybrid,
+                kernel,
                 interactive,
                 &core_temperatures,
                 cx,
@@ -1769,6 +1833,7 @@ impl Desktop {
         slot: Option<cpu_motion::Slot>,
         lives: Option<cpu_motion::CardLives>,
         hybrid: bool,
+        kernel: f32,
         interactive: bool,
         core_temperatures: &HashMap<(u64, u64), f64>,
         cx: &mut Context<Self>,
@@ -1811,9 +1876,20 @@ impl Desktop {
             .cloned()
             .collect::<Vec<_>>();
         self.chart_lives.borrow_mut().extend(pushed.iter().cloned());
+        let mut lines = vec![Line::new(key, color)];
+        if kernel > 0. {
+            lines.push(
+                Line::new(
+                    format!("system.coreKernel.{index}"),
+                    color.opacity(CORE_KERNEL_LINE * kernel),
+                )
+                .fill(CORE_KERNEL_FILL)
+                .layer(),
+            );
+        }
         let chart = self.chart_view(
             &format!("cpu-{index}"),
-            &[Line::new(key, color)],
+            &lines,
             Some(Scale::Fixed(100.)),
             ChartHeight::Fill,
             Look {
@@ -1853,6 +1929,15 @@ impl Desktop {
                 "\n{}: {} °C",
                 label("common.resource.temperature"),
                 celsius.round()
+            ));
+        }
+        if kernel > 0.
+            && let Some(share) = self.snapshot["system"]["coreKernel"][index].as_f64()
+        {
+            tip.push_str(&format!(
+                "\n{}: {}%",
+                label("performance.cpu.kernelTime"),
+                share.round()
             ));
         }
         let mhz = number(&hw["coreMhz"], &index.to_string())

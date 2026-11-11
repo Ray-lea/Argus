@@ -26,6 +26,9 @@ pub struct SystemStats {
     pub cpu_kernel: f32,
     /// Dense (group, processor) order; None until a valid interval is available.
     pub cores: Vec<Option<f32>>,
+    /// Kernel portion of each logical processor, in the order of `cores` and
+    /// bounded by that processor's usage.
+    pub core_kernel: Vec<Option<f32>>,
     pub logical_cpus: u32,
     pub mem_total: u64,
     pub mem_used: u64,
@@ -152,9 +155,13 @@ impl SystemTracker {
             let delta = now
                 .zip(self.previous.get(&address))
                 .and_then(|(n, p)| interval(n, *p));
-            stats
-                .cores
-                .push(delta.map(|d| usage(d.idle as u128, d.total as u128)));
+            let core = delta.map(|d| usage(d.idle as u128, d.total as u128));
+            stats.cores.push(core);
+            stats.core_kernel.push(
+                delta
+                    .zip(core)
+                    .map(|(d, core)| kernel_share(d.kernel as u128, d.total as u128, core)),
+            );
             if let Some(d) = delta {
                 idle += d.idle as u128;
                 kernel += d.kernel as u128;
@@ -175,7 +182,7 @@ impl SystemTracker {
             // The independent idle counter cannot recover the missing user/kernel
             // split. Keep the observed kernel time; do not label missed user work
             // as kernel work by subtracting the new idle value from KernelTime.
-            stats.cpu_kernel = ((kernel as f64 / total as f64 * 100.) as f32).min(stats.cpu);
+            stats.cpu_kernel = kernel_share(kernel, total, stats.cpu);
         }
         self.previous = next;
         self.logical_cpus = stats.cores.len() as u32;
@@ -296,6 +303,14 @@ fn usage(idle: u128, total: u128) -> f32 {
     // The total time is tick-quantized, while the independent idle counter is
     // precise. Small boundary skew can put idle just above total on an idle CPU.
     (total.saturating_sub(idle) as f64 / total as f64 * 100.) as f32
+}
+
+/// The kernel part of an interval, on the scale of the usage it belongs to.
+/// Usage comes from the precise idle counter where there is one, while the
+/// kernel time is the legacy counters' and can exceed it over a short
+/// interval: the part never reads above the whole.
+fn kernel_share(kernel: u128, total: u128, usage: f32) -> f32 {
+    ((kernel as f64 / total as f64 * 100.) as f32).min(usage)
 }
 
 #[cfg(test)]
@@ -455,9 +470,38 @@ mod tests {
         tracker.update_cpu(vec![((0, 0), Some(precise(100, 200, 300, 1000)))]);
         let result = tracker.update_cpu(vec![((0, 0), Some(precise(100, 240, 360, 1000)))]);
         assert_eq!(result.cores, [Some(100.)]);
+        assert_eq!(result.core_kernel, [Some(40.)]);
         assert_eq!(result.cpu, 100.);
         assert_eq!(result.cpu_kernel, 40.);
         assert_eq!(tracker.precise_idle_fraction(), Some(0.));
+    }
+
+    #[test]
+    fn kernel_time_is_reported_per_processor_and_never_above_its_usage() {
+        let mut tracker = SystemTracker {
+            logical_cpus: 3,
+            previous: BTreeMap::new(),
+            precise_idle_fraction: None,
+        };
+        tracker.update_cpu(vec![
+            ((0, 0), Some(precise(0, 0, 0, 0))),
+            ((0, 1), Some(precise(0, 0, 0, 0))),
+            ((0, 2), Some(precise(0, 0, 0, 0))),
+        ]);
+        let result = tracker.update_cpu(vec![
+            // Half busy, three fifths of that in the kernel.
+            ((0, 0), Some(precise(500, 800, 200, 500))),
+            // The legacy counters put 60% in the kernel, while the precise
+            // idle counter leaves only 20% busy.
+            ((0, 1), Some(precise(100, 700, 300, 800))),
+            ((0, 2), None),
+        ]);
+        assert_eq!(result.cores, [Some(50.), Some(20.), None]);
+        assert_eq!(result.core_kernel, [Some(30.), Some(20.), None]);
+        assert_eq!(result.core_kernel.len(), result.cores.len());
+        for (kernel, core) in result.core_kernel.iter().zip(&result.cores) {
+            assert!(kernel.unwrap_or(0.) <= core.unwrap_or(0.));
+        }
     }
 
     #[test]
@@ -500,6 +544,7 @@ mod tests {
                 );
                 assert!(actual.cores.iter().all(Option::is_some));
                 assert_eq!(actual.cores, expected.cores);
+                assert_eq!(actual.core_kernel, expected.core_kernel);
                 assert_eq!(actual.cpu, expected.cpu);
                 assert_eq!(actual.cpu_kernel, expected.cpu_kernel);
                 assert_eq!(
@@ -581,6 +626,8 @@ mod tests {
         assert_eq!(result.cores.len(), 80);
         assert_eq!(result.cores[47], Some(0.));
         assert_eq!(result.cores[48], Some(100.));
+        assert_eq!(result.core_kernel[47], Some(0.));
+        assert_eq!(result.core_kernel[48], Some(25.));
         assert!((result.cpu - 400. / 7.).abs() < 0.001);
         assert!((result.cpu_kernel - 100. / 7.).abs() < 0.001);
     }
@@ -597,6 +644,7 @@ mod tests {
         ]);
         let result = tracker.update_cpu(vec![((0, 0), None), ((1, 0), Some(times(0, 10, 10)))]);
         assert_eq!(result.cores, [None, Some(100.)]);
+        assert_eq!(result.core_kernel, [None, Some(50.)]);
         let result = tracker.update_cpu(vec![
             ((0, 0), Some(times(0, 20, 20))),
             ((1, 0), Some(times(0, 0, 0))),

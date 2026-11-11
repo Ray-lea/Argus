@@ -48,6 +48,7 @@
     "total": "Total",
     "kernel": "Noyau",
     "kernelTime": "Temps du noyau",
+    "showKernelTime": "Afficher le temps du noyau",
     "coreTip": "Processeur logique {index}, cœur physique {core}",
     "coreTipP": "Processeur logique {index}, cœur physique {core} (cœur P)",
     "coreTipE": "Processeur logique {index}, cœur physique {core} (cœur E)",

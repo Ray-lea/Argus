@@ -36,6 +36,8 @@ pub struct Series {
     pub dashed: bool,
     /// Area fill opacity at the chart's top, fading to nothing at its bottom.
     pub fill: f32,
+    /// A layer over the chart's other series that comes and goes (`Line::layer`).
+    layer: bool,
     geometry: Arc<Vec<Vec<(f64, f64)>>>,
     geometry_key: u64,
     /// Identifies the data shown (series key and transform); 0 when unnamed.
@@ -58,6 +60,7 @@ pub(in crate::frontend) struct Line {
     /// Multiplier applied to every sample, after taking the magnitude when `absolute`.
     pub factor: f64,
     pub absolute: bool,
+    pub layer: bool,
 }
 impl Line {
     pub(in crate::frontend) fn new(key: impl Into<String>, color: Hsla) -> Self {
@@ -69,6 +72,7 @@ impl Line {
             label: None,
             factor: 1.,
             absolute: false,
+            layer: false,
         }
     }
     /// Charts the magnitude of each sample times `factor` (a signed milliwatt rate as watts).
@@ -89,6 +93,15 @@ impl Line {
     }
     pub(in crate::frontend) fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+    /// A layer over the chart's other series that the user shows or hides
+    /// (kernel time under a usage curve). It is not part of what identifies
+    /// the chart's data: while the texture with or without it is drawn, the
+    /// one on screen stays, so the layer fades in and out over a curve that
+    /// never leaves.
+    pub(in crate::frontend) fn layer(mut self) -> Self {
+        self.layer = true;
         self
     }
 }
@@ -121,6 +134,8 @@ pub(in crate::frontend) struct Look {
     pub min_height: Option<Pixels>,
     /// Legend entries under the chart: label and whether its swatch is dashed.
     pub legend: Vec<(String, bool)>,
+    /// A legend entry drawn part way in or out, by index, with its opacity.
+    pub legend_fade: Option<(usize, f32)>,
     /// What the chart layer draws over the curve.
     pub overlay: Option<Rc<Overlay>>,
 }
@@ -162,6 +177,11 @@ impl Look {
         self.legend = entries;
         self
     }
+    /// Draws legend entry `index` at `opacity`, as the layer it names fades.
+    pub(in crate::frontend) fn legend_fade(mut self, index: usize, opacity: f32) -> Self {
+        self.legend_fade = Some((index, opacity));
+        self
+    }
 }
 impl Series {
     pub(in crate::frontend) fn dashed(mut self, dashed: bool) -> Self {
@@ -170,6 +190,10 @@ impl Series {
     }
     pub(in crate::frontend) fn fill(mut self, fill: f32) -> Self {
         self.fill = fill;
+        self
+    }
+    pub(in crate::frontend) fn layer(mut self, layer: bool) -> Self {
+        self.layer = layer;
         self
     }
     pub(in crate::frontend) fn new(
@@ -187,6 +211,7 @@ impl Series {
             format,
             dashed: false,
             fill: FILL,
+            layer: false,
             geometry,
             geometry_key,
             source: 0,
@@ -442,7 +467,14 @@ pub(in crate::frontend) fn hash_of(value: impl std::hash::Hash) -> u64 {
     hasher.finish()
 }
 fn content(series: &[Series]) -> u64 {
-    hash_of(series.iter().map(|s| s.source).collect::<Vec<_>>())
+    // A layer shown or hidden leaves the chart the same chart.
+    hash_of(
+        series
+            .iter()
+            .filter(|s| !s.layer)
+            .map(|s| s.source)
+            .collect::<Vec<_>>(),
+    )
 }
 /// How long a chart takes to ease to a new top.
 const RESCALE: Duration = Duration::from_millis(420);
@@ -1433,11 +1465,12 @@ impl Desktop {
         }
         if !look.legend.is_empty() {
             frame = frame.child(
-                self.legend(
+                self.legend_faded(
                     look.legend
                         .iter()
                         .map(|(name, dashed)| (name.clone(), color, *dashed))
                         .collect(),
+                    look.legend_fade,
                 ),
             );
         }
@@ -1446,6 +1479,15 @@ impl Desktop {
     }
     /// Lines under a chart naming its series, each with its stroke.
     pub(in crate::frontend) fn legend(&self, entries: Vec<(String, Hsla, bool)>) -> AnyElement {
+        self.legend_faded(entries, None)
+    }
+    /// A legend whose entry `fade.0` is drawn at opacity `fade.1`. The entry
+    /// keeps its place, so the others do not move as it comes and goes.
+    fn legend_faded(
+        &self,
+        entries: Vec<(String, Hsla, bool)>,
+        fade: Option<(usize, f32)>,
+    ) -> AnyElement {
         div()
             .flex()
             .flex_wrap()
@@ -1454,14 +1496,23 @@ impl Desktop {
             .mt(px(6.))
             .text_size(theme::font(12.))
             .text_color(self.palette.muted)
-            .children(entries.into_iter().map(|(name, color, dashed)| {
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .child(swatch(color, dashed, px(14.)))
-                    .child(name)
-            }))
+            .children(
+                entries
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, (name, color, dashed))| {
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .when_some(
+                                fade.filter(|(faded, _)| *faded == index),
+                                |entry, (_, opacity)| entry.opacity(opacity),
+                            )
+                            .child(swatch(color, dashed, px(14.)))
+                            .child(name)
+                    }),
+            )
             .into_any_element()
     }
     /// A live chart with the legacy shorthand: solid series, the first one's name and scale as captions.
@@ -1594,6 +1645,7 @@ impl Desktop {
                 )
                 .dashed(line.dashed)
                 .fill(line.fill)
+                .layer(line.layer)
                 .source(source)
             })
             .collect::<Vec<_>>();

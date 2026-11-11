@@ -48,6 +48,7 @@
     "total": "Total",
     "kernel": "Núcleo",
     "kernelTime": "Tiempo del núcleo",
+    "showKernelTime": "Mostrar tiempo del núcleo",
     "coreTip": "Procesador lógico {index}, núcleo físico {core}",
     "coreTipP": "Procesador lógico {index}, núcleo físico {core} (rendimiento)",
     "coreTipE": "Procesador lógico {index}, núcleo físico {core} (eficiencia)",
