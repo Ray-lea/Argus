@@ -112,6 +112,11 @@ fn assess_legacy(health: &Value, summary: &Value) -> (&'static str, Vec<&'static
     (state, reasons)
 }
 
+/// The attribute list is split into at most this many tables side by side,
+/// each keeping at least this many rows.
+const SPLIT_TABLES: usize = 3;
+const SPLIT_ROWS: usize = 5;
+
 fn source(health: &Value) -> String {
     let key = match text(health, "source") {
         "ata" => "ata",
@@ -301,71 +306,82 @@ impl Desktop {
         )
     }
 
-    pub(super) fn disk_legacy_attributes(&self, details: &Value) -> Vec<AnyElement> {
+    /// The raw attributes as a table, split into several side by side where
+    /// they fit, and the SCSI log counters.
+    pub(super) fn disk_legacy_attributes(
+        &self,
+        details: &Value,
+        width: f32,
+        window: &Window,
+        cx: &App,
+    ) -> Vec<AnyElement> {
         let health = &details["smartHealth"];
         let p = self.palette;
         let mut cards = Vec::new();
         let attributes = values(&health["attributes"]);
         if !attributes.is_empty() {
-            let numbers = |current: String, worst: String, threshold: String, raw: String| {
-                div()
-                    .flex()
-                    .flex_shrink_0()
-                    .gap(px(8.))
-                    .children(
-                        [current, worst, threshold]
-                            .into_iter()
-                            .map(|value| div().w(theme::font(64.)).text_right().child(value)),
-                    )
-                    .child(div().w(px(120.)).text_right().child(raw))
-            };
-            let mut body = div().flex().flex_col().text_size(theme::font(12.)).child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap(px(8.))
-                    .pb(px(8.))
-                    .text_color(p.muted)
-                    .child(
-                        div()
-                            .min_w(px(160.))
-                            .flex_1()
-                            .child(label("performance.disk.column.attribute")),
-                    )
-                    .child(numbers(
-                        label("performance.disk.column.current"),
-                        label("performance.disk.column.worst"),
-                        label("performance.disk.column.threshold"),
-                        label("performance.disk.column.raw"),
-                    )),
-            );
-            for attribute in attributes {
-                let id = attribute["id"].as_u64().unwrap_or(0);
-                body = body.child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap(px(8.))
-                        .py(px(7.))
-                        .border_t_1()
-                        .border_color(p.stroke)
-                        .when(boolean(attribute, "failing"), |d| d.text_color(p.danger))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w(px(160.))
-                                .child(format!("{id:02X}  {}", ata_name(id, details))),
-                        )
-                        .child(numbers(
+            let size = theme::font(12.);
+            let name_head = label("performance.disk.column.attribute");
+            let heads = ["current", "worst", "threshold", "raw"]
+                .map(|column| label(&format!("performance.disk.column.{column}")));
+            let rows = attributes
+                .iter()
+                .map(|attribute| {
+                    let id = attribute["id"].as_u64().unwrap_or(0);
+                    (
+                        format!("{id:02X}  {}", ata_name(id, details)),
+                        [
                             grouped(&attribute["current"]),
                             grouped(&attribute["worst"]),
                             grouped(&attribute["threshold"]),
                             raw_hex(&attribute["raw"]),
-                        )),
-                );
-            }
+                        ],
+                        boolean(attribute, "failing"),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let plain = FontWeight::NORMAL;
+            let names = rows.iter().map(|(name, ..)| name.as_str());
+            let name = widest(names.chain([name_head.as_str()]), size, plain, window, cx);
+            let cells: [f32; 4] = std::array::from_fn(|index| {
+                let column = rows.iter().map(|(_, cells, _)| cells[index].as_str());
+                widest(
+                    column.chain([heads[index].as_str()]),
+                    size,
+                    plain,
+                    window,
+                    cx,
+                )
+            });
+            let most = (rows.len() / SPLIT_ROWS).clamp(1, SPLIT_TABLES);
+            let sheet = Sheet::fit(width, name, &cells, most);
+            let cell = |text: &str| div().child(text.to_owned()).into_any_element();
+            let tables = rows
+                .chunks(rows.len().div_ceil(sheet.tables))
+                .map(|rows| {
+                    let head = self
+                        .table_row(
+                            &sheet,
+                            cell(&name_head),
+                            heads.iter().map(|head| cell(head)).collect(),
+                            false,
+                        )
+                        .text_color(p.muted)
+                        .pt(px(0.));
+                    self.table_lane(&sheet)
+                        .child(head)
+                        .children(rows.iter().map(|(name, figures, failing)| {
+                            self.table_row(
+                                &sheet,
+                                cell(name),
+                                figures.iter().map(|figure| cell(figure)).collect(),
+                                true,
+                            )
+                            .when(*failing, |d| d.text_color(p.danger))
+                        }))
+                })
+                .collect();
+            let body = self.table_lanes(tables).text_size(size);
             cards.push(self.card(
                 label("performance.disk.smart"),
                 Some(source(health)),

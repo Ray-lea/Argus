@@ -17,9 +17,22 @@ fn identity_text<'a>(details: &'a Value, field: &str) -> Option<&'a str> {
 /// much, else one a row (two would leave the third alone).
 const TILE_MIN: f32 = 170.;
 const TILE_GAP: f32 = 24.;
-/// SMART attribute groups: at least this wide (at the 13 px base), up to three a row.
-const GROUP_MIN: f32 = 380.;
+/// Space between a table's columns, and between tables side by side.
+const CELL_GAP: f32 = 12.;
 const GROUP_GAP: f32 = 28.;
+/// Once no further table may stand beside it, a table is drawn at most this
+/// many times as wide as its text needs (as wide as one gets before a second
+/// fits): width beyond that goes between the tables instead of between a
+/// name and its figures.
+const TABLE_STRETCH: f32 = 2.;
+/// How far names may be squeezed into wrapping before a row puts its figures
+/// under the name: down to this share of the widest name.
+const NAME_SQUEEZE: f32 = 0.6;
+/// Groups side by side need the shortest column to reach this share of the
+/// tallest, as two parts of three.
+const EVEN_COLUMNS: (usize, usize) = (2, 3);
+/// The group of a table row, for the band under the pointer.
+const ROW_GROUP: &str = "disk-table-row";
 /// Remaining life at or below which the drive counts as worn (the
 /// manufacturer's endurance estimate, not a failure).
 const WORN_PERCENT: u64 = 10;
@@ -229,6 +242,97 @@ fn balance(weights: &[usize], columns: usize) -> (usize, Vec<usize>) {
         })
         .min_by_key(|(tallest, _)| *tallest)
         .expect("at least two weights")
+}
+/// How groups of rows share the tables that fit side by side.
+#[derive(Debug, PartialEq)]
+enum Arrangement {
+    /// Whole groups in each column, in order: how many each column takes.
+    Columns(Vec<usize>),
+    /// The groups one under another, each one's rows across the tables.
+    Bands,
+}
+/// Whole groups side by side where that leaves the columns about even;
+/// otherwise each group's rows across the width, so that a short group does
+/// not leave the space under it empty.
+fn arrange(rows: &[usize], tables: usize) -> Arrangement {
+    if tables <= 1 || rows.len() <= 1 {
+        return Arrangement::Columns(vec![rows.len()]);
+    }
+    // Each group's rows plus its header and the gap under it.
+    let weights = rows.iter().map(|count| count + 2).collect::<Vec<_>>();
+    let (tallest, runs) = balance(&weights, tables);
+    let mut taken = 0;
+    let shortest = runs
+        .iter()
+        .map(|run| {
+            let height = weights[taken..taken + run].iter().sum::<usize>();
+            taken += run;
+            height
+        })
+        .min()
+        .unwrap_or(0);
+    let (part, whole) = EVEN_COLUMNS;
+    if runs.len() == tables && shortest * whole >= tallest * part {
+        Arrangement::Columns(runs)
+    } else {
+        Arrangement::Bands
+    }
+}
+/// How tables are drawn in the width there is: how many stand side by side
+/// and how wide each column of figures is. Columns are as wide as their
+/// text, so a name and its figures sit as close as the width allows.
+#[derive(Debug, PartialEq)]
+struct Sheet {
+    /// Tables side by side.
+    tables: usize,
+    /// The widest a table is drawn, where the width would allow more.
+    limit: Option<f32>,
+    /// The width of each column of figures.
+    cells: Vec<f32>,
+    /// Figures go under the name instead of beside it.
+    stacked: bool,
+}
+impl Sheet {
+    /// Fits tables whose widest name is `name` wide and whose columns of
+    /// figures are `cells` wide into `width`, at most `most` side by side.
+    /// Width left over goes evenly to the columns of figures, which are
+    /// right-aligned: every column then moves equally far from the last.
+    fn fit(width: f32, name: f32, cells: &[f32], most: usize) -> Self {
+        let figures = cells.iter().sum::<f32>() + CELL_GAP * cells.len() as f32;
+        let natural = name + figures;
+        let most = most.max(1);
+        let tables =
+            (((width + GROUP_GAP) / (natural + GROUP_GAP)).floor() as usize).clamp(1, most);
+        let share = (width - GROUP_GAP * (tables - 1) as f32) / tables as f32;
+        let limit =
+            (tables == most && share > natural * TABLE_STRETCH).then_some(natural * TABLE_STRETCH);
+        let each = limit.unwrap_or(share);
+        let spare = ((each - natural) / cells.len().max(1) as f32).max(0.);
+        Self {
+            tables,
+            limit,
+            cells: cells.iter().map(|cell| (cell + spare).floor()).collect(),
+            stacked: each < figures + name * NAME_SQUEEZE,
+        }
+    }
+}
+/// The widest of `texts` as one line of interface text, with a pixel to
+/// spare: a column this wide holds each of them unwrapped.
+fn widest<'a>(
+    texts: impl IntoIterator<Item = &'a str>,
+    size: Pixels,
+    weight: FontWeight,
+    window: &Window,
+    cx: &App,
+) -> f32 {
+    texts
+        .into_iter()
+        .map(|text| {
+            let run = theme::text_run(text, weight, cx);
+            let line = window.text_system().layout_line(text, size, &[run], None);
+            f32::from(line.width).ceil() + 1.
+        })
+        .fold(0., f32::max)
 }
 fn reason_list(reasons: &[&str]) -> String {
     reasons
@@ -549,10 +653,10 @@ impl Desktop {
                 Some(label("performance.disk.smartSource")),
                 None,
                 false,
-                self.disk_attributes(health, width),
+                self.disk_attributes(health, width, window, cx),
             ));
         } else if details["smartHealth"].is_object() {
-            cards.extend(self.disk_legacy_attributes(details));
+            cards.extend(self.disk_legacy_attributes(details, width, window, cx));
         }
         div()
             .flex()
@@ -1066,104 +1170,197 @@ impl Desktop {
             )
             .into_any_element()
     }
-    /// The SMART/health log as tables, one per group, in columns of even
-    /// height where they fit.
-    fn disk_attributes(&self, health: &Value, width: f32) -> AnyElement {
+    /// A table row: the name, then each figure right-aligned in its column
+    /// (`Sheet::cells`), or the figures under the name where the table is
+    /// too narrow for both. A `body` row is picked out under the pointer, to
+    /// follow it from the name to its figures.
+    fn table_row(
+        &self,
+        sheet: &Sheet,
+        name: AnyElement,
+        cells: Vec<AnyElement>,
+        body: bool,
+    ) -> Div {
         let p = self.palette;
-        let group_min = f32::from(theme::font(GROUP_MIN));
-        let columns = ((width + GROUP_GAP) / (group_min + GROUP_GAP))
-            .floor()
-            .clamp(1., 3.) as usize;
-        let row = |name: AnyElement, value: AnyElement, raw: AnyElement| {
+        let figures = cells.into_iter().zip(&sheet.cells).map(|(cell, width)| {
             div()
+                .w(px(*width))
+                .flex_shrink_0()
                 .flex()
-                .items_baseline()
-                .gap(px(12.))
-                .py(px(6.))
-                .border_b_1()
-                .border_color(p.stroke)
-                .child(div().flex_1().min_w_0().child(name))
-                .child(
-                    div()
-                        .w(theme::font(96.))
-                        .flex_shrink_0()
-                        .flex()
-                        .justify_end()
-                        .text_right()
-                        .child(value),
-                )
-                .child(
-                    div()
-                        .w(theme::font(92.))
-                        .flex_shrink_0()
-                        .flex()
-                        .justify_end()
-                        .child(raw),
-                )
-        };
-        let groups = attributes(health);
-        // Each group's rows plus its header and the gap under it.
-        let weights = groups
-            .iter()
-            .map(|(_, list)| list.len() + 2)
-            .collect::<Vec<_>>();
-        let (_, runs) = balance(&weights, columns);
-        let mut groups = groups.into_iter().map(|(group, list)| {
-            let head = row(
-                div()
-                    .text_size(theme::font(13.))
-                    .font_weight(theme::LABEL_WEIGHT)
-                    .text_color(p.ink)
-                    .child(label(&format!("performance.disk.group.{group}")))
-                    .into_any_element(),
-                div()
-                    .child(label("performance.disk.column.value"))
-                    .into_any_element(),
-                div()
-                    .child(label("performance.disk.column.raw"))
-                    .into_any_element(),
-            )
-            .text_color(p.muted)
-            .pt(px(0.));
-            div()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .text_size(theme::font(12.))
-                .child(head)
-                .children(list.into_iter().map(|attribute| {
-                    row(
-                        div().child(attribute.name).into_any_element(),
-                        div()
-                            .when(attribute.alert, |d| d.text_color(p.danger))
-                            .child(attribute.value)
-                            .into_any_element(),
-                        div()
-                            .text_color(p.muted)
-                            .child(attribute.raw)
-                            .into_any_element(),
-                    )
-                }))
-                .into_any_element()
+                .justify_end()
+                .whitespace_nowrap()
+                .child(cell)
         });
-        let columns = runs
-            .into_iter()
-            .map(|run| {
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap(px(20.))
-                    .children(groups.by_ref().take(run).collect::<Vec<_>>())
-            })
-            .collect::<Vec<_>>();
+        let row = div()
+            .relative()
+            .flex()
+            .py(px(6.))
+            .border_b_1()
+            .border_color(p.stroke)
+            .when(body, |d| {
+                // Wider than the row, as the lists' own highlights are.
+                d.group(ROW_GROUP).child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
+                        .left(px(-8.))
+                        .right(px(-8.))
+                        .rounded(px(4.))
+                        .group_hover(ROW_GROUP, move |style| style.bg(p.hover)),
+                )
+            });
+        if sheet.stacked {
+            row.flex_col()
+                .gap(px(2.))
+                .child(div().min_w_0().child(name))
+                .child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .justify_end()
+                        .gap_x(px(CELL_GAP))
+                        .gap_y(px(2.))
+                        .children(figures),
+                )
+        } else {
+            row.items_baseline()
+                .gap(px(CELL_GAP))
+                .child(div().flex_1().min_w_0().child(name))
+                .children(figures)
+        }
+    }
+    /// One of the tables side by side: an even share of the width, up to
+    /// the sheet's limit.
+    fn table_lane(&self, sheet: &Sheet) -> Div {
+        div()
+            .flex_1()
+            .min_w_0()
+            .when_some(sheet.limit, |d, limit| d.max_w(px(limit)))
+            .flex()
+            .flex_col()
+    }
+    /// Tables side by side; width past their limit goes between them.
+    fn table_lanes(&self, lanes: Vec<Div>) -> Div {
         div()
             .flex()
             .items_start()
+            .justify_between()
             .gap(px(GROUP_GAP))
-            .children(columns)
-            .into_any_element()
+            .children(lanes)
+    }
+    /// The SMART/health log as tables, one per group: side by side where
+    /// that leaves the columns about even, otherwise one under another with
+    /// each group's rows across the width.
+    fn disk_attributes(&self, health: &Value, width: f32, window: &Window, cx: &App) -> AnyElement {
+        let p = self.palette;
+        let size = theme::font(12.);
+        let title_size = theme::font(13.);
+        let groups = attributes(health)
+            .into_iter()
+            .map(|(group, list)| (label(&format!("performance.disk.group.{group}")), list))
+            .collect::<Vec<_>>();
+        let heads =
+            ["value", "raw"].map(|column| label(&format!("performance.disk.column.{column}")));
+        let rows = || groups.iter().flat_map(|(_, list)| list);
+        let plain = FontWeight::NORMAL;
+        let name =
+            widest(rows().map(|row| row.name.as_str()), size, plain, window, cx).max(widest(
+                groups.iter().map(|(title, _)| title.as_str()),
+                title_size,
+                theme::LABEL_WEIGHT,
+                window,
+                cx,
+            ));
+        let values = rows().map(|row| row.value.as_str());
+        let raws = rows().map(|row| row.raw.as_str());
+        let cells = [
+            widest(values.chain([heads[0].as_str()]), size, plain, window, cx),
+            widest(raws.chain([heads[1].as_str()]), size, plain, window, cx),
+        ];
+        let sheet = Sheet::fit(width, name, &cells, groups.len());
+        // A table continuing a group keeps the header's height without its title.
+        let table = |title: Option<&str>, list: &[Attribute]| {
+            let head = self
+                .table_row(
+                    &sheet,
+                    div()
+                        .text_size(title_size)
+                        .font_weight(theme::LABEL_WEIGHT)
+                        .text_color(p.ink)
+                        .child(title.unwrap_or("\u{a0}").to_owned())
+                        .into_any_element(),
+                    heads
+                        .iter()
+                        .map(|head| div().child(head.clone()).into_any_element())
+                        .collect(),
+                    false,
+                )
+                .text_color(p.muted)
+                .pt(px(0.));
+            div()
+                .flex()
+                .flex_col()
+                .child(head)
+                .children(list.iter().map(|attribute| {
+                    self.table_row(
+                        &sheet,
+                        div().child(attribute.name.clone()).into_any_element(),
+                        vec![
+                            div()
+                                .when(attribute.alert, |d| d.text_color(p.danger))
+                                .child(attribute.value.clone())
+                                .into_any_element(),
+                            div()
+                                .text_color(p.muted)
+                                .child(attribute.raw.clone())
+                                .into_any_element(),
+                        ],
+                        true,
+                    )
+                }))
+        };
+        let counts = groups
+            .iter()
+            .map(|(_, list)| list.len())
+            .collect::<Vec<_>>();
+        let body = match arrange(&counts, sheet.tables) {
+            Arrangement::Columns(runs) => {
+                let mut groups = groups.iter();
+                self.table_lanes(
+                    runs.into_iter()
+                        .map(|run| {
+                            self.table_lane(&sheet).gap(px(20.)).children(
+                                groups
+                                    .by_ref()
+                                    .take(run)
+                                    .map(|(title, list)| table(Some(title), list)),
+                            )
+                        })
+                        .collect(),
+                )
+            }
+            Arrangement::Bands => div()
+                .flex()
+                .flex_col()
+                .gap(px(20.))
+                .children(groups.iter().map(|(title, list)| {
+                    // No table of a single row while another has several.
+                    let tables = sheet.tables.min(list.len().div_ceil(2)).max(1);
+                    let mut lanes = list
+                        .chunks(list.len().div_ceil(tables).max(1))
+                        .enumerate()
+                        .map(|(index, rows)| {
+                            self.table_lane(&sheet)
+                                .child(table((index == 0).then_some(title.as_str()), rows))
+                        })
+                        .collect::<Vec<_>>();
+                    // Every band keeps the same columns.
+                    lanes.resize_with(sheet.tables, || self.table_lane(&sheet));
+                    self.table_lanes(lanes)
+                })),
+        };
+        body.text_size(size).into_any_element()
     }
 }
 
@@ -1171,8 +1368,8 @@ impl Desktop {
 mod tests {
     // Not a glob: GPUI's own `test` attribute would shadow the standard one.
     use super::{
-        Condition, Value, assess, attributes, balance, grouped, identity_text, link, sector,
-        temperature_condition,
+        Arrangement, Condition, Sheet, Value, arrange, assess, attributes, balance, grouped,
+        identity_text, link, sector, temperature_condition,
     };
     use serde_json::json;
 
@@ -1288,6 +1485,53 @@ mod tests {
         assert_eq!(balance(&[8, 10, 13], 1), (31, vec![3]));
         assert_eq!(balance(&[8, 10, 20], 2), (20, vec![2, 1]));
         assert_eq!(balance(&[20, 4, 4], 2), (20, vec![1, 2]));
+    }
+
+    #[test]
+    fn groups_stand_side_by_side_only_where_the_columns_come_out_even() {
+        // Health, usage and temperature of a drive with two sensors: a column
+        // each, but in two columns a third of one would stay empty.
+        assert_eq!(arrange(&[6, 8, 9], 3), Arrangement::Columns(vec![1, 1, 1]));
+        assert_eq!(arrange(&[6, 8, 9], 2), Arrangement::Bands);
+        assert_eq!(arrange(&[6, 8, 9], 1), Arrangement::Columns(vec![3]));
+        // Eight sensors: temperature fills one column of two, and towers
+        // over the other groups in three.
+        assert_eq!(arrange(&[6, 8, 15], 2), Arrangement::Columns(vec![2, 1]));
+        assert_eq!(arrange(&[6, 8, 15], 3), Arrangement::Bands);
+        // A somewhat shorter group still gets its column.
+        assert_eq!(arrange(&[6, 8, 5], 3), Arrangement::Columns(vec![1, 1, 1]));
+    }
+
+    #[test]
+    fn tables_fit_by_their_text_and_share_the_spare_width() {
+        // A 120 px name, two 80 px columns of figures and their gaps: 304 px.
+        let fit = |width, most| Sheet::fit(width, 120., &[80., 80.], most);
+        let one = fit(500., 3);
+        assert_eq!((one.tables, one.limit, one.stacked), (1, None, false));
+        assert_eq!(one.cells, [178., 178.]);
+        // A second table once both and the gap between them fit.
+        assert_eq!(fit(635., 3).tables, 1);
+        assert_eq!(fit(636., 3).tables, 2);
+        let three = fit(968., 3);
+        assert_eq!((three.tables, three.limit), (3, None));
+        assert_eq!(three.cells, [80., 80.]);
+        // With no further table to make room for, twice its text at most.
+        let wide = fit(2000., 3);
+        assert_eq!((wide.tables, wide.limit), (3, Some(608.)));
+        assert_eq!(wide.cells, [232., 232.]);
+        assert_eq!(fit(1800., 3).limit, None);
+        assert_eq!(fit(2000., 1).limit, Some(608.));
+        assert_eq!(fit(630., 3).limit, None);
+    }
+
+    #[test]
+    fn narrow_tables_wrap_names_before_putting_figures_under_them() {
+        // The figures take 184 px; names may wrap down to 72 px.
+        let fit = |width| Sheet::fit(width, 120., &[80., 80.], 3);
+        assert!(!fit(303.).stacked);
+        assert_eq!(fit(303.).cells, [80., 80.]);
+        assert!(!fit(256.).stacked);
+        assert!(fit(255.).stacked);
     }
 
     #[test]
