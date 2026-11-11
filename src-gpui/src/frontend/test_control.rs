@@ -513,6 +513,7 @@ impl Desktop {
                 "toasts":self.ui.toasts.iter().filter(|toast| toast.leaving.is_none()).map(|toast| toast.text.as_str()).collect::<Vec<_>>(),
                 "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
+                "history":{"cursor":self.history_cursor,"requestedFrame":self.data.get("historyMomentAt"),"frame":self.data.get("historyMoment").map(|m| &m["system"]["ts"])},
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),"scaleFactor":window.scale_factor(),"remSize":f32::from(window.rem_size()),

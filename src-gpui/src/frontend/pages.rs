@@ -487,7 +487,18 @@ impl Desktop {
                 self.load_history(window, cx);
             }
             "historyMetric" => self.history_metric = value.as_str().unwrap_or("cpu").into(),
+            "historyPeak" => {
+                if let Some(at) = value.as_i64() {
+                    self.history_hover = None;
+                    self.history_cursor = Some(at);
+                    self.data.insert("historyPeakAt".into(), json!(at));
+                    self.load_history(window, cx);
+                    cx.notify();
+                }
+                return;
+            }
             "historyLatest" => {
+                self.data.remove("historyPeakAt");
                 self.history_cursor = None;
                 self.history_hover = None;
                 self.load_history(window, cx);

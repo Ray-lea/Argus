@@ -2,6 +2,7 @@
 //! charts are drawn once per query; pointing at them only moves the cursor marks.
 use super::*;
 use charts::GIB;
+use widgets::Tone;
 
 pub(super) const RANGES: [(&str, i64); 4] = [
     ("1h", 3_600_000),
@@ -43,6 +44,23 @@ pub(super) fn recorded_target(row: &Value, frame: Option<i64>, live: &[Value]) -
             json!({"pid": process["pid"], "createTime": created,
             "name": process["name"], "historyFrame": frame})
         })
+}
+
+/// Choose a recorded frame, never the average timestamp between distant frames.
+fn frame_at(records: &[Value], cursor: Option<i64>, peak: bool) -> Option<i64> {
+    let point = match cursor {
+        Some(at) => {
+            if peak && records.iter().any(|p| p["cpuPeakTs"].as_i64() == Some(at)) {
+                return Some(at);
+            }
+            let Some(point) = records.iter().find(|p| p["ts"].as_i64() == Some(at)) else {
+                return Some(at);
+            };
+            point
+        }
+        None => records.last()?,
+    };
+    point["frameTs"].as_i64().or_else(|| point["ts"].as_i64())
 }
 
 pub(super) fn range_label(id: &str) -> String {
@@ -352,7 +370,16 @@ impl Desktop {
             self.request("history_range", json!({}), Some("historyRange"), window, cx);
         }
         // A kept moment keeps its processes: they are read again only for another moment.
-        let moment = self.history_cursor.unwrap_or(now);
+        let records = self
+            .data
+            .get("historySeries")
+            .map(values)
+            .unwrap_or_default();
+        let peak = self
+            .history_cursor
+            .is_some_and(|at| self.data.get("historyPeakAt").and_then(Value::as_i64) == Some(at));
+        let moment = frame_at(records, self.history_cursor, peak)
+            .unwrap_or(self.history_cursor.unwrap_or(now));
         if self.data.get("historyMomentAt") != Some(&json!(moment)) {
             self.data.insert("historyMomentAt".into(), json!(moment));
             self.request(
@@ -378,8 +405,8 @@ impl Desktop {
         let cursor = kept(self.history_cursor, from, to);
         if cursor != self.history_cursor {
             self.history_cursor = cursor;
-            self.load_history(window, cx);
         }
+        self.load_history(window, cx);
     }
     /// Keyboard on the history page: arrows step between points (Shift and Page keys by a
     /// tenth), Home and End jump to either end, Escape returns to the newest data. Steps
@@ -396,6 +423,7 @@ impl Desktop {
                 return false;
             }
             self.history_cursor = None;
+            self.data.remove("historyPeakAt");
             self.load_history(window, cx);
             cx.notify();
             return true;
@@ -418,6 +446,7 @@ impl Desktop {
             return true;
         };
         self.history_cursor = Some(at);
+        self.data.remove("historyPeakAt");
         self.load_history(window, cx);
         cx.notify();
         true
@@ -500,7 +529,8 @@ impl Desktop {
             let value_of = |r: &Value| r[metric.field].as_f64();
             let reading = readout.and_then(|r| value_of(r).map(|v| (r, v)));
             let value_text = reading.map(|(_, v)| match metric.field {
-                "cpu" | "gpu" => format!("{}%", theme::cpu(v)),
+                "cpu" => tr!("history.metric.average", value = theme::cpu(v)),
+                "gpu" => format!("{}%", theme::cpu(v)),
                 "memUsed" => crate::regional::number!("{:.1} GB", v / GIB),
                 "disk" => charts::byte_rate(v),
                 "net" => charts::net_rate(v, bits),
@@ -842,6 +872,7 @@ impl Desktop {
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     if let Some(at) = click_time(event.position) {
                         this.history_cursor = Some(at);
+                        this.data.remove("historyPeakAt");
                         this.load_history(window, cx);
                         cx.notify();
                     }
@@ -910,6 +941,21 @@ impl Desktop {
             Some(time) => tr!("history.busiestAt", time = moment_label(time)),
             None => label("history.busiest"),
         };
+        let selected_point = match self.history_cursor {
+            Some(at) => records.iter().find(|point| {
+                point["ts"].as_i64() == Some(at) || point["cpuPeakTs"].as_i64() == Some(at)
+            }),
+            None => records.last(),
+        };
+        let peak_at = selected_point.and_then(|point| point["cpuPeakTs"].as_i64());
+        let summary = selected_point.and_then(|point| {
+            Some(tr!(
+                "history.cpuSummary",
+                average = theme::cpu(point["cpu"].as_f64()?),
+                peak = theme::cpu(point["cpuPeak"].as_f64()?),
+                time = moment_label(point["cpuPeakTs"].as_i64()?)
+            ))
+        });
         let earliest = self
             .data
             .get("historyRange")
@@ -990,6 +1036,21 @@ impl Desktop {
                     .pt(px(10.))
                     .px(px(14.))
                     .pb(px(4.))
+                    .when_some(peak_at, |d, at| {
+                        d.child(
+                            self.btn_small(
+                                "history-peak",
+                                label("history.showCpuPeak"),
+                                None,
+                                Tone::Plain,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.preference("historyPeak", json!(at), window, cx);
+                                },
+                            )),
+                        )
+                    })
                     .child(
                         div()
                             .text_size(theme::font(14.))
@@ -1007,6 +1068,16 @@ impl Desktop {
                             })),
                     ),
             )
+            .when_some(summary, |d, text| {
+                d.child(
+                    div()
+                        .px(px(14.))
+                        .pb(px(4.))
+                        .text_size(theme::font(12.))
+                        .text_color(p.muted)
+                        .child(text),
+                )
+            })
             .child(table)
             .child(foot);
         let page = window
@@ -1294,12 +1365,36 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{
-        DAY, HOUR, MINUTE, joins, kept, plan_load, point_at, recorded_target, refresh_every,
-        span_of, stepped,
+        DAY, HOUR, MINUTE, frame_at, joins, kept, plan_load, point_at, recorded_target,
+        refresh_every, span_of, stepped,
     };
     use serde_json::{Value, json};
 
     const NOW: i64 = 1_800_000_000_000;
+
+    #[test]
+    fn buckets_open_real_frames_without_reaching_across_gaps() {
+        let points = vec![json!({"ts":NOW + 300000,"frameTs":NOW,"cpuPeakTs":NOW + 600000})];
+        assert_eq!(frame_at(&points, Some(NOW + 300000), false), Some(NOW));
+        assert_eq!(
+            frame_at(&points, Some(NOW + 600000), true),
+            Some(NOW + 600000)
+        );
+        assert_eq!(frame_at(&points, None, false), Some(NOW));
+        // An actual empty location keeps the normal limited moment lookup.
+        assert_eq!(
+            frame_at(&points, Some(NOW + 900000), false),
+            Some(NOW + 900000)
+        );
+        assert_eq!(frame_at(&[], None, false), None);
+        assert_eq!(frame_at(&[json!({"ts":NOW})], None, false), Some(NOW));
+        let collision = vec![json!({"ts":NOW+5000,"frameTs":NOW,"cpuPeakTs":NOW+5000})];
+        assert_eq!(frame_at(&collision, Some(NOW + 5000), false), Some(NOW));
+        assert_eq!(
+            frame_at(&collision, Some(NOW + 5000), true),
+            Some(NOW + 5000)
+        );
+    }
 
     #[test]
     fn history_navigation_requires_the_recorded_instance() {

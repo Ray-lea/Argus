@@ -17,7 +17,8 @@
     "peak": "Spitzenwert {value} %",
     "total": "von {value} GB",
     "charging": "Laden {value}",
-    "discharging": "Entladen {value}"
+    "discharging": "Entladen {value}",
+    "average": "Mittel {value}%"
   },
   "exited": "{name} (PID {pid}) wurde beendet.",
   "copied": {
@@ -44,5 +45,7 @@
   "earliest": "Frühester Datensatz",
   "note": "Zeichnet alle 5 Sekunden die Prozesse mit der höchsten CPU-, Arbeitsspeicher-, I/O-, GPU- und Netzwerkauslastung auf. Bei längerem Intervall im minimierten Zustand oder im Infobereich gilt dieses Intervall. Die Daten bleiben 7 Tage erhalten.",
   "off": "Die Verlaufsaufzeichnung ist deaktiviert; neue Daten werden nicht aufgezeichnet. <link>Einstellungen öffnen</link>",
-  "instanceUnavailable": "Die aufgezeichnete Instanz von {name} (PID {pid}) wurde beendet oder ihre Identität kann nicht bestätigt werden."
+  "instanceUnavailable": "Die aufgezeichnete Instanz von {name} (PID {pid}) wurde beendet oder ihre Identität kann nicht bestätigt werden.",
+  "showCpuPeak": "CPU-Spitzenframe zeigen",
+  "cpuSummary": "CPU-Mittel {average}%, Spitze {peak}%; Spitzenframe: {time}. Prozesswerte sind Frame-Mittelwerte und belegen nicht die Ursache einer kurzen Spitze."
 }

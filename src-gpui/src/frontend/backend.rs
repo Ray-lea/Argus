@@ -94,7 +94,8 @@ impl Desktop {
             return;
         }
         if pending.command == "history_moment"
-            && pending.args["cursor"] != json!(self.history_cursor)
+            && (pending.args["cursor"] != json!(self.history_cursor)
+                || self.data.get("historyMomentAt") != Some(&pending.args["ts"]))
         {
             self.data.remove("historyMomentAt");
             self.load_history(window, cx);
