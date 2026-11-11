@@ -129,6 +129,9 @@ const homeSchema = (lang: Language) => [
 export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
   const en = lang !== "zh",
     t = copyFor(lang, copy);
+  // On a phone the comparison's cells stack, and Task Manager's is labelled
+  // with its column's heading and the language's colon.
+  const nativeLabel = t.head[2] + (["zh", "zh-TW", "ja"].includes(lang) ? "：" : lang === "fr" ? "\u202f: " : ": ");
   const releaseSummary = lang === "zh" ? t.changelog[1] : localize(lang, `${releases(lang).length} releases since the first on ${longDate(releases(lang).at(-1)?.date ?? "", lang)}.`);
   return (
     <DemoLanguage lang={lang} dictionary={demoDictionary(lang)}>
@@ -330,7 +333,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
                     {argus}
                     {page && <ShowPage page={page}>{localize(lang, en ? "See it in the demo" : "在演示中查看")}</ShowPage>}
                   </td>
-                  <td className="no">{native}</td>
+                  <td className="no" data-label={nativeLabel}>{native}</td>
                 </tr>
               ))}
             </tbody>

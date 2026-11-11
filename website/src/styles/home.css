@@ -2307,10 +2307,8 @@
     left: 2px;
     top: 11px;
   }
+  /* The cells stack: the last one says whose it is, in the page's language (Home.tsx). */
   .no::before {
-    content: "任务管理器：";
-  }
-  :root[lang="en"] .no::before {
-    content: "Task Manager: ";
+    content: attr(data-label);
   }
 }
