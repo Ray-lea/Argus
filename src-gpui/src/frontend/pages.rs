@@ -516,6 +516,13 @@ impl Desktop {
                         p["pid"] == value["pid"]
                             && (value["createTime"].is_null()
                                 || p["createTime"] == value["createTime"])
+                            && (value["historyFrame"].is_null()
+                                || history::recorded_target(
+                                    &value,
+                                    value["historyFrame"].as_i64(),
+                                    std::slice::from_ref(*p),
+                                )
+                                .is_some())
                     })
                     .cloned();
                 if let Some(process) = found {

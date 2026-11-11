@@ -43,5 +43,6 @@
   "noRecordAt": "Keine Aufzeichnung für diesen Zeitpunkt",
   "earliest": "Frühester Datensatz",
   "note": "Zeichnet alle 5 Sekunden die Prozesse mit der höchsten CPU-, Arbeitsspeicher-, I/O-, GPU- und Netzwerkauslastung auf. Bei längerem Intervall im minimierten Zustand oder im Infobereich gilt dieses Intervall. Die Daten bleiben 7 Tage erhalten.",
-  "off": "Die Verlaufsaufzeichnung ist deaktiviert; neue Daten werden nicht aufgezeichnet. <link>Einstellungen öffnen</link>"
+  "off": "Die Verlaufsaufzeichnung ist deaktiviert; neue Daten werden nicht aufgezeichnet. <link>Einstellungen öffnen</link>",
+  "instanceUnavailable": "Die aufgezeichnete Instanz von {name} (PID {pid}) wurde beendet oder ihre Identität kann nicht bestätigt werden."
 }

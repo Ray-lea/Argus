@@ -15,7 +15,9 @@
 //!   u64, memory total u64, disk u64 (B/s), network u64 (B/s), battery f32
 //!   (percent, -1 when absent), battery rate f32 (mW, NaN when unknown),
 //!   entry count u8, then per entry: name u16, PID u32, CPU f32, memory u32
-//!   (KiB), I/O u32 (B/s), GPU f32, network u32 (B/s).
+//!   (KiB), I/O u32 (B/s), GPU f32, network u32 (B/s), creation time i64
+//!   (Unix ms, v3 only; nonpositive means unknown). V2 files remain readable
+//!   and are appended in their original format until the next day.
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -34,11 +36,13 @@ pub const FRAME_MS: i64 = 5_000;
 /// Days of history kept.
 pub const KEEP_DAYS: i64 = 7;
 
-const MAGIC: &[u8; 5] = b"ARGH\x02";
+const MAGIC: &[u8; 5] = b"ARGH\x03";
+const LEGACY_MAGIC: &[u8; 5] = b"ARGH\x02";
 const TAG_NAME: u8 = 1;
 const TAG_FRAME: u8 = 2;
 const FRAME_HEAD: usize = 8 + 4 * 3 + 8 * 4 + 4 * 2 + 1;
 const ENTRY: usize = 2 + 4 + 4 + 4 + 4 + 4 + 4;
+const ENTRY_V3: usize = ENTRY + 8;
 const DAY_MS: i64 = 86_400_000;
 
 /// System totals for one frame (or one chart bucket).
@@ -72,8 +76,11 @@ pub struct HistoryPoint {
 pub struct HistoryProcess {
     pub name: String,
     pub pid: u32,
-    /// Averages over the frame.
+    /// None in legacy history or when the instance could not be identified.
+    pub create_time: Option<i64>,
+    /// CPU, I/O, GPU and network are averages over the frame.
     pub cpu: f32,
+    /// Maximum private working set in the frame, bytes.
     pub mem: u64,
     pub io: u64,
     pub gpu: f32,
@@ -106,6 +113,7 @@ struct ProcAcc {
     missing: u32,
     name: Arc<str>,
     pid: u32,
+    create_time: i64,
     cpu: f64,
     mem: u64,
     io: f64,
@@ -141,6 +149,7 @@ struct DayFile {
     day: i64,
     out: BufWriter<File>,
     names: HashMap<Arc<str>, u16>,
+    legacy: bool,
 }
 
 pub struct HistoryRecorder {
@@ -236,6 +245,9 @@ impl HistoryRecorder {
                     pid: p.pid,
                     ..Default::default()
                 });
+            if p.create_time > 0 {
+                acc.create_time = p.create_time;
+            }
             if p.stale || p.sample_reused || p.counters_pending {
                 acc.missing += 1;
                 continue;
@@ -320,6 +332,9 @@ impl HistoryRecorder {
             buf.extend_from_slice(&clamp(p.io / process_n).to_le_bytes());
             buf.extend_from_slice(&((p.gpu / process_n) as f32).to_le_bytes());
             buf.extend_from_slice(&clamp(p.net / process_n).to_le_bytes());
+            if !file.legacy {
+                buf.extend_from_slice(&p.create_time.to_le_bytes());
+            }
         }
         // One write and flush per frame, so readers and crashes see whole frames.
         file.out.write_all(&buf)?;
@@ -386,6 +401,7 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
     let path = day_path(dir, day);
     let mut names = HashMap::new();
     let mut valid = 0u64;
+    let mut legacy = false;
     // Only a missing file starts empty: truncating after a transient read
     // failure would erase the day recorded so far.
     let existing = match fs::read(&path) {
@@ -394,8 +410,9 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
         Err(e) => return Err(e),
     };
     if let Some(bytes) = existing
-        && bytes.starts_with(MAGIC)
+        && (bytes.starts_with(MAGIC) || bytes.starts_with(LEGACY_MAGIC))
     {
+        legacy = bytes.starts_with(LEGACY_MAGIC);
         let mut table = Vec::new();
         valid = parse(&bytes, &mut table, |_, _, _| true) as u64;
         for (i, name) in table.into_iter().enumerate() {
@@ -415,7 +432,12 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
         out.write_all(MAGIC)?;
         out.flush()?;
     }
-    Ok(DayFile { day, out, names })
+    Ok(DayFile {
+        day,
+        out,
+        names,
+        legacy,
+    })
 }
 
 /// Deletes day files older than the retention window.
@@ -468,6 +490,11 @@ fn parse(
     names: &mut Vec<String>,
     mut frame: impl FnMut(&HistoryPoint, &[u8], &[String]) -> bool,
 ) -> usize {
+    let entry_size = if bytes.starts_with(LEGACY_MAGIC) {
+        ENTRY
+    } else {
+        ENTRY_V3
+    };
     let mut at = MAGIC.len();
     let mut valid = at;
     let u16_at = |b: &[u8], i: usize| u16::from_le_bytes([b[i], b[i + 1]]);
@@ -515,13 +542,13 @@ fn parse(
                     },
                 };
                 let count = b[60] as usize;
-                let end = at + 1 + FRAME_HEAD + count * ENTRY;
+                let end = at + 1 + FRAME_HEAD + count * entry_size;
                 if end > bytes.len() {
                     break;
                 }
                 at = end;
                 valid = at;
-                if !frame(&point, &bytes[end - count * ENTRY..end], names) {
+                if !frame(&point, &bytes[end - count * entry_size..end], names) {
                     return valid;
                 }
                 continue;
@@ -533,10 +560,8 @@ fn parse(
     valid
 }
 
-fn entries(raw: &[u8], names: &[String]) -> Vec<HistoryProcess> {
-    raw.as_chunks::<ENTRY>()
-        .0
-        .iter()
+fn entries(raw: &[u8], names: &[String], legacy: bool) -> Vec<HistoryProcess> {
+    raw.chunks_exact(if legacy { ENTRY } else { ENTRY_V3 })
         .map(|e| {
             let u32_at = |i: usize| u32::from_le_bytes(e[i..i + 4].try_into().unwrap());
             let f32_at = |i: usize| f32::from_le_bytes(e[i..i + 4].try_into().unwrap());
@@ -544,6 +569,12 @@ fn entries(raw: &[u8], names: &[String]) -> Vec<HistoryProcess> {
             HistoryProcess {
                 name: names.get(name).cloned().unwrap_or_default(),
                 pid: u32_at(2),
+                create_time: if legacy {
+                    None
+                } else {
+                    let created = i64::from_le_bytes(e[ENTRY..ENTRY_V3].try_into().unwrap());
+                    (created > 0).then_some(created)
+                },
                 cpu: f32_at(6),
                 mem: u32_at(10) as u64 * 1024,
                 io: u32_at(14) as u64,
@@ -575,7 +606,7 @@ fn read_day(dir: &Path, day: i64) -> Option<Vec<u8>> {
             }
         })
         .ok()?;
-    bytes.starts_with(MAGIC).then_some(bytes)
+    (bytes.starts_with(MAGIC) || bytes.starts_with(LEGACY_MAGIC)).then_some(bytes)
 }
 
 /// Unix ms of the oldest frame.
@@ -731,7 +762,7 @@ pub fn moment(dir: &Path, ts: i64) -> Option<HistoryMoment> {
                     dist,
                     HistoryMoment {
                         system: p.clone(),
-                        processes: entries(raw, names),
+                        processes: entries(raw, names, bytes.starts_with(LEGACY_MAGIC)),
                     },
                 ));
             }
@@ -848,6 +879,67 @@ mod tests {
     }
 
     #[test]
+    fn keeps_legacy_frames_and_appends_without_inventing_identity() {
+        let dir = temp_dir("legacy-identity");
+        let base = 20_737 * DAY_MS;
+        fs::create_dir_all(&dir).unwrap();
+        let mut bytes = LEGACY_MAGIC.to_vec();
+        bytes.extend_from_slice(&[TAG_NAME, 0, 0, 10]);
+        bytes.extend_from_slice(b"worker.exe");
+        bytes.push(TAG_FRAME);
+        let mut head = vec![0u8; FRAME_HEAD];
+        head[..8].copy_from_slice(&base.to_le_bytes());
+        head[60] = 1;
+        bytes.extend_from_slice(&head);
+        let mut entry = vec![0u8; ENTRY];
+        entry[2..6].copy_from_slice(&42u32.to_le_bytes());
+        bytes.extend_from_slice(&entry);
+        let path = day_path(&dir, 20_737);
+        fs::write(&path, &bytes).unwrap();
+        let old = moment(&dir, base).unwrap();
+        assert_eq!(old.processes[0].create_time, None);
+        let mut rec = HistoryRecorder::new(dir.clone());
+        rec.record(&snapshot(
+            base + FRAME_MS,
+            1.,
+            vec![proc(42, "worker.exe", 1., 1024)],
+        ));
+        rec.record(&snapshot(base + 2 * FRAME_MS, 1., Vec::new()));
+        drop(rec);
+        assert!(fs::read(&path).unwrap().starts_with(&bytes));
+        assert_eq!(
+            moment(&dir, base + FRAME_MS).unwrap().processes[0].create_time,
+            None
+        );
+        assert_eq!(series(&dir, base, base + 2 * FRAME_MS, 10).len(), 2);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn persists_separate_instances_and_resolved_creation_time() {
+        let dir = temp_dir("instances");
+        let base = 20_737 * DAY_MS;
+        let mut rec = HistoryRecorder::new(dir.clone());
+        let mut first = proc(42, "worker.exe", 20., 1024);
+        first.create_time = base - 1000;
+        let mut second = first.clone();
+        second.create_time = base + 1000;
+        rec.record(&snapshot(base, 20., vec![first]));
+        rec.record(&snapshot(base + 1000, 20., vec![second]));
+        rec.record(&snapshot(base + FRAME_MS, 1., Vec::new()));
+        drop(rec);
+        let frame = moment(&dir, base).unwrap();
+        let mut created = frame
+            .processes
+            .iter()
+            .map(|p| p.create_time)
+            .collect::<Vec<_>>();
+        created.sort();
+        assert_eq!(created, vec![Some(base - 1000), Some(base + 1000)]);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn records_battery_level_and_rate() {
         let dir = temp_dir("battery");
         let base = 20_737 * DAY_MS + 3_600_000;
@@ -932,6 +1024,14 @@ mod tests {
         let data = moment(&dir, base + 1000).unwrap();
         assert_eq!(data.processes.iter().find(|p| p.pid == 1).unwrap().cpu, 20.);
         assert_eq!(data.processes.iter().find(|p| p.pid == 2).unwrap().cpu, 40.);
+        assert_eq!(
+            data.processes
+                .iter()
+                .find(|p| p.pid == 2)
+                .unwrap()
+                .create_time,
+            Some(123)
+        );
         let _ = fs::remove_dir_all(dir);
     }
 

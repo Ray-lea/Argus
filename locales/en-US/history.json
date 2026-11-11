@@ -43,5 +43,6 @@
   "noRecordAt": "No records at this moment",
   "earliest": "Earliest record",
   "note": "Records the top processes by CPU, memory, I/O, GPU and network every 5 seconds (or at the minimized or tray refresh rate when that is slower) and keeps them for 7 days.",
-  "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>"
+  "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>",
+  "instanceUnavailable": "The recorded instance of {name} (PID {pid}) has exited or its identity cannot be confirmed."
 }

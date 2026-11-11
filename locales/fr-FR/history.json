@@ -45,5 +45,6 @@
   "noRecordAt": "Aucun enregistrement à cet instant",
   "earliest": "Premier enregistrement",
   "note": "Enregistre les processus utilisant le plus de CPU, mémoire, I/O, GPU et réseau toutes les 5 secondes, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification s’il est plus long. Les données sont conservées 7 jours.",
-  "off": "L’enregistrement de l’historique est désactivé ; aucune nouvelle donnée n’est enregistrée. <link>Ouvrir les paramètres</link>"
+  "off": "L’enregistrement de l’historique est désactivé ; aucune nouvelle donnée n’est enregistrée. <link>Ouvrir les paramètres</link>",
+  "instanceUnavailable": "L’instance enregistrée de {name} (PID {pid}) est terminée ou son identité ne peut pas être confirmée."
 }
