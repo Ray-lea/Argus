@@ -44,7 +44,7 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             Ok(Value::Null)
         }
         "app_info" => Ok(
-            serde_json::to_value(crate::commands::app_info(host.state()))
+            serde_json::to_value(crate::commands::app_info(host.clone()))
                 .expect("serializable command response"),
         ),
         "set_interval" => {
@@ -272,6 +272,12 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "open_repository" => crate::commands::open_repository()
+            .map(|value| serde_json::to_value(value).expect("serializable command response"))
+            .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "open_download_page" => crate::commands::open_download_page()
+            .map(|value| serde_json::to_value(value).expect("serializable command response"))
+            .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "open_latest_release" => crate::commands::open_latest_release()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "open_community" => crate::commands::open_community()

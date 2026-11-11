@@ -98,5 +98,11 @@
     "quiet": "Ne plus rappeler",
     "off": "Le rappel d’étoile est désactivé. Il peut être réactivé dans les paramètres.",
     "settings": "Ouvrir les paramètres"
+  },
+  "portable": {
+    "title": "Vous utilisez la version portable",
+    "body": "Elle ne propose ni mises à jour intégrées, ni raccourci dans le menu Démarrer, ni entrée de désinstallation, et ne met pas à jour le service privilégié ni le remplacement du Gestionnaire des tâches avec Argus. La version installée est recommandée pour un usage quotidien ; les paramètres et l’historique actuels sont conservés.",
+    "website": "Télécharger depuis le site Web",
+    "github": "Télécharger depuis GitHub"
   }
 }

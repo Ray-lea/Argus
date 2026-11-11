@@ -648,6 +648,10 @@ impl Desktop {
         if control["starPrompt"].as_bool() == Some(true) {
             self.show_star();
         }
+        // A portable copy's notice, which tests never get on their own either.
+        if control["portableNotice"].as_bool() == Some(true) {
+            self.show_portable_notice();
+        }
         if self.options.fixture.is_some() && control["updateNotice"].as_bool() == Some(true) {
             let status = self.data.get("updates").cloned().unwrap_or_default();
             self.show_update_notice(text(&status, "state"), text(&status, "version"));

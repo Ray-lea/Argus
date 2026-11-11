@@ -538,6 +538,87 @@ impl Desktop {
             .into_any_element()
     }
 
+    /// The first step's note on a portable copy: what it lacks beside the
+    /// installed version, and the two places to download the installer from.
+    fn onboarding_portable(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette;
+        let mut downloads = div().flex().flex_wrap().gap(px(8.)).mt(px(4.));
+        for (id, command) in [
+            ("website", "open_download_page"),
+            ("github", "open_latest_release"),
+        ] {
+            downloads = downloads.child(
+                self.btn(
+                    format!("onboarding-portable-{id}"),
+                    label(&format!("onboarding.portable.{id}")),
+                    Some("ExternalIcon"),
+                    Tone::Plain,
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.request(command, json!({}), None, window, cx)
+                })),
+            );
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .px(px(14.))
+            .py(px(12.))
+            .border_1()
+            .border_color(p.accent.opacity(0.4))
+            .rounded(px(6.))
+            .bg(p.accent.opacity(0.08))
+            .flex_shrink_0()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(icon("InfoIcon", p.accent).size(px(16.)).flex_shrink_0())
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .font_weight(theme::LABEL_WEIGHT)
+                            .child(label("onboarding.portable.title")),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .text_size(theme::font(12.))
+                    .text_color(p.muted)
+                    .children(["update", "shortcuts", "service"].into_iter().map(|item| {
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(px(8.))
+                            .pl(px(4.))
+                            .child(
+                                div()
+                                    .mt(px(7.))
+                                    .size(px(4.))
+                                    .flex_shrink_0()
+                                    .rounded_full()
+                                    .bg(p.accent),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_color(p.ink)
+                                    .child(label(&format!("onboarding.portable.{item}"))),
+                            )
+                    }))
+                    .child(label("onboarding.portable.advice")),
+            )
+            .child(downloads)
+            .into_any_element()
+    }
+
     /// A step's state line: a spinner while busy, a check when done.
     fn onboarding_state(&self, text: String, busy: bool, done: bool, hint: String) -> Div {
         let p = self.palette;
@@ -603,14 +684,22 @@ impl Desktop {
         let mut body = div().flex().flex_col().gap(px(12.));
         match section {
             "welcome" => {
+                let portable = self.portable().then(|| self.onboarding_portable(cx));
+                // A portable copy's note takes its room from the mark, so that
+                // the step still shows whole in the languages with long texts.
+                let (mark, above, below) = if portable.is_some() {
+                    (56., 0., 0.)
+                } else {
+                    (72., 8., 4.)
+                };
                 body = body
                     .child(
                         div()
                             .flex()
                             .justify_center()
-                            .pt(px(8.))
-                            .pb(px(4.))
-                            .child(widgets::logo(72.)),
+                            .pt(px(above))
+                            .pb(px(below))
+                            .child(widgets::logo(mark)),
                     )
                     .child(
                         self.dialog_title(label("onboarding.welcome.title"))
@@ -634,7 +723,8 @@ impl Desktop {
                                 .child(icon("GlobeIcon", p.muted))
                                 .child(self.language_select("onboarding-language", cx)),
                         ),
-                    );
+                    )
+                    .children(portable);
             }
             "display" => {
                 let positions = [("side", "NavSideIcon"), ("top", "NavTopIcon")];

@@ -98,5 +98,11 @@
     "quiet": "No volver a avisar",
     "off": "El recordatorio de estrella se ha desactivado. Puede volver a activarse en Configuración.",
     "settings": "Abrir Configuración"
+  },
+  "portable": {
+    "title": "Esta es la versión portátil",
+    "body": "No incluye actualizaciones integradas, acceso directo en el menú Inicio ni entrada de desinstalación, y no actualiza el servicio privilegiado ni la sustitución del Administrador de tareas junto con Argus. Para el uso diario se recomienda la versión instalada; la configuración y el historial actuales se conservan.",
+    "website": "Descargar desde el sitio web",
+    "github": "Descargar desde GitHub"
   }
 }

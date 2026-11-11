@@ -26,6 +26,8 @@ pub(in crate::frontend) enum ToastKind {
 pub(in crate::frontend) struct Toast {
     pub id: u64,
     pub kind: ToastKind,
+    /// A heading over the text, for a notice that says more than a line.
+    pub title: Option<String>,
     pub text: String,
     pub actions: Vec<(String, Handler)>,
     pub born: Instant,
@@ -92,6 +94,8 @@ pub(in crate::frontend) struct UiState {
     pub icon_motions: icon_motion::IconMotions,
     /// The daily request for a GitHub star, under the notices.
     pub star: star::State,
+    /// Since when a portable copy's one notice has been free to come in.
+    pub portable_ready: Option<Instant>,
     pub select: Option<OpenSelect>,
     /// The drop-down list that just closed, fading out (`.menu.leaving`).
     pub select_leaving: Option<(OpenSelect, Instant)>,

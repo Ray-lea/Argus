@@ -98,5 +98,11 @@
     "quiet": "Don't remind me",
     "off": "Star reminder turned off. It can be turned on again in Settings.",
     "settings": "Open Settings"
+  },
+  "portable": {
+    "title": "This is the portable version",
+    "body": "It has no in-app updates, no Start menu shortcut or uninstall entry, and doesn't update the privileged service or Task Manager replacement along with Argus. The installed version is recommended for everyday use; current settings and history are kept.",
+    "website": "Download from the website",
+    "github": "Download from GitHub"
   }
 }

@@ -9,6 +9,15 @@
     "body": "Argus ist ein moderner Task-Manager für Windows. Er zeigt Prozesse, Leistung, Dienste, Autostart-Apps und Netzwerkverbindungen an und zeichnet die Ressourcennutzung auf. Die folgenden Schritte richten die wichtigsten Optionen ein. Jeder Schritt kann übersprungen und jede Einstellung später geändert werden.",
     "language": "Anzeigesprache"
   },
+  "portable": {
+    "title": "Dies ist die portable Version",
+    "update": "Keine Updates in der Anwendung: Neue Versionen werden manuell ersetzt",
+    "shortcuts": "Keine Startmenüverknüpfung und kein Deinstallationseintrag",
+    "service": "Privilegierter Dienst und Task-Manager-Ersetzung werden nicht automatisch aktualisiert",
+    "advice": "Für den täglichen Gebrauch wird die installierte Version empfohlen.",
+    "website": "Von der Website herunterladen",
+    "github": "Von GitHub herunterladen"
+  },
   "display": {
     "title": "Anzeige und Aktualisierung",
     "body": "Position der Navigation, Animationen und Aktualisierungsintervall auswählen.",

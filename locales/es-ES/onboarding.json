@@ -9,6 +9,15 @@
     "body": "Argus es un administrador de tareas moderno para Windows. Muestra procesos, rendimiento, servicios, aplicaciones de inicio y conexiones de red, y conserva el historial de uso de recursos. Los siguientes pasos permiten configurar las opciones principales. Todos pueden omitirse y modificarse después en Configuración.",
     "language": "Idioma de la interfaz"
   },
+  "portable": {
+    "title": "Esta es la versión portátil",
+    "update": "Sin actualizaciones integradas: cada versión nueva se sustituye manualmente",
+    "shortcuts": "Sin acceso directo en el menú Inicio ni entrada de desinstalación",
+    "service": "El servicio privilegiado y la sustitución del Administrador de tareas no se actualizan automáticamente",
+    "advice": "Para el uso diario se recomienda la versión instalada.",
+    "website": "Descargar desde el sitio web",
+    "github": "Descargar desde GitHub"
+  },
   "display": {
     "title": "Visualización y actualización",
     "body": "Elija la posición de navegación, las animaciones y la frecuencia de actualización.",

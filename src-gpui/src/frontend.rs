@@ -16,6 +16,7 @@ mod menus;
 mod model;
 mod motion;
 mod pages;
+mod portable;
 mod prefs;
 mod process_icons;
 mod recorder;

@@ -1826,6 +1826,18 @@ impl Desktop {
         ms: u64,
         actions: Vec<(String, Handler)>,
     ) -> u64 {
+        self.toast_titled(kind, None, text, ms, actions)
+    }
+
+    /// `toast_with` under a heading: the text below it reads as its detail.
+    pub(in crate::frontend) fn toast_titled(
+        &mut self,
+        kind: ToastKind,
+        title: Option<String>,
+        text: impl Into<String>,
+        ms: u64,
+        actions: Vec<(String, Handler)>,
+    ) -> u64 {
         self.ui.toast_seq += 1;
         let id = self.ui.toast_seq;
         let now = Instant::now();
@@ -1848,6 +1860,7 @@ impl Desktop {
         self.ui.toasts.push(Toast {
             id,
             kind,
+            title,
             text: text.into(),
             actions,
             born: now,
@@ -1897,6 +1910,7 @@ impl Desktop {
         }
         if self.ui.ticks.is_multiple_of(4) {
             self.announce_update(window, cx);
+            changed |= self.announce_portable();
             changed |= self.announce_star();
         }
         changed |= self.tick_star();
@@ -1991,7 +2005,20 @@ impl Desktop {
                             .min_w_0()
                             .flex()
                             .flex_col()
-                            .child(toast.text.clone())
+                            .map(|d| match &toast.title {
+                                Some(title) => d
+                                    .child(
+                                        div().font_weight(theme::LABEL_WEIGHT).child(title.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .mt(px(3.))
+                                            .line_height(relative(1.5))
+                                            .text_color(p.muted)
+                                            .child(toast.text.clone()),
+                                    ),
+                                None => d.child(toast.text.clone()),
+                            })
                             .when(!toast.actions.is_empty(), |d| {
                                 d.child(
                                     div().flex().flex_wrap().gap(px(6.)).mt(px(8.)).children(

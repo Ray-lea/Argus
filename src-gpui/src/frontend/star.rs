@@ -62,7 +62,8 @@ pub(super) struct State {
     card: Option<Card>,
     /// Since when everything has been in place for the card to come in.
     ready: Option<Instant>,
-    /// This run opened the onboarding: a first start is asked for nothing.
+    /// This run opened the onboarding, or told a portable copy about the
+    /// installer: it is asked for nothing more.
     first_run: bool,
 }
 
@@ -117,7 +118,8 @@ fn spark(flight: f32) -> Option<(f32, f32)> {
 }
 
 impl Desktop {
-    /// The start opened the onboarding: this run does not ask for a star.
+    /// The start opened the onboarding, or a portable copy's notice came in:
+    /// this run does not ask for a star.
     pub(in crate::frontend) fn skip_star_this_run(&mut self) {
         self.ui.star.first_run = true;
     }

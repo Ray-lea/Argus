@@ -98,5 +98,11 @@
     "quiet": "Nicht erneut erinnern",
     "off": "Die Stern-Erinnerung wurde deaktiviert. Sie lässt sich in den Einstellungen wieder aktivieren.",
     "settings": "Einstellungen öffnen"
+  },
+  "portable": {
+    "title": "Dies ist die portable Version",
+    "body": "Sie bietet keine Updates in der Anwendung, keine Startmenüverknüpfung und keinen Deinstallationseintrag; der privilegierte Dienst und die Task-Manager-Ersetzung werden nicht zusammen mit Argus aktualisiert. Für den täglichen Gebrauch wird die installierte Version empfohlen; Einstellungen und Verlauf bleiben erhalten.",
+    "website": "Von der Website herunterladen",
+    "github": "Von GitHub herunterladen"
   }
 }

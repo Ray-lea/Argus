@@ -90,9 +90,14 @@ pub struct AppInfo {
     /// Started by the task manager replacement: the system may be struggling,
     /// so the UI holds back what is not urgent.
     task_manager: bool,
+    /// The standalone exe of a release or test build, which the interface
+    /// tells what it lacks beside the installed version. Not a development
+    /// build: it is no download either.
+    portable: bool,
 }
 
-pub fn app_info(state: State<'_, AppState>) -> AppInfo {
+pub fn app_info(app: crate::native_runtime::Host) -> AppInfo {
+    let state = app.state::<AppState>();
     AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         build: env!("ARGUS_VERSION"),
@@ -100,6 +105,7 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
         elevated: state.elevated,
         updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
         task_manager: state.task_manager_start,
+        portable: !cfg!(debug_assertions) && updater::status(&app).portable,
     }
 }
 
@@ -677,6 +683,39 @@ pub fn open_repository() -> Result<(), String> {
     crate::shell::open_url(updater::REPO)
 }
 
+/// The website's download page in the language `locale`: Simplified Chinese
+/// at the root, every other language under its own folder.
+fn download_page(homepage: &str, locale: argus_core::i18n::Locale) -> String {
+    use argus_core::i18n::Locale;
+    let folder = match locale {
+        Locale::ZhCn => "",
+        Locale::ZhTw => "/zh-TW",
+        Locale::EnUs => "/en",
+        Locale::EsEs => "/es",
+        Locale::DeDe => "/de",
+        Locale::JaJp => "/ja",
+        Locale::FrFr => "/fr",
+        Locale::RuRu => "/ru",
+    };
+    format!("{}{folder}/download/", homepage.trim_end_matches('/'))
+}
+
+/// Opens the website's download page in the interface language: where a
+/// portable copy is sent for the installer.
+pub fn open_download_page() -> Result<(), String> {
+    crate::shell::open_url(&download_page(
+        argus_app::config::manifest()["homepage"]
+            .as_str()
+            .expect("project homepage"),
+        argus_core::i18n::locale(),
+    ))
+}
+
+/// Opens the newest release on GitHub, with the installer among its files.
+pub fn open_latest_release() -> Result<(), String> {
+    crate::shell::open_url(&format!("{}/releases/latest", updater::REPO))
+}
+
 /// Opens the group invitation in the default browser, which hands it to QQ.
 pub fn open_community() -> Result<(), String> {
     crate::shell::open_url(
@@ -869,5 +908,26 @@ mod tests {
             settle(replied, done, || unreachable!("acted locally")),
             Err(ActionError::AccessDenied)
         ));
+    }
+
+    #[test]
+    fn the_download_page_follows_the_interface_language() {
+        use argus_core::i18n::Locale;
+        // The website keeps Simplified Chinese at its root.
+        assert_eq!(
+            download_page("https://argustask.com", Locale::ZhCn),
+            "https://argustask.com/download/"
+        );
+        assert_eq!(
+            download_page("https://argustask.com/", Locale::ZhTw),
+            "https://argustask.com/zh-TW/download/"
+        );
+        // Every other language has a folder of its own, named apart.
+        let pages = Locale::ALL
+            .iter()
+            .map(|locale| download_page("https://argustask.com", *locale))
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(pages.len(), Locale::ALL.len());
+        assert!(pages.contains("https://argustask.com/en/download/"));
     }
 }
