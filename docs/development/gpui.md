@@ -59,7 +59,7 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`process-visibility.json`](../../tools/window-probe/steps/process-visibility.json) 注入含 Windows 组件、普通进程及无所属进程连接的样本，核对三种进程视图、连接筛选、设置页规则编辑与小窗口布局。模拟快照实例的 `formValues` 设置已打开表单的输入，随后通过实际键盘路径保存或取消；`inspectLayout.visibility` 输出开关状态与列表中的 PID。
 
-[`process-users.json`](../../tools/window-probe/steps/process-users.json) 用 `sample` 控制改写模拟快照的 `sessions` 与各进程的会话编号，核对单用户时不分组、第二个用户登录后自动分组、三种视图、分类与用户组的折叠、搜索、隐藏系统进程、同一程序在两个用户组内各占一行，以及“始终分组”“不分组”优先于登录用户数。`inspectLayout.userGroups` 输出所选模式、登录用户数、是否分组及各分组行的标题、进程数与展开状态。
+[`process-users.json`](../../tools/window-probe/steps/process-users.json) 用 `sample` 控制改写模拟快照的 `sessions` 与各进程的会话编号，核对单用户时不分组、第二个用户登录后自动分组、三种视图、分类与用户组的折叠、搜索、隐藏系统进程、同一程序在两个用户组内各占一行，以及“始终分组”“不分组”优先于登录用户数。`inspectLayout.userGroups` 输出所选模式、登录用户数、是否分组及各分组行的标题、进程数与展开状态。同一文件还核对分组行的右键菜单：当前用户可注销，其他用户在标准权限下不可选，“系统”分组只有折叠；用 `data` 把 `info.elevated` 设为真后注销其他用户，经确认对话框，再用 `resolve` 给出 `sign_out_user` 的成功与拒绝访问两种结果。模拟快照不发出任何命令，不会注销真实会话。`inspectLayout` 的 `dialog.title` 为对话框标题，`toasts` 为当前显示的通知文字。
 
 [`vitals-visibility.json`](../../tools/window-probe/steps/vitals-visibility.json) 检查概况带的固定十行高度预算、全部折叠、空搜索结果、手动模式、缩放窗口与动画中断，并录制展开和收起。`inspectLayout.vitals` 记录完整页面高度、所需高度、动画高度及活动曲线数；隐藏完成后活动曲线数为零。
 
