@@ -895,6 +895,7 @@ mod tests {
             version: "0.2.0".into(),
             protocol: crate::PROTOCOL,
             diagnostics: None,
+            sensor_driver_version: None,
         }));
         assert_eq!(connected.version.as_deref(), Some("0.2.0"));
         assert!(connected.error.is_none() && !connected.incompatible);

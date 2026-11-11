@@ -361,12 +361,14 @@ mod tests {
             serde_json::from_str::<crate::Reply>(old).unwrap(),
             crate::Reply::Pong {
                 diagnostics: None,
+                sensor_driver_version: None,
                 ..
             }
         ));
         let new = crate::Reply::Pong {
             version: "0.2.0".into(),
             protocol: 9,
+            sensor_driver_version: Some(0x0002_0200),
             diagnostics: Some(ServiceDiagnostics {
                 pid: 42,
                 created: 7,
@@ -376,6 +378,13 @@ mod tests {
                 }],
             }),
         };
+        assert!(matches!(
+            serde_json::from_slice::<crate::Reply>(&serde_json::to_vec(&new).unwrap()).unwrap(),
+            crate::Reply::Pong {
+                sensor_driver_version: Some(0x0002_0200),
+                ..
+            }
+        ));
         let OldReply::Pong { version, protocol } =
             serde_json::from_slice(&serde_json::to_vec(&new).unwrap()).unwrap();
         assert_eq!(version, "0.2.0");

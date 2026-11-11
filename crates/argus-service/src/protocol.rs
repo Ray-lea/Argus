@@ -114,6 +114,8 @@ pub enum Reply {
         protocol: u32,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         diagnostics: Option<crate::ServiceDiagnostics>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sensor_driver_version: Option<u32>,
     },
     Done,
     Network(Option<crate::NetworkFrame>),
@@ -233,6 +235,7 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
                 version: crate::VERSION.into(),
                 protocol: crate::PROTOCOL,
                 diagnostics: crate::diagnostics::snapshot(),
+                sensor_driver_version: crate::driver::running_device_version(),
             };
         }
         // A client cannot ask the broker to bypass the host's self-protection.

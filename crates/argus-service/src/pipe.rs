@@ -761,6 +761,7 @@ pub(crate) mod tests {
                         version: "0.0.0".into(),
                         protocol,
                         diagnostics: None,
+                        sensor_driver_version: None,
                     };
                     send(client.0, &pong, None, Instant::now() + READ_TIMEOUT).unwrap();
                 }

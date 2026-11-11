@@ -49,6 +49,7 @@ const LEGACY_LAYOUT: u32 = 0x2000_0109;
 const DEVICE_DISABLED: u32 = 0x2000_010a;
 const REBOOT_REQUIRED: u32 = 3010;
 const MIN_VERSION: (u32, u32, u32, u32) = (2, 2, 0, 0);
+const MIN_DEVICE_VERSION: u32 = (MIN_VERSION.0 << 16) | (MIN_VERSION.1 << 8) | MIN_VERSION.2;
 const INSTALL_ARGS: [&str; 2] = ["-install", "-silent"];
 
 struct Service(SC_HANDLE);
@@ -85,6 +86,7 @@ struct Inspection {
     legacy_image_bytes: Option<u64>,
     legacy_image_sha256: Option<String>,
     device: Option<device::State>,
+    device_version: Option<u32>,
     image_path: Option<PathBuf>,
     failed_path: Option<PathBuf>,
     path_check: Option<security::PathInspection>,
@@ -110,7 +112,7 @@ impl Inspection {
             .collect::<Vec<_>>()
             .join(",");
         let mut summary = format!(
-            "stage={}; result={outcome}; native_error={:?}; service_type={:?}; service_state={:?}; start_type={:?}; image_location={}; path_component={}; file_version={version}; version_info_bytes={:?}; version_translations=[{translations}]; original_name_matches={:?}; official_legacy_driver={}; legacy_image_bytes={:?}; legacy_image_sha256={:?}; pnp={:?}",
+            "stage={}; result={outcome}; native_error={:?}; service_type={:?}; service_state={:?}; start_type={:?}; image_location={}; path_component={}; file_version={version}; version_info_bytes={:?}; version_translations=[{translations}]; original_name_matches={:?}; official_legacy_driver={}; legacy_image_bytes={:?}; legacy_image_sha256={:?}; pnp={:?}; device_version={:?}",
             self.stage,
             self.native_error,
             self.service_type,
@@ -123,7 +125,8 @@ impl Inspection {
             self.legacy_driver,
             self.legacy_image_bytes,
             self.legacy_image_sha256,
-            self.device
+            self.device,
+            self.device_version
         );
         if let Some(path) = &self.image_path {
             summary += &format!("; image_path={}", argus_core::diagnostics::path(path));
@@ -153,6 +156,9 @@ fn finish_preparation(
     install: impl FnOnce() -> Result<()>,
     start: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
+    if plan == Plan::Ready {
+        return Ok(());
+    }
     if matches!(plan, Plan::Install | Plan::MigrateLegacy) {
         install()?;
     }
@@ -513,6 +519,88 @@ fn inspect(service: &Service) -> Result<(Plan, Vec<Handle>)> {
     inspect_with_trace(service, &mut Inspection::default())
 }
 
+/// Reusing a loaded device never loads the SCM image from disk. Keep this
+/// separate from `inspect`, which must pin and validate the image before start.
+fn inspect_current_with_trace(service: &Service, trace: &mut Inspection) -> Result<Plan> {
+    trace.stage = "QueryServiceStatusEx for running driver";
+    let status = state(service)?;
+    trace.service_type = Some(status.dwServiceType.0);
+    trace.service_state = Some(status.dwCurrentState.0);
+    if status.dwCurrentState == SERVICE_RUNNING {
+        trace.stage = "running driver version IOCTL";
+        trace.device_version = if argus_core::privilege::is_elevated() {
+            device_version()
+        } else {
+            service_device_version().ok().flatten()
+        };
+    }
+    reuse_or_inspect(
+        status.dwCurrentState == SERVICE_RUNNING,
+        trace.device_version,
+        trace,
+        |trace| {
+            trace.stage = "running driver PnP device state";
+            trace.device = Some(device::inspect()?);
+            trace.device.as_ref().unwrap().check(true)?;
+            trace.stage = "running driver service recheck";
+            let status = state(service)?;
+            trace.service_state = Some(status.dwCurrentState.0);
+            if status.dwCurrentState != SERVICE_RUNNING {
+                return Err(NOT_READY);
+            }
+            trace.stage = "running driver ready";
+            Ok(())
+        },
+        |trace| inspect_with_trace(service, trace).map(|(plan, _)| plan),
+    )
+}
+
+/// Use the authenticated service for the same fixed version query when the
+/// GUI cannot open the admin-only device. Older services omit this optional
+/// Ping field, so they retain the existing protected-image preflight.
+fn service_device_version() -> Result<Option<u32>> {
+    let pid = crate::install::running_pid()?.ok_or(NOT_READY)?;
+    match crate::pipe::request(crate::PIPE_NAME, pid, crate::Operation::Ping)? {
+        crate::Reply::Pong {
+            sensor_driver_version,
+            ..
+        } => Ok(sensor_driver_version),
+        _ => Err(NOT_READY),
+    }
+}
+
+/// Ping metadata only: never start a service or load a sensor module.
+pub(crate) fn running_device_version() -> Option<u32> {
+    // Only the service/elevated helper may open the admin-only device.
+    if !argus_core::privilege::is_elevated() {
+        return None;
+    }
+    let service = open(SERVICE_QUERY_STATUS).ok()??;
+    (state(&service).ok()?.dwCurrentState == SERVICE_RUNNING)
+        .then(device_version)
+        .flatten()
+}
+
+fn reuse_or_inspect(
+    running: bool,
+    version: Option<u32>,
+    trace: &mut Inspection,
+    check_running: impl FnOnce(&mut Inspection) -> Result<()>,
+    inspect_image: impl FnOnce(&mut Inspection) -> Result<Plan>,
+) -> Result<Plan> {
+    if running && version.is_some_and(|version| version >= MIN_DEVICE_VERSION) {
+        check_running(trace)?;
+        Ok(Plan::Ready)
+    } else {
+        let plan = inspect_image(trace)?;
+        // An updated image on disk cannot replace the still-loaded old code.
+        if plan == Plan::Ready && version.is_some_and(|version| version < MIN_DEVICE_VERSION) {
+            return Err(REBOOT_REQUIRED);
+        }
+        Ok(plan)
+    }
+}
+
 fn inspect_with_trace(service: &Service, trace: &mut Inspection) -> Result<(Plan, Vec<Handle>)> {
     trace.service_state = state(service).ok().map(|status| status.dwCurrentState.0);
     trace.stage = "QueryServiceConfigW buffer size";
@@ -573,7 +661,7 @@ pub fn diagnostic_status() -> String {
     };
     let result =
         open(SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS).and_then(|service| match service {
-            Some(service) => inspect_with_trace(&service, &mut trace).map(|(plan, _)| plan),
+            Some(service) => inspect_current_with_trace(&service, &mut trace),
             None => {
                 trace.stage = "service not installed";
                 Ok(Plan::Install)
@@ -607,7 +695,7 @@ fn current_plan() -> Result<Plan> {
         return Ok(Plan::Install);
     };
     let mut trace = Inspection::default();
-    let result = inspect_with_trace(&service, &mut trace).map(|(plan, _)| plan);
+    let result = inspect_current_with_trace(&service, &mut trace);
     if let Err(code) = &result {
         argus_core::diagnostics::warn(
             "PawnIO precheck failed",
@@ -679,7 +767,7 @@ fn start() -> Result<()> {
     loop {
         let status = util::stage("PawnIO QueryServiceStatusEx", state(&service))?;
         if status.dwCurrentState == SERVICE_RUNNING
-            && device_version().is_some_and(|v| v >= 0x0002_0200)
+            && device_version().is_some_and(|v| v >= MIN_DEVICE_VERSION)
         {
             return Ok(());
         }
@@ -991,6 +1079,96 @@ mod tests {
         let plan = current_plan().unwrap();
         assert!(matches!(plan, Plan::Ready | Plan::Start));
         println!("{}", diagnostic_status());
+    }
+
+    #[test]
+    #[ignore = "Read-only query through the updated, authorized local privileged service"]
+    fn running_driver_version_is_readable_through_service_without_elevation() {
+        assert!(!argus_core::privilege::is_elevated());
+        let version = service_device_version()
+            .unwrap()
+            .expect("running PawnIO device version");
+        assert!(version >= MIN_DEVICE_VERSION);
+        println!("PawnIO device version: {version:#010x}");
+        assert_eq!(current_plan(), Ok(Plan::Ready));
+    }
+
+    #[test]
+    fn running_driver_reuse_does_not_require_a_writable_driver_store_repair() {
+        for version in [MIN_DEVICE_VERSION, 0x0003_0000] {
+            assert_eq!(
+                reuse_or_inspect(
+                    true,
+                    Some(version),
+                    &mut Inspection::default(),
+                    |_| Ok(()),
+                    |_| panic!("loaded device reuse must not inspect or change disk permissions"),
+                ),
+                Ok(Plan::Ready)
+            );
+        }
+        // Old or unavailable devices still require the protected image path.
+        for (running, version) in [
+            (true, None),
+            (true, Some(0x0002_0001)),
+            (true, Some(0x0002_0100)),
+            (false, Some(MIN_DEVICE_VERSION)),
+        ] {
+            assert_eq!(
+                reuse_or_inspect(
+                    running,
+                    version,
+                    &mut Inspection::default(),
+                    |_| panic!("no compatible running device"),
+                    |_| Err(WRITABLE_DRIVER_STORE),
+                ),
+                Err(WRITABLE_DRIVER_STORE)
+            );
+        }
+    }
+
+    #[test]
+    fn running_driver_reuse_preserves_device_and_service_failures() {
+        for code in [DEVICE_DISABLED, REBOOT_REQUIRED, NOT_READY, 5] {
+            assert_eq!(
+                reuse_or_inspect(
+                    true,
+                    Some(MIN_DEVICE_VERSION),
+                    &mut Inspection::default(),
+                    |_| Err(code),
+                    |_| panic!("a failed live device must not trigger installation or start"),
+                ),
+                Err(code)
+            );
+        }
+        assert_eq!(
+            finish_preparation(
+                Plan::Ready,
+                || panic!("ready device must not install"),
+                || panic!("ready device must not enter the disk-backed start path"),
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn running_old_driver_uses_migration_or_requires_reboot_after_disk_update() {
+        for (disk_plan, expected) in [
+            (Plan::Install, Ok(Plan::Install)),
+            (Plan::MigrateLegacy, Ok(Plan::MigrateLegacy)),
+            (Plan::Ready, Err(REBOOT_REQUIRED)),
+        ] {
+            assert_eq!(
+                reuse_or_inspect(
+                    true,
+                    Some(0x0002_0100),
+                    &mut Inspection::default(),
+                    |_| panic!("old device must go through upgrade inspection"),
+                    |_| Ok(disk_plan),
+                ),
+                expected
+            );
+        }
     }
 
     #[test]
