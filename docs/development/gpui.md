@@ -63,6 +63,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`disk-counters-unavailable.json`](../../tools/window-probe/steps/disk-counters-unavailable.json) 检查两块磁盘中一块性能计数不可用时的设备列表、未知数值、详情页与恢复后的读数，并覆盖小窗口。
 
+[`disk-details-layout.json`](../../tools/window-probe/steps/disk-details-layout.json) 用 `data` 控制注入一块 NVMe 固态硬盘与一块 SATA 机械硬盘的详情，在默认、最小与宽窗口以及 150% 界面缩放加大字号下截取磁盘详情页的顶部与底部，核对 SMART 属性表的分栏、名称换行与数值换行。
+
 [`star-reminder.json`](../../tools/window-probe/steps/star-reminder.json) 检查 Star 提醒卡片的入场、悬停点亮、两个按钮与设置开关的联动，并覆盖图表之上和浅色主题。测试实例不会自行显示该卡片，由 `starPrompt` 控制触发；`inspectLayout.star` 输出卡片是否显示及提醒是否开启。卡片叠在图表上，只使用纯色矩形、文字和图标，动效均为一次性播放：改动其绘制后，用 `--live` 加 `ARGUS_GPUI_DIAGNOSTICS=1` 在性能页确认没有 `gpu-chart-foreground-reject`。
 
 测试控制除页面、主题、对话框等既有项外，还包括：
