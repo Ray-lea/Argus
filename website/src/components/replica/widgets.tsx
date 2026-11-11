@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { Icon, type UiIcon } from "./icons";
+import { playIcon } from "./iconMotion";
 
 // The window may be drawn scaled: the home page shows a 1920 × 1080 desktop at
 // the width of the page, and the interface scale zooms the window's content.
@@ -178,6 +179,7 @@ export function Select<T extends string | number>({
   label,
   className,
   title,
+  context,
 }: {
   value: T;
   options: Choice<T>[];
@@ -185,6 +187,8 @@ export function Select<T extends string | number>({
   label: string;
   className?: string;
   title?: string;
+  /** Where a choice reads differently here than elsewhere (the translations' data-i18n). */
+  context?: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<null | { up: boolean }>(null);
@@ -255,7 +259,7 @@ export function Select<T extends string | number>({
       >
         <span className="a-select-labels">
           {options.map((o, i) => (
-            <span key={String(o.value)} hidden={i !== selected}>
+            <span key={String(o.value)} hidden={i !== selected} data-i18n={context}>
               {o.label}
             </span>
           ))}
@@ -275,6 +279,7 @@ export function Select<T extends string | number>({
               role="option"
               aria-selected={i === selected}
               className={i === active ? "is-active" : undefined}
+              data-i18n={context}
               onPointerMove={() => setActive(i)}
               onClick={() => pick(i)}
             >
@@ -354,8 +359,17 @@ export function Button({
   tour?: string;
 }) {
   const iconOnly = !children && !!icon;
+  // A button that swaps its icon (pause for play) brings the new one in.
+  const self = useRef<HTMLButtonElement>(null);
+  const drawn = useRef(icon);
+  useEffect(() => {
+    if (drawn.current === icon) return;
+    drawn.current = icon;
+    playIcon(self.current?.querySelector(".ico"), true);
+  }, [icon]);
   return (
     <button
+      ref={self}
       type={type}
       className={
         "a-btn" +

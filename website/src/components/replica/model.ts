@@ -267,6 +267,33 @@ export const groupLabel: Record<Group, string> = {
   windows: "Windows 进程",
 };
 
+// Hiding system processes (the app's visibility.rs): Windows components leave
+// the lists unless their program is kept, and so do the programs named to
+// hide. Names are exact executable names, compared without case.
+export interface VisibilityRules {
+  keep: string[];
+  hide: string[];
+}
+export const defaultVisibility: VisibilityRules = {
+  keep: ["cmd.exe", "conhost.exe", "explorer.exe", "openconsole.exe", "powershell.exe", "pwsh.exe"],
+  hide: [],
+};
+export function hidesProcess(rules: VisibilityRules, p: Process) {
+  const name = p.exe.toLowerCase();
+  return !rules.keep.includes(name) && (p.group === "windows" || rules.hide.includes(name));
+}
+/** The names of a list as typed, or null where one is a path or a pattern. */
+export function programNames(value: string): string[] | null {
+  const names = new Set<string>();
+  for (const name of value.split(/[,;\n\r，；]/).map((s) => s.trim()).filter(Boolean)) {
+    // eslint-disable-next-line no-control-regex
+    if (name.length > 260 || /[\u0000-\u001f\\/:*?"<>|]/.test(name)) return null;
+    names.add(name.toLowerCase());
+    if (names.size > 128) return null;
+  }
+  return [...names].sort();
+}
+
 export interface Reading {
   cpu: number;
   mem: number;

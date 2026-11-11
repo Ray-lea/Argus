@@ -26,8 +26,11 @@ import {
 import { advanceClock, sampleClock, type Motion } from "./Curve";
 import { registerDictionary, setLanguage, type Dictionary, type Language } from "./i18n";
 import FileLock, { inspect, type LockResult } from "./FileLock";
+import { hoverIcons, setIconsStill } from "./iconMotion";
 import { CaptionIcon, Icon, type UiIcon } from "./icons";
 import {
+  defaultVisibility,
+  hidesProcess,
   historyRanges,
   processes,
   readings,
@@ -39,9 +42,20 @@ import {
   type Process,
   type Reading,
   type Service,
+  type VisibilityRules,
 } from "./model";
-import type { ConnectionFilter, HistoryRange, MenuEntry, ServiceFilter, ServiceState, ThemeChoice } from "./Pages";
-import { buildRows, Details, ProcessTable, Vitals, type Device, type Row, type SortKey, type View } from "./Processes";
+import type { ConnectionFilter, HistoryRange, MenuEntry, ServiceFilter, ServiceState, ThemeChoice, VitalsMode } from "./Pages";
+import {
+  buildRows,
+  Details,
+  ProcessTable,
+  treeParents,
+  Vitals,
+  type Device,
+  type Row,
+  type SortKey,
+  type View,
+} from "./Processes";
 import { useShared, type Page } from "./store";
 import { Button, localRect, scaleOf, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
 
@@ -117,7 +131,8 @@ type Dialog =
   | { kind: "end"; row: Row; tree: boolean }
   | { kind: "realtime"; row: Row }
   | { kind: "rule"; row: Row }
-  | { kind: "columns" };
+  | { kind: "columns" }
+  | { kind: "visibility" };
 interface Toast {
   text: string;
   id: number;
@@ -236,6 +251,13 @@ export default function Replica({
   const [paneEnters, setPaneEnters] = useState(false);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [closed, setClosed] = useState<Set<string>>(() => new Set());
+  // The tree starts folded to its roots; these branches were opened.
+  const [treeOpen, setTreeOpen] = useState<Set<string>>(() => new Set());
+  // Hiding system processes: a switch for each of the two lists, one set of rules.
+  const [hideSystem, setHideSystem] = useState({ processes: false, connections: false });
+  const [visibility, setVisibility] = useState<VisibilityRules>(defaultVisibility);
+  const [vitalsMode, setVitalsMode] = useState<VitalsMode>("auto");
+  const [uiMotion, setUiMotion] = useState(true);
   const [hold, setHold] = useState(false);
   const order = useRef<string[]>([]);
   const [ended, setEnded] = useState<Set<number>>(() => new Set());
@@ -273,7 +295,7 @@ export default function Replica({
   const [onScreen, setOnScreen] = useState(true);
   const [tick, setTick] = useState(0);
   const later = useLater(loadPages, page !== "processes" && page !== "performance");
-  const { Services, Startup, Connections, History, Settings, About } = later ?? {};
+  const { Services, Startup, Connections, History, Settings, About, VisibilityDialog } = later ?? {};
   const Performance = useLater(loadPerformance, page === "performance")?.default;
   const sampled = page === "processes" || page === "performance";
   const running = !paused && !(ctrlHeld && sampled) && onScreen && !tray;
@@ -318,6 +340,7 @@ export default function Replica({
       sampleClock.rest = true;
     };
   }, [running, interval]);
+  useEffect(() => setIconsStill(!uiMotion), [uiMotion]);
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(null), 4200);
@@ -429,15 +452,22 @@ export default function Replica({
 
   const query = queries.processes ?? "";
   const cellContext = { byPid, tick, efficiency, priority };
+  // Hidden processes leave the lists only: totals and details keep counting them.
+  const hides = useCallback((p: Process) => hidesProcess(visibility, p), [visibility]);
+  const listed = useMemo(
+    () => (hideSystem.processes ? alive.filter((p) => !hides(p)) : alive),
+    [alive, hideSystem.processes, hides],
+  );
   let rows = buildRows({
     view,
     sort,
     descending,
     query,
-    list: alive,
+    list: listed,
     now,
     open,
     closed,
+    treeOpen,
     sortValue: (row) => columnSortValue(sort, row, cellContext),
   });
   // While the pointer rests on the list the row order holds; values keep updating.
@@ -455,14 +485,43 @@ export default function Replica({
     setDetailsMode(mode);
   };
 
+  // The band shows where the page has room for it and ten rows under the
+  // header (the app's vitals.rs), or as the setting says; it folds over 250 ms.
+  const processPage = useRef<HTMLDivElement>(null);
+  const [bandFits, setBandFits] = useState(true);
+  useEffect(() => {
+    const el = processPage.current;
+    if (!el) return;
+    const measure = () => {
+      const head = el.querySelector<HTMLElement>(".a-thead")?.offsetHeight ?? 66;
+      setBandFits(el.clientHeight >= 128 + 10 + head + 10 * 30 + 10 + 2);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [page]);
+  const bandShown = vitalsMode === "show" || (vitalsMode === "auto" && bandFits);
+  // Clipped only while it folds or opens; the curves keep their usual path at rest.
+  const [bandMoving, setBandMoving] = useState(false);
+  const bandWas = useRef(bandShown);
+  useIsoLayoutEffect(() => {
+    if (bandWas.current === bandShown) return;
+    bandWas.current = bandShown;
+    setBandMoving(true);
+    const id = setTimeout(() => setBandMoving(false), 300);
+    return () => clearTimeout(id);
+  }, [bandShown]);
+
   const toggleRow = (row: Row) => {
-    const folding = row.kind === "group" || view === "tree";
-    const set = folding ? closed : open;
+    const tree = row.kind !== "group" && view === "tree";
+    // A search opens the branches of its matches itself.
+    if (tree && query.trim()) return;
+    const [set, put] = row.kind === "group" ? [closed, setClosed] : tree ? [treeOpen, setTreeOpen] : [open, setOpen];
     const next = new Set(set);
     if (next.has(row.key)) next.delete(row.key);
     else next.add(row.key);
-    if (folding) setClosed(next);
-    else setOpen(next);
+    put(next);
   };
   const sortBy = (key: SortKey) => {
     if (key === sort) setDescending(!descending);
@@ -485,6 +544,14 @@ export default function Replica({
       headerMenu({
         column,
         prefs: columnPrefs,
+        tree:
+          view === "tree"
+            ? {
+                canExpand: !query.trim() && rows.some((r) => r.expandable && !r.expanded),
+                canCollapse: !query.trim() && treeOpen.size > 0,
+                onAll: (expand) => setTreeOpen(expand ? treeParents(listed) : new Set()),
+              }
+            : undefined,
         onSort: (key, desc) => {
           setSort(key);
           setDescending(desc);
@@ -496,6 +563,9 @@ export default function Replica({
       }),
     );
   const showPid = (pid: number) => {
+    // A hidden process is shown again to be found.
+    const target = byPid.get(pid);
+    if (target && hideSystem.processes && hides(target)) setHideSystem((h) => ({ ...h, processes: false }));
     go("processes");
     setQueries((q) => ({ ...q, processes: "" }));
     setView("list");
@@ -595,7 +665,15 @@ export default function Replica({
     const current = new Set(row.pids.map((pid) => priority.get(pid) ?? "正常"));
     const shared = current.size === 1 ? [...current][0] : null;
     const efficient = row.pids.every((pid) => efficiency.has(pid));
+    const branch = view === "tree" && row.expandable;
     return [
+      ...(branch
+        ? ([
+            { label: "展开", icon: "chevronDown", disabled: !!query.trim() || row.expanded, run: () => toggleRow(row) },
+            { label: "折叠", icon: "chevronRight", disabled: !!query.trim() || !row.expanded, run: () => toggleRow(row) },
+            "-",
+          ] satisfies MenuEntry[])
+        : []),
       { label: group ? `结束全部 ${row.count} 个进程` : "结束进程", icon: "end", hint: "Del", danger: true, run: () => end(row, true) },
       ...(group ? [] : [{ label: "结束进程树", icon: "branchEnd" as UiIcon, run: () => end(row, true, true) }]),
       ...(proc?.exe === "explorer.exe"
@@ -620,7 +698,7 @@ export default function Replica({
       { label: "效率模式", icon: "leaf", checked: efficient, run: () => toggleEfficiency(row) },
       { label: "添加规则", run: () => setDialog({ kind: "rule", row }) },
       "-",
-      ...(row.expandable ? [{ label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) }] : []),
+      ...(row.expandable && !branch ? [{ label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) }] : []),
       { label: "打开文件位置", icon: "folder", run: () => say(`演示窗口不会打开 ${proc?.path ?? "该位置"}。`, "info") },
       { label: "复制路径", icon: "copy", run: () => copy(proc?.path ?? "", "路径") },
       group
@@ -738,20 +816,47 @@ export default function Replica({
   const wide = level === 0;
   const serviceState = service ? serviceStates.get(service) : undefined;
 
+  const hidden = page === "connections" ? "connections" : "processes";
+  const hiding = hideSystem[hidden];
+  const hideToggle = (
+    <Button
+      key="hide-system"
+      icon="eyeOff"
+      className="a-hide-system"
+      title={
+        hiding
+          ? "显示系统进程"
+          : page === "connections"
+            ? "隐藏系统进程的连接及 PID 为 0 的无所属进程记录。仅影响列表显示。"
+            : "隐藏 Windows 系统组件及额外隐藏名单中的进程，保留始终显示名单。仅影响列表显示。"
+      }
+      label={hiding ? "显示系统进程" : "隐藏系统进程"}
+      pressed={hiding}
+      tour="hide-system"
+      onClick={() => setHideSystem((h) => ({ ...h, [hidden]: !h[hidden] }))}
+    />
+  );
+  const showAll = (list: "processes" | "connections") => {
+    setHideSystem((h) => ({ ...h, [list]: false }));
+    setQueries((q) => ({ ...q, [list]: "" }));
+  };
   const controls =
     page === "processes" ? (
-      <Segments
-        key="processes"
-        label="视图"
-        value={view}
-        onChange={setView}
-        iconsOnly={level === 2}
-        items={[
-          { value: "apps", label: "按应用", icon: "apps", title: "按应用：同一程序的多个进程合并为一行", tour: "view-apps" },
-          { value: "tree", label: "进程树", icon: "tree", title: "进程树：按父子关系显示", tour: "view-tree" },
-          { value: "list", label: "列表", icon: "list", title: "列表：所有进程平铺显示", tour: "view-list" },
-        ]}
-      />
+      <>
+        <Segments
+          key="processes"
+          label="视图"
+          value={view}
+          onChange={setView}
+          iconsOnly={level === 2}
+          items={[
+            { value: "apps", label: "按应用", icon: "apps", title: "按应用：同一程序的多个进程合并为一行", tour: "view-apps" },
+            { value: "tree", label: "进程树", icon: "tree", title: "进程树：按父子关系显示", tour: "view-tree" },
+            { value: "list", label: "列表", icon: "list", title: "列表：所有进程平铺显示", tour: "view-list" },
+          ]}
+        />
+        {hideToggle}
+      </>
     ) : page === "services" ? (
       <Segments
         key="services"
@@ -765,18 +870,21 @@ export default function Replica({
         ]}
       />
     ) : page === "connections" ? (
-      <Segments
-        key="connections"
-        label="筛选"
-        value={connectionFilter}
-        onChange={setConnectionFilter}
-        items={[
-          { value: "all", label: "全部", title: "所有 TCP 和 UDP 端点" },
-          { value: "listen", label: "监听", title: "正在等待连接的 TCP 端口" },
-          { value: "established", label: "已连接", title: "已建立的 TCP 连接" },
-          { value: "udp", label: "UDP", title: "UDP 端点" },
-        ]}
-      />
+      <>
+        <Segments
+          key="connections"
+          label="筛选"
+          value={connectionFilter}
+          onChange={setConnectionFilter}
+          items={[
+            { value: "all", label: "全部", title: "所有 TCP 和 UDP 端点" },
+            { value: "listen", label: "监听", title: "正在等待连接的 TCP 端口" },
+            { value: "established", label: "已连接", title: "已建立的 TCP 连接" },
+            { value: "udp", label: "UDP", title: "UDP 端点" },
+          ]}
+        />
+        {hideToggle}
+      </>
     ) : page === "history" ? (
       <>
         <Segments
@@ -853,6 +961,7 @@ export default function Replica({
       }}
       style={{ ...accent, "--a-rail": navLeft && navOpen ? "176px" : "48px", "--a-text": fontSize / 13 } as CSSProperties}
       onKeyDown={keys}
+      onPointerOver={hoverIcons}
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes("Files")) {
           event.preventDefault();
@@ -989,17 +1098,24 @@ export default function Replica({
               aria-label={pages[pageIndex][1]}
             >
               {page === "processes" && (
-                <div className="a-processes">
-                  <Vitals
-                    tick={tick}
-                    interval={interval}
-                    running={running}
-                    motion={motion}
-                    onOpen={(d) => {
-                      setDevice(d);
-                      go("performance");
-                    }}
-                  />
+                <div className="a-processes" ref={processPage}>
+                  <div
+                    className={"a-vitals-band" + (bandShown ? "" : " is-folded") + (bandMoving ? " is-moving" : "")}
+                    inert={bandShown ? undefined : true}
+                  >
+                    {(bandShown || bandMoving) && (
+                      <Vitals
+                        tick={tick}
+                        interval={interval}
+                        running={running && bandShown}
+                        motion={motion}
+                        onOpen={(d) => {
+                          setDevice(d);
+                          go("performance");
+                        }}
+                      />
+                    )}
+                  </div>
                   <div className={"a-work" + (query.trim() ? " is-filtered" : "")}>
                     <div className="a-work-clip">
                       <ProcessTable
@@ -1015,6 +1131,7 @@ export default function Replica({
                         descending={descending}
                         selected={selected}
                         filtered={!!query.trim()}
+                        hiding={hideSystem.processes ? { run: () => showAll("processes") } : undefined}
                         efficiency={efficiency}
                         onSort={sortBy}
                         onToggle={toggleRow}
@@ -1098,6 +1215,8 @@ export default function Replica({
                     alive={alive}
                     filter={connectionFilter}
                     query={queries.connections ?? ""}
+                    hidden={hideSystem.connections ? hides : undefined}
+                    onShowAll={() => showAll("connections")}
                     onOpen={showPid}
                     onMenu={(event, items) => showMenu({ x: event.clientX, y: event.clientY }, items)}
                   />
@@ -1119,6 +1238,11 @@ export default function Replica({
                     onScale={setScale}
                     fontSize={fontSize}
                     onFontSize={setFontSize}
+                    vitals={vitalsMode}
+                    onVitals={setVitalsMode}
+                    uiMotion={uiMotion}
+                    onUiMotion={setUiMotion}
+                    onVisibility={() => setDialog({ kind: "visibility" })}
                     onSay={(text) => say(text, "info")}
                   />
                 )}
@@ -1344,6 +1468,16 @@ export default function Replica({
                   </button>
                 </div>
               </div>
+            )}
+            {dialog.kind === "visibility" && VisibilityDialog && (
+              <VisibilityDialog
+                rules={visibility}
+                onSave={(next) => {
+                  setVisibility(next);
+                  setDialog(null);
+                }}
+                onClose={() => setDialog(null)}
+              />
             )}
             {dialog.kind === "columns" && (
               <ColumnsDialog

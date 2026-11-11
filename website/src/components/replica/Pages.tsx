@@ -19,7 +19,9 @@ import {
   connections,
   noise,
   percent,
+  defaultVisibility,
   processes,
+  programNames,
   rate,
   rateLabel,
   startLabel,
@@ -27,6 +29,7 @@ import {
   type Process,
   type Service,
   type StartupItem,
+  type VisibilityRules,
   historyRanges,
   type HistoryRange,
 } from "./model";
@@ -347,12 +350,17 @@ export function Connections({
   alive,
   filter,
   query,
+  hidden,
+  onShowAll,
   onOpen,
   onMenu,
 }: {
   alive: Process[];
   filter: ConnectionFilter;
   query: string;
+  /** While system processes are hidden: whether a process is one of them. */
+  hidden?: (proc: Process) => boolean;
+  onShowAll: () => void;
   onOpen: (pid: number) => void;
   onMenu: OpenMenu;
 }) {
@@ -365,6 +373,8 @@ export function Connections({
   const visible = connections
     .map((c, index) => ({ ...c, index, proc: byPid.get(c.pid) }))
     .filter((c) => {
+      // Hidden with their processes, and the records no process owns (PID 0).
+      if (hidden && (c.pid === 0 || (c.proc && hidden(c.proc)))) return false;
       if (filter === "listen" && c.state !== "listen") return false;
       if (filter === "established" && c.state !== "established") return false;
       if (filter === "udp" && c.protocol !== "UDP") return false;
@@ -421,9 +431,17 @@ export function Connections({
             ]}
           />
           <div className="a-tbody a-scroll" role="rowgroup" tabIndex={0}>
-            {rows.length === 0 && (
-              <p className="a-empty">{port !== null ? `没有匹配的连接：没有程序在使用端口 ${port}` : "没有匹配的连接"}</p>
-            )}
+            {rows.length === 0 &&
+              (hidden ? (
+                <div className="a-empty">
+                  <span>当前筛选条件下没有可显示的项目。</span>
+                  <button type="button" className="a-btn" onClick={onShowAll}>
+                    显示全部并清除筛选
+                  </button>
+                </div>
+              ) : (
+                <p className="a-empty">{port !== null ? `没有匹配的连接：没有程序在使用端口 ${port}` : "没有匹配的连接"}</p>
+              ))}
             {rows.map((c) => {
               const gone = !living.has(c.pid);
               return (
@@ -767,7 +785,90 @@ export function History({
   );
 }
 
+export function VisibilityDialog({
+  rules,
+  onSave,
+  onClose,
+}: {
+  rules: VisibilityRules;
+  onSave: (rules: VisibilityRules) => void;
+  onClose: () => void;
+}) {
+  const [keep, setKeep] = useState(rules.keep.join(", "));
+  const [hide, setHide] = useState(rules.hide.join(", "));
+  const [invalid, setInvalid] = useState(false);
+  const save = () => {
+    const kept = programNames(keep),
+      hidden = programNames(hide);
+    if (!kept || !hidden) setInvalid(true);
+    else onSave({ keep: kept, hide: hidden });
+  };
+  const field = (label: string, hint: string, value: string, put: (value: string) => void, placeholder?: string) => (
+    <div className="a-rule">
+      <span>{label}</span>
+      <label className="a-field">
+        <input
+          value={value}
+          onChange={(event) => put(event.target.value)}
+          placeholder={placeholder}
+          aria-label={label}
+          spellCheck={false}
+          autoComplete="off"
+        />
+      </label>
+      <small>{hint}</small>
+    </div>
+  );
+  return (
+    <form
+      className="a-dialog is-visibility"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="a-dialog-title"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save();
+      }}
+    >
+      <div className="a-dialog-body a-scroll">
+        <h3 id="a-dialog-title">编辑隐藏规则</h3>
+        <p className="a-dialog-text">按 Windows 组件信息识别系统进程。两页共用以下规则，隐藏开关分别保存。</p>
+        {field("始终显示", "即使属于系统进程，也保留这些程序。此名单优先于额外隐藏。", keep, setKeep)}
+        {field("额外隐藏", "开启隐藏时一并隐藏这些程序。留空时仅隐藏系统进程。", hide, setHide, "额外隐藏")}
+        <p className="a-rule-note">填写程序文件名，以逗号或分号分隔，不区分大小写，每项名单最多 128 个。</p>
+        {invalid && (
+          <p className="a-rule-error" role="alert">
+            请填写有效的程序文件名，不含路径或通配符，每项名单最多 128 个。
+          </p>
+        )}
+      </div>
+      <div className="a-dialog-foot">
+        <button type="submit" className="a-btn is-accent" data-primary>
+          保存
+        </button>
+        <button
+          type="button"
+          className="a-btn"
+          onClick={() => {
+            setKeep(defaultVisibility.keep.join(", "));
+            setHide("");
+            setInvalid(false);
+          }}
+        >
+          恢复默认规则
+        </button>
+        <button type="button" className="a-btn" onClick={onClose}>
+          取消
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export type ThemeChoice = "site" | "light" | "dark";
+export type VitalsMode = "auto" | "show" | "hide";
+// The accelerating proxies the updater knows (argus-app config.rs, PROXY_PRESETS).
+const proxies = ["gh-proxy.com", "gh-proxy.org", "ghfast.top"];
 const sections: [string, string, UiIcon][] = [
   ["language", "语言与外观", "globe"],
   ["startup", "启动与后台", "power"],
@@ -778,13 +879,27 @@ const sections: [string, string, UiIcon][] = [
   ["rules", "规则", "bolt"],
   ["update", "更新", "update"],
 ];
-function Setting({ icon, title, desc, children }: { icon: UiIcon; title: string; desc?: ReactNode; children?: ReactNode }) {
+function Setting({
+  icon,
+  title,
+  desc,
+  note,
+  children,
+}: {
+  icon: UiIcon;
+  title: string;
+  desc?: ReactNode;
+  /** A second line under the description. */
+  note?: string;
+  children?: ReactNode;
+}) {
   return (
     <div className="a-setting">
       <Icon name={icon} />
       <div className="a-setting-text">
         <div>{title}</div>
         {desc && <span>{desc}</span>}
+        {note && <span>{note}</span>}
       </div>
       {children && <div className="a-setting-controls">{children}</div>}
     </div>
@@ -845,6 +960,11 @@ export function Settings({
   onScale,
   fontSize,
   onFontSize,
+  vitals,
+  onVitals,
+  uiMotion,
+  onUiMotion,
+  onVisibility,
   onSay,
 }: {
   theme: ThemeChoice;
@@ -859,20 +979,33 @@ export function Settings({
   onScale: (scale: number) => void;
   fontSize: number;
   onFontSize: (size: number) => void;
+  vitals: VitalsMode;
+  onVitals: (mode: VitalsMode) => void;
+  uiMotion: boolean;
+  onUiMotion: (on: boolean) => void;
+  onVisibility: () => void;
   onSay: (text: string) => void;
 }) {
   const [values, setValues] = useState({
     autostart: false,
     tray: true,
     hotkey: true,
-    ui: true,
+    windowMotion: true,
     history: true,
     autoUpdate: true,
+    whatsNew: true,
+    star: true,
     bits: false,
     startPage: "processes",
+    trayPage: "current",
     minimized: 5000,
     background: 5000,
+    release: 10,
+    channel: "stable",
+    route: "auto",
+    proxy: proxies[0],
   });
+  const [customProxy, setCustomProxy] = useState("");
   const [languageChoice, setLanguageChoice] = useState<Language | "system">(language);
   const set = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
@@ -987,6 +1120,22 @@ export function Settings({
             <span className="a-unit">px</span>
             <Button onClick={() => onFontSize(13)}>恢复默认</Button>
           </Setting>
+          <Setting icon="gauge" title="进程概况带" desc="自动模式预留概况带与 10 行进程的空间，空间不足时收起。折叠或筛选不影响此判断。">
+            <Select
+              label="进程概况带"
+              context="vitals"
+              value={vitals}
+              onChange={onVitals}
+              options={[
+                { value: "auto", label: "自动" },
+                { value: "show", label: "始终显示" },
+                { value: "hide", label: "隐藏" },
+              ]}
+            />
+          </Setting>
+          <Setting icon="eyeOff" title="系统进程隐藏规则" desc="自定义始终显示和额外隐藏的程序。进程页与连接页共用规则，通过工具栏图标开启隐藏。">
+            <Button onClick={onVisibility}>编辑隐藏规则</Button>
+          </Setting>
         </section>
         <section>
           <h2>启动与后台</h2>
@@ -1005,6 +1154,17 @@ export function Settings({
                 { value: "startup", label: "启动" },
                 { value: "connections", label: "连接" },
                 { value: "history", label: "历史" },
+              ]}
+            />
+          </Setting>
+          <Setting icon="tray" title="从托盘打开" desc="通过托盘或快捷键重新打开窗口时生效。最小化恢复仍保留当前页面。">
+            <Select
+              label="从托盘打开"
+              value={values.trayPage}
+              onChange={(v) => set("trayPage", v)}
+              options={[
+                { value: "current", label: "保留当前页面" },
+                { value: "default", label: "打开默认页面" },
               ]}
             />
           </Setting>
@@ -1045,7 +1205,7 @@ export function Settings({
           <Setting
             icon="shield"
             title="特权服务"
-            desc="使以标准权限运行的 Argus 能够管理系统进程、自动应用规则、采集每进程网络流量与磁盘读写、查询文件占用，以及控制服务和断开 IPv4 TCP 连接。安装和卸载均需要管理员授权。"
+            desc="使以标准权限运行的 Argus 能够管理系统进程、自动应用规则、采集每进程网络流量与磁盘读写、查询文件占用与磁盘 SMART 信息，以及控制服务和断开 IPv4 TCP 连接。安装和卸载均需要管理员授权。"
           >
             <span className="a-pill is-ok">{`已连接 · ${appVersion}`}</span>
           </Setting>
@@ -1060,15 +1220,18 @@ export function Settings({
           <Setting
             icon="keyboard"
             title="替换系统任务管理器"
-            desc="使 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。"
+            desc="使 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。更新特权服务时同步更新替换程序并保持开启；卸载服务时恢复 Windows 任务管理器。"
           >
             <span className="a-pill">使用 Windows 任务管理器</span>
           </Setting>
         </section>
         <section>
           <h2>动画</h2>
-          <Setting icon="sparkle" title="界面动画" desc="窗口显示与隐藏时的淡入淡出、页面和弹窗的过渡，以及滑动的选中标记。默认跟随 Windows 的“动画效果”设置。">
-            <Switch state label="界面动画" checked={values.ui} onChange={(v) => set("ui", v)} />
+          <Setting icon="genericApp" title="窗口过渡动画" desc="窗口显示、隐藏、最小化与还原时的淡入淡出。关闭后由系统或其他窗口管理软件处理窗口过渡。默认跟随 Windows 的“动画效果”设置。">
+            <Switch state label="窗口过渡动画" checked={values.windowMotion} onChange={(v) => set("windowMotion", v)} />
+          </Setting>
+          <Setting icon="sparkle" title="界面动画" desc="页面和弹窗的过渡、滑动的选中标记，以及图标的动效。默认跟随 Windows 的“动画效果”设置。">
+            <Switch state label="界面动画" checked={uiMotion} onChange={onUiMotion} />
           </Setting>
           <Setting
             icon="pulse"
@@ -1088,8 +1251,8 @@ export function Settings({
         </section>
         <section>
           <h2>数据与历史</h2>
-          <Setting icon="timer" title="刷新间隔" desc="间隔越短，曲线越精细，Argus 自身的资源开销也越高。">
-            <Select label="刷新间隔" value={interval} onChange={onInterval} options={intervals} />
+          <Setting icon="timer" title="刷新频率" desc="间隔越短，曲线越精细，Argus 自身的资源开销也越高。">
+            <Select label="刷新频率" value={interval} onChange={onInterval} options={intervals} />
           </Setting>
           <Setting
             icon="minimize"
@@ -1104,6 +1267,17 @@ export function Settings({
             desc="隐藏到托盘后按此间隔采样，托盘的悬停提示随之更新。间隔越长，后台开销越低，但规则对新启动程序的生效最多延后一个间隔；长于 5 秒时，历史记录也随之变稀。"
           >
             <Select label="后台常驻时的刷新间隔" value={values.background} onChange={(v) => set("background", v)} options={slow} />
+          </Setting>
+          <Setting icon="memory" title="隐藏时释放内存" desc="窗口最小化或隐藏到托盘达到设定时长后，Argus 释放图表图像，并将未使用的内存归还 Windows。采样和历史记录照常进行。再次打开窗口时会先重绘图表，可能稍有停顿。">
+            <Select
+              label="隐藏时释放内存"
+              value={values.release}
+              onChange={(v) => set("release", v)}
+              options={[0, 1, 10, 30].map((minutes) => ({
+                value: minutes,
+                label: minutes ? `${minutes} 分钟后` : "从不",
+              }))}
+            />
           </Setting>
           <Setting
             icon="transfer"
@@ -1150,11 +1324,70 @@ export function Settings({
         </section>
         <section>
           <h2>更新</h2>
-          <Setting icon="update" title="已是最新版本" desc={`当前版本 ${appVersion} · 稳定版`}>
+          <Setting icon="update" title="已是最新版本" desc={`当前版本 ${appVersion} · 稳定版`} note="更新来自 GitHub Releases 或 Argus 官方镜像，安装前校验安装包签名。">
             <Button onClick={() => onSay("已是最新版本。")}>检查更新</Button>
           </Setting>
-          <Setting icon="update" title="自动检查更新" desc="启动约 1 分钟后检查一次，此后每天检查一次。新版本在后台下载，安装需手动确认。">
+          <Setting icon="timer" title="自动检查更新" desc="启动约 1 分钟后检查一次，此后每天检查一次。新版本在后台下载，安装需手动确认。">
             <Switch state label="自动检查更新" checked={values.autoUpdate} onChange={(v) => set("autoUpdate", v)} />
+          </Setting>
+          <Setting icon="notes" title="更新后显示更新内容" desc="更新完成后首次打开窗口时显示新版本的更新内容，每个版本仅显示一次。关闭此项后，仅在右下角提示已更新。">
+            <Button onClick={() => onSay("演示窗口不显示更新内容，可在官网的“更新日志”页查看。")}>查看本版本更新</Button>
+            <Switch state label="更新后显示更新内容" checked={values.whatsNew} onChange={(v) => set("whatsNew", v)} />
+          </Setting>
+          <Setting icon="sparkle" title="更新通道" desc="测试版提前提供新功能，稳定性可能不及稳定版。由测试版切换到稳定版后，需等到稳定版的版本号高于当前版本时才会更新。">
+            <Select
+              label="更新通道"
+              value={values.channel}
+              onChange={(v) => set("channel", v)}
+              options={[
+                { value: "stable", label: "稳定版" },
+                { value: "beta", label: "测试版" },
+              ]}
+            />
+          </Setting>
+          <Setting icon="globe" title="下载线路" desc="加速代理由第三方提供，可获知本机的 IP 地址及所下载的文件。安装包签名同时覆盖版本号，代理无法篡改更新，也无法以旧版本冒充新版本。">
+            <Select
+              label="下载线路"
+              value={values.route}
+              onChange={(v) => set("route", v)}
+              options={[
+                { value: "auto", label: "自动（GitHub、官方镜像、加速代理）" },
+                { value: "direct", label: "仅连接 GitHub" },
+                { value: "proxy", label: "仅使用加速代理" },
+              ]}
+            />
+          </Setting>
+          {values.route !== "direct" && (
+            <Setting
+              icon="transfer"
+              title="加速代理"
+              desc={values.route === "auto" ? "GitHub 和官方镜像均连接失败时，依次尝试此代理和其他内置代理。" : "所有更新请求均经由此代理。"}
+            >
+              <Select
+                label="加速代理"
+                value={values.proxy}
+                onChange={(v) => set("proxy", v)}
+                options={[...proxies.map((host) => ({ value: host, label: host })), { value: "custom", label: "自定义…" }]}
+              />
+            </Setting>
+          )}
+          {values.route !== "direct" && values.proxy === "custom" && (
+            <Setting icon="globe" title="自定义代理" desc="添加在 GitHub 地址之前的前缀，须使用 https，例如 https://example.com/。">
+              <input
+                className="a-number"
+                style={{ width: 220 }}
+                value={customProxy}
+                onChange={(event) => setCustomProxy(event.target.value)}
+                placeholder="https://"
+                aria-label="自定义代理地址"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <Button disabled={!customProxy.trim()}>保存</Button>
+            </Setting>
+          )}
+          <Setting icon="star" title="Star 提醒" desc="每天在窗口右下角提醒一次，邀请在 GitHub 上为 Argus 点亮 Star。从提醒前往 GitHub 或选择“不再提醒”后，此项自动关闭。">
+            <Switch state label="Star 提醒" checked={values.star} onChange={(v) => set("star", v)} />
           </Setting>
         </section>
       </div>

@@ -360,6 +360,11 @@ html:is(:lang(zh-TW), :lang(ja)) .argus-app { font-family: var(--font); --a-disp
 .a-btn[aria-pressed="true"] {
   color: var(--a-accent);
 }
+/* The switch that hides system processes is tinted in the accent while it is on. */
+.a-btn.a-hide-system[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--a-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--a-accent) 14%, transparent);
+}
 .a-btn.is-accent,
 .a-button.is-accent {
   border-color: transparent;
@@ -995,13 +1000,26 @@ html:is(:lang(zh-TW), :lang(ja)) .argus-app { font-family: var(--font); --a-disp
   color: var(--a-ink-2);
 }
 
-/* Processes page: the vitals band 10 px above the list's card. */
+/* Processes page: the vitals band 10 px above the list's card. The band
+   folds away where the page has no room for it and ten rows, or when the
+   setting hides it; it is clipped only while it folds or opens. */
 .a-processes {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   flex: 1;
   min-height: 0;
+}
+.a-vitals-band {
+  flex: none;
+  height: 138px;
+  transition: height 250ms cubic-bezier(0.33, 0, 0.1, 1);
+}
+.a-vitals-band.is-folded {
+  height: 0;
+}
+.a-vitals-band.is-folded,
+.a-vitals-band.is-moving {
+  overflow: clip;
 }
 .a-vitals {
   display: flex;
@@ -3293,6 +3311,31 @@ button.a-th:active {
 }
 .a-dialog.is-lock {
   width: min(620px, 100%);
+}
+/* The hiding rules: two lists of program names, each under its label, over a hint. */
+.a-dialog.is-visibility {
+  width: min(580px, 100%);
+}
+.a-dialog.is-visibility .a-dialog-foot > .a-btn {
+  min-width: 0;
+}
+.a-rule {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+.a-rule small,
+.a-rule-note {
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.a-rule-note,
+.a-rule-error {
+  margin: 14px 0 0;
+}
+.a-rule-error {
+  color: var(--a-danger);
 }
 .a-dialog-body {
   flex: 1;

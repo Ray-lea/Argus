@@ -302,12 +302,15 @@ export const columnSortValue = (key: string, row: Row, ctx: CellContext) => {
 };
 
 // ---------------------------------------------------------------------------
-// The header's menu: the column under the pointer sorted or hidden; every
-// column by category, checked where it is (the submenu stays open); then the
-// dialog, automatic widths and the defaults.
+// The header's menu: in the tree, every branch opened or folded; the column
+// under the pointer sorted or hidden; every column by category, checked where
+// it is (the submenu stays open); then the dialog, automatic widths and the
+// defaults.
 export function headerMenu(o: {
   column: string | null;
   prefs: ColumnPrefs;
+  /** The tree view: whether a branch can still open, whether one is open. */
+  tree?: { canExpand: boolean; canCollapse: boolean; onAll: (expand: boolean) => void };
   onSort: (key: string, descending: boolean) => void;
   onToggle: (key: string) => void;
   onChoose: () => void;
@@ -315,6 +318,13 @@ export function headerMenu(o: {
   onReset: () => void;
 }): MenuEntry[] {
   const items: MenuEntry[] = [];
+  const tree = o.tree;
+  if (tree)
+    items.push(
+      { label: "展开所有", icon: "expandAll", disabled: !tree.canExpand, run: () => tree.onAll(true) },
+      { label: "折叠所有", icon: "collapseAll", disabled: !tree.canCollapse, run: () => tree.onAll(false) },
+      "-",
+    );
   const at = o.column ? byKey.get(o.column) : undefined;
   if (at) {
     items.push(

@@ -44,6 +44,9 @@ const chapters: Chapter[] = [
       { label: "右键菜单：结束进程树、设置优先级、效率模式与规则", find: (a) => a.querySelector(".a-tbody .a-tr.is-selected, .a-tbody .a-tr[data-key]"), menu: true, hold: 2200 },
       { label: "为该进程开启效率模式", find: (a) => byText(a, ".a-menu [role^=menuitem]", "效率模式") },
       { label: "切换到进程树，按父子关系查看", find: tour("view-tree") },
+      // The tree starts folded to its roots: the header's menu opens every branch.
+      { label: "展开所有", find: tour("col-name"), menu: true },
+      { label: "展开所有", find: (a) => byText(a, ".a-menu [role^=menuitem]", "展开所有") },
       { label: "回到按应用分组", find: tour("view-apps") },
       { label: "按名称排序", find: tour("col-name") },
     ],

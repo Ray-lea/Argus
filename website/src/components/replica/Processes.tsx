@@ -118,6 +118,8 @@ interface BuildOptions {
   now: Map<number, Reading>;
   open: Set<string>;
   closed: Set<string>;
+  /** The tree's branches shown open; the rest stay folded, as the app starts. */
+  treeOpen: Set<string>;
   /** What a column other than the name, PID and the live readings sorts by. */
   sortValue?: (row: Row) => number | string;
 }
@@ -199,7 +201,7 @@ export function buildRows(o: BuildOptions): Row[] {
         .map((proc) => {
           const row = named(proc, depth);
           row.expandable = children.has(proc.pid);
-          row.expanded = row.expandable && (!o.closed.has(row.key) || !!o.query.trim());
+          row.expanded = row.expandable && (o.treeOpen.has(row.key) || !!o.query.trim());
           return row;
         });
       for (const row of rows.sort(compare)) {
@@ -267,6 +269,12 @@ export function buildRows(o: BuildOptions): Row[] {
     }
   } else units.sort(compare).forEach(pushUnit);
   return out;
+}
+
+/** The tree's branches: every process with a child in the list. */
+export function treeParents(list: Process[]) {
+  const pids = new Set(list.map((p) => p.pid));
+  return new Set(list.filter((p) => p.ppid !== p.pid && pids.has(p.ppid)).map((p) => "p:" + p.ppid));
 }
 
 export function useSystemHistory(tick: number) {
@@ -451,6 +459,8 @@ interface TableProps {
   descending: boolean;
   selected: string | null;
   filtered: boolean;
+  /** What the empty list says while system processes are hidden, with the button that shows them. */
+  hiding?: { run: () => void };
   efficiency: Set<number>;
   onSort: (key: SortKey) => void;
   onToggle: (row: Row) => void;
@@ -613,7 +623,17 @@ export function ProcessTable(t: TableProps) {
         onPointerEnter={() => t.onHold(true)}
         onPointerLeave={() => t.onHold(false)}
       >
-        {t.rows.length === 0 && <p className="a-empty">没有匹配的进程</p>}
+        {t.rows.length === 0 &&
+          (t.hiding ? (
+            <div className="a-empty">
+              <span>当前筛选条件下没有可显示的项目。</span>
+              <button type="button" className="a-btn" onClick={t.hiding.run}>
+                显示全部并清除筛选
+              </button>
+            </div>
+          ) : (
+            <p className="a-empty">没有匹配的进程</p>
+          ))}
         {t.rows.map((row) =>
           row.kind === "group" ? (
             <div
