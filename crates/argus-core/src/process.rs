@@ -29,10 +29,12 @@ use crate::paths::PathResolver;
 use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, ticks_to_unix_ms};
 use crate::webview::{self, Instance, WebViewInfo};
 
+mod facts;
 #[cfg(test)]
 mod lifecycle_tests;
 mod query;
 mod roster;
+pub use facts::Facts;
 use query::ProcessQuery;
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -113,53 +115,6 @@ pub struct ProcessRow {
     pub windows_process: bool,
 }
 
-/// What stays fixed for a process instance, read through its query handle.
-#[derive(Debug, Clone, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Facts {
-    pub command_line: Option<Arc<str>>,
-    /// `x64` | `x86` | `arm64` | `arm`
-    pub architecture: Option<&'static str>,
-    pub elevated: Option<bool>,
-}
-
-/// Reads of a process's facts, taken in as many samples. A process that has
-/// only just started may not have its command line in place yet; what is
-/// still missing after these stays unknown.
-const FACT_READS: u8 = 3;
-
-impl Facts {
-    fn complete(&self) -> bool {
-        self.command_line.is_some() && self.architecture.is_some() && self.elevated.is_some()
-    }
-
-    /// Reads what is still missing.
-    fn fill(&mut self, process: HANDLE) {
-        self.fill_with(
-            || crate::details::command_line(process),
-            || crate::details::architecture(process),
-            || crate::details::elevated(process),
-        );
-    }
-
-    fn fill_with(
-        &mut self,
-        command_line: impl FnOnce() -> Option<String>,
-        architecture: impl FnOnce() -> Option<&'static str>,
-        elevated: impl FnOnce() -> Option<bool>,
-    ) {
-        if self.command_line.is_none() {
-            self.command_line = command_line().map(Into::into);
-        }
-        if self.architecture.is_none() {
-            self.architecture = architecture();
-        }
-        if self.elevated.is_none() {
-            self.elevated = elevated();
-        }
-    }
-}
-
 /// Additional columns from the same system snapshot, without per-process queries.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -218,10 +173,11 @@ struct Tracked {
     /// Query handle, opened once per running instance and released when its
     /// snapshot has no threads. Access denial is final for that instance.
     handle: Option<OwnedHandle>,
-    /// Read through `handle`, up to `FACT_READS` times while incomplete; an
-    /// instance without a handle has none. WebView parsing uses its command line.
+    /// Read on the facts thread, up to `facts::READS` times while incomplete;
+    /// an instance without a query handle has none.
     facts: Facts,
     fact_reads: u8,
+    fact_pending: bool,
     web_view: Option<Box<webview::State>>,
     package: Option<Box<Package>>,
 }
@@ -254,6 +210,7 @@ pub(crate) struct ProcessTracker {
     generation: bool,
     paths: PathResolver,
     meta: Arc<MetaStore>,
+    facts: Option<facts::Reader>,
     last_instant: Option<Instant>,
     last_aligned: bool,
     last_systime: i64,
@@ -275,6 +232,7 @@ impl ProcessTracker {
             generation: false,
             paths: PathResolver::new(),
             meta,
+            facts: facts::Reader::new(),
             last_instant: None,
             last_aligned: false,
             last_systime: 0,
@@ -317,6 +275,14 @@ impl ProcessTracker {
         precise_idle_fraction: Option<f64>,
     ) -> Vec<ProcessRow> {
         let poll_started = Instant::now();
+        if let Some(reader) = &self.facts {
+            for (key, facts) in reader.answers() {
+                if let Some(entry) = self.tracked.get_mut(&key) {
+                    entry.facts.merge(facts);
+                    entry.fact_pending = false;
+                }
+            }
+        }
         let Some((buf, returned, observed)) = self
             .query
             .as_mut()
@@ -439,6 +405,7 @@ impl ProcessTracker {
                             handle,
                             facts: Facts::default(),
                             fact_reads: 0,
+                            fact_pending: false,
                             web_view: runtime,
                             package,
                         }),
@@ -453,19 +420,25 @@ impl ProcessTracker {
                 // final CPU and I/O counters still come from this snapshot.
                 entry.handle = None;
             }
-            if let Some(handle) = &entry.handle
-                && entry.fact_reads < FACT_READS
+            if let Some(runtime) = entry.web_view.as_mut() {
+                runtime.query(entry.handle.as_ref().map(|h| h.0));
+                self.webviews.push((rows.len(), key));
+                // The WebView parser reads the line on this thread anyway.
+                if entry.facts.command_line.is_none() {
+                    entry.facts.command_line = runtime.command_line().cloned();
+                }
+            }
+            if entry.handle.is_some()
+                && !entry.fact_pending
+                && entry.fact_reads < facts::READS
                 && !entry.facts.complete()
+                && self
+                    .facts
+                    .as_ref()
+                    .is_some_and(|reader| reader.request(key, entry.facts.clone()))
             {
                 entry.fact_reads += 1;
-                entry.facts.fill(handle.0);
-            }
-            if let Some(runtime) = entry.web_view.as_mut() {
-                let settled = entry.handle.is_none()
-                    || entry.facts.complete()
-                    || entry.fact_reads >= FACT_READS;
-                runtime.learn_command_line(entry.facts.command_line.as_deref(), settled);
-                self.webviews.push((rows.len(), key));
+                entry.fact_pending = true;
             }
             if entry.meta.is_none()
                 && let Some(path) = &entry.path
@@ -804,55 +777,6 @@ mod tests {
         assert!(super::cache_expired(None, at));
     }
     use super::*;
-
-    #[test]
-    fn facts_of_the_current_process_are_read_and_serialized_as_columns() {
-        let handle = OwnedHandle(
-            unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, std::process::id()) }
-                .unwrap(),
-        );
-        let mut facts = Facts::default();
-        facts.fill(handle.0);
-        let exe = std::env::current_exe().unwrap();
-        let stem = exe.file_stem().unwrap().to_string_lossy().to_lowercase();
-        assert!(
-            facts
-                .command_line
-                .as_deref()
-                .is_some_and(|line| line.to_lowercase().contains(&stem))
-        );
-        let expected = if cfg!(target_arch = "aarch64") {
-            "arm64"
-        } else if cfg!(target_arch = "x86") {
-            "x86"
-        } else {
-            "x64"
-        };
-        assert_eq!(facts.architecture, Some(expected));
-        assert!(facts.elevated.is_some());
-        let row = serde_json::to_value(ProcessRow {
-            facts,
-            ..Default::default()
-        })
-        .unwrap();
-        assert!(row["commandLine"].is_string());
-        assert_eq!(row["architecture"], expected);
-        assert!(row["elevated"].is_boolean());
-    }
-
-    #[test]
-    fn later_reads_fill_only_the_facts_still_missing() {
-        let mut facts = Facts::default();
-        facts.fill_with(|| None, || Some("x64"), || Some(false));
-        assert!(!facts.complete());
-        facts.fill_with(
-            || Some("app.exe --flag".into()),
-            || panic!("architecture is known"),
-            || panic!("elevation is known"),
-        );
-        assert!(facts.complete());
-        assert_eq!(facts.command_line.as_deref(), Some("app.exe --flag"));
-    }
 
     #[test]
     fn extra_counters_keep_native_units_and_clamp_invalid_signed_values() {

@@ -336,6 +336,7 @@ impl Row {
                 | "ppid"
                 | "sessionId"
                 | "createTime"
+                | "elevated"
                 | "gpu"
                 | "gpuDedicated"
                 | "gpuShared"
@@ -1692,6 +1693,12 @@ mod tests {
         assert_eq!(process.column_text("imageName"), Some("sample.exe"));
         assert_eq!(process.column_text("commandLine"), Some("sample.exe --one"));
         assert_eq!(process.metric("elevated"), Some(0.));
+        // A cached per-instance fact isn't waiting on the counter query.
+        let mut reused = processes[0].clone();
+        reused["sampleReused"] = json!(true);
+        let reused = Row::process(reused, 0);
+        assert!(!reused.native_pending("elevated"));
+        assert!(reused.native_pending("workingSet"));
     }
 
     #[test]
