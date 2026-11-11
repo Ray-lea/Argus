@@ -68,7 +68,7 @@ const HELP = `用法：node scripts/release.mjs <命令>
   verify <标签>            核对标签与各处版本号、CHANGELOG.md 条目、CHANGELOG.en.md 中已译完的英文
                            条目、更新公钥；本地已有该标签时，还核对它指向当前提交、版本文件与两份
                            更新日志都已提交（发布工作流的第一步；推送标签前先在本地运行）
-  notes <版本>             打印 GitHub Release 的正文：该版本的中文与英文发布说明（发布工作流使用）
+  notes <版本>             打印 GitHub Release 正文：中英文发布说明及双语下载文件说明（发布工作流使用）
   release-notes <版本> <输出文件>
                            写出应用内更新对话框显示的更新内容：该版本及之前最近 ${NOTES_RELEASES} 个
                            版本的条目，附英文译文（JSON，发布工作流签名后放进清单）
@@ -521,12 +521,14 @@ function requirePubkey() {
   if (!JSON.parse(read(APP_CONF)).updater?.pubkey) fail(`${APP_CONF} 没有配置更新签名公钥`);
 }
 
-/** The GitHub release's text: the Chinese notes, then the English ones when there are any. */
+/** The GitHub release's changes followed by the bilingual download guide. */
 function cmdNotes([version]) {
   const notes = version && readNotes(version);
   if (!notes) fail(`${CHANGELOG} 里没有 ${version ?? "（未指定版本）"} 的条目`);
   const english = readEnglishEntries().find((e) => e.version === version)?.notes;
-  console.log(english ? `## 简体中文\n\n${notes}\n\n## English\n\n${english}` : notes);
+  const changes = english ? `## 简体中文\n\n${notes}\n\n## English\n\n${english}` : notes;
+  const downloads = read("scripts/lib/release-downloads.md").trim().replaceAll("{{version}}", version);
+  console.log(`${changes}\n\n---\n\n${downloads}`);
 }
 
 /**
