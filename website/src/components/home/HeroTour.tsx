@@ -60,6 +60,7 @@ const chapters: Chapter[] = [
       { label: "每个逻辑处理器一张曲线，区分性能核与能效核", find: tour("graph-logical") },
       { label: "查看内存的使用情况", find: tour("device-memory") },
       { label: "查看磁盘的读写速率与活动时间", find: tour("device-disk") },
+      { label: "磁盘详情：健康状况、剩余寿命与 SMART 属性", find: (a) => [...a.querySelectorAll<HTMLElement>(".a-disk-controls .a-seg button")].at(-1), hold: 2600 },
       { label: "查看显卡的引擎占用与专用显存", find: tour("device-gpu") },
     ],
   },

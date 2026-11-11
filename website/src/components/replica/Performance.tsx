@@ -28,10 +28,23 @@ interface Props {
   running: boolean;
   motion: Motion;
   device: Device;
+  /** The pages chosen within the devices; the window keeps them. */
+  pages: PerformancePages;
+  onPages: (pages: Partial<PerformancePages>) => void;
   processCount: number;
   threads: number;
   handles: number;
   onDevice: (device: Device) => void;
+}
+// Which page of a device shows: the CPU's overview (as one curve or one per
+// logical processor, all of them or one kind of core) or its details, and the
+// disk's overview or its details. The window holds them, so that they outlast
+// a visit to another page and the home page can ask for one of them.
+export interface PerformancePages {
+  cpuPage: "overview" | "details";
+  graph: "overall" | "logical";
+  filter: "all" | "p" | "e";
+  diskPage: "overview" | "details";
 }
 interface CurveProps {
   tick: number;
@@ -151,10 +164,11 @@ const split = (text: string): [string, string] => {
 
 const devices: Device[] = ["cpu", "memory", "disk", "wifi", "gpu", "battery"];
 export default function Performance(p: Props) {
-  const [graph, setGraph] = useState<"overall" | "logical">("overall");
-  const [filter, setFilter] = useState<"all" | "p" | "e">("all");
-  const [cpuPage, setCpuPage] = useState<"overview" | "details">("overview");
-  const [diskPage, setDiskPage] = useState<"overview" | "details">("overview");
+  const { graph, filter, cpuPage, diskPage } = p.pages;
+  const setGraph = (graph: PerformancePages["graph"]) => p.onPages({ graph });
+  const setFilter = (filter: PerformancePages["filter"]) => p.onPages({ filter });
+  const setCpuPage = (cpuPage: PerformancePages["cpuPage"]) => p.onPages({ cpuPage });
+  const setDiskPage = (diskPage: PerformancePages["diskPage"]) => p.onPages({ diskPage });
   // The tick at which the disk's details were last read: each time its
   // details page opens, and again from the head's button.
   const [diskRead, setDiskRead] = useState(0);

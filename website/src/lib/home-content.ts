@@ -40,7 +40,9 @@ const homeDocs = nativeStable ? stable : development;
 export const docs = (file: string, hash = "") =>
   (homeDocs.routes[file] ?? development.routes[file] ?? homeDocs.base) + (hash ? "#" + hash : "");
 
-// Only rows where the two tools differ; each names the window page that shows it.
+// Only rows where the two tools differ; each names the place in the window
+// that shows it (ShowPage.tsx): a page, a view of the process list, or a
+// device of the performance page.
 type Difference = [string, string, string, string | null];
 export const differences = (lang: Language): Difference[] =>
   localize(lang, lang !== "zh"
@@ -49,20 +51,28 @@ export const differences = (lang: Language): Difference[] =>
         ["Which process locks a file", "Drop the file or folder on the window, then end the holder", "Not available; use Resource Monitor", null],
         ["Parent and child processes", "A process tree view", "Grouped by app only", "tree"],
         ["Disk reads and writes", "Separate read, write and I/O rates per process", "One combined Disk column", "list"],
+        ["Disk health and wear", "The disk's details page shows health, remaining life, temperature and SMART attributes", "Model, capacity and transfer rates only", "disk-details"],
         ["A busy moment yesterday", "Seven days of curves with the busiest processes at any point", "App history shows cumulative totals", "history"],
         ["Priority and efficiency mode", "Save as a rule that applies whenever the program starts", "Applies to the running process only", null],
-        ["CPU temperature and power", "Package temperature, power and per-core readings with optional kernel sensors", "Not shown", "performance"],
-        ["Performance and efficiency cores", "Filter the per-core view by P and E cores with separate clocks", "Logical processors without core types", "performance"],
+        ["Change a service's startup type", "Set it to automatic, manual or disabled on the Services page", "Not available; use the Services console", "services"],
+        ["CPU temperature and power", "Package temperature, power and per-core readings with optional kernel sensors", "Not shown", "cpu-details"],
+        ["Performance and efficiency cores", "Filter the per-core view by P and E cores with separate clocks", "Logical processors without core types", "cpu-cores"],
+        ["GPU power and clocks", "The Performance page shows GPU power draw, core and memory clocks and each engine's load", "Utilization, memory and temperature only", "gpu"],
+        ["Battery health", "The Performance page shows health, cycle count, design capacity and charge or discharge power", "Not shown", "battery"],
       ]
     : [
         ["哪个进程占用了端口", "连接页列出 TCP、UDP 端点，可按端口精确搜索、断开连接", "无，需要资源监视器或命令行", "connections"],
         ["哪个进程锁住了文件", "把文件或文件夹拖进窗口即可查找，并可直接结束", "无，需要资源监视器", null],
         ["进程的父子关系", "进程树视图", "仅按应用分组", "tree"],
         ["磁盘读写分开看", "每个进程分别显示读取、写入与 I/O 速率", "进程页只有合计的“磁盘”列", "list"],
+        ["磁盘健康与寿命", "磁盘详情页显示健康状况、剩余寿命、温度与 SMART 属性", "只有型号、容量与读写速率", "disk-details"],
         ["回看昨天的高占用", "最近 7 天曲线，可查看任一时刻最忙的进程", "应用历史仅有累计用量", "history"],
         ["优先级与效率模式", "可保存为规则，程序每次启动时自动应用", "仅对正在运行的进程生效", null],
-        ["CPU 温度与功耗", "封装温度、功耗与每核读数（可选内核传感器）", "不显示", "performance"],
-        ["性能核与能效核", "多核视图按 P 核、E 核筛选，分别显示频率", "逻辑处理器不区分核心类型", "performance"],
+        ["修改服务的启动类型", "在服务页直接改为自动、手动或禁用", "无，需要打开“服务”管理工具", "services"],
+        ["CPU 温度与功耗", "封装温度、功耗与每核读数（可选内核传感器）", "不显示", "cpu-details"],
+        ["性能核与能效核", "多核视图按 P 核、E 核筛选，分别显示频率", "逻辑处理器不区分核心类型", "cpu-cores"],
+        ["显卡功耗与频率", "性能页显示显卡功耗、核心与显存频率，以及各引擎的占用", "只有占用率、显存与温度", "gpu"],
+        ["电池健康度", "性能页显示健康度、循环次数、设计容量与充放电功率", "不显示", "battery"],
       ]);
 
 type Question = [string, string, string, string];

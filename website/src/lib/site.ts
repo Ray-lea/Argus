@@ -135,13 +135,13 @@ export const about = withLanguages({
   zh: {
     title: "Argus · 快速、现代、信息丰富的 Windows 任务管理器",
     description:
-      "Argus 是开源的 Windows 任务管理器：原生 GPU 绘制界面，曲线随刷新率流动，可查端口、文件占用、每进程磁盘读写和最近 7 天的历史。",
+      "Argus 是开源的 Windows 任务管理器：原生 GPU 绘制界面，曲线随刷新率流动，可查端口、文件占用、每进程磁盘读写、磁盘健康和最近 7 天的历史。",
     lead: "Argus 用 Rust 直接读取 Windows 原生接口，界面由 GPU 绘制。进程、性能、服务、启动项、网络连接与文件占用，集中在一个流畅的窗口里。",
   },
   en: {
     title: "Argus · A fast, modern, information-rich Windows task manager",
     description:
-      "Argus is an open-source task manager for Windows: a native GPU-drawn interface, curves at the display's refresh rate, ports, file locks, per-process disk I/O and seven days of history.",
+      "Argus is an open-source task manager for Windows: a native GPU-drawn interface, curves at the display's refresh rate, ports, file locks, per-process disk I/O, disk health and seven days of history.",
     lead: "Argus reads Windows directly in Rust and draws its window on the GPU. Processes, performance, services, startup apps, network connections and file locks share one fluid window.",
   },
 });

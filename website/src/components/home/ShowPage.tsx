@@ -1,10 +1,21 @@
 "use client";
 import type { ReactNode } from "react";
-import { store, type Page } from "../replica/store";
+import { store, type Page, type Request } from "../replica/store";
 
-const views: Record<string, "tree" | "list"> = { tree: "tree", list: "list" };
+// Where a row's link leads when it is not simply a page: the view, device
+// and page within it that show what the row describes.
+const places: Record<string, Omit<Request, "at">> = {
+  tree: { page: "processes", view: "tree" },
+  list: { page: "processes", view: "list" },
+  history: { page: "history", range: "7d" },
+  "cpu-details": { page: "performance", device: "cpu", details: true },
+  "cpu-cores": { page: "performance", device: "cpu", cores: true },
+  "disk-details": { page: "performance", device: "disk", details: true },
+  gpu: { page: "performance", device: "gpu" },
+  battery: { page: "performance", device: "battery" },
+};
 
-// The comparison rows open the matching page in the window above.
+// The comparison rows open the matching place in the window above.
 export default function ShowPage({ page, children }: { page: string; children: ReactNode }) {
   return (
     <button
@@ -12,13 +23,7 @@ export default function ShowPage({ page, children }: { page: string; children: R
       className="demo-link"
       data-show-page={page}
       onClick={() =>
-        store.set({
-          request: {
-            page: (views[page] ? "processes" : page) as Page,
-            view: views[page],
-            at: Date.now(),
-          },
-        })
+        store.set({ request: { ...(places[page] ?? { page: page as Page }), at: Date.now() } })
       }
     >
       {children}

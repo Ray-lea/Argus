@@ -624,6 +624,7 @@ export const exact: Record<string, string> = {
   "每个逻辑处理器一张曲线，区分性能核与能效核": "One curve per logical processor, P-cores and E-cores apart",
   "查看内存的使用情况": "See how memory is used",
   "查看磁盘的读写速率与活动时间": "Disk read and write rates and active time",
+  "磁盘详情：健康状况、剩余寿命与 SMART 属性": "Disk details: health, remaining life and SMART attributes",
   "查看显卡的引擎占用与专用显存": "GPU engines and dedicated memory",
   "打开连接页": "Open Connections",
   "按端口查找占用它的进程": "Find the process that holds a port",

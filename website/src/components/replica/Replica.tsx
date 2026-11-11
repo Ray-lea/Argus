@@ -45,6 +45,7 @@ import {
   type VisibilityRules,
 } from "./model";
 import type { ConnectionFilter, HistoryRange, MenuEntry, ServiceFilter, ServiceState, ThemeChoice, VitalsMode } from "./Pages";
+import type { PerformancePages } from "./Performance";
 import {
   buildRows,
   Details,
@@ -231,6 +232,13 @@ export default function Replica({
   const [page, setPage] = useState<Page>(initialPage);
   const [dir, setDir] = useState(0);
   const [device, setDevice] = useState<Device>("cpu");
+  // The page shown within the CPU and the disk (Performance.tsx).
+  const [performancePages, setPerformancePages] = useState<PerformancePages>({
+    cpuPage: "overview",
+    graph: "overall",
+    filter: "all",
+    diskPage: "overview",
+  });
   const [view, setView] = useState<View>("apps");
   const [sort, setSort] = useState<SortKey>("name");
   const [descending, setDescending] = useState(false);
@@ -388,22 +396,42 @@ export default function Replica({
     },
     [],
   );
-  // Another section of the page can ask the window to show one of its pages.
-  useEffect(() => {
-    const request = shared.request;
-    if (!request) return;
+  // Another section of the page can ask the window to show one of its
+  // places. What was left open or typed there must not hide it: a dialog or
+  // menu closes, the page's search empties, and the tree, folded as it
+  // starts, opens to show what it is.
+  const answer = useEffectEvent((request: NonNullable<typeof shared.request>) => {
     go(request.page);
+    setDialog(null);
+    setQueries((q) => (q[request.page] ? { ...q, [request.page]: "" } : q));
     if (request.view) {
       setView(request.view);
       setSort("name");
       setDescending(false);
+      if (request.view === "tree") setTreeOpen(treeParents(listed));
+    }
+    if (request.device) setDevice(request.device);
+    // The page within the device that shows what was asked about.
+    if (request.device === "cpu")
+      setPerformancePages((pages) => ({
+        ...pages,
+        cpuPage: request.details ? "details" : "overview",
+        ...(request.cores ? { graph: "logical" as const, filter: "all" as const } : {}),
+      }));
+    if (request.device === "disk") setPerformancePages((pages) => ({ ...pages, diskPage: request.details ? "details" : "overview" }));
+    if (request.range) {
+      setHistoryRange(request.range);
+      setHistoryAt(null);
     }
     setTray(null);
     root.current?.scrollIntoView({
       behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
       block: "center",
     });
-  }, [shared.request, go]);
+  });
+  useEffect(() => {
+    if (shared.request) answer(shared.request);
+  }, [shared.request]);
   // The taskbar shows the window again or minimizes it; the guided demo drops a file.
   const lookUp = useEffectEvent((names: string[]) => files(names, false));
   useEffect(() => {
@@ -1181,6 +1209,8 @@ export default function Replica({
                     running={running}
                     motion={motion}
                     device={device}
+                    pages={performancePages}
+                    onPages={(pages) => setPerformancePages((now) => ({ ...now, ...pages }))}
                     processCount={alive.length}
                     threads={threads}
                     handles={handles}
