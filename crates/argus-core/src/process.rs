@@ -63,6 +63,10 @@ pub struct ProcessRow {
     /// executable's file description.
     pub description: Option<Arc<str>>,
     pub company: Option<Arc<str>>,
+    /// File version from the executable's version resource.
+    pub version: Option<Arc<str>>,
+    #[serde(flatten)]
+    pub facts: Facts,
     pub icon: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub web_view: Option<Arc<WebViewInfo>>,
@@ -107,6 +111,26 @@ pub struct ProcessRow {
     pub app_window: bool,
     /// Windows component identity for display grouping, not an action safety check.
     pub windows_process: bool,
+}
+
+/// What stays fixed for a process instance, read once through its query handle.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Facts {
+    pub command_line: Option<Arc<str>>,
+    /// `x64` | `x86` | `arm64` | `arm`
+    pub architecture: Option<&'static str>,
+    pub elevated: Option<bool>,
+}
+
+impl Facts {
+    fn read(process: HANDLE) -> Self {
+        Self {
+            command_line: crate::details::command_line(process).map(Into::into),
+            architecture: crate::details::architecture(process),
+            elevated: crate::details::elevated(process),
+        }
+    }
 }
 
 /// Additional columns from the same system snapshot, without per-process queries.
@@ -167,6 +191,8 @@ struct Tracked {
     /// Query handle, opened once per running instance and released when its
     /// snapshot has no threads. Access denial is final for that instance.
     handle: Option<OwnedHandle>,
+    /// Read with the first handle; an instance without one has none.
+    facts: Option<Facts>,
     web_view: Option<Box<webview::State>>,
     package: Option<Box<Package>>,
 }
@@ -382,6 +408,7 @@ impl ProcessTracker {
                             io,
                             disk,
                             handle,
+                            facts: None,
                             web_view: runtime,
                             package,
                         }),
@@ -399,6 +426,11 @@ impl ProcessTracker {
             if let Some(runtime) = entry.web_view.as_mut() {
                 runtime.query(entry.handle.as_ref().map(|h| h.0));
                 self.webviews.push((rows.len(), key));
+            }
+            if entry.facts.is_none()
+                && let Some(handle) = &entry.handle
+            {
+                entry.facts = Some(Facts::read(handle.0));
             }
             if entry.meta.is_none()
                 && let Some(path) = &entry.path
@@ -466,6 +498,8 @@ impl ProcessTracker {
                     _ => meta.and_then(|m| m.description.clone()),
                 },
                 company: meta.and_then(|m| m.company.clone()),
+                version: meta.and_then(|m| m.version.clone()),
+                facts: entry.facts.clone().unwrap_or_default(),
                 icon: meta.and_then(|m| m.icon),
                 web_view: None,
                 cpu,
@@ -735,6 +769,40 @@ mod tests {
         assert!(super::cache_expired(None, at));
     }
     use super::*;
+
+    #[test]
+    fn facts_of_the_current_process_are_read_and_serialized_as_columns() {
+        let handle = OwnedHandle(
+            unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, std::process::id()) }
+                .unwrap(),
+        );
+        let facts = Facts::read(handle.0);
+        let exe = std::env::current_exe().unwrap();
+        let stem = exe.file_stem().unwrap().to_string_lossy().to_lowercase();
+        assert!(
+            facts
+                .command_line
+                .as_deref()
+                .is_some_and(|line| line.to_lowercase().contains(&stem))
+        );
+        let expected = if cfg!(target_arch = "aarch64") {
+            "arm64"
+        } else if cfg!(target_arch = "x86") {
+            "x86"
+        } else {
+            "x64"
+        };
+        assert_eq!(facts.architecture, Some(expected));
+        assert!(facts.elevated.is_some());
+        let row = serde_json::to_value(ProcessRow {
+            facts,
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(row["commandLine"].is_string());
+        assert_eq!(row["architecture"], expected);
+        assert!(row["elevated"].is_boolean());
+    }
 
     #[test]
     fn extra_counters_keep_native_units_and_clamp_invalid_signed_values() {

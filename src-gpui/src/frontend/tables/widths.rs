@@ -214,7 +214,7 @@ impl AutoWidths {
             }
             let (minimum, limit): (f32, f32) = match field.key {
                 "name" => (180., 400.),
-                "path" => (120., 600.),
+                "path" | "commandLine" => (120., 600.),
                 "description" => (100., 480.),
                 "company" | "gpuEngine" => (100., 360.),
                 _ => (64., 400.),

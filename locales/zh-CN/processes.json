@@ -108,6 +108,22 @@
       "label": "公司名称",
       "title": "可执行文件版本信息中的公司名称。"
     },
+    "version": {
+      "label": "文件版本",
+      "title": "可执行文件版本信息中的文件版本。"
+    },
+    "architecture": {
+      "label": "架构",
+      "title": "进程运行的处理器架构。"
+    },
+    "elevated": {
+      "label": "已提升",
+      "title": "进程是否以管理员权限（提升的令牌）运行。"
+    },
+    "commandLine": {
+      "label": "命令行",
+      "title": "启动进程时使用的完整命令行，包括参数。"
+    },
     "sessionId": {
       "label": "会话 ID",
       "title": "进程所属的 Windows 会话编号。"

@@ -284,6 +284,8 @@ mod tests {
             path: None,
             description: None,
             company: None,
+            version: None,
+            facts: Default::default(),
             icon: None,
             web_view: None,
             windows_process: false,

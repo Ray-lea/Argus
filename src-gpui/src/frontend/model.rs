@@ -1620,8 +1620,8 @@ mod tests {
     #[test]
     fn optional_process_columns_keep_instance_identity_and_group_resource_totals() {
         let processes = vec![
-            json!({"pid":1,"ppid":9,"sessionId":1,"basePriority":8,"createTime":100,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":1000,"cpuUserTime":200,"ioReadTotal":400,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":3000,"gpuDedicated":0,"gpuShared":null}),
-            json!({"pid":2,"ppid":9,"sessionId":1,"basePriority":8,"createTime":200,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":2000,"cpuUserTime":300,"ioReadTotal":600,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":4000,"gpuDedicated":4096,"gpuShared":2048}),
+            json!({"pid":1,"ppid":9,"sessionId":1,"basePriority":8,"createTime":100,"name":"sample.exe","path":"C:/sample.exe","company":"Example","version":"1.0","architecture":"x64","elevated":false,"commandLine":"sample.exe --one","workingSet":1000,"cpuUserTime":200,"ioReadTotal":400,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":3000,"gpuDedicated":0,"gpuShared":null}),
+            json!({"pid":2,"ppid":9,"sessionId":1,"basePriority":8,"createTime":200,"name":"sample.exe","path":"C:/sample.exe","company":"Example","version":"1.0","architecture":"x64","elevated":true,"commandLine":"sample.exe --two","workingSet":2000,"cpuUserTime":300,"ioReadTotal":600,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":4000,"gpuDedicated":4096,"gpuShared":2048}),
         ];
         let rows = rows_of(&processes, "apps", "", "workingSet", true, &HashMap::new());
         assert_eq!(rows.len(), 1);
@@ -1644,6 +1644,11 @@ mod tests {
         }
         assert_eq!(row.column_text("path"), Some("C:/sample.exe"));
         assert_eq!(row.column_text("company"), Some("Example"));
+        // Shared facts show on the app row; differing ones only on each process.
+        assert_eq!(row.column_text("version"), Some("1.0"));
+        assert_eq!(row.column_text("architecture"), Some("x64"));
+        assert_eq!(row.column_text("commandLine"), None);
+        assert_eq!(row.metric("elevated"), None);
         let process = Row::process(processes[0].clone(), 0);
         assert_eq!(process.metric("ppid"), Some(9.));
         assert_eq!(process.metric("basePriority"), Some(8.));
@@ -1651,6 +1656,8 @@ mod tests {
         assert_eq!(process.metric("peakWorkingSet"), Some(3000.));
         assert_eq!(process.metric("gpuDedicated"), Some(0.));
         assert_eq!(process.column_text("imageName"), Some("sample.exe"));
+        assert_eq!(process.column_text("commandLine"), Some("sample.exe --one"));
+        assert_eq!(process.metric("elevated"), Some(0.));
     }
 
     #[test]
