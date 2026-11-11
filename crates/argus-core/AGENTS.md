@@ -14,7 +14,7 @@
 - `windows` crate 的特性统一列在根 `Cargo.toml` 的 `[workspace.dependencies]`，新特性加在那里，不要加在本 crate 里；升级 GPUI Kit 后用 `cargo tree -p argus -i windows -e features` 核对，否则会多编一份 `windows`。
 - 改变进程状态的操作（结束、优先级、效率模式）都通过 `actions::open_instance` 校验 PID 与启动时间（防 PID 复用）；结束还要拦截关键系统进程。
 - `handles::scan` 只能在可终止的辅助进程里运行，不能直接放进 UI、采样或服务线程。`NtQueryObject`、文件信息查询、甚至关闭复制的文件句柄都可能阻塞；由 `argus-service::handles` 的 Job 与超时监控负责回收。只复制句柄查询，绝不关闭来源进程的句柄。合并与结束文件占用结果必须保留 PID + 启动时间。
-- `process.rs` 给每个进程实例缓存一个 `PROCESS_QUERY_LIMITED_INFORMATION` 句柄（读效率模式用），进程消失时随条目关闭；不要改成每次采样重新打开。
+- `process.rs` 给每个运行中的进程实例缓存一个 `PROCESS_QUERY_LIMITED_INFORMATION` 句柄（读效率模式用），快照线程数归零时立即关闭，进程消失时随条目关闭；零线程记录不得建立缓存句柄，最终 CPU 与 I/O 计数仍从快照读取。不要改成每次采样重新打开。
 - 规则引擎（`rules.rs`）由 `argus-service::RuleRunner` 的独立宿主线程驱动；采样线程只提交最新的 PID、启动时间和名称，不要让服务 RPC 阻塞采样。规则保存或执行权限来源变化时重新检查并重新计数；同一轮里一个进程实例只套用一次，传输失败不自动重放。
 - 修改采集行为时用相关示例核对结果（命令见 `docs/development/README.md` 的“验证采集数据”）；修改 `history.rs` 的录制、编码或写入路径时，用 `--example history --release -- <秒数>` 看录制开销和每帧大小。
 - 改动历史文件的格式（`history.rs`）时要升 `MAGIC` 里的版本号：读取侧跳过版本不符的文件，写入侧会重建当天的文件。

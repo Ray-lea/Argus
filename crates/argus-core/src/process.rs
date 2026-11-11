@@ -29,6 +29,8 @@ use crate::paths::PathResolver;
 use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, ticks_to_unix_ms};
 use crate::webview::{self, Instance, WebViewInfo};
 
+#[cfg(test)]
+mod lifecycle_tests;
 mod query;
 mod roster;
 use query::ProcessQuery;
@@ -162,8 +164,8 @@ struct Tracked {
     cpu_cycles: u64,
     io: [i64; 3],
     disk: Option<(u64, u64)>,
-    /// Query handle, opened once per process instance (None when access is
-    /// denied, which is final for that instance).
+    /// Query handle, opened once per running instance and released when its
+    /// snapshot has no threads. Access denial is final for that instance.
     handle: Option<OwnedHandle>,
     web_view: Option<Box<webview::State>>,
     package: Option<Box<Package>>,
@@ -348,7 +350,11 @@ impl ProcessTracker {
                     // Started since the last sample: everything it consumed is new.
                     let started = elapsed.is_some() && p.create_time > prev_systime;
                     let prev = started.then_some((0, 0, [0; 3], Some((0, 0))));
-                    let handle = query_handle(pid, p.create_time);
+                    // Exited objects can remain in native snapshots while
+                    // another owner holds a handle. Do not prolong that lifetime.
+                    let handle = (p.number_of_threads != 0)
+                        .then(|| query_handle(pid, p.create_time))
+                        .flatten();
                     let package = handle
                         .as_ref()
                         .and_then(|h| crate::package::identity(h.0))
@@ -384,6 +390,12 @@ impl ProcessTracker {
                 }
             };
             entry.seen = self.generation;
+            if p.number_of_threads == 0 {
+                // Release our reference before the next snapshot; otherwise it
+                // can keep this zero-thread record present indefinitely. Its
+                // final CPU and I/O counters still come from this snapshot.
+                entry.handle = None;
+            }
             if let Some(runtime) = entry.web_view.as_mut() {
                 runtime.query(entry.handle.as_ref().map(|h| h.0));
                 self.webviews.push((rows.len(), key));
