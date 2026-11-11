@@ -145,7 +145,7 @@ gh run watch    # 选择刚开始的 Check，等待结束
 
 带预发布后缀的版本标记为 Pre-release。GitHub Release 正文包含中英文[代码签名策略](../../README.md#code-signing-policy)链接。
 
-`node scripts/release.mjs notes <版本>` 在版本变更后自动附加[双语下载文件说明](../../scripts/lib/release-downloads.md)，将模板中的 `{{version}}` 替换为发布版本号。说明区分推荐的 `setup` 安装版与免安装 EXE，并列出免安装版的更新及安装管理限制。正式版与预发布版共用此生成入口；应用内更新内容继续取自更新日志的版本条目。
+`node scripts/release.mjs notes <版本>` 在版本变更后自动附加[双语下载文件说明](../../scripts/lib/release-downloads.md)，将模板中的 `{{version}}` 替换为发布版本号。说明以对照表逐项比较推荐的 `setup` 安装版与免安装 EXE，包括使用方式、版本更新、快捷方式与卸载入口，以及特权服务和任务管理器替换的同步方式。正式版与预发布版共用此生成入口；应用内更新内容继续取自更新日志的版本条目。
 
 ## 更新签名密钥
 

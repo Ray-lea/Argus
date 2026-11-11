@@ -2,18 +2,30 @@
 
 ### 简体中文
 
-- **安装版（推荐）：`Argus_{{version}}_x64-setup.exe`**
-  安装至 `Program Files`，支持应用内更新，并提供快捷方式和 Windows 卸载入口。安装与更新需要管理员授权。
-- **免安装版：`Argus_{{version}}_x64.exe`**
-  单文件直接运行，支持更新提醒；升级需手动下载并替换 EXE，不支持应用内安装更新，也不会自动创建快捷方式或卸载项。若已启用特权服务或任务管理器替换，手动替换 EXE 后还需在设置中单击“更新服务”，同步相关组件。
+日常使用建议选择安装版，便于更新和维护。
 
-日常使用建议选择安装版，便于更新和维护。两版共用当前 Windows 账户的设置与历史数据；特权服务和 PawnIO 均为可选组件，需在设置中按需安装或启用。
+| | 安装版（推荐） | 免安装版 |
+|---|---|---|
+| **文件** | `Argus_{{version}}_x64-setup.exe` | `Argus_{{version}}_x64.exe` |
+| **使用方式** | 安装至 `Program Files`，安装与更新需管理员授权 | 单文件，下载后直接运行 |
+| **版本更新** | 应用内下载并安装 | 仅提示新版本，需手动下载并替换 EXE |
+| **快捷方式与卸载入口** | 安装时自动创建 | 无 |
+| **特权服务与任务管理器替换**（如已启用） | 随版本更新自动同步 | 替换 EXE 后，需在“设置 → 权限”中单击“更新服务” |
+
+- 两个版本共用当前 Windows 账户的设置与历史数据。
+- 特权服务和 PawnIO 均为可选组件，可在设置中按需安装或启用。
 
 ### English
 
-- **Installer (recommended): `Argus_{{version}}_x64-setup.exe`**
-  Installs to `Program Files`, supports in-app updates, and provides shortcuts and a Windows uninstall entry. Administrator approval is required to install or update.
-- **Portable: `Argus_{{version}}_x64.exe`**
-  Runs directly as a single executable and provides update notifications. Upgrading requires downloading and replacing the EXE manually; in-app update installation, automatic shortcut creation, and an uninstall entry are unavailable. If the privileged service or Task Manager replacement is enabled, select **Update service** in Settings after replacing the EXE to update those components as well.
+The installer is recommended for everyday use, as it is easier to update and maintain.
 
-The installer is recommended for everyday use and easier updates and maintenance. Both editions share settings and history for the current Windows account. The privileged service and PawnIO are optional components that must be installed or enabled separately in Settings.
+| | Installer (recommended) | Portable version |
+|---|---|---|
+| **File** | `Argus_{{version}}_x64-setup.exe` | `Argus_{{version}}_x64.exe` |
+| **Setup** | Installs to `Program Files`; installing and updating require administrator permission | Single executable; runs directly after download |
+| **Updates** | Downloaded and installed in the app | Notification only; download and replace the EXE manually |
+| **Shortcuts and uninstall entry** | Created during installation | None |
+| **Privileged service and Task Manager replacement** (if enabled) | Updated together with Argus | After replacing the EXE, click **Update service** in Settings → Permissions |
+
+- Both versions share the settings and history of the current Windows account.
+- The privileged service and PawnIO are optional components that can be installed or enabled in Settings as needed.

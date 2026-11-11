@@ -37,9 +37,13 @@ test("stable and prerelease GitHub notes include both artifact names and the bil
       assert.equal(body.split(file).length - 1, 2, file);
     assert(body.includes("安装版（推荐）"));
     assert(body.includes("Installer (recommended)"));
-    assert(body.includes("不支持应用内安装更新"));
-    assert(body.includes("in-app update installation"));
+    assert(body.includes("需手动下载并替换 EXE"));
+    assert(body.includes("download and replace the EXE manually"));
     assert(!body.includes("{{version}}"));
+    // A row with a missing or extra cell breaks the comparison on the release page.
+    const rows = body.split("\n").filter((line) => line.startsWith("|"));
+    assert.equal(rows.length, 14);
+    for (const row of rows) assert.equal(row.split("|").length, 5, row);
     assert(body.indexOf("## 下载文件说明") > body.indexOf("- Example release change."));
     assert.equal(await readFile(join(f.root, "CHANGELOG.md"), "utf8"), f.zh);
     assert.equal(await readFile(join(f.root, "CHANGELOG.en.md"), "utf8"), f.en);
