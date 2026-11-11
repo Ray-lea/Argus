@@ -22,6 +22,7 @@ mod regions;
 mod release_notes;
 mod scrollbar;
 mod shift;
+mod star;
 mod tables;
 mod test_control;
 mod theme;

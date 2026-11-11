@@ -366,6 +366,10 @@
       "desc": "A prefix added before GitHub URLs. It must use https, e.g. https://example.com/.",
       "label": "Custom proxy URL",
       "save": "Save"
+    },
+    "star": {
+      "title": "Star reminder",
+      "desc": "Shows a card in the bottom-right corner of the window once a day, asking for a star on GitHub. Turns off automatically after opening GitHub from the card or choosing not to be reminded again."
     }
   },
   "about": {

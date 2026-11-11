@@ -90,5 +90,13 @@
     "interval": "Updates every {seconds} s",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\nClick to see what’s new in this version; right-click to copy the version number"
+  },
+  "star": {
+    "title": "Star Argus on GitHub",
+    "body": "Argus is free and open source. A star on GitHub helps more people find it and keeps development going.",
+    "open": "Star on GitHub",
+    "quiet": "Don't remind me",
+    "off": "Star reminder turned off. It can be turned on again in Settings.",
+    "settings": "Open Settings"
   }
 }

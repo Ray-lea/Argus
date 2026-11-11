@@ -90,5 +90,13 @@
     "interval": "{seconds} 秒ごとに更新",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\nクリックすると、このバージョンの新機能が表示されます。右クリックしてバージョン番号をコピーします"
+  },
+  "star": {
+    "title": "GitHub で Argus にスターを付ける",
+    "body": "Argus は無料のオープンソース ソフトウェアです。GitHub のスターは、より多くの人に知ってもらうきっかけになり、開発を続ける励みになります。",
+    "open": "GitHub でスターを付ける",
+    "quiet": "今後表示しない",
+    "off": "スターのリマインダーをオフにしました。設定で再度オンにできます。",
+    "settings": "設定を開く"
   }
 }

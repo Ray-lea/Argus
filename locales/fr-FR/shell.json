@@ -90,5 +90,13 @@
     "interval": "Actualisation toutes les {seconds} s",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\nCliquez pour voir les nouveautés de cette version ; faites un clic droit pour copier le numéro de version"
+  },
+  "star": {
+    "title": "Attribuer une étoile à Argus sur GitHub",
+    "body": "Argus est gratuit et open source. Une étoile sur GitHub aide d’autres personnes à le découvrir et encourage son développement.",
+    "open": "Ajouter une étoile sur GitHub",
+    "quiet": "Ne plus rappeler",
+    "off": "Le rappel d’étoile est désactivé. Il peut être réactivé dans les paramètres.",
+    "settings": "Ouvrir les paramètres"
   }
 }

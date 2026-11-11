@@ -3115,6 +3115,22 @@ impl Desktop {
                 ));
             }
         }
+        let star = self.toggle(
+            "star-reminder",
+            label("settings.update.star.title"),
+            self.prefs.get(star::REMIND, true),
+            false,
+            |this, on, window, cx| this.preference(star::REMIND, json!(on), window, cx),
+            window,
+            cx,
+        );
+        cards.push(self.setting_text(
+            "starReminder",
+            "StarIcon",
+            "settings.update.star.title",
+            "settings.update.star.desc",
+            vec![star],
+        ));
         let _ = p;
     }
 

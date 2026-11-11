@@ -491,6 +491,7 @@ impl Desktop {
                 "cpuTemperatureHistory":{"recentSamples":temperature.len().min(60),"recentMissing":temperature.iter().rev().take(60).filter(|(_,value)|value.is_none()).count(),"last":temperature.last().and_then(|(_,value)|*value)},
                 "systemBackdrop":crate::platform::supports_backdrop(),"backgroundAlpha":theme::Palette::current(cx).background.a,
                 "dialog":self.dialog_test_state(),
+                "star":self.star_test_state(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),"scaleFactor":window.scale_factor(),"remSize":f32::from(window.rem_size()),
@@ -639,6 +640,10 @@ impl Desktop {
         }
         if let Some(text) = control["toast"].as_str() {
             self.notify_toast(widgets::ToastKind::Info, text.to_owned());
+        }
+        // The star request, whatever the day (tests never get it on their own).
+        if control["starPrompt"].as_bool() == Some(true) {
+            self.show_star();
         }
         if self.options.fixture.is_some() && control["updateNotice"].as_bool() == Some(true) {
             let status = self.data.get("updates").cloned().unwrap_or_default();

@@ -369,6 +369,10 @@
       "desc": "Préfixe ajouté avant les URL GitHub. Il doit utiliser https, par exemple https://example.com/.",
       "label": "Adresse du proxy personnalisé",
       "save": "Enregistrer"
+    },
+    "star": {
+      "title": "Rappel d’étoile",
+      "desc": "Affiche une fois par jour, en bas à droite de la fenêtre, une carte invitant à attribuer une étoile sur GitHub. L’option se désactive automatiquement après l’ouverture de GitHub depuis la carte ou le choix de « Ne plus rappeler »."
     }
   },
   "about": {

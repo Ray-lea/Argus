@@ -369,6 +369,10 @@
       "desc": "Prefijo que se añade a las direcciones de GitHub. Debe usar https, por ejemplo, https://example.com/.",
       "label": "Dirección del proxy personalizado",
       "save": "Guardar"
+    },
+    "star": {
+      "title": "Recordatorio de estrella",
+      "desc": "Muestra una vez al día una tarjeta en la esquina inferior derecha de la ventana que invita a dar una estrella en GitHub. Se desactiva automáticamente al abrir GitHub desde la tarjeta o al elegir «No volver a avisar»."
     }
   },
   "about": {

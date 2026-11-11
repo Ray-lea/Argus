@@ -366,6 +366,10 @@
       "desc": "Ein Präfix, das vor GitHub-URLs hinzugefügt wurde. Es muss https verwenden, z. B. https://example.com/.",
       "label": "Benutzerdefinierte Proxy-URL",
       "save": "Speichern"
+    },
+    "star": {
+      "title": "Stern-Erinnerung",
+      "desc": "Zeigt einmal täglich unten rechts im Fenster eine Karte mit der Bitte um einen Stern auf GitHub an. Wird automatisch deaktiviert, nachdem GitHub über die Karte geöffnet oder die Erinnerung abgestellt wurde."
     }
   },
   "about": {

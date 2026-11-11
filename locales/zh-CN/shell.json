@@ -90,5 +90,13 @@
     "interval": "每 {seconds} 秒刷新",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\n单击查看本版本的更新内容，右键复制版本号"
+  },
+  "star": {
+    "title": "为 Argus 点亮 Star",
+    "body": "Argus 免费且开源。GitHub 上的 Star 能让更多人发现它，也是持续开发的动力。",
+    "open": "前往 GitHub",
+    "quiet": "不再提醒",
+    "off": "已关闭 Star 提醒，可在设置中重新开启。",
+    "settings": "打开设置"
   }
 }

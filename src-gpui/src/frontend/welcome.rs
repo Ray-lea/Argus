@@ -138,6 +138,7 @@ impl Desktop {
             < number(configuration(), "onboardingVersion")
         {
             self.open_dialog("onboarding", json!({"step":0}), window, cx);
+            self.skip_star_this_run();
             return;
         }
         if boolean(&self.data["info"], "updated")

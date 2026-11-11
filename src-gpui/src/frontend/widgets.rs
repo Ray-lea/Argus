@@ -88,6 +88,8 @@ pub(in crate::frontend) enum HotkeyMessage {
 pub(in crate::frontend) struct UiState {
     pub toasts: Vec<Toast>,
     pub toast_seq: u64,
+    /// The daily request for a GitHub star, under the notices.
+    pub star: star::State,
     pub select: Option<OpenSelect>,
     /// The drop-down list that just closed, fading out (`.menu.leaving`).
     pub select_leaving: Option<(OpenSelect, Instant)>,

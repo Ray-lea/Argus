@@ -90,5 +90,13 @@
     "interval": "Aktualisiert alle {seconds} s",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\nKlicken, um die Neuerungen dieser Version anzuzeigen; rechtsklicken, um die Versionsnummer zu kopieren"
+  },
+  "star": {
+    "title": "Argus auf GitHub einen Stern geben",
+    "body": "Argus ist kostenlos und quelloffen. Ein Stern auf GitHub hilft anderen, Argus zu finden, und motiviert die Weiterentwicklung.",
+    "open": "Stern auf GitHub vergeben",
+    "quiet": "Nicht erneut erinnern",
+    "off": "Die Stern-Erinnerung wurde deaktiviert. Sie lässt sich in den Einstellungen wieder aktivieren.",
+    "settings": "Einstellungen öffnen"
   }
 }

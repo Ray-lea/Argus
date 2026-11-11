@@ -1897,7 +1897,9 @@ impl Desktop {
         }
         if self.ui.ticks.is_multiple_of(4) {
             self.announce_update(window, cx);
+            changed |= self.announce_star();
         }
+        changed |= self.tick_star();
         changed |= self.announce_administrator();
         changed |= self.tick_hotkey(window, cx);
         changed |= self.tick_settings();
@@ -1908,14 +1910,16 @@ impl Desktop {
     }
 
     fn toast_layer(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.ui.toasts.is_empty() {
+        // The star request keeps the corner; notices stack above it.
+        let (star, star_moving) = self.star_card(window, cx).unzip();
+        if self.ui.toasts.is_empty() && star.is_none() {
             return None;
         }
         let p = self.palette;
         let reduce = cx.reduce_motion();
         let viewport = window.viewport_size();
         let width = px(380.).min(viewport.width - px(40.));
-        let mut animating = false;
+        let mut animating = star_moving.unwrap_or(false);
         let stack = div()
             .absolute()
             .right(px(20.))
@@ -2050,7 +2054,8 @@ impl Desktop {
                             cx.notify();
                         })),
                     )
-            }));
+            }))
+            .children(star);
         if animating {
             window.request_animation_frame();
         }

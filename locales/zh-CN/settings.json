@@ -357,6 +357,10 @@
       "desc": "添加在 GitHub 地址之前的前缀，须使用 https，例如 https://example.com/。",
       "label": "自定义代理地址",
       "save": "保存"
+    },
+    "star": {
+      "title": "Star 提醒",
+      "desc": "每天在窗口右下角提醒一次，邀请在 GitHub 上为 Argus 点亮 Star。从提醒前往 GitHub 或选择“不再提醒”后，此项自动关闭。"
     }
   },
   "about": {

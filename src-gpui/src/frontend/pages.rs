@@ -456,6 +456,12 @@ impl Desktop {
                 }
                 return;
             }
+            star::REMIND => {
+                // Turned off while its card shows: the card leaves.
+                if value.as_bool() == Some(false) {
+                    self.dismiss_star();
+                }
+            }
             "navPosition" => self.nav_top = value.as_str() != Some("side"),
             "navExpanded" => self.nav_expanded = value.as_bool().unwrap_or(false),
             "historyRange" => {

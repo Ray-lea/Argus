@@ -55,6 +55,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`disk-counters-unavailable.json`](../../tools/window-probe/steps/disk-counters-unavailable.json) 检查两块磁盘中一块性能计数不可用时的设备列表、未知数值、详情页与恢复后的读数，并覆盖小窗口。
 
+[`star-reminder.json`](../../tools/window-probe/steps/star-reminder.json) 检查 Star 提醒卡片的入场、悬停点亮、两个按钮与设置开关的联动，并覆盖图表之上和浅色主题。测试实例不会自行显示该卡片，由 `starPrompt` 控制触发；`inspectLayout.star` 输出卡片是否显示及提醒是否开启。卡片叠在图表上，只使用纯色矩形、文字和图标，动效均为一次性播放：改动其绘制后，用 `--live` 加 `ARGUS_GPUI_DIAGNOSTICS=1` 在性能页确认没有 `gpu-chart-foreground-reject`。
+
 测试控制除页面、主题、对话框等既有项外，还包括：
 
 | 控制 | 作用 |
@@ -66,6 +68,7 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 | `pointer` | `{ "at"?, "event", "dx"?, "dy"? }`：悬停、按下、按住移动或松开。`at` 为已记录元素或 `header:<列>`；省略时相对于手势起点，元素在拖动中移动也不影响 |
 | `headerMenu` | 打开某一列的表头菜单 |
 | `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项与展开的子菜单 |
+| `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |
 
 合成输入经 `window.defer` 派发，控制同时请求一帧，空闲窗口不会把输入留到下一次采样。探针 `crop`、`sheet` 子命令也可单独使用；开始新的录制时，上一段录制在后台写出帧，不阻塞后续命令。
 

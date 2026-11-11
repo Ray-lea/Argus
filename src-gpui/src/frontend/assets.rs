@@ -157,6 +157,7 @@ ui_icons![
     "sort-descending",
     "sparkle",
     "star",
+    "star-filled",
     "stop",
     "storage",
     "theme",

@@ -346,6 +346,10 @@
       "desc": "新增在 GitHub 位址之前的前置詞，須使用 https，例如 https://example.com/。",
       "label": "自訂 Proxy 位址",
       "save": "儲存"
+    },
+    "star": {
+      "title": "Star 提醒",
+      "desc": "每天在視窗右下角提醒一次，邀請在 GitHub 上為 Argus 點亮 Star。從提醒前往 GitHub 或選擇「不再提醒」後，此項自動關閉。"
     }
   },
   "about": {

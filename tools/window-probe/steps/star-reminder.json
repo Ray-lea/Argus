@@ -1,0 +1,30 @@
+{
+  "window": [1280, 860],
+  "steps": [
+    { "note": "The star request comes in over the process list, under the notices." },
+    { "control": { "page": "processes", "pointerOutside": true }, "wait": 1200 },
+    { "record": { "name": "enter", "ms": 2600 }, "wait": 800 },
+    { "control": { "starPrompt": true }, "wait": 1900, "inspect": "layout", "label": "shown",
+      "expect": { "star.shown": true, "star.remind": true }, "capture": "card" },
+    { "note": "The pointer on the button that opens GitHub fills the star." },
+    { "control": { "hoverAnchor": "star-open" }, "wait": 600, "capture": "lit" },
+    { "control": { "pointerOutside": true }, "wait": 500 },
+    { "note": "Don't remind me: the card leaves, a notice leads to the setting and the reminder is off." },
+    { "control": { "clickAnchor": "star-quiet" }, "wait": 800, "inspect": "layout", "label": "quiet",
+      "expect": { "star.shown": false, "star.remind": false }, "capture": "quiet" },
+    { "control": { "clickAnchor": "toast-action-1-0" }, "wait": 1200, "inspect": "layout", "label": "located",
+      "expect": { "page": "settings", "star.remind": false }, "capture": "setting-off" },
+    { "control": { "clickAnchor": "star-reminder" }, "wait": 600, "inspect": "layout", "label": "on-again",
+      "expect": { "star.remind": true }, "capture": "setting-on" },
+    { "note": "Over the charts; opening GitHub lights the star, the card leaves and the reminder is off." },
+    { "control": { "page": "performance", "starPrompt": true }, "wait": 1900, "capture": "over-charts" },
+    { "record": { "name": "starred", "ms": 1600 }, "wait": 200 },
+    { "control": { "clickAnchor": "star-open" }, "wait": 300, "capture": "starred" },
+    { "wait": 1500, "inspect": "layout", "label": "starred", "expect": { "star.shown": false, "star.remind": false } },
+    { "note": "Light theme; turning the reminder off elsewhere sends a card that shows away." },
+    { "control": { "theme": "light", "page": "processes", "preference": { "star.remind": true }, "starPrompt": true },
+      "wait": 1900, "inspect": "layout", "label": "light", "expect": { "star.shown": true }, "capture": "light" },
+    { "control": { "preference": { "star.remind": false } }, "wait": 700, "inspect": "layout", "label": "turned-off",
+      "expect": { "star.shown": false, "star.remind": false } }
+  ]
+}
