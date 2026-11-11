@@ -107,6 +107,12 @@ impl Schedule {
         false
     }
 
+    /// A sample on demand came too soon and is owed: the next one comes once
+    /// the minimum gap is over, not a (paused, say) cadence later.
+    fn owe(&mut self) {
+        self.next_tick = self.next_tick.min(self.last_sample + MIN_SAMPLE_GAP);
+    }
+
     /// Records a sample taken now at the cadence `period`. Returns how old the
     /// results the service clients requested at the last sample may be by
     /// now: up to that sample's cadence, which on coming back is the slower
@@ -175,6 +181,10 @@ impl Sampler {
                 let mut tray = BACKGROUND_INTERVAL;
                 let mut paused = false;
                 let mut schedule = Schedule::new(Instant::now(), interval);
+                // A refresh after an action came too soon after the last
+                // sample; the next sample is sent even while paused, so the
+                // view shows what the action did.
+                let mut owed = false;
 
                 loop {
                     let received = rx.recv_timeout(schedule.wait(Instant::now()));
@@ -240,6 +250,8 @@ impl Sampler {
                         continue;
                     }
                     if forced && !schedule.demand(now, period) {
+                        owed = true;
+                        schedule.owe();
                         continue;
                     }
 
@@ -256,8 +268,10 @@ impl Sampler {
                         recorder.record(&snapshot);
                     }
                     // A paused view stays as it is, except right after an action.
+                    let send = forced || owed || !paused;
+                    owed = false;
                     if let Some(ch) = &subscriber
-                        && (forced || !paused)
+                        && send
                         && ch.send(snapshot).is_err()
                     {
                         subscriber = None;
@@ -312,6 +326,23 @@ mod tests {
         assert!(schedule.demand(t0 + s(4), s(1)));
         schedule.taken(t0 + s(4), true, s(1));
         assert_eq!(schedule.next_tick, t0 + s(5));
+    }
+
+    #[test]
+    fn a_refresh_too_soon_after_a_paused_sample_comes_once_the_gap_is_over() {
+        let (s, ms) = (Duration::from_secs, Duration::from_millis);
+        let t0 = Instant::now();
+        // Paused: samples every 5 s, the last one at 5 s.
+        let mut schedule = Schedule::new(t0, s(5));
+        schedule.tick(t0 + s(5), s(5));
+        schedule.taken(t0 + s(5), false, s(5));
+        assert_eq!(schedule.next_tick, t0 + s(10));
+        // An action asks for a refresh 100 ms later: too soon, so it is owed
+        // and comes at the end of the gap rather than 5 s on.
+        assert!(!schedule.demand(t0 + s(5) + ms(100), s(5)));
+        schedule.owe();
+        assert_eq!(schedule.next_tick, t0 + s(5) + MIN_SAMPLE_GAP);
+        assert_eq!(schedule.wait(t0 + s(5) + ms(100)), MIN_SAMPLE_GAP - ms(100));
     }
 
     #[test]

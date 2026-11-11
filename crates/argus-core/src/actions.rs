@@ -390,14 +390,27 @@ mod tests {
         })
     }
 
+    /// Ends the child however the test ends: `Child` doesn't on drop, and a
+    /// suspended one would never finish on its own.
+    struct KillOnDrop(std::process::Child);
+
+    impl Drop for KillOnDrop {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
     #[test]
     fn one_resume_clears_suspensions_stacked_on_a_live_process() {
-        let mut child = std::process::Command::new("ping")
-            .args(["-n", "30", "127.0.0.1"])
-            .stdout(std::process::Stdio::null())
-            .spawn()
-            .unwrap();
-        let pid = child.id();
+        let child = KillOnDrop(
+            std::process::Command::new("ping")
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        let pid = child.0.id();
         let created = crate::process::list_lineage()
             .into_iter()
             .find(|&(p, ..)| p == pid)
@@ -430,8 +443,6 @@ mod tests {
         }
         super::set_suspended(pid, created, false).unwrap();
         assert!(settles(pid, created, false));
-        let _ = child.kill();
-        let _ = child.wait();
     }
 
     #[test]
