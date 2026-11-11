@@ -8,6 +8,7 @@ mod columns;
 mod dialogs;
 mod flip;
 mod gpu_usage;
+mod icon_motion;
 mod inline;
 mod layout;
 mod lists;

@@ -201,6 +201,7 @@ impl Desktop {
         let entry = |index: usize, page: &'static str, glyph: &'static str| {
             let name = &names[index];
             let chosen = index == selected;
+            let control = SharedString::from(format!("page-nav-{page}"));
             let title = tr!("shell.pageTitle", page = name.clone(), key = index + 1);
             let has_dot = page == "settings" && update_waiting;
             let dot =
@@ -266,9 +267,10 @@ impl Desktop {
                                 .relative()
                                 .flex_shrink_0()
                                 // In the entry's colour, which brightens on hover.
-                                .child(theme::glyph(glyph))
+                                .child(self.moving_icon(&control, glyph, None, None))
                                 .children(dot().map(|dot| dot.top(px(-2.)).right(px(-3.)))),
                         )
+                        .child(self.icon_probe(&control))
                         .when(self.nav_expanded, |tab| {
                             let name = div().min_w_0().truncate().child(name.clone());
                             tab.child(if fade_names {
@@ -431,9 +433,10 @@ impl Desktop {
         cx: &Context<Self>,
     ) -> Button {
         let text = text.into();
+        let id: SharedString = id.into();
         let p = self.palette;
         let color = if pressed { p.accent } else { p.ink };
-        Button::new(id.into())
+        Button::new(id.clone())
             .relative()
             .h(px(32.))
             .flex_shrink_0()
@@ -452,7 +455,10 @@ impl Desktop {
             .active(move |s| s.bg(p.press).text_color(p.muted))
             .child(widgets::control_edge(&p))
             .accessibility_label(text.clone())
-            .when_some(glyph, |b, name| b.child(icon(name, color)))
+            .when_some(glyph, |b, name| {
+                b.child(self.moving_icon(&id, name, Some(color), None))
+                    .child(self.icon_probe(&id))
+            })
             .when(!text.is_empty(), |b| b.child(text))
             .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -639,6 +645,7 @@ impl Desktop {
             let on_accent = p.on_accent;
             trailing = trailing.child(
                 Button::new("update-status")
+                    .relative()
                     .size(px(32.))
                     .flex()
                     .items_center()
@@ -647,7 +654,13 @@ impl Desktop {
                     .bg(p.accent)
                     .hover(|s| s.opacity(0.92))
                     .accessibility_label(title.clone())
-                    .child(icon("UpdateIcon", on_accent))
+                    .child(self.moving_icon(
+                        &"update-status".into(),
+                        "UpdateIcon",
+                        Some(on_accent),
+                        None,
+                    ))
+                    .child(self.icon_probe(&"update-status".into()))
                     .tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.act(Action::Dialog("update".into(), json!({})), window, cx)

@@ -1720,6 +1720,7 @@ impl Desktop {
             .get::<Option<bool>>("motion.ui", None)
             .unwrap_or(system);
         cx.set_reduce_motion(!motion);
+        self.ui.icon_motions.set_still(!motion);
         // Native window transitions have their own choice, independent of the UI.
         crate::window_motion::set_enabled(
             self.host

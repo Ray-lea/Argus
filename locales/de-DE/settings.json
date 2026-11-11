@@ -211,7 +211,7 @@
     },
     "ui": {
       "title": "Oberflächenanimationen",
-      "desc": "Seiten- und Dialogübergänge sowie die verschiebbare Auswahlmarkierung. Folgt standardmäßig der Windows-Einstellung für Animationseffekte."
+      "desc": "Seiten- und Dialogübergänge, die verschiebbare Auswahlmarkierung und Symbolanimationen. Folgt standardmäßig der Windows-Einstellung für Animationseffekte."
     },
     "chart": {
       "title": "Diagrammanimationen",

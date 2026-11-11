@@ -88,6 +88,8 @@ pub(in crate::frontend) enum HotkeyMessage {
 pub(in crate::frontend) struct UiState {
     pub toasts: Vec<Toast>,
     pub toast_seq: u64,
+    /// The icons of controls, set moving as the pointer comes onto them.
+    pub icon_motions: icon_motion::IconMotions,
     /// The daily request for a GitHub star, under the notices.
     pub star: star::State,
     pub select: Option<OpenSelect>,
@@ -741,6 +743,7 @@ impl Desktop {
             let color = if chosen { p.ink } else { p.muted };
             let hover = p.hover;
             let ink = p.ink;
+            let control = SharedString::from(format!("seg-{id}-{index}"));
             track = track.child(
                 gpui_kit::base::Button::new(ElementId::NamedInteger(
                     format!("seg-{id}").into(),
@@ -762,7 +765,11 @@ impl Desktop {
                 .when(!chosen, |b| b.hover(move |s| s.bg(hover).text_color(ink)))
                 .role(Role::Tab)
                 .accessibility_label(accessible)
-                .when_some(glyph, |b, glyph| b.child(icon(glyph, color)))
+                .when_some(glyph, |b, glyph| {
+                    b.child(self.moving_icon(&control, glyph, Some(color), None))
+                        // Only an option that changes under the pointer draws again for it.
+                        .when(!chosen, |b| b.child(self.icon_probe(&control)))
+                })
                 .when(!icon_only, |b| b.child(name))
                 .on_prepaint(remember(
                     item_key(index),
@@ -902,7 +909,7 @@ impl Desktop {
         };
         let icon_only = text.is_empty() && glyph.is_some() && glyph_size.is_none();
         let height = if small { px(24.) } else { px(32.) };
-        gpui_kit::base::Button::new(id)
+        gpui_kit::base::Button::new(id.clone())
             .relative()
             .h(height)
             .when(icon_only, |b| b.w(height))
@@ -930,7 +937,8 @@ impl Desktop {
             .when(tone == Tone::Plain, |b| b.child(control_edge(&p)))
             .accessibility_label(text.clone())
             .when_some(glyph, |b, name| {
-                b.child(icon(name, fg).when_some(glyph_size, |i, size| i.size(size)))
+                b.child(self.moving_icon(&id, name, Some(fg), glyph_size))
+                    .child(self.icon_probe(&id))
             })
             .when(!text.is_empty(), |b| b.child(text))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())

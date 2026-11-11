@@ -211,7 +211,7 @@
     },
     "ui": {
       "title": "Animations de l’interface",
-      "desc": "Transitions de page et de boîte de dialogue, ainsi que le marqueur de sélection coulissant. Suit le paramètre d’effets d’animation Windows par défaut."
+      "desc": "Transitions de page et de boîte de dialogue, marqueur de sélection coulissant et animation des icônes. Suit le paramètre d’effets d’animation Windows par défaut."
     },
     "chart": {
       "title": "Animations des graphiques",

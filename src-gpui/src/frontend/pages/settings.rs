@@ -1003,58 +1003,60 @@ impl Desktop {
             .children(SECTIONS.into_iter().zip(names).enumerate().map(
                 |(index, (section, name))| {
                     let current = index == selected;
-                    gpui_kit::base::Button::new(SharedString::from(format!(
-                        "settings-nav-{section}"
-                    )))
-                    .relative()
-                    .h(px(36.))
-                    .pl(px(NAV_LEFT))
-                    .pr(px(NAV_RIGHT))
-                    .gap(px(NAV_GAP))
-                    .line_height(theme::line_height())
-                    .justify_start()
-                    .rounded(px(6.))
-                    .text_color(if current { p.ink } else { p.muted })
-                    .when(!current, |b| {
-                        b.hover(move |s| s.bg(p.hover).text_color(p.ink))
-                    })
-                    .role(Role::Tab)
-                    .accessibility_label(name.clone())
-                    .child(theme::glyph(section_icon(section)))
-                    .child(div().whitespace_nowrap().child(name))
-                    .when(section == "update" && pending_update, |b| {
-                        b.child(
-                            div()
-                                .ml_auto()
-                                .size(px(UPDATE_DOT))
-                                .rounded_full()
-                                .bg(p.accent),
-                        )
-                    })
-                    // Where tests take hold of it.
-                    .when(test, |b| {
-                        let anchors = anchors.clone();
-                        b.child(
-                            canvas(
-                                move |bounds, _, _| {
-                                    anchors
-                                        .borrow_mut()
-                                        .insert(format!("settings-nav-{section}").into(), bounds);
-                                },
-                                |_, _, _, _| {},
+                    let control = SharedString::from(format!("settings-nav-{section}"));
+                    gpui_kit::base::Button::new(control.clone())
+                        .relative()
+                        .h(px(36.))
+                        .pl(px(NAV_LEFT))
+                        .pr(px(NAV_RIGHT))
+                        .gap(px(NAV_GAP))
+                        .line_height(theme::line_height())
+                        .justify_start()
+                        .rounded(px(6.))
+                        .text_color(if current { p.ink } else { p.muted })
+                        .when(!current, |b| {
+                            b.hover(move |s| s.bg(p.hover).text_color(p.ink))
+                        })
+                        .role(Role::Tab)
+                        .accessibility_label(name.clone())
+                        .child(self.moving_icon(&control, section_icon(section), None, None))
+                        // Only an entry that changes under the pointer draws again for it.
+                        .when(!current, |b| b.child(self.icon_probe(&control)))
+                        .child(div().whitespace_nowrap().child(name))
+                        .when(section == "update" && pending_update, |b| {
+                            b.child(
+                                div()
+                                    .ml_auto()
+                                    .size(px(UPDATE_DOT))
+                                    .rounded_full()
+                                    .bg(p.accent),
                             )
-                            .absolute()
-                            .inset_0(),
-                        )
-                    })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.jump_to_section(index, cx);
-                        cx.notify();
-                    }))
-                    // The list lies over the cards: a press here is not one in
-                    // them, which would hand the mark back to the scroll before
-                    // the click and send it down to the last section first.
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        })
+                        // Where tests take hold of it.
+                        .when(test, |b| {
+                            let anchors = anchors.clone();
+                            b.child(
+                                canvas(
+                                    move |bounds, _, _| {
+                                        anchors.borrow_mut().insert(
+                                            format!("settings-nav-{section}").into(),
+                                            bounds,
+                                        );
+                                    },
+                                    |_, _, _, _| {},
+                                )
+                                .absolute()
+                                .inset_0(),
+                            )
+                        })
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.jump_to_section(index, cx);
+                            cx.notify();
+                        }))
+                        // The list lies over the cards: a press here is not one in
+                        // them, which would hand the mark back to the scroll before
+                        // the click and send it down to the last section first.
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 },
             ));
         // Over the scrolled column, in the same place as its sections.

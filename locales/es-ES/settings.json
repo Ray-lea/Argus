@@ -211,7 +211,7 @@
     },
     "ui": {
       "title": "Animaciones de la interfaz",
-      "desc": "Transiciones de páginas y diálogos e indicador de selección deslizante. Sigue «Efectos de animación» de Windows de forma predeterminada."
+      "desc": "Transiciones de páginas y diálogos, indicador de selección deslizante y animación de los iconos. Sigue «Efectos de animación» de Windows de forma predeterminada."
     },
     "chart": {
       "title": "Animaciones de los gráficos",

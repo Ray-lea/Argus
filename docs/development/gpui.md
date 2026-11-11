@@ -4,6 +4,8 @@
 
 界面图标取自组件库随附的 [Lucide](https://lucide.dev/) 目录。`frontend/assets.rs` 的 `product_icons!` 表列出界面使用的图标名及其对应的 Lucide 图标，只有表中的图标嵌入程序；加载时把线宽改为 16 px 下的 1.25 px，名称以 `FilledIcon` 结尾的图标同时填充轮廓。新增图标时在表中加一行，用 `theme::icon` 或 `theme::glyph` 按名称绘制。
 
+控件上的图标用 `moving_icon` 绘制，并在控件内放置 `icon_probe`（控件须为 `relative` 且带悬停样式）：指针移入时图标按 `frontend/icon_motion.rs` 的 `Motion::of` 播放一次动效，控件换用另一图标时新图标弹入。图标是整张栅格，动效只做整体的旋转、位移与缩放，结束时回到未变换的静止状态，不循环；关闭“界面动画”后不播放。`btn`、`tool_button`、分段选择器、页面导航和设置分组已接入，测试实例下 `icon_probe` 以控件名登记锚点，可用 `hoverAnchor` 触发。
+
 进程列定义在 `frontend/columns.rs`，表头列菜单与选择列对话框在 `frontend/columns/dialog.rs`。`processColumns` 保存列的选择、顺序与宽度，名称列固定。表格、滚动和文本布局见[原生界面](../architecture/frontend.md)。
 
 采样、存储和系统操作由后台 Rust 模块执行。界面按快照时间更新读数，动画帧平移已有曲线纹理。新增图表时应保留采样时间戳、缺测断点和窗口可见性判断，细节见[曲线与时间轴](../design/charts.md)。
