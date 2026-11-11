@@ -1,5 +1,4 @@
 //! Semantic application roles backed by the active GPUI theme.
-use gpui_kit::assets::IconName;
 use gpui_kit::component::{ActiveTheme, Icon, Theme, ThemeMode};
 use gpui_kit::*;
 
@@ -591,107 +590,14 @@ pub(super) fn parse_color(css: &str) -> Hsla {
     }
     .into()
 }
-/// The component set's icon for a product icon name; unknown names show a circle.
-pub fn icon_name(name: &str) -> IconName {
-    match name {
-        "ProcessesIcon" => IconName::LayoutList,
-        "PulseIcon" => IconName::Activity,
-        "ServicesIcon" => IconName::Settings2,
-        "PowerIcon" => IconName::Power,
-        "DownloadIcon" => IconName::Download,
-        "UpdateIcon" => IconName::Download,
-        "GlobeIcon" => IconName::Globe,
-        "HistoryIcon" => IconName::Clock,
-        "SettingsIcon" => IconName::Settings,
-        "MenuIcon" => IconName::Menu,
-        "AppsIcon" => IconName::LayoutGrid,
-        "TreeIcon" => IconName::ListTree,
-        "ExpandAllIcon" => IconName::ChevronsUpDown,
-        "CollapseAllIcon" => IconName::ChevronsDownUp,
-        "ListIcon" => IconName::List,
-        "PauseIcon" => IconName::Pause,
-        "PlayIcon" => IconName::Play,
-        "LockIcon" => IconName::Lock,
-        "PanelIcon" => IconName::PanelRight,
-        "PanelAutoIcon" => IconName::PanelRight,
-        "RunTaskIcon" => IconName::SquareTerminal,
-        "ChevronDown" => IconName::ChevronDown,
-        "ChevronRight" => IconName::ChevronRight,
-        "ChevronUp" => IconName::ChevronUp,
-        "MinimizeIcon" => IconName::Minus,
-        "MaximizeIcon" => IconName::Square,
-        "DismissIcon" => IconName::X,
-        "CloseIcon" => IconName::X,
-        "CpuIcon" => IconName::Cpu,
-        "ChipIcon" => IconName::Cpu,
-        "KernelIcon" => IconName::Microchip,
-        "MemoryIcon" => IconName::MemoryStick,
-        "DiskIcon" => IconName::HardDrive,
-        "GpuIcon" => IconName::Gpu,
-        "NetworkIcon" => IconName::EthernetPort,
-        "BatteryIcon" => IconName::Battery,
-        "ComputerIcon" => IconName::Monitor,
-        "RefreshIcon" => IconName::RotateCw,
-        "RestartIcon" => IconName::RotateCw,
-        "LanguageIcon" => IconName::Globe,
-        "KeyboardIcon" => IconName::Keyboard,
-        "ShieldIcon" => IconName::Shield,
-        "MotionIcon" => IconName::Sparkles,
-        "SparkleIcon" => IconName::Sparkles,
-        "InfoIcon" => IconName::Info,
-        "CopyIcon" => IconName::Copy,
-        "EyeIcon" => IconName::Eye,
-        "EyeOffIcon" => IconName::EyeOff,
-        "AppIcon" => IconName::AppWindow,
-        "GenericAppIcon" => IconName::AppWindow,
-        "ThemeIcon" => IconName::SunMoon,
-        "DataIcon" => IconName::Database,
-        "StorageIcon" => IconName::Database,
-        "RulesIcon" => IconName::Zap,
-        "BoltIcon" => IconName::Zap,
-        "SearchIcon" => IconName::Search,
-        "ExternalLinkIcon" => IconName::ExternalLink,
-        "ExternalIcon" => IconName::ExternalLink,
-        "FolderIcon" => IconName::FolderOpen,
-        "FilterIcon" => IconName::Funnel,
-        "LeafIcon" => IconName::Leaf,
-        "NoteIcon" => IconName::StickyNote,
-        "NotesIcon" => IconName::NotebookText,
-        "PinIcon" => IconName::Pin,
-        "UnpinIcon" => IconName::PinOff,
-        "TrashIcon" => IconName::Trash,
-        "GoToIcon" => IconName::SquareArrowOutUpRight,
-        "EndIcon" => IconName::CircleX,
-        "BranchEndIcon" => IconName::ListX,
-        "GaugeIcon" => IconName::Gauge,
-        "StopIcon" => IconName::Square,
-        "TrayIcon" => IconName::PanelBottom,
-        "TimerIcon" => IconName::Timer,
-        "TransferIcon" => IconName::ArrowLeftRight,
-        "StarIcon" => IconName::Star,
-        "ChatIcon" => IconName::MessageCircle,
-        "DocumentIcon" => IconName::FileText,
-        "NavSideIcon" => IconName::PanelLeft,
-        "NavTopIcon" => IconName::PanelTop,
-        "WarningIcon" => IconName::TriangleAlert,
-        "CheckIcon" => IconName::Check,
-        "PointerIcon" => IconName::MousePointer2,
-        "ArrowRightIcon" => IconName::ArrowRight,
-        _ => IconName::Circle,
-    }
-}
-/// The interface's own icon for a product icon name; the component set's
-/// nearest one (`icon_name`) when a product asset is unavailable.
+/// A product icon in `color`: the Lucide icon named for it (`assets`), in
+/// the interface's stroke.
 pub fn icon(name: &str, color: Hsla) -> Icon {
     glyph(name).text_color(color)
 }
 /// An icon in the text colour around it (`currentColor`), following hover.
 pub fn glyph(name: &str) -> Icon {
-    match super::assets::ui_icon(name) {
-        Some(path) => Icon::empty().path(path),
-        None => Icon::new(icon_name(name)),
-    }
-    .size_4()
+    Icon::empty().path(super::assets::icon_path(name)).size_4()
 }
 pub fn label(key: &str) -> String {
     argus_core::i18n::text(key)
