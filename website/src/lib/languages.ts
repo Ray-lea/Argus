@@ -18,6 +18,7 @@ export const languageOfPath = (path: string): Language => {
   const segment = path.split("/")[1];
   return isLanguage(segment) ? segment : "zh";
 };
+// The language shown in place of a page's own release notes and preview image when it has none.
 export const notesLanguage = (lang: Language): SourceLanguage => lang === "zh" || lang === "zh-TW" ? "zh" : "en";
 export const dateLocale = (lang: Language) => languageInfo(lang).tag;
 

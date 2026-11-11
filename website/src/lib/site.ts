@@ -42,7 +42,8 @@ interface Snapshot {
   >;
   editions: Edition[];
   contact: boolean;
-  changelog: Record<Language, ReleaseNote[]>;
+  // Each language that has release notes; the others fall back to changelogLanguage.
+  changelog: Partial<Record<Language, ReleaseNote[]>>;
   // Commits per day up to the documented development commit.
   activity: { total: number; first: string; days: [string, number][] };
   // GitHub's figures, absent when they could not be fetched.
@@ -78,9 +79,13 @@ export interface Edition {
 if (data.format !== 7)
   throw Error("content/site.json is from an older version of the website scripts. Restart start-website.bat.");
 const snapshot = data as unknown as Snapshot;
+// The language a page's release notes are in: its own changelog, or the
+// source language's when the release has no edition in it.
+export const changelogLanguage = (lang: Language): Language =>
+  snapshot.changelog[lang]?.length ? lang : notesLanguage(lang);
 export const site = {
   ...snapshot,
-  changelog: Object.fromEntries(languages.map(({ id }) => [id, snapshot.changelog[notesLanguage(id)]])) as Snapshot["changelog"],
+  changelog: Object.fromEntries(languages.map(({ id }) => [id, snapshot.changelog[changelogLanguage(id)]])) as Record<Language, ReleaseNote[]>,
   translations: Object.fromEntries(languages.map(({ id }) => [id, snapshot.translations[id] ?? snapshot.translations[notesLanguage(id)]])) as Snapshot["translations"],
 };
 export const [stable, development] = site.editions;

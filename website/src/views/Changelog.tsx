@@ -7,13 +7,13 @@ import { KindFilter } from "@/components/site/KindFilter";
 import { SiteFrame } from "@/components/site/SiteFrame";
 import { VersionNav } from "@/components/site/VersionNav";
 import { pageMetadata } from "@/lib/page";
-import { localized, origin, repo, site, text, type Language, type ReleaseNote } from "@/lib/site";
-import { languageInfo, notesLanguage } from "@/lib/languages";
+import { changelogLanguage, localized, origin, repo, site, text, type Language, type ReleaseNote } from "@/lib/site";
+import { languageInfo } from "@/lib/languages";
 
 // A release's notice, intro and groups of entries; new features as cards.
 export function ReleaseBody({ note, lang }: { note: ReleaseNote; lang: Language }) {
   return (
-    <div lang={languageInfo(notesLanguage(lang)).tag} className="release-content">
+    <div lang={languageInfo(changelogLanguage(lang)).tag} className="release-content">
       {note.notice && (
         <p className="cl-notice">
           <Icon name="alert" size={16} />
@@ -108,7 +108,7 @@ export function Changelog({ lang }: { lang: Language }) {
       <div className="site-wrap changelog">
         <header className="cl-head">
           <h1>{t.h1}</h1>
-          {lang !== notesLanguage(lang) && <p className="release-language">{localize(lang, notesLanguage(lang) === "zh" ? "Release notes are shown in Simplified Chinese." : "Release notes are shown in English.")}</p>}
+          {lang !== changelogLanguage(lang) && <p className="release-language">{localize(lang, changelogLanguage(lang) === "zh" ? "Release notes are shown in Simplified Chinese." : "Release notes are shown in English.")}</p>}
           <ul className="cl-facts figures">
             {t.facts(notes.length, first ? longDate(first.date, lang) : "").map((fact) => (
               <li key={fact}>{fact}</li>

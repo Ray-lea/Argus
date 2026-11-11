@@ -7,7 +7,7 @@ import { labelTables, translateHtml } from "../../website/scripts/translate-html
 import { prepareReplicaCatalogs } from "../../website/scripts/locales.mjs";
 import { textErrors } from "../lib/locale-validation.mjs";
 
-test("website routes round-trip and changelogs keep their published source language", () => {
+test("website routes round-trip and missing release notes fall back to a source language", () => {
   for (const { id, name } of languages) {
     assert.equal(languageOfPath(localized(id, "/download/")), id);
     assert.ok(name.length > 2 && !/^[A-Z]{2,3}$/.test(name));

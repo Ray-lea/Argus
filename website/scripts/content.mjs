@@ -285,23 +285,22 @@ function render(text, rewrite) {
   return markdown.renderer.render(tokens, markdown.options, {});
 }
 
-// Release notes of the published versions, newest first, as CHANGELOG.md and
-// CHANGELOG.en.md read at the stable tag: each version's intro and its groups
-// of labelled entries, in plain text for summaries and as HTML with links.
+// Release notes of the published versions, newest first, as each language's
+// changelog/<locale>.md reads at the stable tag: each version's intro and its
+// groups of labelled entries, in plain text for summaries and as HTML with links.
 const plain = (text) =>
   text
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .trim();
-const groupKinds = [
-  ["feature", /^(新功能|功能|Features)$/i],
-  ["fix", /^(修复|Fixes)$/i],
-  ["performance", /^(性能|Performance)$/i],
-  ["breaking", /^(破坏性变更|Breaking changes)$/i],
-  ["upgrade", /^(升级提示|Upgrading)$/i],
-  ["known", /^(已知问题|已知限制|Known issues|Known limitations)$/i],
-];
+// The section headings of each kind in every language, shared with the app and
+// scripts/release.mjs. Reverts and other sections read as "other".
+const changelogConf = JSON.parse(await readFile(join(root, "resources/changelog.json"), "utf8"));
+const groupKinds = ["feature", "fix", "performance", "breaking", "upgrade", "known"].map((kind) => [
+  kind,
+  new Set(Object.values(changelogConf.sections[kind]).flat().map((name) => name.toLowerCase())),
+]);
 function inline(text, rewrite) {
   const tokens = markdown.parseInline(text, {});
   for (const token of tokens)
@@ -329,7 +328,7 @@ export function releaseNotes(text, tag) {
         const item = /^[-*] (?:\*\*([^*]+)\*\*\s*[：:]\s*)?(.+)$/.exec(line);
         if (heading) {
           const title = heading[1].trim();
-          groups.push((group = { title, kind: groupKinds.find(([, p]) => p.test(title))?.[0] ?? "other", items: [] }));
+          groups.push((group = { title, kind: groupKinds.find(([, names]) => names.has(title.toLowerCase()))?.[0] ?? "other", items: [] }));
         } else if (group && item) group.items.push({ label: item[1]?.trim() ?? "", md: item[2] });
         else if (group && /^\s+\S/.test(line) && group.items.length) group.items.at(-1).md += " " + line.trim();
         else if (!group && line.trim())
@@ -351,6 +350,47 @@ export function releaseNotes(text, tag) {
         })),
       };
     });
+}
+
+// Every language's release notes by site language: its changelog at the stable
+// tag (tags before the changelog/ folder have the Chinese and English ones at
+// the repository root). A language the tag has no edition of takes its entries
+// for the released versions from the development commit, so a translation
+// shows before the next release; one without any is left out, and the site
+// shows the source language instead. Withdrawn releases are those of the
+// Chinese changelog.
+async function changelogs(release, at) {
+  const legacy = { "zh-CN": "CHANGELOG.md", "en-US": "CHANGELOG.en.md" };
+  const files = (ref) =>
+    new Set(git(["ls-tree", "-r", "--name-only", ref, "--", "changelog", ...Object.values(legacy)]).toString().split("\n"));
+  const stable = files(release.tag);
+  const development = at.worktree ? null : files(at.ref);
+  const atStable = (locale) => {
+    const file = [`changelog/${locale}.md`, legacy[locale]].find((name) => name && stable.has(name));
+    return file ? fileAt(release.tag, file).toString() : null;
+  };
+  const atDevelopment = async (locale) => {
+    const file = `changelog/${locale}.md`;
+    if (at.worktree) return readFile(join(root, file), "utf8").catch(() => null);
+    return development.has(file) ? fileAt(at.ref, file).toString() : null;
+  };
+  const source = releaseNotes(atStable("zh-CN"), release.tag);
+  const released = new Set(source.map((note) => note.version));
+  const withdrawn = new Set(source.filter((note) => note.withdrawn).map((note) => note.version));
+  // The released entries alone: the development commit may hold one written ahead of a release.
+  const releasedOnly = (text) =>
+    text
+      .replace(/\r\n/g, "\n")
+      .split(/^(?=## )/m)
+      .filter((part, i) => i === 0 || released.has(/^## \[?([^\]\s(]+)/.exec(part)?.[1]))
+      .join("");
+  const result = {};
+  for (const { id, tag } of languages) {
+    const text = atStable(tag) ?? (await atDevelopment(tag).then((dev) => dev && releasedOnly(dev)));
+    if (!text) continue;
+    result[id] = releaseNotes(text, release.tag).map((note) => ({ ...note, withdrawn: withdrawn.has(note.version) }));
+  }
+  return result;
 }
 
 // Commits per day over the five weeks up to the documented development commit.
@@ -451,12 +491,7 @@ export async function prepareContent(release, { worktree = !process.env.ARGUS_DO
   await putIfChanged(contentDir, "docs/meta.json", JSON.stringify({ title: "文档", pages: editions.map((e) => e.folder) }, null, 2));
   written.add(join(contentDir, "docs/meta.json"));
   await prune(join(contentDir, "docs"), written);
-  const changelog = {};
-  for (const lang of ["zh", "en"])
-    changelog[lang] = releaseNotes(
-      fileAt(release.tag, lang === "en" ? "CHANGELOG.en.md" : "CHANGELOG.md").toString(),
-      release.tag,
-    );
+  const changelog = await changelogs(release, at);
   await putIfChanged(
     contentDir,
     "site.json",

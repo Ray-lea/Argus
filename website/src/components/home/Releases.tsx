@@ -1,9 +1,9 @@
 import { Icon } from "@/components/site/Icon";
 import { SiteLink } from "@/components/site/SiteLink";
-import { localized, repo, type Language, type ReleaseNote } from "@/lib/site";
+import { changelogLanguage, localized, repo, type Language, type ReleaseNote } from "@/lib/site";
 import ReleasePoints from "./ReleasePoints";
 import { copyFor, localize } from "@/lib/site-i18n";
-import { dateLocale, languageInfo, notesLanguage } from "@/lib/languages";
+import { dateLocale, languageInfo } from "@/lib/languages";
 
 // The latest releases from the changelog as a timeline: a summary of each and
 // the names of what it added and fixed.
@@ -20,9 +20,10 @@ function summary(note: ReleaseNote, lang: Language) {
   if (note.intro) return note.intro;
   const first = note.groups.find((g) => g.items.length)?.items[0];
   if (!first) return "";
-  const english = notesLanguage(lang) === "en";
-  const sentence = english ? first.text.split(/(?<=\.)\s/)[0] : first.text.split(/(?<=。)/)[0];
-  return first.label ? first.label + (english ? ": " : "：") + sentence : sentence;
+  // Chinese and Japanese end sentences with "。" and take a full-width colon.
+  const han = ["zh", "zh-TW", "ja"].includes(changelogLanguage(lang));
+  const sentence = han ? first.text.split(/(?<=。)/)[0] : first.text.split(/(?<=\.)\s/)[0];
+  return first.label ? first.label + (han ? "：" : ": ") + sentence : sentence;
 }
 
 export default function Releases({ notes, lang, count = 5 }: { notes: ReleaseNote[]; lang: Language; count?: number }) {
@@ -30,7 +31,7 @@ export default function Releases({ notes, lang, count = 5 }: { notes: ReleaseNot
     page = localized(lang, "/changelog/");
   return (
     <>
-      {lang !== notesLanguage(lang) && <p className="release-language">{localize(lang, notesLanguage(lang) === "zh" ? "Release notes are shown in Simplified Chinese." : "Release notes are shown in English.")}</p>}
+      {lang !== changelogLanguage(lang) && <p className="release-language">{localize(lang, changelogLanguage(lang) === "zh" ? "Release notes are shown in Simplified Chinese." : "Release notes are shown in English.")}</p>}
       <ol className="releases">
         {notes.slice(0, count).map((note, i) => {
           const named = note.groups
@@ -49,7 +50,7 @@ export default function Releases({ notes, lang, count = 5 }: { notes: ReleaseNot
                 {(i === 0 || note.withdrawn) && (
                   <span className={"release-badge" + (note.withdrawn ? " is-muted" : "")}>{note.withdrawn ? w.withdrawn : w.latest}</span>
                 )}
-                <p lang={languageInfo(notesLanguage(lang)).tag}>{summary(note, lang)}</p>
+                <p lang={languageInfo(changelogLanguage(lang)).tag}>{summary(note, lang)}</p>
                 {named.length > 0 && <ReleasePoints items={named} limit={6} show={w.show(named.length - 6)} hide={w.hide} />}
                 {counted.length > 0 && (
                   <p className="release-counts figures">

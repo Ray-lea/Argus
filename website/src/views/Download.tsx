@@ -8,8 +8,7 @@ import { Icon, type IconName } from "@/components/site/Icon";
 import { SiteFrame } from "@/components/site/SiteFrame";
 import { SiteLink } from "@/components/site/SiteLink";
 import { pageMetadata } from "@/lib/page";
-import { downloadOrigin, localized, mebibytes, repo, site, softwareSchema, text, type Language } from "@/lib/site";
-import { notesLanguage } from "@/lib/languages";
+import { changelogLanguage, downloadOrigin, localized, mebibytes, repo, site, softwareSchema, text, type Language } from "@/lib/site";
 
 const title = (lang: Language) => (localize(lang, lang !== "zh" ? "Download Argus for Windows" : "下载 Argus Windows 版"));
 const description = (lang: Language) =>
@@ -203,7 +202,7 @@ export function Download({ lang }: { lang: Language }) {
                 </SiteLink>
               </header>
               <div className="dl-release">
-                {lang !== notesLanguage(lang) && <p className="release-language">{localize(lang, notesLanguage(lang) === "zh" ? "Release notes are shown in Simplified Chinese." : "Release notes are shown in English.")}</p>}
+                {lang !== changelogLanguage(lang) && <p className="release-language">{localize(lang, changelogLanguage(lang) === "zh" ? "Release notes are shown in Simplified Chinese." : "Release notes are shown in English.")}</p>}
                 <ReleaseBody note={current} lang={lang} />
               </div>
               <h3 className="dl-history-title">{t.history[0]}</h3>
