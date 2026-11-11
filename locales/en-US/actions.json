@@ -30,7 +30,8 @@
     "partial": {
       "one": "Ended {count} process; {failed} couldn't be ended (access denied or already exited).",
       "other": "Ended {count} processes; {failed} couldn't be ended (access denied or already exited)."
-    }
+    },
+    "unchecked": "Ended {count} processes; {failed} were not ended, including {unchecked} whose criticality could not be checked."
   },
   "error": {
     "accessDenied": "Couldn't end {name}: access denied. Turn on the privileged service in Settings, or run Argus as administrator. Protected processes may still not end.",
@@ -38,7 +39,8 @@
     "critical": "{name} is a critical system process. Ending it would crash Windows, so the action was blocked.",
     "refused": "{name} can't be ended.",
     "serviceOutdated": "Couldn't end {name}: access denied. The privileged service version is incompatible; update the service and try again.",
-    "generic": "Couldn't end {name}: {error}"
+    "generic": "Couldn't end {name}: {error}",
+    "criticalityUnknown": "Could not check whether {name} is a critical system process. Termination was blocked."
   },
   "priority": {
     "confirmTitle": "Set {name} to Realtime priority?",

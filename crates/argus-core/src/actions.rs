@@ -4,25 +4,22 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use windows::Wdk::System::Threading::{NtQueryInformationProcess, PROCESSINFOCLASS};
 use windows::Win32::Foundation::{
     ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, FILETIME, STATUS_ACCESS_DENIED,
 };
 use windows::Win32::System::Threading::{
     ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcessId,
-    GetPriorityClass, GetProcessTimes, HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS,
+    GetPriorityClass, GetProcessTimes, HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS, IsProcessCritical,
     NORMAL_PRIORITY_CLASS, OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_CREATION_FLAGS,
     PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
-    PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_SET_INFORMATION, PROCESS_SUSPEND_RESUME, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
-    ProcessPowerThrottling, REALTIME_PRIORITY_CLASS, SetPriorityClass, SetProcessInformation,
-    TerminateProcess, WaitForSingleObject,
+    PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_INFORMATION,
+    PROCESS_SUSPEND_RESUME, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, ProcessPowerThrottling,
+    REALTIME_PRIORITY_CLASS, SetPriorityClass, SetProcessInformation, TerminateProcess,
+    WaitForSingleObject,
 };
 
 use crate::process::list_lineage;
 use crate::util::{OwnedHandle, filetime_ticks, ticks_to_unix_ms};
-
-const PROCESS_BREAK_ON_TERMINATION: PROCESSINFOCLASS = PROCESSINFOCLASS(29);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "message", rename_all = "camelCase")]
@@ -33,6 +30,8 @@ pub enum ActionError {
     NotFound,
     /// Terminating it would crash the system; requires explicit confirmation.
     Critical,
+    /// The safety check failed; this never permits termination, including force.
+    CriticalityUnknown,
     /// Refused: the System process, Idle, or Argus itself.
     Refused,
     /// Denied to Argus's own rights, which acted because the privileged
@@ -63,6 +62,7 @@ impl ActionError {
             Self::AccessDenied => "access denied".into(),
             Self::NotFound => "target exited or identity changed".into(),
             Self::Critical => "critical process requires confirmation".into(),
+            Self::CriticalityUnknown => "process criticality could not be checked".into(),
             Self::Refused => "operation refused by policy".into(),
             Self::ServiceOutdated => "privileged service protocol incompatible".into(),
             Self::StillSuspended => "threads remain suspended or unreadable after resume".into(),
@@ -115,9 +115,7 @@ pub fn terminate(pid: u32, create_time: i64, allow_critical: bool) -> Result<(),
         return Err(ActionError::Refused);
     }
     let handle = open_instance(pid, create_time, PROCESS_TERMINATE)?;
-    if !allow_critical && is_critical(pid) {
-        return Err(ActionError::Critical);
-    }
+    permit_termination(criticality(&handle), allow_critical)?;
     unsafe { TerminateProcess(handle.0, 1) }?;
     Ok(())
 }
@@ -135,9 +133,7 @@ pub fn end_and_wait(targets: &[(u32, i64)], wait: Duration) -> usize {
         .filter(|&&(pid, _)| pid != 0 && pid != 4 && pid != me)
         .filter_map(|&(pid, create_time)| {
             let handle = open_instance(pid, create_time, access).ok()?;
-            if is_critical(pid) {
-                return None;
-            }
+            permit_termination(criticality(&handle), false).ok()?;
             let _ = unsafe { SetPriorityClass(handle.0, HIGH_PRIORITY_CLASS) };
             unsafe { TerminateProcess(handle.0, 1) }.ok()?;
             Some(handle)
@@ -151,25 +147,24 @@ pub fn end_and_wait(targets: &[(u32, i64)], wait: Duration) -> usize {
     ended.len()
 }
 
-/// Whether the process is marked critical (terminating it bugchecks the
-/// system). Needs full query access, so this only detects it when elevated —
-/// which is also the only case where termination could succeed.
-fn is_critical(pid: u32) -> bool {
-    let Ok(handle) = (unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) }) else {
-        return false;
-    };
-    let handle = OwnedHandle(handle);
-    let mut flag = 0u32;
-    let status = unsafe {
-        NtQueryInformationProcess(
-            handle.0,
-            PROCESS_BREAK_ON_TERMINATION,
-            (&mut flag as *mut u32).cast(),
-            4,
-            std::ptr::null_mut(),
-        )
-    };
-    status.0 >= 0 && flag != 0
+/// Query the same instance handle used for termination. IsProcessCritical
+/// requires only QUERY_LIMITED_INFORMATION, which open_instance already has.
+/// A denied or failed check is distinct from a successful negative answer.
+fn criticality(handle: &OwnedHandle) -> Result<bool, ActionError> {
+    let mut critical = windows::core::BOOL::default();
+    unsafe { IsProcessCritical(handle.0, &mut critical) }
+        .inspect_err(|error| {
+            crate::diagnostics::windows_failure("process action IsProcessCritical", error)
+        })
+        .map_err(|_| ActionError::CriticalityUnknown)?;
+    Ok(critical.as_bool())
+}
+
+fn permit_termination(critical: Result<bool, ActionError>, allow: bool) -> Result<(), ActionError> {
+    match critical? {
+        true if !allow => Err(ActionError::Critical),
+        _ => Ok(()),
+    }
 }
 
 /// A process priority class.
@@ -320,6 +315,7 @@ pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), Ac
 pub struct TreeKillReport {
     pub terminated: u32,
     pub failed: u32,
+    pub criticality_unknown: u32,
     /// A descendant was denied while the privileged service needs an update
     /// (`ActionError::ServiceOutdated`), so the UI offers it. The count alone
     /// would lose that; a denied root fails the whole call with the error.
@@ -333,6 +329,7 @@ impl TreeKillReport {
             Ok(()) => self.terminated += 1,
             Err(e) => {
                 self.failed += 1;
+                self.criticality_unknown += u32::from(matches!(e, ActionError::CriticalityUnknown));
                 self.service_outdated |= matches!(e, ActionError::ServiceOutdated);
             }
         }
@@ -487,6 +484,100 @@ mod tests {
     use super::*;
 
     #[test]
+    fn criticality_unknown_never_authorizes_an_operation_even_when_forced() {
+        for allow in [false, true] {
+            let mut called = false;
+            let result = permit_termination(Err(ActionError::CriticalityUnknown), allow)
+                .map(|()| called = true);
+            assert!(matches!(result, Err(ActionError::CriticalityUnknown)));
+            assert!(!called);
+            assert!(permit_termination(Ok(false), allow).is_ok());
+        }
+        assert!(matches!(
+            permit_termination(Ok(true), false),
+            Err(ActionError::Critical)
+        ));
+        assert!(permit_termination(Ok(true), true).is_ok());
+        let mut report = TreeKillReport::default();
+        report.note(Err(ActionError::CriticalityUnknown));
+        assert_eq!((report.failed, report.criticality_unknown), (1, 1));
+    }
+
+    #[test]
+    fn criticality_uses_limited_query_on_the_owned_dacl_fixture() {
+        use std::ffi::c_void;
+        use std::os::windows::{io::AsRawHandle, process::CommandExt};
+        use std::process::{Command, Stdio};
+        type Handle = *mut c_void;
+        #[link(name = "advapi32")]
+        unsafe extern "system" {
+            fn ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                s: *const u16,
+                revision: u32,
+                sd: *mut Handle,
+                len: *mut u32,
+            ) -> i32;
+            fn SetKernelObjectSecurity(h: Handle, info: u32, sd: Handle) -> i32;
+        }
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn LocalFree(h: Handle) -> Handle;
+        }
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "actions::tests::criticality_child", "--ignored"])
+            .creation_flags(0x08000000)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        let sddl: Vec<u16> = "D:P(D;;0x0400;;;WD)(A;;0x00121001;;;WD)"
+            .encode_utf16()
+            .chain([0])
+            .collect();
+        let mut sd = std::ptr::null_mut();
+        unsafe {
+            assert_ne!(
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    sddl.as_ptr(),
+                    1,
+                    &mut sd,
+                    std::ptr::null_mut()
+                ),
+                0
+            );
+            let result = SetKernelObjectSecurity(child.as_raw_handle(), 4, sd);
+            LocalFree(sd);
+            assert_ne!(result, 0);
+        }
+        let full = unsafe {
+            OpenProcess(
+                windows::Win32::System::Threading::PROCESS_QUERY_INFORMATION,
+                false,
+                child.id(),
+            )
+        };
+        if let Ok(handle) = full {
+            drop(OwnedHandle(handle));
+            panic!("fixture must deny full query");
+        }
+        let handle = open_instance(child.id(), 0, PROCESS_TERMINATE).unwrap();
+        assert!(matches!(criticality(&handle), Ok(false)));
+        assert!(permit_termination(criticality(&handle), false).is_ok());
+        drop(handle);
+        // No termination request is issued. EOF lets only this helper exit itself.
+        drop(child.stdin.take());
+        assert!(child.wait().unwrap().success());
+    }
+
+    #[test]
+    #[ignore = "owned subprocess fixture, called by the parent regression"]
+    fn criticality_child() {
+        use std::io::Read;
+        let mut byte = [0u8];
+        let _ = std::io::stdin().read(&mut byte);
+    }
+
+    #[test]
     fn errors_keep_their_wire_form() {
         // The UI (`actions.error.<kind>`) and the service protocol read these tags.
         let json = |e: ActionError| serde_json::to_string(&e).unwrap();
@@ -496,6 +587,10 @@ mod tests {
         );
         assert_eq!(json(ActionError::NotFound), r#"{"kind":"notFound"}"#);
         assert_eq!(json(ActionError::Critical), r#"{"kind":"critical"}"#);
+        assert_eq!(
+            json(ActionError::CriticalityUnknown),
+            r#"{"kind":"criticalityUnknown"}"#
+        );
         assert_eq!(json(ActionError::Refused), r#"{"kind":"refused"}"#);
         assert_eq!(
             json(ActionError::ServiceOutdated),
@@ -530,7 +625,7 @@ mod tests {
         // As the UI and the service protocol read it.
         assert_eq!(
             serde_json::to_string(&report).unwrap(),
-            r#"{"terminated":2,"failed":3,"serviceOutdated":true}"#
+            r#"{"terminated":2,"failed":3,"criticalityUnknown":0,"serviceOutdated":true}"#
         );
     }
 }
