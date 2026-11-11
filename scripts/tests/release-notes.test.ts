@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { changelogEntries, strayHeadings, withTranslation } from "../lib/release-notes.ts";
+import { changelogEntries, outline, strayHeadings, untranslatedLines, withTranslation } from "../lib/release-notes.ts";
 
 test("changelog entries split at their headings", () => {
   const changelog = [
@@ -112,4 +112,25 @@ test("an entry takes the translation of the same version", () => {
   const [latest, first] = withTranslation(zh, "en-US", en);
   assert.deepEqual(latest.translations, { "en-US": english });
   assert.equal(first.translations, undefined);
+});
+
+test("a translation keeps the sections and items of its source", () => {
+  const source = "引言。\n\n### 新功能\n\n- **甲**：一\n- 乙\n  续行\n\n### 修复\n\n* 丙";
+  const merged = "Intro.\n\n### Features\n\n- **A**: one, and B\n\n### Fixes\n\n* C";
+  assert.deepEqual(outline(source), [0, 2, 1]);
+  assert.deepEqual(outline(merged), [0, 1, 1]);
+  assert.deepEqual(outline("- 无小节的条目"), [1]);
+});
+
+test("untranslated lines are what is left of the Simplified Chinese source", () => {
+  const draft = "### Fixes\n\n- 修复进程列表的显示问题。";
+  assert.deepEqual(untranslatedLines("en-US", draft), ["- 修复进程列表的显示问题。"]);
+  assert.deepEqual(untranslatedLines("de-DE", "- Behoben（Ｘ）"), ["- Behoben（Ｘ）"]);
+  // Chinese anchors of the documentation pages the entries link to.
+  assert.deepEqual(untranslatedLines("fr-FR", "- [Guide](docs/guide/README.md#历史)"), []);
+  // Han characters are the language itself in Traditional Chinese and Japanese.
+  assert.deepEqual(untranslatedLines("zh-TW", "- 修正處理程序清單的顯示問題。"), []);
+  assert.deepEqual(untranslatedLines("ja-JP", "- プロセス一覧の表示を修正しました。"), []);
+  assert.deepEqual(untranslatedLines("zh-TW", draft), ["- 修复进程列表的显示问题。"]);
+  assert.deepEqual(untranslatedLines("ja-JP", "- 版本变更示例。"), ["- 版本变更示例。"]);
 });

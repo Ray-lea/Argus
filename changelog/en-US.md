@@ -1,8 +1,8 @@
 # Changelog
 
-[简体中文](CHANGELOG.md) | English
+[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · **English** · [Español](es-ES.md) · [Deutsch](de-DE.md) · [日本語](ja-JP.md) · [Français](fr-FR.md) · [Русский](ru-RU.md)
 
-User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This is the English edition of [CHANGELOG.md](CHANGELOG.md): `pnpm release` adds each release to both files, and the English entry is translated from the Chinese one before the release is published. The release notes on GitHub and in the app come from these entries.
+User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This file is translated from the [Simplified Chinese changelog](zh-CN.md), entry for entry.
 
 ## [0.4.0](https://github.com/Ray-lea/Argus/compare/v0.3.4...v0.4.0) - 2026-11-06
 

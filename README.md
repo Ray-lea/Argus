@@ -123,7 +123,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 | [架构](docs/architecture/README.md) | 系统分层与数据流、技术栈选型、各模块职责 |
 | [设计](docs/design/README.md) | 设计原则、曲线动画实现、窗口外观与材质 |
 | [已知问题](docs/known-issues.md) | 当前版本的已知限制 |
-| [更新日志](CHANGELOG.md) | 历次版本的详细变更 |
+| [更新日志](changelog/zh-CN.md) | 历次版本的详细变更 |
 
 ## 💬 交流与反馈
 

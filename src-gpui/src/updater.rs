@@ -57,7 +57,7 @@ const PROGRESS_EVERY: Duration = Duration::from_millis(250);
 const MAX_NOTES_BYTES: usize = 512 * 1024;
 const MAX_RELEASES: usize = 50;
 
-/// One changelog entry, as CHANGELOG.md has it.
+/// One changelog entry, as changelog/zh-CN.md has it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReleaseEntry {
     pub version: String,
@@ -65,8 +65,8 @@ pub struct ReleaseEntry {
     pub date: String,
     /// The entry's Markdown.
     pub notes: String,
-    /// The entry in other languages, by locale (`en-US`: CHANGELOG.en.md).
-    /// Notes signed before 0.3 have none.
+    /// The entry in other languages, by locale (`de-DE`: changelog/de-DE.md).
+    /// Notes signed before 0.3 have none, those up to 0.4.0 English only.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub translations: BTreeMap<String, String>,
 }

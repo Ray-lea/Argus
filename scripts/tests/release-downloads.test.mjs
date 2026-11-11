@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
 
-async function fixture(t, version, translated = true) {
+async function fixture(t, version, translated = true, others = {}) {
   const root = resolve(await mkdtemp(join(tmpdir(), "argus-release-downloads-")));
   t.after(async () => {
     assert.equal(dirname(root), resolve(tmpdir()));
@@ -13,13 +13,14 @@ async function fixture(t, version, translated = true) {
     await rm(root, { recursive: true, force: true });
   });
   const repository = resolve(import.meta.dirname, "../..");
-  await mkdir(join(root, "scripts/lib"), { recursive: true });
-  for (const file of ["scripts/release.mjs", "scripts/lib/release-notes.ts", "scripts/lib/release-downloads.md"])
+  for (const dir of ["scripts/lib", "resources", "changelog"]) await mkdir(join(root, dir), { recursive: true });
+  for (const file of ["scripts/release.mjs", "scripts/lib/release-notes.ts", "scripts/lib/release-downloads.md", "resources/changelog.json"])
     await copyFile(join(repository, file), join(root, file));
   const zh = `# 更新日志\n\n## ${version} - 2026-11-10\n\n### 修复\n\n- 版本变更示例。\n`;
   const en = translated ? `# Changelog\n\n## ${version} - 2026-11-10\n\n### Fixes\n\n- Example release change.\n` : "# Changelog\n";
-  await writeFile(join(root, "CHANGELOG.md"), zh);
-  await writeFile(join(root, "CHANGELOG.en.md"), en);
+  await writeFile(join(root, "changelog/zh-CN.md"), zh);
+  await writeFile(join(root, "changelog/en-US.md"), en);
+  for (const [locale, text] of Object.entries(others)) await writeFile(join(root, `changelog/${locale}.md`), text);
   const run = (...args) => execFileSync(process.execPath, [join(root, "scripts/release.mjs"), ...args], {
     cwd: root, encoding: "utf8", windowsHide: true,
   });
@@ -45,8 +46,10 @@ test("stable and prerelease GitHub notes include both artifact names and the bil
     assert.equal(rows.length, 14);
     for (const row of rows) assert.equal(row.split("|").length, 5, row);
     assert(body.indexOf("## 下载文件说明") > body.indexOf("- Example release change."));
-    assert.equal(await readFile(join(f.root, "CHANGELOG.md"), "utf8"), f.zh);
-    assert.equal(await readFile(join(f.root, "CHANGELOG.en.md"), "utf8"), f.en);
+    assert.equal(await readFile(join(f.root, "changelog/zh-CN.md"), "utf8"), f.zh);
+    assert.equal(await readFile(join(f.root, "changelog/en-US.md"), "utf8"), f.en);
+    // Without other languages there is nothing to link.
+    assert(body.startsWith("## 简体中文\n"));
   }
 });
 
@@ -65,4 +68,31 @@ test("the GitHub download guide does not enter signed in-app release notes", asy
   assert.equal(notes.releases.length, 1);
   assert.equal(notes.releases[0].notes, "### 修复\n\n- 版本变更示例。");
   assert.equal(notes.releases[0].translations["en-US"], "### Fixes\n\n- Example release change.");
+});
+
+const german = "# Änderungsprotokoll\n\n## 1.2.3 - 2026-11-10\n\n### Fehlerbehebungen\n\n- Beispielhafte Änderung.\n";
+
+test("other languages are linked at the top of the GitHub notes, as in the READMEs", async t => {
+  const ja = "# 更新履歴\n\n## 1.2.3 - 2026-11-10\n\n### 修正\n\n- 変更の例です。\n";
+  const f = await fixture(t, "1.2.3", true, { "de-DE": german, "ja-JP": ja });
+  const [first, blank, ...rest] = f.run("notes", "1.2.3").split("\n");
+  assert.equal(
+    first,
+    "**简体中文** · **English** · [Deutsch](changelog/de-DE.md#123---2026-11-10) · [日本語](changelog/ja-JP.md#123---2026-11-10)",
+  );
+  assert.equal(blank, "");
+  const body = rest.join("\n");
+  assert(body.startsWith("## 简体中文\n"));
+  assert(!body.includes("Beispielhafte"));
+  assert(!body.includes("変更の例"));
+});
+
+test("signed in-app notes carry every finished translation and leave drafts out", async t => {
+  // A draft as pnpm release writes it: the heading translated, the item not yet.
+  const ja = "# 更新履歴\n\n## 1.2.3 - 2026-11-10\n\n### 修正\n\n- 版本变更示例。\n";
+  const f = await fixture(t, "1.2.3", true, { "de-DE": german, "ja-JP": ja });
+  f.run("release-notes", "1.2.3", "notes.json");
+  const notes = JSON.parse(await readFile(join(f.root, "notes.json"), "utf8"));
+  assert.deepEqual(Object.keys(notes.releases[0].translations).sort(), ["de-DE", "en-US"]);
+  assert.equal(notes.releases[0].translations["de-DE"], "### Fehlerbehebungen\n\n- Beispielhafte Änderung.");
 });

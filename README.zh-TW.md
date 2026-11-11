@@ -135,7 +135,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 | [架構](docs/architecture/README.md) | 系統分層與資料流、技術選型、各模組職責 |
 | [設計](docs/design/README.md) | 設計原則、折線動畫、視窗外觀與材質 |
 | [已知問題](docs/known-issues.md) | 目前版本的已知限制 |
-| [更新記錄](CHANGELOG.md) | 歷次版本的詳細變更 |
+| [更新記錄](changelog/zh-TW.md) | 歷次版本的詳細變更 |
 
 <a id="community"></a>
 

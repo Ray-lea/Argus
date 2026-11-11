@@ -139,7 +139,7 @@ La documentation détaillée est en chinois. La [documentation en ligne](https:/
 | [Architecture](docs/architecture/README.md) | Couches du système, flux de données, technologies et responsabilités des modules |
 | [Conception](docs/design/README.md) | Principes de conception, animations des graphiques, apparence et matériaux des fenêtres |
 | [Problèmes connus](docs/known-issues.md) | Limites de la version actuelle |
-| [Journal des modifications en anglais](CHANGELOG.en.md) | Détail des changements de chaque version |
+| [Journal des modifications](changelog/fr-FR.md) | Détail des changements de chaque version |
 
 <a id="community"></a>
 

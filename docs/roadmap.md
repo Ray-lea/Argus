@@ -17,4 +17,4 @@
 
 - [ ] **迁移停维护的间接依赖**。后续处理 `instant`、`paste`、`rustybuzz`、`ttf-parser`，保留现有 GPUI 行为并复核字体、图标、交互与性能。当前引入路径和候选方案见[依赖与安全维护](development/security.md#停维护依赖的后续迁移)。
 
-现有功能与使用方法见[使用指南](guide/README.md)，已发布的版本变化见[更新记录](../CHANGELOG.md)。
+现有功能与使用方法见[使用指南](guide/README.md)，已发布的版本变化见[更新记录](../changelog/zh-CN.md)。

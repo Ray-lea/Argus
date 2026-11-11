@@ -139,7 +139,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 | [アーキテクチャ](docs/architecture/README.md) | システム構成、データ フロー、技術構成、各モジュールの役割 |
 | [設計](docs/design/README.md) | 設計方針、グラフのアニメーション、ウィンドウの外観とマテリアル |
 | [既知の問題](docs/known-issues.md) | 現行バージョンの制限事項 |
-| [更新履歴（英語）](CHANGELOG.en.md) | 各バージョンの詳細な変更内容 |
+| [更新履歴](changelog/ja-JP.md) | 各バージョンの詳細な変更内容 |
 
 <a id="community"></a>
 

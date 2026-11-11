@@ -1,8 +1,27 @@
 //! A changelog entry as the app lays it out (the update dialog and the About
 //! page), after the website's changelog: a notice, an introduction, and the
 //! changes grouped by kind under their headings, each change with its bold
-//! label apart from its text. The headings are those `scripts/release.mjs`
-//! writes, in either language.
+//! label apart from its text. The headings are those of
+//! `resources/changelog.json`, which `scripts/release.mjs` writes, in every
+//! language of the changelog.
+
+use argus_core::i18n::Locale;
+use std::sync::OnceLock;
+
+/// The changelog compiled into the app in `locale`: one file per language,
+/// translated entry for entry from the Simplified Chinese one.
+pub(super) fn source(locale: Locale) -> &'static str {
+    match locale {
+        Locale::ZhCn => include_str!("../../../changelog/zh-CN.md"),
+        Locale::ZhTw => include_str!("../../../changelog/zh-TW.md"),
+        Locale::EnUs => include_str!("../../../changelog/en-US.md"),
+        Locale::EsEs => include_str!("../../../changelog/es-ES.md"),
+        Locale::DeDe => include_str!("../../../changelog/de-DE.md"),
+        Locale::JaJp => include_str!("../../../changelog/ja-JP.md"),
+        Locale::FrFr => include_str!("../../../changelog/fr-FR.md"),
+        Locale::RuRu => include_str!("../../../changelog/ru-RU.md"),
+    }
+}
 
 /// What a group of changes is, for its colour and its order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,23 +35,49 @@ pub(super) enum Kind {
     Other,
 }
 
-/// The headings of each kind, in both changelogs (matched, never shown).
-#[rustfmt::skip]
-const HEADINGS: [(Kind, &[&str]); 6] = [
-    (Kind::Feature, &["新功能", "功能", "features", "new features"]), // i18n-ignore
-    (Kind::Fix, &["修复", "fixes", "bug fixes"]), // i18n-ignore
-    (Kind::Performance, &["性能", "performance"]), // i18n-ignore
-    (Kind::Breaking, &["破坏性变更", "breaking changes"]), // i18n-ignore
-    (Kind::Upgrade, &["升级提示", "upgrading", "upgrade notes"]), // i18n-ignore
-    (Kind::Known, &["已知问题", "已知限制", "known issues", "known limitations"]), // i18n-ignore
+/// The kinds told apart, by their key in `resources/changelog.json`; any
+/// other heading (reverts, included releases...) is `Other`.
+const KINDS: [(&str, Kind); 6] = [
+    ("feature", Kind::Feature),
+    ("fix", Kind::Fix),
+    ("performance", Kind::Performance),
+    ("breaking", Kind::Breaking),
+    ("upgrade", Kind::Upgrade),
+    ("known", Kind::Known),
 ];
+
+/// The headings of each kind in every language, in lower case (matched,
+/// never shown).
+fn headings() -> &'static [(Kind, Vec<String>)] {
+    static HEADINGS: OnceLock<Vec<(Kind, Vec<String>)>> = OnceLock::new();
+    HEADINGS.get_or_init(|| {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../../../resources/changelog.json"))
+                .expect("changelog headings");
+        KINDS
+            .iter()
+            .map(|(key, kind)| {
+                let names = conf["sections"][key]
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|languages| languages.values())
+                    .filter_map(|names| names.as_array())
+                    .flatten()
+                    .filter_map(|name| name.as_str())
+                    .map(str::to_lowercase)
+                    .collect();
+                (*kind, names)
+            })
+            .collect()
+    })
+}
 
 impl Kind {
     fn of(title: &str) -> Self {
         let title = title.trim().to_lowercase();
-        HEADINGS
+        headings()
             .iter()
-            .find(|(_, names)| names.contains(&title.as_str()))
+            .find(|(_, names)| names.contains(&title))
             .map_or(Self::Other, |(kind, _)| *kind)
     }
 }
@@ -163,7 +208,7 @@ pub(super) fn parse(notes: &str) -> Note {
 
 #[cfg(test)]
 mod tests {
-    use super::{Item, Kind, parse};
+    use super::{Item, Kind, Locale, Note, headings, parse, source};
 
     #[test]
     fn groups_changes_under_their_headings() {
@@ -193,32 +238,85 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_and_known_headings_in_both_languages() {
+    fn headings_of_every_language_have_their_kind() {
         for (title, kind) in [
             ("升级提示", Kind::Upgrade),
             ("Upgrading", Kind::Upgrade),
+            ("Hinweise zur Aktualisierung", Kind::Upgrade),
             ("已知限制", Kind::Known),
             ("Known issues", Kind::Known),
+            ("既知の問題", Kind::Known),
             ("破坏性变更", Kind::Breaking),
             ("Performance", Kind::Performance),
+            ("Производительность", Kind::Performance),
+            ("修正", Kind::Fix),
+            ("Nouvelles fonctionnalités", Kind::Feature),
+            ("Cambios incluidos", Kind::Other),
         ] {
             let note = parse(&format!("### {title}\n\n- x\n"));
             assert_eq!(note.groups[0].kind, kind, "{title}");
         }
+        // A heading names one kind in every language.
+        let all = headings()
+            .iter()
+            .flat_map(|(kind, names)| names.iter().map(move |name| (name, kind)));
+        for (name, kind) in all.clone() {
+            assert!(
+                all.clone().all(|(other, k)| other != name || k == kind),
+                "{name}"
+            );
+        }
+    }
+
+    /// Entries split at their headings: the heading line and the body.
+    fn entries(source: &str) -> Vec<(&str, &str)> {
+        source
+            .split("\n## ")
+            .skip(1)
+            .map(|entry| entry.split_once('\n').unwrap_or((entry, "")))
+            .collect()
     }
 
     #[test]
     fn every_entry_of_the_changelogs_has_changes() {
-        for source in [
-            include_str!("../../../CHANGELOG.md"),
-            include_str!("../../../CHANGELOG.en.md"),
-        ] {
-            for entry in source.split("\n## ").skip(1) {
-                let body = entry.split_once('\n').map_or("", |(_, body)| body);
-                assert!(
-                    parse(body).changes() > 0,
-                    "{}",
-                    entry.lines().next().unwrap()
+        for locale in Locale::ALL {
+            for (heading, body) in entries(source(locale)) {
+                assert!(parse(body).changes() > 0, "{locale:?}: {heading}");
+            }
+        }
+    }
+
+    /// The app lays every language out as it does the source: the same
+    /// releases, sections of the same kinds and the same changes, labelled
+    /// where the source's are.
+    #[test]
+    fn translations_match_the_source_entry_for_entry() {
+        let shape = |note: &Note| {
+            let groups = note.groups.iter().map(|group| {
+                let labels = group
+                    .items
+                    .iter()
+                    .map(|item| item.label.is_some())
+                    .collect::<Vec<_>>();
+                (group.kind, labels)
+            });
+            (
+                note.notice.is_some(),
+                note.intro.len(),
+                groups.collect::<Vec<_>>(),
+            )
+        };
+        let original = entries(source(Locale::SOURCE));
+        for locale in Locale::ALL {
+            let translated = entries(source(locale));
+            let headings =
+                |list: &[(&str, &str)]| list.iter().map(|(h, _)| h.to_string()).collect::<Vec<_>>();
+            assert_eq!(headings(&translated), headings(&original), "{locale:?}");
+            for ((heading, body), (_, theirs)) in translated.iter().zip(&original) {
+                assert_eq!(
+                    shape(&parse(body)),
+                    shape(&parse(theirs)),
+                    "{locale:?}: {heading}"
                 );
             }
         }

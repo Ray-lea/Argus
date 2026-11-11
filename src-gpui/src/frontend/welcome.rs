@@ -17,7 +17,7 @@ pub(super) fn configuration() -> &'static Value {
     })
 }
 
-/// One release of CHANGELOG.md: version, date and its notes.
+/// One release of the changelog: version, date and its notes.
 #[derive(Clone)]
 pub(super) struct Release {
     pub version: String,
@@ -25,14 +25,10 @@ pub(super) struct Release {
     pub notes: String,
 }
 
-/// The releases written into the app's changelog, newest first.
+/// The releases written into the app's changelog, newest first, in the
+/// interface language.
 pub(super) fn changelog() -> Vec<Release> {
-    let source = match argus_core::i18n::locale() {
-        argus_core::i18n::Locale::ZhCn | argus_core::i18n::Locale::ZhTw => {
-            include_str!("../../../CHANGELOG.md")
-        }
-        _ => include_str!("../../../CHANGELOG.en.md"),
-    };
+    let source = release_notes::source(argus_core::i18n::locale());
     let mut releases: Vec<Release> = vec![];
     for line in source.lines() {
         if let Some(rest) = line.strip_prefix("## [") {

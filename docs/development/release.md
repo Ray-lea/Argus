@@ -1,6 +1,6 @@
 # 提交与发布
 
-提交信息遵循 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/zh-hans/v1.0.0/)，版本号遵循[语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。版本号、`CHANGELOG.md` 和 GitHub Release 都由提交信息生成，所以提交信息的格式直接决定发布说明。英文版 `CHANGELOG.en.md` 与 `CHANGELOG.md` 逐条对应，发布时由中文条目翻译而来。
+提交信息遵循 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/zh-hans/v1.0.0/)，版本号遵循[语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。版本号、简体中文更新日志 `changelog/zh-CN.md` 和 GitHub Release 都由提交信息生成，所以提交信息的格式直接决定发布说明。`changelog/` 下其他语言的更新日志按 `locales/` 的语言标签命名（`zh-TW.md`、`en-US.md`、`es-ES.md`、`de-DE.md`、`ja-JP.md`、`fr-FR.md`、`ru-RU.md`），与中文版逐条对应，发布时由中文条目翻译而来。各语言的名称与小节标题在 `resources/changelog.json` 中维护，发布脚本、应用和官网按这份表区分新功能、修复等小节。
 
 ## 持续集成
 
@@ -9,7 +9,7 @@
 | 工作流 | 触发 | 内容 |
 |---|---|---|
 | `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；Biome、文案检查、生成代码检查、脚本测试、rustfmt、Clippy、Rust 测试、第三方许可声明是否最新 |
-| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`CHANGELOG.md`、已译完的 `CHANGELOG.en.md` 与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；为更新对话框显示的更新内容签名并校验；静默安装，核对卸载项及安装文件、运行副本、免安装下载的更新类型，再静默卸载；生成更新清单并发布 GitHub Release |
+| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`changelog/zh-CN.md`、其他语言已译完的条目与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；为更新对话框显示的更新内容签名并校验；静默安装，核对卸载项及安装文件、运行副本、免安装下载的更新类型，再静默卸载；生成更新清单并发布 GitHub Release |
 | [`website.yml`](../../.github/workflows/website.yml) | 手动运行（`main`），或发布完成后由 `release.yml` 调用 | 以已发布的稳定版构建文档和下载页，同步两条更新清单，逐项校验公网下载、更新清单、官网页面和域名跳转。配置见[官网与发行镜像](website.md) |
 
 日常提交与普通分支推送前按改动范围完成相关验证，已覆盖当前改动的结果可复用；纯文档修改核对内容与相关链接即可。正式发布前运行 `start.bat check`，使用 `node scripts/notices.mjs --check` 核对第三方许可声明。
@@ -102,7 +102,7 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 
 1. 切到 `main`，工作区干净，`start.bat check` 通过。第一次发布前先配置[更新签名密钥](#更新签名密钥)；`resources/app.json` 里没有公钥时脚本会拒绝发布。
 2. 在 CI 上运行一遍检查，见[推送标签前在 CI 上检查](#推送标签前在-ci-上检查)。
-3. 预览版本号与中英文发布说明：`pnpm release --dry-run`。英文条目没有预先写好时，显示的是待译的草稿。
+3. 预览版本号与各语言的发布说明：`pnpm release --dry-run`。其他语言的条目没有预先写好时，显示的是待译的草稿。
 4. 创建发布提交和标签：
 
    ```bash
@@ -111,9 +111,9 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
    pnpm release 1.0.0-beta.1 # 或指定版本
    ```
 
-   脚本在本地同步四处版本号，写入中文发布说明与对应的英文草稿，创建 `chore(release): vX.Y.Z` 提交和附注标签 `vX.Y.Z`。首次打标签时默认使用当前版本号。
-5. 润色 `CHANGELOG.md`，把 `CHANGELOG.en.md` 的草稿逐条译成英文，用词与 `locales/en-US` 一致。保留脚本生成的二级版本标题 `## [X.Y.Z](比较链接) - YYYY-MM-DD`，条目内用三级标题。修改后执行 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 将本地标签移到最终提交。也可事先提交两种语言的条目，由发布脚本补入比较链接和日期。
-6. 推送前在本地核对：`node scripts/release.mjs verify vX.Y.Z`。它与发布工作流的第一步做同样的核对，读取条目的规则与应用相同：英文条目缺失、仍含中文（链接地址除外）或日期与中文条目不同时不通过；另外确认标签指向当前提交、版本文件和两份更新日志没有未提交的改动。`node scripts/release.mjs notes X.Y.Z` 打印 GitHub Release 的正文：先是“简体中文”一节，后是“English”一节。
+   脚本在本地同步四处版本号，写入中文发布说明与其他语言的草稿（小节标题已换成对应语言），创建 `chore(release): vX.Y.Z` 提交和附注标签 `vX.Y.Z`。首次打标签时默认使用当前版本号。
+5. 润色 `changelog/zh-CN.md`，把其他语言文件中的草稿逐条译成对应语言，用词与 `locales/<语言标签>` 的界面文案一致。带标签的条目在繁体中文与日文中写作 `**标签**：正文`（全角冒号），其他语言写作 `**Label**: text`（冒号紧跟标签，法文也不加空格），应用才能分出标签。保留脚本生成的二级版本标题 `## [X.Y.Z](比较链接) - YYYY-MM-DD`，条目内用三级标题。修改后执行 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 将本地标签移到最终提交。也可事先提交各语言的条目，由发布脚本补入比较链接和日期。
+6. 推送前在本地核对：`node scripts/release.mjs verify vX.Y.Z`。它与发布工作流的第一步做同样的核对，读取条目的规则与应用相同：其他语言的条目缺失、仍含中文原文（链接地址除外；繁体中文与日文按简体字形判断）、小节与条目数和中文条目不同或日期不同时不通过；另外确认标签指向当前提交、版本文件和各语言更新日志没有未提交的改动。`node scripts/release.mjs notes X.Y.Z` 打印 GitHub Release 的正文：顶部一行按 README 的写法列出各语言，简体中文与英文加粗，其余语言链接到该标签下对应文件中的版本条目；之后是完整的“简体中文”和“English”两节。
 7. 推送分支和标签：`git push --atomic origin main vX.Y.Z`。`release.yml` 随即开始检查和构建，完成后版本出现在 GitHub Releases。
 
 推送前想撤销：`git tag -d vX.Y.Z`，然后 `git reset --hard HEAD~1`。
@@ -130,7 +130,7 @@ gh workflow run check.yml --ref main
 gh run watch    # 选择刚开始的 Check，等待结束
 ```
 
-也可以在 Actions 页面选择 Check，对 `main` 运行。之后的发布提交只改版本号和 `CHANGELOG.md`，后者由第 6 步在本地核对。
+也可以在 Actions 页面选择 Check，对 `main` 运行。之后的发布提交只改版本号和 `changelog/` 下的更新日志，后者由第 6 步在本地核对。
 
 `release.yml` 中构建与发布的步骤只在推送标签后运行，无法预先在 CI 上检查：用 Secrets 中的私钥构建并签名安装包、为更新内容签名、静默安装与卸载、生成清单、上传 Release。这些步骤新增或修改后，第一次运行就是正式发布，推送标签后留意它们的日志；发布完成后可从 `releases/latest/download/latest.json` 取得清单，核对版本号、`argus.releaseNotes` 与 `argus.signature`。
 
@@ -157,7 +157,7 @@ Windows Authenticode 的测试接入见 [Windows 代码签名](signing.md)。测
 
 发布工作流使用 `argus-update-signer` 为最终安装包签名，再用 `node scripts/release.mjs check-signature` 和 `resources/app.json` 中的公钥校验。本地构建安装包使用 `start.bat build installer`。
 
-更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `CHANGELOG.md` 条目（JSON），每个条目以 `translations` 附上 `CHANGELOG.en.md` 中同一版本的英文译文（0.3 之前的版本忽略这个字段），`cargo run -p argus-update-signer -- <版本> <文件>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。签名工具接收既有 Base64 私钥文本，环境变量须保存密钥的 Base64 内容。应用只显示验签通过且版本号一致的更新内容，并按界面语言选用译文；没有译文的版本显示中文，列表下方加以说明。
+更新对话框显示的更新内容同样签名：`node scripts/release.mjs release-notes <版本> release-notes.json` 写出该版本及之前最近 15 个版本的 `changelog/zh-CN.md` 条目（JSON），每个条目以 `translations` 按语言标签附上其他语言同一版本的译文（仍是草稿的译文不附；0.3 之前的版本忽略这个字段），总大小超过应用接受的 512 KiB 时省略较早的版本；`cargo run -p argus-update-signer -- <版本> <文件>` 用同一私钥签名并把版本号写进可信注释，再以 `check-signature` 校验。签名工具接收既有 Base64 私钥文本，环境变量须保存密钥的 Base64 内容。应用只显示验签通过且版本号一致的更新内容，并按界面语言选用译文；缺少对应译文时，繁体中文界面显示简体中文，其他语言显示英文，英文也缺少时显示中文。
 
 ## 更新通道
 
@@ -166,7 +166,7 @@ GitHub 上最新稳定版 Release 提供 `releases/latest/download/latest.json`�
 - 发布稳定版时，两份清单都指向这个版本，随 Release 一起上传。
 - 各标签的检查可并行，构建与发布任务共用 `release-publication` 队列（`queue: max`），避免稳定版发布与测试版清单写入交错；最多保留 100 个等待任务。测试版发布前从 GitHub asset API 读取当前清单，按 SemVer 比较，仅当版本高于最新稳定版和当前测试版时才覆盖。旧标签晚完成或重跑时仍保留已发布的新版本；当前清单缺失、无效或读取失败时中止发布。
 - 发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。查询最新稳定版明确返回 404 时，测试版通道收不到更新，工作流会给出警告；网络、权限或 GitHub API 错误会使发布步骤失败，不会当作缺少稳定版而跳过。
-- 清单由 `node scripts/release.mjs manifest` 生成。`notes` 取自 `CHANGELOG.md` 的对应条目，转成纯文本并去掉提交范围（`core`、`ui` 等），供 0.2 之前的版本显示；`argus.releaseNotes` 与 `argus.signature` 是上一节签名的更新内容原文及其签名，新版本的更新对话框只读这两项。
+- 清单由 `node scripts/release.mjs manifest` 生成。`notes` 取自 `changelog/zh-CN.md` 的对应条目，转成纯文本并去掉提交范围（`core`、`ui` 等），供 0.2 之前的版本显示；`argus.releaseNotes` 与 `argus.signature` 是上一节签名的更新内容原文及其签名，新版本的更新对话框只读这两项。
 
 自动线路依次尝试 GitHub、Argus 官方镜像和加速代理。代理使用加前缀的 GitHub 地址，官方镜像使用版本化下载地址。见[设置 → 更新](../guide/settings.md#更新)。
 

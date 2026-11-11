@@ -139,7 +139,7 @@ Die ausführliche Dokumentation ist auf Chinesisch verfasst. Die [Online-Dokumen
 | [Architektur](docs/architecture/README.md) | Systemschichten, Datenfluss, Technologien und Modulaufgaben |
 | [Design](docs/design/README.md) | Gestaltungsprinzipien, Diagrammanimationen, Fenster und Materialien |
 | [Bekannte Probleme](docs/known-issues.md) | Bekannte Einschränkungen der aktuellen Version |
-| [Änderungsprotokoll auf Englisch](CHANGELOG.en.md) | Detaillierte Änderungen jeder Version |
+| [Änderungsprotokoll](changelog/de-DE.md) | Detaillierte Änderungen jeder Version |
 
 <a id="community"></a>
 

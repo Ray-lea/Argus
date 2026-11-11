@@ -139,7 +139,7 @@ Las guías detalladas están en chino. La [documentación en línea](https://arg
 | [Arquitectura](docs/architecture/README.md) | Capas del sistema, flujo de datos, tecnologías y responsabilidades de los módulos |
 | [Diseño](docs/design/README.md) | Principios de diseño, animación de gráficos, aspecto y materiales de las ventanas |
 | [Problemas conocidos](docs/known-issues.md) | Limitaciones de la versión actual |
-| [Registro de cambios (inglés)](CHANGELOG.en.md) | Cambios detallados de cada versión |
+| [Registro de cambios](changelog/es-ES.md) | Cambios detallados de cada versión |
 
 <a id="community"></a>
 

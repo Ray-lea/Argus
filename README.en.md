@@ -123,7 +123,7 @@ The documentation is in Chinese; [online documentation](https://argustask.com/do
 | [Architecture](docs/architecture/README.md) | System layers and data flow, tech stack, module responsibilities |
 | [Design](docs/design/README.md) | Design principles, chart animation, window appearance and materials |
 | [Known issues](docs/known-issues.md) | Known limitations of the current version |
-| [Changelog](CHANGELOG.en.md) | Detailed changes in each release |
+| [Changelog](changelog/en-US.md) | Detailed changes in each release |
 
 ## 💬 Community
 

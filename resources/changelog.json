@@ -1,0 +1,94 @@
+{
+  "languages": [
+    { "locale": "zh-CN", "name": "简体中文", "title": "更新日志" },
+    { "locale": "zh-TW", "name": "繁體中文", "title": "更新記錄" },
+    { "locale": "en-US", "name": "English", "title": "Changelog" },
+    { "locale": "es-ES", "name": "Español", "title": "Registro de cambios" },
+    { "locale": "de-DE", "name": "Deutsch", "title": "Änderungsprotokoll" },
+    { "locale": "ja-JP", "name": "日本語", "title": "更新履歴" },
+    { "locale": "fr-FR", "name": "Français", "title": "Journal des modifications" },
+    { "locale": "ru-RU", "name": "Русский", "title": "История изменений" }
+  ],
+  "sections": {
+    "breaking": {
+      "zh-CN": ["破坏性变更"],
+      "zh-TW": ["破壞性變更"],
+      "en-US": ["Breaking changes"],
+      "es-ES": ["Cambios incompatibles"],
+      "de-DE": ["Inkompatible Änderungen"],
+      "ja-JP": ["互換性のない変更"],
+      "fr-FR": ["Changements incompatibles"],
+      "ru-RU": ["Несовместимые изменения"]
+    },
+    "feature": {
+      "zh-CN": ["新功能", "功能"],
+      "zh-TW": ["新功能", "功能"],
+      "en-US": ["Features", "New features"],
+      "es-ES": ["Nuevas funciones"],
+      "de-DE": ["Neue Funktionen"],
+      "ja-JP": ["新機能"],
+      "fr-FR": ["Nouvelles fonctionnalités"],
+      "ru-RU": ["Новые возможности"]
+    },
+    "fix": {
+      "zh-CN": ["修复"],
+      "zh-TW": ["修正"],
+      "en-US": ["Fixes", "Bug fixes"],
+      "es-ES": ["Correcciones"],
+      "de-DE": ["Fehlerbehebungen"],
+      "ja-JP": ["修正"],
+      "fr-FR": ["Corrections"],
+      "ru-RU": ["Исправления"]
+    },
+    "performance": {
+      "zh-CN": ["性能"],
+      "zh-TW": ["效能"],
+      "en-US": ["Performance"],
+      "es-ES": ["Rendimiento"],
+      "de-DE": ["Leistung"],
+      "ja-JP": ["パフォーマンス"],
+      "fr-FR": ["Performances"],
+      "ru-RU": ["Производительность"]
+    },
+    "upgrade": {
+      "zh-CN": ["升级提示"],
+      "zh-TW": ["升級提示"],
+      "en-US": ["Upgrading", "Upgrade notes"],
+      "es-ES": ["Notas de actualización"],
+      "de-DE": ["Hinweise zur Aktualisierung"],
+      "ja-JP": ["アップデート時の注意"],
+      "fr-FR": ["Remarques sur la mise à jour"],
+      "ru-RU": ["Примечания к обновлению"]
+    },
+    "known": {
+      "zh-CN": ["已知限制", "已知问题"],
+      "zh-TW": ["已知限制", "已知問題"],
+      "en-US": ["Known limitations", "Known issues"],
+      "es-ES": ["Limitaciones conocidas", "Problemas conocidos"],
+      "de-DE": ["Bekannte Einschränkungen", "Bekannte Probleme"],
+      "ja-JP": ["既知の制限", "既知の問題"],
+      "fr-FR": ["Limitations connues", "Problèmes connus"],
+      "ru-RU": ["Известные ограничения", "Известные проблемы"]
+    },
+    "revert": {
+      "zh-CN": ["回退"],
+      "zh-TW": ["還原"],
+      "en-US": ["Reverts"],
+      "es-ES": ["Reversiones"],
+      "de-DE": ["Zurückgenommene Änderungen"],
+      "ja-JP": ["取り消し"],
+      "fr-FR": ["Annulations"],
+      "ru-RU": ["Отмены"]
+    },
+    "other": {
+      "zh-CN": ["其他", "包含的更新"],
+      "zh-TW": ["其他", "包含的更新"],
+      "en-US": ["Other", "Included changes"],
+      "es-ES": ["Otros cambios", "Cambios incluidos"],
+      "de-DE": ["Sonstiges", "Enthaltene Änderungen"],
+      "ja-JP": ["その他", "含まれる変更"],
+      "fr-FR": ["Autres changements", "Changements inclus"],
+      "ru-RU": ["Прочее", "Включённые изменения"]
+    }
+  }
+}
