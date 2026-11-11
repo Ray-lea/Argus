@@ -571,6 +571,28 @@ impl Desktop {
         );
         kernel_fade::stepped(level, graphs)
     }
+    /// The device list and the CPU graphs' kernel time layer as tests see
+    /// them (test control `inspectLayout`).
+    pub(in crate::frontend) fn performance_test_state(&self) -> Value {
+        let devices = available_devices(&self.snapshot, self.palette);
+        let shown = self.shown_devices(&devices);
+        let selected = selected_device(&devices, &shown, &self.device);
+        let mut hidden = self.hidden_devices().into_iter().collect::<Vec<_>>();
+        hidden.sort();
+        json!({
+            "devices": devices
+                .iter()
+                .zip(&shown)
+                .filter(|(_, shown)| **shown)
+                .map(|(device, _)| device.id.as_str())
+                .collect::<Vec<_>>(),
+            "hidden": hidden,
+            "selected": devices.get(selected).map(|device| device.id.as_str()),
+            "kernelTime": self.prefs.get(KERNEL_TIME, true),
+            "overallSeries": self.chart_series("cpu-overall-plot"),
+            "coreSeries": self.chart_series("cpu-0"),
+        })
+    }
     /// The CPU graphs' menu.
     pub(in crate::frontend) fn cpu_graph_menu(
         &mut self,
@@ -1823,6 +1845,20 @@ impl Desktop {
             )
             .child(graphs)
             .children(leaving)
+            // Where tests reach the graphs.
+            .when(self.options.test, |graphs| {
+                let anchors = self.ui.anchors.clone();
+                graphs.child(
+                    canvas(
+                        move |bounds, _, _| {
+                            anchors.borrow_mut().insert("cpu-graphs".into(), bounds);
+                        },
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+            })
             .into_any_element()
     }
     /// The overall graph, with `kernel` of the kernel time layer (`kernel_layer`).

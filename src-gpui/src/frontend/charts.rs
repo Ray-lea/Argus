@@ -1338,6 +1338,13 @@ pub(in crate::frontend) fn swatch(color: Hsla, dashed: bool, width: Pixels) -> A
         .into_any_element()
 }
 impl Desktop {
+    /// How many series chart `id` draws, layers included (test control `inspectLayout`).
+    pub(in crate::frontend) fn chart_series(&self, id: &str) -> Option<usize> {
+        self.chart_entries
+            .borrow()
+            .get(id)
+            .map(|entry| entry.plot.borrow().series.len())
+    }
     pub(in crate::frontend) fn chart_bounds(&self, id: &str) -> Option<Bounds<Pixels>> {
         self.chart_placements
             .borrow()

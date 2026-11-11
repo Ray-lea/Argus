@@ -71,6 +71,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`portable-notice.json`](../../tools/window-probe/steps/portable-notice.json) 用 `data` 控制把 `info.portable` 设为免安装版，核对引导第一步的说明卡片与右下角的一次性提示，覆盖图表之上、浅色主题和最小窗口加大字号。测试实例不会自行显示该提示，由 `portableNotice` 控制触发；模拟快照下单击下载入口不打开浏览器。更换 `--language` 可复核各语言的换行。
 
+[`performance-menus.json`](../../tools/window-probe/steps/performance-menus.json) 检查性能页的两个右键菜单：CPU 图表的“显示内核时间”在整体与多核视图间共用，设备列表可隐藏某一项、在“显示的设备”子菜单中逐项勾选并恢复默认显示；另核对隐藏选中项后的选中项、仅剩一项时不可隐藏、从别处打开已隐藏设备时该项回到列表，以及浅色主题。`pointer` 的 `context` 事件在已记录元素上按下并松开右键，CPU 图表区记录为 `cpu-graphs`，设备项记录为 `device-<设备标识>`；`inspectLayout.performance` 输出列表显示的设备、已隐藏设备的标识、选中项、内核时间开关，以及 CPU 总图与第一张逻辑处理器图的序列数。录制过渡时让 `record` 先于触发它的控制一步开始（间隔约 700 ms）：捕获会话建立需要数百毫秒，同一步内发出的控制会在第一帧到达前完成过渡。
+
 测试控制除页面、主题、对话框等既有项外，还包括：
 
 | 控制 | 作用 |
@@ -79,7 +81,7 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 | `keys` | 按键序列，经正常派发路径；仅模拟快照 |
 | `hoverAnchor` | 指针移到已记录元素的中心 |
 | `clickAnchor`、`dragAnchor` | 单击元素；从一个元素拖到另一个元素高度的某一比例处；仅模拟快照 |
-| `pointer` | `{ "at"?, "event", "dx"?, "dy"? }`：悬停、按下、按住移动或松开。`at` 为已记录元素或 `header:<列>`；省略时相对于手势起点，元素在拖动中移动也不影响 |
+| `pointer` | `{ "at"?, "event", "dx"?, "dy"? }`：悬停、按下、按住移动或松开，`context` 为右键单击。`at` 为已记录元素或 `header:<列>`；省略时相对于手势起点，元素在拖动中移动也不影响 |
 | `headerMenu` | 打开某一列的表头菜单 |
 | `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项与展开的子菜单 |
 | `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |

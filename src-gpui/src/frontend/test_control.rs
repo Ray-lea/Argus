@@ -354,6 +354,22 @@ impl Desktop {
             match step["event"].as_str() {
                 Some("hover") => pointer.push(moved(at, None)),
                 _ if !presses => {}
+                // A right press and release, as opens a context menu.
+                Some("context") => pointer.extend([
+                    moved(at, None),
+                    PlatformInput::MouseDown(MouseDownEvent {
+                        position: at,
+                        button: MouseButton::Right,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                    PlatformInput::MouseUp(MouseUpEvent {
+                        position: at,
+                        button: MouseButton::Right,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                ]),
                 Some("down") => pointer.push(press(at, true)),
                 Some("up") => pointer.push(press(at, false)),
                 _ => pointer.push(moved(at, Some(MouseButton::Left))),
@@ -494,6 +510,7 @@ impl Desktop {
                     "users":model::UserGroups::new(values(&self.snapshot["sessions"])).users(),
                     "headings":self.rows.iter().filter(|row|row.user.is_some()).map(|row|json!({"key":row.key,"title":row.title,"count":row.raw["entryCount"],"expanded":row.expanded})).collect::<Vec<_>>()},
                 "dialog":self.dialog_test_state(),
+                "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
