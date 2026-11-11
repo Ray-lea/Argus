@@ -2,6 +2,7 @@
 //! groups the rows are built from (`model::UserGroups`).
 use super::*;
 use model::{UserGrouping, UserGroups};
+use widgets::ToastKind;
 
 impl Desktop {
     /// The saved `groupByUser` choice; automatic until one is saved.
@@ -35,6 +36,118 @@ impl Desktop {
             let mut folds = self.user_folds.iter().collect::<Vec<_>>();
             folds.sort();
             self.prefs.set(model::USER_FOLDS, folds);
+        }
+    }
+
+    /// What a user's heading offers below folding, as the Users page of Task
+    /// Manager does: Control Panel's User Accounts, and signing the user out
+    /// (asked about first). Nothing for the system's group.
+    pub(in crate::frontend) fn user_menu(&self, row: &Row) -> Vec<MenuItem> {
+        let Some(heading) = row.user.filter(|heading| !heading.system) else {
+            return Vec::new();
+        };
+        let Some(users) = self.user_groups() else {
+            return Vec::new();
+        };
+        let sessions = users.sessions_of(row.key.strip_prefix("u:").unwrap_or(&row.key));
+        // The account behind the group: all of its sessions name it.
+        let Some(account) = values(&self.snapshot["sessions"]).iter().find(|session| {
+            session["id"]
+                .as_u64()
+                .is_some_and(|id| sessions.contains(&id))
+        }) else {
+            return Vec::new();
+        };
+        // Windows lets a user end their own session; another user's takes
+        // administrator rights, which only an elevated Argus has.
+        let allowed = heading.current || boolean(&self.data["info"], "elevated");
+        let mut sign_out = MenuItem::new(
+            label("processes.user.signOut.action"),
+            Action::Dialog(
+                "signOut".into(),
+                json!({
+                    "name": row.title,
+                    "user": account["user"],
+                    "domain": account["domain"],
+                    "sessions": sessions,
+                    "current": heading.current,
+                }),
+            ),
+        )
+        .icon("SignOutIcon")
+        .disabled(!allowed);
+        // A danger entry keeps its colour when disabled: left plain here, so
+        // that it reads as unavailable beside the reason.
+        sign_out = if allowed {
+            sign_out.danger()
+        } else {
+            sign_out.detail(label("processes.user.signOut.needsAdmin"))
+        };
+        vec![
+            MenuItem::separator(),
+            MenuItem::new(
+                label("processes.user.manage"),
+                Action::Invoke("open_user_accounts".into(), json!({})),
+            )
+            .icon("AccountsIcon"),
+            sign_out,
+        ]
+    }
+
+    /// Signs the user of a confirmed `signOut` dialog out. A fixture never
+    /// asks for it; a test control (`resolve`) answers in its place.
+    pub(in crate::frontend) fn sign_out_user(
+        &mut self,
+        args: Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.ui.busy.contains("signOut") {
+            return;
+        }
+        self.ui.busy.insert("signOut".into());
+        self.ui
+            .errors
+            .insert("signOutName".into(), text(&args, "name").to_owned());
+        if self.options.fixture.is_some() {
+            return;
+        }
+        self.request(
+            "sign_out_user",
+            json!({"user": args["user"], "domain": args["domain"], "sessions": args["sessions"]}),
+            None,
+            window,
+            cx,
+        );
+    }
+
+    /// The answer to signing a user out: a notice either way. Signing the
+    /// own user out ends Argus with the session, usually before it shows.
+    pub(in crate::frontend) fn signed_out(&mut self, failure: Option<(&Value, &str)>) {
+        self.ui.busy.remove("signOut");
+        let name = self.ui.errors.remove("signOutName").unwrap_or_default();
+        match failure {
+            None => self.notify_toast_for(
+                ToastKind::Success,
+                tr!("processes.user.signOut.done", name = name),
+                2500,
+            ),
+            Some((error, message)) => {
+                let kind = error
+                    .as_str()
+                    .or_else(|| error.get("kind").and_then(Value::as_str))
+                    .unwrap_or_default();
+                let text = match kind {
+                    "accessDenied" => tr!("processes.user.signOut.denied", name = name),
+                    "notFound" => tr!("processes.user.signOut.gone", name = name),
+                    _ => tr!(
+                        "processes.user.signOut.failed",
+                        name = name,
+                        error = message
+                    ),
+                };
+                self.notify_toast(ToastKind::Error, text);
+            }
         }
     }
 

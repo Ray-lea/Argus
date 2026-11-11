@@ -224,7 +224,20 @@
   },
   "user": {
     "system": "Système",
-    "disconnected": "Déconnecté"
+    "disconnected": "Déconnecté",
+    "manage": "Gérer les comptes d’utilisateurs",
+    "manageFailed": "Impossible d’ouvrir Comptes d’utilisateurs dans le Panneau de configuration.",
+    "signOut": {
+      "action": "Fermer la session",
+      "title": "Fermer la session de {name} ?",
+      "body": "Tous les programmes de cet utilisateur seront fermés. Les données non enregistrées peuvent être perdues.",
+      "bodyCurrent": "Tous les programmes du compte actuel seront fermés, y compris Argus. Les données non enregistrées peuvent être perdues.",
+      "needsAdmin": "Droits d’administrateur requis",
+      "done": "Session de {name} fermée",
+      "denied": "Impossible de fermer la session de {name} : accès refusé. Exécutez Argus en tant qu’administrateur, puis réessayez.",
+      "gone": "{name} n’a plus de session ouverte.",
+      "failed": "Impossible de fermer la session de {name} : {error}"
+    }
   },
   "sectionSearching": "Lors de la recherche, chaque correspondance s’affiche ; effacer la recherche pour réduire les groupes",
   "servicesSummary": "{names} et autres ({count} services)",

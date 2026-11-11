@@ -205,11 +205,12 @@ impl DialogFrame {
 }
 
 /// Dialogs that open over whatever is open.
-const STACKING: [&str; 6] = [
+const STACKING: [&str; 7] = [
     "confirm",
     "end",
     "endTree",
     "restartExplorer",
+    "signOut",
     "closeConnection",
     "priority",
 ];
@@ -437,6 +438,15 @@ impl Desktop {
                 label("tasks.explorer.title"),
                 label("tasks.explorer.confirm"),
                 Some((label("tasks.explorer.restart"), false)),
+            ),
+            "signOut" => (
+                tr!("processes.user.signOut.title", name = name),
+                label(if boolean(&args, "current") {
+                    "processes.user.signOut.bodyCurrent"
+                } else {
+                    "processes.user.signOut.body"
+                }),
+                Some((label("processes.user.signOut.action"), true)),
             ),
             "closeConnection" => (
                 label("connections.menu.close"),
@@ -896,7 +906,7 @@ impl Desktop {
         };
         let frames = self.ui.dialog_frames.borrow();
         let frame = frames.get(&modal.id);
-        json!({"kind":modal.kind,"ready":frame.is_some() && self.ui.dialog_shown.borrow().contains_key(&modal.id),
+        json!({"kind":modal.kind,"title":modal.title,"ready":frame.is_some() && self.ui.dialog_shown.borrow().contains_key(&modal.id),
             "hasError":modal.error.is_some(),
             "settled":frame.is_some_and(|frame| frame.height(Instant::now(), theme::motion_duration()) == frame.to),
             "centered":frame.is_some_and(|frame| (f32::from(frame.top+frame.to/2.-frame.viewport/2.)).abs()<0.5),
@@ -1356,6 +1366,11 @@ impl Desktop {
                 self.restart_explorer(args.clone(), window, cx);
                 return;
             }
+            "signOut" => {
+                self.close_overlay(window, cx);
+                self.sign_out_user(args.clone(), window, cx);
+                return;
+            }
             "end" | "endTree" | "priority" => {
                 self.close_overlay(window, cx);
                 self.process_batch(&modal.kind, args, window, cx);
@@ -1612,6 +1627,7 @@ impl Desktop {
                 self.close_overlay(window, cx);
                 self.notify_toast(ToastKind::Success, label("tasks.started"));
             }
+            "sign_out_user" => self.signed_out(None),
             "restart_explorer" => {
                 let from_lockers = self.ui.errors.contains_key("explorerLocker");
                 self.explorer_finished(None);
@@ -1690,6 +1706,10 @@ impl Desktop {
                 }
             }
             "restart_explorer" => self.explorer_finished(Some(error)),
+            "sign_out_user" => self.signed_out(Some((error, &message))),
+            "open_user_accounts" => {
+                self.notify_toast(ToastKind::Error, label("processes.user.manageFailed"));
+            }
             "kill_process" if boolean(args, "locker") => {
                 self.ui.errors.remove("lockerEnd");
                 self.notify_toast(ToastKind::Error, message);

@@ -199,7 +199,20 @@
   },
   "user": {
     "system": "系統",
-    "disconnected": "已中斷連線"
+    "disconnected": "已中斷連線",
+    "manage": "管理使用者帳戶",
+    "manageFailed": "無法開啟控制台的使用者帳戶頁面。",
+    "signOut": {
+      "action": "登出",
+      "title": "登出 {name}？",
+      "body": "該使用者執行的所有程式將被關閉，未儲存的資料可能遺失。",
+      "bodyCurrent": "目前帳戶執行的所有程式將被關閉，Argus 也隨之結束。未儲存的資料可能遺失。",
+      "needsAdmin": "需要系統管理員權限",
+      "done": "已登出 {name}",
+      "denied": "沒有權限登出 {name}，以系統管理員身分執行 Argus 後可重試。",
+      "gone": "{name} 已不在登入狀態。",
+      "failed": "無法登出 {name}：{error}"
+    }
   },
   "sectionSearching": "搜尋時顯示全部相符項目，清除搜尋後可收合",
   "servicesSummary": "{names} 等 {count} 個服務",

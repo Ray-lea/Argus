@@ -222,7 +222,20 @@
   },
   "user": {
     "system": "System",
-    "disconnected": "Getrennt"
+    "disconnected": "Getrennt",
+    "manage": "Benutzerkonten verwalten",
+    "manageFailed": "Die Benutzerkonten in der Systemsteuerung konnten nicht geöffnet werden.",
+    "signOut": {
+      "action": "Abmelden",
+      "title": "{name} abmelden?",
+      "body": "Alle Programme dieses Benutzers werden geschlossen. Nicht gespeicherte Daten können verloren gehen.",
+      "bodyCurrent": "Alle Programme des aktuellen Kontos werden geschlossen, auch Argus. Nicht gespeicherte Daten können verloren gehen.",
+      "needsAdmin": "Administratorrechte erforderlich",
+      "done": "{name} wurde abgemeldet",
+      "denied": "{name} konnte nicht abgemeldet werden: Zugriff verweigert. Argus als Administrator ausführen und erneut versuchen.",
+      "gone": "{name} ist nicht mehr angemeldet.",
+      "failed": "{name} konnte nicht abgemeldet werden: {error}"
+    }
   },
   "sectionSearching": "Während der Suche wird jede Übereinstimmung angezeigt; löschen Sie die Suche, um Gruppen auszublenden",
   "servicesSummary": "{names} und weitere ({count} Dienste)",

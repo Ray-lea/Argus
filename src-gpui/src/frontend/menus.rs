@@ -871,7 +871,7 @@ impl MenuItem {
 impl Desktop {
     pub(in crate::frontend) fn row_menu(&self, row: &Row) -> Vec<MenuItem> {
         if row.section.is_some() {
-            return vec![MenuItem::new(
+            let mut items = vec![MenuItem::new(
                 label(if row.expanded {
                     "common.collapse"
                 } else {
@@ -879,6 +879,8 @@ impl Desktop {
                 }),
                 Action::Fold(row.key.clone()),
             )];
+            items.extend(self.user_menu(row));
+            return items;
         }
         let mut items = match self.page.as_str() {
             "processes" => self.process_menu(row),

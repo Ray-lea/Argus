@@ -222,7 +222,20 @@
   },
   "user": {
     "system": "System",
-    "disconnected": "Disconnected"
+    "disconnected": "Disconnected",
+    "manage": "Manage user accounts",
+    "manageFailed": "Couldn't open User Accounts in Control Panel.",
+    "signOut": {
+      "action": "Sign out",
+      "title": "Sign out {name}?",
+      "body": "All programs this user is running will be closed. Unsaved data may be lost.",
+      "bodyCurrent": "All programs running in the current account will be closed, including Argus. Unsaved data may be lost.",
+      "needsAdmin": "Administrator rights required",
+      "done": "Signed out {name}",
+      "denied": "Couldn't sign out {name}: access denied. Run Argus as administrator and try again.",
+      "gone": "{name} is no longer signed in.",
+      "failed": "Couldn't sign out {name}: {error}"
+    }
   },
   "sectionSearching": "While searching, every match shows; clear the search to collapse groups",
   "servicesSummary": "{names} and others ({count} services)",

@@ -81,6 +81,8 @@ product_icons! {
     "NotesIcon" => ScrollText,
     "UserIcon" => User,
     "UsersIcon" => Users,
+    "AccountsIcon" => UserCog,
+    "SignOutIcon" => LogOut,
     "PinIcon" => Pin,
     "UnpinIcon" => PinOff,
     "TrashIcon" => Trash,

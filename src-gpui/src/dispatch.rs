@@ -28,6 +28,17 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "open_user_accounts" => crate::commands::open_user_accounts(host.clone())
+            .map(|value| serde_json::to_value(value).expect("serializable command response"))
+            .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "sign_out_user" => crate::commands::sign_out_user(
+            host.state(),
+            argument::<String>(&args, "user")?,
+            argument::<String>(&args, "domain")?,
+            argument::<Vec<u32>>(&args, "sessions")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "task_manager_status" => crate::commands::task_manager_status()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),

@@ -224,7 +224,20 @@
   },
   "user": {
     "system": "Sistema",
-    "disconnected": "Desconectado"
+    "disconnected": "Desconectado",
+    "manage": "Administrar cuentas de usuario",
+    "manageFailed": "No se pudo abrir Cuentas de usuario en el Panel de control.",
+    "signOut": {
+      "action": "Cerrar sesión",
+      "title": "¿Cerrar la sesión de {name}?",
+      "body": "Se cerrarán todos los programas de este usuario. Los datos no guardados pueden perderse.",
+      "bodyCurrent": "Se cerrarán todos los programas de la cuenta actual, incluido Argus. Los datos no guardados pueden perderse.",
+      "needsAdmin": "Se requieren derechos de administrador",
+      "done": "Sesión de {name} cerrada",
+      "denied": "No se pudo cerrar la sesión de {name}: acceso denegado. Ejecute Argus como administrador y vuelva a intentarlo.",
+      "gone": "{name} ya no tiene la sesión iniciada.",
+      "failed": "No se pudo cerrar la sesión de {name}: {error}"
+    }
   },
   "sectionSearching": "Se muestran todas las coincidencias durante la búsqueda; borre la búsqueda para contraer los grupos",
   "servicesSummary": "{names}, entre otros ({count} servicios)",

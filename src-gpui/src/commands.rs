@@ -46,6 +46,38 @@ pub fn run_task(
     crate::tasks::launch(owner, command, elevated)
 }
 
+/// Opens Control Panel's User Accounts, as Task Manager's "Manage user
+/// accounts" does. Started with the desktop's rights also when Argus is
+/// elevated: Control Panel asks for elevation where a change needs it.
+pub fn open_user_accounts(app: crate::native_runtime::Host) -> Result<(), crate::tasks::TaskError> {
+    let owner = app
+        .get_window("main")
+        .and_then(|w| w.hwnd().ok())
+        .map_or(0, |h| h.0 as usize);
+    crate::tasks::launch(
+        owner,
+        "control.exe /name Microsoft.UserAccounts".into(),
+        false,
+    )
+}
+
+/// Signs a user out of the sessions the process list showed for them. Acts
+/// with Argus's own rights: another user's session needs an elevated Argus.
+pub fn sign_out_user(
+    state: State<'_, AppState>,
+    user: String,
+    domain: String,
+    sessions: Vec<u32>,
+) -> Result<(), ActionError> {
+    let result = action_result(
+        "sign out user",
+        "local",
+        argus_core::sessions::sign_out(&user, &domain, &sessions),
+    );
+    state.sampler.send(Control::Refresh);
+    result
+}
+
 pub fn task_manager_status() -> Result<argus_service::taskmgr::Status, String> {
     argus_service::taskmgr::status()
 }

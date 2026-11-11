@@ -11,6 +11,8 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
+use crate::actions::ActionError;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogonSession {
@@ -178,9 +180,121 @@ pub fn list() -> Vec<LogonSession> {
     SessionTracker::new().sample()
 }
 
+#[link(name = "wtsapi32")]
+unsafe extern "system" {
+    fn WTSLogoffSession(server: *mut c_void, session: u32, wait: i32) -> i32;
+}
+
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn ExitWindowsEx(flags: u32, reason: u32) -> i32;
+}
+
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn GetLastError() -> u32;
+}
+
+/// `EWX_LOGOFF`.
+const EXIT_LOGOFF: u32 = 0;
+/// `SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER | SHTDN_REASON_FLAG_PLANNED`.
+const REASON_PLANNED: u32 = 0x8000_0000;
+const ERROR_ACCESS_DENIED: u32 = 5;
+
+/// The sessions of `asked` that `user` of `domain` is still signed in to,
+/// the interface's own one last: signing out of it ends this process.
+/// Session numbers are reused, so one that another user has signed in to
+/// since the list was shown is left alone. Account names compare without case.
+fn sessions_to_end(
+    signed_in: &[(u32, String, String, bool)],
+    own: Option<u32>,
+    user: &str,
+    domain: &str,
+    asked: &[u32],
+) -> Vec<u32> {
+    let same = |a: &str, b: &str| a.to_lowercase() == b.to_lowercase();
+    let mut found: Vec<u32> = signed_in
+        .iter()
+        .filter(|session| {
+            asked.contains(&session.0) && same(&session.1, user) && same(&session.2, domain)
+        })
+        .map(|session| session.0)
+        .collect();
+    found.sort_by_key(|id| (Some(*id) == own, *id));
+    found.dedup();
+    found
+}
+
+/// Signs `user` of `domain` out of `sessions`, as Task Manager's "Sign off"
+/// does: programs there are closed, and unsaved work is lost. The own
+/// session ends the way the Start menu ends it, so that programs may still
+/// ask about unsaved work; another session needs administrator rights (or
+/// to be the same user's), and is reported as denied otherwise. `NotFound`
+/// when the user is in none of the sessions any more.
+pub fn sign_out(user: &str, domain: &str, sessions: &[u32]) -> Result<(), ActionError> {
+    let signed_in =
+        enumerate().ok_or_else(|| ActionError::Os("session list unavailable".into()))?;
+    let own = current_session();
+    let targets = sessions_to_end(&signed_in, own, user, domain, sessions);
+    if targets.is_empty() {
+        return Err(ActionError::NotFound);
+    }
+    for session in targets {
+        let done = if Some(session) == own {
+            unsafe { ExitWindowsEx(EXIT_LOGOFF, REASON_PLANNED) }
+        } else {
+            // Without waiting: the session ends in its own time.
+            unsafe { WTSLogoffSession(std::ptr::null_mut(), session, 0) }
+        };
+        if done == 0 {
+            let code = unsafe { GetLastError() };
+            return Err(if code == ERROR_ACCESS_DENIED {
+                ActionError::AccessDenied
+            } else {
+                ActionError::Os(format!("0x{code:08X}"))
+            });
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{SessionTracker, current_session};
+    use super::{SessionTracker, current_session, sessions_to_end};
+
+    #[test]
+    fn sign_out_keeps_to_the_sessions_the_user_still_has() {
+        let signed_in = vec![
+            (1, "Ada".to_owned(), "DESK".to_owned(), false),
+            (2, "Grace".to_owned(), "DESK".to_owned(), true),
+            (3, "ada".to_owned(), "desk".to_owned(), true),
+            (4, "Ada".to_owned(), "CORP".to_owned(), false),
+        ];
+        // Both of the user's sessions, the own one last; the same name in
+        // another domain is another user.
+        assert_eq!(
+            sessions_to_end(&signed_in, Some(1), "Ada", "DESK", &[1, 3, 4]),
+            [3, 1]
+        );
+        assert_eq!(
+            sessions_to_end(&signed_in, Some(2), "Ada", "DESK", &[1, 3]),
+            [1, 3]
+        );
+        // A session another user has signed in to since is left alone, as
+        // is one that was not asked for or no longer exists.
+        assert_eq!(
+            sessions_to_end(&signed_in, Some(1), "Ada", "DESK", &[2, 9]),
+            [0u32; 0]
+        );
+        assert_eq!(
+            sessions_to_end(&signed_in, Some(1), "Ada", "DESK", &[3]),
+            [3]
+        );
+        assert_eq!(
+            sessions_to_end(&signed_in, None, "Grace", "DESK", &[2, 2]),
+            [2]
+        );
+    }
 
     #[test]
     fn the_own_session_is_listed_once_and_marked_current() {

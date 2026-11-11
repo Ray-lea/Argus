@@ -622,6 +622,18 @@ impl UserGroups {
     pub fn id_of(&self, process: &Value) -> &str {
         &self.groups[self.group_of(process)].id
     }
+    /// The sessions the user of group `id` is signed in to; none for the
+    /// system's group or an unknown one.
+    pub fn sessions_of(&self, id: &str) -> Vec<u64> {
+        let Some(group) = self.groups.iter().position(|group| group.id == id) else {
+            return Vec::new();
+        };
+        self.sessions
+            .iter()
+            .filter(|(_, index)| *index == group)
+            .map(|(session, _)| *session)
+            .collect()
+    }
 }
 /// "DNS Client, DHCP Client and 3 more services": at most two names.
 pub fn summarize_services(names: &[String]) -> String {
@@ -2473,6 +2485,21 @@ mod tests {
         assert!(users.groups[3].heading.disconnected);
         assert!(!users.groups[2].heading.disconnected);
         assert_eq!(users.groups[4].id, "system");
+    }
+
+    #[test]
+    fn a_user_group_knows_the_sessions_its_user_is_signed_in_to() {
+        let sessions = [
+            json!({"id":7,"user":"Sam","domain":"PC","current":false,"disconnected":true}),
+            json!({"id":3,"user":"sam","domain":"CORP","current":false,"disconnected":false}),
+            json!({"id":2,"user":"sam","domain":"pc","current":true,"disconnected":false}),
+        ];
+        let users = UserGroups::new(&sessions);
+        // One user in two sessions, apart from the same name in another domain.
+        assert_eq!(users.sessions_of("user:pc\\sam"), [7, 2]);
+        assert_eq!(users.sessions_of("user:corp\\sam"), [3]);
+        assert!(users.sessions_of("system").is_empty());
+        assert!(users.sessions_of("user:pc\\zoe").is_empty());
     }
 
     #[test]
