@@ -13,6 +13,7 @@
     "network": "接続",
     "history": "履歴",
     "components": "コンポーネント",
+    "blacklist": "拒否リスト",
     "settings": "設定",
     "about": "バージョン情報"
   },

@@ -1,0 +1,13 @@
+{
+  "title": "Liste noire des processus",
+  "intro": "Les processus de la liste noire sont terminés dès qu’ils apparaissent, pour bloquer les logiciels imposés qui s’exécutent en secret, lancent des tâches sur l’écran de verrouillage ou ouvrent des navigateurs d’eux-mêmes. Les noms d’image correspondent exactement, sans distinction de casse ; un nom sans extension est lu comme .exe.",
+  "placeholder": "Nom de processus, ex. 360se.exe",
+  "add": "Ajouter",
+  "remove": "Retirer",
+  "empty": "Aucun processus en liste noire",
+  "added": "Ajouté à la liste noire : {name}, terminé dès son apparition",
+  "removed": "Retiré de la liste noire : {name}",
+  "removeButton": "Retirer de la liste noire",
+  "addButton": "Ajouter à la liste noire",
+  "watchHint": "Liste noire active ({count} entrées) : chaque échantillonnage termine les processus correspondants dès qu’ils apparaissent"
+}

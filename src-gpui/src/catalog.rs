@@ -9,6 +9,7 @@ pub fn register() {
                 catalogs!(
                     $tag,
                     "actions",
+                    "blacklist",
                     "common",
                     "components",
                     "connections",

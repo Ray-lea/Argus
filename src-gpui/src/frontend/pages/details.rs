@@ -1158,11 +1158,28 @@ impl Desktop {
                 }),
             );
         if !picked.group {
+            let image = text(process, "name").to_owned();
+            let blacklisted = blacklist::holds(&self.prefs, &image);
             row = row.child(
                 action_button(
                     "details-end-tree",
                     label("common.endProcessTree"),
-                    Action::Dialog("endTree".into(), args),
+                    Action::Dialog("endTree".into(), args.clone()),
+                )
+                .border_color(p.stroke)
+                .bg(p.control)
+                .text_color(p.ink)
+                .hover(move |style| style.bg(control_hover)),
+            );
+            row = row.child(
+                action_button(
+                    "details-blacklist",
+                    label(if blacklisted {
+                        "blacklist.removeButton"
+                    } else {
+                        "blacklist.addButton"
+                    }),
+                    Action::Blacklist(image),
                 )
                 .border_color(p.stroke)
                 .bg(p.control)

@@ -13,6 +13,7 @@
     "network": "Connections",
     "history": "History",
     "components": "Components",
+    "blacklist": "Blacklist",
     "settings": "Settings",
     "about": "About"
   },

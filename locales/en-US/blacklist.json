@@ -1,0 +1,13 @@
+{
+  "title": "Process blacklist",
+  "intro": "Processes on the blacklist are terminated as soon as they appear, to stop bundled software from running on its own, starting wallpaper tasks on the lock screen, or opening browsers by itself. Image names match exactly, case-insensitively; names without an extension read as .exe.",
+  "placeholder": "Process name, e.g. 360se.exe",
+  "add": "Add",
+  "remove": "Remove",
+  "empty": "No blacklisted processes",
+  "added": "Added to the blacklist: {name}, terminated on sight",
+  "removed": "Removed from the blacklist: {name}",
+  "removeButton": "Unblacklist",
+  "addButton": "Blacklist",
+  "watchHint": "Blacklist active ({count} entries): every sample terminates matching processes as they appear"
+}

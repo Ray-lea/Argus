@@ -13,6 +13,7 @@
     "network": "Connexions",
     "history": "Historique",
     "components": "Composants",
+    "blacklist": "Liste noire",
     "settings": "Paramètres",
     "about": "À propos"
   },

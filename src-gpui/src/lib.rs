@@ -1,3 +1,6 @@
+// The UI-layout test JSON in test_control.rs outgrows the default limit.
+#![recursion_limit = "256"]
+
 mod activation;
 mod admin;
 mod async_runtime;

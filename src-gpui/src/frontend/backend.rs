@@ -543,6 +543,7 @@ impl Desktop {
             // rebuilt off the UI thread, and only when those changed.
             self.refresh_connections(cx);
         }
+        self.sweep_blacklist();
     }
     /// Whether a row's processes all started within the last three samples.
     pub(in crate::frontend) fn is_fresh(&self, row: &Row) -> bool {
@@ -553,6 +554,66 @@ impl Desktop {
                     .get(&model::identity(member))
                     .is_some_and(|first| *first != 0 && self.sequence.saturating_sub(*first) < 3)
             })
+    }
+    /// Adds the image name to the blacklist (or clears the box's text when it
+    /// is blank or already present) and says so.
+    pub(in crate::frontend) fn add_blacklist_name(
+        &mut self,
+        raw: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(name) = blacklist::add(&mut self.prefs, raw) else {
+            return;
+        };
+        self.blacklist_input
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.notify_toast(
+            widgets::ToastKind::Success,
+            tr!("blacklist.added", name = name),
+        );
+        cx.notify();
+    }
+    /// Removes a name from the blacklist, or adds it when absent (the details
+    /// pane's button toggles).
+    pub(in crate::frontend) fn toggle_blacklist_name(
+        &mut self,
+        image: &str,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if blacklist::holds(&self.prefs, image) {
+            blacklist::remove(&mut self.prefs, image);
+            self.notify_toast(
+                widgets::ToastKind::Info,
+                tr!("blacklist.removed", name = image),
+            );
+        } else {
+            let Some(name) = blacklist::add(&mut self.prefs, image) else {
+                return;
+            };
+            self.notify_toast(
+                widgets::ToastKind::Success,
+                tr!("blacklist.added", name = name),
+            );
+        }
+        cx.notify();
+    }
+    /// Sweeps each new sample for blacklisted processes: they are terminated
+    /// off the UI thread as soon as a sample names them.
+    fn sweep_blacklist(&mut self) {
+        if self.options.fixture.is_some() || blacklist::names(&self.prefs).is_empty() {
+            return;
+        }
+        let targets = blacklist::targets(
+            &self.snapshot,
+            &self.prefs,
+            &std::env::current_exe()
+                .ok()
+                .and_then(|path| Some(path.file_name()?.to_string_lossy().into_owned()))
+                .unwrap_or_default(),
+        );
+        blacklist::sweep(&self.host, &targets);
     }
     /// How often the visible page re-reads its list.
     pub(in crate::frontend) fn poll_interval(&self) -> Duration {
@@ -944,6 +1005,7 @@ impl Desktop {
                     1800,
                 );
             }
+            Action::Blacklist(image) => self.toggle_blacklist_name(&image, window, cx),
             Action::CloseOverlay => self.close_overlay(window, cx),
             Action::Confirm => self.confirm_dialog(window, cx),
         }
