@@ -2,6 +2,8 @@
 
 mod process;
 
+pub(crate) use process::ParentAttribute;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 

@@ -4,13 +4,15 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
-use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HLOCAL, HWND, LocalFree};
+use windows::Win32::Foundation::{
+    CloseHandle, E_ACCESSDENIED, GENERIC_ALL, HANDLE, HLOCAL, HWND, LocalFree,
+};
 use windows::Win32::Security::Authorization::{
     ConvertStringSidToSidW, EXPLICIT_ACCESS_W, GRANT_ACCESS, SetEntriesInAclW, TRUSTEE_IS_SID,
     TRUSTEE_IS_USER, TRUSTEE_W,
 };
 use windows::Win32::Security::{
-    CreateRestrictedToken, GetTokenInformation, LUA_TOKEN, PSID, SID_AND_ATTRIBUTES,
+    CreateRestrictedToken, EqualSid, GetTokenInformation, LUA_TOKEN, PSID, SID_AND_ATTRIBUTES,
     SetTokenInformation, TOKEN_ADJUST_DEFAULT, TOKEN_ASSIGN_PRIMARY, TOKEN_DEFAULT_DACL,
     TOKEN_DUPLICATE, TOKEN_ELEVATION, TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
     TOKEN_USER, TokenDefaultDacl, TokenElevation, TokenIntegrityLevel, TokenUser,
@@ -20,23 +22,38 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::System::Environment::{
     CreateEnvironmentBlock, DestroyEnvironmentBlock, ExpandEnvironmentStringsW,
+    FreeEnvironmentStringsW, GetEnvironmentStringsW, SetEnvironmentVariableW,
 };
+use windows::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows::Win32::System::SystemServices::SE_GROUP_INTEGRITY;
 use windows::Win32::System::Threading::{
-    CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, GetCurrentProcess,
-    GetExitCodeProcess, INFINITE, OpenProcessToken, PROCESS_INFORMATION, STARTUPINFOW,
-    WaitForSingleObject,
+    CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, CreateProcessW,
+    EXTENDED_STARTUPINFO_PRESENT, GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess,
+    INFINITE, OpenProcess, OpenProcessToken, PROCESS_CREATE_PROCESS, PROCESS_INFORMATION,
+    PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOEXW, STARTUPINFOW, WaitForSingleObject,
 };
 use windows::Win32::UI::Shell::{
     SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
     ShellExecuteExW,
 };
-use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetShellWindow, GetWindowThreadProcessId, SW_SHOWNORMAL,
+};
 use windows::core::{PCWSTR, PWSTR, w};
 
 const HELPER_ARG: &str = "--argus-run-task";
 const MAX_COMMAND: usize = 8192;
+/// Helper exit codes about the helper itself, never a Win32 error from the
+/// launch it was asked for. Bit 29 marks application-defined codes; the values
+/// stay clear of the service's own (`argus_service::util`).
+const HELPER_ELEVATED: u32 = 0x2000_0101;
+const HELPER_ENVIRONMENT: u32 = 0x2000_0102;
 static RUNNING: AtomicBool = AtomicBool::new(false);
+
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn ProcessIdToSessionId(pid: u32, session: *mut u32) -> i32;
+}
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -315,9 +332,186 @@ fn user_default_dacl(token: HANDLE) -> Result<(), TaskError> {
     result.map_err(|e| TaskError::win("standard token default DACL", e))
 }
 
+/// Whose desktop shell may start the helper.
+#[derive(Clone, Copy, PartialEq)]
+enum Shell {
+    /// Only a shell running as this process's own account: a task keeps the
+    /// account of the Argus that started it.
+    OwnAccount,
+    /// The account that owns the desktop. UAC may have approved the installer
+    /// with another administrator's credentials; the installed app belongs
+    /// to the person at the desktop.
+    DesktopAccount,
+}
+
+enum ShellLaunch {
+    /// The helper ran under the shell and reported the launch result.
+    Done(Result<(), TaskError>),
+    /// The shell is elevated, and so is everything it starts.
+    Elevated,
+    /// No helper ran under the shell; the stage and code say why.
+    Unavailable(&'static str, u32),
+}
+
+fn helper_line(owner: usize, command: &str) -> Result<(Vec<u16>, Vec<u16>), TaskError> {
+    let exe = std::env::current_exe()
+        .map_err(|e| TaskError::code("current executable", e.raw_os_error().unwrap_or(2) as u32))?;
+    let exe = exe.to_string_lossy();
+    let line = wide(&format!(
+        "{} {HELPER_ARG} {} {owner}",
+        quote(&exe),
+        quote(command)
+    ));
+    if line.len() > 32767 {
+        return Err(TaskError::code("helper command size", 87));
+    }
+    Ok((wide(&exe), line))
+}
+
+fn same_account(process: HANDLE) -> bool {
+    let user = |process: HANDLE| {
+        let mut token = HANDLE::default();
+        unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) }.ok()?;
+        let token = Handle(token);
+        token_buffer(token.0, TokenUser).ok()
+    };
+    let (Some(theirs), Some(ours)) = (user(process), user(unsafe { GetCurrentProcess() })) else {
+        return false;
+    };
+    unsafe {
+        EqualSid(
+            (*theirs.as_ptr().cast::<TOKEN_USER>()).User.Sid,
+            (*ours.as_ptr().cast::<TOKEN_USER>()).User.Sid,
+        )
+    }
+    .is_ok()
+}
+
+/// The process behind the desktop's shell window, opened to create a child
+/// under it.
+fn shell_process(scope: Shell) -> Result<Handle, (&'static str, u32)> {
+    let shell_pid = || {
+        let window = unsafe { GetShellWindow() };
+        let mut pid = 0;
+        if !window.0.is_null() {
+            unsafe { GetWindowThreadProcessId(window, Some(&mut pid)) };
+        }
+        pid
+    };
+    let pid = shell_pid();
+    if pid == 0 {
+        return Err(("shell window", 1168));
+    }
+    let (mut theirs, mut ours) = (0, 0);
+    if unsafe { ProcessIdToSessionId(pid, &mut theirs) } == 0
+        || unsafe { ProcessIdToSessionId(GetCurrentProcessId(), &mut ours) } == 0
+        || theirs != ours
+    {
+        return Err(("shell session", 50));
+    }
+    let open = || unsafe {
+        OpenProcess(
+            PROCESS_CREATE_PROCESS | PROCESS_QUERY_LIMITED_INFORMATION,
+            false,
+            pid,
+        )
+    };
+    let process = match open() {
+        // Another account's processes grant an administrator nothing by DACL.
+        Err(e) if e.code() == E_ACCESSDENIED && argus_core::privilege::enable_debug_privilege() => {
+            open()
+        }
+        result => result,
+    }
+    .map(Handle)
+    .map_err(|e| ("shell process", TaskError::win("shell process", e).code))?;
+    // The shell may have exited, and its process ID been reused, in between.
+    if shell_pid() != pid {
+        return Err(("shell process", 1168));
+    }
+    if scope == Shell::OwnAccount && !same_account(process.0) {
+        return Err(("shell account", 5));
+    }
+    Ok(process)
+}
+
+/// Starts the helper as a child of `parent`: it runs with that process's
+/// token, in its logon session. It still inherits this process's environment,
+/// which the helper replaces itself (`adopt_account_environment`).
+fn spawn_under(
+    parent: HANDLE,
+    exe: &[u16],
+    line: &mut [u16],
+) -> Result<PROCESS_INFORMATION, TaskError> {
+    let mut directory = [0u16; 1024];
+    let length = unsafe { GetSystemDirectoryW(Some(&mut directory)) } as usize;
+    if length == 0 || length >= directory.len() {
+        return Err(TaskError::code("system directory", 3));
+    }
+    let mut attribute = crate::explorer::ParentAttribute::new(parent)
+        .map_err(|e| TaskError::win("parent attribute", e))?;
+    let mut startup = STARTUPINFOEXW::default();
+    startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
+    startup.lpAttributeList = attribute.pointer();
+    let mut process = PROCESS_INFORMATION::default();
+    unsafe {
+        CreateProcessW(
+            PCWSTR(exe.as_ptr()),
+            Some(PWSTR(line.as_mut_ptr())),
+            None,
+            None,
+            false,
+            CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
+            None,
+            PCWSTR(directory.as_ptr()),
+            &startup.StartupInfo,
+            &mut process,
+        )
+    }
+    .map_err(|e| TaskError::win("CreateProcessW", e))?;
+    Ok(process)
+}
+
+fn helper_result(process: PROCESS_INFORMATION) -> Result<u32, TaskError> {
+    let handle = Handle(process.hProcess);
+    drop(Handle(process.hThread));
+    unsafe { WaitForSingleObject(handle.0, INFINITE) };
+    let mut code = 0;
+    unsafe { GetExitCodeProcess(handle.0, &mut code) }
+        .map_err(|e| TaskError::win("launch helper result", e))?;
+    Ok(code)
+}
+
+/// Runs the helper as a child of the desktop shell, with the shell's own
+/// token: the account's real standard token in the interactive logon session,
+/// with its drive mappings and device namespace.
+fn shell_helper(owner: usize, command: &str, scope: Shell) -> ShellLaunch {
+    let parent = match shell_process(scope) {
+        Ok(parent) => parent,
+        Err((stage, code)) => return ShellLaunch::Unavailable(stage, code),
+    };
+    let (exe, mut line) = match helper_line(owner, command) {
+        Ok(line) => line,
+        Err(error) => return ShellLaunch::Done(Err(error)),
+    };
+    match spawn_under(parent.0, &exe, &mut line).and_then(helper_result) {
+        Ok(0) => ShellLaunch::Done(Ok(())),
+        Ok(HELPER_ELEVATED) => ShellLaunch::Elevated,
+        // The helper never reached the launch: its own start failed, or it
+        // could not take over its account's environment.
+        Ok(code) if code == HELPER_ENVIRONMENT || code >= 0xC000_0000 => {
+            ShellLaunch::Unavailable("shell helper", code)
+        }
+        Ok(code) => ShellLaunch::Done(Err(TaskError::code("launch helper", code))),
+        Err(error) => ShellLaunch::Unavailable(error.stage, error.code),
+    }
+}
+
 /// Filter this process's token; obtaining the linked token yields identification-level access.
-/// No shell process or optional Argus service is needed for this path.
-fn standard_helper(owner: usize, command: &str) -> Result<(), TaskError> {
+/// The result stays in the elevated logon session, whose device namespace and
+/// drive mappings differ from the desktop's, so this is the fallback for when
+/// no desktop shell can start the helper.
+fn filtered_helper(owner: usize, command: &str) -> Result<(), TaskError> {
     let mut token = HANDLE::default();
     unsafe {
         OpenProcessToken(
@@ -377,18 +571,7 @@ fn standard_helper(owner: usize, command: &str) -> Result<(), TaskError> {
     unsafe { CreateEnvironmentBlock(&mut environment, Some(filtered.0), false) }
         .map_err(|e| TaskError::win("CreateEnvironmentBlock", e))?;
     let environment = Environment(environment);
-    let exe = std::env::current_exe()
-        .map_err(|e| TaskError::code("current executable", e.raw_os_error().unwrap_or(2) as u32))?;
-    let exe = exe.to_string_lossy();
-    let mut line = wide(&format!(
-        "{} {HELPER_ARG} {} {owner}",
-        quote(&exe),
-        quote(command)
-    ));
-    if line.len() > 32767 {
-        return Err(TaskError::code("helper command size", 87));
-    }
-    let exe = wide(&exe);
+    let (exe, mut line) = helper_line(owner, command)?;
     let startup = STARTUPINFOW {
         cb: size_of::<STARTUPINFOW>() as u32,
         ..Default::default()
@@ -410,23 +593,36 @@ fn standard_helper(owner: usize, command: &str) -> Result<(), TaskError> {
         )
     }
     .map_err(|e| TaskError::win("CreateProcessAsUserW", e))?;
-    let process_handle = Handle(process.hProcess);
-    drop(Handle(process.hThread));
-    unsafe { WaitForSingleObject(process_handle.0, INFINITE) };
-    let mut code = 0;
-    unsafe { GetExitCodeProcess(process_handle.0, &mut code) }
-        .map_err(|e| TaskError::win("launch helper result", e))?;
-    if code == 0 {
-        Ok(())
-    } else {
-        Err(TaskError::code("launch helper", code))
+    match helper_result(process)? {
+        0 => Ok(()),
+        HELPER_ELEVATED => Err(TaskError {
+            kind: ErrorKind::StandardUnavailable,
+            code: 5,
+            stage: "launch helper",
+        }),
+        code => Err(TaskError::code("launch helper", code)),
     }
 }
 
-pub fn launch(owner: usize, command: String, elevated: bool) -> Result<(), TaskError> {
-    if !valid(&command) {
-        return Err(TaskError::code("validate", 87));
+/// Starts `command` with the account's standard rights from this elevated
+/// process: under the desktop shell when it runs as this account with standard
+/// rights, otherwise with a token filtered from this process's own.
+fn standard(owner: usize, command: &str) -> Result<(), TaskError> {
+    match shell_helper(owner, command, Shell::OwnAccount) {
+        ShellLaunch::Done(result) => return result,
+        ShellLaunch::Elevated => {
+            log::info!("standard launch: the desktop shell is elevated; using a filtered token");
+        }
+        ShellLaunch::Unavailable(stage, code) => log::info!(
+            "standard launch: no desktop shell at {stage}; code=0x{code:08X}; using a filtered token"
+        ),
     }
+    filtered_helper(owner, command)
+}
+
+fn run_worker(
+    work: impl FnOnce() -> Result<(), TaskError> + Send + 'static,
+) -> Result<(), TaskError> {
     if RUNNING.swap(true, Ordering::Acquire) {
         return Err(TaskError {
             kind: ErrorKind::Busy,
@@ -435,18 +631,49 @@ pub fn launch(owner: usize, command: String, elevated: bool) -> Result<(), TaskE
         });
     }
     let _running = Running;
-    let result = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name("argus-launch".into())
-        .spawn(move || {
-            if !elevated && argus_core::privilege::is_elevated() {
-                standard_helper(owner, &command)
-            } else {
-                activate(owner, &command, elevated)
-            }
-        })
+        .spawn(work)
         .map_err(|e| TaskError::code("launch worker", e.raw_os_error().unwrap_or(8) as u32))?
         .join()
-        .unwrap_or_else(|_| Err(TaskError::code("launch worker", 31)));
+        .unwrap_or_else(|_| Err(TaskError::code("launch worker", 31)))
+}
+
+/// Starts the installed app for the installer's finish page and the relaunch
+/// after an update, the way the desktop shell would start it. An elevated
+/// installer hands the launch to the shell, so the first run gets the same
+/// token, logon session and account as every later one, even when UAC took
+/// another administrator's credentials.
+pub fn launch_installed(command: String) -> Result<(), TaskError> {
+    if !valid(&command) {
+        return Err(TaskError::code("validate", 87));
+    }
+    run_worker(move || {
+        if !argus_core::privilege::is_elevated() {
+            return activate(0, &command, false);
+        }
+        match shell_helper(0, &command, Shell::DesktopAccount) {
+            ShellLaunch::Done(result) => result,
+            // An elevated shell (UAC off, the built-in Administrator) starts
+            // everything elevated. There are no standard rights to return to,
+            // and a filtered token would only differ from every later start.
+            ShellLaunch::Elevated => activate(0, &command, false),
+            ShellLaunch::Unavailable(..) => filtered_helper(0, &command),
+        }
+    })
+}
+
+pub fn launch(owner: usize, command: String, elevated: bool) -> Result<(), TaskError> {
+    if !valid(&command) {
+        return Err(TaskError::code("validate", 87));
+    }
+    let result = run_worker(move || {
+        if !elevated && argus_core::privilege::is_elevated() {
+            standard(owner, &command)
+        } else {
+            activate(owner, &command, elevated)
+        }
+    });
     if let Err(error) = &result
         && !matches!(error.kind, ErrorKind::Cancelled)
     {
@@ -459,18 +686,107 @@ pub fn launch(owner: usize, command: String, elevated: bool) -> Result<(), TaskE
     result
 }
 
+/// The characters of a double-NUL-terminated environment block, up to its
+/// final entry's terminator.
+///
+/// # Safety
+/// `block` must point to a block that `CreateEnvironmentBlock` or
+/// `GetEnvironmentStringsW` returned and that outlives the slice.
+unsafe fn environment_block<'a>(block: *const u16) -> &'a [u16] {
+    const LIMIT: usize = 4 * 1024 * 1024;
+    let mut len = 0;
+    while len < LIMIT && unsafe { *block.add(len) != 0 || *block.add(len + 1) != 0 } {
+        len += 1;
+    }
+    unsafe { std::slice::from_raw_parts(block, len) }
+}
+
+/// `NAME=value` entries of an environment block. A name may itself start with
+/// `=` (the per-drive current directories), so the separator is searched from
+/// the second character.
+fn environment_entries(block: &[u16]) -> Vec<(&[u16], &[u16])> {
+    block
+        .split(|&c| c == 0)
+        .filter_map(|entry| {
+            let split = entry.iter().skip(1).position(|&c| c == u16::from(b'='))? + 1;
+            Some((&entry[..split], &entry[split + 1..]))
+        })
+        .collect()
+}
+
+/// A child created under another process takes that process's token but its
+/// creator's environment, and the creator may be an administrator signed in as
+/// another account. Replace it with the environment Windows builds for the
+/// account this process runs as, before anything reads `USERPROFILE`.
+fn adopt_account_environment() -> Result<(), TaskError> {
+    let mut token = HANDLE::default();
+    unsafe {
+        OpenProcessToken(
+            GetCurrentProcess(),
+            TOKEN_QUERY | TOKEN_DUPLICATE,
+            &mut token,
+        )
+    }
+    .map_err(|e| TaskError::win("OpenProcessToken", e))?;
+    let token = Handle(token);
+    let mut block = std::ptr::null_mut();
+    unsafe { CreateEnvironmentBlock(&mut block, Some(token.0), false) }
+        .map_err(|e| TaskError::win("CreateEnvironmentBlock", e))?;
+    let block = Environment(block);
+    let wanted = environment_entries(unsafe { environment_block(block.0.cast()) });
+    if wanted.is_empty() {
+        return Err(TaskError::code("account environment", 203));
+    }
+    let set = |name: &[u16], value: Option<&[u16]>| {
+        let name: Vec<u16> = name.iter().copied().chain(Some(0)).collect();
+        let value: Option<Vec<u16>> = value.map(|v| v.iter().copied().chain(Some(0)).collect());
+        unsafe {
+            SetEnvironmentVariableW(
+                PCWSTR(name.as_ptr()),
+                value
+                    .as_ref()
+                    .map_or(PCWSTR::null(), |v| PCWSTR(v.as_ptr())),
+            )
+        }
+    };
+    let current = unsafe { GetEnvironmentStringsW() };
+    if !current.is_null() {
+        let stale: Vec<Vec<u16>> = environment_entries(unsafe { environment_block(current.0) })
+            .into_iter()
+            .map(|(name, _)| name.to_vec())
+            .filter(|name| name.first() != Some(&u16::from(b'=')))
+            .collect();
+        let _ = unsafe { FreeEnvironmentStringsW(PCWSTR(current.0)) };
+        for name in stale {
+            let _ = set(&name, None);
+        }
+    }
+    for (name, value) in wanted {
+        set(name, Some(value)).map_err(|e| TaskError::win("SetEnvironmentVariableW", e))?;
+    }
+    Ok(())
+}
+
 /// An ordinary-rights helper exits before native window, single-instance or settings setup.
 pub fn run_mode() -> Option<i32> {
     let args: Vec<_> = std::env::args().collect();
     if args.get(1).is_none_or(|s| s != HELPER_ARG) {
         return None;
     }
-    if args.len() != 4 || argus_core::privilege::is_elevated() {
+    if args.len() != 4 {
         return Some(5);
+    }
+    // Under an elevated shell this helper is elevated too; its starter decides
+    // what a standard launch means then.
+    if argus_core::privilege::is_elevated() {
+        return Some(HELPER_ELEVATED as i32);
     }
     let Ok(owner) = args[3].parse::<usize>() else {
         return Some(87);
     };
+    if adopt_account_environment().is_err() {
+        return Some(HELPER_ENVIRONMENT as i32);
+    }
     Some(
         activate(owner, &args[2], false)
             .err()
@@ -555,5 +871,189 @@ mod tests {
             .unwrap(),
             (r"C:\A Folder", "")
         );
+    }
+
+    #[test]
+    fn environment_blocks_split_at_the_first_separator_after_a_leading_equals() {
+        let block: Vec<u16> = "=C:=C:\\dir\0PATH=a;b\0EMPTY=\0X=1=2\0\0"
+            .encode_utf16()
+            .collect();
+        let text = |value: &[u16]| String::from_utf16_lossy(value);
+        let entries: Vec<_> = environment_entries(unsafe { environment_block(block.as_ptr()) })
+            .into_iter()
+            .map(|(name, value)| (text(name), text(value)))
+            .collect();
+        assert_eq!(
+            entries,
+            [
+                ("=C:", r"C:\dir"),
+                ("PATH", "a;b"),
+                ("EMPTY", ""),
+                ("X", "1=2")
+            ]
+            .map(|(name, value)| (name.to_owned(), value.to_owned()))
+        );
+        let empty = [0u16, 0];
+        assert!(environment_entries(unsafe { environment_block(empty.as_ptr()) }).is_empty());
+        let unset: Vec<u16> = "NOVALUE".encode_utf16().collect();
+        assert!(environment_entries(&unset).is_empty());
+    }
+
+    /// The harness name of a test in this module, without the crate prefix.
+    fn fixture(name: &str) -> String {
+        format!("{}::{name}", module_path!().split_once("::").unwrap().1)
+    }
+
+    #[test]
+    #[ignore = "child fixture used by the_helper_takes_over_its_account_s_environment"]
+    fn adopt_environment_fixture() {
+        use windows::Win32::UI::Shell::GetUserProfileDirectoryW;
+        if std::env::var_os("ARGUS_TASKS_INHERITED").is_none() {
+            return;
+        }
+        adopt_account_environment().unwrap();
+        assert!(std::env::var_os("ARGUS_TASKS_INHERITED").is_none());
+        let mut token = HANDLE::default();
+        unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.unwrap();
+        let token = Handle(token);
+        let mut profile = [0u16; 1024];
+        let mut length = profile.len() as u32;
+        unsafe {
+            GetUserProfileDirectoryW(token.0, Some(PWSTR(profile.as_mut_ptr())), &mut length)
+        }
+        .unwrap();
+        let profile = String::from_utf16_lossy(&profile[..length as usize - 1]);
+        assert!(
+            std::env::var("USERPROFILE")
+                .unwrap()
+                .eq_ignore_ascii_case(&profile)
+        );
+        assert!(std::env::var_os("SystemRoot").is_some() && std::env::var_os("PATH").is_some());
+    }
+
+    #[test]
+    fn the_helper_takes_over_its_account_s_environment() {
+        use std::os::windows::process::CommandExt;
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                &fixture("adopt_environment_fixture"),
+                "--ignored",
+            ])
+            .env("ARGUS_TASKS_INHERITED", "1")
+            .env("USERPROFILE", r"X:\argus-inherited-profile")
+            .creation_flags(CREATE_NO_WINDOW.0)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        // The harness also succeeds when the name matches no test.
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+    }
+
+    #[test]
+    #[ignore = "child fixture that stays alive for the process tests"]
+    fn waiting_fixture() {
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    }
+
+    struct Waiting(std::process::Child);
+    impl Waiting {
+        fn spawn() -> Self {
+            use std::os::windows::process::CommandExt;
+            Self(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", &fixture("waiting_fixture"), "--ignored"])
+                    .creation_flags(CREATE_NO_WINDOW.0)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            )
+        }
+    }
+    impl Drop for Waiting {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    /// Starts the waiting fixture under `parent` and returns the parent
+    /// Windows recorded for it.
+    fn parent_of_a_child_under(parent: HANDLE) -> Option<u32> {
+        use windows::Win32::System::Threading::TerminateProcess;
+        let exe = std::env::current_exe().unwrap();
+        let exe = exe.to_string_lossy();
+        let mut line = wide(&format!(
+            "{} --exact {} --ignored",
+            quote(&exe),
+            fixture("waiting_fixture")
+        ));
+        let child = spawn_under(parent, &wide(&exe), &mut line).unwrap();
+        let process = Handle(child.hProcess);
+        drop(Handle(child.hThread));
+        let recorded = argus_core::process::find_by(|_| true)
+            .into_iter()
+            .find(|found| found.pid == child.dwProcessId)
+            .map(|found| found.parent_pid);
+        unsafe {
+            let _ = TerminateProcess(process.0, 0);
+            WaitForSingleObject(process.0, 5000);
+        }
+        recorded
+    }
+
+    #[test]
+    fn the_helper_is_created_as_a_child_of_the_given_process() {
+        let parent = Waiting::spawn();
+        let handle = Handle(
+            unsafe {
+                OpenProcess(
+                    PROCESS_CREATE_PROCESS | PROCESS_QUERY_LIMITED_INFORMATION,
+                    false,
+                    parent.0.id(),
+                )
+            }
+            .unwrap(),
+        );
+        assert_eq!(parent_of_a_child_under(handle.0), Some(parent.0.id()));
+    }
+
+    fn shell() -> (Handle, u32) {
+        let shell = shell_process(Shell::OwnAccount)
+            .unwrap_or_else(|(stage, code)| panic!("{stage}: code {code}"));
+        let mut pid = 0;
+        unsafe { GetWindowThreadProcessId(GetShellWindow(), Some(&mut pid)) };
+        (shell, pid)
+    }
+
+    #[test]
+    #[ignore = "starts a hidden child under the desktop shell with current rights; shows and elevates nothing"]
+    fn live_shell_child() {
+        let (shell, pid) = shell();
+        assert_eq!(parent_of_a_child_under(shell.0), Some(pid));
+    }
+
+    #[test]
+    #[ignore = "needs ARGUS_TASKS_HOST=<built argus.exe>: its helper starts dllhost.exe under the desktop shell, which exits at once without a window"]
+    fn live_shell_helper() {
+        let host = std::env::var("ARGUS_TASKS_HOST").expect("ARGUS_TASKS_HOST");
+        let (shell, _) = shell();
+        let mut directory = [0u16; 1024];
+        let length = unsafe { GetSystemDirectoryW(Some(&mut directory)) } as usize;
+        let system = String::from_utf16_lossy(&directory[..length]);
+        for (target, expected) in [("dllhost.exe", 0), ("argus-missing-helper-target.exe", 2)] {
+            let mut line = wide(&format!(
+                "{} {HELPER_ARG} {} 0",
+                quote(&host),
+                quote(&format!(r"{system}\{target}"))
+            ));
+            let code = spawn_under(shell.0, &wide(&host), &mut line)
+                .and_then(helper_result)
+                .unwrap();
+            assert_eq!(code, expected, "{target}");
+        }
     }
 }

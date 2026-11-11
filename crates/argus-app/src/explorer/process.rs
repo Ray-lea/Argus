@@ -30,13 +30,15 @@ use super::{
 };
 use crate::tasks::{Environment, Handle, quote, wide};
 
-struct ParentAttribute {
+/// An attribute list that makes `parent` the new process's parent: the child
+/// takes that process's token, logon session and job instead of the creator's.
+pub(crate) struct ParentAttribute {
     list: Vec<usize>,
     parent: Box<HANDLE>,
 }
 
 impl ParentAttribute {
-    fn new(parent: HANDLE) -> windows::core::Result<Self> {
+    pub(crate) fn new(parent: HANDLE) -> windows::core::Result<Self> {
         let mut bytes = 0;
         let _ = unsafe { InitializeProcThreadAttributeList(None, 1, None, &mut bytes) };
         let mut list = vec![0; bytes.div_ceil(size_of::<usize>())];
@@ -60,7 +62,7 @@ impl ParentAttribute {
         Ok(value)
     }
 
-    fn pointer(&mut self) -> LPPROC_THREAD_ATTRIBUTE_LIST {
+    pub(crate) fn pointer(&mut self) -> LPPROC_THREAD_ATTRIBUTE_LIST {
         LPPROC_THREAD_ATTRIBUTE_LIST(self.list.as_mut_ptr().cast())
     }
 }

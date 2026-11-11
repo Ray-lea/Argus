@@ -41,7 +41,7 @@ pub fn run_mode() -> Option<i32> {
                 command.push_str(arg);
             }
             Some(
-                argus_app::tasks::launch(0, command, false)
+                argus_app::tasks::launch_installed(command)
                     .err()
                     .map_or(0, |error| error.code as i32),
             )

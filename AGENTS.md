@@ -94,6 +94,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 安装程序钩子（`installer-hooks.nsh`）读不到 JSON 目录，提示文字在各语言的 `installer.json` 中维护，打包时生成 NSIS `LangString`，钩子通过 `ARGUS_TEXT` 宏引用文案键。
 - 中文界面文案、README 和使用指南用书面语：不用“你”等第二人称，不用口语（“由你决定”“几乎瞬间”“连不上”“这个”），用“单击”“可”“仅”“暂无”这类说法；同一概念的措辞与设置页保持一致。
 - 改了行为（快捷键、设置项、默认值、模块职责）要同步对应文档，规则见 `docs/AGENTS.md`。
+- 从管理员权限的进程以普通权限启动程序，经 `argus_app::tasks`：辅助进程作为桌面外壳的子进程创建，继承账户原有的标准令牌，并自行重建环境变量（子进程沿用的是创建者的环境）。`CreateRestrictedToken(LUA_TOKEN)` 过滤出的令牌仍属于提升的登录会话，`QueryDosDevice` 会拒绝访问、网络驱动器也不同，只作没有外壳时的回退。日志里 `standard user (elevated split token)` 或 `(no split token)` 与各盘符的 `paths.device_mapping` 拒绝访问同时出现，说明该实例运行在过滤令牌下。
 
 ## 环境与工具
 
