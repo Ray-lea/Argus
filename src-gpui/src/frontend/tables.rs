@@ -881,7 +881,9 @@ impl TableDelegate for NativeTable {
                     });
                 })
             })
-            .px(px(ROW_INSET))
+            // The process columns' edges in the header are the rows' own:
+            // the rows have no inset, so neither does the header.
+            .when(self.page != "processes", |d| d.px(px(ROW_INSET)))
             .pt(px(4.))
             .when(filtered.is_none(), |d| d.pb(px(4.)))
             .when_some(filtered.filter(|(on, _)| *on), |d, (_, details)| {
@@ -962,9 +964,17 @@ impl TableDelegate for NativeTable {
         // Process headers: the interface's 4 px cell padding inside its 4 px
         // header padding below the label, which the header band leaves out.
         let processes = self.page == "processes";
+        // The table keeps 6 px of its own at the right of a header's content
+        // (room for a sort icon): a process header leaves out as much of its
+        // padding, so its figures end where the cells' do.
         let mut cell = div()
             .size_full()
-            .px(px(CELL_PADDING))
+            .pl(px(CELL_PADDING))
+            .pr(px(if processes {
+                CELL_PADDING - 6.
+            } else {
+                CELL_PADDING
+            }))
             .pt(px(4.))
             .pb(px(if processes { 8. } else { 4. }))
             .flex()

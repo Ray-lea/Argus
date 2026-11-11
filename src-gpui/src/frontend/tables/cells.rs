@@ -553,10 +553,13 @@ impl NativeTable {
                 .child(div().min_w_0().truncate().child(note.clone()));
             element = element.child(hint(badge, "note", Some(note.clone())));
         }
+        // The image name gives way first in a narrow column, cut short with
+        // an ellipsis before the name is; it does not fill the column, so the
+        // marks after it stay beside the text however wide the column is.
         if processes && !row.detail.is_empty() {
             element = element.child(
                 div()
-                    .flex_1()
+                    .flex_shrink(1000.)
                     .min_w_0()
                     .truncate()
                     .text_color(p.faint)
@@ -604,7 +607,11 @@ impl NativeTable {
         }
         if row.pinned {
             let pin = icon("PinIcon", p.muted).flex_shrink_0();
-            element = element.child(div().flex_1());
+            // The other lists' names fill their column, and the pin marks the
+            // end of it; a process name's column fits it, the pin follows.
+            if !processes {
+                element = element.child(div().flex_1());
+            }
             element = if near {
                 element.child(hint(
                     div().flex().flex_shrink_0().child(pin),
