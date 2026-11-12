@@ -81,6 +81,7 @@ pub(super) const DEFINITIONS: &[Definition] = &[
     column("commit", "memory", Memory, 110., true),
     column("virtualSize", "memory", AddressSpace, 150., false),
     column("pageFaults", "memory", Count, 110., true),
+    column("memoryPriority", "memory", Text, 120., false),
     column("diskRead", "io", Rate, 104., true),
     column("diskWrite", "io", Rate, 104., true),
     column("io", "io", Rate, 92., true),
@@ -90,6 +91,7 @@ pub(super) const DEFINITIONS: &[Definition] = &[
     column("ioReadTotal", "io", Memory, 130., true),
     column("ioWriteTotal", "io", Memory, 130., true),
     column("ioOtherTotal", "io", Memory, 130., true),
+    column("ioPriority", "io", Text, 110., false),
     column("net", "network", Network, 92., true),
     column("netReceived", "network", Network, 110., true),
     column("netSent", "network", Network, 110., true),
@@ -121,8 +123,20 @@ pub(super) fn definition(key: &str) -> Option<&'static Definition> {
 pub(super) fn shown<'a>(key: &str, value: &'a str) -> std::borrow::Cow<'a, str> {
     match key {
         "architecture" => label(&format!("details.arch.{value}")).into(),
+        "ioPriority" | "memoryPriority" => label(&format!("processes.{key}.{value}")).into(),
         _ => value.into(),
     }
+}
+
+/// Where a level column's value stands, lowest first; text columns without
+/// levels sort by what they show.
+pub(super) fn rank(key: &str, value: &str) -> Option<usize> {
+    let levels: &[&str] = match key {
+        "ioPriority" => &["veryLow", "low", "normal", "high", "critical"],
+        "memoryPriority" => &["veryLow", "low", "medium", "belowNormal", "normal"],
+        _ => return None,
+    };
+    levels.iter().position(|level| *level == value)
 }
 
 pub(super) fn raw_key(key: &str) -> &str {

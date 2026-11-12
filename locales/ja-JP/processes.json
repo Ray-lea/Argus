@@ -178,6 +178,10 @@
       "label": "ページ フォールト",
       "title": "ソフト フォールトとハード フォールトを含む、累積されたページ フォールト。"
     },
+    "memoryPriority": {
+      "label": "メモリ優先度",
+      "title": "メモリ不足時にプロセスのメモリ ページを回収する順序です。低いほど先に回収されます。"
+    },
     "ioRead": {
       "label": "I/O 読み取り",
       "title": "1 秒あたりの I/O バイト読み取り（ファイル、ネットワーク、デバイスを含む）。"
@@ -201,6 +205,10 @@
     "ioOtherTotal": {
       "label": "合計その他 I/O",
       "title": "プロセス存続期間中に他の I/O によって転送された合計バイト数。"
+    },
+    "ioPriority": {
+      "label": "I/O 優先度",
+      "title": "プロセスのディスクなどの I/O 要求の優先度ヒントです。"
     },
     "netReceived": {
       "label": "ネットワーク受信",
@@ -265,7 +273,9 @@
   "ioPriority": {
     "veryLow": "非常に低い",
     "low": "低",
-    "normal": "通常"
+    "normal": "通常",
+    "high": "高",
+    "critical": "重要"
   },
   "memoryPriority": {
     "veryLow": "非常に低い",
