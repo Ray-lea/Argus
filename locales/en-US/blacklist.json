@@ -1,6 +1,6 @@
 {
   "title": "Process blacklist",
-  "intro": "Processes on the blacklist are terminated as soon as they appear, to stop bundled software from running on its own, starting wallpaper tasks on the lock screen, or opening browsers by itself. Image names match exactly, case-insensitively; names without an extension read as .exe.",
+  "intro": "Processes on the blacklist are terminated as soon as they appear, to stop bundled software from running on its own, starting wallpaper tasks on the lock screen, or opening browsers by itself. Matching is by complete value, case-insensitive: adding from the details pane records the exe's full path and terminates only that file; a name typed here counts as a complete image name (one without an extension reads as .exe: 360 means 360.exe and never touches 360safe.exe).",
   "placeholder": "Process name, e.g. 360se.exe",
   "add": "Add",
   "remove": "Remove",

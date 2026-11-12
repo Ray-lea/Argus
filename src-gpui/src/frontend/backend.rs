@@ -600,7 +600,8 @@ impl Desktop {
         cx.notify();
     }
     /// Sweeps each new sample for blacklisted processes: they are terminated
-    /// off the UI thread as soon as a sample names them.
+    /// off the UI thread as soon as a sample names them, one kill per entry
+    /// per cooldown so a guarded process cannot force a storm.
     fn sweep_blacklist(&mut self) {
         if self.options.fixture.is_some() || blacklist::names(&self.prefs).is_empty() {
             return;
@@ -613,6 +614,7 @@ impl Desktop {
                 .and_then(|path| Some(path.file_name()?.to_string_lossy().into_owned()))
                 .unwrap_or_default(),
         );
+        let targets = blacklist::cooled(targets, &mut self.blacklist_cooldown);
         blacklist::sweep(&self.host, &targets);
     }
     /// How often the visible page re-reads its list.

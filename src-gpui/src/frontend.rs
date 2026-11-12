@@ -294,6 +294,9 @@ struct Desktop {
     blacklist_scroll: ScrollHandle,
     /// The blacklist page's add box, kept across frames.
     blacklist_input: Entity<InputState>,
+    /// When each blacklist entry last killed, so a guarded process that
+    /// respawns meets a calm sweep instead of a kill–resample–kill storm.
+    blacklist_cooldown: HashMap<String, Instant>,
     device_scroll: ScrollHandle,
     page: String,
     page_epoch: u64,
@@ -494,6 +497,7 @@ impl Desktop {
             about_scroll: ScrollHandle::new(),
             blacklist_scroll: ScrollHandle::new(),
             blacklist_input: blacklist_input.clone(),
+            blacklist_cooldown: HashMap::new(),
             device_scroll: ScrollHandle::new(),
             // A start opens the chosen page, wherever the last run ended; an
             // update's relaunch returns to the page it left (`page`, kept
@@ -640,12 +644,11 @@ impl Desktop {
         this.subscriptions.push(cx.subscribe_in(
             &blacklist_input,
             window,
-            |this, input, event, window, cx| match event {
-                InputEvent::PressEnter { .. } => {
+            |this, input, event, window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
                     let raw = input.read(cx).value().to_string();
                     this.add_blacklist_name(&raw, window, cx);
                 }
-                _ => {}
             },
         ));
         this.watch_menu_window(window, cx);

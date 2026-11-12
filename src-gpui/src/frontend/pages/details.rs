@@ -1158,8 +1158,16 @@ impl Desktop {
                 }),
             );
         if !picked.group {
-            let image = text(process, "name").to_owned();
-            let blacklisted = blacklist::holds(&self.prefs, &image);
+            // The blacklist matches full paths: a path entry kills exactly
+            // this file and never a same-named program elsewhere. A process
+            // without a readable path falls back to its image name.
+            let path = text(process, "path");
+            let entry = if path.is_empty() {
+                text(process, "name").to_owned()
+            } else {
+                path.to_owned()
+            };
+            let blacklisted = blacklist::holds(&self.prefs, &entry);
             row = row.child(
                 action_button(
                     "details-end-tree",
@@ -1179,7 +1187,7 @@ impl Desktop {
                     } else {
                         "blacklist.addButton"
                     }),
-                    Action::Blacklist(image),
+                    Action::Blacklist(entry),
                 )
                 .border_color(p.stroke)
                 .bg(p.control)

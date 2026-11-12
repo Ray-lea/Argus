@@ -1,6 +1,6 @@
 {
   "title": "Liste noire des processus",
-  "intro": "Les processus de la liste noire sont terminés dès qu’ils apparaissent, pour bloquer les logiciels imposés qui s’exécutent en secret, lancent des tâches sur l’écran de verrouillage ou ouvrent des navigateurs d’eux-mêmes. Les noms d’image correspondent exactement, sans distinction de casse ; un nom sans extension est lu comme .exe.",
+  "intro": "Les processus de la liste noire sont terminés dès qu’ils apparaissent, pour bloquer les logiciels imposés qui s’exécutent en secret, lancent des tâches sur l’écran de verrouillage ou ouvrent des navigateurs d’eux-mêmes. La comparaison porte sur la valeur complète, sans distinction de casse : l’ajout depuis le panneau de détails enregistre le chemin complet de l’exéutable et ne termine que ce fichier ; un nom saisi ici vaut pour le nom d’image complet (sans extension, lu comme .exe : 360 désigne 360.exe et ne touche jamais 360safe.exe).",
   "placeholder": "Nom de processus, ex. 360se.exe",
   "add": "Ajouter",
   "remove": "Retirer",
