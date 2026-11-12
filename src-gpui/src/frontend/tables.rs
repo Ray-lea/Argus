@@ -1323,7 +1323,10 @@ impl TableDelegate for NativeTable {
                 } else {
                     format!("processes.column.{key}.title")
                 });
-                button.tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
+                // Wrapped like the cells' tips: some descriptions run to a few sentences.
+                button.tooltip(move |window, cx| {
+                    widgets::wrapping_tooltip(title.clone().into(), px(420.), window, cx)
+                })
             })
             .child(cell.child(label))
             .on_click(move |_, window, cx| {
