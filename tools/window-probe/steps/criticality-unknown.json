@@ -1,0 +1,9 @@
+{
+  "window": [1200, 800],
+  "steps": [
+    {"control":{"page":"processes","pointerOutside":true},"wait":500},
+    {"control":{"resolve":{"command":"kill_process","args":{"pid":44101,"name":"test-worker.exe"},"ok":false,"value":{"kind":"criticalityUnknown"}}},"wait":300,"capture":"single-unknown"},
+    {"control":{"resolve":{"command":"batch","ok":true,"value":{"kind":"end","command":"kill_process","name":"test-worker.exe","results":[{"payload":{"pid":44101},"ok":false,"value":{"kind":"criticalityUnknown"}},{"payload":{"pid":44102},"ok":true,"value":null}]}}},"wait":300,"capture":"group-unknown"},
+    {"control":{"resolve":{"command":"batch","ok":true,"value":{"kind":"endTree","command":"kill_process_tree","name":"test-worker.exe","results":[{"payload":{"pid":44101},"ok":true,"value":{"terminated":1,"failed":2,"criticalityUnknown":1,"serviceOutdated":false}}]}}},"wait":300,"capture":"tree-unknown"}
+  ]
+}

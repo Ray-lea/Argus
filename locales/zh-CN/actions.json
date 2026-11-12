@@ -15,7 +15,8 @@
     "body": "将结束 PID {pid} 及其 {count} 个子进程，未保存的数据会丢失。",
     "bodyAlone": "PID {pid} 没有子进程，仅结束该进程。",
     "done": "已结束 {count} 个进程。",
-    "partial": "已结束 {count} 个进程，{failed} 个没有权限或已退出。"
+    "partial": "已结束 {count} 个进程，{failed} 个没有权限或已退出。",
+    "unchecked": "已结束 {count} 个进程；{failed} 个未结束，其中 {unchecked} 个无法检查关键进程状态。"
   },
   "error": {
     "accessDenied": "没有权限结束 {name}。可在设置中启用特权服务，或以管理员身份运行 Argus；受保护的进程仍可能无法结束。",
@@ -23,7 +24,8 @@
     "critical": "{name} 是系统关键进程，结束该进程会导致系统崩溃，操作已阻止。",
     "refused": "不能结束 {name}。",
     "serviceOutdated": "没有权限结束 {name}。特权服务版本不兼容，更新服务后可重试。",
-    "generic": "无法结束 {name}：{error}"
+    "generic": "无法结束 {name}：{error}",
+    "criticalityUnknown": "无法确认 {name} 是否为系统关键进程；已阻止结束。"
   },
   "priority": {
     "confirmTitle": "将 {name} 设为实时优先级？",

@@ -15,7 +15,8 @@
     "body": "將結束 PID {pid} 及其 {count} 個子處理程序，未儲存的資料將會遺失。",
     "bodyAlone": "PID {pid} 沒有子處理程序，僅結束該處理程序。",
     "done": "已結束 {count} 個處理程序。",
-    "partial": "已結束 {count} 個處理程序，{failed} 個沒有權限或已結束。"
+    "partial": "已結束 {count} 個處理程序，{failed} 個沒有權限或已結束。",
+    "unchecked": "已結束 {count} 個處理程序；{failed} 個未結束，其中 {unchecked} 個無法檢查關鍵處理程序狀態。"
   },
   "error": {
     "accessDenied": "沒有權限結束 {name}。可在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus；受保護的處理程序仍可能無法結束。",
@@ -23,7 +24,8 @@
     "critical": "{name} 是系統關鍵處理程序，結束該處理程序會導致系統當機，操作已封鎖。",
     "refused": "無法結束 {name}。",
     "serviceOutdated": "沒有權限結束 {name}。特殊權限服務版本不相容，更新服務後可重試。",
-    "generic": "無法結束 {name}：{error}"
+    "generic": "無法結束 {name}：{error}",
+    "criticalityUnknown": "無法確認 {name} 是否為系統關鍵處理程序；已阻止結束。"
   },
   "priority": {
     "confirmTitle": "將 {name} 設為即時優先順序？",
