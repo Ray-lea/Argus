@@ -10,6 +10,9 @@
     "copyPart": "{kind} : {name}",
     "selectTip": "Cliquez sur une application ou un processus dans la liste pour voir ses détails ici ; cliquez à nouveau dessus pour le désélectionner.",
     "closeTip": "Le volet Détails reste ouvert par défaut. Cliquez sur {icon} en haut à droite de la fenêtre pour le réduire.",
+    "tips": "Astuces",
+    "tipsCollapse": "Réduire les astuces",
+    "tipsExpand": "Développer les astuces",
     "cpu": "Processeur",
     "cores": {
       "one": "{count} cœur",

@@ -65,6 +65,7 @@ product_icons! {
     "ShieldIcon" => Shield,
     "MotionIcon" | "SparkleIcon" => Sparkles,
     "InfoIcon" => Info,
+    "TipIcon" => Lightbulb,
     "CopyIcon" => Copy,
     "EyeIcon" => Eye,
     "EyeOffIcon" => EyeOff,

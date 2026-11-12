@@ -10,6 +10,9 @@
     "copyPart": "{kind}: {name}",
     "selectTip": "Klicken Sie auf eine App oder einen Prozess in der Liste, um hier Details anzuzeigen. Ein erneuter Klick hebt die Auswahl auf.",
     "closeTip": "Der Detailbereich bleibt standardmäßig geöffnet. Klicken Sie oben rechts im Fenster auf {icon}, um ihn einzuklappen.",
+    "tips": "Hinweise",
+    "tipsCollapse": "Hinweise reduzieren",
+    "tipsExpand": "Hinweise erweitern",
     "cpu": "Prozessor",
     "cores": {
       "one": "{count} Kern",

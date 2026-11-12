@@ -10,6 +10,9 @@
     "copyPart": "{kind}: {name}",
     "selectTip": "Haga clic en una aplicación o proceso en la lista para ver sus detalles aquí; haga clic en él nuevamente para anular su selección.",
     "closeTip": "El panel de detalles permanece abierto de forma predeterminada. Haga clic en {icon}, en la esquina superior derecha de la ventana, para contraerlo.",
+    "tips": "Sugerencias",
+    "tipsCollapse": "Contraer sugerencias",
+    "tipsExpand": "Expandir sugerencias",
     "cpu": "Procesador",
     "cores": {
       "one": "{count} núcleo",
