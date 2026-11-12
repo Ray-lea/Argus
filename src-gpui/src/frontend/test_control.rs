@@ -24,6 +24,23 @@ impl Desktop {
             let _ = self.host.emit("argus-restored", restored.clone());
         }
         if self.options.fixture.is_some()
+            && let Some(saved) = control.get("restoreWindow")
+            && let Ok(saved) =
+                serde_json::from_value::<argus_app::preferences::WindowPlacement>(saved.clone())
+            && saved.valid()
+            && let Some(native) = self.host.get_window("main")
+            && native.is_visible().is_ok_and(|visible| !visible)
+        {
+            let file = self
+                .host
+                .path()
+                .app_config_dir()
+                .unwrap()
+                .join("preferences.json");
+            argus_app::preferences::save_window(&file, saved).expect("test window placement");
+            crate::window_state::install(native.hwnd().unwrap(), file);
+        }
+        if self.options.fixture.is_some()
             && let Some(dimensions) = control["nativeResize"].as_array().filter(|a| a.len() == 2)
             && let Some(width) = dimensions[0]
                 .as_f64()
@@ -514,6 +531,21 @@ impl Desktop {
                 .unwrap_or_default();
             let about_max = f32::from(self.about_scroll.max_offset().y);
             let about_offset = f32::from(self.about_scroll.offset().y).abs();
+            let native_window = self.host.get_window("main").and_then(|native| {
+                use windows::Win32::{Foundation::RECT, UI::WindowsAndMessaging::*};
+                let hwnd = native.hwnd().ok()?;
+                let mut client = RECT::default();
+                unsafe { GetClientRect(hwnd, &mut client) }.ok()?;
+                let viewport = window
+                    .viewport_size()
+                    .map(|length| length * window.scale_factor());
+                Some(json!({
+                    "maximized": unsafe { IsZoomed(hwnd).as_bool() },
+                    "width": client.right, "height": client.bottom,
+                    "viewportMatchesClient": (f32::from(viewport.width) - client.right as f32).abs() < 1.
+                        && (f32::from(viewport.height) - client.bottom as f32).abs() < 1.
+                }))
+            });
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
@@ -533,6 +565,7 @@ impl Desktop {
                 "star":self.star_test_state(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
+                "nativeWindow":native_window,
                 "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),"scaleFactor":window.scale_factor(),"remSize":f32::from(window.rem_size()),
                 "cpuPlot":self.chart_bounds("cpu-overall-plot").map(|b|[f32::from(b.left()),f32::from(b.top()),f32::from(b.size.width),f32::from(b.size.height)]),
                 "performanceScrollY":f32::from(self.device_scroll.max_offset().y),

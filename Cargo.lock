@@ -226,6 +226,7 @@ dependencies = [
  "futures-util",
  "gpui-kit",
  "gpui-pre",
+ "gpui-pre-windows",
  "image",
  "log",
  "minisign-verify",

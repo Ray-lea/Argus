@@ -41,6 +41,9 @@ rfd = "0.16"
 [dev-dependencies]
 gpui_test = { package = "gpui-pre", version = "=0.3.9", features = ["test-support"] }
 
+[target.'cfg(windows)'.dev-dependencies]
+gpui_windows = { package = "gpui-pre-windows", version = "=0.3.9", features = ["test-support"] }
+
 [build-dependencies]
 embed-resource = "3"
 serde_json = "1"

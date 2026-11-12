@@ -1,0 +1,18 @@
+{
+  "window": [1000, 680],
+  "steps": [
+    {"control":{"page":"processes","theme":"dark"},"wait":500,"capture":"initial"},
+    {"probe":"hide","wait":200},
+    {"control":{"restoreWindow":{"rect":[100,100,1100,800],"maximized":false}},"wait":200},
+    {"probe":"show","wait":700,"inspect":"layout","label":"windowed-restored","expect":{"nativeWindow.maximized":false,"nativeWindow.viewportMatchesClient":true},"capture":"windowed-restored"},
+    {"probe":"hide","wait":200},
+    {"control":{"restoreWindow":{"rect":[100,100,1100,800],"maximized":true}},"wait":200},
+    {"probe":"show","wait":800,"inspect":"layout","label":"maximized","expect":{"nativeWindow.maximized":true,"nativeWindow.viewportMatchesClient":true},"capture":"maximized"},
+    {"probe":"minimize","wait":200},
+    {"probe":"show","wait":700,"inspect":"layout","label":"maximized-restored","expect":{"nativeWindow.maximized":true,"nativeWindow.viewportMatchesClient":true},"capture":"maximized-restored"},
+    {"control":{"theme":"light"},"wait":300,"capture":"maximized-light"},
+    {"control":{"contentZoom":1.25},"probe":"hide","wait":200},
+    {"control":{"restoreWindow":{"rect":[100,100,1100,800],"maximized":true}},"wait":200},
+    {"probe":"show","wait":700,"inspect":"layout","label":"maximized-scaled","expect":{"nativeWindow.maximized":true,"nativeWindow.viewportMatchesClient":true},"capture":"maximized-scaled"}
+  ]
+}

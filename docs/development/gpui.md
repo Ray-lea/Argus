@@ -55,6 +55,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`window-restore.json`](../../tools/window-probe/steps/window-restore.json) 用模拟快照实例的 `nativeResize` 控制，在界面更新期间同步调整原生客户区，检查恢复尺寸与分数缩放后的布局。`cargo test -p argus --test resize_reentry` 覆盖通知合并、嵌套消息循环、同步缩放及窗口关闭。
 
+[`window-maximized-restore.json`](../../tools/window-probe/steps/window-maximized-restore.json) 用 `restoreWindow` 向隐藏的模拟快照实例写入窗口位置，再经正式的位置恢复路径显示窗口，检查最大化、最小化后恢复、普通窗口恢复及深浅主题。`inspectLayout.nativeWindow` 记录实际客户区、最大化状态及其与界面视口是否一致。`cargo test -p argus --test restore_render_target` 在始终隐藏的原生窗口中检查最小化后放大、缩小与尺寸不变时的绘图缓冲区尺寸。
+
 [`tray-page.json`](../../tools/window-probe/steps/tray-page.json) 检查从托盘打开的页面选择、对话框上下文及筛选保留。`hide` / `show` 经原生窗口消息触发托盘恢复；`close` 发送关闭按钮的 `WM_CLOSE`，在“关闭时隐藏到托盘”开启时经淡出进入托盘，`minimize` 不激活其他窗口地最小化，两者同样用 `show` 恢复；`show` 先输出带 `qpc100ns` 的 `restoring` 事件，可与帧跟踪的提交时刻对照恢复后的首帧。模拟快照实例的 `restored` 控制向同一事件入口注入首次显示与最小化恢复，核对页面策略。
 
 [`process-visibility.json`](../../tools/window-probe/steps/process-visibility.json) 注入含 Windows 组件、普通进程及无所属进程连接的样本，核对三种进程视图、连接筛选、设置页规则编辑与小窗口布局。模拟快照实例的 `formValues` 设置已打开表单的输入，随后通过实际键盘路径保存或取消；`inspectLayout.visibility` 输出开关状态与列表中的 PID。

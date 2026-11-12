@@ -1,5 +1,7 @@
 # Argus patches
 
+`src/events.rs` resizes the render target when a minimized window is restored, before reporting the new client size to GPUI. Restoring a saved maximized placement from a hidden start passes through a non-activating minimized state; previously that branch restored the frame callback but skipped resizing the swap chain, clipping the new layout to the old render target. The renderer reuses its resources when dimensions are unchanged. Argus's `restore_render_target` native regression checks larger, smaller and unchanged restore sizes with a hidden window and GPU readback.
+
 A `WM_PAINT` for a hidden window is acknowledged with `BeginPaint`/`EndPaint` and draws nothing. `ValidateRect` succeeds on a hidden window but leaves its update region in place, so the system generated the paint again whenever the queue ran empty and the UI thread never idled. Setting the layered attributes of a hidden window without a redirection bitmap leaves such a region, as Argus does when it restores the opacity after fading the window out. Showing the window draws it as before. An ignored regression test on an inactive desktop covers the repeated paint and its single acknowledgement.
 
 Opt-in startup tracing brackets DirectX device creation with the reviewed `argus_startup` target. The Argus diagnostic logger persists these records before entering the next initialization stage; normal launches filter this target out.
