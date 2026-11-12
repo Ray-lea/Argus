@@ -435,11 +435,14 @@ pub(super) struct TableFrame {
 impl Render for TableFrame {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Columns on their way to a new width take a step each frame. Not
-        // while a header is dragged: the table's widths are the drag's then.
+        // while a header is dragged: the table's widths are the drag's then,
+        // and nothing steps, so no frames are asked for. The drag draws the
+        // window again as the pointer moves and once more when it ends, which
+        // takes the glides up again.
         let now = Instant::now();
         let gliding = self.state.update(cx, |state, cx| {
             if cx.has_active_drag() {
-                return !state.delegate().width_glides.is_empty();
+                return false;
             }
             let (changed, gliding) = state.delegate_mut().glide_widths(now);
             if changed {
@@ -593,10 +596,10 @@ impl NativeTable {
             edge_since: None,
             restored: None,
             resizing: None,
+            edge_fitted: None,
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
-            edge_fitted: None,
             columns: vec![],
             available: px(0.),
             process_columns: columns::Preferences::default(),
@@ -976,12 +979,12 @@ impl TableDelegate for NativeTable {
             self.mark_restored(key);
             cx.notify();
         }
-        let owner = self.owner.clone();
-        window.defer(cx, move |_, cx| {
-            let _ = owner.update(cx, |this, cx| this.fit_process_column(key, width, cx));
         // The table rounds the answer up to whole device pixels and reports
         // the widths when that changes the column: not a width to keep.
         self.edge_fitted = Some(key);
+        let owner = self.owner.clone();
+        window.defer(cx, move |_, cx| {
+            let _ = owner.update(cx, |this, cx| this.fit_process_column(key, width, cx));
         });
         self.columns.get(col_ix).map(|column| column.width)
     }
