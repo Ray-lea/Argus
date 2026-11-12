@@ -77,6 +77,10 @@ export const span = 60;
 export const samples = span + 6;
 const MB = 1024 * 1024;
 const user = "ARGUS-DEMO\\演示用户";
+/** The signed-in account's name, as the user groups title it. */
+export const userName = "演示用户";
+/** A process's Windows session: the system's services run in session 0, the signed-in user's programs in 1. */
+export const sessionOf = (p: Process) => (p.group === "windows" && p.user.startsWith("NT") ? 0 : 1);
 const sys = "NT AUTHORITY\\SYSTEM";
 const local = "NT AUTHORITY\\LOCAL SERVICE";
 const network = "NT AUTHORITY\\NETWORK SERVICE";

@@ -499,5 +499,8 @@
   "Clear": "クリア",
   "No results found": "結果が見つかりません",
   "Search failed": "検索に失敗しました",
-  "Read the documentation": "ドキュメントを読む"
+  "Read the documentation": "ドキュメントを読む",
+  "demo": "demo",
+  "The demo window doesn't open User Accounts.": "デモ ウィンドウでは、ユーザー アカウントのページは開きません。",
+  "The demo window doesn't open Windows Task Manager.": "デモ ウィンドウでは、Windows タスク マネージャーは開きません。"
 }

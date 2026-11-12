@@ -499,5 +499,8 @@
   "Clear": "Borrar",
   "No results found": "No se encontraron resultados",
   "Search failed": "Error de búsqueda",
-  "Read the documentation": "Leer la documentación"
+  "Read the documentation": "Leer la documentación",
+  "demo": "demo",
+  "The demo window doesn't open User Accounts.": "La demo no abre las cuentas de usuario.",
+  "The demo window doesn't open Windows Task Manager.": "La demo no abre el Administrador de tareas de Windows."
 }

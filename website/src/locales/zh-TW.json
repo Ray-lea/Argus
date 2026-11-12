@@ -499,5 +499,8 @@
   "Clear": "清除",
   "No results found": "沒有相符的內容",
   "Search failed": "搜尋失敗",
-  "Read the documentation": "閱讀文件"
+  "Read the documentation": "閱讀文件",
+  "demo": "demo",
+  "The demo window doesn't open User Accounts.": "演示視窗不會開啟使用者帳戶頁面。",
+  "The demo window doesn't open Windows Task Manager.": "演示視窗不會開啟 Windows 工作管理員。"
 }

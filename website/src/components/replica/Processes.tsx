@@ -2,21 +2,25 @@
 "use client";
 import { dateLocale } from "@/lib/languages";
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import {
   alignsEnd,
   cellOf,
   NAME_MIN,
+  type ColumnPrefs,
   useColumnWidths,
   useHeaderDrag,
   useTableScroll,
+  versionInfo,
   type CellContext,
   type ColumnDef,
 } from "./Columns";
@@ -35,14 +39,16 @@ import {
   sampleAt,
   samples,
   services,
+  sessionOf,
   thousands,
   totalMemory,
+  userName,
   type Glyph,
   type Group,
   type Process,
   type Reading,
 } from "./model";
-import { slideIn, useIsoLayoutEffect } from "./widgets";
+import { scaleOf, slideIn, useIsoLayoutEffect } from "./widgets";
 
 export type View = "apps" | "tree" | "list";
 /** A process column's key (Columns.tsx). */
@@ -51,7 +57,12 @@ export type Device = "cpu" | "memory" | "disk" | "wifi" | "gpu" | "battery";
 
 export interface Row {
   key: string;
-  kind: "group" | "unit";
+  /** A category heading, a user's heading (grouped by user), or a process or app. */
+  kind: "group" | "user" | "unit";
+  /** Inside a user's group: stands in from its heading. */
+  nested?: boolean;
+  /** A user heading that holds the sessions no one is signed in to. */
+  system?: boolean;
   depth: number;
   label: string;
   /** The faint text after the name: the image name beside a friendly name. */
@@ -122,10 +133,46 @@ interface BuildOptions {
   treeOpen: Set<string>;
   /** What a column other than the name, PID and the live readings sorts by. */
   sortValue?: (row: Row) => number | string;
+  /** Grouped by user: the signed-in user's group first, then the system's. */
+  users?: boolean;
+  /** Prefixes the category headings' keys within a user's group. */
+  scope?: string;
 }
 // Rows as the app builds them (frontend/model.rs): sorted by name, the list
 // falls into the Task Manager categories; any other sort keeps one list.
+// Grouped by user, each user's rows are built so under its own heading.
 export function buildRows(o: BuildOptions): Row[] {
+  if (o.users) {
+    const out: Row[] = [];
+    const searching = !!o.query.trim();
+    for (const [id, title, system] of [
+      ["1", userName, false],
+      ["system", "系统", true],
+    ] as const) {
+      const part = o.list.filter((p) => (sessionOf(p) === 0) === system);
+      const key = "u:" + id;
+      const rows = buildRows({ ...o, list: part, users: false, scope: key + "/" });
+      if (!rows.length) continue;
+      // The processes its rows stand for: all of the user's, or a search's matches.
+      const members = searching ? [...new Set(rows.flatMap((r) => (r.kind === "unit" ? r.pids : [])))] : part.map((p) => p.pid);
+      const expanded = searching || !o.closed.has(key);
+      out.push({
+        key,
+        kind: "user",
+        system,
+        depth: 0,
+        label: title,
+        detail: `${members.length} 个进程`,
+        count: members.length,
+        pids: members,
+        expandable: true,
+        expanded,
+        values: sum(members, o.now),
+      });
+      if (expanded) out.push(...rows.map((row) => ({ ...row, nested: true })));
+    }
+    return out;
+  }
   const byPid = new Map(o.list.map((p) => [p.pid, p]));
   // Names sort as they read in the page's language.
   const collator = new Intl.Collator(dateLocale(language()), { numeric: true });
@@ -249,7 +296,7 @@ export function buildRows(o: BuildOptions): Row[] {
     for (const group of ["app", "background", "windows"] as Group[]) {
       const members = units.filter((u) => u.group === group).sort(compare);
       if (!members.length) continue;
-      const key = "g:" + group;
+      const key = (o.scope ?? "") + "g:" + group;
       const expanded = !o.closed.has(key) || !!o.query.trim();
       out.push({
         key,
@@ -444,13 +491,17 @@ const VITAL_FILL = 0.2;
  */
 const VITAL_STRETCH = 118 / 98;
 
+/** How far a user's rows stand in from its heading (tables.rs `USER_INSET`). */
+const USER_INSET = 20;
 interface TableProps {
   tick: number;
   rows: Row[];
   total: number;
   /** The columns shown, in their order, the name first (Columns.tsx). */
   columns: ColumnDef[];
-  autoWidth: boolean;
+  sizing: Pick<ColumnPrefs, "autoWidth" | "fullWidth" | "widths">;
+  /** A column's edge dragged to `width`, or double-clicked back to automatic (null). */
+  onWidth: (key: string, width: number | null) => void;
   /** The font size setting against its 13 px default. */
   text: number;
   list: Process[];
@@ -466,6 +517,8 @@ interface TableProps {
   onToggle: (row: Row) => void;
   onSelect: (key: string | null) => void;
   onMenu: (event: MouseEvent | KeyboardEvent, row: Row) => void;
+  /** A user's heading: folding, and the user's account. */
+  onHeadingMenu: (event: MouseEvent, row: Row) => void;
   onEnd: (row: Row, confirm: boolean) => void;
   onDetails: () => void;
   onHold: (hold: boolean) => void;
@@ -479,11 +532,69 @@ export function ProcessTable(t: TableProps) {
   const head = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const others = t.columns.slice(1);
-  const widths = useColumnWidths(t.columns, t.autoWidth, t.text);
-  const rowMin = others.reduce((a, c) => a + (widths.get(c.key) ?? c.width), NAME_MIN);
   const ctx = useMemo<CellContext>(
     () => ({ byPid: new Map(t.list.map((p) => [p.pid, p])), tick: t.tick, efficiency: t.efficiency, priority: t.priority }),
     [t.list, t.tick, t.efficiency, t.priority],
+  );
+  const [room, setRoom] = useState(0);
+  useIsoLayoutEffect(() => {
+    const b = body.current;
+    if (!b) return;
+    const measure = () => setRoom(b.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(b);
+    return () => observer.disconnect();
+  }, []);
+  const { widths, fill } = useColumnWidths(t.columns, t.sizing, t.text, t.rows, ctx, room);
+  const nameWidth = fill ? NAME_MIN : (widths.get("name") ?? NAME_MIN);
+  const rowMin = others.reduce((a, c) => a + (widths.get(c.key) ?? c.width), nameWidth);
+  // Dragging a column's edge: the column keeps the width; a double-click
+  // returns it to automatic and marks it in the accent as the width settles.
+  const [resizing, setResizing] = useState<string | null>(null);
+  const [fitted, setFitted] = useState<{ key: string; id: number } | null>(null);
+  const resize = (event: ReactPointerEvent<HTMLElement>, key: string) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const edge = event.currentTarget;
+    edge.setPointerCapture(event.pointerId);
+    const k = scaleOf(edge);
+    const x0 = event.clientX;
+    const w0 = key === "name" ? (table.current?.querySelector<HTMLElement>(".a-tbody .a-col-name")?.offsetWidth ?? nameWidth) : (widths.get(key) ?? 0);
+    setResizing(key);
+    const move = (e: PointerEvent) => t.onWidth(key, w0 + (e.clientX - x0) / k);
+    const up = () => {
+      edge.removeEventListener("pointermove", move);
+      edge.removeEventListener("pointerup", up);
+      edge.removeEventListener("pointercancel", up);
+      setResizing(null);
+    };
+    edge.addEventListener("pointermove", move);
+    edge.addEventListener("pointerup", up);
+    edge.addEventListener("pointercancel", up);
+  };
+  const fit = (key: string) => {
+    t.onWidth(key, null);
+    setFitted({ key, id: Date.now() });
+  };
+  useEffect(() => {
+    if (!fitted) return;
+    const id = setTimeout(() => setFitted(null), 700);
+    return () => clearTimeout(id);
+  }, [fitted]);
+  const edge = (key: string) => (
+    <span
+      className="a-col-edge"
+      title="拖动调整宽度，双击自动调整"
+      aria-hidden="true"
+      onPointerDown={(event) => resize(event, key)}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        fit(key);
+      }}
+    />
   );
   useTableScroll(table, head, body);
   const drag = useHeaderDrag({ table, head, body, columns: t.columns, widths, onMove: t.onMoveColumn });
@@ -558,9 +669,13 @@ export function ProcessTable(t: TableProps) {
       aria-rowcount={t.rows.length + 1}
       aria-colcount={t.columns.length}
       data-moving={drag.lifted ? "" : undefined}
-      style={{ "--a-row-min": rowMin + "px" } as CSSProperties}
+      data-fit={fill ? undefined : ""}
+      data-resizing={resizing ?? undefined}
+      style={{ "--a-row-min": rowMin + "px", "--a-name-w": nameWidth + "px" } as CSSProperties}
     >
       {drag.lifted && <style>{drag.style}</style>}
+      {resizing && <style>{`.a-ptable .a-col-${resizing}{box-shadow:inset -2px 0 0 var(--a-accent)}`}</style>}
+      {fitted && <style key={fitted.id}>{`.a-ptable .a-col-${fitted.key}{animation:a-fit-flash 700ms ease-out}`}</style>}
       <div
         className="a-thead"
         ref={head}
@@ -588,6 +703,7 @@ export function ProcessTable(t: TableProps) {
               <span>名称</span>
               {sortMark("name")}
             </span>
+            {edge("name")}
           </button>
           {others.map((c) => (
             <button
@@ -610,6 +726,7 @@ export function ProcessTable(t: TableProps) {
                 <span data-i18n="column">{c.label}</span>
                 {sortMark(c.key)}
               </span>
+              {edge(c.key)}
             </button>
           ))}
         </div>
@@ -635,14 +752,47 @@ export function ProcessTable(t: TableProps) {
             <p className="a-empty">没有匹配的进程</p>
           ))}
         {t.rows.map((row) =>
-          row.kind === "group" ? (
+          row.kind === "user" ? (
             <div
               key={row.key}
               role="row"
               data-group={row.key}
               aria-expanded={row.expanded}
-              className={"a-tr a-group" + (row.expanded ? "" : " is-folded")}
+              className={"a-tr a-user" + (row.expanded ? "" : " is-folded")}
               onClick={() => t.onToggle(row)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                t.onHeadingMenu(event, row);
+              }}
+            >
+              <span role="gridcell" className="a-td a-td-name a-col-name">
+                <span className="a-fold" aria-expanded={row.expanded}>
+                  <Icon name="chevronRight" size={12} />
+                </span>
+                <Icon name={row.system ? "computer" : "user"} />
+                <span className="a-user-name" data-i18n="user">
+                  {row.label}
+                </span>
+                <span className="a-user-detail">{row.detail}</span>
+              </span>
+              {others.map((c) => (
+                <span role="gridcell" key={c.key} className={`a-td a-col-${c.key}` + align(c)} style={{ width: width(c) }}>
+                  {c.aggregate ? cellOf(c, row, ctx).text : ""}
+                </span>
+              ))}
+            </div>
+          ) : row.kind === "group" ? (
+            <div
+              key={row.key}
+              role="row"
+              data-group={row.key}
+              aria-expanded={row.expanded}
+              className={"a-tr a-group" + (row.expanded ? "" : " is-folded") + (row.nested ? " is-nested" : "")}
+              onClick={() => t.onToggle(row)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                t.onHeadingMenu(event, row);
+              }}
             >
               <span role="gridcell" className="a-td a-td-name a-col-name">
                 <span className="a-fold" aria-expanded={row.expanded}>
@@ -679,7 +829,7 @@ export function ProcessTable(t: TableProps) {
               <span
                 role="gridcell"
                 className="a-td a-td-name a-col-name"
-                style={{ paddingLeft: 6 + row.depth * 20 }}
+                style={{ paddingLeft: 6 + (row.nested ? USER_INSET : 0) + row.depth * 20 }}
                 title={row.label + "\n" + (row.exe ?? "")}
               >
                 {row.expandable ? (
@@ -860,6 +1010,7 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
   const hosted = services.filter((s) => s.pid && row.pids.includes(s.pid));
   const total = (key: "threads" | "handles") => thousands(members.reduce((a, p) => a + p[key], 0));
   const net = row.values.net;
+  const version = versionInfo(proc);
   const resources: [string, ReactNode][] = [
     ["专用工作集", bytes(row.values.mem)],
     ["工作集", bytes(row.values.mem * 1.38)],
@@ -984,6 +1135,17 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
                 </p>
               </>
             )}
+          </>
+        )}
+        {version && (
+          <>
+            <h4>文件版本</h4>
+            <Facts
+              rows={[
+                ["产品", version[0]],
+                ["版本", version[1]],
+              ]}
+            />
           </>
         )}
       </div>

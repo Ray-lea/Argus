@@ -499,5 +499,8 @@
   "Clear": "Очистить",
   "No results found": "Ничего не найдено",
   "Search failed": "Ошибка поиска",
-  "Read the documentation": "Читать документацию"
+  "Read the documentation": "Читать документацию",
+  "demo": "demo",
+  "The demo window doesn't open User Accounts.": "Демонстрационное окно не открывает учётные записи пользователей.",
+  "The demo window doesn't open Windows Task Manager.": "Демонстрационное окно не открывает Диспетчер задач Windows."
 }

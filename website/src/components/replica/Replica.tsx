@@ -20,6 +20,7 @@ import {
   headerMenu,
   moveBefore,
   setSelected as selectColumn,
+  setWidth,
   visibleColumns,
   type ColumnPrefs,
 } from "./Columns";
@@ -44,7 +45,16 @@ import {
   type Service,
   type VisibilityRules,
 } from "./model";
-import type { ConnectionFilter, HistoryRange, MenuEntry, ServiceFilter, ServiceState, ThemeChoice, VitalsMode } from "./Pages";
+import type {
+  ConnectionFilter,
+  HistoryRange,
+  MenuEntry,
+  ServiceFilter,
+  ServiceState,
+  ThemeChoice,
+  UserGrouping,
+  VitalsMode,
+} from "./Pages";
 import type { PerformancePages } from "./Performance";
 import {
   buildRows,
@@ -131,6 +141,8 @@ type Dialog =
   | { kind: "run" }
   | { kind: "end"; row: Row; tree: boolean }
   | { kind: "realtime"; row: Row }
+  | { kind: "suspend"; row: Row; pids: number[] }
+  | { kind: "signOut"; row: Row }
   | { kind: "rule"; row: Row }
   | { kind: "columns" }
   | { kind: "visibility" };
@@ -238,6 +250,10 @@ export default function Replica({
     graph: "overall",
     filter: "all",
     diskPage: "overview",
+    // Performance.tsx `defaultDevices` (the page loads later).
+    order: ["cpu", "memory", "disk", "wifi", "gpu", "battery"],
+    hidden: [],
+    kernel: true,
   });
   const [view, setView] = useState<View>("apps");
   const [sort, setSort] = useState<SortKey>("name");
@@ -265,11 +281,14 @@ export default function Replica({
   const [hideSystem, setHideSystem] = useState({ processes: false, connections: false });
   const [visibility, setVisibility] = useState<VisibilityRules>(defaultVisibility);
   const [vitalsMode, setVitalsMode] = useState<VitalsMode>("auto");
+  // One user is signed in to the demo: "auto" leaves the list ungrouped.
+  const [userGroups, setUserGroups] = useState<UserGrouping>("auto");
   const [uiMotion, setUiMotion] = useState(true);
   const [hold, setHold] = useState(false);
   const order = useRef<string[]>([]);
   const [ended, setEnded] = useState<Set<number>>(() => new Set());
   const [efficiency, setEfficiency] = useState<Set<number>>(() => new Set());
+  const [suspension, setSuspension] = useState<Map<number, boolean>>(() => new Map());
   const [priority, setPriority] = useState<Map<number, string>>(() => new Map());
   const [serviceStates, setServiceStates] = useState<Map<string, ServiceState>>(
     () => new Map(serviceList.map((s) => [s.name, s.pid ? "running" : "stopped"])),
@@ -462,7 +481,14 @@ export default function Replica({
     if (dialog && !dialog.contains(document.activeElement)) dialog.focus({ preventScroll: true });
   }, []);
   const say = (text: string, tone: Toast["tone"] = "ok") => setToast({ text, id: Date.now(), tone });
-  const alive = useMemo(() => processes.filter((p) => !ended.has(p.pid)), [ended]);
+  // Suspending and resuming in the demo overrides the sample's own state.
+  const alive = useMemo(
+    () =>
+      processes
+        .filter((p) => !ended.has(p.pid))
+        .map((p) => (suspension.has(p.pid) ? { ...p, suspended: suspension.get(p.pid) } : p)),
+    [ended, suspension],
+  );
   const byPid = useMemo(() => new Map(alive.map((p) => [p.pid, p])), [alive]);
   const now = useMemo(() => readings(tick, alive), [tick, alive]);
   const past = useMemo(() => {
@@ -497,6 +523,7 @@ export default function Replica({
     closed,
     treeOpen,
     sortValue: (row) => columnSortValue(sort, row, cellContext),
+    users: userGroups === "on",
   });
   // While the pointer rests on the list the row order holds; values keep updating.
   if (hold && order.current.length) {
@@ -542,10 +569,11 @@ export default function Replica({
   }, [bandShown]);
 
   const toggleRow = (row: Row) => {
-    const tree = row.kind !== "group" && view === "tree";
+    const heading = row.kind !== "unit";
+    const tree = !heading && view === "tree";
     // A search opens the branches of its matches itself.
     if (tree && query.trim()) return;
-    const [set, put] = row.kind === "group" ? [closed, setClosed] : tree ? [treeOpen, setTreeOpen] : [open, setOpen];
+    const [set, put] = heading ? [closed, setClosed] : tree ? [treeOpen, setTreeOpen] : [open, setOpen];
     const next = new Set(set);
     if (next.has(row.key)) next.delete(row.key);
     else next.add(row.key);
@@ -587,6 +615,8 @@ export default function Replica({
         onToggle: toggleColumn,
         onChoose: () => setDialog({ kind: "columns" }),
         onAutoWidth: () => setColumnPrefs((p) => ({ ...p, autoWidth: !p.autoWidth })),
+        onFullWidth: () => setColumnPrefs((p) => ({ ...p, fullWidth: !p.fullWidth })),
+        onFit: (key) => setColumnPrefs((p) => setWidth(p, key, null)),
         onReset: () => setColumnPrefs(defaultPrefs()),
       }),
     );
@@ -679,6 +709,25 @@ export default function Replica({
     });
     say(on ? `已为 ${row.label} 开启效率模式。` : `已为 ${row.label} 关闭效率模式。`);
   };
+  // Each action takes only the members in the other state, as the app's do:
+  // suspending nests, so a process suspended twice would stay suspended.
+  const suspend = (row: Row, pids: number[], on: boolean) => {
+    setDialog(null);
+    if (on && pids.some((pid) => critical.has(pid))) {
+      say(`${row.label} 是系统关键进程，暂停该进程会使 Windows 停止响应，操作已阻止。`, "error");
+      return;
+    }
+    if (pids.includes(16072)) {
+      say(`${row.label} 不能暂停或恢复。`, "error");
+      return;
+    }
+    setSuspension((m) => {
+      const next = new Map(m);
+      for (const pid of pids) next.set(pid, on);
+      return next;
+    });
+    say(on ? `已暂停 ${row.label}。` : `已恢复 ${row.label}。`);
+  };
 
   // Menus open at the pointer toward the free side, as Windows menus do.
   const showMenu = (at: { x: number; y: number }, items: MenuEntry[], keyboard = false) => {
@@ -693,6 +742,8 @@ export default function Replica({
     const current = new Set(row.pids.map((pid) => priority.get(pid) ?? "正常"));
     const shared = current.size === 1 ? [...current][0] : null;
     const efficient = row.pids.every((pid) => efficiency.has(pid));
+    const halted = row.pids.filter((pid) => byPid.get(pid)?.suspended);
+    const running = row.pids.filter((pid) => !byPid.get(pid)?.suspended);
     const branch = view === "tree" && row.expandable;
     return [
       ...(branch
@@ -724,6 +775,10 @@ export default function Replica({
         })),
       },
       { label: "效率模式", icon: "leaf", checked: efficient, run: () => toggleEfficiency(row) },
+      ...(running.length
+        ? [{ label: "暂停进程", icon: "pause" as UiIcon, run: () => setDialog({ kind: "suspend", row, pids: running }) }]
+        : []),
+      ...(halted.length ? [{ label: "恢复进程", icon: "play" as UiIcon, run: () => suspend(row, halted, false) }] : []),
       { label: "添加规则", run: () => setDialog({ kind: "rule", row }) },
       "-",
       ...(row.expandable && !branch ? [{ label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) }] : []),
@@ -744,6 +799,20 @@ export default function Replica({
       },
     ];
   };
+  // A heading folds or unfolds; a user's also offers the account, as Task
+  // Manager's Users page does (users.rs `user_menu`). The demo's one user is
+  // the current one, so signing out is always allowed.
+  const headingMenu = (event: MouseEvent, row: Row) =>
+    showMenu({ x: event.clientX, y: event.clientY }, [
+      { label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) },
+      ...(row.kind === "user" && !row.system
+        ? ([
+            "-",
+            { label: "管理用户账户", icon: "accounts", run: () => say("演示窗口不会打开用户账户页面。", "info") },
+            { label: "注销", icon: "signOut", danger: true, run: () => setDialog({ kind: "signOut", row }) },
+          ] satisfies MenuEntry[])
+        : []),
+    ]);
   const openRowMenu = (event: MouseEvent | KeyboardEvent, row: Row) => {
     if ("clientX" in event) showMenu({ x: event.clientX, y: event.clientY }, processMenu(row));
     else {
@@ -1151,7 +1220,8 @@ export default function Replica({
                         rows={rows}
                         total={alive.length}
                         columns={shownColumns}
-                        autoWidth={columnPrefs.autoWidth}
+                        sizing={columnPrefs}
+                        onWidth={(key, width) => setColumnPrefs((p) => setWidth(p, key, width))}
                         text={fontSize / 13}
                         list={alive}
                         priority={priority}
@@ -1165,6 +1235,7 @@ export default function Replica({
                         onToggle={toggleRow}
                         onSelect={setSelected}
                         onMenu={openRowMenu}
+                        onHeadingMenu={headingMenu}
                         onEnd={end}
                         onDetails={revealDetails}
                         onHold={setHold}
@@ -1215,6 +1286,7 @@ export default function Replica({
                     threads={threads}
                     handles={handles}
                     onDevice={setDevice}
+                    onMenu={(event, items) => showMenu({ x: event.clientX, y: event.clientY }, items)}
                   />
                 )}
                 {page === "services" && Services && (
@@ -1270,6 +1342,8 @@ export default function Replica({
                     onFontSize={setFontSize}
                     vitals={vitalsMode}
                     onVitals={setVitalsMode}
+                    userGroups={userGroups}
+                    onUserGroups={setUserGroups}
                     uiMotion={uiMotion}
                     onUiMotion={setUiMotion}
                     onVisibility={() => setDialog({ kind: "visibility" })}
@@ -1466,6 +1540,55 @@ export default function Replica({
                     }}
                   >
                     设为实时
+                  </button>
+                  <button type="button" className="a-btn is-wide" onClick={() => setDialog(null)}>
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+            {dialog.kind === "suspend" && (
+              <div className="a-dialog" role="alertdialog" tabIndex={-1} aria-modal="true" aria-labelledby="a-dialog-title">
+                <div className="a-dialog-body">
+                  <h3 id="a-dialog-title">{`暂停 ${dialog.row.label}？`}</h3>
+                  <p className="a-dialog-text">
+                    {dialog.pids.length > 1
+                      ? `将暂停 ${dialog.row.label} 的全部 ${dialog.pids.length} 个进程，直到恢复。其窗口会停止响应，网络连接可能超时；部分程序（如游戏、带反作弊或自我保护的软件）可能因此出错。`
+                      : `PID ${dialog.pids[0]} 的所有线程将停止运行，直到恢复。其窗口会停止响应，网络连接可能超时；部分程序（如游戏、带反作弊或自我保护的软件）可能因此出错。`}
+                  </p>
+                </div>
+                <div className="a-dialog-foot">
+                  <button
+                    type="button"
+                    className="a-btn is-danger is-wide"
+                    data-primary
+                    onClick={() => suspend(dialog.row, dialog.pids, true)}
+                  >
+                    暂停
+                  </button>
+                  <button type="button" className="a-btn is-wide" onClick={() => setDialog(null)}>
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+            {dialog.kind === "signOut" && (
+              <div className="a-dialog" role="alertdialog" tabIndex={-1} aria-modal="true" aria-labelledby="a-dialog-title">
+                <div className="a-dialog-body">
+                  <h3 id="a-dialog-title">{`注销 ${dialog.row.label}？`}</h3>
+                  <p className="a-dialog-text">当前账户运行的全部程序将被关闭，Argus 也随之退出。未保存的数据可能丢失。</p>
+                </div>
+                <div className="a-dialog-foot">
+                  <button
+                    type="button"
+                    className="a-btn is-danger is-wide"
+                    data-primary
+                    onClick={() => {
+                      setDialog(null);
+                      setTray("exited");
+                    }}
+                  >
+                    注销
                   </button>
                   <button type="button" className="a-btn is-wide" onClick={() => setDialog(null)}>
                     取消

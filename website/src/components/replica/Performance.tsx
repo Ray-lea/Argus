@@ -1,9 +1,19 @@
 /** @jsxImportSource @/components/replica/i18n */
 "use client";
-import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import Curve, { type Motion, type Readout, type Series } from "./Curve";
 import DiskDetails from "./DiskDetails";
 import { Icon } from "./icons";
+import type { MenuEntry } from "./Pages";
 import { cpuPower, cpuTemperature, gpuPower, gpuTemperature, useSystemHistory, type Device } from "./Processes";
 import {
   clock,
@@ -20,7 +30,7 @@ import {
   thousands,
   totalMemory,
 } from "./model";
-import { Button, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
+import { Button, scaleOf, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
 
 interface Props {
   tick: number;
@@ -35,6 +45,8 @@ interface Props {
   threads: number;
   handles: number;
   onDevice: (device: Device) => void;
+  /** A context menu at the pointer (Replica's). */
+  onMenu: (event: ReactMouseEvent, items: MenuEntry[]) => void;
 }
 // Which page of a device shows: the CPU's overview (as one curve or one per
 // logical processor, all of them or one kind of core) or its details, and the
@@ -45,7 +57,13 @@ export interface PerformancePages {
   graph: "overall" | "logical";
   filter: "all" | "p" | "e";
   diskPage: "overview" | "details";
+  /** The device list's order, as dragged; and the devices taken out of it. */
+  order: Device[];
+  hidden: Device[];
+  /** The CPU graphs draw the kernel time (right-click a CPU graph). */
+  kernel: boolean;
 }
+export const defaultDevices: Device[] = ["cpu", "memory", "disk", "wifi", "gpu", "battery"];
 interface CurveProps {
   tick: number;
   interval: number;
@@ -162,9 +180,16 @@ const split = (text: string): [string, string] => {
   return at < 0 ? [text, ""] : [text.slice(0, at), text.slice(at + 1)];
 };
 
-const devices: Device[] = ["cpu", "memory", "disk", "wifi", "gpu", "battery"];
+/** A device entry's height in the list. */
+const ROW = 62;
 export default function Performance(p: Props) {
-  const { graph, filter, cpuPage, diskPage } = p.pages;
+  const { graph, filter, cpuPage, diskPage, order, hidden, kernel } = p.pages;
+  const devices = order;
+  // A device opened from elsewhere (the overview band, the details pane)
+  // comes back into the list.
+  useEffect(() => {
+    if (hidden.includes(p.device)) p.onPages({ hidden: hidden.filter((d) => d !== p.device) });
+  }, [p.device]);
   const setGraph = (graph: PerformancePages["graph"]) => p.onPages({ graph });
   const setFilter = (filter: PerformancePages["filter"]) => p.onPages({ filter });
   const setCpuPage = (cpuPage: PerformancePages["cpuPage"]) => p.onPages({ cpuPage });
@@ -240,9 +265,19 @@ export default function Performance(p: Props) {
     () =>
       logical
         .filter((c) => filter === "all" || c.kind === filter)
-        .map((c) => ({ ...c, values: seriesOf(samples, (t) => coreLoad(c.index, t), p.tick) })),
+        .map((c) => ({
+          ...c,
+          values: seriesOf(samples, (t) => coreLoad(c.index, t), p.tick),
+          // The processor's kernel time, a share of its load.
+          kernel: seriesOf(samples, (t) => coreLoad(c.index, t) * (0.24 + noise(c.index * 13 + 5, t) * 0.14), p.tick),
+        })),
     [filter, p.tick],
   );
+  // Right-click on the CPU graphs: the kernel time shown or not, in both views.
+  const cpuMenu = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    p.onMenu(event, [{ label: "显示内核时间", checked: kernel, run: () => p.onPages({ kernel: !kernel }) }]);
+  };
   const uptime = (
     <>
       5<small>天</small>&nbsp;14:{String(Math.floor(p.tick / 60) % 60).padStart(2, "0")}:
@@ -291,6 +326,7 @@ export default function Performance(p: Props) {
               ]}
             />
           </div>
+          <div className="a-cpu-graphs" onContextMenu={cpuMenu}>
           {graph === "overall" ? (
             <Chart
               title="利用率 %"
@@ -298,10 +334,10 @@ export default function Performance(p: Props) {
               max={100}
               curve={curve}
               fill
-              readout={{ names: ["利用率", "内核时间"], format: percentOf }}
+              readout={{ names: kernel ? ["利用率", "内核时间"] : ["利用率"], format: percentOf }}
               series={[
                 { values: h.cpu, color: "var(--a-cpu)" },
-                { values: h.kernel, color: "var(--a-cpu)", dashed: true, fill: false },
+                ...(kernel ? [{ values: h.kernel, color: "var(--a-cpu)", dashed: true, fill: false }] : []),
               ]}
             />
           ) : (
@@ -327,18 +363,26 @@ export default function Performance(p: Props) {
                     </div>
                     <div className="a-chart-frame" style={{ "--c": color } as CSSProperties}>
                       <div className="a-grid" aria-hidden="true" />
-                      <Curve series={[{ values: core.values, color }]} max={100} {...curve} />
+                      <Curve
+                        series={[
+                          { values: core.values, color },
+                          ...(kernel ? [{ values: core.kernel, color, faint: true, fill: 0.12 }] : []),
+                        ]}
+                        max={100}
+                        {...curve}
+                      />
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
+          </div>
           {graph === "overall" ? (
             <Legend
               items={[
                 ["总计", "var(--a-cpu)"],
-                ["内核时间", "var(--a-cpu)", "dashed"],
+                ...(kernel ? [["内核时间", "var(--a-cpu)", "dashed"] as [string, string, string]] : []),
               ]}
             />
           ) : (
@@ -346,6 +390,7 @@ export default function Performance(p: Props) {
               items={[
                 ["性能核", "var(--a-cpu)"],
                 ["能效核", "var(--a-cpu-e)"],
+                ...(kernel ? [["内核时间", "color-mix(in srgb, var(--a-cpu) 60%, transparent)"] as [string, string]] : []),
               ]}
             />
           )}
@@ -777,25 +822,149 @@ export default function Performance(p: Props) {
       </>
     );
   }
-  const index = rail.findIndex((r) => r.id === p.device);
+  // The list in its order, without the devices taken out of it.
+  const listed = order.map((id) => rail.find((r) => r.id === id)!).filter((r) => !hidden.includes(r.id));
+  const index = listed.findIndex((r) => r.id === p.device);
   const moving = markMoves.current;
   markMoves.current = true;
+  // Hiding the device shown shows the one after it, or before it at the end.
+  const hide = (id: Device, on: boolean) => {
+    if (on && listed.length <= 1) return;
+    p.onPages({ hidden: on ? [...hidden, id] : hidden.filter((d) => d !== id) });
+    if (on && id === p.device) {
+      const at = listed.findIndex((r) => r.id === id);
+      p.onDevice((listed[at + 1] ?? listed[at - 1]).id);
+    }
+  };
+  const deviceMenu = (event: ReactMouseEvent, target: Device | null) => {
+    event.preventDefault();
+    const item = target ? rail.find((r) => r.id === target) : undefined;
+    p.onMenu(event, [
+      ...(item
+        ? ([
+            {
+              label: `隐藏“${item.name}”`,
+              icon: "eyeOff",
+              disabled: listed.length <= 1,
+              run: () => hide(item.id, true),
+            },
+            "-",
+          ] satisfies MenuEntry[])
+        : []),
+      {
+        label: "显示的设备",
+        icon: "eye",
+        detail: `${listed.length}/${rail.length}`,
+        children: order.map((id) => {
+          const shown = !hidden.includes(id);
+          return {
+            label: rail.find((r) => r.id === id)!.name,
+            checked: shown,
+            disabled: shown && listed.length <= 1,
+            stay: true,
+            run: () => hide(id, shown),
+          };
+        }),
+      },
+      // One disk: nothing to order (the app's needs two).
+      {
+        label: "磁盘排序",
+        icon: "order",
+        disabled: true,
+        children: [
+          { label: "按磁盘编号", checked: true },
+          { label: "按盘符" },
+          { label: "自定义（拖动调整）" },
+        ],
+      },
+      "-",
+      { label: "恢复默认显示", icon: "reset", disabled: !hidden.length, run: () => p.onPages({ hidden: [] }) },
+      {
+        label: "恢复默认顺序",
+        icon: "reset",
+        disabled: order.join() === defaultDevices.join(),
+        run: () => p.onPages({ order: defaultDevices }),
+      },
+    ]);
+  };
+  // Dragging an entry up or down: it follows the pointer, the others make way,
+  // and it settles into its new place when let go.
+  const [dragging, setDragging] = useState<{ id: Device; dy: number; to: number } | null>(null);
+  const dragged = useRef(false);
+  const press = (event: ReactPointerEvent<HTMLButtonElement>, id: Device) => {
+    if (event.button !== 0) return;
+    const el = event.currentTarget;
+    const k = scaleOf(el);
+    const y0 = event.clientY;
+    const from = listed.findIndex((r) => r.id === id);
+    let started = false;
+    dragged.current = false;
+    const move = (e: PointerEvent) => {
+      const dy = (e.clientY - y0) / k;
+      if (!started) {
+        if (Math.abs(dy) < 4) return;
+        started = true;
+        dragged.current = true;
+        el.setPointerCapture(e.pointerId);
+      }
+      const to = Math.max(0, Math.min(listed.length - 1, from + Math.round(dy / ROW)));
+      setDragging({ id, dy, to });
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      if (!started) return;
+      setDragging((d) => {
+        if (d && d.to !== from) {
+          const ids = listed.map((r) => r.id);
+          ids.splice(d.to, 0, ids.splice(from, 1)[0]);
+          // The hidden devices keep their places among the rest.
+          const next = [...ids];
+          order.forEach((o, i) => hidden.includes(o) && next.splice(Math.min(i, next.length), 0, o));
+          p.onPages({ order: next });
+        }
+        return null;
+      });
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+  const shift = (i: number, id: Device) => {
+    if (!dragging) return 0;
+    if (id === dragging.id) return dragging.dy;
+    const from = listed.findIndex((r) => r.id === dragging.id);
+    if (from < i && i <= dragging.to) return -ROW;
+    if (dragging.to <= i && i < from) return ROW;
+    return 0;
+  };
   return (
     <div className="a-perf">
-      <nav className="a-rail" aria-label="设备">
+      <nav
+        className={"a-rail" + (dragging ? " is-dragging" : "")}
+        aria-label="设备"
+        onContextMenu={(event) => event.target === event.currentTarget && deviceMenu(event, null)}
+      >
         <span
           className={"a-rail-mark" + (moving ? " is-moving" : "")}
-          style={{ transform: `translateY(${index * 62}px)` }}
+          style={{ transform: `translateY(${index * ROW + shift(index, p.device)}px)` }}
           aria-hidden="true"
         />
-        {rail.map((item) => (
+        {listed.map((item, i) => (
           <button
             key={item.id}
             type="button"
-            className="a-rail-item"
+            className={"a-rail-item" + (dragging?.id === item.id ? " is-lifted" : "")}
+            style={dragging ? { transform: `translateY(${shift(i, item.id)}px)` } : undefined}
             aria-current={p.device === item.id ? "true" : undefined}
             data-tour={"device-" + item.id}
-            onClick={() => p.onDevice(item.id)}
+            onPointerDown={(event) => press(event, item.id)}
+            onClick={() => {
+              if (dragged.current) dragged.current = false;
+              else p.onDevice(item.id);
+            }}
+            onContextMenu={(event) => deviceMenu(event, item.id)}
           >
             <span className="a-rail-text">
               <b>{item.name}</b>

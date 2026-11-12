@@ -1434,8 +1434,10 @@ button.a-th:active {
 .a-name.is-muted {
   color: var(--a-ink-2);
 }
+/* The image name gives way first and does not fill the cell: the marks after
+   it (efficiency, suspended) stay beside the text. */
 .a-exe {
-  flex: 1 1 0;
+  flex: 0 1000 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--a-ink-3);
@@ -1514,6 +1516,43 @@ button.a-th:active {
   font-size: calc(11px * var(--a-text));
   font-weight: 600;
   line-height: 18px;
+}
+/* Category headings inside a user's group stand in from its heading. */
+.a-group.is-nested .a-td-name {
+  padding-left: 26px;
+}
+/* A user's heading (grouped by user): on the hover tint, its name at 14 px
+   with the process count beside it. */
+.a-tr.a-user {
+  background: var(--a-hover);
+  cursor: default;
+}
+.a-user .a-td {
+  color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
+}
+.a-user .a-td-name {
+  gap: 8px;
+}
+.a-user .a-td-name .a-fold {
+  margin-right: 0;
+}
+.a-user .a-td-name > .ico {
+  flex: none;
+  color: var(--a-ink-2);
+}
+.a-user-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--a-ink);
+  font-size: calc(14px * var(--a-text));
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+.a-user-detail {
+  flex: none;
+  color: var(--a-ink-3);
 }
 .a-group-rule {
   flex: 1;
@@ -1944,6 +1983,23 @@ button.a-th:active {
   color: var(--a-ink);
   text-align: start;
   transition: background-color 83ms linear;
+}
+/* Dragging an entry: the others make way, the dragged one rides the pointer
+   above them; the right-clickable CPU graphs keep their layout. */
+.a-rail.is-dragging .a-rail-item {
+  transition: transform 180ms var(--a-ease-move);
+}
+.a-rail.is-dragging .a-rail-item.is-lifted {
+  z-index: 2;
+  background: var(--a-layer);
+  border-color: var(--a-stroke);
+  transition: none;
+}
+.a-rail.is-dragging .a-rail-mark {
+  transition: none;
+}
+.a-cpu-graphs {
+  display: contents;
 }
 .a-rail-item:not([aria-current]):hover {
   background: var(--a-hover);
@@ -3821,6 +3877,56 @@ button.a-th:active {
 /* Sticky offsets count from inside the header's 4 px inset already. */
 .a-ptable .a-thead .a-col-name {
   flex-basis: 176px;
+}
+/* With automatic widths the name fits its contents and the rest of the
+   table stays empty (or the name takes it, "全宽"). */
+.a-ptable[data-fit] .a-col-name {
+  flex: none;
+  width: var(--a-name-w);
+}
+.a-ptable[data-fit] .a-thead .a-col-name {
+  width: calc(var(--a-name-w) - 4px);
+}
+/* A column's edge: an accent line under the pointer, dragged to resize,
+   double-clicked back to its automatic width. */
+.a-ptable .a-th:not(.a-col-name) {
+  position: relative;
+}
+.a-col-edge {
+  position: absolute;
+  top: 4px;
+  right: -4px;
+  bottom: 4px;
+  z-index: 4;
+  width: 8px;
+  cursor: col-resize !important;
+  touch-action: none;
+}
+.a-col-edge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color 120ms;
+}
+.a-col-edge:hover::after,
+.a-ptable[data-resizing] .a-col-edge:active::after {
+  background: var(--a-accent);
+}
+.a-ptable[data-resizing] .a-th:hover {
+  background: transparent;
+}
+@keyframes a-fit-flash {
+  from {
+    background-color: color-mix(in srgb, var(--a-accent) 22%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
 }
 /* The selection mark rides on the name, which stays in view. */
 .a-ptable .a-tr.is-selected::before {
