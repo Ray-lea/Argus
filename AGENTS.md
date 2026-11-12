@@ -68,7 +68,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 按改动的实际性质选 type，不要一律写 feat 或 chore：type 决定下一个版本号和发布说明。修复卡顿或视觉瑕疵是 fix，纯性能改进是 perf，只改文档是 docs。一次改动跨几类时按类拆成几个提交。
 - 首行写用户能看懂的变化，它会原样进入 `changelog/zh-CN.md` 和 GitHub Release；正文补充原因、影响与必要的实现细节。常规检查、测试或构建通过等结果不写入提交信息；性能验证只保留简短结论或关键对照数据，不罗列测试过程、原始资料存放位置或代理工作说明。
 - 不兼容的改动（设置或历史数据格式、特权服务 IPC 协议、删除功能或快捷键、命令行参数）在冒号前加 `!`，并写 `BREAKING CHANGE:` 页脚。
-- 版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`resources/app.json` 里的版本，也不要手写 `changelog/` 下各语言更新日志的版本标题。只在用户要求发布时运行它；推送 `v*` 标签就是正式发布，同样要等用户明确要求。
+- 版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`resources/app.json` 里的版本，也不要手写 `changelog/` 下各语言更新日志的版本标题。只在用户要求发布时运行它；推送 `v*` 标签就是正式发布，同样要等用户明确要求。发布工作流在“Publish release”之前失败时，经用户同意可修复后覆盖该标签重新发布；已经发布的标签不要移动或删除（见 `release.md`）。
 - 发布说明按界面语言各有一份：`changelog/zh-CN.md` 是源文本，`changelog/` 下其他语言的文件与它逐条对应，小节标题与语言名称在 `resources/changelog.json`。`pnpm release` 在其他语言的文件中写入由中文条目生成的草稿，推送标签前要全部译完，润色中文时同步修改各语言，用词与 `locales/<语言标签>` 的界面文案一致；带标签的条目在繁中、日文写 `**标签**：`，其他语言写 `**Label**:`（冒号前不加空格）。`verify` 会拒绝仍含中文原文、小节与条目数不同或日期不同的译文条目。GitHub Release 正文完整显示中英文，顶部按 README 的写法链接其他语言的文件；应用与官网按界面语言显示对应译文。
 - 整理更新日志时按 `release.md` 的“更新日志的内容”：只写应用内用户可感知的变化，本周期新增后又修改的功能并入功能条目；外部贡献者的拉取请求在条目末尾写 `（@贡献者 #编号）` 并链接其主页与拉取请求（`gh pr list --state merged` 核对作者，以 GitHub 用户名为准，提交作者名可能不同）。
 - 不要给 CI 加 push 触发的检查、nightly 或定时构建（现有的触发方式见 `release.md`）；Rust 用 stable，不用 nightly 工具链。`.github/workflows/check.yml` 把 `pnpm check` 拆成了单独的步骤，改一边要同步另一边。

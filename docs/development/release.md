@@ -128,11 +128,24 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 
 推送前想撤销：`git tag -d vX.Y.Z`，然后 `git reset --hard HEAD~1`。
 
-发布工作流失败时，修复后发布新的修订版本，不要移动已经推送的标签。
+发布工作流失败时，按是否已经发布处理：
+
+- **尚未发布**：失败发生在“Publish release”步骤之前（核对、检查、构建、签名或静默安装测试），GitHub 上没有该标签的 Release，清单与官网也未更新。可在 `main` 上提交修复，正常推送（快进，不改写 `main` 的历史），然后把标签移到修复后的提交并覆盖推送，发布工作流随即重新运行：
+
+  ```bash
+  gh release view vX.Y.Z                            # 应提示 release not found
+  git push origin main
+  git tag -fa vX.Y.Z -m "Argus vX.Y.Z"              # 当前提交须包含发布提交
+  node scripts/release.mjs verify vX.Y.Z
+  git push origin +refs/tags/vX.Y.Z:refs/tags/vX.Y.Z
+  ```
+
+  失败与代码无关（例如偶发的网络错误）时，也可直接在 Actions 页面重新运行失败的任务，标签保持不动。
+- **已经发布**：“Publish release”已执行，Release、清单或官网中任何一项已对外可见。不要移动或删除该标签，修复后发布新的修订版本；问题严重时按[发布后发现严重问题时](#发布后发现严重问题时)处理。
 
 ### 推送标签前在 CI 上检查
 
-推送标签后，`release.yml` 先运行 `check.yml`，此时失败，该版本号即作废。`start.bat check` 不含发行构建和许可声明检查，也不在 CI 的环境里运行（英文 Windows、管理员账户、当时最新的 stable Rust，Clippy 与测试带 `--locked`），所以先推送 `main`，对它手动运行一次 `check.yml`，通过后再运行 `pnpm release`：
+推送标签后，`release.yml` 先运行 `check.yml`，此时失败需要修复后覆盖标签重新发布（见上文）。`start.bat check` 不含发行构建和许可声明检查，也不在 CI 的环境里运行（英文 Windows、管理员账户、当时最新的 stable Rust，Clippy 与测试带 `--locked`），所以先推送 `main`，对它手动运行一次 `check.yml`，通过后再运行 `pnpm release`：
 
 ```bash
 git push origin main
