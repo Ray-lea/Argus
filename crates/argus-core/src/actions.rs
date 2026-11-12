@@ -296,8 +296,8 @@ impl MemoryPriority {
     }
 }
 
-/// The I/O priority of a process (about 1 µs with a cached handle that has
-/// limited query rights); None when it can't be read.
+/// The I/O priority of a process, through a handle with limited query
+/// rights; None when it can't be read.
 pub(crate) fn io_priority(process: windows::Win32::Foundation::HANDLE) -> Option<IoPriority> {
     let mut hint = 0u32;
     let status = unsafe {

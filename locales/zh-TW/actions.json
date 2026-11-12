@@ -37,7 +37,7 @@
   "ioPriority": {
     "failed": "無法變更 {name} 的 I/O 優先順序。{error}",
     "error": {
-      "accessDenied": "沒有權限。請在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus；受保護的處理程序仍可能無法暫停或繼續。",
+      "accessDenied": "沒有權限。請在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus；受保護的處理程序仍可能無法變更 I/O 優先順序。",
       "refused": "無法變更 {name} 的 I/O 優先順序。",
       "serviceOutdated": "沒有權限。特權服務版本不相容，請更新服務後重試。",
       "notFound": "{name} 已經結束。"
@@ -48,7 +48,7 @@
   "memoryPriority": {
     "failed": "無法變更 {name} 的記憶體優先順序。{error}",
     "error": {
-      "accessDenied": "沒有權限。請在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus；受保護的處理程序仍可能無法暫停或繼續。",
+      "accessDenied": "沒有權限。請在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus；受保護的處理程序仍可能無法變更記憶體優先順序。",
       "refused": "無法變更 {name} 的記憶體優先順序。",
       "serviceOutdated": "沒有權限。特權服務版本不相容，請更新服務後重試。",
       "notFound": "{name} 已經結束。"
