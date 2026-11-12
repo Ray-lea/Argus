@@ -39,6 +39,16 @@ pub(super) struct Store {
     pub damaged: bool,
 }
 
+pub(super) struct Saved {
+    pub meta: Metadata,
+    pub entries: VecDeque<Entry>,
+    pub damaged: bool,
+    next: u64,
+    invalid_slots: Vec<usize>,
+    complete_bytes: u64,
+    torn: bool,
+}
+
 // Integrity detection for torn records, not authentication of local files.
 fn checksum(bytes: &[u8]) -> u32 {
     bytes.iter().fold(2166136261, |h, b| {
@@ -164,79 +174,23 @@ impl Store {
             .write(true)
             .open(path)
             .map_err(|_| WatchError::Storage)?;
-        let size = file.metadata().map_err(|_| WatchError::Storage)?.len();
-        if !(HEADER..=MAX_BYTES).contains(&size) {
-            return Err(WatchError::Invalid);
-        }
-        let mut header = [0u8; 16];
-        file.read_exact(&mut header)
-            .map_err(|_| WatchError::Storage)?;
-        let len = u32::from_le_bytes(header[8..12].try_into().unwrap()) as usize;
-        if &header[..8] != MAGIC || len as u64 > HEADER - 16 {
-            return Err(WatchError::Invalid);
-        }
-        let mut data = vec![0; len];
-        file.read_exact(&mut data)
-            .map_err(|_| WatchError::Storage)?;
-        if checksum(&data) != u32::from_le_bytes(header[12..16].try_into().unwrap()) {
-            return Err(WatchError::Invalid);
-        }
-        let meta: Metadata = serde_json::from_slice(&data).map_err(|_| WatchError::Invalid)?;
-        if !meta.program.valid() || meta.name.is_empty() || meta.name.len() > 1024 {
-            return Err(WatchError::Invalid);
-        }
-        file.seek(SeekFrom::Start(HEADER))
-            .map_err(|_| WatchError::Storage)?;
-        let mut raw = Vec::new();
-        file.read_to_end(&mut raw)
-            .map_err(|_| WatchError::Storage)?;
-        let mut entries = Vec::new();
-        let mut damaged = raw.len() % RECORD as usize != 0;
-        let mut invalid_slots = Vec::new();
-        for (slot, bytes) in raw.as_chunks::<{ RECORD as usize }>().0.iter().enumerate() {
-            if bytes.iter().all(|b| *b == 0) {
-                continue;
-            }
-            match Entry::decode(bytes, slot) {
-                Some(entry) => entries.push(entry),
-                None => {
-                    damaged = true;
-                    invalid_slots.push(slot);
-                }
-            }
-        }
-        entries.sort_unstable_by_key(|entry| entry.seq);
-        // Only the newest ring generation can survive a partial overwrite.
-        let next = entries
-            .last()
-            .map_or(Some(1), |entry| entry.seq.checked_add(1))
-            .ok_or(WatchError::Invalid)?;
-        entries.retain(|entry| {
-            let keep = next - entry.seq <= CAPACITY as u64;
-            if !keep {
-                invalid_slots.push(((entry.seq - 1) % CAPACITY as u64) as usize);
-            }
-            keep
-        });
-        if entries.windows(2).any(|p| p[0].point.ts > p[1].point.ts) {
-            return Err(WatchError::Invalid);
-        }
-        // Remove unreadable values as well: expiry must not leave damaged payloads indefinitely.
-        for slot in invalid_slots {
+        let saved = Saved::read(&mut file)?;
+        // Repair belongs to the recorder only. Read-only investigations never mutate storage.
+        for slot in saved.invalid_slots {
             file.seek(SeekFrom::Start(HEADER + slot as u64 * RECORD))
                 .and_then(|_| file.write_all(&[0; RECORD as usize]))
                 .map_err(|_| WatchError::Storage)?;
         }
-        if raw.len() % RECORD as usize != 0 {
-            file.set_len(HEADER + (raw.len() as u64 / RECORD) * RECORD)
+        if saved.torn {
+            file.set_len(saved.complete_bytes)
                 .map_err(|_| WatchError::Storage)?;
         }
         let mut store = Self {
             file,
-            meta,
-            entries: entries.into(),
-            next,
-            damaged,
+            meta: saved.meta,
+            entries: saved.entries,
+            next: saved.next,
+            damaged: saved.damaged,
         };
         store.prune(now)?;
         Ok(store)
@@ -302,6 +256,93 @@ impl Store {
 
     pub fn flush(&mut self) -> Result<(), WatchError> {
         self.file.flush().map_err(|_| WatchError::Storage)
+    }
+}
+
+impl Saved {
+    /// Snapshot the bounded file without repairing records, truncating tails or expiring data.
+    pub fn open(path: &Path) -> Result<Self, WatchError> {
+        let mut file = File::open(path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                WatchError::Missing
+            } else {
+                WatchError::Storage
+            }
+        })?;
+        Self::read(&mut file)
+    }
+
+    fn read(file: &mut File) -> Result<Self, WatchError> {
+        let size = file.metadata().map_err(|_| WatchError::Storage)?.len();
+        if !(HEADER..=MAX_BYTES).contains(&size) {
+            return Err(WatchError::Invalid);
+        }
+        let mut header = [0u8; 16];
+        file.read_exact(&mut header)
+            .map_err(|_| WatchError::Storage)?;
+        let len = u32::from_le_bytes(header[8..12].try_into().unwrap()) as usize;
+        if &header[..8] != MAGIC || len as u64 > HEADER - 16 {
+            return Err(WatchError::Invalid);
+        }
+        let mut data = vec![0; len];
+        file.read_exact(&mut data)
+            .map_err(|_| WatchError::Storage)?;
+        if checksum(&data) != u32::from_le_bytes(header[12..16].try_into().unwrap()) {
+            return Err(WatchError::Invalid);
+        }
+        let meta: Metadata = serde_json::from_slice(&data).map_err(|_| WatchError::Invalid)?;
+        if !meta.program.valid() || meta.name.is_empty() || meta.name.len() > 1024 {
+            return Err(WatchError::Invalid);
+        }
+        file.seek(SeekFrom::Start(HEADER))
+            .map_err(|_| WatchError::Storage)?;
+        let mut raw = Vec::new();
+        file.take(MAX_BYTES - HEADER + 1)
+            .read_to_end(&mut raw)
+            .map_err(|_| WatchError::Storage)?;
+        if raw.len() as u64 > MAX_BYTES - HEADER {
+            return Err(WatchError::Invalid);
+        }
+        let mut entries = Vec::new();
+        let mut damaged = raw.len() % RECORD as usize != 0;
+        let mut invalid_slots = Vec::new();
+        for (slot, bytes) in raw.as_chunks::<{ RECORD as usize }>().0.iter().enumerate() {
+            if bytes.iter().all(|b| *b == 0) {
+                continue;
+            }
+            match Entry::decode(bytes, slot) {
+                Some(entry) => entries.push(entry),
+                None => {
+                    damaged = true;
+                    invalid_slots.push(slot);
+                }
+            }
+        }
+        entries.sort_unstable_by_key(|entry| entry.seq);
+        // Only the newest ring generation can survive a partial overwrite.
+        let next = entries
+            .last()
+            .map_or(Some(1), |entry| entry.seq.checked_add(1))
+            .ok_or(WatchError::Invalid)?;
+        entries.retain(|entry| {
+            let keep = next - entry.seq <= CAPACITY as u64;
+            if !keep {
+                invalid_slots.push(((entry.seq - 1) % CAPACITY as u64) as usize);
+            }
+            keep
+        });
+        if entries.windows(2).any(|p| p[0].point.ts > p[1].point.ts) {
+            return Err(WatchError::Invalid);
+        }
+        Ok(Self {
+            meta,
+            entries: entries.into(),
+            next,
+            damaged,
+            invalid_slots,
+            complete_bytes: HEADER + raw.len() as u64 / RECORD * RECORD,
+            torn: raw.len() % RECORD as usize != 0,
+        })
     }
 }
 

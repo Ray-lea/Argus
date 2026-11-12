@@ -592,6 +592,23 @@ pub fn history_moment(dir: State<'_, HistoryDir>, ts: i64) -> Option<HistoryMome
     history::moment(&dir.0, ts)
 }
 
+pub fn history_cpu_interval(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+) -> Option<history::CpuInterval> {
+    history::cpu_interval(&dir.0, from, to)
+}
+
+pub fn history_interval(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+    metric: argus_core::history::IntervalMetric,
+) -> Option<history::IntervalReport> {
+    history::interval(&dir.0, from, to, metric)
+}
+
 pub fn history_usage(dir: State<'_, HistoryDir>) -> HistoryUsage {
     let mut usage = history::usage(&dir.0);
     usage.bytes = usage

@@ -2,6 +2,7 @@
 mod about;
 mod details;
 mod history;
+mod history_interval;
 mod performance;
 mod process_watch;
 mod settings;
@@ -514,6 +515,22 @@ impl Desktop {
                 self.load_history(window, cx);
             }
             "historyMetric" => self.history_metric = value.as_str().unwrap_or("cpu").into(),
+            "historyIntervalMetric" => {
+                let metric = value
+                    .as_str()
+                    .filter(|key| matches!(*key, "cpu" | "memory" | "io" | "gpu" | "network"))
+                    .unwrap_or("cpu");
+                self.data.insert("intervalMetric".into(), json!(metric));
+                self.interval_action("historyIntervalRetry", window, cx);
+                return;
+            }
+            "historyIntervalStart"
+            | "historyIntervalEnd"
+            | "historyIntervalClear"
+            | "historyIntervalRetry" => {
+                self.interval_action(key, window, cx);
+                return;
+            }
             "watchProcess" => {
                 if self.pending.values().any(|pending| {
                     pending.command == "watch_process" && pending.args["action"]["op"] != "status"
@@ -542,6 +559,7 @@ impl Desktop {
             }
             "historyPeak" => {
                 if let Some(at) = value.as_i64() {
+                    self.data.remove("historyExactAt");
                     self.history_hover = None;
                     self.history_cursor = Some(at);
                     self.data.insert("historyPeakAt".into(), json!(at));
@@ -550,8 +568,15 @@ impl Desktop {
                 }
                 return;
             }
+            "historyIntervalPeak" => {
+                if let Some(at) = value.as_i64() {
+                    self.interval_peak(at, window, cx);
+                }
+                return;
+            }
             "historyLatest" => {
                 self.data.remove("historyPeakAt");
+                self.data.remove("historyExactAt");
                 self.history_cursor = None;
                 self.history_hover = None;
                 self.load_history(window, cx);

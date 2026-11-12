@@ -10,9 +10,11 @@ use serde::{Deserialize, Serialize};
 use windows::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows::Win32::System::Threading::WaitForSingleObject;
 mod identity;
+mod interval;
 mod program;
 mod store;
 pub use identity::ProgramIdentity;
+pub use interval::{ObservationInterval, ObservationRun, SavedMemory, observation_interval};
 pub use store::{
     CAPACITY as PROGRAM_CAPACITY, MAX_BYTES as PROGRAM_MAX_BYTES,
     RETENTION_MS as PROGRAM_RETENTION_MS,
@@ -152,6 +154,90 @@ enum Record {
     Point(WatchPoint),
 }
 
+// Pure, bounded legacy reader shared by the recorder and interval investigation.
+fn read_single(path: &std::path::Path) -> Result<Option<(WatchView, u64)>, WatchError> {
+    let bytes = match File::open(path) {
+        Ok(file) => {
+            let mut bytes = Vec::new();
+            file.take(MAX_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| WatchError::Storage)?;
+            if bytes.len() as u64 > MAX_BYTES {
+                return Err(WatchError::Invalid);
+            }
+            bytes
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(WatchError::Storage),
+    };
+    let mut lines = bytes.split(|b| *b == b'\n');
+    let header: Record = serde_json::from_slice(lines.next().ok_or(WatchError::Invalid)?)
+        .map_err(|_| WatchError::Invalid)?;
+    let Record::Header {
+        version,
+        pid,
+        created,
+        name,
+        program,
+    } = header
+    else {
+        return Err(WatchError::Invalid);
+    };
+    if pid == 0
+        || created <= 0
+        || name.is_empty()
+        || name.len() > 1024
+        || !matches!(version, 1 | 2)
+        || program.as_ref().is_some_and(|program| !program.valid())
+    {
+        return Err(WatchError::Invalid);
+    }
+    let mut view = WatchView {
+        version,
+        pid,
+        create_time: created,
+        name,
+        program,
+        mode: WatchMode::Instance,
+        runs: Vec::new(),
+        total_runs: 0,
+        total_points: 0,
+        damaged: false,
+        first_sequence: None,
+        has_earlier: false,
+        has_later: false,
+        run_offset: 0,
+        live_runs: 0,
+        unconfirmed: 0,
+        state: WatchState::Interrupted,
+        points: Vec::new(),
+    };
+    let mut damaged = false;
+    for line in lines.filter(|line| !line.is_empty()) {
+        let Ok(Record::Point(point)) = serde_json::from_slice(line) else {
+            damaged = true;
+            break;
+        };
+        if view.points.len() > MAX_POINTS {
+            return Err(WatchError::Invalid);
+        }
+        if point.ts <= 0
+            || view.points.last().is_some_and(|last| {
+                last.ts > point.ts || !matches!(last.state, WatchState::Recording | WatchState::Gap)
+            })
+            || (point.state != WatchState::Recording
+                && (point.memory.is_some() || point.commit.is_some()))
+        {
+            damaged = true;
+            break;
+        }
+        view.state = point.state;
+        view.points.push(point);
+    }
+    view.damaged = damaged;
+    Ok(Some((view, bytes.len() as u64)))
+}
+
 pub struct WatchRecorder {
     dir: PathBuf,
     program_watch: Option<program::ProgramWatch>,
@@ -205,72 +291,13 @@ impl WatchRecorder {
             recorder.program_watch = Some(program::ProgramWatch::open(&recorder.dir)?);
             return Ok(recorder);
         }
-        let bytes = match File::open(&path) {
-            Ok(file) => {
-                let mut bytes = Vec::new();
-                file.take(MAX_BYTES + 1)
-                    .read_to_end(&mut bytes)
-                    .map_err(|_| WatchError::Storage)?;
-                if bytes.len() as u64 > MAX_BYTES {
-                    return Err(WatchError::Invalid);
-                }
-                bytes
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(recorder),
-            Err(_) => return Err(WatchError::Storage),
+        let Some((mut view, bytes)) = read_single(&path)? else {
+            return Ok(recorder);
         };
-        let mut lines = bytes.split(|b| *b == b'\n');
-        let header: Record = serde_json::from_slice(lines.next().ok_or(WatchError::Invalid)?)
-            .map_err(|_| WatchError::Invalid)?;
-        let Record::Header {
-            version,
-            pid,
-            created,
-            name,
-            program,
-        } = header
-        else {
-            return Err(WatchError::Invalid);
-        };
-        if !matches!(version, 1 | 2) || program.as_ref().is_some_and(|program| !program.valid()) {
-            return Err(WatchError::Invalid);
-        }
-        let mut view = WatchView {
-            version,
-            pid,
-            create_time: created,
-            name,
-            program,
-            mode: WatchMode::Instance,
-            runs: Vec::new(),
-            total_runs: 0,
-            total_points: 0,
-            damaged: false,
-            first_sequence: None,
-            has_earlier: false,
-            has_later: false,
-            run_offset: 0,
-            live_runs: 0,
-            unconfirmed: 0,
-            state: WatchState::Interrupted,
-            points: Vec::new(),
-        };
-        let mut damaged = false;
-        for line in lines.filter(|line| !line.is_empty()) {
-            let Ok(Record::Point(point)) = serde_json::from_slice(line) else {
-                damaged = true;
-                break;
-            };
-            if view.points.len() > MAX_POINTS {
-                return Err(WatchError::Invalid);
-            }
-            view.state = point.state;
-            view.points.push(point);
-        }
-        if damaged || matches!(view.state, WatchState::Recording | WatchState::Gap) {
+        if view.damaged || matches!(view.state, WatchState::Recording | WatchState::Gap) {
             view.state = WatchState::Interrupted;
         }
-        recorder.bytes = bytes.len() as u64;
+        recorder.bytes = bytes;
         recorder.view = Some(view);
         Ok(recorder)
     }

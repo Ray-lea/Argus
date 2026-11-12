@@ -233,6 +233,19 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             argument::<i64>(&args, "ts")?,
         ))
         .expect("serializable command response")),
+        "history_cpu_interval" => Ok(serde_json::to_value(crate::commands::history_cpu_interval(
+            host.state(),
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+        ))
+        .expect("serializable command response")),
+        "history_interval" => Ok(serde_json::to_value(crate::commands::history_interval(
+            host.state(),
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+            argument::<argus_core::history::IntervalMetric>(&args, "metric")?,
+        ))
+        .expect("serializable command response")),
         "history_usage" => Ok(
             serde_json::to_value(crate::commands::history_usage(host.state()))
                 .expect("serializable command response"),

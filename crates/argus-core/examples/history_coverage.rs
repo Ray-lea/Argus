@@ -64,6 +64,20 @@ fn main() {
         bytes as f64 / frames as f64
     );
     println!("series 7 days / 500 points, warm cache, 1 warmup + 10 reads us: {times:?}");
+    let mut interval_times = Vec::new();
+    for _ in 0..4 {
+        let started = Instant::now();
+        let interval = history::cpu_interval(&dir, base, base + frames * FRAME_MS).unwrap();
+        assert_eq!(interval.recorded_frames, frames as usize);
+        assert_eq!(interval.missing_frames, 0);
+        assert_eq!(interval.leaders.len(), 12);
+        interval_times.push(started.elapsed().as_micros());
+    }
+    interval_times.remove(0);
+    interval_times.sort();
+    println!(
+        "CPU interval 7 days / 12 instances, warm cache, 1 warmup + 3 reads us: {interval_times:?}"
+    );
     history::clear(&dir).unwrap();
     fs::remove_dir(dir).unwrap();
 }

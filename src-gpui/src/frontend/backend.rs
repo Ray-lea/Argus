@@ -98,6 +98,18 @@ impl Desktop {
         // An answer for another range or moment is dropped. One history query of each
         // kind is in flight at a time, so the one for what is shown now may have been
         // held back while this one was read: forget it was sent and ask again.
+        if pending.command == "history_interval"
+            && pending.args["generation"].as_u64().unwrap_or(0)
+                != self
+                    .data
+                    .get("intervalGeneration")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+        {
+            self.data.remove("intervalQuery");
+            self.load_cpu_interval(window, cx);
+            return;
+        }
         if pending.command == "history_series" && pending.args["range"] != self.history_range {
             self.data.remove("historyQuery");
             self.load_history(window, cx);
@@ -153,6 +165,15 @@ impl Desktop {
                 if pending.command == "watch_process" {
                     self.data.remove("watchError");
                     self.data.insert("processWatch".into(), value.clone());
+                    if matches!(
+                        pending.args["action"]["op"].as_str(),
+                        Some("start" | "startProgram" | "stop" | "delete")
+                    ) {
+                        self.interval_action("historyIntervalRetry", window, cx);
+                    }
+                }
+                if pending.command == "history_interval" {
+                    self.data.remove("intervalError");
                 }
                 if pending.command == "history_series" {
                     self.history_answered(&pending.args, window, cx);
@@ -187,6 +208,11 @@ impl Desktop {
                     .unwrap_or_else(|| self.action_error(&pending.command, &pending.args, &error));
                 if pending.command == "watch_process" && pending.args["action"]["op"] == "status" {
                     self.data.insert("watchError".into(), json!(message));
+                    cx.notify();
+                    return;
+                }
+                if pending.command == "history_interval" {
+                    self.data.insert("intervalError".into(), json!(message));
                     cx.notify();
                     return;
                 }

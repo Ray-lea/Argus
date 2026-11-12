@@ -23,7 +23,7 @@
           "type": "down",
           "button": "right",
           "x": 283,
-          "y": 666
+          "y": 716
         }
       },
       "wait": 300,
@@ -48,7 +48,7 @@
           "type": "down",
           "button": "right",
           "x": 283,
-          "y": 635
+          "y": 688
         }
       },
       "wait": 300,
@@ -90,7 +90,7 @@
           "type": "down",
           "button": "right",
           "x": 283,
-          "y": 691
+          "y": 744
         }
       },
       "wait": 300,

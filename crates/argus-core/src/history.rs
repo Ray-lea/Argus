@@ -34,6 +34,11 @@ use serde::Serialize;
 
 use crate::collector::Snapshot;
 use crate::measurement::{self, Measurement};
+mod interval;
+pub use interval::{
+    CpuInterval, CpuLeader, CpuSummary, HistoryGap, IntervalMetric, IntervalReport,
+    ResourceSummary, cpu_interval, interval,
+};
 
 /// Length of one frame.
 pub const FRAME_MS: i64 = 5_000;

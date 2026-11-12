@@ -552,6 +552,7 @@ impl Desktop {
                         && (f32::from(viewport.height) - client.bottom as f32).abs() < 1.
                 }))
             });
+            let interval_inspection = self.interval_test_state();
             let mut layout = json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
                 "vitals":self.vitals_band_state(),
                 "visibility":{"enabled":self.prefs.get::<bool>(visibility::preference(&self.page),false),
@@ -579,7 +580,8 @@ impl Desktop {
                 "performanceCardHeight":self.perf_card_chrome.get().map(|chrome| f32::from(window.viewport_size().height - chrome)),
                 "aboutScroll":{"max":about_max,"offset":about_offset,"canScroll":about_max > 0.5,
                     "atEnd":about_max > 0.5 && (about_offset-about_max).abs() < 0.5},
-                "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()});
+                    "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()});
+            layout["interval"] = interval_inspection;
             layout["historyDiskCoverage"] = json!(
                 self.data
                     .get("historyMoment")

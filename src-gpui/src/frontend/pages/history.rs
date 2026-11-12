@@ -501,7 +501,13 @@ impl Desktop {
         let peak = self
             .history_cursor
             .is_some_and(|at| self.data.get("historyPeakAt").and_then(Value::as_i64) == Some(at));
-        let moment = frame_at(records, self.history_cursor, peak)
+        let exact = self
+            .data
+            .get("historyExactAt")
+            .and_then(Value::as_i64)
+            .filter(|at| Some(*at) == self.history_cursor);
+        let moment = exact
+            .or_else(|| frame_at(records, self.history_cursor, peak))
             .unwrap_or(self.history_cursor.unwrap_or(now));
         if self.data.get("historyMomentAt") != Some(&json!(moment)) {
             self.data.insert("historyMomentAt".into(), json!(moment));
@@ -513,6 +519,7 @@ impl Desktop {
                 cx,
             );
         }
+        self.load_cpu_interval(window, cx);
     }
     /// A series answer is on screen. A moment picked on the previous window while it was
     /// queried (pointer or keys) stays picked only if the new window contains it.
@@ -546,6 +553,7 @@ impl Desktop {
                 return false;
             }
             self.history_cursor = None;
+            self.data.remove("historyExactAt");
             self.data.remove("historyPeakAt");
             self.load_history(window, cx);
             cx.notify();
@@ -569,6 +577,7 @@ impl Desktop {
             return true;
         };
         self.history_cursor = Some(at);
+        self.data.remove("historyExactAt");
         self.data.remove("historyPeakAt");
         self.load_history(window, cx);
         cx.notify();
@@ -1003,6 +1012,7 @@ impl Desktop {
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     if let Some(at) = click_time(event.position) {
                         this.history_cursor = Some(at);
+                        this.data.remove("historyExactAt");
                         this.data.remove("historyPeakAt");
                         this.load_history(window, cx);
                         cx.notify();
@@ -1215,6 +1225,9 @@ impl Desktop {
                     )
                     .child(
                         div()
+                            .w_full()
+                            .min_w_0()
+                            .whitespace_normal()
                             .text_size(theme::font(12.))
                             .text_color(p.faint)
                             .child(label(if self.history_cursor.is_none() {
@@ -1234,6 +1247,12 @@ impl Desktop {
                         .child(text),
                 )
             })
+            .child(
+                div()
+                    .px(px(14.))
+                    .pb(px(8.))
+                    .child(self.interval_markers(cx)),
+            )
             .child(table)
             .child(foot);
         let page = window
@@ -1259,6 +1278,9 @@ impl Desktop {
                 |d| d.child(self.watch_card(window, cx)),
             )
             .child(graphs)
+            .when(self.data.contains_key("intervalStart"), |d| {
+                d.child(self.interval_card(cx))
+            })
             .child(moment_card)
             .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))
             .into_any_element()
