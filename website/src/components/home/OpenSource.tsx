@@ -59,6 +59,7 @@ export function OpenSource({ lang, guide }: { lang: Language; guide: string }) {
   const tags = ["Rust", "GPUI", "Direct3D 11", "NT API", "Windows 11"];
   const community: [string, string, string][] = localize(lang, [
     ...(localize(lang, en ? [] : ([["QQ 群 453803497", "反馈问题、提出建议或交流使用心得", "https://qm.qq.com/q/97YqJAQRNK"]] as [string, string, string][]))),
+    [localize(lang, en ? "Telegram channel" : "Telegram 频道"), localize(lang, en ? "Get release updates and project news" : "获取版本更新与项目动态"), "https://t.me/argustask"],
     [localize(lang, en ? "GitHub Issues" : "GitHub 问题"), localize(lang, en ? "Report a bug or suggest a feature" : "报告缺陷或提出功能建议"), repo + "/issues/new/choose"],
     [localize(lang, en ? "Security reports" : "安全报告"), localize(lang, en ? "Report a vulnerability privately" : "私下报告安全漏洞"), localized(lang, "/security/")],
   ]);

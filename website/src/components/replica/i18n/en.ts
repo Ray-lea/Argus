@@ -254,6 +254,10 @@ export const exact: Record<string, string> = {
   "加入 QQ 群 453803497，反馈问题、提出建议或交流使用心得。": "Join the QQ group 453803497 to report problems, suggest features or share experiences with other users (in Chinese).",
   "复制群号": "Copy group number",
   "加入 QQ 群": "Join QQ group",
+  "Telegram 频道": "Telegram channel",
+  "加入 Telegram 频道 t.me/argustask，获取版本更新与项目动态。": "Join the Telegram channel t.me/argustask for release updates and project news.",
+  "复制链接": "Copy link",
+  "加入频道": "Join channel",
   "首次启动引导": "Welcome guide",
   "重新查看常用设置与使用提示。": "Go through the essential settings and tips again.",
   "打开引导": "Open guide",
@@ -680,6 +684,7 @@ export const exact: Record<string, string> = {
   "已复制名称。": "Copied the name.",
   "已复制本机配置。": "Copied the PC specifications.",
   "已复制群号。": "Copied the group number.",
+  "已复制频道链接。": "Copied the channel link.",
 
   // The process columns: the header's menu, the "Select columns" dialog and
   // the columns themselves (Columns.tsx), in the app's words (processes.json).

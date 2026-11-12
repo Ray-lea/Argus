@@ -1494,6 +1494,10 @@ export function About({
           <Button onClick={() => onCopy("453803497", "群号")}>复制群号</Button>
           <Button tone="accent">加入 QQ 群</Button>
         </Setting>
+        <Setting icon="channel" title="Telegram 频道" desc="加入 Telegram 频道 t.me/argustask，获取版本更新与项目动态。">
+          <Button onClick={() => onCopy("https://t.me/argustask", "频道链接")}>复制链接</Button>
+          <Button tone="accent">加入频道</Button>
+        </Setting>
         <Setting icon="sparkle" title="首次启动引导" desc="重新查看常用设置与使用提示。">
           <Button>打开引导</Button>
         </Setting>
