@@ -45,5 +45,47 @@
   "noRecordAt": "No hay registros en este momento",
   "earliest": "Registro más antiguo",
   "note": "Registra cada 5 segundos los procesos con mayor uso de CPU, memoria, I/O, GPU y red; si el intervalo al minimizar o permanecer en la bandeja es mayor, utiliza ese intervalo. Conserva los registros durante 7 días.",
-  "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>"
+  "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>",
+  "watch": {
+    "title": "Observación de proceso",
+    "empty": "Elija «Observar esta instancia» en los detalles de un solo proceso para registrar memoria fuera de la lista principal.",
+    "start": "Observar esta instancia",
+    "target": "Observando {name} (PID {pid})",
+    "stop": "Detener registro",
+    "delete": "Eliminar registro",
+    "note": "Solo esta instancia; hasta 1 hora, 720 puntos y 1 MiB. Muestras normalmente cada 5 segundos; un muestreo más lento puede dejar huecos. El crecimiento del conjunto de trabajo no prueba una fuga. Detener conserva datos; Eliminar detiene y borra este registro.",
+    "metric": {
+      "memory": "Conjunto de trabajo privado",
+      "commit": "Memoria privada comprometida"
+    },
+    "state": {
+      "recording": "Registrando",
+      "gap": "Sin muestra válida",
+      "exited": "Esta instancia terminó",
+      "stopped": "Registro detenido",
+      "interrupted": "Registro interrumpido; no reanudado",
+      "limit": "Límite de registro alcanzado"
+    },
+    "error": {
+      "unavailable": "El muestreador no respondió a tiempo. Resultado desconocido; compruebe el estado antes de reintentar.",
+      "identity": "No se pudo confirmar la instancia seleccionada. Actualice y reintente.",
+      "access": "Los permisos actuales no permiten leer esta instancia.",
+      "existing": "Ya existe una observación. Deténgala y elimínela antes de iniciar otra.",
+      "missing": "No existe ninguna observación.",
+      "storage": "No se pudo leer o escribir el registro. Se ha detenido.",
+      "invalid": "El registro está dañado o su formato no es compatible. Puede eliminarlo."
+    },
+    "startProgram": "Observar próximos inicios",
+    "chooseRun": "Elegir un inicio",
+    "run": "{started} · PID {pid} · {state}",
+    "runSummary": "Se muestran {shown}/{total} inicios; {points} puntos guardados en este inicio",
+    "earlier": "Puntos anteriores",
+    "latest": "Últimos puntos",
+    "programNote": "Los inicios actuales y futuros de esta ruta de imagen se registran por separado. Hasta 7 días, 131072 puntos y 9 MiB; el primer límite alcanzado elimina los datos más antiguos. Hasta 512 instancias simultáneas. La lista muestra los últimos 256 inicios; cada página hasta 1000 puntos guardados y marcas de huecos. Los puntos anteriores siguen disponibles. Normalmente cada 5 segundos; un muestreo más lento deja huecos. El crecimiento del conjunto de trabajo no demuestra una fuga. Detener conserva los datos; Eliminar los borra. Reiniciar Argus no reanuda la grabación.",
+    "damaged": "Algunos registros no superaron la comprobación de integridad; los intervalos ausentes siguen siendo huecos.",
+    "earlierRuns": "Inicios anteriores",
+    "latestRuns": "Últimos inicios",
+    "waiting": "Esperando otro inicio",
+    "unconfirmed": "No se pudieron confirmar {count} instancias con el mismo nombre; se reintenta una vez por minuto."
+  }
 }

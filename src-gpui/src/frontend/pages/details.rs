@@ -1162,7 +1162,28 @@ impl Desktop {
                 .hover(move |style| style.bg(control_hover)),
             );
         }
-        row.into_any_element()
+        let mut actions = div().flex_none().flex().flex_col();
+        if !picked.group && number(process, "createTime") > 0. {
+            actions = actions.child(div().px(px(16.)).pt(px(8.)).child(
+                self.btn_small("details-watch", label("history.watch.start"), None, widgets::Tone::Plain)
+                    .child(self.watch_anchor("details-watch"))
+                    .w_full()
+                    .on_click(cx.listener({
+                        let target = json!({"op":"start","pid":process["pid"],"createTime":process["createTime"],"name":process["name"]});
+                        move |this, _, window, cx| this.preference("watchProcess",target.clone(),window,cx)
+                    }))
+            ));
+            actions = actions.child(div().px(px(16.)).pt(px(8.)).child(
+                self.btn_small("details-watch-program", label("history.watch.startProgram"), None, widgets::Tone::Plain)
+                    .child(self.watch_anchor("details-watch-program"))
+                    .w_full()
+                    .on_click(cx.listener({
+                        let target = json!({"op":"startProgram","pid":process["pid"],"createTime":process["createTime"],"name":process["name"]});
+                        move |this, _, window, cx| this.preference("watchProcess",target.clone(),window,cx)
+                    }))
+            ));
+        }
+        actions.child(row).into_any_element()
     }
 
     fn details_exited(&self, cx: &mut Context<Self>) -> AnyElement {

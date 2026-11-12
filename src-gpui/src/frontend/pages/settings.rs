@@ -3887,6 +3887,16 @@ impl Desktop {
             }
             "clear_history" => {
                 self.ui.busy.remove("clearHistory");
+                let generation = self
+                    .data
+                    .get("watchGeneration")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    + 1;
+                self.data
+                    .insert("watchGeneration".into(), json!(generation));
+                self.data.insert("processWatch".into(), Value::Null);
+                self.data.remove("watchError");
                 self.notify_toast_for(
                     ToastKind::Success,
                     label("settings.data.history.cleared"),
