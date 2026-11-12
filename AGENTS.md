@@ -70,6 +70,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 不兼容的改动（设置或历史数据格式、特权服务 IPC 协议、删除功能或快捷键、命令行参数）在冒号前加 `!`，并写 `BREAKING CHANGE:` 页脚。
 - 版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`resources/app.json` 里的版本，也不要手写 `changelog/` 下各语言更新日志的版本标题。只在用户要求发布时运行它；推送 `v*` 标签就是正式发布，同样要等用户明确要求。
 - 发布说明按界面语言各有一份：`changelog/zh-CN.md` 是源文本，`changelog/` 下其他语言的文件与它逐条对应，小节标题与语言名称在 `resources/changelog.json`。`pnpm release` 在其他语言的文件中写入由中文条目生成的草稿，推送标签前要全部译完，润色中文时同步修改各语言，用词与 `locales/<语言标签>` 的界面文案一致；带标签的条目在繁中、日文写 `**标签**：`，其他语言写 `**Label**:`（冒号前不加空格）。`verify` 会拒绝仍含中文原文、小节与条目数不同或日期不同的译文条目。GitHub Release 正文完整显示中英文，顶部按 README 的写法链接其他语言的文件；应用与官网按界面语言显示对应译文。
+- 整理更新日志时按 `release.md` 的“更新日志的内容”：只写应用内用户可感知的变化，本周期新增后又修改的功能并入功能条目；外部贡献者的拉取请求在条目末尾写 `（@贡献者 #编号）` 并链接其主页与拉取请求（`gh pr list --state merged` 核对作者，以 GitHub 用户名为准，提交作者名可能不同）。
 - 不要给 CI 加 push 触发的检查、nightly 或定时构建（现有的触发方式见 `release.md`）；Rust 用 stable，不用 nightly 工具链。`.github/workflows/check.yml` 把 `pnpm check` 拆成了单独的步骤，改一边要同步另一边。
 - 修改 `scripts/release.mjs` 的发布行为后先用 `pnpm release --dry-run` 看结果，再在临时克隆里走一遍完整发布（把克隆的推送地址设成无效值）；不要在真实仓库里打测试标签。
 - 更新签名公钥在 `resources/app.json` 的 `updater.pubkey`。不要生成新密钥替换它（已安装的版本只认旧公钥，用户会收不到更新），不要取消签名对版本号的校验；私钥只在 GitHub Secrets 和维护者本机，不要读取或要求用户提供。测试签名流程用 scratchpad 里临时生成的密钥。
