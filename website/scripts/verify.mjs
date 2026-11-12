@@ -225,7 +225,8 @@ async function local() {
     }
   }
   const moved = await readFile(join(dir, "_redirects"), "utf8");
-  for (const from of ["/questions/", "/en/questions/", "/search/"])
+  // Each old address also redirects as index.md, where requests for Markdown arrive.
+  for (const from of ["/questions/", "/en/questions/", "/search/"].flatMap((path) => [path, path + "index.md"]))
     assert(
       moved.split("\n").some((line) => line.startsWith(from + " ")),
       "Missing redirect for " + from,
