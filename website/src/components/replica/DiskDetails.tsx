@@ -85,6 +85,9 @@ const WARNINGS: [number, string, number][] = [
   [0x20, "持久性内存区域已转为只读", 2],
 ];
 const STATUS = ["良好", "注意", "异常"];
+// Each condition's colour, which the health bars share: the life bar the
+// status's, the temperature its condition against the drive's thresholds,
+// the spare green until it falls below its threshold.
 const TONE = ["var(--a-net)", "var(--a-io)", "var(--a-danger)"];
 const life = (log: Log) => Math.max(0, 100 - log.percentageUsed);
 const spareLow = (log: Log) => log.availableSpare < log.spareThreshold;
@@ -100,9 +103,13 @@ function assess(log: Log): [number, string[]] {
   const found = warnings(log);
   if (spareLow(log) && !(log.criticalWarning & 0x01)) found.push([0x01, "可用备用空间低于阈值", 2]);
   if (log.mediaErrors > 0) found.push([0, "存在介质与数据完整性错误", 1]);
-  if (life(log) <= WORN) found.push([0, "剩余寿命不足 10%", 1]);
+  if (life(log) <= WORN) found.push([0, "剩余寿命不高于 10%", 1]);
   return [Math.max(0, ...found.map(([, , level]) => level)), found.map(([, reason]) => reason)];
 }
+// How hot the drive runs against the thresholds it reports: a condition, as
+// the health status's, so that the bar takes the same colours.
+const temperatureCondition = (celsius: number, warning?: number, critical?: number) =>
+  critical !== undefined && celsius >= critical ? 2 : warning !== undefined && celsius >= warning ? 1 : 0;
 // Reasons in a list, each translated on its own.
 const list = (reasons: string[]) => reasons.flatMap((reason, i) => (i ? ["、", reason] : [reason]));
 const capacity = (bytes: number) => (bytes >= TB ? (bytes / TB).toFixed(1) + " TB" : Math.round(bytes / 1024 ** 3) + " GB");
@@ -320,7 +327,6 @@ export default function DiskDetails({ read, interval }: { read: number; interval
   // The live reading, as on the overview; the bar runs to the critical
   // temperature, its mark at the warning one.
   const temperature = 41;
-  const hot = temperature >= identity.warning;
   const top = Math.max(1, identity.critical);
   const tiles = width >= 3 * TILE_MIN + 2 * TILE_GAP ? 3 : 1;
   const wide = width >= 2 * 300 + GROUP_GAP;
@@ -423,7 +429,7 @@ export default function DiskDetails({ read, interval }: { read: number; interval
               </span>
             }
             level={left / 100}
-            color={left <= WORN ? "var(--a-danger)" : "var(--a-io)"}
+            color={TONE[condition]}
             caption={`剩余寿命 ${left}%`}
             alert={reasons.length ? [list(reasons), condition === 2 ? "var(--a-danger)" : "var(--a-ink)"] : undefined}
           />
@@ -437,7 +443,7 @@ export default function DiskDetails({ read, interval }: { read: number; interval
             }
             level={temperature / top}
             mark={identity.warning / top}
-            color={hot ? "var(--a-danger)" : "var(--a-io)"}
+            color={TONE[temperatureCondition(temperature, identity.warning, identity.critical)]}
             caption={[`警告 ${identity.warning} °C`, " · ", `严重 ${identity.critical} °C`]}
           />
           <Tile
@@ -450,7 +456,7 @@ export default function DiskDetails({ read, interval }: { read: number; interval
             }
             level={log.availableSpare / 100}
             mark={log.spareThreshold / 100}
-            color={spareLow(log) ? "var(--a-danger)" : "var(--a-io)"}
+            color={spareLow(log) ? "var(--a-danger)" : TONE[0]}
             caption={`阈值 ${log.spareThreshold}%`}
           />
         </div>

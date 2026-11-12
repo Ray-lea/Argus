@@ -10,6 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import theme from "../../../../resources/theme.json";
 import Curve, { type Motion, type Readout, type Series } from "./Curve";
 import DiskDetails from "./DiskDetails";
 import { Icon } from "./icons";
@@ -180,6 +181,47 @@ const split = (text: string): [string, string] => {
   return at < 0 ? [text, ""] : [text.slice(0, at), text.slice(at + 1)];
 };
 
+// The logical processors' grid as the app picks its columns (model.rs,
+// core_grid_columns): full rows first, then readable plots; a grid with empty
+// slots keeps this share of its plot size when weighed against a full one, so
+// it wins only where no full grid fits or its plots would be much smaller.
+// While resizing, the columns it had stay unless another count is clearly
+// better.
+const { coreMinWidth, coreMinHeight, coreHeaderHeight, coreGap } = theme.layout;
+const CORE_GRID_GAPPED = 0.6;
+function coreGridColumns(count: number, width: number, height: number, previous: number) {
+  if (count <= 1 || width <= 0) return 1;
+  const limit = Math.min(count, Math.max(1, Math.floor((width + coreGap) / (coreMinWidth + coreGap))));
+  const score = (columns: number) => {
+    const rows = Math.ceil(count / columns);
+    const cell = (width - (columns - 1) * coreGap) / columns;
+    const row = (height - (rows - 1) * coreGap) / rows;
+    if (row < coreMinHeight - 0.5) return 0;
+    const plot = Math.min(cell / 1.8, row - coreHeaderHeight);
+    const slots = rows * columns;
+    if (slots === count) return plot;
+    // Among grids with empty slots, fewer of them.
+    const empty = 1 - count / slots;
+    return plot * CORE_GRID_GAPPED * (1 - empty * 0.5);
+  };
+  let best = limit;
+  let bestScore = 0;
+  for (let columns = 1; columns <= limit; columns++) {
+    const value = score(columns);
+    if (value > bestScore) {
+      best = columns;
+      bestScore = value;
+    }
+  }
+  if (previous > 0 && previous <= limit) {
+    const current = score(previous);
+    // A small dead band keeps one-pixel drags from moving the cores back and forth.
+    if (current > 0 && bestScore <= current * 1.08) return previous;
+  }
+  // Where nothing fits the height, as many columns as the width takes.
+  return best;
+}
+
 /** A device entry's height in the list. */
 const ROW = 62;
 export default function Performance(p: Props) {
@@ -260,7 +302,39 @@ export default function Performance(p: Props) {
       max: 100,
     },
   ];
-  const coreCols = filter === "all" ? 5 : 4;
+  const coreCount = logical.filter((c) => filter === "all" || c.kind === filter).length;
+  // The processors' grid: the columns it was given for that many processors,
+  // and its size when last laid out (kept out of state, so that resizing
+  // renders again only when the columns change). Another count starts afresh
+  // in the area the grid last had, as in the app.
+  const coreGrid = useRef<HTMLDivElement>(null);
+  const coreArea = useRef<{ width: number; height: number } | null>(null);
+  const [coreLayout, setCoreLayout] = useState({ count: 0, columns: 0 });
+  const coreCols =
+    coreLayout.count === coreCount
+      ? coreLayout.columns
+      : coreGridColumns(coreCount, coreArea.current?.width ?? 0, coreArea.current?.height ?? 0, 0);
+  useIsoLayoutEffect(() => {
+    const el = coreGrid.current;
+    if (!el) return;
+    // Its own size (the window is drawn scaled), rows included: they keep at
+    // least the cards' fit height, the view scrolling below that. Laid out for
+    // the first time, it knows only its width, as the app's first layout does;
+    // new columns are measured again at the size they give the grid.
+    const measure = () => {
+      const width = el.offsetWidth;
+      const height = coreArea.current ? el.offsetHeight : 0;
+      coreArea.current = { width, height: el.offsetHeight };
+      setCoreLayout((last) => {
+        const columns = coreGridColumns(coreCount, width, height, last.count === coreCount ? last.columns : 0);
+        return last.count === coreCount && last.columns === columns ? last : { count: coreCount, columns };
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [p.device, cpuPage, graph, filter, coreCount, coreCols]);
   const cores = useMemo(
     () =>
       logical
@@ -341,7 +415,7 @@ export default function Performance(p: Props) {
               ]}
             />
           ) : (
-            <div className="a-cores-grid" style={{ "--cols": coreCols } as CSSProperties} key={filter}>
+            <div className="a-cores-grid" ref={coreGrid} style={{ "--cols": coreCols } as CSSProperties} key={filter}>
               {cores.map((core) => {
                 const color = core.kind === "p" ? "var(--a-cpu)" : "var(--a-cpu-e)";
                 return (

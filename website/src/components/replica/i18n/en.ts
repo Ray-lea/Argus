@@ -406,7 +406,7 @@ export const exact: Record<string, string> = {
   "持久性内存区域已转为只读": "Persistent memory region read-only",
   "其他严重警告": "Other critical warning",
   "存在介质与数据完整性错误": "Media and data integrity errors present",
-  "剩余寿命不足 10%": "Less than 10% life remaining",
+  "剩余寿命不高于 10%": "10% or less life remaining",
   "、": ", ",
   "设备信息": "Device information",
   "固件版本": "Firmware",

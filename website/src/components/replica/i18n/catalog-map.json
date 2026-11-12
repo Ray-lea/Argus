@@ -365,6 +365,7 @@
   "持久性内存区域已转为只读": "performance.json:disk.reason.persistentMemory",
   "其他严重警告": "performance.json:disk.reason.other",
   "存在介质与数据完整性错误": "performance.json:disk.reason.mediaErrors",
+  "剩余寿命不高于 10%": "performance.json:disk.reason.worn",
   "、": "common.json:listSeparator",
   "设备信息": "performance.json:disk.device",
   "固件版本": "performance.json:disk.firmware",

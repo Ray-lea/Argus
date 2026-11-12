@@ -2307,11 +2307,14 @@ button.a-th:active {
 .a-specs dd > span {
   display: block;
 }
+/* Columns as Performance.tsx picks them for the grid's size; rows share the
+   height left and flatten to the cards' fit height (theme.json coreFitHeight)
+   before the view scrolls. */
 .a-cores-grid {
   display: grid;
   flex: 1 1 0;
   grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
-  grid-auto-rows: minmax(80px, 1fr);
+  grid-auto-rows: minmax(60px, 1fr);
   gap: 6px;
 }
 .a-core {
@@ -2508,13 +2511,13 @@ button.a-th:active {
   border-radius: 50%;
   background: var(--c);
 }
-/* A level bar: the colour at 18 % for the track, a 2 px mark for a threshold. */
+/* A level bar on a neutral track, a 2 px neutral mark for a threshold. */
 .a-disk-meter {
   position: relative;
   height: 6px;
   margin-top: 10px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--c) 18%, transparent);
+  background: var(--a-stroke-strong);
 }
 .a-disk-meter i {
   position: absolute;
@@ -2526,12 +2529,12 @@ button.a-th:active {
 }
 .a-disk-meter b {
   position: absolute;
-  top: -3px;
+  top: -2px;
   width: 2px;
-  height: 12px;
+  height: 10px;
   margin-left: -1px;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--a-ink) 50%, transparent);
+  background: color-mix(in srgb, var(--a-ink) 65%, transparent);
 }
 .a-disk-tile p {
   margin: 6px 0 0;
@@ -4416,9 +4419,6 @@ button.a-th:active {
   .a-two {
     grid-template-columns: 1fr;
   }
-  .a-cores-grid {
-    --cols: 3 !important;
-  }
   .a-connections {
     --cols: minmax(130px, 1fr) 70px 80px 84px;
   }
@@ -4531,9 +4531,6 @@ button.a-th:active {
   }
   .a-history-axis {
     margin-left: 86px;
-  }
-  .a-cores-grid {
-    --cols: 2 !important;
   }
   .a-caption button {
     width: 30px;
