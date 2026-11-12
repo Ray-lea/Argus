@@ -43,7 +43,7 @@ test("release building retains both channels through serialization and verifies 
   await mkdir(join(root, "scripts/lib"), { recursive: true });
   await mkdir(join(root, "resources"));
   const repoRoot = resolve(import.meta.dirname, "../..");
-  for (const file of ["scripts/release.mjs", "scripts/lib/release-notes.ts"])
+  for (const file of ["scripts/release.mjs", "scripts/lib/release-notes.ts", "resources/changelog.json"])
     await copyFile(join(repoRoot, file), join(root, file));
   // A disposable minisign key exercises the real signature verifier without
   // reading a release secret or changing the installed application's public key.
