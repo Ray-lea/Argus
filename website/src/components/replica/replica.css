@@ -1769,14 +1769,48 @@ button.a-th:active {
 .a-tips {
   display: flex;
   flex-direction: column;
-  gap: 6px;
   margin-top: 16px;
-  padding: 10px 12px;
   border: 1px dashed var(--a-stroke-strong);
   border-radius: 6px;
   color: var(--a-ink-2);
   font-size: calc(12px * var(--a-text));
   line-height: 1.5;
+}
+/* The heading folds the tips; 6 px above and below its line, as between tips. */
+.a-tips-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font-weight: 500;
+  text-align: start;
+}
+.a-tips-head:hover {
+  background: var(--a-hover);
+}
+.a-tips-head:active {
+  background: var(--a-press);
+}
+.a-tips-head > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.a-tips-head > .ico:first-child {
+  color: var(--a-accent);
+}
+.a-tips-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 10px;
 }
 .a-tips p {
   display: flex;

@@ -1018,6 +1018,7 @@ const parts: { device: Device; icon: UiIcon; color: string; kind: string; name: 
 ];
 function Overview({ onDevice, onCopy }: { onDevice: (device: Device) => void; onCopy: (text: string, what: string) => void }) {
   const [visible, setVisible] = useState(true);
+  const [tipsOpen, setTipsOpen] = useState(true);
   const text = ["本机配置", ...parts.map((p) => `${p.kind}：${p.name}\n${p.detail}`)].join("\n\n");
   return (
     <div className="a-details-body" ref={settle}>
@@ -1046,20 +1047,35 @@ function Overview({ onDevice, onCopy }: { onDevice: (device: Device) => void; on
           </div>
         </header>
         <div className="a-tips">
-          <p>
-            <Icon name="pointer" size={14} />
-            <span>在列表中单击应用或进程，即可在此查看其详细信息；再次单击取消选中。</span>
-          </p>
-          <p>
-            <Icon name="panel" size={14} />
-            <span>
-              详细信息面板默认常驻，单击窗口右上角的
-              <span className="a-key" aria-label="详细信息面板按钮">
-                <Icon name="panel" size={12} />
-              </span>
-              可收起。
-            </span>
-          </p>
+          <button
+            type="button"
+            className="a-tips-head"
+            aria-label={tipsOpen ? "收起操作提示" : "展开操作提示"}
+            aria-expanded={tipsOpen}
+            onClick={() => setTipsOpen(!tipsOpen)}
+          >
+            <Icon name="tip" size={14} />
+            <span>操作提示</span>
+            <Icon name={tipsOpen ? "chevronUp" : "chevronDown"} size={14} />
+          </button>
+          {tipsOpen && (
+            <div className="a-tips-body">
+              <p>
+                <Icon name="pointer" size={14} />
+                <span>在列表中单击应用或进程，即可在此查看其详细信息；再次单击取消选中。</span>
+              </p>
+              <p>
+                <Icon name="panel" size={14} />
+                <span>
+                  详细信息面板默认常驻，单击窗口右上角的
+                  <span className="a-key" aria-label="详细信息面板按钮">
+                    <Icon name="panel" size={12} />
+                  </span>
+                  可收起。
+                </span>
+              </p>
+            </div>
+          )}
         </div>
         {visible && (
           <ul className="a-hardware">
