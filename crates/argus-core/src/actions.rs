@@ -259,6 +259,17 @@ pub fn set_efficiency_mode(pid: u32, create_time: i64, on: bool) -> Result<(), A
 /// count can reach (`MAXIMUM_SUSPEND_COUNT`, 127), so any stacking clears.
 const MAX_RESUMES: usize = 128;
 
+fn require_suspendable(handle: windows::Win32::Foundation::HANDLE) -> Result<(), ActionError> {
+    // Query the already verified instance with limited query rights. A failed
+    // critical-process query must stop the operation before any suspension.
+    let mut critical = windows::core::BOOL::default();
+    unsafe { windows::Win32::System::Threading::IsProcessCritical(handle, &mut critical) }?;
+    if critical.as_bool() {
+        return Err(ActionError::Critical);
+    }
+    Ok(())
+}
+
 /// Suspends or resumes every thread of a process instance, the way Resource
 /// Monitor's "Suspend process" does. Suspending is refused for the System
 /// process, Argus itself and critical processes, whose stall hangs Windows.
@@ -273,6 +284,9 @@ pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), Ac
     if pid == 0 || pid == 4 || pid == unsafe { GetCurrentProcessId() } {
         return Err(ActionError::Refused);
     }
+    if create_time <= 0 {
+        return Err(ActionError::NotFound);
+    }
     let handle = open_instance(pid, create_time, PROCESS_SUSPEND_RESUME)?;
     let check = |status: windows::Win32::Foundation::NTSTATUS| {
         if status == STATUS_ACCESS_DENIED {
@@ -281,9 +295,7 @@ pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), Ac
         Ok(status.ok()?)
     };
     if suspend {
-        if is_critical(pid) {
-            return Err(ActionError::Critical);
-        }
+        require_suspendable(handle.0)?;
         // An unreadable state suspends anyway: a stacked count is what resume
         // clears, while skipping would leave the process running unasked.
         if suspension(pid, create_time) == Ok(Some(Suspension::All)) {
@@ -403,10 +415,12 @@ mod tests {
 
     #[test]
     fn one_resume_clears_suspensions_stacked_on_a_live_process() {
+        use std::os::windows::process::CommandExt;
         let child = KillOnDrop(
             std::process::Command::new("ping")
                 .args(["-n", "30", "127.0.0.1"])
                 .stdout(std::process::Stdio::null())
+                .creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0)
                 .spawn()
                 .unwrap(),
         );
@@ -416,6 +430,12 @@ mod tests {
             .find(|&(p, ..)| p == pid)
             .unwrap()
             .2;
+        for stale in [0, -1, created + 1] {
+            assert!(matches!(
+                super::set_suspended(pid, stale, true),
+                Err(super::ActionError::NotFound)
+            ));
+        }
         super::set_suspended(pid, created, true).unwrap();
         assert!(settles(pid, created, true));
         // Suspending an already suspended process leaves its count alone…
@@ -443,6 +463,14 @@ mod tests {
         }
         super::set_suspended(pid, created, false).unwrap();
         assert!(settles(pid, created, false));
+    }
+
+    #[test]
+    fn suspension_requires_a_successful_critical_process_query() {
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::System::Threading::GetCurrentProcess;
+        assert!(super::require_suspendable(HANDLE::default()).is_err());
+        assert!(super::require_suspendable(unsafe { GetCurrentProcess() }).is_ok());
     }
 
     #[test]
