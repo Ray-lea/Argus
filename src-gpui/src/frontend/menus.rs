@@ -1033,10 +1033,13 @@ impl Desktop {
         // and a resume takes one off), so each action only takes the members
         // in the other state: suspending a process twice would leave it
         // suspended after one resume. A row whose app started new processes
-        // after being suspended offers both.
+        // after being suspended offers both. Members Windows froze (packaged
+        // apps in the background) are Windows's to thaw: resuming does not,
+        // so neither item takes them.
         let (suspended, running): (Vec<_>, Vec<_>) = row
             .members
             .iter()
+            .filter(|member| !boolean(member, "frozen"))
             .cloned()
             .partition(|member| boolean(member, "suspended"));
         for (members, on, name, glyph) in [

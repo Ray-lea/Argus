@@ -107,6 +107,10 @@ pub struct ProcessRow {
     pub session_id: u32,
     pub base_priority: i32,
     pub suspended: bool,
+    /// Suspended because Windows froze the process, as it does packaged apps
+    /// in the background: Windows thaws it again, and resuming does not.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub frozen: bool,
     /// Efficiency mode (EcoQoS) is on, set by the app itself or by a user.
     pub efficiency: bool,
     /// Owns a taskbar window, which puts it under "Apps" (see `app_windows`).
@@ -538,6 +542,9 @@ impl ProcessTracker {
                 session_id: p.session_id,
                 base_priority: p.base_priority,
                 suspended,
+                // Only fully suspended processes can be frozen: one query for
+                // the few of them, none for the rest.
+                frozen: suspended && entry.handle.as_ref().is_some_and(|h| frozen(h.0)),
                 efficiency: entry.handle.as_ref().is_some_and(|h| efficiency_mode(h.0)),
                 app_window: false,
                 windows_process: meta.is_some_and(|m| m.windows_component)
@@ -684,6 +691,49 @@ fn query_handle(pid: u32, create_time: i64) -> Option<OwnedHandle> {
 
 /// Whether efficiency mode is explicitly on (about 1 µs per process with a
 /// cached handle).
+/// `PROCESS_EXTENDED_BASIC_INFORMATION`, the extended form of
+/// `ProcessBasicInformation` that `Size` selects.
+#[repr(C)]
+#[derive(Default)]
+struct ExtendedBasicInformation {
+    size: usize,
+    exit_status: i32,
+    peb_base_address: usize,
+    affinity_mask: usize,
+    base_priority: i32,
+    unique_process_id: usize,
+    inherited_from_unique_process_id: usize,
+    flags: u32,
+}
+
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<ExtendedBasicInformation>() == 64);
+
+/// The `IsFrozen` bit of `PROCESS_EXTENDED_BASIC_INFORMATION::Flags`.
+const IS_FROZEN: u32 = 1 << 4;
+
+/// Whether Windows froze the process (deep freeze), as Process Lifetime
+/// Management does to packaged apps in the background. Its threads read as
+/// suspended, yet `NtResumeProcess` does not thaw it: the freeze is not a
+/// suspend count. Needs `PROCESS_QUERY_LIMITED_INFORMATION`; false when the
+/// query fails.
+pub(crate) fn frozen(process: HANDLE) -> bool {
+    let mut info = ExtendedBasicInformation {
+        size: size_of::<ExtendedBasicInformation>(),
+        ..Default::default()
+    };
+    let status = unsafe {
+        windows::Wdk::System::Threading::NtQueryInformationProcess(
+            process,
+            windows::Wdk::System::Threading::PROCESSINFOCLASS(0),
+            (&mut info as *mut ExtendedBasicInformation).cast(),
+            size_of::<ExtendedBasicInformation>() as u32,
+            std::ptr::null_mut(),
+        )
+    };
+    status.0 >= 0 && info.flags & IS_FROZEN != 0
+}
+
 fn efficiency_mode(process: HANDLE) -> bool {
     let mut state = PROCESS_POWER_THROTTLING_STATE {
         Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,

@@ -35,7 +35,7 @@
 | `connections.rs` | TCP / UDP（IPv4 / IPv6）端点与所属进程（`netstat -ano` 显示的内容）；断开 IPv4 TCP 连接 |
 | `filelock.rs` | 以当前账户权限通过 Restart Manager 查找打开文件或加载 DLL 的进程。整批查询被拒时二分重试，隔离无法检查的文件 |
 | `handles.rs` | 按需枚举系统 File 句柄，复制后用 `NtQueryObject` 查询类型与名称，以文件 ID 匹配文件（含硬链接）、以路径边界匹配目录及其后代。只在辅助进程运行，流式报告进度与匹配项 |
-| `actions.rs` | 结束进程 / 进程树、设置优先级、开关效率模式（EcoQoS 加低优先级，与系统任务管理器相同）、暂停与恢复进程（`NtSuspendProcess`／`NtResumeProcess`）：都先校验 PID 与启动时间，防止 PID 被复用；结束和暂停时拦截关键系统进程 |
+| `actions.rs` | 结束进程 / 进程树、设置优先级、开关效率模式（EcoQoS 加低优先级，与系统任务管理器相同）、暂停与恢复进程（`NtSuspendProcess`／`NtResumeProcess`，各调用一次，并等待至多 250 ms 确认线程状态）：都先校验 PID 与启动时间，防止 PID 被复用；结束和暂停时拦截关键系统进程，暂停时另拒绝 `dwm.exe` 与 Argus 特权服务；Windows 冻结的进程（`PROCESS_EXTENDED_BASIC_INFORMATION` 的 IsFrozen，如后台的应用包）两个方向都拒绝 |
 | `gpu_process.rs` | 每进程 GPU：每次采样一个 PDH 查询，读出各引擎占用；显存使用 `GPU Process Memory` 的 `Local Usage` / `Non Local Usage` 驻留计数，按 PID、完整 LUID 与物理适配器去重，区分缺失和零值；除最忙引擎外保留非零节点贡献及完整身份，供应用与分类汇总使用 |
 | `disk_process.rs` | 优先复用普通进程信息中的磁盘计数尾部，旧系统回退完整进程信息的扩展记录，按 PID、创建时间和来源采样时间换算速率；逐条检查扩展线程数组与磁盘记录边界，不读取字符串及账户数据。Windows 10 的完整记录尾部按 UTF-16 对齐，数值按字节解码，以兼容未按 8 字节对齐的后续记录。普通尾部需同时通过系统版本、返回长度及图像名称边界校验；完整信息查询由管理员宿主的后台读取器或特权服务执行 |
 | `net_process.rs` | 每进程网络：优先使用独立 GUID 的私有系统 ETW 会话，仅启用 `NETWORK_TCPIP`；系统会话不可用时回退到 `Microsoft-Windows-Kernel-Network`。按提供者区分事件 ID 与操作码，解析 TCP / UDP、IPv4 / IPv6 收发字节，排除重传和复制事件。本地与服务客户端随采样周期换算速率，最短统计窗口为 0.5 秒，容许 50 ms 的调度与 IPC 抖动，并校验进程实例。快速采样时，独立线程每 250 ms 将事件送入实时消费者；最近 1.5 秒没有快速读取时停止额外刷新，采用 ETW 自身的一秒刷新定时器。关闭会话前先停止刷新线程。服务通过 `take_bytes` 维护多读者的累计计数。启动会话需要相应权限；GUI 与服务保留独立会话名，清理各自残留会话。日志记录选用的来源，并在启动后 5 秒及后续每 30 秒检查 ETW 丢失计数 |

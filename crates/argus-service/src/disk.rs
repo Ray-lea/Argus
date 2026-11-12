@@ -311,6 +311,7 @@ mod tests {
             session_id: 1,
             base_priority: 8,
             suspended: false,
+            frozen: false,
             efficiency: false,
             app_window: false,
         }

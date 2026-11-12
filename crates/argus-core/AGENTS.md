@@ -14,7 +14,7 @@
 - 每核温度、CPU 电压等要读 MSR 或 SMU 的数据只经特权服务的 PawnIO 固定模块读取（支持范围见 `docs/guide/hardware-data.md`），不要另找途径。
 - 每进程网络（`net_process.rs`）用实时 ETW 会话，启动需要相应权限；标准权限下本地启动失败时，宿主通过特权服务异步读取累计计数，两条来源都不可用才隐藏网络列。GUI 的 `Argus Network` 与服务的 `Argus Service Network` 会话分别按构建区分，不能互相停止。会话会比进程活得久：启动时清理同名残留，GUI 退出和安装更新前由 `stop_network_session` 停止本地会话，服务在租期结束或退出时析构 tracker。
 - `windows` crate 的特性统一列在根 `Cargo.toml` 的 `[workspace.dependencies]`，新特性加在那里，不要加在本 crate 里；升级 GPUI Kit 后用 `cargo tree -p argus -i windows -e features` 核对，否则会多编一份 `windows`。
-- 改变进程状态的操作（结束、优先级、效率模式）都通过 `actions::open_instance` 校验 PID 与启动时间（防 PID 复用）；结束还要拦截关键系统进程。
+- 改变进程状态的操作（结束、优先级、效率模式、暂停与恢复）都通过 `actions::open_instance` 校验 PID 与启动时间（防 PID 复用）；结束与暂停还要拦截关键系统进程，暂停另拦截 `actions::essential_image` 列出的进程。Windows 冻结的应用包（`process::frozen`）线程也显示为暂停，但 `NtResumeProcess` 不能解冻，不要对它们提供或执行恢复。
 - `handles::scan` 只能在可终止的辅助进程里运行，不能直接放进 UI、采样或服务线程。`NtQueryObject`、文件信息查询、甚至关闭复制的文件句柄都可能阻塞；由 `argus-service::handles` 的 Job 与超时监控负责回收。只复制句柄查询，绝不关闭来源进程的句柄。合并与结束文件占用结果必须保留 PID + 启动时间。
 - `process.rs` 给每个运行中的进程实例缓存一个 `PROCESS_QUERY_LIMITED_INFORMATION` 句柄（读效率模式用），快照线程数归零时立即关闭，进程消失时随条目关闭；零线程记录不得建立缓存句柄，最终 CPU 与 I/O 计数仍从快照读取。不要改成每次采样重新打开。
 - 规则引擎（`rules.rs`）由 `argus-service::RuleRunner` 的独立宿主线程驱动；采样线程只提交最新的 PID、启动时间和名称，不要让服务 RPC 阻塞采样。规则保存或执行权限来源变化时重新检查并重新计数；同一轮里一个进程实例只套用一次，传输失败不自动重放。

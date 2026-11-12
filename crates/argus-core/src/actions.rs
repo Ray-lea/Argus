@@ -39,8 +39,9 @@ pub enum ActionError {
     /// service speaks another protocol and refused it: updating the service
     /// lets it act again. Only the host reports it; the service never sends it.
     ServiceOutdated,
-    /// Resuming could not be confirmed: threads stayed suspended after every
-    /// retry, or their state could not be read.
+    /// Resuming could not be confirmed: every thread is still suspended
+    /// (another tool suspended the process more than once, so it needs
+    /// another resume), or the thread states could not be read.
     StillSuspended,
     Os(String),
 }
@@ -255,30 +256,82 @@ pub fn set_efficiency_mode(pid: u32, create_time: i64, on: bool) -> Result<(), A
     Ok(())
 }
 
-/// Resumes repeated at most this many times: one more than a thread's suspend
-/// count can reach (`MAXIMUM_SUSPEND_COUNT`, 127), so any stacking clears.
-const MAX_RESUMES: usize = 128;
+/// How long a suspend or resume waits for the live thread states to show it:
+/// the native calls return before every thread has stopped or started again,
+/// and the refresh that follows an action would read the old state.
+const SETTLE: Duration = Duration::from_millis(250);
+
+/// Image names whose stall cannot be undone from Argus, though Windows does
+/// not mark them critical: the Desktop Window Manager (the whole screen,
+/// Argus's window included, stops updating) and Argus's own privileged
+/// service (`argus-service-<pid>-<stamp>.exe`, which every Argus waits on).
+fn essential_image(name: &str) -> bool {
+    let name = name.to_lowercase();
+    name == "dwm.exe" || (name.starts_with("argus-service-") && name.ends_with(".exe"))
+}
+
+/// The file name of the process's image, from a handle with limited query rights.
+fn image_name(handle: windows::Win32::Foundation::HANDLE) -> Result<String, ActionError> {
+    use windows::Win32::System::Threading::{PROCESS_NAME_WIN32, QueryFullProcessImageNameW};
+    let mut buffer = [0u16; 1024];
+    let mut length = buffer.len() as u32;
+    unsafe {
+        QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            windows::core::PWSTR(buffer.as_mut_ptr()),
+            &mut length,
+        )
+    }?;
+    let path = String::from_utf16_lossy(&buffer[..length as usize]);
+    Ok(path.rsplit('\\').next().unwrap_or_default().to_owned())
+}
 
 fn require_suspendable(handle: windows::Win32::Foundation::HANDLE) -> Result<(), ActionError> {
     // Query the already verified instance with limited query rights. A failed
-    // critical-process query must stop the operation before any suspension.
+    // query must stop the operation before any suspension.
     let mut critical = windows::core::BOOL::default();
     unsafe { windows::Win32::System::Threading::IsProcessCritical(handle, &mut critical) }?;
     if critical.as_bool() {
         return Err(ActionError::Critical);
     }
+    if essential_image(&image_name(handle)?) {
+        return Err(ActionError::Refused);
+    }
     Ok(())
+}
+
+/// Waits up to `SETTLE` for the instance's suspension to satisfy `done`;
+/// `None` is an instance that left the process list.
+fn settles(
+    pid: u32,
+    create_time: i64,
+    done: impl Fn(Option<crate::process::Suspension>) -> bool,
+) -> bool {
+    let start = Instant::now();
+    loop {
+        if crate::process::suspension(pid, create_time).is_ok_and(&done) {
+            return true;
+        }
+        if start.elapsed() >= SETTLE {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 /// Suspends or resumes every thread of a process instance, the way Resource
 /// Monitor's "Suspend process" does. Suspending is refused for the System
-/// process, Argus itself and critical processes, whose stall hangs Windows.
+/// process, Argus itself, critical processes, whose stall hangs Windows, and
+/// the images `essential_image` names. Processes Windows froze are left to
+/// Windows in both directions: resuming does not thaw them.
 ///
-/// Each native call moves every thread's suspend count by one, so both
-/// directions are made idempotent against the live thread states rather than
-/// the caller's (possibly stale) list: a fully suspended process is not
-/// suspended again, and resuming repeats until no thread is left suspended,
-/// including threads another tool suspended more often than the rest.
+/// Each native call moves every thread's suspend count by one, so a resume
+/// undoes exactly one suspend: threads the program or a debugger suspended
+/// on purpose stay suspended. A fully suspended process is not suspended
+/// again, so suspending twice never needs two resumes. When another tool
+/// suspended the process more than once, it stays suspended after a resume
+/// (`StillSuspended`) and each further resume takes one more off.
 pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), ActionError> {
     use crate::process::{Suspension, suspension};
     if pid == 0 || pid == 4 || pid == unsafe { GetCurrentProcessId() } {
@@ -288,6 +341,9 @@ pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), Ac
         return Err(ActionError::NotFound);
     }
     let handle = open_instance(pid, create_time, PROCESS_SUSPEND_RESUME)?;
+    if crate::process::frozen(handle.0) {
+        return Err(ActionError::Refused);
+    }
     let check = |status: windows::Win32::Foundation::NTSTATUS| {
         if status == STATUS_ACCESS_DENIED {
             return Err(ActionError::AccessDenied);
@@ -296,23 +352,27 @@ pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), Ac
     };
     if suspend {
         require_suspendable(handle.0)?;
-        // An unreadable state suspends anyway: a stacked count is what resume
-        // clears, while skipping would leave the process running unasked.
+        // An unreadable state suspends anyway: skipping would leave the
+        // process running unasked.
         if suspension(pid, create_time) == Ok(Some(Suspension::All)) {
             return Ok(());
         }
-        return check(unsafe { crate::nt::NtSuspendProcess(handle.0) });
+        check(unsafe { crate::nt::NtSuspendProcess(handle.0) })?;
+        // Best effort: the suspension holds either way, only the next
+        // refresh might still list the process as running.
+        settles(pid, create_time, |state| {
+            matches!(state, None | Some(Suspension::All))
+        });
+        return Ok(());
     }
-    for _ in 0..MAX_RESUMES {
-        check(unsafe { crate::nt::NtResumeProcess(handle.0) })?;
-        // Done, or gone (the instance left the process list). Still suspended
-        // or not readable this time: resuming a thread whose count is already
-        // zero changes nothing, so try again.
-        if let Ok(None | Some(Suspension::None)) = suspension(pid, create_time) {
-            return Ok(());
-        }
+    check(unsafe { crate::nt::NtResumeProcess(handle.0) })?;
+    // Running, partly suspended by its own choice, or gone: resumed. Still
+    // fully suspended, or unreadable throughout: not confirmed.
+    if settles(pid, create_time, |state| state != Some(Suspension::All)) {
+        Ok(())
+    } else {
+        Err(ActionError::StillSuspended)
     }
-    Err(ActionError::StillSuspended)
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -414,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn one_resume_clears_suspensions_stacked_on_a_live_process() {
+    fn a_resume_undoes_one_suspend_and_keeps_the_programs_own() {
         use std::os::windows::process::CommandExt;
         let child = KillOnDrop(
             std::process::Command::new("ping")
@@ -436,33 +496,81 @@ mod tests {
                 Err(super::ActionError::NotFound)
             ));
         }
-        super::set_suspended(pid, created, true).unwrap();
-        assert!(settles(pid, created, true));
-        // Suspending an already suspended process leaves its count alone…
-        super::set_suspended(pid, created, true).unwrap();
-        // …and counts stacked behind Argus's back, unequal across threads,
-        // still clear in one resume.
+        // A running process is not frozen, and a suspended one only suspended.
         let handle = super::open_instance(pid, created, super::PROCESS_SUSPEND_RESUME).unwrap();
+        assert!(!crate::process::frozen(handle.0));
+        super::set_suspended(pid, created, true).unwrap();
+        // The call returns once the threads show it.
+        assert_eq!(
+            crate::process::suspension(pid, created).unwrap(),
+            Some(crate::process::Suspension::All)
+        );
+        assert!(!crate::process::frozen(handle.0));
+        // Suspending an already suspended process leaves its count alone, so
+        // one resume undoes both calls.
+        super::set_suspended(pid, created, true).unwrap();
+        super::set_suspended(pid, created, false).unwrap();
+        assert!(settles(pid, created, false));
+
+        // Another tool's extra suspend survives one resume, and the next one clears it.
+        super::set_suspended(pid, created, true).unwrap();
         assert!(unsafe { crate::nt::NtSuspendProcess(handle.0) }.is_ok());
+        assert!(matches!(
+            super::set_suspended(pid, created, false),
+            Err(super::ActionError::StillSuspended)
+        ));
+        super::set_suspended(pid, created, false).unwrap();
+        assert!(settles(pid, created, false));
+
+        // A thread the program suspended itself stays suspended after a
+        // suspend and resume, while the rest run again.
         let mut buf = crate::util::AlignedBuf::with_capacity(512 * 1024);
         crate::nt::query_system_information(
             windows::Wdk::System::SystemInformation::SystemProcessInformation,
             &mut buf,
         )
         .unwrap();
-        let thread = crate::nt::ProcessIter::new(&buf)
+        let threads: Vec<u32> = crate::nt::ProcessIter::new(&buf)
             .find(|e| e.info.unique_process_id.0 as usize as u32 == pid)
-            .map(|e| e.threads[0].unique_thread.0 as usize as u32)
+            .map(|e| {
+                e.threads
+                    .iter()
+                    .map(|t| t.unique_thread.0 as usize as u32)
+                    .collect()
+            })
             .unwrap();
-        use windows::Win32::System::Threading::{OpenThread, SuspendThread, THREAD_SUSPEND_RESUME};
-        let thread = super::OwnedHandle(
-            unsafe { OpenThread(THREAD_SUSPEND_RESUME, false, thread) }.unwrap(),
-        );
-        for _ in 0..3 {
-            assert_ne!(unsafe { SuspendThread(thread.0) }, u32::MAX);
+        if threads.len() < 2 {
+            return; // Nothing would be left running to tell the cases apart.
         }
+        use windows::Win32::System::Threading::{OpenThread, SuspendThread, THREAD_SUSPEND_RESUME};
+        let own = super::OwnedHandle(
+            unsafe { OpenThread(THREAD_SUSPEND_RESUME, false, threads[0]) }.unwrap(),
+        );
+        assert_ne!(unsafe { SuspendThread(own.0) }, u32::MAX);
+        super::set_suspended(pid, created, true).unwrap();
         super::set_suspended(pid, created, false).unwrap();
-        assert!(settles(pid, created, false));
+        assert_eq!(
+            crate::process::suspension(pid, created).unwrap(),
+            Some(crate::process::Suspension::Partial)
+        );
+    }
+
+    #[test]
+    fn the_desktop_window_manager_and_argus_service_are_essential() {
+        for name in ["dwm.exe", "DWM.EXE", "argus-service-123-456.exe"] {
+            assert!(super::essential_image(name), "{name}");
+        }
+        for name in [
+            "explorer.exe",
+            "argus.exe",
+            "argus-service.txt",
+            "notdwm.exe",
+        ] {
+            assert!(!super::essential_image(name), "{name}");
+        }
+        use windows::Win32::System::Threading::GetCurrentProcess;
+        let own = super::image_name(unsafe { GetCurrentProcess() }).unwrap();
+        assert!(own.to_lowercase().ends_with(".exe") && !own.contains('\\'));
     }
 
     #[test]
