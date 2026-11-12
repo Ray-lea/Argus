@@ -400,6 +400,11 @@ pub(super) struct NativeTable {
     restored: Option<(&'static str, Instant)>,
     /// The column whose edge is being dragged to another width.
     resizing: Option<usize>,
+    /// A process column a double-click on its edge just fitted, until the
+    /// next single press (`fit_column`). The table drags no edge meanwhile,
+    /// so the widths it reports then are its rounding of the fit, not a
+    /// width to keep.
+    edge_fitted: Option<&'static str>,
 }
 /// A column easing from one width to another.
 #[derive(Clone, Copy)]
@@ -591,6 +596,7 @@ impl NativeTable {
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
+            edge_fitted: None,
             columns: vec![],
             available: px(0.),
             process_columns: columns::Preferences::default(),
@@ -947,7 +953,10 @@ impl TableDelegate for NativeTable {
     /// A double-click on a process column's edge: with automatic widths on,
     /// a column dragged to a width follows its contents again; with them
     /// off, the column fits its contents. Either glides there (`configure`)
-    /// rather than jumping, so the table's own fitting is left out.
+    /// rather than jumping, so the table is answered with the width the
+    /// column has now. Answering at all makes the table ignore drags on that
+    /// edge until the next single press: the double-click's second press
+    /// starts one, and a slight move would set a dragged width again.
     fn fit_column(
         &mut self,
         col_ix: usize,
@@ -970,8 +979,11 @@ impl TableDelegate for NativeTable {
         let owner = self.owner.clone();
         window.defer(cx, move |_, cx| {
             let _ = owner.update(cx, |this, cx| this.fit_process_column(key, width, cx));
+        // The table rounds the answer up to whole device pixels and reports
+        // the widths when that changes the column: not a width to keep.
+        self.edge_fitted = Some(key);
         });
-        None
+        self.columns.get(col_ix).map(|column| column.width)
     }
     fn move_column(
         &mut self,
@@ -1674,7 +1686,8 @@ impl Desktop {
                     TableEvent::ColumnWidthsChanged(widths) => {
                         let source = source.read(cx);
                         let delegate = source.delegate();
-                        if delegate.page != "processes" {
+                        // Not a drag: a double-click just fitted a column.
+                        if delegate.page != "processes" || delegate.edge_fitted.is_some() {
                             return;
                         }
                         let mut preferences = columns::Preferences::load(&this.prefs);

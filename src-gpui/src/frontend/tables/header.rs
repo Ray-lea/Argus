@@ -129,6 +129,11 @@ impl NativeTable {
                     if phase == DispatchPhase::Capture && event.button == MouseButton::Left {
                         let _ = pressed.update(cx, |state, cx| {
                             let delegate = state.delegate_mut();
+                            // A single press ends a double-click's fit, as it
+                            // does in the table (`fit_column`).
+                            if event.click_count == 1 {
+                                delegate.edge_fitted = None;
+                            }
                             delegate.resizing = delegate.edge_hover;
                             if delegate.resizing.is_some() {
                                 cx.notify();

@@ -93,7 +93,7 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 | `keys` | 按键序列，经正常派发路径；仅模拟快照 |
 | `hoverAnchor` | 指针移到已记录元素的中心 |
 | `clickAnchor`、`dragAnchor` | 单击元素；从一个元素拖到另一个元素高度的某一比例处；仅模拟快照 |
-| `pointer` | `{ "at"?, "event", "dx"?, "dy"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击。`at` 为已记录元素或 `header:<列>`；省略时相对于手势起点，元素在拖动中移动也不影响 |
+| `pointer` | `{ "at"?, "event", "dx"?, "dy"?, "clicks"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击；`down` 带 `"clicks": 2` 时为双击的第二次按下，可接着按住移动。`at` 为已记录元素或 `header:<列>`；省略时相对于手势起点，元素在拖动中移动也不影响 |
 | `headerMenu` | 打开某一列的表头菜单 |
 | `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项与展开的子菜单 |
 | `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |
