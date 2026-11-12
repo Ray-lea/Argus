@@ -336,6 +336,7 @@ impl Row {
                 | "ppid"
                 | "sessionId"
                 | "createTime"
+                | "elevated"
                 | "gpu"
                 | "gpuDedicated"
                 | "gpuShared"
@@ -697,7 +698,10 @@ fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
             .is_some_and(|column| column.format == columns::Format::Text) =>
         {
             match (a.column_text(key), b.column_text(key)) {
-                (Some(a), Some(b)) => direct(collation::compare(a, b)),
+                (Some(a), Some(b)) => direct(collation::compare(
+                    &columns::shown(key, a),
+                    &columns::shown(key, b),
+                )),
                 (None, None) => Ordering::Equal,
                 (None, _) => Ordering::Greater,
                 (_, None) => Ordering::Less,
@@ -1618,10 +1622,41 @@ mod tests {
     }
 
     #[test]
+    fn architecture_sorts_by_the_label_it_shows() {
+        let processes = ["x86", "arm64", "x64", "arm"]
+            .iter()
+            .enumerate()
+            .map(|(i, arch)| json!({"pid":i + 1,"createTime":i + 1,"name":format!("p{i}.exe"),"architecture":arch}))
+            .collect::<Vec<_>>();
+        for descending in [false, true] {
+            let shown = rows_of(
+                &processes,
+                "list",
+                "",
+                "architecture",
+                descending,
+                &HashMap::new(),
+            )
+            .iter()
+            .map(|row| {
+                columns::shown("architecture", row.column_text("architecture").unwrap())
+                    .into_owned()
+            })
+            .collect::<Vec<_>>();
+            let mut expected = shown.clone();
+            expected.sort_by(|a, b| collation::compare(a, b));
+            if descending {
+                expected.reverse();
+            }
+            assert_eq!(shown, expected);
+        }
+    }
+
+    #[test]
     fn optional_process_columns_keep_instance_identity_and_group_resource_totals() {
         let processes = vec![
-            json!({"pid":1,"ppid":9,"sessionId":1,"basePriority":8,"createTime":100,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":1000,"cpuUserTime":200,"ioReadTotal":400,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":3000,"gpuDedicated":0,"gpuShared":null}),
-            json!({"pid":2,"ppid":9,"sessionId":1,"basePriority":8,"createTime":200,"name":"sample.exe","path":"C:/sample.exe","company":"Example","workingSet":2000,"cpuUserTime":300,"ioReadTotal":600,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":4000,"gpuDedicated":4096,"gpuShared":2048}),
+            json!({"pid":1,"ppid":9,"sessionId":1,"basePriority":8,"createTime":100,"name":"sample.exe","path":"C:/sample.exe","company":"Example","version":"1.0","architecture":"x64","elevated":false,"commandLine":"sample.exe --one","workingSet":1000,"cpuUserTime":200,"ioReadTotal":400,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":3000,"gpuDedicated":0,"gpuShared":null}),
+            json!({"pid":2,"ppid":9,"sessionId":1,"basePriority":8,"createTime":200,"name":"sample.exe","path":"C:/sample.exe","company":"Example","version":"1.0","architecture":"x64","elevated":true,"commandLine":"sample.exe --two","workingSet":2000,"cpuUserTime":300,"ioReadTotal":600,"virtualSize":2_199_023_255_552u64,"peakWorkingSet":4000,"gpuDedicated":4096,"gpuShared":2048}),
         ];
         let rows = rows_of(&processes, "apps", "", "workingSet", true, &HashMap::new());
         assert_eq!(rows.len(), 1);
@@ -1644,6 +1679,11 @@ mod tests {
         }
         assert_eq!(row.column_text("path"), Some("C:/sample.exe"));
         assert_eq!(row.column_text("company"), Some("Example"));
+        // Shared facts show on the app row; differing ones only on each process.
+        assert_eq!(row.column_text("version"), Some("1.0"));
+        assert_eq!(row.column_text("architecture"), Some("x64"));
+        assert_eq!(row.column_text("commandLine"), None);
+        assert_eq!(row.metric("elevated"), None);
         let process = Row::process(processes[0].clone(), 0);
         assert_eq!(process.metric("ppid"), Some(9.));
         assert_eq!(process.metric("basePriority"), Some(8.));
@@ -1651,6 +1691,14 @@ mod tests {
         assert_eq!(process.metric("peakWorkingSet"), Some(3000.));
         assert_eq!(process.metric("gpuDedicated"), Some(0.));
         assert_eq!(process.column_text("imageName"), Some("sample.exe"));
+        assert_eq!(process.column_text("commandLine"), Some("sample.exe --one"));
+        assert_eq!(process.metric("elevated"), Some(0.));
+        // A cached per-instance fact isn't waiting on the counter query.
+        let mut reused = processes[0].clone();
+        reused["sampleReused"] = json!(true);
+        let reused = Row::process(reused, 0);
+        assert!(!reused.native_pending("elevated"));
+        assert!(reused.native_pending("workingSet"));
     }
 
     #[test]

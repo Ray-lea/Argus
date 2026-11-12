@@ -29,6 +29,7 @@ use crate::util::wide;
 pub struct FileMeta {
     pub description: Option<Arc<str>>,
     pub company: Option<Arc<str>>,
+    pub version: Option<Arc<str>>,
     pub windows_component: bool,
     /// Stable icon ID, served to the UI as a PNG.
     pub icon: Option<u32>,
@@ -243,6 +244,7 @@ impl MetaStore {
             windows_component: windows_component(path, &version, system_root),
             description: version.description.map(Into::into),
             company: version.company.map(Into::into),
+            version: version.file_version.map(Into::into),
             icon,
         };
         if let Some(bytes) = inner.pending.remove(&key) {

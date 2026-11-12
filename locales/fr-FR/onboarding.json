@@ -66,7 +66,7 @@
     "title": "Service privilégié (facultatif)",
     "body": "Argus fonctionne avec des droits standard, qui limitent la lecture, l’arrêt ou le réglage de certains processus système. Le service privilégié facultatif s’exécute en arrière-plan sous SYSTEM et permet de :",
     "features": {
-      "end": "Terminer les processus d’autres utilisateurs, sauf les processus système critiques",
+      "end": "Terminer, suspendre ou reprendre les processus d’autres utilisateurs, sauf les processus système critiques",
       "tune": "Régler la priorité et le mode d’efficacité, y compris automatiquement par des règles",
       "inspect": "Afficher les fichiers utilisés, le trafic réseau et les lectures et écritures disque de chaque processus",
       "control": "Contrôler les services Windows et fermer les connexions réseau",

@@ -112,6 +112,22 @@
       "label": "Société",
       "title": "Nom de la société d’après les informations sur la version de l’exécutable."
     },
+    "version": {
+      "label": "Version du fichier",
+      "title": "Version du fichier tirée des informations de version de l’exécutable."
+    },
+    "architecture": {
+      "label": "Architecture",
+      "title": "Architecture de processeur sous laquelle le processus s’exécute."
+    },
+    "elevated": {
+      "label": "Élevé",
+      "title": "Indique si le processus s’exécute avec des droits d’administrateur (jeton élevé)."
+    },
+    "commandLine": {
+      "label": "Ligne de commande",
+      "title": "Ligne de commande complète utilisée pour démarrer le processus, arguments compris."
+    },
     "sessionId": {
       "label": "ID de session",
       "title": "Session Windows qui contient le processus."
@@ -257,6 +273,8 @@
       "other": "Terminer les {count} processus"
     },
     "setPriority": "Définir la priorité",
+    "suspend": "Suspendre le processus",
+    "resume": "Reprendre le processus",
     "addRule": "Ajouter une règle",
     "copyPid": "Copier PID",
     "copyPidWhat": "PID",

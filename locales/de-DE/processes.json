@@ -111,6 +111,22 @@
       "label": "Unternehmen",
       "title": "Firmenname aus den Versionsinformationen der ausführbaren Datei."
     },
+    "version": {
+      "label": "Dateiversion",
+      "title": "Dateiversion aus den Versionsinformationen der ausführbaren Datei."
+    },
+    "architecture": {
+      "label": "Architektur",
+      "title": "Prozessorarchitektur, als die der Prozess ausgeführt wird."
+    },
+    "elevated": {
+      "label": "Erhöht",
+      "title": "Ob der Prozess mit Administratorrechten (erhöhtem Token) ausgeführt wird."
+    },
+    "commandLine": {
+      "label": "Befehlszeile",
+      "title": "Vollständige Befehlszeile, mit der der Prozess gestartet wurde, einschließlich Argumenten."
+    },
     "sessionId": {
       "label": "Sitzungs-ID",
       "title": "Nummer der Windows-Sitzung, zu der der Prozess gehört."
@@ -254,6 +270,8 @@
       "other": "Alle {count} Prozesse beenden"
     },
     "setPriority": "Priorität festlegen",
+    "suspend": "Prozess anhalten",
+    "resume": "Prozess fortsetzen",
     "addRule": "Regel hinzufügen",
     "copyPid": "PID kopieren",
     "copyPidWhat": "PID",

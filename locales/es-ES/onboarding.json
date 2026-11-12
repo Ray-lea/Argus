@@ -66,7 +66,7 @@
     "title": "Servicio privilegiado (opcional)",
     "body": "Argus se ejecuta de forma predeterminada con permisos estándar y tiene restricciones para consultar, finalizar o modificar ciertos procesos del sistema. El servicio privilegiado opcional se ejecuta en segundo plano como SYSTEM y permite:",
     "features": {
-      "end": "Finalizar procesos de otros usuarios, excepto procesos críticos del sistema",
+      "end": "Finalizar, suspender o reanudar procesos de otros usuarios, excepto procesos críticos del sistema",
       "tune": "Ajustar la prioridad y el modo de eficiencia, también mediante reglas automáticas",
       "inspect": "Consultar archivos en uso, tráfico de red y lecturas y escrituras de disco de cada proceso",
       "control": "Controlar servicios de Windows y cerrar conexiones de red",

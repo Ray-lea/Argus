@@ -29,10 +29,12 @@ use crate::paths::PathResolver;
 use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, ticks_to_unix_ms};
 use crate::webview::{self, Instance, WebViewInfo};
 
+mod facts;
 #[cfg(test)]
 mod lifecycle_tests;
 mod query;
 mod roster;
+pub use facts::Facts;
 use query::ProcessQuery;
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -63,6 +65,10 @@ pub struct ProcessRow {
     /// executable's file description.
     pub description: Option<Arc<str>>,
     pub company: Option<Arc<str>>,
+    /// File version from the executable's version resource.
+    pub version: Option<Arc<str>>,
+    #[serde(flatten)]
+    pub facts: Facts,
     pub icon: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub web_view: Option<Arc<WebViewInfo>>,
@@ -167,6 +173,11 @@ struct Tracked {
     /// Query handle, opened once per running instance and released when its
     /// snapshot has no threads. Access denial is final for that instance.
     handle: Option<OwnedHandle>,
+    /// Read on the facts thread, up to `facts::READS` times while incomplete;
+    /// an instance without a query handle has none.
+    facts: Facts,
+    fact_reads: u8,
+    fact_pending: bool,
     web_view: Option<Box<webview::State>>,
     package: Option<Box<Package>>,
 }
@@ -199,6 +210,7 @@ pub(crate) struct ProcessTracker {
     generation: bool,
     paths: PathResolver,
     meta: Arc<MetaStore>,
+    facts: Option<facts::Reader>,
     last_instant: Option<Instant>,
     last_aligned: bool,
     last_systime: i64,
@@ -220,6 +232,7 @@ impl ProcessTracker {
             generation: false,
             paths: PathResolver::new(),
             meta,
+            facts: facts::Reader::new(),
             last_instant: None,
             last_aligned: false,
             last_systime: 0,
@@ -227,6 +240,11 @@ impl ProcessTracker {
             previous_cycles: None,
             cycle_clock: CycleClock::new(),
         }
+    }
+
+    /// When the latest accepted native counter query started.
+    pub fn sample_started(&self) -> Option<Instant> {
+        self.counted.map(|(started, _)| started)
     }
 
     pub fn sample(
@@ -262,6 +280,14 @@ impl ProcessTracker {
         precise_idle_fraction: Option<f64>,
     ) -> Vec<ProcessRow> {
         let poll_started = Instant::now();
+        if let Some(reader) = &self.facts {
+            for (key, facts) in reader.answers() {
+                if let Some(entry) = self.tracked.get_mut(&key) {
+                    entry.facts.merge(facts);
+                    entry.fact_pending = false;
+                }
+            }
+        }
         let Some((buf, returned, observed)) = self
             .query
             .as_mut()
@@ -382,6 +408,9 @@ impl ProcessTracker {
                             io,
                             disk,
                             handle,
+                            facts: Facts::default(),
+                            fact_reads: 0,
+                            fact_pending: false,
                             web_view: runtime,
                             package,
                         }),
@@ -397,8 +426,27 @@ impl ProcessTracker {
                 entry.handle = None;
             }
             if let Some(runtime) = entry.web_view.as_mut() {
+                if let Some(line) = &entry.facts.command_line {
+                    runtime.learn_command_line(line.clone());
+                }
                 runtime.query(entry.handle.as_ref().map(|h| h.0));
                 self.webviews.push((rows.len(), key));
+                // The WebView parser reads the line on this thread anyway.
+                if entry.facts.command_line.is_none() {
+                    entry.facts.command_line = runtime.command_line().cloned();
+                }
+            }
+            if entry.handle.is_some()
+                && !entry.fact_pending
+                && entry.fact_reads < facts::READS
+                && !entry.facts.complete()
+                && self
+                    .facts
+                    .as_ref()
+                    .is_some_and(|reader| reader.request(key, entry.facts.clone()))
+            {
+                entry.fact_reads += 1;
+                entry.fact_pending = true;
             }
             if entry.meta.is_none()
                 && let Some(path) = &entry.path
@@ -436,10 +484,7 @@ impl ProcessTracker {
             );
             entry.disk = disk;
 
-            let suspended = !threads.is_empty()
-                && threads.iter().all(|t| {
-                    t.thread_state == THREAD_STATE_WAITING && t.wait_reason == WAIT_REASON_SUSPENDED
-                });
+            let suspended = all_suspended(threads);
             let meta = entry.meta.as_deref();
             rows.push(ProcessRow {
                 listed_by_roster: false,
@@ -466,6 +511,8 @@ impl ProcessTracker {
                     _ => meta.and_then(|m| m.description.clone()),
                 },
                 company: meta.and_then(|m| m.company.clone()),
+                version: meta.and_then(|m| m.version.clone()),
+                facts: entry.facts.clone(),
                 icon: meta.and_then(|m| m.icon),
                 web_view: None,
                 cpu,
@@ -699,6 +746,49 @@ pub fn find_by(matches: impl Fn(&str) -> bool) -> Vec<Found> {
             }
         })
         .collect()
+}
+
+fn thread_suspended(t: &crate::nt::SystemThreadInformation) -> bool {
+    t.thread_state == THREAD_STATE_WAITING && t.wait_reason == WAIT_REASON_SUSPENDED
+}
+
+/// Whether every thread is waiting in the suspended state, as the list shows it.
+fn all_suspended(threads: &[crate::nt::SystemThreadInformation]) -> bool {
+    !threads.is_empty() && threads.iter().all(thread_suspended)
+}
+
+/// How many of a process's threads are suspended right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Suspension {
+    None,
+    Partial,
+    All,
+}
+
+/// The suspension of the process instance `pid` + `create_time` (Unix ms; 0
+/// matches any instance), read from a fresh snapshot rather than the sampled
+/// list. `Ok(None)` means the instance is not in the list (it exited); a
+/// failed snapshot is an error, so it is never mistaken for an exit.
+pub(crate) fn suspension(
+    pid: u32,
+    create_time: i64,
+) -> Result<Option<Suspension>, windows::Win32::Foundation::NTSTATUS> {
+    let mut buf = AlignedBuf::with_capacity(512 * 1024);
+    query_system_information(SPI_CLASS, &mut buf)?;
+    Ok(ProcessIter::new(&buf)
+        .find(|e| {
+            e.info.unique_process_id.0 as usize as u32 == pid
+                && (create_time == 0 || ticks_to_unix_ms(e.info.create_time) == create_time)
+        })
+        .map(|e| {
+            if all_suspended(e.threads) {
+                Suspension::All
+            } else if e.threads.iter().any(thread_suspended) {
+                Suspension::Partial
+            } else {
+                Suspension::None
+            }
+        }))
 }
 
 /// Minimal (pid, ppid, create time) listing, used to walk process trees.
