@@ -294,7 +294,7 @@
   "memoryScope": {
     "vital": "Mémoire physique utilisée par l’ensemble du système : le total moins la mémoire disponible, pages utilisées et modifiées comprises. Les lignes de processus affichent leur propre plage de travail privée, dont la somme est inférieure. Le détail complet figure dans le guide de l’utilisateur, docs/guide/README.md (en chinois).",
     "header": "Le pourcentage du haut est la part de mémoire physique utilisée par l’ensemble du système. Les lignes affichent la plage de travail privée : la mémoire physique utilisée par le seul processus ; les groupes d’applications et les catégories en font la somme. Le détail complet figure dans le guide de l’utilisateur, docs/guide/README.md (en chinois).",
-    "section": "Somme des plages de travail privées des processus de cette catégorie. L’utilisation du système compte aussi les pages partagées, le noyau et les pilotes, les tables de pages, le cache système et les pages modifiées : elle dépasse donc la somme des catégories. Le détail complet figure dans le guide de l’utilisateur, docs/guide/README.md (en chinois)."
+    "section": "Somme des plages de travail privées des processus de cette catégorie. L’utilisation du système compte aussi les pages partagées, le noyau et les pilotes, les tables de pages, le cache système en cours d’utilisation et les pages modifiées : elle dépasse donc la somme des catégories. Le détail complet figure dans le guide de l’utilisateur, docs/guide/README.md (en chinois)."
   },
   "columns": {
     "choose": "Choisir les colonnes",
