@@ -91,6 +91,22 @@
       "label": "公司名稱",
       "title": "執行檔版本資訊中的公司名稱。"
     },
+    "version": {
+      "label": "檔案版本",
+      "title": "可執行檔版本資訊中的檔案版本。"
+    },
+    "architecture": {
+      "label": "架構",
+      "title": "處理程序執行的處理器架構。"
+    },
+    "elevated": {
+      "label": "已提高權限",
+      "title": "處理程序是否以系統管理員權限（提高權限的權杖）執行。"
+    },
+    "commandLine": {
+      "label": "命令列",
+      "title": "啟動處理程序時使用的完整命令列，包括引數。"
+    },
     "sessionId": {
       "label": "工作階段識別碼",
       "title": "處理程序所屬的 Windows 工作階段編號。"

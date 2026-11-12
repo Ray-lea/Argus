@@ -226,7 +226,7 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::Name => row.title.clone(),
         CellKind::ProcessText => row
             .column_text(field.key)
-            .map(str::to_owned)
+            .map(|value| columns::shown(field.key, value).into_owned())
             .unwrap_or_else(missing),
         CellKind::Identifier => row
             .metric(field.key)
@@ -248,8 +248,8 @@ fn cell(row: &Row, field: &Field) -> String {
             .metric(field.key)
             .map(|value| {
                 label(match (field.key, value > 0.) {
-                    ("suspended", true) => "processes.columns.yes",
-                    ("suspended", false) => "processes.columns.no",
+                    ("suspended" | "elevated", true) => "processes.columns.yes",
+                    ("suspended" | "elevated", false) => "processes.columns.no",
                     (_, true) => "common.on",
                     (_, false) => "common.off",
                 })

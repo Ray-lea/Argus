@@ -60,6 +60,10 @@ pub(super) const DEFINITIONS: &[Definition] = &[
     column("path", "general", Text, 300., false),
     column("description", "general", Text, 220., false),
     column("company", "general", Text, 200., false),
+    column("version", "general", Text, 130., false),
+    column("architecture", "general", Text, 110., false),
+    column("elevated", "general", Boolean, 90., false),
+    column("commandLine", "general", Text, 360., false),
     column("sessionId", "general", Identifier, 80., false),
     column("createTime", "general", Timestamp, 160., false),
     column("threads", "general", Count, 76., true),
@@ -111,6 +115,14 @@ pub(super) const DEFAULTS: [&str; 11] = [
 
 pub(super) fn definition(key: &str) -> Option<&'static Definition> {
     DEFINITIONS.iter().find(|column| column.key == key)
+}
+
+/// A text column's value as the table shows it, which is also what it sorts by.
+pub(super) fn shown<'a>(key: &str, value: &'a str) -> std::borrow::Cow<'a, str> {
+    match key {
+        "architecture" => label(&format!("details.arch.{value}")).into(),
+        _ => value.into(),
+    }
 }
 
 pub(super) fn raw_key(key: &str) -> &str {

@@ -151,7 +151,7 @@ fn stepped(width: f32) -> f32 {
 fn limits(key: &str) -> (f32, f32) {
     match key {
         "name" => (180., 520.),
-        "path" => (120., 600.),
+        "path" | "commandLine" => (120., 600.),
         "description" => (100., 480.),
         "company" | "gpuEngine" => (100., 360.),
         "imageName" => (100., 320.),

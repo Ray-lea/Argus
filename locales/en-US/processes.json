@@ -111,6 +111,22 @@
       "label": "Company",
       "title": "Company name from the executable version information."
     },
+    "version": {
+      "label": "File version",
+      "title": "File version from the executable version information."
+    },
+    "architecture": {
+      "label": "Architecture",
+      "title": "Processor architecture the process runs as."
+    },
+    "elevated": {
+      "label": "Elevated",
+      "title": "Whether the process runs with administrator rights (an elevated token)."
+    },
+    "commandLine": {
+      "label": "Command line",
+      "title": "Full command line the process was started with, including arguments."
+    },
     "sessionId": {
       "label": "Session ID",
       "title": "Windows session that contains the process."

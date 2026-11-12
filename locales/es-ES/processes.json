@@ -112,6 +112,22 @@
       "label": "Empresa",
       "title": "Nombre de la empresa de la información de la versión ejecutable."
     },
+    "version": {
+      "label": "Versión del archivo",
+      "title": "Versión del archivo según la información de versión del ejecutable."
+    },
+    "architecture": {
+      "label": "Arquitectura",
+      "title": "Arquitectura de procesador con la que se ejecuta el proceso."
+    },
+    "elevated": {
+      "label": "Elevado",
+      "title": "Si el proceso se ejecuta con derechos de administrador (un token elevado)."
+    },
+    "commandLine": {
+      "label": "Línea de comandos",
+      "title": "Línea de comandos completa con la que se inició el proceso, con sus argumentos."
+    },
     "sessionId": {
       "label": "ID de sesión",
       "title": "Número de la sesión de Windows a la que pertenece el proceso."
