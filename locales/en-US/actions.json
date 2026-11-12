@@ -53,7 +53,13 @@
     "done": "The priority of {name} has been set to “{priority}”."
   },
   "ioPriority": {
-    "failed": "Couldn't change the I/O priority of {name}",
+    "failed": "Couldn't change the I/O priority of {name}. {error}",
+    "error": {
+      "accessDenied": "Access denied. Turn on the privileged service in Settings, or run Argus as administrator; protected processes may still be out of reach.",
+      "refused": "The I/O priority of {name} can't be changed.",
+      "serviceOutdated": "Access denied. The privileged service version is incompatible; update the service and try again.",
+      "notFound": "{name} has already exited."
+    },
     "partial": {
       "one": "Changed the I/O priority of {count} process; {failed} couldn't be changed: {error}",
       "other": "Changed the I/O priority of {count} processes; {failed} couldn't be changed: {error}"
@@ -61,7 +67,13 @@
     "done": "The I/O priority of {name} has been set to “{priority}”."
   },
   "memoryPriority": {
-    "failed": "Couldn't change the memory priority of {name}",
+    "failed": "Couldn't change the memory priority of {name}. {error}",
+    "error": {
+      "accessDenied": "Access denied. Turn on the privileged service in Settings, or run Argus as administrator; protected processes may still be out of reach.",
+      "refused": "The memory priority of {name} can't be changed.",
+      "serviceOutdated": "Access denied. The privileged service version is incompatible; update the service and try again.",
+      "notFound": "{name} has already exited."
+    },
     "partial": {
       "one": "Changed the memory priority of {count} process; {failed} couldn't be changed: {error}",
       "other": "Changed the memory priority of {count} processes; {failed} couldn't be changed: {error}"

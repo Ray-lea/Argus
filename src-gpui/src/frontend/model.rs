@@ -328,7 +328,8 @@ impl Row {
     }
 
     /// The value is the last successful reading while its source is pending.
-    /// Independent GPU/network samples and static identity fields remain current.
+    /// Independent GPU/network samples and static identity fields remain current;
+    /// of the text columns, only the sampled priority levels wait on it.
     pub fn native_pending(&self, key: &str) -> bool {
         !matches!(
             key,
@@ -345,6 +346,7 @@ impl Row {
                 | "netReceived"
         ) && columns::definition(key).is_some_and(|column| {
             !matches!(column.format, columns::Format::Name | columns::Format::Text)
+                || columns::rank_levels(key).is_some()
         }) && self.members.iter().any(|member| {
             boolean(member, "stale")
                 || boolean(member, "sampleReused")
@@ -1728,6 +1730,12 @@ mod tests {
         let reused = Row::process(reused, 0);
         assert!(!reused.native_pending("elevated"));
         assert!(reused.native_pending("workingSet"));
+        // Sampled priority levels wait on the query like the figures; the
+        // other text columns don't.
+        assert!(reused.native_pending("ioPriority"));
+        assert!(reused.native_pending("memoryPriority"));
+        assert!(!reused.native_pending("version"));
+        assert!(!reused.native_pending("commandLine"));
     }
 
     #[test]

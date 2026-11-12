@@ -226,14 +226,13 @@ impl Desktop {
             "ioPriority" | "memoryPriority" => {
                 let wanted = text(value, "priority");
                 if failed.len() == total {
+                    // The whole sentence, cause included, comes from the
+                    // locale, its punctuation too.
                     (
                         ToastKind::Error,
-                        format!(
-                            "{}：{first_error}",
-                            argus_core::i18n::format(
-                                &format!("actions.{kind}.failed"),
-                                &[("name", &name)]
-                            )
+                        argus_core::i18n::format(
+                            &format!("actions.{kind}.failed"),
+                            &[("name", &name), ("error", &first_error)],
                         ),
                         5000,
                     )
