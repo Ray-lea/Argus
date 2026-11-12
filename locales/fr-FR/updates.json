@@ -4,7 +4,7 @@
   "readyToast": "Argus {version} est prêt à être installé",
   "availableToast": "Argus {version} est disponible",
   "view": "Voir",
-  "openDialog": "Ouvrir dans la boîte de dialogue",
+  "openDialog": "Voir les nouveautés",
   "button": {
     "title": "Argus {version} est prêt. Cliquez pour voir les nouveautés et installez-le",
     "availableTitle": "Argus {version} est disponible. Cliquez pour voir les nouveautés"
@@ -33,6 +33,8 @@
       "many": "{count} modifications",
       "other": "{count} modifications"
     },
+    "expandAll": "Tout développer",
+    "collapseAll": "Tout réduire",
     "earlier": "Les notes des versions antérieures se trouvent sur GitHub.",
     "empty": "Aucune note de version à afficher ici ; voir les versions sur GitHub.",
     "language": "Certaines de ces notes de version ne sont disponibles qu’en chinois.",

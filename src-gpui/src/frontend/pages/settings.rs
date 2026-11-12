@@ -2856,6 +2856,21 @@ impl Desktop {
             "ready" | "available" | "downloading" | "installing"
         );
         let mut controls = vec![];
+        // What the offered release brings opens in the update dialog.
+        if offered && !version.is_empty() {
+            controls.push(
+                self.btn(
+                    "update-notes",
+                    label("updates.openDialog"),
+                    Some("NotesIcon"),
+                    Tone::Plain,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_dialog("update", json!({}), window, cx)
+                }))
+                .into_any_element(),
+            );
+        }
         if state == "ready" {
             controls.push(
                 self.btn(
@@ -2933,9 +2948,6 @@ impl Desktop {
                 controls,
             ),
         );
-        if offered && !version.is_empty() {
-            cards.push(self.inline_release(&status, &version, window, cx));
-        }
         let auto = self.toggle(
             "update-auto",
             label("settings.update.auto.title"),
@@ -3155,82 +3167,6 @@ impl Desktop {
         self.ui.busy.insert("install".into());
         self.ui.errors.remove("install");
         self.request("install_update", json!({}), None, window, cx);
-    }
-
-    /// The release on offer, inline.
-    fn inline_release(
-        &self,
-        status: &Value,
-        version: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let p = self.palette;
-        let current = text(&self.data["info"], "version").to_owned();
-        let open_version = version.to_owned();
-        div()
-            .my(px(4.))
-            .border_1()
-            .border_color(p.stroke)
-            .rounded(px(6.))
-            .bg(p.layer)
-            .child(
-                div()
-                    .pt(px(20.))
-                    .px(px(24.))
-                    .pb(px(18.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(14.))
-                    .child(self.update_head(
-                        tr!("updates.dialog.installed", version = version),
-                        self.update_subtitle(status, version, true),
-                    ))
-                    .child(self.update_versions(Some(&current), version, false))
-                    .child(self.release_reader(status, Some(&current), version, false, window, cx)),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .justify_between()
-                    .gap(px(8.))
-                    .px(px(20.))
-                    .py(px(12.))
-                    .border_t_1()
-                    .border_color(p.stroke)
-                    .child(
-                        self.btn(
-                            "inline-github",
-                            label("updates.dialog.github"),
-                            Some("ExternalIcon"),
-                            Tone::Ghost,
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                this.request(
-                                    "open_release_page",
-                                    json!({"version":open_version}),
-                                    None,
-                                    window,
-                                    cx,
-                                );
-                            },
-                        )),
-                    )
-                    .child(
-                        self.btn(
-                            "inline-dialog",
-                            label("updates.openDialog"),
-                            None,
-                            Tone::Plain,
-                        )
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_dialog("update", json!({}), window, cx)
-                        })),
-                    ),
-            )
-            .into_any_element()
     }
 
     // ---- Hotkey card ------------------------------------------------------------

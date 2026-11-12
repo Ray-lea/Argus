@@ -152,6 +152,16 @@ pub(in crate::frontend) struct UiState {
     /// The top dialog fading out before it closes: its id, when it started and
     /// whether it was cancelled (Escape or a press outside it).
     pub dialog_leaving: Option<(u64, Instant, bool)>,
+    /// Until when dialogs take their content's height at once instead of
+    /// easing to it: a release in the update reader folding or unfolding
+    /// eases its own height (`Desktop::release_reader`).
+    pub dialog_follow: Option<Instant>,
+    /// The natural height of each release's notes in the update reader, by
+    /// version: what a folding release eases from and an unfolding one to.
+    pub release_heights: Rc<RefCell<HashMap<SharedString, Pixels>>>,
+    /// The feature card or change of the update reader under the pointer:
+    /// it lights up, easing in and out (`Desktop::release_body`).
+    pub release_hover: RefCell<Option<SharedString>>,
     /// The narrowest search box: placeholder, text size and width (`Desktop::search_fit`).
     pub search_fit: RefCell<Option<(String, Pixels, Pixels)>>,
     /// How compact the toolbar is (`Desktop::fit_toolbar`).

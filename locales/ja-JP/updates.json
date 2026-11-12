@@ -4,7 +4,7 @@
   "readyToast": "Argus {version} の準備が整いました",
   "availableToast": "新しいバージョン {version} が見つかりました",
   "view": "表示",
-  "openDialog": "ダイアログで開く",
+  "openDialog": "更新内容を表示",
   "button": {
     "title": "Argus {version} の準備が整いました。クリックして更新内容を確認し、インストールできます",
     "availableTitle": "新しいバージョン {version} が見つかりました。クリックして更新内容を確認できます"
@@ -31,6 +31,8 @@
     "changes": {
       "other": "{count} 件の変更"
     },
+    "expandAll": "すべて展開",
+    "collapseAll": "すべて折りたたむ",
     "earlier": "以前のバージョンの更新内容は GitHub で確認できます。",
     "empty": "ここに表示するリリース ノートはありません。GitHub のリリースを参照してください。",
     "language": "これらのリリース ノートの一部は中国語でのみ利用可能です。",

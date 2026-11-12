@@ -9,6 +9,19 @@ fn tabular() -> FontFeatures {
 }
 use widgets::{ButtonExt, Handler, ToastKind, Tone};
 
+/// How long a release of the update reader takes to fold or unfold (ms).
+const FOLD_MS: u64 = 250;
+/// How long a card or change of the update reader takes to light up under
+/// the pointer, or to go out (ms).
+const HOVER_MS: u64 = 160;
+/// The update dialog's parts come in one after another (`Desktop::rise`):
+/// each `RISE_STEP` seconds after the one before (the first `RISE_STEPS`
+/// only), over `RISE_LENGTH` seconds, from `RISE_DISTANCE` px below.
+const RISE_STEP: f32 = 0.05;
+const RISE_STEPS: usize = 8;
+const RISE_LENGTH: f32 = 0.36;
+const RISE_DISTANCE: f32 = 10.;
+
 pub(super) fn configuration() -> &'static Value {
     static CONFIG: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
     CONFIG.get_or_init(|| {
@@ -1425,14 +1438,20 @@ impl Desktop {
     /// (`release_body`). A single release reads on its own (the title above
     /// names it); several come in one list under their versions and dates,
     /// after a count of their changes by kind, the newest open and the others
-    /// folded (all open with `open_all`).
+    /// folded (all open with `open_all`). A release folds and unfolds by
+    /// easing its own height, the dialog following at once; the count's row
+    /// opens or folds them all. The parts come into the dialog `dialog` one
+    /// after another from step `first` (`rise`).
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::frontend) fn release_reader(
         &self,
+        dialog: u64,
+        first: usize,
         status: &Value,
         from: Option<&str>,
         to: &str,
         open_all: bool,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
@@ -1449,23 +1468,19 @@ impl Desktop {
         let reader = div().flex().flex_col().gap(px(12.));
         if entries.is_empty() {
             let notes = text(status, "notes");
-            return if notes.is_empty() {
-                reader
-                    .child(
-                        div()
-                            .text_size(theme::font(12.))
-                            .text_color(p.muted)
-                            .child(label("updates.dialog.empty")),
-                    )
+            let content = if notes.is_empty() {
+                div()
+                    .text_size(theme::font(12.))
+                    .text_color(p.muted)
+                    .child(label("updates.dialog.empty"))
                     .into_any_element()
             } else {
-                reader
-                    .child(gpui_kit::component::text::TextView::markdown(
-                        "update-notes",
-                        notes.to_owned(),
-                    ))
+                gpui_kit::component::text::TextView::markdown("update-notes", notes.to_owned())
                     .into_any_element()
             };
+            return reader
+                .child(self.rise("update-rise-notes", dialog, first, content, cx))
+                .into_any_element();
         }
         let notes = entries
             .iter()
@@ -1474,7 +1489,14 @@ impl Desktop {
         let mut reader = reader;
         if let [note] = notes.as_slice() {
             reader = reader.child(div().pt(px(14.)).border_t_1().border_color(p.stroke).child(
-                self.release_body(&format!("release-notes-{}", entries[0].version), note, 2),
+                self.release_body(
+                    &format!("release-notes-{}", entries[0].version),
+                    note,
+                    2,
+                    Some((dialog, first)),
+                    window,
+                    cx,
+                ),
             ));
         } else {
             let folded = self
@@ -1483,6 +1505,45 @@ impl Desktop {
                 .get("releaseFolds")
                 .cloned()
                 .unwrap_or_default();
+            // Folds are kept as the releases turned from how they open.
+            let defaults = entries
+                .iter()
+                .enumerate()
+                .map(|(index, release)| (format!("|{}|", release.version), open_all || index == 0))
+                .collect::<Vec<_>>();
+            let all_open = defaults
+                .iter()
+                .all(|(key, default)| *default != folded.contains(key));
+            let fold_all = self
+                .btn_small_glyph(
+                    format!("release-fold-all-{dialog}"),
+                    label(if all_open {
+                        "updates.dialog.collapseAll"
+                    } else {
+                        "updates.dialog.expandAll"
+                    }),
+                    if all_open {
+                        "CollapseAllIcon"
+                    } else {
+                        "ExpandAllIcon"
+                    },
+                    14.,
+                    Tone::Ghost,
+                )
+                .text_color(p.muted)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    // Turned: those that open otherwise than every one should.
+                    let folds = defaults
+                        .iter()
+                        .filter(|(_, default)| *default == all_open)
+                        .map(|(key, _)| key.as_str())
+                        .collect::<String>();
+                    this.ui.errors.insert("releaseFolds".into(), folds);
+                    this.follow_release_folds();
+                    window.refresh();
+                    cx.notify();
+                }));
+            let fold_length = if cx.reduce_motion() { 0 } else { FOLD_MS };
             let mut list = div()
                 .flex()
                 .flex_col()
@@ -1493,51 +1554,112 @@ impl Desktop {
             for (index, (release, note)) in entries.iter().zip(&notes).enumerate() {
                 let key = format!("|{}|", release.version);
                 let open = (open_all || index == 0) != folded.contains(&key);
+                // A release's first height is taken at once; a fold eases.
+                let shown = gpui_kit::base::motion::transition(
+                    format!("release-fold-{dialog}-{}", release.version),
+                    if open { 1f32 } else { 0. },
+                    theme::fluent(fold_length, theme::ease_move),
+                    window,
+                    cx,
+                );
+                let control = SharedString::from(format!("release-{}", release.version));
+                let body = (open || shown > 0.).then(|| {
+                    let heights = self.ui.release_heights.clone();
+                    let measured = SharedString::from(release.version.clone());
+                    let natural = heights.borrow().get(&measured).copied();
+                    let body = div()
+                        .relative()
+                        .flex_shrink_0()
+                        .px(px(16.))
+                        .pt(px(2.))
+                        .pb(px(16.))
+                        .child(self.release_body(
+                            &format!("release-notes-{}", release.version),
+                            note,
+                            2,
+                            None,
+                            window,
+                            cx,
+                        ))
+                        // Its natural height, taken while it is clipped too.
+                        .child(
+                            canvas(
+                                move |bounds, _, _| {
+                                    heights.borrow_mut().insert(measured, bounds.size.height);
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .inset_0(),
+                        );
+                    if shown >= 1. {
+                        // Laid out as it is: an open release is never measured first.
+                        return body.into_any_element();
+                    }
+                    // Clipped to its share of the height; fades a little ahead
+                    // of it and drops into place.
+                    div()
+                        .flex()
+                        .flex_col()
+                        .overflow_hidden()
+                        .h(natural.unwrap_or(px(0.)) * shown)
+                        .child(
+                            body.top(px(-8. * (1. - shown)))
+                                .opacity(theme::ease_out(shown)),
+                        )
+                        .into_any_element()
+                });
                 list = list.child(
                     div()
                         .flex()
                         .flex_col()
                         .when(index > 0, |d| d.border_t_1().border_color(p.stroke))
                         .child(
-                            gpui_kit::base::Button::new(SharedString::from(format!(
-                                "release-{}",
-                                release.version
-                            )))
-                            .w_full()
-                            .h(px(44.))
-                            .px(px(14.))
-                            .gap(px(10.))
-                            .justify_start()
-                            .rounded(px(7.))
-                            .hover(move |s| s.bg(p.hover))
-                            .child(
-                                icon(if open { "ChevronDown" } else { "ChevronRight" }, p.muted)
-                                    .size(px(12.)),
-                            )
-                            .child(
-                                div()
-                                    .text_size(theme::font(14.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(format!("v{}", release.version)),
-                            )
-                            .when(offer && index == 0, |b| {
-                                b.child(self.release_badge(label("updates.dialog.next"), p.accent))
-                            })
-                            .child(
-                                div()
-                                    .text_size(theme::font(12.))
-                                    .text_color(p.muted)
-                                    .child(release.date.clone()),
-                            )
-                            .child(
-                                div()
-                                    .ml_auto()
-                                    .text_size(theme::font(12.))
-                                    .text_color(p.muted)
-                                    .child(tr!("updates.dialog.changes", count = note.changes())),
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, window, cx| {
+                            gpui_kit::base::Button::new(control.clone())
+                                .relative()
+                                .w_full()
+                                .h(px(44.))
+                                .px(px(14.))
+                                .gap(px(10.))
+                                .justify_start()
+                                .rounded(px(7.))
+                                .hover(move |s| s.bg(p.hover))
+                                .active(move |s| s.bg(p.press))
+                                .child(self.moving_icon(
+                                    &control,
+                                    if open { "ChevronDown" } else { "ChevronRight" },
+                                    Some(p.muted),
+                                    Some(px(12.)),
+                                ))
+                                .child(
+                                    div()
+                                        .text_size(theme::font(14.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child(format!("v{}", release.version)),
+                                )
+                                .when(offer && index == 0, |b| {
+                                    b.child(
+                                        self.release_badge(label("updates.dialog.next"), p.accent),
+                                    )
+                                })
+                                .child(
+                                    div()
+                                        .text_size(theme::font(12.))
+                                        .text_color(p.muted)
+                                        .child(release.date.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .ml_auto()
+                                        .text_size(theme::font(12.))
+                                        .text_color(p.muted)
+                                        .child(tr!(
+                                            "updates.dialog.changes",
+                                            count = note.changes()
+                                        )),
+                                )
+                                .child(self.icon_probe(&control))
+                                .on_click(cx.listener(move |this, _, window, cx| {
                                     let folds =
                                         this.ui.errors.entry("releaseFolds".into()).or_default();
                                     if folds.contains(&key) {
@@ -1545,33 +1667,126 @@ impl Desktop {
                                     } else {
                                         folds.push_str(&key);
                                     }
+                                    this.follow_release_folds();
                                     window.refresh();
                                     cx.notify();
-                                },
-                            )),
+                                })),
                         )
-                        .when(open, |d| {
-                            d.child(div().px(px(16.)).pt(px(2.)).pb(px(16.)).child(
-                                self.release_body(
-                                    &format!("release-notes-{}", release.version),
-                                    note,
-                                    2,
-                                ),
-                            ))
-                        }),
+                        .children(body),
                 );
             }
-            reader = reader.child(self.change_summary(&notes)).child(list);
+            reader = reader
+                .child(
+                    self.rise(
+                        "update-rise-summary",
+                        dialog,
+                        first,
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(div().flex_1().min_w_0().child(self.change_summary(&notes)))
+                            .child(fold_all),
+                        cx,
+                    ),
+                )
+                .child(self.rise("update-rise-list", dialog, first + 1, list, cx));
         }
         if earlier {
             reader = reader.child(
-                div()
-                    .text_size(theme::font(12.))
-                    .text_color(p.muted)
-                    .child(label("updates.dialog.earlier")),
+                self.rise(
+                    "update-rise-earlier",
+                    dialog,
+                    first + 2,
+                    div()
+                        .text_size(theme::font(12.))
+                        .text_color(p.muted)
+                        .child(label("updates.dialog.earlier")),
+                    cx,
+                ),
             );
         }
         reader.into_any_element()
+    }
+
+    /// While a release folds or unfolds, its dialog takes the height it
+    /// passes through at once rather than easing after it.
+    fn follow_release_folds(&mut self) {
+        self.ui.dialog_follow = Some(Instant::now() + Duration::from_millis(FOLD_MS + 50));
+    }
+
+    /// How lit (0 to 1) the reader's card or change `key` is drawn: easing
+    /// toward lit while the pointer is on it and back once it leaves. Under
+    /// reduced motion it is either.
+    fn release_lit(&self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> f32 {
+        let hovered = self.ui.release_hover.borrow().as_ref() == Some(key);
+        gpui_kit::base::motion::transition(
+            (ElementId::Name(key.clone()), "lit"),
+            if hovered { 1f32 } else { 0. },
+            theme::fluent(HOVER_MS, theme::ease_out),
+            window,
+            cx,
+        )
+    }
+
+    /// Notes the pointer coming onto or leaving the reader's card or change
+    /// `key`, and draws again at once: the light starts on that frame.
+    fn release_hovered(
+        &self,
+        key: SharedString,
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
+        cx.listener(move |this, hovered: &bool, _, cx| {
+            let mut current = this.ui.release_hover.borrow_mut();
+            let on = current.as_ref() == Some(&key);
+            if *hovered && !on {
+                *current = Some(key.clone());
+            } else if !*hovered && on {
+                *current = None;
+            } else {
+                return;
+            }
+            drop(current);
+            cx.notify();
+        })
+    }
+
+    /// `element` coming into the dialog `dialog` `order` steps after it
+    /// opened: a one-shot fade and rise that ends where the element is laid
+    /// out, so that at rest it is drawn on whole pixels as it is. Nothing
+    /// moves under reduced motion. `key` names it among the dialog's parts.
+    pub(in crate::frontend) fn rise(
+        &self,
+        key: impl Into<SharedString>,
+        dialog: u64,
+        order: usize,
+        element: impl IntoElement,
+        cx: &App,
+    ) -> AnyElement {
+        let element = div().child(element);
+        if cx.reduce_motion() {
+            return element.into_any_element();
+        }
+        // Later parts wait a little longer, up to a point: a long reader
+        // must not keep its last changes waiting.
+        let delay = RISE_STEP * order.min(RISE_STEPS) as f32;
+        let total = delay + RISE_LENGTH;
+        element
+            .with_animation(
+                ElementId::NamedInteger(key.into(), dialog),
+                Animation::new(Duration::from_secs_f32(total)),
+                move |element, delta| {
+                    let t = ((delta * total - delay) / RISE_LENGTH).clamp(0., 1.);
+                    if t >= 1. {
+                        return element;
+                    }
+                    element
+                        .relative()
+                        .top(px(RISE_DISTANCE * (1. - theme::ease_enter(t))))
+                        .opacity(theme::ease_out(t))
+                },
+            )
+            .into_any_element()
     }
 
     /// How many changes of each kind several releases bring, in the
@@ -1818,22 +2033,48 @@ impl Desktop {
                         .flex()
                         .flex_col()
                         .gap(px(14.))
-                        .child(self.update_head(title, subtitle))
-                        .child(self.update_versions(from.as_deref(), &target, !offer))
+                        .child(self.rise(
+                            "update-rise-head",
+                            id,
+                            0,
+                            self.update_head(title, subtitle),
+                            cx,
+                        ))
+                        .child(self.rise(
+                            "update-rise-versions",
+                            id,
+                            1,
+                            self.update_versions(from.as_deref(), &target, !offer),
+                            cx,
+                        ))
                         .when(offer, |d| {
-                            d.child(facts).when(
-                                matches!(state.as_str(), "downloading" | "checking"),
-                                |d| {
-                                    d.child(self.progress_bar(
+                            let progress = matches!(state.as_str(), "downloading" | "checking")
+                                .then(|| {
+                                    self.progress_bar(
                                         (total > 0.).then(|| (received / total).min(1.) as f32),
                                         cx,
-                                    ))
-                                },
+                                    )
+                                });
+                            d.child(
+                                self.rise(
+                                    "update-rise-facts",
+                                    id,
+                                    2,
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(14.))
+                                        .child(facts)
+                                        .children(progress),
+                                    cx,
+                                ),
                             )
                         })
                         // An offer opens its newest release; the notes of an
                         // update installed open every release it brought.
                         .child(self.release_reader(
+                            id,
+                            3,
                             &reader_status,
                             from.as_deref(),
                             &target,
@@ -1843,18 +2084,30 @@ impl Desktop {
                         ))
                         .when(can_install, |d| {
                             d.child(
-                                div()
-                                    .text_size(theme::font(12.))
-                                    .text_color(p.muted)
-                                    .child(label("updates.dialog.hint")),
+                                self.rise(
+                                    "update-rise-hint",
+                                    id,
+                                    6,
+                                    div()
+                                        .text_size(theme::font(12.))
+                                        .text_color(p.muted)
+                                        .child(label("updates.dialog.hint")),
+                                    cx,
+                                ),
                             )
                         })
                         .when(can_download, |d| {
                             d.child(
-                                div()
-                                    .text_size(theme::font(12.))
-                                    .text_color(p.muted)
-                                    .child(label("updates.dialog.portable")),
+                                self.rise(
+                                    "update-rise-portable",
+                                    id,
+                                    6,
+                                    div()
+                                        .text_size(theme::font(12.))
+                                        .text_color(p.muted)
+                                        .child(label("updates.dialog.portable")),
+                                    cx,
+                                ),
                             )
                         })
                         .when_some(failure, |d, failure| {
@@ -1936,12 +2189,20 @@ impl Desktop {
     /// A release's notice, introduction and groups of changes: each group
     /// under its kind's tag with the number of changes, new features as
     /// cards (in `columns`), other changes as a list. `id` keeps the text
-    /// views of one place apart from another's.
+    /// views of one place apart from another's. With `rise`, the parts come
+    /// into that dialog one after another from that step (`Desktop::rise`).
+    /// Under the pointer a feature card takes its kind's colour, the line on
+    /// its top edge growing, and a change is highlighted, its bullet haloed
+    /// and its text brought to full contrast, to keep one's place while
+    /// reading; both ease in and out (`release_lit`).
     pub(in crate::frontend) fn release_body(
         &self,
         id: &str,
         note: &Note,
         columns: usize,
+        rise: Option<(u64, usize)>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
         let markdown = |key: String, text: &str| {
@@ -1950,15 +2211,9 @@ impl Desktop {
                 SharedString::from(text.to_owned()),
             )
         };
-        let mut body = div()
-            .flex()
-            .flex_col()
-            .gap(px(14.))
-            .text_size(theme::font(13.))
-            // `.update-entry-body`
-            .line_height(relative(1.6));
+        let mut parts: Vec<AnyElement> = Vec::new();
         if let Some(notice) = &note.notice {
-            body = body.child(
+            parts.push(
                 div()
                     .flex()
                     .items_start()
@@ -1980,15 +2235,17 @@ impl Desktop {
                             .min_w_0()
                             .font_weight(theme::LABEL_WEIGHT)
                             .child(notice.clone()),
-                    ),
+                    )
+                    .into_any_element(),
             );
         }
         for (index, intro) in note.intro.iter().enumerate() {
-            body = body.child(
+            parts.push(
                 div()
                     .text_size(theme::font(14.))
                     .font_weight(theme::LABEL_WEIGHT)
-                    .child(markdown(format!("{id}-intro-{index}"), intro)),
+                    .child(markdown(format!("{id}-intro-{index}"), intro))
+                    .into_any_element(),
             );
         }
         for (g, group) in note.groups.iter().enumerate() {
@@ -1999,71 +2256,160 @@ impl Desktop {
                     .child(self.kind_tag(group.kind, &group.title, group.items.len()));
             let cards =
                 group.kind == Kind::Feature && group.items.iter().all(|item| item.label.is_some());
+            let mut cells = Vec::with_capacity(group.items.len());
+            for (i, item) in group.items.iter().enumerate() {
+                let key = SharedString::from(format!("{id}-{g}-{i}"));
+                let lit = self.release_lit(&key, window, cx);
+                let hover = self.release_hovered(key.clone(), cx);
+                cells.push(if cards {
+                    div()
+                        .id(ElementId::Name(format!("{key}-card").into()))
+                        .on_hover(hover)
+                        .relative()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .px(px(12.))
+                        .py(px(10.))
+                        .rounded(px(6.))
+                        .border_1()
+                        .border_color(theme::mix(p.stroke, color, 0.5 * lit))
+                        .bg(theme::mix(p.layer_strong, color, 0.07 * lit))
+                        // A line of the kind's colour along the top edge,
+                        // growing out of its corner under the pointer.
+                        .when(lit > 0., |d| {
+                            d.child(
+                                div()
+                                    .absolute()
+                                    .top(px(-1.))
+                                    .left(px(12.))
+                                    .w(px(12. + 28. * lit))
+                                    .h(px(2.))
+                                    .rounded(px(1.))
+                                    .bg(color.opacity(lit)),
+                            )
+                        })
+                        .child(
+                            div()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .when(lit > 0., |d| {
+                                    d.text_color(theme::mix(
+                                        p.ink,
+                                        theme::mix(color, p.ink, 0.35),
+                                        lit,
+                                    ))
+                                })
+                                .child(item.label.clone().unwrap_or_default()),
+                        )
+                        .child(
+                            div()
+                                .text_size(theme::font(12.5))
+                                .line_height(relative(1.55))
+                                .text_color(theme::mix(p.muted, p.ink, 0.45 * lit))
+                                .child(markdown(key.to_string(), &item.body)),
+                        )
+                        .into_any_element()
+                } else {
+                    let text = match &item.label {
+                        Some(label) => format!("**{label}** {}", item.body),
+                        None => item.body.clone(),
+                    };
+                    // The row reaches past the text into the gutter, so the
+                    // highlight under the pointer leaves the text in place.
+                    let halo = 6. * lit;
+                    div()
+                        .id(ElementId::Name(format!("{key}-row").into()))
+                        .on_hover(hover)
+                        .flex()
+                        .gap(px(10.))
+                        .mx(px(-8.))
+                        .px(px(8.))
+                        .rounded(px(5.))
+                        .when(lit > 0., |d| d.bg(p.hover.opacity(lit)))
+                        .child(
+                            div()
+                                .relative()
+                                .mt(px(8.))
+                                .size(px(5.))
+                                .flex_shrink_0()
+                                .rounded_full()
+                                .bg(color)
+                                // A halo spreading from the bullet.
+                                .when(lit > 0., |d| {
+                                    d.child(
+                                        div()
+                                            .absolute()
+                                            .top(px(-halo / 2.))
+                                            .left(px(-halo / 2.))
+                                            .size(px(5. + halo))
+                                            .rounded_full()
+                                            .bg(color.opacity(0.3 * lit)),
+                                    )
+                                }),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                // Softer than the headings: the labels stand
+                                // out by weight.
+                                .text_color(theme::mix(
+                                    theme::mix(p.ink, p.muted, 0.35),
+                                    p.ink,
+                                    lit,
+                                ))
+                                .child(markdown(key.to_string(), &text)),
+                        )
+                        .into_any_element()
+                });
+            }
             let items = if cards {
                 div()
                     .grid()
                     .grid_cols(columns.max(1) as u16)
                     .gap(px(8.))
-                    .children(group.items.iter().enumerate().map(|(i, item)| {
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(2.))
-                            .px(px(12.))
-                            .py(px(10.))
-                            .rounded(px(6.))
-                            .border_1()
-                            .border_color(p.stroke)
-                            .bg(p.layer_strong)
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(item.label.clone().unwrap_or_default()),
-                            )
-                            .child(
-                                div()
-                                    .text_size(theme::font(12.5))
-                                    .line_height(relative(1.55))
-                                    .text_color(p.muted)
-                                    .child(markdown(format!("{id}-{g}-{i}"), &item.body)),
-                            )
-                    }))
+                    .children(cells)
                     .into_any_element()
             } else {
                 div()
                     .flex()
                     .flex_col()
                     .gap(px(6.))
-                    .children(group.items.iter().enumerate().map(|(i, item)| {
-                        let text = match &item.label {
-                            Some(label) => format!("**{label}** {}", item.body),
-                            None => item.body.clone(),
-                        };
-                        div()
-                            .flex()
-                            .gap(px(10.))
-                            .child(
-                                div()
-                                    .mt(px(8.))
-                                    .size(px(5.))
-                                    .flex_shrink_0()
-                                    .rounded_full()
-                                    .bg(color),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    // Softer than the headings: the labels stand out by weight.
-                                    .text_color(theme::mix(p.ink, p.muted, 0.35))
-                                    .child(markdown(format!("{id}-{g}-{i}"), &text)),
-                            )
-                    }))
+                    .children(cells)
                     .into_any_element()
             };
-            body = body.child(div().flex().flex_col().gap(px(8.)).child(tag).child(items));
+            parts.push(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(tag)
+                    .child(items)
+                    .into_any_element(),
+            );
         }
-        body.into_any_element()
+        let parts = parts
+            .into_iter()
+            .enumerate()
+            .map(|(index, part)| match rise {
+                Some((dialog, first)) => self.rise(
+                    format!("{id}-rise-{index}"),
+                    dialog,
+                    first + index,
+                    part,
+                    cx,
+                ),
+                None => part,
+            });
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(14.))
+            .text_size(theme::font(13.))
+            // `.update-entry-body`
+            .line_height(relative(1.6))
+            .children(parts)
+            .into_any_element()
     }
 }
 

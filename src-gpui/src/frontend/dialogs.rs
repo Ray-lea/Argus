@@ -907,6 +907,8 @@ impl Desktop {
 
     /// Drops what was kept for a dialog that closed.
     fn forget_dialog(&self, id: u64) {
+        // A card the pointer was on as it closed is not lit when it reopens.
+        self.ui.release_hover.take();
         self.ui.dialog_shown.borrow_mut().remove(&id);
         self.ui.dialog_frames.borrow_mut().remove(&id);
         let mut parts = self.ui.dialog_parts.borrow_mut();
@@ -970,7 +972,8 @@ impl Desktop {
                 // The tallest the component draws a dialog at this layer.
                 let limit = (viewport - px(32.) - shift).max(px(0.));
                 let now = Instant::now();
-                let length = if cx.reduce_motion() {
+                let following = self.ui.dialog_follow.is_some_and(|until| now < until);
+                let length = if cx.reduce_motion() || following {
                     Duration::ZERO
                 } else {
                     theme::motion_duration()
