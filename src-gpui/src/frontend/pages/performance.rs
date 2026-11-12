@@ -539,9 +539,16 @@ impl Desktop {
                 .into_iter()
                 .map(|device| device.stable)
                 .collect::<Vec<_>>();
-            self.prefs.set(rail::ORDER, keys);
+            self.save_device_order(&keys);
         }
         self.prefs.set(rail::DISK_ORDER, order.key());
+    }
+    /// Saves the order of the devices present now (stable keys); devices
+    /// absent now keep their saved places (`rail::merged_order`).
+    fn save_device_order(&mut self, present: &[String]) {
+        let saved = self.prefs.get::<Vec<String>>(rail::ORDER, Vec::new());
+        self.prefs
+            .set(rail::ORDER, rail::merged_order(&saved, present));
     }
     /// Puts every device back in the collector's order (`rail::RESET_ORDER`).
     pub(in crate::frontend) fn reset_device_order(&mut self) {
@@ -583,7 +590,7 @@ impl Desktop {
             .into_iter()
             .map(|index| devices[index].stable.clone())
             .collect::<Vec<_>>();
-        self.prefs.set(rail::ORDER, keys);
+        self.save_device_order(&keys);
     }
     /// Which of `devices` the list shows.
     fn shown_devices(&self, devices: &[Device]) -> Vec<bool> {

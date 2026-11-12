@@ -131,6 +131,35 @@ pub(super) fn arrange(entries: &[Entry], saved: &[String], disks: DiskOrder) -> 
     order
 }
 
+/// The order to save (`ORDER`) once the devices present now are arranged as
+/// `present` (stable keys): the saved keys of devices absent now (unplugged,
+/// or not found this start) keep their places after the device they followed
+/// there, so that they come back to them (`arrange`). Those that followed no
+/// present device stay in front.
+pub(super) fn merged_order(saved: &[String], present: &[String]) -> Vec<String> {
+    let mut leading = Vec::new();
+    let mut following: HashMap<&str, Vec<&String>> = HashMap::new();
+    let mut anchor: Option<&str> = None;
+    for key in saved {
+        if present.contains(key) {
+            anchor = Some(key);
+        } else if let Some(anchor) = anchor {
+            following.entry(anchor).or_default().push(key);
+        } else {
+            leading.push(key);
+        }
+    }
+    let mut order = Vec::with_capacity(present.len() + saved.len());
+    for key in leading.into_iter().chain(present.iter().flat_map(|key| {
+        std::iter::once(key).chain(following.remove(key.as_str()).unwrap_or_default())
+    })) {
+        if !order.contains(key) {
+            order.push(key.clone());
+        }
+    }
+    order
+}
+
 /// Whether `order` (indices into `entries`) keeps the disks in the order
 /// `disks` asks for: a drag that does not keeps them where it put them.
 pub(super) fn keeps(entries: &[Entry], order: &[usize], disks: DiskOrder) -> bool {
@@ -594,8 +623,8 @@ pub(super) fn opacity(presence: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        DiskOrder, Entry, MOVE, Place, RailMotion, arrange, distinct, keeps, layout, opacity,
-        reordered, shown, stable_key, successor, with_hidden,
+        DiskOrder, Entry, MOVE, Place, RailMotion, arrange, distinct, keeps, layout, merged_order,
+        opacity, reordered, shown, stable_key, successor, with_hidden,
     };
     use gpui_kit::px;
     use serde_json::json;
@@ -604,6 +633,46 @@ mod tests {
 
     fn set(keys: &[&str]) -> HashSet<String> {
         keys.iter().map(|key| (*key).to_owned()).collect()
+    }
+
+    fn strings(keys: &[&str]) -> Vec<String> {
+        keys.iter().map(|key| (*key).to_owned()).collect()
+    }
+
+    #[test]
+    fn an_unplugged_device_keeps_its_place_when_the_others_are_reordered() {
+        // "usb" is unplugged while the others are dragged around: it stays
+        // after the device it followed.
+        let saved = strings(&["cpu", "memory", "usb", "disk", "gpu"]);
+        assert_eq!(
+            merged_order(&saved, &strings(&["cpu", "gpu", "memory", "disk"])),
+            ["cpu", "gpu", "memory", "usb", "disk"]
+        );
+        // Absent devices with nothing present before them stay in front, in
+        // their order; the others go along with the device they followed.
+        let saved = strings(&["usb", "dock", "cpu", "memory", "nic"]);
+        assert_eq!(
+            merged_order(&saved, &strings(&["memory", "cpu"])),
+            ["usb", "dock", "memory", "nic", "cpu"]
+        );
+        // Nothing saved yet, or every device present: the new order as it is.
+        let present = strings(&["memory", "cpu", "disk"]);
+        assert_eq!(merged_order(&[], &present), present);
+        assert_eq!(
+            merged_order(&strings(&["cpu", "disk", "memory"]), &present),
+            present
+        );
+        // Plugged in again, it returns to that place.
+        let merged = merged_order(
+            &strings(&["cpu", "memory", "usb", "disk", "gpu"]),
+            &strings(&["cpu", "gpu", "memory", "disk"]),
+        );
+        let entries = ["cpu", "memory", "disk", "usb", "gpu"].map(|key| Entry { key, disk: None });
+        let keys = arrange(&entries, &merged, DiskOrder::Custom)
+            .into_iter()
+            .map(|index| entries[index].key)
+            .collect::<Vec<_>>();
+        assert_eq!(keys, ["cpu", "gpu", "memory", "usb", "disk"]);
     }
 
     #[test]
