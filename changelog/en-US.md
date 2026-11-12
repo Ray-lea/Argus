@@ -25,6 +25,7 @@ v0.5.0 adds process suspend and resume, process groups by user, four process inf
 - **Window and tray**: A separate "Window transitions" switch is available. "Reopen from tray" can open the default page. The default window size is now 1000×680, and the minimum size is now 640×480. ([#27](https://github.com/Ray-lea/Argus/issues/27), [#40](https://github.com/Ray-lea/Argus/issues/40))
 - **Task Manager replacement**: "Replace Task Manager" has a new "Open Windows Task Manager once" button. It opens the Windows Task Manager and does not change the replacement settings.
 - **Notices and reminders**: The portable version explains its differences from the installed version and provides download links in the welcome guide and at the bottom right of the window. The new "Star reminder" appears at most once a day and can be turned off in Settings → Updates. The tips above "This PC" can be collapsed.
+- **Telegram channel**: About → Project and support has a new "Telegram channel" item. "Join channel" opens [t.me/argustask](https://t.me/argustask), and "Copy link" copies the channel link.
 
 ### Performance
 

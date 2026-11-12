@@ -25,6 +25,7 @@ v0.5.0 ergänzt das Anhalten und Fortsetzen von Prozessen, die Gruppierung von P
 - **Fenster und Infobereich**: Neu ist der eigene Schalter „Fensterübergänge“. „Aus dem Infobereich öffnen“ lässt sich auf „Standardseite öffnen“ einstellen. Die Standardgröße beträgt nun 1000×680 und die Mindestgröße 640×480. ([#27](https://github.com/Ray-lea/Argus/issues/27), [#40](https://github.com/Ray-lea/Argus/issues/40))
 - **Task-Manager-Ersetzung**: „Task-Manager ersetzen“ bietet die neue Schaltfläche „Windows-Task-Manager einmalig öffnen“. Diese Schaltfläche öffnet den integrierten Task-Manager von Windows. Die Ersetzungseinstellungen bleiben unverändert.
 - **Hinweise und Erinnerungen**: Die portable Version erklärt ihre Unterschiede zur installierten Version und bietet Downloadlinks in der Einführung und rechts unten im Fenster. Die neue „Stern-Erinnerung“ erscheint höchstens einmal täglich und lässt sich unter „Einstellungen → Updates“ ausschalten. Die Hinweise über „Dieser PC“ lassen sich einklappen.
+- **Telegram-Kanal**: Unter „Info → Projekt und Support“ gibt es den neuen Eintrag „Telegram-Kanal“. „Kanal beitreten“ öffnet [t.me/argustask](https://t.me/argustask), „Link kopieren“ kopiert den Kanallink.
 
 ### Leistung
 

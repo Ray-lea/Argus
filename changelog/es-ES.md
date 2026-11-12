@@ -25,6 +25,7 @@ v0.5.0 añade la suspensión y la reanudación de procesos, la agrupación de pr
 - **Ventana y bandeja**: Se añade la opción independiente «Transiciones de ventana». «Reabrir desde la bandeja» permite elegir «Abrir página predeterminada». El tamaño predeterminado pasa a 1000×680 y el mínimo a 640×480. ([#27](https://github.com/Ray-lea/Argus/issues/27), [#40](https://github.com/Ray-lea/Argus/issues/40))
 - **Sustitución del Administrador de tareas**: «Sustituir el Administrador de tareas» añade el botón «Abrir temporalmente el Administrador de tareas de Windows». Este botón abre el Administrador de tareas integrado en Windows. La configuración de sustitución no cambia.
 - **Avisos y recordatorios**: La versión portátil explica sus diferencias con la instalada y ofrece enlaces de descarga en la guía de bienvenida y en la esquina inferior derecha de la ventana. El nuevo «Recordatorio de estrella» aparece como máximo una vez al día y se desactiva en «Configuración → Actualizaciones». Las sugerencias situadas encima de «Este PC» se pueden contraer.
+- **Canal de Telegram**: «Acerca de → Proyecto y soporte» incluye el nuevo elemento «Canal de Telegram». «Unirse al canal» abre [t.me/argustask](https://t.me/argustask) y «Copiar enlace» copia el enlace del canal.
 
 ### Rendimiento
 

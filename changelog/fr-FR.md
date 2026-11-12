@@ -25,6 +25,7 @@ v0.5.0 ajoute la suspension et la reprise des processus, le regroupement des pro
 - **Fenêtre et zone de notification**: Un commutateur distinct « Transitions de fenêtres » est ajouté. « Réouverture depuis la zone de notification » permet de choisir « Ouvrir la page par défaut ». La taille par défaut passe à 1000×680 et la taille minimale à 640×480. ([#27](https://github.com/Ray-lea/Argus/issues/27), [#40](https://github.com/Ray-lea/Argus/issues/40))
 - **Remplacement du Gestionnaire des tâches**: « Remplacer le Gestionnaire des tâches » ajoute le bouton « Ouvrir temporairement le Gestionnaire des tâches Windows ». Ce bouton ouvre le Gestionnaire des tâches intégré à Windows. Les paramètres de remplacement ne changent pas.
 - **Avis et rappels**: La version portable explique ses différences avec la version installée et propose des liens de téléchargement dans le guide de démarrage et en bas à droite de la fenêtre. Le nouveau « Rappel d’étoile » apparaît au maximum une fois par jour et se désactive dans « Paramètres → Mises à jour ». Les astuces au-dessus de « Ce PC » peuvent être réduites.
+- **Chaîne Telegram**: « À propos → Projet et support » propose la nouvelle entrée « Chaîne Telegram ». « Rejoindre la chaîne » ouvre [t.me/argustask](https://t.me/argustask) et « Copier le lien » copie le lien de la chaîne.
 
 ### Performances
 
