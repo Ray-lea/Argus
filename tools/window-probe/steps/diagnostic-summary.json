@@ -1,0 +1,23 @@
+{
+  "window": [1240, 900],
+  "steps": [
+    {
+      "control": {
+        "page": "about",
+        "theme": "light",
+        "data": {
+          "info": {"version": "0.5.0", "build": "0.5.0+800.g123abcd", "buildKind": "test", "windows": "Windows 11 24H2 (26100.4061)", "elevated": false, "portable": true},
+          "privilege": {"state": "running", "authorized": true, "error": null, "version": "0.5.0"},
+          "taskmgr": {"state": "disabled"}
+        }
+      },
+      "wait": 700,
+      "capture": "light-about"
+    },
+    {"control": {"clickAnchor": "copy-diagnostics"}, "wait": 300, "inspect": "layout", "label": "copied", "expect": {"page": "about", "diagnosticCopyReady": true}},
+    {"control": {"theme": "dark", "preference": {"uiScale": 150, "fontSize": 20}}, "probe": "size 1100 800", "wait": 700},
+    {"control": {"wheel": {"x": 400, "y": 260, "lines": -12}}, "wait": 700, "capture": "dark-large-font"},
+    {"control": {"wheel": {"x": 400, "y": 260, "lines": -8}}, "wait": 500, "capture": "dark-lower"},
+    {"control": {"wheel": {"x": 400, "y": 260, "lines": -100}}, "wait": 500, "inspect": "layout", "label": "bottom", "expect": {"aboutScroll.atEnd": true}, "capture": "dark-bottom"}
+  ]
+}

@@ -434,6 +434,33 @@
       "title": "Journal",
       "desc": "Enregistre l’environnement d’exécution, l’état des fonctionnalités, les étapes ayant échoué, les codes d’erreur et les chemins réels des fichiers ou dossiers associés. Stocké localement, avec jusqu’à 1 MB par fichier et 3 journaux précédents. Les lignes de commande, les informations d’identification et le contenu des fichiers sont exclus. Utilisez cette entrée pour localiser les journaux de diagnostic pour les rapports de bogues.",
       "open": "Ouvrir le dossier des journaux"
+    },
+    "diagnostics": {
+      "title": "Informations de diagnostic",
+      "desc": "Copie la version actuelle, l’état d’exécution, le matériel et les paramètres d’affichage pour les coller dans un rapport de problème. Les informations manquantes sont indiquées comme inconnues.",
+      "copy": "Copier les informations de diagnostic",
+      "unknown": "Inconnu",
+      "version": "Version complète d’Argus",
+      "windows": "Version de Windows",
+      "build": "Type de compilation",
+      "installation": "Installation",
+      "installed": "Version installée",
+      "portable": "Version portable",
+      "source": "Compilation de développement",
+      "permission": "Autorisations actuelles",
+      "administrator": "Administrateur",
+      "standard": "Utilisateur standard",
+      "sampleTime": "Heure de l’instantané (UTC)",
+      "cpuCores": "Cœurs / threads du processeur",
+      "display": "Résolution de l’écran actuel",
+      "window": "Zone cliente de la fenêtre",
+      "systemScale": "Mise à l’échelle de Windows",
+      "fontSize": "Taille de police",
+      "language": "Langue de l’interface",
+      "refresh": "Intervalle d’actualisation au premier plan",
+      "paused": "Échantillonnage en pause",
+      "sensorReadings": "État des capteurs dans l’instantané",
+      "row": "{name} : {value}"
     }
   },
   "sensors": {

@@ -116,6 +116,7 @@ pub struct AppInfo {
     /// (`build-support/build-version.rs`).
     build: &'static str,
     build_kind: argus_app::config::BuildKind,
+    windows: Option<&'static str>,
     elevated: bool,
     /// Relaunched by the installer of an update.
     updated: bool,
@@ -134,6 +135,7 @@ pub fn app_info(app: crate::native_runtime::Host) -> AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         build: env!("ARGUS_VERSION"),
         build_kind: argus_app::config::build_kind(env!("ARGUS_VERSION"), cfg!(debug_assertions)),
+        windows: crate::diagnostics::windows_version(),
         elevated: state.elevated,
         updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
         task_manager: state.task_manager_start,

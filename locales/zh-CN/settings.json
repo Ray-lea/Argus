@@ -422,6 +422,33 @@
       "title": "日志",
       "desc": "记录运行环境、功能状态、失败步骤、错误码及相关文件或目录的实际路径。仅保存在本机，每个文件最多 1 MB，并保留最近 3 份旧日志；不记录命令行、凭据或文件内容。缺陷报告请使用此入口打开的诊断日志。",
       "open": "打开日志文件夹"
+    },
+    "diagnostics": {
+      "title": "诊断信息",
+      "desc": "复制当前版本、运行状态、硬件与显示设置，便于粘贴到问题报告。缺失信息显示为未知。",
+      "copy": "复制诊断信息",
+      "unknown": "未知",
+      "version": "Argus 完整版本",
+      "windows": "Windows 版本",
+      "build": "构建类型",
+      "installation": "安装方式",
+      "installed": "安装版",
+      "portable": "免安装版",
+      "source": "开发构建",
+      "permission": "当前运行权限",
+      "administrator": "管理员",
+      "standard": "标准权限",
+      "sampleTime": "快照时间（UTC）",
+      "cpuCores": "CPU 核心 / 线程",
+      "display": "当前显示器分辨率",
+      "window": "窗口客户区",
+      "systemScale": "系统缩放",
+      "fontSize": "字号",
+      "language": "界面语言",
+      "refresh": "前台刷新间隔",
+      "paused": "暂停采样",
+      "sensorReadings": "快照中的传感器状态",
+      "row": "{name}：{value}"
     }
   },
   "sensors": {

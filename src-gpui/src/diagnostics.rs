@@ -4,6 +4,7 @@
 //! are explicit fields; raw errors, command
 //! arguments, account names, machine names and network addresses are excluded.
 
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::{fs::File, io::Read};
 
@@ -24,7 +25,7 @@ use windows::core::{PCWSTR, w};
 pub fn log_environment(elevated: bool) {
     log::info!(
         "environment: {}, renderer {}, {} ({}), language {}",
-        windows_version(),
+        windows_version().unwrap_or("unknown"),
         "GPUI",
         if elevated {
             "administrator"
@@ -37,7 +38,12 @@ pub fn log_environment(elevated: bool) {
 }
 
 /// "Windows 11 24H2 (build 26100.4061)".
-fn windows_version() -> String {
+pub(crate) fn windows_version() -> Option<&'static str> {
+    static VERSION: OnceLock<Option<String>> = OnceLock::new();
+    VERSION.get_or_init(read_windows_version).as_deref()
+}
+
+fn read_windows_version() -> Option<String> {
     const KEY: PCWSTR = w!(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
     let text = |name: PCWSTR| {
         let mut buf = [0u16; 64];
@@ -72,7 +78,7 @@ fn windows_version() -> String {
     .is_ok();
     let build = text(w!("CurrentBuild"))
         .and_then(|v| v.parse::<u32>().ok())
-        .unwrap_or_default();
+        .filter(|&build| build > 0)?;
     let name = if build >= 22000 {
         "Windows 11"
     } else {
@@ -87,7 +93,7 @@ fn windows_version() -> String {
     } else {
         String::new()
     };
-    format!("{name}{release} (build {build}{ubr})")
+    Some(format!("{name}{release} (build {build}{ubr})"))
 }
 
 /// Whether the account has a split token (UAC) and which half Argus runs with:

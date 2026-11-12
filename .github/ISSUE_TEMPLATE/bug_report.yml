@@ -113,6 +113,7 @@ body:
     attributes:
       label: 相关环境与对照（选填）/ Relevant environment and comparisons (optional)
       description: |
+        可先使用“关于 → 复制诊断信息”并粘贴摘要，其中包含版本、运行状态、硬件与显示设置。旧版本无此入口或无法启动时，可手动填写已有信息。
         按问题填写相关内容：
 
         - 界面：分辨率、系统缩放、Argus 界面缩放、显卡驱动；涉及多屏或远程桌面时注明。
@@ -122,6 +123,7 @@ body:
 
         硬件配置可在“进程”页未选中项时，打开右侧详细信息面板，单击“本机配置”旁的“复制配置为文字”；无法使用时可手动填写相关型号。
 
+        Use About → Copy diagnostic information and paste the summary for version, runtime state, hardware and display settings. If this is unavailable in an older version or Argus cannot start, enter the information already available manually.
         Include details relevant to the problem:
 
         - Display: resolution, Windows scaling, Argus UI scale and graphics driver; mention multiple monitors or Remote Desktop if involved.

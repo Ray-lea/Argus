@@ -404,6 +404,33 @@
       "title": "記錄檔",
       "desc": "記錄執行環境、功能狀態、失敗步驟、錯誤碼及相關檔案或目錄的實際路徑。僅儲存在本機，每個檔案最多 1 MB，並保留最近 3 份舊記錄；不記錄命令列、認證資訊或檔案內容。問題回報請使用此入口開啟的診斷記錄。",
       "open": "開啟記錄檔資料夾"
+    },
+    "diagnostics": {
+      "title": "診斷資訊",
+      "desc": "複製目前版本、執行狀態、硬體與顯示設定，方便貼入問題回報。缺少的資訊顯示為未知。",
+      "copy": "複製診斷資訊",
+      "unknown": "未知",
+      "version": "Argus 完整版本",
+      "windows": "Windows 版本",
+      "build": "組建類型",
+      "installation": "安裝方式",
+      "installed": "安裝版",
+      "portable": "免安裝版",
+      "source": "開發組建",
+      "permission": "目前執行權限",
+      "administrator": "系統管理員",
+      "standard": "標準權限",
+      "sampleTime": "快照時間（UTC）",
+      "cpuCores": "CPU 核心 / 執行緒",
+      "display": "目前顯示器解析度",
+      "window": "視窗用戶區",
+      "systemScale": "系統縮放",
+      "fontSize": "字型大小",
+      "language": "介面語言",
+      "refresh": "前景更新間隔",
+      "paused": "暫停取樣",
+      "sensorReadings": "快照中的感測器狀態",
+      "row": "{name}：{value}"
     }
   },
   "sensors": {

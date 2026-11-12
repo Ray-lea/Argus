@@ -434,6 +434,33 @@
       "title": "Registro",
       "desc": "Registra el entorno de ejecución, el estado de las funciones, los pasos fallidos, los códigos de error y las rutas reales de los archivos o carpetas relacionados. Almacenado localmente, con hasta 1 MB por archivo y 3 registros anteriores. Se excluyen las líneas de comando, las credenciales y el contenido de los archivos. Utilice esta entrada para localizar registros de diagnóstico para informes de errores.",
       "open": "Abrir carpeta de registro"
+    },
+    "diagnostics": {
+      "title": "Información de diagnóstico",
+      "desc": "Copia la versión actual, el estado de ejecución, el hardware y la configuración de pantalla para pegarlos en un informe de problemas. La información que falta se indica como desconocida.",
+      "copy": "Copiar información de diagnóstico",
+      "unknown": "Desconocido",
+      "version": "Versión completa de Argus",
+      "windows": "Versión de Windows",
+      "build": "Tipo de compilación",
+      "installation": "Instalación",
+      "installed": "Versión instalada",
+      "portable": "Versión portátil",
+      "source": "Compilación de desarrollo",
+      "permission": "Permisos actuales",
+      "administrator": "Administrador",
+      "standard": "Usuario estándar",
+      "sampleTime": "Hora de la instantánea (UTC)",
+      "cpuCores": "Núcleos / hilos de CPU",
+      "display": "Resolución de la pantalla actual",
+      "window": "Área de cliente de la ventana",
+      "systemScale": "Escala de Windows",
+      "fontSize": "Tamaño de fuente",
+      "language": "Idioma de la interfaz",
+      "refresh": "Intervalo de actualización en primer plano",
+      "paused": "Muestreo en pausa",
+      "sensorReadings": "Estado de los sensores en la instantánea",
+      "row": "{name}: {value}"
     }
   },
   "sensors": {

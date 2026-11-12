@@ -5,6 +5,7 @@ mod backend;
 mod charts;
 mod collation;
 mod columns;
+mod diagnostic_summary;
 mod dialogs;
 mod flip;
 mod gpu_usage;

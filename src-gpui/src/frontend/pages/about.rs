@@ -213,6 +213,36 @@ impl Desktop {
                     ),
             );
         let mut cards = Vec::new();
+        cards.push(self.setting_text(
+            "diagnostics",
+            "DocumentIcon",
+            "settings.about.diagnostics.title",
+            "settings.about.diagnostics.desc",
+            vec![
+                self.btn(
+                    "copy-diagnostics",
+                    label("settings.about.diagnostics.copy"),
+                    Some("CopyIcon"),
+                    Tone::Plain,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    let summary = this.diagnostic_summary(window, cx);
+                    if this.options.fixture.is_some() {
+                        // Fixture input must not overwrite the user's clipboard.
+                        this.data.insert("diagnosticCopy".into(), json!(summary));
+                    } else {
+                        cx.write_to_clipboard(ClipboardItem::new_string(summary));
+                    }
+                    this.notify_toast_for(
+                        ToastKind::Success,
+                        tr!("actions.copied", what = label("settings.about.diagnostics.title")),
+                        1800,
+                    );
+                    cx.notify();
+                }))
+                .into_any_element(),
+            ],
+        ));
         let copy_group = group.clone();
         cards.push(self.setting(
             "community",
