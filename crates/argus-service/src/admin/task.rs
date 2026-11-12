@@ -148,34 +148,44 @@ impl Scheduler {
         Ok(())
     }
 
-    /// Read-only failure facts. Keep identity checks boolean; only the action
-    /// path is logged, never task XML, arguments or arbitrary COM descriptions.
     fn registration_context(&self, id: &str, sid: &str, image: &Path, xml: &str) -> String {
-        let validation = unsafe {
-            self.service
-                .NewTask(0)
-                .and_then(|task| task.SetXmlText(&BSTR::from(xml)))
-        };
-        let validation_code = validation.err().map_or(0, |e| e.code().0 as u32);
         let existing = unsafe { self.folder.GetTask(&BSTR::from(name(id, sid))) };
-        let existing_code = existing.as_ref().err().map_or(0, |e| e.code().0 as u32);
-        let state = existing
-            .ok()
-            .and_then(|task| unsafe { task.State().ok() })
-            .map(|state| state.0);
-        let schema = unsafe { self.service.HighestVersion().ok() };
-        format!(
-            "xml_validation_hresult=0x{validation_code:08x}; existing_task_hresult=0x{existing_code:08x}; existing_state={state:?}; schema={schema:?}; com_security={:?}; elevated={}; principal_matches_caller={}; session={:?}; xml_chars={}; action_chars={}; image_exists={:?}; image={}",
-            self.security_code,
-            argus_core::privilege::is_elevated(),
-            security::current_sid().is_ok_and(|caller| caller == sid),
-            session(std::process::id()).ok(),
-            xml.encode_utf16().count(),
-            image.as_os_str().encode_wide().count(),
-            image.try_exists().ok(),
-            argus_core::diagnostics::path(image)
-        )
+        registration_facts(&self.service, existing, self.security_code, sid, image, xml)
     }
+}
+/// Read-only failure facts. Keep identity checks boolean; only the action
+/// path is logged, without its account SID folder, never task XML, arguments
+/// or arbitrary COM descriptions.
+fn registration_facts(
+    service: &ITaskService,
+    existing: windows::core::Result<IRegisteredTask>,
+    security_code: Option<u32>,
+    sid: &str,
+    image: &Path,
+    xml: &str,
+) -> String {
+    let validation = unsafe {
+        service
+            .NewTask(0)
+            .and_then(|task| task.SetXmlText(&BSTR::from(xml)))
+    };
+    let validation_code = validation.err().map_or(0, |e| e.code().0 as u32);
+    let existing_code = existing.as_ref().err().map_or(0, |e| e.code().0 as u32);
+    let state = existing
+        .ok()
+        .and_then(|task| unsafe { task.State().ok() })
+        .map(|state| state.0);
+    let schema = unsafe { service.HighestVersion().ok() };
+    format!(
+        "xml_validation_hresult=0x{validation_code:08x}; existing_task_hresult=0x{existing_code:08x}; existing_state={state:?}; schema={schema:?}; com_security={security_code:?}; elevated={}; principal_matches_caller={}; session={:?}; xml_chars={}; action_chars={}; image_exists={:?}; image={}",
+        argus_core::privilege::is_elevated(),
+        security::current_sid().is_ok_and(|caller| caller == sid),
+        session(std::process::id()).ok(),
+        xml.encode_utf16().count(),
+        image.as_os_str().encode_wide().count(),
+        image.try_exists().ok(),
+        util::log_path(image)
+    )
 }
 fn name(id: &str, sid: &str) -> String {
     format!("Argus.{id}.{sid}")
@@ -368,6 +378,32 @@ mod tests {
         let image = Path::new(r"C:\Private & Unicode 目录\argus.exe");
         let xml = xml(sid, image);
         diagnostics::capture_helper_failures();
+
+        // A failed registration names the protected program, whose folder is
+        // the account SID: `Argus Runtime\<id>\<SID>\argus-admin-<guid>.exe`.
+        let runtime = Path::new(r"C:\Program Files\Argus Runtime\dev.argus.taskmanager")
+            .join(sid)
+            .join("argus-admin-12345678-1234-1234-1234-123456789abc.exe");
+        diagnostics::warn(
+            "administrator task registration context",
+            registration_facts(
+                &service,
+                Err(windows::core::Error::from_hresult(windows::core::HRESULT(
+                    0x8007_0002u32 as i32,
+                ))),
+                Some(0),
+                sid,
+                &runtime,
+                &super::xml(sid, &runtime),
+            ),
+        );
+        let registration = diagnostics::captured_failures()
+            .into_iter()
+            .find(|entry| entry.message.contains("registration context"))
+            .expect("registration context");
+        assert!(registration.message.contains(
+            r"Argus Runtime\\dev.argus.taskmanager\\<SID>\\argus-admin-12345678-1234-1234-1234-123456789abc.exe"
+        ));
 
         for field in [
             "enabled",

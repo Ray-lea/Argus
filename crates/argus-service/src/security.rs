@@ -278,7 +278,7 @@ pub fn protect_directory(path: &Path) -> Result<Handle> {
             format!(
                 "{}; path={}; check={trace:?}",
                 argus_core::diagnostics::code(error.code()),
-                argus_core::diagnostics::path(path)
+                crate::util::log_path(path)
             ),
         );
         error.code()

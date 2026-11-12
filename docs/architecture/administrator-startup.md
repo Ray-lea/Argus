@@ -10,7 +10,7 @@
 
 计划任务绑定当前账户，以 `InteractiveToken` 和 `HighestAvailable` 运行。启动器通过 `RunEx` 指定交互会话。账户有权读取和执行任务，管理员与 SYSTEM 可修改。任务动作指向受保护的 Argus 程序，助手参数仅编码窗口显隐、更新标记和任务管理器就绪握手。
 
-授权助手在解析 Shell 文件夹之前初始化 COM 安全，采用 Packet Privacy 与 Impersonate，符合[任务计划程序初始化示例](https://learn.microsoft.com/en-us/windows/win32/taskschd/time-trigger-example--c---)。注册失败时补充只读诊断：XML 校验与现有任务查询的 HRESULT、任务状态、支持的架构版本、COM 初始化结果、提升状态、会话、调用者身份是否匹配，以及直接参与操作的程序路径；保留原注册错误码，不记录任务 XML、参数或账户名。
+授权助手在解析 Shell 文件夹之前初始化 COM 安全，采用 Packet Privacy 与 Impersonate，符合[任务计划程序初始化示例](https://learn.microsoft.com/en-us/windows/win32/taskschd/time-trigger-example--c---)。注册失败时补充只读诊断：XML 校验与现有任务查询的 HRESULT、任务状态、支持的架构版本、COM 初始化结果、提升状态、会话、调用者身份是否匹配，以及直接参与操作的程序路径，路径中以账户 SID 命名的目录记为 `<SID>`；保留原注册错误码，不记录任务 XML、参数或账户名。
 
 已有任务的校验失败按启用状态、账户 SID、登录类型、运行级别、动作数量、程序路径和参数分别记录阶段；读取属性或解析账户失败时保留原始错误码，校验不匹配仍返回 `ERROR_INVALID_DATA (13)`。日志仅记录失败阶段与错误码，不记录账户名、SID、任务 XML 或动作参数。
 
