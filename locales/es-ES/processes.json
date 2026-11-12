@@ -266,6 +266,18 @@
     "belowNormal": "Inferior a la normal",
     "idle": "Baja"
   },
+  "ioPriority": {
+    "veryLow": "Muy baja",
+    "low": "Baja",
+    "normal": "Normal"
+  },
+  "memoryPriority": {
+    "veryLow": "Muy baja",
+    "low": "Baja",
+    "medium": "Media",
+    "belowNormal": "Por debajo de lo normal",
+    "normal": "Normal"
+  },
   "menu": {
     "endAll": {
       "one": "Finalizar {count} proceso",
@@ -273,6 +285,8 @@
       "other": "Finalizar los {count} procesos"
     },
     "setPriority": "Establecer prioridad",
+    "ioPriority": "Prioridad de E/S",
+    "memoryPriority": "Prioridad de memoria",
     "suspend": "Suspender proceso",
     "resume": "Reanudar proceso",
     "addRule": "Añadir regla",

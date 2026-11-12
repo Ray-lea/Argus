@@ -264,12 +264,26 @@
     "belowNormal": "Below normal",
     "idle": "Low"
   },
+  "ioPriority": {
+    "veryLow": "Very low",
+    "low": "Low",
+    "normal": "Normal"
+  },
+  "memoryPriority": {
+    "veryLow": "Very low",
+    "low": "Low",
+    "medium": "Medium",
+    "belowNormal": "Below normal",
+    "normal": "Normal"
+  },
   "menu": {
     "endAll": {
       "one": "End {count} process",
       "other": "End all {count} processes"
     },
     "setPriority": "Set priority",
+    "ioPriority": "I/O priority",
+    "memoryPriority": "Memory priority",
     "suspend": "Suspend process",
     "resume": "Resume process",
     "addRule": "Add rule",

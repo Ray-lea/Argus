@@ -1017,6 +1017,33 @@ impl Desktop {
                         .collect(),
                 ),
         );
+        // I/O and memory priority submenus, checked where every member agrees.
+        for (kind, levels, glyph) in [
+            ("ioPriority", &IO_PRIORITIES[..], "DiskIcon"),
+            ("memoryPriority", &MEMORY_PRIORITIES[..], "MemoryIcon"),
+        ] {
+            let current = shared_text(&row.members, kind);
+            items.push(
+                MenuItem::new(label(&format!("processes.menu.{kind}")), Action::CloseOverlay)
+                    .disabled(!identity_ready)
+                    .icon(glyph)
+                    .submenu(
+                        levels
+                            .iter()
+                            .map(|&level| {
+                                MenuItem::new(
+                                    label(&format!("processes.{kind}.{level}")),
+                                    Action::Dialog(
+                                        kind.into(),
+                                        json!({"members":row.members,"name":row.title,"priority":level}),
+                                    ),
+                                )
+                                .checked(current == Some(level))
+                            })
+                            .collect(),
+                    ),
+            );
+        }
         items.push(
             MenuItem::new(
                 label("common.efficiencyMode"),
@@ -1293,6 +1320,19 @@ impl Desktop {
         items
     }
 }
+/// The I/O priorities a user can set; Windows keeps high and critical.
+const IO_PRIORITIES: [&str; 3] = ["veryLow", "low", "normal"];
+const MEMORY_PRIORITIES: [&str; 5] = ["veryLow", "low", "medium", "belowNormal", "normal"];
+
+/// The text value of `key` every member shares; None when they differ or one lacks it.
+fn shared_text<'a>(members: &'a [Value], key: &str) -> Option<&'a str> {
+    let first = members.first()?[key].as_str()?;
+    members
+        .iter()
+        .all(|member| member[key].as_str() == Some(first))
+        .then_some(first)
+}
+
 /// The priority class of a base priority; other values match no class.
 fn priority_class(process: &Value) -> Option<&'static str> {
     Some(match process["basePriority"].as_i64()? {

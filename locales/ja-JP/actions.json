@@ -46,6 +46,20 @@
     },
     "done": "{name} の優先度を「{priority}」に設定しました。"
   },
+  "ioPriority": {
+    "failed": "{name} の I/O 優先度を変更できませんでした",
+    "partial": {
+      "other": "{count} 件のプロセスの I/O 優先度を変更しました。{failed} 件は変更できませんでした：{error}"
+    },
+    "done": "{name} の I/O 優先度を「{priority}」に設定しました。"
+  },
+  "memoryPriority": {
+    "failed": "{name} のメモリ優先度を変更できませんでした",
+    "partial": {
+      "other": "{count} 件のプロセスのメモリ優先度を変更しました。{failed} 件は変更できませんでした：{error}"
+    },
+    "done": "{name} のメモリ優先度を「{priority}」に設定しました。"
+  },
   "efficiency": {
     "on": {
       "failed": "{name} の効率モードをオンにできませんでした",

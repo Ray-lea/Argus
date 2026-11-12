@@ -2,7 +2,7 @@
 use crate::native_runtime::Host;
 use crate::settings::{Language, Theme, UpdateChannel, UpdateRoute};
 use argus_core::{
-    actions::Priority,
+    actions::{IoPriority, MemoryPriority, Priority},
     rules::ProcessRule,
     services::{ServiceAction, StartType},
 };
@@ -105,6 +105,22 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             argument::<u32>(&args, "pid")?,
             argument::<i64>(&args, "createTime")?,
             argument::<bool>(&args, "on")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "set_io_priority" => crate::commands::set_io_priority(
+            host.state(),
+            argument::<u32>(&args, "pid")?,
+            argument::<i64>(&args, "createTime")?,
+            argument::<IoPriority>(&args, "priority")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "set_memory_priority" => crate::commands::set_memory_priority(
+            host.state(),
+            argument::<u32>(&args, "pid")?,
+            argument::<i64>(&args, "createTime")?,
+            argument::<MemoryPriority>(&args, "priority")?,
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),

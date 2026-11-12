@@ -20,6 +20,12 @@ unsafe extern "system" {
     pub fn NtSuspendProcess(process: HANDLE) -> NTSTATUS;
     /// Resumes every thread of a process (lowers each suspend count by one).
     pub fn NtResumeProcess(process: HANDLE) -> NTSTATUS;
+    pub fn NtSetInformationProcess(
+        process: HANDLE,
+        class: windows::Wdk::System::Threading::PROCESSINFOCLASS,
+        information: *const core::ffi::c_void,
+        length: u32,
+    ) -> NTSTATUS;
 }
 
 pub const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC000_0004_u32 as i32;

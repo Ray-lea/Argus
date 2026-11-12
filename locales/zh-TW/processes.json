@@ -241,9 +241,23 @@
     "belowNormal": "低於標準",
     "idle": "低"
   },
+  "ioPriority": {
+    "veryLow": "非常低",
+    "low": "低",
+    "normal": "正常"
+  },
+  "memoryPriority": {
+    "veryLow": "非常低",
+    "low": "低",
+    "medium": "中",
+    "belowNormal": "低於正常",
+    "normal": "正常"
+  },
   "menu": {
     "endAll": "結束全部 {count} 個處理程序",
     "setPriority": "設定優先順序",
+    "ioPriority": "I/O 優先順序",
+    "memoryPriority": "記憶體優先順序",
     "suspend": "暫停處理程序",
     "resume": "繼續處理程序",
     "addRule": "新增規則",
