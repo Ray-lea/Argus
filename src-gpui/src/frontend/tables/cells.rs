@@ -237,17 +237,17 @@ impl NativeTable {
     /// The hover hint for a cell other than the first, if any.
     pub(super) fn cell_hint(&self, row: &Row, field: &Field, cx: &App) -> Option<String> {
         let raw = &row.raw;
+        // A text column (the sampled priority levels) has its value as text.
+        let present = row.metric(field.key).is_some()
+            || (field.kind == CellKind::ProcessText && row.column_text(field.key).is_some());
         if self.page == "processes"
             && row.native_pending(field.key)
-            && row.metric(field.key).is_none()
+            && !present
             && row.members.iter().any(|p| boolean(p, "countersPending"))
         {
             return Some(label("processes.countersPending"));
         }
-        if self.page == "processes"
-            && row.native_pending(field.key)
-            && row.metric(field.key).is_some()
-        {
+        if self.page == "processes" && row.native_pending(field.key) && present {
             return Some(label("processes.refreshPending"));
         }
         match (self.page.as_str(), field.key) {
@@ -291,9 +291,10 @@ impl NativeTable {
             ("services", "description") | ("startup", "command") => {
                 Some(text(raw, field.key).to_owned()).filter(|hint| !hint.is_empty())
             }
-            ("processes", _) if field.kind == CellKind::ProcessText => {
-                row.column_text(field.key).map(str::to_owned)
-            }
+            // What the cell shows, localized levels included.
+            ("processes", _) if field.kind == CellKind::ProcessText => row
+                .column_text(field.key)
+                .map(|value| columns::shown(field.key, value).into_owned()),
             ("startup", "enabled") => raw["blocked"]
                 .as_str()
                 .map(|reason| label(&format!("startup.blocked.{reason}"))),

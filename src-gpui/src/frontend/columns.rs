@@ -131,12 +131,17 @@ pub(super) fn shown<'a>(key: &str, value: &'a str) -> std::borrow::Cow<'a, str> 
 /// Where a level column's value stands, lowest first; text columns without
 /// levels sort by what they show.
 pub(super) fn rank(key: &str, value: &str) -> Option<usize> {
-    let levels: &[&str] = match key {
+    rank_levels(key)?.iter().position(|level| *level == value)
+}
+
+/// A level column's levels, lowest first. These are sampled with the process
+/// counters, unlike the other text columns.
+pub(super) fn rank_levels(key: &str) -> Option<&'static [&'static str]> {
+    Some(match key {
         "ioPriority" => &["veryLow", "low", "normal", "high", "critical"],
         "memoryPriority" => &["veryLow", "low", "medium", "belowNormal", "normal"],
         _ => return None,
-    };
-    levels.iter().position(|level| *level == value)
+    })
 }
 
 pub(super) fn raw_key(key: &str) -> &str {
