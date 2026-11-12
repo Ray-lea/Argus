@@ -156,3 +156,45 @@ fn a_suspended_process_keeps_its_query_handle() {
     assert!(row.suspended && row.threads > 0);
     assert!(tracker.tracked.get(&key).unwrap().handle.is_some());
 }
+
+#[test]
+fn native_observation_time_survives_cached_rows_and_late_replies() {
+    let mut tracker = ProcessTracker::new(MetaStore::new());
+    fresh_counters(&mut tracker, Instant::now());
+    let original = tracker.sample_started().unwrap();
+    let (ready, captured) = std::sync::mpsc::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let mut calls = 0;
+    tracker.query = Some(
+        ProcessQuery::spawn(move |buffer| {
+            let result = query_system_information(SPI_CLASS, buffer);
+            if calls < 2 {
+                ready.send(()).unwrap();
+                // A failed assertion drops the sender and releases the worker.
+                let _ = released.recv_timeout(Duration::from_secs(5));
+            }
+            calls += 1;
+            result
+        })
+        .unwrap(),
+    );
+    let cpus = std::thread::available_parallelism().unwrap().get() as u32;
+    let rows = tracker.sample_counters(cpus, None);
+    captured.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(!rows.is_empty() && rows.iter().all(|row| row.sample_reused));
+    assert_eq!(tracker.sample_started(), Some(original));
+    let requested = Instant::now();
+    release.send(()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while tracker.sample_started() == Some(original) {
+        tracker.sample_counters(cpus, None);
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // This newly accepted reply was captured before the action's refresh.
+    assert!(tracker.sample_started().unwrap() < requested);
+    captured.recv_timeout(Duration::from_secs(5)).unwrap();
+    release.send(()).unwrap();
+    fresh_counters(&mut tracker, requested);
+    assert!(tracker.sample_started().unwrap() >= requested);
+}

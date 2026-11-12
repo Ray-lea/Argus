@@ -33,6 +33,20 @@ pub enum WindowState {
 
 type Probe = Box<dyn Fn() -> WindowState + Send>;
 
+/// Publish an action's refresh once a native process query that started after
+/// it is accepted. Cached rows and late pre-action replies
+/// must not consume it, even when their enclosing snapshot is newly built.
+fn publish_refresh(pending: &mut Option<Instant>, observed: Option<Instant>) -> bool {
+    let Some(requested) = *pending else {
+        return false;
+    };
+    let ready = observed.is_some_and(|started| started >= requested);
+    if ready {
+        *pending = None;
+    }
+    ready
+}
+
 pub enum Control {
     Subscribe(Channel<Snapshot>),
     SetInterval(Duration),
@@ -181,10 +195,9 @@ impl Sampler {
                 let mut tray = BACKGROUND_INTERVAL;
                 let mut paused = false;
                 let mut schedule = Schedule::new(Instant::now(), interval);
-                // A refresh after an action came too soon after the last
-                // sample; the next sample is sent even while paused, so the
-                // view shows what the action did.
-                let mut owed = false;
+                // Both immediately sampled and deferred actions need an
+                // accepted post-action process query before their refresh ends.
+                let mut owed = None;
 
                 loop {
                     let received = rx.recv_timeout(schedule.wait(Instant::now()));
@@ -249,8 +262,10 @@ impl Sampler {
                     if subscriber.is_none() {
                         continue;
                     }
+                    if forced {
+                        owed = Some(now);
+                    }
                     if forced && !schedule.demand(now, period) {
-                        owed = true;
                         schedule.owe();
                         continue;
                     }
@@ -268,8 +283,8 @@ impl Sampler {
                         recorder.record(&snapshot);
                     }
                     // A paused view stays as it is, except right after an action.
-                    let send = forced || owed || !paused;
-                    owed = false;
+                    let send =
+                        publish_refresh(&mut owed, collector.process_sample_started()) || !paused;
                     if let Some(ch) = &subscriber
                         && send
                         && ch.send(snapshot).is_err()
@@ -290,6 +305,41 @@ impl Sampler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paused_action_refresh_survives_cached_rows_and_a_late_pre_action_reply() {
+        let before = Instant::now();
+        let requested = before + Duration::from_millis(250);
+        let mut pending = Some(requested);
+        // No result, a reused snapshot, and a newly delivered query that began
+        // before the action all leave the paused view waiting for the new state.
+        for observed in [
+            None,
+            Some(before),
+            Some(before),
+            Some(requested - Duration::from_millis(1)),
+        ] {
+            assert!(!publish_refresh(&mut pending, observed));
+            assert_eq!(pending, Some(requested));
+        }
+        assert!(publish_refresh(&mut pending, Some(requested)));
+        assert_eq!(pending, None);
+        assert!(!publish_refresh(
+            &mut pending,
+            Some(requested + Duration::from_secs(5))
+        ));
+    }
+
+    #[test]
+    fn another_action_requires_an_observation_after_the_latest_request() {
+        let first = Instant::now();
+        let second = first + Duration::from_secs(1);
+        let mut pending = Some(second);
+        assert!(!publish_refresh(&mut pending, Some(first)));
+        assert_eq!(pending, Some(second));
+        assert!(publish_refresh(&mut pending, Some(second)));
+        assert_eq!(pending, None);
+    }
 
     #[test]
     fn each_window_state_samples_at_its_own_cadence() {

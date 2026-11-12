@@ -242,6 +242,11 @@ impl ProcessTracker {
         }
     }
 
+    /// When the latest accepted native counter query started.
+    pub fn sample_started(&self) -> Option<Instant> {
+        self.counted.map(|(started, _)| started)
+    }
+
     pub fn sample(
         &mut self,
         logical_cpus: u32,
