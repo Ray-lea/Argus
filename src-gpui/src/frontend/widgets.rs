@@ -159,7 +159,8 @@ pub(in crate::frontend) struct UiState {
     /// The natural height of each release's notes in the update reader, by
     /// version: what a folding release eases from and an unfolding one to.
     pub release_heights: Rc<RefCell<HashMap<SharedString, Pixels>>>,
-    /// The feature card or change of the update reader under the pointer:
+    /// The feature card, change or release row of the update reader under
+    /// the pointer:
     /// it lights up, easing in and out (`Desktop::release_body`).
     pub release_hover: RefCell<Option<SharedString>>,
     /// The narrowest search box: placeholder, text size and width (`Desktop::search_fit`).

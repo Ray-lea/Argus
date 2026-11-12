@@ -9,18 +9,34 @@ fn tabular() -> FontFeatures {
 }
 use widgets::{ButtonExt, Handler, ToastKind, Tone};
 
-/// How long a release of the update reader takes to fold or unfold (ms).
-const FOLD_MS: u64 = 250;
-/// How long a card or change of the update reader takes to light up under
-/// the pointer, or to go out (ms).
-const HOVER_MS: u64 = 160;
+// The update reader keeps its own look but moves with the website's
+// changelog timing (`--ease`, `Disclosure.tsx` and the transitions of the
+// `.cl-*` rules in `website/src/styles/pages.css`).
+
+/// The website's curve: it leaves at once and settles gently, softer than
+/// Fluent's decelerate.
+fn ease(t: f32) -> f32 {
+    theme::bezier(0.2, 0.8, 0.2, 1., t)
+}
+/// A release folds or unfolds in 1.6 ms for each pixel of its notes, within
+/// these bounds (ms); notes not yet measured take `FOLD_UNMEASURED_MS`.
+const FOLD_MIN_MS: f32 = 240.;
+const FOLD_MAX_MS: f32 = 420.;
+const FOLD_MS_PER_PX: f32 = 1.6;
+const FOLD_UNMEASURED_MS: u64 = 360;
+/// How long the pointer's light takes to come and to go (ms), as long as
+/// the website's card and list transitions: a feature card takes its kind's
+/// colour, a change its highlight, a release row the hover fill.
+const CARD_HOVER_MS: u64 = 320;
+const ITEM_HOVER_MS: u64 = 220;
+const ROW_HOVER_MS: u64 = 200;
 /// The update dialog's parts come in one after another (`Desktop::rise`):
 /// each `RISE_STEP` seconds after the one before (the first `RISE_STEPS`
 /// only), over `RISE_LENGTH` seconds, from `RISE_DISTANCE` px below.
-const RISE_STEP: f32 = 0.05;
+const RISE_STEP: f32 = 0.06;
 const RISE_STEPS: usize = 8;
-const RISE_LENGTH: f32 = 0.36;
-const RISE_DISTANCE: f32 = 10.;
+const RISE_LENGTH: f32 = 0.56;
+const RISE_DISTANCE: f32 = 16.;
 
 pub(super) fn configuration() -> &'static Value {
     static CONFIG: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
@@ -1543,7 +1559,6 @@ impl Desktop {
                     window.refresh();
                     cx.notify();
                 }));
-            let fold_length = if cx.reduce_motion() { 0 } else { FOLD_MS };
             let mut list = div()
                 .flex()
                 .flex_col()
@@ -1554,19 +1569,25 @@ impl Desktop {
             for (index, (release, note)) in entries.iter().zip(&notes).enumerate() {
                 let key = format!("|{}|", release.version);
                 let open = (open_all || index == 0) != folded.contains(&key);
-                // A release's first height is taken at once; a fold eases.
+                let heights = self.ui.release_heights.clone();
+                let measured = SharedString::from(release.version.clone());
+                let natural = heights.borrow().get(&measured).copied();
+                // A release's first height is taken at once; a fold eases,
+                // longer for longer notes, as on the website.
+                let fold_ms = natural.map_or(FOLD_UNMEASURED_MS, |height| {
+                    (f32::from(height) * FOLD_MS_PER_PX).clamp(FOLD_MIN_MS, FOLD_MAX_MS) as u64
+                });
                 let shown = gpui_kit::base::motion::transition(
                     format!("release-fold-{dialog}-{}", release.version),
                     if open { 1f32 } else { 0. },
-                    theme::fluent(fold_length, theme::ease_move),
+                    theme::fluent(fold_ms, ease),
                     window,
                     cx,
                 );
                 let control = SharedString::from(format!("release-{}", release.version));
+                let row = SharedString::from(format!("release-row-{}", release.version));
+                let row_lit = self.release_lit(&row, ROW_HOVER_MS, window, cx);
                 let body = (open || shown > 0.).then(|| {
-                    let heights = self.ui.release_heights.clone();
-                    let measured = SharedString::from(release.version.clone());
-                    let natural = heights.borrow().get(&measured).copied();
                     let body = div()
                         .relative()
                         .flex_shrink_0()
@@ -1596,17 +1617,20 @@ impl Desktop {
                         // Laid out as it is: an open release is never measured first.
                         return body.into_any_element();
                     }
-                    // Clipped to its share of the height; fades a little ahead
-                    // of it and drops into place.
+                    // Clipped to its share of the height. Opening, it fades in
+                    // with the height from 6 px above; folding, it fades out
+                    // in place.
+                    let body = if open {
+                        body.top(px(-6. * (1. - shown)))
+                    } else {
+                        body
+                    };
                     div()
                         .flex()
                         .flex_col()
                         .overflow_hidden()
                         .h(natural.unwrap_or(px(0.)) * shown)
-                        .child(
-                            body.top(px(-8. * (1. - shown)))
-                                .opacity(theme::ease_out(shown)),
-                        )
+                        .child(body.opacity(shown))
                         .into_any_element()
                 });
                 list = list.child(
@@ -1623,8 +1647,17 @@ impl Desktop {
                                 .gap(px(10.))
                                 .justify_start()
                                 .rounded(px(7.))
-                                .hover(move |s| s.bg(p.hover))
+                                // The hover light eases in and out
+                                // (`release_lit`); a press shows at once.
+                                .bg(p.hover.opacity(row_lit))
                                 .active(move |s| s.bg(p.press))
+                                .child(
+                                    div()
+                                        .id(ElementId::Name(format!("{row}-probe").into()))
+                                        .absolute()
+                                        .inset_0()
+                                        .on_hover(self.release_hovered(row.clone(), cx)),
+                                )
                                 .child(self.moving_icon(
                                     &control,
                                     if open { "ChevronDown" } else { "ChevronRight" },
@@ -1712,24 +1745,32 @@ impl Desktop {
     /// While a release folds or unfolds, its dialog takes the height it
     /// passes through at once rather than easing after it.
     fn follow_release_folds(&mut self) {
-        self.ui.dialog_follow = Some(Instant::now() + Duration::from_millis(FOLD_MS + 50));
+        self.ui.dialog_follow =
+            Some(Instant::now() + Duration::from_millis(FOLD_MAX_MS as u64 + 50));
     }
 
-    /// How lit (0 to 1) the reader's card or change `key` is drawn: easing
-    /// toward lit while the pointer is on it and back once it leaves. Under
-    /// reduced motion it is either.
-    fn release_lit(&self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> f32 {
+    /// How lit (0 to 1) the reader's card, change or release row `key` is
+    /// drawn: easing over `ms` toward lit while the pointer is on it, and as
+    /// gently back once it leaves, on the website's curve. Under reduced
+    /// motion it is either.
+    fn release_lit(
+        &self,
+        key: &SharedString,
+        ms: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> f32 {
         let hovered = self.ui.release_hover.borrow().as_ref() == Some(key);
         gpui_kit::base::motion::transition(
             (ElementId::Name(key.clone()), "lit"),
             if hovered { 1f32 } else { 0. },
-            theme::fluent(HOVER_MS, theme::ease_out),
+            theme::fluent(ms, ease),
             window,
             cx,
         )
     }
 
-    /// Notes the pointer coming onto or leaving the reader's card or change
+    /// Notes the pointer coming onto or leaving the reader's card, change or row
     /// `key`, and draws again at once: the light starts on that frame.
     fn release_hovered(
         &self,
@@ -1780,10 +1821,11 @@ impl Desktop {
                     if t >= 1. {
                         return element;
                     }
+                    let t = ease(t);
                     element
                         .relative()
-                        .top(px(RISE_DISTANCE * (1. - theme::ease_enter(t))))
-                        .opacity(theme::ease_out(t))
+                        .top(px(RISE_DISTANCE * (1. - t)))
+                        .opacity(t)
                 },
             )
             .into_any_element()
@@ -2194,7 +2236,7 @@ impl Desktop {
     /// Under the pointer a feature card takes its kind's colour, the line on
     /// its top edge growing, and a change is highlighted, its bullet haloed
     /// and its text brought to full contrast, to keep one's place while
-    /// reading; both ease in and out (`release_lit`).
+    /// reading; both ease in and out on the website's timing (`release_lit`).
     pub(in crate::frontend) fn release_body(
         &self,
         id: &str,
@@ -2259,9 +2301,9 @@ impl Desktop {
             let mut cells = Vec::with_capacity(group.items.len());
             for (i, item) in group.items.iter().enumerate() {
                 let key = SharedString::from(format!("{id}-{g}-{i}"));
-                let lit = self.release_lit(&key, window, cx);
                 let hover = self.release_hovered(key.clone(), cx);
                 cells.push(if cards {
+                    let lit = self.release_lit(&key, CARD_HOVER_MS, window, cx);
                     div()
                         .id(ElementId::Name(format!("{key}-card").into()))
                         .on_hover(hover)
@@ -2310,6 +2352,7 @@ impl Desktop {
                         )
                         .into_any_element()
                 } else {
+                    let lit = self.release_lit(&key, ITEM_HOVER_MS, window, cx);
                     let text = match &item.label {
                         Some(label) => format!("**{label}** {}", item.body),
                         None => item.body.clone(),
