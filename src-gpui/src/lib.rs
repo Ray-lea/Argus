@@ -19,6 +19,7 @@ mod native_runtime;
 mod packaging;
 mod platform;
 mod regional;
+mod reports;
 mod sampler;
 mod settings;
 mod shell;
@@ -250,6 +251,7 @@ pub fn run() -> anyhow::Result<()> {
     }
     leftovers::remove_webview_data(local_data);
     host.manage(HistoryDir(history.clone()));
+    host.manage(reports::PreviewStore::default());
     let saved = host.state::<SettingsStore>().get();
     let state = host.state::<AppState>();
     if !options.test {

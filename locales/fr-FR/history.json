@@ -147,5 +147,59 @@
     "observationEmpty": "Aucun point d’observation conservé dans cet intervalle.",
     "observationIncomplete": "Fichiers illisibles {unreadable}, endommagés {damaged}, points expirés {expired} ; points omis {omittedPoints}, instances omises {omittedRuns}.",
     "observationNote": "Les moyennes utilisent les points valides enregistrés, sans pondération temporelle. Les lacunes et fins ne sont pas des zéros. L’âge et la capacité limitent la conservation ; les bornes ne prouvent pas une couverture continue. Les marqueurs décrivent des événements enregistrés, pas un processus actuellement actif. La mémoire des instances reste séparée et ne s’ajoute pas à celle du système."
+  },
+  "report": {
+    "title": "Rapport local de l’intervalle",
+    "alias": "Instance {count}",
+    "preview": "Aperçu {format}",
+    "save": "Enregistrer l’aperçu…",
+    "saved": "Rapport enregistré localement ; aucun envoi.",
+    "cancelled": "Enregistrement annulé.",
+    "frozen": "Cet aperçu est un instantané fixe. Le fichier contiendra exactement le texte ci-dessous. Un nouvel aperçu invalide celui-ci.",
+    "privacy": "Les rapports utilisent des alias et omettent noms de processus, PID, heures de création, chemins, comptes, adresses de machines et lignes de commande. Le traitement reste local ; enregistrer n’envoie pas le fichier.",
+    "cpuNote": "Le pic CPU système est un pic de mesure enregistré ; son heure indique le début de l’image. Les pics des processus sont des maxima des moyennes par image. Les anciennes lignes sans identité ont un alias par image. Les moyennes ne sont pas du temps CPU ; une corrélation ne prouve pas la cause.",
+    "reasons": "Bits d’absence : 1 source indisponible, 2 accès refusé, 4 périmé, 8 attente de référence. Zéro ne prouve pas une couverture complète.",
+    "timing": "Toutes les heures sont en UTC. La fin de l’intervalle est exclue ; les bornes des instances sont des points enregistrés. Pas nominal historique {step} ms ; observation {sample} ms. Jusqu’à 6 décimales.",
+    "extent": "Images historiques {recorded}/{expected}, absentes {missing}, lacunes {gaps} ; instances {identities}, entrées omises {omitted}, fichiers illisibles {unreadable}, incomplets {incomplete}, images invalides {invalid}.",
+    "observationExtent": "Bornes d’observation {from} à {to} ; points conservés {saved}, sélectionnés {selected} ; instances {shown}/{total} ; fichiers illisibles {unreadable}, endommagés {damaged}, points expirés {expired}, omis {omittedPoints}, instances omises {omittedRuns}.",
+    "sourceCoverage": "Images valides {valid}/{total}, source partielle {partial}, anciennes inconnues {legacy}, invalides {invalid} ; mesures valides {samples}/{expected}, bits d’absence {reasons}.",
+    "cpuCoverage": "Images valides {valid}/{total} ; invalides {invalid}.",
+    "listed": "Présent dans {count}/{total} images ; pic seul, aucune moyenne enregistrée.",
+    "observationCoverage": "Points valides {valid}, sans mesure {missing} ; marqueurs de lacune {gaps}, positions nominales non enregistrées {slots}, marqueurs de fin {terminal}.",
+    "error": {
+      "invalid": "Impossible de générer un rapport pour cet intervalle.",
+      "storage": "Impossible de préparer ou d’enregistrer le rapport local.",
+      "stale": "Cet aperçu a expiré. Générez-en un nouveau avant l’enregistrement.",
+      "tooLarge": "Le rapport dépasse la limite de taille. Choisissez un intervalle plus court."
+    },
+    "columns": {
+      "scope": "Source",
+      "resource": "Ressource",
+      "instance": "Alias d’instance",
+      "from": "Premier point / début UTC",
+      "to": "Dernier point / fin UTC",
+      "mean": "Moyenne",
+      "peak": "Pic",
+      "peakAt": "Heure du pic enregistré UTC",
+      "unit": "Unité",
+      "coverage": "Couverture"
+    },
+    "scope": {
+      "system": "Système",
+      "ranked": "Classement historique",
+      "observation": "Observation ciblée",
+      "gap": "Intervalle sans images",
+      "note": "Notes"
+    },
+    "resource": {
+      "cpu": "CPU",
+      "memory": "Mémoire physique",
+      "disk": "Trafic disque",
+      "gpu": "GPU",
+      "network": "Trafic réseau",
+      "io": "E/S du processus",
+      "privateWs": "Jeu de travail privé",
+      "privateCommit": "Mémoire privée engagée"
+    }
   }
 }

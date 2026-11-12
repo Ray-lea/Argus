@@ -147,5 +147,59 @@
     "observationEmpty": "No hay puntos de observación conservados en este intervalo.",
     "observationIncomplete": "Archivos ilegibles {unreadable}, dañados {damaged}, puntos caducados {expired}; puntos omitidos {omittedPoints}, instancias omitidas {omittedRuns}.",
     "observationNote": "Las medias usan puntos válidos guardados, sin ponderación temporal. Las ausencias y marcas finales no son ceros. La antigüedad y capacidad limitan la conservación; los límites no prueban cobertura continua. Las marcas describen eventos registrados, no si el proceso sigue vivo. La memoria de cada instancia se mantiene separada y no se suma a la del sistema."
+  },
+  "report": {
+    "title": "Informe local del intervalo",
+    "alias": "Instancia {count}",
+    "preview": "Vista previa de {format}",
+    "save": "Guardar vista previa…",
+    "saved": "Informe guardado localmente; no se ha enviado.",
+    "cancelled": "Guardado cancelado.",
+    "frozen": "Esta vista previa es una captura fija. El archivo contendrá exactamente el texto siguiente. Una vista previa nueva invalida esta.",
+    "privacy": "Los informes usan alias y omiten nombres de procesos, PID, horas de creación, rutas, cuentas, direcciones de equipos y líneas de comandos. El procesamiento es local; guardar no envía el archivo.",
+    "cpuNote": "El pico de CPU del sistema es un pico de muestra guardado; la hora indica el inicio de su cuadro. Los picos de procesos son máximos de medias por cuadro. Las filas antiguas sin identidad reciben alias separados por cuadro. Las medias no son tiempo de CPU; la correlación no demuestra la causa.",
+    "reasons": "Bits de ausencia: 1 origen no disponible, 2 acceso denegado, 4 obsoleto, 8 esperando base. Cero no demuestra cobertura completa.",
+    "timing": "Todas las horas están en UTC. Se excluye el final del intervalo; los límites de instancias son puntos guardados. Paso nominal histórico {step} ms; observación {sample} ms. Hasta 6 decimales.",
+    "extent": "Cuadros históricos {recorded}/{expected}, ausentes {missing}, intervalos vacíos {gaps}; instancias {identities}, entradas omitidas {omitted}, archivos ilegibles {unreadable}, incompletos {incomplete}, cuadros inválidos {invalid}.",
+    "observationExtent": "Límites de observación {from} a {to}; puntos conservados {saved}, seleccionados {selected}; instancias {shown}/{total}; archivos ilegibles {unreadable}, dañados {damaged}, puntos caducados {expired}, omitidos {omittedPoints}, instancias omitidas {omittedRuns}.",
+    "sourceCoverage": "Cuadros válidos {valid}/{total}, origen parcial {partial}, antiguos desconocidos {legacy}, inválidos {invalid}; muestras válidas {samples}/{expected}, bits de ausencia {reasons}.",
+    "cpuCoverage": "Cuadros válidos {valid}/{total}; inválidos {invalid}.",
+    "listed": "Presente en {count}/{total} cuadros; solo pico, sin media guardada.",
+    "observationCoverage": "Puntos válidos {valid}, sin lectura {missing}; marcas de ausencia {gaps}, posiciones nominales sin registrar {slots}, marcas finales {terminal}.",
+    "error": {
+      "invalid": "No se pudo generar el informe de este intervalo.",
+      "storage": "No se pudo preparar o guardar el informe local.",
+      "stale": "Esta vista previa caducó. Genere una nueva antes de guardar.",
+      "tooLarge": "El informe supera el límite de tamaño. Elija un intervalo más corto."
+    },
+    "columns": {
+      "scope": "Origen",
+      "resource": "Recurso",
+      "instance": "Alias de instancia",
+      "from": "Primer punto / inicio UTC",
+      "to": "Último punto / fin UTC",
+      "mean": "Media",
+      "peak": "Pico",
+      "peakAt": "Hora del registro del pico UTC",
+      "unit": "Unidad",
+      "coverage": "Cobertura"
+    },
+    "scope": {
+      "system": "Sistema",
+      "ranked": "Clasificación histórica",
+      "observation": "Observación específica",
+      "gap": "Intervalo sin cuadros",
+      "note": "Notas"
+    },
+    "resource": {
+      "cpu": "CPU",
+      "memory": "Memoria física",
+      "disk": "Tráfico de disco",
+      "gpu": "GPU",
+      "network": "Tráfico de red",
+      "io": "E/S del proceso",
+      "privateWs": "Conjunto de trabajo privado",
+      "privateCommit": "Memoria comprometida privada"
+    }
   }
 }

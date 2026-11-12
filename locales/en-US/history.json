@@ -145,5 +145,59 @@
     "observationEmpty": "No retained observation points in this interval.",
     "observationIncomplete": "Unreadable files {unreadable}, damaged files {damaged}, expired points {expired}; omitted points {omittedPoints}, omitted instances {omittedRuns}.",
     "observationNote": "Means use saved valid points, not time-weighted memory. Gap and terminal markers are not zeros. Retention is limited by age and capacity; the first and last points do not establish continuous coverage. Markers describe recorded events, not whether a process is alive now. Instance memory is separate from system memory and is not added to it."
+  },
+  "report": {
+    "title": "Local interval report",
+    "alias": "Instance {count}",
+    "preview": "Preview {format}",
+    "save": "Save preview…",
+    "saved": "Report saved locally; nothing sent.",
+    "cancelled": "Save cancelled.",
+    "frozen": "This preview is a fixed snapshot. The saved file will contain exactly the text below. Generating another preview invalidates this one.",
+    "privacy": "Reports use instance aliases and omit process names, PIDs, creation times, image paths, accounts, host addresses and command lines. Processing stays on this computer; saving does not send the file.",
+    "cpuNote": "The system CPU peak is a saved sample peak; its time is the start of the containing frame. Process CPU peaks are peaks of frame means. Legacy rows without instance identity receive separate aliases per frame. Means are not CPU time, and correlation does not establish a cause.",
+    "reasons": "Missing reason bits: 1 source unavailable, 2 access denied, 4 stale, 8 awaiting baseline. Zero does not establish complete coverage.",
+    "timing": "All times are UTC. The interval end is excluded; instance bounds are actual saved points. History nominal step {step} ms; observation nominal step {sample} ms. Values have up to 6 decimal places.",
+    "extent": "History frames {recorded}/{expected}, missing {missing}, gap spans {gaps}; tracked instances {identities}, omitted entries {omitted}, unreadable files {unreadable}, incomplete files {incomplete}, invalid frames {invalid}.",
+    "observationExtent": "Observation retention bounds {from} to {to}; retained points {saved}, selected {selected}; instances shown {shown}/{total}; unreadable files {unreadable}, damaged {damaged}, expired points {expired}, omitted points {omittedPoints}, omitted instances {omittedRuns}.",
+    "sourceCoverage": "Valid frames {valid}/{total}, partial-source frames {partial}, unknown legacy frames {legacy}, invalid frames {invalid}; valid samples {samples}/{expected}, missing reason bits {reasons}.",
+    "cpuCoverage": "Valid frames {valid}/{total}; invalid frames {invalid}.",
+    "listed": "Listed in {count}/{total} saved frames; peak only, no saved mean.",
+    "observationCoverage": "Valid points {valid}, points without readings {missing}; gap markers {gaps}, unrecorded nominal slots {slots}, terminal markers {terminal}.",
+    "error": {
+      "invalid": "A report could not be generated for this interval.",
+      "storage": "The local report could not be prepared or saved.",
+      "stale": "This preview expired. Generate a new preview before saving.",
+      "tooLarge": "The report exceeds the size limit. Choose a shorter interval."
+    },
+    "columns": {
+      "scope": "Source",
+      "resource": "Resource",
+      "instance": "Instance alias",
+      "from": "First point / start UTC",
+      "to": "Last point / end UTC",
+      "mean": "Mean",
+      "peak": "Peak",
+      "peakAt": "Peak record time UTC",
+      "unit": "Unit",
+      "coverage": "Coverage"
+    },
+    "scope": {
+      "system": "System",
+      "ranked": "Ranked history",
+      "observation": "Targeted observation",
+      "gap": "Missing frame span",
+      "note": "Notes"
+    },
+    "resource": {
+      "cpu": "CPU",
+      "memory": "Physical memory",
+      "disk": "Disk traffic",
+      "gpu": "GPU",
+      "network": "Network traffic",
+      "io": "Process I/O",
+      "privateWs": "Private working set",
+      "privateCommit": "Private commit"
+    }
   }
 }

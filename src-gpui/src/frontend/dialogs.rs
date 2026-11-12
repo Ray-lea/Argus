@@ -490,6 +490,11 @@ impl Desktop {
                 None,
             ),
             "shortcuts" => (label("settings.shortcuts.title"), String::new(), None),
+            "historyReport" => (
+                label("history.report.title"),
+                text(&args, "body").to_owned(),
+                None,
+            ),
             "onboarding" => (
                 label("settings.about.onboarding.title"),
                 String::new(),
@@ -1192,6 +1197,10 @@ impl Desktop {
                 let dialog = self.surface(dialog, id, 720., 16., window, cx);
                 self.document_dialog(dialog, &modal, cx)
             }
+            "historyReport" => {
+                let dialog = self.surface(dialog, id, 1000., 16., window, cx);
+                self.report_dialog(dialog, &modal, cx)
+            }
             "task" => {
                 let dialog = self
                     .surface(dialog, id, 540., 20., window, cx)
@@ -1495,6 +1504,109 @@ impl Desktop {
                         ),
                 ),
             )
+    }
+
+    fn report_dialog(&self, dialog: Dialog, modal: &Modal, cx: &mut Context<Self>) -> Dialog {
+        let p = self.palette;
+        let id = modal.id;
+        let scroll = scrollbar::fresh_handle("report-preview", id);
+        let saving = self
+            .pending
+            .values()
+            .any(|pending| pending.command == "history_report_save");
+        let mut body = self.dialog_body(id).child(
+            div()
+                .p(px(24.))
+                .flex()
+                .flex_col()
+                .gap(px(10.))
+                .child(self.dialog_title(modal.title.clone()))
+                .child(
+                    div()
+                        .text_size(theme::font(12.))
+                        .text_color(p.muted)
+                        .child(label("history.report.privacy")),
+                )
+                .child(
+                    div()
+                        .text_size(theme::font(12.))
+                        .text_color(p.muted)
+                        .child(label("history.report.frozen")),
+                )
+                .child(
+                    div()
+                        .id(("report-preview", id))
+                        .track_scroll(&scroll)
+                        .max_h(px(480.))
+                        .overflow_y_scroll()
+                        .p(px(12.))
+                        .pr(px(12. + scrollbar::SIZE))
+                        .border_1()
+                        .border_color(p.stroke)
+                        .rounded(px(6.))
+                        .bg(p.layer)
+                        .font_family(theme::MONO_FONT)
+                        .text_size(theme::font(12.))
+                        .line_height(relative(1.5))
+                        .child(modal.body.clone())
+                        .child(self.watch_anchor("report-preview"))
+                        .child(
+                            scrollbar::scrollbar("report-preview-scrollbar", &scroll, p.dark)
+                                .border(1.),
+                        ),
+                )
+                .child(
+                    div()
+                        .text_size(theme::font(11.))
+                        .text_color(p.muted)
+                        .child(format!("SHA-256: {}", text(&modal.args, "sha256"))),
+                ),
+        );
+        if let Some(error) = &modal.error {
+            body = body.child(div().px(px(24.)).pb(px(12.)).child(error.clone()));
+        }
+        dialog.child(body).footer(
+            self.measure(id, 1).child(
+                self.dialog_footer()
+                    .child(
+                        self.btn(
+                            format!("modal-{id}-save-report"),
+                            label("history.report.save"),
+                            None,
+                            Tone::Accent,
+                        )
+                        .disabled(saving)
+                        .track_focus(&self.primary_focus(id, cx))
+                        .child(self.watch_anchor("report-save"))
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
+                                let Some(modal) = this
+                                    .find_modal(id)
+                                    .filter(|modal| modal.kind == "historyReport")
+                                else {
+                                    return;
+                                };
+                                if this
+                                    .pending
+                                    .values()
+                                    .any(|pending| pending.command == "history_report_save")
+                                {
+                                    return;
+                                }
+                                let args =
+                                    json!({"id":modal.args["id"],"sha256":modal.args["sha256"]});
+                                this.data.insert("reportSave".into(), args.clone());
+                                if let Some(modal) = &mut this.modal {
+                                    modal.error = None;
+                                }
+                                this.request("history_report_save", args, None, window, cx);
+                                cx.notify();
+                            },
+                        )),
+                    )
+                    .child(self.close_button(id, cx)),
+            ),
+        )
     }
 
     /// A long text in a bordered monospaced box.

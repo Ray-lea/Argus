@@ -145,5 +145,59 @@
     "observationEmpty": "Keine gespeicherten Beobachtungspunkte in diesem Intervall.",
     "observationIncomplete": "Nicht lesbare Dateien {unreadable}, beschädigte Dateien {damaged}, abgelaufene Punkte {expired}; ausgelassene Punkte {omittedPoints}, Instanzen {omittedRuns}.",
     "observationNote": "Mittelwerte verwenden gespeicherte gültige Punkte, keine zeitliche Gewichtung. Lücken und Endmarkierungen sind keine Nullen. Alter und Kapazität begrenzen die Aufbewahrung; die Grenzen belegen keine lückenlose Erfassung. Markierungen beschreiben aufgezeichnete Ereignisse, keinen aktuell laufenden Prozess. Instanzspeicher bleibt vom Systemspeicher getrennt und wird nicht dazu addiert."
+  },
+  "report": {
+    "title": "Lokaler Intervallbericht",
+    "alias": "Instanz {count}",
+    "preview": "{format} ansehen",
+    "save": "Vorschau speichern…",
+    "saved": "Bericht lokal gespeichert; nichts gesendet.",
+    "cancelled": "Speichern abgebrochen.",
+    "frozen": "Diese Vorschau ist ein fester Stand. Die Datei enthält exakt den Text unten. Eine neue Vorschau macht diese ungültig.",
+    "privacy": "Berichte verwenden Instanzaliase und enthalten keine Prozessnamen, PIDs, Erstellungszeiten, Abbildpfade, Konten, Hostadressen oder Befehlszeilen. Alles bleibt auf diesem Computer; Speichern sendet keine Datei.",
+    "cpuNote": "Die System-CPU-Spitze ist eine gespeicherte Messspitze; die Zeit bezeichnet den Framebeginn. Prozessspitzen sind Spitzen der Framemittelwerte. Altdaten ohne Instanzidentität erhalten pro Frame eigene Aliase. Mittelwerte sind keine CPU-Zeit; Korrelation belegt keine Ursache.",
+    "reasons": "Bits fehlender Quellen: 1 nicht verfügbar, 2 Zugriff verweigert, 4 veraltet, 8 Basiswert ausstehend. Null belegt keine vollständige Abdeckung.",
+    "timing": "Alle Zeiten in UTC. Das Intervallende ist ausgeschlossen; Instanzgrenzen sind gespeicherte Punkte. Nominaler Historienabstand {step} ms; Beobachtungsabstand {sample} ms. Bis zu 6 Nachkommastellen.",
+    "extent": "Historienframes {recorded}/{expected}, fehlend {missing}, Lücken {gaps}; Instanzen {identities}, ausgelassene Einträge {omitted}, unlesbare Dateien {unreadable}, unvollständige Dateien {incomplete}, ungültige Frames {invalid}.",
+    "observationExtent": "Beobachtungsgrenzen {from} bis {to}; gespeicherte Punkte {saved}, ausgewählt {selected}; Instanzen {shown}/{total}; unlesbare Dateien {unreadable}, beschädigt {damaged}, abgelaufene Punkte {expired}, ausgelassene Punkte {omittedPoints}, Instanzen {omittedRuns}.",
+    "sourceCoverage": "Gültige Frames {valid}/{total}, teilweise Quellen {partial}, unbekannte Altframes {legacy}, ungültig {invalid}; gültige Messungen {samples}/{expected}, Fehlerbits {reasons}.",
+    "cpuCoverage": "Gültige Frames {valid}/{total}; ungültig {invalid}.",
+    "listed": "In {count}/{total} gespeicherten Frames gelistet; nur Spitze, kein gespeicherter Mittelwert.",
+    "observationCoverage": "Gültige Punkte {valid}, ohne Messung {missing}; Lückenmarkierungen {gaps}, nicht aufgezeichnete Messplätze {slots}, Endmarkierungen {terminal}.",
+    "error": {
+      "invalid": "Für dieses Intervall konnte kein Bericht erstellt werden.",
+      "storage": "Der lokale Bericht konnte nicht vorbereitet oder gespeichert werden.",
+      "stale": "Diese Vorschau ist abgelaufen. Vor dem Speichern neu erstellen.",
+      "tooLarge": "Der Bericht überschreitet die Größenbegrenzung. Ein kürzeres Intervall wählen."
+    },
+    "columns": {
+      "scope": "Quelle",
+      "resource": "Ressource",
+      "instance": "Instanzalias",
+      "from": "Erster Punkt / Beginn UTC",
+      "to": "Letzter Punkt / Ende UTC",
+      "mean": "Mittelwert",
+      "peak": "Spitze",
+      "peakAt": "Zeit des Spitzenwerts UTC",
+      "unit": "Einheit",
+      "coverage": "Abdeckung"
+    },
+    "scope": {
+      "system": "System",
+      "ranked": "Historische Rangfolge",
+      "observation": "Gezielte Beobachtung",
+      "gap": "Fehlende Frames",
+      "note": "Hinweise"
+    },
+    "resource": {
+      "cpu": "CPU",
+      "memory": "Physischer Speicher",
+      "disk": "Datenträgerverkehr",
+      "gpu": "GPU",
+      "network": "Netzwerkverkehr",
+      "io": "Prozess-I/O",
+      "privateWs": "Privater Arbeitssatz",
+      "privateCommit": "Privater zugesicherter Speicher"
+    }
   }
 }

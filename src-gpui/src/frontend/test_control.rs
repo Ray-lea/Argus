@@ -582,6 +582,7 @@ impl Desktop {
                     "atEnd":about_max > 0.5 && (about_offset-about_max).abs() < 0.5},
                     "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()});
             layout["interval"] = interval_inspection;
+            // Keep independent extensions outside the upstream inspection macro's recursion budget.
             layout["historyDiskCoverage"] = json!(
                 self.data
                     .get("historyMoment")
@@ -616,6 +617,9 @@ impl Desktop {
             }));
             layout["watch"] = json!(self.data.get("processWatch").map(|watch|json!({"pid":watch["pid"],"state":watch["state"],"mode":watch["mode"],"runs":values(&watch["runs"]).len(),"liveRuns":watch["liveRuns"],"points":values(&watch["points"]).len(),"missing":values(&watch["points"]).iter().filter(|point|point["memory"].is_null()).count()})));
             layout["watchAction"] = json!(self.data.get("watchLastAction"));
+            layout["report"] = json!({"request":self.data.get("reportRequest"),"save":self.data.get("reportSave"),
+                "preview":self.modal.as_ref().filter(|modal|modal.kind=="historyReport").map(|modal|json!({"id":modal.args["id"],"sha256":modal.args["sha256"],"format":modal.args["format"],"bytes":modal.body.len(),
+                    "scrolled":f32::from(scrollbar::fresh_handle("report-preview",modal.id).offset().y)<0.}))});
             println!("{layout}");
         }
         if self.options.fixture.is_some()

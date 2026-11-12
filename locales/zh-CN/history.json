@@ -139,5 +139,59 @@
     "observationEmpty": "所选区间内没有保留的观察点。",
     "observationIncomplete": "不可读文件 {unreadable}，损坏文件 {damaged}，过期点 {expired}；省略点 {omittedPoints}，省略实例 {omittedRuns}。",
     "observationNote": "均值仅使用已存有效点，不是按持续时间加权的内存均值。缺测与结束标记不作为零。保留范围受时间和容量限制；首末点之间不保证完整覆盖。标记只描述已存事件，不表示进程当前仍在运行。各实例内存单独统计，不与系统内存相加。"
+  },
+  "report": {
+    "title": "本地区间报告",
+    "alias": "实例 {count}",
+    "preview": "预览 {format}",
+    "save": "保存预览内容…",
+    "saved": "报告已保存，未发送。",
+    "cancelled": "已取消保存。",
+    "frozen": "预览为固定快照。保存的文件与下方文本逐字节一致；重新生成预览后，旧预览不能保存。",
+    "privacy": "报告使用实例代号，不包含进程名称、PID、创建时间、映像路径、账户、主机地址或命令行。全部在本机处理，保存不会发送文件。",
+    "cpuNote": "系统 CPU 峰值是已存采样峰值，所示时间是对应帧的起点；进程 CPU 峰值是帧均值的峰值。旧格式缺少实例身份时每帧使用独立代号。均值不是 CPU 时间，相关性不证明原因。",
+    "reasons": "缺失原因位：1 来源不可用，2 拒绝访问，4 过期，8 等待基线；0 不表示完整覆盖。",
+    "timing": "所有时间为 UTC。区间右边界不包含在内；实例首末时间为实际已存点。历史标称步长 {step} ms，观察标称步长 {sample} ms。数值最多保留 6 位小数。",
+    "extent": "历史帧 {recorded}/{expected}，缺失 {missing}，缺失区间 {gaps}；跟踪实例 {identities}，省略条目 {omitted}，不可读文件 {unreadable}，不完整文件 {incomplete}，无效帧 {invalid}。",
+    "observationExtent": "观察保留边界 {from} 至 {to}；保留点 {saved}，区间内 {selected}；展示实例 {shown}/{total}；不可读文件 {unreadable}，损坏 {damaged}，过期点 {expired}，省略点 {omittedPoints}，省略实例 {omittedRuns}。",
+    "sourceCoverage": "有效帧 {valid}/{total}，部分来源帧 {partial}，未知旧格式帧 {legacy}，无效帧 {invalid}；有效采样 {samples}/{expected}，缺失原因位 {reasons}。",
+    "cpuCoverage": "有效帧 {valid}/{total}；无效帧 {invalid}。",
+    "listed": "在 {count}/{total} 个已存帧中上榜；仅峰值，未记录均值。",
+    "observationCoverage": "有效点 {valid}，无读数点 {missing}；缺测标记 {gaps}，未记录标称位置 {slots}，终止标记 {terminal}。",
+    "error": {
+      "invalid": "无法生成所选区间的报告。",
+      "storage": "无法准备或保存本地报告。",
+      "stale": "此预览已过期，请重新生成后保存。",
+      "tooLarge": "报告超过大小限制，请缩短所选区间。"
+    },
+    "columns": {
+      "scope": "来源",
+      "resource": "资源",
+      "instance": "实例代号",
+      "from": "首点 / 起始 UTC",
+      "to": "末点 / 结束 UTC",
+      "mean": "均值",
+      "peak": "峰值",
+      "peakAt": "峰值记录时间 UTC",
+      "unit": "单位",
+      "coverage": "覆盖"
+    },
+    "scope": {
+      "system": "系统",
+      "ranked": "历史排行",
+      "observation": "定向观察",
+      "gap": "缺失帧区间",
+      "note": "说明"
+    },
+    "resource": {
+      "cpu": "CPU",
+      "memory": "物理内存",
+      "disk": "磁盘流量",
+      "gpu": "GPU",
+      "network": "网络流量",
+      "io": "进程 I/O",
+      "privateWs": "专用工作集",
+      "privateCommit": "专用提交量"
+    }
   }
 }

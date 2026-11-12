@@ -143,5 +143,59 @@
     "observationEmpty": "この区間に保存済みの監視点はありません。",
     "observationIncomplete": "読取不能ファイル {unreadable}、破損ファイル {damaged}、期限切れ点 {expired}。省略点 {omittedPoints}、省略実行 {omittedRuns}。",
     "observationNote": "平均は保存された有効点から計算し、時間では加重しません。欠測と終了マーカーはゼロではありません。保存期間と容量に制限があり、最初と最後の点は連続した記録を保証しません。マーカーは保存済みイベントを表し、現在のプロセスの生存を示しません。各実行のメモリはシステムメモリと別に扱い、合算しません。"
+  },
+  "report": {
+    "title": "区間のローカルレポート",
+    "alias": "実行 {count}",
+    "preview": "{format} をプレビュー",
+    "save": "プレビューを保存…",
+    "saved": "ローカルに保存しました。送信していません。",
+    "cancelled": "保存をキャンセルしました。",
+    "frozen": "このプレビューは固定スナップショットです。保存内容は下のテキストと完全に一致します。新しいプレビューを生成すると以前のものは無効になります。",
+    "privacy": "レポートには実行の別名を使い、プロセス名、PID、作成時刻、パス、アカウント、ホストアドレス、コマンドラインを含めません。処理はこのコンピューター内で行い、保存でファイルを送信しません。",
+    "cpuNote": "システム CPU ピークは保存された測定ピークで、時刻はそのフレームの開始です。プロセスのピークはフレーム平均の最大値です。実行識別情報がない旧形式では各フレームに別名を割り当てます。平均は CPU 時間ではなく、相関は原因の証明ではありません。",
+    "reasons": "欠測理由のビット：1 ソース利用不可、2 アクセス拒否、4 古い値、8 基準待ち。0 は完全な記録を保証しません。",
+    "timing": "時刻はすべて UTC です。区間の終了は含まず、実行の境界は保存済みの点です。履歴の標準間隔 {step} ms、監視の標準間隔 {sample} ms。数値は小数点以下最大 6 桁です。",
+    "extent": "履歴フレーム {recorded}/{expected}、欠落 {missing}、欠落区間 {gaps}。実行 {identities}、省略項目 {omitted}、読取不能ファイル {unreadable}、不完全ファイル {incomplete}、無効フレーム {invalid}。",
+    "observationExtent": "監視保存範囲 {from} ～ {to}。保存点 {saved}、選択点 {selected}、表示実行 {shown}/{total}。読取不能ファイル {unreadable}、破損 {damaged}、期限切れ点 {expired}、省略点 {omittedPoints}、省略実行 {omittedRuns}。",
+    "sourceCoverage": "有効フレーム {valid}/{total}、一部ソース {partial}、不明な旧形式 {legacy}、無効 {invalid}。有効サンプル {samples}/{expected}、欠測理由ビット {reasons}。",
+    "cpuCoverage": "有効フレーム {valid}/{total}、無効 {invalid}。",
+    "listed": "保存済み {count}/{total} フレームに掲載。ピークのみ、平均は保存されていません。",
+    "observationCoverage": "有効点 {valid}、測定値なし {missing}。欠測マーカー {gaps}、未記録の標準位置 {slots}、終了マーカー {terminal}。",
+    "error": {
+      "invalid": "この区間のレポートを生成できませんでした。",
+      "storage": "ローカルレポートを準備または保存できませんでした。",
+      "stale": "このプレビューは無効です。保存前に再生成してください。",
+      "tooLarge": "レポートがサイズ制限を超えています。短い区間を選択してください。"
+    },
+    "columns": {
+      "scope": "ソース",
+      "resource": "リソース",
+      "instance": "実行の別名",
+      "from": "最初の点 / 開始 UTC",
+      "to": "最後の点 / 終了 UTC",
+      "mean": "平均",
+      "peak": "ピーク",
+      "peakAt": "ピーク記録時刻 UTC",
+      "unit": "単位",
+      "coverage": "記録範囲"
+    },
+    "scope": {
+      "system": "システム",
+      "ranked": "履歴ランキング",
+      "observation": "個別監視",
+      "gap": "欠落フレーム区間",
+      "note": "注記"
+    },
+    "resource": {
+      "cpu": "CPU",
+      "memory": "物理メモリ",
+      "disk": "ディスク転送",
+      "gpu": "GPU",
+      "network": "ネットワーク転送",
+      "io": "プロセス I/O",
+      "privateWs": "プライベートワーキングセット",
+      "privateCommit": "プライベートコミット"
+    }
   }
 }

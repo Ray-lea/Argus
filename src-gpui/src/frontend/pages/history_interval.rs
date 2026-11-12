@@ -71,6 +71,28 @@ fn resource_coverage(summary: &Value) -> String {
 }
 
 impl Desktop {
+    fn request_report(&mut self, format: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(report) = self
+            .data
+            .get("historyInterval")
+            .filter(|report| report.is_object())
+        else {
+            return;
+        };
+        if self
+            .pending
+            .values()
+            .any(|pending| pending.command == "history_report_preview")
+        {
+            return;
+        }
+        let args = json!({"from":report["from"],"to":report["to"],"metric":report["metric"],"format":format,
+            "generation":self.data.get("intervalGeneration").and_then(Value::as_u64).unwrap_or(0)});
+        self.data.remove("reportError");
+        self.data.insert("reportRequest".into(), args.clone());
+        self.request("history_report_preview", args, None, window, cx);
+        cx.notify();
+    }
     pub(in crate::frontend) fn interval_test_state(&self) -> Value {
         let metric = self
             .data
@@ -313,6 +335,33 @@ impl Desktop {
             return card
                 .child(label("history.interval.invalid"))
                 .into_any_element();
+        }
+        let mut export = div().flex().flex_wrap().gap(px(8.));
+        for (id, format, name) in [
+            ("interval-report-markdown", "markdown", "Markdown"),
+            ("interval-report-csv", "csv", "CSV"),
+        ] {
+            export = export.child(
+                self.btn_small(
+                    id,
+                    tr!("history.report.preview", format = name),
+                    None,
+                    Tone::Plain,
+                )
+                .disabled(
+                    self.pending
+                        .values()
+                        .any(|pending| pending.command == "history_report_preview"),
+                )
+                .child(self.watch_anchor(id))
+                .on_click(
+                    cx.listener(move |this, _, window, cx| this.request_report(format, window, cx)),
+                ),
+            );
+        }
+        card = card.child(export);
+        if let Some(error) = self.data.get("reportError").and_then(Value::as_str) {
+            card = card.child(div().text_size(theme::font(12.)).child(error.to_owned()));
         }
         let percent = |value: &Value| {
             value

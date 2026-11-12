@@ -246,6 +246,23 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             argument::<argus_core::history::IntervalMetric>(&args, "metric")?,
         ))
         .expect("serializable command response")),
+        "history_report_preview" => crate::commands::history_report_preview(
+            host.state(),
+            host.state(),
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+            argument::<argus_core::history::IntervalMetric>(&args, "metric")?,
+            argument::<crate::reports::Format>(&args, "format")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "history_report_save" => crate::commands::history_report_save(
+            host.state(),
+            argument::<u64>(&args, "id")?,
+            argument::<String>(&args, "sha256")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "history_usage" => Ok(
             serde_json::to_value(crate::commands::history_usage(host.state()))
                 .expect("serializable command response"),

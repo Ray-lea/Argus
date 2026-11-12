@@ -3,7 +3,7 @@ use super::*;
 use widgets::Tone;
 
 impl Desktop {
-    pub(super) fn watch_anchor(&self, key: &'static str) -> AnyElement {
+    pub(in crate::frontend) fn watch_anchor(&self, key: &'static str) -> AnyElement {
         let anchors = self.ui.anchors.clone();
         canvas(
             move |bounds, _, _| {

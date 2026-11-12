@@ -139,5 +139,59 @@
     "observationEmpty": "所選區間內沒有保留的觀察點。",
     "observationIncomplete": "無法讀取檔案 {unreadable}，損壞檔案 {damaged}，過期點 {expired}；省略點 {omittedPoints}，省略個體 {omittedRuns}。",
     "observationNote": "平均值僅使用已存有效點，不是依持續時間加權的記憶體平均。缺測與結束標記不視為零。保留範圍受時間及容量限制；首末點之間不保證完整覆蓋。標記只描述已存事件，不表示處理程序目前仍在執行。各個體記憶體分別統計，不與系統記憶體相加。"
+  },
+  "report": {
+    "title": "本機區間報告",
+    "alias": "個體 {count}",
+    "preview": "預覽 {format}",
+    "save": "儲存預覽內容…",
+    "saved": "報告已儲存，未傳送。",
+    "cancelled": "已取消儲存。",
+    "frozen": "預覽是固定快照。儲存的檔案與下方文字逐位元組相同；重新產生預覽後，舊預覽無法儲存。",
+    "privacy": "報告使用個體代號，不含處理程序名稱、PID、建立時間、映像路徑、帳戶、主機位址或命令列。全部在本機處理，儲存不會傳送檔案。",
+    "cpuNote": "系統 CPU 峰值是已存取樣峰值，時間為該影格起點；處理程序峰值是影格平均值的峰值。舊格式缺少個體身分時每個影格使用獨立代號。平均值不是 CPU 時間，相關性不證明原因。",
+    "reasons": "缺失原因位元：1 來源無法使用，2 拒絕存取，4 過期，8 等待基準；0 不表示完整覆蓋。",
+    "timing": "所有時間為 UTC。區間右邊界不包含在內；個體首末時間為實際已存點。歷史標稱間隔 {step} ms，觀察標稱間隔 {sample} ms。數值最多 6 位小數。",
+    "extent": "歷史影格 {recorded}/{expected}，缺失 {missing}，缺失區間 {gaps}；追蹤個體 {identities}，省略項目 {omitted}，無法讀取檔案 {unreadable}，不完整檔案 {incomplete}，無效影格 {invalid}。",
+    "observationExtent": "觀察保留範圍 {from} 至 {to}；保留點 {saved}，區間內 {selected}；顯示個體 {shown}/{total}；無法讀取檔案 {unreadable}，損壞 {damaged}，過期點 {expired}，省略點 {omittedPoints}，省略個體 {omittedRuns}。",
+    "sourceCoverage": "有效影格 {valid}/{total}，部分來源影格 {partial}，未知舊格式影格 {legacy}，無效影格 {invalid}；有效取樣 {samples}/{expected}，缺失原因位元 {reasons}。",
+    "cpuCoverage": "有效影格 {valid}/{total}；無效影格 {invalid}。",
+    "listed": "在 {count}/{total} 個已存影格中上榜；僅峰值，未記錄平均值。",
+    "observationCoverage": "有效點 {valid}，無讀數點 {missing}；缺測標記 {gaps}，未記錄標稱位置 {slots}，終止標記 {terminal}。",
+    "error": {
+      "invalid": "無法產生所選區間的報告。",
+      "storage": "無法準備或儲存本機報告。",
+      "stale": "此預覽已過期，請重新產生後儲存。",
+      "tooLarge": "報告超過大小限制，請縮短所選區間。"
+    },
+    "columns": {
+      "scope": "來源",
+      "resource": "資源",
+      "instance": "個體代號",
+      "from": "首點 / 起始 UTC",
+      "to": "末點 / 結束 UTC",
+      "mean": "平均",
+      "peak": "峰值",
+      "peakAt": "峰值記錄時間 UTC",
+      "unit": "單位",
+      "coverage": "覆蓋"
+    },
+    "scope": {
+      "system": "系統",
+      "ranked": "歷史排行",
+      "observation": "定向觀察",
+      "gap": "缺失影格區間",
+      "note": "說明"
+    },
+    "resource": {
+      "cpu": "CPU",
+      "memory": "實體記憶體",
+      "disk": "磁碟流量",
+      "gpu": "GPU",
+      "network": "網路流量",
+      "io": "處理程序 I/O",
+      "privateWs": "私人工作集",
+      "privateCommit": "私人認可量"
+    }
   }
 }
