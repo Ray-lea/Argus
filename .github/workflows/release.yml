@@ -117,7 +117,7 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP "argus-smoke"
           # Installed for all users (the runner is an administrator), so the entry is under HKLM.
           $key = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Argus"
-          $p = Start-Process $setup -ArgumentList "/S", "/D=$dir" -Wait -PassThru
+          $p = Start-Process $setup -ArgumentList "/S", "/D=$dir" -WindowStyle Hidden -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "安装程序退出码 $($p.ExitCode)" }
           foreach ($file in "argus.exe", "uninstall.exe") {
             if (-not (Test-Path (Join-Path $dir $file))) { throw "安装后缺少 $file" }
@@ -149,12 +149,8 @@ jobs:
           Assert-UpdateKind $portable 1
           Copy-Item (Join-Path $dir "uninstall.exe") (Join-Path $copies "uninstall.exe")
           Assert-UpdateKind $portable 1
-          # The uninstaller hands over to a copy in %TEMP% and returns at once.
-          Start-Process (Join-Path $dir "uninstall.exe") -ArgumentList "/S" -Wait
-          $deadline = (Get-Date).AddSeconds(60)
-          while ((Test-Path $key) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
-          if (Test-Path $key) { throw "卸载后卸载项仍在" }
-          if (Test-Path (Join-Path $dir "argus.exe")) { throw "卸载后 argus.exe 仍在" }
+          node scripts/uninstall-smoke.mjs $dir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Collect assets
         run: |
