@@ -129,15 +129,33 @@ fn disabling_window_motion_releases_native_commands_and_cleans_an_active_fade() 
             Some(LPARAM(0)),
         );
         assert!(!IsZoomed(hwnd).as_bool());
+        assert!(!state.suppressed.get());
         perform(hwnd, Op::Enable(true));
+        // A shown window keeps the system's maximize and restore animation.
+        assert!(!state.suppressed.get());
+        for command in [SC_MAXIMIZE, SC_RESTORE] {
+            SendMessageW(
+                hwnd,
+                WM_SYSCOMMAND,
+                Some(WPARAM(command as usize)),
+                Some(LPARAM(0)),
+            );
+            assert_eq!(IsZoomed(hwnd).as_bool(), command == SC_MAXIMIZE);
+            assert!(state.fade.get().is_none());
+            assert!(!state.suppressed.get());
+        }
+        // Restoring from maximized stays a native command.
+        assert_eq!(COMMANDS.get(), (1, 3));
         SendMessageW(
             hwnd,
             WM_SYSCOMMAND,
             Some(WPARAM(SC_MINIMIZE as usize)),
             Some(LPARAM(0)),
         );
-        assert_eq!(COMMANDS.get(), (1, 2));
+        assert_eq!(COMMANDS.get(), (1, 3));
         assert!(state.fade.get().is_some());
+        // The fade suppresses DWM transitions before the window minimizes.
+        assert!(state.suppressed.get());
         assert!(state.ticker.borrow().is_some());
         assert_ne!(
             GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_LAYERED.0,
@@ -147,6 +165,7 @@ fn disabling_window_motion_releases_native_commands_and_cleans_an_active_fade() 
         assert!(IsIconic(hwnd).as_bool());
         assert!(state.fade.get().is_none());
         assert!(state.ticker.borrow().is_none());
+        assert!(!state.suppressed.get());
         assert!(!super::is_leaving());
         assert_eq!(
             GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_LAYERED.0,
@@ -158,7 +177,7 @@ fn disabling_window_motion_releases_native_commands_and_cleans_an_active_fade() 
             Some(WPARAM(SC_RESTORE as usize)),
             Some(LPARAM(0)),
         );
-        assert_eq!(COMMANDS.get(), (1, 3));
+        assert_eq!(COMMANDS.get(), (1, 4));
         perform(hwnd, Op::Go(Target::Hidden));
         assert!(!IsWindowVisible(hwnd).as_bool());
         perform(hwnd, Op::Go(Target::Shown));
@@ -169,8 +188,13 @@ fn disabling_window_motion_releases_native_commands_and_cleans_an_active_fade() 
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED.0 as isize);
         SetLayeredWindowAttributes(hwnd, COLORREF(0), 180, LWA_ALPHA).unwrap();
         perform(hwnd, Op::Enable(true));
+        assert!(!state.suppressed.get());
         perform(hwnd, Op::Go(Target::Hidden));
+        // Without a fade, the hidden window still returns without the system's zoom.
+        assert!(!IsWindowVisible(hwnd).as_bool());
+        assert!(state.suppressed.get());
         perform(hwnd, Op::Enable(false));
+        assert!(!state.suppressed.get());
         let mut alpha = 0;
         GetLayeredWindowAttributes(hwnd, None, Some(&mut alpha), None).unwrap();
         assert_eq!(alpha, 180);
