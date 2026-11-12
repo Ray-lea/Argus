@@ -288,6 +288,11 @@
     "netRates": "R: {received} S: {sent}",
     "acpiTemperature": "ACPI Temperatur der thermischen Zone"
   },
+  "memoryScope": {
+    "vital": "Belegter physischer Speicher des gesamten Systems: Gesamtspeicher abzüglich verfügbarem Speicher, einschließlich verwendeter und geänderter Seiten. Prozesszeilen zeigen ihren eigenen privaten Arbeitssatz, der in Summe kleiner ist. Siehe „Speicherberechnung“ im Benutzerhandbuch.",
+    "header": "Der Prozentwert oben ist der Anteil des belegten physischen Speichers des gesamten Systems. Die Zeilen zeigen den privaten Arbeitssatz: physischen Speicher, den der Prozess allein nutzt; App-Gruppen und Kategorien summieren ihn. Siehe „Speicherberechnung“ im Benutzerhandbuch.",
+    "section": "Summe der privaten Arbeitssätze der Prozesse dieser Kategorie. Die Systembelegung umfasst zusätzlich gemeinsam genutzte Seiten, Kernel und Treiber, Seitentabellen, den Systemcache und geänderte Seiten und liegt daher über der Summe der Kategorien."
+  },
   "columns": {
     "choose": "Spalten auswählen",
     "autoWidth": "Automatische Breite",

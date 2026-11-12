@@ -291,6 +291,11 @@
     "netRates": "R: {received} S: {sent}",
     "acpiTemperature": "Temperatura de la zona térmica ACPI"
   },
+  "memoryScope": {
+    "vital": "Memoria física en uso en todo el sistema: el total menos la disponible, incluidas las páginas en uso y modificadas. Las filas de procesos muestran su propio espacio de trabajo privado, que suma menos. Consulta «Contabilidad de memoria» en la guía del usuario.",
+    "header": "El porcentaje de arriba es la proporción de memoria física en uso en todo el sistema. Las filas muestran el espacio de trabajo privado: la memoria física que usa solo ese proceso; los grupos de aplicaciones y las categorías lo suman. Consulta «Contabilidad de memoria» en la guía del usuario.",
+    "section": "Suma de los espacios de trabajo privados de los procesos de esta categoría. El uso de todo el sistema también incluye páginas compartidas, el kernel y los controladores, las tablas de páginas, la caché del sistema y las páginas modificadas, por lo que supera la suma de las categorías."
+  },
   "columns": {
     "choose": "Seleccionar columnas",
     "autoWidth": "Ancho automático",

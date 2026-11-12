@@ -48,10 +48,15 @@ impl NativeTable {
         if row.section.is_some() {
             // Folded headings show their totals a step brighter.
             let collapsed = !row.expanded;
-            return element
+            let element = element
                 .text_size(theme::font(12.))
                 .text_color(if collapsed { p.muted } else { faint })
-                .child(value)
+                .child(value);
+            // A heading's memory adds up private working sets, not system usage.
+            let hint = (processes && field.key == "mem" && self.is_near(row_index))
+                .then(|| label("processes.memoryScope.section"));
+            return self
+                .hint_text(element, row, field.key, hint)
                 .into_any_element();
         }
         let dot = |color: Hsla| div().size(px(7.)).rounded_full().flex_shrink_0().bg(color);

@@ -546,8 +546,12 @@ impl Desktop {
                 scale: format!("{} GB", gb(mem_total)),
                 figure: gb(number(sys, "memUsed")),
                 unit: format!("/ {} GB", gb(mem_total)),
-                readings: Readings::Detail(format!("{mem_percent}%"), None),
-                figure_tip: None,
+                // Whole-system usage, unlike the process rows' private working sets.
+                readings: Readings::Detail(
+                    format!("{mem_percent}%"),
+                    Some(label("processes.memoryScope.vital")),
+                ),
+                figure_tip: Some(label("processes.memoryScope.vital")),
             },
             Card {
                 id: "disk",
