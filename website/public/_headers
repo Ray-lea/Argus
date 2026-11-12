@@ -5,37 +5,58 @@
   Content-Security-Policy: frame-ancestors 'none'; form-action 'self'; base-uri 'none'
   Permissions-Policy: camera=(), microphone=(), geolocation=()
 
-# Keep the bytes of CSP-hashed HTML intact at the edge.
+# Keep the bytes of CSP-hashed HTML intact at the edge. A page's address also
+# returns its Markdown copy (index.md) for Accept: text/markdown, so caches
+# keep the two apart.
 /
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /en/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /zh-TW/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /es/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /de/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /ja/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /fr/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /ru/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /docs/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /download/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /changelog/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /privacy/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /signing/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /security/*
   Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /404.html
   Cache-Control: public, max-age=300, no-transform
+/index.md
+  Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
+/*index.md
+  Content-Type: text/markdown; charset=utf-8
 
 /_next/static/*
   Cache-Control: public, max-age=31536000, immutable

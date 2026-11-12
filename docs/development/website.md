@@ -1,6 +1,6 @@
 # 官网与发行镜像
 
-`argustask.com` 由四个 Workers Static Assets 服务组成。站点使用 Free 套餐，只发布静态文件和重定向规则。服务配置在 [`website/`](../../website/)，构建产物位于 `target/official-web/dist/`。
+`argustask.com` 由四个 Workers Static Assets 服务组成。站点使用 Free 套餐，只发布静态文件和重定向规则；区域上另有一条按 `Accept` 改写路径的规则（见[搜索引擎与语言模型](#搜索引擎与语言模型)）。服务配置在 [`website/`](../../website/)，构建产物位于 `target/official-web/dist/`。
 
 | 域名 | 内容 |
 | --- | --- |
@@ -27,7 +27,14 @@ GitHub Actions 使用 Secret `CLOUDFLARE_API_TOKEN` 和变量 `CLOUDFLARE_ACCOUN
 
 页面的标题、描述、规范地址、语言互链和结构化数据在构建时生成：首页声明网站、应用及常见问题，下载页声明应用，文档页声明文章与面包屑。开发版中稳定版也有的页面以稳定版为规范地址，只在开发版中的页面以自身为规范地址；站点地图只列出规范地址，并以发布日期或文档最后提交日期标注更新时间。文档的描述取正文第一段，截至 150 字以内的最后一个完整句子。
 
-`/llms.txt` 按 [llms.txt](https://llmstxt.org/) 的格式汇总首页的介绍、与任务管理器的差异、常见问题和稳定版各文档的 Markdown 地址，内容取自首页与文档的数据，随构建更新；`/llms-full.txt` 是稳定版文档全文。各文档的 Markdown 副本（`/llms.mdx/docs/…/content.md`）供工具读取，响应头 `X-Robots-Tag: noindex` 使其不出现在搜索结果中。`robots.txt` 允许抓取全部页面，仅排除 Next.js 的导航数据文件。
+`/llms.txt` 按 [llms.txt](https://llmstxt.org/) 的格式汇总首页的介绍、与任务管理器的差异、常见问题和稳定版各文档的 Markdown 地址，内容取自首页与文档的数据，随构建更新；`/llms-full.txt` 是稳定版文档全文。各文档的 Markdown 副本（`/llms.mdx/docs/…/content.md`）供工具读取，响应头 `X-Robots-Tag: noindex` 使其不出现在搜索结果中。`robots.txt` 允许抓取全部页面，仅排除 Next.js 的导航数据文件和下文的 `index.md`，并按 [Content Signals](https://contentsignals.org/) 声明 `ai-train=yes, search=yes, ai-input=yes`：内容可用于搜索、AI 回答和 AI 训练，与提供 `/llms.txt` 的用意一致。
+
+请求头 `Accept` 含 `text/markdown` 时，页面的地址返回该页的 Markdown。Cloudflare 的 Markdown for Agents 仅限 Pro 及以上套餐；Worker 的 `run_worker_first` 在 Free 额度用尽后对匹配的请求返回 429，会使整站不可用。因此构建时由 `website/scripts/markdown.mjs` 在每个页面旁写入 `index.md`：文档沿用 `/llms.mdx/` 下的副本，其他页面转换 `<main>` 的内容，跳过控件、隐藏元素和带 `data-markdown="skip"` 的交互演示；开头的 YAML 写明标题、描述和地址。`_headers` 为页面和副本加上 `Vary: Accept`。请求由区域上的一条 URL 重写规则转到 `index.md`。该规则不随部署发布，须在 Cloudflare 控制台 `argustask.com` 区域的 Rules → Overview → Create rule → URL Rewrite Rule 中创建一次：
+
+- 匹配表达式（Edit expression）：`any(http.request.headers["accept"][*] contains "text/markdown") and ends_with(http.request.uri.path, "/")`
+- Path 选 Rewrite to → Dynamic：`concat(http.request.uri.path, "index.md")`；Query 保持不变
+
+不带结尾斜杠的地址先由静态资源服务跳转到带斜杠的地址，再按上述规则改写。部署后的 `site` 校验以 `/en/download/` 检查协商结果；规则缺失时只输出警告，不中止部署。新增页面时同样会生成副本，含交互演示的区块加 `data-markdown="skip"`。
 
 ## 邮件与分发清单
 

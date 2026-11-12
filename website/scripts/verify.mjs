@@ -135,6 +135,18 @@ async function local() {
   for (const [file, page] of pages) {
     const from = origin + "/" + file.replace(/index\.html$/, "");
     checkPageShell(page, from);
+    // The page's address returns this file for Accept: text/markdown.
+    if (file.endsWith("index.html") && !["404/index.html", "_not-found/index.html"].includes(file)) {
+      const copy = file.replace(/html$/, "md");
+      assert(siteFiles.has(copy), "Missing Markdown copy " + copy);
+      const markdown = await readFile(join(dir, copy), "utf8");
+      assert(
+        markdown.startsWith("---\ntitle: ") &&
+          markdown.includes(`\nurl: "${from}"\n---\n\n`) &&
+          /^# \S/m.test(markdown),
+        copy + ": unexpected front matter or body",
+      );
+    }
     for (const href of page.links) {
       const url = new URL(href, from);
       if (url.origin !== origin) continue;
@@ -241,6 +253,12 @@ async function local() {
       );
   }
   assert(siteFiles.has("llms-full.txt"), "Missing llms-full.txt");
+  const robots = await readFile(join(dir, "robots.txt"), "utf8");
+  assert(
+    /^User-agent: \*\nContent-Signal: ai-train=(?:yes|no), search=(?:yes|no), ai-input=(?:yes|no)\n/.test(robots) &&
+      robots.includes("\nDisallow: /*index.md$\n"),
+    "Invalid robots.txt",
+  );
   const security = await readFile(join(dir, ".well-known/security.txt"), "utf8");
   assert(
     security.includes("Expires:") &&
@@ -284,6 +302,8 @@ async function online(service) {
             [origin + "/docs/dev/", null],
             [origin + "/docs-search.json", null],
             [origin + "/.well-known/security.txt", null],
+            [origin + "/robots.txt", null],
+            [origin + "/en/download/index.md", null],
           ];
   for (const [url] of targets) {
     let last;
@@ -338,6 +358,29 @@ async function online(service) {
     }
     if (last)
       throw Error(`Public verification failed: ${url}`, { cause: last });
+  }
+  if (service === "site") await negotiation();
+}
+
+// Accept: text/markdown reaches index.md through a URL Rewrite Rule configured
+// in the Cloudflare dashboard, outside this deployment, so a missing rule only
+// warns.
+async function negotiation() {
+  const url = origin + "/en/download/";
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "text/markdown, text/html;q=0.9" },
+      signal: AbortSignal.timeout(20000),
+    });
+    const built = await readFile(join(dist, "site/en/download/index.md"));
+    const body = Buffer.from(await res.arrayBuffer());
+    assert.equal(res.status, 200);
+    assert(res.headers.get("content-type")?.startsWith("text/markdown"), "returns " + res.headers.get("content-type"));
+    assert(body.equals(built), "differs from the build");
+    console.log(`Verified Markdown negotiation at ${url}`);
+  } catch (error) {
+    const message = `Markdown negotiation at ${url} failed (${error.message}). Check the URL Rewrite Rule in docs/development/website.md.`;
+    console.warn(process.env.GITHUB_ACTIONS ? "::warning::" + message : message);
   }
 }
 const service = process.argv[2];
