@@ -29,9 +29,9 @@ GitHub Actions 使用 Secret `CLOUDFLARE_API_TOKEN` 和变量 `CLOUDFLARE_ACCOUN
 
 `/llms.txt` 按 [llms.txt](https://llmstxt.org/) 的格式汇总首页的介绍、与任务管理器的差异、常见问题和稳定版各文档的 Markdown 地址，内容取自首页与文档的数据，随构建更新；`/llms-full.txt` 是稳定版文档全文。各文档的 Markdown 副本（`/llms.mdx/docs/…/content.md`）供工具读取，响应头 `X-Robots-Tag: noindex` 使其不出现在搜索结果中。`robots.txt` 允许抓取全部页面，仅排除 Next.js 的导航数据文件和下文的 `index.md`，并按 [Content Signals](https://contentsignals.org/) 声明 `ai-train=yes, search=yes, ai-input=yes`：内容可用于搜索、AI 回答和 AI 训练，与提供 `/llms.txt` 的用意一致。
 
-请求头 `Accept` 含 `text/markdown` 时，页面的地址返回该页的 Markdown。Cloudflare 的 Markdown for Agents 仅限 Pro 及以上套餐；Worker 的 `run_worker_first` 在 Free 额度用尽后对匹配的请求返回 429，会使整站不可用。因此构建时由 `website/scripts/markdown.mjs` 在每个页面旁写入 `index.md`：文档沿用 `/llms.mdx/` 下的副本，其他页面转换 `<main>` 的内容，跳过控件、隐藏元素和带 `data-markdown="skip"` 的交互演示；开头的 YAML 写明标题、描述和地址。`_headers` 为页面和副本加上 `Vary: Accept`。请求由区域上的一条 URL 重写规则转到 `index.md`。该规则不随部署发布，须在 Cloudflare 控制台 `argustask.com` 区域的 Rules → Overview → Create rule → URL Rewrite Rule 中创建一次：
+请求头 `Accept` 含 `text/markdown` 时，页面的地址返回该页的 Markdown。Cloudflare 的 Markdown for Agents 仅限 Pro 及以上套餐；Worker 的 `run_worker_first` 在 Free 额度用尽后对匹配的请求返回 429，会使整站不可用。因此构建时由 `website/scripts/markdown.mjs` 在每个页面旁写入 `index.md`：文档沿用 `/llms.mdx/` 下的副本，其他页面转换 `<main>` 的内容，跳过控件、隐藏元素和带 `data-markdown="skip"` 的交互演示；开头的 YAML 写明标题、描述和地址。`_headers` 为页面和副本加上 `Vary: Accept`。请求由区域上的一条 URL 重写规则转到 `index.md`。该规则不随部署发布，须在官网部署出 `index.md` 之后，在 Cloudflare 控制台 `argustask.com` 区域的 Rules → Overview → Create rule → URL Rewrite Rule 中创建一次（先于部署创建，Markdown 请求会得到 404）：
 
-- 匹配表达式（Edit expression）：`any(http.request.headers["accept"][*] contains "text/markdown") and ends_with(http.request.uri.path, "/")`
+- 匹配方式选 Custom filter expression，Edit expression：`http.host eq "argustask.com" and any(http.request.headers["accept"][*] contains "text/markdown") and ends_with(http.request.uri.path, "/")`。限定主域名，避免改写同一区域下 `dl`、`update` 与 `www` 的请求
 - Path 选 Rewrite to → Dynamic：`concat(http.request.uri.path, "index.md")`；Query 保持不变
 
 不带结尾斜杠的地址先由静态资源服务跳转到带斜杠的地址，再按上述规则改写。部署后的 `site` 校验以 `/en/download/` 检查协商结果；规则缺失时只输出警告，不中止部署。新增页面时同样会生成副本，含交互演示的区块加 `data-markdown="skip"`。
