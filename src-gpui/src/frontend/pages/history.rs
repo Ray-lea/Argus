@@ -25,6 +25,128 @@ const AXIS: f32 = 22.;
 const BORDER: f32 = 1.;
 const TABLE_ROW: f32 = 28.;
 
+#[derive(Debug, PartialEq, Eq)]
+enum CoverageState {
+    Legacy,
+    Missing,
+    Partial,
+    Available,
+}
+
+fn coverage_state(coverage: &Value) -> CoverageState {
+    if !coverage.is_object() {
+        return CoverageState::Legacy;
+    }
+    let valid = coverage["valid"].as_u64().unwrap_or(0);
+    if valid == 0 {
+        CoverageState::Missing
+    } else if valid < coverage["samples"].as_u64().unwrap_or(0)
+        || number(coverage, "partial") > 0.
+        || number(coverage, "legacyFrames") > 0.
+    {
+        CoverageState::Partial
+    } else {
+        CoverageState::Available
+    }
+}
+
+fn covered_value(row: &Value, field: &str, coverage: &str) -> Option<f64> {
+    (coverage_state(&row[coverage]) != CoverageState::Missing)
+        .then(|| row[field].as_f64())
+        .flatten()
+}
+
+fn coverage_hint(coverage: &Value) -> String {
+    let mut hint = match coverage_state(coverage) {
+        CoverageState::Legacy => label("history.coverage.legacy"),
+        CoverageState::Missing => label("history.coverage.missing"),
+        state => tr!(
+            "history.coverage.samples",
+            state = label(if state == CoverageState::Partial {
+                "history.coverage.partial"
+            } else {
+                "history.coverage.available"
+            }),
+            valid = coverage["valid"],
+            total = coverage["samples"]
+        ),
+    };
+    let reasons = coverage["missing"].as_u64().unwrap_or(0) as u8;
+    for (flag, key) in [
+        (
+            argus_core::measurement::UNAVAILABLE,
+            "history.coverage.reasons.unavailable",
+        ),
+        (
+            argus_core::measurement::ACCESS_DENIED,
+            "history.coverage.reasons.denied",
+        ),
+        (
+            argus_core::measurement::STALE,
+            "history.coverage.reasons.stale",
+        ),
+        (
+            argus_core::measurement::BASELINE,
+            "history.coverage.reasons.baseline",
+        ),
+    ] {
+        if reasons & flag != 0 {
+            hint.push_str(" · ");
+            hint.push_str(&label(key));
+        }
+    }
+    hint
+}
+
+fn covered_text(
+    row: &Value,
+    field: &str,
+    coverage: &str,
+    format: impl FnOnce(f64) -> String,
+) -> String {
+    let value = covered_value(row, field, coverage)
+        .map(format)
+        .unwrap_or_else(|| label("format.missing"));
+    if coverage_state(&row[coverage]) == CoverageState::Legacy {
+        format!("{value} ?")
+    } else {
+        value
+    }
+}
+
+fn coverage_brief(coverage: &Value) -> String {
+    if coverage_state(coverage) == CoverageState::Missing {
+        let missing = coverage["missing"].as_u64().unwrap_or(0) as u8;
+        for (flag, key) in [
+            (
+                argus_core::measurement::ACCESS_DENIED,
+                "history.coverage.reasons.denied",
+            ),
+            (
+                argus_core::measurement::STALE,
+                "history.coverage.reasons.stale",
+            ),
+            (
+                argus_core::measurement::BASELINE,
+                "history.coverage.reasons.baseline",
+            ),
+            (
+                argus_core::measurement::UNAVAILABLE,
+                "history.coverage.reasons.unavailable",
+            ),
+        ] {
+            if missing & flag != 0 {
+                return label(key);
+            }
+        }
+    }
+    let mut without_reasons = coverage.clone();
+    if without_reasons.is_object() {
+        without_reasons["missing"] = json!(0);
+    }
+    coverage_hint(&without_reasons)
+}
+
 /// Old frames have no creation time: a matching PID and name cannot establish
 /// identity, even if the live process is older than the frame. A process may
 /// start inside the five-second frame, but never after it.
@@ -526,7 +648,12 @@ impl Desktop {
             .gap(px(ROW_GAP));
         let mut charts_column = Vec::new();
         for metric in &metrics {
-            let value_of = |r: &Value| r[metric.field].as_f64();
+            let value_of = |r: &Value| match metric.field {
+                "disk" => covered_value(r, "disk", "diskCoverage"),
+                "gpu" => covered_value(r, "gpu", "gpuCoverage"),
+                "net" => covered_value(r, "net", "netCoverage"),
+                _ => r[metric.field].as_f64(),
+            };
             let reading = readout.and_then(|r| value_of(r).map(|v| (r, v)));
             let value_text = reading.map(|(_, v)| match metric.field {
                 "cpu" => tr!("history.metric.average", value = theme::cpu(v)),
@@ -536,7 +663,10 @@ impl Desktop {
                 "net" => charts::net_rate(v, bits),
                 _ => format!("{}%", v.round()),
             });
-            let detail = reading.and_then(|(r, _)| match metric.field {
+            let detail = readout.and_then(|r| match metric.field {
+                "disk" => Some(coverage_brief(&r["diskCoverage"])),
+                "gpu" => Some(coverage_brief(&r["gpuCoverage"])),
+                "net" => Some(coverage_brief(&r["netCoverage"])),
                 "cpu" => r["cpuPeak"]
                     .as_f64()
                     .map(|peak| tr!("history.metric.peak", value = theme::cpu(peak))),
@@ -967,7 +1097,23 @@ impl Desktop {
             window,
             cx,
         );
+        let quality = moment["system"].is_object().then(|| {
+            let disk = tr!(
+                "history.coverage.disk",
+                status = coverage_hint(&moment["system"]["diskCoverage"])
+            );
+            format!(
+                "{disk} · {}: {} · {}: {}",
+                label("common.resource.gpu"),
+                coverage_hint(&moment["system"]["gpuCoverage"]),
+                label("common.resource.network"),
+                coverage_hint(&moment["system"]["netCoverage"])
+            )
+        });
         let foot = div()
+            .w_full()
+            .min_w_0()
+            .flex_shrink_0()
             .flex()
             .flex_wrap()
             .justify_between()
@@ -979,6 +1125,9 @@ impl Desktop {
             .border_color(p.stroke)
             .text_size(theme::font(12.))
             .text_color(p.muted)
+            .when_some(quality, |d, text| {
+                d.child(div().w_full().min_w_0().whitespace_normal().child(text))
+            })
             .when_some(earliest, |d, ts| {
                 d.child(
                     div().flex().gap_1().child(label("history.earliest")).child(
@@ -1014,10 +1163,16 @@ impl Desktop {
                     .child(after.to_owned())
                     .into_any_element()
             } else {
-                div().child(label("history.note")).into_any_element()
+                div()
+                    .w_full()
+                    .min_w_0()
+                    .whitespace_normal()
+                    .child(label("history.note"))
+                    .into_any_element()
             });
         let moment_card = div()
-            .flex_1()
+            .flex_grow(1.)
+            .flex_shrink_0()
             .min_h(px(36. + 30. + TABLE_ROW * 3. + 34.))
             .flex()
             .flex_col()
@@ -1119,8 +1274,10 @@ impl Desktop {
         let selected = window.use_keyed_state("history-selected", cx, |_, _| None::<String>);
         let stored = sort.read(cx).clone();
         let selected_key = selected.read(cx).clone();
-        // Per-process network needs administrator rights; without it the column is all zeros.
-        let has_net = processes.iter().any(|row| number(row, "net") > 0.);
+        // Keep unavailable and idle network readings distinguishable, including legacy files.
+        let has_net = processes
+            .iter()
+            .any(|row| row.get("netCoverage").is_some() || number(row, "net") > 0.);
         let mut columns: Vec<(&str, String, f32, Option<&str>)> = vec![
             ("name", label("common.name"), 0., None),
             ("pid", label("processes.column.pid.label"), 72., None),
@@ -1316,12 +1473,49 @@ impl Desktop {
                         .child(row["pid"].to_string()),
                 )
                 .child(cell(70., true).child(theme::cpu(number(row, "cpu"))))
-                .child(cell(96., true).child(theme::memory(number(row, "mem"))))
-                .child(cell(92., true).child(quiet_rate(number(row, "io"))));
+                .child(cell(96., true).child(theme::memory(number(row, "mem"))));
+            let io_hint = format!(
+                "{}\n{}",
+                coverage_hint(&row["ioCoverage"]),
+                label("history.coverage.help")
+            );
+            line = line.child(
+                cell(92., true)
+                    .id(("history-io", index))
+                    .child(covered_text(row, "io", "ioCoverage", quiet_rate))
+                    .tooltip(move |window, cx| {
+                        widgets::wrapping_tooltip(io_hint.clone().into(), px(360.), window, cx)
+                    }),
+            );
             if has_net {
-                line = line.child(cell(92., true).child(quiet_net(number(row, "net"), bits)));
+                let hint = format!(
+                    "{}\n{}",
+                    coverage_hint(&row["netCoverage"]),
+                    label("history.coverage.help")
+                );
+                let value = covered_text(row, "net", "netCoverage", |value| quiet_net(value, bits));
+                line = line.child(
+                    cell(92., true)
+                        .id(("history-net", index))
+                        .child(value)
+                        .tooltip(move |window, cx| {
+                            widgets::wrapping_tooltip(hint.clone().into(), px(360.), window, cx)
+                        }),
+                );
             }
-            line = line.child(cell(70., true).child(theme::cpu(number(row, "gpu"))));
+            let gpu_hint = format!(
+                "{}\n{}",
+                coverage_hint(&row["gpuCoverage"]),
+                label("history.coverage.help")
+            );
+            line = line.child(
+                cell(70., true)
+                    .id(("history-gpu", index))
+                    .child(covered_text(row, "gpu", "gpuCoverage", theme::cpu))
+                    .tooltip(move |window, cx| {
+                        widgets::wrapping_tooltip(gpu_hint.clone().into(), px(360.), window, cx)
+                    }),
+            );
             let select = selected.clone();
             let select_menu = selected.clone();
             let row_key = key.clone();
@@ -1349,7 +1543,7 @@ impl Desktop {
         }
         div()
             .flex_1()
-            .min_h_0()
+            .min_h(px(30. + TABLE_ROW * 3.))
             .flex()
             .flex_col()
             .child(header)
@@ -1365,12 +1559,31 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{
-        DAY, HOUR, MINUTE, frame_at, joins, kept, plan_load, point_at, recorded_target,
-        refresh_every, span_of, stepped,
+        CoverageState, DAY, HOUR, MINUTE, coverage_state, covered_value, frame_at, joins, kept,
+        plan_load, point_at, recorded_target, refresh_every, span_of, stepped,
     };
     use serde_json::{Value, json};
 
     const NOW: i64 = 1_800_000_000_000;
+
+    #[test]
+    fn metric_coverage_keeps_idle_missing_partial_and_legacy_distinct() {
+        let mut row =
+            json!({"disk":0,"diskCoverage":{"samples":1,"valid":1,"partial":0,"legacyFrames":0}});
+        assert_eq!(covered_value(&row, "disk", "diskCoverage"), Some(0.));
+        assert_eq!(
+            coverage_state(&row["diskCoverage"]),
+            CoverageState::Available
+        );
+        row["diskCoverage"]["valid"] = json!(0);
+        assert_eq!(covered_value(&row, "disk", "diskCoverage"), None);
+        assert_eq!(coverage_state(&row["diskCoverage"]), CoverageState::Missing);
+        row["diskCoverage"]["valid"] = json!(1);
+        row["diskCoverage"]["partial"] = json!(1);
+        assert_eq!(coverage_state(&row["diskCoverage"]), CoverageState::Partial);
+        row["diskCoverage"] = Value::Null;
+        assert_eq!(coverage_state(&row["diskCoverage"]), CoverageState::Legacy);
+    }
 
     #[test]
     fn buckets_open_real_frames_without_reaching_across_gaps() {

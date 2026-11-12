@@ -910,13 +910,18 @@ impl Desktop {
                 let bits = self.net_bits();
                 tr!(
                     "performance.network.sub",
-                    rx = charts::net_rate(number(nic, "rx"), bits),
-                    tx = charts::net_rate(number(nic, "tx"), bits)
+                    rx = model::device_reading(nic, "rx", "rateState")
+                        .display(|value| charts::net_rate(value, bits)),
+                    tx = model::device_reading(nic, "tx", "rateState")
+                        .display(|value| charts::net_rate(value, bits))
                 )
             }
             "gpu" => {
                 let gpu = &hw["gpus"][device.index];
-                let mut parts = vec![format!("{}%", number(gpu, "util").round())];
+                let mut parts = vec![
+                    model::device_reading(gpu, "util", "utilState")
+                        .display(|value| format!("{}%", value.round())),
+                ];
                 if let Some(celsius) = gpu["temperature"].as_f64() {
                     parts.push(format!("{} °C", celsius.round()));
                 }
@@ -3286,19 +3291,25 @@ impl Desktop {
         let info = &nic["info"];
         let prefix = format!("hardware.nics.{}", device.index);
         let bits = self.net_bits();
-        let rate_stat = |key: &str, bytes: f64| {
-            let (value, unit) = split(charts::net_rate(bytes, bits));
+        let rate_stat = |key: &str, field: &str| {
+            let reading = model::device_reading(nic, field, "rateState");
+            let (value, unit) = reading
+                .value
+                .map(|bytes| split(charts::net_rate(bytes, bits)))
+                .unwrap_or_else(|| (missing(), None));
             self.stat(
                 label(key),
-                value,
+                reading.display(|_| value),
                 unit,
-                Some(charts::net_rate(bytes, !bits)),
+                reading
+                    .value
+                    .map(|bytes| reading.display(|_| charts::net_rate(bytes, !bits))),
                 cx,
             )
         };
         let stats = vec![
-            rate_stat("performance.network.receive", number(nic, "rx")),
-            rate_stat("performance.network.send", number(nic, "tx")),
+            rate_stat("performance.network.receive", "rx"),
+            rate_stat("performance.network.send", "tx"),
         ];
         let plain = |value: String| div().child(value).into_any_element();
         let addresses = |list: &Value| {

@@ -264,12 +264,33 @@ impl NetworkTracker {
         self.flusher.observe_read();
         self.report_health();
         let totals = &self.totals;
+        let now = Instant::now();
+        let previous = self.rates.last;
+        for process in processes.iter_mut() {
+            process.net_state = if previous.is_some()
+                && self.rates.identities.get(&process.pid) == Some(&process.create_time)
+            {
+                crate::measurement::Measurement::ready()
+            } else {
+                crate::measurement::Measurement::missing(crate::measurement::BASELINE)
+            };
+        }
         self.rates.sample(
-            Instant::now(),
+            now,
             processes.iter().map(|p| (p.pid, p.create_time)),
             || std::mem::take(&mut *totals.lock().unwrap()),
         );
         for process in processes {
+            process.net_reused = false;
+            if process.net_state.valid && self.rates.last == previous {
+                process.net_state =
+                    crate::measurement::Measurement::missing(crate::measurement::STALE);
+                process.net_reused = self
+                    .rates
+                    .values
+                    .get(&process.pid)
+                    .is_some_and(|value| value.0 == process.create_time);
+            }
             (process.net_sent, process.net_received) =
                 self.rates.value(process.pid, process.create_time);
         }

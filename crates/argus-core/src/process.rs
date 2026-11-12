@@ -87,11 +87,14 @@ pub struct ProcessRow {
     pub io_read: u64,
     pub io_write: u64,
     pub io_other: u64,
+    /// A fresh pair of process counter snapshots exists for these I/O rates.
+    pub io_valid: bool,
     /// Disk bytes per second; absent until the disk source has a valid interval.
     pub disk_read: Option<u64>,
     pub disk_write: Option<u64>,
     /// The process's share of its busiest GPU engine, percent.
     pub gpu: f32,
+    pub gpu_state: crate::measurement::Measurement,
     /// That engine, e.g. `GPU 0 - 3D`; None while the process leaves the GPU idle.
     pub gpu_engine: Option<Arc<str>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -102,6 +105,9 @@ pub struct ProcessRow {
     /// Network bytes per second, when per-process traffic is measured (ETW).
     pub net_sent: u64,
     pub net_received: u64,
+    pub net_state: crate::measurement::Measurement,
+    /// True only when the numeric network rate was retained from a measured interval.
+    pub net_reused: bool,
     pub threads: u32,
     pub handles: u32,
     pub session_id: u32,
@@ -150,6 +156,23 @@ impl ProcessCounters {
             io_other_total: p.other_transfer_count.max(0) as u64,
         }
     }
+}
+
+fn io_rates(
+    previous: Option<[i64; 3]>,
+    current: [i64; 3],
+    elapsed: Option<f64>,
+) -> Option<[u64; 3]> {
+    let previous = previous?;
+    let seconds = elapsed.filter(|value| value.is_finite() && *value > 0.0)?;
+    let mut result = [0; 3];
+    for i in 0..3 {
+        if previous[i] < 0 || current[i] < previous[i] {
+            return None;
+        }
+        result[i] = ((current[i] - previous[i]) as f64 / seconds) as u64;
+    }
+    Some(result)
 }
 
 fn kernel_process(pid: u32, parent: u32, name: &str, has_path: bool) -> bool {
@@ -465,14 +488,14 @@ impl ProcessTracker {
                 package.app = Some(app);
             }
 
-            let (cpu, rates) = match (prev, capacity_ticks, elapsed) {
-                (Some((pc, _, pio, _)), Some(cap), Some(secs)) if cap > 0.0 => {
-                    let cpu = ((cpu_ticks - pc).max(0) as f64 / cap * 100.0).min(100.0) as f32;
-                    let rate = |i: usize| ((io[i] - pio[i]).max(0) as f64 / secs) as u64;
-                    (cpu, [rate(0), rate(1), rate(2)])
+            let cpu = match (prev, capacity_ticks) {
+                (Some((pc, _, _, _)), Some(cap)) if cap > 0.0 => {
+                    ((cpu_ticks - pc).max(0) as f64 / cap * 100.0).min(100.0) as f32
                 }
-                _ => (0.0, [0; 3]),
+                _ => 0.0,
             };
+            let io_rates = io_rates(prev.map(|(_, _, values, _)| values), io, elapsed);
+            let rates = io_rates.unwrap_or([0; 3]);
             let delta = prev
                 .and_then(|(_, previous, _, _)| p.cycle_time.checked_sub(previous))
                 .filter(|_| p.cycle_time != 0 || cpu_ticks == 0);
@@ -528,15 +551,19 @@ impl ProcessTracker {
                 io_read: rates[0],
                 io_write: rates[1],
                 io_other: rates[2],
+                io_valid: io_rates.is_some(),
                 disk_read: disk_rates.map(|v| v.0),
                 disk_write: disk_rates.map(|v| v.1),
                 gpu: 0.0,
+                gpu_state: Default::default(),
                 gpu_engine: None,
                 gpu_engines: Vec::new(),
                 gpu_dedicated: None,
                 gpu_shared: None,
                 net_sent: 0,
                 net_received: 0,
+                net_state: Default::default(),
+                net_reused: false,
                 threads: p.number_of_threads,
                 handles: p.handle_count,
                 session_id: p.session_id,
@@ -861,6 +888,25 @@ pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn io_rates_need_a_monotonic_pair_but_no_cpu_capacity() {
+        use super::io_rates;
+        assert_eq!(io_rates(None, [100, 20, 0], Some(1.)), None);
+        assert_eq!(
+            io_rates(Some([100, 20, 0]), [100, 20, 0], Some(1.)),
+            Some([0, 0, 0])
+        );
+        assert_eq!(
+            io_rates(Some([100, 20, 0]), [300, 30, 10], Some(2.)),
+            Some([100, 5, 5])
+        );
+        for seconds in [0., -1., f64::NAN, f64::INFINITY] {
+            assert_eq!(io_rates(Some([0; 3]), [100; 3], Some(seconds)), None);
+        }
+        assert_eq!(io_rates(Some([100; 3]), [99; 3], Some(1.)), None);
+        assert_eq!(io_rates(Some([-1; 3]), [0; 3], Some(1.)), None);
+    }
+
     #[test]
     fn pending_queries_keep_recent_readings_but_expire_a_stuck_source() {
         let at = std::time::Instant::now();

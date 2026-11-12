@@ -44,6 +44,7 @@ fn disk(index: u32) -> Disk {
         prev: None,
         fallback: volumes::Counters::default(),
         fallback_reported: false,
+        counter_state: Default::default(),
         temperature: Some((37., None)),
         temperature_at: None,
         temperature_supported: true,

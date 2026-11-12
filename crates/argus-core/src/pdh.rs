@@ -14,7 +14,7 @@ use crate::util::AlignedBuf;
 // pdh.h; this scaling flag is omitted from the generated Windows bindings.
 const PDH_FMT_NOCAP100: PDH_FMT = PDH_FMT(0x0000_8000);
 
-pub(crate) struct Query(PDH_HQUERY);
+pub(crate) struct Query(PDH_HQUERY, std::cell::Cell<u32>);
 
 // PDH handles are process-wide; each query is used from one thread at a time.
 unsafe impl Send for Query {}
@@ -22,18 +22,27 @@ unsafe impl Send for Query {}
 impl Query {
     pub fn open() -> Option<Self> {
         let mut query = PDH_HQUERY::default();
-        (unsafe { PdhOpenQueryW(PCWSTR::null(), 0, &mut query) } == 0).then_some(Self(query))
+        (unsafe { PdhOpenQueryW(PCWSTR::null(), 0, &mut query) } == 0)
+            .then_some(Self(query, std::cell::Cell::new(0)))
     }
 
     /// Adds a counter by its English path; None if this machine lacks it.
     pub fn add(&self, path: PCWSTR) -> Option<PDH_HCOUNTER> {
         let mut counter = PDH_HCOUNTER::default();
-        (unsafe { PdhAddEnglishCounterW(self.0, path, 0, &mut counter) } == 0).then_some(counter)
+        let status = unsafe { PdhAddEnglishCounterW(self.0, path, 0, &mut counter) };
+        self.1.set(status);
+        (status == 0).then_some(counter)
     }
 
     /// Takes a new reading of every counter; false if PDH failed.
     pub fn collect(&self) -> bool {
-        unsafe { PdhCollectQueryData(self.0) == 0 }
+        let status = unsafe { PdhCollectQueryData(self.0) };
+        self.1.set(status);
+        status == 0
+    }
+
+    pub fn last_status(&self) -> u32 {
+        self.1.get()
     }
 }
 

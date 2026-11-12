@@ -89,6 +89,7 @@ pub struct DiskStats {
     /// Bytes per second; unavailable counters remain unknown.
     pub read: Option<u64>,
     pub write: Option<u64>,
+    pub counter_state: crate::measurement::Measurement,
     /// Average time per transfer, ms.
     pub response_ms: Option<f32>,
     /// °C, for drives that report it (most NVMe and SATA SSDs).
@@ -107,6 +108,7 @@ struct Disk {
     prev: Option<DISK_PERFORMANCE>,
     fallback: volumes::Counters,
     fallback_reported: bool,
+    counter_state: crate::measurement::Measurement,
     /// Last reading as (°C, warning °C); None once the drive declines.
     temperature: Option<(f32, Option<f32>)>,
     temperature_at: Option<Instant>,
@@ -123,6 +125,7 @@ impl Disk {
             prev: None,
             fallback: volumes::Counters::default(),
             fallback_reported: false,
+            counter_state: crate::measurement::Measurement::default(),
             temperature: None,
             temperature_at: None,
         }
@@ -177,8 +180,13 @@ impl Disk {
             read(raw)
         });
         match result {
-            Ok(now) => Some(now),
+            Ok(now) => {
+                self.counter_state =
+                    crate::measurement::Measurement::missing(crate::measurement::BASELINE);
+                Some(now)
+            }
             Err(code) => {
+                self.counter_state = crate::measurement::Measurement::failure(code);
                 if handle.suspended() || handle.removed() {
                     self.temperature = None;
                     self.temperature_at = None;
@@ -225,11 +233,13 @@ impl DiskTracker {
             .filter(|index| *index <= 4095)
             .collect();
         for index in indices {
+            let mut counter_state = crate::measurement::Measurement::default();
             let opened = DeviceHandle::open(&format!(r"\\.\PhysicalDrive{index}"))
                 .or_else(|code| discovered.remove(&index).ok_or(code));
             let handle = match opened {
                 Ok(handle) => Some(handle),
                 Err(code) => {
+                    counter_state = crate::measurement::Measurement::failure(code);
                     if !matches!(code, 2 | 3 | 21 | 1112) {
                         failure("disk.open", index, code);
                     }
@@ -286,7 +296,8 @@ impl DiskTracker {
                 self.disks.push(d);
                 continue;
             }
-            let disk = Disk::new(handle, info);
+            let mut disk = Disk::new(handle, info);
+            disk.counter_state = counter_state;
             if disk.handle.is_some() && matches!(disk.info.bus, "raid" | "scsi" | "sas") {
                 // Answers "why is there no temperature" for an internal drive.
                 log::info!(target: "argus::disk", "disk temperature is not queried on this bus; disk={}; bus={}", disk.info.index, disk.info.bus);
@@ -341,11 +352,16 @@ impl DiskTracker {
                         disk.fallback_reported = true;
                     }
                     stats.performance_volumes = reading.volumes;
+                    stats.counter_state =
+                        crate::measurement::Measurement::missing(crate::measurement::BASELINE);
                     if let Some(rates) = reading.rates {
                         stats.apply(rates);
+                        stats.counter_state.partial = true;
+                        stats.counter_state.missing = crate::measurement::UNAVAILABLE;
                     }
                 }
                 Some(Err(code)) => {
+                    stats.counter_state = crate::measurement::Measurement::failure(code);
                     disk.fallback.clear();
                     failure("disk.performance.volume", disk.info.index, code);
                 }
@@ -368,6 +384,11 @@ impl DiskTracker {
                     active: None,
                     read: None,
                     write: None,
+                    counter_state: if now.is_some() {
+                        crate::measurement::Measurement::missing(crate::measurement::BASELINE)
+                    } else {
+                        d.counter_state
+                    },
                     response_ms: None,
                     temperature: d.temperature.map(|t| t.0),
                     temperature_warning: d.temperature.and_then(|t| t.1),
@@ -398,6 +419,7 @@ struct Rates {
 
 impl DiskStats {
     fn apply(&mut self, rates: Rates) {
+        self.counter_state = crate::measurement::Measurement::ready();
         self.active = rates.active;
         self.read = Some(rates.read);
         self.write = Some(rates.write);

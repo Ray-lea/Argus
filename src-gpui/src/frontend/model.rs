@@ -6,7 +6,9 @@ use serde_json::{Value, json};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
+mod readings;
 mod sensor_layout;
+pub use readings::{device_reading, gpu_total, network_total, process_total};
 pub use sensor_layout::SensorLayout;
 
 pub fn number(value: &Value, key: &str) -> f64 {
@@ -119,8 +121,44 @@ pub fn parent_predates(parent: &Value, child: &Value) -> bool {
 }
 
 /// Identity and independent GPU/network sources can precede native counters.
+pub fn source_state(value: &Value, field: &str) -> Option<argus_core::measurement::Measurement> {
+    let state = value.get(field)?;
+    Some(argus_core::measurement::Measurement {
+        valid: state["valid"].as_bool()?,
+        partial: boolean(state, "partial"),
+        missing: state["missing"].as_u64().unwrap_or(0) as u8,
+    })
+}
+
+fn process_source(process: &Value, key: &str) -> Option<argus_core::measurement::Measurement> {
+    match key {
+        "gpu" => source_state(process, "gpuState"),
+        "net" | "netSent" | "netReceived" => source_state(process, "netState"),
+        "io" | "ioRead" | "ioWrite" | "ioOther" => process["ioValid"].as_bool().map(|valid| {
+            if valid {
+                argus_core::measurement::Measurement::ready()
+            } else {
+                argus_core::measurement::Measurement::missing(argus_core::measurement::BASELINE)
+            }
+        }),
+        _ => None,
+    }
+}
+
+fn readable(process: &Value, key: &str) -> bool {
+    process_source(process, key).is_none_or(|state| {
+        state.valid
+            || (matches!(key, "net" | "netSent" | "netReceived")
+                && boolean(process, "netReused")
+                && state.missing & argus_core::measurement::STALE != 0)
+    })
+}
+
 pub fn process_metric(process: &Value, key: &str) -> Option<f64> {
     let key = columns::raw_key(key);
+    if !readable(process, key) {
+        return None;
+    }
     if key == "createTime" && number(process, key) <= 0. {
         return None;
     }
@@ -330,6 +368,12 @@ impl Row {
     /// The value is the last successful reading while its source is pending.
     /// Independent GPU/network samples and static identity fields remain current.
     pub fn native_pending(&self, key: &str) -> bool {
+        if self
+            .measurement(key)
+            .is_some_and(|state| state.missing & argus_core::measurement::STALE != 0)
+        {
+            return true;
+        }
         !matches!(
             key,
             "pid"
@@ -354,6 +398,9 @@ impl Row {
 
     /// Both display and sorting use the last successful counters; null stays unknown.
     fn metric_value(&self, key: &str) -> Option<f64> {
+        if self.measurement(key).is_some() && !self.members.iter().any(|p| readable(p, key)) {
+            return None;
+        }
         if matches!(key, "gpuDedicated" | "gpuShared") {
             return self.members.iter().try_fold(0., |sum, member| {
                 process_metric(member, key).map(|value| sum + value)
@@ -369,26 +416,11 @@ impl Row {
             "mem" => "privateWs",
             other => other,
         };
-        if key == "io" {
-            return self
-                .members
-                .iter()
-                .filter_map(|p| {
-                    if boolean(p, "countersPending") {
-                        None
-                    } else {
-                        Some(number(p, "ioRead") + number(p, "ioWrite") + number(p, "ioOther"))
-                    }
-                })
-                .reduce(|sum, value| sum + value);
-        }
-        if key == "net" {
-            return self
-                .members
-                .iter()
-                .filter(|p| number(p, "createTime") >= 0.)
-                .map(|p| number(p, "netReceived") + number(p, "netSent"))
-                .reduce(|sum, value| sum + value);
+        if matches!(
+            key,
+            "io" | "ioRead" | "ioWrite" | "ioOther" | "net" | "netSent" | "netReceived"
+        ) {
+            return process_total(&self.members, key).value;
         }
         if key == "gpu"
             && let Some(usage) = &self.gpu
@@ -426,6 +458,30 @@ impl Row {
             Some(usage) => Cow::Borrowed(usage),
             None => Cow::Owned(GpuUsage::of_process(&self.raw)),
         }
+    }
+
+    pub fn measurement(&self, key: &str) -> Option<argus_core::measurement::Measurement> {
+        if matches!(
+            key,
+            "io" | "ioRead" | "ioWrite" | "ioOther" | "net" | "netSent" | "netReceived"
+        ) {
+            return Some(process_total(&self.members, key).state);
+        }
+        self.members
+            .iter()
+            .any(|p| process_source(p, key).is_some())
+            .then(|| {
+                argus_core::measurement::Measurement::combine(self.members.iter().map(|p| {
+                    process_source(p, key).unwrap_or(argus_core::measurement::Measurement::ready())
+                }))
+            })
+    }
+
+    pub fn retained(&self, key: &str) -> bool {
+        matches!(
+            key,
+            "io" | "ioRead" | "ioWrite" | "ioOther" | "net" | "netSent" | "netReceived"
+        ) && process_total(&self.members, key).retained
     }
 }
 pub struct ProcessOptions<'a> {
@@ -1323,31 +1379,54 @@ impl Timeline {
             self.groups.clear();
             self.shared.clear();
         }
-        fn flatten(prefix: &str, value: &Value, out: &mut Vec<(String, Option<f64>)>) {
+        fn flatten(
+            prefix: &str,
+            value: &Value,
+            out: &mut Vec<(String, Option<f64>)>,
+            available: bool,
+        ) {
             match value {
-                Value::Number(n) => out.push((prefix.into(), n.as_f64())),
+                Value::Number(n) => {
+                    out.push((prefix.into(), available.then(|| n.as_f64()).flatten()))
+                }
                 Value::Null => out.push((prefix.into(), None)),
                 Value::Array(a) => {
                     for (i, v) in a.iter().enumerate() {
-                        flatten(&format!("{prefix}.{i}"), v, out)
+                        flatten(&format!("{prefix}.{i}"), v, out, available)
                     }
                 }
                 Value::Object(o) => {
                     for (k, v) in o {
-                        if matches!(k.as_str(), "info" | "threads" | "boardSensors" | "limits")
-                            || (prefix == "hardware.cpuSensors" && k == "cores")
+                        if matches!(
+                            k.as_str(),
+                            "info"
+                                | "threads"
+                                | "boardSensors"
+                                | "limits"
+                                | "utilState"
+                                | "rateState"
+                                | "counterState"
+                                | "networkState"
+                        ) || (prefix == "hardware.cpuSensors" && k == "cores")
                         {
                             continue;
                         }
-                        flatten(&format!("{prefix}.{k}"), v, out)
+                        let valid = match k.as_str() {
+                            "util" | "engines" => {
+                                source_state(value, "utilState").is_none_or(|s| s.valid)
+                            }
+                            "rx" | "tx" => source_state(value, "rateState").is_none_or(|s| s.valid),
+                            _ => true,
+                        };
+                        flatten(&format!("{prefix}.{k}"), v, out, available && valid)
                     }
                 }
                 _ => {}
             }
         }
         let mut metrics = Vec::with_capacity(128);
-        flatten("system", &snapshot["system"], &mut metrics);
-        flatten("hardware", &snapshot["hardware"], &mut metrics);
+        flatten("system", &snapshot["system"], &mut metrics, true);
+        flatten("hardware", &snapshot["hardware"], &mut metrics, true);
         for (key, _) in &mut metrics {
             *key = series_key(snapshot, key);
         }
@@ -1355,22 +1434,8 @@ impl Timeline {
         metrics.extend([
             (CPU_TEMPERATURE_SERIES.into(), cpu_temperature(hardware)),
             ("totals.disk".into(), disk_rate(values(&hardware["disks"]))),
-            (
-                "totals.network".into(),
-                Some(
-                    values(&hardware["nics"])
-                        .iter()
-                        .map(|n| number(n, "rx") + number(n, "tx"))
-                        .sum(),
-                ),
-            ),
-            (
-                "totals.gpu".into(),
-                values(&hardware["gpus"])
-                    .iter()
-                    .filter_map(|g| g["util"].as_f64())
-                    .reduce(f64::max),
-            ),
+            ("totals.network".into(), network_total(hardware, None).value),
+            ("totals.gpu".into(), gpu_total(hardware).value),
         ]);
         let oldest = now - interval * 64. - 250.;
         // Samples further apart than the interval (the slower cadence while the
@@ -1579,6 +1644,72 @@ mod tests {
         assert_eq!(core_columns(24, 1265., 470., other), other);
         // Nothing fits the height: as many columns as the width takes.
         assert_eq!(core_columns(32, 1265., 200., 0), 8);
+    }
+
+    #[test]
+    fn live_resource_curves_break_at_unavailable_samples_and_skip_state_metadata() {
+        let mut timeline = Timeline::new();
+        for (i, valid) in [true, false, true].into_iter().enumerate() {
+            timeline.push(&json!({"timestamp":i*1000,"system":{},"hardware":{
+                "networkState":{"valid":valid,"missing":if valid {0} else {2}},
+                "nics":[{"info":{"id":"a"},"rx":10,"tx":5,"rateState":{"valid":valid}}],
+                "gpus":[{"info":{"id":"g"},"util":20,"engines":[10,20],"utilState":{"valid":valid}}]
+            }}), 1000.);
+        }
+        assert_eq!(
+            timeline.points("totals.gpu").unwrap(),
+            vec![(0., Some(20.)), (1000., None), (2000., Some(20.))]
+        );
+        assert_eq!(
+            timeline.points("totals.network").unwrap(),
+            vec![(0., Some(15.)), (1000., None), (2000., Some(15.))]
+        );
+        assert!(!timeline.samples.keys().any(|key| key.contains("State")));
+        for (key, points) in &timeline.samples {
+            if key.ends_with("util") || key.ends_with("rx") || key.contains("engines.") {
+                assert_eq!(points[1].1, None, "{key}");
+            }
+        }
+    }
+
+    #[test]
+    fn live_resource_states_keep_zero_missing_partial_and_retained_values_distinct() {
+        let process = json!({"pid":1,"createTime":1,"name":"app.exe","path":"C:/app.exe","ioRead":0,"ioValid":true,"gpu":0,"gpuState":{"valid":true},"netSent":0,"netReceived":0,"netState":{"valid":true}});
+        let row = Row::process(process.clone(), 0);
+        for key in ["io", "ioRead", "gpu", "net"] {
+            assert_eq!(row.metric(key), Some(0.));
+        }
+        let mut unavailable = process.clone();
+        unavailable["pid"] = json!(2);
+        unavailable["ioValid"] = json!(false);
+        unavailable["gpu"] = json!(99);
+        unavailable["gpuState"] = json!({"valid":false,"missing":2});
+        unavailable["gpuEngines"] = json!([{"id":"bad","name":"3D","util":99}]);
+        unavailable["netState"] = json!({"valid":false,"missing":1});
+        let missing = Row::process(unavailable.clone(), 0);
+        for key in ["io", "ioRead", "gpu", "net"] {
+            assert_eq!(missing.metric(key), None);
+        }
+        let rows = rows_of(
+            &[process, unavailable.clone()],
+            "apps",
+            "",
+            "gpu",
+            true,
+            &HashMap::new(),
+        );
+        assert_eq!(rows[0].metric("gpu"), Some(0.));
+        assert!(rows[0].measurement("gpu").unwrap().partial);
+        assert!(rows[0].measurement("io").unwrap().partial);
+        unavailable["netReceived"] = json!(1200);
+        unavailable["netState"] = json!({"valid":false,"missing":4});
+        let expired = Row::process(unavailable.clone(), 0);
+        assert_eq!(expired.metric("net"), None);
+        unavailable["netReused"] = json!(true);
+        let retained = Row::process(unavailable, 0);
+        assert_eq!(retained.metric("net"), Some(1200.));
+        assert!(retained.native_pending("net"));
+        assert!(!retained.measurement("net").unwrap().valid);
     }
 
     #[test]

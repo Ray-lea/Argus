@@ -49,5 +49,20 @@
   "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>",
   "instanceUnavailable": "La instancia registrada de {name} (PID {pid}) ha finalizado o no se puede confirmar su identidad.",
   "showCpuPeak": "Ver fotograma del pico CPU",
-  "cpuSummary": "CPU: media {average}%, máximo {peak}%; fotograma del pico: {time}. Los valores de procesos son medias por fotograma y no prueban la causa de un pico breve."
+  "cpuSummary": "CPU: media {average}%, máximo {peak}%; fotograma del pico: {time}. Los valores de procesos son medias por fotograma y no prueban la causa de un pico breve.",
+  "coverage": {
+    "legacy": "Disponibilidad no registrada",
+    "missing": "Sin muestras válidas",
+    "partial": "Parcial",
+    "available": "Medido",
+    "samples": "{state}: {valid}/{total}",
+    "disk": "Disco: {status}",
+    "help": "Solo se promedian muestras válidas; los registros parciales carecen de algunas muestras o dispositivos. Solo se muestran motivos registrados. Una fuente no disponible puede tener una causa desconocida. «?» indica datos antiguos sin información de disponibilidad.",
+    "reasons": {
+      "unavailable": "Fuente no disponible",
+      "denied": "Acceso denegado",
+      "stale": "Lectura antigua o repetida",
+      "baseline": "Esperando lectura inicial"
+    }
+  }
 }

@@ -47,5 +47,20 @@
   "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>",
   "instanceUnavailable": "The recorded instance of {name} (PID {pid}) has exited or its identity cannot be confirmed.",
   "showCpuPeak": "Show CPU peak frame",
-  "cpuSummary": "CPU average {average}%, peak {peak}%; peak frame: {time}. Process readings are frame averages and do not establish the cause of a brief peak."
+  "cpuSummary": "CPU average {average}%, peak {peak}%; peak frame: {time}. Process readings are frame averages and do not establish the cause of a brief peak.",
+  "coverage": {
+    "legacy": "Availability not recorded",
+    "missing": "No valid samples",
+    "partial": "Partial",
+    "available": "Measured",
+    "samples": "{state}: {valid}/{total}",
+    "disk": "Disk: {status}",
+    "help": "Only valid samples are averaged; partial records lack some samples or devices. Only recorded reasons are shown. An unavailable source may have no known reason. “?” marks legacy data without availability.",
+    "reasons": {
+      "unavailable": "Source unavailable",
+      "denied": "Access denied",
+      "stale": "Older or repeated reading",
+      "baseline": "Waiting for baseline"
+    }
+  }
 }

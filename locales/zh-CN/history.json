@@ -41,5 +41,20 @@
   "off": "历史记录已关闭，不再记录新的数据。<link>打开设置</link>",
   "instanceUnavailable": "进程 {name}（PID {pid}）的记录实例已结束，或无法确认其身份。",
   "showCpuPeak": "查看 CPU 峰值帧",
-  "cpuSummary": "区间 CPU 平均 {average}%，峰值 {peak}%；峰值记录帧：{time}。帧内进程读数为平均值，不能据此确定瞬时峰值的原因。"
+  "cpuSummary": "区间 CPU 平均 {average}%，峰值 {peak}%；峰值记录帧：{time}。帧内进程读数为平均值，不能据此确定瞬时峰值的原因。",
+  "coverage": {
+    "legacy": "可用性未记录",
+    "missing": "无有效采样",
+    "partial": "部分",
+    "available": "已测量",
+    "samples": "{state}：{valid}/{total}",
+    "disk": "磁盘：{status}",
+    "help": "仅对有效样本求平均；部分记录缺少某些样本或设备。仅显示记录中已知的缺失原因；来源未提供原因时标为不可用。“?” 表示旧格式未记录可用性。",
+    "reasons": {
+      "unavailable": "来源不可用",
+      "denied": "访问被拒绝",
+      "stale": "读数已过期或重复",
+      "baseline": "等待计数基线"
+    }
+  }
 }
