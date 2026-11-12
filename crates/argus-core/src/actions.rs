@@ -5,16 +5,18 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use windows::Wdk::System::Threading::{NtQueryInformationProcess, PROCESSINFOCLASS};
-use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, FILETIME};
+use windows::Win32::Foundation::{
+    ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, FILETIME, STATUS_ACCESS_DENIED,
+};
 use windows::Win32::System::Threading::{
     ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcessId,
     GetPriorityClass, GetProcessTimes, HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS,
     NORMAL_PRIORITY_CLASS, OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_CREATION_FLAGS,
     PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
     PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_SET_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, ProcessPowerThrottling,
-    REALTIME_PRIORITY_CLASS, SetPriorityClass, SetProcessInformation, TerminateProcess,
-    WaitForSingleObject,
+    PROCESS_SET_INFORMATION, PROCESS_SUSPEND_RESUME, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    ProcessPowerThrottling, REALTIME_PRIORITY_CLASS, SetPriorityClass, SetProcessInformation,
+    TerminateProcess, WaitForSingleObject,
 };
 
 use crate::process::list_lineage;
@@ -37,6 +39,9 @@ pub enum ActionError {
     /// service speaks another protocol and refused it: updating the service
     /// lets it act again. Only the host reports it; the service never sends it.
     ServiceOutdated,
+    /// Resuming could not be confirmed: threads stayed suspended after every
+    /// retry, or their state could not be read.
+    StillSuspended,
     Os(String),
 }
 
@@ -60,6 +65,7 @@ impl ActionError {
             Self::Critical => "critical process requires confirmation".into(),
             Self::Refused => "operation refused by policy".into(),
             Self::ServiceOutdated => "privileged service protocol incompatible".into(),
+            Self::StillSuspended => "threads remain suspended or unreadable after resume".into(),
             Self::Os(message) => crate::diagnostics::failure(message),
         }
     }
@@ -249,6 +255,66 @@ pub fn set_efficiency_mode(pid: u32, create_time: i64, on: bool) -> Result<(), A
     Ok(())
 }
 
+/// Resumes repeated at most this many times: one more than a thread's suspend
+/// count can reach (`MAXIMUM_SUSPEND_COUNT`, 127), so any stacking clears.
+const MAX_RESUMES: usize = 128;
+
+fn require_suspendable(handle: windows::Win32::Foundation::HANDLE) -> Result<(), ActionError> {
+    // Query the already verified instance with limited query rights. A failed
+    // critical-process query must stop the operation before any suspension.
+    let mut critical = windows::core::BOOL::default();
+    unsafe { windows::Win32::System::Threading::IsProcessCritical(handle, &mut critical) }?;
+    if critical.as_bool() {
+        return Err(ActionError::Critical);
+    }
+    Ok(())
+}
+
+/// Suspends or resumes every thread of a process instance, the way Resource
+/// Monitor's "Suspend process" does. Suspending is refused for the System
+/// process, Argus itself and critical processes, whose stall hangs Windows.
+///
+/// Each native call moves every thread's suspend count by one, so both
+/// directions are made idempotent against the live thread states rather than
+/// the caller's (possibly stale) list: a fully suspended process is not
+/// suspended again, and resuming repeats until no thread is left suspended,
+/// including threads another tool suspended more often than the rest.
+pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), ActionError> {
+    use crate::process::{Suspension, suspension};
+    if pid == 0 || pid == 4 || pid == unsafe { GetCurrentProcessId() } {
+        return Err(ActionError::Refused);
+    }
+    if create_time <= 0 {
+        return Err(ActionError::NotFound);
+    }
+    let handle = open_instance(pid, create_time, PROCESS_SUSPEND_RESUME)?;
+    let check = |status: windows::Win32::Foundation::NTSTATUS| {
+        if status == STATUS_ACCESS_DENIED {
+            return Err(ActionError::AccessDenied);
+        }
+        Ok(status.ok()?)
+    };
+    if suspend {
+        require_suspendable(handle.0)?;
+        // An unreadable state suspends anyway: a stacked count is what resume
+        // clears, while skipping would leave the process running unasked.
+        if suspension(pid, create_time) == Ok(Some(Suspension::All)) {
+            return Ok(());
+        }
+        return check(unsafe { crate::nt::NtSuspendProcess(handle.0) });
+    }
+    for _ in 0..MAX_RESUMES {
+        check(unsafe { crate::nt::NtResumeProcess(handle.0) })?;
+        // Done, or gone (the instance left the process list). Still suspended
+        // or not readable this time: resuming a thread whose count is already
+        // zero changes nothing, so try again.
+        if let Ok(None | Some(Suspension::None)) = suspension(pid, create_time) {
+            return Ok(());
+        }
+    }
+    Err(ActionError::StillSuspended)
+}
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TreeKillReport {
@@ -319,6 +385,94 @@ pub fn terminate_tree_with(
 
 #[cfg(test)]
 mod tests {
+    /// Waits up to two seconds for the suspend APCs to reach every thread.
+    fn settles(pid: u32, created: i64, want: bool) -> bool {
+        use crate::process::{Suspension, suspension};
+        let want = if want {
+            Suspension::All
+        } else {
+            Suspension::None
+        };
+        (0..40).any(|_| {
+            let now = suspension(pid, created) == Ok(Some(want));
+            if !now {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            now
+        })
+    }
+
+    /// Ends the child however the test ends: `Child` doesn't on drop, and a
+    /// suspended one would never finish on its own.
+    struct KillOnDrop(std::process::Child);
+
+    impl Drop for KillOnDrop {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    #[test]
+    fn one_resume_clears_suspensions_stacked_on_a_live_process() {
+        use std::os::windows::process::CommandExt;
+        let child = KillOnDrop(
+            std::process::Command::new("ping")
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0)
+                .spawn()
+                .unwrap(),
+        );
+        let pid = child.0.id();
+        let created = crate::process::list_lineage()
+            .into_iter()
+            .find(|&(p, ..)| p == pid)
+            .unwrap()
+            .2;
+        for stale in [0, -1, created + 1] {
+            assert!(matches!(
+                super::set_suspended(pid, stale, true),
+                Err(super::ActionError::NotFound)
+            ));
+        }
+        super::set_suspended(pid, created, true).unwrap();
+        assert!(settles(pid, created, true));
+        // Suspending an already suspended process leaves its count alone…
+        super::set_suspended(pid, created, true).unwrap();
+        // …and counts stacked behind Argus's back, unequal across threads,
+        // still clear in one resume.
+        let handle = super::open_instance(pid, created, super::PROCESS_SUSPEND_RESUME).unwrap();
+        assert!(unsafe { crate::nt::NtSuspendProcess(handle.0) }.is_ok());
+        let mut buf = crate::util::AlignedBuf::with_capacity(512 * 1024);
+        crate::nt::query_system_information(
+            windows::Wdk::System::SystemInformation::SystemProcessInformation,
+            &mut buf,
+        )
+        .unwrap();
+        let thread = crate::nt::ProcessIter::new(&buf)
+            .find(|e| e.info.unique_process_id.0 as usize as u32 == pid)
+            .map(|e| e.threads[0].unique_thread.0 as usize as u32)
+            .unwrap();
+        use windows::Win32::System::Threading::{OpenThread, SuspendThread, THREAD_SUSPEND_RESUME};
+        let thread = super::OwnedHandle(
+            unsafe { OpenThread(THREAD_SUSPEND_RESUME, false, thread) }.unwrap(),
+        );
+        for _ in 0..3 {
+            assert_ne!(unsafe { SuspendThread(thread.0) }, u32::MAX);
+        }
+        super::set_suspended(pid, created, false).unwrap();
+        assert!(settles(pid, created, false));
+    }
+
+    #[test]
+    fn suspension_requires_a_successful_critical_process_query() {
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::System::Threading::GetCurrentProcess;
+        assert!(super::require_suspendable(HANDLE::default()).is_err());
+        assert!(super::require_suspendable(unsafe { GetCurrentProcess() }).is_ok());
+    }
+
     #[test]
     fn unresolved_identity_never_uses_the_legacy_pid_only_action_path() {
         assert!(matches!(
@@ -346,6 +500,10 @@ mod tests {
         assert_eq!(
             json(ActionError::ServiceOutdated),
             r#"{"kind":"serviceOutdated"}"#
+        );
+        assert_eq!(
+            json(ActionError::StillSuspended),
+            r#"{"kind":"stillSuspended"}"#
         );
         assert_eq!(
             json(ActionError::Os("x".into())),

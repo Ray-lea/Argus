@@ -78,6 +78,41 @@
       "done": "Mode d’efficacité désactivé pour {name}."
     }
   },
+  "suspend": {
+    "title": "Suspendre {name} ?",
+    "body": "Tous les threads du PID {pid} seront arrêtés jusqu’à sa reprise. Ses fenêtres ne répondront plus et les connexions réseau peuvent expirer ; certains programmes (jeux, applications avec anti-triche ou autoprotection) peuvent échouer.",
+    "bodyGroup": {
+      "one": "{count} processus de {name} sera suspendu jusqu’à sa reprise. Ses fenêtres ne répondront plus et les connexions réseau peuvent expirer ; certains programmes (jeux, applications avec anti-triche ou autoprotection) peuvent échouer.",
+      "many": "Les {count} processus de {name} seront suspendus jusqu’à leur reprise. Leurs fenêtres ne répondront plus et les connexions réseau peuvent expirer ; certains programmes (jeux, applications avec anti-triche ou autoprotection) peuvent échouer.",
+      "other": "Les {count} processus de {name} seront suspendus jusqu’à leur reprise. Leurs fenêtres ne répondront plus et les connexions réseau peuvent expirer ; certains programmes (jeux, applications avec anti-triche ou autoprotection) peuvent échouer."
+    },
+    "confirm": "Suspendre",
+    "error": {
+      "accessDenied": "Accès refusé. Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur ; les processus protégés peuvent rester inaccessibles.",
+      "refused": "{name} ne peut pas être suspendu ni repris.",
+      "serviceOutdated": "Accès refusé. La version du service privilégié est incompatible ; mettez le service à jour et réessayez.",
+      "critical": "{name} est un processus système critique. Le suspendre bloquerait Windows ; l’opération a été bloquée.",
+      "stillSuspended": "{name} est peut-être encore suspendu : certains threads n’ont pas pu être repris ou leur état n’a pas pu être lu. Réessayez."
+    },
+    "on": {
+      "failed": "Impossible de suspendre {name}",
+      "partial": {
+        "one": "{count} processus suspendu ; non suspendus : {failed}. {error}",
+        "many": "{count} processus suspendus ; non suspendus : {failed}. {error}",
+        "other": "{count} processus suspendus ; non suspendus : {failed}. {error}"
+      },
+      "done": "{name} suspendu."
+    },
+    "off": {
+      "failed": "Impossible de reprendre {name}",
+      "partial": {
+        "one": "{count} processus repris ; non repris : {failed}. {error}",
+        "many": "{count} processus repris ; non repris : {failed}. {error}",
+        "other": "{count} processus repris ; non repris : {failed}. {error}"
+      },
+      "done": "{name} repris."
+    }
+  },
   "ruleScope": {
     "title": "Ajouter une règle pour tous les processus portant ce nom ?",
     "body": "Les règles utilisent le nom de l’exécutable {name}. Elles s’appliquent à tous les processus portant ce nom, quels que soient l’hôte et le chemin d’installation.",

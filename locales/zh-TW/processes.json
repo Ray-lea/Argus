@@ -228,6 +228,8 @@
   "menu": {
     "endAll": "結束全部 {count} 個處理程序",
     "setPriority": "設定優先順序",
+    "suspend": "暫停處理程序",
+    "resume": "繼續處理程序",
     "addRule": "新增規則",
     "copyPid": "複製 PID",
     "copyPidWhat": " PID",

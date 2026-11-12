@@ -251,6 +251,8 @@
       "other": "{count} 件のプロセスをすべて終了"
     },
     "setPriority": "優先度の設定",
+    "suspend": "プロセスの中断",
+    "resume": "プロセスの再開",
     "addRule": "ルールを追加",
     "copyPid": "PIDをコピー",
     "copyPidWhat": "PID",

@@ -595,14 +595,6 @@ impl Desktop {
                 return message;
             }
         }
-        let key = format!(
-            "{}.{kind}",
-            if command == "run_task" {
-                "tasks.error"
-            } else {
-                "actions.error"
-            }
-        );
         let name = args["pid"]
             .as_u64()
             .and_then(|pid| {
@@ -612,6 +604,23 @@ impl Desktop {
                     .map(model::title)
             })
             .unwrap_or_else(|| text(args, "name").into());
+        // The general `actions.error` texts are about ending a process;
+        // suspending and resuming have their own wherever the cause differs.
+        if command == "set_suspended" {
+            let key = format!("actions.suspend.error.{kind}");
+            let result = argus_core::i18n::format(&key, &[("name", &name)]);
+            if result != key {
+                return result;
+            }
+        }
+        let key = format!(
+            "{}.{kind}",
+            if command == "run_task" {
+                "tasks.error"
+            } else {
+                "actions.error"
+            }
+        );
         let result = argus_core::i18n::format(&key, &[("name", &name)]);
         if result == key {
             error

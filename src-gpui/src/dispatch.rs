@@ -108,6 +108,14 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "set_suspended" => crate::commands::set_suspended(
+            host.state(),
+            argument::<u32>(&args, "pid")?,
+            argument::<i64>(&args, "createTime")?,
+            argument::<bool>(&args, "suspend")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "reveal_in_explorer" => {
             crate::commands::reveal_in_explorer(argument::<String>(&args, "path")?)
                 .map(|value| serde_json::to_value(value).expect("serializable command response"))

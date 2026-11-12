@@ -1029,6 +1029,35 @@ impl Desktop {
             .disabled(!identity_ready)
             .checked(efficient),
         );
+        // Suspending nests (each call adds one to every thread's suspend count
+        // and a resume takes one off), so each action only takes the members
+        // in the other state: suspending a process twice would leave it
+        // suspended after one resume. A row whose app started new processes
+        // after being suspended offers both.
+        let (suspended, running): (Vec<_>, Vec<_>) = row
+            .members
+            .iter()
+            .cloned()
+            .partition(|member| boolean(member, "suspended"));
+        for (members, on, name, glyph) in [
+            (running, true, "processes.menu.suspend", "PauseIcon"),
+            (suspended, false, "processes.menu.resume", "PlayIcon"),
+        ] {
+            if members.is_empty() {
+                continue;
+            }
+            items.push(
+                MenuItem::new(
+                    label(name),
+                    Action::Dialog(
+                        "suspend".into(),
+                        json!({"members":members,"name":row.title,"on":on}),
+                    ),
+                )
+                .icon(glyph)
+                .disabled(!identity_ready),
+            );
+        }
         items.push(MenuItem::new(
             label("processes.menu.addRule"),
             Action::Dialog("ruleScope".into(), json!({"name":text(&row.raw,"name")})),
