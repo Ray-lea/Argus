@@ -11,6 +11,13 @@
   "devices": {
     "hide": "隱藏「{name}」",
     "shown": "顯示的裝置",
+    "diskOrder": {
+      "title": "磁碟排序",
+      "number": "依磁碟編號",
+      "letter": "依磁碟機代號",
+      "custom": "自訂（拖曳調整）"
+    },
+    "resetOrder": "還原預設順序",
     "restore": "還原預設顯示"
   },
   "cpu": {

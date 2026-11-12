@@ -13,9 +13,193 @@ pub(in crate::frontend) const HIDE: &str = "perfDeviceHidden";
 /// Shows every device again.
 pub(in crate::frontend) const RESTORE: &str = "perfDevicesRestore";
 
+/// The devices' order as arranged by dragging, by stable key (`stable_key`).
+pub(in crate::frontend) const ORDER: &str = "perfDeviceOrder";
+/// How the disks are ordered among themselves (`DiskOrder`); set from the
+/// menu as a preference of the same name.
+pub(in crate::frontend) const DISK_ORDER: &str = "perfDiskOrder";
+/// Puts every device back in the collector's order.
+pub(in crate::frontend) const RESET_ORDER: &str = "perfDeviceOrderReset";
+
 /// How long a row takes to collapse or return, and the mark to slide: the
 /// interface's slower motion, on the curve for things moving between places.
 const MOVE: Duration = Duration::from_millis(250);
+
+/// How the disks are ordered among themselves.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(in crate::frontend) enum DiskOrder {
+    /// By disk number, as Windows numbers them (`\\.\PhysicalDriveN`, the
+    /// numbers Disk Management shows): the collector's own order.
+    #[default]
+    Number,
+    /// By drive letter, a disk with several by its first; disks without a
+    /// letter follow, by number.
+    Letter,
+    /// Wherever they were dragged to.
+    Custom,
+}
+
+impl DiskOrder {
+    pub(in crate::frontend) const ALL: [Self; 3] = [Self::Number, Self::Letter, Self::Custom];
+
+    pub(in crate::frontend) fn parse(value: &str) -> Self {
+        match value {
+            "letter" => Self::Letter,
+            "custom" => Self::Custom,
+            _ => Self::Number,
+        }
+    }
+
+    pub(in crate::frontend) fn key(self) -> &'static str {
+        match self {
+            Self::Number => "number",
+            Self::Letter => "letter",
+            Self::Custom => "custom",
+        }
+    }
+}
+
+/// A device as the list orders it: its stable key and, for a disk, its
+/// number and first drive letter.
+pub(super) struct Entry<'a> {
+    pub(super) key: &'a str,
+    pub(super) disk: Option<(u64, Option<&'a str>)>,
+}
+
+/// The disks among `entries` (by index) in the order `disks` puts them;
+/// `None` for an order of their own (`DiskOrder::Custom`).
+fn ranked_disks(entries: &[Entry], disks: DiskOrder) -> Option<Vec<usize>> {
+    let mut ranked = entries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| entry.disk.map(|disk| (index, disk)))
+        .collect::<Vec<_>>();
+    match disks {
+        DiskOrder::Custom => return None,
+        DiskOrder::Number => ranked.sort_by_key(|(_, (number, _))| *number),
+        DiskOrder::Letter => ranked.sort_by(|(_, (a, first)), (_, (b, second))| {
+            // Lettered disks first, by letter; then the others, by number.
+            (first.is_none(), first.map(str::to_ascii_uppercase), a).cmp(&(
+                second.is_none(),
+                second.map(str::to_ascii_uppercase),
+                b,
+            ))
+        }),
+    }
+    Some(ranked.into_iter().map(|(index, _)| index).collect())
+}
+
+/// The list's order, as indices into `entries` (the collector's order):
+/// as `saved` arranges them, with the disks in the places the disks take
+/// there put in the order `disks` asks for. A device not in `saved` (new, or
+/// none arranged yet) follows the device it follows in the collector's order.
+pub(super) fn arrange(entries: &[Entry], saved: &[String], disks: DiskOrder) -> Vec<usize> {
+    let mut order = Vec::with_capacity(entries.len());
+    for key in saved {
+        if let Some(index) = entries.iter().position(|entry| entry.key == key)
+            && !order.contains(&index)
+        {
+            order.push(index);
+        }
+    }
+    for index in 0..entries.len() {
+        if order.contains(&index) {
+            continue;
+        }
+        let after = (0..index)
+            .rev()
+            .find_map(|before| order.iter().position(|placed| *placed == before));
+        let at = match after {
+            Some(position) => position + 1,
+            // Nothing before it is placed: before the first that comes after.
+            None => (index + 1..entries.len())
+                .find_map(|next| order.iter().position(|placed| *placed == next))
+                .unwrap_or(order.len()),
+        };
+        order.insert(at, index);
+    }
+    if let Some(ranked) = ranked_disks(entries, disks) {
+        let mut ranked = ranked.into_iter();
+        for slot in order.iter_mut() {
+            if entries[*slot].disk.is_some()
+                && let Some(disk) = ranked.next()
+            {
+                *slot = disk;
+            }
+        }
+    }
+    order
+}
+
+/// Whether `order` (indices into `entries`) keeps the disks in the order
+/// `disks` asks for: a drag that does not keeps them where it put them.
+pub(super) fn keeps(entries: &[Entry], order: &[usize], disks: DiskOrder) -> bool {
+    let Some(ranked) = ranked_disks(entries, disks) else {
+        return true;
+    };
+    order
+        .iter()
+        .copied()
+        .filter(|index| entries[*index].disk.is_some())
+        .eq(ranked)
+}
+
+/// Where the dragged row belongs in `order` (row ids, top to bottom) once
+/// its middle is at `middle`: it trades places with the next shown row
+/// whose middle it has passed, one at a time, either way. `middles` gives
+/// each shown row's middle as laid out in `order`; hidden rows have none
+/// and keep their places among the others.
+pub(super) fn reordered(
+    order: &[String],
+    dragged: &str,
+    middle: f32,
+    middles: &HashMap<String, f32>,
+) -> Option<Vec<String>> {
+    let at = order.iter().position(|id| id == dragged)?;
+    let shown = |index: &usize| middles.contains_key(&order[*index]);
+    if let Some(next) = (at + 1..order.len()).find(shown)
+        && middle > middles[&order[next]]
+    {
+        let mut moved = order.to_vec();
+        let id = moved.remove(at);
+        moved.insert(next, id);
+        return Some(moved);
+    }
+    if let Some(previous) = (0..at).rev().find(shown)
+        && middle < middles[&order[previous]]
+    {
+        let mut moved = order.to_vec();
+        let id = moved.remove(at);
+        moved.insert(previous, id);
+        return Some(moved);
+    }
+    None
+}
+
+/// A device row being dragged to another place.
+#[derive(Clone)]
+pub(super) struct RowDrag {
+    pub(super) id: String,
+    /// The pointer's y when it took the row, and now.
+    pub(super) grab: f32,
+    pub(super) pointer: f32,
+    /// Where the row was laid out when taken, from the top of the list.
+    pub(super) start: f32,
+    /// The rows' order as the drag has arranged them so far, by id, and
+    /// when it took the row.
+    pub(super) order: Vec<String>,
+    pub(super) initial: Vec<String>,
+    /// Where the row was last drawn: within the list, wherever the pointer is.
+    pub(super) drawn: Option<f32>,
+}
+
+impl RowDrag {
+    /// Where the pointer has taken the row: its start moved as far as the
+    /// pointer has. It decides the row's place, even past either end.
+    pub(super) fn at(&self) -> f32 {
+        self.start + self.pointer - self.grab
+    }
+}
 
 fn field<'a>(info: &'a Value, name: &str) -> &'a str {
     info[name].as_str().unwrap_or_default()
@@ -169,9 +353,123 @@ struct Mark {
 pub(super) struct RailMotion {
     rows: HashMap<String, Glide>,
     mark: Option<Mark>,
+    /// A row being dragged to another place.
+    pub(super) drag: Option<RowDrag>,
+    /// Rows gliding to new places after the order changed.
+    flips: crate::frontend::flip::Flips,
+    /// The order the rows were last drawn in, by id.
+    order: Vec<String>,
+    /// Each row's height and presence as last drawn, by id: where the rows
+    /// are in another order (`tops`).
+    sizes: HashMap<String, (Pixels, f32)>,
 }
 
 impl RailMotion {
+    /// Where each row is laid out in `order` (ids, top to bottom), `gap`
+    /// apart, at the heights and presences last drawn: its top and height.
+    pub(super) fn tops(&self, order: &[String], gap: Pixels) -> HashMap<String, (f32, f32)> {
+        let known = order
+            .iter()
+            .filter(|id| self.sizes.contains_key(*id))
+            .collect::<Vec<_>>();
+        let (heights, presence): (Vec<_>, Vec<_>) =
+            known.iter().map(|id| self.sizes[id.as_str()]).unzip();
+        known
+            .into_iter()
+            .zip(layout(&heights, &presence, gap))
+            .map(|(id, place)| (id.clone(), (f32::from(place.top), f32::from(place.height))))
+            .collect()
+    }
+
+    /// Notes the rows' order and sizes as drawn now. Rows the order moved
+    /// glide from where they were, except the one under the pointer.
+    pub(super) fn arranged(
+        &mut self,
+        order: Vec<String>,
+        sizes: HashMap<String, (Pixels, f32)>,
+        gap: Pixels,
+        animate: bool,
+        now: Instant,
+    ) {
+        let moved = !self.order.is_empty() && self.order != order;
+        let before = if moved && animate {
+            self.tops(&self.order, gap)
+        } else {
+            HashMap::new()
+        };
+        self.sizes = sizes;
+        if !before.is_empty() {
+            let after = self.tops(&order, gap);
+            let dragged = self.drag.as_ref().map(|drag| drag.id.as_str());
+            for (id, (top, _)) in &after {
+                if Some(id.as_str()) != dragged
+                    && let Some((old, _)) = before.get(id)
+                    && old != top
+                {
+                    self.flips.moved(id, top - old, now);
+                }
+            }
+        }
+        self.order = order;
+    }
+
+    /// How far from its place row `id` is drawn while it glides there.
+    pub(super) fn offset(&self, id: &str, now: Instant) -> f32 {
+        self.flips.offset(id, now)
+    }
+
+    /// Takes row `id`, laid out at `top`, under the pointer at `pointer`.
+    pub(super) fn take(&mut self, id: &str, top: f32, pointer: f32) {
+        self.drag = Some(RowDrag {
+            id: id.to_owned(),
+            grab: pointer,
+            pointer,
+            start: top,
+            order: self.order.clone(),
+            initial: self.order.clone(),
+            drawn: None,
+        });
+    }
+
+    /// Follows the pointer at `pointer`: once the dragged row's middle
+    /// passes a neighbour's, the two trade places and the one passed glides
+    /// to its new place.
+    pub(super) fn follow(&mut self, pointer: f32, gap: Pixels) {
+        let Some(drag) = self.drag.as_mut() else {
+            return;
+        };
+        drag.pointer = pointer;
+        let id = drag.id.clone();
+        for _ in 0..self.order.len().max(1) {
+            let Some(drag) = self.drag.as_ref() else {
+                return;
+            };
+            let tops = self.tops(&drag.order, gap);
+            let height = tops.get(&id).map_or(0., |(_, height)| *height);
+            let middles = tops
+                .iter()
+                .filter(|(other, (_, height))| **other != id && *height > 0.)
+                .map(|(other, (top, height))| (other.clone(), top + height / 2.))
+                .collect::<HashMap<_, _>>();
+            let Some(order) = reordered(&drag.order, &id, drag.at() + height / 2., &middles) else {
+                return;
+            };
+            if let Some(drag) = self.drag.as_mut() {
+                drag.order = order;
+            }
+        }
+    }
+
+    /// Lets go of the dragged row: it glides from under the pointer into
+    /// its place. Returns the drag, with the order it arranged.
+    pub(super) fn release(&mut self, gap: Pixels, animate: bool, now: Instant) -> Option<RowDrag> {
+        let drag = self.drag.take()?;
+        if animate && let Some((top, _)) = self.tops(&drag.order, gap).get(&drag.id) {
+            self.flips
+                .moved(&drag.id, top - drag.drawn.unwrap_or(drag.at()), now);
+        }
+        Some(drag)
+    }
     /// Every device's presence at `now`, by id and whether the list shows
     /// it. A row whose state changed begins to move; a device seen for the
     /// first time (a new one, or the page just opened) takes its place at
@@ -248,6 +546,7 @@ impl RailMotion {
                 .mark
                 .as_ref()
                 .is_some_and(|mark| mark.started.is_some())
+            || self.flips.active(now)
     }
 }
 
@@ -295,12 +594,12 @@ pub(super) fn opacity(presence: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        MOVE, Place, RailMotion, distinct, layout, opacity, shown, stable_key, successor,
-        with_hidden,
+        DiskOrder, Entry, MOVE, Place, RailMotion, arrange, distinct, keeps, layout, opacity,
+        reordered, shown, stable_key, successor, with_hidden,
     };
     use gpui_kit::px;
     use serde_json::json;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::time::Instant;
 
     fn set(keys: &[&str]) -> HashSet<String> {
@@ -475,6 +774,146 @@ mod tests {
         let half = layout(&[height, tall], &[0.5, 1.], gap);
         assert_eq!(half[0], place(px(0.), px(0.), px(29.)));
         assert_eq!(half[1], place(px(2.), px(31.), tall));
+    }
+
+    fn entries() -> Vec<Entry<'static>> {
+        let disk = |key, number, letter| Entry {
+            key,
+            disk: Some((number, letter)),
+        };
+        let other = |key| Entry { key, disk: None };
+        vec![
+            other("cpu"),
+            other("memory"),
+            disk("ssd", 0, Some("D:")),
+            disk("hdd", 1, Some("C:")),
+            disk("card", 2, None),
+            disk("usb", 3, Some("E:")),
+            other("nic"),
+        ]
+    }
+
+    fn keys(entries: &[Entry<'static>], order: &[usize]) -> Vec<&'static str> {
+        order.iter().map(|index| entries[*index].key).collect()
+    }
+
+    #[test]
+    fn disks_go_by_number_or_by_their_first_letter() {
+        let entries = entries();
+        let none: &[String] = &[];
+        assert_eq!(
+            keys(&entries, &arrange(&entries, none, DiskOrder::Number)),
+            ["cpu", "memory", "ssd", "hdd", "card", "usb", "nic"]
+        );
+        // Lettered disks by letter, then the others by number.
+        assert_eq!(
+            keys(&entries, &arrange(&entries, none, DiskOrder::Letter)),
+            ["cpu", "memory", "hdd", "ssd", "usb", "card", "nic"]
+        );
+        assert_eq!(DiskOrder::parse("letter"), DiskOrder::Letter);
+        assert_eq!(DiskOrder::parse("unknown"), DiskOrder::Number);
+        for order in DiskOrder::ALL {
+            assert_eq!(DiskOrder::parse(order.key()), order);
+        }
+    }
+
+    #[test]
+    fn an_arranged_order_keeps_new_devices_beside_their_neighbours() {
+        let entries = entries();
+        let saved = ["nic", "cpu", "usb", "memory", "hdd", "ssd"]
+            .map(String::from)
+            .to_vec();
+        // Custom: as dragged; the card, never arranged, follows the hdd it
+        // follows in the collector's order.
+        assert_eq!(
+            keys(&entries, &arrange(&entries, &saved, DiskOrder::Custom)),
+            ["nic", "cpu", "usb", "memory", "hdd", "card", "ssd"]
+        );
+        // By number: the disks keep the places they took, in number order.
+        assert_eq!(
+            keys(&entries, &arrange(&entries, &saved, DiskOrder::Number)),
+            ["nic", "cpu", "ssd", "memory", "hdd", "card", "usb"]
+        );
+        // Unknown and repeated keys are passed over; nothing placed before
+        // a new first device puts it before the first placed after it.
+        let saved = ["gone", "memory", "memory"].map(String::from).to_vec();
+        assert_eq!(
+            keys(&entries, &arrange(&entries, &saved, DiskOrder::Custom)),
+            ["cpu", "memory", "ssd", "hdd", "card", "usb", "nic"]
+        );
+    }
+
+    #[test]
+    fn a_drag_that_breaks_the_disk_order_makes_it_custom() {
+        let entries = entries();
+        // The network adapter dragged above the CPU: the disks are as they were.
+        assert!(keeps(&entries, &[6, 0, 1, 2, 3, 4, 5], DiskOrder::Number));
+        // Disk 1 dragged above disk 0.
+        assert!(!keeps(&entries, &[0, 1, 3, 2, 4, 5, 6], DiskOrder::Number));
+        assert!(keeps(&entries, &[0, 1, 3, 2, 5, 4, 6], DiskOrder::Letter));
+        assert!(keeps(&entries, &[3, 2, 1, 0, 4, 5, 6], DiskOrder::Custom));
+    }
+
+    #[test]
+    fn a_dragged_row_trades_places_past_the_middle_of_the_next_shown_one() {
+        let order = ["a", "b", "hidden", "c"].map(String::from).to_vec();
+        let middles = [("a", 29.), ("b", 91.), ("c", 153.)]
+            .map(|(id, middle)| (id.to_owned(), middle))
+            .into_iter()
+            .collect();
+        assert_eq!(reordered(&order, "a", 80., &middles), None);
+        assert_eq!(
+            reordered(&order, "a", 95., &middles).unwrap(),
+            ["b", "a", "hidden", "c"]
+        );
+        // Past a hidden row, to after the next shown one.
+        let order = ["b", "a", "hidden", "c"].map(String::from).to_vec();
+        assert_eq!(
+            reordered(&order, "a", 160., &middles).unwrap(),
+            ["b", "hidden", "c", "a"]
+        );
+        assert_eq!(
+            reordered(&order, "a", 20., &middles).unwrap(),
+            ["a", "b", "hidden", "c"]
+        );
+    }
+
+    #[test]
+    fn a_dragged_row_moves_live_and_settles_into_its_place() {
+        let start = Instant::now();
+        let gap = px(4.);
+        let mut rail = RailMotion::default();
+        let sizes = |ids: &[&str]| {
+            ids.iter()
+                .map(|id| ((*id).to_owned(), (px(58.), 1.)))
+                .collect::<HashMap<_, _>>()
+        };
+        let order = |ids: &[&str]| ids.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>();
+        rail.arranged(
+            order(&["a", "b", "c"]),
+            sizes(&["a", "b", "c"]),
+            gap,
+            true,
+            start,
+        );
+        rail.take("a", 0., 100.);
+        // Not yet past b's middle (91): nothing moves.
+        rail.follow(150., gap);
+        assert_eq!(rail.drag.as_ref().unwrap().order, ["a", "b", "c"]);
+        // Past it: a and b trade places at once.
+        rail.follow(170., gap);
+        assert_eq!(rail.drag.as_ref().unwrap().order, ["b", "a", "c"]);
+        // Drawn in the new order, b glides up from where it was; a does not.
+        let dragged = rail.drag.as_ref().unwrap().order.clone();
+        rail.arranged(dragged, sizes(&["a", "b", "c"]), gap, true, start);
+        assert_eq!(rail.offset("b", start), 62.);
+        assert_eq!(rail.offset("a", start), 0.);
+        let drag = rail.release(gap, true, start).unwrap();
+        assert_eq!(drag.order, ["b", "a", "c"]);
+        // Let go 8 px below its new place (62): it glides up from there.
+        assert_eq!(rail.offset("a", start), 8.);
+        assert!(rail.moving(start));
+        assert!(rail.drag.is_none());
     }
 
     #[test]

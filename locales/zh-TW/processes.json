@@ -244,6 +244,8 @@
   "menu": {
     "endAll": "結束全部 {count} 個處理程序",
     "setPriority": "設定優先順序",
+    "suspend": "暫停處理程序",
+    "resume": "繼續處理程序",
     "addRule": "新增規則",
     "copyPid": "複製 PID",
     "copyPidWhat": " PID",
@@ -263,6 +265,9 @@
   "columns": {
     "choose": "選取資料欄",
     "autoWidth": "自動調整寬度",
+    "fullWidth": "全寬",
+    "fitWidth": "自動調整此欄寬度",
+    "edgeHint": "拖曳調整寬度，按兩下自動調整",
     "yes": "是",
     "no": "否",
     "reset": "重設為預設資料欄",

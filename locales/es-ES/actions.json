@@ -78,6 +78,41 @@
       "done": "Modo de eficiencia desactivado para {name}."
     }
   },
+  "suspend": {
+    "title": "¿Suspender {name}?",
+    "body": "Todos los subprocesos del PID {pid} se detendrán hasta que se reanude. Sus ventanas dejarán de responder y las conexiones de red pueden agotar el tiempo de espera; algunos programas (juegos, aplicaciones con antitrampas o autoprotección) pueden fallar.",
+    "bodyGroup": {
+      "one": "Se suspenderá {count} proceso de {name} hasta que se reanude. Sus ventanas dejarán de responder y las conexiones de red pueden agotar el tiempo de espera; algunos programas (juegos, aplicaciones con antitrampas o autoprotección) pueden fallar.",
+      "many": "Se suspenderán los {count} procesos de {name} hasta que se reanuden. Sus ventanas dejarán de responder y las conexiones de red pueden agotar el tiempo de espera; algunos programas (juegos, aplicaciones con antitrampas o autoprotección) pueden fallar.",
+      "other": "Se suspenderán los {count} procesos de {name} hasta que se reanuden. Sus ventanas dejarán de responder y las conexiones de red pueden agotar el tiempo de espera; algunos programas (juegos, aplicaciones con antitrampas o autoprotección) pueden fallar."
+    },
+    "confirm": "Suspender",
+    "error": {
+      "accessDenied": "Acceso denegado. Activa el servicio privilegiado en Configuración o ejecuta Argus como administrador; los procesos protegidos pueden seguir sin estar disponibles.",
+      "refused": "{name} no se puede suspender ni reanudar.",
+      "serviceOutdated": "Acceso denegado. La versión del servicio privilegiado no es compatible; actualiza el servicio y vuelve a intentarlo.",
+      "critical": "{name} es un proceso crítico del sistema. Suspenderlo haría que Windows dejara de responder, por lo que se ha bloqueado la operación.",
+      "stillSuspended": "Es posible que {name} siga suspendido: no se pudieron reanudar algunos subprocesos o leer su estado. Inténtalo de nuevo."
+    },
+    "on": {
+      "failed": "No se pudo suspender {name}",
+      "partial": {
+        "one": "Suspendido {count} proceso; sin suspender: {failed}. {error}",
+        "many": "Suspendidos {count} procesos; sin suspender: {failed}. {error}",
+        "other": "Suspendidos {count} procesos; sin suspender: {failed}. {error}"
+      },
+      "done": "{name} suspendido."
+    },
+    "off": {
+      "failed": "No se pudo reanudar {name}",
+      "partial": {
+        "one": "Reanudado {count} proceso; sin reanudar: {failed}. {error}",
+        "many": "Reanudados {count} procesos; sin reanudar: {failed}. {error}",
+        "other": "Reanudados {count} procesos; sin reanudar: {failed}. {error}"
+      },
+      "done": "{name} reanudado."
+    }
+  },
   "ruleScope": {
     "title": "¿Añadir una regla para todos los procesos con este nombre?",
     "body": "Las reglas coinciden con el nombre del ejecutable {name}. Se aplicarán a todos los procesos con ese nombre, aunque pertenezcan a distintos hosts o rutas de instalación.",

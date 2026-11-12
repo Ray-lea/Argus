@@ -270,6 +270,8 @@
       "other": "End all {count} processes"
     },
     "setPriority": "Set priority",
+    "suspend": "Suspend process",
+    "resume": "Resume process",
     "addRule": "Add rule",
     "copyPid": "Copy PID",
     "copyPidWhat": "PID",
@@ -289,6 +291,9 @@
   "columns": {
     "choose": "Select columns",
     "autoWidth": "Automatic widths",
+    "fullWidth": "Full width",
+    "fitWidth": "Auto-fit this column",
+    "edgeHint": "Drag to resize, double-click to auto-fit",
     "yes": "Yes",
     "no": "No",
     "reset": "Restore default columns",

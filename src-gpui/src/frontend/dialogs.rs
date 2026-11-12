@@ -360,6 +360,11 @@ impl Desktop {
                 self.process_batch("efficiency", &args, window, cx);
                 return;
             }
+            // Resuming is harmless; suspending asks first.
+            "suspend" if !boolean(&args, "on") => {
+                self.process_batch("suspend", &args, window, cx);
+                return;
+            }
             "ruleScope" => {
                 self.add_rule_for(&name, window, cx);
                 return;
@@ -433,6 +438,15 @@ impl Desktop {
                 tr!("actions.priority.confirmTitle", name = name),
                 label("actions.priority.confirmBody"),
                 Some((label("actions.priority.confirm"), true)),
+            ),
+            "suspend" => (
+                tr!("actions.suspend.title", name = name),
+                if count > 1 {
+                    tr!("actions.suspend.bodyGroup", name = name, count = count)
+                } else {
+                    tr!("actions.suspend.body", pid = pid)
+                },
+                Some((label("actions.suspend.confirm"), true)),
             ),
             "restartExplorer" => (
                 label("tasks.explorer.title"),
@@ -1371,7 +1385,7 @@ impl Desktop {
                 self.sign_out_user(args.clone(), window, cx);
                 return;
             }
-            "end" | "endTree" | "priority" => {
+            "end" | "endTree" | "priority" | "suspend" => {
                 self.close_overlay(window, cx);
                 self.process_batch(&modal.kind, args, window, cx);
                 return;

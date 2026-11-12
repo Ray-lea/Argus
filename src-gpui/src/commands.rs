@@ -173,6 +173,7 @@ fn privileged<T>(
         Operation::Terminate { .. } => ("terminate process", operation),
         Operation::Priority { .. } => ("set process priority", operation),
         Operation::Efficiency { .. } => ("set process efficiency", operation),
+        Operation::Suspend { .. } => ("suspend or resume process", operation),
         Operation::ControlService { .. } => ("control Windows service", operation),
         Operation::ServiceStartType { .. } => ("set service start type", operation),
         Operation::CloseConnection { .. } => ("close TCP connection", operation),
@@ -317,6 +318,26 @@ pub fn set_efficiency_mode(
         },
         done,
         || actions::set_efficiency_mode(pid, create_time, on),
+    );
+    state.sampler.send(Control::Refresh);
+    result
+}
+
+pub fn set_suspended(
+    state: State<'_, AppState>,
+    pid: u32,
+    create_time: i64,
+    suspend: bool,
+) -> Result<(), ActionError> {
+    let result = privileged(
+        &state,
+        Operation::Suspend {
+            pid,
+            create_time,
+            suspend,
+        },
+        done,
+        || actions::set_suspended(pid, create_time, suspend),
     );
     state.sampler.send(Control::Refresh);
     result

@@ -273,6 +273,8 @@
       "other": "Terminer les {count} processus"
     },
     "setPriority": "Définir la priorité",
+    "suspend": "Suspendre le processus",
+    "resume": "Reprendre le processus",
     "addRule": "Ajouter une règle",
     "copyPid": "Copier PID",
     "copyPidWhat": "PID",
@@ -292,6 +294,9 @@
   "columns": {
     "choose": "Choisir les colonnes",
     "autoWidth": "Largeur automatique",
+    "fullWidth": "Pleine largeur",
+    "fitWidth": "Ajuster automatiquement cette colonne",
+    "edgeHint": "Faire glisser pour redimensionner, double-cliquer pour ajuster automatiquement",
     "yes": "Oui",
     "no": "Non",
     "reset": "Rétablir les colonnes par défaut",

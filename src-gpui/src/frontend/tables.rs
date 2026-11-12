@@ -204,19 +204,13 @@ fn process_fields(preferences: &columns::Preferences, network: bool) -> Vec<Fiel
                 key: column.key,
                 label: label(&format!("processes.column.{}.label", column.key)),
                 kind,
-                track: if !preferences.auto_width {
-                    Track::Fixed(
-                        preferences
-                            .widths
-                            .get(column.key)
-                            .copied()
-                            .unwrap_or(column.width),
-                    )
-                } else if column.key == "name" {
-                    Track::Flex(column.width, 1.)
+                // Automatic widths are settled in `NativeTable::configure`;
+                // until then a column takes its designed width.
+                track: Track::Fixed(if preferences.auto_width {
+                    column.width
                 } else {
-                    Track::Fixed(column.width)
-                },
+                    preferences.set_width(column.key).unwrap_or(column.width)
+                }),
                 end: !matches!(
                     column.format,
                     Format::Name | Format::Text | Format::Timestamp | Format::Boolean
@@ -396,12 +390,62 @@ pub(super) struct NativeTable {
     header_band: Rc<Cell<Bounds<Pixels>>>,
     /// The column raised under the pointer, until it has glided into place.
     lifted: Option<&'static str>,
+    /// Process columns on their way to a new width (`TableFrame` steps them).
+    width_glides: HashMap<&'static str, WidthGlide>,
+    /// The process column whose right edge is under the pointer, and since
+    /// when (`header::track_edge`).
+    edge_hover: Option<usize>,
+    edge_since: Option<Instant>,
+    /// A column just set back to its automatic width, and when (`header::restore_wash`).
+    restored: Option<(&'static str, Instant)>,
+    /// The column whose edge is being dragged to another width.
+    resizing: Option<usize>,
+}
+/// A column easing from one width to another.
+#[derive(Clone, Copy)]
+struct WidthGlide {
+    from: f32,
+    to: f32,
+    started: Instant,
+}
+impl WidthGlide {
+    fn progress(&self, now: Instant) -> f32 {
+        now.saturating_duration_since(self.started).as_secs_f32() / widths::RESIZE.as_secs_f32()
+    }
+    fn at(&self, now: Instant) -> f32 {
+        let progress = self.progress(now);
+        // The curve lands a hair off either end: its ends are taken exactly.
+        if progress <= 0. {
+            self.from
+        } else if progress >= 1. {
+            self.to
+        } else {
+            self.from + (self.to - self.from) * theme::ease_move(progress)
+        }
+    }
 }
 pub(super) struct TableFrame {
     state: Entity<TableState<NativeTable>>,
 }
 impl Render for TableFrame {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Columns on their way to a new width take a step each frame. Not
+        // while a header is dragged: the table's widths are the drag's then.
+        let now = Instant::now();
+        let gliding = self.state.update(cx, |state, cx| {
+            if cx.has_active_drag() {
+                return !state.delegate().width_glides.is_empty();
+            }
+            let (changed, gliding) = state.delegate_mut().glide_widths(now);
+            if changed {
+                state.refresh(cx);
+                cx.notify();
+            }
+            gliding
+        });
+        if gliding {
+            window.request_animation_frame();
+        }
         // Process headers carry a total above the label; the other tables use the
         // 34 px header cell. Both sit in a 4 px padded header row.
         let state = self.state.read(cx);
@@ -539,6 +583,11 @@ impl NativeTable {
             flips: Default::default(),
             header_band: Rc::new(Cell::new(Bounds::default())),
             lifted: None,
+            width_glides: HashMap::new(),
+            edge_hover: None,
+            edge_since: None,
+            restored: None,
+            resizing: None,
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -611,9 +660,25 @@ impl NativeTable {
         {
             return false;
         }
-        // Widths last through window sizes, views, pages and column order:
-        // only another text size or language measures them anew.
-        if self.font_size != font_size || self.locale != locale {
+        // A process column whose contents or settings ask for another width
+        // eases there; a new window size, text size or language takes effect
+        // at once.
+        let restyled = self.font_size != font_size || self.locale != locale;
+        let animate = page == "processes"
+            && self.page == page
+            && !self.columns.is_empty()
+            && self.available == available
+            && !restyled
+            && !cx.reduce_motion();
+        let shown: HashMap<&'static str, f32> = self
+            .fields
+            .iter()
+            .zip(&self.columns)
+            .map(|(field, column)| (field.key, f32::from(column.width)))
+            .collect();
+        // Measured widths last through window sizes, views, pages and column
+        // order: only another text size or language measures them anew.
+        if restyled {
             self.auto_widths.reset();
             self.fitted.clear();
         }
@@ -640,7 +705,7 @@ impl NativeTable {
                 })
                 .unwrap_or((0, 64));
             self.auto_widths.apply(
-                &mut fields,
+                &fields,
                 widths::Contents {
                     rows: &self.rows,
                     range: first..(first + count.min(96)).min(self.rows.len()),
@@ -650,6 +715,39 @@ impl NativeTable {
                 },
                 cx,
             );
+            // The columns share the table's room by their contents
+            // (`widths::allocate`). A column dragged to a width keeps it and
+            // takes no part in the sharing: the others keep their widths, so
+            // the drag moves only what is right of it and nothing slides back
+            // once it is let go. The rows sit 4 px in from each side and the
+            // scrollbar keeps its gutter.
+            let room = f32::from(available) - ROW_INSET * 2. - CELL_PADDING;
+            let naturals = fields
+                .iter()
+                .map(|field| {
+                    self.auto_widths
+                        .natural
+                        .get(field.key)
+                        .copied()
+                        .unwrap_or_else(|| {
+                            widths::Natural::fixed(match field.track {
+                                Track::Fixed(width) | Track::Flex(width, _) => width,
+                            })
+                        })
+                })
+                .collect::<Vec<_>>();
+            let mut allocated = widths::allocate(&naturals, room);
+            // Full width: the name column takes the room the others leave,
+            // unless it was dragged to a width of its own.
+            if preferences.full_width && preferences.set_width("name").is_none() {
+                let others: f32 = allocated.iter().skip(1).sum();
+                if let Some(name) = allocated.first_mut() {
+                    *name = name.max((room - others).floor());
+                }
+            }
+            for (field, width) in fields.iter_mut().zip(allocated) {
+                field.track = Track::Fixed(preferences.set_width(field.key).unwrap_or(width));
+            }
         } else if page != "processes" {
             self.fit_fixed(page, &mut fields, cx);
         }
@@ -723,16 +821,61 @@ impl NativeTable {
             }
             free = free.max(0.);
         }
+        // A column bound for another width glides there from where it is
+        // drawn now; one already on its way to that width keeps going.
+        let now = Instant::now();
+        if animate {
+            for (field, &target) in self.fields.iter().zip(&widths) {
+                if self
+                    .width_glides
+                    .get(field.key)
+                    .is_some_and(|glide| glide.to == target)
+                {
+                    continue;
+                }
+                let from = self
+                    .width_glides
+                    .get(field.key)
+                    .map(|glide| glide.at(now))
+                    .or_else(|| shown.get(field.key).copied());
+                match from {
+                    Some(from) if (from - target).abs() >= 0.5 => {
+                        self.width_glides.insert(
+                            field.key,
+                            WidthGlide {
+                                from,
+                                to: target,
+                                started: now,
+                            },
+                        );
+                    }
+                    _ => {
+                        self.width_glides.remove(field.key);
+                    }
+                }
+            }
+            self.width_glides
+                .retain(|key, _| self.fields.iter().any(|field| field.key == *key));
+        } else {
+            self.width_glides.clear();
+        }
         self.columns = self
             .fields
             .iter()
             .zip(widths)
             .enumerate()
             .map(|(index, (field, width))| {
+                let width = self
+                    .width_glides
+                    .get(field.key)
+                    .map_or(width, |glide| glide.at(now));
+                // Process columns can be dragged to a width with automatic
+                // widths on as well: that column keeps it, the others still
+                // follow their contents.
                 let column = Column::new(field.key, field.label.clone())
                     .width(width)
                     .min_width(48.)
-                    .resizable(page != "processes" || !preferences.auto_width)
+                    .resizable(true)
                     .movable(page == "processes" && field.key != "name")
                     .paddings(Edges::all(px(0.)))
                     .sort(if field.key == sort.0 {
@@ -755,8 +898,81 @@ impl NativeTable {
             .collect();
         true
     }
+    /// Steps the columns gliding to new widths. Returns whether a width
+    /// changed, and whether any column is still on its way.
+    fn glide_widths(&mut self, now: Instant) -> (bool, bool) {
+        if self.width_glides.is_empty() {
+            return (false, false);
+        }
+        let mut changed = false;
+        for (field, column) in self.fields.iter().zip(self.columns.iter_mut()) {
+            if let Some(glide) = self.width_glides.get(field.key) {
+                let width = px(glide.at(now));
+                if column.width != width {
+                    column.width = width;
+                    changed = true;
+                }
+            }
+        }
+        self.width_glides
+            .retain(|_, glide| glide.progress(now) < 1.);
+        (changed, !self.width_glides.is_empty())
+    }
+    /// Marks process column `key` as set back to its automatic width, or
+    /// fitted to its contents with automatic widths off; returns the width
+    /// that fits them then.
+    pub(super) fn restore_column(&mut self, key: &str, auto: bool, cx: &App) -> Option<f32> {
+        let key = self.fields.iter().find(|field| field.key == key)?.key;
+        self.mark_restored(key);
+        if auto { None } else { self.fit_width(key, cx) }
+    }
+    /// What process column `key` takes to show every row in full: its width
+    /// when fitted to its contents.
+    pub(super) fn fit_width(&mut self, key: &str, cx: &App) -> Option<f32> {
+        let field = self.fields.iter().find(|field| field.key == key)?.clone();
+        Some(self.auto_widths.fit(
+            &field,
+            widths::Contents {
+                rows: &self.rows,
+                range: 0..0,
+                totals: &self.totals,
+                values: &mut self.cell_values,
+                bits: self.bits,
+            },
+            cx,
+        ))
+    }
 }
 impl TableDelegate for NativeTable {
+    /// A double-click on a process column's edge: with automatic widths on,
+    /// a column dragged to a width follows its contents again; with them
+    /// off, the column fits its contents. Either glides there (`configure`)
+    /// rather than jumping, so the table's own fitting is left out.
+    fn fit_column(
+        &mut self,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> Option<Pixels> {
+        if self.page != "processes" {
+            return None;
+        }
+        let key = self.fields.get(col_ix)?.key;
+        let width = if self.process_columns.auto_width {
+            None
+        } else {
+            self.fit_width(key, cx)
+        };
+        if !self.process_columns.auto_width || self.process_columns.overrides.contains_key(key) {
+            self.mark_restored(key);
+            cx.notify();
+        }
+        let owner = self.owner.clone();
+        window.defer(cx, move |_, cx| {
+            let _ = owner.update(cx, |this, cx| this.fit_process_column(key, width, cx));
+        });
+        None
+    }
     fn move_column(
         &mut self,
         from: usize,
@@ -836,19 +1052,26 @@ impl TableDelegate for NativeTable {
         if self.header_drag.is_some() && !cx.has_active_drag() {
             self.settle_header_drag(!cx.reduce_motion(), now);
         }
-        if self.header_drag.is_some() || self.flips.active(now) {
+        if self.header_drag.is_some() || self.flips.active(now) || self.restored.is_some() {
             window.request_animation_frame();
         }
         let band = self.header_band.clone();
         let strip = self.lifted_strip(now, cx);
+        // Column edges show where they can be dragged (`header::edge_probe`).
+        let processes = self.page == "processes";
+        let guide = processes.then(|| self.restore_wash(now, cx)).flatten();
+        let probe = processes.then(|| self.edge_probe(cx));
         // The process header band ends in its own separator row, so the 4 px
         // below the labels are inside it (see `render_th`): no bottom padding.
         // While filtering, the workspace draws the accent separator over that
         // row (`process_header_height`).
         div()
             .id("native-table-header")
+            .relative()
             .on_prepaint(move |bounds, _, _| band.set(bounds))
             .children(strip)
+            .children(guide)
+            .children(probe)
             .on_drag_move(
                 cx.listener(|state, event: &DragMoveEvent<HeaderPayload>, window, cx| {
                     Self::follow_header(state, event, window, cx)
@@ -881,7 +1104,10 @@ impl TableDelegate for NativeTable {
                     });
                 })
             })
-            .px(px(ROW_INSET))
+            // The process columns' edges in the header are the rows' own:
+            // the rows have no inset, so neither does the header (the line
+            // on an edge and a dragged column's strip are drawn by them).
+            .when(!processes, |d| d.px(px(ROW_INSET)))
             .pt(px(4.))
             .when(filtered.is_none(), |d| d.pb(px(4.)))
             .when_some(filtered.filter(|(on, _)| *on), |d, (_, details)| {
@@ -953,7 +1179,7 @@ impl TableDelegate for NativeTable {
     fn render_th(
         &mut self,
         index: usize,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let field = &self.fields[index];
@@ -962,9 +1188,17 @@ impl TableDelegate for NativeTable {
         // Process headers: the interface's 4 px cell padding inside its 4 px
         // header padding below the label, which the header band leaves out.
         let processes = self.page == "processes";
+        // The table keeps its own inset at the right of a header's content
+        // (`widths::HEADER_INSET`): a process header leaves out as much of its
+        // padding, so its figures end where the cells' do.
         let mut cell = div()
             .size_full()
-            .px(px(CELL_PADDING))
+            .pl(px(CELL_PADDING))
+            .pr(px(if processes {
+                CELL_PADDING - widths::HEADER_INSET
+            } else {
+                CELL_PADDING
+            }))
             .pt(px(4.))
             .pb(px(if processes { 8. } else { 4. }))
             .flex()
@@ -1046,6 +1280,9 @@ impl TableDelegate for NativeTable {
         // A column the table cannot sort by has a disabled header: no
         // hover or press fill, and a click does nothing (`.th:disabled`).
         let sortable = sortable(&self.page, &key);
+        // While a column edge is dragged, the headers it passes over stay
+        // quiet: no hover fill and no description.
+        let resizing = self.resizing.is_some();
         let button = Button::new(("column-sort", index))
             .size_full()
             .min_w_0()
@@ -1056,14 +1293,14 @@ impl TableDelegate for NativeTable {
                     headers.borrow_mut().insert(measured_key.clone(), bounds);
                 }
             })
-            .when(sortable, |button| {
+            .when(sortable && !resizing, |button| {
                 button
                     .hover(move |s| s.bg(hover))
                     .active(move |s| s.bg(press))
             })
             .disabled(!sortable)
             .accessibility_label(field.label.clone())
-            .when(self.page == "processes", |button| {
+            .when(self.page == "processes" && !resizing, |button| {
                 let title = theme::label(&format!("processes.column.{key}.title"));
                 button.tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
             })
@@ -1075,7 +1312,7 @@ impl TableDelegate for NativeTable {
                     let _ = owner.update(cx, |this, cx| this.act(Action::Sort(key), window, cx));
                 });
             });
-        self.header_cell(index, button, cx)
+        self.header_cell(index, button, window, cx)
     }
     fn render_td(
         &mut self,
@@ -1436,17 +1673,22 @@ impl Desktop {
                     }
                     TableEvent::ColumnWidthsChanged(widths) => {
                         let source = source.read(cx);
-                        if source.delegate().page != "processes" {
+                        let delegate = source.delegate();
+                        if delegate.page != "processes" {
                             return;
                         }
                         let mut preferences = columns::Preferences::load(&this.prefs);
-                        if preferences.auto_width {
-                            return;
-                        }
-                        for (field, width) in source.delegate().fields.iter().zip(widths) {
-                            preferences
-                                .widths
-                                .insert(field.key.into(), f32::from(*width).clamp(48., 1200.));
+                        for ((field, column), width) in
+                            delegate.fields.iter().zip(&delegate.columns).zip(widths)
+                        {
+                            let width = f32::from(*width).clamp(48., 1200.);
+                            if !preferences.auto_width {
+                                preferences.widths.insert(field.key.into(), width);
+                            } else if (f32::from(column.width) - width).abs() >= 0.5 {
+                                // Only the column dragged: the others keep
+                                // following their contents.
+                                preferences.overrides.insert(field.key.into(), width);
+                            }
                         }
                         this.prefs.set(columns::PREFERENCE, preferences);
                         cx.notify();
@@ -1548,6 +1790,15 @@ impl Desktop {
             .and_then(|key| rows.iter().position(|r| &r.key == key));
         let changed = table.update(cx, |state, cx| {
             let mut changed = false;
+            // A column dragged to a width is drawn at it already: a glide to
+            // the saved width starts there, not where the drag began.
+            if !cx.has_active_drag() {
+                for index in 0..state.delegate().columns.len() {
+                    if let Some(width) = state.col_width(index) {
+                        state.delegate_mut().columns[index].width = width;
+                    }
+                }
+            }
             if !Arc::ptr_eq(&state.delegate().rows, &rows)
                 || state.delegate().available != available
                 || (page == "processes" && state.delegate().process_columns != column_preferences)
@@ -1699,7 +1950,9 @@ impl Desktop {
                 "key":field.key,"width":state.col_width(index).map(f32::from),
                 "resizable":state.delegate().columns[index].resizable,
                 "movable":state.delegate().columns[index].movable,
-                "autoWidth":state.delegate().auto_widths.widths.get(field.key),
+                "autoWidth":state.delegate().auto_widths.natural.get(field.key).map(|natural|natural.typical),
+                "fullWidth":state.delegate().auto_widths.natural.get(field.key).map(|natural|natural.full),
+                "gliding":state.delegate().width_glides.contains_key(field.key),
                 "bounds":self.header_bounds.borrow().get(field.key).map(|b|[f32::from(b.left()),f32::from(b.top()),f32::from(b.size.width),f32::from(b.size.height)])
             })).collect::<Vec<_>>()
         }).unwrap_or_default();

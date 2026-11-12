@@ -361,7 +361,23 @@ impl Desktop {
                 if !preferences.auto_width && preferences.widths.is_empty() {
                     self.capture_process_widths(&mut preferences, cx);
                 }
+                // Turned on again: every column follows its contents.
+                if preferences.auto_width {
+                    preferences.overrides.clear();
+                }
                 self.set_process_columns(preferences, cx);
+                return;
+            }
+            "processColumnsFullWidth" => {
+                let mut preferences = columns::Preferences::load(&self.prefs);
+                preferences.full_width = value.as_bool().unwrap_or(false);
+                self.set_process_columns(preferences, cx);
+                return;
+            }
+            "fitProcessColumn" => {
+                if let Some(key) = value.as_str() {
+                    self.fit_process_column_now(key, cx);
+                }
                 return;
             }
             "processColumnsReset" => {
@@ -463,6 +479,18 @@ impl Desktop {
             }
             performance::rail::RESTORE => {
                 self.restore_devices();
+                cx.notify();
+                return;
+            }
+            performance::rail::DISK_ORDER => {
+                self.set_disk_order(performance::rail::DiskOrder::parse(
+                    value.as_str().unwrap_or_default(),
+                ));
+                cx.notify();
+                return;
+            }
+            performance::rail::RESET_ORDER => {
+                self.reset_device_order();
                 cx.notify();
                 return;
             }
