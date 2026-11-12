@@ -612,6 +612,8 @@ impl Desktop {
                     .map(|p| &p["netCoverage"])
                     .collect::<Vec<_>>()
             }));
+            layout["watch"] = json!(self.data.get("processWatch").map(|watch|json!({"pid":watch["pid"],"state":watch["state"],"mode":watch["mode"],"runs":values(&watch["runs"]).len(),"liveRuns":watch["liveRuns"],"points":values(&watch["points"]).len(),"missing":values(&watch["points"]).iter().filter(|point|point["memory"].is_null()).count()})));
+            layout["watchAction"] = json!(self.data.get("watchLastAction"));
             println!("{layout}");
         }
         if self.options.fixture.is_some()

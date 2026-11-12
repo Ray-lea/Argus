@@ -64,5 +64,47 @@
       "stale": "Mesure ancienne ou répétée",
       "baseline": "Attente de la mesure initiale"
     }
+  },
+  "watch": {
+    "title": "Observation du processus",
+    "empty": "Choisir «Observer cette instance» dans les détails d’un seul processus pour enregistrer la mémoire hors du classement.",
+    "start": "Observer cette instance",
+    "target": "Observation de {name} (PID {pid})",
+    "stop": "Arrêter l’enregistrement",
+    "delete": "Supprimer l’enregistrement",
+    "note": "Cette instance uniquement ; jusqu’à 1 heure, 720 points et 1 MiB. Mesures généralement toutes les 5 secondes ; un échantillonnage plus lent peut laisser des lacunes. La croissance du jeu de travail ne prouve pas une fuite. Arrêter conserve les données ; Supprimer arrête et efface cet enregistrement.",
+    "metric": {
+      "memory": "Jeu de travail privé",
+      "commit": "Mémoire privée engagée"
+    },
+    "state": {
+      "recording": "Enregistrement en cours",
+      "gap": "Aucune mesure valide",
+      "exited": "Cette instance est terminée",
+      "stopped": "Enregistrement arrêté",
+      "interrupted": "Enregistrement interrompu ; non repris",
+      "limit": "Limite d’enregistrement atteinte"
+    },
+    "error": {
+      "unavailable": "L’échantillonneur n’a pas répondu à temps. Résultat inconnu ; vérifier l’état avant de réessayer.",
+      "identity": "L’instance choisie n’a pas pu être confirmée. Actualiser et réessayer.",
+      "access": "Les autorisations actuelles ne permettent pas de lire cette instance.",
+      "existing": "Une observation existe déjà. L’arrêter et la supprimer avant d’en commencer une autre.",
+      "missing": "Aucune observation enregistrée.",
+      "storage": "Impossible de lire ou d’écrire l’enregistrement. Il est arrêté.",
+      "invalid": "L’enregistrement est endommagé ou son format n’est pas pris en charge. Il peut être supprimé."
+    },
+    "startProgram": "Observer les prochains lancements",
+    "chooseRun": "Choisir un lancement",
+    "run": "{started} · PID {pid} · {state}",
+    "runSummary": "{shown}/{total} lancements affichés ; {points} points enregistrés pour ce lancement",
+    "earlier": "Points antérieurs",
+    "latest": "Derniers points",
+    "programNote": "Les lancements actuels et futurs de ce chemin sont enregistrés séparément. Jusqu’à 7 jours, 131072 points et 9 Mio ; la première limite atteinte supprime les données les plus anciennes. Jusqu’à 512 instances simultanées. La liste affiche les 256 derniers lancements ; chaque page jusqu’à 1000 points enregistrés et des repères de lacunes. Les points antérieurs restent consultables. En général toutes les 5 secondes ; un échantillonnage plus lent laisse des lacunes. La croissance du jeu de travail ne prouve pas une fuite. Arrêter conserve les données ; Supprimer les efface. Redémarrer Argus ne reprend pas l’enregistrement.",
+    "damaged": "Certains enregistrements ont échoué au contrôle d’intégrité ; les intervalles manquants restent des lacunes.",
+    "earlierRuns": "Lancements antérieurs",
+    "latestRuns": "Derniers lancements",
+    "waiting": "En attente d’un autre lancement",
+    "unconfirmed": "Identité non confirmée pour {count} instances du même nom ; nouvel essai chaque minute."
   }
 }

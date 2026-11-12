@@ -3,6 +3,7 @@ mod about;
 mod details;
 mod history;
 mod performance;
+mod process_watch;
 mod settings;
 mod vitals;
 use super::*;
@@ -513,6 +514,32 @@ impl Desktop {
                 self.load_history(window, cx);
             }
             "historyMetric" => self.history_metric = value.as_str().unwrap_or("cpu").into(),
+            "watchProcess" => {
+                if self.pending.values().any(|pending| {
+                    pending.command == "watch_process" && pending.args["action"]["op"] != "status"
+                }) {
+                    return;
+                }
+                let generation = self
+                    .data
+                    .get("watchGeneration")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    + 1;
+                self.data
+                    .insert("watchGeneration".into(), json!(generation));
+                if self.options.fixture.is_some() {
+                    self.data.insert("watchLastAction".into(), value.clone());
+                }
+                self.request(
+                    "watch_process",
+                    json!({"action":value,"generation":generation}),
+                    None,
+                    window,
+                    cx,
+                );
+                return;
+            }
             "historyPeak" => {
                 if let Some(at) = value.as_i64() {
                     self.history_hover = None;

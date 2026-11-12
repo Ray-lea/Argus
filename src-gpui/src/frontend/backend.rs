@@ -85,6 +85,16 @@ impl Desktop {
         let Some(pending) = self.pending.remove(&id) else {
             return;
         };
+        if pending.command == "watch_process"
+            && pending.args["generation"].as_u64().unwrap_or(0)
+                != self
+                    .data
+                    .get("watchGeneration")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+        {
+            return;
+        }
         // An answer for another range or moment is dropped. One history query of each
         // kind is in flight at a time, so the one for what is shown now may have been
         // held back while this one was read: forget it was sent and ask again.
@@ -140,8 +150,20 @@ impl Desktop {
                 if let Some(key) = pending.cache {
                     self.data.insert(key, value.clone());
                 }
+                if pending.command == "watch_process" {
+                    self.data.remove("watchError");
+                    self.data.insert("processWatch".into(), value.clone());
+                }
                 if pending.command == "history_series" {
                     self.history_answered(&pending.args, window, cx);
+                }
+                if pending.command == "watch_process"
+                    && matches!(
+                        pending.args["action"]["op"].as_str(),
+                        Some("start" | "startProgram")
+                    )
+                {
+                    self.act(Action::Page("history".into()), window, cx);
                 }
                 if pending.command.starts_with("set_") && value.get("closeToTray").is_some() {
                     self.data.insert("settings".into(), value.clone());
@@ -163,6 +185,11 @@ impl Desktop {
                     .as_str()
                     .map(str::to_owned)
                     .unwrap_or_else(|| self.action_error(&pending.command, &pending.args, &error));
+                if pending.command == "watch_process" && pending.args["action"]["op"] == "status" {
+                    self.data.insert("watchError".into(), json!(message));
+                    cx.notify();
+                    return;
+                }
                 self.command_failed(&pending.command, &pending.args, &error, message, window, cx);
             }
         }

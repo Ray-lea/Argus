@@ -62,5 +62,47 @@
       "stale": "Älterer oder wiederholter Messwert",
       "baseline": "Warte auf Ausgangsmessung"
     }
+  },
+  "watch": {
+    "title": "Prozessbeobachtung",
+    "empty": "In den Details eines einzelnen Prozesses „Diese Instanz beobachten“ wählen, um Speicher auch unterhalb der Spitzenliste aufzuzeichnen.",
+    "start": "Diese Instanz beobachten",
+    "target": "Beobachtung: {name} (PID {pid})",
+    "stop": "Aufzeichnung stoppen",
+    "delete": "Aufzeichnung löschen",
+    "note": "Nur diese Instanz; bis zu 1 Stunde, 720 Punkte und 1 MiB. Messungen meist alle 5 Sekunden; langsamere Hintergrundabfragen können Lücken lassen. Ein wachsender Arbeitssatz allein belegt kein Speicherleck. Stoppen behält Daten; Löschen stoppt und entfernt diese Aufzeichnung.",
+    "metric": {
+      "memory": "Privater Arbeitssatz",
+      "commit": "Privat zugesicherter Speicher"
+    },
+    "state": {
+      "recording": "Aufzeichnung läuft",
+      "gap": "Keine gültige Messung",
+      "exited": "Diese Instanz wurde beendet",
+      "stopped": "Aufzeichnung gestoppt",
+      "interrupted": "Unterbrochen; nicht fortgesetzt",
+      "limit": "Aufzeichnungsgrenze erreicht"
+    },
+    "error": {
+      "unavailable": "Der Sampler antwortete nicht rechtzeitig. Ergebnis unbekannt; vor einem erneuten Versuch den Status prüfen.",
+      "identity": "Die ausgewählte Instanz konnte nicht bestätigt werden. Aktualisieren und erneut versuchen.",
+      "access": "Die aktuellen Rechte reichen zum Lesen dieser Instanz nicht aus.",
+      "existing": "Eine Beobachtung existiert bereits. Vor einer neuen die bisherige stoppen und löschen.",
+      "missing": "Keine Beobachtung vorhanden.",
+      "storage": "Die Aufzeichnung konnte nicht gelesen oder geschrieben werden. Sie wurde gestoppt.",
+      "invalid": "Die Aufzeichnung ist beschädigt oder das Format wird nicht unterstützt. Sie kann gelöscht werden."
+    },
+    "startProgram": "Weitere Starts beobachten",
+    "chooseRun": "Start auswählen",
+    "run": "{started} · PID {pid} · {state}",
+    "runSummary": "{shown}/{total} Starts angezeigt; {points} gespeicherte Punkte in diesem Start",
+    "earlier": "Frühere Punkte",
+    "latest": "Neueste Punkte",
+    "programNote": "Aktuelle und künftige Starts dieses Abbildpfads werden getrennt erfasst. Bis zu 7 Tage, 131072 Punkte und 9 MiB; beim ersten erreichten Limit werden die ältesten Daten entfernt. Bis zu 512 gleichzeitige Instanzen. Die Liste zeigt die letzten 256 Starts; jede Seite bis zu 1000 gespeicherte Punkte und Lückenmarkierungen. Frühere Punkte bleiben abrufbar. Meist 5 Sekunden Abstand; langsamere Abtastung lässt Lücken. Ein wachsender Arbeitssatz beweist kein Speicherleck. Stoppen behält Daten, Löschen entfernt sie. Ein Neustart von Argus setzt die Aufzeichnung nicht fort.",
+    "damaged": "Einige Datensätze haben die Integritätsprüfung nicht bestanden; fehlende Intervalle bleiben Lücken.",
+    "earlierRuns": "Frühere Starts",
+    "latestRuns": "Neueste Starts",
+    "waiting": "Warten auf einen weiteren Start",
+    "unconfirmed": "Identität von {count} gleichnamigen Instanzen nicht bestätigt; erneuter Versuch einmal pro Minute."
   }
 }

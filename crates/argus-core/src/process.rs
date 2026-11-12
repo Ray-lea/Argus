@@ -889,6 +889,13 @@ pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
 #[cfg(test)]
 mod tests {
     #[test]
+    #[ignore = "owned child fixture for watch identity and launch regressions"]
+    fn liveness_child() {
+        use std::io::Read;
+        let _ = std::io::stdin().read(&mut [0u8]);
+    }
+
+    #[test]
     fn io_rates_need_a_monotonic_pair_but_no_cpu_capacity() {
         use super::io_rates;
         assert_eq!(io_rates(None, [100, 20, 0], Some(1.)), None);
