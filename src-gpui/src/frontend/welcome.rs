@@ -136,6 +136,14 @@ fn notes_in<'a>(locale: &str, release: &'a Value) -> &'a str {
 }
 
 impl Desktop {
+    /// Started by the task manager replacement (Ctrl+Shift+Esc): the system
+    /// may be struggling, so this run shows nothing that can wait. What it
+    /// holds back (the welcome, the star card, the portable copy's notice)
+    /// comes at a later start of its own.
+    pub(in crate::frontend) fn holds_back(&self) -> bool {
+        boolean(&self.data["info"], "taskManager")
+    }
+
     pub(in crate::frontend) fn check_welcome(
         &mut self,
         window: &mut Window,
@@ -156,7 +164,7 @@ impl Desktop {
             return;
         }
         self.welcome_checked = true;
-        if boolean(&self.data["info"], "taskManager") {
+        if self.holds_back() {
             return;
         }
         if number(&self.data["settings"], "onboarding")

@@ -24,9 +24,14 @@ impl Desktop {
     /// shown it yet, once the onboarding is saved as done and the window is
     /// free. Not while a deferred administrator choice may still restart
     /// Argus, which would take the notice with it; it then comes in after
-    /// that restart.
+    /// that restart. Nor in a run of the task manager replacement
+    /// (`holds_back`): it comes at a later start.
     pub(in crate::frontend) fn announce_portable(&mut self) -> bool {
-        if self.options.test || !self.portable() || self.prefs.get(SHOWN, false) {
+        if self.options.test
+            || !self.portable()
+            || self.holds_back()
+            || self.prefs.get(SHOWN, false)
+        {
             return false;
         }
         let visible = self

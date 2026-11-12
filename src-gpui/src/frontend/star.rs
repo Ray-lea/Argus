@@ -125,10 +125,15 @@ impl Desktop {
     }
 
     /// Each second: brings the card in on a day it has not shown yet, once
-    /// the window has been in view for a while. Not over a dialog, and not in
-    /// the run of the first start.
+    /// the window has been in view for a while. Not over a dialog, not in
+    /// the run of the first start, and not in a run of the task manager
+    /// replacement (`holds_back`): the day stays open for a later start.
     pub(in crate::frontend) fn announce_star(&mut self) -> bool {
-        if self.options.test || self.ui.star.card.is_some() || self.ui.star.first_run {
+        if self.options.test
+            || self.ui.star.card.is_some()
+            || self.ui.star.first_run
+            || self.holds_back()
+        {
             return false;
         }
         let visible = self
