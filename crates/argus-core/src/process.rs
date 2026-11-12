@@ -421,6 +421,9 @@ impl ProcessTracker {
                 entry.handle = None;
             }
             if let Some(runtime) = entry.web_view.as_mut() {
+                if let Some(line) = &entry.facts.command_line {
+                    runtime.learn_command_line(line.clone());
+                }
                 runtime.query(entry.handle.as_ref().map(|h| h.0));
                 self.webviews.push((rows.len(), key));
                 // The WebView parser reads the line on this thread anyway.

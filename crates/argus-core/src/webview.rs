@@ -235,8 +235,15 @@ impl State {
         }
         self.attempts += 1;
         if let Some(line) = read() {
+            self.learn_command_line(line.into());
+        }
+    }
+
+    /// Share a successful background read, including after startup retries ended.
+    pub fn learn_command_line(&mut self, line: Arc<str>) {
+        if self.line.is_none() {
             self.hint = Hint::parse(&line);
-            self.line = Some(line.into());
+            self.line = Some(line);
             self.attempts = 3;
         }
     }
@@ -483,6 +490,11 @@ mod tests {
             });
         }
         assert_eq!(reads, 3);
+        let line: Arc<str> = "msedgewebview2.exe --type=renderer".into();
+        state.learn_command_line(line.clone());
+        state.query_with(|| panic!("the shared background read is already cached"));
+        assert!(Arc::ptr_eq(state.command_line().unwrap(), &line));
+        assert_eq!(state.hint.role, WebViewRole::Renderer);
     }
 
     #[test]
