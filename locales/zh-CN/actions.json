@@ -34,6 +34,16 @@
     "partial": "已更改 {count} 个进程的优先级，{failed} 个没有权限或已退出。",
     "done": "{name} 的优先级已设为“{priority}”。"
   },
+  "ioPriority": {
+    "failed": "无法更改 {name} 的 I/O 优先级",
+    "partial": "已更改 {count} 个进程的 I/O 优先级，{failed} 个未能更改：{error}",
+    "done": "{name} 的 I/O 优先级已设为“{priority}”。"
+  },
+  "memoryPriority": {
+    "failed": "无法更改 {name} 的内存优先级",
+    "partial": "已更改 {count} 个进程的内存优先级，{failed} 个未能更改：{error}",
+    "done": "{name} 的内存优先级已设为“{priority}”。"
+  },
   "efficiency": {
     "on": {
       "failed": "无法为 {name} 开启效率模式",

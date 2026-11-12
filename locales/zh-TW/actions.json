@@ -34,6 +34,16 @@
     "partial": "已變更 {count} 個處理程序的優先順序，{failed} 個沒有權限或已結束。",
     "done": "{name} 的優先順序已設為「{priority}」。"
   },
+  "ioPriority": {
+    "failed": "無法變更 {name} 的 I/O 優先順序",
+    "partial": "已變更 {count} 個處理程序的 I/O 優先順序，{failed} 個未能變更：{error}",
+    "done": "{name} 的 I/O 優先順序已設為「{priority}」。"
+  },
+  "memoryPriority": {
+    "failed": "無法變更 {name} 的記憶體優先順序",
+    "partial": "已變更 {count} 個處理程序的記憶體優先順序，{failed} 個未能變更：{error}",
+    "done": "{name} 的記憶體優先順序已設為「{priority}」。"
+  },
   "efficiency": {
     "on": {
       "failed": "無法為 {name} 開啟效率模式",

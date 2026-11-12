@@ -52,6 +52,22 @@
     },
     "done": "The priority of {name} has been set to “{priority}”."
   },
+  "ioPriority": {
+    "failed": "Couldn't change the I/O priority of {name}",
+    "partial": {
+      "one": "Changed the I/O priority of {count} process; {failed} couldn't be changed: {error}",
+      "other": "Changed the I/O priority of {count} processes; {failed} couldn't be changed: {error}"
+    },
+    "done": "The I/O priority of {name} has been set to “{priority}”."
+  },
+  "memoryPriority": {
+    "failed": "Couldn't change the memory priority of {name}",
+    "partial": {
+      "one": "Changed the memory priority of {count} process; {failed} couldn't be changed: {error}",
+      "other": "Changed the memory priority of {count} processes; {failed} couldn't be changed: {error}"
+    },
+    "done": "The memory priority of {name} has been set to “{priority}”."
+  },
   "efficiency": {
     "on": {
       "failed": "Couldn't turn on Efficiency mode for {name}",

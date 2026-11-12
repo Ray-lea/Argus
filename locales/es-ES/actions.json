@@ -58,6 +58,24 @@
     },
     "done": "La prioridad de {name} se ha establecido en {priority}."
   },
+  "ioPriority": {
+    "failed": "No se pudo cambiar la prioridad de E/S de {name}",
+    "partial": {
+      "one": "Se cambió la prioridad de E/S de {count} proceso; sin cambiar: {failed}. {error}",
+      "many": "Se cambió la prioridad de E/S de {count} procesos; sin cambiar: {failed}. {error}",
+      "other": "Se cambió la prioridad de E/S de {count} procesos; sin cambiar: {failed}. {error}"
+    },
+    "done": "La prioridad de E/S de {name} se estableció en «{priority}»."
+  },
+  "memoryPriority": {
+    "failed": "No se pudo cambiar la prioridad de memoria de {name}",
+    "partial": {
+      "one": "Se cambió la prioridad de memoria de {count} proceso; sin cambiar: {failed}. {error}",
+      "many": "Se cambió la prioridad de memoria de {count} procesos; sin cambiar: {failed}. {error}",
+      "other": "Se cambió la prioridad de memoria de {count} procesos; sin cambiar: {failed}. {error}"
+    },
+    "done": "La prioridad de memoria de {name} se estableció en «{priority}»."
+  },
   "efficiency": {
     "on": {
       "failed": "No se pudo activar el modo de eficiencia para {name}",

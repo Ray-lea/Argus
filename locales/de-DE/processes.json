@@ -264,12 +264,26 @@
     "belowNormal": "Niedriger als normal",
     "idle": "Niedrig"
   },
+  "ioPriority": {
+    "veryLow": "Sehr niedrig",
+    "low": "Niedrig",
+    "normal": "Normal"
+  },
+  "memoryPriority": {
+    "veryLow": "Sehr niedrig",
+    "low": "Niedrig",
+    "medium": "Mittel",
+    "belowNormal": "Niedriger als normal",
+    "normal": "Normal"
+  },
   "menu": {
     "endAll": {
       "one": "{count} Prozess beenden",
       "other": "Alle {count} Prozesse beenden"
     },
     "setPriority": "Priorität festlegen",
+    "ioPriority": "E/A-Priorität",
+    "memoryPriority": "Speicherpriorität",
     "suspend": "Prozess anhalten",
     "resume": "Prozess fortsetzen",
     "addRule": "Regel hinzufügen",

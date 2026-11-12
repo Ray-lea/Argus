@@ -113,6 +113,9 @@ pub struct ProcessRow {
     pub frozen: bool,
     /// Efficiency mode (EcoQoS) is on, set by the app itself or by a user.
     pub efficiency: bool,
+    /// None when the process can't be queried.
+    pub io_priority: Option<crate::actions::IoPriority>,
+    pub memory_priority: Option<crate::actions::MemoryPriority>,
     /// Owns a taskbar window, which puts it under "Apps" (see `app_windows`).
     pub app_window: bool,
     /// Windows component identity for display grouping, not an action safety check.
@@ -546,6 +549,14 @@ impl ProcessTracker {
                 // the few of them, none for the rest.
                 frozen: suspended && entry.handle.as_ref().is_some_and(|h| frozen(h.0)),
                 efficiency: entry.handle.as_ref().is_some_and(|h| efficiency_mode(h.0)),
+                io_priority: entry
+                    .handle
+                    .as_ref()
+                    .and_then(|h| crate::actions::io_priority(h.0)),
+                memory_priority: entry
+                    .handle
+                    .as_ref()
+                    .and_then(|h| crate::actions::memory_priority(h.0)),
                 app_window: false,
                 windows_process: meta.is_some_and(|m| m.windows_component)
                     || kernel_process(pid, entry.parent, &entry.name, entry.path.is_some()),

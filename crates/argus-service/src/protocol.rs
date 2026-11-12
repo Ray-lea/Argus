@@ -1,4 +1,4 @@
-use argus_core::actions::{self, ActionError, Priority};
+use argus_core::actions::{self, ActionError, IoPriority, MemoryPriority, Priority};
 use argus_core::connections;
 use argus_core::rules::{self, ProcessRule};
 use argus_core::services::{ServiceAction, ServiceCatalog, StartType};
@@ -83,6 +83,16 @@ pub enum Operation {
         create_time: i64,
         on: bool,
     },
+    IoPriority {
+        pid: u32,
+        create_time: i64,
+        priority: IoPriority,
+    },
+    MemoryPriority {
+        pid: u32,
+        create_time: i64,
+        priority: MemoryPriority,
+    },
     Suspend {
         pid: u32,
         create_time: i64,
@@ -153,10 +163,27 @@ impl Operation {
             | Self::Efficiency {
                 pid, create_time, ..
             }
+            | Self::MemoryPriority {
+                pid, create_time, ..
+            }
             | Self::Suspend {
                 pid, create_time, ..
             } => {
                 if *pid <= 4 || *pid == std::process::id() || *create_time <= 0 {
+                    return Err(ActionError::Refused);
+                }
+            }
+            // High and critical I/O are Windows's own levels.
+            Self::IoPriority {
+                pid,
+                create_time,
+                priority,
+            } => {
+                if *pid <= 4
+                    || *pid == std::process::id()
+                    || *create_time <= 0
+                    || !priority.settable()
+                {
                     return Err(ActionError::Refused);
                 }
             }
@@ -264,6 +291,16 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
             create_time,
             on,
         } => actions::set_efficiency_mode(pid, create_time, on),
+        Operation::IoPriority {
+            pid,
+            create_time,
+            priority,
+        } => actions::set_io_priority(pid, create_time, priority).map(|_| ()),
+        Operation::MemoryPriority {
+            pid,
+            create_time,
+            priority,
+        } => actions::set_memory_priority(pid, create_time, priority).map(|_| ()),
         // Suspending the host would freeze the window that asked.
         Operation::Suspend { pid, .. } if pid == client_pid => Err(ActionError::Refused),
         Operation::Suspend {
@@ -323,6 +360,51 @@ mod tests {
         let valid = r#"{"op":"suspend","pid":1234,"create_time":1,"suspend":true"#;
         assert!(serde_json::from_str::<Operation>(&format!("{valid}}}")).is_ok());
         assert!(serde_json::from_str::<Operation>(&format!(r#"{valid},"tree":true}}"#)).is_err());
+    }
+
+    #[test]
+    fn io_and_memory_priority_refuse_reserved_levels_and_protected_targets() {
+        let io = |pid, create_time, priority| Operation::IoPriority {
+            pid,
+            create_time,
+            priority,
+        };
+        let memory = |pid, create_time| Operation::MemoryPriority {
+            pid,
+            create_time,
+            priority: MemoryPriority::VeryLow,
+        };
+        for (pid, create_time) in [(0, 1), (4, 1), (std::process::id(), 1), (1234, 0)] {
+            assert!(matches!(
+                io(pid, create_time, IoPriority::Low).validate(),
+                Err(ActionError::Refused)
+            ));
+            assert!(matches!(
+                memory(pid, create_time).validate(),
+                Err(ActionError::Refused)
+            ));
+        }
+        for priority in [IoPriority::High, IoPriority::Critical] {
+            assert!(matches!(
+                io(1234, 1, priority).validate(),
+                Err(ActionError::Refused)
+            ));
+        }
+        assert!(io(1234, 1, IoPriority::VeryLow).validate().is_ok());
+        assert!(memory(1234, 1).validate().is_ok());
+        for valid in [
+            r#"{"op":"ioPriority","pid":1234,"create_time":1,"priority":"veryLow"}"#,
+            r#"{"op":"memoryPriority","pid":1234,"create_time":1,"priority":"belowNormal"}"#,
+        ] {
+            assert!(serde_json::from_str::<Operation>(valid).is_ok());
+        }
+        for invalid in [
+            r#"{"op":"ioPriority","pid":1234,"create_time":1,"priority":"idle"}"#,
+            r#"{"op":"memoryPriority","pid":1234,"create_time":1,"priority":6}"#,
+            r#"{"op":"memoryPriority","pid":1234,"create_time":1,"priority":"low","tree":true}"#,
+        ] {
+            assert!(serde_json::from_str::<Operation>(invalid).is_err());
+        }
     }
 
     #[test]

@@ -800,6 +800,8 @@ mod tests {
             suspended: false,
             frozen: false,
             efficiency: false,
+            io_priority: None,
+            memory_priority: None,
             app_window: false,
         }
     }
