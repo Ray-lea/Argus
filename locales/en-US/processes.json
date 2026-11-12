@@ -289,9 +289,9 @@
     "acpiTemperature": "ACPI thermal-zone temperature"
   },
   "memoryScope": {
-    "vital": "Physical memory in use across the whole system: total minus available, including in-use and modified pages. Process rows show their own private working sets, which add up to less.",
-    "header": "The percentage above is the share of physical memory in use across the whole system. Rows show the private working set: physical memory used by the process alone; app groups and categories add these up.",
-    "section": "Sum of the private working sets of the processes in this category. Whole-system usage also counts shared pages, the kernel and drivers, page tables, the system cache and modified pages, so it is higher than the categories combined."
+    "vital": "Physical memory in use across the whole system: total minus available, including in-use and modified pages. Process rows show their own private working sets, which add up to less. The full breakdown is in the user guide, docs/guide/README.md (in Chinese).",
+    "header": "The percentage above is the share of physical memory in use across the whole system. Rows show the private working set: physical memory used by the process alone; app groups and categories add these up. The full breakdown is in the user guide, docs/guide/README.md (in Chinese).",
+    "section": "Sum of the private working sets of the processes in this category. Whole-system usage also counts shared pages, the kernel and drivers, page tables, the system cache and modified pages, so it is higher than the categories combined. The full breakdown is in the user guide, docs/guide/README.md (in Chinese)."
   },
   "columns": {
     "choose": "Select columns",
