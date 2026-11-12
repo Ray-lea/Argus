@@ -5,7 +5,7 @@
     "processHint": "Masquez les composants et les processus Windows sur la liste de masquage supplémentaire, en conservant la liste toujours affichée. Modifie uniquement la liste affichée.",
     "networkHint": "Masquer les connexions appartenant aux processus système et les entrées sans processus propriétaire (PID 0). Modifie uniquement la liste affichée.",
     "edit": "Modifier les règles de masquage",
-    "description": "Les processus système sont identifiés à partir des informations sur les composants Windows. Les deux pages partagent ces règles et enregistrent leurs commutateurs masqués séparément.",
+    "description": "Les processus système sont identifiés à partir des informations sur les composants Windows. Les deux pages partagent ces règles et enregistrent séparément l’état du commutateur de masquage.",
     "keep": "Toujours afficher",
     "keepHint": "Gardez ces programmes visibles, y compris les processus système. Cette liste est prioritaire sur le masquage supplémentaire.",
     "hide": "Masquer également",

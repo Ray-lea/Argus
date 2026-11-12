@@ -88,11 +88,11 @@
     },
     "confirm": "Suspender",
     "error": {
-      "accessDenied": "Acceso denegado. Activa el servicio privilegiado en Configuración o ejecuta Argus como administrador; los procesos protegidos pueden seguir sin estar disponibles.",
+      "accessDenied": "Acceso denegado. Active el servicio privilegiado en Configuración o ejecute Argus como administrador; los procesos protegidos pueden seguir sin estar disponibles.",
       "refused": "{name} no se puede suspender ni reanudar.",
       "serviceOutdated": "Acceso denegado. La versión del servicio privilegiado no es compatible; actualiza el servicio y vuelve a intentarlo.",
       "critical": "{name} es un proceso crítico del sistema. Suspenderlo haría que Windows dejara de responder, por lo que se ha bloqueado la operación.",
-      "stillSuspended": "Es posible que {name} siga suspendido: no se pudieron reanudar algunos subprocesos o leer su estado. Inténtalo de nuevo."
+      "stillSuspended": "Es posible que {name} siga suspendido: no se pudieron reanudar algunos subprocesos o leer su estado. Inténtelo de nuevo."
     },
     "on": {
       "failed": "No se pudo suspender {name}",
