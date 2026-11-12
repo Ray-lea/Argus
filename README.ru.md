@@ -148,9 +148,9 @@ Argus обращается к нативным API Windows напрямую из
 
 ## 💬 Сообщество
 
-[![Группа QQ 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+[![Группа QQ 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK) [![Канал в Telegram @argustask](https://img.shields.io/badge/Telegram-%40argustask-26A5E4?logo=telegram&logoColor=white)](https://t.me/argustask)
 
-В китайскоязычной группе QQ можно сообщить о проблеме, предложить функцию и пообщаться с другими пользователями. Ссылка также доступна в Argus: **О программе → Присоединиться к группе QQ**.
+В китайскоязычной группе QQ можно сообщить о проблеме, предложить функцию и пообщаться с другими пользователями. В канале в Telegram публикуются новости о выпусках и проекте. Ссылки также доступны в Argus: **О программе → Присоединиться к группе QQ** и **О программе → Подписаться на канал**.
 
 <a id="contributing"></a>
 

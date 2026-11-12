@@ -148,9 +148,9 @@ La documentation détaillée est en chinois. La [documentation en ligne](https:/
 
 ## 💬 Communauté
 
-[![Groupe QQ 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+[![Groupe QQ 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK) [![Chaîne Telegram @argustask](https://img.shields.io/badge/Telegram-%40argustask-26A5E4?logo=telegram&logoColor=white)](https://t.me/argustask)
 
-Le groupe QQ, de langue chinoise, permet de signaler des problèmes, de proposer des fonctions et d’échanger avec d’autres utilisateurs. Il est également accessible depuis **À propos → Rejoindre le groupe QQ** dans Argus.
+Le groupe QQ, de langue chinoise, permet de signaler des problèmes, de proposer des fonctions et d’échanger avec d’autres utilisateurs. La chaîne Telegram publie les nouvelles versions et l’actualité du projet. Les deux sont également accessibles depuis **À propos → Rejoindre le groupe QQ** et **À propos → Rejoindre la chaîne** dans Argus.
 
 <a id="contributing"></a>
 

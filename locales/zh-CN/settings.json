@@ -400,6 +400,13 @@
       "copy": "复制群号",
       "number": "群号"
     },
+    "channel": {
+      "title": "Telegram 频道",
+      "desc": "加入 Telegram 频道 {channel}，获取版本更新与项目动态。",
+      "join": "加入频道",
+      "copy": "复制链接",
+      "link": "频道链接"
+    },
     "license": {
       "title": "许可证",
       "desc": "Argus 是自由软件，依据 GNU Affero General Public License 第 3 版或任何更高版本（AGPL-3.0-or-later）发布，可按该许可证的条款再分发和修改。Argus 不提供任何担保。",

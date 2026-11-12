@@ -148,9 +148,9 @@ Die ausführliche Dokumentation ist auf Chinesisch verfasst. Die [Online-Dokumen
 
 ## 💬 Community
 
-[![QQ-Gruppe 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+[![QQ-Gruppe 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK) [![Telegram-Kanal @argustask](https://img.shields.io/badge/Telegram-%40argustask-26A5E4?logo=telegram&logoColor=white)](https://t.me/argustask)
 
-In der chinesischsprachigen QQ-Gruppe können Probleme gemeldet, Funktionen vorgeschlagen und Erfahrungen ausgetauscht werden. Sie ist auch über **Info → QQ-Gruppe beitreten** in Argus erreichbar.
+In der chinesischsprachigen QQ-Gruppe können Probleme gemeldet, Funktionen vorgeschlagen und Erfahrungen ausgetauscht werden. Der Telegram-Kanal veröffentlicht Neuigkeiten zu Versionen und zum Projekt. Beide sind auch über **Info → QQ-Gruppe beitreten** und **Info → Kanal beitreten** in Argus erreichbar.
 
 <a id="contributing"></a>
 

@@ -144,9 +144,9 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 
 ## 💬 交流與意見反應
 
-[![QQ 群組 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+[![QQ 群組 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK) [![Telegram 頻道 @argustask](https://img.shields.io/badge/Telegram-%40argustask-26A5E4?logo=telegram&logoColor=white)](https://t.me/argustask)
 
-歡迎加入群組回報問題、提出建議或交流使用心得，也可透過應用程式的「關於 → 加入 QQ 群」開啟加入頁面。
+歡迎加入 QQ 群組回報問題、提出建議或交流使用心得，或加入 Telegram 頻道取得版本更新與專案動態。也可透過應用程式的「關於 → 加入 QQ 群」或「關於 → 加入頻道」開啟。
 
 ## 🤝 參與貢獻
 

@@ -148,9 +148,9 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 ## 💬 コミュニティ
 
-[![QQ グループ 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+[![QQ グループ 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK) [![Telegram チャンネル @argustask](https://img.shields.io/badge/Telegram-%40argustask-26A5E4?logo=telegram&logoColor=white)](https://t.me/argustask)
 
-中国語の QQ グループで、不具合の報告、機能の提案、利用者同士の交流ができます。Argus の **バージョン情報 → QQ グループに参加** からも開けます。
+中国語の QQ グループで、不具合の報告、機能の提案、利用者同士の交流ができます。Telegram チャンネルでは、新しいバージョンやプロジェクトの最新情報を配信しています。Argus の **バージョン情報 → QQ グループに参加**、**バージョン情報 → チャンネルに参加** からも開けます。
 
 <a id="contributing"></a>
 

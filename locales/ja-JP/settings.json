@@ -406,6 +406,13 @@
       "copy": "グループ番号をコピー",
       "number": "グループ番号"
     },
+    "channel": {
+      "title": "Telegram チャンネル",
+      "desc": "Telegram チャンネル {channel} に参加すると、新しいバージョンやプロジェクトの最新情報を受け取れます。",
+      "join": "チャンネルに参加",
+      "copy": "リンクをコピー",
+      "link": "チャンネルのリンク"
+    },
     "license": {
       "title": "ライセンス",
       "desc": "Argus は GNU Affero General Public License バージョン 3 またはそれ以降のバージョン（AGPL-3.0-or-later）に基づく自由ソフトウェアです。このライセンスの条件に従って再配布と変更ができます。Argus は無保証で提供されます。",

@@ -409,6 +409,13 @@
       "copy": "Gruppennummer kopieren",
       "number": "Gruppennummer"
     },
+    "channel": {
+      "title": "Telegram-Kanal",
+      "desc": "Treten Sie dem Telegram-Kanal {channel} bei, um Neuigkeiten zu Versionen und zum Projekt zu erhalten.",
+      "join": "Kanal beitreten",
+      "copy": "Link kopieren",
+      "link": "Kanallink"
+    },
     "license": {
       "title": "Lizenz",
       "desc": "Argus ist freie Software unter der GNU Affero General Public License, Version 3 oder einer späteren Version (AGPL-3.0-or-later). Die Software darf gemäß dieser Lizenz weitergegeben und geändert werden. Argus wird ohne Garantie bereitgestellt.",

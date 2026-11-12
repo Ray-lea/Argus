@@ -130,9 +130,9 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 
 ## 💬 交流与反馈
 
-[![QQ 群 453803497](https://img.shields.io/badge/QQ%20%E7%BE%A4-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+[![QQ 群 453803497](https://img.shields.io/badge/QQ%20%E7%BE%A4-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK) [![Telegram 频道 @argustask](https://img.shields.io/badge/Telegram-%40argustask-26A5E4?logo=telegram&logoColor=white)](https://t.me/argustask)
 
-欢迎加群反馈问题、提出建议或交流使用心得，也可通过应用内“关于 → 加入 QQ 群”打开加群页面。
+欢迎加入 QQ 群反馈问题、提出建议或交流使用心得，或加入 Telegram 频道获取版本更新与项目动态。也可通过应用内“关于 → 加入 QQ 群”或“关于 → 加入频道”打开。
 
 ## 🤝 参与贡献
 

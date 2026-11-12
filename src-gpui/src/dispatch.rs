@@ -302,6 +302,9 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         "open_community" => crate::commands::open_community()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "open_channel" => crate::commands::open_channel()
+            .map(|value| serde_json::to_value(value).expect("serializable command response"))
+            .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "open_log_dir" => crate::commands::open_log_dir(host.clone())
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),

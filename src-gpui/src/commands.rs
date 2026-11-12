@@ -778,6 +778,16 @@ pub fn open_community() -> Result<(), String> {
     )
 }
 
+/// Opens the Telegram channel in the default browser, which offers to hand it
+/// to Telegram.
+pub fn open_channel() -> Result<(), String> {
+    crate::shell::open_url(
+        argus_app::config::manifest()["community"]["channel"]
+            .as_str()
+            .expect("channel URL"),
+    )
+}
+
 /// Opens the folder with `argus.log`, for attaching to bug reports.
 pub fn open_log_dir(app: crate::native_runtime::Host) -> Result<(), String> {
     let dir = app

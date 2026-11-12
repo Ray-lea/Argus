@@ -130,9 +130,9 @@ The documentation is in Chinese; [online documentation](https://argustask.com/do
 
 ## 💬 Community
 
-[![QQ group 453803497](https://img.shields.io/badge/QQ%20group-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+[![QQ group 453803497](https://img.shields.io/badge/QQ%20group-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK) [![Telegram channel @argustask](https://img.shields.io/badge/Telegram-%40argustask-26A5E4?logo=telegram&logoColor=white)](https://t.me/argustask)
 
-Join the Chinese-speaking QQ group to report problems, suggest features, or share experiences with other users (also accessible via About → Join QQ group in Argus).
+Join the Chinese-speaking QQ group to report problems, suggest features, or share experiences with other users. The Telegram channel posts release updates and project news. Both are also accessible from Argus via About → Join QQ group and About → Join channel.
 
 ## 🤝 Contributing
 

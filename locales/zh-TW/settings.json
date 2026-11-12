@@ -382,6 +382,13 @@
       "copy": "複製群號",
       "number": "群號"
     },
+    "channel": {
+      "title": "Telegram 頻道",
+      "desc": "加入 Telegram 頻道 {channel}，取得版本更新與專案動態。",
+      "join": "加入頻道",
+      "copy": "複製連結",
+      "link": "頻道連結"
+    },
     "license": {
       "title": "授權條款",
       "desc": "Argus 為自由軟體，依據 GNU Affero General Public License 第 3 版或任何更新版本（AGPL-3.0-or-later）發布，可依該授權條款再散布與修改。Argus 不提供任何擔保。",

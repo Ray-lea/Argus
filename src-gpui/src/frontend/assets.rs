@@ -97,6 +97,7 @@ product_icons! {
     // The filled one is the same outline, filled as it is loaded (`icon_path`).
     "StarIcon" | "StarFilledIcon" => Star,
     "ChatIcon" => MessageSquare,
+    "ChannelIcon" => Send,
     "DocumentIcon" => FileText,
     "NavSideIcon" => PanelLeft,
     "NavTopIcon" => PanelTop,
