@@ -22,7 +22,7 @@ use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, I
 use windows::core::PCWSTR;
 
 use crate::package::{self, AppMeta, Identity};
-use crate::util::wide;
+use crate::util::{from_wide, wide};
 
 /// Metadata shared by every process running the same executable.
 #[derive(Debug, Default)]
@@ -411,9 +411,7 @@ pub fn version_info(path: &str) -> VersionInfo {
                 return None;
             }
             let s = std::slice::from_raw_parts(ptr as *const u16, len as usize);
-            let s = String::from_utf16_lossy(s);
-            let s = s.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-            (!s.is_empty()).then(|| s.to_owned())
+            version_string(s)
         })
     };
 
@@ -423,6 +421,13 @@ pub fn version_info(path: &str) -> VersionInfo {
         product_name: query("ProductName"),
         file_version: query("FileVersion"),
     }
+}
+
+fn version_string(value: &[u16]) -> Option<String> {
+    // An overstated resource length can include data after the terminator.
+    let s = from_wide(value);
+    let s = s.trim();
+    (!s.is_empty()).then(|| s.to_owned())
 }
 
 fn extract_icon_png(path: &str) -> Option<Vec<u8>> {
@@ -570,6 +575,31 @@ fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod category_tests {
     use super::*;
+
+    #[test]
+    fn version_strings_stop_before_adjacent_resource_data() {
+        // An overstated length includes padding and the next FileVersion block:
+        // its 0x38-byte size, value length, type, and the start of its key.
+        let value: Vec<_> = "WinSCP\0\08\u{c}\u{1}Fil".encode_utf16().collect();
+        assert_eq!(version_string(&value).as_deref(), Some("WinSCP"));
+    }
+
+    #[test]
+    fn version_strings_empty_before_nul_allow_translation_fallback() {
+        for value in ["", "\0", "\0FileVersion", " \t\r\n", " \t\0FileVersion"] {
+            let value: Vec<_> = value.encode_utf16().collect();
+            assert!(version_string(&value).is_none(), "{value:?}");
+        }
+    }
+
+    #[test]
+    fn version_strings_preserve_unicode_and_trim_whitespace_with_or_without_nul() {
+        let expected = "工具 🦀";
+        for value in [format!(" \t{expected}\r\n"), format!(" \t{expected}\r\n\0")] {
+            let value: Vec<_> = value.encode_utf16().collect();
+            assert_eq!(version_string(&value).as_deref(), Some(expected));
+        }
+    }
 
     #[test]
     fn stalled_resolvers_keep_the_request_backlog_bounded_and_retryable() {
