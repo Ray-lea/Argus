@@ -90,6 +90,15 @@ impl Motion {
         })
     }
 
+    /// How far (0 to 1) a play of this motion begun at `since` is at `now`;
+    /// `None` without a play and once it is over. A play runs its course
+    /// once: a control drawn anew afterwards (another page and back, a
+    /// dialog opened again) shows its icon at rest.
+    pub(super) fn played(self, since: Option<Instant>, now: Instant) -> Option<f32> {
+        let t = now.saturating_duration_since(since?).as_secs_f32() / self.duration().as_secs_f32();
+        (t < 1.).then_some(t)
+    }
+
     /// The icon `t` (0 to 1) into the motion; at rest once it is over.
     pub(super) fn pose(self, t: f32) -> Pose {
         if t >= 1. {
@@ -136,9 +145,14 @@ impl Motion {
     }
 }
 
-/// One control's icon: how often it was set moving, and what it last drew.
+/// One control's icon: how often it was set moving and when last, and what
+/// it last drew.
 pub(super) struct Play {
     plays: u64,
+    /// When the last play began. Its progress is taken from here rather than
+    /// from the animation's own state, which GPUI drops whenever the control
+    /// is not drawn and starts afresh when it is drawn again.
+    since: Option<Instant>,
     name: String,
     /// The last play was for a new icon rather than for the pointer.
     entered: bool,
@@ -171,7 +185,7 @@ impl Desktop {
         side: Option<Pixels>,
     ) -> AnyElement {
         let still = self.ui.icon_motions.still.get();
-        let (plays, entered) = {
+        let (plays, entered, since) = {
             let mut all = self.ui.icon_motions.plays.borrow_mut();
             // Notices and dialogs bring controls under ever new names: start
             // over rather than keep every one of them.
@@ -180,6 +194,7 @@ impl Desktop {
             }
             let play = all.entry(control.clone()).or_insert_with(|| Play {
                 plays: 0,
+                since: None,
                 name: name.to_owned(),
                 entered: false,
             });
@@ -188,10 +203,11 @@ impl Desktop {
                 play.name = name.to_owned();
                 if !still {
                     play.plays += 1;
+                    play.since = Some(Instant::now());
                     play.entered = true;
                 }
             }
-            (play.plays, play.entered)
+            (play.plays, play.entered, play.since)
         };
         let glyph = match color {
             Some(color) => icon(name, color),
@@ -201,20 +217,27 @@ impl Desktop {
             Some(side) => glyph.size(side),
             None => glyph,
         };
-        if plays == 0 || still {
-            return glyph.into_any_element();
-        }
         let motion = if entered {
             Motion::Enter
         } else {
             Motion::of(name)
         };
-        // A new id for each play: the animation starts over.
+        // At rest without a play, and once the last one is over: no
+        // animation, so no frames.
+        let now = Instant::now();
+        let Some(since) = since.filter(|&at| !still && motion.played(Some(at), now).is_some())
+        else {
+            return glyph.into_any_element();
+        };
+        // A new id for each play keeps the frames coming until it is over;
+        // the pose follows the play's own clock, so a control drawn anew
+        // during a play takes it up where it is.
         glyph
             .with_animation(
                 ElementId::NamedInteger("icon-motion".into(), plays),
                 Animation::new(motion.duration()),
-                move |glyph, t| {
+                move |glyph, _| {
+                    let t = motion.played(Some(since), Instant::now()).unwrap_or(1.);
                     let pose = motion.pose(t);
                     if pose == Pose::REST {
                         return glyph;
@@ -266,6 +289,7 @@ impl Desktop {
                     && let Some(play) = plays.borrow_mut().get_mut(&control)
                 {
                     play.plays += 1;
+                    play.since = Some(Instant::now());
                     play.entered = false;
                 }
             })
@@ -275,6 +299,25 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{Motion, Pose, there_and_back};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_play_runs_once_whenever_its_icon_is_drawn_again() {
+        let since = Instant::now();
+        let at = |ms: u64| since + Duration::from_millis(ms);
+        let motion = Motion::Spin(-60.);
+        // Never set moving: at rest.
+        assert_eq!(motion.played(None, at(0)), None);
+        // Partway through, by the play's own clock.
+        let t = motion.played(Some(since), at(210)).unwrap();
+        assert!((t - 0.5).abs() < 1e-3, "{t}");
+        // Drawn again after the play is over (another page and back, a
+        // dialog opened again): at rest rather than playing anew.
+        assert_eq!(motion.played(Some(since), since + motion.duration()), None);
+        assert_eq!(motion.played(Some(since), at(60_000)), None);
+        // Drawn a moment before the play's stamp: at its start.
+        assert_eq!(motion.played(Some(at(5)), since), Some(0.));
+    }
 
     fn at_rest(pose: Pose) -> bool {
         (pose.scale.0 - 1.).abs() < 1e-4
