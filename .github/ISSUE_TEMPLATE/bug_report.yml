@@ -1,19 +1,55 @@
 name: 缺陷报告 / Bug report
-description: 报告错误、崩溃、显示异常或性能问题 / Report an error, crash, display glitch or performance problem
+description: 报告功能失效、崩溃、显示或数据异常、异常资源占用 / Report failures, crashes, incorrect display or data, or excessive resource use
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        提交前请先搜索已有的 Issue。安全漏洞请勿在此提交，按[安全策略](https://github.com/Ray-lea/Argus/security/policy)私下报告。中文或英文均可。
+        提交前可搜索已开放和已关闭的 Issue。每份报告描述一个问题。安全漏洞请按[安全策略](https://github.com/Ray-lea/Argus/security/policy)私下报告。中文或英文均可。
 
-        Please search existing issues first. Do not report security vulnerabilities here; report them privately as described in the [security policy](https://github.com/Ray-lea/Argus/security/policy). Chinese or English is fine.
+        Search open and closed issues before submitting. Describe one problem per report. Report security vulnerabilities privately as described in the [security policy](https://github.com/Ray-lea/Argus/security/policy). Chinese or English is fine.
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题现象与期望 / What happened and what was expected
+      description: |
+        说明实际现象、期望结果与影响范围；如有错误提示，保留完整文字与错误码。崩溃或卡死时，注明是程序退出、仅 Argus 无响应、整机冻结还是蓝屏，以及是否自行恢复。
+        Describe the actual and expected behavior and what was affected. Include the full error message and code, if any. For crashes or hangs, specify whether Argus exited, only Argus stopped responding, Windows froze, or a blue screen appeared, and whether it recovered on its own.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 发生过程与频率 / Actions and frequency
+      description: |
+        按已知经过填写当时页面、操作和发生频率。窗口问题请补充启动或唤起方式（双击程序、快捷键、托盘、任务栏图标等）及此前状态。偶发或不宜再次触发时，可记录上次经过；整机冻结或蓝屏请使用已有记录，避免为填写表单再次触发。
+        Describe the page, actions and frequency based on what already happened. For window problems, include how Argus was launched or restored (executable, shortcut, tray, taskbar icon, etc.) and its previous state. A description of the last incident is sufficient for intermittent or unsafe-to-repeat problems. For system freezes or blue screens, use existing records without triggering another incident.
+      placeholder: |
+        发生频率 / Frequency: 每次 / 偶发 / 仅一次 — Every time / Sometimes / Once
+        当时页面与窗口状态 / Page and window state: 显示 / 最小化 / 托盘 — Visible / Minimized / Hidden in tray
+        操作经过 / Actions:
+        1.
+        2.
+    validations:
+      required: true
   - type: input
     id: version
     attributes:
-      label: Argus 版本 / Argus version
-      description: 关于页或状态栏左端显示的版本号。/ The version shown on the About page or at the left end of the status bar.
-      placeholder: 例如 / e.g. 0.1.0
+      label: Argus 完整版本 / Full Argus version
+      description: |
+        复制关于页或状态栏左端的完整版本，保留 + 后的构建信息。无法启动时，可从 argus.exe 的“属性 → 详细信息 → 产品版本”或诊断日志首行获取；无法获取时注明“不确定”。
+        Copy the full version from About or the left end of the status bar, including build information after +. If Argus cannot start, use argus.exe → Properties → Details → Product version, or the first line of the diagnostic log. Enter “Not sure” if unavailable.
+      placeholder: 例如 / e.g. 0.5.0 或 / or 0.5.0+800.g123abcd
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows 完整版本 / Full Windows version
+      description: |
+        按 Win+R，输入 winver，填写版本与完整内部版本号，包含小数点后的数字。也可复制诊断日志中的 environment 行；无法获取时注明“不确定”。
+        Press Win+R, run winver, and include the Windows release and full OS build, including the digits after the dot. The environment line in the diagnostic log can also be used. Enter “Not sure” if unavailable.
+      placeholder: 例如 / e.g. Windows 11 24H2 (26100.4061)
     validations:
       required: true
   - type: dropdown
@@ -24,54 +60,85 @@ body:
         - 安装版 / Installed version
         - 免安装版 / Portable version
         - 从源码构建 / Built from source
+        - 不确定 / Not sure
     validations:
       required: true
   - type: input
-    id: windows
+    id: upgrade
     attributes:
-      label: Windows 版本 / Windows version
-      description: 运行 `winver` 显示的版本与内部版本号。/ The version and build that `winver` shows.
-      placeholder: 例如 / e.g. Windows 11 24H2 (26100.4061)
-    validations:
-      required: true
-  - type: checkboxes
+      label: 安装与更新情况（选填）/ Installation and update history (optional)
+      description: 首次安装还是升级后出现？如有此前正常的版本、更新方式或下载来源，请一并说明。/ Did this occur on a first installation or after an update? Include the last working version, update method or download source, if known.
+  - type: dropdown
     id: privilege
     attributes:
-      label: 权限 / Permissions
+      label: 当前运行权限（选填）/ Current runtime permissions (optional)
+      description: 以关于页显示的当前权限为准；设置中的“管理员运行”是启动选项。无法查看时可选“不确定”。/ Use the current permissions shown on About; “Run as administrator” in Settings is a startup option. Choose “Not sure” if unavailable.
       options:
-        - label: 以管理员身份运行 Argus / Argus runs as administrator
-        - label: 已安装特权服务 / The privileged service is installed
-        - label: 已启用系统任务管理器替换 / Task Manager replacement is enabled
+        - 标准权限 / Standard user
+        - 管理员权限 / Administrator
+        - 不确定 / Not sure
+  - type: dropdown
+    id: service
+    attributes:
+      label: 特权服务状态（选填）/ Privileged service status (optional)
+      description: 记录问题发生时“设置 → 权限”中已知的状态，异常提示可附在问题描述中。/ Use the known state in Settings → Permissions at the time of the issue. Include any error message in the problem description.
+      options:
+        - 未安装 / Not installed
+        - 已连接 / Connected
+        - 已停止 / Stopped
+        - 状态异常或报错 / Unavailable or reporting an error
+        - 不确定 / Not sure
+  - type: dropdown
+    id: task_manager
+    attributes:
+      label: 系统任务管理器替换（选填）/ Task Manager replacement (optional)
+      description: 记录问题发生时“设置 → 权限”中已知的状态。/ Use the known state in Settings → Permissions at the time of the issue.
+      options:
+        - 已启用 / Enabled
+        - 已停用 / Disabled
+        - 状态异常或报错 / Unavailable or reporting an error
+        - 不确定 / Not sure
+  - type: dropdown
+    id: kernel_sensors
+    attributes:
+      label: 内核传感器 / PawnIO（选填）/ Kernel sensors / PawnIO (optional)
+      description: 记录问题发生时 Argus 内核传感器开关的已知状态；如涉及其他软件安装的 PawnIO，可在相关环境中说明。/ Use the known state of Argus's kernel sensors setting at the time of the issue. Mention PawnIO installed by another application in the environment field if relevant.
+      options:
+        - 已启用 / Enabled
+        - 已停用 / Disabled
+        - 启用失败或报错 / Failed to enable or reporting an error
+        - 不确定 / Not sure
   - type: textarea
     id: hardware
     attributes:
-      label: 本机配置 / PC specifications
+      label: 相关环境与对照（选填）/ Relevant environment and comparisons (optional)
       description: |
-        在“进程”页取消选中应用或进程，单击右侧“本机配置”标题旁的“复制配置为文字”按钮，将内容粘贴到此处。面板已收起时，先单击窗口右上角的详细信息面板按钮。
-        On the Processes page, deselect any app or process, click “Copy PC specifications as text” beside “This PC” in the right pane, and paste the result here. If the pane is hidden, open it with the details pane button at the top right of the window.
-      placeholder: 软件无法启动或旧版本无复制按钮时，可手动填写 CPU、内存与显卡等配置。/ If Argus cannot start or the button is unavailable in an older version, enter the CPU, memory, graphics and other specifications manually.
-      render: text
-    validations:
-      required: false
-  - type: textarea
-    id: description
-    attributes:
-      label: 问题描述 / What happened
-      description: 发生了什么，期望的结果是什么。/ What happened, and what you expected instead.
-    validations:
-      required: true
-  - type: textarea
-    id: steps
-    attributes:
-      label: 复现步骤 / Steps to reproduce
-      placeholder: |
-        1. 打开…… / Open …
-        2. 单击…… / Click …
-        3. 出现…… / See …
-    validations:
-      required: true
+        按问题填写相关内容：
+
+        - 界面：分辨率、系统缩放、Argus 界面缩放、显卡驱动；涉及多屏或远程桌面时注明。
+        - 数据：异常指标所在页面或列、读数与单位、当时负载，以及对照工具的名称、指标和读数。
+        - 资源占用：测量工具与指标、持续时间、刷新间隔及电源状态。
+        - 其他软件或设备：名称、版本或型号；如有下载来源可一并提供。
+
+        硬件配置可在“进程”页未选中项时，打开右侧详细信息面板，单击“本机配置”旁的“复制配置为文字”；无法使用时可手动填写相关型号。
+
+        Include details relevant to the problem:
+
+        - Display: resolution, Windows scaling, Argus UI scale and graphics driver; mention multiple monitors or Remote Desktop if involved.
+        - Readings: affected page or column, metric, value, unit and workload, plus the comparison tool, metric and value.
+        - Resource use: measurement tool and metric, duration, refresh interval and power source.
+        - Other software or devices: name, version or model, and download source if available.
+
+        To copy hardware details, deselect items on the Processes page, open the right details pane and click “Copy PC specifications as text” beside “This PC”. Relevant models can also be entered manually.
   - type: textarea
     id: logs
     attributes:
-      label: 日志与截图 / Logs and screenshots
-      description: 日志位于 关于 → 打开日志文件夹。附上问题发生前后的相关内容；截图可直接粘贴。/ Logs are in About → Open log folder. Include the part around the problem; screenshots can be pasted directly.
+      label: 日志、截图与其他附件（选填）/ Logs, screenshots and other attachments (optional)
+      description: |
+        正常运行时使用“关于 → 打开日志文件夹”。无法启动时，在文件资源管理器地址栏输入 `%LOCALAPPDATA%\dev.argus.taskmanager\logs\diagnostics`，可直接取得已有日志。
+        附上问题发生前后的 `argus.log` 和相关的 `argus.1.log`、`argus.2.log`、`argus.3.log`，注明发生时间与时区；目录缺失或日志为空时也可说明。安装失败使用报错窗口给出的日志路径；任务管理器替换问题可补充同目录的 `taskmgr.log`。
+        崩溃、整机冻结或蓝屏可补充同一时间的可靠性监视器记录（Win+R → `perfmon /rel`）、事件来源与 ID、蓝屏停止代码及驱动文件名。截图、录屏或日志文件可直接拖入。提交前请隐去无关的账户名、设备标识及敏感路径，保留错误码和时间。
+
+        While Argus is running, use About → Open log folder. If it cannot start, enter `%LOCALAPPDATA%\dev.argus.taskmanager\logs\diagnostics` in File Explorer's address bar to collect existing logs.
+        Attach `argus.log` and relevant `argus.1.log`, `argus.2.log` or `argus.3.log` files covering the incident, with its time and time zone. Mention a missing folder or empty logs. For installation failures, use the log path in the error dialog; for Task Manager replacement issues, also include `taskmgr.log` from the same directory if available.
+        For crashes, system freezes or blue screens, include existing Reliability Monitor records (Win+R → `perfmon /rel`), event sources and IDs, stop codes or driver filenames from the same time. Screenshots, recordings and log files can be dragged here. Redact unrelated account names, device identifiers and sensitive paths while preserving error codes and timestamps.

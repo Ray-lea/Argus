@@ -1,34 +1,39 @@
 name: 功能建议 / Feature request
-description: 提出新功能或改进现有功能 / Suggest a new feature or an improvement
+description: 描述使用需求，建议新功能或改进现有体验 / Describe a need, suggest a feature or improve an existing workflow
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前可搜索已有的 Issue。现有功能失效、显示异常或异常资源占用请使用“缺陷报告”。可独立处理的诉求请分别提交。中文或英文均可。
+
+        Search existing issues before submitting. Use “Bug report” for broken features, display problems or excessive resource use. Submit independently actionable requests separately. Chinese or English is fine.
   - type: textarea
     id: problem
     attributes:
-      label: 要解决的问题 / Problem
-      description: 当前的不便之处或使用场景。/ What is inconvenient now, or the situation it is for.
+      label: 使用场景与当前困难 / Use case and current difficulty
+      description: 希望完成什么任务？当前在哪一步遇到不便？涉及现有功能时，可注明 Argus 版本和所在页面。/ What task needs to be completed, and which step is inconvenient? For existing features, include the Argus version and page if relevant.
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: 建议的方案 / Proposal
-      description: 希望 Argus 如何处理；如有参考的软件或界面，请一并说明。/ How Argus should handle it; mention any software or interface to compare with.
+      label: 期望达到的效果 / Desired outcome
+      description: 描述期望的操作或结果即可，具体实现思路可填写在下一项。/ Describe the desired interaction or result. Implementation ideas can be included in the next optional field.
     validations:
       required: true
   - type: textarea
+    id: references
+    attributes:
+      label: 参考方案、截图或演示（选填）/ References, screenshots or demos (optional)
+      description: 可提供参考软件、具体实现思路、界面草图或演示，并说明希望参考的部分。支持直接拖入附件。/ Include reference software, implementation ideas, sketches or demos, and explain which parts are relevant. Attachments can be dragged here.
+  - type: textarea
     id: alternatives
     attributes:
-      label: 其他方案 / Alternatives
-      description: 考虑过的其他做法，或目前的变通办法。/ Other approaches considered, or the current workaround.
-  - type: textarea
-    id: hardware
-    attributes:
-      label: 本机配置 / PC specifications
+      label: 当前替代办法与相关环境（选填）/ Current workarounds and relevant environment (optional)
       description: |
-        涉及硬件或性能的建议可填写此项。在“进程”页取消选中应用或进程，单击右侧“本机配置”标题旁的“复制配置为文字”按钮，将内容粘贴到此处。面板已收起时，先单击窗口右上角的详细信息面板按钮。
-        For hardware or performance suggestions, deselect any app or process on the Processes page, click “Copy PC specifications as text” beside “This PC” in the right pane, and paste the result here. If the pane is hidden, open it with the details pane button at the top right of the window.
-      placeholder: 旧版本无复制按钮时，可手动填写。/ Enter the specifications manually if the button is unavailable in an older version.
-      render: text
-    validations:
-      required: false
+        可说明目前的变通办法、已尝试的设置，以及与需求相关的软件或硬件环境。涉及显示布局时，可补充分辨率和缩放；涉及硬件或性能时，可补充相关型号。
+        硬件配置可在“进程”页未选中项时，打开右侧详细信息面板，单击“本机配置”旁的“复制配置为文字”，或手动填写相关信息。
+
+        Describe current workarounds, settings already tried, and software or hardware relevant to the request. For display layouts, include resolution and scaling; for hardware or performance, include relevant models.
+        To copy hardware details, deselect items on the Processes page, open the right details pane and click “Copy PC specifications as text” beside “This PC”, or enter relevant details manually.
