@@ -349,7 +349,8 @@ enum ShellLaunch {
     Done(Result<(), TaskError>),
     /// The shell is elevated, and so is everything it starts.
     Elevated,
-    /// No helper ran under the shell; the stage and code say why.
+    /// No helper ran under the shell, or it reported stopping before the
+    /// launch; the stage and code say why.
     Unavailable(&'static str, u32),
 }
 
@@ -494,16 +495,24 @@ fn shell_helper(owner: usize, command: &str, scope: Shell) -> ShellLaunch {
         Ok(line) => line,
         Err(error) => return ShellLaunch::Done(Err(error)),
     };
-    match spawn_under(parent.0, &exe, &mut line).and_then(helper_result) {
+    match spawn_under(parent.0, &exe, &mut line) {
+        Ok(process) => shell_outcome(helper_result(process)),
+        // No helper process exists, so nothing was started.
+        Err(error) => ShellLaunch::Unavailable(error.stage, error.code),
+    }
+}
+
+/// Only the helper's own reports that it stopped before the launch allow
+/// another attempt. Any other end, a crash (an NTSTATUS exit code) or an
+/// unknown exit code included, may come after the command already started:
+/// it is the result, and the command is never started a second time.
+fn shell_outcome(result: Result<u32, TaskError>) -> ShellLaunch {
+    match result {
         Ok(0) => ShellLaunch::Done(Ok(())),
         Ok(HELPER_ELEVATED) => ShellLaunch::Elevated,
-        // The helper never reached the launch: its own start failed, or it
-        // could not take over its account's environment.
-        Ok(code) if code == HELPER_ENVIRONMENT || code >= 0xC000_0000 => {
-            ShellLaunch::Unavailable("shell helper", code)
-        }
+        Ok(HELPER_ENVIRONMENT) => ShellLaunch::Unavailable("shell helper", HELPER_ENVIRONMENT),
         Ok(code) => ShellLaunch::Done(Err(TaskError::code("launch helper", code))),
-        Err(error) => ShellLaunch::Unavailable(error.stage, error.code),
+        Err(error) => ShellLaunch::Done(Err(error)),
     }
 }
 
@@ -653,7 +662,18 @@ pub fn launch_installed(command: String) -> Result<(), TaskError> {
             return activate(0, &command, false);
         }
         match shell_helper(0, &command, Shell::DesktopAccount) {
-            ShellLaunch::Done(result) => result,
+            ShellLaunch::Done(Ok(())) => Ok(()),
+            // Unlike a new task, Argus may be started twice: a second start
+            // only hands over to the first (single instance). So a helper
+            // that failed, or crashed with the launch unknown, is retried.
+            ShellLaunch::Done(Err(error)) => {
+                log::info!(
+                    "installed launch: shell helper failed at {}; code=0x{:08X}; using a filtered token",
+                    error.stage,
+                    error.code
+                );
+                filtered_helper(0, &command)
+            }
             // An elevated shell (UAC off, the built-in Administrator) starts
             // everything elevated. There are no standard rights to return to,
             // and a filtered token would only differ from every later start.
@@ -819,6 +839,32 @@ mod tests {
             assert!(split_command(bad, |_| None).is_err());
         }
     }
+
+    #[test]
+    fn only_the_helper_s_own_report_allows_a_second_launch() {
+        assert!(matches!(shell_outcome(Ok(0)), ShellLaunch::Done(Ok(()))));
+        assert!(matches!(
+            shell_outcome(Ok(HELPER_ELEVATED)),
+            ShellLaunch::Elevated
+        ));
+        assert!(matches!(
+            shell_outcome(Ok(HELPER_ENVIRONMENT)),
+            ShellLaunch::Unavailable(_, HELPER_ENVIRONMENT)
+        ));
+        // Launch errors, a crash during or after ShellExecuteExW, a failed
+        // start and unknown codes alike: the command may have started.
+        for code in [2, 1155, 0xC000_0005, 0xC000_0142, 0xC000_0409, 259] {
+            assert!(matches!(
+                shell_outcome(Ok(code)),
+                ShellLaunch::Done(Err(TaskError { code: reported, .. })) if reported == code
+            ));
+        }
+        assert!(matches!(
+            shell_outcome(Err(TaskError::code("launch helper result", 6))),
+            ShellLaunch::Done(Err(_))
+        ));
+    }
+
     #[test]
     fn complete_paths_with_spaces_are_preserved() {
         let command = r"C:\My Folder\document.txt";
