@@ -7,8 +7,10 @@ import { pathToFileURL } from "node:url";
 
 // cmd only interprets a fixed filename; the absolute directory is passed through
 // CreateProcess's working-directory parameter, never through its command text.
+// The explicit .\ keeps the lookup working when NoDefaultCurrentDirectoryInExePath
+// stops cmd from searching the working directory.
 export function runCompilerScript(directory, stdio = "inherit") {
-  const build = spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/v:off", "/c", "build.cmd"], {
+  const build = spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/v:off", "/c", ".\\build.cmd"], {
     cwd: directory, stdio, windowsHide: true,
   });
   assert.equal(build.status, 0, "leak tool build failed");
