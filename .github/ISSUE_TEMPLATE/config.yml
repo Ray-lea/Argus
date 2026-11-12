@@ -1,8 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: 使用问题 / Questions
+    url: https://github.com/Ray-lea/Argus/discussions/categories/q-a
+    about: 使用方法、兼容性和开发计划等问题请在讨论区提问。/ Ask about usage, compatibility and plans in Discussions.
+  - name: 使用指南 / User guide
+    url: https://argustask.com/docs/guide/
+    about: 界面与操作、设置、硬件数据的来源与限制（中文）。/ The interface, the settings, and the sources and limits of hardware data (in Chinese).
   - name: 报告安全漏洞 / Report a security vulnerability
     url: https://github.com/Ray-lea/Argus/security/advisories/new
-    about: 安全漏洞请通过私密漏洞报告提交，不要创建公开的 Issue。/ Report vulnerabilities privately, not in a public issue.
-  - name: 使用指南 / User guide
-    url: https://github.com/Ray-lea/Argus/blob/main/docs/guide/README.md
-    about: 界面与操作、设置、硬件数据的来源与限制（中文）。/ Interface, settings, and where hardware data comes from (in Chinese).
+    about: 请私下报告安全漏洞，不要创建公开的 Issue。/ Report vulnerabilities privately. Do not open a public issue.
