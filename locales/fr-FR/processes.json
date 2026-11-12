@@ -292,8 +292,8 @@
     "acpiTemperature": "Température de la zone thermique ACPI"
   },
   "memoryScope": {
-    "vital": "Mémoire physique utilisée par l’ensemble du système : le total moins la mémoire disponible, pages utilisées et modifiées comprises. Les lignes de processus affichent leur propre plage de travail privée, dont la somme est inférieure. Voir « Comptabilisation de la mémoire » dans le guide de l’utilisateur.",
-    "header": "Le pourcentage du haut est la part de mémoire physique utilisée par l’ensemble du système. Les lignes affichent la plage de travail privée : la mémoire physique utilisée par le seul processus ; les groupes d’applications et les catégories en font la somme. Voir « Comptabilisation de la mémoire » dans le guide de l’utilisateur.",
+    "vital": "Mémoire physique utilisée par l’ensemble du système : le total moins la mémoire disponible, pages utilisées et modifiées comprises. Les lignes de processus affichent leur propre plage de travail privée, dont la somme est inférieure.",
+    "header": "Le pourcentage du haut est la part de mémoire physique utilisée par l’ensemble du système. Les lignes affichent la plage de travail privée : la mémoire physique utilisée par le seul processus ; les groupes d’applications et les catégories en font la somme.",
     "section": "Somme des plages de travail privées des processus de cette catégorie. L’utilisation du système compte aussi les pages partagées, le noyau et les pilotes, les tables de pages, le cache système et les pages modifiées : elle dépasse donc la somme des catégories."
   },
   "columns": {
