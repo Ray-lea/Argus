@@ -623,6 +623,91 @@ button {
     filter: blur(8px);
   }
 }
+/* The page in the visitor's own language, offered below the header's right
+   end (LanguageSwitch.tsx); opaque like the menus, as it reaches over the
+   page. On a phone it is as wide as the header. */
+.mast-inner {
+  position: relative;
+}
+.language-offer {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: -1px;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  width: min(360px, calc(100vw - 2 * var(--pad)));
+  padding: 12px 10px 14px 14px;
+  border: 1px solid var(--stroke-2);
+  border-radius: 12px;
+  background: var(--surface-solid);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.22);
+  color: var(--ink);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  transform-origin: top right;
+  animation: theme-menu 200ms var(--ease-fluent);
+}
+.language-offer > svg {
+  margin-top: 3px;
+  color: var(--accent-text);
+}
+.language-offer p {
+  margin: 0;
+  text-wrap: pretty;
+  /* Japanese wraps between phrases, not within one. */
+  word-break: auto-phrase;
+}
+.language-offer-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-3);
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+.language-offer-close:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.language-offer-go {
+  grid-column: 2 / -1;
+  justify-self: start;
+}
+.language-offer.is-closing {
+  animation: language-out 130ms ease both;
+  pointer-events: none;
+}
+@media (max-width: 640px) {
+  .language-offer {
+    left: -1px;
+    width: auto;
+  }
+}
+@media (pointer: coarse) {
+  .language-offer-close {
+    width: 40px;
+    height: 40px;
+    margin: -10px -6px -10px 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .language-offer {
+    animation: none;
+  }
+  .language-offer.is-closing {
+    animation: none;
+    visibility: hidden;
+  }
+}
 /* The header's download button keeps its label; its icon tells the download started. */
 .btn.is-small .dl-glyph {
   width: 15px;

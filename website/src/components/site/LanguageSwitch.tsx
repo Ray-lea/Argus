@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useId, useRef, useState, type MouseEvent, type CSSProperties } from "react";
-import { languages, languageInfo, localized, type Language } from "@/lib/languages";
+import { choiceKeys, languages, languageInfo, localized, offeredLanguage, offers, rememberLanguage, type Language } from "@/lib/languages";
 import { Icon } from "./Icon";
 
 /*
@@ -10,8 +10,11 @@ import { Icon } from "./Icon";
  * pages then cross over in a view transition of their own.
  */
 export const placeKey = "argus-place";
+// A plain click turns this page into the other; with a modifier the other opens beside it.
+const plain = (event: MouseEvent) =>
+  !(event.defaultPrevented || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
 function remember(event: MouseEvent<HTMLAnchorElement>) {
-  if (event.defaultPrevented || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return false;
+  if (!plain(event)) return false;
   const padding = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
   let section: HTMLElement | null = null;
   for (const el of document.querySelectorAll<HTMLElement>("main section[id], main article[id]"))
@@ -41,6 +44,10 @@ function remember(event: MouseEvent<HTMLAnchorElement>) {
 // code for the names a Latin keyboard cannot start (zh, ja, ru).
 const typeable = languages.map((item) => [item.name, item.id, item.tag].map((text) => text.toLocaleLowerCase()));
 
+// The offer of another language is made once while the site stays loaded:
+// moving on to its other pages does not bring it back.
+let offered = false;
+
 // One disclosure at every viewport, with native names and keyboard navigation.
 // One row is lit at a time: the keyboard's, or the one under the pointer,
 // which takes the keyboard's place. A chosen language shows in the button at
@@ -54,6 +61,9 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
   const typed = useRef({ text: "", at: 0 });
   const id = useId();
   const info = languageInfo(going ?? lang);
+  // The page in the visitor's own language, offered under the header.
+  const [offer, setOffer] = useState<{ lang: Language; open: boolean } | null>(null);
+  const withdraw = () => setOffer((current) => current && { ...current, open: false });
   // The menu stays in the page while it fades (a chosen link must outlive its
   // click); without motion it is simply hidden for that moment.
   const close = (restore = false, keep = false) => {
@@ -66,6 +76,52 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
     const timer = setTimeout(() => setLeaving(false), 150);
     return () => clearTimeout(timer);
   }, [leaving]);
+  useEffect(() => {
+    if (offered) return;
+    const wanted = (() => {
+      try {
+        return offeredLanguage(lang, localStorage.getItem(choiceKeys.chosen), localStorage.getItem(choiceKeys.dismissed), navigator.languages ?? []);
+      } catch {
+        // Without storage a closed offer would come back on every page.
+        return null;
+      }
+    })();
+    if (!wanted) return;
+    // Once the page has arrived, so that the offer does not arrive with it.
+    const timer = setTimeout(() => {
+      offered = true;
+      setOffer({ lang: wanted, open: true });
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [lang]);
+  useEffect(() => {
+    if (offer?.open !== false) return;
+    const timer = setTimeout(() => setOffer(null), 150);
+    return () => clearTimeout(timer);
+  }, [offer]);
+  // A language chosen is kept for the home page's address (layout.tsx); its
+  // page takes along the query, the hash and the reading position.
+  const go = (event: MouseEvent<HTMLAnchorElement>, to: Language) => {
+    if (plain(event)) rememberLanguage(to);
+    event.currentTarget.href = localized(to, path) + location.search + location.hash;
+    // Add the hash after restoring the reading position, so the browser's
+    // fragment navigation cannot replace it with the section's start.
+    if (!remember(event)) return false;
+    event.currentTarget.hash = "";
+    // This page turns into the other one: the button says so at once.
+    setGoing(to);
+    return true;
+  };
+  const dismiss = (restore: boolean) => {
+    if (!offer) return;
+    try {
+      localStorage.setItem(choiceKeys.dismissed, offer.lang);
+    } catch {
+      // It is not offered again while the site stays loaded.
+    }
+    withdraw();
+    if (restore) trigger.current?.focus({ preventScroll: true });
+  };
   // The other page did not come (offline), or this one came back from the
   // history cache: the button names the page's own language again.
   useEffect(() => {
@@ -92,6 +148,8 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
   };
   useEffect(() => {
     if (!open) return;
+    // The menu takes the offer's place.
+    withdraw();
     root.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus({ preventScroll: true });
     const outside = (event: PointerEvent) => {
       if (event.target instanceof Node && !root.current?.contains(event.target)) close();
@@ -100,6 +158,7 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
   return (
+    <>
     <div className="language-picker" ref={root}
       onBlurCapture={event => { if (open && !event.currentTarget.contains(event.relatedTarget)) close(); }}
       onKeyDown={event => {
@@ -144,21 +203,33 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
           data-language={item.id} tabIndex={open && item.id === lang ? 0 : -1} style={{ "--i": index } as CSSProperties}
           onPointerMove={event => { keyed(false); if (document.activeElement !== event.currentTarget) event.currentTarget.focus({ preventScroll: true }); }}
           onClick={event => {
-            if (item.id === lang) { event.preventDefault(); close(true); return; }
-            event.currentTarget.href = localized(item.id, path) + location.search + location.hash;
-            // Add the hash after restoring the reading position, so the browser's
-            // fragment navigation cannot replace it with the section's start.
-            if (remember(event)) {
-              event.currentTarget.hash = "";
-              // This page turns into the other one: the button says so at once.
-              setGoing(item.id);
-              close(false, true);
+            if (item.id === lang) {
+              if (plain(event)) rememberLanguage(lang);
+              event.preventDefault();
+              close(true);
+              return;
             }
+            if (go(event, item.id)) close(false, true);
           }}>
           <span>{item.name}</span>
           <span className="language-check">{item.id === lang && <Icon name="check" size={14} />}</span>
         </a>)}
       </div>}
     </div>
+    {offer && <aside className={"language-offer" + (offer.open ? "" : " is-closing")} lang={languageInfo(offer.lang).tag}
+      aria-labelledby={id + "-offer"} inert={!offer.open}
+      onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); dismiss(true); } }}>
+      <Icon name="language" size={16} />
+      <p id={id + "-offer"}>{offers[offer.lang].text}</p>
+      <button type="button" className="language-offer-close" aria-label={offers[offer.lang].close} title={offers[offer.lang].close}
+        onClick={event => dismiss(event.detail === 0)}>
+        <Icon name="close" size={14} />
+      </button>
+      <a className="btn is-primary is-small language-offer-go" hrefLang={languageInfo(offer.lang).tag} href={localized(offer.lang, path)}
+        onClick={event => { if (go(event, offer.lang)) withdraw(); }}>
+        {offers[offer.lang].action}
+      </a>
+    </aside>}
+    </>
   );
 }

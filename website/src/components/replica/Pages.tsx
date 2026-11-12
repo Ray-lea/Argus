@@ -12,7 +12,7 @@ import {
 import { Icon, ProcessIcon, type UiIcon } from "./icons";
 import type { Motion } from "./Curve";
 import { language, translate } from "./i18n";
-import { dateLocale, isLanguage, languages, localized, preferredLanguage, type Language } from "@/lib/languages";
+import { dateLocale, isLanguage, languages, localized, preferredLanguage, rememberLanguage, type Language } from "@/lib/languages";
 import {
   appVersion,
   bytes,
@@ -1084,6 +1084,8 @@ export function Settings({
                 if (value !== "system" && !isLanguage(value)) return;
                 setLanguageChoice(value);
                 const next = value === "system" ? preferredLanguage(navigator.languages) : value;
+                // The site keeps the choice, as it does one made in its header.
+                rememberLanguage(next);
                 if (next !== language()) location.assign(localized(next) + "#demo");
               }}
               options={[{ value: "system", label: "跟随系统" }, ...languages.map(item => ({ value: item.id, label: item.name }))]}

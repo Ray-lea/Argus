@@ -82,7 +82,7 @@ export function Header({ lang, path, alternate = true, wide = false }: Props) {
               <script
                 type="speculationrules"
                 dangerouslySetInnerHTML={{
-                  __html: JSON.stringify({ prefetch: [{ source: "document", where: { selector_matches: ".language-option:not([aria-checked=true])" }, eagerness: "moderate" }] }),
+                  __html: JSON.stringify({ prefetch: [{ source: "document", where: { selector_matches: ".language-option:not([aria-checked=true]), .language-offer-go" }, eagerness: "moderate" }] }),
                 }}
               />
             </>
