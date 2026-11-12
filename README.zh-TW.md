@@ -17,6 +17,9 @@
 [![平台](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-0078D4)](#system-requirements)
 [![授權條款](https://img.shields.io/badge/License-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
+<a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily?language=Rust" alt="Ray-lea/Argus | Trendshift Rust" width="250" height="55"/></a>
+
 [功能](#features) · [下載](#download) · [從原始碼建置](#build-from-source) · [快速鍵](#keyboard-shortcuts) · [文件](#documentation) · [交流與意見反應](#community)
 
 </div>
