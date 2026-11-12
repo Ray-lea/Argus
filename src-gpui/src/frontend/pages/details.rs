@@ -705,6 +705,13 @@ impl Desktop {
         }
         .map(|class| label(&format!("processes.priority.{class}")))
         .unwrap_or_else(missing);
+        // I/O and memory priority as the menus name them.
+        let level = |key: &str| {
+            process[key]
+                .as_str()
+                .map(|value| label(&format!("processes.{key}.{value}")))
+                .unwrap_or_else(missing)
+        };
         let plain = |value: &Value| {
             value
                 .as_u64()
@@ -761,6 +768,14 @@ impl Desktop {
             (
                 label("details.priority"),
                 selectable("details-priority", priority),
+            ),
+            (
+                label("processes.column.ioPriority.label"),
+                selectable("details-io-priority", level("ioPriority")),
+            ),
+            (
+                label("processes.column.memoryPriority.label"),
+                selectable("details-memory-priority", level("memoryPriority")),
             ),
             (
                 label("common.efficiencyMode"),

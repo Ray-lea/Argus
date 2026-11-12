@@ -176,6 +176,10 @@
       "label": "缺页次数",
       "title": "累计缺页次数，包含软缺页与硬缺页。"
     },
+    "memoryPriority": {
+      "label": "内存优先级",
+      "title": "内存紧张时回收该进程内存页的先后，越低越先回收。"
+    },
     "ioRead": {
       "label": "I/O 读取",
       "title": "每秒 I/O 读取字节数，含文件、网络和设备访问。"
@@ -199,6 +203,10 @@
     "ioOtherTotal": {
       "label": "累计其他 I/O",
       "title": "进程生存期内其他 I/O 累计传输的字节数。"
+    },
+    "ioPriority": {
+      "label": "I/O 优先级",
+      "title": "进程磁盘与其他 I/O 请求的优先级提示。"
     },
     "netReceived": {
       "label": "网络接收",
@@ -261,7 +269,9 @@
   "ioPriority": {
     "veryLow": "非常低",
     "low": "低",
-    "normal": "正常"
+    "normal": "正常",
+    "high": "高",
+    "critical": "关键"
   },
   "memoryPriority": {
     "veryLow": "非常低",

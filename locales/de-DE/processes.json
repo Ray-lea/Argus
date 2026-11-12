@@ -179,6 +179,10 @@
       "label": "Seitenfehler",
       "title": "Kumulierte Seitenfehler, einschließlich Soft- und Hard-Fehler."
     },
+    "memoryPriority": {
+      "label": "Speicherpriorität",
+      "title": "Wie früh Windows bei Speichermangel Seiten des Prozesses zurückholt; niedrigere zuerst."
+    },
     "ioRead": {
       "label": "E/A lesen",
       "title": "Pro Sekunde gelesene I/O-Bytes, einschließlich Dateien, Netzwerk und Geräte."
@@ -202,6 +206,10 @@
     "ioOtherTotal": {
       "label": "Gesamt andere I/O",
       "title": "Gesamtzahl der von anderen I/O während der Prozesslebensdauer übertragenen Bytes."
+    },
+    "ioPriority": {
+      "label": "E/A-Priorität",
+      "title": "Prioritätshinweis für Datenträger- und andere E/A-Anforderungen des Prozesses."
     },
     "netReceived": {
       "label": "Netzwerkempfang",
@@ -267,7 +275,9 @@
   "ioPriority": {
     "veryLow": "Sehr niedrig",
     "low": "Niedrig",
-    "normal": "Normal"
+    "normal": "Normal",
+    "high": "Hoch",
+    "critical": "Kritisch"
   },
   "memoryPriority": {
     "veryLow": "Sehr niedrig",

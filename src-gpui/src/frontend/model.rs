@@ -698,10 +698,12 @@ fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
             .is_some_and(|column| column.format == columns::Format::Text) =>
         {
             match (a.column_text(key), b.column_text(key)) {
-                (Some(a), Some(b)) => direct(collation::compare(
-                    &columns::shown(key, a),
-                    &columns::shown(key, b),
-                )),
+                (Some(a), Some(b)) => {
+                    direct(match (columns::rank(key, a), columns::rank(key, b)) {
+                        (Some(a), Some(b)) => a.cmp(&b),
+                        _ => collation::compare(&columns::shown(key, a), &columns::shown(key, b)),
+                    })
+                }
                 (None, None) => Ordering::Equal,
                 (None, _) => Ordering::Greater,
                 (_, None) => Ordering::Less,
@@ -1619,6 +1621,33 @@ mod tests {
         );
         assert_eq!(unknown[0].title, "unknown.exe");
         assert!(unknown[0].detail.is_empty());
+    }
+
+    #[test]
+    fn priority_columns_sort_by_level_not_by_name() {
+        let io = ["normal", "veryLow", "high", "low", "critical"];
+        let processes = ["normal", "veryLow", "belowNormal", "low", "medium"]
+            .iter()
+            .enumerate()
+            .map(|(i, level)| {
+                json!({"pid":i + 1,"createTime":i + 1,"name":format!("p{i}.exe"),
+                    "memoryPriority":level,"ioPriority":io[i]})
+            })
+            .collect::<Vec<_>>();
+        let order = |key: &str, descending| {
+            rows_of(&processes, "list", "", key, descending, &HashMap::new())
+                .iter()
+                .map(|row| row.column_text(key).unwrap().to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            order("memoryPriority", false),
+            ["veryLow", "low", "medium", "belowNormal", "normal"]
+        );
+        assert_eq!(
+            order("ioPriority", true),
+            ["critical", "high", "normal", "low", "veryLow"]
+        );
     }
 
     #[test]
