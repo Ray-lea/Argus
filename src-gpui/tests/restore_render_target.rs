@@ -40,10 +40,13 @@ fn restoring_to_a_new_size_updates_the_render_target() {
                     };
                     let hwnd = HWND(handle.hwnd.get() as _);
                     // Exercise the native restore branch without showing a window
-                    // or changing the foreground on the developer's desktop.
+                    // or changing the foreground on the developer's desktop. Every
+                    // size fits a 1024×768 screen (CI runners): Windows caps a
+                    // window at about the screen's size, and a larger request
+                    // would compare the cap instead of the restore.
                     for (width, height, minimized) in [
                         (640, 480, false),
-                        (1600, 1000, true),
+                        (960, 640, true),
                         (800, 600, true),
                         (800, 600, true),
                     ] {
