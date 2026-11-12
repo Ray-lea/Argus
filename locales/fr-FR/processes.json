@@ -278,6 +278,9 @@
   "columns": {
     "choose": "Choisir les colonnes",
     "autoWidth": "Largeur automatique",
+    "fullWidth": "Pleine largeur",
+    "fitWidth": "Ajuster automatiquement cette colonne",
+    "edgeHint": "Faire glisser pour redimensionner, double-cliquer pour ajuster automatiquement",
     "yes": "Oui",
     "no": "Non",
     "reset": "Rétablir les colonnes par défaut",

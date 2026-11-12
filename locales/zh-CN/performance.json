@@ -11,6 +11,13 @@
   "devices": {
     "hide": "隐藏“{name}”",
     "shown": "显示的设备",
+    "diskOrder": {
+      "title": "磁盘排序",
+      "number": "按磁盘编号",
+      "letter": "按盘符",
+      "custom": "自定义（拖动调整）"
+    },
+    "resetOrder": "恢复默认顺序",
     "restore": "恢复默认显示"
   },
   "cpu": {

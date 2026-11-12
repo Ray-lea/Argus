@@ -275,6 +275,9 @@
   "columns": {
     "choose": "Spalten auswählen",
     "autoWidth": "Automatische Breite",
+    "fullWidth": "Volle Breite",
+    "fitWidth": "Diese Spalte automatisch anpassen",
+    "edgeHint": "Ziehen zum Ändern der Breite, Doppelklick zum automatischen Anpassen",
     "yes": "Ja",
     "no": "Nein",
     "reset": "Standardspalten wiederherstellen",

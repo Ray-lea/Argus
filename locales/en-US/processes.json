@@ -275,6 +275,9 @@
   "columns": {
     "choose": "Select columns",
     "autoWidth": "Automatic widths",
+    "fullWidth": "Full width",
+    "fitWidth": "Auto-fit this column",
+    "edgeHint": "Drag to resize, double-click to auto-fit",
     "yes": "Yes",
     "no": "No",
     "reset": "Restore default columns",

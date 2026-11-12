@@ -278,6 +278,9 @@
   "columns": {
     "choose": "Seleccionar columnas",
     "autoWidth": "Ancho automático",
+    "fullWidth": "Ancho completo",
+    "fitWidth": "Ajustar automáticamente esta columna",
+    "edgeHint": "Arrastrar para cambiar el ancho; doble clic para ajustar automáticamente",
     "yes": "Sí",
     "no": "No",
     "reset": "Restaurar columnas predeterminadas",

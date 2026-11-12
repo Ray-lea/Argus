@@ -17,6 +17,13 @@
   "devices": {
     "hide": "Hide {name}",
     "shown": "Shown devices",
+    "diskOrder": {
+      "title": "Disk order",
+      "number": "By disk number",
+      "letter": "By drive letter",
+      "custom": "Custom (drag to arrange)"
+    },
+    "resetOrder": "Restore default order",
     "restore": "Restore default view"
   },
   "cpu": {
