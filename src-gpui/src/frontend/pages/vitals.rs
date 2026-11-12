@@ -24,13 +24,27 @@ impl BandMode {
             _ => Self::Auto,
         }
     }
-    fn visible(self, room_for_ten: bool) -> bool {
+    /// Whether the band shows over a process page `page` tall, where it
+    /// needs `minimum` (the band, the header and ten rows). Before the page
+    /// was first laid out (`None`), Automatic counts on the room it has in
+    /// most windows.
+    fn visible(self, page: Option<Pixels>, minimum: Pixels) -> bool {
         match self {
-            Self::Auto => room_for_ten,
+            Self::Auto => page.is_none_or(|page| page >= minimum),
             Self::Show => true,
             Self::Hide => false,
         }
     }
+}
+
+/// Which transition the band's height follows: a new one once the page's
+/// height is known, so the first render that knows it shows the band as it
+/// is then, without easing from the guess made before.
+fn band_transition(measured: bool) -> (&'static str, &'static str) {
+    (
+        "process-vitals-height",
+        if measured { "measured" } else { "unmeasured" },
+    )
 }
 
 impl Desktop {
@@ -38,14 +52,18 @@ impl Desktop {
         theme::dimension("vitalsHeight") + px(10.) + tables::process_table_height(10)
     }
 
-    pub(in crate::frontend) fn process_viewport_observer(&self, cx: &Context<Self>) -> AnyElement {
+    /// Measures the page area, which the process page fills, on every page
+    /// and while the processes load: the process page's first render then
+    /// already knows whether the band fits.
+    pub(in crate::frontend) fn page_height_observer(&self, cx: &Context<Self>) -> AnyElement {
         let height = self.process_page_height.clone();
         let minimum = Self::vitals_page_minimum();
         let owner = cx.entity().downgrade();
         canvas(
             move |bounds, window, cx| {
-                let previous = height.replace(bounds.size.height);
-                if (previous >= minimum) != (bounds.size.height >= minimum) {
+                let fits = |page: Option<Pixels>| page.map(|page| page >= minimum);
+                let previous = height.replace(Some(bounds.size.height));
+                if fits(previous) != fits(Some(bounds.size.height)) {
                     let owner = owner.clone();
                     // Observe the full page, never the table enlarged by hiding the
                     // band. Only crossing the fixed budget needs a new page render.
@@ -67,7 +85,7 @@ impl Desktop {
 
     fn show_vitals_band(&self) -> bool {
         BandMode::parse(&self.prefs.get::<String>("vitalsMode", "auto".into()))
-            .visible(self.process_page_height.get() >= Self::vitals_page_minimum())
+            .visible(self.process_page_height.get(), Self::vitals_page_minimum())
     }
 
     pub(in crate::frontend) fn vitals_band(
@@ -84,7 +102,7 @@ impl Desktop {
             px(0.)
         };
         let height = gpui_kit::base::motion::transition(
-            "process-vitals-height",
+            band_transition(self.process_page_height.get().is_some()),
             target,
             theme::transition_slow(cx),
             window,
@@ -143,7 +161,7 @@ impl Desktop {
             0.
         };
         json!({"targetVisible":shown,"items":self.rows.iter().filter(|row|row.section.is_none()).count(),"height":height,
-            "pageHeight":f32::from(self.process_page_height.get()),"requiredHeight":f32::from(Self::vitals_page_minimum()),
+            "pageHeight":self.process_page_height.get().map(f32::from),"requiredHeight":f32::from(Self::vitals_page_minimum()),
             "settled":(height-target).abs()<0.1,
             "activeCharts":self.active_charts.borrow().iter().filter(|key|key.starts_with("vital-")).count()})
     }
@@ -820,19 +838,35 @@ impl Desktop {
 
 #[cfg(test)]
 mod band_tests {
-    use super::BandMode;
+    use super::{BandMode, band_transition};
+    use gpui_kit::px;
 
     #[test]
     fn automatic_band_depends_only_on_room_and_overrides_are_explicit() {
-        for room in [false, true] {
-            assert_eq!(BandMode::Auto.visible(room), room);
-            assert!(BandMode::Show.visible(room));
-            assert!(!BandMode::Hide.visible(room));
+        let minimum = px(480.);
+        for (page, room) in [(px(479.), false), (px(480.), true), (px(900.), true)] {
+            assert_eq!(BandMode::Auto.visible(Some(page), minimum), room);
+            assert!(BandMode::Show.visible(Some(page), minimum));
+            assert!(!BandMode::Hide.visible(Some(page), minimum));
         }
         assert_eq!(BandMode::parse("show"), BandMode::Show);
         assert_eq!(BandMode::parse("hide"), BandMode::Hide);
         for saved in ["", "auto", "invalid"] {
             assert_eq!(BandMode::parse(saved), BandMode::Auto);
         }
+    }
+
+    #[test]
+    fn the_first_render_shows_the_band_settled() {
+        let minimum = px(480.);
+        // Before the page is measured, Automatic shows the band rather than
+        // growing it from nothing once the height arrives.
+        assert!(BandMode::Auto.visible(None, minimum));
+        assert!(BandMode::Show.visible(None, minimum));
+        assert!(!BandMode::Hide.visible(None, minimum));
+        // The first measured render starts a transition of its own, which
+        // adopts its first target at once; later changes ease in it.
+        assert_ne!(band_transition(false), band_transition(true));
+        assert_eq!(band_transition(true), band_transition(true));
     }
 }

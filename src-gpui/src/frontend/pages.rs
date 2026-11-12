@@ -81,14 +81,12 @@ impl Desktop {
                 // A search narrows the list: an accent ring around it says so at a glance.
                 let filtered = !self.query.trim().is_empty();
                 let accent = self.palette.accent;
-                let viewport = self.process_viewport_observer(cx);
                 div()
                     .relative()
                     .size_full()
                     .min_h_0()
                     .flex()
                     .flex_col()
-                    .child(viewport)
                     .child(vitals)
                     .child(
                         div()

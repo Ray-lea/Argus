@@ -307,8 +307,9 @@ struct Desktop {
     /// The folded user groups of the process list (`collapsedUsers`).
     user_folds: HashSet<String>,
     rows: Arc<Vec<Row>>,
-    /// Full process page height, independent of whether the overview band exists.
-    process_page_height: Rc<Cell<Pixels>>,
+    /// Full process page height, independent of whether the overview band
+    /// exists; `None` until the page area was first laid out.
+    process_page_height: Rc<Cell<Option<Pixels>>>,
     list: ListState,
     selected: HashMap<String, String>,
     data: HashMap<String, Value>,
@@ -485,7 +486,7 @@ impl Desktop {
                 .into_iter()
                 .collect(),
             rows: Arc::new(vec![]),
-            process_page_height: Rc::new(Cell::new(px(0.))),
+            process_page_height: Rc::new(Cell::new(None)),
             table: None,
             table_frame: None,
             tables: HashMap::new(),

@@ -86,7 +86,10 @@ impl Desktop {
         let element = match kind {
             RegionKind::Page => {
                 self.regions.placed.clear();
-                // The flex column the page used to fill directly.
+                // The flex column the page used to fill directly. The process
+                // page fills it: measured here, on every page and while the
+                // processes load, the band's room is known before that page
+                // is first drawn.
                 let element = div()
                     .relative()
                     .size_full()
@@ -94,6 +97,7 @@ impl Desktop {
                     .min_w_0()
                     .flex()
                     .flex_col()
+                    .child(self.page_height_observer(cx))
                     .child(self.page_content(window, cx))
                     .into_any_element();
                 // Regions of the page it no longer shows take their charts along,
