@@ -1758,6 +1758,581 @@
   translate: 3px 0;
 }
 
+/* Project support and special thanks: one card per supporter (Supporters.tsx).
+   Five lights in the colours of the supporter's avatar drift behind the
+   portrait. Each light is three nested boxes (across, up and down,
+   breathing), each on its own clock, so the field never repeats the same way
+   and never stops all at once. They change only transform; a still clip-path
+   keeps them inside the rounded card. On dark the lights add up like light
+   (screen) and a still shade keeps the words readable. */
+.cell-thanks {
+  --c0: var(--l0);
+  --c1: var(--l1);
+  --c2: var(--l2);
+  --c3: var(--l3);
+  --thanks-base: #fbfbfa;
+  --thanks-ink: #111214;
+  --thanks-ink-2: rgb(0 0 0 / 0.66);
+  --thanks-glass: rgb(255 255 255 / 0.66);
+  --thanks-glass-edge: rgb(0 0 0 / 0.07);
+  --thanks-light: 78%;
+  container: thanks / inline-size;
+  grid-column: 1 / -1;
+  padding: 0;
+  border-color: color-mix(in srgb, var(--c0) 40%, var(--stroke-2));
+  border-radius: 20px;
+  background: var(--thanks-base);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  backdrop-filter: none;
+}
+:root[data-theme="dark"] .cell-thanks {
+  --c0: var(--d0);
+  --c1: var(--d1);
+  --c2: var(--d2);
+  --c3: var(--d3);
+  --thanks-base: #0e0f12;
+  --thanks-ink: #f6f7f9;
+  --thanks-ink-2: rgb(255 255 255 / 0.76);
+  --thanks-glass: rgb(255 255 255 / 0.08);
+  --thanks-glass-edge: rgb(255 255 255 / 0.14);
+  --thanks-light: 82%;
+  border-color: color-mix(in srgb, var(--c0) 26%, var(--stroke-2));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+.cell-thanks[data-spotlight]::before {
+  background: radial-gradient(420px circle at var(--x) var(--y), color-mix(in srgb, var(--c0) 30%, transparent), transparent 60%);
+}
+.cell-thanks a {
+  text-decoration: none;
+}
+.thanks-sky,
+.thanks-grain {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.thanks-sky {
+  clip-path: inset(0 round 19px);
+}
+:root[data-theme="dark"] .thanks-sky::after {
+  content: "";
+  position: absolute;
+  left: 8%;
+  top: 0;
+  width: 62%;
+  height: 100%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.34), rgb(0 0 0 / 0.16) 60%, transparent);
+}
+.thanks-grain {
+  z-index: -1;
+  background: url("data:image/png;base64,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") 0 0 / 48px 48px;
+  opacity: 0.45;
+}
+:root[data-theme="dark"] .thanks-grain {
+  opacity: 0.7;
+}
+/* Each light runs one closed path (a Lissajous figure, so it ends where it
+   starts), linearly, so it never stops; its breathing rides the same clock.
+   One animation per light keeps the per-frame work small. */
+.thanks-light {
+  position: absolute;
+  top: var(--top);
+  left: var(--left);
+  display: block;
+  width: var(--w);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--c) var(--thanks-light), transparent), color-mix(in srgb, var(--c) calc(var(--thanks-light) * 0.72), transparent) 35%, color-mix(in srgb, var(--c) calc(var(--thanks-light) * 0.24), transparent) 70%, transparent);
+  animation: var(--path) var(--period) linear infinite;
+}
+:root[data-theme="dark"] .thanks-light {
+  mix-blend-mode: screen;
+}
+.thanks-light-0 {
+  --c: var(--c0);
+  --w: 44%;
+  --left: -10%;
+  --top: -55%;
+  --path: thanks-l0;
+  --period: 15s;
+}
+.thanks-light-1 {
+  --c: var(--c1);
+  --w: 46%;
+  --left: 26%;
+  --top: -120%;
+  --path: thanks-l1;
+  --period: 17s;
+}
+.thanks-light-2 {
+  --c: var(--c2);
+  --w: 46%;
+  --left: 64%;
+  --top: -30%;
+  --path: thanks-l2;
+  --period: 16s;
+}
+.thanks-light-3 {
+  --c: var(--c3);
+  --w: 40%;
+  --left: 22%;
+  --top: 10%;
+  --path: thanks-l3;
+  --period: 18s;
+}
+.thanks-light-4 {
+  --c: var(--c0);
+  --w: 34%;
+  --left: 58%;
+  --top: -60%;
+  --path: thanks-l4;
+  --period: 14s;
+}
+@keyframes thanks-l0 {
+  0% {
+    transform: translate(0%, 0%) scale(1.12);
+  }
+  6.3% {
+    transform: translate(11.5%, 6.7%) scale(1.166);
+  }
+  12.5% {
+    transform: translate(21.2%, 4.2%) scale(1.205);
+  }
+  18.8% {
+    transform: translate(27.7%, -6.1%) scale(1.231);
+  }
+  25% {
+    transform: translate(30%, -18.1%) scale(1.24);
+  }
+  31.3% {
+    transform: translate(27.7%, -24.8%) scale(1.231);
+  }
+  37.5% {
+    transform: translate(21.2%, -22.2%) scale(1.205);
+  }
+  43.8% {
+    transform: translate(11.5%, -12%) scale(1.166);
+  }
+  50% {
+    transform: translate(0%, 0%) scale(1.12);
+  }
+  56.3% {
+    transform: translate(-11.5%, 6.7%) scale(1.074);
+  }
+  62.5% {
+    transform: translate(-21.2%, 4.2%) scale(1.035);
+  }
+  68.8% {
+    transform: translate(-27.7%, -6.1%) scale(1.009);
+  }
+  75% {
+    transform: translate(-30%, -18.1%) scale(1);
+  }
+  81.3% {
+    transform: translate(-27.7%, -24.8%) scale(1.009);
+  }
+  87.5% {
+    transform: translate(-21.2%, -22.2%) scale(1.035);
+  }
+  93.8% {
+    transform: translate(-11.5%, -12%) scale(1.074);
+  }
+  100% {
+    transform: translate(0%, 0%) scale(1.12);
+  }
+}
+@keyframes thanks-l1 {
+  0% {
+    transform: translate(0%, 0%) scale(1.1);
+  }
+  6.3% {
+    transform: translate(-8.3%, -3.7%) scale(1.171);
+  }
+  12.5% {
+    transform: translate(-19.5%, -17.9%) scale(1.2);
+  }
+  18.8% {
+    transform: translate(-32%, -34.4%) scale(1.171);
+  }
+  25% {
+    transform: translate(-43.8%, -43.4%) scale(1.1);
+  }
+  31.3% {
+    transform: translate(-53.1%, -39.7%) scale(1.029);
+  }
+  37.5% {
+    transform: translate(-58.6%, -25.4%) scale(1);
+  }
+  43.8% {
+    transform: translate(-59.3%, -9%) scale(1.029);
+  }
+  50% {
+    transform: translate(-55.2%, 0%) scale(1.1);
+  }
+  56.3% {
+    transform: translate(-47%, -3.7%) scale(1.171);
+  }
+  62.5% {
+    transform: translate(-35.7%, -17.9%) scale(1.2);
+  }
+  68.8% {
+    transform: translate(-23.3%, -34.4%) scale(1.171);
+  }
+  75% {
+    transform: translate(-11.5%, -43.4%) scale(1.1);
+  }
+  81.3% {
+    transform: translate(-2.1%, -39.7%) scale(1.029);
+  }
+  87.5% {
+    transform: translate(3.3%, -25.4%) scale(1);
+  }
+  93.8% {
+    transform: translate(4.1%, -9%) scale(1.029);
+  }
+  100% {
+    transform: translate(0%, 0%) scale(1.1);
+  }
+}
+@keyframes thanks-l2 {
+  0% {
+    transform: translate(0%, 0%) scale(1.12);
+  }
+  6.3% {
+    transform: translate(-6.5%, -15.1%) scale(1.166);
+  }
+  12.5% {
+    transform: translate(-8.2%, -27.4%) scale(1.205);
+  }
+  18.8% {
+    transform: translate(-4.6%, -29.7%) scale(1.231);
+  }
+  25% {
+    transform: translate(3.5%, -20.6%) scale(1.24);
+  }
+  31.3% {
+    transform: translate(15%, -5.5%) scale(1.231);
+  }
+  37.5% {
+    transform: translate(28.2%, 6.8%) scale(1.205);
+  }
+  43.8% {
+    transform: translate(41%, 9.1%) scale(1.166);
+  }
+  50% {
+    transform: translate(51.5%, 0%) scale(1.12);
+  }
+  56.3% {
+    transform: translate(58%, -15.1%) scale(1.074);
+  }
+  62.5% {
+    transform: translate(59.6%, -27.4%) scale(1.035);
+  }
+  68.8% {
+    transform: translate(56.1%, -29.7%) scale(1.009);
+  }
+  75% {
+    transform: translate(48%, -20.6%) scale(1);
+  }
+  81.3% {
+    transform: translate(36.4%, -5.5%) scale(1.009);
+  }
+  87.5% {
+    transform: translate(23.3%, 6.8%) scale(1.035);
+  }
+  93.8% {
+    transform: translate(10.5%, 9.1%) scale(1.074);
+  }
+  100% {
+    transform: translate(0%, 0%) scale(1.12);
+  }
+}
+@keyframes thanks-l3 {
+  0% {
+    transform: translate(0%, 0%) scale(1.1);
+  }
+  6.3% {
+    transform: translate(-0.6%, -9.5%) scale(1.171);
+  }
+  12.5% {
+    transform: translate(-19.4%, -17%) scale(1.2);
+  }
+  18.8% {
+    transform: translate(-45.4%, -21.2%) scale(1.171);
+  }
+  25% {
+    transform: translate(-63.4%, -21.6%) scale(1.1);
+  }
+  31.3% {
+    transform: translate(-62.8%, -18%) scale(1.029);
+  }
+  37.5% {
+    transform: translate(-44%, -11.2%) scale(1);
+  }
+  43.8% {
+    transform: translate(-18%, -1.9%) scale(1.029);
+  }
+  50% {
+    transform: translate(0%, 8.2%) scale(1.1);
+  }
+  56.3% {
+    transform: translate(-0.6%, 17.7%) scale(1.171);
+  }
+  62.5% {
+    transform: translate(-19.4%, 25.2%) scale(1.2);
+  }
+  68.8% {
+    transform: translate(-45.4%, 29.4%) scale(1.171);
+  }
+  75% {
+    transform: translate(-63.4%, 29.8%) scale(1.1);
+  }
+  81.3% {
+    transform: translate(-62.8%, 26.3%) scale(1.029);
+  }
+  87.5% {
+    transform: translate(-44%, 19.4%) scale(1);
+  }
+  93.8% {
+    transform: translate(-18%, 10.1%) scale(1.029);
+  }
+  100% {
+    transform: translate(0%, 0%) scale(1.1);
+  }
+}
+@keyframes thanks-l4 {
+  0% {
+    transform: translate(0%, 0%) scale(1.14);
+  }
+  6.3% {
+    transform: translate(7.7%, 14.1%) scale(1.194);
+  }
+  12.5% {
+    transform: translate(19.4%, 15.8%) scale(1.239);
+  }
+  18.8% {
+    transform: translate(33.1%, 4.1%) scale(1.269);
+  }
+  25% {
+    transform: translate(46.9%, -14.2%) scale(1.28);
+  }
+  31.3% {
+    transform: translate(58.7%, -28.3%) scale(1.269);
+  }
+  37.5% {
+    transform: translate(66.5%, -30%) scale(1.239);
+  }
+  43.8% {
+    transform: translate(69.3%, -18.3%) scale(1.194);
+  }
+  50% {
+    transform: translate(66.7%, 0%) scale(1.14);
+  }
+  56.3% {
+    transform: translate(58.9%, 14.1%) scale(1.086);
+  }
+  62.5% {
+    transform: translate(47.3%, 15.8%) scale(1.041);
+  }
+  68.8% {
+    transform: translate(33.5%, 4.1%) scale(1.011);
+  }
+  75% {
+    transform: translate(19.7%, -14.2%) scale(1);
+  }
+  81.3% {
+    transform: translate(8%, -28.3%) scale(1.011);
+  }
+  87.5% {
+    transform: translate(0.1%, -30%) scale(1.041);
+  }
+  93.8% {
+    transform: translate(-2.7%, -18.3%) scale(1.086);
+  }
+  100% {
+    transform: translate(0%, 0%) scale(1.14);
+  }
+}
+/* A round button in the corner: the card leads to the supporter's page. */
+.thanks-go {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--thanks-glass-edge);
+  border-radius: 50%;
+  background: var(--thanks-glass);
+  color: var(--thanks-ink);
+  transition: transform 200ms var(--ease);
+}
+.thanks-go:hover {
+  transform: translate(1px, -1px);
+}
+.thanks-go svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.thanks-body {
+  display: flex;
+  align-items: center;
+  gap: 34px;
+  min-height: 228px;
+  padding: 34px 44px;
+}
+.thanks-avatar {
+  position: relative;
+  flex: none;
+  width: 124px;
+  height: 124px;
+}
+.thanks-avatar::before {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--c0) 50%, transparent), transparent);
+}
+.thanks-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow:
+    0 0 0 1.5px rgb(255 255 255 / 0.95),
+    0 10px 30px -10px rgb(0 0 0 / 0.35);
+}
+:root[data-theme="dark"] .thanks-avatar img {
+  box-shadow:
+    0 0 0 1.5px rgb(255 255 255 / 0.4),
+    0 10px 30px -10px rgb(0 0 0 / 0.6);
+}
+.thanks-text {
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+}
+.thanks-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 14px 0 9px;
+  border: 1px solid var(--thanks-glass-edge);
+  border-radius: 999px;
+  background: var(--thanks-glass);
+  color: var(--thanks-ink-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.thanks-chip b {
+  color: var(--thanks-ink);
+  font-family: var(--display);
+  font-weight: 600;
+}
+.thanks-chip i {
+  width: 1px;
+  height: 12px;
+  margin: 0 2px;
+  background: var(--thanks-glass-edge);
+}
+.thanks-name {
+  margin-top: 12px;
+  color: var(--thanks-ink);
+  font-family: var(--display);
+  font-size: 2.625rem;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+/* The nickname as script outlines; its box holds the loops and tails. */
+.thanks-signature {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-top: 2px;
+  font-size: 3.75rem;
+  fill: currentColor;
+}
+.thanks-note {
+  margin-top: 10px;
+  color: var(--thanks-ink-2);
+  font-size: 1rem;
+}
+@container thanks (max-width: 720px) {
+  .thanks-body {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 22px;
+    padding: 28px 24px 26px;
+  }
+  .thanks-avatar {
+    width: 92px;
+    height: 92px;
+  }
+  .thanks-name {
+    font-size: 1.875rem;
+  }
+  .thanks-signature {
+    font-size: 2.875rem;
+  }
+  .thanks-chip {
+    height: auto;
+    min-height: 30px;
+    padding-block: 4px;
+    white-space: normal;
+  }
+  /* A narrow card is tall: larger lights, spread down it. */
+  .thanks-light-0 {
+    --w: 86%;
+    --left: -28%;
+    --top: -12%;
+  }
+  .thanks-light-1 {
+    --w: 80%;
+    --left: 36%;
+    --top: -26%;
+  }
+  .thanks-light-2 {
+    --w: 86%;
+    --left: 28%;
+    --top: 42%;
+  }
+  .thanks-light-3 {
+    --w: 72%;
+    --left: -22%;
+    --top: 56%;
+  }
+  .thanks-light-4 {
+    --w: 60%;
+    --left: 52%;
+    --top: 12%;
+  }
+  :root[data-theme="dark"] .thanks-sky::after {
+    left: 0;
+    top: 30%;
+    width: 100%;
+    height: 70%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thanks-light {
+    animation: none;
+  }
+}
+
 .faq-list {
   max-width: 880px;
   margin-inline: auto;

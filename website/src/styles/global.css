@@ -1059,7 +1059,7 @@ button {
 
 /* Loops in a section scrolled out of view hold still (MotionGate). Scroll-linked
    animations are left out: held, they would lose their place on the scroll. */
-[data-still] :is(.wallpaper, .tour-dot, .keys kbd, .keys kbd span, .mini-window, .pipe-line i, .file-hint, .argus-app *),
+[data-still] :is(.wallpaper, .tour-dot, .keys kbd, .keys kbd span, .mini-window, .pipe-line i, .file-hint, .argus-app *, .thanks-light),
 [data-still] :is(.keys kbd, .pipe-node b, .cta-mark)::before,
 [data-still] :is(.keys kbd, .pipe-node b, .cta-mark)::after {
   animation-play-state: paused !important;
