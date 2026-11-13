@@ -42,6 +42,7 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 | `inspect` | `columns`、`menu`、`layout` 或 `vitals`，配合 `label` 命名，结果写入 `results.json` |
 | `expect` | 以点分路径核对 `inspect` 的结果，如 `{ "state.focus.item.label": "CPU 时间" }` |
 | `capture` | 捕获窗口为 PNG |
+| `captureFlyout` | 捕获托盘的悬停卡片或快捷面板为 PNG（测试实例的可见工具窗口） |
 | `crop` | `{ "from", "name", "region": [x, y, 宽, 高], "scale"? }`：裁剪并放大一张截图 |
 | `sheet` | `{ "name", "from", "region", "columns"?, "scale"?, "every"?, "limit"? }`：把一段录制（或若干截图）的同一区域按顺序拼成一张图 |
 
@@ -64,6 +65,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 [`window-maximized-restore.json`](../../tools/window-probe/steps/window-maximized-restore.json) 用 `restoreWindow` 向隐藏的模拟快照实例写入窗口位置，再经正式的位置恢复路径显示窗口，检查最大化、最小化后恢复、普通窗口恢复及深浅主题。`inspectLayout.nativeWindow` 记录实际客户区、最大化状态及其与界面视口是否一致。`cargo test -p argus --test restore_render_target` 在始终隐藏的原生窗口中检查最小化后放大、缩小与尺寸不变时的绘图缓冲区尺寸。
 
 [`tray-page.json`](../../tools/window-probe/steps/tray-page.json) 检查从托盘打开的页面选择、对话框上下文及筛选保留。`hide` / `show` 经原生窗口消息触发托盘恢复；`close` 发送关闭按钮的 `WM_CLOSE`，在“关闭时隐藏到托盘”开启时经淡出进入托盘，`minimize` 不激活其他窗口地最小化，两者同样用 `show` 恢复；`show` 先输出带 `qpc100ns` 的 `restoring` 事件，可与帧跟踪的提交时刻对照恢复后的首帧。模拟快照实例的 `restored` 控制向同一事件入口注入首次显示与最小化恢复，核对页面策略。
+
+[`tray-flyouts.json`](../../tools/window-probe/steps/tray-flyouts.json) 捕获组件页、悬停卡片与快捷面板（含新版本入口）的深浅主题画面，以及设置页指向组件页的卡片。改用 `--live` 可核对面板中的实时曲线。真实托盘的悬停与右键单击由 Shell 发起，测试实例不创建托盘图标。
 
 [`process-visibility.json`](../../tools/window-probe/steps/process-visibility.json) 注入含 Windows 组件、普通进程及无所属进程连接的样本，核对三种进程视图、连接筛选、设置页规则编辑与小窗口布局。模拟快照实例的 `formValues` 设置已打开表单的输入，随后通过实际键盘路径保存或取消；`inspectLayout.visibility` 输出开关状态与列表中的 PID。
 
@@ -100,6 +103,7 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 | `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项与展开的子菜单 |
 | `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |
 | `portableNotice` | 显示免安装版的右下角提示，不受仅一次的限制 |
+| `trayFlyout` | `card` 或 `panel`：在主显示器任务栏右侧的假定托盘位置打开悬停卡片或快捷面板，不取得前台；其他值关闭两者 |
 
 合成输入经 `window.defer` 派发，控制同时请求一帧，空闲窗口不会把输入留到下一次采样。探针 `crop`、`sheet` 子命令也可单独使用；开始新的录制时，上一段录制在后台写出帧，不阻塞后续命令。
 

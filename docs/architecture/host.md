@@ -20,6 +20,10 @@
 
 托盘的创建、提示与图标更新由独立线程调用 Windows Shell，采样线程和界面只提交最新状态。Explorer 卡顿期间不累积旧提示，恢复后应用最新状态；`TaskbarCreated` 通知与后续更新负责重建托盘图标。退出时给予删除请求最多 100 ms 的等待时间，托盘故障不会阻止窗口退出。
 
+实时托盘图标（`shell/tray_icon.rs`）在托盘线程中按 `SM_CXSMICON` 的尺寸绘制：眼睛与负载条以有符号距离加一像素边缘绘出，数字由 GDI 灰度抗锯齿文字取覆盖率；新样本画出的像素与当前图标相同时沿用原图标，不调用 Shell。字形颜色读取 `SystemUsesLightTheme`，在 `WM_SETTINGCHANGE` 时更新。图标添加后切换到 `NOTIFYICON_VERSION_4`：回调的低位为事件、`wParam` 为锚点坐标，右键单击以 `WM_CONTEXTMENU` 到达，悬停以 `NIN_POPUPOPEN` / `NIN_POPUPCLOSE` 到达；开启悬停卡片时不设 `NIF_SHOWTIP`，系统提示让位于卡片，提示文字仍供读屏使用。
+
+悬停卡片与快捷面板（`frontend/tray.rs`）各是一个 GPUI 弹出窗口（`WindowKind::PopUp`），打开时创建、淡出后移除，不打开时没有常驻开销。宿主以 `Shell_NotifyIconGetRect` 和所在显示器的工作区计算锚点（`shell/tray_anchor.rs`），弹出窗口先以完全透明显示并完成布局，再按内容高度与客户区（不含不可见边框）定位到托盘图标旁、离任务栏 12 px 处，然后以分层窗口的不透明度淡入；面板在测试实例外取得前台，失去激活时关闭。打开期间采样器的窗口探针按“显示”计算间隔，读数随前台刷新频率更新。
+
 托盘 GUID 由应用标识和规范化的程序路径稳定派生，创建、修改、Explorer 重建和删除均携带同一 `guidItem` 与 `NIF_GUID`。版本、提示文字、语言和更新角标不参与标识计算；同路径覆盖升级沿用已有标识，开发／测试标识和不同程序位置相互隔离。Windows 将托盘 GUID 与程序路径绑定，参见 [NOTIFYICONDATA 的标识与路径规则](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-notifyicondataw#troubleshooting)。
 
 图表按物理可用内存、进程可提交内存以及所在作业的提交限额调整栅格预算。可用余量低于 32 MiB 时释放原有纹理、降低栅格精度，并将并发工作缓冲限制为 4 MiB，为采样和操作保留分配空间；大图表按像素预算继续缩小。实时读数、曲线数据、平滑与填充保留，余量回升至 64 MiB 后恢复原有精度。
