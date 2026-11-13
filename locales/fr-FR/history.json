@@ -19,7 +19,8 @@
     "peak": "Pic {value} %",
     "total": "de {value} GB",
     "charging": "Chargement {value}",
-    "discharging": "Décharge {value}"
+    "discharging": "Décharge {value}",
+    "average": "Moyenne {value}%"
   },
   "exited": "{name} (PID {pid}) s’est arrêté.",
   "copied": {
@@ -45,5 +46,23 @@
   "noRecordAt": "Aucun enregistrement à cet instant",
   "earliest": "Premier enregistrement",
   "note": "Enregistre les processus utilisant le plus de CPU, mémoire, I/O, GPU et réseau toutes les 5 secondes, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification s’il est plus long. Les données sont conservées 7 jours.",
-  "off": "L’enregistrement de l’historique est désactivé ; aucune nouvelle donnée n’est enregistrée. <link>Ouvrir les paramètres</link>"
+  "off": "L’enregistrement de l’historique est désactivé ; aucune nouvelle donnée n’est enregistrée. <link>Ouvrir les paramètres</link>",
+  "instanceUnavailable": "L’instance enregistrée de {name} (PID {pid}) est terminée ou son identité ne peut pas être confirmée.",
+  "showCpuPeak": "Voir la mesure du pic CPU",
+  "cpuSummary": "CPU : moyenne {average}%, pic {peak}% ; mesure du pic : {time}. Les valeurs des processus sont des moyennes par mesure et ne prouvent pas la cause d’un bref pic.",
+  "coverage": {
+    "legacy": "Disponibilité non enregistrée",
+    "missing": "Aucune mesure valide",
+    "partial": "Partiel",
+    "available": "Mesuré",
+    "samples": "{state} : {valid}/{total}",
+    "disk": "Disque : {status}",
+    "help": "Seuls les échantillons valides sont moyennés ; les relevés partiels omettent certains échantillons ou appareils. Seules les raisons enregistrées sont affichées. La cause peut être inconnue pour une source indisponible. « ? » indique des données anciennes sans information de disponibilité.",
+    "reasons": {
+      "unavailable": "Source indisponible",
+      "denied": "Accès refusé",
+      "stale": "Mesure ancienne ou répétée",
+      "baseline": "Attente de la mesure initiale"
+    }
+  }
 }

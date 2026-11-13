@@ -14,6 +14,7 @@ use windows::Win32::NetworkManagement::IpHelper::{
 use windows::Win32::NetworkManagement::Ndis::IfOperStatusUp;
 use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC};
 
+use crate::measurement::{BASELINE, Measurement};
 use crate::util::{AlignedBuf, from_wide};
 
 const ADDRESS_REFRESH: Duration = Duration::from_secs(10);
@@ -46,6 +47,7 @@ pub struct NicStats {
     /// Bytes per second.
     pub rx: u64,
     pub tx: u64,
+    pub rate_state: Measurement,
 }
 
 pub(crate) struct NicTracker {
@@ -54,6 +56,7 @@ pub(crate) struct NicTracker {
     addresses: HashMap<u64, (Vec<String>, Vec<String>)>,
     addresses_at: Option<Instant>,
     last: Option<Instant>,
+    pub state: Measurement,
 }
 
 impl NicTracker {
@@ -64,14 +67,12 @@ impl NicTracker {
             addresses: HashMap::new(),
             addresses_at: None,
             last: None,
+            state: Measurement::default(),
         }
     }
 
     pub fn sample(&mut self) -> Vec<NicStats> {
         let now = Instant::now();
-        let secs = self.last.map(|t| now.duration_since(t).as_secs_f64());
-        self.last = Some(now);
-
         if self
             .addresses_at
             .is_none_or(|t| t.elapsed() > ADDRESS_REFRESH)
@@ -82,12 +83,28 @@ impl NicTracker {
         }
 
         let mut table: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
-        if unsafe { GetIfTable2(&mut table) }.is_err() || table.is_null() {
+        let status = unsafe { GetIfTable2(&mut table) };
+        if status.is_err() || table.is_null() {
+            self.unavailable(status.0);
             return Vec::new();
         }
         let rows = unsafe {
             std::slice::from_raw_parts((*table).Table.as_ptr(), (*table).NumEntries as usize)
         };
+        let out = self.sample_rows(rows, now);
+        unsafe { FreeMibTable(table.cast()) };
+        out
+    }
+
+    fn unavailable(&mut self, status: u32) {
+        self.state = Measurement::failure(status);
+        self.prev.clear();
+        self.last = None;
+    }
+
+    fn sample_rows(&mut self, rows: &[MIB_IF_ROW2], now: Instant) -> Vec<NicStats> {
+        let secs = self.last.map(|t| now.duration_since(t).as_secs_f64());
+        self.last = Some(now);
 
         let mut out = Vec::new();
         let mut next_prev = HashMap::new();
@@ -101,18 +118,34 @@ impl NicTracker {
                 .entry(luid)
                 .or_insert_with(|| Arc::new(describe(row, self.addresses.get(&luid))))
                 .clone();
-            let (rx, tx) = match (self.prev.get(&luid), secs) {
-                (Some(&(pin, pout)), Some(s)) if s > 0.0 => (
-                    (row.InOctets.saturating_sub(pin) as f64 / s) as u64,
-                    (row.OutOctets.saturating_sub(pout) as f64 / s) as u64,
-                ),
-                _ => (0, 0),
-            };
+            let rates = self
+                .prev
+                .get(&luid)
+                .zip(secs)
+                .and_then(|(&(pin, pout), s)| {
+                    (s > 0.0).then_some(s).and_then(|s| {
+                        Some((
+                            (row.InOctets.checked_sub(pin)? as f64 / s) as u64,
+                            (row.OutOctets.checked_sub(pout)? as f64 / s) as u64,
+                        ))
+                    })
+                });
+            let (rx, tx) = rates.unwrap_or((0, 0));
+            let rate_state = rates.map_or(Measurement::missing(BASELINE), |_| Measurement::ready());
             next_prev.insert(luid, (row.InOctets, row.OutOctets));
-            out.push(NicStats { info, rx, tx });
+            out.push(NicStats {
+                info,
+                rx,
+                tx,
+                rate_state,
+            });
         }
-        unsafe { FreeMibTable(table.cast()) };
         self.prev = next_prev;
+        self.state = if out.is_empty() {
+            Measurement::ready()
+        } else {
+            Measurement::combine(out.iter().map(|n| n.rate_state))
+        };
 
         // Physical adapters first, busiest-capable first.
         out.sort_by_key(|n| {
@@ -231,7 +264,7 @@ fn adapter_addresses_with_query(
 
 #[cfg(test)]
 mod tests {
-    use super::adapter_addresses_with_query;
+    use super::*;
     use windows::Win32::NetworkManagement::IpHelper::IP_ADAPTER_ADDRESSES_LH;
 
     #[test]
@@ -285,5 +318,39 @@ mod tests {
         });
         assert_eq!(calls, 1);
         assert!(addresses.is_empty());
+    }
+    #[test]
+    fn failed_table_resets_baseline_and_recovery_does_not_double_rates() {
+        let now = Instant::now();
+        let row = |bytes| {
+            let mut row = MIB_IF_ROW2::default();
+            row.InterfaceLuid.Value = 1;
+            row.InterfaceAndOperStatusFlags._bitfield = 1;
+            row.OperStatus = IfOperStatusUp;
+            row.Type = IF_TYPE_ETHERNET;
+            row.InOctets = bytes;
+            row
+        };
+        let mut tracker = NicTracker::new();
+        assert!(!tracker.sample_rows(&[row(100)], now)[0].rate_state.valid);
+        assert_eq!(
+            tracker.sample_rows(&[row(200)], now + Duration::from_secs(1))[0].rx,
+            100
+        );
+        tracker.unavailable(5);
+        assert_eq!(tracker.state.missing, crate::measurement::ACCESS_DENIED);
+        let recovered = tracker.sample_rows(&[row(400)], now + Duration::from_secs(3));
+        assert!(!recovered[0].rate_state.valid);
+        assert_eq!(recovered[0].rate_state.missing, BASELINE);
+        let fresh = tracker.sample_rows(&[row(500)], now + Duration::from_secs(4));
+        assert_eq!(fresh[0].rx, 100);
+        assert_eq!(fresh[0].rate_state, Measurement::ready());
+        let reset = tracker.sample_rows(&[row(1)], now + Duration::from_secs(5));
+        assert!(!reset[0].rate_state.valid);
+        assert_eq!(
+            tracker.sample_rows(&[], now + Duration::from_secs(6)).len(),
+            0
+        );
+        assert_eq!(tracker.state, Measurement::ready());
     }
 }

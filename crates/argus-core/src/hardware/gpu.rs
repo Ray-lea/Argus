@@ -83,6 +83,7 @@ pub struct GpuStats {
     /// Busiest engine, supplemented by process and GPU-core telemetry, 0–100.
     pub util: f32,
     pub util_source: GpuUtilSource,
+    pub util_state: crate::measurement::Measurement,
     /// Per engine name, aligned with `info.engines`.
     pub engines: Vec<f32>,
     pub dedicated_used: u64,
@@ -110,9 +111,14 @@ pub struct GpuStats {
 
 impl GpuStats {
     pub(crate) fn include_usage(&mut self, usage: f32, source: GpuUtilSource) {
-        if usage.is_finite() && (0.0..=100.0).contains(&usage) && usage > self.util {
-            self.util = usage;
-            self.util_source = source;
+        if usage.is_finite() && (0.0..=100.0).contains(&usage) {
+            if !self.util_state.valid || usage > self.util {
+                self.util = usage;
+                self.util_source = source;
+            }
+            self.util_state.valid = true;
+            // A fallback for the busiest engine does not fill every failed node.
+            self.util_state.partial = self.util_state.missing != 0;
         }
     }
     pub(crate) fn include_process_engine(&mut self, engine: Option<usize>, usage: f32) {
@@ -201,6 +207,7 @@ impl GpuTracker {
                     info: a.info.clone(),
                     util: 0.0,
                     util_source: GpuUtilSource::Windows,
+                    util_state: Default::default(),
                     engines: vec![0.0; a.info.engines.len()],
                     dedicated_used: 0,
                     shared_used: 0,
@@ -219,25 +226,43 @@ impl GpuTracker {
                     kernel_sensor_supported: false,
                     integrated_sensors: None,
                 };
+                let mut valid_nodes = 0;
+                let mut missing = 0;
                 for (node, prev) in a.prev_running.iter_mut().enumerate() {
                     let mut q = statistics_query(D3DKMT_QUERYSTATISTICS_NODE, a.luid);
                     q.Anonymous.QueryNode.NodeId = node as u32;
-                    let running = if startup_native(
+                    let status = startup_native(
                         "gpu.node-statistics",
                         luid_key(a.luid),
                         node as u32,
                         || unsafe { D3DKMTQueryStatistics(&raw mut q) }.0,
-                    ) >= 0
-                    {
+                    );
+                    let running = if status >= 0 {
                         Some(unsafe { q.QueryResult.NodeInformation.GlobalInformation.RunningTime })
                     } else {
                         None
                     };
                     if let Some(pct) = prev.sample(running, Instant::now()) {
+                        valid_nodes += 1;
                         let e = a.node_engine[node];
                         stats.engines[e] = stats.engines[e].max(pct);
+                    } else {
+                        missing |= if status < 0 {
+                            crate::measurement::Measurement::failure(status as u32).missing
+                        } else {
+                            crate::measurement::BASELINE
+                        };
                     }
                 }
+                stats.util_state = crate::measurement::Measurement {
+                    valid: valid_nodes > 0,
+                    partial: valid_nodes > 0 && valid_nodes < a.prev_running.len(),
+                    missing: if a.prev_running.is_empty() {
+                        crate::measurement::UNAVAILABLE
+                    } else {
+                        missing
+                    },
+                };
                 stats.util = stats.engines.iter().copied().fold(0.0, f32::max);
 
                 for seg in 0..a.segments {
@@ -788,6 +813,7 @@ mod tests {
             }),
             util: 1.0,
             util_source: GpuUtilSource::Windows,
+            util_state: crate::measurement::Measurement::ready(),
             engines: vec![1.0],
             dedicated_used: 0,
             shared_used: 0,

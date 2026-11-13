@@ -698,7 +698,8 @@ impl Desktop {
                 .iter()
                 .map(|engine| save(with_engine(&engines, choice.as_ref(), slot, engine, &shown)))
                 .collect::<Vec<_>>();
-            let load = gpu["engines"][index].as_f64().unwrap_or(0.);
+            let mut load = model::device_reading(gpu, "util", "utilState");
+            load.value = gpu["engines"][index].as_f64().filter(|_| load.state.valid);
             let head = div()
                 .h(header)
                 .flex_shrink_0()
@@ -735,7 +736,7 @@ impl Desktop {
                         .items_baseline()
                         .text_size(theme::font(13.))
                         .font_weight(FontWeight::SEMIBOLD)
-                        .child(format!("{}", load.round()))
+                        .child(load.display(|value| format!("{}", value.round())))
                         .child(
                             div()
                                 .ml(px(1.))
@@ -871,7 +872,8 @@ impl Desktop {
                 Some(label("performance.gpu.utilizationHint")),
                 self.stat(
                     label("performance.gpu.utilization"),
-                    format!("{}", number(gpu, "util").round()),
+                    model::device_reading(gpu, "util", "utilState")
+                        .display(|value| format!("{}", value.round())),
                     Some("%".into()),
                     Some(label(&format!("performance.gpu.utilSource.{source}"))),
                     cx,

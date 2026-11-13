@@ -26,6 +26,12 @@ pub struct GpuUsage {
 impl GpuUsage {
     /// A process's reading as the snapshot reports it; a missing figure is not finite.
     pub fn of_process(process: &Value) -> Self {
+        if super::model::source_state(process, "gpuState").is_some_and(|state| !state.valid) {
+            return Self {
+                gpu: f64::NAN,
+                ..Default::default()
+            };
+        }
         Self {
             gpu: process["gpu"].as_f64().unwrap_or(f64::NAN),
             engine: process["gpuEngine"].as_str().map(str::to_owned),

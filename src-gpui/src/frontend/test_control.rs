@@ -559,9 +559,7 @@ impl Desktop {
                         && (f32::from(viewport.height) - client.bottom as f32).abs() < 1.
                 }))
             });
-            println!(
-                "{}",
-                json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
+            let mut layout = json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
                 "vitals":self.vitals_band_state(),
                 "visibility":{"enabled":self.prefs.get::<bool>(visibility::preference(&self.page),false),
                     "pids":self.rows.iter().filter(|row|row.section.is_none()).flat_map(|row| if row.members.is_empty(){std::slice::from_ref(&row.raw)}else{row.members.as_slice()}).filter_map(|p|p["pid"].as_u64()).collect::<std::collections::BTreeSet<_>>()},
@@ -578,6 +576,7 @@ impl Desktop {
                 "diagnosticCopyReady":self.options.fixture.is_some() && self.data.contains_key("diagnosticCopy"),
                 "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
+                "history":{"cursor":self.history_cursor,"requestedFrame":self.data.get("historyMomentAt"),"frame":self.data.get("historyMoment").map(|m| &m["system"]["ts"])},
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "nativeWindow":native_window,
@@ -587,8 +586,40 @@ impl Desktop {
                 "performanceCardHeight":self.perf_card_chrome.get().map(|chrome| f32::from(window.viewport_size().height - chrome)),
                 "aboutScroll":{"max":about_max,"offset":about_offset,"canScroll":about_max > 0.5,
                     "atEnd":about_max > 0.5 && (about_offset-about_max).abs() < 0.5},
-                "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()})
+                "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()});
+            layout["historyDiskCoverage"] = json!(
+                self.data
+                    .get("historyMoment")
+                    .map(|m| &m["system"]["diskCoverage"])
             );
+            layout["liveGpuValue"] = json!(model::gpu_total(&self.snapshot["hardware"]).value);
+            layout["liveNetworkValue"] =
+                json!(model::network_total(&self.snapshot["hardware"], None).value);
+            layout["processNetworkTotal"] =
+                json!(model::process_total(values(&self.snapshot["processes"]), "net").value);
+            layout["historyGpuCoverage"] = json!(
+                self.data
+                    .get("historyMoment")
+                    .map(|m| &m["system"]["gpuCoverage"])
+            );
+            layout["historySystemNetworkCoverage"] = json!(
+                self.data
+                    .get("historyMoment")
+                    .map(|m| &m["system"]["netCoverage"])
+            );
+            layout["historyIoCoverage"] = json!(self.data.get("historyMoment").map(|m| {
+                values(&m["processes"])
+                    .iter()
+                    .map(|p| &p["ioCoverage"])
+                    .collect::<Vec<_>>()
+            }));
+            layout["historyNetworkCoverage"] = json!(self.data.get("historyMoment").map(|m| {
+                values(&m["processes"])
+                    .iter()
+                    .map(|p| &p["netCoverage"])
+                    .collect::<Vec<_>>()
+            }));
+            println!("{layout}");
         }
         if self.options.fixture.is_some()
             && let Some(key) = control["clickHeader"].as_str()

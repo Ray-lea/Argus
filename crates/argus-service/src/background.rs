@@ -302,14 +302,29 @@ impl Rates {
                     .insert(pid, (created, rate(sent), rate(received)));
             }
         }
+        let reported: std::collections::HashSet<_> =
+            frame.counters.iter().map(|entry| entry.0).collect();
         for p in processes.iter_mut() {
+            p.net_state = if !advance {
+                argus_core::measurement::Measurement::missing(argus_core::measurement::STALE)
+            } else if same_epoch.is_some()
+                && p.create_time > 0
+                && self.identities.get(&p.pid) == Some(&p.create_time)
+                && (!reported.contains(&p.pid) || self.values.contains_key(&p.pid))
+            {
+                argus_core::measurement::Measurement::ready()
+            } else {
+                argus_core::measurement::Measurement::missing(argus_core::measurement::BASELINE)
+            };
             p.net_sent = 0;
             p.net_received = 0;
+            p.net_reused = false;
             if let Some(&(created, sent, received)) = self.values.get(&p.pid)
                 && created == p.create_time
             {
                 p.net_sent = sent;
                 p.net_received = received;
+                p.net_reused = !advance;
             }
         }
         if advance {
@@ -397,6 +412,17 @@ impl NetworkClient {
         }
         if let Ok(cache) = self.cache.try_lock() {
             self.last_cache = cache.clone();
+        }
+        let expired = self
+            .last_cache
+            .received
+            .is_some_and(|t| t.elapsed() > interval * 2 + TIMEOUT);
+        if expired {
+            for process in &mut snapshot.processes {
+                process.net_reused = false;
+                process.net_state =
+                    argus_core::measurement::Measurement::missing(argus_core::measurement::STALE);
+            }
         }
         let frame = self
             .last_cache
@@ -597,15 +623,19 @@ mod tests {
             io_read: 0,
             io_write: 0,
             io_other: 0,
+            io_valid: true,
             disk_read: None,
             disk_write: None,
             gpu: 0.0,
+            gpu_state: Default::default(),
             gpu_engine: None,
             gpu_engines: Vec::new(),
             gpu_dedicated: Some(0),
             gpu_shared: Some(0),
             net_sent: 0,
             net_received: 0,
+            net_state: Default::default(),
+            net_reused: false,
             threads: 1,
             handles: 1,
             session_id: 1,
@@ -701,11 +731,24 @@ mod tests {
             })
         };
         rates.apply(sample("a", 1_000_000, 0), &mut processes);
+        assert_eq!(
+            processes[0].net_state.missing,
+            argus_core::measurement::BASELINE
+        );
         rates.apply(sample("a", 1_500_000, 500_000), &mut processes);
+        assert!(processes[0].net_state.valid);
         rates.apply(sample("a", 1_999_000, 999_000), &mut processes);
         assert_eq!(processes[0].net_sent, 1_000_000);
+        assert!(processes[0].net_state.valid);
+        assert!(!processes[0].net_reused);
         rates.apply(sample("a", 1_999_000, 999_000), &mut processes);
         assert_eq!(processes[0].net_sent, 1_000_000);
+        assert!(!processes[0].net_state.valid);
+        assert!(processes[0].net_reused);
+        assert_eq!(
+            processes[0].net_state.missing,
+            argus_core::measurement::STALE
+        );
         rates.apply(sample("a", 2_200_000, 999_000), &mut processes);
         assert_eq!(processes[0].net_sent, 1_000_000);
         rates.apply(sample("a", 2_500_000, 999_000), &mut processes);
@@ -801,6 +844,11 @@ mod tests {
         let mut s = snapshot();
         client.enrich(&mut s, Duration::from_secs(5));
         assert!(!s.process_network);
+        assert_eq!(
+            s.processes[0].net_state.missing,
+            argus_core::measurement::STALE
+        );
+        assert!(!s.processes[0].net_reused);
         drop(guard);
     }
 }
