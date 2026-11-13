@@ -86,6 +86,7 @@
     "uptime": "Up time",
     "orderHeld": "Sorting paused while the pointer is over the list",
     "orderHeldHint": "Rows re-sort once the pointer leaves the list",
+    "selectedCount": "{count} selected",
     "paused": "Updates paused",
     "interval": "Updates every {seconds} s",
     "version": "v{version}",

@@ -56,7 +56,7 @@ Si Argus facilite le travail au quotidien, une étoile sur GitHub est une façon
 
 | | Fonctionnalité | Description |
 |:---:|---|---|
-| 🧮 | **Processus** | Affichage par application, arborescence ou liste, avec l’utilisation en temps réel du CPU, de la mémoire, des lectures et écritures disque, du réseau et du GPU. Permet de trier, rechercher et terminer un processus ou son arborescence. Le volet de détails affiche notamment la ligne de commande, l’utilisateur et le niveau d’intégrité. |
+| 🧮 | **Processus** | Affichage par application, arborescence ou liste, avec l’utilisation en temps réel du CPU, de la mémoire, des lectures et écritures disque, du réseau et du GPU. Permet de trier, rechercher et terminer un processus ou son arborescence. Sélectionnez-en plusieurs avec Ctrl ou Maj, ou tous avec Ctrl+A, pour les terminer ensemble. Le volet de détails affiche notamment la ligne de commande, l’utilisateur et le niveau d’intégrité. |
 | ⚡ | **Priorité et mode d’efficacité** | Réglage immédiat depuis le menu contextuel ou au moyen de règles appliquées automatiquement à chaque démarrage d’un programme. |
 | 📈 | **Performances** | Suivi détaillé du CPU —charge par cœur, cœurs P et E, fréquence, température et puissance—, de la mémoire, des disques avec leur état de santé et leurs attributs SMART, du réseau, du GPU et de la batterie. |
 | 🧩 | **Services et applications au démarrage** | Démarrer ou arrêter les services Windows, modifier leur type de démarrage et activer ou désactiver les applications au démarrage, avec un état synchronisé avec le Gestionnaire des tâches Windows. |

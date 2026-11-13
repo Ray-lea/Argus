@@ -96,6 +96,8 @@
     "close": "Fermer l’aide",
     "table": "Lorsqu’une liste a le focus",
     "select": "Sélectionnez l’élément précédent/suivant",
+    "multi": "Ajoutez ou retirez des processus de la sélection avec Ctrl+clic, et sélectionnez une plage continue avec Maj+clic.",
+    "selectAll": "Sélectionnez tous les processus affichés.",
     "page": "Sélectionnez une page vers le haut/vers le bas",
     "ends": "Sélectionnez le premier/dernier élément",
     "expand": "Processus : réduire/développer un groupe ou une catégorie, ou sélectionner un parent/enfant",

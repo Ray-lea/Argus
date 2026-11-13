@@ -86,6 +86,7 @@
     "uptime": "Durée de fonctionnement",
     "orderHeld": "Tri interrompu alors que le pointeur est sur la liste",
     "orderHeldHint": "Les lignes sont triées une fois que le pointeur quitte la liste",
+    "selectedCount": "{count} sélectionnés",
     "paused": "Actualisation suspendue",
     "interval": "Actualisation toutes les {seconds} s",
     "version": "v{version}",

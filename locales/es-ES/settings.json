@@ -96,6 +96,8 @@
     "close": "Cerrar referencia",
     "table": "Cuando una lista tiene el foco",
     "select": "Seleccione el elemento anterior/siguiente",
+    "multi": "Agregue o quite procesos de la selección con Ctrl+clic y seleccione un intervalo continuo con Mayús+clic.",
+    "selectAll": "Seleccione todos los procesos que se muestran.",
     "page": "Seleccione una página arriba/abajo",
     "ends": "Seleccione el primer/último elemento",
     "expand": "Procesos: contraer/expandir un grupo o categoría, o seleccionar un padre/hijo",

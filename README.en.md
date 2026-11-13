@@ -50,7 +50,7 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 
 | | Feature | Description |
 |:---:|---|---|
-| 🧮 | **Processes** | Browse by app, process tree, or flat list, with real-time CPU, memory, disk read/write, network traffic, and GPU usage for each process. Sort, search, and end a process or its entire tree; inspect the command line, user, integrity level, and more in the details pane. |
+| 🧮 | **Processes** | Browse by app, process tree, or flat list, with real-time CPU, memory, disk read/write, network traffic, and GPU usage for each process. Sort, search, and end a process or its entire tree; select several with Ctrl or Shift, or all with Ctrl+A, to end them together; inspect the command line, user, integrity level, and more in the details pane. |
 | ⚡ | **Priority and efficiency mode** | Adjust them on the fly from the context menu, or create rules that apply automatically whenever a program starts. |
 | 📈 | **Performance** | Monitor CPU (per-core load, P-cores and E-cores, frequency, temperature, and power), memory, disks (including health and SMART attributes), network, GPU, and battery in detail. |
 | 🧩 | **Services and startup apps** | Start and stop Windows services and change their startup type; enable or disable startup apps, staying in sync with Windows Task Manager. |

@@ -96,6 +96,8 @@
     "close": "Übersicht schließen",
     "table": "Wenn eine Liste den Fokus hat",
     "select": "Wählen Sie das vorherige/nächste Element aus",
+    "multi": "Fügen Sie mit Strg+Klick Prozesse einzeln hinzu oder entfernen Sie sie, und wählen Sie mit Umschalt+Klick einen zusammenhängenden Bereich aus.",
+    "selectAll": "Wählen Sie alle gerade angezeigten Prozesse aus.",
     "page": "Wählen Sie eine Seite nach oben/unten",
     "ends": "Wählen Sie das erste / letzte Element aus",
     "expand": "Prozesse: Reduzieren/Erweitern einer Gruppe oder Kategorie oder Auswählen eines übergeordneten/untergeordneten Elements",

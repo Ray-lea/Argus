@@ -56,7 +56,7 @@ Si Argus resulta útil en el trabajo diario, una estrella en GitHub es una forma
 
 | | Función | Descripción |
 |:---:|---|---|
-| 🧮 | **Procesos** | Vistas por aplicación, árbol de procesos o lista, con uso de CPU, memoria, lectura y escritura de disco, tráfico de red y GPU en tiempo real. Permite ordenar, buscar y finalizar procesos o árboles completos; el panel de detalles muestra la línea de comandos, el usuario, el nivel de integridad y otros datos. |
+| 🧮 | **Procesos** | Vistas por aplicación, árbol de procesos o lista, con uso de CPU, memoria, lectura y escritura de disco, tráfico de red y GPU en tiempo real. Permite ordenar, buscar y finalizar procesos o árboles completos; seleccione varios con Ctrl o Mayús, o todos con Ctrl+A, para finalizarlos juntos; el panel de detalles muestra la línea de comandos, el usuario, el nivel de integridad y otros datos. |
 | ⚡ | **Prioridad y modo de eficiencia** | Ajustes inmediatos desde el menú contextual o mediante reglas que se aplican cada vez que se inicia un programa. |
 | 📈 | **Rendimiento** | Supervisión detallada de CPU —carga por núcleo, núcleos P y E, frecuencia, temperatura y potencia—, memoria, discos —incluidos estado y atributos SMART—, red, GPU y batería. |
 | 🧩 | **Servicios y aplicaciones de inicio** | Iniciar y detener servicios de Windows, cambiar su tipo de inicio y activar o desactivar aplicaciones de inicio, con el mismo estado que el Administrador de tareas de Windows. |

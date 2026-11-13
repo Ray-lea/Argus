@@ -14,6 +14,11 @@
     },
     "partial": "{error}（未終了：{count} 件）"
   },
+  "endMulti": {
+    "title": "選択した {count} 件のプロセスを終了しますか？",
+    "body": "選択した {count} 件のプロセスを終了します。未保存のデータは失われます。",
+    "done": "{count} 件のプロセスを終了しました。"
+  },
   "endTree": {
     "title": "{name} のプロセス ツリーを終了しますか？",
     "body": {

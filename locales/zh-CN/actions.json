@@ -10,6 +10,11 @@
     "done": "已结束 {name} 的 {count} 个进程。",
     "partial": "{error}（{count} 个未结束）"
   },
+  "endMulti": {
+    "title": "结束 {count} 个进程？",
+    "body": "将结束选中的 {count} 个进程，未保存的数据会丢失。",
+    "done": "已结束 {count} 个进程。"
+  },
   "endTree": {
     "title": "结束 {name} 的进程树？",
     "body": "将结束 PID {pid} 及其 {count} 个子进程，未保存的数据会丢失。",

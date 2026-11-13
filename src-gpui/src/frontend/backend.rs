@@ -709,21 +709,78 @@ impl Desktop {
                 self.rebuild_rows(false, cx);
             }
             Action::Select(key) => {
+                let page = self.page.clone();
                 if key.is_empty()
                     || (self.page == "processes"
-                        && self.selected.get(&self.page) == Some(&key)
+                        && self.selected_key(&self.page) == Some(&key)
                         && self.last_select.as_ref().is_some_and(|(prev, at)| {
                             prev == &key && at.elapsed() > Duration::from_millis(300)
                         }))
                 {
-                    self.selected.remove(&self.page);
+                    self.set_selected(&page, Vec::new());
                     self.last_select = None;
                 } else {
-                    self.selected.insert(self.page.clone(), key.clone());
+                    self.set_selected(&page, vec![key.clone()]);
                     self.last_select = Some((key.clone(), Instant::now()));
                     if self.page == "processes" {
                         self.details_track(&key, window, cx);
                     }
+                }
+            }
+            Action::ToggleSelect(key) => {
+                let mut keys = self.selected_keys(&self.page).to_vec();
+                if let Some(at) = keys.iter().position(|picked| picked == &key) {
+                    keys.remove(at);
+                } else {
+                    keys.push(key);
+                }
+                let page = self.page.clone();
+                self.set_selected(&page, keys);
+                self.last_select = None;
+                // Back to a lone selection: the pane follows it again.
+                if self.page == "processes"
+                    && let Some(key) = self.selected_key(&self.page).cloned()
+                {
+                    self.details_track(&key, window, cx);
+                }
+            }
+            Action::SelectRange(key) => {
+                let Some(anchor) = self.selected_anchor(&self.page).cloned() else {
+                    // Nothing to range from: a plain pick instead.
+                    self.act(Action::Select(key), window, cx);
+                    return;
+                };
+                let (Some(from), Some(to)) = (
+                    self.rows.iter().position(|row| row.key == anchor),
+                    self.rows.iter().position(|row| row.key == key),
+                ) else {
+                    // The anchor or the click is outside the current filter.
+                    self.act(Action::Select(key), window, cx);
+                    return;
+                };
+                let (from, to) = if from <= to { (from, to) } else { (to, from) };
+                let mut keys = vec![anchor.clone()];
+                keys.extend(
+                    self.rows[from..=to]
+                        .iter()
+                        .filter(|row| row.section.is_none() && row.key != anchor)
+                        .map(|row| row.key.clone()),
+                );
+                let page = self.page.clone();
+                self.set_selected(&page, keys);
+                self.last_select = None;
+            }
+            Action::SelectAll => {
+                if self.page == "processes" {
+                    let keys = self
+                        .rows
+                        .iter()
+                        .filter(|row| row.section.is_none())
+                        .map(|row| row.key.clone())
+                        .collect();
+                    let page = self.page.clone();
+                    self.set_selected(&page, keys);
+                    self.last_select = None;
                 }
             }
             Action::Fold(key) => {
@@ -905,15 +962,19 @@ impl Desktop {
                 cx.stop_propagation();
                 return;
             }
+            if key == "a" && self.page == "processes" && !searching && self.modal.is_none() {
+                self.act(Action::SelectAll, window, cx);
+                cx.stop_propagation();
+                return;
+            }
         }
         if searching {
             // ↓ leaves the search box for the list, selecting the first row if none is.
             if key == "down" && !self.rows.is_empty() {
-                if !self
-                    .selected
-                    .get(&self.page)
-                    .is_some_and(|key| self.rows.iter().any(|row| &row.key == key))
-                {
+                if !self.selected.get(&self.page).is_some_and(|keys| {
+                    keys.iter()
+                        .any(|key| self.rows.iter().any(|row| &row.key == key))
+                }) {
                     let first = self.rows[0].key.clone();
                     self.act(Action::Select(first), window, cx);
                 }
@@ -927,9 +988,8 @@ impl Desktop {
             "processes" | "services" | "startup" | "network"
         );
         let selected = self
-            .selected
-            .get(&self.page)
-            .and_then(|key| self.rows.iter().position(|r| &r.key == key));
+            .selected_anchor(&self.page)
+            .and_then(|key| self.rows.iter().position(|r| r.key == *key));
         if list_page && matches!(key, "up" | "down" | "home" | "end" | "pageup" | "pagedown") {
             let last = self.rows.len().saturating_sub(1);
             // A page is the rows that fit, less one.

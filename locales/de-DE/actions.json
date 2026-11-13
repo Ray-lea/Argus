@@ -16,6 +16,11 @@
     },
     "partial": "{error} (nicht beendet: {count})"
   },
+  "endMulti": {
+    "title": "{count} Prozesse beenden?",
+    "body": "Die {count} ausgewählten Prozesse werden beendet. Nicht gespeicherte Daten gehen verloren.",
+    "done": "{count} Prozesse beendet."
+  },
   "endTree": {
     "title": "Prozessstruktur von {name} beenden?",
     "body": {

@@ -86,6 +86,7 @@
     "uptime": "稼働時間",
     "orderHeld": "ポインタがリスト上にある間は並べ替えが一時停止します",
     "orderHeldHint": "ポインタがリストから離れると行が再ソートされます",
+    "selectedCount": "{count} 件を選択",
     "paused": "更新を一時停止中",
     "interval": "{seconds} 秒ごとに更新",
     "version": "v{version}",

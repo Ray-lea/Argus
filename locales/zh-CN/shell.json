@@ -86,6 +86,7 @@
     "uptime": "已运行",
     "orderHeld": "指针位于列表上，暂停重新排序",
     "orderHeldHint": "鼠标移出列表后按当前排序重新排列",
+    "selectedCount": "已选 {count} 项",
     "paused": "已暂停刷新",
     "interval": "每 {seconds} 秒刷新",
     "version": "v{version}",

@@ -86,6 +86,7 @@
     "uptime": "已執行",
     "orderHeld": "游標位於清單上，暫停重新排序",
     "orderHeldHint": "滑鼠移出清單後依目前排序重新排列",
+    "selectedCount": "已選取 {count} 個項目",
     "paused": "已暫停重新整理",
     "interval": "每 {seconds} 秒重新整理",
     "version": "v{version}",

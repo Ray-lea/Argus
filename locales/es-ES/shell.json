@@ -86,6 +86,7 @@
     "uptime": "Tiempo activo",
     "orderHeld": "Clasificación en pausa mientras el puntero está sobre la lista",
     "orderHeldHint": "Las filas se reordenan una vez que el puntero sale de la lista",
+    "selectedCount": "Seleccionados: {count}",
     "paused": "Actualizaciones pausadas",
     "interval": "Actualiza cada {seconds} s",
     "version": "v{version}",

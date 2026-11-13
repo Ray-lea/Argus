@@ -10,6 +10,11 @@
     "done": "已結束 {name} 的 {count} 個處理程序。",
     "partial": "{error}（{count} 個未結束）"
   },
+  "endMulti": {
+    "title": "結束 {count} 個處理程序？",
+    "body": "將結束選取的 {count} 個處理程序，未儲存的資料將會遺失。",
+    "done": "已結束 {count} 個處理程序。"
+  },
   "endTree": {
     "title": "結束 {name} 的處理程序樹？",
     "body": "將結束 PID {pid} 及其 {count} 個子處理程序，未儲存的資料將會遺失。",

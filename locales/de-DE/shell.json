@@ -86,6 +86,7 @@
     "uptime": "Betriebszeit",
     "orderHeld": "Die Sortierung wurde angehalten, während sich der Zeiger über der Liste befindet",
     "orderHeldHint": "Die Zeilen werden neu sortiert, sobald der Mauszeiger die Liste verlässt",
+    "selectedCount": "{count} ausgewählt",
     "paused": "Aktualisierung angehalten",
     "interval": "Aktualisiert alle {seconds} s",
     "version": "v{version}",

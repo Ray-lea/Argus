@@ -998,9 +998,8 @@ impl Desktop {
     fn service_actions(&self, wide: bool, cx: &Context<Self>) -> Div {
         let services = self.data.get("services").map(values).unwrap_or_default();
         let selected = self
-            .selected
-            .get("services")
-            .and_then(|name| services.iter().find(|s| text(s, "name") == name));
+            .selected_anchor("services")
+            .and_then(|name| services.iter().find(|s| text(s, "name") == *name));
         let pending = selected.is_none_or(|s| text(s, "state").ends_with("Pending"));
         let mut row = div().flex().items_center().gap_2();
         for (id, glyph, action, title, disabled) in [
@@ -1220,6 +1219,15 @@ impl Desktop {
                                 widgets::tooltip(label("shell.status.orderHeldHint"), window, cx)
                             }),
                     )
+                },
+            )
+            .when(
+                self.page == "processes" && self.selected_keys("processes").len() > 1,
+                |d| {
+                    d.child(label(&tr!(
+                        "shell.status.selectedCount",
+                        count = self.selected_keys("processes").len()
+                    )))
                 },
             )
             .child(

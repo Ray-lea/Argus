@@ -525,7 +525,7 @@ impl Desktop {
                     // hide the service being shown.
                     self.preference("clearSearch", Value::Null, window, cx);
                     self.set_filter("services", "all", cx);
-                    self.selected.insert("services".into(), name.into());
+                    self.set_selected("services", vec![name.into()]);
                 }
                 return;
             }
@@ -585,7 +585,7 @@ impl Desktop {
             "openDetails" => {
                 self.reveal_details();
                 if let Some(key) = value.as_str()
-                    && self.selected.get(&self.page).map(String::as_str) != Some(key)
+                    && self.selected_anchor(&self.page).map(String::as_str) != Some(key)
                 {
                     self.act(Action::Select(key.into()), window, cx);
                 }

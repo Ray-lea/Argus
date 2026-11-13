@@ -4279,6 +4279,8 @@ impl Desktop {
                 "settings.shortcuts.table",
                 &[
                     ("↑ / ↓", "settings.shortcuts.select"),
+                    ("Ctrl+click / Shift+click", "settings.shortcuts.multi"),
+                    ("Ctrl+A", "settings.shortcuts.selectAll"),
                     ("PageUp / PageDown", "settings.shortcuts.page"),
                     ("Home / End", "settings.shortcuts.ends"),
                     ("← / →", "settings.shortcuts.expand"),

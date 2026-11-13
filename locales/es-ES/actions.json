@@ -18,6 +18,11 @@
     },
     "partial": "{error} (sin finalizar: {count})"
   },
+  "endMulti": {
+    "title": "¿Finalizar {count} procesos?",
+    "body": "Se finalizarán los {count} procesos seleccionados. Se perderán los datos sin guardar.",
+    "done": "Se han finalizado {count} procesos."
+  },
   "endTree": {
     "title": "¿Finalizar el árbol de procesos de {name}?",
     "body": {

@@ -883,7 +883,13 @@ impl Desktop {
             return items;
         }
         let mut items = match self.page.as_str() {
-            "processes" => self.process_menu(row),
+            "processes" => {
+                // A multi-selection works as one: ending takes every process
+                // picked; the single-row actions wait for a lone selection.
+                let picked = (self.selected_keys(&self.page).len() > 1)
+                    .then(|| model::members_union(self.selected_rows()));
+                self.process_menu(row, picked.as_deref())
+            }
             "services" => self.service_menu(row),
             "startup" => {
                 let raw = &row.raw;
@@ -925,13 +931,20 @@ impl Desktop {
         }
         items
     }
-    fn process_menu(&self, row: &Row) -> Vec<MenuItem> {
-        let group = row.members.len() > 1;
-        let identity_ready = row
-            .members
+    fn process_menu(&self, row: &Row, picked: Option<&[Value]>) -> Vec<MenuItem> {
+        // A multi-selection's actions work on every process picked at once;
+        // the single-row actions below hide until one row is picked again.
+        let multi = picked.is_some();
+        let members = picked.unwrap_or(&row.members);
+        let group = members.len() > 1;
+        let identity_ready = members
             .iter()
             .all(|member| number(member, "createTime") >= 0.);
-        let args = json!({"members":row.members,"name":row.title});
+        let args = if multi {
+            json!({"members":members,"multi":true})
+        } else {
+            json!({"members":row.members,"name":row.title})
+        };
         let mut items = Vec::new();
         if self.view == "tree" && row.expandable {
             for (expand, name, glyph) in [
@@ -949,7 +962,7 @@ impl Desktop {
         items.push(
             MenuItem::new(
                 if group {
-                    tr!("processes.menu.endAll", count = row.members.len())
+                    tr!("processes.menu.endAll", count = members.len())
                 } else {
                     label("common.endProcess")
                 },
@@ -970,11 +983,13 @@ impl Desktop {
                 .disabled(!identity_ready),
             );
         }
-        if self.data.get("desktopShell").is_some_and(|shell| {
-            row.members.iter().any(|member| {
-                shell["pid"] == member["pid"] && shell["createTime"] == member["createTime"]
+        if !multi
+            && self.data.get("desktopShell").is_some_and(|shell| {
+                row.members.iter().any(|member| {
+                    shell["pid"] == member["pid"] && shell["createTime"] == member["createTime"]
+                })
             })
-        }) {
+        {
             items.push(
                 MenuItem::new(
                     label("tasks.explorer.restart"),
@@ -983,21 +998,22 @@ impl Desktop {
                 .icon("RestartIcon"),
             );
         }
-        // The priority every process of the row shares, if they agree.
-        let priorities = row
-            .members
-            .iter()
-            .map(|member| priority_class(member))
-            .collect::<HashSet<_>>();
-        let current = (priorities.len() == 1)
-            .then(|| priorities.into_iter().next().flatten())
-            .flatten();
-        let efficient = row
-            .members
-            .iter()
-            .all(|member| boolean(member, "efficiency"));
-        items.push(MenuItem::separator());
-        items.push(
+        if !multi {
+            // The priority every process of the row shares, if they agree.
+            let priorities = row
+                .members
+                .iter()
+                .map(|member| priority_class(member))
+                .collect::<HashSet<_>>();
+            let current = (priorities.len() == 1)
+                .then(|| priorities.into_iter().next().flatten())
+                .flatten();
+            let efficient = row
+                .members
+                .iter()
+                .all(|member| boolean(member, "efficiency"));
+            items.push(MenuItem::separator());
+            items.push(
             MenuItem::new(label("processes.menu.setPriority"), Action::CloseOverlay)
                 .disabled(!identity_ready)
                 .icon("GaugeIcon")
@@ -1017,54 +1033,55 @@ impl Desktop {
                         .collect(),
                 ),
         );
-        items.push(
-            MenuItem::new(
-                label("common.efficiencyMode"),
-                Action::Dialog(
-                    "efficiency".into(),
-                    json!({"members":row.members,"name":row.title,"on":!efficient}),
-                ),
-            )
-            .icon("LeafIcon")
-            .disabled(!identity_ready)
-            .checked(efficient),
-        );
-        // Suspending nests (each call adds one to every thread's suspend count
-        // and a resume takes one off), so each action only takes the members
-        // in the other state: suspending a process twice would leave it
-        // suspended after one resume. A row whose app started new processes
-        // after being suspended offers both. Members Windows froze (packaged
-        // apps in the background) are Windows's to thaw: resuming does not,
-        // so neither item takes them.
-        let (suspended, running): (Vec<_>, Vec<_>) = row
-            .members
-            .iter()
-            .filter(|member| !boolean(member, "frozen"))
-            .cloned()
-            .partition(|member| boolean(member, "suspended"));
-        for (members, on, name, glyph) in [
-            (running, true, "processes.menu.suspend", "PauseIcon"),
-            (suspended, false, "processes.menu.resume", "PlayIcon"),
-        ] {
-            if members.is_empty() {
-                continue;
-            }
             items.push(
                 MenuItem::new(
-                    label(name),
+                    label("common.efficiencyMode"),
                     Action::Dialog(
-                        "suspend".into(),
-                        json!({"members":members,"name":row.title,"on":on}),
+                        "efficiency".into(),
+                        json!({"members":row.members,"name":row.title,"on":!efficient}),
                     ),
                 )
-                .icon(glyph)
-                .disabled(!identity_ready),
+                .icon("LeafIcon")
+                .disabled(!identity_ready)
+                .checked(efficient),
             );
+            // Suspending nests (each call adds one to every thread's suspend count
+            // and a resume takes one off), so each action only takes the members
+            // in the other state: suspending a process twice would leave it
+            // suspended after one resume. A row whose app started new processes
+            // after being suspended offers both. Members Windows froze (packaged
+            // apps in the background) are Windows's to thaw: resuming does not,
+            // so neither item takes them.
+            let (suspended, running): (Vec<_>, Vec<_>) = row
+                .members
+                .iter()
+                .filter(|member| !boolean(member, "frozen"))
+                .cloned()
+                .partition(|member| boolean(member, "suspended"));
+            for (members, on, name, glyph) in [
+                (running, true, "processes.menu.suspend", "PauseIcon"),
+                (suspended, false, "processes.menu.resume", "PlayIcon"),
+            ] {
+                if members.is_empty() {
+                    continue;
+                }
+                items.push(
+                    MenuItem::new(
+                        label(name),
+                        Action::Dialog(
+                            "suspend".into(),
+                            json!({"members":members,"name":row.title,"on":on}),
+                        ),
+                    )
+                    .icon(glyph)
+                    .disabled(!identity_ready),
+                );
+            }
+            items.push(MenuItem::new(
+                label("processes.menu.addRule"),
+                Action::Dialog("ruleScope".into(), json!({"name":text(&row.raw,"name")})),
+            ));
         }
-        items.push(MenuItem::new(
-            label("processes.menu.addRule"),
-            Action::Dialog("ruleScope".into(), json!({"name":text(&row.raw,"name")})),
-        ));
         items.push(MenuItem::separator());
         if row.expandable && self.view != "tree" {
             items.push(MenuItem::new(

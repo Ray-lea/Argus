@@ -96,6 +96,8 @@
     "close": "Close reference",
     "table": "When a list has focus",
     "select": "Select the previous / next item",
+    "multi": "Ctrl+click adds or removes processes from the selection; Shift+click selects a range.",
+    "selectAll": "Select every process currently shown.",
     "page": "Select one page up / down",
     "ends": "Select the first / last item",
     "expand": "Processes: collapse / expand a group or category, or select a parent / child",
