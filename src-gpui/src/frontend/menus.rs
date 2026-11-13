@@ -165,6 +165,27 @@ fn remaining(since: Instant, reduce: bool) -> Option<f32> {
     (!reduce && left > 0.).then_some(left)
 }
 
+/// Whether a menu is open, and when the last one closed.
+#[derive(Default)]
+struct Presence {
+    open: bool,
+    closed: Option<Instant>,
+}
+
+impl Global for Presence {}
+
+/// Whether a menu is open or still fading out. No hover hint shows meanwhile
+/// (`widgets::tooltip`): a hint's delay and the element it belongs to know
+/// nothing of a menu opened over them, and the hint would show on top of it.
+pub(super) fn in_the_way(cx: &App) -> bool {
+    cx.try_global::<Presence>().is_some_and(|presence| {
+        presence.open
+            || presence
+                .closed
+                .is_some_and(|at| remaining(at, cx.reduce_motion()).is_some())
+    })
+}
+
 /// Whether a menu of `rows` items fits a window `height` tall. A menu does
 /// not scroll: a list that may outgrow the window is checked before it is
 /// offered.
@@ -312,8 +333,19 @@ impl Desktop {
             sub_leaving: None,
             timer: None,
         });
+        cx.set_global(Presence {
+            open: true,
+            closed: None,
+        });
         window.refresh();
         cx.notify();
+    }
+
+    /// Drops the menu at once, as its page goes.
+    pub(in crate::frontend) fn drop_menu(&mut self, cx: &mut Context<Self>) {
+        if self.popup.take().is_some() {
+            cx.set_global(Presence::default());
+        }
     }
 
     /// Replaces the open menu's entries with others of the same arrangement,
@@ -368,7 +400,12 @@ impl Desktop {
         if popup.focus_handle.contains_focused(window, cx) {
             self.focus.focus(window, cx);
         }
-        self.popup_leaving = Some((popup, Instant::now()));
+        let now = Instant::now();
+        self.popup_leaving = Some((popup, now));
+        cx.set_global(Presence {
+            open: false,
+            closed: Some(now),
+        });
         // The rows re-sort once the input that closed the menu is through: a
         // press on another row must still find the rows it was aimed at.
         cx.spawn_in(window, async move |this, cx| {

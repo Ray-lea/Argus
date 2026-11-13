@@ -495,13 +495,29 @@ const TOOLTIP_SIZE: f32 = 12.;
 /// UI's ascent and descent, 1.33 em), as the system draws tooltip text.
 const TOOLTIP_LINE_HEIGHT: f32 = 4. / 3.;
 
+/// A hover hint as it shows: not at all while a context menu is open or
+/// fading out (`menus::in_the_way`).
+struct Hint(AnyView);
+
+impl Render for Hint {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if menus::in_the_way(cx) {
+            div().into_any_element()
+        } else {
+            self.0.clone().into_any_element()
+        }
+    }
+}
+
 /// A hover hint with one line of text.
 pub(in crate::frontend) fn tooltip(
     text: impl Into<SharedString>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    tooltip_text(gpui_kit::component::tooltip::Tooltip::new(text.into()), cx).build(window, cx)
+    let view =
+        tooltip_text(gpui_kit::component::tooltip::Tooltip::new(text.into()), cx).build(window, cx);
+    cx.new(|_| Hint(view)).into()
 }
 
 /// A tooltip set in the system tooltip font. Tooltips are laid out apart
@@ -557,13 +573,14 @@ pub(in crate::frontend) fn wrapping_tooltip(
                 .width
         })
         .fold(px(0.), Pixels::max);
-    tooltip_text(
+    let view = tooltip_text(
         gpui_kit::component::tooltip::Tooltip::element(move |_, _| {
             div().when(natural > max, |d| d.w(max)).child(text.clone())
         }),
         cx,
     )
-    .build(window, cx)
+    .build(window, cx);
+    cx.new(|_| Hint(view)).into()
 }
 
 /// Lighter, like the interface's `filter: brightness(1.08)` on hover.

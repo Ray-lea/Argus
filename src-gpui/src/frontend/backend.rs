@@ -689,7 +689,7 @@ impl Desktop {
                 self.search
                     .update(cx, |s, cx| s.set_value(self.query.clone(), window, cx));
                 self.horizontal = 0.;
-                self.popup = None;
+                self.drop_menu(cx);
                 // The network page shows its last rows when they were built for
                 // how it shows them now, without building thousands of rows
                 // while it enters; newer ones replace them after the entrance.
