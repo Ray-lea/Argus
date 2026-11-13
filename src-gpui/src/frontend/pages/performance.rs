@@ -39,14 +39,22 @@ const SIDE_MAX: f32 = 440.;
 const PAGE_GAP: f32 = 12.;
 /// Live figures: `repeat(auto-fill, minmax(120px, 1fr))` with 14 × 20 gaps.
 const STAT_MIN: f32 = 120.;
+/// Narrowest the figures' columns go where one more of them spares a row.
+const STAT_TIGHT: f32 = 112.;
 const STAT_GAP_X: f32 = 20.;
 const STAT_GAP_Y: f32 = 14.;
 /// Gap between the figures and the specs beside them.
 const STATS_GAP: f32 = 28.;
+/// Gap between the figures and the specs under them.
+const STACK_GAP: f32 = 20.;
 /// Widest a figure's explanation runs before it wraps.
 const HINT_WIDTH: f32 = 420.;
-/// Figures and specs go side by side from this width each at the base font size.
-const STATS_MIN: f32 = 320.;
+/// Figures and specs go side by side once the figures' share holds this many
+/// columns: with fewer, the figures take more rows beside the specs than both
+/// take stacked.
+const SIDE_COLUMNS: usize = 3;
+/// Narrowest a column of the specs under the figures at the base font size.
+const SPECS_MIN: f32 = 280.;
 /// Smallest chart heights before the page scrolls (main, half, small).
 const MAIN_MIN: f32 = 120.;
 const HALF_MIN: f32 = 80.;
@@ -128,19 +136,58 @@ impl CoreKind {
     }
 }
 
-fn stats_layout(width: f32, cpu: bool, text_scale: f32) -> (bool, u16) {
-    let stacked = width < 2. * STATS_MIN * text_scale + STATS_GAP;
-    let stats_width = if stacked {
-        width
-    } else if cpu {
+/// How a view arranges its live figures and its specs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StatsLayout {
+    /// The specs go under the figures instead of beside them.
+    stacked: bool,
+    /// The figures' columns.
+    columns: u16,
+    /// The columns the specs are spread over: one beside the figures.
+    spec_columns: u16,
+}
+
+/// Arranges `figures` and `specs` rows in `width`. The fewer rows they take,
+/// the more of the card's height the charts keep before the view scrolls.
+fn stats_layout(
+    width: f32,
+    cpu: bool,
+    text_scale: f32,
+    figures: usize,
+    specs: usize,
+) -> StatsLayout {
+    let fit = |width: f32, min: f32, gap: f32| {
+        ((width + gap) / (min * text_scale + gap)).floor().max(1.) as usize
+    };
+    let share = if cpu {
         (width - STATS_GAP) / 2.
     } else {
         (width - STATS_GAP) * 1.1 / 2.1
     };
-    let columns = ((stats_width + STAT_GAP_X) / (STAT_MIN * text_scale + STAT_GAP_X))
-        .floor()
-        .max(1.) as u16;
-    (stacked, columns)
+    let stacked = fit(share, STAT_MIN, STAT_GAP_X) < SIDE_COLUMNS;
+    let stats_width = if stacked { width } else { share };
+    let base = fit(stats_width, STAT_MIN, STAT_GAP_X);
+    let tight = fit(stats_width, STAT_TIGHT, STAT_GAP_X);
+    // Tighter columns only where they spare a row. Several rows are as even
+    // as they go, so that the last one is not left with a figure or two; a
+    // single row keeps the usual columns.
+    let rows = figures.div_ceil(tight);
+    let columns = if rows > 1 {
+        figures.div_ceil(rows)
+    } else {
+        base.max(figures)
+    };
+    // Under the figures the specs use the width too. No column for one row.
+    let spec_columns = if stacked {
+        fit(width, SPECS_MIN, STAT_GAP_X).min(specs.div_ceil(2).max(1))
+    } else {
+        1
+    };
+    StatsLayout {
+        stacked,
+        columns: columns as u16,
+        spec_columns: spec_columns as u16,
+    }
 }
 
 #[derive(Clone)]
@@ -1710,16 +1757,28 @@ impl Desktop {
             }))
             .into_any_element()
     }
-    /// Stack figures and specs when the card cannot fit both at the chosen font size.
+    /// A view's live figures and its specs (`info_list` rows): side by side in
+    /// a wide card, the specs in columns under the figures in a narrower one
+    /// (`stats_layout`).
     fn perf_stats(
         &self,
         stats: Vec<AnyElement>,
-        info: AnyElement,
+        specs: Vec<(String, AnyElement)>,
         cpu: bool,
         window: &Window,
     ) -> AnyElement {
         let width = self.detail_width(window);
-        let (stacked, columns) = stats_layout(width, cpu, f32::from(theme::font(13.)) / 13.);
+        let StatsLayout {
+            stacked,
+            columns,
+            spec_columns,
+        } = stats_layout(
+            width,
+            cpu,
+            f32::from(theme::font(13.)) / 13.,
+            stats.len(),
+            specs.len(),
+        );
         let grid = div()
             .min_w_0()
             .grid()
@@ -1728,17 +1787,40 @@ impl Desktop {
             .gap_y(px(STAT_GAP_Y))
             .content_start()
             .children(stats);
+        let info = if spec_columns > 1 {
+            // In reading order down each column, the columns as even as they go.
+            let rows = specs.len().div_ceil(usize::from(spec_columns));
+            let mut specs = specs.into_iter().peekable();
+            let mut lists = Vec::new();
+            while specs.peek().is_some() {
+                lists.push(self.info_list(specs.by_ref().take(rows).collect()));
+            }
+            // The figures' column gap: the columns line up with an even grid of figures.
+            div()
+                .grid()
+                .grid_cols(lists.len() as u16)
+                .gap_x(px(STAT_GAP_X))
+                // A shorter column keeps its row spacing.
+                .items_start()
+                .children(lists)
+                .into_any_element()
+        } else {
+            self.info_list(specs)
+        };
         let info = div().min_w_0().child(info);
         div()
             .mt(px(20.))
             .flex_shrink_0()
             .flex()
-            .gap(px(STATS_GAP))
             .map(|d| {
                 if stacked {
-                    d.flex_col().child(grid.w_full()).child(info.w_full())
+                    d.flex_col()
+                        .gap(px(STACK_GAP))
+                        .child(grid.w_full())
+                        .child(info.w_full())
                 } else {
-                    d.items_start()
+                    d.gap(px(STATS_GAP))
+                        .items_start()
                         .child(
                             grid.flex_grow(if cpu { 1. } else { 1.1 })
                                 .flex_shrink(1.)
@@ -2085,7 +2167,7 @@ impl Desktop {
                 efficiency = count(CoreKind::Efficient)
             ),
         };
-        let info = self.info_list(vec![
+        let specs = vec![
             (label("performance.cpu.baseSpeed"), base_value),
             (
                 label("performance.cpu.sockets"),
@@ -2116,8 +2198,8 @@ impl Desktop {
                 tr!("performance.cpu.cache", level = 3),
                 plain(fmt_cache(number(cpu, "l3"))),
             ),
-        ]);
-        out.push(self.perf_stats(stats, info, true, window));
+        ];
+        out.push(self.perf_stats(stats, specs, true, window));
         if hw["cpuSensors"].is_null() && values(&hw["thermal"]).is_empty() {
             out.push(self.perf_note(label("performance.cpu.thermalMissing")));
         }
@@ -2997,7 +3079,7 @@ impl Desktop {
             ),
             bar.into_any_element(),
             legend.into_any_element(),
-            self.perf_stats(stats, self.info_list(rows), false, window),
+            self.perf_stats(stats, rows, false, window),
         ]
     }
     fn disk_view(
@@ -3219,7 +3301,7 @@ impl Desktop {
                     ),
                 )
                 .into_any_element(),
-            self.perf_stats(stats, self.info_list(rows), false, window),
+            self.perf_stats(stats, rows, false, window),
         ]
     }
     /// Addresses past the first three fold behind a toggle.
@@ -3378,7 +3460,7 @@ impl Desktop {
                     ]),
                 cx,
             ),
-            self.perf_stats(stats, self.info_list(rows), false, window),
+            self.perf_stats(stats, rows, false, window),
         ]
     }
     fn battery_view(
@@ -3559,7 +3641,7 @@ impl Desktop {
                     .into_any_element(),
             );
         }
-        out.push(self.perf_stats(stats, self.info_list(rows), false, window));
+        out.push(self.perf_stats(stats, rows, false, window));
         if let Some(health) = health.filter(|h| *h < 80.) {
             out.push(self.perf_note(tr!(
                 "performance.battery.wornNote",
@@ -3572,7 +3654,7 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{cpu_power, stats_layout};
+    use super::{StatsLayout, cpu_power, stats_layout};
     use serde_json::json;
 
     #[test]
@@ -3596,11 +3678,93 @@ mod tests {
     #[test]
     fn performance_figures_and_specs_stack_before_large_text_collides() {
         for cpu in [false, true] {
-            assert!(stats_layout(480., cpu, 1.).0);
-            assert!(!stats_layout(900., cpu, 1.).0);
-            assert!(stats_layout(900., cpu, 20. / 13.).0);
-            assert_eq!(stats_layout(80., cpu, 20. / 13.).1, 1);
-            assert!(stats_layout(1200., cpu, 20. / 13.).1 <= stats_layout(1200., cpu, 1.).1);
+            let layout = |width, scale| stats_layout(width, cpu, scale, 10, 8);
+            assert!(layout(480., 1.).stacked);
+            assert!(!layout(900., 1.).stacked);
+            // Large text stacks them, in columns no narrower than it allows.
+            let large = layout(900., 20. / 13.);
+            let columns = f32::from(large.columns);
+            let column = (900. - (columns - 1.) * super::STAT_GAP_X) / columns;
+            assert!(large.stacked && column >= super::STAT_TIGHT * 20. / 13.);
+            assert_eq!(layout(80., 20. / 13.).columns, 1);
+        }
+    }
+
+    /// Rows of figures and of specs a layout takes, and whether one is under the other.
+    fn rows(layout: StatsLayout, figures: usize, specs: usize) -> (usize, usize) {
+        (
+            figures.div_ceil(usize::from(layout.columns)),
+            specs.div_ceil(usize::from(layout.spec_columns)),
+        )
+    }
+
+    #[test]
+    fn the_default_window_spreads_figures_and_specs_over_its_width() {
+        // The detail card of a 1000 px window beside the default device list.
+        let width = 664.;
+        // A hybrid CPU with sensors: ten figures in two rows, the specs in two columns.
+        let cpu = stats_layout(width, true, 1., 10, 8);
+        assert!(cpu.stacked);
+        assert_eq!(rows(cpu, 10, 8), (2, 4));
+        // Tighter columns only where they spare a row; several rows are even.
+        assert_eq!(stats_layout(width, false, 1., 7, 8).columns, 4);
+        assert_eq!(stats_layout(width, false, 1., 6, 4).columns, 3);
+        assert_eq!(stats_layout(width, false, 1., 5, 4).columns, 5);
+        assert_eq!(stats_layout(width, false, 1., 2, 5).columns, 4);
+        // No column of specs for a single row.
+        assert_eq!(stats_layout(width, false, 1., 2, 2).spec_columns, 1);
+        assert_eq!(stats_layout(width, false, 1., 2, 3).spec_columns, 2);
+        // A narrow card keeps the specs in one list.
+        assert_eq!(stats_layout(464., true, 1., 10, 8).spec_columns, 1);
+    }
+
+    #[test]
+    fn a_wider_card_takes_no_more_height() {
+        // A figure is 44 px with 14 px between rows, a spec 18 px with 6 px.
+        let height = |layout: StatsLayout, figures: usize, specs: usize| {
+            let (figure_rows, spec_rows) = rows(layout, figures, specs);
+            let figures = figure_rows as f32 * 58. - 14.;
+            let specs = spec_rows as f32 * 24. - 6.;
+            if layout.stacked {
+                figures + super::STACK_GAP + specs
+            } else {
+                figures.max(specs)
+            }
+        };
+        for cpu in [false, true] {
+            for (figures, specs) in [
+                (11, 8),
+                (10, 8),
+                (8, 8),
+                (7, 8),
+                (7, 7),
+                (6, 4),
+                (5, 4),
+                (2, 5),
+            ] {
+                let mut previous = (f32::INFINITY, true);
+                for width in (300..=1600).map(|width| width as f32) {
+                    let layout = stats_layout(width, cpu, 1., figures, specs);
+                    let now = height(layout, figures, specs);
+                    // Going side by side may cost the gap of a row of figures:
+                    // the arrangement follows the width alone, the same for
+                    // every device.
+                    let allowed = if layout.stacked == previous.1 {
+                        0.
+                    } else {
+                        super::STAT_GAP_Y
+                    };
+                    assert!(
+                        now <= previous.0 + allowed,
+                        "{figures} figures and {specs} specs grow from {} to {now} at {width}",
+                        previous.0
+                    );
+                    previous = (now, layout.stacked);
+                    if !layout.stacked {
+                        assert_eq!(layout.spec_columns, 1);
+                    }
+                }
+            }
         }
     }
 }

@@ -1132,7 +1132,7 @@ impl Desktop {
                     .into_any_element(),
             ));
         }
-        out.push(self.perf_stats(stats, self.info_list(rows), false, window));
+        out.push(self.perf_stats(stats, rows, false, window));
         if kernel_supported && kernel_state != Some("ready") {
             out.push(self.perf_note(label(if kernel_state.is_some() {
                 "performance.gpu.kernelUnavailable"
