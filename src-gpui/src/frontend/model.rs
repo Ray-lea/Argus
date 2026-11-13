@@ -106,6 +106,21 @@ pub fn identity(p: &Value) -> String {
     format!("{}:{}", p["pid"], p["createTime"])
 }
 
+/// Every process the rows stand for, first seen first, duplicates dropped:
+/// a multi-selection can hold an app row and its expanded children at once.
+pub fn members_union<'a>(rows: impl IntoIterator<Item = &'a Row>) -> Vec<Value> {
+    let mut seen = HashSet::new();
+    let mut members = Vec::new();
+    for row in rows {
+        for member in &row.members {
+            if seen.insert(identity(member)) {
+                members.push(member.clone());
+            }
+        }
+    }
+    members
+}
+
 pub fn parent_predates(parent: &Value, child: &Value) -> bool {
     if let Some((parent, child)) = parent["sequenceNumber"]
         .as_u64()
@@ -2897,5 +2912,40 @@ mod tests {
         assert_eq!(cpu(&timeline, None), None);
         assert_eq!(cpu(&timeline, Some(bob)), None);
         assert!(timeline.shared.is_empty());
+    }
+
+    #[test]
+    fn members_union_deduplicates() {
+        fn row(members: Vec<Value>) -> Row {
+            Row {
+                key: String::new(),
+                raw: members.first().cloned().unwrap_or(Value::Null),
+                title: String::new(),
+                sort_name: SortKey::default(),
+                detail: String::new(),
+                members,
+                depth: 0,
+                expanded: false,
+                expandable: false,
+                section: None,
+                mark_key: None,
+                note: None,
+                pinned: false,
+                visible_members: None,
+                gpu: None,
+                user: None,
+                nested: false,
+            }
+        }
+        fn process(pid: u64) -> Value {
+            json!({"pid": pid, "createTime": 100})
+        }
+        // An app row plus its expanded children: the children repeat the app's
+        // members and are dropped; first seen first.
+        let group = row(vec![process(1), process(2)]);
+        let child = row(vec![process(2)]);
+        let single = row(vec![process(3)]);
+        let union = members_union([&group, &child, &single]);
+        assert_eq!(union, vec![process(1), process(2), process(3)]);
     }
 }

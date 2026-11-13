@@ -16,9 +16,14 @@ fn main() {
     let assets = std::env::var_os("ARGUS_BUILD_ASSETS")
         .map(std::path::PathBuf::from)
         .or_else(|| {
-            (std::env::var("PROFILE").as_deref() == Ok("release")).then(|| {
+            let profile = std::env::var("PROFILE").ok()?;
+            (profile == "release").then(|| {
+                // Cargo 1.84+ nests the build directory as
+                // `build/<package>/<hash>`, older cargo as
+                // `build/<package>-<hash>`; both sit in the profile
+                // directory, named by the profile.
                 out.ancestors()
-                    .nth(3)
+                    .find(|dir| dir.file_name().is_some_and(|name| *name == *profile))
                     .expect("Cargo profile directory")
                     .to_owned()
             })

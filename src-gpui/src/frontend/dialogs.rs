@@ -264,18 +264,18 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(row) = self
-            .selected
-            .get(&self.page)
-            .and_then(|key| self.rows.iter().find(|r| &r.key == key))
-            .filter(|r| r.section.is_none())
-        {
-            self.open_dialog(
-                kind,
-                json!({"members":row.members,"name":row.title}),
-                window,
-                cx,
-            );
+        match self.selected_rows().as_slice() {
+            [] => {}
+            // One row picked: the action works on its members alone.
+            [row] => {
+                let args = json!({"members":row.members,"name":row.title});
+                self.open_dialog(kind, args, window, cx);
+            }
+            _ => {
+                // Several rows picked: every process they stand for at once.
+                let members = model::members_union(self.selected_rows());
+                self.open_dialog(kind, json!({"members":members,"multi":true}), window, cx);
+            }
         }
     }
     /// A dialog's text box, starting with `value`; the dialog draws its
@@ -352,6 +352,11 @@ impl Desktop {
         let pid = first["pid"].to_string();
         // Process actions that apply at once, or ask first.
         match kind {
+            // Ending without confirmation skips the modal entirely.
+            "end" | "endTree" if !boolean(&self.data["settings"], "confirmEnd") => {
+                self.process_batch(kind, &args, window, cx);
+                return;
+            }
             "priority" if text(&args, "priority") != "realtime" => {
                 self.process_batch("priority", &args, window, cx);
                 return;
@@ -403,6 +408,11 @@ impl Desktop {
         }
         let count = members.len();
         let (title, body, ask) = match kind {
+            "end" if boolean(&args, "multi") => (
+                tr!("actions.endMulti.title", count = count),
+                tr!("actions.endMulti.body", count = count),
+                Some((label("actions.endAll"), true)),
+            ),
             "end" => {
                 let group = count > 1;
                 (

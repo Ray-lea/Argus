@@ -1353,17 +1353,23 @@ impl TableDelegate for NativeTable {
         }
         let p = Palette::current(cx);
         let row = &self.rows[index];
-        let (selected, fresh, searching) = self
+        let (selected, anchored, fresh, searching, row_anchor) = self
             .owner
             .upgrade()
             .map(|owner| {
                 let app = owner.read(cx);
                 (
-                    app.selected
-                        .get(&self.page)
-                        .is_some_and(|key| *key == row.key),
+                    app.selects(&self.page, &row.key),
+                    app.selected_anchor(&self.page) == Some(&row.key),
                     self.page == "processes" && app.is_fresh(row),
                     !app.query.trim().is_empty(),
+                    // Test drives pick by click at a visible row's bounds.
+                    app.options.test.then(|| {
+                        (
+                            app.ui.anchors.clone(),
+                            SharedString::from(format!("row-{index}")),
+                        )
+                    }),
                 )
             })
             .unwrap_or_default();
@@ -1406,8 +1412,23 @@ impl TableDelegate for NativeTable {
             None => tr,
         };
         tr.when_some(refold, |d, refold| d.on_click(refold))
+            .when_some(row_anchor, |d, (anchors, anchor_id)| {
+                d.child(
+                    canvas(
+                        move |bounds, _, _| {
+                            anchors.borrow_mut().insert(anchor_id.clone(), bounds);
+                        },
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+            })
             .when(row.user.is_some(), |d| d.bg(p.hover))
             .when(fresh, |d| d.bg(p.network.opacity(0.15)))
+            // The anchor row keeps the table's own selection fill; every other
+            // picked row is tinted here.
+            .when(selected && !anchored, |d| d.bg(p.hover))
             .when(selected, |d| {
                 d.child(
                     div()
@@ -1585,9 +1606,8 @@ impl Desktop {
             let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
             let scope = (self.view.as_str(), self.query.as_str());
             let selected = self
-                .selected
-                .get(&page)
-                .and_then(|key| rows.iter().position(|row| &row.key == key));
+                .selected_anchor(&page)
+                .and_then(|key| rows.iter().position(|row| row.key == *key));
             table.update(cx, |state, cx| {
                 let available = state.delegate().available;
                 if available <= px(0.) {
@@ -1722,7 +1742,16 @@ impl Desktop {
                                 this.act(Action::Fold(row.key.clone()), window, cx);
                                 this.sync_table_selection(cx);
                             } else {
-                                this.act(Action::Select(row.key.clone()), window, cx);
+                                // A multi-pick keeps the rows already selected.
+                                let modifiers = window.modifiers();
+                                let action = if modifiers.control {
+                                    Action::ToggleSelect(row.key.clone())
+                                } else if modifiers.shift {
+                                    Action::SelectRange(row.key.clone())
+                                } else {
+                                    Action::Select(row.key.clone())
+                                };
+                                this.act(action, window, cx);
                             }
                         }
                     }
@@ -1741,10 +1770,15 @@ impl Desktop {
                     }
                     TableEvent::RightClickedRow(Some(index)) => {
                         // A right press selects the row, as a left one does, then opens its menu.
+                        // A row already in a multi-selection keeps that selection, so the
+                        // menu works on everything picked.
                         if let Some(row) = this.rows.get(*index).cloned()
                             && row.section.is_none()
                         {
-                            this.selected.insert(this.page.clone(), row.key.clone());
+                            if !this.selects(&this.page, &row.key) {
+                                let page = this.page.clone();
+                                this.set_selected(&page, vec![row.key.clone()]);
+                            }
                             let items = this.row_menu(&row);
                             this.open_popup(items, window, cx);
                             if let Some(table) = &this.table {
@@ -1756,11 +1790,10 @@ impl Desktop {
                     TableEvent::ClearSelection => {
                         // A selection the current filter or folding hides stays
                         // selected; only clearing a visible row deselects it.
-                        if this
-                            .selected
-                            .get(&this.page)
-                            .is_some_and(|key| this.rows.iter().any(|row| &row.key == key))
-                        {
+                        if this.selected.get(&this.page).is_some_and(|keys| {
+                            keys.iter()
+                                .any(|key| this.rows.iter().any(|row| &row.key == key))
+                        }) {
                             this.selected.remove(&this.page);
                         }
                         cx.notify();
@@ -1801,9 +1834,8 @@ impl Desktop {
                 self.side_nav_width()
             });
         let selected = self
-            .selected
-            .get(&page)
-            .and_then(|key| rows.iter().position(|r| &r.key == key));
+            .selected_anchor(&page)
+            .and_then(|key| rows.iter().position(|r| r.key == *key));
         let changed = table.update(cx, |state, cx| {
             let mut changed = false;
             // A column dragged to a width is drawn at it already: a glide to
@@ -2031,9 +2063,8 @@ impl Desktop {
     /// a click the desktop did not turn into a selection.
     pub(in crate::frontend) fn sync_table_selection(&self, cx: &mut Context<Self>) {
         let selected = self
-            .selected
-            .get(&self.page)
-            .and_then(|key| self.rows.iter().position(|row| &row.key == key));
+            .selected_anchor(&self.page)
+            .and_then(|key| self.rows.iter().position(|row| row.key == *key));
         if let Some(table) = &self.table {
             table.update(cx, |state, cx| {
                 match selected {

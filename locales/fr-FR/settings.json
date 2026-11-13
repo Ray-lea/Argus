@@ -32,6 +32,10 @@
     "on": "Toujours grouper",
     "off": "Ne jamais grouper"
   },
+  "confirmEnd": {
+    "title": "Confirmer avant de terminer les processus",
+    "desc": "Demande une confirmation avant de terminer un processus ou une arborescence de processus. Lorsqu’elle est désactivée, les processus sont terminés immédiatement ; les données non enregistrées seront perdues."
+  },
   "language": {
     "title": "Langue d’affichage",
     "desc": "S’applique immédiatement, y compris aux menus de la zone de notification et aux messages. « Comme Windows » suit la langue d’affichage de Windows.",
@@ -87,16 +91,18 @@
     "searchTitle": "Rechercher des processus",
     "search": "Accédez à la recherche de processus. La touche / fonctionne également lorsque vous ne tapez pas, et sur la page Processus, la saisie d’une lettre ou d’un chiffre lance une recherche.",
     "pause": "Maintenez la touche enfoncée pour suspendre l’actualisation sur Processus ou Performances, puis relâchez-la pour reprendre. Une pause manuelle reste active.",
-    "end": "Terminez le processus ou le groupe d’applications sélectionné, avec confirmation.",
+    "end": "Terminez le processus ou le groupe d’applications sélectionné.",
     "taskManager": "Ouvrez Argus lorsque le remplacement de Gestionnaire des tâches est activé.",
     "close": "Fermer l’aide",
     "table": "Lorsqu’une liste a le focus",
     "select": "Sélectionnez l’élément précédent/suivant",
+    "multi": "Ajoutez ou retirez des processus de la sélection avec Ctrl+clic, et sélectionnez une plage continue avec Maj+clic.",
+    "selectAll": "Sélectionnez tous les processus affichés.",
     "page": "Sélectionnez une page vers le haut/vers le bas",
     "ends": "Sélectionnez le premier/dernier élément",
     "expand": "Processus : réduire/développer un groupe ou une catégorie, ou sélectionner un parent/enfant",
     "details": "Processus : ouvrir les détails",
-    "endTable": "Processus : terminer la sélection, avec confirmation",
+    "endTable": "Processus : terminer la sélection",
     "endDirect": "Processus : terminer la sélection sans confirmation",
     "clear": "Effacer la sélection ; effacez d’abord la recherche de processus si elle est active.",
     "history": "Lorsque le graphique historique a le focus",

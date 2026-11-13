@@ -96,6 +96,12 @@ enum Action {
     Page(String),
     View(String),
     Select(String),
+    /// Ctrl+click: the row joins or leaves the selection.
+    ToggleSelect(String),
+    /// Shift+click: every selectable row from the anchor through this one.
+    SelectRange(String),
+    /// Ctrl+A: every selectable row the current filter shows.
+    SelectAll,
     Fold(String),
     TreeExpand(String, bool),
     TreeExpandAll(bool),
@@ -312,7 +318,9 @@ struct Desktop {
     /// exists; `None` until the page area was first laid out.
     process_page_height: Rc<Cell<Option<Pixels>>>,
     list: ListState,
-    selected: HashMap<String, String>,
+    /// Each list page's selected row keys, in pick order, anchor first. Only
+    /// the process page holds more than one (Ctrl/Shift picks, select all).
+    selected: HashMap<String, Vec<String>>,
     data: HashMap<String, Value>,
     /// The connection list as last read, shared with row builds off the UI thread.
     connections: Option<Arc<Value>>,
@@ -383,6 +391,48 @@ struct Desktop {
 impl Desktop {
     fn process_image(&self, id: u32) -> Option<Arc<Image>> {
         self.ui.icons.borrow_mut().get(id)
+    }
+
+    /// The page's selected keys, anchor first; empty when nothing is.
+    fn selected_keys(&self, page: &str) -> &[String] {
+        self.selected
+            .get(page)
+            .map(|keys| keys.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// The lone selected key, when exactly one row is selected.
+    fn selected_key(&self, page: &str) -> Option<&String> {
+        let keys = self.selected_keys(page);
+        (keys.len() == 1).then(|| &keys[0])
+    }
+
+    /// The selection's anchor: where plain picks and range picks start from.
+    fn selected_anchor(&self, page: &str) -> Option<&String> {
+        self.selected_keys(page).first()
+    }
+
+    /// Whether the row key is among the page's selection.
+    fn selects(&self, page: &str, key: &str) -> bool {
+        self.selected_keys(page).iter().any(|picked| picked == key)
+    }
+
+    /// The selectable rows the page has picked, in pick order.
+    fn selected_rows(&self) -> Vec<&Row> {
+        self.selected_keys(&self.page)
+            .iter()
+            .filter_map(|key| self.rows.iter().find(|row| &row.key == key))
+            .filter(|row| row.section.is_none())
+            .collect()
+    }
+
+    /// Replaces the page's selection, dropping the page's entry once empty.
+    fn set_selected(&mut self, page: &str, keys: Vec<String>) {
+        if keys.is_empty() {
+            self.selected.remove(page);
+        } else {
+            self.selected.insert(page.into(), keys);
+        }
     }
 
     fn icon_png(&self, id: u32) -> Option<Arc<[u8]>> {

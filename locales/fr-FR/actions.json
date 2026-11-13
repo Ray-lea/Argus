@@ -18,6 +18,11 @@
     },
     "partial": "{error} (non terminés : {count})"
   },
+  "endMulti": {
+    "title": "Terminer {count} processus ?",
+    "body": "Les {count} processus sélectionnés seront terminés. Les données non enregistrées seront perdues.",
+    "done": "{count} processus terminés."
+  },
   "endTree": {
     "title": "Terminer l’arborescence des processus de {name} ?",
     "body": {

@@ -56,7 +56,7 @@ Wenn Argus im Alltag hilfreich ist, unterstützt ein Stern auf GitHub das Projek
 
 | | Funktion | Beschreibung |
 |:---:|---|---|
-| 🧮 | **Prozesse** | Ansichten nach App, Prozessstruktur oder als flache Liste, mit Echtzeitwerten für CPU, Arbeitsspeicher, Datenträgerzugriffe, Netzwerk und GPU. Prozesse lassen sich sortieren, suchen und einzeln oder als ganze Struktur beenden. Der Detailbereich zeigt unter anderem Befehlszeile, Benutzer und Integritätsstufe. |
+| 🧮 | **Prozesse** | Ansichten nach App, Prozessstruktur oder als flache Liste, mit Echtzeitwerten für CPU, Arbeitsspeicher, Datenträgerzugriffe, Netzwerk und GPU. Prozesse lassen sich sortieren, suchen und einzeln oder als ganze Struktur beenden. Mit Strg- oder Umschaltklick sowie Strg+A lassen sich mehrere auswählen und gemeinsam beenden. Der Detailbereich zeigt unter anderem Befehlszeile, Benutzer und Integritätsstufe. |
 | ⚡ | **Priorität und Effizienzmodus** | Direkt im Kontextmenü anpassen oder Regeln erstellen, die bei jedem Programmstart automatisch angewendet werden. |
 | 📈 | **Leistung** | Detaillierte Überwachung von CPU —Last je Kern, P- und E-Kerne, Takt, Temperatur und Leistungsaufnahme—, Arbeitsspeicher, Datenträgern einschließlich Zustand und SMART-Attributen, Netzwerk, GPU und Akku. |
 | 🧩 | **Dienste und Autostart-Apps** | Windows-Dienste starten und beenden, deren Starttyp ändern sowie Autostart-Apps aktivieren oder deaktivieren. Der Zustand bleibt mit dem Windows-Task-Manager synchron. |

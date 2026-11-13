@@ -13,7 +13,7 @@ impl Desktop {
             DetailsMode::Auto => self
                 .selected
                 .get("processes")
-                .is_some_and(|key| !key.is_empty()),
+                .is_some_and(|keys| keys.len() == 1 && !keys[0].is_empty()),
         }
     }
     /// Sets when the details pane shows, and keeps the choice.
@@ -276,7 +276,8 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let key = self.selected.get("processes").cloned().unwrap_or_default();
+        // Several rows picked at once show this computer's overview instead.
+        let key = self.selected_key("processes").cloned().unwrap_or_default();
         let picked = self.details_pick(&key);
         let scroll = window
             .use_keyed_state("details-scroll", cx, |_, _| ScrollHandle::new())

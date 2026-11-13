@@ -566,6 +566,7 @@ impl Desktop {
                     "users":model::UserGroups::new(values(&self.snapshot["sessions"])).users(),
                     "headings":self.rows.iter().filter(|row|row.user.is_some()).map(|row|json!({"key":row.key,"title":row.title,"count":row.raw["entryCount"],"expanded":row.expanded})).collect::<Vec<_>>()},
                 "dialog":self.dialog_test_state(),
+                "selected":{"keys":self.selected.get("processes"),"count":self.selected.get("processes").map(Vec::len).unwrap_or(0)},
                 "toasts":self.ui.toasts.iter().filter(|toast| toast.leaving.is_none()).map(|toast| toast.text.as_str()).collect::<Vec<_>>(),
                 "diagnosticCopy":if self.options.fixture.is_some() { self.data.get("diagnosticCopy") } else { None },
                 "diagnosticCopyReady":self.options.fixture.is_some() && self.data.contains_key("diagnosticCopy"),
@@ -774,21 +775,28 @@ impl Desktop {
         {
             let position = bounds.center();
             window.defer(cx, move |window, cx| {
+                // The click carries the modifiers a previous `modifiers`
+                // control holds: every mouse event resets the window's
+                // modifiers to its own.
+                let modifiers = window.modifiers();
                 for event in [
                     PlatformInput::MouseMove(MouseMoveEvent {
                         position,
+                        modifiers,
                         ..Default::default()
                     }),
                     PlatformInput::MouseDown(MouseDownEvent {
                         position,
                         button: MouseButton::Left,
                         click_count: 1,
+                        modifiers,
                         ..Default::default()
                     }),
                     PlatformInput::MouseUp(MouseUpEvent {
                         position,
                         button: MouseButton::Left,
                         click_count: 1,
+                        modifiers,
                         ..Default::default()
                     }),
                 ] {
@@ -892,6 +900,48 @@ impl Desktop {
         {
             self.act(Action::Select(row.key.clone()), window, cx);
         }
+        // Picks rows at indices directly, multi-selection included: an app row
+        // and its children, say, or the whole list the way Ctrl+A would.
+        if let Some(indices) = control["selectRows"].as_array() {
+            let keys = indices
+                .iter()
+                .filter_map(Value::as_u64)
+                .filter_map(|index| self.rows.get(index as usize))
+                .filter(|row| row.section.is_none())
+                .map(|row| row.key.clone())
+                .collect::<Vec<_>>();
+            if !keys.is_empty() {
+                let page = self.page.clone();
+                self.set_selected(&page, keys);
+            }
+            cx.notify();
+        }
+        // Holds keyboard modifiers for the steps that follow, so a pointer
+        // control clicks with Ctrl or Shift.
+        if let Some(held) = control["modifiers"].as_object() {
+            let modifiers = Modifiers {
+                control: held
+                    .get("control")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                alt: held.get("alt").and_then(Value::as_bool).unwrap_or(false),
+                shift: held.get("shift").and_then(Value::as_bool).unwrap_or(false),
+                platform: held
+                    .get("platform")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                ..Default::default()
+            };
+            window.defer(cx, move |window, cx| {
+                window.dispatch_event(
+                    PlatformInput::ModifiersChanged(ModifiersChangedEvent {
+                        modifiers,
+                        capslock: Default::default(),
+                    }),
+                    cx,
+                );
+            });
+        }
         if let Some(key) = control["headerMenu"].as_str() {
             // As a right press at the start of that column's header would.
             let at = self
@@ -904,7 +954,12 @@ impl Desktop {
         if let Some(index) = control["rowMenu"].as_u64()
             && let Some(row) = self.rows.get(index as usize).cloned()
         {
-            self.selected.insert(self.page.clone(), row.key.clone());
+            // A right press keeps a multi-selection when the row is in it,
+            // exactly like the pointer path.
+            if !self.selects(&self.page, &row.key) {
+                let page = self.page.clone();
+                self.set_selected(&page, vec![row.key.clone()]);
+            }
             let items = self.row_menu(&row);
             self.open_popup(items, window, cx);
         }

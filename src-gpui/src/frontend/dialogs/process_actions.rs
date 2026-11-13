@@ -81,7 +81,7 @@ impl Desktop {
         }
         self.next_request += 1;
         let id = self.next_request;
-        let summary = json!({"kind":kind,"command":command,"name":name,"priority":args["priority"],"on":args["on"]});
+        let summary = json!({"kind":kind,"command":command,"name":name,"priority":args["priority"],"on":args["on"],"multi":args["multi"]});
         self.pending.insert(
             id,
             Pending {
@@ -126,6 +126,26 @@ impl Desktop {
             .iter()
             .any(|r| text(&r["value"], "kind") == "serviceOutdated");
         let (kind_out, text_out, ms) = match kind {
+            // A multi-selection has no single name to show.
+            "end" if total > 1 && boolean(value, "multi") => {
+                if failed.is_empty() {
+                    (
+                        ToastKind::Success,
+                        tr!("actions.endMulti.done", count = total),
+                        5000,
+                    )
+                } else {
+                    (
+                        ToastKind::Error,
+                        tr!(
+                            "actions.endGroup.partial",
+                            error = first_error,
+                            count = failed.len()
+                        ),
+                        5000,
+                    )
+                }
+            }
             "end" if total > 1 => {
                 if failed.is_empty() {
                     (

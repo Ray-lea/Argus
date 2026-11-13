@@ -133,6 +133,8 @@ pub struct Settings {
     pub hotkey_enabled: bool,
     /// Priority and efficiency mode rules, applied as programs start.
     pub rules: Vec<ProcessRule>,
+    /// Ask before ending a process or process tree; off, ending runs at once.
+    pub confirm_end: bool,
     /// Record history for the history page.
     pub history: bool,
     /// Opt-in CPU sensors; an explicit enable action prepares PawnIO if needed.
@@ -161,6 +163,7 @@ impl Default for Settings {
             hotkey: DEFAULT_HOTKEY.into(),
             hotkey_enabled: true,
             rules: Vec::new(),
+            confirm_end: true,
             history: true,
             kernel_sensors: false,
             update_check: true,

@@ -16,6 +16,11 @@
     },
     "partial": "{error} ({count} not ended)"
   },
+  "endMulti": {
+    "title": "End {count} processes?",
+    "body": "The {count} selected processes will be ended. Unsaved data will be lost.",
+    "done": "Ended {count} processes."
+  },
   "endTree": {
     "title": "End the process tree of {name}?",
     "body": {
