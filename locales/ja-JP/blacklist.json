@@ -9,5 +9,8 @@
   "removed": "拒否リストから削除しました：{name}",
   "removeButton": "拒否リストから削除",
   "addButton": "拒否リストに追加",
+  "confirmTitle": "拒否リストに追加",
+  "confirmBody": "「{path}」を拒否リストに追加しますか？リストのプロセスは出現するとすぐに終了させます。",
+  "confirmAdd": "追加",
   "watchHint": "拒否リスト有効（{count} 件）：サンプリングごとに一致するプロセスを出現時に終了させます"
 }

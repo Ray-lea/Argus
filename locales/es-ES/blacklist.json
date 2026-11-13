@@ -9,5 +9,8 @@
   "removed": "Quitado de la lista: {name}",
   "removeButton": "Quitar de la lista",
   "addButton": "Bloquear",
+  "confirmTitle": "Añadir a la lista",
+  "confirmBody": "¿Añadir «{path}» a la lista? Los procesos de la lista se terminan en cuanto aparecen.",
+  "confirmAdd": "Añadir",
   "watchHint": "Lista activa ({count} entradas): cada muestreo termina los procesos coincidentes en cuanto aparecen"
 }

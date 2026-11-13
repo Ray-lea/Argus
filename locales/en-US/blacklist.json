@@ -9,5 +9,8 @@
   "removed": "Removed from the blacklist: {name}",
   "removeButton": "Unblacklist",
   "addButton": "Blacklist",
+  "confirmTitle": "Add to the blacklist",
+  "confirmBody": "Add \"{path}\" to the blacklist? Processes on the blacklist are terminated as soon as they appear.",
+  "confirmAdd": "Add",
   "watchHint": "Blacklist active ({count} entries): every sample terminates matching processes as they appear"
 }

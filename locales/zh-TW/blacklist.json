@@ -9,5 +9,8 @@
   "removed": "已移出黑名單：{name}",
   "removeButton": "移出黑名單",
   "addButton": "加入黑名單",
+  "confirmTitle": "加入黑名單",
+  "confirmBody": "確定要把「{path}」加入黑名單？名單中的處理程序一經發現立即結束。",
+  "confirmAdd": "加入",
   "watchHint": "黑名單啟用中（{count} 項）：每次取樣都會結束新出現的符合處理程序"
 }

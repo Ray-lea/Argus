@@ -9,5 +9,8 @@
   "removed": "已移出黑名单：{name}",
   "removeButton": "移出黑名单",
   "addButton": "加入黑名单",
+  "confirmTitle": "加入黑名单",
+  "confirmBody": "确定要把「{path}」加入黑名单？名单中的进程一经发现立即结束。",
+  "confirmAdd": "加入",
   "watchHint": "黑名单启用中（{count} 项）：每次采样都会结束新出现的匹配进程"
 }

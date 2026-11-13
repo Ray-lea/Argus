@@ -9,5 +9,8 @@
   "removed": "Aus der Sperrliste entfernt: {name}",
   "removeButton": "Aus Sperrliste entfernen",
   "addButton": "Zur Sperrliste",
+  "confirmTitle": "Zur Sperrliste hinzufügen",
+  "confirmBody": "„{path}“ zur Sperrliste hinzufügen? Prozesse auf der Sperrliste werden sofort beendet, sobald sie erscheinen.",
+  "confirmAdd": "Hinzufügen",
   "watchHint": "Sperrliste aktiv ({count} Einträge): Jede Abtastung beendet passende Prozesse, sobald sie erscheinen"
 }
