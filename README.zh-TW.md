@@ -97,8 +97,8 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 
 建置前需準備以下環境：
 
-- Rust `stable-x86_64-pc-windows-msvc` 工具鏈（1.99.1 及以上）
-- Node.js 26.12.1 及以上的 26.x 版本（亦支援 24.22.1 及以上的 24.x LTS）與 pnpm 12.14.0
+- Rust `stable-x86_64-pc-windows-msvc` 工具鏈（1.100.0 及以上）
+- Node.js 26.13.1 及以上的 26.x 版本（亦支援 24.22.3 及以上的 24.x LTS）與 pnpm 12.18.0
 - Visual Studio Build Tools（選取「使用 C++ 的桌面開發」工作負載）
 
 在存放庫根目錄使用 PowerShell 執行：

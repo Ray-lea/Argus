@@ -101,8 +101,8 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 必要な環境：
 
-- Rust `stable-x86_64-pc-windows-msvc` ツールチェーン（1.99.1 以降）。
-- Node.js 26.12.1 以降の 26.x、または 24.22.1 以降の 24.x LTS、および pnpm 12.14.0。
+- Rust `stable-x86_64-pc-windows-msvc` ツールチェーン（1.100.0 以降）。
+- Node.js 26.13.1 以降の 26.x、または 24.22.3 以降の 24.x LTS、および pnpm 12.18.0。
 - Visual Studio Build Tools の「C++ によるデスクトップ開発」ワークロード。
 
 リポジトリのルート ディレクトリで PowerShell から実行します。

@@ -1,10 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": [
-      "locales/**",
-      "resources/**/*.json"
-    ]
+    "includes": ["locales/**", "resources/**/*.json"]
   },
   "formatter": {
     "indentStyle": "space",
@@ -13,7 +10,7 @@
   },
   "linter": {
     "rules": {
-      "recommended": true
+      "preset": "recommended"
     }
   }
 }

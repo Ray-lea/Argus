@@ -89,8 +89,8 @@ See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (in Chinese)
 
 Prerequisites:
 
-- Rust `stable-x86_64-pc-windows-msvc` toolchain (1.99.1 or later)
-- Node.js 26.x from 26.12.1 (24.x LTS from 24.22.1 is also supported) and pnpm 12.14.0
+- Rust `stable-x86_64-pc-windows-msvc` toolchain (1.100.0 or later)
+- Node.js 26.x from 26.13.1 (24.x LTS from 24.22.3 is also supported) and pnpm 12.18.0
 - Visual Studio Build Tools ("Desktop development with C++" workload)
 
 Run the following commands in PowerShell from the repository root:

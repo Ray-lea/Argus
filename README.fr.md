@@ -101,8 +101,8 @@ Les versions de Windows vérifiées, les différences fonctionnelles et les auto
 
 Prérequis :
 
-- Chaîne d’outils Rust `stable-x86_64-pc-windows-msvc`, version 1.99.1 ou ultérieure.
-- Node.js 26.x à partir de 26.12.1, ou 24.x LTS à partir de 24.22.1, et pnpm 12.14.0.
+- Chaîne d’outils Rust `stable-x86_64-pc-windows-msvc`, version 1.100.0 ou ultérieure.
+- Node.js 26.x à partir de 26.13.1, ou 24.x LTS à partir de 24.22.3, et pnpm 12.18.0.
 - Visual Studio Build Tools avec la charge de travail « Développement Desktop en C++ ».
 
 Exécuter dans PowerShell à la racine du dépôt :

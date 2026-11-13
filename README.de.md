@@ -101,8 +101,8 @@ Geprüfte Windows-Versionen, Funktionsunterschiede und erforderliche Berechtigun
 
 Voraussetzungen:
 
-- Rust-Toolchain `stable-x86_64-pc-windows-msvc`, Version 1.99.1 oder neuer.
-- Node.js 26.x ab 26.12.1 oder 24.x LTS ab 24.22.1 sowie pnpm 12.14.0.
+- Rust-Toolchain `stable-x86_64-pc-windows-msvc`, Version 1.100.0 oder neuer.
+- Node.js 26.x ab 26.13.1 oder 24.x LTS ab 24.22.3 sowie pnpm 12.18.0.
 - Visual Studio Build Tools mit der Workload „Desktopentwicklung mit C++“.
 
 Im Stammverzeichnis des Repositorys mit PowerShell ausführen:

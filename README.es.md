@@ -101,8 +101,8 @@ Las versiones de Windows verificadas, las diferencias entre funciones y los perm
 
 Requisitos:
 
-- Cadena de herramientas Rust `stable-x86_64-pc-windows-msvc`, versión 1.99.1 o posterior.
-- Node.js 26.x desde 26.12.1, o 24.x LTS desde 24.22.1, y pnpm 12.14.0.
+- Cadena de herramientas Rust `stable-x86_64-pc-windows-msvc`, versión 1.100.0 o posterior.
+- Node.js 26.x desde 26.13.1, o 24.x LTS desde 24.22.3, y pnpm 12.18.0.
 - Visual Studio Build Tools con la carga de trabajo de desarrollo de escritorio con C++.
 
 Ejecutar en PowerShell desde la raíz del repositorio:
