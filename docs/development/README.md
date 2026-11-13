@@ -10,6 +10,7 @@ Windows 开发环境使用 Visual Studio C++ Build Tools 和 stable MSVC Rust。
 | `start.bat build` | 构建原生程序 `target/release/argus.exe`，内含任务管理器辅助程序 |
 | `start.bat build installer` | 构建原生程序并生成 NSIS 安装包 |
 | `node scripts/readme-previews.mjs` | 从当前发行构建生成中英文 README 的浅色和深色进程页截图 |
+| `node scripts/readme-features.mjs` | 生成各语言 README 特性区的浅色和深色操作演示动画（`docs/images/features/`），界面文字取自 `locales/` |
 | `node scripts/supporters.mjs` | 按 `website/src/data/supporters.json` 生成各语言 README 的项目支持与特别致谢卡片，并更新 README 中的卡片区块 |
 | `start.bat clean` | 清理应用产物，保留依赖缓存 |
 | `start.bat clean all` | 清空 Cargo 构建缓存 |
