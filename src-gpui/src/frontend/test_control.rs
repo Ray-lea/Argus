@@ -347,15 +347,21 @@ impl Desktop {
             pointer.push(press(end, false));
         }
         // One step of a slower gesture: a hover, down, a move holding the button or
-        // up, at the middle of a remembered element (or `header:<key>`) moved by
-        // `dx`, `dy`. Without `at`, it is measured from where the gesture began, so
-        // a drag reads the same however the element moves under it.
+        // up, at the middle of a remembered element (or `header:<key>`, or the
+        // table's `row:<index>`) moved by `dx`, `dy`. Without `at`, it is measured
+        // from where the gesture began, so a drag reads the same however the
+        // element moves under it.
         let step = &control["pointer"];
         let target = step["at"]
             .as_str()
-            .and_then(|name| match name.strip_prefix("header:") {
-                Some(key) => self.header_bounds.borrow().get(key).copied(),
-                None => anchor(&step["at"]),
+            .and_then(|name| {
+                if let Some(key) = name.strip_prefix("header:") {
+                    self.header_bounds.borrow().get(key).copied()
+                } else if let Some(index) = name.strip_prefix("row:") {
+                    self.row_bounds(index.parse().ok()?, cx)
+                } else {
+                    anchor(&step["at"])
+                }
             })
             .map(|bounds| bounds.center());
         if target.is_some() {

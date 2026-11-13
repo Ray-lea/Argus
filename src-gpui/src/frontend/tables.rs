@@ -1646,6 +1646,21 @@ impl Desktop {
                 .view(table.entity_id()),
         )
     }
+    /// Where the list draws the row at `index`, scrolled as it is: where a
+    /// test presses on it (see `tips::row_under` for the same measure).
+    pub(in crate::frontend) fn row_bounds(&self, index: usize, cx: &App) -> Option<Bounds<Pixels>> {
+        let list = self.table.as_ref()?.read(cx).delegate().list.clone()?;
+        let viewport = list.bounds();
+        (index < self.rows.len()).then(|| {
+            Bounds::new(
+                point(
+                    viewport.left(),
+                    viewport.top() + list.offset().y + px(ROW_HEIGHT * index as f32),
+                ),
+                size(viewport.size.width, px(ROW_HEIGHT)),
+            )
+        })
+    }
     pub(in crate::frontend) fn table_view(
         &mut self,
         window: &mut Window,
