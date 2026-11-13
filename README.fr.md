@@ -84,6 +84,8 @@ Si Argus facilite le travail au quotidien, une étoile sur GitHub est une façon
 </tr>
 </table>
 
+<sub>En raison des contraintes de place et de format d’image d’un README, les démonstrations ci-dessus sont des reproductions simplifiées de l’interface d’Argus, avec des processus et des données d’exemple. Elles sont fournies à titre indicatif ; l’application elle-même fait foi.</sub>
+
 <a id="download"></a>
 
 ## 📦 Téléchargement

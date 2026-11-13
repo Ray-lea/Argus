@@ -78,6 +78,8 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 </tr>
 </table>
 
+<sub>Owing to the space and image formats a README allows, the demos above are simplified redrawings of the Argus interface with sample processes and data. They are for reference only; the application itself is authoritative.</sub>
+
 ## 📦 Download
 
 Get the latest stable build and SHA-256 checksums from the [official download page](https://argustask.com/en/download/). All versions are available on [GitHub Releases](https://github.com/Ray-lea/Argus/releases).

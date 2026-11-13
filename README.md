@@ -78,6 +78,8 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 </tr>
 </table>
 
+<sub>受 README 篇幅与图片格式所限，以上演示为依据程序界面重新绘制的简化示意，所示进程与数据均为示例，仅供参考；实际界面与功能以程序为准。</sub>
+
 ## 📦 下载
 
 在[官网下载页](https://argustask.com/download/)获取最新稳定版和 SHA-256 校验值。全部版本见 [GitHub Releases](https://github.com/Ray-lea/Argus/releases)。

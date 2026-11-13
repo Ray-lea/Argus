@@ -84,6 +84,8 @@ Si Argus resulta útil en el trabajo diario, una estrella en GitHub es una forma
 </tr>
 </table>
 
+<sub>Debido a las limitaciones de espacio y de formato de imagen de un README, las demostraciones anteriores son recreaciones simplificadas de la interfaz de Argus con procesos y datos de ejemplo. Son solo orientativas; la aplicación real es la referencia.</sub>
+
 <a id="download"></a>
 
 ## 📦 Descarga

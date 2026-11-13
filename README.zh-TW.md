@@ -80,6 +80,8 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 </tr>
 </table>
 
+<sub>受 README 篇幅與圖片格式所限，以上示範為依據程式介面重新繪製的簡化示意，所示處理程序與資料均為範例，僅供參考；實際介面與功能以程式為準。</sub>
+
 <a id="download"></a>
 
 ## 📦 下載

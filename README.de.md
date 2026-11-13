@@ -84,6 +84,8 @@ Wenn Argus im Alltag hilfreich ist, unterstützt ein Stern auf GitHub das Projek
 </tr>
 </table>
 
+<sub>Aufgrund der Platz- und Bildformatgrenzen einer README sind die obigen Demos vereinfachte Nachzeichnungen der Argus-Oberfläche mit Beispielprozessen und -daten. Sie dienen nur zur Orientierung; maßgeblich ist die Anwendung selbst.</sub>
+
 <a id="download"></a>
 
 ## 📦 Download
