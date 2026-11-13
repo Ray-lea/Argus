@@ -146,6 +146,10 @@ impl Collector {
         };
         let mut usage = tracker.sample();
         let available = tracker.memory_available();
+        let state = tracker.utilization_state();
+        for process in processes.iter_mut() {
+            process.gpu_state = state;
+        }
         if usage.is_empty() && !available.iter().any(|available| *available) {
             return;
         }
@@ -182,6 +186,7 @@ impl Collector {
                 continue;
             };
             p.gpu = g.util;
+            p.gpu_state = g.state;
             p.gpu_dedicated = g.dedicated;
             p.gpu_shared = g.shared;
             p.gpu_engine = g.engine.as_ref().map(|(luid, name)| {

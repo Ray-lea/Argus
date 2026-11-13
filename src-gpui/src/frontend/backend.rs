@@ -85,16 +85,44 @@ impl Desktop {
         let Some(pending) = self.pending.remove(&id) else {
             return;
         };
+        if pending.command == "watch_process"
+            && pending.args["generation"].as_u64().unwrap_or(0)
+                != self
+                    .data
+                    .get("watchGeneration")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+        {
+            return;
+        }
         // An answer for another range or moment is dropped. One history query of each
         // kind is in flight at a time, so the one for what is shown now may have been
         // held back while this one was read: forget it was sent and ask again.
+        if matches!(
+            pending.command.as_str(),
+            "history_interval" | "history_report_preview"
+        ) && pending.args["generation"].as_u64().unwrap_or(0)
+            != self
+                .data
+                .get("intervalGeneration")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+        {
+            if pending.command == "history_interval" {
+                self.data.remove("intervalQuery");
+                self.load_cpu_interval(window, cx);
+            }
+            cx.notify();
+            return;
+        }
         if pending.command == "history_series" && pending.args["range"] != self.history_range {
             self.data.remove("historyQuery");
             self.load_history(window, cx);
             return;
         }
         if pending.command == "history_moment"
-            && pending.args["cursor"] != json!(self.history_cursor)
+            && (pending.args["cursor"] != json!(self.history_cursor)
+                || self.data.get("historyMomentAt") != Some(&pending.args["ts"]))
         {
             self.data.remove("historyMomentAt");
             self.load_history(window, cx);
@@ -139,8 +167,56 @@ impl Desktop {
                 if let Some(key) = pending.cache {
                     self.data.insert(key, value.clone());
                 }
+                if pending.command == "watch_process" {
+                    self.data.remove("watchError");
+                    self.data.insert("processWatch".into(), value.clone());
+                    if matches!(
+                        pending.args["action"]["op"].as_str(),
+                        Some("start" | "startProgram" | "stop" | "delete")
+                    ) {
+                        self.interval_action("historyIntervalRetry", window, cx);
+                    }
+                }
+                if pending.command == "history_interval" {
+                    self.data.remove("intervalError");
+                }
+                if pending.command == "history_report_preview" {
+                    if value["body"]
+                        .as_str()
+                        .is_some_and(|body| body.len() <= crate::reports::MAX_BYTES)
+                        && value["id"].as_u64().is_some()
+                        && value["sha256"]
+                            .as_str()
+                            .is_some_and(|hash| hash.len() == 64)
+                    {
+                        self.open_dialog("historyReport", value.clone(), window, cx);
+                    } else {
+                        self.data.insert(
+                            "reportError".into(),
+                            json!(label("history.report.error.invalid")),
+                        );
+                    }
+                }
+                if pending.command == "history_report_save" {
+                    self.notify_toast(
+                        widgets::ToastKind::Success,
+                        label(if value.as_bool() == Some(true) {
+                            "history.report.saved"
+                        } else {
+                            "history.report.cancelled"
+                        }),
+                    );
+                }
                 if pending.command == "history_series" {
                     self.history_answered(&pending.args, window, cx);
+                }
+                if pending.command == "watch_process"
+                    && matches!(
+                        pending.args["action"]["op"].as_str(),
+                        Some("start" | "startProgram")
+                    )
+                {
+                    self.act(Action::Page("history".into()), window, cx);
                 }
                 if pending.command.starts_with("set_") && value.get("closeToTray").is_some() {
                     self.data.insert("settings".into(), value.clone());
@@ -162,6 +238,32 @@ impl Desktop {
                     .as_str()
                     .map(str::to_owned)
                     .unwrap_or_else(|| self.action_error(&pending.command, &pending.args, &error));
+                if pending.command == "watch_process" && pending.args["action"]["op"] == "status" {
+                    self.data.insert("watchError".into(), json!(message));
+                    cx.notify();
+                    return;
+                }
+                if pending.command == "history_interval" {
+                    self.data.insert("intervalError".into(), json!(message));
+                    cx.notify();
+                    return;
+                }
+                if pending.command == "history_report_preview" {
+                    self.data.insert("reportError".into(), json!(message));
+                    cx.notify();
+                    return;
+                }
+                if pending.command == "history_report_save" {
+                    if let Some(modal) = &mut self.modal
+                        && modal.kind == "historyReport"
+                    {
+                        modal.error = Some(message);
+                    } else {
+                        self.notify_toast(widgets::ToastKind::Error, message);
+                    }
+                    cx.notify();
+                    return;
+                }
                 self.command_failed(&pending.command, &pending.args, &error, message, window, cx);
             }
         }

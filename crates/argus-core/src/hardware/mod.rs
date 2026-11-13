@@ -55,6 +55,8 @@ pub struct Hardware {
     pub memory: Arc<MemoryInfo>,
     pub disks: Vec<DiskStats>,
     pub nics: Vec<NicStats>,
+    /// Also distinguishes an empty, successful interface table from a failed query.
+    pub network_state: crate::measurement::Measurement,
     pub gpus: Vec<GpuStats>,
     pub batteries: Vec<BatteryStats>,
 }
@@ -204,6 +206,7 @@ impl HardwareTracker {
             batteries: crate::diagnostics::sample_phase("battery", || {
                 startup_phase("hardware.battery-sample", || self.batteries.sample())
             }),
+            network_state: self.nics.state,
         };
         hardware.supplement_integrated_gpu();
         hardware

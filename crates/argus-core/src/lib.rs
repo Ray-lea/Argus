@@ -20,6 +20,7 @@ pub mod handles;
 pub mod hardware;
 pub mod history;
 pub mod i18n;
+pub mod measurement;
 pub mod meta;
 pub mod net_process;
 mod nt;
@@ -35,6 +36,7 @@ pub mod startup;
 pub mod system;
 pub mod theme;
 mod util;
+pub mod watch;
 mod webview;
 
 pub use collector::{Collector, Snapshot};

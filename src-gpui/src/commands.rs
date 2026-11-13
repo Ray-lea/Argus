@@ -592,8 +592,98 @@ pub fn history_moment(dir: State<'_, HistoryDir>, ts: i64) -> Option<HistoryMome
     history::moment(&dir.0, ts)
 }
 
+pub fn history_cpu_interval(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+) -> Option<history::CpuInterval> {
+    history::cpu_interval(&dir.0, from, to)
+}
+
+pub fn history_interval(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+    metric: argus_core::history::IntervalMetric,
+) -> Option<history::IntervalReport> {
+    history::interval(&dir.0, from, to, metric)
+}
+
+pub fn history_report_preview(
+    dir: State<'_, HistoryDir>,
+    previews: State<'_, crate::reports::PreviewStore>,
+    from: i64,
+    to: i64,
+    metric: argus_core::history::IntervalMetric,
+    format: crate::reports::Format,
+) -> Result<crate::reports::Preview, String> {
+    let report = history::interval(&dir.0, from, to, metric)
+        .ok_or_else(|| tr!("history.report.error.invalid"))?;
+    previews
+        .prepare(&report, format)
+        .map_err(|key| argus_core::i18n::text(&format!("history.report.error.{key}")))
+}
+
+pub fn history_report_save(
+    previews: State<'_, crate::reports::PreviewStore>,
+    id: u64,
+    sha256: String,
+) -> Result<bool, String> {
+    let preview = previews
+        .get(id, &sha256)
+        .map_err(|key| argus_core::i18n::text(&format!("history.report.error.{key}")))?;
+    let extension = preview.format.extension();
+    let Some(path) = rfd::FileDialog::new()
+        .set_title(tr!("history.report.save"))
+        .set_file_name(format!("argus-report.{extension}"))
+        .add_filter(
+            match preview.format {
+                crate::reports::Format::Markdown => "Markdown",
+                crate::reports::Format::Csv => "CSV",
+            },
+            &[extension],
+        )
+        .save_file()
+    else {
+        return Ok(false);
+    };
+    crate::reports::save(&preview, &path)
+        .map_err(|key| argus_core::i18n::text(&format!("history.report.error.{key}")))?;
+    Ok(true)
+}
+
 pub fn history_usage(dir: State<'_, HistoryDir>) -> HistoryUsage {
-    history::usage(&dir.0)
+    let mut usage = history::usage(&dir.0);
+    usage.bytes = usage
+        .bytes
+        .saturating_add(argus_core::watch::WatchRecorder::storage_bytes(&dir.0));
+    usage
+}
+
+/// Explicit observation runs on the sampler, where its file and instance handle live.
+pub fn watch_process(
+    state: State<'_, AppState>,
+    dir: State<'_, HistoryDir>,
+    action: argus_core::watch::WatchAction,
+) -> Result<Option<argus_core::watch::WatchView>, String> {
+    use argus_core::watch::WatchError;
+    let (tx, rx) = std::sync::mpsc::channel();
+    state
+        .sampler
+        .send(Control::Watch(dir.0.clone(), action, tx));
+    let result = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|_| tr!("history.watch.error.unavailable"))?;
+    result.map_err(|error| {
+        argus_core::i18n::text(match error {
+            WatchError::Identity => "history.watch.error.identity",
+            WatchError::Access => "history.watch.error.access",
+            WatchError::Existing => "history.watch.error.existing",
+            WatchError::Missing => "history.watch.error.missing",
+            WatchError::Storage => "history.watch.error.storage",
+            WatchError::Invalid => "history.watch.error.invalid",
+        })
+    })
 }
 
 /// Starts or stops recording; what is already recorded stays until it expires.

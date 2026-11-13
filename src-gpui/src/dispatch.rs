@@ -233,10 +233,47 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             argument::<i64>(&args, "ts")?,
         ))
         .expect("serializable command response")),
+        "history_cpu_interval" => Ok(serde_json::to_value(crate::commands::history_cpu_interval(
+            host.state(),
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+        ))
+        .expect("serializable command response")),
+        "history_interval" => Ok(serde_json::to_value(crate::commands::history_interval(
+            host.state(),
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+            argument::<argus_core::history::IntervalMetric>(&args, "metric")?,
+        ))
+        .expect("serializable command response")),
+        "history_report_preview" => crate::commands::history_report_preview(
+            host.state(),
+            host.state(),
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+            argument::<argus_core::history::IntervalMetric>(&args, "metric")?,
+            argument::<crate::reports::Format>(&args, "format")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "history_report_save" => crate::commands::history_report_save(
+            host.state(),
+            argument::<u64>(&args, "id")?,
+            argument::<String>(&args, "sha256")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "history_usage" => Ok(
             serde_json::to_value(crate::commands::history_usage(host.state()))
                 .expect("serializable command response"),
         ),
+        "watch_process" => crate::commands::watch_process(
+            host.state(),
+            host.state(),
+            argument::<argus_core::watch::WatchAction>(&args, "action")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "set_history_enabled" => crate::commands::set_history_enabled(
             host.clone(),
             host.state(),
