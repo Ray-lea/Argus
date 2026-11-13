@@ -106,6 +106,19 @@ const retainedDevices = retained ? [
   ...(hardware.gpus ?? []).slice(1).map(g => `gpu:${g.info.id}`),
   ...(hardware.batteries ?? []).map(b => `bat:${b.info.id}`),
 ] : [];
+// Every performance overview of the fixture shows in full, without scrolling,
+// in a window of this logical size. The default window is smaller: there the
+// overviews with the most content scroll.
+const COMPLETE_WINDOW = [1240, 800];
+const overviewStates = [
+  ["cpu", { device: "cpu", cpuMode: "overall" }],
+  ["logical", { cpuMode: "logical", coreFilter: "all" }],
+  ["memory", { device: "memory" }],
+  ...(hardware.disks ?? []).map((d, i) => [`disk-${i}`, { device: `disk:${d.info.index}` }]),
+  ...(hardware.gpus ?? []).map((g, i) => [`gpu-${i}`, { device: `gpu:${g.info.id}` }]),
+  ...(hardware.nics ?? []).map((n, i) => [`nic-${i}`, { device: `nic:${n.info.id}` }]),
+  ...(hardware.batteries ?? []).map((b, i) => [`battery-${i}`, { device: `bat:${b.info.id}` }]),
+];
 const probeFlag = process.argv.indexOf("--probe");
 const probe = resolve(probeFlag >= 0 ? process.argv[probeFlag + 1] : "target/release/argus-window-probe.exe");
 const executable = resolve(output, "argus.exe");
@@ -698,6 +711,14 @@ try {
     resizeLogical(1600, 1000);
     await sleep(800);
     await capture("large-performance");
+    resizeLogical(...COMPLETE_WINDOW);
+    await sleep(800);
+    for (const [name, state] of overviewStates) {
+      send(state);
+      await sleep(700);
+      send({ pointerOutside: true, inspectLayout: `complete-${name}` });
+    }
+    await sleep(350);
   }
 } finally {
   if (!exited) {
@@ -722,8 +743,14 @@ if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview &&
     const state = events.find((event) => event.event === "ui-render-counts" && event.label === label);
     assert(state && state.sort === sort && state.descending === descending, `${label}: clicking the full header did not sort`);
   }
-  const overviews = events.filter((event) => event.event === "ui-layout" && /^(performance|logical-.*|memory|disk-\d+|gpu-\d+|nic-\d+|battery-\d+)$/.test(event.label));
-  for (const view of overviews) assert(view.performanceScrollY <= 1, `${view.label}: default-size performance overview scrolls by ${view.performanceScrollY}px`);
+  const [completeWidth, completeHeight] = COMPLETE_WINDOW;
+  for (const [name] of overviewStates) {
+    const view = events.find((event) => event.event === "ui-layout" && event.label === `complete-${name}`);
+    assert(view, `${name}: overview layout missing`);
+    // A screen smaller than the window would clamp it and void the check.
+    assert(Math.abs(view.width - completeWidth) <= 1 && Math.abs(view.height - completeHeight) <= 1, `${name}: window is ${view.width} × ${view.height}, not ${completeWidth} × ${completeHeight}`);
+    assert(view.performanceScrollY <= 1, `${name}: overview scrolls by ${view.performanceScrollY}px in a ${completeWidth} × ${completeHeight} window`);
+  }
   const narrow = events.find((event) => event.event === "ui-layout" && event.label === "narrow-performance");
   assert(narrow?.performanceScrollY > 0, "minimum-size overview must scroll instead of overlapping its content");
 }
